@@ -9,8 +9,7 @@ community posting, file upload, and admin actions are simulated with static stat
 
 - Task Plaza-first landing experience for posting AI requirements and taking paid work
 - Forum-style creator community for posts, showcases, prompt discussions, and collaboration
-- AI Task Engine for requirement splitting, maker matching, reward estimation, and contribution proof
-- Publish Request page with category, reward, deadline, visibility, attachment, and acceptance-rule fields
+- Publish Request page with category, reward, deadline, visibility, attachment, acceptance-rule fields, and AI assist buttons for manual text inputs
 - My Tasks desk for claimed work, submitted deliverables, review notes, and contribution history
 - Task details with public brief, private brief, attachments, result links, review notes, rights, budget, and points
 - Inspiration Library for featured posts, task templates, prompt packs, tutorials, cases, and idea radar
@@ -49,5 +48,5 @@ npm run test:sim
 ```
 
 `test:sim` runs feature-contract checks for the planned modules: navigation, Task Plaza lifecycle, publish form,
-My Tasks delivery desk, community forum flows, AI task engine, creation tools, points ledger, admin review queue,
+My Tasks delivery desk, community forum flows, publish-form AI assists, creation tools, points ledger, admin review queue,
 cross-module actions, localization, responsive layout contracts, and prototype-boundary documentation.

@@ -25,13 +25,10 @@ const expectedPages = [
   'publish',
   'mine',
   'community',
-  'engine',
   'inspiration',
   'points',
-  'create',
+  'playground',
   'chat',
-  'image',
-  'video',
   'explore',
   'admin',
 ]
@@ -42,13 +39,10 @@ const pageComponents = [
   'PublishPage',
   'MyTasksPage',
   'CommunityPage',
-  'EnginePage',
   'InspirationPage',
   'PointsPage',
-  'CreatePage',
+  'PlaygroundPage',
   'ChatPage',
-  'ImagePage',
-  'VideoPage',
   'ExplorePage',
   'AdminPage',
 ]
@@ -70,8 +64,26 @@ addCheck(
 addCheck(
   'navigation',
   'publish request is not duplicated in the sidebar menu',
-  !navItemsBlock.includes("key: 'publish'") && includesAll(app, ["setPage('publish')", 'Start brief', '{t.postTask}']),
+  !navItemsBlock.includes("key: 'publish'") && includesAll(app, ["setPage('publish')", '{t.publish}', '{t.postTask}']),
   'publish flow remains inside task plaza only',
+)
+
+addCheck(
+  'navigation',
+  'global back button prefers the real source page and primary navigation clears stale return targets',
+  includesAll(app, [
+    'const [pageReturnTargets, setPageReturnTargets]',
+    'type NavigateOptions',
+    'next[destination] = sourcePage',
+    'const navigatePrimary',
+    'navigateToPage(target, workspace, { resetReturn: true })',
+    'const navigateBackToParent',
+    'delete next[page]',
+    'pageReturnTargets[page] ??',
+    'setPage={navigateToPage}',
+    'setPage={navigatePrimary}',
+  ]),
+  'source-aware return targets, primary navigation reset, and back cleanup',
 )
 
 addCheck(
@@ -102,14 +114,14 @@ addCheck(
 addCheck(
   'task plaza',
   'task detail renders delivery and review sections',
-  includesAll(app, ['Submission requirements', 'Attachments', 'Private brief', 'Submitted result', 'Review note', 'Rights']),
+  includesAll(app, ['Submission requirements', 'Attachments', 'Private brief', 'Rights', 'proposal-flow', 'Proposal mode']),
   'task detail sections',
 )
 
 addCheck(
   'task plaza',
   'task actions include take and submit work gates',
-  includesAll(app, ['{t.takeTask}', '{t.submitWork}', 'Request review', 'Publish task']),
+  includesAll(app, ['{t.takeTask}', 'Submit proposal', 'Submit acceptance work', 'Publish task']),
   'take, submit, review, publish actions',
 )
 
@@ -139,9 +151,9 @@ addCheck(
 
 addCheck(
   'task plaza',
-  'task publisher and assignee names open public profiles',
-  includesAll(app, ['const openProfile = (profile: MarketplaceProfile)', 'publisherProfile', 'assigneeProfile', 'profile-link', 'openProfile(publisherProfile)', 'openProfile(assigneeProfile)']),
-  'task detail user links',
+  'task publisher names open public profiles from proposal-mode details',
+  includesAll(app, ['const openProfile = (profile: MarketplaceProfile)', 'publisherProfile', 'profile-link', 'openProfile(publisherProfile)', 'Proposal mode']),
+  'task detail publisher link',
 )
 
 addCheck(
@@ -179,7 +191,7 @@ addCheck(
 addCheck(
   'my tasks',
   'my task desk simulates claimed/submitted/completed delivery tracking',
-  includesAll(app, ['Claimed', 'Submitted', 'Completed', 'Delivery package', 'Contribution history', 'Post recap']),
+  includesAll(app, ['Posted', 'Accepted', 'Review acceptance', 'Discussion record', 'Submit acceptance work', 'Publisher review fields']),
   'task desk lifecycle',
 )
 
@@ -192,40 +204,35 @@ addCheck(
 
 addCheck(
   'community',
-  'community UI supports templates, sorting, conversion, and library saving',
-  includesAll(app, ['Question', 'Experience', 'Task recap', 'Unanswered', 'Turn into task', 'Add to library', 'Forum actions']),
-  'templates, sorting, task conversion, library saving',
+  'community UI supports sorting, conversion, and library saving',
+  includesAll(app, ['Questions', 'Task recap', 'Unanswered', 'Turn into task', 'Add to library', 'Hot right now', '标签']),
+  'sorting, task conversion, library saving, sidebar browsing',
 )
 
 addCheck(
   'community',
-  'community actions create posts, convert tasks, and save library items',
+  'community actions convert tasks, save library items, and update discussions',
   includesAll(app, [
-    'const createPost = (draft?: CommunityDraft)',
     'const convertPostToTask = (post: Post)',
     'const savePostToLibrary = (post: Post)',
     'const likePost = (post: Post)',
     'const replyToPost = (post: Post, replyText?: string)',
-    'setPostList((current) => [newPost, ...current])',
+    'setPostList((current) => current.map((item) => (item.id === post.id ? updated : item)))',
     'setLibraryItems((current) => [item, ...current])',
   ]),
-  'post, like, reply, convert, save flows',
+  'like, reply, convert, save flows',
 )
 
 addCheck(
   'community',
-  'community posting and replies use real editable inputs',
+  'community replies use a real editable input',
   includesAll(app, [
-    'type CommunityDraft',
-    'const [postDraft, setPostDraft]',
     'const [replyDraft, setReplyDraft]',
-    'const submitPost = ()',
     'const submitReply = ()',
-    'quick-post-editor',
     'reply-box',
     'localReplies',
   ]),
-  'editable post composer and reply composer',
+  'editable reply composer',
 )
 
 addCheck(
@@ -255,15 +262,17 @@ addCheck(
 addCheck(
   'community',
   'community has enough mock topics/posts for forum simulation',
-  countMatches(app, /title: '.*?'/g) >= 12 && includesAll(app, ['Hot right now', 'hotPosts', 'topic-state solved', '发布帖子']),
-  'post list, hot topics, solved state',
+  countMatches(app, /title: '.*?'/g) >= 12 && includesAll(app, ['Hot right now', 'hotPosts', 'topic-state solved', '标签']),
+  'post list, hot topics, solved state, sidebar tags',
 )
 
 addCheck(
-  'ai engine',
-  'AI task engine simulates requirement split, matching, estimate, proof',
-  includesAll(app, ['Requirement splitter', 'Analyze request', 'Recommended makers', 'Task history signal', 'Estimated reward']),
-  'engine modes',
+  'publish',
+  'publish form uses field-level AI buttons instead of the removed task engine',
+  includesAll(app, ['improveDraftField', 'renderAiButton', 'ai-field-button', "renderAiButton('title')", "renderAiButton('details')", "renderAiButton('rules')"]) &&
+    !includesAll(app, ["renderAiButton('reward')", "renderAiButton('deadline')"]) &&
+    !includesAll(app, ['EnginePage', "setPage('engine')", 'Requirement splitter']),
+  'publish AI controls and removed engine route',
 )
 
 addCheck(
@@ -295,9 +304,29 @@ addCheck(
 )
 
 addCheck(
+  'inspiration',
+  'inspiration library supports detail pages and conversion actions',
+  includesAll(app, [
+    'Opened inspiration detail',
+    'Converted inspiration to task draft',
+    'Sent inspiration to workspace',
+    "setPage('publish')",
+    "setPage('playground')",
+    'library-save-count',
+    'library-detail',
+  ]) &&
+    includesAll(css, [
+      '.library-save-count',
+      'position: absolute',
+      '.library-detail',
+    ]),
+  'detail view, task/workspace conversion, and absolute save count',
+)
+
+addCheck(
   'points',
   'point ledger updates during simulated flows',
-  includesAll(app, ['const pushLedger = (description: string, delta: string)', 'setLedgerItems((current)', 'Published task:', 'Claimed task:', 'Submitted deliverable:', 'Accepted task:']),
+  includesAll(app, ['const pushLedger = (description: string, delta: string)', 'setLedgerItems((current)', 'Published task:', 'Submitted proposal draft:', 'Submitted deliverable:', 'Accepted task:']),
   'ledger update flow',
 )
 
@@ -323,7 +352,9 @@ addCheck(
   'profile',
   'profile entry points are wired from library, search, rankings, and matching',
   includesAll(app, [
-    'openProfile(selectedProfile)',
+    'openProfile(accountProfile)',
+    'personalProfileId',
+    'MyTasksPage t={t} tasks={tasks}',
     'openProfile={openProfile}',
     'Search result opened',
     'openProfile(profile)',
@@ -362,11 +393,9 @@ addCheck(
     "setPage('tasks')",
     "setPage('community')",
     "setPage('inspiration')",
-    "setPage('engine')",
-    "setPage('video')",
-    "setPage('create')",
+    "setPage('playground')",
   ]),
-  'publish/tasks/community/inspiration/engine/video/create transitions',
+  'publish/tasks/community/inspiration/playground transitions',
 )
 
 addCheck(
@@ -381,6 +410,21 @@ addCheck(
   'default locale is English and Chinese toggle exists',
   includesAll(app, ["useState<Locale>('en')", "locale === 'en' ? 'zh' : 'en'", '中文', 'English']),
   'default English, toggle to Chinese',
+)
+
+const switchLocaleBlock = app.slice(
+  app.indexOf('  const switchLocale = () => {'),
+  app.indexOf('  useEffect(() => {\n    window.scrollTo'),
+)
+
+addCheck(
+  'localization',
+  'language toggle preserves the current page context',
+  switchLocaleBlock.includes('setLocale(nextLocale)') &&
+    !/set(Page|SelectedTask|SelectedPost|Prompt|CommunityView|SelectedSearchFilter)\(/.test(switchLocaleBlock) &&
+    !app.includes('key={locale}') &&
+    !app.includes('key={`${locale}-'),
+  'locale toggle should not navigate, reset selected content, reset prompts, or remount pages',
 )
 
 addCheck(
@@ -436,7 +480,7 @@ addCheck(
   'core chips and filters maintain active local state',
   includesAll(app, [
     'const [activeCategory, setActiveCategory]',
-    'const [activeTemplate, setActiveTemplate]',
+    'const [selectedFeature, setSelectedFeature]',
     'const [activeOption, setActiveOption]',
     'const [activeControls, setActiveControls]',
     'const [activeTab, setActiveTab]',
@@ -449,9 +493,9 @@ addCheck(
   'interaction feedback',
   'search and login controls provide visible simulated feedback',
   includesAll(app, [
-    'const defaultTags = isZh',
-    '中文课程宣传片',
-    'Search tag selected',
+    "const [query, setQuery] = useState('')",
+    'Search result opened',
+    'Search result played',
     'close()',
     '微信登录',
     '手机号登录',
@@ -469,12 +513,11 @@ addCheck(
     "setPage(action.page)",
     '灵动岛已跳转',
     'Dynamic island routed',
-    '我要发布任务 / 找任务赚钱 / 发帖 / 生成图片 / 做视频',
+    '我要发布任务 / 找任务赚钱 / 看社区 / 生成图片 / 做视频',
     "page: 'tasks'",
     "page: 'publish'",
     "page: 'community'",
-    "page: 'image'",
-    "page: 'video'",
+    "page: 'playground'",
     "page: 'chat'",
   ]) &&
     includesAll(css, [
@@ -482,7 +525,6 @@ addCheck(
       '.ai-island.open',
       '.island-compact',
       '.island-command',
-      '.island-guide',
       '@keyframes island-shimmer',
     ]),
   'floating AI guide with shortcuts, command input, and workflow routing',
@@ -491,7 +533,7 @@ addCheck(
 addCheck(
   'responsive ui',
   'responsive styles cover new module layouts',
-  includesAll(css, ['.engine-hero', '.form-layout', '.community-layout', '.detail-section-grid', '.ledger-row', '.admin-row', '.empty-state', '.sidebar.mobile-expanded', '@media (max-width: 860px)']),
+  includesAll(css, ['.form-layout', '.ai-field-button', '.community-layout', '.detail-section-grid', '.ledger-row', '.admin-row', '.empty-state', '.sidebar.mobile-expanded', '@media (max-width: 860px)']),
   'desktop, empty state, and mobile navigation layout contracts',
 )
 
@@ -501,12 +543,11 @@ addCheck(
   includesAll(css, [
     '"Microsoft YaHei UI"',
     '.post-body',
-    '.quick-post-editor',
     '.reply-box textarea',
     '.comment-heading',
     'overflow-wrap: anywhere',
   ]),
-  'Chinese font fallback, post body, composer, reply, and wrapping styles',
+  'Chinese font fallback, post body, reply, and wrapping styles',
 )
 
 addCheck(

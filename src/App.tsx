@@ -1,6 +1,6 @@
-import { useMemo, useState, type MouseEvent, type PointerEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from 'react'
 import {
-  Aperture,
+  ArrowLeft,
   BadgeDollarSign,
   Bell,
   Bookmark,
@@ -8,7 +8,6 @@ import {
   BriefcaseBusiness,
   Check,
   ChevronDown,
-  CircleDollarSign,
   Clapperboard,
   Clock3,
   Code2,
@@ -25,6 +24,7 @@ import {
   MessageCircle,
   Mic2,
   MoreHorizontal,
+  Moon,
   Music2,
   Pause,
   PenLine,
@@ -38,6 +38,7 @@ import {
   Shuffle,
   Sparkles,
   Star,
+  Sun,
   Tags,
   Trophy,
   Upload,
@@ -51,14 +52,12 @@ import {
 import './index.css'
 
 type Locale = 'en' | 'zh'
+type Role = 'member' | 'contributor' | 'moderator' | 'admin'
 type Page =
   | 'home'
-  | 'create'
+  | 'playground'
   | 'chat'
-  | 'image'
-  | 'video'
   | 'explore'
-  | 'engine'
   | 'tasks'
   | 'publish'
   | 'mine'
@@ -74,6 +73,13 @@ type Page =
   | 'profile'
   | 'terms'
   | 'privacy'
+type CommunityView = 'list' | 'detail'
+type PlaygroundMode = 'music' | 'image' | 'video' | 'chat'
+type ThemeMode = 'black' | 'white'
+type NavigateOptions = {
+  resetReturn?: boolean
+  returnTo?: Page | null
+}
 
 type Track = {
   id: number
@@ -182,25 +188,19 @@ type MarketplaceProfile = {
   reviews: LocalizedText[]
 }
 
-type CommunityDraft = {
-  title: string
-  category: string
-  excerpt: string
-}
-
 type SimulateAction = (message: string, ledger?: { description: string; delta: string }) => void
 
 const copy = {
   en: {
-    brand: 'MuseFlow',
+    brand: 'HCAI',
     search: 'Search',
     home: 'Home',
     create: 'Create',
+    playground: 'AI Workspace',
     chat: 'Chat',
     image: 'Image',
     video: 'Video',
     explore: 'Explore',
-    engine: 'AI Task Engine',
     tasks: 'Tasks',
     publish: 'Publish',
     mine: 'My Tasks',
@@ -208,28 +208,25 @@ const copy = {
     inspiration: 'Inspiration',
     points: 'Points',
     admin: 'Admin',
-    pricing: 'Pricing',
+    pricing: 'Point plans',
     api: 'API',
     earn: 'Earn',
     about: 'About',
     library: 'Library',
     profile: 'Profile',
-    liked: 'Liked',
-    newPlaylist: 'New playlist',
+    backToParent: 'Back',
     login: 'Login',
-    getStarted: 'Get Started',
+    getStarted: 'Find inspiration',
     heroTitle: 'Task Plaza',
     heroText: 'Post AI work, match makers, and discuss delivery in one place.',
     startCreating: 'Post a task',
     trending: 'Trending this week',
-    radio: 'Listen with MuseFlow Radio',
+    radio: 'Listen with HCAI Radio',
     unlimitedStreaming: 'Unlimited streaming',
     freeDownloads: 'Free downloads',
     royaltyFree: 'Royalty free',
     noCopyright: 'No copyright issues',
     dashboardTitle: 'AI collaboration dashboard',
-    engineTitle: 'AI Task Engine',
-    engineSubtitle: 'Split requirements, match makers, estimate rewards, and turn rough ideas into actionable AI work.',
     publishTitle: 'Publish an AI request',
     mineTitle: 'My task desk',
     inspirationTitle: 'Inspiration Library',
@@ -253,12 +250,13 @@ const copy = {
     imageSubtitle: 'Generate covers, posters, avatars, product visuals, and references.',
     videoTitle: 'Video Studio',
     videoSubtitle: 'Build text-to-video, image-to-video, and music video concepts.',
+    playgroundTitle: 'AI Workspace',
+    playgroundSubtitle: 'Choose music, image, video, or chat inside one shared workspace.',
     tasksTitle: 'Task Plaza',
     communityTitle: 'Creator Community',
     postTask: 'Post task',
-    takeTask: 'Take task',
-    submitWork: 'Submit work',
-    newPost: 'New post',
+    takeTask: 'Submit proposal',
+    submitWork: 'Submit deliverable',
     reply: 'Reply',
     share: 'Share',
     follow: 'Follow',
@@ -275,23 +273,23 @@ const copy = {
     all: 'All',
     users: 'Users',
     sfx: 'SFX',
-    billingYear: 'Yearly - save 34%',
-    billingMonth: 'Monthly',
+    billingYear: 'Yearly points pack',
+    billingMonth: 'Monthly points pack',
     contactSales: 'Contact sales',
     docs: 'View docs',
     terms: 'Terms',
     privacy: 'Privacy',
   },
   zh: {
-    brand: 'MuseFlow',
+    brand: 'HCAI',
     search: '搜索',
     home: '首页',
     create: '创作',
+    playground: 'AI 工作区',
     chat: '对话',
     image: '图片',
     video: '视频',
     explore: '探索',
-    engine: 'AI 任务引擎',
     tasks: '任务广场',
     publish: '发布需求',
     mine: '我的任务',
@@ -299,28 +297,25 @@ const copy = {
     inspiration: '灵感库',
     points: '积分奖励',
     admin: '管理中心',
-    pricing: '价格',
+    pricing: '积分方案',
     api: 'API',
     earn: '联盟推广',
     about: '关于我们',
     library: '音乐库',
-    profile: '个人资料',
-    liked: '已点赞',
-    newPlaylist: '新建播放列表',
+    profile: '个人中心',
+    backToParent: '返回上级',
     login: '登录',
-    getStarted: '免费开始',
+    getStarted: '寻找灵感',
     heroTitle: '任务广场',
     heroText: '发布 AI 需求，匹配创作者，在社区讨论与交付。',
     startCreating: '发布任务',
     trending: '本周趋势',
-    radio: '用 MuseFlow Radio 收听',
+    radio: '用 HCAI Radio 收听',
     unlimitedStreaming: '无限流媒体播放',
     freeDownloads: '免费下载',
     royaltyFree: '免版税',
     noCopyright: '没有版权问题',
     dashboardTitle: 'AI 协作工作台',
-    engineTitle: 'AI 任务引擎',
-    engineSubtitle: '拆解需求、匹配创作者、估算奖励，并把粗略想法变成可执行的 AI 任务。',
     publishTitle: '发布 AI 需求',
     mineTitle: '我的任务工作台',
     inspirationTitle: '灵感库',
@@ -344,12 +339,13 @@ const copy = {
     imageSubtitle: '生成封面、海报、头像、产品图和参考图。',
     videoTitle: '视频工作台',
     videoSubtitle: '制作文生视频、图生视频和音乐视频概念。',
+    playgroundTitle: 'AI 工作区',
+    playgroundSubtitle: '在同一个工作区里切换生歌、生图、生视频和对话。',
     tasksTitle: '任务广场',
     communityTitle: '创作者社区',
     postTask: '发布任务',
-    takeTask: '接取任务',
+    takeTask: '提交方案',
     submitWork: '提交方案',
-    newPost: '发帖',
     reply: '回复',
     share: '分享',
     follow: '关注',
@@ -366,8 +362,8 @@ const copy = {
     all: '全部',
     users: '用户',
     sfx: '音效',
-    billingYear: '年付立减 34%',
-    billingMonth: '月付',
+    billingYear: '年度积分包',
+    billingMonth: '月度积分包',
     contactSales: '联系销售',
     docs: '查看文档',
     terms: '服务条款',
@@ -448,6 +444,20 @@ function matchProfilesForDraft(draft: PublishDraft) {
     .slice(0, 4)
 }
 
+function publishFieldLabel(field: keyof PublishDraft, t: Record<string, string>) {
+  const labels: Record<keyof PublishDraft, [string, string]> = {
+    title: ['task title', '任务标题'],
+    category: ['category', '分类'],
+    reward: ['reward', '奖励'],
+    deadline: ['deadline', '截止时间'],
+    visibility: ['visibility', '可见范围'],
+    details: ['requirement details', '需求详情'],
+    rules: ['acceptance rules', '验收规则'],
+  }
+  const [en, zh] = labels[field]
+  return textFor(t, en, zh)
+}
+
 function categoryLabel(category: string, t: Record<string, string>) {
   if (!isZhCopy(t)) return category
   const labels: Record<string, string> = {
@@ -494,6 +504,21 @@ function mediaTypeLabel(type: string, t: Record<string, string>) {
     Playlist: '播放列表',
   }
   return labels[type] ?? type
+}
+
+function pointText(value: string) {
+  const normalized = value
+    .replace(/[¥$]/g, '')
+    .replace(/\bcredits?\b/gi, '积分')
+    .replace(/\bpoints?\b/gi, '积分')
+    .replace(/\bpts\b/gi, '积分')
+    .trim()
+  if (!normalized) return '积分'
+  return /积分/.test(normalized) ? normalized : `${normalized} 积分`
+}
+
+function roleTier(role: Role) {
+  return role === 'admin' ? 'Ultra' : role === 'moderator' ? 'Pro' : role === 'contributor' ? 'Plus' : 'Free'
 }
 
 function localeFirstTask(tasksToFilter: Task[], t: Record<string, string>) {
@@ -2144,30 +2169,6 @@ const posts: Post[] = [
   },
 ]
 
-const myTaskStages = [
-  {
-    label: 'Claimed',
-    value: '3',
-    text: 'Active briefs that need first previews or clarification.',
-  },
-  {
-    label: 'Submitted',
-    value: '2',
-    text: 'Deliverables waiting for publisher or admin review.',
-  },
-  {
-    label: 'Completed',
-    value: '14',
-    text: 'Accepted work stored in your contribution history.',
-  },
-]
-
-const engineMatches = [
-  ['Video launch editor', '96%', 'Fast captioned product videos, music sync, social exports'],
-  ['Prompt systems maker', '88%', 'Reusable prompt packs, QA checklists, task templates'],
-  ['Voice cleanup specialist', '84%', 'Narration cleanup, AI matching, before/after proof'],
-]
-
 const inspirationItems: InspirationItem[] = [
   {
     title: 'Launch video acceptance checklist',
@@ -2338,7 +2339,22 @@ const apiFeatures = [
   'BPM Detection',
 ]
 
+const themeModes: Array<{ key: ThemeMode; label: LocalizedText }> = [
+  { key: 'black', label: { en: 'Black', zh: '黑色' } },
+  { key: 'white', label: { en: 'White', zh: '白色' } },
+]
+
+const readThemeMode = (): ThemeMode => {
+  try {
+    const saved = localStorage.getItem('hcaiThemeMode')
+    return themeModes.some((item) => item.key === saved) ? (saved as ThemeMode) : 'black'
+  } catch {
+    return 'black'
+  }
+}
+
 function App() {
+  const accountProfile = findProfile('taskops') ?? marketplaceProfiles[0]
   const [locale, setLocale] = useState<Locale>('en')
   const [page, setPage] = useState<Page>('home')
   const [activeTrack, setActiveTrack] = useState<Track>(tracks[0])
@@ -2347,7 +2363,28 @@ function App() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [loginOpen, setLoginOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [themeMode, setThemeMode] = useState<ThemeMode>(readThemeMode)
   const [billing, setBilling] = useState<'year' | 'month'>('year')
+  const [userRole, setUserRole] = useState<Role>(() => {
+    try {
+      const raw = localStorage.getItem('hcaiUser')
+      if (!raw) return 'member'
+      const parsed = JSON.parse(raw) as { role?: Role }
+      return parsed.role ?? 'member'
+    } catch {
+      return 'member'
+    }
+  })
+  const [accountName] = useState(() => {
+    try {
+      const raw = localStorage.getItem('hcaiUser')
+      if (!raw) return 'HCAI Creator'
+      const parsed = JSON.parse(raw) as { displayName?: string }
+      return parsed.displayName ?? 'HCAI Creator'
+    } catch {
+      return 'HCAI Creator'
+    }
+  })
   const [prompt, setPrompt] = useState('Lo-fi instrumental song for late-night coding')
   const [generationState, setGenerationState] = useState<'idle' | 'loading' | 'done'>('idle')
   const [taskList, setTaskList] = useState<Task[]>(tasks)
@@ -2356,35 +2393,126 @@ function App() {
   const [ledgerItems, setLedgerItems] = useState<LedgerEntry[]>(pointsLedger)
   const [selectedTask, setSelectedTask] = useState<Task>(() => localeFirstTask(tasks, copy.en))
   const [selectedPost, setSelectedPost] = useState<Post>(() => localeFirstPost(posts, copy.en))
-  const [selectedProfile, setSelectedProfile] = useState<MarketplaceProfile>(() => findProfile('taskops') ?? marketplaceProfiles[0])
-  const [selectedSearchFilter, setSelectedSearchFilter] = useState('All')
+  const [selectedProfile, setSelectedProfile] = useState<MarketplaceProfile>(() => accountProfile)
   const [communityFilter, setCommunityFilter] = useState('Hot')
+  const [communityView, setCommunityView] = useState<CommunityView>('list')
   const t = copy[locale]
+  const currentPoints = pointText(ledgerItems[0]?.[3] ?? '18,420')
+  const currentTier = roleTier(userRole)
+  const currentTierMark = currentTier.charAt(0)
+  const [playgroundWorkspace, setPlaygroundWorkspace] = useState<PlaygroundMode>('music')
+  const [pageReturnTargets, setPageReturnTargets] = useState<Partial<Record<Page, Page>>>({})
+
+  const navigateToPage = (target: Page, workspace?: PlaygroundMode, options: NavigateOptions = {}) => {
+    const sourcePage = page
+    let destination = target
+    if (target === 'chat') {
+      setPlaygroundWorkspace('chat')
+      destination = 'playground'
+    } else if (target === 'playground' && workspace) {
+      setPlaygroundWorkspace(workspace)
+    }
+    setPageReturnTargets((current) => {
+      const next = { ...current }
+      if (destination === 'home' || options.resetReturn || options.returnTo === null) {
+        delete next[destination]
+      } else if (options.returnTo && options.returnTo !== destination) {
+        next[destination] = options.returnTo
+      } else if (sourcePage !== destination) {
+        next[destination] = sourcePage
+      }
+      return next
+    })
+    setPage(destination)
+  }
+
+  const navigatePrimary = (target: Page, workspace?: PlaygroundMode) => {
+    navigateToPage(target, workspace, { resetReturn: true })
+  }
+
+  const switchLocale = () => {
+    const nextLocale = locale === 'en' ? 'zh' : 'en'
+    setLocale(nextLocale)
+    pushToast(nextLocale === 'zh' ? '已切换为中文内容。' : 'Switched to English content.')
+  }
+
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [page])
+
+  useEffect(() => {
+    localStorage.setItem('hcaiUser', JSON.stringify({ displayName: accountName, role: userRole }))
+  }, [accountName, userRole])
+
+  useEffect(() => {
+    localStorage.setItem('hcaiThemeMode', themeMode)
+  }, [themeMode])
 
   const navItems = [
     { key: 'home' as Page, label: t.home, icon: LayoutDashboard },
     { key: 'tasks' as Page, label: t.tasks, icon: BriefcaseBusiness },
-    { key: 'mine' as Page, label: t.mine, icon: FileText },
     { key: 'community' as Page, label: t.community, icon: MessageCircle },
-    { key: 'engine' as Page, label: t.engine, icon: Bot },
     { key: 'inspiration' as Page, label: t.inspiration, icon: Tags },
-    { key: 'points' as Page, label: t.points, icon: Trophy },
     { key: 'explore' as Page, label: t.explore, icon: CompassIcon },
-    { key: 'create' as Page, label: t.create, icon: WandSparkles },
-    { key: 'chat' as Page, label: t.chat, icon: Bot },
-    { key: 'image' as Page, label: t.image, icon: Image },
-    { key: 'video' as Page, label: t.video, icon: Video },
-    { key: 'admin' as Page, label: t.admin, icon: UsersRound },
+    { key: 'playground' as Page, label: t.playground ?? t.create, icon: WandSparkles },
+    ...(userRole === 'admin' ? [{ key: 'admin' as Page, label: t.admin, icon: UsersRound }] : []),
   ]
 
-  const footerItems = [
-    { key: 'pricing' as Page, label: t.pricing },
-    { key: 'earn' as Page, label: t.earn },
-    { key: 'api' as Page, label: t.api },
-    { key: 'about' as Page, label: t.about },
-    { key: 'terms' as Page, label: t.terms },
-    { key: 'privacy' as Page, label: t.privacy },
-  ]
+  const parentPages = {
+    playground: 'home',
+    chat: 'home',
+    explore: 'home',
+    tasks: 'home',
+    publish: 'tasks',
+    mine: 'tasks',
+    community: 'home',
+    inspiration: 'home',
+    points: 'home',
+    admin: 'tasks',
+    pricing: 'home',
+    api: 'home',
+    earn: 'home',
+    about: 'home',
+    playlist: 'explore',
+    profile: 'community',
+    terms: 'about',
+    privacy: 'about',
+  } satisfies Record<Exclude<Page, 'home'>, Page>
+
+  const pageLabels = {
+    home: t.home,
+    playground: t.playground,
+    chat: t.chat,
+    explore: t.explore,
+    tasks: t.tasks,
+    publish: t.publish,
+    mine: t.mine,
+    community: t.community,
+    inspiration: t.inspiration,
+    points: t.points,
+    admin: t.admin,
+    pricing: t.pricing,
+    api: t.api,
+    earn: t.earn,
+    about: t.about,
+    playlist: t.playlists,
+    profile: t.profile,
+    terms: t.terms,
+    privacy: t.privacy,
+  } satisfies Record<Page, string>
+
+  const parentPage = page === 'home' ? null : pageReturnTargets[page] ?? (page === 'inspiration' ? null : parentPages[page])
+
+  const navigateBackToParent = () => {
+    if (!parentPage) return
+    const target = parentPage
+    setPageReturnTargets((current) => {
+      const next = { ...current }
+      delete next[page]
+      return next
+    })
+    setPage(target)
+  }
 
   const runGenerate = () => {
     setGenerationState('loading')
@@ -2408,6 +2536,9 @@ function App() {
 
   const openProfile = (profile: MarketplaceProfile) => {
     setSelectedProfile(profile)
+    if (page !== 'profile') {
+      setPageReturnTargets((current) => ({ ...current, profile: page }))
+    }
     setPage('profile')
     pushToast(locale === 'zh' ? `已打开用户主页：@${profile.handle}` : `Opened public profile: @${profile.handle}`)
   }
@@ -2471,15 +2602,16 @@ function App() {
     const isZh = locale === 'zh'
     const updated = {
       ...task,
-      status: 'In Progress',
+      status: 'Open',
       assignee: 'you',
       proposals: task.proposals + 1,
-      reviewNote: isZh ? '你已接取任务，请在我的任务中提交成果。' : 'You claimed this task. Submit deliverables from My Tasks.',
+      submission: isZh ? '方案草稿已提交，等待发布方在个人中心选择。' : 'Proposal draft submitted. Waiting for the publisher to choose in My Tasks.',
+      reviewNote: isZh ? '方案已提交。发布方选择后进入沟通与交付流程。' : 'Proposal submitted. Once selected, both sides move into discussion and delivery.',
     }
     setTaskList((current) => current.map((item) => (item.id === task.id ? updated : item)))
     setSelectedTask(updated)
-    pushLedger(isZh ? `接取任务：${task.title}` : `Claimed task: ${task.title}`, '+50')
-    pushToast(isZh ? `已接取任务：${task.title}` : `Task claimed: ${task.title}`)
+    pushLedger(isZh ? `提交方案草稿：${task.title}` : `Submitted proposal draft: ${task.title}`, '+50')
+    pushToast(isZh ? `方案已提交：${task.title}` : `Proposal submitted: ${task.title}`)
     setPage('mine')
   }
 
@@ -2528,39 +2660,6 @@ function App() {
     setTaskList((current) => current.map((item) => (item.id === task.id ? updated : item)))
     setSelectedTask(updated)
     pushToast(isZh ? `已驳回任务：${task.title}` : `Task rejected: ${task.title}`)
-  }
-
-  const createPost = (draft?: CommunityDraft) => {
-    const isZh = locale === 'zh'
-    const newPost: Post = {
-      id: Date.now(),
-      title:
-        draft?.title ||
-        (isZh ? '我刚发布了一个 AI 任务，求优化验收标准' : 'I just posted an AI task. Can you review the acceptance criteria?'),
-      category: draft?.category || (isZh ? '提问' : 'Questions'),
-      author: 'you',
-      replies: 0,
-      likes: '0',
-      views: '1',
-      votes: 0,
-      tag: isZh ? '新帖' : 'New',
-      solved: false,
-      excerpt:
-        draft?.excerpt ||
-        (isZh
-          ? '这是通过前端模拟流程创建的新社区帖子，可以继续转任务或收入灵感库。'
-          : 'Created from the local front-end flow. It can be converted to a task or saved to the library.'),
-      body:
-        draft?.excerpt ||
-        (isZh
-          ? '请大家帮我看一下这个需求是否清晰：目标、交付物、验收标准、版权范围和修改轮次是否还缺什么？'
-          : 'Please help review whether this brief is clear enough: goals, deliverables, acceptance criteria, rights, and revision rounds.'),
-    }
-    setPostList((current) => [newPost, ...current])
-    setSelectedPost(newPost)
-    pushLedger(isZh ? `发布社区帖子：${newPost.title}` : `Published community post: ${newPost.title}`, '+30')
-    pushToast(isZh ? `已发布帖子：${newPost.title}` : `Post published: ${newPost.title}`)
-    setPage('community')
   }
 
   const likePost = (post: Post) => {
@@ -2628,84 +2727,99 @@ function App() {
   }
 
   return (
-    <div className={sidebarCollapsed ? 'app-shell sidebar-collapsed' : 'app-shell'}>
+    <div className={sidebarCollapsed ? 'app-shell sidebar-collapsed' : 'app-shell'} data-theme={themeMode}>
       <aside className={sidebarCollapsed ? 'sidebar mobile-expanded collapsed' : 'sidebar'}>
-        <button className="brand" type="button" onClick={() => setPage('home')}>
+        <button className="brand" type="button" onClick={() => navigatePrimary('home')}>
           <span className="brand-mark">
             <Sparkles size={22} />
           </span>
           <span>{t.brand}</span>
         </button>
 
-        <button className="search-trigger" type="button" onClick={() => setSearchOpen(true)}>
+        <button className="search-trigger" type="button" onClick={() => setSearchOpen(true)} aria-label={t.search}>
           <Search size={18} />
           <span>{t.search}</span>
           <kbd>Ctrl K</kbd>
         </button>
 
-        <nav className="nav-list" aria-label="Primary navigation">
-          {navItems.map((item) => {
-            const Icon = item.icon
-            return (
-              <button
-                className={page === item.key ? 'nav-item active' : 'nav-item'}
-                key={item.key}
-                type="button"
-                onClick={() => {
-                  setPage(item.key)
-                }}
-              >
-                <Icon size={18} />
-                <span>{item.label}</span>
-              </button>
-            )
-          })}
-        </nav>
-
-        <div className="library">
-          <span className="eyebrow">{t.library}</span>
-          <button type="button" onClick={() => openProfile(selectedProfile)}>
-            <UserRound size={17} />
-            {t.profile}
-          </button>
-          <button type="button" onClick={requireAuth}>
-            <Heart size={17} />
-            {t.liked}
-          </button>
-          <button type="button" onClick={requireAuth}>
-            <Plus size={17} />
-            {t.newPlaylist}
-          </button>
+        <div className="sidebar-scroll">
+          <nav className="nav-list" aria-label="Primary navigation">
+            {navItems.map((item) => {
+              const Icon = item.icon
+              return (
+                <button
+                  className={page === item.key ? 'nav-item active' : 'nav-item'}
+                  key={item.key}
+                  type="button"
+                  onClick={() => {
+                    navigatePrimary(item.key)
+                  }}
+                >
+                  <Icon size={18} />
+                  <span>{item.label}</span>
+                </button>
+              )
+            })}
+          </nav>
         </div>
 
-        <button
-          className="language"
-          type="button"
-          onClick={() => {
-            const nextLocale = locale === 'en' ? 'zh' : 'en'
-            const nextCopy = copy[nextLocale]
-            setLocale(nextLocale)
-            setSelectedTask(localeFirstTask(taskList, nextCopy))
-            setSelectedPost(localeFirstPost(postList, nextCopy))
-            setSelectedSearchFilter(nextCopy.all)
-            setPrompt(
-              nextLocale === 'zh'
-                ? '国风 Lo-fi 歌单片头，古筝采样，轻鼓点，夜色城市氛围'
-                : 'Lo-fi instrumental song for late-night coding',
-            )
-            pushToast(nextLocale === 'zh' ? '已切换为中文内容。' : 'Switched to English content.')
-          }}
-        >
-          <Languages size={16} />
-          {locale === 'en' ? '中文' : 'English'}
-        </button>
-
-        <div className="footer-links">
-          {footerItems.map((item) => (
-            <button type="button" key={item.key} onClick={() => setPage(item.key)}>
-              {item.label}
+        <div className="sidebar-bottom">
+          <div className="sidebar-profile">
+            <button type="button" onClick={() => openProfile(accountProfile)}>
+              <UserRound size={17} />
+              <span className="sidebar-profile-copy">
+                <span className="sidebar-profile-name">{accountName}</span>
+                <small>{currentPoints}</small>
+              </span>
+              <span
+                className="sidebar-tier-badge"
+                title={currentTier}
+                aria-label={`${currentTier} tier`}
+              >
+                <Star size={12} />
+                <span>{currentTierMark}</span>
+              </span>
             </button>
-          ))}
+          </div>
+
+          <div className="theme-picker" aria-label={textFor(t, 'Theme style', '主题风格')}>
+            <span className="theme-picker-label">
+              {themeMode === 'black' ? <Moon size={16} /> : <Sun size={16} />}
+              <span>{textFor(t, 'Theme style', '主题风格')}</span>
+            </span>
+            <div className="theme-options">
+              {themeModes.map((item) => {
+                const Icon = item.key === 'black' ? Moon : Sun
+                return (
+                  <button
+                    aria-pressed={themeMode === item.key}
+                    className={themeMode === item.key ? 'theme-option active' : 'theme-option'}
+                    key={item.key}
+                    onClick={() => setThemeMode(item.key)}
+                    type="button"
+                  >
+                    <Icon size={14} />
+                    <span>{localizeText(item.label, t)}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {userRole !== 'admin' && (
+            <button
+              className="ghost-button"
+              type="button"
+              onClick={() => {
+                setUserRole('admin')
+                navigatePrimary('admin')
+                simulateAction(isZhCopy(t) ? '已切换为管理员演示账号' : 'Switched to admin demo account')
+              }}
+            >
+              <UsersRound size={17} />
+              {textFor(t, 'Admin demo', '管理员演示')}
+            </button>
+          )}
         </div>
       </aside>
 
@@ -2736,11 +2850,15 @@ function App() {
             <span>{textFor(t, 'AI generation queue is clear', 'AI 生成队列已清空')}</span>
           </div>
           <div className="topbar-actions">
+            <button className="language" type="button" onClick={switchLocale}>
+              <Languages size={16} />
+              {locale === 'en' ? '中文' : 'English'}
+            </button>
             <button className="ghost-button" type="button" onClick={() => setLoginOpen(true)}>
               <LogIn size={17} />
               {t.login}
             </button>
-            <button className="primary-button" type="button" onClick={() => setPage('create')}>
+            <button className="primary-button" type="button" onClick={() => navigatePrimary('inspiration')}>
               <Sparkles size={17} />
               {t.getStarted}
             </button>
@@ -2748,37 +2866,48 @@ function App() {
         </header>
 
         <div className={page === 'tasks' ? 'page task-page' : 'page'}>
-          {page === 'home' && (
-            <HomePage t={t} setPage={setPage} playTrack={playTrack} />
+          {parentPage && (
+            <nav className="parent-nav" aria-label={textFor(t, 'Page parent navigation', '页面上级导航')}>
+              <button
+                className="ghost-button parent-back-button"
+                type="button"
+                onClick={navigateBackToParent}
+                aria-label={`${t.backToParent}: ${pageLabels[parentPage]}`}
+              >
+                <ArrowLeft size={17} />
+                <span>{t.backToParent}</span>
+              </button>
+            </nav>
           )}
-          {page === 'create' && (
-            <CreatePage
-              key={locale}
+          {page === 'home' && (
+            <HomePage t={t} setPage={navigateToPage} playTrack={playTrack} />
+          )}
+          {page === 'playground' && (
+            <PlaygroundPage
               t={t}
               prompt={prompt}
               setPrompt={setPrompt}
               generationState={generationState}
               runGenerate={runGenerate}
               playTrack={playTrack}
+              requireAuth={requireAuth}
               simulateAction={simulateAction}
+              workspace={playgroundWorkspace}
+              setWorkspace={setPlaygroundWorkspace}
+              setPage={navigateToPage}
             />
           )}
-          {page === 'chat' && <ChatPage key={locale} t={t} setPage={setPage} simulateAction={simulateAction} />}
-          {page === 'image' && <ImagePage key={locale} t={t} requireAuth={requireAuth} setPage={setPage} simulateAction={simulateAction} />}
-          {page === 'video' && <VideoPage key={locale} t={t} requireAuth={requireAuth} simulateAction={simulateAction} />}
-          {page === 'engine' && <EnginePage key={locale} t={t} setPage={setPage} simulateAction={simulateAction} />}
+          {page === 'chat' && <ChatPage t={t} setPage={navigateToPage} simulateAction={simulateAction} />}
           {page === 'explore' && (
-            <ExplorePage t={t} playTrack={playTrack} setPage={setPage} requireAuth={requireAuth} />
+            <ExplorePage t={t} playTrack={playTrack} setPage={navigateToPage} requireAuth={requireAuth} />
           )}
           {page === 'tasks' && (
             <TasksPage
-              key={locale}
               t={t}
               tasks={taskList}
-              setPage={setPage}
+              setPage={navigateToPage}
               openProfile={openProfile}
               claimTask={claimTask}
-              submitTask={submitTask}
               selectedTask={selectedTask}
               setSelectedTask={setSelectedTask}
               simulateAction={simulateAction}
@@ -2786,22 +2915,19 @@ function App() {
           )}
           {page === 'publish' && (
             <PublishPage
-              key={locale}
               t={t}
-              setPage={setPage}
+              setPage={navigateToPage}
               requireAuth={requireAuth}
               publishTask={publishTask}
               openProfile={openProfile}
               simulateAction={simulateAction}
             />
           )}
-          {page === 'mine' && <MyTasksPage key={locale} t={t} tasks={taskList} setPage={setPage} submitTask={submitTask} simulateAction={simulateAction} />}
+          {page === 'mine' && <MyTasksPage t={t} tasks={taskList} setPage={navigateToPage} submitTask={submitTask} simulateAction={simulateAction} />}
           {page === 'community' && (
             <CommunityPage
-              key={locale}
               t={t}
               posts={postList}
-              createPost={createPost}
               convertPostToTask={convertPostToTask}
               savePostToLibrary={savePostToLibrary}
               likePost={likePost}
@@ -2811,26 +2937,31 @@ function App() {
               setSelectedPost={setSelectedPost}
               communityFilter={communityFilter}
               setCommunityFilter={setCommunityFilter}
+              communityView={communityView}
+              setCommunityView={setCommunityView}
               simulateAction={simulateAction}
             />
           )}
-          {page === 'inspiration' && <InspirationPage key={locale} t={t} items={libraryItems} setPage={setPage} simulateAction={simulateAction} />}
-          {page === 'points' && <PointsPage key={locale} t={t} ledger={ledgerItems} simulateAction={simulateAction} />}
-          {page === 'admin' && <AdminPage key={locale} t={t} selectedTask={selectedTask} setPage={setPage} approveTask={approveTask} rejectTask={rejectTask} simulateAction={simulateAction} />}
+          {page === 'inspiration' && <InspirationPage t={t} items={libraryItems} setPage={navigateToPage} simulateAction={simulateAction} />}
+          {page === 'points' && <PointsPage t={t} ledger={ledgerItems} simulateAction={simulateAction} />}
+          {page === 'admin' && <AdminPage t={t} selectedTask={selectedTask} setPage={navigateToPage} approveTask={approveTask} rejectTask={rejectTask} simulateAction={simulateAction} />}
           {page === 'pricing' && (
-            <PricingPage key={locale} t={t} billing={billing} setBilling={setBilling} requireAuth={requireAuth} />
+            <PricingPage t={t} billing={billing} setBilling={setBilling} requireAuth={requireAuth} />
           )}
-          {page === 'api' && <ApiPage key={locale} t={t} requireAuth={requireAuth} simulateAction={simulateAction} />}
-          {page === 'earn' && <EarnPage key={locale} t={t} requireAuth={requireAuth} />}
-          {page === 'about' && <AboutPage key={locale} t={t} />}
+          {page === 'api' && <ApiPage t={t} requireAuth={requireAuth} simulateAction={simulateAction} />}
+          {page === 'earn' && <EarnPage t={t} requireAuth={requireAuth} />}
+          {page === 'about' && <AboutPage t={t} />}
           {page === 'playlist' && <PlaylistPage t={t} playTrack={playTrack} simulateAction={simulateAction} />}
           {page === 'profile' && (
             <ProfilePage
-              key={locale}
+              key={selectedProfile.id}
               t={t}
               profile={selectedProfile}
-              setPage={setPage}
+              personalProfileId={accountProfile.id}
+              tasks={taskList}
+              setPage={navigateToPage}
               openProfile={openProfile}
+              submitTask={submitTask}
               simulateAction={simulateAction}
             />
           )}
@@ -2856,15 +2987,21 @@ function App() {
           t={t}
           close={() => setSearchOpen(false)}
           playTrack={playTrack}
-          setPage={setPage}
+          setPage={navigateToPage}
           openProfile={openProfile}
-          selectedSearchFilter={selectedSearchFilter}
-          setSelectedSearchFilter={setSelectedSearchFilter}
           simulateAction={simulateAction}
         />
       )}
-      {loginOpen && <LoginModal t={t} close={() => setLoginOpen(false)} simulateAction={simulateAction} />}
-      <DynamicIsland locale={locale} page={page} setPage={setPage} simulateAction={simulateAction} />
+      {loginOpen && (
+        <LoginModal
+          t={t}
+          close={() => setLoginOpen(false)}
+          simulateAction={simulateAction}
+          setUserRole={setUserRole}
+          setPage={navigateToPage}
+        />
+      )}
+      <DynamicIsland locale={locale} page={page} setPage={navigatePrimary} simulateAction={simulateAction} />
     </div>
   )
 }
@@ -2945,7 +3082,7 @@ function HomePage({
         <div className="hero-market-card">
           <div className="market-card-top">
             <span className="status-badge open">{statusLabel(featuredTask.status, t)}</span>
-            <strong>{featuredTask.budget}</strong>
+            <strong>{featuredTask.points}</strong>
           </div>
           <div>
             <span className="eyebrow">{textFor(t, 'Featured task', '精选任务')}</span>
@@ -2998,12 +3135,10 @@ function DashboardOverview({
   const cards = isZhCopy(t)
     ? [
         ['发布需求', '把粗略想法整理成有奖励、周期、附件和验收标准的 AI 任务。', 'publish' as Page],
-        ['AI 任务引擎', '发布前先拆解需求、估算积分并匹配合适创作者。', 'engine' as Page],
         ['我的任务台', '跟踪已接取任务、提交交付物、回复验收意见并沉淀履历。', 'mine' as Page],
       ]
     : [
         ['Publish request', 'Turn a rough idea into a scoped AI task with reward, deadline, attachments, and acceptance rules.', 'publish' as Page],
-        ['AI task engine', 'Split requirements, estimate points, and match makers before the task goes live.', 'engine' as Page],
         ['My task desk', 'Track claimed work, submit deliverables, answer review notes, and build contribution history.', 'mine' as Page],
       ]
 
@@ -3016,6 +3151,7 @@ function DashboardOverview({
             <span className="pill small">
               {isZhCopy(t) ? copy.zh[target as keyof typeof copy.zh] ?? target : copy.en[target as keyof typeof copy.en] ?? target}
             </span>
+            <span className="core-action-indicator" aria-hidden="true" />
             <strong>{title}</strong>
             <p>{text}</p>
           </button>
@@ -3102,14 +3238,18 @@ function CommunityOverview({
   )
 }
 
-function CreatePage({
+function PlaygroundPage({
   t,
   prompt,
   setPrompt,
   generationState,
   runGenerate,
   playTrack,
+  requireAuth,
   simulateAction,
+  workspace,
+  setWorkspace,
+  setPage,
 }: {
   t: Record<string, string>
   prompt: string
@@ -3117,7 +3257,11 @@ function CreatePage({
   generationState: 'idle' | 'loading' | 'done'
   runGenerate: () => void
   playTrack: (track: Track) => void
+  requireAuth: () => void
   simulateAction: SimulateAction
+  workspace: PlaygroundMode
+  setWorkspace: (workspace: PlaygroundMode) => void
+  setPage: (page: Page) => void
 }) {
   const isZh = isZhCopy(t)
   const [mode, setMode] = useState<'instrumental' | 'lyrics'>('instrumental')
@@ -3163,13 +3307,46 @@ function CreatePage({
     simulateAction(isZh ? `已选择工具：${tool.label}` : `Selected tool: ${tool.label}`)
   }
 
+  const workspaceTabs = [
+    { key: 'music' as PlaygroundMode, label: textFor(t, 'Music', '音乐'), icon: Music2 },
+    { key: 'image' as PlaygroundMode, label: textFor(t, 'Image', '图片'), icon: Image },
+    { key: 'video' as PlaygroundMode, label: textFor(t, 'Video', '视频'), icon: Video },
+    { key: 'chat' as PlaygroundMode, label: t.chat, icon: Bot },
+  ]
+
   return (
     <div className="stack">
-      <SectionHeader eyebrow={textFor(t, 'Music Studio', '音乐工作台')} title={textFor(t, 'Create AI songs and voice assets', '创作 AI 歌曲和声音素材')} />
-      <section className="composer">
-        <div className="composer-top">
-          <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={t.promptPlaceholder} />
-          <div className="composer-actions">
+      <section className="playground-hero">
+        <div>
+          <span className="eyebrow">{textFor(t, 'Workspace', '工作区')}</span>
+          <h1>{t.playgroundTitle}</h1>
+          <p>{t.playgroundSubtitle}</p>
+        </div>
+        <div className="playground-tabs" role="tablist" aria-label={t.playgroundTitle}>
+          {workspaceTabs.map((item) => {
+            const Icon = item.icon
+            return (
+              <button
+                className={workspace === item.key ? 'chip active' : 'chip'}
+                type="button"
+                key={item.key}
+                onClick={() => setWorkspace(item.key)}
+              >
+                <Icon size={16} />
+                {item.label}
+              </button>
+            )
+          })}
+        </div>
+      </section>
+
+      {workspace === 'music' && (
+        <>
+          <SectionHeader eyebrow={textFor(t, 'Music Studio', '音乐工作台')} title={textFor(t, 'Create AI songs and voice assets', '创作 AI 歌曲和声音素材')} />
+          <section className="composer">
+          <div className="composer-top">
+            <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={t.promptPlaceholder} />
+            <div className="composer-actions">
             <button
               className="icon-button"
               type="button"
@@ -3213,44 +3390,89 @@ function CreatePage({
             <Send size={17} />
             {generationState === 'loading' ? t.generating : t.generate}
           </button>
-        </div>
-      </section>
-
-      <div className="tool-grid">
-        {tools.map((tool) => {
-          const Icon = tool.icon
-          return (
-            <button
-              className={activeTool === tool.key ? 'tool-card active' : 'tool-card'}
-              type="button"
-              key={tool.label}
-              onClick={() => selectTool(tool)}
-            >
-              <Icon size={20} />
-              <span>{tool.label}</span>
-            </button>
-          )
-        })}
-      </div>
-
-      <section className="content-grid two">
-        <div className="panel">
-          <SectionHeader title={textFor(t, 'Generation queue', '生成队列')} />
-          <div className="queue-list">
-            <QueueItem t={t} state={generationState} title={prompt || textFor(t, 'Untitled song', '未命名歌曲')} />
-            <QueueItem t={t} state="done" title={textFor(t, 'Warm cinematic intro with female vocal', '温暖电影感女声片头')} />
-            <QueueItem t={t} state="idle" title={textFor(t, 'Future bass chorus idea', 'Future bass 副歌灵感')} />
           </div>
-        </div>
-        <div className="panel">
-          <SectionHeader title={textFor(t, 'Recent results', '最近结果')} />
-          <div className="mini-list">
-            {tracks.slice(0, 3).map((track) => (
-            <TrackRow key={track.id} t={t} track={track} playTrack={playTrack} />
-            ))}
+        </section>
+
+          <div className="tool-grid">
+            {tools.map((tool) => {
+              const Icon = tool.icon
+              return (
+                <button
+                  className={activeTool === tool.key ? 'tool-card active' : 'tool-card'}
+                  type="button"
+                  key={tool.label}
+                  onClick={() => selectTool(tool)}
+                >
+                  <Icon size={20} />
+                  <span>{tool.label}</span>
+                </button>
+              )
+            })}
           </div>
-        </div>
-      </section>
+
+          <section className="content-grid two">
+            <div className="panel">
+              <SectionHeader title={textFor(t, 'Generation queue', '生成队列')} />
+              <div className="queue-list">
+                <QueueItem t={t} state={generationState} title={prompt || textFor(t, 'Untitled song', '未命名歌曲')} />
+                <QueueItem t={t} state="done" title={textFor(t, 'Warm cinematic intro with female vocal', '温暖电影感女声片头')} />
+                <QueueItem t={t} state="idle" title={textFor(t, 'Future bass chorus idea', 'Future bass 副歌灵感')} />
+              </div>
+            </div>
+            <div className="panel">
+              <SectionHeader title={textFor(t, 'Recent results', '最近结果')} />
+              <div className="mini-list">
+                {tracks.slice(0, 3).map((track) => (
+                  <TrackRow key={track.id} t={t} track={track} playTrack={playTrack} />
+                ))}
+              </div>
+            </div>
+          </section>
+        </>
+      )}
+
+      {workspace === 'image' && (
+        <StudioPage
+          t={t}
+          eyebrow={textFor(t, 'Visual AI', '视觉 AI')}
+          title={t.imageTitle}
+          subtitle={t.imageSubtitle}
+          icon={<Image size={22} />}
+          prompt={textFor(t, 'Minimal album cover, chrome flower, cinematic lighting, black background', '小红书美妆产品图，高级干净光线，真实质感，适合封面')}
+          primaryAction={textFor(t, 'Generate images', '生成图片')}
+          options={isZh ? ['文生图', '图生图', '海报', '头像', '商品图', 'Logo 概念'] : ['Text to Image', 'Image to Image', 'Poster', 'Avatar', 'Product Visual', 'Logo Concept']}
+          controls={isZh ? ['1:1', '16:9', '4:5', '风格强度 70%', '4 张输出', '高清'] : ['1:1', '16:9', '4:5', 'Style strength 70%', '4 outputs', 'HD']}
+          results={visualWorks.filter((item) => item.type === 'Image')}
+          requireAuth={requireAuth}
+          simulateAction={simulateAction}
+        />
+      )}
+
+      {workspace === 'video' && (
+        <StudioPage
+          t={t}
+          eyebrow={textFor(t, 'Motion AI', '视频 AI')}
+          title={t.videoTitle}
+          subtitle={t.videoSubtitle}
+          icon={<Clapperboard size={22} />}
+          prompt={textFor(t, 'A neon runner crosses a rainy city street while lyrics animate in sync', '中文课程宣传短视频，讲师照片转场，字幕同步，专业克制')}
+          primaryAction={textFor(t, 'Generate video', '生成视频')}
+          options={isZh ? ['文生视频', '图生视频', '音乐视频', '分镜', '字幕', '配音'] : ['Text to Video', 'Image to Video', 'Music Video', 'Storyboard', 'Subtitles', 'Voiceover']}
+          controls={isZh ? ['9:16', '8 秒', '电影感', '快切', '开启字幕', 'MP4'] : ['9:16', '8 sec', 'Cinematic', 'Fast cuts', 'Captions on', 'MP4']}
+          results={visualWorks.filter((item) => item.type === 'Video')}
+          requireAuth={requireAuth}
+          simulateAction={simulateAction}
+        />
+      )}
+
+      {workspace === 'chat' && (
+        <ChatPage
+          t={t}
+          setPage={setPage}
+          openWorkspace={setWorkspace}
+          simulateAction={simulateAction}
+        />
+      )}
     </div>
   )
 }
@@ -3273,13 +3495,25 @@ function QueueItem({ t, state, title }: { t: Record<string, string>; state: 'idl
   )
 }
 
+function workspaceLabel(workspace: PlaygroundMode, t: Record<string, string>) {
+  const labels = {
+    music: textFor(t, 'Music', '音乐'),
+    image: textFor(t, 'Image', '图片'),
+    video: textFor(t, 'Video', '视频'),
+    chat: t.chat,
+  } satisfies Record<PlaygroundMode, string>
+  return labels[workspace]
+}
+
 function ChatPage({
   t,
   setPage,
+  openWorkspace,
   simulateAction,
 }: {
   t: Record<string, string>
   setPage: (page: Page) => void
+  openWorkspace?: (workspace: PlaygroundMode) => void
   simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
@@ -3310,6 +3544,11 @@ function ChatPage({
         ],
   )
   const [draft, setDraft] = useState('')
+  const latestMessageRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    latestMessageRef.current?.scrollIntoView({ block: 'end' })
+  }, [messages])
 
   const sendMessage = () => {
     if (!draft.trim()) return
@@ -3342,6 +3581,15 @@ function ChatPage({
     simulateAction(isZh ? `已应用快捷提示：${title}` : `Quick prompt applied: ${title}`)
   }
 
+  const goWorkspace = (target: PlaygroundMode) => {
+    if (openWorkspace) {
+      openWorkspace(target)
+    } else {
+      setPage(target === 'chat' ? 'chat' : 'playground')
+    }
+    simulateAction(isZh ? `已切换到 AI 工作区：${workspaceLabel(target, t)}` : `Opened AI Workspace: ${workspaceLabel(target, t)}`)
+  }
+
   return (
     <div className="studio-layout">
       <section className="panel chat-panel">
@@ -3353,19 +3601,27 @@ function ChatPage({
               {message.text}
             </div>
           ))}
+          <div aria-hidden="true" ref={latestMessageRef} />
         </div>
         <div className="chat-input">
-          <input
+          <textarea
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault()
+                sendMessage()
+              }
+            }}
             placeholder={textFor(t, 'Ask for lyrics, prompts, scripts...', '输入歌词、提示词、脚本或任务需求...')}
+            rows={1}
           />
           <button className="primary-button" type="button" onClick={sendMessage}>
             <Send size={17} />
           </button>
         </div>
       </section>
-      <aside className="panel side-panel">
+      <aside className="panel side-panel chat-quick-panel">
         <SectionHeader title={textFor(t, 'Quick prompts', '快捷提示')} />
         {quickPrompts.map(([title, text]) => (
           <button className="prompt-card" type="button" key={title} onClick={() => applyPrompt(title, text)}>
@@ -3374,81 +3630,25 @@ function ChatPage({
           </button>
         ))}
         <div className="button-row vertical">
-          <button className="ghost-button" type="button" onClick={() => setPage('create')}>
+          <button className="ghost-button" type="button" onClick={() => goWorkspace('music')}>
             <Music2 size={17} />
-            {textFor(t, 'Send to Music', '发送到音乐')}
+            {textFor(t, 'Music workspace', '音乐工作区')}
           </button>
-          <button className="ghost-button" type="button" onClick={() => setPage('video')}>
+          <button className="ghost-button" type="button" onClick={() => goWorkspace('image')}>
+            <Image size={17} />
+            {textFor(t, 'Image workspace', '图片工作区')}
+          </button>
+          <button className="ghost-button" type="button" onClick={() => goWorkspace('video')}>
             <Clapperboard size={17} />
-            {textFor(t, 'Send to Video', '发送到视频')}
+            {textFor(t, 'Video workspace', '视频工作区')}
+          </button>
+          <button className="ghost-button" type="button" onClick={() => setPage('tasks')}>
+            <BriefcaseBusiness size={17} />
+            {textFor(t, 'Task Plaza', '任务广场')}
           </button>
         </div>
       </aside>
     </div>
-  )
-}
-
-function ImagePage({
-  t,
-  requireAuth,
-  setPage,
-  simulateAction,
-}: {
-  t: Record<string, string>
-  requireAuth: () => void
-  setPage: (page: Page) => void
-  simulateAction: SimulateAction
-}) {
-  const isZh = isZhCopy(t)
-  return (
-    <StudioPage
-      t={t}
-      eyebrow={textFor(t, 'Visual AI', '视觉 AI')}
-      title={t.imageTitle}
-      subtitle={t.imageSubtitle}
-      icon={<Image size={22} />}
-      prompt={textFor(t, 'Minimal album cover, chrome flower, cinematic lighting, black background', '小红书美妆产品图，高级干净光线，真实质感，适合封面')}
-      primaryAction={textFor(t, 'Generate images', '生成图片')}
-      options={
-        isZh
-          ? ['文生图', '图生图', '海报', '头像', '商品图', 'Logo 概念']
-          : ['Text to Image', 'Image to Image', 'Poster', 'Avatar', 'Product Visual', 'Logo Concept']
-      }
-      controls={isZh ? ['1:1', '16:9', '4:5', '风格强度 70%', '4 张输出', '高清'] : ['1:1', '16:9', '4:5', 'Style strength 70%', '4 outputs', 'HD']}
-      results={visualWorks.filter((item) => item.type === 'Image')}
-      requireAuth={requireAuth}
-      simulateAction={simulateAction}
-      extraAction={() => setPage('video')}
-      extraActionLabel={textFor(t, 'Send to Video', '发送到视频')}
-    />
-  )
-}
-
-function VideoPage({
-  t,
-  requireAuth,
-  simulateAction,
-}: {
-  t: Record<string, string>
-  requireAuth: () => void
-  simulateAction: SimulateAction
-}) {
-  const isZh = isZhCopy(t)
-  return (
-    <StudioPage
-      t={t}
-      eyebrow={textFor(t, 'Motion AI', '视频 AI')}
-      title={t.videoTitle}
-      subtitle={t.videoSubtitle}
-      icon={<Clapperboard size={22} />}
-      prompt={textFor(t, 'A neon runner crosses a rainy city street while lyrics animate in sync', '中文课程宣传短视频，讲师照片转场，字幕同步，专业克制')}
-      primaryAction={textFor(t, 'Generate video', '生成视频')}
-      options={isZh ? ['文生视频', '图生视频', '音乐视频', '分镜', '字幕', '配音'] : ['Text to Video', 'Image to Video', 'Music Video', 'Storyboard', 'Subtitles', 'Voiceover']}
-      controls={isZh ? ['9:16', '8 秒', '电影感', '快切', '开启字幕', 'MP4'] : ['9:16', '8 sec', 'Cinematic', 'Fast cuts', 'Captions on', 'MP4']}
-      results={visualWorks.filter((item) => item.type === 'Video')}
-      requireAuth={requireAuth}
-      simulateAction={simulateAction}
-    />
   )
 }
 
@@ -3627,6 +3827,10 @@ function ExplorePreview({
   setPage: (page: Page) => void
   requireAuth?: () => void
 }) {
+  const [mediaFilter, setMediaFilter] = useState<'all' | 'Image' | 'Video'>('all')
+  const filteredVisualWorks =
+    mediaFilter === 'all' ? visualWorks : visualWorks.filter((work) => work.type === mediaFilter)
+
   return (
     <div className="stack">
       <section>
@@ -3638,9 +3842,29 @@ function ExplorePreview({
         </div>
       </section>
       <section>
-        <SectionHeader title={textFor(t, 'Trending images & videos', '热门图片与视频')} />
+        <SectionHeader
+          title={textFor(t, 'Trending images & videos', '热门图片与视频')}
+          action={
+            <div className="media-filter-row" role="tablist" aria-label={textFor(t, 'Trending media filter', '热门媒体分类')}>
+              {[
+                ['all', textFor(t, 'All', '全部')],
+                ['Image', textFor(t, 'Images', '图片')],
+                ['Video', textFor(t, 'Videos', '视频')],
+              ].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={mediaFilter === key ? 'chip active' : 'chip'}
+                  onClick={() => setMediaFilter(key as 'all' | 'Image' | 'Video')}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          }
+        />
         <div className="visual-grid small">
-          {visualWorks.map((work) => (
+          {filteredVisualWorks.map((work) => (
             <article className="visual-card" key={work.title}>
               <img src={work.image} alt="" />
               <div>
@@ -3765,7 +3989,6 @@ function TasksPage({
   setPage,
   openProfile,
   claimTask,
-  submitTask,
   selectedTask,
   setSelectedTask,
   simulateAction,
@@ -3775,32 +3998,31 @@ function TasksPage({
   setPage: (page: Page) => void
   openProfile: (profile: MarketplaceProfile) => void
   claimTask: (task: Task) => void
-  submitTask: (task: Task) => void
   selectedTask: Task
   setSelectedTask: (task: Task) => void
   simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
   const scopedTasks = localizedTasks(tasks, t)
+  const openTasks = scopedTasks.filter((task) => task.status === 'Open')
   const categories = ['All', 'Music', 'Image', 'Video', 'Voice', 'Prompt', 'Design', 'Automation']
   const [activeCategory, setActiveCategory] = useState('All')
-  const openTaskCount = scopedTasks.filter((task) => task.status === 'Open').length
+  const openTaskCount = openTasks.length
   const activeMakerCount = rankProfiles('maker').length
-  const completedValue = isZh ? '¥120万' : '$120K'
   const visibleTasks =
     activeCategory === 'All'
-      ? scopedTasks
-      : scopedTasks.filter((task) => task.category === activeCategory || (activeCategory === 'Design' && task.category === 'Image'))
+      ? openTasks
+      : openTasks.filter((task) => task.category === activeCategory || (activeCategory === 'Design' && task.category === 'Image'))
   const activeSelectedTask =
-    visibleTasks.find((task) => task.id === selectedTask.id) ?? scopedTasks.find((task) => task.id === selectedTask.id) ?? scopedTasks[0] ?? selectedTask
+    visibleTasks.find((task) => task.id === selectedTask.id) ?? openTasks.find((task) => task.id === selectedTask.id) ?? openTasks[0] ?? selectedTask
   const publisherProfile = findProfile(activeSelectedTask.publisher)
-  const assigneeProfile = activeSelectedTask.assignee === 'Unassigned' ? undefined : findProfile(activeSelectedTask.assignee)
+  const hasSubmittedProposal = activeSelectedTask.assignee !== 'Unassigned'
 
   const selectCategory = (category: string) => {
     const matches =
       category === 'All'
-        ? scopedTasks
-        : scopedTasks.filter((task) => task.category === category || (category === 'Design' && task.category === 'Image'))
+        ? openTasks
+        : openTasks.filter((task) => task.category === category || (category === 'Design' && task.category === 'Image'))
     setActiveCategory(category)
     const firstMatch = matches[0]
     if (firstMatch) {
@@ -3830,7 +4052,7 @@ function TasksPage({
           [textFor(t, 'Open tasks', '开放任务'), `${openTaskCount}`, textFor(t, 'Music, image, video, voice, automation', '音乐、图片、视频、配音、自动化')],
           [textFor(t, 'Active makers', '活跃创作者'), `${activeMakerCount}`, textFor(t, 'Available for scoped AI work', '可接取明确范围的 AI 工作')],
           [textFor(t, 'Avg. response', '平均响应'), '18m', textFor(t, 'Fast proposals and discussion', '快速提案与讨论')],
-          [textFor(t, 'Completed value', '已完成金额'), completedValue, textFor(t, 'Simulated marketplace volume', '前端模拟市场规模')],
+          [textFor(t, 'Available categories', '可接取分类'), `${categories.length - 1}`, textFor(t, 'Browse open AI requests by category', '按分类浏览开放 AI 需求')],
         ].map(([label, value, text]) => (
           <article className="metric-card highlight" key={label}>
             <span>{label}</span>
@@ -3841,22 +4063,6 @@ function TasksPage({
       </div>
       <div className="tasks-workspace">
         <div className="tasks-main">
-          <section className="task-publish-strip">
-            <div>
-              <span className="eyebrow">{textFor(t, 'Request builder', '需求构建器')}</span>
-              <h3>{textFor(t, 'Post an AI requirement with budget, deadline, category, attachments, and delivery rules.', '发布包含预算、周期、分类、附件和交付规则的 AI 需求。')}</h3>
-            </div>
-            <div className="publish-fields">
-              <span>{textFor(t, 'Title', '标题')}</span>
-              <span>{textFor(t, 'Budget', '预算')}</span>
-              <span>{textFor(t, 'Deadline', '周期')}</span>
-              <span>{textFor(t, 'Category', '分类')}</span>
-            </div>
-            <button className="primary-button" type="button" onClick={() => setPage('publish')}>
-              <PenLine size={17} />
-              {textFor(t, 'Start brief', '开始发布')}
-            </button>
-          </section>
           <div className="chip-row">
             {categories.map((category) => (
               <button
@@ -3889,8 +4095,7 @@ function TasksPage({
                     <span>{task.points} · @{task.publisher}</span>
                   </div>
                   <div>
-                    <b>{task.budget}</b>
-                    <StatusBadge status={task.status} t={t} />
+                    <b>{task.points}</b>
                   </div>
                 </button>
               ))}
@@ -3903,16 +4108,18 @@ function TasksPage({
             </div>
             <article className="panel task-detail">
               <div className="detail-top">
-                <StatusBadge status={activeSelectedTask.status} t={t} />
                 <span>{activeSelectedTask.proposals} {textFor(t, 'proposals', '个提案')}</span>
               </div>
               <h2>{activeSelectedTask.title}</h2>
               <p>{activeSelectedTask.description}</p>
+              <div className="proposal-note">
+                {textFor(
+                  t,
+                  'Multiple makers can submit proposal drafts for this open task. The publisher reviews all proposals from My Tasks, chooses one plan, then starts discussion and delivery.',
+                  '开放任务支持多位创作者提交方案草稿。发布方会在个人中心查看全部方案，选择一个方案后再进入沟通与交付。',
+                )}
+              </div>
               <div className="detail-stats">
-                <span>
-                  <CircleDollarSign size={17} />
-                  {activeSelectedTask.budget}
-                </span>
                 <span>
                   <BadgeDollarSign size={17} />
                   {activeSelectedTask.points}
@@ -3938,13 +4145,11 @@ function TasksPage({
                   )}
                 </span>
                 <span>
-                  {textFor(t, 'Assignee', '接单方')}:{' '}
-                  {assigneeProfile ? (
-                    <button className="profile-link" type="button" onClick={() => openProfile(assigneeProfile)}>
-                      @{activeSelectedTask.assignee}
-                    </button>
+                  {textFor(t, 'Proposal mode', '方案模式')}:{' '}
+                  {hasSubmittedProposal ? (
+                    <>{textFor(t, 'Your draft submitted', '你的方案已提交')}</>
                   ) : (
-                    <>@{activeSelectedTask.assignee === 'Unassigned' ? textFor(t, 'Unassigned', '待接单') : activeSelectedTask.assignee}</>
+                    <>{textFor(t, 'Open to multiple proposals', '多人可提交方案')}</>
                   )}
                 </span>
               </div>
@@ -3953,15 +4158,15 @@ function TasksPage({
                   <BriefcaseBusiness size={17} />
                   {t.takeTask}
                 </button>
-                <button className="ghost-button" type="button" onClick={() => submitTask(activeSelectedTask)}>
-                  <Upload size={17} />
-                  {t.submitWork}
-                </button>
               </div>
-              <div className="timeline">
-                {['Open', 'In Progress', 'Pending Review', 'Completed'].map((step) => (
-                  <span className={activeSelectedTask.status === step ? 'active' : ''} key={step}>
-                    {statusLabel(step, t)}
+              <div className="proposal-flow">
+                {(isZh
+                  ? ['提交方案', '发布方选择方案', '双方沟通', '提交验收成果']
+                  : ['Submit proposal', 'Publisher chooses', 'Discuss together', 'Submit deliverable']
+                ).map((step, index) => (
+                  <span className="flow-step" key={step}>
+                    <b>{index + 1}</b>
+                    {step}
                   </span>
                 ))}
               </div>
@@ -3969,8 +4174,6 @@ function TasksPage({
                 <InfoBox title={textFor(t, 'Submission requirements', '提交要求')} items={activeSelectedTask.requirements} />
                 <InfoBox title={textFor(t, 'Attachments', '附件')} items={activeSelectedTask.attachments} />
                 <InfoBox title={textFor(t, 'Private brief', '私密说明')} text={activeSelectedTask.privateBrief} />
-                <InfoBox title={textFor(t, 'Submitted result', '已提交成果')} text={activeSelectedTask.submission} items={activeSelectedTask.resultLinks} />
-                <InfoBox title={textFor(t, 'Review note', '验收备注')} text={activeSelectedTask.reviewNote} />
                 <InfoBox title={textFor(t, 'Rights', '版权范围')} text={activeSelectedTask.rights} />
               </div>
             </article>
@@ -4070,137 +4273,6 @@ function LeaderboardPanel({
   )
 }
 
-function EnginePage({
-  t,
-  setPage,
-  simulateAction,
-}: {
-  t: Record<string, string>
-  setPage: (page: Page) => void
-  simulateAction: SimulateAction
-}) {
-  const isZh = isZhCopy(t)
-  const defaultEngineLines = isZh
-    ? [
-        '范围：30 秒中文课程宣传短视频',
-        '交付物：中文脚本、字幕 SRT、AI 配音建议、封面提示词、MP4 成片',
-        '预估奖励：¥2,400-¥3,200 / 2,400-3,200 积分',
-        '验收路径：脚本确认 -> 首版预览 -> 一轮修改 -> 验收放款',
-      ]
-    : [
-        'Scope: 30s vertical launch video',
-        'Deliverables: MP4, captions, music cue, prompt notes',
-        'Estimated reward: $420-$520 / 4,200-5,200 pts',
-        'Review path: first preview -> revision -> acceptance',
-      ]
-  const matches = isZh
-    ? [
-        ['短视频剪辑师', '96%', '擅长中文字幕、产品卖点和社媒竖版导出'],
-        ['提示词系统设计师', '88%', '可复用提示词包、验收清单和任务模板'],
-        ['AI 配音专员', '84%', '旁白清理、声音匹配和前后对比说明'],
-      ]
-    : engineMatches
-  const [analysisRun, setAnalysisRun] = useState(1)
-  const [engineLines, setEngineLines] = useState(defaultEngineLines)
-
-  const analyzeRequest = () => {
-    setAnalysisRun((current) => current + 1)
-    setEngineLines(
-      isZh
-        ? [
-            `范围：中文课程短视频第 ${analysisRun + 1} 版需求拆解`,
-            '交付物：中文脚本、字幕 SRT、AI 配音建议、封面提示词、MP4 成片',
-            '预估奖励：¥2,400-¥3,200 / 2,400-3,200 积分',
-            '验收路径：脚本确认 -> 首版预览 -> 一轮修改 -> 验收放款',
-          ]
-        : [
-            `Scope: product launch video analysis run ${analysisRun + 1}`,
-            'Deliverables: MP4, captions, music cue, prompt notes, review summary',
-            'Estimated reward: $420-$520 / 4,200-5,200 pts',
-            'Review path: script approval -> first preview -> revision -> acceptance',
-          ],
-    )
-    simulateAction(isZh ? 'AI 任务引擎已完成一次中文需求拆解' : 'AI task engine completed one request analysis')
-  }
-
-  return (
-    <div className="stack">
-      <SectionHeader
-        eyebrow={textFor(t, 'Smart workflow', '智能工作流')}
-        title={t.engineTitle}
-        action={
-          <button className="primary-button" type="button" onClick={() => setPage('publish')}>
-            <PenLine size={17} />
-            {textFor(t, 'Create draft', '生成草稿')}
-          </button>
-        }
-      />
-      <section className="engine-hero panel">
-        <div>
-          <span className="pill">
-            <Bot size={16} />
-            {textFor(t, 'Requirement splitter', '需求拆解器')}
-          </span>
-          <h2>{t.engineSubtitle}</h2>
-          <textarea
-            defaultValue={textFor(
-              t,
-              'I need a polished AI product launch video with captions, generated music, and reusable prompt notes for future campaigns.',
-              '我需要一套中文课程宣传短视频，包含字幕、AI 配音、封面提示词和可复用交付说明。',
-            )}
-          />
-          <div className="button-row">
-            <button className="primary-button" type="button" onClick={analyzeRequest}>
-              <Sparkles size={17} />
-              {textFor(t, 'Analyze request', '分析需求')}
-            </button>
-            <button className="ghost-button" type="button" onClick={() => setPage('tasks')}>
-              <BriefcaseBusiness size={17} />
-              {textFor(t, 'Browse matches', '浏览匹配任务')}
-            </button>
-          </div>
-        </div>
-        <div className="engine-output">
-          {engineLines.map((line) => (
-            <span key={line}>
-              <Check size={15} />
-              {line}
-            </span>
-          ))}
-        </div>
-      </section>
-      <div className="content-grid">
-        <section className="panel">
-          <SectionHeader eyebrow={textFor(t, 'Smart matching', '智能匹配')} title={textFor(t, 'Recommended makers', '推荐创作者')} />
-          <div className="table-list">
-            {matches.map(([role, score, text]) => (
-              <div className="table-row" key={role}>
-                <strong>{role}</strong>
-                <span>{score}</span>
-                <small>{text}</small>
-              </div>
-            ))}
-          </div>
-        </section>
-        <section className="panel">
-          <SectionHeader eyebrow={textFor(t, 'Contribution proof', '贡献证明')} title={textFor(t, 'Task history signal', '任务履历信号')} />
-          <div className="proof-list">
-            {localizedTasks(tasks, t).slice(1, 4).map((task) => (
-              <div className="proof-item" key={task.id}>
-                <StatusBadge status={task.status} t={t} />
-                <strong>{task.title}</strong>
-                <span>
-                  @{task.assignee} · {task.points}
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-    </div>
-  )
-}
-
 function PublishPage({
   t,
   setPage,
@@ -4238,6 +4310,46 @@ function PublishPage({
   const updateDraft = (key: keyof PublishDraft, value: string) => {
     setDraft((current) => ({ ...current, [key]: value }))
   }
+  const improveDraftField = (key: keyof PublishDraft) => {
+    const suggestions: Record<keyof PublishDraft, string> = {
+      title: textFor(t, 'Polished 30-second AI product launch video package', '中文课程宣传短视频全套交付'),
+      category: draft.category,
+      reward: textFor(t, '$520 / 5,200 pts', '¥3,200 / 3,200 积分'),
+      deadline: textFor(t, '4 days, first preview within 24 hours', '4 天，24 小时内提交首版预览'),
+      visibility: draft.visibility,
+      details: textFor(
+        t,
+        'Create three polished vertical video cuts for a product launch. Include a hook in the first 3 seconds, caption-safe framing, generated music direction, reusable prompt notes, and export-ready social versions.',
+        '制作 3 条中文竖版课程宣传短视频。前三秒需要明确钩子，画面留出字幕安全区，包含课程卖点、AI 配音建议、封面提示词、可复用交付说明和适合投放的平台版本。',
+      ),
+      rules: textFor(
+        t,
+        'Submit script, storyboard outline, preview link, final MP4 files, SRT captions, cover prompt, editable prompt notes, source/rights summary, and one revision round before acceptance.',
+        '提交脚本、分镜提纲、预览链接、最终 MP4、SRT 字幕、封面提示词、可编辑提示词说明、素材与版权摘要；验收前包含一轮修改。',
+      ),
+    }
+    updateDraft(key, suggestions[key])
+    simulateAction(
+      isZh
+        ? `AI 已补全${publishFieldLabel(key, t)}`
+        : `AI filled: ${publishFieldLabel(key, t)}`,
+    )
+  }
+  const aiButtonLabel = (key: keyof PublishDraft) =>
+    isZh
+      ? `用 AI 补全${publishFieldLabel(key, t)}`
+      : `Use AI for ${publishFieldLabel(key, t)}`
+  const renderAiButton = (key: keyof PublishDraft) => (
+    <button
+      aria-label={aiButtonLabel(key)}
+      className="icon-button ai-field-button"
+      onClick={() => improveDraftField(key)}
+      title={aiButtonLabel(key)}
+      type="button"
+    >
+      <Sparkles size={16} />
+    </button>
+  )
   const recommendedProfiles = useMemo(() => matchProfilesForDraft(draft), [draft])
 
   return (
@@ -4245,18 +4357,15 @@ function PublishPage({
       <SectionHeader
         eyebrow={textFor(t, 'Request form', '需求表单')}
         title={t.publishTitle}
-        action={
-          <button className="ghost-button" type="button" onClick={() => setPage('engine')}>
-            <Bot size={17} />
-            {textFor(t, 'Use engine', '使用引擎')}
-          </button>
-        }
       />
       <section className="form-layout">
         <div className="panel form-panel">
           <label>
             {textFor(t, 'Task title', '任务标题')}
-            <input value={draft.title} onChange={(event) => updateDraft('title', event.target.value)} />
+            <span className="ai-field">
+              <input value={draft.title} onChange={(event) => updateDraft('title', event.target.value)} />
+              {renderAiButton('title')}
+            </span>
           </label>
           <div className="form-grid">
             <label>
@@ -4286,11 +4395,25 @@ function PublishPage({
           </div>
           <label>
             {textFor(t, 'Requirement details', '需求详情')}
-            <textarea value={draft.details} onChange={(event) => updateDraft('details', event.target.value)} />
+            <span className="ai-field textarea-field">
+              <textarea
+                className="publish-brief-editor"
+                value={draft.details}
+                onChange={(event) => updateDraft('details', event.target.value)}
+              />
+              {renderAiButton('details')}
+            </span>
           </label>
           <label>
             {textFor(t, 'Submission and acceptance rules', '提交与验收规则')}
-            <textarea value={draft.rules} onChange={(event) => updateDraft('rules', event.target.value)} />
+            <span className="ai-field textarea-field">
+              <textarea
+                className="publish-brief-editor"
+                value={draft.rules}
+                onChange={(event) => updateDraft('rules', event.target.value)}
+              />
+              {renderAiButton('rules')}
+            </span>
           </label>
           <div className="button-row">
             <button className="primary-button" type="button" onClick={() => publishTask(draft)}>
@@ -4397,16 +4520,210 @@ function MyTasksPage({
   simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
-  const activeTasks = localizedTasks(tasks, t).filter((task) => task.assignee !== 'Unassigned')
-  const [selectedMineId, setSelectedMineId] = useState<number | undefined>(activeTasks[0]?.id ?? tasks[0]?.id)
-  const primaryTask = activeTasks.find((task) => task.id === selectedMineId) ?? activeTasks[0] ?? tasks[0]
+  const scopedTasks = localizedTasks(tasks, t)
+  const publishedTasks = scopedTasks.filter((task) => task.publisher === 'taskops').slice(0, 2)
+  const publisherTasks = publishedTasks.length ? publishedTasks : scopedTasks.filter((task) => task.status === 'Open').slice(0, 2)
+  const participatingTasks = scopedTasks.filter((task) => task.assignee !== 'Unassigned').slice(0, 3)
+  const deliveryTasks = participatingTasks.length ? participatingTasks : scopedTasks.filter((task) => task.status === 'Open').slice(0, 2)
+  const proposalRows = isZh
+    ? [
+        { maker: '@promptlin', title: '结构最清晰，含首版样例和验收拆分', meta: '预计 1 天提交首版' },
+        { maker: '@legalpixel', title: '版权边界完整，适合公开模板沉淀', meta: '预计 2 天提交首版' },
+        { maker: '@iriswood', title: '视觉参考充分，适合图片/视频类任务', meta: '预计当天确认方向' },
+      ]
+    : [
+        { maker: '@scriptbear', title: 'Clear scope with sample scenes and acceptance checks', meta: 'First draft in 1 day' },
+        { maker: '@legalpixel', title: 'Strong rights language and review checklist', meta: 'First draft in 2 days' },
+        { maker: '@iriswood', title: 'Visual references fit image and video tasks', meta: 'Direction confirmed today' },
+      ]
+  const discussionLog = isZh
+    ? ['发布方：请先确认前三秒钩子和版权范围。', '创作者：已补充两版方案，保留可编辑提示词。', '发布方：采用第二版，进入交付验收。']
+    : ['Publisher: Please confirm the hook and rights scope first.', 'Maker: Added two proposal variants with editable prompts.', 'Publisher: Choosing the second plan and moving to delivery review.']
   const stages = isZh
     ? [
-        { label: '已接取', value: '3', text: '需要首版预览或补充确认的任务。' },
-        { label: '已提交', value: '2', text: '等待发布方或管理员验收。' },
-        { label: '已完成', value: '14', text: '已验收成果会进入贡献履历。' },
+        { label: '待选方案', value: `${publisherTasks.length}`, text: '我发布的任务收到多个方案，等待选择。' },
+        { label: '接取任务', value: `${deliveryTasks.length}`, text: '我接取、提交方案或正在交付的任务。' },
+        { label: '沟通中', value: '3', text: '双方围绕方案、修改和验收确认。' },
       ]
-    : myTaskStages
+    : [
+        { label: 'Proposal queues', value: `${publisherTasks.length}`, text: 'My posted tasks with multiple proposals to choose from.' },
+        { label: 'Accepted tasks', value: `${deliveryTasks.length}`, text: 'Tasks I accepted, proposed for, or am delivering.' },
+        { label: 'In discussion', value: '3', text: 'Both sides are aligning scope, revisions, and acceptance.' },
+      ]
+  const typeFieldsFor = (task: Task, mode: 'publisher' | 'maker') => {
+    const category = task.category.toLowerCase()
+    const linkValue = task.resultLinks[0] ?? task.attachments[0] ?? textFor(t, 'Add delivery link', '补充交付链接')
+    const fieldCopy = {
+      Video: {
+        publisher: [
+          ['Script', '脚本', 'Review hook, scenes, and rights notes.', '审看开头钩子、场景和版权说明。'],
+          ['Storyboard', '分镜', 'Check shot order and reference frames.', '确认镜头顺序和参考画面。'],
+          ['Final video link', '成片链接', linkValue, linkValue],
+        ],
+        maker: [
+          ['Script draft', '脚本草稿', 'Submit hook, narration, and scene text.', '提交开头钩子、旁白和场景文本。'],
+          ['Storyboard board', '分镜板', 'Attach key frames or preview board.', '附上关键帧或预览板。'],
+          ['Final cut link', '成片链接', linkValue, linkValue],
+        ],
+      },
+      Image: {
+        publisher: [
+          ['Prompt', '提示词', 'Review style, composition, and negatives.', '审看风格、构图和负面提示词。'],
+          ['Reference image', '参考图', task.attachments[0] ?? 'reference board', task.attachments[0] ?? '参考图板'],
+          ['Sample image', '样图', 'Compare first samples before approval.', '先对比首批样图再确认。'],
+        ],
+        maker: [
+          ['Prompt draft', '提示词草稿', 'Fill style, subject, ratio, and negatives.', '填写风格、主体、比例和负面提示词。'],
+          ['Reference image', '参考图', task.attachments[0] ?? 'reference upload', task.attachments[0] ?? '上传参考图'],
+          ['Sample image', '样图', 'Attach preview samples for selection.', '提交可供选择的预览样图。'],
+        ],
+      },
+      Music: {
+        publisher: [
+          ['Lyrics', '歌词', 'Review structure, language, and usage scope.', '审看结构、语言和使用范围。'],
+          ['BPM', 'BPM', 'Confirm tempo and mood fit.', '确认速度和情绪是否匹配。'],
+          ['Audio link', '音频链接', linkValue, linkValue],
+        ],
+        maker: [
+          ['Lyrics', '歌词', 'Submit lyrics or instrumental notes.', '提交歌词或纯音乐说明。'],
+          ['BPM', 'BPM', 'Fill tempo, key, and reference mood.', '填写速度、调式和参考情绪。'],
+          ['Audio link', '音频链接', linkValue, linkValue],
+        ],
+      },
+      Voice: {
+        publisher: [
+          ['Voiceover text', '配音文本', 'Review pronunciation and pacing notes.', '审看发音和节奏说明。'],
+          ['Voice style', '音色', 'Confirm tone, gender, and emotion.', '确认音色、性别和情绪。'],
+          ['Preview link', '试听链接', linkValue, linkValue],
+        ],
+        maker: [
+          ['Voiceover text', '配音文本', 'Paste final script for recording.', '填写最终配音文案。'],
+          ['Voice style', '音色', 'Select tone, gender, and emotion.', '选择音色、性别和情绪。'],
+          ['Preview link', '试听链接', linkValue, linkValue],
+        ],
+      },
+      Automation: {
+        publisher: [
+          ['Flow', '流程', 'Review trigger, steps, and handoff points.', '审看触发器、步骤和交接节点。'],
+          ['API', 'API', 'Confirm API fields and permission scope.', '确认 API 字段和权限范围。'],
+          ['Test log', '测试记录', 'Check run results before acceptance.', '验收前查看运行结果。'],
+        ],
+        maker: [
+          ['Flow chart', '流程图', 'Submit trigger, steps, and fallback path.', '提交触发器、步骤和兜底路径。'],
+          ['API fields', 'API 字段', 'List endpoints, inputs, and permissions.', '列出接口、输入和权限。'],
+          ['Test log', '测试记录', 'Attach test runs and edge cases.', '附上测试运行和异常场景。'],
+        ],
+      },
+      Prompt: {
+        publisher: [
+          ['Prompt version', '提示词版本', 'Compare versions and reuse scope.', '对比版本和复用范围。'],
+          ['Test cases', '测试样例', 'Review inputs, outputs, and failure cases.', '审看输入、输出和失败样例。'],
+        ],
+        maker: [
+          ['Prompt version', '提示词版本', 'Fill version notes and variables.', '填写版本说明和变量。'],
+          ['Test cases', '测试样例', 'Submit sample inputs and outputs.', '提交测试输入和输出。'],
+        ],
+      },
+      Design: {
+        publisher: [
+          ['Design draft', '设计稿', 'Review layout, components, and states.', '审看版式、组件和状态。'],
+          ['Source file', '源文件', 'Confirm editable files and export specs.', '确认可编辑源文件和导出规格。'],
+          ['Preview link', '预览链接', linkValue, linkValue],
+        ],
+        maker: [
+          ['Design draft', '设计稿', 'Submit layout, components, and states.', '提交版式、组件和状态。'],
+          ['Source file', '源文件', 'Attach editable files and export specs.', '附上可编辑源文件和导出规格。'],
+          ['Preview link', '预览链接', linkValue, linkValue],
+        ],
+      },
+      General: {
+        publisher: [
+          ['Delivery link', '交付链接', linkValue, linkValue],
+          ['Review note', '验收说明', task.reviewNote || 'Review acceptance details.', task.reviewNote || '查看验收说明。'],
+        ],
+        maker: [
+          ['Delivery link', '交付链接', linkValue, linkValue],
+          ['Delivery note', '交付说明', 'Describe files, changes, and usage scope.', '说明文件、修改内容和使用范围。'],
+        ],
+      },
+    }
+    const kind =
+      category.includes('video') ? 'Video'
+        : category.includes('image') ? 'Image'
+          : category.includes('music') ? 'Music'
+            : category.includes('voice') ? 'Voice'
+              : category.includes('automation') ? 'Automation'
+                : category.includes('prompt') ? 'Prompt'
+                  : category.includes('design') ? 'Design'
+                    : 'General'
+    return fieldCopy[kind][mode].map(([enLabel, zhLabel, enValue, zhValue]) => ({
+      label: textFor(t, enLabel, zhLabel),
+      value: textFor(t, enValue, zhValue),
+    }))
+  }
+  type MineTaskRole = 'publisher' | 'maker'
+  type MineTaskFilter = 'all' | 'posted' | 'accepted'
+  const [mineTaskFilter, setMineTaskFilter] = useState<MineTaskFilter>('all')
+  const [selectedMineTask, setSelectedMineTask] = useState<{ id: Task['id']; role: MineTaskRole }>(() => ({
+    id: publisherTasks[0]?.id ?? deliveryTasks[0]?.id ?? scopedTasks[0]?.id ?? tasks[0]?.id ?? 0,
+    role: publisherTasks[0] ? 'publisher' : 'maker',
+  }))
+  const showPostedTasks = mineTaskFilter === 'all' || mineTaskFilter === 'posted'
+  const showAcceptedTasks = mineTaskFilter === 'all' || mineTaskFilter === 'accepted'
+  const changeMineTaskFilter = (nextFilter: MineTaskFilter) => {
+    setMineTaskFilter(nextFilter)
+    const nextTask =
+      nextFilter === 'accepted'
+        ? deliveryTasks[0]
+        : nextFilter === 'posted'
+          ? publisherTasks[0]
+          : publisherTasks[0] ?? deliveryTasks[0]
+    if (nextTask) {
+      setSelectedMineTask({
+        id: nextTask.id,
+        role: nextFilter === 'accepted' ? 'maker' : publisherTasks[0]?.id === nextTask.id ? 'publisher' : 'maker',
+      })
+    }
+  }
+  const selectedTask =
+    (selectedMineTask.role === 'publisher' ? publisherTasks : deliveryTasks).find((task) => task.id === selectedMineTask.id) ??
+    publisherTasks[0] ??
+    deliveryTasks[0] ??
+    scopedTasks[0] ??
+    tasks[0]
+  const selectedRole: MineTaskRole =
+    selectedMineTask.role === 'publisher' && publisherTasks.some((task) => task.id === selectedTask?.id)
+      ? 'publisher'
+      : selectedMineTask.role === 'maker' && deliveryTasks.some((task) => task.id === selectedTask?.id)
+        ? 'maker'
+        : publisherTasks[0]?.id === selectedTask?.id
+          ? 'publisher'
+          : 'maker'
+  const selectedFields = selectedTask ? typeFieldsFor(selectedTask, selectedRole) : []
+  const renderMineTaskCard = (task: Task, role: MineTaskRole) => {
+    const isActive = selectedTask?.id === task.id && selectedRole === role
+    return (
+      <button
+        className={isActive ? 'task-card mine-task-card active' : 'task-card mine-task-card'}
+        key={`${role}-${task.id}`}
+        type="button"
+        onClick={() => setSelectedMineTask({ id: task.id, role })}
+      >
+        <div>
+          <strong>{task.title}</strong>
+          <span>
+            {categoryLabel(task.category, t)} · {task.points}
+          </span>
+          <span>{task.description}</span>
+          <small>
+            {role === 'publisher'
+              ? textFor(t, `${task.proposals} proposals waiting`, `${task.proposals} 个方案待查看`)
+              : textFor(t, `${discussionLog.length} discussion updates`, `${discussionLog.length} 条沟通记录`)}
+          </small>
+        </div>
+      </button>
+    )
+  }
 
   return (
     <div className="stack">
@@ -4431,74 +4748,147 @@ function MyTasksPage({
         <article className="metric-card highlight">
           <span>{textFor(t, 'Points pending', '待结算积分')}</span>
           <strong>4,100</strong>
-          <small>{textFor(t, 'Released after publisher acceptance.', '发布方验收后发放。')}</small>
+          <small>{textFor(t, 'Released after selected work passes acceptance.', '被选方案完成验收后发放。')}</small>
         </article>
       </div>
-      <div className="content-grid task-layout">
-        <div className="task-list">
-          {activeTasks.map((task) => (
-            <button
-              className={primaryTask.id === task.id ? 'task-card active' : 'task-card'}
-              type="button"
-              key={task.id}
-              onClick={() => {
-                setSelectedMineId(task.id)
-                simulateAction(`已选择我的任务：${task.title}`)
-              }}
-            >
+      <div className="my-task-workspace">
+        <div className="my-task-picker">
+          <div className="my-task-filter" aria-label={textFor(t, 'Filter my tasks', '筛选我的任务')}>
+            {[
+              { key: 'all' as const, label: textFor(t, 'All', '全部') },
+              { key: 'posted' as const, label: textFor(t, 'Posted', '已发布') },
+              { key: 'accepted' as const, label: textFor(t, 'Accepted', '已接取') },
+            ].map((filter) => (
+              <button
+                className={mineTaskFilter === filter.key ? 'active' : ''}
+                key={filter.key}
+                type="button"
+                onClick={() => changeMineTaskFilter(filter.key)}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+          {showPostedTasks && (
+            <section className="my-task-group">
               <div>
-                <strong>{task.title}</strong>
-                <span>
-                  @{task.publisher} · {task.deadline}
-                </span>
-                <span>{task.reviewNote}</span>
+                <span className="eyebrow">{textFor(t, 'Posted', '已发布')}</span>
+                <h3>{textFor(t, 'My posted tasks', '我发布的任务')}</h3>
               </div>
+              <div className="task-list compact-list">{publisherTasks.map((task) => renderMineTaskCard(task, 'publisher'))}</div>
+            </section>
+          )}
+          {showAcceptedTasks && (
+            <section className="my-task-group">
               <div>
-                <b>{task.points}</b>
-                <StatusBadge status={task.status} t={t} />
+                <span className="eyebrow">{textFor(t, 'Accepted', '已接取')}</span>
+                <h3>{textFor(t, 'My accepted tasks', '我接取的任务')}</h3>
               </div>
-            </button>
-          ))}
-          {activeTasks.length === 0 && (
-            <div className="empty-state">
-              <strong>{textFor(t, 'No claimed tasks yet', '还没有接取任务')}</strong>
-              <span>{textFor(t, 'Claim a task from the plaza to see delivery workflow here.', '去任务广场接取一个中文模拟需求后，这里会显示交付流程。')}</span>
-            </div>
+              <div className="task-list compact-list">{deliveryTasks.map((task) => renderMineTaskCard(task, 'maker'))}</div>
+            </section>
           )}
         </div>
-        <article className="panel task-detail">
-          <span className="eyebrow">{textFor(t, 'Submit deliverable', '提交交付物')}</span>
-          <h2>{textFor(t, 'Delivery package', '交付包')}</h2>
-          <p>{textFor(t, 'Attach preview links, final files, prompt recipes, revision notes, and rights summary before requesting review.', '申请验收前，请附上预览链接、最终文件、提示词配方、修改说明和版权摘要。')}</p>
-          <div className="form-panel inline-form">
-            <label>
-              {textFor(t, 'Result links', '成果链接')}
-              <input defaultValue={textFor(t, 'drive/final-pack, figma/preview-board, loom/walkthrough', '网盘/最终交付包，飞书/预览板，录屏/讲解')} />
-            </label>
-            <label>
-              {textFor(t, 'Delivery note', '交付说明')}
-              <textarea defaultValue={textFor(t, 'Included final export, editable prompts, revision summary, and commercial usage note.', '已包含最终导出、可编辑提示词、修改摘要和商用范围说明。')} />
-            </label>
-          </div>
-          <div className="button-row">
-            <button className="primary-button" type="button" onClick={() => submitTask(primaryTask)}>
-              <Upload size={17} />
-              {textFor(t, 'Request review', '申请验收')}
-            </button>
-            <button className="ghost-button" type="button" onClick={() => setPage('community')}>
-              <MessageCircle size={17} />
-              {textFor(t, 'Post recap', '发布复盘')}
-            </button>
-          </div>
-          <InfoBox
-            title={textFor(t, 'Contribution history', '贡献记录')}
-            items={
-              isZh
-                ? ['已接取任务', '已提交预览', '已处理修改意见', '等待验收和积分发放']
-                : ['Claimed task', 'Submitted preview', 'Resolved revision note', 'Awaiting acceptance and points release']
-            }
-          />
-        </article>
+        {selectedTask && (
+          <article className="panel task-detail my-task-panel">
+            <span className="eyebrow">
+              {selectedRole === 'publisher' ? textFor(t, 'Publisher role', '发布方视角') : textFor(t, 'Maker role', '接单方视角')}
+            </span>
+            <h2>{selectedRole === 'publisher' ? textFor(t, 'Adopt proposal / acceptance', '采纳方案 / 验收') : textFor(t, 'Discussion and delivery', '沟通与交付')}</h2>
+            <p>
+              {selectedRole === 'publisher'
+                ? textFor(
+                    t,
+                    'Review proposals for the selected task, choose one maker, then check the typed review fields before acceptance.',
+                    '查看当前任务收到的方案，选择一个创作者，再按任务类型审看字段并进入验收。',
+                  )
+                : textFor(
+                    t,
+                    'Use this space to keep communication, fill task-specific delivery fields, and submit the final acceptance package.',
+                    '在这里保留沟通记录，填写当前任务类型需要的交付字段，并提交最终验收成果。',
+                  )}
+            </p>
+            <div className="selected-task-summary">
+              <strong>{selectedTask.title}</strong>
+              <span>
+                {categoryLabel(selectedTask.category, t)} · {selectedTask.points} · {selectedTask.deadline}
+              </span>
+              <small>{selectedTask.reviewNote || selectedTask.description}</small>
+            </div>
+            {selectedRole === 'publisher' ? (
+              <>
+                <div className="proposal-list">
+                  {proposalRows.map((proposal, index) => (
+                    <div className="proposal-card" key={proposal.maker}>
+                      <div>
+                        <strong>{proposal.maker}</strong>
+                        <span>{proposal.title}</span>
+                        <small>{proposal.meta}</small>
+                      </div>
+                      <button
+                        className={index === 0 ? 'primary-button small' : 'ghost-button small'}
+                        type="button"
+                        onClick={() =>
+                          simulateAction(
+                            isZh ? `已选择方案：${proposal.maker}` : `Selected proposal from ${proposal.maker}`,
+                            { description: isZh ? `选择方案：${proposal.maker}` : `Selected proposal: ${proposal.maker}`, delta: '+0' },
+                          )
+                        }
+                      >
+                        <Check size={15} />
+                        {index === 0 ? textFor(t, 'Selected', '已选择') : textFor(t, 'Choose', '选择方案')}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <InfoBox title={textFor(t, 'Publisher review fields', '发布方审看字段')} items={selectedFields.map((field) => `${field.label}: ${field.value}`)} />
+                <div className="button-row">
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={() =>
+                      simulateAction(isZh ? `进入验收：${selectedTask.title}` : `Opening acceptance for ${selectedTask.title}`, {
+                        description: isZh ? `验收入口：${selectedTask.title}` : `Acceptance entry: ${selectedTask.title}`,
+                        delta: '+0',
+                      })
+                    }
+                  >
+                    <Check size={17} />
+                    {textFor(t, 'Review acceptance', '进入验收')}
+                  </button>
+                  <button className="ghost-button" type="button" onClick={() => setPage('community')}>
+                    <MessageCircle size={17} />
+                    {textFor(t, 'Message maker', '联系创作者')}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <InfoBox title={textFor(t, 'Discussion record', '沟通记录')} items={discussionLog} />
+                <div className="form-panel inline-form">
+                  <InfoBox title={textFor(t, 'Fields to submit for this task type', '此任务类型需提交')} items={selectedFields.map((field) => `${field.label}: ${field.value}`)} />
+                  <label>
+                    {textFor(t, 'Result links', '成果链接')}
+                    <input defaultValue={textFor(t, 'drive/final-pack, figma/preview-board, loom/walkthrough', '网盘/最终交付包，飞书/预览板，录屏/讲解')} />
+                  </label>
+                  <label>
+                    {textFor(t, 'Delivery note', '交付说明')}
+                    <textarea defaultValue={textFor(t, 'Included final export, editable prompts, revision summary, and commercial usage note.', '已包含最终导出、可编辑提示词、修改摘要和商用范围说明。')} />
+                  </label>
+                </div>
+                <div className="button-row">
+                  <button className="primary-button" type="button" onClick={() => submitTask(selectedTask)}>
+                    <Upload size={17} />
+                    {textFor(t, 'Submit acceptance work', '提交验收成果')}
+                  </button>
+                  <button className="ghost-button" type="button" onClick={() => setPage('community')}>
+                    <MessageCircle size={17} />
+                    {textFor(t, 'Continue discussion', '继续沟通')}
+                  </button>
+                </div>
+              </>
+            )}
+          </article>
+        )}
       </div>
     </div>
   )
@@ -4526,6 +4916,7 @@ function InspirationPage({
     'Good idea radar': textFor(t, 'Good idea radar', '好点子雷达'),
   }
   const [activeCategory, setActiveCategory] = useState('Featured')
+  const [selectedItem, setSelectedItem] = useState<InspirationItem | undefined>()
   const scopedItems = localizedInspiration(items, t)
   const visibleItems =
     activeCategory === 'Featured'
@@ -4538,6 +4929,73 @@ function InspirationPage({
           if (activeCategory === 'Case studies') return content.includes('recap') || content.includes('复盘') || content.includes('案例')
           return true
         })
+  const activeItem = selectedItem
+  const openDetail = (item: InspirationItem) => {
+    setSelectedItem(item)
+    simulateAction(isZh ? `已打开灵感详情：${item.title}` : `Opened inspiration detail: ${item.title}`)
+  }
+  const transferToTask = (item: InspirationItem) => {
+    simulateAction(isZh ? `已将灵感转成任务草稿：${item.title}` : `Converted inspiration to task draft: ${item.title}`)
+    setPage('publish')
+  }
+  const transferToWorkbench = (item: InspirationItem) => {
+    simulateAction(isZh ? `已将灵感发送到创作工作台：${item.title}` : `Sent inspiration to workspace: ${item.title}`)
+    setPage('playground')
+  }
+
+  if (activeItem) {
+    const detailItems = isZh
+      ? [
+          `保留来源：${activeItem.source}`,
+          `可复用类型：${categoryLabel(activeItem.type, t)}`,
+          '进入发布页后补充预算、截止时间、验收规则和附件。',
+        ]
+      : [
+          `Keep source context: ${activeItem.source}`,
+          `Reusable type: ${activeItem.type}`,
+          'Add budget, deadline, acceptance rules, and attachments after opening the publish flow.',
+        ]
+    const workbenchItems = isZh
+      ? ['作为提示词起点生成图片、视频、音乐或脚本。', '在对话中继续拆解交付物、风格限制和修改轮次。', '把产出的草稿再带回任务广场发布。']
+      : ['Use it as a prompt seed for image, video, music, or script work.', 'Continue scoping deliverables, style constraints, and revision rounds in chat.', 'Bring the drafted output back to Task Plaza when it is ready.']
+
+    return (
+      <div className="stack">
+        <div className="detail-top button-row">
+          <button className="ghost-button" type="button" onClick={() => setSelectedItem(undefined)}>
+            <ArrowLeft size={17} />
+            {t.backToParent}
+          </button>
+          <div className="button-row">
+            <button className="ghost-button" type="button" onClick={() => transferToWorkbench(activeItem)}>
+              <LayoutDashboard size={17} />
+              {textFor(t, 'To workspace', '转工作台')}
+            </button>
+            <button className="primary-button" type="button" onClick={() => transferToTask(activeItem)}>
+              <Plus size={17} />
+              {textFor(t, 'Turn into task', '转成任务')}
+            </button>
+          </div>
+        </div>
+        <article className="library-detail">
+          <span className="pill small">{categoryLabel(activeItem.type, t)}</span>
+          <span className="library-save-count">{activeItem.saves} {textFor(t, 'saves', '收藏')}</span>
+          <h2>{activeItem.title}</h2>
+          <p>{activeItem.text}</p>
+          <div className="detail-stats">
+            <span>{textFor(t, 'Source', '来源')}：{activeItem.source}</span>
+            <span>{textFor(t, 'Format', '类型')}：{categoryLabel(activeItem.type, t)}</span>
+            <span>{textFor(t, 'Saved', '收藏')}：{activeItem.saves}</span>
+            <span>{textFor(t, 'Ready to reuse', '可复用')}</span>
+          </div>
+          <div className="detail-section-grid">
+            <InfoBox title={textFor(t, 'Task conversion notes', '转任务要点')} items={detailItems} />
+            <InfoBox title={textFor(t, 'Workspace usage', '工作台用法')} items={workbenchItems} />
+          </div>
+        </article>
+      </div>
+    )
+  }
 
   return (
     <div className="stack">
@@ -4545,7 +5003,7 @@ function InspirationPage({
         eyebrow={textFor(t, 'Knowledge base', '知识库')}
         title={t.inspirationTitle}
         action={
-          <button className="primary-button" type="button" onClick={() => setPage('publish')}>
+          <button className="primary-button" type="button" onClick={() => visibleItems[0] && transferToTask(visibleItems[0])}>
             <Plus size={17} />
             {textFor(t, 'Turn into task', '转成任务')}
           </button>
@@ -4568,31 +5026,50 @@ function InspirationPage({
       </div>
       <div className="content-grid three">
         {visibleItems.map((item) => (
-          <article className="library-card" key={item.title}>
-            <span className="pill small">{categoryLabel(item.type, t)}</span>
+          <article
+            className="library-card"
+            key={item.title}
+            role="button"
+            tabIndex={0}
+            onClick={() => openDetail(item)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                openDetail(item)
+              }
+            }}
+          >
             <h3>{item.title}</h3>
             <p>{item.text}</p>
             <div className="split-row">
               <span>{item.source}</span>
-              <span>{item.saves} {textFor(t, 'saves', '收藏')}</span>
+              <span className="library-save-count">{item.saves} {textFor(t, 'saves', '收藏')}</span>
             </div>
-            <div className="button-row">
+            <div className="library-card-actions">
               <button
                 className="ghost-button"
                 type="button"
-                onClick={() =>
+                onClick={(event) => {
+                  event.stopPropagation()
                   simulateAction(isZh ? `已收藏灵感：${item.title}` : `Saved inspiration: ${item.title}`, {
                     description: `Saved inspiration item: ${item.title}`,
                     delta: '+10',
                   })
-                }
+                }}
               >
                 <Bookmark size={17} />
                 {textFor(t, 'Save', '收藏')}
               </button>
-              <button className="ghost-button" type="button" onClick={() => setPage('community')}>
+              <button
+                className="ghost-button"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  openDetail(item)
+                }}
+              >
                 <MessageCircle size={17} />
-                {textFor(t, 'Discuss', '讨论')}
+                {textFor(t, 'View details', '查看详情')}
               </button>
             </div>
           </article>
@@ -4785,7 +5262,6 @@ function AdminPage({
 function CommunityPage({
   t,
   posts,
-  createPost,
   convertPostToTask,
   savePostToLibrary,
   likePost,
@@ -4795,11 +5271,12 @@ function CommunityPage({
   setSelectedPost,
   communityFilter,
   setCommunityFilter,
+  communityView,
+  setCommunityView,
   simulateAction,
 }: {
   t: Record<string, string>
   posts: Post[]
-  createPost: (draft?: CommunityDraft) => void
   convertPostToTask: (post: Post) => void
   savePostToLibrary: (post: Post) => void
   likePost: (post: Post) => void
@@ -4809,27 +5286,12 @@ function CommunityPage({
   setSelectedPost: (post: Post) => void
   communityFilter: string
   setCommunityFilter: (filter: string) => void
+  communityView: CommunityView
+  setCommunityView: (view: CommunityView) => void
   simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
   const scopedPosts = localizedPosts(posts, t)
-  const templates = ['Question', 'Experience', 'Showcase', 'Task recap']
-  const templateLabels: Record<string, string> = {
-    Question: textFor(t, 'Question', '提问'),
-    Experience: textFor(t, 'Experience', '经验'),
-    Showcase: textFor(t, 'Showcase', '作品'),
-    'Task recap': textFor(t, 'Task recap', '任务复盘'),
-  }
-  const [activeTemplate, setActiveTemplate] = useState('Question')
-  const [postDraft, setPostDraft] = useState<CommunityDraft>({
-    title: textFor(t, 'Question: what should I add to my AI task acceptance criteria?', '中文提问：我的 AI 任务验收标准还缺什么？'),
-    category: 'Questions',
-    excerpt: textFor(
-      t,
-      'I am about to publish a product video task and want to confirm deliverables, revision rounds, rights, and review rules.',
-      '我准备发布一个中文 AI 课程短视频任务，想确认交付物、修改轮次、版权范围和验收方式是否写清楚。',
-    ),
-  })
   const [replyDraft, setReplyDraft] = useState(
     textFor(
       t,
@@ -4839,7 +5301,7 @@ function CommunityPage({
   )
   const [localReplies, setLocalReplies] = useState<Record<number, Array<{ author: string; text: string }>>>({})
   const [topicPage, setTopicPage] = useState(1)
-  const [communityView, setCommunityView] = useState<'list' | 'detail'>('list')
+  const topicTabsRef = useRef<HTMLDivElement | null>(null)
   const activeSelectedPost =
     scopedPosts.find((post) => post.id === selectedPost.id) ?? scopedPosts[0] ?? selectedPost
   const filteredPosts = scopedPosts.filter((post) => {
@@ -4855,7 +5317,7 @@ function CommunityPage({
     if (communityFilter === 'Collaboration') return post.excerpt.toLowerCase().includes('collabor') || post.excerpt.includes('协作')
     return true
   })
-  const topicsPerPage = 5
+  const topicsPerPage = 10
   const totalTopicPages = Math.max(1, Math.ceil(filteredPosts.length / topicsPerPage))
   const safeTopicPage = Math.min(topicPage, totalTopicPages)
   const visibleTopics = filteredPosts.slice((safeTopicPage - 1) * topicsPerPage, safeTopicPage * topicsPerPage)
@@ -4873,6 +5335,12 @@ function CommunityPage({
     ['Collaboration', isZh ? '协作' : 'Collaboration'],
   ]
   const filterLabel = (filter: string) => filterOptions.find(([key]) => key === filter)?.[1] ?? filter
+  const scrollTopicTabs = (direction: 'left' | 'right') => {
+    const el = topicTabsRef.current
+    if (!el) return
+    const delta = Math.max(240, Math.round(el.clientWidth * 0.7))
+    el.scrollBy({ left: direction === 'left' ? -delta : delta, behavior: 'smooth' })
+  }
   const hotPosts = [...scopedPosts].sort((a, b) => b.votes - a.votes).slice(0, 5)
   const sidebarTags = [
     ['Latest', isZh ? '全部话题' : 'All topics', scopedPosts.length],
@@ -4936,38 +5404,6 @@ function CommunityPage({
     requestAnimationFrame(() => document.querySelector('.forum-main')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
 
-  const templateCategory = (template: string) => {
-    if (template === 'Question') return 'Questions'
-    if (template === 'Experience') return 'Tutorials'
-    if (template === 'Showcase') return 'Showcase'
-    return 'Task Recap'
-  }
-
-  const updatePostDraft = (key: keyof CommunityDraft, value: string) => {
-    setPostDraft((current) => ({ ...current, [key]: value }))
-  }
-
-  const submitPost = () => {
-    const draft = {
-      title: postDraft.title.trim() || (isZh ? `${templateLabels[activeTemplate]}：中文社区测试帖` : `${templateLabels[activeTemplate]}: front-end forum test topic`),
-      category: postDraft.category || templateCategory(activeTemplate),
-      excerpt: postDraft.excerpt.trim() || (isZh ? '这是一条用于验证社区发帖流程的中文模拟内容。' : 'This is a front-end mock topic for validating the forum posting flow.'),
-    }
-    createPost(draft)
-    setCommunityFilter('Latest')
-    setTopicPage(1)
-    setCommunityView('detail')
-    setPostDraft({
-      title: textFor(t, 'Question: what should I add to my AI task acceptance criteria?', '中文提问：我的 AI 任务验收标准还缺什么？'),
-      category: templateCategory(activeTemplate),
-      excerpt: textFor(
-        t,
-        'I am about to publish a product video task and want to confirm deliverables, revision rounds, rights, and review rules.',
-        '我准备发布一个中文 AI 课程短视频任务，想确认交付物、修改轮次、版权范围和验收方式是否写清楚。',
-      ),
-    })
-  }
-
   const submitReply = () => {
     const text = replyDraft.trim()
     if (!text) {
@@ -4987,12 +5423,6 @@ function CommunityPage({
       <SectionHeader
         eyebrow={textFor(t, 'Forum', '论坛')}
         title={t.communityTitle}
-        action={
-          <button className="primary-button" type="button" onClick={submitPost}>
-            <PenLine size={17} />
-            {t.newPost}
-          </button>
-        }
       />
       <div className="community-strip">
         {[
@@ -5013,17 +5443,25 @@ function CommunityPage({
             <>
               <div className="topic-toolbar">
                 <strong>{isZh ? '全部话题' : 'All topics'}</strong>
-                <div className="topic-tabs" aria-label={isZh ? '社区筛选' : 'Community filters'}>
-                  {filterOptions.map(([filter, label]) => (
-                    <button
-                      className={communityFilter === filter ? 'chip active' : 'chip'}
-                      type="button"
-                      key={filter}
-                      onClick={() => chooseFilter(filter)}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                <div className="topic-tabs-wrap">
+                  <button className="icon-button topic-tabs-nav" type="button" onClick={() => scrollTopicTabs('left')} aria-label={isZh ? '向左翻动标签' : 'Scroll tags left'}>
+                    <ChevronDown size={16} className="topic-tabs-nav-left" />
+                  </button>
+                  <div className="topic-tabs" ref={topicTabsRef} aria-label={isZh ? '社区筛选' : 'Community filters'}>
+                    {filterOptions.map(([filter, label]) => (
+                      <button
+                        className={communityFilter === filter ? 'chip active' : 'chip'}
+                        type="button"
+                        key={filter}
+                        onClick={() => chooseFilter(filter)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <button className="icon-button topic-tabs-nav" type="button" onClick={() => scrollTopicTabs('right')} aria-label={isZh ? '向右翻动标签' : 'Scroll tags right'}>
+                    <ChevronDown size={16} className="topic-tabs-nav-right" />
+                  </button>
                 </div>
               </div>
               <div className="topic-table">
@@ -5080,7 +5518,7 @@ function CommunityPage({
                   {filteredPosts.length === 0 && (
                     <div className="topic-empty">
                       <strong>{isZh ? '当前筛选暂无话题' : 'No topics in this filter'}</strong>
-                      <span>{isZh ? '可以在右侧发布一条中文测试话题。' : 'Use the composer on the right to publish a test topic.'}</span>
+                      <span>{isZh ? '切换筛选条件查看其他社区话题。' : 'Try another filter to browse more community topics.'}</span>
                     </div>
                   )}
                 </div>
@@ -5134,10 +5572,6 @@ function CommunityPage({
                     / {categoryLabel(activeSelectedPost.category, t)}
                   </span>
                   <h2>{activeSelectedPost.title}</h2>
-                  <div className="task-meta forum-tags">
-                    <span className="tag">{activeSelectedPost.tag}</span>
-                    <span className="tag">{activeSelectedPost.solved ? (isZh ? '已解决' : 'Solved') : isZh ? '讨论中' : 'Open'}</span>
-                  </div>
                 </div>
                 <button className="chip back-to-list" type="button" onClick={backToTopicList}>
                   {isZh ? '返回列表' : 'Back to list'}
@@ -5221,60 +5655,28 @@ function CommunityPage({
           )}
         </section>
         <aside className="community-sidebar">
-          <section className="tag-panel post-composer-panel">
+          <section className="tag-panel">
             <div className="panel-title">
-              <strong>{isZh ? '发布帖子' : 'Publish topic'}</strong>
-              <span>{isZh ? '问题 / 心得 / 作品 / 复盘' : 'Question / note / showcase / recap'}</span>
+              <strong>{isZh ? '热门话题' : 'Hot right now'}</strong>
+              <span>{isZh ? '社区正在讨论' : 'Most discussed'}</span>
             </div>
-            <div className="quick-template-row">
-              {templates.map((item) => (
+            <div className="hot-list">
+              {hotPosts.map((post) => (
                 <button
-                  className={activeTemplate === item ? 'chip active' : 'chip'}
+                  className="hot-item"
                   type="button"
-                  key={item}
+                  key={post.id}
                   onClick={() => {
-                    setActiveTemplate(item)
-                    updatePostDraft('category', templateCategory(item))
-                    simulateAction(isZh ? '已选择发帖模板：' + templateLabels[item] : 'Post template selected: ' + item)
+                    showTopicDetail(post)
+                    simulateAction(isZh ? '已选择热门话题：' + post.title : 'Hot topic selected: ' + post.title)
                   }}
                 >
-                  {templateLabels[item]}
+                  <strong>{post.title}</strong>
+                  <span>
+                    {post.views} {isZh ? '浏览' : 'views'} / {post.replies} {isZh ? '回复' : 'replies'}
+                  </span>
                 </button>
               ))}
-            </div>
-            <div className="quick-post-line">
-              <UserRound size={18} />
-              <input
-                value={postDraft.title}
-                onChange={(event) => updatePostDraft('title', event.target.value)}
-                placeholder={isZh ? '输入帖子标题' : 'Topic title'}
-              />
-            </div>
-            <textarea
-              className="quick-post-editor"
-              value={postDraft.excerpt}
-              onChange={(event) => updatePostDraft('excerpt', event.target.value)}
-              placeholder={isZh ? '写下你的问题、经验、作品说明或任务复盘...' : 'Write a question, lesson, showcase, or task recap...'}
-            />
-            <div className="button-row">
-              <button
-                className="ghost-button"
-                type="button"
-                onClick={() =>
-                  simulateAction(
-                    isZh
-                      ? '已为“' + templateLabels[activeTemplate] + '”附加模拟作品：中文课程短视频预览.mp4'
-                      : 'Attached demo work to "' + activeTemplate + '": product-video-preview.mp4',
-                  )
-                }
-              >
-                <Image size={17} />
-                {isZh ? '附件' : 'Attach'}
-              </button>
-              <button className="primary-button" type="button" onClick={submitPost}>
-                <PenLine size={17} />
-                {t.newPost}
-              </button>
             </div>
           </section>
           <section className="tag-panel">
@@ -5296,44 +5698,6 @@ function CommunityPage({
               ))}
             </div>
           </section>
-          <section className="tag-panel">
-            <div className="panel-title">
-              <strong>{isZh ? '热门话题' : 'Hot right now'}</strong>
-              <span>{isZh ? '社区正在讨论' : 'Most discussed'}</span>
-            </div>
-            <div className="hot-list">
-              {hotPosts.map((post) => (
-                <button
-                  className="hot-item"
-                  type="button"
-                  key={post.id}
-                onClick={() => {
-                  showTopicDetail(post)
-                  simulateAction(isZh ? '已选择热门话题：' + post.title : 'Hot topic selected: ' + post.title)
-                }}
-                >
-                  <strong>{post.title}</strong>
-                  <span>
-                    {post.views} {isZh ? '浏览' : 'views'} / {post.replies} {isZh ? '回复' : 'replies'}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
-          <section className="tag-panel">
-            <div className="panel-title">
-              <strong>{isZh ? '社区动作' : 'Forum actions'}</strong>
-              <span>{isZh ? '和任务广场联动' : 'Connected to tasks'}</span>
-            </div>
-            <InfoBox
-              title={isZh ? '可测试流程' : 'Testable flows'}
-              items={
-                isZh
-                  ? ['标记有效回复', '讨论转成任务草稿', '精选内容收入灵感库', '优质回复奖励积分']
-                  : ['Mark accepted answer', 'Convert discussion to task draft', 'Feature high-value post to Inspiration Library', 'Award points for helpful replies']
-              }
-            />
-          </section>
         </aside>
       </div>
     </div>
@@ -5354,10 +5718,10 @@ function PricingPage({
   const isZh = isZhCopy(t)
   const plans = isZh
     ? [
-        { name: '免费版', price: '¥0', credits: '500 积分', songs: '10 首/月', badge: '' },
-        { name: 'Plus', price: '¥68', credits: '60K 积分/年', songs: '100 首/月', badge: '' },
-        { name: 'Pro', price: '¥118', credits: '300K 积分/年', songs: '500 首/月', badge: '最受欢迎' },
-        { name: 'Ultra', price: '¥228', credits: '不限量', songs: '不限量生成', badge: '' },
+        { name: '免费版', price: '500 积分', credits: '10 首/月', songs: '基础', badge: '' },
+        { name: 'Plus', price: '60K 积分', credits: '100 首/月', songs: '标准', badge: '' },
+        { name: 'Pro', price: '300K 积分', credits: '500 首/月', songs: '最受欢迎', badge: '最受欢迎' },
+        { name: 'Ultra', price: '不限量积分', credits: '不限量生成', songs: '旗舰', badge: '' },
       ]
     : planCards
   const comparison = isZh
@@ -5380,14 +5744,11 @@ function PricingPage({
           <article className={plan.badge ? 'plan-card featured' : 'plan-card'} key={plan.name}>
             {plan.badge && <span className="pill small">{plan.badge}</span>}
             <h3>{plan.name}</h3>
-            <strong>
-              {plan.price}
-              <span>{textFor(t, '/mo', '/月')}</span>
-            </strong>
+            <strong>{pointText(plan.price)}</strong>
             <p>{plan.credits}</p>
             <ul>
-              <li>{textFor(t, 'Music generation', '音乐生成')}: {plan.songs}</li>
-              <li>{textFor(t, 'Image credits included', '包含图片积分')}</li>
+              <li>{textFor(t, 'Music generation', '音乐生成')}: {plan.credits}</li>
+              <li>{textFor(t, 'Image generation', '图片生成')}</li>
               <li>{textFor(t, 'Video generation queue', '视频生成队列')}</li>
               <li>{textFor(t, 'Chat assistant usage', '对话助手额度')}</li>
               <li>{textFor(t, 'Community and Task Plaza', '社区与任务广场')}</li>
@@ -5500,7 +5861,7 @@ function EarnPage({ t, requireAuth }: { t: Record<string, string>; requireAuth: 
             {textFor(t, 'Partner program', '合作伙伴计划')}
           </span>
           <h1>{textFor(t, 'Earn 20%-50% commission from AI creators.', '面向 AI 创作者获得 20%-50% 分成。')}</h1>
-          <p>{textFor(t, 'Share MuseFlow with musicians, designers, video editors, prompt engineers, and agencies.', '把 MuseFlow 推荐给音乐人、设计师、视频剪辑师、提示词工程师和机构客户。')}</p>
+          <p>{textFor(t, 'Share HCAI with musicians, designers, video editors, prompt engineers, and agencies.', '把 HCAI 推荐给音乐人、设计师、视频剪辑师、提示词工程师和机构客户。')}</p>
           <button className="primary-button large" type="button" onClick={requireAuth}>
             {t.earn}
           </button>
@@ -5527,7 +5888,7 @@ function AboutPage({ t }: { t: Record<string, string> }) {
     <div className="stack">
       <section className="panel readable">
         <span className="eyebrow">{t.about}</span>
-        <h1>{textFor(t, 'MuseFlow is a front-end prototype for an AI creative network.', 'MuseFlow 是一个 AI 创作协作网络的前端原型。')}</h1>
+        <h1>{textFor(t, 'HCAI is a front-end prototype for an AI creative network.', 'HCAI 是一个 AI 创作协作网络的前端原型。')}</h1>
         <p>
           {textFor(
             t,
@@ -5608,24 +5969,33 @@ function PlaylistPage({
 function ProfilePage({
   t,
   profile,
+  personalProfileId,
+  tasks,
   setPage,
   openProfile,
+  submitTask,
   simulateAction,
 }: {
   t: Record<string, string>
   profile: MarketplaceProfile
+  personalProfileId: string
+  tasks: Task[]
   setPage: (page: Page) => void
   openProfile: (profile: MarketplaceProfile) => void
+  submitTask: (task: Task) => void
   simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
-  const tabs = [
-    textFor(t, 'Overview', '概览'),
-    textFor(t, 'Delivered work', '交付成果'),
-    textFor(t, 'Reviews', '评价'),
-    textFor(t, 'Published briefs', '发布需求'),
+  const isPersonalCenter = profile.id === personalProfileId
+  const [activeTab, setActiveTab] = useState<'overview' | 'myTasks' | 'delivered' | 'reviews' | 'posted'>('overview')
+  const tabs: { key: typeof activeTab; label: string }[] = [
+    { key: 'overview', label: textFor(t, 'Overview', '概览') },
+    ...(isPersonalCenter ? [{ key: 'myTasks' as const, label: t.mine }] : []),
+    { key: 'delivered', label: textFor(t, 'Delivered work', '交付成果') },
+    { key: 'reviews', label: textFor(t, 'Reviews', '评价') },
+    { key: 'posted', label: textFor(t, 'Published briefs', '发布需求') },
   ]
-  const [activeTab, setActiveTab] = useState(tabs[0])
+  const activeTabLabel = tabs.find((item) => item.key === activeTab)?.label ?? tabs[0].label
   const tags = profileTags(profile, t)
   const profileTasks = localizedTasks(tasks, t).filter((task) => task.assignee === profile.handle || task.publisher === profile.handle)
   const deliveredTasks = profileTasks.filter((task) => task.assignee === profile.handle)
@@ -5634,8 +6004,7 @@ function ProfilePage({
     .filter((item) => item.id !== profile.id && item.categories.some((category) => profile.categories.includes(category)))
     .slice(0, 4)
   const displayedTasks =
-    activeTab === tabs[3] ? postedTasks : activeTab === tabs[1] ? deliveredTasks : profileTasks.slice(0, 4)
-
+    activeTab === 'posted' ? postedTasks : activeTab === 'delivered' ? deliveredTasks : profileTasks.slice(0, 4)
   return (
     <div className="stack">
       <section className="profile-shell">
@@ -5668,18 +6037,26 @@ function ProfilePage({
               ))}
             </div>
             <div className="quick-action-row">
-              <button
-                className="primary-button"
-                type="button"
-                onClick={() =>
-                  simulateAction(
-                    isZh ? `已模拟关注 @${profile.handle}` : `Followed @${profile.handle} in the front-end mock`,
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() =>
+                simulateAction(
+                  isZh ? `已模拟关注 @${profile.handle}` : `Followed @${profile.handle} in the front-end mock`,
                     { description: `Followed profile: @${profile.handle}`, delta: '+1' },
                   )
                 }
               >
                 <UserRound size={17} />
                 {t.follow}
+              </button>
+              <button
+                className="ghost-button"
+                type="button"
+                onClick={() => setPage('points')}
+              >
+                <Trophy size={17} />
+                {t.points}
               </button>
               <button
                 className="ghost-button"
@@ -5695,7 +6072,7 @@ function ProfilePage({
         <section className="public-panel">
           <div className="profile-hero-row">
             <div>
-              <span className="eyebrow">{textFor(t, 'Public profile', '公开主页')}</span>
+              <span className="eyebrow">{isPersonalCenter ? textFor(t, 'Personal center', '个人中心') : textFor(t, 'Public profile', '公开主页')}</span>
               <h1>{localizeText(profile.name, t)}</h1>
               <p>{localizeText(profile.bio, t)}</p>
             </div>
@@ -5707,14 +6084,14 @@ function ProfilePage({
               </small>
             </div>
           </div>
-          <div className="profile-proof-grid">
+            <div className="profile-proof-grid">
             <article>
               <span>{textFor(t, 'Earned', '获得积分')}</span>
               <strong>{profile.stats.earned}</strong>
             </article>
             <article>
-              <span>{textFor(t, 'Paid out', '结算金额')}</span>
-              <strong>{profile.stats.paid}</strong>
+              <span>{textFor(t, 'Settled points', '结算积分')}</span>
+              <strong>{pointText(profile.stats.paid)}</strong>
             </article>
             <article>
               <span>{textFor(t, 'Languages', '语言')}</span>
@@ -5735,23 +6112,26 @@ function ProfilePage({
       <div className="chip-row">
         {tabs.map((item) => (
           <button
-            className={activeTab === item ? 'chip active' : 'chip'}
+            className={activeTab === item.key ? 'chip active' : 'chip'}
             type="button"
-            key={item}
+            key={item.key}
             onClick={() => {
-              setActiveTab(item)
-              simulateAction(isZh ? `已切换用户主页内容：${item}` : `Public profile tab changed: ${item}`)
+              setActiveTab(item.key)
+              simulateAction(isZh ? `已切换用户主页内容：${item.label}` : `Public profile tab changed: ${item.label}`)
             }}
           >
-            {item}
+            {item.label}
           </button>
         ))}
       </div>
+      {activeTab === 'myTasks' ? (
+        <MyTasksPage t={t} tasks={tasks} setPage={setPage} submitTask={submitTask} simulateAction={simulateAction} />
+      ) : (
       <div className="profile-layout-grid">
         <section className="panel">
           <SectionHeader
             eyebrow={textFor(t, 'Proof', '能力证明')}
-            title={activeTab}
+            title={activeTabLabel}
             action={
               <button className="ghost-button" type="button" onClick={() => setPage('tasks')}>
                 <BriefcaseBusiness size={17} />
@@ -5759,7 +6139,7 @@ function ProfilePage({
               </button>
             }
           />
-          {activeTab === tabs[2] ? (
+          {activeTab === 'reviews' ? (
             <div className="review-list">
               {profile.reviews.map((review) => (
                 <Comment author={profile.handle} text={localizeText(review, t)} key={review.en} />
@@ -5808,6 +6188,7 @@ function ProfilePage({
           </div>
         </aside>
       </div>
+      )}
     </div>
   )
 }
@@ -5867,18 +6248,12 @@ function DynamicIsland({
     mine: isZh
       ? ['我的任务助手', '跟踪已接取、待提交和待验收的任务进度。']
       : ['My Task Helper', 'Track claimed, submitted, and review-stage work.'],
-    engine: isZh
-      ? ['任务引擎助手', '把模糊想法拆成可执行的任务卡和验收说明。']
-      : ['Task Engine Helper', 'Turn rough ideas into scoped tasks and acceptance notes.'],
     chat: isZh
       ? ['对话助手', '用对话生成提示词、验收标准、回复或任务说明。']
       : ['Chat Helper', 'Draft prompts, acceptance criteria, replies, and task briefs.'],
-    image: isZh
-      ? ['图片生成助手', '生成封面、海报、商品图和任务交付视觉素材。']
-      : ['Image Helper', 'Generate covers, posters, product shots, and task visuals.'],
-    video: isZh
-      ? ['视频制作助手', '制作脚本、分镜、文生视频和图生视频方案。']
-      : ['Video Helper', 'Plan scripts, shots, text-to-video, and image-to-video concepts.'],
+    playground: isZh
+      ? ['创作工作区助手', '在一个工作区里切换生歌、生图和生视频。']
+      : ['Playground Helper', 'Switch between music, image, and video creation in one workspace.'],
     inspiration: isZh
       ? ['灵感库助手', '沉淀帖子、Prompt、教程和可复用交付模板。']
       : ['Library Helper', 'Collect posts, prompts, tutorials, and reusable delivery templates.'],
@@ -5904,28 +6279,21 @@ function DynamicIsland({
     {
       page: 'community',
       label: isZh ? '进入社区' : 'Open Community',
-      hint: isZh ? '查看话题列表、发帖、回复或把帖子转成任务。' : 'Read topics, post, reply, or convert a discussion into work.',
+      hint: isZh ? '查看话题列表、回复或把帖子转成任务。' : 'Read topics, reply, or convert a discussion into work.',
       icon: <MessageCircle size={17} />,
-      keys: ['community', 'forum', 'post', 'reply', 'topic', '社区', '论坛', '帖子', '回复'],
+      keys: ['community', 'forum', 'reply', 'topic', '社区', '论坛', '帖子', '回复'],
     },
     {
-      page: 'image',
-      label: isZh ? '生成图片' : 'Generate Images',
-      hint: isZh ? '进入图片工作台，生成封面、商品图和参考图。' : 'Use the image studio for covers, product visuals, and references.',
-      icon: <Image size={17} />,
-      keys: ['image', 'cover', 'poster', 'picture', '图片', '封面', '海报', '商品图'],
-    },
-    {
-      page: 'video',
-      label: isZh ? '制作视频' : 'Make Video',
-      hint: isZh ? '进入视频工作台，测试脚本、分镜和生成流程。' : 'Open the video studio for scripts, shots, and generation flows.',
-      icon: <Video size={17} />,
-      keys: ['video', 'movie', 'clip', '视频', '短视频', '分镜', '文生视频'],
+      page: 'playground',
+      label: isZh ? 'AI 工作区' : 'AI Workspace',
+      hint: isZh ? '进入工作区，在音乐、图片、视频和对话间切换。' : 'Open the workspace and switch between music, image, video, and chat.',
+      icon: <WandSparkles size={17} />,
+      keys: ['create', 'image', 'video', 'playground', 'studio', '创作', '图片', '视频', '工作区'],
     },
     {
       page: 'chat',
-      label: isZh ? '基础对话' : 'AI Chat',
-      hint: isZh ? '用对话快速生成需求、提示词、回复和验收说明。' : 'Draft briefs, prompts, replies, and acceptance notes in chat.',
+      label: isZh ? '工作区对话' : 'Workspace Chat',
+      hint: isZh ? '进入 AI 工作区，用对话生成需求、提示词、回复和验收说明。' : 'Open AI Workspace chat to draft briefs, prompts, replies, and acceptance notes.',
       icon: <Bot size={17} />,
       keys: ['chat', 'ask', 'prompt', '对话', '聊天', '提示词', '问答'],
     },
@@ -5939,12 +6307,10 @@ function DynamicIsland({
   ]
   const currentGuide = pageGuide[page] || pageGuide.home!
   const primaryAction = actions.find((item) => item.page === page) || actions[0]
-  const suggestions = actions.filter((item) => item.page !== page).slice(0, 5)
-
   const runGuide = (raw: string) => {
     const value = raw.trim().toLowerCase()
     const action = value
-      ? actions.find((item) => item.keys.some((key) => value.includes(key.toLowerCase()))) || actions[0]
+      ? actions.find((item) => item.keys.some((key) => value.includes(key.toLowerCase()))) || primaryAction
       : primaryAction
     setPage(action.page)
     setOpen(false)
@@ -5982,20 +6348,6 @@ function DynamicIsland({
             <span>{currentGuide[1]}</span>
           </span>
         </button>
-        <div className="island-fast" aria-label={isZh ? '快捷功能' : 'Quick actions'}>
-          {actions.slice(0, 5).map((action) => (
-            <button
-              className={action.page === page ? 'island-icon active' : 'island-icon'}
-              type="button"
-              aria-label={action.label}
-              title={action.label}
-              key={action.page}
-              onClick={() => runGuide(action.label)}
-            >
-              {action.icon}
-            </button>
-          ))}
-        </div>
         <button className="ghost-button island-toggle" type="button" onClick={() => setOpen((current) => !current)}>
           {open ? (isZh ? '收起' : 'Close') : isZh ? '展开' : 'Open'}
         </button>
@@ -6017,7 +6369,7 @@ function DynamicIsland({
         <div className="island-command">
           <input
             value={query}
-            placeholder={isZh ? '例如：我要发布任务 / 找任务赚钱 / 发帖 / 生成图片 / 做视频' : 'Try: publish a task / find work / reply in forum / generate images / make video'}
+            placeholder={isZh ? '例如：我要发布任务 / 找任务赚钱 / 看社区 / 生成图片 / 做视频' : 'Try: publish a task / find work / reply in forum / generate images / make video'}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
@@ -6029,23 +6381,6 @@ function DynamicIsland({
           <button className="primary-button" type="button" onClick={() => runGuide(query)}>
             {isZh ? '帮我找到' : 'Route me'}
           </button>
-        </div>
-        <div className="island-guide">
-          <article className="guide-card">
-            <strong>{primaryAction.label}</strong>
-            <span>{primaryAction.hint}</span>
-          </article>
-          <article className="guide-card">
-            <strong>{currentGuide[0]}</strong>
-            <span>{currentGuide[1]}</span>
-          </article>
-        </div>
-        <div className="island-suggestions">
-          {suggestions.map((action) => (
-            <button className="chip" type="button" key={action.page} onClick={() => runGuide(action.label)}>
-              {action.label}
-            </button>
-          ))}
         </div>
       </div>
     </section>
@@ -6087,99 +6422,105 @@ function MiniPlayer({
       </button>
       {playerOpen && (
         <div className="player-widget-panel">
-          <div className="player-widget-head">
-            <div>
-              <span className="eyebrow">{textFor(t, 'Now playing', '正在播放')}</span>
-              <strong>{track.title}</strong>
-              <small>{track.artist} · {track.duration}</small>
+          <div className="player-fixed-area">
+            <div className="player-widget-head">
+              <div>
+                <span className="eyebrow">{textFor(t, 'Now playing', '正在播放')}</span>
+                <strong>{track.title}</strong>
+                <small>{track.artist} · {track.duration}</small>
+              </div>
+              <button className="icon-button small" type="button" onClick={() => setPlayerOpen(false)} aria-label={textFor(t, 'Collapse player', '收起播放器')}>
+                <X size={16} />
+              </button>
             </div>
-            <button className="icon-button small" type="button" onClick={() => setPlayerOpen(false)} aria-label={textFor(t, 'Collapse player', '收起播放器')}>
-              <X size={16} />
+            <button className="player-progress" type="button" onClick={() => setPlayerOpen(true)}>
+              <span />
+              <small>01:14 / {track.duration}</small>
             </button>
-          </div>
-          <button className="player-progress" type="button" onClick={() => setPlayerOpen(true)}>
-            <span />
-            <small>01:14 / {track.duration}</small>
-          </button>
-          <div className="player-controls">
-          <button
-            className={shuffleOn ? 'active' : ''}
-            type="button"
-            onClick={() => {
-              setShuffleOn((current) => !current)
-              simulateAction(
-                shuffleOn
-                  ? isZh
-                    ? '已关闭随机播放'
-                    : 'Shuffle disabled'
-                  : isZh
-                    ? '已开启随机播放'
-                    : 'Shuffle enabled',
-              )
-            }}
-          >
-            <Shuffle size={17} />
-          </button>
-          <button className="round-control" type="button" onClick={() => setPlaying(!playing)}>
-            {playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
-          </button>
-          <button
-            className={repeatOn ? 'active' : ''}
-            type="button"
-            onClick={() => {
-              setRepeatOn((current) => !current)
-              simulateAction(
-                repeatOn
-                  ? isZh
-                    ? '已关闭循环播放'
-                    : 'Repeat disabled'
-                  : isZh
-                    ? '已开启循环播放'
-                    : 'Repeat enabled',
-              )
-            }}
-          >
-            <RefreshCcw size={17} />
-          </button>
-          </div>
-          <div className="player-actions">
-            <button type="button" onClick={requireAuth} title={textFor(t, 'Comments', '评论')}>
-              <MessageCircle size={17} />
-            </button>
-            <button type="button" onClick={requireAuth} title={textFor(t, 'Like', '喜欢')}>
-              <Heart size={17} />
-            </button>
-            <button type="button" onClick={requireAuth} title={t.share}>
-              <Share2 size={17} />
-            </button>
+            <div className="player-interaction-row">
+              <div className="player-controls">
+                <button
+                  className={shuffleOn ? 'active' : ''}
+                  type="button"
+                  onClick={() => {
+                    setShuffleOn((current) => !current)
+                    simulateAction(
+                      shuffleOn
+                        ? isZh
+                          ? '已关闭随机播放'
+                          : 'Shuffle disabled'
+                        : isZh
+                          ? '已开启随机播放'
+                          : 'Shuffle enabled',
+                    )
+                  }}
+                >
+                  <Shuffle size={17} />
+                </button>
+                <button className="round-control" type="button" onClick={() => setPlaying(!playing)}>
+                  {playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
+                </button>
+                <button
+                  className={repeatOn ? 'active' : ''}
+                  type="button"
+                  onClick={() => {
+                    setRepeatOn((current) => !current)
+                    simulateAction(
+                      repeatOn
+                        ? isZh
+                          ? '已关闭循环播放'
+                          : 'Repeat disabled'
+                        : isZh
+                          ? '已开启循环播放'
+                          : 'Repeat enabled',
+                    )
+                  }}
+                >
+                  <RefreshCcw size={17} />
+                </button>
+              </div>
+              <div className="player-actions">
+                <button type="button" onClick={requireAuth} title={textFor(t, 'Comments', '评论')}>
+                  <MessageCircle size={17} />
+                </button>
+                <button type="button" onClick={requireAuth} title={textFor(t, 'Like', '喜欢')}>
+                  <Heart size={17} />
+                </button>
+                <button type="button" onClick={requireAuth} title={t.share}>
+                  <Share2 size={17} />
+                </button>
+              </div>
+            </div>
+            <div className="lyric-panel compact">
+              <span className="eyebrow">{textFor(t, 'Prompt', '提示词')}</span>
+              <p>{track.prompt}</p>
+            </div>
           </div>
           <div className="hot-song-list">
             <div className="panel-title">
               <strong>{textFor(t, 'Hot songs', '热门歌曲')}</strong>
               <span>{textFor(t, 'Tap to switch the current track', '点击切换当前播放')}</span>
             </div>
-            {tracks.slice(0, 5).map((item) => (
-              <button
-                className={item.id === track.id ? 'hot-song active' : 'hot-song'}
-                type="button"
-                key={item.id}
-                onClick={() => {
-                  playTrack(item)
-                  simulateAction(isZh ? `已切换热门歌曲：${item.title}` : `Hot song selected: ${item.title}`)
-                }}
-              >
-                <img src={item.cover} alt="" />
-                <span>
-                  <strong>{item.title}</strong>
-                  <small>@{item.artist} · {item.plays}</small>
-                </span>
-                <Play size={15} fill="currentColor" />
-              </button>
-            ))}
-          </div>
-          <div className="lyric-panel compact">
-            <span className="eyebrow">{textFor(t, 'Prompt', '提示词')}</span>
-            <p>{track.prompt}</p>
+            <div className="player-list-scroll">
+              {tracks.slice(0, 5).map((item) => (
+                <button
+                  className={item.id === track.id ? 'hot-song active' : 'hot-song'}
+                  type="button"
+                  key={item.id}
+                  onClick={() => {
+                    playTrack(item)
+                    simulateAction(isZh ? `已切换热门歌曲：${item.title}` : `Hot song selected: ${item.title}`)
+                  }}
+                >
+                  <img src={item.cover} alt="" />
+                  <span>
+                    <strong>{item.title}</strong>
+                    <small>@{item.artist} · {item.plays}</small>
+                  </span>
+                  <Play size={15} fill="currentColor" />
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -6193,8 +6534,6 @@ function SearchPanel({
   playTrack,
   setPage,
   openProfile,
-  selectedSearchFilter,
-  setSelectedSearchFilter,
   simulateAction,
 }: {
   t: Record<string, string>
@@ -6202,16 +6541,10 @@ function SearchPanel({
   playTrack: (track: Track) => void
   setPage: (page: Page) => void
   openProfile: (profile: MarketplaceProfile) => void
-  selectedSearchFilter: string
-  setSelectedSearchFilter: (filter: string) => void
   simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
   const [query, setQuery] = useState('')
-  const filters = [t.all, t.songs, t.playlists, t.sfx, t.users, t.tasks, t.posts]
-  const defaultTags = isZh
-    ? ['中文课程宣传片', '国风 Lo-fi', '小红书封面', 'AI 配音', '任务验收']
-    : ['Product launch video', 'Lofi chorus', 'Album cover', 'AI voiceover', 'Acceptance criteria']
 
   const results = useMemo(() => {
     if (!query.trim()) return tracks.slice(0, 3)
@@ -6220,48 +6553,14 @@ function SearchPanel({
 
   return (
     <div className="search-backdrop" onClick={close}>
-      <section className="search-panel" onClick={(event) => event.stopPropagation()}>
+      <section className="search-panel" role="dialog" aria-modal="true" aria-label={t.search} onClick={(event) => event.stopPropagation()}>
         <div className="search-input">
           <Search size={18} />
           <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t.search} />
-          <button type="button" onClick={close}>
+          <button type="button" onClick={close} aria-label="Close search">
             <X size={17} />
           </button>
         </div>
-        {!query && (
-          <div className="tag-list">
-            {defaultTags.map((tag) => (
-              <button
-                type="button"
-                key={tag}
-                onClick={() => {
-                  setQuery(tag)
-                  simulateAction(isZh ? `已选择搜索标签：${tag}` : `Search tag selected: ${tag}`)
-                }}
-              >
-                <Aperture size={15} />
-                {tag}
-              </button>
-            ))}
-          </div>
-        )}
-        {query && (
-          <div className="chip-row">
-            {filters.map((filter) => (
-              <button
-                className={selectedSearchFilter === filter ? 'chip active' : 'chip'}
-                type="button"
-                key={filter}
-                onClick={() => {
-                  setSelectedSearchFilter(filter)
-                  simulateAction(isZh ? `已切换搜索类型：${filter}` : `Search filter changed: ${filter}`)
-                }}
-              >
-                {filter}
-              </button>
-            ))}
-          </div>
-        )}
         <div className="search-results">
           <button
             type="button"
@@ -6327,10 +6626,14 @@ function LoginModal({
   t,
   close,
   simulateAction,
+  setUserRole,
+  setPage,
 }: {
   t: Record<string, string>
   close: () => void
   simulateAction: SimulateAction
+  setUserRole: (role: Role) => void
+  setPage: (page: Page) => void
 }) {
   const isZh = isZhCopy(t)
   const providers = isZh ? ['微信登录', '手机号登录', '邮箱登录', 'Google', 'Apple'] : ['Google', 'Apple', 'Discord', 'Facebook', 'Email']
@@ -6357,6 +6660,19 @@ function LoginModal({
             {isZh ? `使用 ${provider} 继续` : `Continue with ${provider}`}
           </button>
         ))}
+        <button
+          className="social-login"
+          type="button"
+          onClick={() => {
+            setUserRole('admin')
+            setPage('admin')
+            close()
+            simulateAction(isZh ? '已使用管理员演示账号登录' : 'Signed in as admin demo account')
+          }}
+        >
+          <UsersRound size={18} />
+          {textFor(t, 'Admin demo login', '管理员演示登录')}
+        </button>
         <p>
           {textFor(t, 'By continuing, you agree to our', '继续即表示你同意')} {t.terms} {textFor(t, 'and', '和')} {t.privacy}.
         </p>
