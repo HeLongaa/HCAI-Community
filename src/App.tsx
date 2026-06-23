@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent, type ReactNode } from 'react'
 import {
   ArrowLeft,
   BadgeDollarSign,
@@ -8,16 +8,20 @@ import {
   BriefcaseBusiness,
   Check,
   ChevronDown,
+  ChevronRight,
   Clapperboard,
   Clock3,
   Code2,
+  Copy,
   Download,
   FileText,
+  Flag,
   Globe2,
   Heart,
   Image,
   LayoutDashboard,
   Languages,
+  ListPlus,
   ListMusic,
   LogIn,
   Menu,
@@ -36,6 +40,8 @@ import {
   Send,
   Share2,
   Shuffle,
+  SkipBack,
+  SkipForward,
   Sparkles,
   Star,
   Sun,
@@ -45,6 +51,7 @@ import {
   UserRound,
   UsersRound,
   Video,
+  Volume2,
   WandSparkles,
   X,
   Zap,
@@ -2359,7 +2366,6 @@ function App() {
   const [page, setPage] = useState<Page>('home')
   const [activeTrack, setActiveTrack] = useState<Track>(tracks[0])
   const [playing, setPlaying] = useState(false)
-  const [playerOpen, setPlayerOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [loginOpen, setLoginOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -2970,18 +2976,6 @@ function App() {
         </div>
       </main>
 
-      <MiniPlayer
-        t={t}
-        track={activeTrack}
-        playTrack={playTrack}
-        playing={playing}
-        setPlaying={setPlaying}
-        playerOpen={playerOpen}
-        setPlayerOpen={setPlayerOpen}
-        requireAuth={requireAuth}
-        simulateAction={simulateAction}
-      />
-
       {searchOpen && (
         <SearchPanel
           t={t}
@@ -3001,7 +2995,18 @@ function App() {
           setPage={navigateToPage}
         />
       )}
-      <DynamicIsland locale={locale} page={page} setPage={navigatePrimary} simulateAction={simulateAction} />
+      <DynamicIsland
+        t={t}
+        locale={locale}
+        page={page}
+        setPage={navigatePrimary}
+        track={activeTrack}
+        playTrack={playTrack}
+        playing={playing}
+        setPlaying={setPlaying}
+        requireAuth={requireAuth}
+        simulateAction={simulateAction}
+      />
     </div>
   )
 }
@@ -6218,19 +6223,35 @@ type IslandAction = {
 }
 
 function DynamicIsland({
+  t,
   locale,
   page,
   setPage,
+  track,
+  playTrack,
+  playing,
+  setPlaying,
+  requireAuth,
   simulateAction,
 }: {
+  t: Record<string, string>
   locale: Locale
   page: Page
   setPage: (page: Page) => void
+  track: Track
+  playTrack: (track: Track) => void
+  playing: boolean
+  setPlaying: (playing: boolean) => void
+  requireAuth: () => void
   simulateAction: SimulateAction
 }) {
   const [open, setOpen] = useState(false)
   const [minimized, setMinimized] = useState(false)
   const [query, setQuery] = useState('')
+  const [shuffleOn, setShuffleOn] = useState(false)
+  const [repeatOn, setRepeatOn] = useState(false)
+  const [volume, setVolume] = useState(72)
+  const [moreOpen, setMoreOpen] = useState(false)
   const isZh = locale === 'zh'
   const pageGuide: Partial<Record<Page, [string, string]>> = {
     home: isZh
@@ -6307,6 +6328,10 @@ function DynamicIsland({
   ]
   const currentGuide = pageGuide[page] || pageGuide.home!
   const primaryAction = actions.find((item) => item.page === page) || actions[0]
+  const trackIndex = tracks.findIndex((item) => item.id === track.id)
+  const previousTrack = tracks[(trackIndex - 1 + tracks.length) % tracks.length] ?? tracks[0]
+  const nextTrack = tracks[(trackIndex + 1) % tracks.length] ?? tracks[0]
+  const currentLyricLine = track.lyrics[1] || track.lyrics[0] || track.prompt
   const runGuide = (raw: string) => {
     const value = raw.trim().toLowerCase()
     const action = value
@@ -6314,6 +6339,7 @@ function DynamicIsland({
       : primaryAction
     setPage(action.page)
     setOpen(false)
+    setMoreOpen(false)
     simulateAction(
       isZh ? `灵动岛已跳转：${action.label}` : `Dynamic island routed: ${action.label}`,
       { description: `Dynamic island guide: ${action.label}`, delta: '+1' },
@@ -6339,24 +6365,79 @@ function DynamicIsland({
   }
 
   return (
-    <section className={`ai-island ${open ? 'open' : ''}`} aria-label={isZh ? 'AI 灵动岛指引' : 'AI dynamic island guide'}>
+    <section
+      className={`ai-island music-island ${open ? 'open' : ''}`}
+      aria-label={isZh ? '音乐播放器灵动岛' : 'Music player dynamic island'}
+      onClick={() => setOpen(true)}
+    >
       <div className="island-compact">
-        <button className="island-core" type="button" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
-          <span className="island-orb">AI</span>
+        <button className="island-core music-island-core" type="button" aria-expanded={open} onClick={(event) => {
+          event.stopPropagation()
+          setOpen((current) => !current)
+        }}>
+          <span className="island-cover">
+            <img src={track.cover} alt="" />
+            <span className={playing ? 'status-dot loading' : 'status-dot idle'} />
+          </span>
           <span className="island-status">
-            <strong>{currentGuide[0]}</strong>
-            <span>{currentGuide[1]}</span>
+            <strong>{track.title}</strong>
+            <span>{open ? `${track.artist} · ${track.duration}` : currentLyricLine}</span>
           </span>
         </button>
-        <button className="ghost-button island-toggle" type="button" onClick={() => setOpen((current) => !current)}>
-          {open ? (isZh ? '收起' : 'Close') : isZh ? '展开' : 'Open'}
+        <div className="music-compact-lyric" aria-hidden={open}>
+          {currentLyricLine}
+        </div>
+        <div className="music-island-controls" onClick={(event) => event.stopPropagation()}>
+          <button
+            className={shuffleOn ? 'active' : ''}
+            type="button"
+            onClick={() => {
+              setShuffleOn((current) => !current)
+              simulateAction(shuffleOn ? (isZh ? '已关闭随机播放' : 'Shuffle disabled') : isZh ? '已开启随机播放' : 'Shuffle enabled')
+            }}
+            aria-label={isZh ? '随机播放' : 'Shuffle'}
+          >
+            <Shuffle size={17} />
+          </button>
+          <button type="button" onClick={() => playTrack(previousTrack)} aria-label={isZh ? '上一首' : 'Previous track'}>
+            <SkipBack size={17} fill="currentColor" />
+          </button>
+          <button className="music-play-button" type="button" onClick={() => setPlaying(!playing)} aria-label={playing ? textFor(t, 'Pause', '暂停') : textFor(t, 'Play', '播放')}>
+            {playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
+          </button>
+          <button type="button" onClick={() => playTrack(nextTrack)} aria-label={isZh ? '下一首' : 'Next track'}>
+            <SkipForward size={17} fill="currentColor" />
+          </button>
+          <button
+            className={repeatOn ? 'active' : ''}
+            type="button"
+            onClick={() => {
+              setRepeatOn((current) => !current)
+              simulateAction(repeatOn ? (isZh ? '已关闭循环播放' : 'Repeat disabled') : isZh ? '已开启循环播放' : 'Repeat enabled')
+            }}
+            aria-label={isZh ? '循环播放' : 'Repeat'}
+          >
+            <RefreshCcw size={17} />
+          </button>
+        </div>
+        <button
+          className="island-toggle"
+          type="button"
+          aria-label={open ? (isZh ? '收起歌词面板' : 'Close lyrics panel') : isZh ? '显示歌词' : 'Show lyrics'}
+          title={open ? (isZh ? '收起' : 'Close') : isZh ? '歌词' : 'Lyrics'}
+          onClick={(event) => {
+          event.stopPropagation()
+          setOpen((current) => !current)
+        }}>
+          <ListMusic size={17} />
         </button>
         <button
           className="island-minimize"
           type="button"
           aria-label={isZh ? '收起到右侧悬浮按钮' : 'Minimize to floating button'}
           title={isZh ? '收起到右侧' : 'Minimize'}
-          onClick={() => {
+          onClick={(event) => {
+            event.stopPropagation()
             setOpen(false)
             setMinimized(true)
             simulateAction(isZh ? 'AI 灵动岛已收起到右侧' : 'AI guide minimized to the right')
@@ -6365,7 +6446,182 @@ function DynamicIsland({
           <ChevronDown size={16} />
         </button>
       </div>
-      <div className="island-expanded">
+      <button className="music-progress" type="button" onClick={(event) => {
+        event.stopPropagation()
+        setOpen(true)
+      }} aria-label={isZh ? '播放进度' : 'Playback progress'}>
+        <span />
+        <small>01:14 / {track.duration}</small>
+      </button>
+      <div className="music-orbit-actions" aria-label={textFor(t, 'Track actions', '歌曲互动')} onClick={(event) => event.stopPropagation()}>
+        <div className="music-tool-row">
+          <button
+            className={moreOpen ? 'active' : ''}
+            type="button"
+            onClick={() => setMoreOpen((current) => !current)}
+            title={textFor(t, 'More actions', '更多操作')}
+            aria-expanded={moreOpen}
+            aria-haspopup="menu"
+          >
+            <MoreHorizontal size={17} />
+          </button>
+          <button type="button" onClick={() => simulateAction(isZh ? '已切换播放模式' : 'Playback mode toggled')} title={textFor(t, 'Playback mode', '播放模式')}>
+            <RefreshCcw size={16} />
+          </button>
+          <label
+            className="music-volume-control"
+            style={{ '--volume-level': `${volume}%` } as CSSProperties}
+            title={textFor(t, 'Volume', '音量')}
+            aria-label={textFor(t, 'Volume', '音量')}
+          >
+            <Volume2 size={16} />
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={volume}
+              onInput={(event) => setVolume(Number(event.currentTarget.value))}
+              onChange={(event) => setVolume(Number(event.currentTarget.value))}
+              onMouseUp={(event) => {
+                const value = Number(event.currentTarget.value)
+                setVolume(value)
+                simulateAction(isZh ? `音量 ${value}%` : `Volume ${value}%`)
+              }}
+              onTouchEnd={(event) => {
+                const value = Number(event.currentTarget.value)
+                setVolume(value)
+                simulateAction(isZh ? `音量 ${value}%` : `Volume ${value}%`)
+              }}
+              aria-valuetext={`${volume}%`}
+            />
+          </label>
+          <button type="button" onClick={() => {
+            setMoreOpen(false)
+            setOpen(false)
+          }} title={textFor(t, 'Collapse player', '收起播放器')}>
+            <ChevronDown size={17} />
+          </button>
+          <button type="button" onClick={() => {
+            setMoreOpen(false)
+            setOpen(false)
+          }} title={textFor(t, 'Close', '关闭')}>
+            <X size={17} />
+          </button>
+        </div>
+        {moreOpen && (
+          <div className="music-more-menu" role="menu" aria-label={textFor(t, 'More actions', '更多操作')}>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMoreOpen(false)
+                requireAuth()
+              }}
+            >
+              <Download size={16} />
+              <span>{textFor(t, 'Free download', '免费下载')}</span>
+              <ChevronRight size={15} />
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMoreOpen(false)
+                simulateAction(isZh ? '已添加到队列' : 'Added to queue')
+              }}
+            >
+              <ListPlus size={16} />
+              <span>{textFor(t, 'Add to queue', '添加到队列')}</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMoreOpen(false)
+                simulateAction(isZh ? '已复制歌曲链接' : 'Track link copied')
+              }}
+            >
+              <Copy size={16} />
+              <span>{textFor(t, 'Copy', '复制')}</span>
+              <ChevronRight size={15} />
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMoreOpen(false)
+                requireAuth()
+              }}
+            >
+              <Flag size={16} />
+              <span>{textFor(t, 'Report', '举报')}</span>
+            </button>
+          </div>
+        )}
+        <div className="music-share-row">
+          <button type="button" onClick={requireAuth} title={textFor(t, 'Like', '喜欢')}>
+            <Heart size={18} />
+          </button>
+          <button className="music-share-button" type="button" onClick={requireAuth} title={t.share}>
+            <Share2 size={16} />
+            <span>{t.share}</span>
+          </button>
+        </div>
+      </div>
+      <div className="island-expanded" onClick={(event) => event.stopPropagation()}>
+        <div className="music-expanded-grid">
+          <div className="music-comment-stream" aria-label={textFor(t, 'Comments', '评论')}>
+            <button className="music-add-comment" type="button" onClick={requireAuth}>
+              <span><UserRound size={22} /></span>
+              <strong>{textFor(t, 'Add a comment...', '添加评论...')}</strong>
+            </button>
+            <div className="music-comment-list">
+              <article>
+                <img src={tracks[2]?.cover || track.cover} alt="" />
+                <div>
+                  <strong>Damienhartsfi...</strong>
+                  <time>3h</time>
+                  <p>{textFor(t, 'I like this song I like it', '我喜欢这首歌，真的喜欢')}</p>
+                  <button type="button" onClick={requireAuth}><Heart size={16} /> {textFor(t, 'Reply', '回复')}</button>
+                </div>
+              </article>
+              <article>
+                <img src={tracks[3]?.cover || track.cover} alt="" />
+                <div>
+                  <strong>Rylaiflor</strong>
+                  <time>3d</time>
+                  <p>🎧☀️🕺</p>
+                  <button type="button" onClick={requireAuth}><Heart size={16} /> {textFor(t, 'Reply', '回复')}</button>
+                </div>
+              </article>
+              <article>
+                <span className="comment-fallback-avatar"><UserRound size={21} /></span>
+                <div>
+                  <strong>Sitwsmusic</strong>
+                  <time>1w</time>
+                  <p>{textFor(t, 'The bassline is clean. This one belongs in the next playlist.', '贝斯线很干净，这首应该进下一轮歌单。')}</p>
+                  <button type="button" onClick={requireAuth}><Heart size={16} /> {textFor(t, 'Reply', '回复')}</button>
+                </div>
+              </article>
+            </div>
+          </div>
+          <div className="music-lyrics-reader" aria-label={textFor(t, 'Lyrics', '歌词')}>
+            <p className="music-prompt-lead">{track.prompt}</p>
+            <span className="music-lyric-title">{track.title}</span>
+            <div className="music-lyric-lines">
+              <strong>{textFor(t, 'Verse 1', 'Verse 1')}</strong>
+              {track.lyrics.map((line, index) => (
+                <p className={index === 1 ? 'active' : ''} key={`${track.id}-${line}`}>
+                  {line}
+                </p>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="island-guide-note">
+          <strong>{currentGuide[0]}</strong>
+          <span>{currentGuide[1]}</span>
+        </div>
         <div className="island-command">
           <input
             value={query}
@@ -6387,146 +6643,6 @@ function DynamicIsland({
   )
 }
 
-function MiniPlayer({
-  t,
-  track,
-  playTrack,
-  playing,
-  setPlaying,
-  playerOpen,
-  setPlayerOpen,
-  requireAuth,
-  simulateAction,
-}: {
-  t: Record<string, string>
-  track: Track
-  playTrack: (track: Track) => void
-  playing: boolean
-  setPlaying: (playing: boolean) => void
-  playerOpen: boolean
-  setPlayerOpen: (open: boolean) => void
-  requireAuth: () => void
-  simulateAction: SimulateAction
-}) {
-  const isZh = isZhCopy(t)
-  const [shuffleOn, setShuffleOn] = useState(false)
-  const [repeatOn, setRepeatOn] = useState(false)
-
-  return (
-    <aside className={playerOpen ? 'mini-player open' : 'mini-player'} aria-label={textFor(t, 'Music player', '音乐播放器')}>
-      <button className="player-widget-toggle" type="button" onClick={() => setPlayerOpen(!playerOpen)}>
-        <img src={track.cover} alt="" />
-        <span className={playing ? 'status-dot loading' : 'status-dot idle'} />
-        <strong>{track.title}</strong>
-        <small>{track.artist}</small>
-      </button>
-      {playerOpen && (
-        <div className="player-widget-panel">
-          <div className="player-fixed-area">
-            <div className="player-widget-head">
-              <div>
-                <span className="eyebrow">{textFor(t, 'Now playing', '正在播放')}</span>
-                <strong>{track.title}</strong>
-                <small>{track.artist} · {track.duration}</small>
-              </div>
-              <button className="icon-button small" type="button" onClick={() => setPlayerOpen(false)} aria-label={textFor(t, 'Collapse player', '收起播放器')}>
-                <X size={16} />
-              </button>
-            </div>
-            <button className="player-progress" type="button" onClick={() => setPlayerOpen(true)}>
-              <span />
-              <small>01:14 / {track.duration}</small>
-            </button>
-            <div className="player-interaction-row">
-              <div className="player-controls">
-                <button
-                  className={shuffleOn ? 'active' : ''}
-                  type="button"
-                  onClick={() => {
-                    setShuffleOn((current) => !current)
-                    simulateAction(
-                      shuffleOn
-                        ? isZh
-                          ? '已关闭随机播放'
-                          : 'Shuffle disabled'
-                        : isZh
-                          ? '已开启随机播放'
-                          : 'Shuffle enabled',
-                    )
-                  }}
-                >
-                  <Shuffle size={17} />
-                </button>
-                <button className="round-control" type="button" onClick={() => setPlaying(!playing)}>
-                  {playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
-                </button>
-                <button
-                  className={repeatOn ? 'active' : ''}
-                  type="button"
-                  onClick={() => {
-                    setRepeatOn((current) => !current)
-                    simulateAction(
-                      repeatOn
-                        ? isZh
-                          ? '已关闭循环播放'
-                          : 'Repeat disabled'
-                        : isZh
-                          ? '已开启循环播放'
-                          : 'Repeat enabled',
-                    )
-                  }}
-                >
-                  <RefreshCcw size={17} />
-                </button>
-              </div>
-              <div className="player-actions">
-                <button type="button" onClick={requireAuth} title={textFor(t, 'Comments', '评论')}>
-                  <MessageCircle size={17} />
-                </button>
-                <button type="button" onClick={requireAuth} title={textFor(t, 'Like', '喜欢')}>
-                  <Heart size={17} />
-                </button>
-                <button type="button" onClick={requireAuth} title={t.share}>
-                  <Share2 size={17} />
-                </button>
-              </div>
-            </div>
-            <div className="lyric-panel compact">
-              <span className="eyebrow">{textFor(t, 'Prompt', '提示词')}</span>
-              <p>{track.prompt}</p>
-            </div>
-          </div>
-          <div className="hot-song-list">
-            <div className="panel-title">
-              <strong>{textFor(t, 'Hot songs', '热门歌曲')}</strong>
-              <span>{textFor(t, 'Tap to switch the current track', '点击切换当前播放')}</span>
-            </div>
-            <div className="player-list-scroll">
-              {tracks.slice(0, 5).map((item) => (
-                <button
-                  className={item.id === track.id ? 'hot-song active' : 'hot-song'}
-                  type="button"
-                  key={item.id}
-                  onClick={() => {
-                    playTrack(item)
-                    simulateAction(isZh ? `已切换热门歌曲：${item.title}` : `Hot song selected: ${item.title}`)
-                  }}
-                >
-                  <img src={item.cover} alt="" />
-                  <span>
-                    <strong>{item.title}</strong>
-                    <small>@{item.artist} · {item.plays}</small>
-                  </span>
-                  <Play size={15} fill="currentColor" />
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </aside>
-  )
-}
 
 function SearchPanel({
   t,
