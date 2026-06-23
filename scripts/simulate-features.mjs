@@ -1,0 +1,552 @@
+import fs from 'node:fs'
+
+const app = fs.readFileSync('src/App.tsx', 'utf8')
+const css = fs.readFileSync('src/index.css', 'utf8')
+const readme = fs.readFileSync('README.md', 'utf8')
+const navItemsBlock = app.slice(app.indexOf('const navItems = ['), app.indexOf('const footerItems = ['))
+
+const checks = []
+
+function addCheck(group, name, pass, detail) {
+  checks.push({ group, name, pass, detail })
+}
+
+function includesAll(source, values) {
+  return values.every((value) => source.includes(value))
+}
+
+function countMatches(source, pattern) {
+  return [...source.matchAll(pattern)].length
+}
+
+const expectedPages = [
+  'home',
+  'tasks',
+  'publish',
+  'mine',
+  'community',
+  'engine',
+  'inspiration',
+  'points',
+  'create',
+  'chat',
+  'image',
+  'video',
+  'explore',
+  'admin',
+]
+
+const pageComponents = [
+  'HomePage',
+  'TasksPage',
+  'PublishPage',
+  'MyTasksPage',
+  'CommunityPage',
+  'EnginePage',
+  'InspirationPage',
+  'PointsPage',
+  'CreatePage',
+  'ChatPage',
+  'ImagePage',
+  'VideoPage',
+  'ExplorePage',
+  'AdminPage',
+]
+
+addCheck(
+  'navigation',
+  'all planned pages are routable from App state',
+  expectedPages.every((page) => app.includes(`page === '${page}'`) || page === 'home'),
+  expectedPages.join(', '),
+)
+
+addCheck(
+  'navigation',
+  'all planned page components exist',
+  pageComponents.every((component) => app.includes(`function ${component}`)),
+  pageComponents.join(', '),
+)
+
+addCheck(
+  'navigation',
+  'publish request is not duplicated in the sidebar menu',
+  !navItemsBlock.includes("key: 'publish'") && includesAll(app, ["setPage('publish')", 'Start brief', '{t.postTask}']),
+  'publish flow remains inside task plaza only',
+)
+
+addCheck(
+  'task plaza',
+  'task data models full marketplace lifecycle fields',
+  includesAll(app, [
+    'points: string',
+    'publisher: string',
+    'assignee: string',
+    'requirements: string[]',
+    'attachments: string[]',
+    'privateBrief: string',
+    'submission: string',
+    'resultLinks: string[]',
+    'reviewNote: string',
+    'rights: string',
+  ]),
+  'points, publisher, assignee, requirements, attachments, private brief, submission, review, rights',
+)
+
+addCheck(
+  'task plaza',
+  'task statuses cover open, active, review, completed, rejected',
+  includesAll(app, ["status: 'Open'", "status: 'In Progress'", "status: 'Pending Review'", "status: 'Completed'", "status: 'Rejected'"]),
+  'expected lifecycle statuses',
+)
+
+addCheck(
+  'task plaza',
+  'task detail renders delivery and review sections',
+  includesAll(app, ['Submission requirements', 'Attachments', 'Private brief', 'Submitted result', 'Review note', 'Rights']),
+  'task detail sections',
+)
+
+addCheck(
+  'task plaza',
+  'task actions include take and submit work gates',
+  includesAll(app, ['{t.takeTask}', '{t.submitWork}', 'Request review', 'Publish task']),
+  'take, submit, review, publish actions',
+)
+
+addCheck(
+  'task plaza',
+  'task actions update local front-end state',
+  includesAll(app, ['const claimTask = (task: Task)', 'const submitTask = (task: Task)', 'setTaskList((current)', "status: 'In Progress'", "status: 'Pending Review'"]),
+  'claim and submit state transitions',
+)
+
+addCheck(
+  'task plaza',
+  'task plaza includes taker and publisher rankings',
+  includesAll(app, [
+    'type MarketplaceProfile',
+    'marketplaceProfiles',
+    'function LeaderboardPanel',
+    'leaderboard-grid',
+    '接单排行榜',
+    '发需求排行榜',
+    "rankProfiles('maker')",
+    "rankProfiles('publisher')",
+  ]) &&
+    includesAll(css, ['.leaderboard-grid', '.leaderboard-panel', '.rank-row', '.rank-metric']),
+  'shared profile data drives maker and publisher ranking panels',
+)
+
+addCheck(
+  'task plaza',
+  'task publisher and assignee names open public profiles',
+  includesAll(app, ['const openProfile = (profile: MarketplaceProfile)', 'publisherProfile', 'assigneeProfile', 'profile-link', 'openProfile(publisherProfile)', 'openProfile(assigneeProfile)']),
+  'task detail user links',
+)
+
+addCheck(
+  'publish',
+  'publish form simulates core fields and acceptance rules',
+  includesAll(app, ['Task title', 'Category', 'Reward', 'Deadline', 'Visibility', 'Requirement details', 'Submission and acceptance rules']),
+  'publish form fields',
+)
+
+addCheck(
+  'publish',
+  'publish flow creates a local task and selects it',
+  includesAll(app, ['const publishTask = (draft: PublishDraft)', 'setTaskList((current) => [newTask, ...current])', 'setSelectedTask(newTask)', "setPage('tasks')"]),
+  'local publish flow',
+)
+
+addCheck(
+  'publish',
+  'publish form recommends makers by content, category, and tags',
+  includesAll(app, [
+    'function matchProfilesForDraft',
+    'profileMatchScore',
+    'recommendedProfiles',
+    'matchProfilesForDraft(draft)',
+    'Recommended makers',
+    '推荐接单用户',
+    'Category match',
+    'Chinese ready',
+    'Invited @',
+  ]) &&
+    includesAll(css, ['.match-panel', '.match-card', '.match-card-top', '.compact-buttons']),
+  'front-end matching cards update from draft content and can invite/view profile',
+)
+
+addCheck(
+  'my tasks',
+  'my task desk simulates claimed/submitted/completed delivery tracking',
+  includesAll(app, ['Claimed', 'Submitted', 'Completed', 'Delivery package', 'Contribution history', 'Post recap']),
+  'task desk lifecycle',
+)
+
+addCheck(
+  'community',
+  'community data supports forum metrics and solved state',
+  includesAll(app, ['views: string', 'votes: number', 'solved: boolean']),
+  'views, votes, solved',
+)
+
+addCheck(
+  'community',
+  'community UI supports templates, sorting, conversion, and library saving',
+  includesAll(app, ['Question', 'Experience', 'Task recap', 'Unanswered', 'Turn into task', 'Add to library', 'Forum actions']),
+  'templates, sorting, task conversion, library saving',
+)
+
+addCheck(
+  'community',
+  'community actions create posts, convert tasks, and save library items',
+  includesAll(app, [
+    'const createPost = (draft?: CommunityDraft)',
+    'const convertPostToTask = (post: Post)',
+    'const savePostToLibrary = (post: Post)',
+    'const likePost = (post: Post)',
+    'const replyToPost = (post: Post, replyText?: string)',
+    'setPostList((current) => [newPost, ...current])',
+    'setLibraryItems((current) => [item, ...current])',
+  ]),
+  'post, like, reply, convert, save flows',
+)
+
+addCheck(
+  'community',
+  'community posting and replies use real editable inputs',
+  includesAll(app, [
+    'type CommunityDraft',
+    'const [postDraft, setPostDraft]',
+    'const [replyDraft, setReplyDraft]',
+    'const submitPost = ()',
+    'const submitReply = ()',
+    'quick-post-editor',
+    'reply-box',
+    'localReplies',
+  ]),
+  'editable post composer and reply composer',
+)
+
+addCheck(
+  'community',
+  'community topic list is table-style like the reference forum',
+  includesAll(app, ['forum-main', 'topic-table', 'topic-head', 'topic-row active', 'topic-title-button', 'topic-stat', 'topic-meta-line']) &&
+    includesAll(css, ['.topic-table', 'grid-template-columns: minmax(0, 1fr) 70px 76px 82px 92px', '.topic-title-text', '.topic-meta-line', '.topic-stat']),
+  'topic table with title, tags, metrics, and status columns',
+)
+
+addCheck(
+  'community',
+  'community topic list supports pagination',
+  includesAll(app, ['const [topicPage, setTopicPage]', 'topicsPerPage', 'visibleTopics', 'topic-pagination', 'topic-page-numbers', 'goToTopicPage', '`Page ${safeTopicPage} / ${totalTopicPages}`', 'Prev', 'Next']) &&
+    includesAll(css, ['.topic-pagination', '.topic-pagination .ghost-button:disabled', '.topic-page-numbers', '.page-number.active']),
+  'topic pagination state and controls',
+)
+
+addCheck(
+  'community',
+  'community detail actions use compact toolbar labels',
+  includesAll(app, ['post-action-bar', 'compact-action', "'Turn into task'", "'转成任务'", "'任务'", "'入库'", "'Library'", "setCommunityView('detail')", "setCommunityView('list')", "'返回列表'"]) &&
+    includesAll(css, ['.post-action-bar', 'repeat(5, minmax(72px, 1fr))', '.compact-action', 'text-overflow: ellipsis']),
+  'compact action toolbar avoids squeezed long button text',
+)
+
+addCheck(
+  'community',
+  'community has enough mock topics/posts for forum simulation',
+  countMatches(app, /title: '.*?'/g) >= 12 && includesAll(app, ['Hot right now', 'hotPosts', 'topic-state solved', '发布帖子']),
+  'post list, hot topics, solved state',
+)
+
+addCheck(
+  'ai engine',
+  'AI task engine simulates requirement split, matching, estimate, proof',
+  includesAll(app, ['Requirement splitter', 'Analyze request', 'Recommended makers', 'Task history signal', 'Estimated reward']),
+  'engine modes',
+)
+
+addCheck(
+  'creation tools',
+  'music, chat, image, and video workspaces exist',
+  includesAll(app, ['Create AI songs and voice assets', 'Quick prompts', 'Image Studio', 'Video Studio', 'Text to Video', 'Image to Video']),
+  'create/chat/image/video modules',
+)
+
+addCheck(
+  'creation tools',
+  'studio and chat controls expose local simulated reactions',
+  includesAll(app, [
+    'Selected tool: ${tool.label}',
+    '已加入生成队列',
+    'const applyPrompt = (title: string, text: string)',
+    'const runStudioGenerate = ()',
+    '已重新混合',
+    '已选择生成模式',
+  ]),
+  'tool selection, prompt cards, studio generate, remix feedback',
+)
+
+addCheck(
+  'points',
+  'points ledger and reward redemption are represented',
+  includesAll(app, ['Points history', 'Balance', 'Pending', 'Rank', 'Redeem', 'pointsLedger']),
+  'ledger and redemption cards',
+)
+
+addCheck(
+  'points',
+  'point ledger updates during simulated flows',
+  includesAll(app, ['const pushLedger = (description: string, delta: string)', 'setLedgerItems((current)', 'Published task:', 'Claimed task:', 'Submitted deliverable:', 'Accepted task:']),
+  'ledger update flow',
+)
+
+addCheck(
+  'profile',
+  'public user profile is visible without real login',
+  includesAll(app, [
+    'function ProfilePage',
+    'profile: MarketplaceProfile',
+    'Public profile',
+    '公开主页',
+    'profile-shell',
+    'profile-proof-grid',
+    'Related users',
+    'People to compare',
+    "page === 'profile'",
+  ]) &&
+    includesAll(css, ['.profile-shell', '.profile-card', '.profile-cover', '.profile-avatar', '.profile-stats', '.profile-layout-grid']),
+  'profile page uses marketplace profile data and does not require auth',
+)
+
+addCheck(
+  'profile',
+  'profile entry points are wired from library, search, rankings, and matching',
+  includesAll(app, [
+    'openProfile(selectedProfile)',
+    'openProfile={openProfile}',
+    'Search result opened',
+    'openProfile(profile)',
+    'openProfile(item)',
+    'openProfile={openProfile}',
+  ]),
+  'multiple routes to public profile',
+)
+
+addCheck(
+  'admin',
+  'admin review queue has moderation actions',
+  includesAll(app, ['Review and moderation', 'Task review', 'Submissions', 'Community', 'AI config', 'Reject', 'Approve']),
+  'admin queue and actions',
+)
+
+addCheck(
+  'admin',
+  'admin approval can complete the selected task',
+  includesAll(app, ['const approveTask = (task: Task)', "status: 'Completed'", 'approveTask(selectedTask)']),
+  'approval state transition',
+)
+
+addCheck(
+  'admin',
+  'admin tabs and rejection have local feedback',
+  includesAll(app, ['const rejectTask = (task: Task)', "status: 'Rejected'", '管理中心已切换', 'rejectTask(selectedTask)']),
+  'admin tab feedback and reject transition',
+)
+
+addCheck(
+  'cross-module',
+  'cross-module flows are wired with setPage transitions',
+  includesAll(app, [
+    "setPage('publish')",
+    "setPage('tasks')",
+    "setPage('community')",
+    "setPage('inspiration')",
+    "setPage('engine')",
+    "setPage('video')",
+    "setPage('create')",
+  ]),
+  'publish/tasks/community/inspiration/engine/video/create transitions',
+)
+
+addCheck(
+  'auth simulation',
+  'auth-gated actions open the login modal',
+  includesAll(app, ['const requireAuth = () => setLoginOpen(true)', 'LoginModal', "'Google'", "'Email'", 'Continue with ${provider}']),
+  'simulated login gate',
+)
+
+addCheck(
+  'localization',
+  'default locale is English and Chinese toggle exists',
+  includesAll(app, ["useState<Locale>('en')", "locale === 'en' ? 'zh' : 'en'", '中文', 'English']),
+  'default English, toggle to Chinese',
+)
+
+addCheck(
+  'localization',
+  'core Chinese copy is valid UTF-8 content',
+  includesAll(app, ['任务广场', '创作者社区', '发布需求', '我的任务', '灵感库', '积分奖励', '管理中心']) &&
+    !/[�]/.test(app) &&
+    !/[鎼鐧骞垮満涓绀惧尯]/.test(app),
+  'core Chinese labels and no mojibake markers',
+)
+
+addCheck(
+  'localization',
+  'Chinese sample content supports real interaction review',
+  includesAll(app, [
+    '制作一套中文 AI 课程宣传短视频',
+    '生成小红书美妆产品图提示词包',
+    '整理企业知识库 AI 问答机器人需求',
+    '中文课程广告 AI 配音与字幕交付',
+    '国风 Lo-fi 歌单开场音乐制作',
+    'AI 任务二次提交说明模板优化',
+    '中文任务复盘：AI 课程短视频如何写验收标准？',
+    '中文提问：任务被驳回后怎么写二次提交说明？',
+    '教程：用 AI 对话把模糊需求拆成可验收任务',
+    '中文短视频任务验收模板',
+    'AI 任务二次提交说明模板',
+    '小红书封面提示词包',
+    '已发布任务',
+    '已接取任务',
+    '已提交成果',
+    '已收入灵感库',
+  ]),
+  'Chinese task, post, library, and ledger content',
+)
+
+addCheck(
+  'interaction feedback',
+  'all buttons declare explicit click handlers',
+  !/<button(?![\s\S]*?>[\s\S]*?<\/button>)[\s\S]*?>/.test('') &&
+    [...app.matchAll(/<button[\s\S]*?>/g)].every((match) => match[0].includes('onClick')),
+  'button tags should include onClick for visible feedback',
+)
+
+addCheck(
+  'interaction feedback',
+  'global button styles prevent broken text wrapping',
+  includesAll(css, ['white-space: nowrap', 'line-height: 1', '.button-row', 'flex-wrap: wrap']),
+  'buttons keep labels intact and rows can wrap',
+)
+
+addCheck(
+  'interaction feedback',
+  'core chips and filters maintain active local state',
+  includesAll(app, [
+    'const [activeCategory, setActiveCategory]',
+    'const [activeTemplate, setActiveTemplate]',
+    'const [activeOption, setActiveOption]',
+    'const [activeControls, setActiveControls]',
+    'const [activeTab, setActiveTab]',
+    'setCommunityFilter(filter)',
+  ]),
+  'task, community, studio, admin, profile, inspiration active states',
+)
+
+addCheck(
+  'interaction feedback',
+  'search and login controls provide visible simulated feedback',
+  includesAll(app, [
+    'const defaultTags = isZh',
+    '中文课程宣传片',
+    'Search tag selected',
+    'close()',
+    '微信登录',
+    '手机号登录',
+    '已选择登录方式',
+  ]),
+  'search tags/results and login providers react',
+)
+
+addCheck(
+  'interaction feedback',
+  'dynamic island guide routes core workflows',
+  includesAll(app, [
+    'function DynamicIsland',
+    "aria-label={isZh ? 'AI 灵动岛指引' : 'AI dynamic island guide'}",
+    "setPage(action.page)",
+    '灵动岛已跳转',
+    'Dynamic island routed',
+    '我要发布任务 / 找任务赚钱 / 发帖 / 生成图片 / 做视频',
+    "page: 'tasks'",
+    "page: 'publish'",
+    "page: 'community'",
+    "page: 'image'",
+    "page: 'video'",
+    "page: 'chat'",
+  ]) &&
+    includesAll(css, [
+      '.ai-island',
+      '.ai-island.open',
+      '.island-compact',
+      '.island-command',
+      '.island-guide',
+      '@keyframes island-shimmer',
+    ]),
+  'floating AI guide with shortcuts, command input, and workflow routing',
+)
+
+addCheck(
+  'responsive ui',
+  'responsive styles cover new module layouts',
+  includesAll(css, ['.engine-hero', '.form-layout', '.community-layout', '.detail-section-grid', '.ledger-row', '.admin-row', '.empty-state', '.sidebar.mobile-expanded', '@media (max-width: 860px)']),
+  'desktop, empty state, and mobile navigation layout contracts',
+)
+
+addCheck(
+  'responsive ui',
+  'community reading styles improve clarity and Chinese text rendering',
+  includesAll(css, [
+    '"Microsoft YaHei UI"',
+    '.post-body',
+    '.quick-post-editor',
+    '.reply-box textarea',
+    '.comment-heading',
+    'overflow-wrap: anywhere',
+  ]),
+  'Chinese font fallback, post body, composer, reply, and wrapping styles',
+)
+
+addCheck(
+  'feedback',
+  'interactive flows keep local simulation feedback without a fixed toast',
+  includesAll(app, ['const pushToast = (message: string)', "console.info('[simulation]', message)", 'simulateAction={simulateAction}']) &&
+    !includesAll(app, ['role="status"', 'Ready to test the AI task workflow.']) &&
+    !css.includes('.toast'),
+  'simulation feedback remains wired without the removed toast UI',
+)
+
+addCheck(
+  'prototype boundary',
+  'README documents feature scope and simulated front-end actions',
+  includesAll(readme, ['front-end prototype', 'Login modal and auth-gated actions simulated in the front end']),
+  'prototype and simulated auth language',
+)
+
+const grouped = checks.reduce((acc, check) => {
+  acc[check.group] ??= []
+  acc[check.group].push(check)
+  return acc
+}, {})
+
+let failed = 0
+for (const [group, groupChecks] of Object.entries(grouped)) {
+  console.log(`\n${group}`)
+  for (const check of groupChecks) {
+    const mark = check.pass ? 'PASS' : 'FAIL'
+    console.log(`  ${mark} ${check.name}`)
+    if (!check.pass) {
+      failed += 1
+      console.log(`       ${check.detail}`)
+    }
+  }
+}
+
+const passed = checks.length - failed
+console.log(`\nSimulation checks: ${passed}/${checks.length} passed`)
+
+if (failed > 0) {
+  process.exitCode = 1
+}
