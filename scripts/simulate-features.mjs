@@ -1,9 +1,21 @@
 import fs from 'node:fs'
+import path from 'node:path'
 
-const app = fs.readFileSync('src/App.tsx', 'utf8')
+function readSourceTree(dir) {
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .flatMap((entry) => {
+      const fullPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) return readSourceTree(fullPath)
+      return /\.(ts|tsx)$/.test(entry.name) ? [fs.readFileSync(fullPath, 'utf8')] : []
+    })
+    .join('\n')
+}
+
+const app = readSourceTree('src')
 const css = fs.readFileSync('src/index.css', 'utf8')
 const readme = fs.readFileSync('README.md', 'utf8')
-const navItemsBlock = app.slice(app.indexOf('const navItems = ['), app.indexOf('const footerItems = ['))
+const navItemsBlock = app.slice(app.indexOf('const navItems:'), app.indexOf('const pageLabels ='))
 
 const checks = []
 
