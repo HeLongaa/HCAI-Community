@@ -1,19 +1,38 @@
 import { Trophy } from 'lucide-react'
-import type { LedgerEntry, SimulateAction } from '../../domain/types'
+import type { AsyncResourceState, LedgerEntry, SimulateAction } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
-import { isZhCopy, matchesLanguage, textFor } from '../../domain/utils'
+import { isZhCopy, matchesLanguage, pointText, textFor } from '../../domain/utils'
+import type { ApiPointsSummary } from '../../services/contracts'
 
 export function PointsPage({
   t,
   ledger,
+  summary,
+  status,
   simulateAction,
 }: {
   t: Record<string, string>
   ledger: LedgerEntry[]
+  summary: ApiPointsSummary | null
+  status: AsyncResourceState
   simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
-  const metrics = isZh
+  const metrics = summary
+    ? isZh
+      ? [
+          ['可用余额', pointText(String(summary.available)), '可立即用于任务加权、兑换和发布托管'],
+          ['冻结托管', pointText(String(summary.frozen)), '已发布任务的待验收奖励托管'],
+          ['待结算', pointText(String(summary.pendingSettlement)), '等待验收或系统确认的正向积分'],
+          ['累计收入', pointText(String(summary.lifetimeEarned)), '历史已结算任务、社区和内容收益'],
+        ]
+      : [
+          ['Available', pointText(String(summary.available)), 'Ready for boosts, redemptions, and task escrow'],
+          ['Frozen', pointText(String(summary.frozen)), 'Rewards held for posted tasks awaiting review'],
+          ['Pending', pointText(String(summary.pendingSettlement)), 'Positive points waiting for acceptance or system settlement'],
+          ['Lifetime earned', pointText(String(summary.lifetimeEarned)), 'Settled task, community, and library earnings'],
+        ]
+    : isZh
     ? [
         ['余额', '18,420', '可用于任务加权和奖励兑换'],
         ['待结算', '4,100', '等待验收和发布方确认'],
@@ -54,6 +73,25 @@ export function PointsPage({
       </div>
       <section className="panel">
         <SectionHeader eyebrow={textFor(t, 'Ledger', '积分流水')} title={textFor(t, 'Points history', '积分记录')} />
+        {(status.loading || status.error) && (
+          <div className="empty-state">
+            <strong>
+              {status.loading
+                ? textFor(t, 'Syncing points', '正在同步积分')
+                : textFor(t, 'Points API unavailable', '积分 API 暂不可用')}
+            </strong>
+            <span>
+              {status.loading
+                ? textFor(t, 'Loading the latest points ledger from the API.', '正在从 API 加载最新积分流水。')
+                : status.error}
+            </span>
+            {status.error && (
+              <button className="ghost-button" type="button" onClick={() => void status.refresh()}>
+                {textFor(t, 'Retry sync', '重试同步')}
+              </button>
+            )}
+          </div>
+        )}
         <div className="ledger-table">
           {visibleLedger.map(([time, desc, delta, balance]) => (
             <div className="ledger-row" key={`${time}-${desc}`}>

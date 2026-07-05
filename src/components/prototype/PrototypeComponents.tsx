@@ -11,6 +11,7 @@ import type {
   Page,
   Track,
 } from '../../domain/types'
+import type { DataSourceState } from '../layout/viewModels'
 import { copy } from '../../i18n/copy'
 import { SectionHeader } from '../ui/SectionHeader'
 import { StatusBadge } from '../../features/tasks'
@@ -37,10 +38,12 @@ export function HomePage({
   t,
   setPage,
   playTrack,
+  dataSources,
 }: {
   t: Record<string, string>
   setPage: (page: Page) => void
   playTrack: (track: Track) => void
+  dataSources: DataSourceState[]
 }) {
   const moveHeroGlow = (event: MouseEvent<HTMLElement> | PointerEvent<HTMLElement>) => {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -120,6 +123,21 @@ export function HomePage({
         ))}
       </div>
 
+      <section className="data-source-panel" aria-label={textFor(t, 'Current data sources', '当前数据来源')}>
+        <div>
+          <span className="eyebrow">{textFor(t, 'Runtime state', '运行状态')}</span>
+          <strong>{textFor(t, 'What is live API vs demo?', '哪些是 API，哪些是演示？')}</strong>
+        </div>
+        <div className="data-source-list">
+          {dataSources.map((source) => (
+            <span className={`data-source-chip ${source.state}`} key={source.label} title={source.detail}>
+              <b>{source.label}</b>
+              {source.detail}
+            </span>
+          ))}
+        </div>
+      </section>
+
       <DashboardOverview t={t} setPage={setPage} />
       <MarketplaceOverview t={t} setPage={setPage} />
       <CommunityOverview t={t} setPage={setPage} />
@@ -150,7 +168,7 @@ function DashboardOverview({
       <SectionHeader eyebrow={textFor(t, 'Workspace', '工作台')} title={t.dashboardTitle} />
       <div className="core-grid">
         {cards.map(([title, text, target]) => (
-          <button className="core-action-card" type="button" key={title} onClick={() => setPage(target as Page)}>
+          <button className="core-action-card" data-testid={`home-action-${target}`} type="button" key={title} onClick={() => setPage(target as Page)}>
             <span className="pill small">
               {isZhCopy(t) ? copy.zh[target as keyof typeof copy.zh] ?? target : copy.en[target as keyof typeof copy.en] ?? target}
             </span>

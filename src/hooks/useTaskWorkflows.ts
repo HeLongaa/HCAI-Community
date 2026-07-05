@@ -3,6 +3,15 @@ import type { Locale, Page, PublishDraft, Task } from '../domain/types'
 import { tasks } from '../data/mockData'
 import { copy } from '../i18n/copy'
 import { localeFirstTask } from '../domain/utils'
+import { taskService } from '../services/taskService'
+import type { ApiTaskProposal, ApiTaskSubmission } from '../services/contracts'
+import { useAsyncResource } from './useAsyncResource'
+
+export type TaskChildCollection<T> = {
+  items: T[]
+  loading: boolean
+  error: string | null
+}
 
 type TaskWorkflowOptions = {
   locale: Locale
@@ -14,116 +23,235 @@ type TaskWorkflowOptions = {
 export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: TaskWorkflowOptions) {
   const [taskList, setTaskList] = useState<Task[]>(tasks)
   const [selectedTask, setSelectedTask] = useState<Task>(() => localeFirstTask(tasks, copy.en))
+  const [proposalStateByTask, setProposalStateByTask] = useState<Record<string, TaskChildCollection<ApiTaskProposal>>>({})
+  const [submissionStateByTask, setSubmissionStateByTask] = useState<Record<string, TaskChildCollection<ApiTaskSubmission>>>({})
 
-  const publishTask = (draft: PublishDraft) => {
+  const taskStatus = useAsyncResource<Task[]>({
+    load: () => taskService.list({ limit: 100 }),
+    onSuccess: (items) => {
+      if (items.length === 0) return
+      setTaskList(items)
+      setSelectedTask((current) => items.find((item) => item.id === current.id) ?? items[0])
+    },
+    getErrorMessage: () => (locale === 'zh' ? '无法同步任务列表，当前显示本地演示数据。' : 'Could not sync tasks. Showing local demo data.'),
+    deps: [locale],
+    logLabel: 'task-service',
+  })
+
+  const publishTask = async (draft: PublishDraft) => {
     const isZh = locale === 'zh'
-    const newTask: Task = {
-      id: Date.now(),
-      title: draft.title || (isZh ? '未命名 AI 任务' : 'Untitled AI task'),
-      category: draft.category || 'Video',
-      budget: draft.reward.split('/')[0]?.trim() || draft.reward || (isZh ? '¥800' : '$120'),
-      points: draft.reward.split('/')[1]?.trim() || (isZh ? '800 积分' : '800 pts'),
-      status: 'Open',
-      deadline: draft.deadline || (isZh ? '3 天' : '3 days'),
-      proposals: 0,
-      description: draft.details || (isZh ? '这是一条通过前端模拟发布的新 AI 需求。' : 'This AI request was created in the local front-end flow.'),
-      publisher: 'you',
-      assignee: 'Unassigned',
-      requirements: isZh
-        ? [
-            draft.rules || '提交预览链接、最终文件、提示词和验收说明。',
-            `可见范围：${draft.visibility}`,
-            '这条内容由本地前端模拟流程创建。',
-          ]
-        : [
-            draft.rules || 'Submit preview links, final files, prompts, and acceptance notes.',
-            `Visibility: ${draft.visibility}`,
-            'This item was created in the local front-end flow.',
-          ],
-      attachments: [isZh ? '本地模拟附件.md' : 'local-demo-attachment.md'],
-      privateBrief: isZh ? '这是本地前端模拟发布的私密需求说明。' : 'Private brief created by the local front-end publish flow.',
-      submission: isZh ? '等待接单者提交成果。' : 'Waiting for an assignee to submit deliverables.',
-      resultLinks: [isZh ? '等待提交' : 'Waiting for submission'],
-      reviewNote: isZh ? '发布成功，等待创作者接取。' : 'Published successfully. Waiting for a maker to claim it.',
-      rights: isZh ? '按发布需求约定使用，当前为前端模拟数据。' : 'Usage follows the posted brief. This is front-end demo data.',
+    try {
+      const newTask = await taskService.create(draft)
+      setTaskList((current) => [newTask, ...current])
+      setSelectedTask(newTask)
+      pushLedger(isZh ? `发布任务：${newTask.title}` : `Published task: ${newTask.title}`, '+20')
+      pushToast(isZh ? `已发布任务：${newTask.title}` : `Task published: ${newTask.title}`)
+      setPage('tasks')
+    } catch (error) {
+      console.info('[task-service]', error)
+      pushToast(isZh ? '任务发布失败，已保留本地草稿。' : 'Task publishing failed. Local draft kept.')
     }
-    setTaskList((current) => [newTask, ...current])
-    setSelectedTask(newTask)
-    pushLedger(isZh ? `发布任务：${newTask.title}` : `Published task: ${newTask.title}`, '+20')
-    pushToast(isZh ? `已发布任务：${newTask.title}` : `Task published: ${newTask.title}`)
-    setPage('tasks')
   }
 
-  const claimTask = (task: Task) => {
-    const isZh = locale === 'zh'
-    const updated = {
-      ...task,
-      status: 'Open',
-      assignee: 'you',
-      proposals: task.proposals + 1,
-      submission: isZh ? '方案草稿已提交，等待发布方在个人中心选择。' : 'Proposal draft submitted. Waiting for the publisher to choose in My Tasks.',
-      reviewNote: isZh ? '方案已提交。发布方选择后进入沟通与交付流程。' : 'Proposal submitted. Once selected, both sides move into discussion and delivery.',
-    }
-    setTaskList((current) => current.map((item) => (item.id === task.id ? updated : item)))
+  const updateTask = (taskId: Task['id'], updated: Task) => {
+    setTaskList((current) => current.map((item) => (item.id === taskId ? updated : item)))
     setSelectedTask(updated)
-    pushLedger(isZh ? `提交方案草稿：${task.title}` : `Submitted proposal draft: ${task.title}`, '+50')
-    pushToast(isZh ? `方案已提交：${task.title}` : `Proposal submitted: ${task.title}`)
-    setPage('mine')
   }
 
-  const submitTask = (task: Task) => {
-    const isZh = locale === 'zh'
-    const updated = {
-      ...task,
-      status: 'Pending Review',
-      assignee: task.assignee === 'Unassigned' ? 'you' : task.assignee,
-      submission: isZh
-        ? '已提交：预览链接、最终文件、提示词、修订说明和版权摘要。'
-        : 'Submitted: preview links, final files, prompt notes, revision summary, and rights note.',
-      resultLinks: isZh ? ['网盘/本地模拟交付包', '录屏/验收讲解'] : ['drive/local-demo-delivery', 'loom/local-review-walkthrough'],
-      reviewNote: isZh ? '成果已提交，等待发布方验收。' : 'Deliverables submitted. Waiting for publisher review.',
-    }
-    setTaskList((current) => current.map((item) => (item.id === task.id ? updated : item)))
-    setSelectedTask(updated)
-    pushLedger(isZh ? `提交成果：${task.title}` : `Submitted deliverable: ${task.title}`, '+120')
-    pushToast(isZh ? `已提交成果：${task.title}` : `Deliverable submitted: ${task.title}`)
-    setPage('mine')
+  const incrementTaskProposals = (taskId: Task['id']) => {
+    setTaskList((current) =>
+      current.map((item) => (item.id === taskId ? { ...item, proposals: item.proposals + 1 } : item)),
+    )
+    setSelectedTask((current) => (current.id === taskId ? { ...current, proposals: current.proposals + 1 } : current))
   }
 
-  const approveTask = (task: Task) => {
+  const refreshProposals = async (task: Task) => {
+    const key = String(task.id)
     const isZh = locale === 'zh'
-    const updated = {
-      ...task,
-      status: 'Completed',
-      reviewNote: isZh ? '验收通过，积分已发放，贡献履历已更新。' : 'Accepted. Points released and contribution history updated.',
+    setProposalStateByTask((current) => ({
+      ...current,
+      [key]: { items: current[key]?.items ?? [], loading: true, error: null },
+    }))
+    try {
+      const items = await taskService.listProposals(task.id, { limit: 20 })
+      setProposalStateByTask((current) => ({
+        ...current,
+        [key]: { items, loading: false, error: null },
+      }))
+    } catch (error) {
+      console.info('[task-service]', error)
+      setProposalStateByTask((current) => ({
+        ...current,
+        [key]: {
+          items: current[key]?.items ?? [],
+          loading: false,
+          error: isZh ? '无法加载该任务的方案列表。' : 'Could not load proposals for this task.',
+        },
+      }))
     }
-    setTaskList((current) => current.map((item) => (item.id === task.id ? updated : item)))
-    setSelectedTask(updated)
-    pushLedger(isZh ? `验收通过：${task.title}` : `Accepted task: ${task.title}`, `+${task.points.replace(/[^\d]/g, '') || '500'}`)
-    pushToast(isZh ? `验收通过：${task.title}` : `Task accepted: ${task.title}`)
-    setPage('points')
   }
 
-  const rejectTask = (task: Task) => {
+  const refreshSubmissions = async (task: Task) => {
+    const key = String(task.id)
     const isZh = locale === 'zh'
-    const updated = {
-      ...task,
-      status: 'Rejected',
-      reviewNote: isZh
-        ? '已驳回：请补充更明确的交付链接、验收说明和版权确认后重新提交。'
-        : 'Rejected: add clearer delivery links, acceptance notes, and rights confirmation before resubmitting.',
+    setSubmissionStateByTask((current) => ({
+      ...current,
+      [key]: { items: current[key]?.items ?? [], loading: true, error: null },
+    }))
+    try {
+      const items = await taskService.listSubmissions(task.id, { limit: 20 })
+      setSubmissionStateByTask((current) => ({
+        ...current,
+        [key]: { items, loading: false, error: null },
+      }))
+    } catch (error) {
+      console.info('[task-service]', error)
+      setSubmissionStateByTask((current) => ({
+        ...current,
+        [key]: {
+          items: current[key]?.items ?? [],
+          loading: false,
+          error: isZh ? '无法加载该任务的交付记录。' : 'Could not load submissions for this task.',
+        },
+      }))
     }
-    setTaskList((current) => current.map((item) => (item.id === task.id ? updated : item)))
-    setSelectedTask(updated)
-    pushToast(isZh ? `已驳回任务：${task.title}` : `Task rejected: ${task.title}`)
+  }
+
+  const submitProposal = async (task: Task) => {
+    const isZh = locale === 'zh'
+    try {
+      const proposal = await taskService.createProposal(task.id, {
+        coverLetter: isZh
+          ? `我可以按需求拆解并提交首版方案：${task.title}`
+          : `I can scope and deliver a first proposal for: ${task.title}`,
+        estimate: isZh ? '首版方案 1 天内提交' : 'First proposal within 1 day',
+      })
+      setProposalStateByTask((current) => {
+        const key = String(task.id)
+        const previous = current[key]?.items ?? []
+        return {
+          ...current,
+          [key]: { items: [proposal, ...previous.filter((item) => item.id !== proposal.id)], loading: false, error: null },
+        }
+      })
+      incrementTaskProposals(task.id)
+      pushLedger(isZh ? `提交方案草稿：${task.title}` : `Submitted proposal draft: ${task.title}`, '+50')
+      pushToast(isZh ? `方案已提交：${task.title}` : `Proposal submitted: ${task.title}`)
+      setPage('mine')
+    } catch (error) {
+      console.info('[task-service]', error)
+      pushToast(isZh ? '方案提交失败，已保留本地状态。' : 'Proposal submission failed. Local state kept.')
+    }
+  }
+
+  const claimTask = submitProposal
+
+  const acceptProposal = async (task: Task, proposalId: string) => {
+    const isZh = locale === 'zh'
+    try {
+      const proposal = await taskService.reviewProposal(task.id, proposalId, {
+        decision: 'accept',
+        note: isZh ? '方案已采纳，进入沟通与交付。' : 'Proposal accepted. Moving to discussion and delivery.',
+      })
+      setProposalStateByTask((current) => {
+        const key = String(task.id)
+        const nextItems = (current[key]?.items ?? []).map((item) =>
+          item.id === proposal.id
+            ? proposal
+            : item.status === 'pending'
+              ? { ...item, status: 'rejected' as const, decisionNote: item.decisionNote || 'Auto-rejected after another proposal was accepted.' }
+              : item,
+        )
+        return { ...current, [key]: { items: nextItems, loading: false, error: null } }
+      })
+      await taskStatus.refresh()
+      pushToast(isZh ? `已采纳方案：${task.title}` : `Proposal accepted: ${task.title}`)
+    } catch (error) {
+      console.info('[task-service]', error)
+      pushToast(isZh ? '采纳方案失败，请确认当前账号有发布方权限。' : 'Accepting proposal failed. Check publisher permissions.')
+    }
+  }
+
+  const rejectProposal = async (task: Task, proposalId: string) => {
+    const isZh = locale === 'zh'
+    try {
+      const proposal = await taskService.reviewProposal(task.id, proposalId, {
+        decision: 'reject',
+        note: isZh ? '暂不采纳该方案。' : 'Not selected for this task.',
+      })
+      setProposalStateByTask((current) => {
+        const key = String(task.id)
+        const nextItems = (current[key]?.items ?? []).map((item) => (item.id === proposal.id ? proposal : item))
+        return { ...current, [key]: { items: nextItems, loading: false, error: null } }
+      })
+      pushToast(isZh ? `已拒绝方案：${task.title}` : `Proposal rejected: ${task.title}`)
+    } catch (error) {
+      console.info('[task-service]', error)
+      pushToast(isZh ? '拒绝方案失败，请确认当前账号有发布方权限。' : 'Rejecting proposal failed. Check publisher permissions.')
+    }
+  }
+
+  const submitTask = async (task: Task, options: { assetIds?: string[]; rightsNote?: string } = {}) => {
+    const isZh = locale === 'zh'
+    try {
+      const updated = await taskService.submit(task.id, isZh ? '已提交交付成果。' : 'Deliverables submitted.', {
+        assetIds: options.assetIds ?? [],
+        rightsNote: options.rightsNote ?? (isZh ? '确认交付素材可按任务约定使用。' : 'Deliverables can be used under the agreed task scope.'),
+      })
+      updateTask(task.id, updated)
+      await refreshSubmissions(updated)
+      pushLedger(isZh ? `提交成果：${task.title}` : `Submitted deliverable: ${task.title}`, '+120')
+      pushToast(isZh ? `已提交成果：${task.title}` : `Deliverable submitted: ${task.title}`)
+      setPage('mine')
+    } catch (error) {
+      console.info('[task-service]', error)
+      pushToast(isZh ? '提交失败，已保留本地状态。' : 'Submission failed. Local state kept.')
+    }
+  }
+
+  const approveTask = async (task: Task) => {
+    const isZh = locale === 'zh'
+    try {
+      const updated = await taskService.review(task.id, 'approve', isZh ? '验收通过，积分已发放。' : 'Accepted. Points released.')
+      updateTask(task.id, updated)
+      await refreshSubmissions(updated)
+      pushLedger(isZh ? `验收通过：${task.title}` : `Accepted task: ${task.title}`, `+${task.points.replace(/[^\d]/g, '') || '500'}`)
+      pushToast(isZh ? `验收通过：${task.title}` : `Task accepted: ${task.title}`)
+      setPage('points')
+    } catch (error) {
+      console.info('[task-service]', error)
+      pushToast(isZh ? '验收失败，已保留本地状态。' : 'Review failed. Local state kept.')
+    }
+  }
+
+  const rejectTask = async (task: Task) => {
+    const isZh = locale === 'zh'
+    try {
+      const updated = await taskService.review(task.id, 'reject', isZh ? '请补充更明确的交付链接和版权确认。' : 'Add clearer delivery links and rights confirmation.')
+      updateTask(task.id, updated)
+      await refreshSubmissions(updated)
+      pushToast(isZh ? `已驳回任务：${task.title}` : `Task rejected: ${task.title}`)
+    } catch (error) {
+      console.info('[task-service]', error)
+      pushToast(isZh ? '驳回失败，已保留本地状态。' : 'Reject failed. Local state kept.')
+    }
   }
 
   return {
     taskList,
     selectedTask,
     setSelectedTask,
+    taskStatus,
+    proposalStateByTask,
+    submissionStateByTask,
+    refreshTasks: taskStatus.refresh,
     publishTask,
     claimTask,
+    submitProposal,
+    refreshProposals,
+    acceptProposal,
+    rejectProposal,
+    refreshSubmissions,
     submitTask,
     approveTask,
     rejectTask,

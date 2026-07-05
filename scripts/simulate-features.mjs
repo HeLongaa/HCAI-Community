@@ -139,9 +139,16 @@ addCheck(
 
 addCheck(
   'task plaza',
-  'task actions update local front-end state',
-  includesAll(app, ['const claimTask = (task: Task)', 'const submitTask = (task: Task)', 'setTaskList((current)', "status: 'In Progress'", "status: 'Pending Review'"]),
-  'claim and submit state transitions',
+  'task actions use typed API workflows and update front-end state',
+  includesAll(app, [
+    'const submitProposal = async (task: Task)',
+    'taskService.createProposal',
+    'taskService.submit',
+    'proposalStateByTask',
+    'submissionStateByTask',
+    'setTaskList((current)',
+  ]),
+  'proposal and submission service workflows',
 )
 
 addCheck(
@@ -177,9 +184,9 @@ addCheck(
 
 addCheck(
   'publish',
-  'publish flow creates a local task and selects it',
-  includesAll(app, ['const publishTask = (draft: PublishDraft)', 'setTaskList((current) => [newTask, ...current])', 'setSelectedTask(newTask)', "setPage('tasks')"]),
-  'local publish flow',
+  'publish flow creates an API-backed task and selects it',
+  includesAll(app, ['const publishTask = async (draft: PublishDraft)', 'taskService.create(draft)', 'setTaskList((current) => [newTask, ...current])', 'setSelectedTask(newTask)', "setPage('tasks')"]),
+  'API publish flow',
 )
 
 addCheck(
@@ -225,12 +232,14 @@ addCheck(
   'community',
   'community actions convert tasks, save library items, and update discussions',
   includesAll(app, [
-    'const convertPostToTask = (post: Post)',
-    'const savePostToLibrary = (post: Post)',
-    'const likePost = (post: Post)',
-    'const replyToPost = (post: Post, replyText?: string)',
+    'const convertPostToTask = async (post: Post)',
+    'const savePostToLibrary = async (post: Post)',
+    'const likePost = async (post: Post)',
+    'const replyToPost = async (post: Post, replyText?: string)',
+    'communityService.convertPostToTask',
+    'communityService.savePostToLibrary',
     'setPostList((current) => current.map((item) => (item.id === post.id ? updated : item)))',
-    'setLibraryItems((current) => [item, ...current])',
+    'setLibraryItems((current) => [nextItem, ...current])',
   ]),
   'like, reply, convert, save flows',
 )
@@ -385,16 +394,30 @@ addCheck(
 
 addCheck(
   'admin',
-  'admin approval can complete the selected task',
-  includesAll(app, ['const approveTask = (task: Task)', "status: 'Completed'", 'approveTask(selectedTask)']),
-  'approval state transition',
+  'admin role permissions can be edited and saved',
+  includesAll(app, ['Role permission matrix', 'permissionDraft', 'togglePermissionDraft', 'saveRolePermissions', 'adminService.updateRolePermissions']),
+  'role permission matrix editing',
 )
 
 addCheck(
   'admin',
-  'admin tabs and rejection have local feedback',
-  includesAll(app, ['const rejectTask = (task: Task)', "status: 'Rejected'", '管理中心已切换', 'rejectTask(selectedTask)']),
-  'admin tab feedback and reject transition',
+  'admin tabs and review actions have service-backed feedback',
+  includesAll(app, ['管理中心已切换', 'reviewQueueItem', 'adminService.reviewQueueItem', 'queueStatus', 'auditStatus', 'scanJobArchive', 'writeScanJobArchive', 'MediaScanJobArchiveManifest', 'MediaScanJobArchiveResult']),
+  'admin tab feedback and queue review flow',
+)
+
+addCheck(
+  'admin',
+  'admin security events and alerts are queryable from the security panel',
+  includesAll(app, ['Security event stream', 'adminService.securityEvents', 'adminService.securityAlerts', 'adminService.securityAlertEvents', 'adminService.exportSecurityAlertJson', 'acknowledgeSecurityAlert', 'silenceSecurityAlert', 'unsilenceSecurityAlert', 'canManageSecurityAlerts', 'security:alerts:manage', 'alert_dispatch', 'recentChannels', 'recentErrors', 'highlightedSecurityAlertId', 'securityAlertStatus', 'securitySourceFilter', 'admin-security-alerts', 'admin-security-events']),
+  'security alert summaries, disposition actions, deep links, exports, samples, and event stream filters',
+)
+
+addCheck(
+  'admin',
+  'admin operations metrics render in the security dashboard',
+  includesAll(app, ['operationsMetrics(windowMinutes', 'exportOperationsMetricsJson', 'AdminOperationsMetricsDto', '/admin/operations/metrics', '/admin/operations/metrics/export', 'admin-operations-metrics', 'operationsMetricsWindow', 'Operations metrics', 'Archive candidates', 'writeScanArchiveFromMetrics', 'Audit dispatches', 'media.scan.history_pruned', 'toggleOperationSamples', 'operations-sample-panel', 'Recent failures', 'Archive records', 'exportOperationsSnapshot', 'Export snapshot', 'buildOperationsHandoff', 'remediationHints', 'Handoff notes', 'admin.operations.metrics_exported', 'operations_metrics', 'openOperationsMetricsFromAudit', 'operationSampleCountLabel', 'Open metrics window']),
+  'admin operations metrics dashboard actions, auditable export, and audit replay entry',
 )
 
 addCheck(
@@ -413,7 +436,7 @@ addCheck(
 addCheck(
   'auth simulation',
   'auth-gated actions open the login modal',
-  includesAll(app, ['const requireAuth = () => setLoginOpen(true)', 'LoginModal', "'Google'", "'Email'", 'Continue with ${provider}']),
+  includesAll(app, ['const requireAuth = () => setLoginOpen(true)', 'LoginModal', "'google'", "'discord'", 'Continue with ${provider.label}']),
   'simulated login gate',
 )
 
@@ -503,17 +526,20 @@ addCheck(
 
 addCheck(
   'interaction feedback',
-  'search and login controls provide visible simulated feedback',
+  'search and login controls provide visible API feedback',
   includesAll(app, [
     "const [query, setQuery] = useState('')",
     'Search result opened',
     'Search result played',
     'close()',
-    '微信登录',
-    '手机号登录',
-    '已选择登录方式',
+    'listOAuthProviders()',
+    'oauthErrorCopy',
+    'loginWithOAuthProvider(provider.provider)',
+    'Signed in with ${provider.label}',
+    'Redirecting to ${provider.label}',
+    'oauth-mode-badge',
   ]),
-  'search tags/results and login providers react',
+  'search tags/results and OAuth providers expose status and react',
 )
 
 addCheck(
@@ -573,9 +599,16 @@ addCheck(
 
 addCheck(
   'prototype boundary',
-  'README documents feature scope and simulated front-end actions',
-  includesAll(readme, ['front-end prototype', 'Login modal and auth-gated actions simulated in the front end']),
-  'prototype and simulated auth language',
+  'README documents feature scope, API auth, and remaining simulated surfaces',
+  includesAll(readme, ['front-end prototype', 'Login, registration, OAuth dev callback, logout, and auth-gated actions backed by the API', 'creative outputs']),
+  'prototype boundary and API auth language',
+)
+
+addCheck(
+  'prototype boundary',
+  'runtime data sources are visible in the shell and home page',
+  includesAll(app, ['accountSource', 'accountReady', 'data-source-panel', 'Demo fallback', 'Mock workspace', 'API session']),
+  'visible API/demo data source labels',
 )
 
 const grouped = checks.reduce((acc, check) => {

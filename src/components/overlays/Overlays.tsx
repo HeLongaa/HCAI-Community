@@ -1,5 +1,6 @@
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import {
+  AlertTriangle,
   Bot,
   BriefcaseBusiness,
   ChevronDown,
@@ -11,6 +12,8 @@ import {
   Heart,
   ListPlus,
   ListMusic,
+  LoaderCircle,
+  MonitorCheck,
   MessageCircle,
   MoreHorizontal,
   Pause,
@@ -19,6 +22,7 @@ import {
   RefreshCcw,
   Search,
   Share2,
+  ShieldCheck,
   Shuffle,
   SkipBack,
   SkipForward,
@@ -30,9 +34,14 @@ import {
   WandSparkles,
   X,
 } from 'lucide-react'
-import type { Locale, MarketplaceProfile, Page, Role, SimulateAction, Track } from '../../domain/types'
+import type { Locale, MarketplaceProfile, Page, SimulateAction, Track } from '../../domain/types'
 import { marketplaceProfiles, tracks } from '../../data/mockData'
 import { findProfile, isZhCopy, localizeText, textFor } from '../../domain/utils'
+import { authService } from '../../services/authService'
+import { isApiClientError } from '../../services/apiClient'
+import type { ApiSession, OAuthAccountLink, OAuthProvider, OAuthProviderMetadata } from '../../services/contracts'
+import { showLocalTestAccounts } from '../../services/runtimeConfig'
+import type { OAuthLoginResult } from '../../hooks/useAccountState'
 
 type IslandAction = {
   page: Page
@@ -558,22 +567,228 @@ export function SearchPanel({
   )
 }
 
+const defaultOAuthProviders: OAuthProviderMetadata[] = [
+  {
+    provider: 'google',
+    label: 'Google',
+    configured: false,
+    mode: 'dev',
+    authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+    callbackMethod: 'GET',
+    scopes: ['openid', 'email', 'profile'],
+  },
+  {
+    provider: 'apple',
+    label: 'Apple',
+    configured: false,
+    mode: 'dev',
+    authorizationUrl: 'https://appleid.apple.com/auth/authorize',
+    callbackMethod: 'POST',
+    scopes: ['name', 'email'],
+  },
+  {
+    provider: 'discord',
+    label: 'Discord',
+    configured: false,
+    mode: 'dev',
+    authorizationUrl: 'https://discord.com/oauth2/authorize',
+    callbackMethod: 'GET',
+    scopes: ['identify', 'email'],
+  },
+]
+
+const oauthProviderStatus = (provider: OAuthProviderMetadata, t: Record<string, string>) => {
+  if (provider.configured && provider.mode === 'external') {
+    return {
+      className: 'oauth-mode-badge live',
+      label: textFor(t, 'External OAuth', '外部 OAuth'),
+      title: textFor(t, 'External provider credentials are configured.', '已配置外部 OAuth 凭据。'),
+    }
+  }
+  if (provider.mode === 'dev') {
+    return {
+      className: 'oauth-mode-badge dev',
+      label: textFor(t, 'Dev callback', '开发回调'),
+      title: textFor(t, 'Provider credentials are not configured; using the signed local dev callback.', '未配置第三方凭据；当前使用本地签名开发回调。'),
+    }
+  }
+  return {
+    className: 'oauth-mode-badge unavailable',
+    label: textFor(t, 'Not configured', '未配置'),
+    title: textFor(t, 'This provider is not available in the current environment.', '当前环境未启用该登录方式。'),
+  }
+}
+
+const oauthErrorCopy = (error: unknown, t: Record<string, string>) => {
+  if (!isApiClientError(error)) {
+    return textFor(t, 'OAuth login could not be completed.', 'OAuth 登录未能完成')
+  }
+  const messages: Record<string, [string, string]> = {
+    OAUTH_STATE_INVALID: ['This sign-in request expired. Please try again.', '本次登录请求已过期，请重试'],
+    OAUTH_FAILED: ['Provider verification failed. Try again or use email login.', '第三方验证失败，请重试或使用邮箱登录'],
+    OAUTH_ACCOUNT_CONFLICT: ['This provider account is already linked to another user.', '该第三方账号已绑定到其他用户'],
+    AUTH_ACCOUNT_REQUIRED: ['Add another sign-in method before unlinking this provider.', '解绑前请先添加另一种登录方式'],
+    NOT_FOUND: ['This sign-in provider is unavailable.', '该登录方式暂不可用'],
+  }
+  const copy = messages[error.code]
+  return copy ? textFor(t, copy[0], copy[1]) : textFor(t, error.message, error.message)
+}
+
+const emailAuthErrorCopy = (error: unknown, mode: 'login' | 'register', t: Record<string, string>) => {
+  if (!isApiClientError(error)) {
+    return mode === 'register'
+      ? textFor(t, 'Could not create account. Please try again.', '无法创建账号，请稍后重试。')
+      : textFor(t, 'Could not sign in. Please try again.', '无法登录，请稍后重试。')
+  }
+  const messages: Record<string, [string, string]> = {
+    AUTH_FAILED: ['Email or password is incorrect.', '邮箱或密码不正确。'],
+    ACCOUNT_EXISTS: ['Email or handle is already registered.', '邮箱或用户名已被注册。'],
+    VALIDATION_FAILED: ['Check the form fields and try again.', '请检查表单内容后重试。'],
+    RATE_LIMITED: ['Too many attempts. Please wait a moment and try again.', '尝试次数过多，请稍后再试。'],
+    AUTH_REQUIRED: ['Session verification failed. Please sign in again.', '会话校验失败，请重新登录。'],
+  }
+  const copy = messages[error.code]
+  return copy ? textFor(t, copy[0], copy[1]) : textFor(t, error.message, error.message)
+}
+
+type AuthFieldErrors = Partial<Record<'email' | 'password' | 'handle', string>>
+
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const handlePattern = /^[a-zA-Z0-9_-]{3,32}$/
+
+const authFieldErrorsFromApi = (error: unknown, mode: 'login' | 'register', t: Record<string, string>): AuthFieldErrors => {
+  if (!isApiClientError(error)) return {}
+  if (error.code === 'AUTH_FAILED') {
+    return {
+      email: textFor(t, 'Check this email.', '请检查邮箱。'),
+      password: textFor(t, 'Check this password.', '请检查密码。'),
+    }
+  }
+  if (error.code === 'ACCOUNT_EXISTS' && mode === 'register') {
+    return {
+      email: textFor(t, 'This email may already be registered.', '该邮箱可能已被注册。'),
+      handle: textFor(t, 'This handle may already be taken.', '该用户名可能已被占用。'),
+    }
+  }
+  if (error.code === 'VALIDATION_FAILED') {
+    const message = error.message.toLowerCase()
+    return {
+      ...(message.includes('email') ? { email: textFor(t, 'Enter a valid email address.', '请输入有效邮箱地址。') } : {}),
+      ...(message.includes('password') ? { password: textFor(t, 'Use 8-128 characters.', '请输入 8-128 个字符。') } : {}),
+      ...(message.includes('handle') ? { handle: textFor(t, 'Use 3-32 letters, numbers, underscores, or hyphens.', '请使用 3-32 位字母、数字、下划线或连字符。') } : {}),
+    }
+  }
+  return {}
+}
+
 export function LoginModal({
   t,
   close,
   simulateAction,
-  setUserRole,
+  loginAs,
+  loginWithPassword,
+  loginWithOAuthProvider,
+  registerWithEmail,
   setPage,
 }: {
   t: Record<string, string>
   close: () => void
   simulateAction: SimulateAction
-  setUserRole: (role: Role) => void
+  loginAs: (handle: string) => Promise<void>
+  loginWithPassword: (email: string, password: string) => Promise<void>
+  loginWithOAuthProvider: (provider: OAuthProvider) => Promise<OAuthLoginResult>
+  registerWithEmail: (payload: { email: string; password: string; displayName?: string; handle?: string }) => Promise<void>
   setPage: (page: Page) => void
 }) {
   const isZh = isZhCopy(t)
-  const providers = isZh ? ['微信登录', '手机号登录', '邮箱登录', 'Google', 'Apple'] : ['Google', 'Apple', 'Discord', 'Facebook', 'Email']
-  const [selectedProvider, setSelectedProvider] = useState('')
+  const [providers, setProviders] = useState<OAuthProviderMetadata[]>(defaultOAuthProviders)
+  const [selectedProvider, setSelectedProvider] = useState<OAuthProvider | ''>('')
+  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [handle, setHandle] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors>({})
+  const hasDevOAuthProviders = providers.some((provider) => provider.mode === 'dev' && !provider.configured)
+  const hasExternalOAuthProviders = providers.some((provider) => provider.mode === 'external' && provider.configured)
+
+  useEffect(() => {
+    let active = true
+    authService
+      .listOAuthProviders()
+      .then((items) => {
+        if (!active || items.length === 0) return
+        setProviders(items.filter((provider) => provider.provider !== 'dev'))
+      })
+      .catch((providersError) => {
+        console.info('[oauth-providers]', providersError)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const getFieldErrors = (): AuthFieldErrors => {
+    const next: AuthFieldErrors = {}
+    const normalizedEmail = email.trim().toLowerCase()
+    if (!emailPattern.test(normalizedEmail)) {
+      next.email = textFor(t, 'Enter a valid email address.', '请输入有效邮箱地址。')
+    }
+    if (!password) {
+      next.password = textFor(t, 'Enter your password.', '请输入密码。')
+    } else if (mode === 'register' && (password.length < 8 || password.length > 128)) {
+      next.password = textFor(t, 'Use 8-128 characters.', '请输入 8-128 个字符。')
+    }
+    if (mode === 'register' && handle.trim() && !handlePattern.test(handle.trim())) {
+      next.handle = textFor(t, 'Use 3-32 letters, numbers, underscores, or hyphens.', '请使用 3-32 位字母、数字、下划线或连字符。')
+    }
+    return next
+  }
+
+  const clearFieldError = (field: keyof AuthFieldErrors) => {
+    setFieldErrors((current) => {
+      if (!current[field]) return current
+      const next = { ...current }
+      delete next[field]
+      return next
+    })
+  }
+
+  const submitEmailAuth = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setError('')
+    const nextFieldErrors = getFieldErrors()
+    setFieldErrors(nextFieldErrors)
+    if (Object.keys(nextFieldErrors).length > 0) {
+      return
+    }
+    setSubmitting(true)
+    const action = mode === 'register'
+      ? registerWithEmail({
+          email,
+          password,
+          displayName: displayName || undefined,
+          handle: handle || undefined,
+        })
+      : loginWithPassword(email, password)
+    void action
+      .then(() => {
+        simulateAction(
+          mode === 'register'
+            ? textFor(t, 'Account created and session verified', '账号已创建并完成会话校验')
+            : textFor(t, 'Signed in and session verified', '已登录并完成会话校验'),
+        )
+        close()
+      })
+      .catch((authError) => {
+        console.info('[auth]', authError)
+        setError(emailAuthErrorCopy(authError, mode, t))
+        setFieldErrors(authFieldErrorsFromApi(authError, mode, t))
+      })
+      .finally(() => setSubmitting(false))
+  }
 
   return (
     <div className="modal-backdrop" onClick={close}>
@@ -582,36 +797,455 @@ export function LoginModal({
           <X size={18} />
         </button>
         <h2>{textFor(t, 'Login or sign up', '登录或注册')}</h2>
-        {providers.map((provider) => (
+        <div className="auth-mode-tabs" role="tablist" aria-label={textFor(t, 'Authentication mode', '认证模式')}>
           <button
-            className={selectedProvider === provider ? 'social-login active' : 'social-login'}
+            className={mode === 'login' ? 'active' : ''}
             type="button"
-            key={provider}
             onClick={() => {
-              setSelectedProvider(provider)
-              simulateAction(isZh ? `已选择登录方式：${provider}，当前为前端模拟登录` : `Login method selected: ${provider}. This is a front-end mock.`)
+              setMode('login')
+              setError('')
+              setFieldErrors({})
             }}
           >
-            <Globe2 size={18} />
-            {isZh ? `使用 ${provider} 继续` : `Continue with ${provider}`}
+            {textFor(t, 'Login', '登录')}
           </button>
-        ))}
-        <button
-          className="social-login"
-          type="button"
-          onClick={() => {
-            setUserRole('admin')
-            setPage('admin')
-            close()
-            simulateAction(isZh ? '已使用管理员演示账号登录' : 'Signed in as admin demo account')
-          }}
-        >
-          <UsersRound size={18} />
-          {textFor(t, 'Admin demo login', '管理员演示登录')}
-        </button>
+          <button
+            className={mode === 'register' ? 'active' : ''}
+            type="button"
+            onClick={() => {
+              setMode('register')
+              setError('')
+              setFieldErrors({})
+            }}
+          >
+            {textFor(t, 'Sign up', '注册')}
+          </button>
+        </div>
+        <form className="auth-form" onSubmit={submitEmailAuth} noValidate>
+          {mode === 'register' && (
+            <>
+              <input
+                type="text"
+                autoComplete="name"
+                placeholder={textFor(t, 'Display name', '显示名称')}
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+              />
+              <label className={fieldErrors.handle ? 'auth-field invalid' : 'auth-field'}>
+                <input
+                  type="text"
+                  autoComplete="username"
+                  placeholder={textFor(t, 'Handle', '用户名')}
+                  value={handle}
+                  aria-invalid={fieldErrors.handle ? 'true' : 'false'}
+                  aria-describedby={fieldErrors.handle ? 'auth-handle-error' : undefined}
+                  onChange={(event) => {
+                    setHandle(event.target.value)
+                    clearFieldError('handle')
+                  }}
+                />
+                {fieldErrors.handle && <small id="auth-handle-error">{fieldErrors.handle}</small>}
+              </label>
+            </>
+          )}
+          <label className={fieldErrors.email ? 'auth-field invalid' : 'auth-field'}>
+            <input
+              type="email"
+              autoComplete="email"
+              placeholder={textFor(t, 'Email', '邮箱')}
+              value={email}
+              aria-invalid={fieldErrors.email ? 'true' : 'false'}
+              aria-describedby={fieldErrors.email ? 'auth-email-error' : undefined}
+              onChange={(event) => {
+                setEmail(event.target.value)
+                clearFieldError('email')
+              }}
+            />
+            {fieldErrors.email && <small id="auth-email-error">{fieldErrors.email}</small>}
+          </label>
+          <label className={fieldErrors.password ? 'auth-field invalid' : 'auth-field'}>
+            <input
+              type="password"
+              autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+              placeholder={textFor(t, 'Password', '密码')}
+              value={password}
+              aria-invalid={fieldErrors.password ? 'true' : 'false'}
+              aria-describedby={fieldErrors.password ? 'auth-password-error' : undefined}
+              onChange={(event) => {
+                setPassword(event.target.value)
+                clearFieldError('password')
+              }}
+            />
+            {fieldErrors.password && <small id="auth-password-error">{fieldErrors.password}</small>}
+          </label>
+          {error && <div className="auth-error">{error}</div>}
+          <button className="primary-button auth-submit" type="submit" disabled={submitting} onClick={() => undefined}>
+            <UserRound size={17} />
+            {submitting
+              ? textFor(t, 'Submitting...', '提交中...')
+              : mode === 'register'
+                ? textFor(t, 'Create account', '创建账号')
+                : textFor(t, 'Continue with email', '使用邮箱继续')}
+          </button>
+        </form>
+        <div className="oauth-provider-list" aria-label={textFor(t, 'Social login providers', '第三方登录方式')}>
+          <div className="oauth-config-status">
+            <ShieldCheck size={15} />
+            <span>
+              {hasExternalOAuthProviders && !hasDevOAuthProviders
+                ? textFor(t, 'External OAuth is configured for this environment.', '当前环境已配置外部 OAuth。')
+                : textFor(t, 'Using local dev callbacks until external OAuth credentials are configured.', '当前使用本地开发回调；配置外部 OAuth 凭据后会切换。')}
+            </span>
+          </div>
+          {providers.map((provider) => {
+            const status = oauthProviderStatus(provider, t)
+            return (
+              <button
+                className={selectedProvider === provider.provider ? 'social-login active' : 'social-login'}
+                type="button"
+                key={provider.provider}
+                disabled={selectedProvider !== '' && selectedProvider !== provider.provider}
+                onClick={() => {
+                  setSelectedProvider(provider.provider)
+                  setError('')
+                  void loginWithOAuthProvider(provider.provider).then((result) => {
+                    if (result === 'redirecting') {
+                      simulateAction(isZh ? `正在跳转到 ${provider.label}` : `Redirecting to ${provider.label}`)
+                      return
+                    }
+                    simulateAction(isZh ? `已使用 ${provider.label} 登录` : `Signed in with ${provider.label}`)
+                    close()
+                  }).catch((oauthError) => {
+                    console.info('[oauth]', oauthError)
+                    setError(oauthErrorCopy(oauthError, t))
+                  }).finally(() => {
+                    setSelectedProvider('')
+                  })
+                }}
+              >
+                <Globe2 size={18} />
+                <span>{isZh ? `使用 ${provider.label} 继续` : `Continue with ${provider.label}`}</span>
+                <b className={status.className} title={status.title}>
+                  {status.label}
+                </b>
+              </button>
+            )
+          })}
+        </div>
+        {showLocalTestAccounts && (
+          <button
+            className="social-login"
+            type="button"
+            onClick={() => {
+              void loginAs('opsplus').then(() => {
+                setPage('admin')
+                close()
+                simulateAction(isZh ? '已使用本地测试管理员账号登录' : 'Signed in as local admin test account')
+              })
+            }}
+          >
+            <UsersRound size={18} />
+            {textFor(t, 'Local admin test login', '本地测试管理员登录')}
+          </button>
+        )}
         <p>
           {textFor(t, 'By continuing, you agree to our', '继续即表示你同意')} {t.terms} {textFor(t, 'and', '和')} {t.privacy}.
         </p>
+      </section>
+    </div>
+  )
+}
+
+const formatSessionTime = (value: string | null, isZh: boolean) => {
+  if (!value) return isZh ? '未知' : 'Unknown'
+  try {
+    return new Intl.DateTimeFormat(isZh ? 'zh-CN' : 'en-US', {
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(value))
+  } catch {
+    return value
+  }
+}
+
+const sessionStatusLabel = (session: ApiSession, isZh: boolean) => {
+  if (session.reuseDetectedAt) return isZh ? '风险标记' : 'Risk flagged'
+  if (session.active) return isZh ? '活跃' : 'Active'
+  return isZh ? '已撤销' : 'Revoked'
+}
+
+export function SecurityModal({
+  t,
+  close,
+  simulateAction,
+}: {
+  t: Record<string, string>
+  close: () => void
+  simulateAction: SimulateAction
+}) {
+  const isZh = isZhCopy(t)
+  const [sessions, setSessions] = useState<ApiSession[]>([])
+  const [oauthProviders, setOAuthProviders] = useState<OAuthProviderMetadata[]>(defaultOAuthProviders)
+  const [oauthAccounts, setOAuthAccounts] = useState<OAuthAccountLink[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadingOAuth, setLoadingOAuth] = useState(true)
+  const [actingId, setActingId] = useState<string | null>(null)
+  const [oauthActingProvider, setOauthActingProvider] = useState<OAuthProvider | null>(null)
+  const [error, setError] = useState('')
+
+  const loadSessions = useCallback(() => {
+    setLoading(true)
+    setError('')
+    authService
+      .listSessions()
+      .then(setSessions)
+      .catch((loadError) => {
+        console.info('[security-sessions]', loadError)
+        setError(textFor(t, 'Could not load sessions.', '无法加载会话'))
+      })
+      .finally(() => setLoading(false))
+  }, [t])
+
+  const loadOAuthAccounts = useCallback(() => {
+    setLoadingOAuth(true)
+    setError('')
+    Promise.all([
+      authService.listOAuthProviders(),
+      authService.listOAuthAccounts(),
+    ])
+      .then(([providers, accounts]) => {
+        if (providers.length > 0) {
+          setOAuthProviders(providers.filter((provider) => provider.provider !== 'dev'))
+        }
+        setOAuthAccounts(accounts)
+      })
+      .catch((loadError) => {
+        console.info('[oauth-accounts]', loadError)
+        setError(textFor(t, 'Could not load linked accounts.', '无法加载已绑定账号'))
+      })
+      .finally(() => setLoadingOAuth(false))
+  }, [t])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      loadSessions()
+      loadOAuthAccounts()
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [loadOAuthAccounts, loadSessions])
+
+  const revokeSession = (id: string) => {
+    setActingId(id)
+    setError('')
+    void authService
+      .revokeSession(id)
+      .then(() => {
+        simulateAction(textFor(t, 'Session revoked', '会话已撤销'))
+        loadSessions()
+      })
+      .catch((revokeError) => {
+        console.info('[security-sessions]', revokeError)
+        setError(textFor(t, 'Could not revoke this session.', '无法撤销该会话'))
+      })
+      .finally(() => setActingId(null))
+  }
+
+  const revokeAllSessions = () => {
+    setActingId('all')
+    setError('')
+    void authService
+      .revokeAllSessions()
+      .then((result) => {
+        simulateAction(
+          isZh
+            ? `已撤销 ${result.revoked} 个刷新会话`
+            : `Revoked ${result.revoked} refresh sessions`,
+        )
+        loadSessions()
+      })
+      .catch((revokeError) => {
+        console.info('[security-sessions]', revokeError)
+        setError(textFor(t, 'Could not revoke sessions.', '无法撤销会话'))
+      })
+      .finally(() => setActingId(null))
+  }
+
+  const linkOAuthProvider = (provider: OAuthProviderMetadata) => {
+    setOauthActingProvider(provider.provider)
+    setError('')
+    void authService
+      .loginWithOAuthProvider(provider.provider, { redirectTo: '/profile', linkAccount: true })
+      .then((session) => {
+        if (!session) {
+          simulateAction(isZh ? `正在跳转到 ${provider.label}` : `Redirecting to ${provider.label}`)
+          return
+        }
+        simulateAction(isZh ? `已绑定 ${provider.label}` : `${provider.label} linked`)
+        loadOAuthAccounts()
+      })
+      .catch((linkError) => {
+        console.info('[oauth-link]', linkError)
+        setError(oauthErrorCopy(linkError, t))
+      })
+      .finally(() => setOauthActingProvider(null))
+  }
+
+  const unlinkOAuthProvider = (provider: OAuthProviderMetadata) => {
+    setOauthActingProvider(provider.provider)
+    setError('')
+    void authService
+      .unlinkOAuthAccount(provider.provider)
+      .then(() => {
+        simulateAction(isZh ? `已解绑 ${provider.label}` : `${provider.label} unlinked`)
+        loadOAuthAccounts()
+      })
+      .catch((unlinkError) => {
+        console.info('[oauth-unlink]', unlinkError)
+        setError(oauthErrorCopy(unlinkError, t))
+      })
+      .finally(() => setOauthActingProvider(null))
+  }
+
+  const linkedProviderIds = new Set(oauthAccounts.map((account) => account.provider))
+
+  return (
+    <div className="modal-backdrop" onClick={close}>
+      <section className="security-modal" onClick={(event) => event.stopPropagation()}>
+        <button className="close-button" type="button" onClick={close}>
+          <X size={18} />
+        </button>
+        <div className="security-header">
+          <span className="security-icon">
+            <ShieldCheck size={19} />
+          </span>
+          <span>
+            <h2>{textFor(t, 'Security sessions', '安全会话')}</h2>
+            <p>{textFor(t, 'Manage refresh sessions for this account.', '管理此账号的刷新会话')}</p>
+          </span>
+        </div>
+
+        <div className="security-note">
+          <AlertTriangle size={16} />
+          <span>
+            {textFor(
+              t,
+              'Revoking a session blocks future token refresh. Existing short-lived access tokens expire automatically.',
+              '撤销会话会阻止后续刷新；现有短效访问令牌会自动过期。',
+            )}
+          </span>
+        </div>
+
+        {error && <div className="auth-error">{error}</div>}
+
+        <div className="oauth-link-panel" data-testid="oauth-link-panel">
+          <div className="oauth-link-heading">
+            <span>
+              <strong>{textFor(t, 'Linked sign-in methods', '已绑定登录方式')}</strong>
+              <small>{textFor(t, 'Connect providers for account recovery and faster sign-in.', '绑定第三方账号用于账号恢复和快速登录')}</small>
+            </span>
+            {loadingOAuth && <LoaderCircle size={16} />}
+          </div>
+          <div className="oauth-link-list">
+            {oauthProviders.map((provider) => {
+              const linkedAccount = oauthAccounts.find((account) => account.provider === provider.provider)
+              const linked = linkedProviderIds.has(provider.provider)
+              const acting = oauthActingProvider === provider.provider
+              const status = oauthProviderStatus(provider, t)
+              return (
+                <article className={linked ? 'oauth-link-row linked' : 'oauth-link-row'} data-testid={`oauth-link-${provider.provider}`} key={provider.provider}>
+                  <div className="oauth-link-main">
+                    <Globe2 size={17} />
+                    <span>
+                      <strong>{provider.label}</strong>
+                      <small>
+                        {linked
+                          ? textFor(t, `ID ${linkedAccount?.providerUserIdHint ?? ''}`, `身份 ${linkedAccount?.providerUserIdHint ?? ''}`)
+                          : textFor(t, 'Not connected', '未绑定')}
+                      </small>
+                    </span>
+                  </div>
+                  <b className={status.className} title={status.title}>
+                    {status.label}
+                  </b>
+                  <button
+                    className={linked ? 'ghost-button small' : 'primary-button small'}
+                    type="button"
+                    disabled={acting || loadingOAuth}
+                    onClick={() => {
+                      if (linked) {
+                        unlinkOAuthProvider(provider)
+                      } else {
+                        linkOAuthProvider(provider)
+                      }
+                    }}
+                  >
+                    {acting ? <LoaderCircle size={15} /> : linked ? <X size={15} /> : <ShieldCheck size={15} />}
+                    {linked ? textFor(t, 'Unlink', '解绑') : textFor(t, 'Link', '绑定')}
+                  </button>
+                </article>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="security-session-list" data-testid="security-session-list">
+          {loading ? (
+            <div className="security-loading">
+              <LoaderCircle size={18} />
+              {textFor(t, 'Loading sessions...', '正在加载会话...')}
+            </div>
+          ) : sessions.length === 0 ? (
+            <div className="security-empty">{textFor(t, 'No refresh sessions found.', '暂无刷新会话')}</div>
+          ) : (
+            sessions.map((session) => (
+              <article className={session.active ? 'security-session active' : 'security-session'} data-testid="security-session-card" key={session.id}>
+                <div className="security-session-main">
+                  <MonitorCheck size={17} />
+                  <span>
+                    <strong>{textFor(t, 'Refresh session', '刷新会话')}</strong>
+                    <small>{session.id}</small>
+                  </span>
+                </div>
+                <div className="security-session-meta">
+                  <span className={session.reuseDetectedAt ? 'session-status risk' : session.active ? 'session-status active' : 'session-status'}>
+                    {sessionStatusLabel(session, isZh)}
+                  </span>
+                  <span>{textFor(t, 'Created', '创建')} {formatSessionTime(session.createdAt, isZh)}</span>
+                  <span>{textFor(t, 'Expires', '过期')} {formatSessionTime(session.expiresAt, isZh)}</span>
+                </div>
+                <button
+                  className="ghost-button small"
+                  data-testid={`revoke-session-${session.id}`}
+                  type="button"
+                  disabled={!session.active || actingId === session.id}
+                  onClick={() => revokeSession(session.id)}
+                >
+                  {actingId === session.id ? <LoaderCircle size={15} /> : <X size={15} />}
+                  {textFor(t, 'Revoke', '撤销')}
+                </button>
+              </article>
+            ))
+          )}
+        </div>
+
+        <div className="security-actions">
+          <button className="ghost-button" type="button" onClick={loadSessions}>
+            <RefreshCcw size={16} />
+            {textFor(t, 'Refresh', '刷新')}
+          </button>
+          <button
+            className="primary-button"
+            data-testid="revoke-all-sessions"
+            type="button"
+            onClick={revokeAllSessions}
+            disabled={actingId === 'all' || sessions.every((session) => !session.active)}
+          >
+            {actingId === 'all' ? <LoaderCircle size={16} /> : <ShieldCheck size={16} />}
+            {textFor(t, 'Revoke all', '全部撤销')}
+          </button>
+        </div>
       </section>
     </div>
   )

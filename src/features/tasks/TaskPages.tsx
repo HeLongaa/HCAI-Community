@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   BadgeDollarSign,
   BriefcaseBusiness,
@@ -12,9 +12,13 @@ import {
   Upload,
   UserRound,
   UsersRound,
+  X,
 } from 'lucide-react'
-import type { MarketplaceProfile, Page, PublishDraft, SimulateAction, Task } from '../../domain/types'
+import type { AsyncResourceState, MarketplaceProfile, Page, PublishDraft, SimulateAction, Task } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
+import type { TaskChildCollection } from '../../hooks/useTaskWorkflows'
+import { mediaService } from '../../services/mediaService'
+import type { ApiMediaAsset, ApiProfileSummary, ApiTaskProposal, ApiTaskSubmission, MediaAssetPurpose } from '../../services/contracts'
 import {
   categoryLabel,
   findProfile,
@@ -34,18 +38,20 @@ export function TasksPage({
   tasks,
   setPage,
   openProfile,
-  claimTask,
+  submitProposal,
   selectedTask,
   setSelectedTask,
+  status,
   simulateAction,
 }: {
   t: Record<string, string>
   tasks: Task[]
   setPage: (page: Page) => void
   openProfile: (profile: MarketplaceProfile) => void
-  claimTask: (task: Task) => void
+  submitProposal: (task: Task) => Promise<void>
   selectedTask: Task
   setSelectedTask: (task: Task) => void
+  status: AsyncResourceState
   simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
@@ -109,6 +115,25 @@ export function TasksPage({
       </div>
       <div className="tasks-workspace">
         <div className="tasks-main">
+          {(status.loading || status.error) && (
+            <div className="empty-state">
+              <strong>
+                {status.loading
+                  ? textFor(t, 'Syncing tasks', '正在同步任务')
+                  : textFor(t, 'Task API unavailable', '任务 API 暂不可用')}
+              </strong>
+              <span>
+                {status.loading
+                  ? textFor(t, 'Loading the latest task market data from the API.', '正在从 API 加载最新任务市场数据。')
+                  : status.error}
+              </span>
+              {status.error && (
+                <button className="ghost-button" type="button" onClick={() => void status.refresh()}>
+                  {textFor(t, 'Retry sync', '重试同步')}
+                </button>
+              )}
+            </div>
+          )}
           <div className="chip-row">
             {categories.map((category) => (
               <button
@@ -126,6 +151,7 @@ export function TasksPage({
               {visibleTasks.map((task) => (
                 <button
                   className={activeSelectedTask.id === task.id ? 'task-card active' : 'task-card'}
+                  data-testid={`task-card-${task.id}`}
                   type="button"
                   key={task.id}
                   onClick={() => {
@@ -200,7 +226,7 @@ export function TasksPage({
                 </span>
               </div>
               <div className="button-row">
-                <button className="primary-button" type="button" onClick={() => claimTask(activeSelectedTask)}>
+                <button className="primary-button" data-testid="submit-proposal-button" type="button" onClick={() => void submitProposal(activeSelectedTask)}>
                   <BriefcaseBusiness size={17} />
                   {t.takeTask}
                 </button>
@@ -270,6 +296,88 @@ export function InfoBox({ title, text, items }: { title: string; text?: string; 
   )
 }
 
+function MediaUploadPanel({
+  t,
+  purpose,
+  assets,
+  setAssets,
+  title,
+  simulateAction,
+}: {
+  t: Record<string, string>
+  purpose: MediaAssetPurpose
+  assets: ApiMediaAsset[]
+  setAssets: (assets: ApiMediaAsset[]) => void
+  title: string
+  simulateAction: SimulateAction
+}) {
+  const isZh = isZhCopy(t)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const uploadFile = async (file: File) => {
+    setUploading(true)
+    setError(null)
+    try {
+      const contract = await mediaService.createUpload({
+        fileName: file.name,
+        contentType: file.type || 'application/octet-stream',
+        sizeBytes: file.size,
+        purpose,
+        metadata: { source: 'task-workflow-ui' },
+      })
+      if (!contract.upload.url.startsWith('mock://')) {
+        await fetch(contract.upload.url, {
+          method: contract.upload.method,
+          headers: contract.upload.headers,
+          body: file,
+        })
+      }
+      const completed = await mediaService.completeUpload(contract.asset.id)
+      setAssets([completed, ...assets.filter((asset) => asset.id !== completed.id)])
+      simulateAction(isZh ? `已上传文件：${file.name}` : `Uploaded file: ${file.name}`)
+    } catch (uploadError) {
+      console.info('[media-service]', uploadError)
+      setError(isZh ? '上传失败，请确认账号权限后重试。' : 'Upload failed. Check account access and try again.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="media-upload-panel">
+      <div>
+        <strong>{title}</strong>
+        <span>{textFor(t, 'Files are registered through the media upload API.', '文件会通过媒体上传 API 登记。')}</span>
+      </div>
+      <label className="media-file-picker">
+        <Upload size={16} />
+        <span>{uploading ? textFor(t, 'Uploading', '上传中') : textFor(t, 'Add file', '添加文件')}</span>
+        <input
+          data-testid={`media-upload-${purpose}`}
+          disabled={uploading}
+          type="file"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            event.currentTarget.value = ''
+            if (file) void uploadFile(file)
+          }}
+        />
+      </label>
+      {error && <small className="form-error">{error}</small>}
+      {assets.length > 0 && (
+        <div className="media-asset-list">
+          {assets.map((asset) => (
+            <span className="task-field-chip" data-testid={`media-asset-${asset.id}`} key={asset.id}>
+              {asset.fileName}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function LeaderboardPanel({
   t,
   lane,
@@ -330,7 +438,7 @@ export function PublishPage({
   t: Record<string, string>
   setPage: (page: Page) => void
   requireAuth: () => void
-  publishTask: (draft: PublishDraft) => void
+  publishTask: (draft: PublishDraft) => Promise<void>
   openProfile: (profile: MarketplaceProfile) => void
   simulateAction: SimulateAction
 }) {
@@ -352,12 +460,14 @@ export function PublishPage({
       '提交脚本、预览链接、最终 MP4、字幕文件、封面提示词和版权摘要。',
     ),
   })
+  const [taskAssets, setTaskAssets] = useState<ApiMediaAsset[]>([])
 
-  const updateDraft = (key: keyof PublishDraft, value: string) => {
+  type EditablePublishField = Exclude<keyof PublishDraft, 'attachmentIds'>
+  const updateDraft = (key: EditablePublishField, value: string) => {
     setDraft((current) => ({ ...current, [key]: value }))
   }
-  const improveDraftField = (key: keyof PublishDraft) => {
-    const suggestions: Record<keyof PublishDraft, string> = {
+  const improveDraftField = (key: EditablePublishField) => {
+    const suggestions: Record<EditablePublishField, string> = {
       title: textFor(t, 'Polished 30-second AI product launch video package', '中文课程宣传短视频全套交付'),
       category: draft.category,
       reward: textFor(t, '$520 / 5,200 pts', '¥3,200 / 3,200 积分'),
@@ -381,11 +491,11 @@ export function PublishPage({
         : `AI filled: ${publishFieldLabel(key, t)}`,
     )
   }
-  const aiButtonLabel = (key: keyof PublishDraft) =>
+  const aiButtonLabel = (key: EditablePublishField) =>
     isZh
       ? `用 AI 补全${publishFieldLabel(key, t)}`
       : `Use AI for ${publishFieldLabel(key, t)}`
-  const renderAiButton = (key: keyof PublishDraft) => (
+  const renderAiButton = (key: EditablePublishField) => (
     <button
       aria-label={aiButtonLabel(key)}
       className="icon-button ai-field-button"
@@ -461,8 +571,16 @@ export function PublishPage({
               {renderAiButton('rules')}
             </span>
           </label>
+          <MediaUploadPanel
+            t={t}
+            purpose="task_attachment"
+            assets={taskAssets}
+            setAssets={setTaskAssets}
+            title={textFor(t, 'Task attachments', '任务附件')}
+            simulateAction={simulateAction}
+          />
           <div className="button-row">
-            <button className="primary-button" type="button" onClick={() => publishTask(draft)}>
+            <button className="primary-button" type="button" onClick={() => void publishTask({ ...draft, attachmentIds: taskAssets.map((asset) => asset.id) })}>
               <Upload size={17} />
               {textFor(t, 'Publish task', '发布任务')}
             </button>
@@ -556,31 +674,66 @@ export function MyTasksPage({
   t,
   tasks,
   setPage,
+  accountHandle = 'taskops',
+  proposalStateByTask = {},
+  submissionStateByTask = {},
+  refreshProposals = async () => undefined,
+  acceptProposal = async () => undefined,
+  rejectProposal = async () => undefined,
+  refreshSubmissions = async () => undefined,
   submitTask,
+  approveTask = async () => undefined,
+  rejectTask = async () => undefined,
   simulateAction,
 }: {
   t: Record<string, string>
   tasks: Task[]
   setPage: (page: Page) => void
-  submitTask: (task: Task) => void
+  accountHandle?: string
+  proposalStateByTask?: Record<string, TaskChildCollection<ApiTaskProposal>>
+  submissionStateByTask?: Record<string, TaskChildCollection<ApiTaskSubmission>>
+  refreshProposals?: (task: Task) => Promise<void>
+  acceptProposal?: (task: Task, proposalId: string) => Promise<void>
+  rejectProposal?: (task: Task, proposalId: string) => Promise<void>
+  refreshSubmissions?: (task: Task) => Promise<void>
+  submitTask: (task: Task, options?: { assetIds?: string[]; rightsNote?: string }) => Promise<void>
+  approveTask?: (task: Task) => Promise<void>
+  rejectTask?: (task: Task) => Promise<void>
   simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
-  const scopedTasks = localizedTasks(tasks, t)
-  const publishedTasks = scopedTasks.filter((task) => task.publisher === 'taskops').slice(0, 2)
-  const publisherTasks = publishedTasks.length ? publishedTasks : scopedTasks.filter((task) => task.status === 'Open').slice(0, 2)
-  const participatingTasks = scopedTasks.filter((task) => task.assignee !== 'Unassigned').slice(0, 3)
-  const deliveryTasks = participatingTasks.length ? participatingTasks : scopedTasks.filter((task) => task.status === 'Open').slice(0, 2)
+  const scopedTasks = useMemo(() => localizedTasks(tasks, t), [tasks, t])
+  const ownsHandle = useCallback(
+    (handle: string | null | undefined) => String(handle ?? '').replace(/^@/, '') === accountHandle,
+    [accountHandle],
+  )
+  const publisherTasks = useMemo(
+    () => scopedTasks.filter((task) => ownsHandle(task.publisher)),
+    [ownsHandle, scopedTasks],
+  )
+  const assignedTasks = useMemo(
+    () => scopedTasks.filter((task) => ownsHandle(task.assignee)),
+    [ownsHandle, scopedTasks],
+  )
+  const proposedTasks = useMemo(
+    () => scopedTasks.filter((task) =>
+      (proposalStateByTask[String(task.id)]?.items ?? []).some((proposal) => ownsHandle(proposal.proposer?.handle))),
+    [ownsHandle, proposalStateByTask, scopedTasks],
+  )
+  const deliveryTasks = useMemo(
+    () => [...assignedTasks, ...proposedTasks.filter((task) => !assignedTasks.some((assigned) => assigned.id === task.id))],
+    [assignedTasks, proposedTasks],
+  )
   const proposalRows = isZh
     ? [
-        { maker: '@promptlin', title: '结构最清晰，含首版样例和验收拆分', meta: '预计 1 天提交首版' },
-        { maker: '@legalpixel', title: '版权边界完整，适合公开模板沉淀', meta: '预计 2 天提交首版' },
-        { maker: '@iriswood', title: '视觉参考充分，适合图片/视频类任务', meta: '预计当天确认方向' },
+        { maker: 'promptlin', title: '结构最清晰，含首版样例和验收拆分', meta: '预计 1 天提交首版' },
+        { maker: 'legalpixel', title: '版权边界完整，适合公开模板沉淀', meta: '预计 2 天提交首版' },
+        { maker: 'iriswood', title: '视觉参考充分，适合图片/视频类任务', meta: '预计当天确认方向' },
       ]
     : [
-        { maker: '@scriptbear', title: 'Clear scope with sample scenes and acceptance checks', meta: 'First draft in 1 day' },
-        { maker: '@legalpixel', title: 'Strong rights language and review checklist', meta: 'First draft in 2 days' },
-        { maker: '@iriswood', title: 'Visual references fit image and video tasks', meta: 'Direction confirmed today' },
+        { maker: 'scriptbear', title: 'Clear scope with sample scenes and acceptance checks', meta: 'First draft in 1 day' },
+        { maker: 'legalpixel', title: 'Strong rights language and review checklist', meta: 'First draft in 2 days' },
+        { maker: 'iriswood', title: 'Visual references fit image and video tasks', meta: 'Direction confirmed today' },
       ]
   const discussionLog = isZh
     ? ['发布方：请先确认前三秒钩子和版权范围。', '创作者：已补充两版方案，保留可编辑提示词。', '发布方：采用第二版，进入交付验收。']
@@ -710,12 +863,15 @@ export function MyTasksPage({
   type MineTaskRole = 'publisher' | 'maker'
   type MineTaskFilter = 'all' | 'posted' | 'accepted'
   const [mineTaskFilter, setMineTaskFilter] = useState<MineTaskFilter>('all')
+  const [submissionAssetsByTask, setSubmissionAssetsByTask] = useState<Record<string, ApiMediaAsset[]>>({})
   const [selectedMineTask, setSelectedMineTask] = useState<{ id: Task['id']; role: MineTaskRole }>(() => ({
     id: publisherTasks[0]?.id ?? deliveryTasks[0]?.id ?? scopedTasks[0]?.id ?? tasks[0]?.id ?? 0,
     role: publisherTasks[0] ? 'publisher' : 'maker',
   }))
   const showPostedTasks = mineTaskFilter === 'all' || mineTaskFilter === 'posted'
   const showAcceptedTasks = mineTaskFilter === 'all' || mineTaskFilter === 'accepted'
+  const publisherTaskKey = publisherTasks.map((task) => task.id).join('|')
+  const deliveryTaskKey = deliveryTasks.map((task) => task.id).join('|')
   const changeMineTaskFilter = (nextFilter: MineTaskFilter) => {
     setMineTaskFilter(nextFilter)
     const nextTask =
@@ -734,9 +890,7 @@ export function MyTasksPage({
   const selectedTask =
     (selectedMineTask.role === 'publisher' ? publisherTasks : deliveryTasks).find((task) => task.id === selectedMineTask.id) ??
     publisherTasks[0] ??
-    deliveryTasks[0] ??
-    scopedTasks[0] ??
-    tasks[0]
+    deliveryTasks[0]
   const selectedRole: MineTaskRole =
     selectedMineTask.role === 'publisher' && publisherTasks.some((task) => task.id === selectedTask?.id)
       ? 'publisher'
@@ -745,12 +899,94 @@ export function MyTasksPage({
         : publisherTasks[0]?.id === selectedTask?.id
           ? 'publisher'
           : 'maker'
+
+  useEffect(() => {
+    const currentTasks = selectedMineTask.role === 'publisher' ? publisherTasks : deliveryTasks
+    if (currentTasks.some((task) => task.id === selectedMineTask.id)) return
+    const nextTask =
+      mineTaskFilter === 'accepted'
+        ? deliveryTasks[0]
+        : mineTaskFilter === 'posted'
+          ? publisherTasks[0]
+          : publisherTasks[0] ?? deliveryTasks[0]
+    if (!nextTask) return
+    const timer = window.setTimeout(() => {
+      setSelectedMineTask({
+        id: nextTask.id,
+        role: publisherTasks.some((task) => task.id === nextTask.id) ? 'publisher' : 'maker',
+      })
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [accountHandle, mineTaskFilter, publisherTaskKey, deliveryTaskKey, publisherTasks, deliveryTasks, selectedMineTask.id, selectedMineTask.role])
+
   const selectedFields = selectedTask ? typeFieldsFor(selectedTask, selectedRole) : []
+  const selectedTaskKey = selectedTask ? String(selectedTask.id) : ''
+  const submissionAssets = selectedTaskKey ? submissionAssetsByTask[selectedTaskKey] ?? [] : []
+  const setSubmissionAssets = (assets: ApiMediaAsset[]) => {
+    if (!selectedTaskKey) return
+    setSubmissionAssetsByTask((current) => ({ ...current, [selectedTaskKey]: assets }))
+  }
+  const proposalCollection = selectedTaskKey ? proposalStateByTask[selectedTaskKey] : undefined
+  const submissionCollection = selectedTaskKey ? submissionStateByTask[selectedTaskKey] : undefined
+  const demoProposals: ApiTaskProposal[] = proposalRows.map((proposal, index) => ({
+    id: `demo-proposal-${index}`,
+    taskId: selectedTaskKey,
+    proposer: {
+      handle: proposal.maker,
+      name: { en: proposal.maker, zh: proposal.maker },
+      role: { en: 'creator', zh: 'creator' },
+      lane: 'maker',
+      initials: proposal.maker.slice(0, 2).toUpperCase(),
+    },
+    coverLetter: proposal.title,
+    estimate: proposal.meta,
+    status: 'pending',
+    decisionNote: '',
+    createdAt: '',
+  }))
+  const visibleProposals = proposalCollection?.items.length ? proposalCollection.items : demoProposals
+  const visibleSubmissions =
+    submissionCollection?.items.length
+      ? submissionCollection.items
+      : selectedTask?.submission && selectedTask.submission !== 'No submission yet.'
+        ? [
+            {
+              id: `demo-submission-${selectedTaskKey}`,
+              taskId: selectedTaskKey,
+              submitter: { handle: selectedTask.assignee },
+              content: selectedTask.submission,
+              assetIds: [],
+              rightsNote: selectedTask.rights,
+              status: selectedTask.status === 'Completed' ? 'approved' as const : 'pending_review' as const,
+              reviewNote: selectedTask.reviewNote,
+              reviewedBy: null,
+              reviewedAt: null,
+              createdAt: '',
+            },
+          ]
+        : []
+  const handleFor = (summary: ApiProfileSummary | { handle: string } | null) =>
+    summary?.handle ? `@${summary.handle}` : textFor(t, 'Unknown user', '未知用户')
+
+  useEffect(() => {
+    if (!selectedTask) return
+    if (selectedRole === 'publisher') {
+      void refreshProposals(selectedTask)
+      void refreshSubmissions(selectedTask)
+      return
+    }
+    void refreshSubmissions(selectedTask)
+    // The workflow refresh callbacks are owned by the parent hook and may be recreated after they update task state.
+    // This effect should only follow the selected task boundary to avoid a refresh/render loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTaskKey, selectedRole])
+
   const renderMineTaskCard = (task: Task, role: MineTaskRole) => {
     const isActive = selectedTask?.id === task.id && selectedRole === role
     return (
       <button
         className={isActive ? 'task-card mine-task-card active' : 'task-card mine-task-card'}
+        data-testid={`mine-task-card-${role}-${task.id}`}
         key={`${role}-${task.id}`}
         type="button"
         onClick={() => setSelectedMineTask({ id: task.id, role })}
@@ -863,43 +1099,92 @@ export function MyTasksPage({
             {selectedRole === 'publisher' ? (
               <>
                 <div className="proposal-list">
-                  {proposalRows.map((proposal, index) => (
-                    <div className="proposal-card" key={proposal.maker}>
-                      <div>
-                        <strong>{proposal.maker}</strong>
-                        <span>{proposal.title}</span>
-                        <small>{proposal.meta}</small>
-                      </div>
-                      <button
-                        className={index === 0 ? 'primary-button small' : 'ghost-button small'}
-                        type="button"
-                        onClick={() =>
-                          simulateAction(
-                            isZh ? `已选择方案：${proposal.maker}` : `Selected proposal from ${proposal.maker}`,
-                            { description: isZh ? `选择方案：${proposal.maker}` : `Selected proposal: ${proposal.maker}`, delta: '+0' },
-                          )
-                        }
-                      >
-                        <Check size={15} />
-                        {index === 0 ? textFor(t, 'Selected', '已选择') : textFor(t, 'Choose', '选择方案')}
+                  {proposalCollection?.loading && (
+                    <div className="empty-state">
+                      <strong>{textFor(t, 'Loading proposals', '正在加载方案')}</strong>
+                      <span>{textFor(t, 'Syncing proposal records from the API.', '正在从 API 同步方案记录。')}</span>
+                    </div>
+                  )}
+                  {proposalCollection?.error && (
+                    <div className="empty-state">
+                      <strong>{textFor(t, 'Proposal API unavailable', '方案 API 暂不可用')}</strong>
+                      <span>{proposalCollection.error}</span>
+                      <button className="ghost-button" type="button" onClick={() => void refreshProposals(selectedTask)}>
+                        {textFor(t, 'Retry proposals', '重试方案')}
                       </button>
                     </div>
-                  ))}
+                  )}
+                  {visibleProposals.map((proposal, index) => {
+                    const isDemo = proposal.id.startsWith('demo-proposal-')
+                    return (
+                    <div className="proposal-card" key={proposal.id}>
+                      <div>
+                        <strong>{handleFor(proposal.proposer)}</strong>
+                        <span>{proposal.coverLetter}</span>
+                        <small>{proposal.estimate || textFor(t, 'No estimate provided', '未填写预估时间')}</small>
+                        <StatusBadge status={proposal.status} t={t} />
+                      </div>
+                      <div className="button-row compact-buttons">
+                        <button
+                          className={proposal.status === 'accepted' || index === 0 ? 'primary-button small' : 'ghost-button small'}
+                          data-testid={`proposal-accept-${proposal.id}`}
+                          type="button"
+                          disabled={proposal.status !== 'pending' && !isDemo}
+                          onClick={() =>
+                            isDemo
+                              ? simulateAction(
+                                  isZh ? `已选择方案：${handleFor(proposal.proposer)}` : `Selected proposal from ${handleFor(proposal.proposer)}`,
+                                  {
+                                    description: isZh ? `选择方案：${handleFor(proposal.proposer)}` : `Selected proposal: ${handleFor(proposal.proposer)}`,
+                                    delta: '+0',
+                                  },
+                                )
+                              : void acceptProposal(selectedTask, proposal.id)
+                          }
+                        >
+                          <Check size={15} />
+                          {proposal.status === 'accepted' || (isDemo && index === 0) ? textFor(t, 'Selected', '已选择') : textFor(t, 'Choose', '选择方案')}
+                        </button>
+                        {proposal.status === 'pending' && (
+                          <button
+                            className="ghost-button small"
+                            data-testid={`proposal-reject-${proposal.id}`}
+                            type="button"
+                            onClick={() =>
+                              isDemo
+                                ? simulateAction(isZh ? `已暂不采纳：${handleFor(proposal.proposer)}` : `Skipped proposal from ${handleFor(proposal.proposer)}`)
+                                : void rejectProposal(selectedTask, proposal.id)
+                            }
+                          >
+                            <X size={15} />
+                            {textFor(t, 'Reject', '拒绝')}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    )
+                  })}
                 </div>
                 <InfoBox title={textFor(t, 'Publisher review fields', '发布方审看字段')} items={selectedFields.map((field) => `${field.label}: ${field.value}`)} />
+                {visibleSubmissions.length > 0 && (
+                  <InfoBox
+                    title={textFor(t, 'Latest submission records', '最近交付记录')}
+                    items={visibleSubmissions.map((submission) => `${handleFor(submission.submitter)} · ${statusLabel(submission.status, t)}: ${submission.content}`)}
+                  />
+                )}
                 <div className="button-row">
                   <button
                     className="primary-button"
+                    data-testid="approve-submission-button"
                     type="button"
-                    onClick={() =>
-                      simulateAction(isZh ? `进入验收：${selectedTask.title}` : `Opening acceptance for ${selectedTask.title}`, {
-                        description: isZh ? `验收入口：${selectedTask.title}` : `Acceptance entry: ${selectedTask.title}`,
-                        delta: '+0',
-                      })
-                    }
+                    onClick={() => void approveTask(selectedTask)}
                   >
                     <Check size={17} />
                     {textFor(t, 'Review acceptance', '进入验收')}
+                  </button>
+                  <button className="ghost-button" data-testid="reject-submission-button" type="button" onClick={() => void rejectTask(selectedTask)}>
+                    <X size={17} />
+                    {textFor(t, 'Request changes', '要求修改')}
                   </button>
                   <button className="ghost-button" type="button" onClick={() => setPage('community')}>
                     <MessageCircle size={17} />
@@ -910,8 +1195,46 @@ export function MyTasksPage({
             ) : (
               <>
                 <InfoBox title={textFor(t, 'Discussion record', '沟通记录')} items={discussionLog} />
+                {submissionCollection?.loading && (
+                  <div className="empty-state">
+                    <strong>{textFor(t, 'Loading submissions', '正在加载交付')}</strong>
+                    <span>{textFor(t, 'Syncing normalized submission records.', '正在同步标准化交付记录。')}</span>
+                  </div>
+                )}
+                {submissionCollection?.error && (
+                  <div className="empty-state">
+                    <strong>{textFor(t, 'Submission API unavailable', '交付 API 暂不可用')}</strong>
+                    <span>{submissionCollection.error}</span>
+                    <button className="ghost-button" type="button" onClick={() => void refreshSubmissions(selectedTask)}>
+                      {textFor(t, 'Retry submissions', '重试交付')}
+                    </button>
+                  </div>
+                )}
+                {visibleSubmissions.length > 0 && (
+                  <div className="proposal-list">
+                    {visibleSubmissions.map((submission) => (
+                      <div className="proposal-card" key={submission.id}>
+                        <div>
+                          <strong>{statusLabel(submission.status, t)}</strong>
+                          <span>{submission.content}</span>
+                          <small>{submission.rightsNote || textFor(t, 'No rights note provided', '未填写版权说明')}</small>
+                          {submission.reviewNote && <small>{submission.reviewNote}</small>}
+                        </div>
+                        <StatusBadge status={submission.status} t={t} />
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="form-panel inline-form">
                   <InfoBox title={textFor(t, 'Fields to submit for this task type', '此任务类型需提交')} items={selectedFields.map((field) => `${field.label}: ${field.value}`)} />
+                  <MediaUploadPanel
+                    t={t}
+                    purpose="submission_asset"
+                    assets={submissionAssets}
+                    setAssets={setSubmissionAssets}
+                    title={textFor(t, 'Submission assets', '交付资产')}
+                    simulateAction={simulateAction}
+                  />
                   <label>
                     {textFor(t, 'Result links', '成果链接')}
                     <input defaultValue={textFor(t, 'drive/final-pack, figma/preview-board, loom/walkthrough', '网盘/最终交付包，飞书/预览板，录屏/讲解')} />
@@ -922,7 +1245,19 @@ export function MyTasksPage({
                   </label>
                 </div>
                 <div className="button-row">
-                  <button className="primary-button" type="button" onClick={() => submitTask(selectedTask)}>
+                  <button
+                    className="primary-button"
+                    data-testid="submit-work-button"
+                    type="button"
+                    onClick={() =>
+                      void submitTask(selectedTask, {
+                        assetIds: submissionAssets.map((asset) => asset.id),
+                        rightsNote: submissionAssets.length
+                          ? textFor(t, 'Uploaded assets are cleared for the agreed task scope.', '已上传资产可按任务约定范围使用。')
+                          : undefined,
+                      })
+                    }
+                  >
                     <Upload size={17} />
                     {textFor(t, 'Submit acceptance work', '提交验收成果')}
                   </button>

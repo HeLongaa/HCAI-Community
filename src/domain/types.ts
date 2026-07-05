@@ -1,5 +1,23 @@
 export type Locale = 'en' | 'zh'
-export type Role = 'member' | 'contributor' | 'moderator' | 'admin'
+export type Role = 'member' | 'contributor' | 'creator' | 'publisher' | 'moderator' | 'admin'
+export type Permission =
+  | 'task:create'
+  | 'task:propose'
+  | 'task:claim'
+  | 'task:submit'
+  | 'task:review'
+  | 'task:moderate'
+  | 'post:create'
+  | 'post:moderate'
+  | 'comment:create'
+  | 'points:read'
+  | 'points:adjust'
+  | 'admin:access'
+  | 'admin:audit:read'
+  | 'admin:queue:read'
+  | 'admin:queue:review'
+  | 'admin:permissions:manage'
+  | 'security:alerts:manage'
 export type Page =
   | 'home'
   | 'playground'
@@ -28,6 +46,29 @@ export type NavigateOptions = {
   returnTo?: Page | null
 }
 
+export type AdminDeepLink = {
+  tab?: 'Task review' | 'Access' | 'Security' | 'Finance' | 'Submissions' | 'Community' | 'Audit log' | 'Users' | 'Tags' | 'AI config'
+  queue?: string | null
+  reviewId?: string | null
+  auditEventId?: string | null
+  ledgerUserHandle?: string | null
+  policyHistoryEventId?: string | null
+  securityAlertId?: string | null
+  mediaStatus?: 'pending' | 'scanning' | 'review' | 'clean' | 'rejected' | 'all' | null
+  mediaAssetId?: string | null
+}
+
+export type NotificationDeepLink = {
+  page: Page
+  admin?: AdminDeepLink
+}
+
+export type AsyncResourceState = {
+  loading: boolean
+  error: string | null
+  refresh: () => Promise<void>
+}
+
 export type Track = {
   id: number
   title: string
@@ -48,7 +89,7 @@ export type Work = {
 }
 
 export type Task = {
-  id: number
+  id: string | number
   title: string
   category: string
   budget: string
@@ -69,7 +110,7 @@ export type Task = {
 }
 
 export type Post = {
-  id: number
+  id: string | number
   title: string
   category: string
   author: string
@@ -101,6 +142,7 @@ export type PublishDraft = {
   visibility: string
   details: string
   rules: string
+  attachmentIds?: string[]
 }
 
 export type LocalizedText = {
@@ -136,3 +178,14 @@ export type MarketplaceProfile = {
 }
 
 export type SimulateAction = (message: string, ledger?: { description: string; delta: string }) => void
+
+export type AuditEvent = {
+  id: string
+  actorType: 'user' | 'system'
+  actorId: string | null
+  action: string
+  resourceType: string
+  resourceId: string | null
+  metadata: unknown
+  createdAt: string
+}

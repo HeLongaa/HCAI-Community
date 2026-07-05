@@ -80,7 +80,7 @@ export function ProfilePage({
   tasks: Task[]
   setPage: (page: Page) => void
   openProfile: (profile: MarketplaceProfile) => void
-  submitTask: (task: Task) => void
+  submitTask: (task: Task, options?: { assetIds?: string[]; rightsNote?: string }) => Promise<void>
   simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
@@ -223,7 +223,7 @@ export function ProfilePage({
         ))}
       </div>
       {activeTab === 'myTasks' ? (
-        <MyTasksPage t={t} tasks={tasks} setPage={setPage} submitTask={submitTask} simulateAction={simulateAction} />
+        <MyTasksPage t={t} tasks={tasks} setPage={setPage} accountHandle={profile.handle} submitTask={submitTask} simulateAction={simulateAction} />
       ) : (
       <div className="profile-layout-grid">
         <section className="panel">

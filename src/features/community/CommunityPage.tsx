@@ -7,7 +7,7 @@ import {
   MessageCircle,
   Tags,
 } from 'lucide-react'
-import type { CommunityView, MarketplaceProfile, Post, SimulateAction } from '../../domain/types'
+import type { AsyncResourceState, CommunityView, MarketplaceProfile, Post, SimulateAction } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { visualWorks } from '../../data/mockData'
 import { categoryLabel, findProfile, isZhCopy, localizedPosts, textFor } from '../../domain/utils'
@@ -26,14 +26,15 @@ export function CommunityPage({
   setCommunityFilter,
   communityView,
   setCommunityView,
+  status,
   simulateAction,
 }: {
   t: Record<string, string>
   posts: Post[]
-  convertPostToTask: (post: Post) => void
-  savePostToLibrary: (post: Post) => void
-  likePost: (post: Post) => void
-  replyToPost: (post: Post, replyText?: string) => void
+  convertPostToTask: (post: Post) => Promise<void>
+  savePostToLibrary: (post: Post) => Promise<void>
+  likePost: (post: Post) => Promise<void>
+  replyToPost: (post: Post, replyText?: string) => Promise<void>
   openProfile: (profile: MarketplaceProfile) => void
   selectedPost: Post
   setSelectedPost: (post: Post) => void
@@ -41,6 +42,7 @@ export function CommunityPage({
   setCommunityFilter: (filter: string) => void
   communityView: CommunityView
   setCommunityView: (view: CommunityView) => void
+  status: AsyncResourceState
   simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
@@ -52,7 +54,7 @@ export function CommunityPage({
       '建议把验收拆成脚本确认、首版预览、修改记录和最终文件四步，并明确每一步的通过标准。',
     ),
   )
-  const [localReplies, setLocalReplies] = useState<Record<number, Array<{ author: string; text: string }>>>({})
+  const [localReplies, setLocalReplies] = useState<Record<string, Array<{ author: string; text: string }>>>({})
   const [topicPage, setTopicPage] = useState(1)
   const topicTabsRef = useRef<HTMLDivElement | null>(null)
   const activeSelectedPost =
@@ -163,11 +165,12 @@ export function CommunityPage({
       simulateAction(isZh ? '请先输入回复内容' : 'Please enter a reply first')
       return
     }
+    const postKey = String(activeSelectedPost.id)
     setLocalReplies((current) => ({
       ...current,
-      [activeSelectedPost.id]: [...(current[activeSelectedPost.id] ?? []), { author: 'you', text }],
+      [postKey]: [...(current[postKey] ?? []), { author: 'you', text }],
     }))
-    replyToPost(activeSelectedPost, text)
+    void replyToPost(activeSelectedPost, text)
     setReplyDraft('')
   }
 
@@ -192,6 +195,25 @@ export function CommunityPage({
       </div>
       <div className="community-layout">
         <section className={communityView === 'detail' ? 'forum-main detail-mode' : 'forum-main'}>
+          {(status.loading || status.error) && (
+            <div className="empty-state">
+              <strong>
+                {status.loading
+                  ? textFor(t, 'Syncing community', '正在同步社区')
+                  : textFor(t, 'Community API unavailable', '社区 API 暂不可用')}
+              </strong>
+              <span>
+                {status.loading
+                  ? textFor(t, 'Loading posts and inspiration library from the API.', '正在从 API 加载帖子和灵感库。')
+                  : status.error}
+              </span>
+              {status.error && (
+                <button className="ghost-button" type="button" onClick={() => void status.refresh()}>
+                  {textFor(t, 'Retry sync', '重试同步')}
+                </button>
+              )}
+            </div>
+          )}
           {communityView === 'list' ? (
             <>
               <div className="topic-toolbar">
@@ -360,19 +382,19 @@ export function CommunityPage({
                 </div>
               </div>
               <div className="post-action-bar">
-                <button className="compact-action" type="button" onClick={() => likePost(activeSelectedPost)} title={isZh ? '点赞' : 'Like'}>
+                <button className="compact-action" type="button" onClick={() => void likePost(activeSelectedPost)} title={isZh ? '点赞' : 'Like'}>
                   <Heart size={17} />
                   <span>{isZh ? '点赞' : 'Like'}</span>
                 </button>
-                <button className="compact-action" type="button" onClick={() => savePostToLibrary(activeSelectedPost)} title={isZh ? '收藏' : 'Save'}>
+                <button className="compact-action" type="button" onClick={() => void savePostToLibrary(activeSelectedPost)} title={isZh ? '收藏' : 'Save'}>
                   <Bookmark size={17} />
                   <span>{isZh ? '收藏' : 'Save'}</span>
                 </button>
-                <button className="compact-action" type="button" onClick={() => convertPostToTask(activeSelectedPost)} title={isZh ? '转成任务' : 'Turn into task'}>
+                <button className="compact-action" type="button" onClick={() => void convertPostToTask(activeSelectedPost)} title={isZh ? '转成任务' : 'Turn into task'}>
                   <BriefcaseBusiness size={17} />
                   <span>{isZh ? '任务' : 'Task'}</span>
                 </button>
-                <button className="compact-action" type="button" onClick={() => savePostToLibrary(activeSelectedPost)} title={isZh ? '收入灵感库' : 'Add to library'}>
+                <button className="compact-action" type="button" onClick={() => void savePostToLibrary(activeSelectedPost)} title={isZh ? '收入灵感库' : 'Add to library'}>
                   <Tags size={17} />
                   <span>{isZh ? '入库' : 'Library'}</span>
                 </button>
@@ -385,13 +407,13 @@ export function CommunityPage({
                 <div className="comment-heading">
                   <strong>{isZh ? '回复' : 'Replies'}</strong>
                   <span>
-                    {activeSelectedPost.replies + (localReplies[activeSelectedPost.id]?.length ?? 0)} {isZh ? '条' : 'total'}
+                    {activeSelectedPost.replies + (localReplies[String(activeSelectedPost.id)]?.length ?? 0)} {isZh ? '条' : 'total'}
                   </span>
                 </div>
                 <Comment author="iriswood" text={isZh ? '建议补一个验收清单：脚本、成片、字幕、封面、版权授权分别确认。' : 'This workflow is clean. I would add a style-lock prompt for the visual loop.'} />
                 <Comment author="veyn" text={isZh ? '如果要转任务，可以把修改轮次和最终文件格式写成硬性验收项。' : 'The second prompt version gives much better motion consistency.'} />
-                {(localReplies[activeSelectedPost.id] ?? []).map((reply, index) => (
-                  <Comment author={reply.author} text={reply.text} key={activeSelectedPost.id + '-' + index + '-' + reply.text} />
+                {(localReplies[String(activeSelectedPost.id)] ?? []).map((reply: { author: string; text: string }, index: number) => (
+                  <Comment author={reply.author} text={reply.text} key={`${activeSelectedPost.id}-${index}-${reply.text}`} />
                 ))}
               </div>
               <div className="reply-box">

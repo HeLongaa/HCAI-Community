@@ -1,0 +1,135 @@
+name: Quality Gates
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      smoke_profile:
+        description: Run fixture smoke or real environment smoke
+        required: true
+        default: fixture
+        type: choice
+        options:
+          - fixture
+          - env
+      environment:
+        description: GitHub Environment used for real environment smoke
+        required: false
+        default: production
+        type: string
+
+jobs:
+  pr-gate:
+    name: PR Quality Gate
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch' || inputs.smoke_profile == 'fixture'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm --prefix server ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run deployment fixture gate
+        run: npm run check:deploy
+
+  deployment-env-smoke:
+    name: Deployment Environment Smoke
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.smoke_profile == 'env'
+    environment: ${{ inputs.environment }}
+    env:
+      NODE_ENV: production
+      PORT: ${{ vars.PORT }}
+      ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
+      ACCESS_TOKEN_KEY_ID: ${{ vars.ACCESS_TOKEN_KEY_ID }}
+      SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+      AUTH_COOKIE_SECURE: ${{ vars.AUTH_COOKIE_SECURE }}
+      AUTH_COOKIE_SAMESITE: ${{ vars.AUTH_COOKIE_SAMESITE }}
+      AUTH_COOKIE_DOMAIN: ${{ vars.AUTH_COOKIE_DOMAIN }}
+      AUTH_TRUSTED_ORIGINS: ${{ vars.AUTH_TRUSTED_ORIGINS }}
+      CORS_ALLOWED_ORIGINS: ${{ vars.CORS_ALLOWED_ORIGINS }}
+      STORAGE_DRIVER: ${{ vars.STORAGE_DRIVER }}
+      STORAGE_ENDPOINT: ${{ vars.STORAGE_ENDPOINT }}
+      STORAGE_REGION: ${{ vars.STORAGE_REGION }}
+      STORAGE_BUCKET: ${{ vars.STORAGE_BUCKET }}
+      STORAGE_ACCESS_KEY_ID: ${{ secrets.STORAGE_ACCESS_KEY_ID }}
+      STORAGE_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_SECRET_ACCESS_KEY }}
+      STORAGE_SESSION_TOKEN: ${{ secrets.STORAGE_SESSION_TOKEN }}
+      MEDIA_SCAN_PROVIDER: ${{ vars.MEDIA_SCAN_PROVIDER }}
+      MEDIA_SCAN_WEBHOOK_SECRET: ${{ secrets.MEDIA_SCAN_WEBHOOK_SECRET }}
+      MEDIA_SCAN_REQUEST_ADAPTER: ${{ vars.MEDIA_SCAN_REQUEST_ADAPTER }}
+      MEDIA_SCAN_REQUEST_URL: ${{ vars.MEDIA_SCAN_REQUEST_URL }}
+      MEDIA_SCAN_REQUEST_SECRET: ${{ secrets.MEDIA_SCAN_REQUEST_SECRET }}
+      MEDIA_SCAN_CALLBACK_BASE_URL: ${{ vars.MEDIA_SCAN_CALLBACK_BASE_URL }}
+      MEDIA_SCAN_CALLBACK_SIGNATURE_SECRET: ${{ secrets.MEDIA_SCAN_CALLBACK_SIGNATURE_SECRET }}
+      MEDIA_SCAN_ALERT_WEBHOOK_URL: ${{ vars.MEDIA_SCAN_ALERT_WEBHOOK_URL }}
+      MEDIA_SCAN_ALERT_WEBHOOK_SECRET: ${{ secrets.MEDIA_SCAN_ALERT_WEBHOOK_SECRET }}
+      MEDIA_SCAN_ALERT_SLACK_WEBHOOK_URL: ${{ secrets.MEDIA_SCAN_ALERT_SLACK_WEBHOOK_URL }}
+      MEDIA_SCAN_ALERT_EMAIL_WEBHOOK_URL: ${{ vars.MEDIA_SCAN_ALERT_EMAIL_WEBHOOK_URL }}
+      MEDIA_SCAN_ALERT_EMAIL_WEBHOOK_SECRET: ${{ secrets.MEDIA_SCAN_ALERT_EMAIL_WEBHOOK_SECRET }}
+      MEDIA_SCAN_ALERT_EMAIL_TO: ${{ vars.MEDIA_SCAN_ALERT_EMAIL_TO }}
+      MEDIA_SCAN_ALERT_EMAIL_FROM: ${{ vars.MEDIA_SCAN_ALERT_EMAIL_FROM }}
+      SECURITY_ALERT_WEBHOOK_URL: ${{ vars.SECURITY_ALERT_WEBHOOK_URL }}
+      SECURITY_ALERT_WEBHOOK_SECRET: ${{ secrets.SECURITY_ALERT_WEBHOOK_SECRET }}
+      SECURITY_ALERT_SLACK_WEBHOOK_URL: ${{ secrets.SECURITY_ALERT_SLACK_WEBHOOK_URL }}
+      SECURITY_ALERT_EMAIL_WEBHOOK_URL: ${{ vars.SECURITY_ALERT_EMAIL_WEBHOOK_URL }}
+      SECURITY_ALERT_EMAIL_WEBHOOK_SECRET: ${{ secrets.SECURITY_ALERT_EMAIL_WEBHOOK_SECRET }}
+      SECURITY_ALERT_EMAIL_TO: ${{ vars.SECURITY_ALERT_EMAIL_TO }}
+      SECURITY_ALERT_EMAIL_FROM: ${{ vars.SECURITY_ALERT_EMAIL_FROM }}
+      RATE_LIMIT_ENABLED: ${{ vars.RATE_LIMIT_ENABLED }}
+      RATE_LIMIT_STORE: ${{ vars.RATE_LIMIT_STORE }}
+      RATE_LIMIT_WINDOW_MS: ${{ vars.RATE_LIMIT_WINDOW_MS }}
+      RATE_LIMIT_AUTH_MAX: ${{ vars.RATE_LIMIT_AUTH_MAX }}
+      RATE_LIMIT_UPLOAD_MAX: ${{ vars.RATE_LIMIT_UPLOAD_MAX }}
+      RATE_LIMIT_ADMIN_MUTATION_MAX: ${{ vars.RATE_LIMIT_ADMIN_MUTATION_MAX }}
+      REQUEST_BODY_SIZE_GUARD_ENABLED: ${{ vars.REQUEST_BODY_SIZE_GUARD_ENABLED }}
+      REQUEST_BODY_MAX_BYTES: ${{ vars.REQUEST_BODY_MAX_BYTES }}
+      AUTH_FAILURE_MONITOR_ENABLED: ${{ vars.AUTH_FAILURE_MONITOR_ENABLED }}
+      AUTH_FAILURE_WINDOW_MS: ${{ vars.AUTH_FAILURE_WINDOW_MS }}
+      AUTH_FAILURE_IP_ACCOUNT_THRESHOLD: ${{ vars.AUTH_FAILURE_IP_ACCOUNT_THRESHOLD }}
+      AUTH_FAILURE_ACCOUNT_IP_THRESHOLD: ${{ vars.AUTH_FAILURE_ACCOUNT_IP_THRESHOLD }}
+      SECURITY_EVENT_MAX_ITEMS: ${{ vars.SECURITY_EVENT_MAX_ITEMS }}
+      OAUTH_GOOGLE_CLIENT_ID: ${{ vars.OAUTH_GOOGLE_CLIENT_ID }}
+      OAUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.OAUTH_GOOGLE_CLIENT_SECRET }}
+      OAUTH_GOOGLE_REDIRECT_URI: ${{ vars.OAUTH_GOOGLE_REDIRECT_URI }}
+      OAUTH_DISCORD_CLIENT_ID: ${{ vars.OAUTH_DISCORD_CLIENT_ID }}
+      OAUTH_DISCORD_CLIENT_SECRET: ${{ secrets.OAUTH_DISCORD_CLIENT_SECRET }}
+      OAUTH_DISCORD_REDIRECT_URI: ${{ vars.OAUTH_DISCORD_REDIRECT_URI }}
+      OAUTH_APPLE_CLIENT_ID: ${{ vars.OAUTH_APPLE_CLIENT_ID }}
+      OAUTH_APPLE_TEAM_ID: ${{ vars.OAUTH_APPLE_TEAM_ID }}
+      OAUTH_APPLE_KEY_ID: ${{ vars.OAUTH_APPLE_KEY_ID }}
+      OAUTH_APPLE_PRIVATE_KEY: ${{ secrets.OAUTH_APPLE_PRIVATE_KEY }}
+      OAUTH_APPLE_REDIRECT_URI: ${{ vars.OAUTH_APPLE_REDIRECT_URI }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Run real environment smoke
+        run: npm run smoke:production:env

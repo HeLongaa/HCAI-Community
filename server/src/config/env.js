@@ -1,0 +1,391 @@
+const toPort = (value) => {
+  const parsed = Number.parseInt(value ?? '', 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 8787
+}
+
+const positiveInteger = (source, key, fallback) => {
+  const raw = source[key]
+  if (raw == null || raw === '') {
+    return fallback
+  }
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`${key} must be a positive integer`)
+  }
+  return parsed
+}
+
+const getAccessTokenSecret = (source) => source.ACCESS_TOKEN_SECRET ?? source.SESSION_SECRET ?? ''
+const storageRequiredKeys = ['STORAGE_ENDPOINT', 'STORAGE_REGION', 'STORAGE_BUCKET', 'STORAGE_ACCESS_KEY_ID', 'STORAGE_SECRET_ACCESS_KEY']
+
+const getStorageDriver = (source) => String(source.STORAGE_DRIVER ?? (source.STORAGE_BUCKET ? 's3' : 'mock')).trim().toLowerCase()
+const getMediaScanProvider = (source) => String(source.MEDIA_SCAN_PROVIDER ?? 'manual').trim().toLowerCase()
+const supportedMediaScanRequestAdapters = ['generic-webhook', 'clamav-http']
+const getMediaScanRequestAdapter = (source) => String(source.MEDIA_SCAN_REQUEST_ADAPTER ?? 'generic-webhook').trim().toLowerCase()
+const supportedRateLimitStores = ['memory']
+const getRateLimitStore = (source) => String(source.RATE_LIMIT_STORE ?? 'memory').trim().toLowerCase()
+const getOptionalUrl = (source, key) => {
+  const value = String(source[key] ?? '').trim()
+  if (!value) {
+    return ''
+  }
+  try {
+    return new URL(value).toString()
+  } catch {
+    throw new Error(`${key} must be a valid URL`)
+  }
+}
+const boolFlag = (source, key, fallback = false) => {
+  const raw = source[key]
+  if (raw == null || raw === '') {
+    return fallback
+  }
+  return String(raw).trim().toLowerCase() === 'true'
+}
+const splitCsv = (value) =>
+  String(value ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+const positiveIntegerValue = (value, fallback) => {
+  const parsed = Number.parseInt(value ?? '', 10)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+const getAuthCookieSameSite = (source) => {
+  const value = String(source.AUTH_COOKIE_SAMESITE ?? 'Lax').trim().toLowerCase()
+  if (value === 'none') return 'None'
+  if (value === 'strict') return 'Strict'
+  return 'Lax'
+}
+
+export const buildEnv = (source = process.env) => {
+  const nodeEnv = source.NODE_ENV || 'development'
+  const accessTokenSecret = getAccessTokenSecret(source)
+  const storageDriver = getStorageDriver(source)
+  const mediaScanProvider = getMediaScanProvider(source)
+  const mediaScanRequestAdapter = getMediaScanRequestAdapter(source)
+  const rateLimitStore = getRateLimitStore(source)
+  const rateLimitWindowMs = positiveInteger(source, 'RATE_LIMIT_WINDOW_MS', 60_000)
+  const rateLimitAuthMax = positiveInteger(source, 'RATE_LIMIT_AUTH_MAX', 120)
+  const rateLimitUploadMax = positiveInteger(source, 'RATE_LIMIT_UPLOAD_MAX', 120)
+  const rateLimitAdminMutationMax = positiveInteger(source, 'RATE_LIMIT_ADMIN_MUTATION_MAX', 180)
+  const requestBodyMaxBytes = positiveInteger(source, 'REQUEST_BODY_MAX_BYTES', 1_048_576)
+  const authFailureWindowMs = positiveInteger(source, 'AUTH_FAILURE_WINDOW_MS', 300_000)
+  const authFailureIpAccountThreshold = positiveInteger(source, 'AUTH_FAILURE_IP_ACCOUNT_THRESHOLD', 5)
+  const authFailureAccountIpThreshold = positiveInteger(source, 'AUTH_FAILURE_ACCOUNT_IP_THRESHOLD', 5)
+  const securityEventMaxItems = positiveInteger(source, 'SECURITY_EVENT_MAX_ITEMS', 500)
+  const securityAlertWindowMinutes = positiveInteger(source, 'SECURITY_ALERT_WINDOW_MINUTES', 15)
+  const securityAlertRateLimitThreshold = positiveInteger(source, 'SECURITY_ALERT_RATE_LIMIT_THRESHOLD', 10)
+  const securityAlertBodyRejectedThreshold = positiveInteger(source, 'SECURITY_ALERT_BODY_REJECTED_THRESHOLD', 5)
+  const securityAlertAuthFailureThreshold = positiveInteger(source, 'SECURITY_ALERT_AUTH_FAILURE_THRESHOLD', 1)
+  const securityAlertDeliveryFailureThreshold = positiveInteger(source, 'SECURITY_ALERT_DELIVERY_FAILURE_THRESHOLD', 3)
+  const securityAlertWebhookUrl = getOptionalUrl(source, 'SECURITY_ALERT_WEBHOOK_URL')
+  const securityAlertWebhookTimeoutSeconds = positiveInteger(source, 'SECURITY_ALERT_WEBHOOK_TIMEOUT_SECONDS', 5)
+  const securityAlertSlackWebhookUrl = getOptionalUrl(source, 'SECURITY_ALERT_SLACK_WEBHOOK_URL')
+  const securityAlertSlackTimeoutSeconds = positiveInteger(source, 'SECURITY_ALERT_SLACK_TIMEOUT_SECONDS', 5)
+  const securityAlertEmailWebhookUrl = getOptionalUrl(source, 'SECURITY_ALERT_EMAIL_WEBHOOK_URL')
+  const securityAlertEmailRecipients = splitCsv(source.SECURITY_ALERT_EMAIL_TO)
+  const securityAlertEmailTimeoutSeconds = positiveInteger(source, 'SECURITY_ALERT_EMAIL_TIMEOUT_SECONDS', 5)
+  const mediaScanRetryDelaySeconds = positiveInteger(source, 'MEDIA_SCAN_RETRY_DELAY_SECONDS', 300)
+  const mediaScanTimeoutSeconds = positiveInteger(source, 'MEDIA_SCAN_TIMEOUT_SECONDS', 900)
+  const mediaScanMaxAttempts = positiveInteger(source, 'MEDIA_SCAN_MAX_ATTEMPTS', 3)
+  const mediaScanWorkerIntervalSeconds = positiveInteger(source, 'MEDIA_SCAN_WORKER_INTERVAL_SECONDS', 60)
+  const mediaScanHistoryRetentionDays = positiveInteger(source, 'MEDIA_SCAN_HISTORY_RETENTION_DAYS', 180)
+  const mediaScanHistoryRetentionMaxPerAsset = positiveInteger(source, 'MEDIA_SCAN_HISTORY_RETENTION_MAX_PER_ASSET', 50)
+  const mediaScanAlertWindowMinutes = positiveInteger(source, 'MEDIA_SCAN_ALERT_WINDOW_MINUTES', 60)
+  const mediaScanCallbackDeniedAlertThreshold = positiveInteger(source, 'MEDIA_SCAN_CALLBACK_DENIED_ALERT_THRESHOLD', 3)
+  const mediaScanDispatchFailedAlertThreshold = positiveInteger(source, 'MEDIA_SCAN_DISPATCH_FAILED_ALERT_THRESHOLD', 3)
+  const mediaScanTimeoutAlertThreshold = positiveInteger(source, 'MEDIA_SCAN_TIMEOUT_ALERT_THRESHOLD', 2)
+  const mediaScanAlertDeliveryFailedAlertThreshold = positiveInteger(source, 'MEDIA_SCAN_ALERT_DELIVERY_FAILED_ALERT_THRESHOLD', 2)
+  const mediaScanAlertWebhookUrl = getOptionalUrl(source, 'MEDIA_SCAN_ALERT_WEBHOOK_URL')
+  const mediaScanAlertWebhookTimeoutSeconds = positiveInteger(source, 'MEDIA_SCAN_ALERT_WEBHOOK_TIMEOUT_SECONDS', 5)
+  const mediaScanAlertSlackWebhookUrl = getOptionalUrl(source, 'MEDIA_SCAN_ALERT_SLACK_WEBHOOK_URL')
+  const mediaScanAlertSlackTimeoutSeconds = positiveInteger(source, 'MEDIA_SCAN_ALERT_SLACK_TIMEOUT_SECONDS', 5)
+  const mediaScanAlertEmailWebhookUrl = getOptionalUrl(source, 'MEDIA_SCAN_ALERT_EMAIL_WEBHOOK_URL')
+  const mediaScanAlertEmailRecipients = splitCsv(source.MEDIA_SCAN_ALERT_EMAIL_TO)
+  const mediaScanAlertEmailTimeoutSeconds = positiveInteger(source, 'MEDIA_SCAN_ALERT_EMAIL_TIMEOUT_SECONDS', 5)
+  const mediaScanRequestUrl = getOptionalUrl(source, 'MEDIA_SCAN_REQUEST_URL')
+  const mediaScanCallbackBaseUrl = getOptionalUrl(source, 'MEDIA_SCAN_CALLBACK_BASE_URL')
+  const mediaScanRequestTimeoutSeconds = positiveInteger(source, 'MEDIA_SCAN_REQUEST_TIMEOUT_SECONDS', 10)
+  const mediaScanCallbackSignatureToleranceSeconds = positiveInteger(source, 'MEDIA_SCAN_CALLBACK_SIGNATURE_TOLERANCE_SECONDS', 300)
+  const authCookieSameSite = getAuthCookieSameSite(source)
+  if (nodeEnv === 'production' && !accessTokenSecret) {
+    throw new Error('ACCESS_TOKEN_SECRET or SESSION_SECRET is required in production')
+  }
+  if (nodeEnv === 'production' && accessTokenSecret.length < 32) {
+    throw new Error('ACCESS_TOKEN_SECRET or SESSION_SECRET must be at least 32 characters in production')
+  }
+  if (storageDriver === 's3') {
+    const missing = storageRequiredKeys.filter((key) => !String(source[key] ?? '').trim())
+    if (missing.length > 0) {
+      throw new Error(`Missing object storage configuration: ${missing.join(', ')}`)
+    }
+  }
+  if (!['manual', 'mock', 'webhook'].includes(mediaScanProvider)) {
+    throw new Error('MEDIA_SCAN_PROVIDER must be one of: manual, mock, webhook')
+  }
+  if (mediaScanProvider === 'webhook' && !String(source.MEDIA_SCAN_WEBHOOK_SECRET ?? '').trim()) {
+    throw new Error('MEDIA_SCAN_WEBHOOK_SECRET is required when MEDIA_SCAN_PROVIDER=webhook')
+  }
+  if (!supportedMediaScanRequestAdapters.includes(mediaScanRequestAdapter)) {
+    throw new Error(`MEDIA_SCAN_REQUEST_ADAPTER must be one of: ${supportedMediaScanRequestAdapters.join(', ')}`)
+  }
+  if (!supportedRateLimitStores.includes(rateLimitStore)) {
+    throw new Error(`RATE_LIMIT_STORE must be one of: ${supportedRateLimitStores.join(', ')}`)
+  }
+  if (mediaScanAlertEmailWebhookUrl && mediaScanAlertEmailRecipients.length === 0) {
+    throw new Error('MEDIA_SCAN_ALERT_EMAIL_TO is required when MEDIA_SCAN_ALERT_EMAIL_WEBHOOK_URL is configured')
+  }
+  if (securityAlertEmailWebhookUrl && securityAlertEmailRecipients.length === 0) {
+    throw new Error('SECURITY_ALERT_EMAIL_TO is required when SECURITY_ALERT_EMAIL_WEBHOOK_URL is configured')
+  }
+  return {
+    port: toPort(source.PORT),
+    nodeEnv,
+    accessTokenKeyId: source.ACCESS_TOKEN_KEY_ID || 'current',
+    hasManagedAccessTokenSecret: Boolean(accessTokenSecret),
+    storageDriver,
+    mediaScanProvider,
+    mediaScanRequestAdapter,
+    hasMediaScanWebhookSecret: Boolean(String(source.MEDIA_SCAN_WEBHOOK_SECRET ?? '').trim()),
+    mediaScanRetryDelaySeconds,
+    mediaScanTimeoutSeconds,
+    mediaScanMaxAttempts,
+    mediaScanWorkerEnabled: boolFlag(source, 'MEDIA_SCAN_WORKER_ENABLED', false),
+    mediaScanWorkerIntervalSeconds,
+    mediaScanHistoryRetentionDays,
+    mediaScanHistoryRetentionMaxPerAsset,
+    mediaScanAlertWindowMinutes,
+    mediaScanCallbackDeniedAlertThreshold,
+    mediaScanDispatchFailedAlertThreshold,
+    mediaScanTimeoutAlertThreshold,
+    mediaScanAlertDeliveryFailedAlertThreshold,
+    hasMediaScanAlertWebhookUrl: Boolean(mediaScanAlertWebhookUrl),
+    hasMediaScanAlertWebhookSecret: Boolean(String(source.MEDIA_SCAN_ALERT_WEBHOOK_SECRET ?? '').trim()),
+    mediaScanAlertWebhookTimeoutSeconds,
+    hasMediaScanAlertSlackWebhookUrl: Boolean(mediaScanAlertSlackWebhookUrl),
+    mediaScanAlertSlackTimeoutSeconds,
+    hasMediaScanAlertEmailWebhookUrl: Boolean(mediaScanAlertEmailWebhookUrl),
+    hasMediaScanAlertEmailWebhookSecret: Boolean(String(source.MEDIA_SCAN_ALERT_EMAIL_WEBHOOK_SECRET ?? '').trim()),
+    mediaScanAlertEmailRecipientCount: mediaScanAlertEmailRecipients.length,
+    hasMediaScanAlertEmailFrom: Boolean(String(source.MEDIA_SCAN_ALERT_EMAIL_FROM ?? '').trim()),
+    mediaScanAlertEmailTimeoutSeconds,
+    securityAlertWindowMinutes,
+    securityAlertRateLimitThreshold,
+    securityAlertBodyRejectedThreshold,
+    securityAlertAuthFailureThreshold,
+    securityAlertDeliveryFailureThreshold,
+    hasSecurityAlertWebhookUrl: Boolean(securityAlertWebhookUrl),
+    hasSecurityAlertWebhookSecret: Boolean(String(source.SECURITY_ALERT_WEBHOOK_SECRET ?? '').trim()),
+    securityAlertWebhookTimeoutSeconds,
+    hasSecurityAlertSlackWebhookUrl: Boolean(securityAlertSlackWebhookUrl),
+    securityAlertSlackTimeoutSeconds,
+    hasSecurityAlertEmailWebhookUrl: Boolean(securityAlertEmailWebhookUrl),
+    hasSecurityAlertEmailWebhookSecret: Boolean(String(source.SECURITY_ALERT_EMAIL_WEBHOOK_SECRET ?? '').trim()),
+    securityAlertEmailRecipientCount: securityAlertEmailRecipients.length,
+    hasSecurityAlertEmailFrom: Boolean(String(source.SECURITY_ALERT_EMAIL_FROM ?? '').trim()),
+    securityAlertEmailTimeoutSeconds,
+    hasMediaScanRequestUrl: Boolean(mediaScanRequestUrl),
+    hasMediaScanRequestSecret: Boolean(String(source.MEDIA_SCAN_REQUEST_SECRET ?? '').trim()),
+    hasMediaScanCallbackBaseUrl: Boolean(mediaScanCallbackBaseUrl),
+    mediaScanRequestTimeoutSeconds,
+    hasMediaScanCallbackSignatureSecret: Boolean(String(source.MEDIA_SCAN_CALLBACK_SIGNATURE_SECRET ?? source.MEDIA_SCAN_REQUEST_SECRET ?? '').trim()),
+    mediaScanCallbackSignatureToleranceSeconds,
+    authCookieSameSite,
+    authCookieSecure: source.AUTH_COOKIE_SECURE === 'true' || nodeEnv === 'production' || authCookieSameSite === 'None',
+    authTrustedOrigins: splitCsv(source.AUTH_TRUSTED_ORIGINS ?? source.CORS_ALLOWED_ORIGINS),
+    rateLimitEnabled: boolFlag(source, 'RATE_LIMIT_ENABLED', true),
+    rateLimitStore,
+    rateLimitWindowMs,
+    rateLimitAuthMax,
+    rateLimitUploadMax,
+    rateLimitAdminMutationMax,
+    requestBodySizeGuardEnabled: boolFlag(source, 'REQUEST_BODY_SIZE_GUARD_ENABLED', true),
+    requestBodyMaxBytes,
+    authFailureMonitorEnabled: boolFlag(source, 'AUTH_FAILURE_MONITOR_ENABLED', true),
+    authFailureWindowMs,
+    authFailureIpAccountThreshold,
+    authFailureAccountIpThreshold,
+    securityEventMaxItems,
+  }
+}
+
+export const buildDefaultMediaGovernancePolicy = (source = process.env) => {
+  const current = buildEnv(source)
+  return {
+    scanner: {
+      retryDelaySeconds: current.mediaScanRetryDelaySeconds,
+      timeoutSeconds: current.mediaScanTimeoutSeconds,
+      maxAttempts: current.mediaScanMaxAttempts,
+      workerIntervalSeconds: current.mediaScanWorkerIntervalSeconds,
+    },
+    retention: {
+      historyRetentionDays: current.mediaScanHistoryRetentionDays,
+      historyRetentionMaxPerAsset: current.mediaScanHistoryRetentionMaxPerAsset,
+    },
+    alerts: {
+      windowMinutes: current.mediaScanAlertWindowMinutes,
+      thresholds: {
+        callbackDenied: current.mediaScanCallbackDeniedAlertThreshold,
+        dispatchFailed: current.mediaScanDispatchFailedAlertThreshold,
+        timeout: current.mediaScanTimeoutAlertThreshold,
+        alertDeliveryFailed: current.mediaScanAlertDeliveryFailedAlertThreshold,
+      },
+    },
+  }
+}
+
+export const normalizeMediaGovernancePolicy = (policy = {}, fallback = buildDefaultMediaGovernancePolicy()) => {
+  const source = policy && typeof policy === 'object' && !Array.isArray(policy) ? policy : {}
+  const scanner = source.scanner && typeof source.scanner === 'object' && !Array.isArray(source.scanner) ? source.scanner : {}
+  const retention = source.retention && typeof source.retention === 'object' && !Array.isArray(source.retention) ? source.retention : {}
+  const alerts = source.alerts && typeof source.alerts === 'object' && !Array.isArray(source.alerts) ? source.alerts : {}
+  const thresholds = alerts.thresholds && typeof alerts.thresholds === 'object' && !Array.isArray(alerts.thresholds) ? alerts.thresholds : {}
+  return {
+    scanner: {
+      retryDelaySeconds: positiveIntegerValue(scanner.retryDelaySeconds, fallback.scanner.retryDelaySeconds),
+      timeoutSeconds: positiveIntegerValue(scanner.timeoutSeconds, fallback.scanner.timeoutSeconds),
+      maxAttempts: positiveIntegerValue(scanner.maxAttempts, fallback.scanner.maxAttempts),
+      workerIntervalSeconds: positiveIntegerValue(scanner.workerIntervalSeconds, fallback.scanner.workerIntervalSeconds),
+    },
+    retention: {
+      historyRetentionDays: positiveIntegerValue(retention.historyRetentionDays, fallback.retention.historyRetentionDays),
+      historyRetentionMaxPerAsset: positiveIntegerValue(retention.historyRetentionMaxPerAsset, fallback.retention.historyRetentionMaxPerAsset),
+    },
+    alerts: {
+      windowMinutes: positiveIntegerValue(alerts.windowMinutes, fallback.alerts.windowMinutes),
+      thresholds: {
+        callbackDenied: positiveIntegerValue(thresholds.callbackDenied, fallback.alerts.thresholds.callbackDenied),
+        dispatchFailed: positiveIntegerValue(thresholds.dispatchFailed, fallback.alerts.thresholds.dispatchFailed),
+        timeout: positiveIntegerValue(thresholds.timeout, fallback.alerts.thresholds.timeout),
+        alertDeliveryFailed: positiveIntegerValue(thresholds.alertDeliveryFailed, fallback.alerts.thresholds.alertDeliveryFailed),
+      },
+    },
+  }
+}
+
+export const mergeMediaGovernancePolicy = (current = {}, patch = {}, fallback = buildDefaultMediaGovernancePolicy()) =>
+  normalizeMediaGovernancePolicy({
+    scanner: {
+      ...(current?.scanner ?? {}),
+      ...(patch?.scanner ?? {}),
+    },
+    retention: {
+      ...(current?.retention ?? {}),
+      ...(patch?.retention ?? {}),
+    },
+    alerts: {
+      ...(current?.alerts ?? {}),
+      ...(patch?.alerts ?? {}),
+      thresholds: {
+        ...(current?.alerts?.thresholds ?? {}),
+        ...(patch?.alerts?.thresholds ?? {}),
+      },
+    },
+  }, fallback)
+
+const numericChange = (before, after) => (before === after ? null : { from: before, to: after })
+
+const compactChanges = (entries) =>
+  Object.fromEntries(Object.entries(entries).filter(([, value]) => value !== null))
+
+export const diffMediaGovernancePolicy = (previous, next, fallback = buildDefaultMediaGovernancePolicy()) => {
+  const before = normalizeMediaGovernancePolicy(previous, fallback)
+  const after = normalizeMediaGovernancePolicy(next, fallback)
+  return {
+    scanner: compactChanges({
+      retryDelaySeconds: numericChange(before.scanner.retryDelaySeconds, after.scanner.retryDelaySeconds),
+      timeoutSeconds: numericChange(before.scanner.timeoutSeconds, after.scanner.timeoutSeconds),
+      maxAttempts: numericChange(before.scanner.maxAttempts, after.scanner.maxAttempts),
+      workerIntervalSeconds: numericChange(before.scanner.workerIntervalSeconds, after.scanner.workerIntervalSeconds),
+    }),
+    retention: compactChanges({
+      historyRetentionDays: numericChange(before.retention.historyRetentionDays, after.retention.historyRetentionDays),
+      historyRetentionMaxPerAsset: numericChange(before.retention.historyRetentionMaxPerAsset, after.retention.historyRetentionMaxPerAsset),
+    }),
+    alerts: {
+      ...compactChanges({
+        windowMinutes: numericChange(before.alerts.windowMinutes, after.alerts.windowMinutes),
+      }),
+      thresholds: compactChanges({
+        callbackDenied: numericChange(before.alerts.thresholds.callbackDenied, after.alerts.thresholds.callbackDenied),
+        dispatchFailed: numericChange(before.alerts.thresholds.dispatchFailed, after.alerts.thresholds.dispatchFailed),
+        timeout: numericChange(before.alerts.thresholds.timeout, after.alerts.thresholds.timeout),
+        alertDeliveryFailed: numericChange(before.alerts.thresholds.alertDeliveryFailed, after.alerts.thresholds.alertDeliveryFailed),
+      }),
+    },
+  }
+}
+
+export const summarizeMediaGovernancePolicyDiff = (diff) => {
+  const changes = [
+    ...Object.entries(diff?.scanner ?? {}).map(([key, change]) => `scanner.${key}: ${change.from}->${change.to}`),
+    ...Object.entries(diff?.retention ?? {}).map(([key, change]) => `retention.${key}: ${change.from}->${change.to}`),
+    ...Object.entries(diff?.alerts ?? {})
+      .filter(([key]) => key !== 'thresholds')
+      .map(([key, change]) => `alerts.${key}: ${change.from}->${change.to}`),
+    ...Object.entries(diff?.alerts?.thresholds ?? {}).map(([key, change]) => `alerts.thresholds.${key}: ${change.from}->${change.to}`),
+  ]
+  return changes.join(', ') || 'no material changes'
+}
+
+export const buildMediaGovernanceConfig = (source = process.env, policy = null) => {
+  const current = buildEnv(source)
+  const effectivePolicy = normalizeMediaGovernancePolicy(policy ?? {}, buildDefaultMediaGovernancePolicy(source))
+  return {
+    storage: {
+      driver: current.storageDriver,
+    },
+    scanner: {
+      provider: current.mediaScanProvider,
+      requestAdapter: current.mediaScanRequestAdapter,
+      requestDispatchConfigured: current.hasMediaScanRequestUrl,
+      requestSigningConfigured: current.hasMediaScanRequestSecret,
+      requestTimeoutSeconds: current.mediaScanRequestTimeoutSeconds,
+      callbackBaseConfigured: current.hasMediaScanCallbackBaseUrl,
+      webhookSecretConfigured: current.hasMediaScanWebhookSecret,
+      callbackSignatureConfigured: current.hasMediaScanCallbackSignatureSecret,
+      callbackSignatureToleranceSeconds: current.mediaScanCallbackSignatureToleranceSeconds,
+      retryDelaySeconds: effectivePolicy.scanner.retryDelaySeconds,
+      timeoutSeconds: effectivePolicy.scanner.timeoutSeconds,
+      maxAttempts: effectivePolicy.scanner.maxAttempts,
+      workerEnabled: current.mediaScanWorkerEnabled,
+      workerIntervalSeconds: effectivePolicy.scanner.workerIntervalSeconds,
+    },
+    retention: {
+      historyRetentionDays: effectivePolicy.retention.historyRetentionDays,
+      historyRetentionMaxPerAsset: effectivePolicy.retention.historyRetentionMaxPerAsset,
+    },
+    alerts: {
+      windowMinutes: effectivePolicy.alerts.windowMinutes,
+      thresholds: {
+        callbackDenied: effectivePolicy.alerts.thresholds.callbackDenied,
+        dispatchFailed: effectivePolicy.alerts.thresholds.dispatchFailed,
+        timeout: effectivePolicy.alerts.thresholds.timeout,
+        alertDeliveryFailed: effectivePolicy.alerts.thresholds.alertDeliveryFailed,
+      },
+      channels: {
+        webhook: {
+          configured: current.hasMediaScanAlertWebhookUrl,
+          signed: current.hasMediaScanAlertWebhookSecret,
+          timeoutSeconds: current.mediaScanAlertWebhookTimeoutSeconds,
+        },
+        slack: {
+          configured: current.hasMediaScanAlertSlackWebhookUrl,
+          timeoutSeconds: current.mediaScanAlertSlackTimeoutSeconds,
+        },
+        email: {
+          configured: current.hasMediaScanAlertEmailWebhookUrl,
+          signed: current.hasMediaScanAlertEmailWebhookSecret,
+          recipientCount: current.mediaScanAlertEmailRecipientCount,
+          fromConfigured: current.hasMediaScanAlertEmailFrom,
+          timeoutSeconds: current.mediaScanAlertEmailTimeoutSeconds,
+        },
+      },
+    },
+  }
+}
+
+export const env = buildEnv()
