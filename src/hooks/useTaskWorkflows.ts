@@ -4,7 +4,7 @@ import { tasks } from '../data/mockData'
 import { copy } from '../i18n/copy'
 import { localeFirstTask } from '../domain/utils'
 import { taskService } from '../services/taskService'
-import type { ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem } from '../services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem } from '../services/contracts'
 import { useAsyncResource } from './useAsyncResource'
 
 export type TaskChildCollection<T> = {
@@ -18,6 +18,10 @@ type TaskWorkflowOptions = {
   pushLedger: (description: string, delta: string) => void
   pushToast: (message: string) => void
   setPage: (page: Page) => void
+}
+
+type ReviewTaskOptions = {
+  acceptanceChecklist?: ApiAcceptanceChecklistItem[]
 }
 
 export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: TaskWorkflowOptions) {
@@ -240,10 +244,10 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     }
   }
 
-  const approveTask = async (task: Task) => {
+  const approveTask = async (task: Task, options: ReviewTaskOptions = {}) => {
     const isZh = locale === 'zh'
     try {
-      const updated = await taskService.review(task.id, 'approve', isZh ? '验收通过，积分已发放。' : 'Accepted. Points released.')
+      const updated = await taskService.review(task.id, 'approve', isZh ? '验收通过，积分已发放。' : 'Accepted. Points released.', options.acceptanceChecklist ?? [])
       updateTask(task.id, updated)
       await refreshSubmissions(updated)
       await refreshTimeline(updated)
@@ -256,10 +260,10 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     }
   }
 
-  const rejectTask = async (task: Task) => {
+  const rejectTask = async (task: Task, options: ReviewTaskOptions = {}) => {
     const isZh = locale === 'zh'
     try {
-      const updated = await taskService.review(task.id, 'reject', isZh ? '请补充更明确的交付链接和版权确认。' : 'Add clearer delivery links and rights confirmation.')
+      const updated = await taskService.review(task.id, 'reject', isZh ? '请补充更明确的交付链接和版权确认。' : 'Add clearer delivery links and rights confirmation.', options.acceptanceChecklist ?? [])
       updateTask(task.id, updated)
       await refreshSubmissions(updated)
       await refreshTimeline(updated)
@@ -270,10 +274,10 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     }
   }
 
-  const requestRevisionTask = async (task: Task) => {
+  const requestRevisionTask = async (task: Task, options: ReviewTaskOptions = {}) => {
     const isZh = locale === 'zh'
     try {
-      const updated = await taskService.review(task.id, 'request_changes', isZh ? '请按验收标准补充修改后重新提交。' : 'Revise against the acceptance criteria and resubmit.')
+      const updated = await taskService.review(task.id, 'request_changes', isZh ? '请按验收标准补充修改后重新提交。' : 'Revise against the acceptance criteria and resubmit.', options.acceptanceChecklist ?? [])
       updateTask(task.id, updated)
       await refreshSubmissions(updated)
       await refreshTimeline(updated)

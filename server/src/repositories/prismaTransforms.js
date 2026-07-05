@@ -158,6 +158,7 @@ export const getTaskSubmissionDto = (submission) => ({
   rightsNote: submission.rightsNote ?? '',
   status: submission.status,
   reviewNote: submission.reviewNote ?? '',
+  acceptanceChecklist: asObject(submission.metadata)?.acceptanceChecklist ?? [],
   reviewedBy: submission.reviewedBy ? buildUserSummary(submission.reviewedBy) : null,
   reviewedAt: submission.reviewedAt ? submission.reviewedAt.toISOString() : null,
   createdAt: submission.createdAt ? submission.createdAt.toISOString() : '',

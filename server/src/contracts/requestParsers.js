@@ -89,6 +89,31 @@ const optionalObject = (body, field) => {
   return value
 }
 
+const optionalAcceptanceChecklist = (body, field = 'acceptanceChecklist') => {
+  const value = body?.[field]
+  if (value == null) {
+    return []
+  }
+  if (!Array.isArray(value)) {
+    throw validationFailed(`${field} must be an array`)
+  }
+  return value.map((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw validationFailed(`${field}[${index}] must be an object`)
+    }
+    if (typeof item.label !== 'string' || !item.label.trim()) {
+      throw validationFailed(`${field}[${index}].label is required`)
+    }
+    if (typeof item.checked !== 'boolean') {
+      throw validationFailed(`${field}[${index}].checked must be a boolean`)
+    }
+    return {
+      label: item.label.trim(),
+      checked: item.checked,
+    }
+  })
+}
+
 export const parseEmailLoginRequest = (body) => ({
   email: requireEmail(body, 'email'),
   password: requireText(body, 'password'),
@@ -138,10 +163,18 @@ export const parseSubmitTaskRequest = (body) => ({
   rightsNote: optionalText(body, 'rightsNote', ''),
 })
 
-export const parseReviewTaskRequest = (body) => ({
-  decision: requireOneOf(body, 'decision', ['approve', 'reject', 'request_changes']),
-  reviewNote: requireText(body, 'reviewNote'),
-})
+export const parseReviewTaskRequest = (body) => {
+  const decision = requireOneOf(body, 'decision', ['approve', 'reject', 'request_changes'])
+  const acceptanceChecklist = optionalAcceptanceChecklist(body)
+  if (decision === 'approve' && acceptanceChecklist.some((item) => !item.checked)) {
+    throw validationFailed('acceptanceChecklist must be fully checked before approval')
+  }
+  return {
+    decision,
+    reviewNote: requireText(body, 'reviewNote'),
+    acceptanceChecklist,
+  }
+}
 
 export const parseCreatePostRequest = (body) => ({
   title: requireText(body, 'title'),

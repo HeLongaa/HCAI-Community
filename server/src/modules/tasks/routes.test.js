@@ -550,7 +550,14 @@ test('GET /api/tasks/:id/timeline lists participant-visible task history', async
       token: 'demo-access.promptlin',
     })
     await requestJson(server.url, `/api/tasks/${task.id}/review`, {
-      body: { decision: 'request_changes', reviewNote: 'Add a clearer revision note.' },
+      body: {
+        decision: 'request_changes',
+        reviewNote: 'Add a clearer revision note.',
+        acceptanceChecklist: [
+          { label: 'Delivery package included', checked: true },
+          { label: 'Rights note confirmed', checked: false },
+        ],
+      },
       token: 'demo-access.launchteam',
     })
 
@@ -570,6 +577,10 @@ test('GET /api/tasks/:id/timeline lists participant-visible task history', async
     assert.equal(payload.data[0].type, 'revision_requested')
     assert.equal(payload.data[0].body, 'Add a clearer revision note.')
     assert.equal(payload.data[0].actor.handle, 'launchteam')
+    assert.deepEqual(payload.data[0].metadata.acceptanceChecklist, [
+      { label: 'Delivery package included', checked: true },
+      { label: 'Rights note confirmed', checked: false },
+    ])
   } finally {
     await server.close()
   }
@@ -623,6 +634,30 @@ test('POST /api/tasks/:id/review returns VALIDATION_FAILED for unknown decisions
     assert.equal(payload.data, null)
     assert.equal(payload.error.code, 'VALIDATION_FAILED')
     assert.equal(payload.error.message, 'decision must be one of: approve, reject, request_changes')
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST /api/tasks/:id/review requires checked acceptance checklist before approval', async () => {
+  const server = await createTestServer()
+  try {
+    const task = await createTask(server, {}, 'demo-access.launchteam')
+    const { status, payload } = await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: {
+        ...validReviewBody(),
+        acceptanceChecklist: [
+          { label: 'Delivery note included', checked: true },
+          { label: 'Rights note confirmed', checked: false },
+        ],
+      },
+      token: 'demo-access.launchteam',
+    })
+
+    assert.equal(status, 400)
+    assert.equal(payload.data, null)
+    assert.equal(payload.error.code, 'VALIDATION_FAILED')
+    assert.equal(payload.error.message, 'acceptanceChecklist must be fully checked before approval')
   } finally {
     await server.close()
   }
@@ -691,7 +726,13 @@ test('POST /api/tasks/:id/review updates the latest normalized submission review
     })
 
     const review = await requestJson(server.url, `/api/tasks/${task.id}/review`, {
-      body: validReviewBody(),
+      body: {
+        ...validReviewBody(),
+        acceptanceChecklist: [
+          { label: 'Delivery package included', checked: true },
+          { label: 'Rights note confirmed', checked: true },
+        ],
+      },
       token: 'demo-access.launchteam',
     })
 
@@ -705,6 +746,10 @@ test('POST /api/tasks/:id/review updates the latest normalized submission review
     assert.equal(submissions.status, 200)
     assert.equal(submissions.payload.data[0].status, 'approved')
     assert.equal(submissions.payload.data[0].reviewNote, validReviewBody().reviewNote)
+    assert.deepEqual(submissions.payload.data[0].acceptanceChecklist, [
+      { label: 'Delivery package included', checked: true },
+      { label: 'Rights note confirmed', checked: true },
+    ])
     assert.equal(submissions.payload.data[0].reviewedBy.handle, 'launchteam')
   } finally {
     await server.close()

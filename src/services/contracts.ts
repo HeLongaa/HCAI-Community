@@ -164,6 +164,12 @@ export type SubmitTaskRequest = {
 export type ReviewTaskRequest = {
   decision: 'approve' | 'reject' | 'request_changes'
   reviewNote: string
+  acceptanceChecklist?: ApiAcceptanceChecklistItem[]
+}
+
+export type ApiAcceptanceChecklistItem = {
+  label: string
+  checked: boolean
 }
 
 export type TaskChildListQuery = {
@@ -201,6 +207,7 @@ export type ApiTaskSubmission = {
   rightsNote: string
   status: 'pending_review' | 'revision_requested' | 'approved' | 'rejected'
   reviewNote: string
+  acceptanceChecklist: ApiAcceptanceChecklistItem[]
   reviewedBy: ApiProfileSummary | { handle: string } | null
   reviewedAt: string | null
   createdAt: string

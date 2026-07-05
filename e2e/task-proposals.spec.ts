@@ -127,6 +127,7 @@ test('proposal, submission, and review can complete through the browser workflow
   const reviewResponse = publisherPage.waitForResponse((review) =>
     review.url().includes(`/api/tasks/${task.id}/review`) && review.request().method() === 'POST',
   )
+  await publisherPage.getByTestId('acceptance-checklist-item-0').locator('input').check()
   await publisherPage.getByTestId('approve-submission-button').click()
   expect((await reviewResponse).ok()).toBeTruthy()
 

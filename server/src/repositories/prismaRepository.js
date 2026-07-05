@@ -2037,6 +2037,7 @@ const createPrismaRepository = async (fallbackRepository) => {
         const isRevisionRequest = payload.decision === 'request_changes'
         const nextTaskStatus = isApproval ? 'Completed' : isRevisionRequest ? 'In Progress' : 'Rejected'
         const nextSubmissionStatus = isApproval ? 'approved' : isRevisionRequest ? 'revision_requested' : 'rejected'
+        const acceptanceChecklist = payload.acceptanceChecklist ?? []
         const updatedTask = await transaction.task.update({
           where: { id: String(id) },
           data: {
@@ -2044,6 +2045,7 @@ const createPrismaRepository = async (fallbackRepository) => {
             metadata: {
               ...taskDto,
               reviewNote: payload.reviewNote,
+              acceptanceChecklist,
               status: nextTaskStatus,
             },
           },
@@ -2058,6 +2060,14 @@ const createPrismaRepository = async (fallbackRepository) => {
             data: {
               status: nextSubmissionStatus,
               reviewNote: payload.reviewNote,
+              metadata: {
+                ...(
+                  pendingSubmission.metadata && typeof pendingSubmission.metadata === 'object' && !Array.isArray(pendingSubmission.metadata)
+                    ? pendingSubmission.metadata
+                    : {}
+                ),
+                acceptanceChecklist,
+              },
               reviewedById: reviewer?.id ?? null,
               reviewedAt: new Date(),
             },
@@ -2093,14 +2103,14 @@ const createPrismaRepository = async (fallbackRepository) => {
         ...notificationCopy,
         resourceType: 'task',
         resourceId: row.id,
-        metadata: { taskId: row.id, status: row.status, reviewNote: payload.reviewNote },
+        metadata: { taskId: row.id, status: row.status, reviewNote: payload.reviewNote, acceptanceChecklist: payload.acceptanceChecklist ?? [] },
       })
       await recordAudit({
         actor,
         action: payload.decision === 'approve' ? 'task.approved' : payload.decision === 'request_changes' ? 'task.revision_requested' : 'task.rejected',
         resourceType: 'task',
         resourceId: row.id,
-        metadata: { status: row.status, reviewNote: payload.reviewNote },
+        metadata: { status: row.status, reviewNote: payload.reviewNote, acceptanceChecklist: payload.acceptanceChecklist ?? [] },
       })
       return getTaskDto(row)
     },

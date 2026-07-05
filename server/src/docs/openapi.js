@@ -505,6 +505,17 @@ export const openApiDocument = {
                 properties: {
                   decision: { type: 'string', enum: ['approve', 'reject', 'request_changes'] },
                   reviewNote: { type: 'string' },
+                  acceptanceChecklist: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      required: ['label', 'checked'],
+                      properties: {
+                        label: { type: 'string' },
+                        checked: { type: 'boolean' },
+                      },
+                    },
+                  },
                 },
               },
             },

@@ -27,8 +27,7 @@ import { useThemeState } from './hooks/useThemeState'
 import { copy } from './i18n/copy'
 import { notificationService } from './services/notificationService'
 import { profileService } from './services/profileService'
-import type { ApiNotification } from './services/contracts'
-import type { NotificationListQuery } from './services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiNotification, NotificationListQuery } from './services/contracts'
 
 function App() {
   const [locale, setLocale] = useState<Locale>('en')
@@ -415,19 +414,19 @@ function App() {
     await submitTask(task, options)
   }
 
-  const guardedApproveTask = async (task: Task) => {
+  const guardedApproveTask = async (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => {
     if (!requirePermission('task:review', locale === 'zh' ? '请使用发布方或管理员账号验收任务。' : 'Sign in as a publisher or admin to review tasks.')) return
-    await approveTask(task)
+    await approveTask(task, options)
   }
 
-  const guardedRejectTask = async (task: Task) => {
+  const guardedRejectTask = async (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => {
     if (!requirePermission('task:review', locale === 'zh' ? '请使用发布方或管理员账号驳回任务。' : 'Sign in as a publisher or admin to reject tasks.')) return
-    await rejectTask(task)
+    await rejectTask(task, options)
   }
 
-  const guardedRequestRevisionTask = async (task: Task) => {
+  const guardedRequestRevisionTask = async (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => {
     if (!requirePermission('task:review', locale === 'zh' ? '请使用发布方或管理员账号要求修改。' : 'Sign in as a publisher or admin to request changes.')) return
-    await requestRevisionTask(task)
+    await requestRevisionTask(task, options)
   }
 
   const guardedConvertPostToTask = async (post: Post) => {

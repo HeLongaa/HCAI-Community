@@ -18,7 +18,7 @@ import type { AsyncResourceState, MarketplaceProfile, Page, PublishDraft, Simula
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import type { TaskChildCollection } from '../../hooks/useTaskWorkflows'
 import { mediaService } from '../../services/mediaService'
-import type { ApiMediaAsset, ApiProfileSummary, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, MediaAssetPurpose } from '../../services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiMediaAsset, ApiProfileSummary, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, MediaAssetPurpose } from '../../services/contracts'
 import {
   categoryLabel,
   findProfile,
@@ -702,9 +702,9 @@ export function MyTasksPage({
   refreshSubmissions?: (task: Task) => Promise<void>
   refreshTimeline?: (task: Task) => Promise<void>
   submitTask: (task: Task, options?: { assetIds?: string[]; rightsNote?: string }) => Promise<void>
-  approveTask?: (task: Task) => Promise<void>
-  rejectTask?: (task: Task) => Promise<void>
-  requestRevisionTask?: (task: Task) => Promise<void>
+  approveTask?: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
+  rejectTask?: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
+  requestRevisionTask?: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
   simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
@@ -870,6 +870,7 @@ export function MyTasksPage({
   type MineTaskFilter = 'all' | 'posted' | 'accepted'
   const [mineTaskFilter, setMineTaskFilter] = useState<MineTaskFilter>('all')
   const [submissionAssetsByTask, setSubmissionAssetsByTask] = useState<Record<string, ApiMediaAsset[]>>({})
+  const [acceptanceChecklistByTask, setAcceptanceChecklistByTask] = useState<Record<string, ApiAcceptanceChecklistItem[]>>({})
   const [selectedMineTask, setSelectedMineTask] = useState<{ id: Task['id']; role: MineTaskRole }>(() => ({
     id: publisherTasks[0]?.id ?? deliveryTasks[0]?.id ?? scopedTasks[0]?.id ?? tasks[0]?.id ?? 0,
     role: publisherTasks[0] ? 'publisher' : 'maker',
@@ -935,6 +936,21 @@ export function MyTasksPage({
   const proposalCollection = selectedTaskKey ? proposalStateByTask[selectedTaskKey] : undefined
   const submissionCollection = selectedTaskKey ? submissionStateByTask[selectedTaskKey] : undefined
   const timelineCollection = selectedTaskKey ? timelineStateByTask[selectedTaskKey] : undefined
+  const defaultAcceptanceChecklist = selectedTask?.requirements.length
+    ? selectedTask.requirements.map((label) => ({ label, checked: false }))
+    : [{ label: textFor(t, 'Delivery matches the task acceptance rules.', '交付符合任务验收标准。'), checked: false }]
+  const acceptanceChecklist = selectedTaskKey
+    ? acceptanceChecklistByTask[selectedTaskKey] ?? defaultAcceptanceChecklist
+    : defaultAcceptanceChecklist
+  const allAcceptanceChecked = acceptanceChecklist.length > 0 && acceptanceChecklist.every((item) => item.checked)
+  const setAcceptanceChecklistItem = (index: number, checked: boolean) => {
+    if (!selectedTaskKey) return
+    setAcceptanceChecklistByTask((current) => {
+      const next = [...(current[selectedTaskKey] ?? defaultAcceptanceChecklist)]
+      next[index] = { ...next[index], checked }
+      return { ...current, [selectedTaskKey]: next }
+    })
+  }
   const demoProposals: ApiTaskProposal[] = proposalRows.map((proposal, index) => ({
     id: `demo-proposal-${index}`,
     taskId: selectedTaskKey,
@@ -966,6 +982,7 @@ export function MyTasksPage({
               rightsNote: selectedTask.rights,
               status: selectedTask.status === 'Completed' ? 'approved' as const : 'pending_review' as const,
               reviewNote: selectedTask.reviewNote,
+              acceptanceChecklist: [],
               reviewedBy: null,
               reviewedAt: null,
               createdAt: '',
@@ -1214,6 +1231,19 @@ export function MyTasksPage({
                   })}
                 </div>
                 <InfoBox title={textFor(t, 'Publisher review fields', '发布方审看字段')} items={selectedFields.map((field) => `${field.label}: ${field.value}`)} />
+                <div className="deliverable-box acceptance-checklist" data-testid="acceptance-checklist">
+                  <strong>{textFor(t, 'Acceptance checklist', '验收清单')}</strong>
+                  {acceptanceChecklist.map((item, index) => (
+                    <label className="check-row" data-testid={`acceptance-checklist-item-${index}`} key={`${item.label}-${index}`}>
+                      <input
+                        checked={item.checked}
+                        type="checkbox"
+                        onChange={(event) => setAcceptanceChecklistItem(index, event.currentTarget.checked)}
+                      />
+                      <span>{item.label}</span>
+                    </label>
+                  ))}
+                </div>
                 {visibleSubmissions.length > 0 && (
                   <InfoBox
                     title={textFor(t, 'Latest submission records', '最近交付记录')}
@@ -1225,16 +1255,17 @@ export function MyTasksPage({
                     className="primary-button"
                     data-testid="approve-submission-button"
                     type="button"
-                    onClick={() => void approveTask(selectedTask)}
+                    disabled={!allAcceptanceChecked}
+                    onClick={() => void approveTask(selectedTask, { acceptanceChecklist })}
                   >
                     <Check size={17} />
                     {textFor(t, 'Review acceptance', '进入验收')}
                   </button>
-                  <button className="ghost-button" data-testid="request-changes-button" type="button" onClick={() => void requestRevisionTask(selectedTask)}>
+                  <button className="ghost-button" data-testid="request-changes-button" type="button" onClick={() => void requestRevisionTask(selectedTask, { acceptanceChecklist })}>
                     <MessageCircle size={17} />
                     {textFor(t, 'Request changes', '要求修改')}
                   </button>
-                  <button className="ghost-button" data-testid="reject-submission-button" type="button" onClick={() => void rejectTask(selectedTask)}>
+                  <button className="ghost-button" data-testid="reject-submission-button" type="button" onClick={() => void rejectTask(selectedTask, { acceptanceChecklist })}>
                     <X size={17} />
                     {textFor(t, 'Reject final', '最终驳回')}
                   </button>
@@ -1271,6 +1302,11 @@ export function MyTasksPage({
                           <span>{submission.content}</span>
                           <small>{submission.rightsNote || textFor(t, 'No rights note provided', '未填写版权说明')}</small>
                           {submission.reviewNote && <small>{submission.reviewNote}</small>}
+                          {submission.acceptanceChecklist?.length > 0 && (
+                            <small>
+                              {submission.acceptanceChecklist.map((item) => `${item.checked ? 'OK' : 'Needs work'}: ${item.label}`).join(' · ')}
+                            </small>
+                          )}
                         </div>
                         <StatusBadge status={submission.status} t={t} />
                       </div>

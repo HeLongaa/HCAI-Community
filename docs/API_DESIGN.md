@@ -1205,8 +1205,12 @@ type SubmitTaskRequest = {
 
 ```ts
 type ReviewTaskRequest = {
-  decision: 'approve' | 'reject'
+  decision: 'approve' | 'reject' | 'request_changes'
   reviewNote: string
+  acceptanceChecklist?: Array<{
+    label: string
+    checked: boolean
+  }>
 }
 ```
 

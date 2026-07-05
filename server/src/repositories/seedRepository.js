@@ -1524,12 +1524,14 @@ export const createSeedRepository = () => ({
         ...task,
         status: isApproval ? 'Completed' : isRevisionRequest ? 'In Progress' : 'Rejected',
         reviewNote: payload.reviewNote,
+        acceptanceChecklist: payload.acceptanceChecklist ?? [],
       }), (task) => canAccessOwnedResource(getHandle(task.publisher), actor))
       if (task) {
         const submission = taskSubmissions.find((entry) => entry.taskId === String(task.id) && entry.status === 'pending_review')
         if (submission) {
           submission.status = isApproval ? 'approved' : isRevisionRequest ? 'revision_requested' : 'rejected'
           submission.reviewNote = payload.reviewNote
+          submission.acceptanceChecklist = payload.acceptanceChecklist ?? []
           submission.reviewedBy = buildAccountSummary(actor)
           submission.reviewedAt = new Date().toISOString()
         }
@@ -1561,11 +1563,12 @@ export const createSeedRepository = () => ({
           ...notificationCopy,
           resourceType: 'task',
           resourceId: String(task.id),
-          metadata: { taskId: String(task.id), status: task.status, reviewNote: payload.reviewNote },
+          metadata: { taskId: String(task.id), status: task.status, reviewNote: payload.reviewNote, acceptanceChecklist: payload.acceptanceChecklist ?? [] },
         })
         recordAudit(actor, isApproval ? 'task.approved' : isRevisionRequest ? 'task.revision_requested' : 'task.rejected', 'task', task.id, {
           status: task.status,
           reviewNote: payload.reviewNote,
+          acceptanceChecklist: payload.acceptanceChecklist ?? [],
         })
       }
       return task ? serializeTask(task) : null

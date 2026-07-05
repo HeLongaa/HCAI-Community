@@ -56,6 +56,7 @@ export const serializeTaskSubmission = (submission) => ({
   rightsNote: submission.rightsNote ?? '',
   status: submission.status,
   reviewNote: submission.reviewNote ?? '',
+  acceptanceChecklist: submission.acceptanceChecklist ?? submission.metadata?.acceptanceChecklist ?? [],
   reviewedBy: submission.reviewedBy ?? null,
   reviewedAt: submission.reviewedAt ?? null,
   createdAt: submission.createdAt ?? '',

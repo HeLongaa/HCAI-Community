@@ -2956,6 +2956,29 @@ kbd {
   cursor: pointer;
 }
 
+.acceptance-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.check-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.check-row input {
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  accent-color: var(--accent);
+}
+
 .detail-section-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

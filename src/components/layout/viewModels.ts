@@ -20,7 +20,7 @@ import type {
 } from '../../domain/types'
 import type { TaskChildCollection } from '../../hooks/useTaskWorkflows'
 import type { OAuthLoginResult } from '../../hooks/useAccountState'
-import type { ApiNotification, ApiPointsSummary, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, NotificationListQuery, OAuthProvider } from '../../services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiNotification, ApiPointsSummary, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, NotificationListQuery, OAuthProvider } from '../../services/contracts'
 
 export type AppCopyViewModel = {
   t: Record<string, string>
@@ -144,9 +144,9 @@ export type TaskWorkflowViewModel = {
   refreshSubmissions: (task: Task) => Promise<void>
   refreshTimeline: (task: Task) => Promise<void>
   submitTask: (task: Task, options?: { assetIds?: string[]; rightsNote?: string }) => Promise<void>
-  approveTask: (task: Task) => Promise<void>
-  rejectTask: (task: Task) => Promise<void>
-  requestRevisionTask: (task: Task) => Promise<void>
+  approveTask: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
+  rejectTask: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
+  requestRevisionTask: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
 }
 
 export type CommunityWorkflowViewModel = {

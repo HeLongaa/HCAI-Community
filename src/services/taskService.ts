@@ -5,6 +5,7 @@ import type {
   ApiTaskProposal,
   ApiTaskSubmission,
   ApiTaskTimelineItem,
+  ApiAcceptanceChecklistItem,
   CreateTaskProposalRequest,
   CreateTaskRequest,
   ReviewTaskProposalRequest,
@@ -98,8 +99,8 @@ export const taskService = {
   async listTimeline(id: string | number, query?: TaskChildListQuery) {
     return api.get<ApiTaskTimelineItem[]>(withQuery(`/tasks/${id}/timeline`, query))
   },
-  async review(id: string | number, decision: 'approve' | 'reject' | 'request_changes', reviewNote: string) {
-    const body: ReviewTaskRequest = { decision, reviewNote }
+  async review(id: string | number, decision: 'approve' | 'reject' | 'request_changes', reviewNote: string, acceptanceChecklist: ApiAcceptanceChecklistItem[] = []) {
+    const body: ReviewTaskRequest = { decision, reviewNote, acceptanceChecklist }
     const task = await api.post<ApiTask>(`/tasks/${id}/review`, body)
     return toTask(task)
   },
