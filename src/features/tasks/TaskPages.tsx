@@ -684,6 +684,7 @@ export function MyTasksPage({
   submitTask,
   approveTask = async () => undefined,
   rejectTask = async () => undefined,
+  requestRevisionTask = async () => undefined,
   simulateAction,
 }: {
   t: Record<string, string>
@@ -699,6 +700,7 @@ export function MyTasksPage({
   submitTask: (task: Task, options?: { assetIds?: string[]; rightsNote?: string }) => Promise<void>
   approveTask?: (task: Task) => Promise<void>
   rejectTask?: (task: Task) => Promise<void>
+  requestRevisionTask?: (task: Task) => Promise<void>
   simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
@@ -1182,9 +1184,13 @@ export function MyTasksPage({
                     <Check size={17} />
                     {textFor(t, 'Review acceptance', '进入验收')}
                   </button>
+                  <button className="ghost-button" data-testid="request-changes-button" type="button" onClick={() => void requestRevisionTask(selectedTask)}>
+                    <MessageCircle size={17} />
+                    {textFor(t, 'Request changes', '要求修改')}
+                  </button>
                   <button className="ghost-button" data-testid="reject-submission-button" type="button" onClick={() => void rejectTask(selectedTask)}>
                     <X size={17} />
-                    {textFor(t, 'Request changes', '要求修改')}
+                    {textFor(t, 'Reject final', '最终驳回')}
                   </button>
                   <button className="ghost-button" type="button" onClick={() => setPage('community')}>
                     <MessageCircle size={17} />

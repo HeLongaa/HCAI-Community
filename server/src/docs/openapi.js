@@ -479,7 +479,7 @@ export const openApiDocument = {
     },
     '/tasks/{id}/review': {
       post: {
-        summary: 'Approve or reject a task submission',
+        summary: 'Approve, reject, or request changes for a task submission',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         requestBody: {
           required: true,
@@ -489,7 +489,7 @@ export const openApiDocument = {
                 type: 'object',
                 required: ['decision', 'reviewNote'],
                 properties: {
-                  decision: { type: 'string', enum: ['approve', 'reject'] },
+                  decision: { type: 'string', enum: ['approve', 'reject', 'request_changes'] },
                   reviewNote: { type: 'string' },
                 },
               },

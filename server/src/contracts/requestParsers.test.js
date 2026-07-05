@@ -175,9 +175,13 @@ test('parseReviewTaskRequest accepts known decisions and rejects unknown values'
     decision: 'approve',
     reviewNote: 'Looks good.',
   })
+  assert.deepEqual(parseReviewTaskRequest({ decision: 'request_changes', reviewNote: 'Tighten the rights note.' }), {
+    decision: 'request_changes',
+    reviewNote: 'Tighten the rights note.',
+  })
   assertValidationError(
     () => parseReviewTaskRequest({ decision: 'hold', reviewNote: 'Wait.' }),
-    'decision must be one of: approve, reject',
+    'decision must be one of: approve, reject, request_changes',
   )
 })
 

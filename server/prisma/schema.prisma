@@ -53,6 +53,7 @@ enum TaskProposalStatus {
 
 enum TaskSubmissionStatus {
   pending_review
+  revision_requested
   approved
   rejected
 }

@@ -74,6 +74,7 @@ export function PageRenderer({
     submitTask,
     approveTask,
     rejectTask,
+    requestRevisionTask,
   } = tasks
   const {
     postList,
@@ -154,6 +155,7 @@ export function PageRenderer({
           submitTask={submitTask}
           approveTask={approveTask}
           rejectTask={rejectTask}
+          requestRevisionTask={requestRevisionTask}
           simulateAction={simulateAction}
         />
       )}

@@ -94,7 +94,7 @@ export const taskService = {
   async listSubmissions(id: string | number, query?: TaskChildListQuery) {
     return api.get<ApiTaskSubmission[]>(withQuery(`/tasks/${id}/submissions`, query))
   },
-  async review(id: string | number, decision: 'approve' | 'reject', reviewNote: string) {
+  async review(id: string | number, decision: 'approve' | 'reject' | 'request_changes', reviewNote: string) {
     const body: ReviewTaskRequest = { decision, reviewNote }
     const task = await api.post<ApiTask>(`/tasks/${id}/review`, body)
     return toTask(task)

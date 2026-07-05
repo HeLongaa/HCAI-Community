@@ -26,7 +26,6 @@ import {
   getTaskDto,
   parseTaskStatus,
   taskStatusFromLabel,
-  taskStatusToLabel,
 } from './prismaTransforms.js'
 import { serializeAuditEvent, serializeSecurityAlertDispatchEvent, serializeSecurityEvent } from './serializers.js'
 import { seedPrismaDatabase } from './prismaSeed.js'
@@ -1811,15 +1810,16 @@ const createPrismaRepository = async (fallbackRepository) => {
       if (!submitter) {
         return null
       }
+      const taskDto = getTaskDto(task)
       const row = await client.task.update({
         where: { id: String(id) },
         data: {
           status: taskStatusFromLabel('Pending Review'),
           metadata: {
-            ...getTaskDto(task),
+            ...taskDto,
             submission: payload.content,
-            resultLinks: payload.assetIds?.length ? payload.assetIds : getTaskDto(task).resultLinks,
-            rights: payload.rightsNote ?? getTaskDto(task).rights,
+            resultLinks: payload.assetIds?.length ? payload.assetIds : taskDto.resultLinks,
+            rights: payload.rightsNote ?? taskDto.rights,
           },
         },
         include: {
@@ -1844,6 +1844,14 @@ const createPrismaRepository = async (fallbackRepository) => {
         resourceType: 'task',
         resourceId: row.id,
         metadata: { status: row.status, submissionId: submission.id },
+      })
+      await createNotificationsForHandles([publisherHandle], {
+        type: 'task.submission_submitted',
+        title: 'Task submission ready for review',
+        body: `${submitter.profile?.handle ?? submitter.id} submitted work for ${row.title}.`,
+        resourceType: 'task',
+        resourceId: row.id,
+        metadata: { taskId: row.id, submissionId: submission.id, status: submission.status },
       })
       return getTaskDto(row)
     },
@@ -1904,19 +1912,27 @@ const createPrismaRepository = async (fallbackRepository) => {
         return null
       }
       const reviewer = actor ? await findUserByHandle(actor.handle) : null
+      let submissionRecipientHandle = null
       const row = await client.$transaction(async (transaction) => {
         const pendingSubmission = await transaction.taskSubmission.findFirst({
           where: { taskId: String(id), status: 'pending_review' },
+          include: { submitter: { include: { profile: true } } },
           orderBy: { createdAt: 'desc' },
         })
+        submissionRecipientHandle = pendingSubmission?.submitter?.profile?.handle ?? pendingSubmission?.submitter?.id ?? null
+        const taskDto = getTaskDto(task)
+        const isApproval = payload.decision === 'approve'
+        const isRevisionRequest = payload.decision === 'request_changes'
+        const nextTaskStatus = isApproval ? 'Completed' : isRevisionRequest ? 'In Progress' : 'Rejected'
+        const nextSubmissionStatus = isApproval ? 'approved' : isRevisionRequest ? 'revision_requested' : 'rejected'
         const updatedTask = await transaction.task.update({
           where: { id: String(id) },
           data: {
-            status: taskStatusFromLabel(payload.decision === 'approve' ? 'Completed' : 'Rejected'),
+            status: taskStatusFromLabel(nextTaskStatus),
             metadata: {
-              ...getTaskDto(task),
+              ...taskDto,
               reviewNote: payload.reviewNote,
-              status: taskStatusToLabel(payload.decision === 'approve' ? 'completed' : 'rejected'),
+              status: nextTaskStatus,
             },
           },
           include: {
@@ -1928,24 +1944,48 @@ const createPrismaRepository = async (fallbackRepository) => {
           await transaction.taskSubmission.update({
             where: { id: pendingSubmission.id },
             data: {
-              status: payload.decision === 'approve' ? 'approved' : 'rejected',
+              status: nextSubmissionStatus,
               reviewNote: payload.reviewNote,
               reviewedById: reviewer?.id ?? null,
               reviewedAt: new Date(),
             },
           })
         }
-        if (payload.decision === 'approve') {
+        if (isApproval) {
           await finalizeTaskEscrow(transaction, task, task.publisherId, 'approve')
           await settleTaskReward(transaction, task, task.assigneeId ?? pendingSubmission?.submitterId ?? null)
-        } else {
+        } else if (!isRevisionRequest) {
           await finalizeTaskEscrow(transaction, task, task.publisherId, 'reject')
         }
         return updatedTask
       })
+      const assigneeHandle = task.assignee?.profile?.handle ?? task.assignee?.id ?? submissionRecipientHandle
+      const notificationCopy = {
+        approve: {
+          type: 'task.submission_approved',
+          title: 'Task submission approved',
+          body: `${row.title} was approved and points were released.`,
+        },
+        reject: {
+          type: 'task.submission_rejected',
+          title: 'Task submission rejected',
+          body: `${row.title} was rejected.`,
+        },
+        request_changes: {
+          type: 'task.revision_requested',
+          title: 'Task changes requested',
+          body: `${row.title} needs revisions before acceptance.`,
+        },
+      }[payload.decision]
+      await createNotificationsForHandles([assigneeHandle], {
+        ...notificationCopy,
+        resourceType: 'task',
+        resourceId: row.id,
+        metadata: { taskId: row.id, status: row.status, reviewNote: payload.reviewNote },
+      })
       await recordAudit({
         actor,
-        action: payload.decision === 'approve' ? 'task.approved' : 'task.rejected',
+        action: payload.decision === 'approve' ? 'task.approved' : payload.decision === 'request_changes' ? 'task.revision_requested' : 'task.rejected',
         resourceType: 'task',
         resourceId: row.id,
         metadata: { status: row.status },

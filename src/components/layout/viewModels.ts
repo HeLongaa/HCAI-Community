@@ -144,6 +144,7 @@ export type TaskWorkflowViewModel = {
   submitTask: (task: Task, options?: { assetIds?: string[]; rightsNote?: string }) => Promise<void>
   approveTask: (task: Task) => Promise<void>
   rejectTask: (task: Task) => Promise<void>
+  requestRevisionTask: (task: Task) => Promise<void>
 }
 
 export type CommunityWorkflowViewModel = {

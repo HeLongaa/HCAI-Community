@@ -1413,6 +1413,14 @@ export const createSeedRepository = () => ({
         }
         taskSubmissions.unshift(submission)
         recordAudit(actor, 'task.submitted', 'task', task.id, { status: task.status })
+        createNotificationsForHandles([getHandle(task.publisher)], {
+          type: 'task.submission_submitted',
+          title: 'Task submission ready for review',
+          body: `${actor.handle} submitted work for ${task.title}.`,
+          resourceType: 'task',
+          resourceId: String(task.id),
+          metadata: { taskId: String(task.id), submissionId: submission.id, status: submission.status },
+        })
       }
       return task ? serializeTask(task) : null
     },
@@ -1434,26 +1442,52 @@ export const createSeedRepository = () => ({
       return paginateByCursor(submissions, options)
     },
     review: (id, payload, actor = null) => {
+      const isApproval = payload.decision === 'approve'
+      const isRevisionRequest = payload.decision === 'request_changes'
       const task = updateTask(id, (task) => ({
         ...task,
-        status: payload.decision === 'approve' ? 'Completed' : 'Rejected',
+        status: isApproval ? 'Completed' : isRevisionRequest ? 'In Progress' : 'Rejected',
         reviewNote: payload.reviewNote,
       }), (task) => canAccessOwnedResource(getHandle(task.publisher), actor))
       if (task) {
         const submission = taskSubmissions.find((entry) => entry.taskId === String(task.id) && entry.status === 'pending_review')
         if (submission) {
-          submission.status = payload.decision === 'approve' ? 'approved' : 'rejected'
+          submission.status = isApproval ? 'approved' : isRevisionRequest ? 'revision_requested' : 'rejected'
           submission.reviewNote = payload.reviewNote
           submission.reviewedBy = buildAccountSummary(actor)
           submission.reviewedAt = new Date().toISOString()
         }
-        if (payload.decision === 'approve') {
+        if (isApproval) {
           finalizeTaskEscrow(task, getHandle(task.publisher), 'approve')
           settleTaskReward(task, getHandle(task.assignee) ?? submission?.submitterHandle)
-        } else {
+        } else if (!isRevisionRequest) {
           finalizeTaskEscrow(task, getHandle(task.publisher), 'reject')
         }
-        recordAudit(actor, payload.decision === 'approve' ? 'task.approved' : 'task.rejected', 'task', task.id, { status: task.status })
+        const assigneeHandle = getHandle(task.assignee) ?? submission?.submitterHandle
+        const notificationCopy = {
+          approve: {
+            type: 'task.submission_approved',
+            title: 'Task submission approved',
+            body: `${task.title} was approved and points were released.`,
+          },
+          reject: {
+            type: 'task.submission_rejected',
+            title: 'Task submission rejected',
+            body: `${task.title} was rejected.`,
+          },
+          request_changes: {
+            type: 'task.revision_requested',
+            title: 'Task changes requested',
+            body: `${task.title} needs revisions before acceptance.`,
+          },
+        }[payload.decision]
+        createNotificationsForHandles([assigneeHandle], {
+          ...notificationCopy,
+          resourceType: 'task',
+          resourceId: String(task.id),
+          metadata: { taskId: String(task.id), status: task.status, reviewNote: payload.reviewNote },
+        })
+        recordAudit(actor, isApproval ? 'task.approved' : isRevisionRequest ? 'task.revision_requested' : 'task.rejected', 'task', task.id, { status: task.status })
       }
       return task ? serializeTask(task) : null
     },

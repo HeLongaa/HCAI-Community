@@ -237,6 +237,19 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     }
   }
 
+  const requestRevisionTask = async (task: Task) => {
+    const isZh = locale === 'zh'
+    try {
+      const updated = await taskService.review(task.id, 'request_changes', isZh ? '请按验收标准补充修改后重新提交。' : 'Revise against the acceptance criteria and resubmit.')
+      updateTask(task.id, updated)
+      await refreshSubmissions(updated)
+      pushToast(isZh ? `已要求修改：${task.title}` : `Changes requested: ${task.title}`)
+    } catch (error) {
+      console.info('[task-service]', error)
+      pushToast(isZh ? '要求修改失败，已保留本地状态。' : 'Request changes failed. Local state kept.')
+    }
+  }
+
   return {
     taskList,
     selectedTask,
@@ -255,5 +268,6 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     submitTask,
     approveTask,
     rejectTask,
+    requestRevisionTask,
   }
 }

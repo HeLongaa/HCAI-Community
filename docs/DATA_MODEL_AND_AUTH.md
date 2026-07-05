@@ -94,7 +94,7 @@ Stores login provider identities.
 | `content` | text | |
 | `asset_ids` | text[] | Uploaded/persisted asset references |
 | `rights_note` | text | |
-| `status` | enum | `pending_review`, `approved`, `rejected` |
+| `status` | enum | `pending_review`, `revision_requested`, `approved`, `rejected` |
 | `review_note` | text | Nullable |
 | `reviewed_by_id` | uuid | FK users, nullable |
 | `reviewed_at` | timestamptz | Nullable |

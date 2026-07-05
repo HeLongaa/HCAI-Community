@@ -162,7 +162,7 @@ export type SubmitTaskRequest = {
 }
 
 export type ReviewTaskRequest = {
-  decision: 'approve' | 'reject'
+  decision: 'approve' | 'reject' | 'request_changes'
   reviewNote: string
 }
 
@@ -199,7 +199,7 @@ export type ApiTaskSubmission = {
   content: string
   assetIds: string[]
   rightsNote: string
-  status: 'pending_review' | 'approved' | 'rejected'
+  status: 'pending_review' | 'revision_requested' | 'approved' | 'rejected'
   reviewNote: string
   reviewedBy: ApiProfileSummary | { handle: string } | null
   reviewedAt: string | null

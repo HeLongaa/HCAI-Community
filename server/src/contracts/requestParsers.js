@@ -139,7 +139,7 @@ export const parseSubmitTaskRequest = (body) => ({
 })
 
 export const parseReviewTaskRequest = (body) => ({
-  decision: requireOneOf(body, 'decision', ['approve', 'reject']),
+  decision: requireOneOf(body, 'decision', ['approve', 'reject', 'request_changes']),
   reviewNote: requireText(body, 'reviewNote'),
 })
 

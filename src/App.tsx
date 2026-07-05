@@ -315,6 +315,7 @@ function App() {
     submitTask,
     approveTask,
     rejectTask,
+    requestRevisionTask,
   } = useTaskWorkflows({ locale, pushLedger, pushToast, setPage })
 
   const {
@@ -422,6 +423,11 @@ function App() {
     await rejectTask(task)
   }
 
+  const guardedRequestRevisionTask = async (task: Task) => {
+    if (!requirePermission('task:review', locale === 'zh' ? '请使用发布方或管理员账号要求修改。' : 'Sign in as a publisher or admin to request changes.')) return
+    await requestRevisionTask(task)
+  }
+
   const guardedConvertPostToTask = async (post: Post) => {
     if (!requirePermission('task:create', locale === 'zh' ? '请使用可发布任务的账号后再转任务。' : 'Sign in with task creation permission to convert posts.')) return
     await convertPostToTask(post)
@@ -489,6 +495,7 @@ function App() {
           submitTask: guardedSubmitTask,
           approveTask: guardedApproveTask,
           rejectTask: guardedRejectTask,
+          requestRevisionTask: guardedRequestRevisionTask,
         }}
         community={{
           postList,

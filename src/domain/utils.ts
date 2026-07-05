@@ -110,13 +110,23 @@ export function categoryLabel(category: string, t: Record<string, string>) {
 }
 
 export function statusLabel(status: string, t?: Record<string, string>) {
-  if (!t || !isZhCopy(t)) return status
+  const enLabels: Record<string, string> = {
+    pending_review: 'Pending review',
+    revision_requested: 'Changes requested',
+    approved: 'Approved',
+    rejected: 'Rejected',
+  }
+  if (!t || !isZhCopy(t)) return enLabels[status] ?? status
   const labels: Record<string, string> = {
     Open: '开放中',
     'In Progress': '进行中',
     'Pending Review': '待验收',
     Completed: '已完成',
     Rejected: '已驳回',
+    pending_review: '待验收',
+    revision_requested: '要求修改',
+    approved: '已通过',
+    rejected: '已拒绝',
     'Pending review': '待审核',
     Resubmission: '重新提交',
     'Community report': '社区举报',
