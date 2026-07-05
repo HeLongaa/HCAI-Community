@@ -1,9 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import './index.css'
 
 import type {
+  AdminDeepLink,
   Locale,
   MarketplaceProfile,
+  NotificationDeepLink,
+  Permission,
+  Post,
+  PublishDraft,
+  Task,
 } from './domain/types'
 import { marketplaceProfiles } from './data/mockData'
 import {
@@ -19,9 +25,12 @@ import { usePlayerState } from './hooks/usePlayerState'
 import { useTaskWorkflows } from './hooks/useTaskWorkflows'
 import { useThemeState } from './hooks/useThemeState'
 import { copy } from './i18n/copy'
+import { notificationService } from './services/notificationService'
+import { profileService } from './services/profileService'
+import type { ApiNotification } from './services/contracts'
+import type { NotificationListQuery } from './services/contracts'
 
 function App() {
-  const accountProfile = findProfile('taskops') ?? marketplaceProfiles[0]
   const [locale, setLocale] = useState<Locale>('en')
   const {
     page,
@@ -40,13 +49,37 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const { themeMode, setThemeMode } = useThemeState()
   const [billing, setBilling] = useState<'year' | 'month'>('year')
-  const { accountName, userRole, setUserRole } = useAccountState()
+  const {
+    accountName,
+    accountHandle,
+    accountSource,
+    accountReady,
+    accountProfile: userProfile,
+    userRole,
+    permissions,
+    hasPermission,
+    setUserRole,
+    loginAs,
+    loginWithPassword,
+    loginWithOAuthProvider,
+    registerWithEmail,
+    logout,
+  } = useAccountState()
   const [prompt, setPrompt] = useState('Lo-fi instrumental song for late-night coding')
   const [generationState, setGenerationState] = useState<'idle' | 'loading' | 'done'>('idle')
+  const accountProfile = userProfile ?? findProfile('taskops') ?? marketplaceProfiles[0]
+  const [profileList, setProfileList] = useState<MarketplaceProfile[]>(marketplaceProfiles)
   const [selectedProfile, setSelectedProfile] = useState<MarketplaceProfile>(() => accountProfile)
+  const [notifications, setNotifications] = useState<ApiNotification[]>([])
+  const [notificationsLoading, setNotificationsLoading] = useState(false)
+  const [notificationsError, setNotificationsError] = useState<string | null>(null)
+  const [notificationReadState, setNotificationReadState] = useState<NonNullable<NotificationListQuery['readState']>>('unread')
+  const [adminDeepLink, setAdminDeepLink] = useState<AdminDeepLink | null>(null)
   const t = copy[locale]
-  const { ledgerItems, pushToast, pushLedger, simulateAction } = useAppFeedback(locale)
-  const currentPoints = pointText(ledgerItems[0]?.[3] ?? '18,420')
+  const { ledgerItems, pointsSummary, pointsStatus, pushToast, pushLedger, simulateAction } = useAppFeedback(locale, `${accountSource}:${accountHandle}`)
+  const currentPoints = accountSource === 'fallback'
+    ? (locale === 'zh' ? '未登录' : 'Not signed in')
+    : pointText(String(pointsSummary?.available ?? ledgerItems[0]?.[3] ?? '18,420'))
 
   const switchLocale = () => {
     const nextLocale = locale === 'en' ? 'zh' : 'en'
@@ -58,6 +91,48 @@ function App() {
     window.scrollTo(0, 0)
   }, [page])
 
+  useEffect(() => {
+    const applyHashDeepLink = () => {
+      const auditMatch = window.location.hash.match(/^#admin\/audit\/(.+)$/)
+      if (!auditMatch) return
+      setAdminDeepLink({
+        tab: 'Audit log',
+        auditEventId: decodeURIComponent(auditMatch[1]),
+      })
+      navigatePrimary('admin')
+    }
+    applyHashDeepLink()
+    window.addEventListener('hashchange', applyHashDeepLink)
+    return () => window.removeEventListener('hashchange', applyHashDeepLink)
+  }, [navigatePrimary])
+
+  useEffect(() => {
+    let active = true
+    profileService
+      .list()
+      .then((profiles) => {
+        if (!active || profiles.length === 0) return
+        setProfileList(profiles)
+        setSelectedProfile((current) => profiles.find((profile) => profile.handle === current.handle) ?? current)
+      })
+      .catch((error) => {
+        console.info('[profile-service]', error)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSelectedProfile((current) => {
+        if (current.handle !== 'taskops' && current.handle !== accountProfile.handle) return current
+        return profileList.find((profile) => profile.handle === accountProfile.handle) ?? accountProfile
+      })
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [accountProfile, profileList])
+
   const runGenerate = () => {
     setGenerationState('loading')
     window.setTimeout(() => setGenerationState('done'), 900)
@@ -65,8 +140,157 @@ function App() {
 
   const requireAuth = () => setLoginOpen(true)
 
+  const refreshNotifications = useCallback(async () => {
+    setNotificationsLoading(true)
+    setNotificationsError(null)
+    try {
+      const items = await notificationService.list({ readState: notificationReadState, limit: 8 })
+      setNotifications(items)
+    } catch (error) {
+      console.info('[notification-service]', error)
+      setNotificationsError(locale === 'zh' ? '无法读取通知。' : 'Could not load notifications.')
+    } finally {
+      setNotificationsLoading(false)
+    }
+  }, [locale, notificationReadState])
+
+  const markNotificationRead = async (notification: ApiNotification) => {
+    try {
+      const updated = await notificationService.markRead(notification.id)
+      setNotifications((current) => current
+        .map((item) => (item.id === updated.id ? updated : item))
+        .filter((item) => notificationReadState !== 'unread' || !item.readAt))
+      pushToast(locale === 'zh' ? `已标记已读：${notification.title}` : `Marked read: ${notification.title}`)
+    } catch (error) {
+      console.info('[notification-service]', error)
+      pushToast(locale === 'zh' ? '通知处理失败。' : 'Could not update notification.')
+    }
+  }
+
+  const markAllNotificationsRead = async () => {
+    try {
+      const result = await notificationService.markAllRead()
+      if (notificationReadState === 'unread') {
+        setNotifications([])
+      } else {
+        void refreshNotifications()
+      }
+      pushToast(locale === 'zh' ? `已标记 ${result.updated} 条提醒为已读。` : `Marked ${result.updated} reminders as read.`)
+    } catch (error) {
+      console.info('[notification-service]', error)
+      pushToast(locale === 'zh' ? '批量处理通知失败。' : 'Could not mark reminders as read.')
+    }
+  }
+
+  const notificationTarget = (notification: ApiNotification): NotificationDeepLink => {
+    const metadata = notification.metadata && typeof notification.metadata === 'object' && !Array.isArray(notification.metadata)
+      ? notification.metadata as { target?: unknown; userHandle?: unknown }
+      : null
+    const target = metadata?.target && typeof metadata.target === 'object' && !Array.isArray(metadata.target)
+      ? metadata.target as Partial<NotificationDeepLink>
+      : null
+    if (target?.page) {
+      return {
+        page: target.page,
+        admin: target.admin,
+      } as NotificationDeepLink
+    }
+    if (notification.resourceType === 'admin_review') {
+      return {
+        page: 'admin',
+        admin: {
+          tab: 'Task review',
+          queue: 'points',
+          reviewId: notification.resourceId ?? null,
+        },
+      }
+    }
+    if (notification.resourceType === 'point_adjustment_policy') {
+      return {
+        page: 'admin',
+        admin: {
+          tab: 'Finance',
+          policyHistoryEventId: typeof metadata?.target === 'string' ? metadata.target : null,
+        },
+      }
+    }
+    if (notification.resourceType === 'media_governance_policy') {
+      return {
+        page: 'admin',
+        admin: {
+          tab: 'Audit log',
+        },
+      }
+    }
+    if (notification.resourceType === 'media_asset') {
+      return {
+        page: 'admin',
+        admin: {
+          tab: 'Task review',
+          mediaStatus: null,
+          mediaAssetId: notification.resourceId ?? null,
+        },
+      }
+    }
+    if (notification.resourceType === 'media_scan_alert') {
+      return {
+        page: 'admin',
+        admin: {
+          tab: 'Task review',
+          mediaStatus: null,
+          mediaAssetId: null,
+        },
+      }
+    }
+    if (notification.resourceType === 'security_alert') {
+      return {
+        page: 'admin',
+        admin: {
+          tab: 'Security',
+          securityAlertId: notification.resourceId ?? null,
+        },
+      }
+    }
+    return {
+      page: 'admin',
+      admin: {
+        tab: 'Finance',
+        ledgerUserHandle: typeof metadata?.userHandle === 'string' ? metadata.userHandle : null,
+      },
+    }
+  }
+
+  const openNotificationResource = (notification: ApiNotification) => {
+    const target = notificationTarget(notification)
+    if (target.page === 'admin') {
+      setAdminDeepLink(target.admin ?? null)
+    }
+    navigatePrimary(target.page)
+  }
+
+  useEffect(() => {
+    const initialTimer = window.setTimeout(() => {
+      void refreshNotifications()
+    }, 0)
+    const timer = window.setInterval(() => {
+      void refreshNotifications()
+    }, 30_000)
+    return () => {
+      window.clearTimeout(initialTimer)
+      window.clearInterval(timer)
+    }
+  }, [accountHandle, refreshNotifications])
+
+  const requirePermission = (permission: Permission, fallbackMessage: string) => {
+    if (hasPermission(permission)) return true
+    pushToast(fallbackMessage)
+    setLoginOpen(true)
+    return false
+  }
+
   const openProfile = (profile: MarketplaceProfile) => {
-    setSelectedProfile(profile)
+    const nextProfile = profileList.find((item) => item.handle === profile.handle) ?? profile
+    setSelectedProfile(nextProfile)
     if (page !== 'profile') {
       rememberReturnTarget('profile', page)
     }
@@ -78,8 +302,16 @@ function App() {
     taskList,
     selectedTask,
     setSelectedTask,
+    taskStatus,
+    proposalStateByTask,
+    submissionStateByTask,
     publishTask,
     claimTask,
+    submitProposal,
+    refreshProposals,
+    acceptProposal,
+    rejectProposal,
+    refreshSubmissions,
     submitTask,
     approveTask,
     rejectTask,
@@ -94,21 +326,144 @@ function App() {
     communityView,
     setCommunityView,
     libraryItems,
+    communityStatus,
     likePost,
     replyToPost,
     convertPostToTask,
     savePostToLibrary,
   } = useCommunityWorkflows({ locale, publishTask, pushLedger, pushToast, setPage })
+  const sourceCopy = {
+    loading: locale === 'zh' ? '同步中' : 'Syncing',
+    fallback: locale === 'zh' ? '演示回退' : 'Demo fallback',
+    stored: locale === 'zh' ? '本地会话' : 'Stored session',
+    mock: locale === 'zh' ? '模拟工作台' : 'Mock workspace',
+  }
+  const sourceFromStatus = (label: string, status: { loading: boolean; error: string | null }, apiDetail: string, fallbackDetail: string) => ({
+    label,
+    state: status.loading ? 'loading' as const : status.error ? 'fallback' as const : 'api' as const,
+    detail: status.loading ? sourceCopy.loading : status.error ? fallbackDetail : apiDetail,
+  })
+  const homeDataSources = {
+    sources: [
+      {
+        label: locale === 'zh' ? '账号' : 'Account',
+        state: accountReady ? accountSource : 'loading' as const,
+        detail: accountReady
+          ? accountSource === 'api'
+            ? (locale === 'zh' ? '/api/me 已同步' : '/api/me synced')
+            : accountSource === 'stored'
+              ? sourceCopy.stored
+              : sourceCopy.fallback
+          : sourceCopy.loading,
+      },
+      sourceFromStatus(
+        locale === 'zh' ? '任务' : 'Tasks',
+        taskStatus,
+        locale === 'zh' ? 'Tasks API' : 'Tasks API',
+        locale === 'zh' ? '本地任务演示数据' : 'Local task demo data',
+      ),
+      sourceFromStatus(
+        locale === 'zh' ? '社区' : 'Community',
+        communityStatus,
+        locale === 'zh' ? 'Community API' : 'Community API',
+        locale === 'zh' ? '本地社区演示数据' : 'Local community demo data',
+      ),
+      sourceFromStatus(
+        locale === 'zh' ? '积分' : 'Points',
+        pointsStatus,
+        locale === 'zh' ? 'Points API' : 'Points API',
+        locale === 'zh' ? '本地积分演示数据' : 'Local points demo data',
+      ),
+      {
+        label: locale === 'zh' ? '创作' : 'Creation',
+        state: 'mock' as const,
+        detail: sourceCopy.mock,
+      },
+    ],
+  }
+
+  const guardedPublishTask = async (draft: PublishDraft) => {
+    if (!requirePermission('task:create', locale === 'zh' ? '请使用可发布任务的账号登录。' : 'Sign in with an account that can publish tasks.')) return
+    await publishTask(draft)
+  }
+
+  const guardedClaimTask = async (task: Task) => {
+    if (!requirePermission('task:claim', locale === 'zh' ? '请使用创作者账号登录后接单。' : 'Sign in with a maker account to claim tasks.')) return
+    await claimTask(task)
+  }
+
+  const guardedSubmitProposal = async (task: Task) => {
+    if (!requirePermission('task:propose', locale === 'zh' ? '请使用创作者账号登录后提交方案。' : 'Sign in with a maker account to submit proposals.')) return
+    await submitProposal(task)
+  }
+
+  const guardedAcceptProposal = async (task: Task, proposalId: string) => {
+    if (!requirePermission('task:review', locale === 'zh' ? '请使用发布方或管理员账号采纳方案。' : 'Sign in as a publisher or admin to accept proposals.')) return
+    await acceptProposal(task, proposalId)
+  }
+
+  const guardedRejectProposal = async (task: Task, proposalId: string) => {
+    if (!requirePermission('task:review', locale === 'zh' ? '请使用发布方或管理员账号拒绝方案。' : 'Sign in as a publisher or admin to reject proposals.')) return
+    await rejectProposal(task, proposalId)
+  }
+
+  const guardedSubmitTask = async (task: Task, options?: { assetIds?: string[]; rightsNote?: string }) => {
+    if (!requirePermission('task:submit', locale === 'zh' ? '请使用创作者账号登录后提交成果。' : 'Sign in with a maker account to submit work.')) return
+    await submitTask(task, options)
+  }
+
+  const guardedApproveTask = async (task: Task) => {
+    if (!requirePermission('task:review', locale === 'zh' ? '请使用发布方或管理员账号验收任务。' : 'Sign in as a publisher or admin to review tasks.')) return
+    await approveTask(task)
+  }
+
+  const guardedRejectTask = async (task: Task) => {
+    if (!requirePermission('task:review', locale === 'zh' ? '请使用发布方或管理员账号驳回任务。' : 'Sign in as a publisher or admin to reject tasks.')) return
+    await rejectTask(task)
+  }
+
+  const guardedConvertPostToTask = async (post: Post) => {
+    if (!requirePermission('task:create', locale === 'zh' ? '请使用可发布任务的账号后再转任务。' : 'Sign in with task creation permission to convert posts.')) return
+    await convertPostToTask(post)
+  }
 
   return (
     <AppShell
       app={{ t, locale, switchLocale }}
       navigation={{ page, parentPage, navigatePrimary, navigateToPage, navigateBackToParent }}
-      account={{ accountProfile, accountName, currentPoints, userRole, setUserRole, openProfile }}
+      account={{
+        accountProfile,
+        accountName,
+        accountHandle,
+        accountSource,
+        accountReady,
+        currentPoints,
+        userRole,
+        permissions,
+        hasPermission,
+        setUserRole,
+        loginAs,
+        loginWithPassword,
+        loginWithOAuthProvider,
+        registerWithEmail,
+        logout,
+        openProfile,
+      }}
       theme={{ themeMode, setThemeMode }}
       chrome={{ sidebarCollapsed, setSidebarCollapsed, searchOpen, setSearchOpen, loginOpen, setLoginOpen }}
       player={{ activeTrack, playing, setPlaying, playTrack }}
       feedback={{ pushToast, simulateAction }}
+      notifications={{
+        items: notifications,
+        loading: notificationsLoading,
+        error: notificationsError,
+        readState: notificationReadState,
+        setReadState: setNotificationReadState,
+        refresh: refreshNotifications,
+        markRead: markNotificationRead,
+        markAllRead: markAllNotificationsRead,
+        openResource: openNotificationResource,
+      }}
       requireAuth={requireAuth}
     >
       <PageRenderer
@@ -117,7 +472,24 @@ function App() {
         workspace={{ prompt, setPrompt, generationState, runGenerate, playgroundWorkspace, setPlaygroundWorkspace }}
         player={{ playTrack }}
         feedback={{ requireAuth, simulateAction }}
-        tasks={{ taskList, selectedTask, setSelectedTask, publishTask, claimTask, submitTask, approveTask, rejectTask }}
+        tasks={{
+          taskList,
+          selectedTask,
+          setSelectedTask,
+          taskStatus,
+          proposalStateByTask,
+          submissionStateByTask,
+          publishTask: guardedPublishTask,
+          claimTask: guardedClaimTask,
+          submitProposal: guardedSubmitProposal,
+          refreshProposals,
+          acceptProposal: guardedAcceptProposal,
+          rejectProposal: guardedRejectProposal,
+          refreshSubmissions,
+          submitTask: guardedSubmitTask,
+          approveTask: guardedApproveTask,
+          rejectTask: guardedRejectTask,
+        }}
         community={{
           postList,
           selectedPost,
@@ -126,15 +498,19 @@ function App() {
           setCommunityFilter,
           communityView,
           setCommunityView,
-          convertPostToTask,
+          communityStatus,
+          convertPostToTask: guardedConvertPostToTask,
           savePostToLibrary,
           likePost,
           replyToPost,
           libraryItems,
         }}
-        rewards={{ ledgerItems }}
+        rewards={{ ledgerItems, pointsSummary, pointsStatus }}
+        homeDataSources={homeDataSources}
+        account={{ accountHandle, permissions, userRole, hasPermission }}
         billing={{ billing, setBilling }}
         profile={{ selectedProfile, accountProfile, openProfile }}
+        admin={{ deepLink: adminDeepLink, clearDeepLink: () => setAdminDeepLink(null), openNotificationResource: openNotificationResource }}
       />
     </AppShell>
   )

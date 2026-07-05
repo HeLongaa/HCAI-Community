@@ -5,10 +5,20 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:server": "npm --prefix server run dev",
+    "start:server": "npm --prefix server run start",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:sim": "node scripts/simulate-features.mjs"
+    "test:sim": "node scripts/simulate-features.mjs && node scripts/verify-api-contracts.mjs",
+    "test:contracts": "node scripts/verify-api-contracts.mjs",
+    "smoke:production": "node scripts/smoke-production.mjs --profile=fixture",
+    "smoke:production:env": "node scripts/smoke-production.mjs --profile=env",
+    "check:quick": "npm run lint && npm run test:sim",
+    "check:pr": "npm run check:quick && npm run build && npm --prefix server test && (cd server && npx prisma validate --schema ./prisma/schema.prisma) && npm run test:e2e",
+    "check:deploy": "npm run check:pr && npm run smoke:production",
+    "check:deploy:env": "npm run check:pr && npm run smoke:production:env",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "lucide-react": "^1.21.0",
@@ -17,6 +27,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.61.1",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

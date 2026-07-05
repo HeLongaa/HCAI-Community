@@ -15,10 +15,10 @@ This prototype is now split into a light application shell plus reusable domain,
 - `features/admin/` contains the admin review queue and moderation surface.
 - `features/rewards/` contains the points ledger and reward redemption surface.
 - `features/static-pages/` contains pricing, API, earn, about, terms, and privacy pages.
-- `components/ui/` contains reusable cross-feature UI primitives.
+- `components/ui/` contains reusable cross-feature UI primitives, including the shared notification list used by the topbar inbox and Admin Center.
 - `domain/` contains shared types, theme helpers, and pure utility functions.
 - `data/` contains static mock data used by the prototype.
 - `i18n/` contains localized UI copy.
 - `hooks/` contains reusable app-level state orchestration such as navigation, workflow actions, feedback, account/theme persistence, and player state.
 
-Next productization steps should split the large layout contracts into exported typed view models or scoped providers, then address the known dynamic island simulation contract gap.
+Next productization steps should split the large layout contracts into exported typed view models or scoped providers, then begin backend integration using the product plan and API/schema documents under `docs/`.

@@ -1,6 +1,9 @@
 import type {
   BillingViewModel,
+  AdminPageViewModel,
   CommunityWorkflowViewModel,
+  HomeDataSourceViewModel,
+  PageAccountViewModel,
   PageFeedbackViewModel,
   PageNavigationViewModel,
   PlayerViewModel,
@@ -29,8 +32,11 @@ type PageRendererProps = {
   tasks: TaskWorkflowViewModel
   community: CommunityWorkflowViewModel
   rewards: RewardsViewModel
+  homeDataSources: HomeDataSourceViewModel
+  account: PageAccountViewModel
   billing: BillingViewModel
   profile: ProfileViewModel
+  admin: AdminPageViewModel
 }
 
 export function PageRenderer({
@@ -42,8 +48,11 @@ export function PageRenderer({
   tasks,
   community,
   rewards,
+  homeDataSources,
+  account,
   billing: billingState,
   profile,
+  admin,
 }: PageRendererProps) {
   const { page, navigateToPage } = navigation
   const { prompt, setPrompt, generationState, runGenerate, playgroundWorkspace, setPlaygroundWorkspace } = workspace
@@ -53,8 +62,15 @@ export function PageRenderer({
     taskList,
     selectedTask,
     setSelectedTask,
+    taskStatus,
+    proposalStateByTask,
+    submissionStateByTask,
     publishTask,
-    claimTask,
+    submitProposal,
+    refreshProposals,
+    acceptProposal,
+    rejectProposal,
+    refreshSubmissions,
     submitTask,
     approveTask,
     rejectTask,
@@ -67,19 +83,20 @@ export function PageRenderer({
     setCommunityFilter,
     communityView,
     setCommunityView,
+    communityStatus,
     convertPostToTask,
     savePostToLibrary,
     likePost,
     replyToPost,
     libraryItems,
   } = community
-  const { ledgerItems } = rewards
+  const { ledgerItems, pointsSummary, pointsStatus } = rewards
   const { billing, setBilling } = billingState
   const { selectedProfile, accountProfile, openProfile } = profile
 
   return (
     <>
-      {page === 'home' && <HomePage t={t} setPage={navigateToPage} playTrack={playTrack} />}
+      {page === 'home' && <HomePage t={t} setPage={navigateToPage} playTrack={playTrack} dataSources={homeDataSources.sources} />}
       {page === 'playground' && (
         <PlaygroundPage
           t={t}
@@ -105,9 +122,10 @@ export function PageRenderer({
           tasks={taskList}
           setPage={navigateToPage}
           openProfile={openProfile}
-          claimTask={claimTask}
+          submitProposal={submitProposal}
           selectedTask={selectedTask}
           setSelectedTask={setSelectedTask}
+          status={taskStatus}
           simulateAction={simulateAction}
         />
       )}
@@ -121,7 +139,24 @@ export function PageRenderer({
           simulateAction={simulateAction}
         />
       )}
-      {page === 'mine' && <MyTasksPage t={t} tasks={taskList} setPage={navigateToPage} submitTask={submitTask} simulateAction={simulateAction} />}
+      {page === 'mine' && (
+        <MyTasksPage
+          t={t}
+          tasks={taskList}
+          setPage={navigateToPage}
+          accountHandle={account.accountHandle}
+          proposalStateByTask={proposalStateByTask}
+          submissionStateByTask={submissionStateByTask}
+          refreshProposals={refreshProposals}
+          acceptProposal={acceptProposal}
+          rejectProposal={rejectProposal}
+          refreshSubmissions={refreshSubmissions}
+          submitTask={submitTask}
+          approveTask={approveTask}
+          rejectTask={rejectTask}
+          simulateAction={simulateAction}
+        />
+      )}
       {page === 'community' && (
         <CommunityPage
           t={t}
@@ -137,12 +172,23 @@ export function PageRenderer({
           setCommunityFilter={setCommunityFilter}
           communityView={communityView}
           setCommunityView={setCommunityView}
+          status={communityStatus}
           simulateAction={simulateAction}
         />
       )}
       {page === 'inspiration' && <InspirationPage t={t} items={libraryItems} setPage={navigateToPage} simulateAction={simulateAction} />}
-      {page === 'points' && <PointsPage t={t} ledger={ledgerItems} simulateAction={simulateAction} />}
-      {page === 'admin' && <AdminPage t={t} selectedTask={selectedTask} setPage={navigateToPage} approveTask={approveTask} rejectTask={rejectTask} simulateAction={simulateAction} />}
+      {page === 'points' && <PointsPage t={t} ledger={ledgerItems} summary={pointsSummary} status={pointsStatus} simulateAction={simulateAction} />}
+      {page === 'admin' && (
+        <AdminPage
+          t={t}
+          setPage={navigateToPage}
+          simulateAction={simulateAction}
+          account={account}
+          deepLink={admin.deepLink}
+          onDeepLinkHandled={admin.clearDeepLink}
+          onOpenNotificationResource={admin.openNotificationResource}
+        />
+      )}
       {page === 'pricing' && <PricingPage t={t} billing={billing} setBilling={setBilling} requireAuth={requireAuth} />}
       {page === 'api' && <ApiPage t={t} requireAuth={requireAuth} simulateAction={simulateAction} />}
       {page === 'earn' && <EarnPage t={t} requireAuth={requireAuth} />}

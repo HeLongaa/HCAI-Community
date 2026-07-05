@@ -1,0 +1,111 @@
+import { api, withQuery } from './apiClient'
+import type {
+  AdminAuditListQuery,
+  AdminPointAdjustmentRequest,
+  AdminPointAdjustmentResponse,
+  AdminPermissionDto,
+  AdminOperationsMetricsDto,
+  AdminReviewActionRequest,
+  AdminReviewDecision,
+  AdminReviewListQuery,
+  AdminReviewQueueItemDto,
+  AdminRolePermissionDto,
+  AdminSecurityAlertEventDto,
+  AdminSecurityAlertDto,
+  AdminSecurityEventDto,
+  AdminSecurityEventListQuery,
+  ApiLedgerEntry,
+  ApiPointsSummary,
+  ApiPaginationMeta,
+  PointAdjustmentPolicyHistoryItem,
+  PointAdjustmentPolicy,
+  PointsLedgerQuery,
+  AuditEventDto,
+  UpdateRolePermissionsRequest,
+} from './contracts'
+import type { Permission, Role } from '../domain/types'
+
+export const adminService = {
+  async permissions() {
+    return api.get<AdminPermissionDto[]>('/admin/permissions')
+  },
+  async roles() {
+    return api.get<AdminRolePermissionDto[]>('/admin/roles')
+  },
+  async updateRolePermissions(role: Role, permissions: Permission[]) {
+    const body: UpdateRolePermissionsRequest = { permissions }
+    return api.put<AdminRolePermissionDto>(`/admin/roles/${role}/permissions`, body)
+  },
+  async reviews(query?: AdminReviewListQuery) {
+    return api.get<AdminReviewQueueItemDto[]>(withQuery('/admin/reviews', query))
+  },
+  async reviewQueueItem(id: string, decision: AdminReviewDecision, note?: string) {
+    const body: AdminReviewActionRequest = { decision, note }
+    return api.post<AdminReviewQueueItemDto>(`/admin/reviews/${id}/actions`, body)
+  },
+  async audit(query?: AdminAuditListQuery) {
+    return api.get<AuditEventDto[]>(withQuery('/admin/audit', query))
+  },
+  async auditEvent(id: string) {
+    return api.get<AuditEventDto>(`/admin/audit/${id}`)
+  },
+  async exportAuditJson(query?: AdminAuditListQuery) {
+    return api.text(withQuery('/admin/audit/export', query))
+  },
+  async securityEvents(query?: AdminSecurityEventListQuery) {
+    const envelope = await api.getEnvelope<AdminSecurityEventDto[]>(withQuery('/admin/security/events', query))
+    return {
+      events: envelope.data,
+      nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null,
+    }
+  },
+  async securityAlerts() {
+    return api.get<AdminSecurityAlertDto[]>('/admin/security/alerts')
+  },
+  async securityAlertEvents(id: string) {
+    return api.get<AdminSecurityAlertEventDto[]>(`/admin/security/alerts/${id}/events`)
+  },
+  async exportSecurityAlertJson(id: string) {
+    return api.text(`/admin/security/alerts/${id}/export`)
+  },
+  async acknowledgeSecurityAlert(id: string, note = '') {
+    return api.post<AdminSecurityAlertDto>(`/admin/security/alerts/${id}/acknowledge`, { note })
+  },
+  async silenceSecurityAlert(id: string, until: string, note = '') {
+    return api.post<AdminSecurityAlertDto>(`/admin/security/alerts/${id}/silence`, { until, note })
+  },
+  async unsilenceSecurityAlert(id: string, note = '') {
+    return api.post<AdminSecurityAlertDto>(`/admin/security/alerts/${id}/unsilence`, { note })
+  },
+  async operationsMetrics(windowMinutes = 60) {
+    return api.get<AdminOperationsMetricsDto>(withQuery('/admin/operations/metrics', { windowMinutes }))
+  },
+  async exportOperationsMetricsJson(windowMinutes = 60) {
+    return api.text(withQuery('/admin/operations/metrics/export', { windowMinutes }))
+  },
+  async pointLedger(query?: PointsLedgerQuery) {
+    const envelope = await api.getEnvelope<ApiLedgerEntry[]>(withQuery('/admin/points/ledger', query))
+    return {
+      entries: envelope.data,
+      summary: (envelope.meta as { summary?: ApiPointsSummary } | undefined)?.summary ?? null,
+    }
+  },
+  async adjustPoints(payload: AdminPointAdjustmentRequest) {
+    return api.post<AdminPointAdjustmentResponse>('/admin/points/adjustments', payload)
+  },
+  async pointPolicy() {
+    return api.get<PointAdjustmentPolicy>('/admin/points/policy')
+  },
+  async updatePointPolicy(payload: PointAdjustmentPolicy) {
+    return api.put<PointAdjustmentPolicy>('/admin/points/policy', payload)
+  },
+  async pointPolicyHistory() {
+    return api.get<PointAdjustmentPolicyHistoryItem[]>('/admin/points/policy/history?limit=5')
+  },
+  async rollbackPointPolicy(eventId: string) {
+    return api.post<PointAdjustmentPolicy>('/admin/points/policy/rollback', { eventId })
+  },
+  async exportPointLedgerCsv(query?: PointsLedgerQuery) {
+    return api.text(withQuery('/admin/points/ledger.csv', query))
+  },
+}

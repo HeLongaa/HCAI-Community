@@ -75,7 +75,7 @@ export function matchProfilesForDraft(draft: PublishDraft) {
 }
 
 export function publishFieldLabel(field: keyof PublishDraft, t: Record<string, string>) {
-  const labels: Record<keyof PublishDraft, [string, string]> = {
+  const labels: Partial<Record<keyof PublishDraft, [string, string]>> = {
     title: ['task title', '任务标题'],
     category: ['category', '分类'],
     reward: ['reward', '奖励'],
@@ -84,7 +84,7 @@ export function publishFieldLabel(field: keyof PublishDraft, t: Record<string, s
     details: ['requirement details', '需求详情'],
     rules: ['acceptance rules', '验收规则'],
   }
-  const [en, zh] = labels[field]
+  const [en, zh] = labels[field] ?? ['field', '字段']
   return textFor(t, en, zh)
 }
 
@@ -148,7 +148,7 @@ export function pointText(value: string) {
 }
 
 export function roleTier(role: Role) {
-  return role === 'admin' ? 'Ultra' : role === 'moderator' ? 'Pro' : role === 'contributor' ? 'Plus' : 'Free'
+  return role === 'admin' ? 'Ultra' : role === 'moderator' || role === 'publisher' ? 'Pro' : role === 'contributor' || role === 'creator' ? 'Plus' : 'Free'
 }
 
 export function localeFirstTask(tasksToFilter: Task[], t: Record<string, string>) {

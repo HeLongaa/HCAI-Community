@@ -1,6 +1,29 @@
 import { useState } from 'react'
 import type { NavigateOptions, Page, PlaygroundMode } from '../domain/types'
 
+const oauthRedirectKey = 'hcaiOAuthRedirectTo'
+const routablePages = new Set<Page>([
+  'home',
+  'playground',
+  'chat',
+  'explore',
+  'tasks',
+  'publish',
+  'mine',
+  'community',
+  'inspiration',
+  'points',
+  'admin',
+  'pricing',
+  'api',
+  'earn',
+  'about',
+  'playlist',
+  'profile',
+  'terms',
+  'privacy',
+])
+
 const parentPages = {
   playground: 'home',
   chat: 'home',
@@ -22,8 +45,24 @@ const parentPages = {
   privacy: 'about',
 } satisfies Record<Exclude<Page, 'home'>, Page>
 
+const consumeOAuthRedirectPage = (): Page | null => {
+  if (typeof window === 'undefined') return null
+  try {
+    const redirectTo = window.localStorage.getItem(oauthRedirectKey)
+    window.localStorage.removeItem(oauthRedirectKey)
+    if (!redirectTo || !redirectTo.startsWith('/') || redirectTo.startsWith('//')) {
+      return null
+    }
+    const [path] = redirectTo.split(/[?#]/)
+    const page = path.replace(/^\/+|\/+$/g, '') || 'home'
+    return routablePages.has(page as Page) ? page as Page : null
+  } catch {
+    return null
+  }
+}
+
 export function useNavigationState() {
-  const [page, setPage] = useState<Page>('home')
+  const [page, setPage] = useState<Page>(() => consumeOAuthRedirectPage() ?? 'home')
   const [playgroundWorkspace, setPlaygroundWorkspace] = useState<PlaygroundMode>('music')
   const [pageReturnTargets, setPageReturnTargets] = useState<Partial<Record<Page, Page>>>({})
 

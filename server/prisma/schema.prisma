@@ -1,0 +1,491 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  member
+  creator
+  publisher
+  moderator
+  admin
+}
+
+enum UserStatus {
+  active
+  suspended
+  deleted
+}
+
+enum ProfileLane {
+  maker
+  publisher
+  both
+}
+
+enum TaskStatus {
+  draft
+  open
+  assigned
+  in_progress
+  submitted
+  pending_review
+  completed
+  rejected
+  cancelled
+}
+
+enum TaskVisibility {
+  public
+  community
+  invite_only
+}
+
+enum TaskProposalStatus {
+  pending
+  accepted
+  rejected
+  withdrawn
+}
+
+enum TaskSubmissionStatus {
+  pending_review
+  approved
+  rejected
+}
+
+enum PostSource {
+  post
+  prompt
+  tutorial
+  template
+  external
+}
+
+enum LedgerStatus {
+  pending
+  settled
+  cancelled
+}
+
+enum AuditActorType {
+  user
+  system
+}
+
+enum AdminReviewDecision {
+  approve
+  reject
+}
+
+enum MediaAssetPurpose {
+  task_attachment
+  submission_asset
+  profile_portfolio
+  library_asset
+}
+
+enum MediaAssetStatus {
+  pending
+  uploaded
+  rejected
+}
+
+enum MediaScanJobStatus {
+  queued
+  retrying
+  completed
+  failed
+}
+
+model AuditEvent {
+  id           String         @id @default(cuid())
+  actorType    AuditActorType @map("actor_type")
+  actorId      String?        @map("actor_id")
+  action       String
+  resourceType String         @map("resource_type")
+  resourceId   String?        @map("resource_id")
+  metadata     Json?
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([action, createdAt])
+  @@index([resourceType, createdAt])
+  @@map("audit_events")
+}
+
+model SecurityEvent {
+  id         String   @id
+  type       String
+  severity   String
+  source     String
+  clientKey  String?  @map("client_key")
+  identity   String?
+  method     String?
+  pathname   String?
+  details    Json?
+  occurredAt DateTime @default(now()) @map("occurred_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([occurredAt])
+  @@index([source, occurredAt])
+  @@index([severity, occurredAt])
+  @@index([type, occurredAt])
+  @@map("security_events")
+}
+
+model Permission {
+  id          String   @id
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  role         UserRole
+  permissionId String   @map("permission_id")
+
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([role, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
+
+model AdminReview {
+  id           String               @id @default(cuid())
+  queue        String
+  status       String
+  title        String
+  owner        String
+  note         String
+  decision     AdminReviewDecision?
+  reviewedById String?              @map("reviewed_by_id")
+  reviewedAt   DateTime?            @map("reviewed_at")
+  metadata     Json?
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+
+  reviewedBy User? @relation("AdminReviewReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([queue])
+  @@index([status])
+  @@map("admin_reviews")
+}
+
+model User {
+  id          String     @id @default(cuid())
+  email       String?    @unique
+  displayName String     @map("display_name")
+  avatarUrl   String?    @map("avatar_url")
+  role        UserRole
+  status      UserStatus @default(active)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  profile                 Profile?
+  authAccounts            AuthAccount[]
+  refreshTokens           RefreshToken[]
+  publisherTasks          Task[]           @relation("TaskPublisher")
+  assigneeTasks           Task[]           @relation("TaskAssignee")
+  taskProposals           TaskProposal[]
+  taskSubmissions         TaskSubmission[] @relation("TaskSubmissionSubmitter")
+  reviewedTaskSubmissions TaskSubmission[] @relation("TaskSubmissionReviewer")
+  authoredPosts           Post[]
+  comments                Comment[]
+  postLikes               PostLike[]
+  libraryItems            LibraryItem[]
+  pointLedger             PointLedger[]
+  adminReviews            AdminReview[]    @relation("AdminReviewReviewer")
+  mediaAssets             MediaAsset[]
+  notifications           Notification[]
+  mediaScanJobsReviewed   MediaScanJob[]   @relation("MediaScanJobReviewer")
+
+  @@map("users")
+}
+
+model AuthAccount {
+  id             String  @id @default(cuid())
+  userId         String  @map("user_id")
+  provider       String
+  providerUserId String  @map("provider_user_id")
+  passwordHash   String? @map("password_hash")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@map("auth_accounts")
+}
+
+model RefreshToken {
+  id                  String    @id @default(cuid())
+  userId              String    @map("user_id")
+  tokenHash           String    @map("token_hash")
+  familyId            String    @default(cuid()) @map("family_id")
+  replacedByTokenHash String?   @map("replaced_by_token_hash")
+  expiresAt           DateTime  @map("expires_at")
+  revokedAt           DateTime? @map("revoked_at")
+  reuseDetectedAt     DateTime? @map("reuse_detected_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+model Profile {
+  userId    String      @id @map("user_id")
+  handle    String      @unique
+  bio       String?
+  lane      ProfileLane
+  skills    String[]
+  languages String[]
+  portfolio Json?
+  stats     Json?
+  metadata  Json?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+model Task {
+  id              String         @id @default(cuid())
+  title           String
+  category        String
+  description     String
+  acceptanceRules String         @map("acceptance_rules")
+  rewardAmount    Decimal?       @map("reward_amount")
+  rewardCurrency  String?        @map("reward_currency")
+  pointsReward    Int            @map("points_reward")
+  status          TaskStatus
+  publisherId     String         @map("publisher_id")
+  assigneeId      String?        @map("assignee_id")
+  visibility      TaskVisibility
+  deadlineAt      DateTime?      @map("deadline_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  metadata        Json?
+
+  publisher   User?            @relation("TaskPublisher", fields: [publisherId], references: [id], onDelete: Restrict)
+  assignee    User?            @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  proposals   TaskProposal[]
+  submissions TaskSubmission[]
+
+  @@map("tasks")
+}
+
+model TaskProposal {
+  id          String             @id @default(cuid())
+  taskId      String             @map("task_id")
+  proposerId  String             @map("proposer_id")
+  coverLetter String             @map("cover_letter")
+  estimate    String?
+  status      TaskProposalStatus @default(pending)
+  metadata    Json?
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  task     Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  proposer User @relation(fields: [proposerId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+  @@index([proposerId])
+  @@map("task_proposals")
+}
+
+model TaskSubmission {
+  id           String               @id @default(cuid())
+  taskId       String               @map("task_id")
+  submitterId  String               @map("submitter_id")
+  content      String
+  assetIds     String[]             @map("asset_ids")
+  rightsNote   String               @default("") @map("rights_note")
+  status       TaskSubmissionStatus @default(pending_review)
+  reviewNote   String?              @map("review_note")
+  reviewedById String?              @map("reviewed_by_id")
+  reviewedAt   DateTime?            @map("reviewed_at")
+  metadata     Json?
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+
+  task       Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  submitter  User  @relation("TaskSubmissionSubmitter", fields: [submitterId], references: [id], onDelete: Cascade)
+  reviewedBy User? @relation("TaskSubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([taskId, createdAt])
+  @@index([submitterId])
+  @@index([reviewedById])
+  @@map("task_submissions")
+}
+
+model Post {
+  id         String   @id @default(cuid())
+  authorId   String   @map("author_id")
+  title      String
+  body       String
+  category   String
+  tag        String
+  solved     Boolean  @default(false)
+  viewsCount Int      @default(0) @map("views_count")
+  likesCount Int      @default(0) @map("likes_count")
+  createdAt  DateTime @default(now()) @map("created_at")
+  metadata   Json?
+
+  author   User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments Comment[]
+  likes    PostLike[]
+
+  @@map("posts")
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  postId    String   @map("post_id")
+  authorId  String   @map("author_id")
+  parentId  String?  @map("parent_id")
+  body      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post    Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author  User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent  Comment?  @relation("CommentTree", fields: [parentId], references: [id], onDelete: SetNull)
+  replies Comment[] @relation("CommentTree")
+
+  @@map("comments")
+}
+
+model PostLike {
+  id        String   @id @default(cuid())
+  postId    String   @map("post_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@map("post_likes")
+}
+
+model LibraryItem {
+  id         String     @id @default(cuid())
+  userId     String     @map("user_id")
+  sourceType PostSource @map("source_type")
+  sourceId   String?    @map("source_id")
+  title      String
+  content    String
+  metadata   Json?
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("library_items")
+}
+
+model PointLedger {
+  id              String       @id @default(cuid())
+  userId          String       @map("user_id")
+  sourceType      String       @map("source_type")
+  sourceId        String?      @map("source_id")
+  delta           Int
+  balanceAfter    Int          @map("balance_after")
+  status          LedgerStatus
+  description     String?
+  occurredAtLabel String?      @map("occurred_at_label")
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourceType, sourceId])
+  @@map("point_ledger")
+}
+
+model MediaAsset {
+  id          String            @id @default(cuid())
+  ownerId     String            @map("owner_id")
+  fileName    String            @map("file_name")
+  storageKey  String            @unique @map("storage_key")
+  contentType String            @map("content_type")
+  sizeBytes   Int               @map("size_bytes")
+  purpose     MediaAssetPurpose
+  status      MediaAssetStatus  @default(pending)
+  metadata    Json?
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  scanJobs MediaScanJob[]
+
+  @@index([ownerId])
+  @@index([purpose])
+  @@index([status])
+  @@map("media_assets")
+}
+
+model MediaScanJob {
+  id              String             @id @default(cuid())
+  assetId         String             @map("asset_id")
+  provider        String
+  status          MediaScanJobStatus
+  scanStatus      String             @map("scan_status")
+  externalScanId  String?            @map("external_scan_id")
+  attempts        Int                @default(1)
+  requestedAt     DateTime?          @map("requested_at")
+  timeoutAt       DateTime?          @map("timeout_at")
+  nextRetryAt     DateTime?          @map("next_retry_at")
+  callbackAt      DateTime?          @map("callback_at")
+  failedAt        DateTime?          @map("failed_at")
+  reviewedById    String?            @map("reviewed_by_id")
+  reviewedAt      DateTime?          @map("reviewed_at")
+  note            String?
+  rejectionReason String?            @map("rejection_reason")
+  metadata        Json?
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  asset      MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  reviewedBy User?      @relation("MediaScanJobReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([assetId, createdAt])
+  @@index([status, timeoutAt])
+  @@index([scanStatus])
+  @@index([externalScanId])
+  @@map("media_scan_jobs")
+}
+
+model Notification {
+  id           String    @id @default(cuid())
+  recipientId  String    @map("recipient_id")
+  type         String
+  title        String
+  body         String
+  resourceType String    @map("resource_type")
+  resourceId   String?   @map("resource_id")
+  metadata     Json?
+  readAt       DateTime? @map("read_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  recipient User @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, readAt, createdAt])
+  @@index([type])
+  @@map("notifications")
+}
