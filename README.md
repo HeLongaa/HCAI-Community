@@ -119,3 +119,4 @@ Planning docs for the API, data model, auth, and backend rollout live in `docs/`
 - `docs/PHASE_3_TRACK_B_PLAN.md`
 - `docs/PHASE_3_TRACK_B_OPERATIONS_CLOSEOUT.md`
 - `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md`
+- `docs/PHASE_3_TRACK_C_PLAN.md`

@@ -14,19 +14,20 @@ Reasoning:
 
 ## Scope Decision
 
-Phase 3 is an umbrella plan with Tracks A, B, and C. Track A and Track B are now closed out in the repository. Track C is the next candidate track when the project is ready to replace simulated creative outputs with provider-backed generation.
+Phase 3 is an umbrella plan with Tracks A, B, and C. Track A and Track B are now closed out in the repository. Track C is now the active planning track for replacing selected simulated creative outputs with provider-backed generation.
 
 Current closeout target:
 
 1. Keep Track A marketplace depth stable.
 2. Keep Track B production operations closed unless a deployment blocker is found.
-3. Keep Track C creative provider productization as a follow-up track.
+3. Complete Track C creative provider productization in scoped, reviewable slices.
 4. Keep each remaining Phase 3 PR green on `npm run check:deploy`.
 
 Track A closeout notes live in `docs/PHASE_3_TRACK_A_CLOSEOUT.md`.
 Track B planning notes live in `docs/PHASE_3_TRACK_B_PLAN.md`.
 Track B operations closeout notes live in `docs/PHASE_3_TRACK_B_OPERATIONS_CLOSEOUT.md`.
 Track B multi-instance deployment runbook lives in `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md`.
+Track C planning notes live in `docs/PHASE_3_TRACK_C_PLAN.md`.
 
 ## Phase 3 Tracks
 
@@ -89,36 +90,48 @@ Deferred operations follow-ups:
 
 Goal: replace remaining simulated creative outputs with provider-backed generation and persisted assets.
 
+Status: active planning track. The first recommended implementation slice is a provider abstraction and mock provider boundary, not a direct paid-provider integration.
+
 Candidate scope:
 
 - Provider abstraction for image/video/music/chat generation.
 - Generated asset persistence through media uploads/storage.
 - Cost, quota, and moderation boundaries.
 - Admin review for generated outputs when required.
+- Runtime labels for provider-backed, mock-provider, demo, and catalog outputs.
 
 Exit criteria:
 
 - At least one creative workspace produces a real stored output through a provider adapter.
 - Runtime data-source labels clearly distinguish provider-backed outputs from demo/catalog content.
 
+Recommended implementation order:
+
+1. Planning and task inventory.
+2. Creative provider abstraction.
+3. Generated asset persistence.
+4. First workspace provider integration, with Image Studio recommended first.
+5. Cost, quota, and moderation boundaries.
+6. Track C closeout.
+
 ## Recommended First Slice
 
-Implement a revision loop for task submissions.
+Implement the Track C provider abstraction and mock provider boundary.
 
 Suggested scope:
 
-1. Add `revision_requested` state to normalized submissions.
-2. Add a publisher review action that records requested changes without settling points.
-3. Allow the creator to submit a revised delivery.
-4. Show revision notes and submission history in My Tasks.
-5. Notify creator/publisher on revision request and resubmission.
-6. Add backend tests and one browser E2E covering approve-after-revision.
+1. Add provider registry and capability metadata.
+2. Add generation request/response contracts.
+3. Add mock provider adapter.
+4. Add safe provider config projection.
+5. Add backend tests.
+6. Keep generated asset persistence and real provider credentials for later slices.
 
 Non-goals:
 
-- Full dispute arbitration.
-- External creative-provider integration.
-- Multi-instance worker infrastructure.
+- Direct paid-provider integration.
+- Full generated asset persistence.
+- Cost/quota/moderation enforcement beyond placeholder metadata.
 - New visual redesign.
 
 ## Quality Gate
