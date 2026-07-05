@@ -1,0 +1,70 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+
+import { executeCreativeGeneration, getCreativeProviderCatalog } from './generationService.js'
+
+const actor = {
+  id: 'demo-user-creator',
+  handle: 'promptlin',
+}
+
+const request = {
+  workspace: 'image',
+  mode: 'text_to_image',
+  prompt: 'A clean editorial poster for an AI marketplace',
+  inputAssetIds: [],
+  parameters: { aspectRatio: '1:1', seed: 42 },
+  providerId: null,
+}
+
+test('getCreativeProviderCatalog exposes safe mock provider capabilities', () => {
+  const catalog = getCreativeProviderCatalog({ NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' })
+
+  assert.equal(catalog.defaultProviderId, 'mock')
+  assert.equal(catalog.providers.length, 1)
+  assert.equal(catalog.providers[0].id, 'mock')
+  assert.equal(catalog.providers[0].enabled, true)
+  assert.equal(catalog.providers[0].safeMetadata.externalCredentialsConfigured, false)
+  assert.equal(catalog.providers[0].safeMetadata.persistsOutputs, false)
+  assert.ok(catalog.providers[0].capabilities.find((capability) => capability.workspace === 'image'))
+})
+
+test('executeCreativeGeneration returns deterministic mock output descriptors', () => {
+  const first = executeCreativeGeneration({ request, actor, source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' } })
+  const second = executeCreativeGeneration({ request, actor, source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' } })
+
+  assert.equal(first.id, second.id)
+  assert.equal(first.workspace, 'image')
+  assert.equal(first.mode, 'text_to_image')
+  assert.equal(first.status, 'completed')
+  assert.equal(first.provider.id, 'mock')
+  assert.equal(first.outputs[0].type, 'image')
+  assert.equal(first.outputs[0].contentType, 'image/png')
+  assert.equal(first.outputs[0].storage.persisted, false)
+  assert.equal(first.outputs[0].source.kind, 'mock_provider')
+  assert.equal(first.usage.metered, false)
+  assert.equal(first.safety.reviewRequired, false)
+  assert.equal(first.createdBy.handle, 'promptlin')
+})
+
+test('executeCreativeGeneration rejects unsupported workspace modes', () => {
+  assert.throws(
+    () => executeCreativeGeneration({
+      request: { ...request, mode: 'text_to_video' },
+      actor,
+      source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' },
+    }),
+    /mode must be one of: text_to_image, image_to_image/,
+  )
+})
+
+test('executeCreativeGeneration reports disabled providers as unavailable', () => {
+  assert.throws(
+    () => executeCreativeGeneration({
+      request,
+      actor,
+      source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'disabled' },
+    }),
+    /Creative provider is not available: mock/,
+  )
+})

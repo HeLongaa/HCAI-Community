@@ -11,6 +11,7 @@ import { registerAdminRoutes } from './admin/routes.js'
 import { registerPointsRoutes } from './points/routes.js'
 import { registerMediaRoutes } from './media/routes.js'
 import { registerNotificationRoutes } from './notifications/routes.js'
+import { registerCreativeRoutes } from './creative/routes.js'
 
 export const registerModules = (router) => {
   registerHealthRoutes(router)
@@ -22,6 +23,7 @@ export const registerModules = (router) => {
   registerPostRoutes(router)
   registerLibraryRoutes(router)
   registerMediaRoutes(router)
+  registerCreativeRoutes(router)
   registerNotificationRoutes(router)
   registerAdminRoutes(router)
   registerProfileRoutes(router)

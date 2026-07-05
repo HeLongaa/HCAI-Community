@@ -662,6 +662,172 @@ export const openApiDocument = {
         },
       },
     },
+    '/creative/providers': {
+      get: {
+        summary: 'List safe creative provider capabilities',
+        responses: {
+          '200': {
+            description: 'Creative provider registry with safe capability metadata',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: {
+                      type: 'object',
+                      properties: {
+                        defaultProviderId: { type: 'string' },
+                        providers: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              id: { type: 'string' },
+                              label: { type: 'string' },
+                              mode: { type: 'string', enum: ['mock'] },
+                              enabled: { type: 'boolean' },
+                              configured: { type: 'boolean' },
+                              default: { type: 'boolean' },
+                              capabilities: {
+                                type: 'array',
+                                items: {
+                                  type: 'object',
+                                  properties: {
+                                    workspace: { type: 'string', enum: ['image', 'video', 'music', 'chat'] },
+                                    label: { type: 'string' },
+                                    modes: { type: 'array', items: { type: 'string' } },
+                                    inputAssetPurposes: { type: 'array', items: { type: 'string' } },
+                                    outputTypes: { type: 'array', items: { type: 'string' } },
+                                    maxPromptCharacters: { type: 'integer' },
+                                    supportedParameters: { type: 'array', items: { type: 'string' } },
+                                  },
+                                },
+                              },
+                              safeMetadata: {
+                                type: 'object',
+                                properties: {
+                                  externalCredentialsConfigured: { type: 'boolean' },
+                                  persistsOutputs: { type: 'boolean' },
+                                  costMetered: { type: 'boolean' },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/creative/generations': {
+      post: {
+        summary: 'Execute a creative generation through the configured provider boundary',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['workspace', 'mode', 'prompt'],
+                properties: {
+                  workspace: { type: 'string', enum: ['image', 'video', 'music', 'chat'] },
+                  mode: { type: 'string' },
+                  prompt: { type: 'string', maxLength: 4000 },
+                  inputAssetIds: { type: 'array', items: { type: 'string' } },
+                  parameters: { type: 'object', additionalProperties: true },
+                  providerId: { type: ['string', 'null'] },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Normalized creative generation result',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'string' },
+                        workspace: { type: 'string' },
+                        mode: { type: 'string' },
+                        status: { type: 'string', enum: ['completed'] },
+                        provider: {
+                          type: 'object',
+                          properties: {
+                            id: { type: 'string' },
+                            mode: { type: 'string' },
+                            label: { type: 'string' },
+                          },
+                        },
+                        prompt: { type: 'string' },
+                        inputAssetIds: { type: 'array', items: { type: 'string' } },
+                        parameters: { type: 'object', additionalProperties: true },
+                        outputs: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              id: { type: 'string' },
+                              type: { type: 'string', enum: ['image', 'video', 'audio', 'text'] },
+                              label: { type: 'string' },
+                              contentType: { type: 'string' },
+                              url: { type: 'string' },
+                              storage: {
+                                type: 'object',
+                                properties: {
+                                  persisted: { type: 'boolean' },
+                                  provider: { type: 'string' },
+                                },
+                              },
+                              source: {
+                                type: 'object',
+                                properties: {
+                                  kind: { type: 'string', enum: ['mock_provider'] },
+                                  persistedMediaAssetId: { type: ['string', 'null'] },
+                                },
+                              },
+                            },
+                          },
+                        },
+                        usage: {
+                          type: 'object',
+                          properties: {
+                            estimatedCredits: { type: 'number' },
+                            providerCostCents: { type: 'number' },
+                            metered: { type: 'boolean' },
+                          },
+                        },
+                        safety: {
+                          type: 'object',
+                          properties: {
+                            moderationRequired: { type: 'boolean' },
+                            reviewRequired: { type: 'boolean' },
+                          },
+                        },
+                        createdAt: { type: 'string', format: 'date-time' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '400': { description: 'Invalid workspace, mode, prompt, or parameter payload' },
+          '401': { description: 'Authentication required' },
+          '503': { description: 'Creative provider unavailable' },
+        },
+      },
+    },
     '/media/scan-jobs': {
       get: {
         summary: 'List asynchronous media scan job health',

@@ -20,7 +20,9 @@ const storageRequiredKeys = ['STORAGE_ENDPOINT', 'STORAGE_REGION', 'STORAGE_BUCK
 
 const getStorageDriver = (source) => String(source.STORAGE_DRIVER ?? (source.STORAGE_BUCKET ? 's3' : 'mock')).trim().toLowerCase()
 const getMediaScanProvider = (source) => String(source.MEDIA_SCAN_PROVIDER ?? 'manual').trim().toLowerCase()
+const getCreativeProviderMode = (source) => String(source.CREATIVE_PROVIDER_MODE ?? 'mock').trim().toLowerCase()
 const supportedMediaScanRequestAdapters = ['generic-webhook', 'clamav-http']
+const supportedCreativeProviderModes = ['mock', 'disabled']
 const getMediaScanRequestAdapter = (source) => String(source.MEDIA_SCAN_REQUEST_ADAPTER ?? 'generic-webhook').trim().toLowerCase()
 const supportedRateLimitStores = ['memory', 'redis']
 const supportedRateLimitFailureModes = ['fail_open', 'fail_closed']
@@ -82,6 +84,7 @@ export const buildEnv = (source = process.env) => {
   const accessTokenSecret = getAccessTokenSecret(source)
   const storageDriver = getStorageDriver(source)
   const mediaScanProvider = getMediaScanProvider(source)
+  const creativeProviderMode = getCreativeProviderMode(source)
   const mediaScanRequestAdapter = getMediaScanRequestAdapter(source)
   const rateLimitStore = getRateLimitStore(source)
   const rateLimitRedisUrl = getRedisUrl(source)
@@ -153,6 +156,9 @@ export const buildEnv = (source = process.env) => {
   if (!['manual', 'mock', 'webhook'].includes(mediaScanProvider)) {
     throw new Error('MEDIA_SCAN_PROVIDER must be one of: manual, mock, webhook')
   }
+  if (!supportedCreativeProviderModes.includes(creativeProviderMode)) {
+    throw new Error(`CREATIVE_PROVIDER_MODE must be one of: ${supportedCreativeProviderModes.join(', ')}`)
+  }
   if (mediaScanProvider === 'webhook' && !String(source.MEDIA_SCAN_WEBHOOK_SECRET ?? '').trim()) {
     throw new Error('MEDIA_SCAN_WEBHOOK_SECRET is required when MEDIA_SCAN_PROVIDER=webhook')
   }
@@ -187,6 +193,9 @@ export const buildEnv = (source = process.env) => {
     hasManagedAccessTokenSecret: Boolean(accessTokenSecret),
     storageDriver,
     mediaScanProvider,
+    creativeProviderMode,
+    creativeProviderDefaultId: 'mock',
+    creativeProviderEnabled: creativeProviderMode !== 'disabled',
     mediaScanRequestAdapter,
     hasMediaScanWebhookSecret: Boolean(String(source.MEDIA_SCAN_WEBHOOK_SECRET ?? '').trim()),
     mediaScanRetryDelaySeconds,
@@ -438,6 +447,25 @@ export const buildMediaGovernanceConfig = (source = process.env, policy = null) 
         },
       },
     },
+  }
+}
+
+export const buildCreativeProviderConfig = (source = process.env) => {
+  const current = buildEnv(source)
+  return {
+    providerMode: current.creativeProviderMode,
+    defaultProviderId: current.creativeProviderDefaultId,
+    enabled: current.creativeProviderEnabled,
+    providers: [
+      {
+        id: 'mock',
+        label: 'Mock Creative Provider',
+        mode: 'mock',
+        enabled: current.creativeProviderMode === 'mock',
+        configured: current.creativeProviderMode === 'mock',
+        externalCredentialsConfigured: false,
+      },
+    ],
   }
 }
 

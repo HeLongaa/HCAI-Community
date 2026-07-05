@@ -31,6 +31,7 @@ const mediaPurposePolicies = {
     contentTypes: [/^text\/plain$/i, /^text\/markdown$/i, /^application\/pdf$/i, /^image\//i, /^application\/json$/i],
   },
 }
+const creativeWorkspaces = ['image', 'video', 'music', 'chat']
 
 const normalizeEmail = (email) => email.trim().toLowerCase()
 const defaultHandleForEmail = (email) => {
@@ -99,6 +100,32 @@ const optionalObject = (body, field) => {
     throw validationFailed(`${field} must be an object`)
   }
   return value
+}
+
+const optionalCreativeParameters = (body, field = 'parameters') => {
+  const value = optionalObject(body, field)
+  const entries = Object.entries(value)
+  if (entries.length > 20) {
+    throw validationFailed(`${field} must include 20 or fewer keys`)
+  }
+  return Object.fromEntries(entries.map(([key, entryValue]) => {
+    if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(key)) {
+      throw validationFailed(`${field} keys must be 1-64 characters using letters, numbers, dots, underscores, or hyphens`)
+    }
+    if (
+      entryValue != null &&
+      typeof entryValue !== 'string' &&
+      typeof entryValue !== 'number' &&
+      typeof entryValue !== 'boolean' &&
+      !Array.isArray(entryValue)
+    ) {
+      throw validationFailed(`${field}.${key} must be a string, number, boolean, array, or null`)
+    }
+    if (Array.isArray(entryValue) && entryValue.some((item) => item == null || !['string', 'number', 'boolean'].includes(typeof item))) {
+      throw validationFailed(`${field}.${key} array values must be strings, numbers, or booleans`)
+    }
+    return [key, entryValue]
+  }))
 }
 
 const optionalAcceptanceChecklist = (body, field = 'acceptanceChecklist') => {
@@ -244,6 +271,21 @@ export const parseCreateMediaUploadRequest = (body) => {
     sizeBytes,
     purpose,
     metadata: body.metadata ?? null,
+  }
+}
+
+export const parseCreateCreativeGenerationRequest = (body) => {
+  const prompt = requireText(body, 'prompt')
+  if (prompt.length > 4000) {
+    throw validationFailed('prompt must be 4000 characters or fewer')
+  }
+  return {
+    workspace: requireOneOf(body, 'workspace', creativeWorkspaces),
+    mode: requireText(body, 'mode'),
+    prompt,
+    inputAssetIds: optionalStringArray(body, 'inputAssetIds').map((id) => id.trim()).filter(Boolean),
+    parameters: optionalCreativeParameters(body),
+    providerId: optionalText(body, 'providerId', null),
   }
 }
 

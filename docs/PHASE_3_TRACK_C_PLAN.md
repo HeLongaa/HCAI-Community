@@ -87,6 +87,8 @@ Validation:
 
 Goal: create a stable server-side boundary for generation without depending on a real paid provider yet.
 
+Implementation status: in progress on `codex/phase-3-track-c-provider-abstraction`.
+
 Recommended scope:
 
 - Add a creative provider registry.
@@ -106,6 +108,13 @@ Recommended scope:
   - cost/quota placeholder metadata
 - Add a mock provider adapter that returns deterministic outputs for tests.
 - Add safe env/config projection such as provider availability, not provider secrets.
+
+Current implementation slice:
+
+- `GET /api/creative/providers` exposes safe mock-provider capability metadata for Image, Video, Music, and Chat workspaces.
+- `POST /api/creative/generations` accepts authenticated normalized generation requests and returns deterministic mock output descriptors.
+- `CREATIVE_PROVIDER_MODE=mock|disabled` is projected as safe config metadata only; no real provider secret is accepted or exposed in this slice.
+- Mock outputs are explicitly marked `persisted: false` and `source.kind: mock_provider`; generated asset persistence remains Track C step 2.
 
 Exit criteria:
 
