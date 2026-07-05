@@ -25,6 +25,10 @@ export const buildCreativeArtifactMetadata = ({ generation, output }) => ({
   parameterKeys: Object.keys(generation.parameters ?? {}).sort(),
   outputType: output.type,
   sourceUrl: output.url,
+  usage: generation.usage,
+  quota: generation.quota,
+  safety: generation.safety,
+  policy: generation.policy,
 })
 
 export const buildCreativeArtifactObject = ({ generation, output }) => {

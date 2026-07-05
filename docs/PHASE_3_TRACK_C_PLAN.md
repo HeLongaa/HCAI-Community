@@ -211,6 +211,8 @@ Validation:
 
 Goal: prevent runaway provider spend and unsafe generated output.
 
+Implementation status: in progress on `codex/phase-3-track-c-cost-quota-moderation`.
+
 Recommended scope:
 
 - Define per-user, per-role, or per-workspace generation quotas.
@@ -219,6 +221,14 @@ Recommended scope:
 - Add moderation checks before and/or after generation.
 - Route flagged outputs to Admin review when required.
 - Add audit and notification hooks for high-risk generation events.
+
+Current implementation slice:
+
+- `POST /api/creative/generations` now runs a creative policy gate before provider execution.
+- The policy gate enforces a per-user/per-workspace daily quota with role-aware multipliers and returns `CREATIVE_QUOTA_EXCEEDED` with the active window and remaining quota when blocked.
+- Prompt moderation blocks clearly disallowed requests before generation with `CREATIVE_MODERATION_BLOCKED`.
+- Review-required prompts are allowed to generate, but the persisted media asset is forced into media scan `review` state so operators can inspect it through the existing media review queue.
+- Generation responses and generated media metadata now include safe `usage`, `quota`, `safety`, and `policy` metadata. This is intentionally metadata/accounting only; real paid-provider billing and durable quota ledgers remain deferred.
 
 Exit criteria:
 

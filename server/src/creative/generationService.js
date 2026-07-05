@@ -7,6 +7,7 @@ import {
 } from './providerRegistry.js'
 import { executeMockCreativeGeneration } from './mockProvider.js'
 import { buildCreativeArtifactObject } from './artifactBuilder.js'
+import { applyCreativeGenerationPolicy } from './policy.js'
 
 export const getCreativeProviderCatalog = (source = process.env) => {
   const registry = createCreativeProviderRegistry(source)
@@ -21,9 +22,18 @@ export const executeCreativeGeneration = ({ request, actor, source = process.env
   const provider = getCreativeProvider(request.providerId, registry)
   const capability = getCreativeCapability(provider, request.workspace)
   assertCreativeModeSupported(capability, request.mode)
+  const policyResult = applyCreativeGenerationPolicy({ request, actor, provider, source, now })
+
+  const attachPolicy = (generation) => ({
+    ...generation,
+    usage: policyResult.usage,
+    quota: policyResult.quota,
+    safety: policyResult.safety,
+    policy: policyResult.policy,
+  })
 
   if (provider.id === 'mock') {
-    return executeMockCreativeGeneration({ request, provider, actor, now })
+    return attachPolicy(executeMockCreativeGeneration({ request, provider, actor, now }))
   }
 
   throw new Error(`Unsupported creative provider adapter: ${provider.id}`)

@@ -157,7 +157,7 @@ The seed repository and Prisma repository now enforce the same high-risk ownersh
 | Library list route | Pagination, filtering, invalid limit |
 | Library-to-task route | Missing permission, owner success, ownership denial, admin bypass |
 | Library send-to-workspace route | Missing auth, not found, owner success, ownership denial, admin bypass |
-| Creative provider routes | Safe capability catalog, missing auth, invalid mode validation, persisted mock generation output, media scan/download governance |
+| Creative provider routes | Safe capability catalog, missing auth, invalid mode validation, moderation block, quota exceeded, persisted mock generation output, media scan/download governance, policy review routing |
 | Points ledger route | Missing auth, pagination, invalid limit, scoped summary envelope, privileged user lookup |
 | Admin points routes | Missing permission, user/status/search filtering, summary envelope, low-value manual adjustment audit event, role limit review routing, self-approval denial, points queue permission guard, CSV export |
 | Media upload route | Missing auth, validation failure, signed upload contract, owner completion, ownership denial, admin bypass, scan permission, clean download, rejected download block, review-queue filtering, scan-job filtering, webhook scanner callback, scan retry, scan sweep, scan notifications |

@@ -818,6 +818,26 @@ export const openApiDocument = {
                             estimatedCredits: { type: 'number' },
                             providerCostCents: { type: 'number' },
                             metered: { type: 'boolean' },
+                            costModel: { type: 'string' },
+                            currency: { type: 'string' },
+                          },
+                        },
+                        quota: {
+                          type: 'object',
+                          properties: {
+                            policyVersion: { type: 'string' },
+                            scope: { type: 'string' },
+                            workspace: { type: 'string' },
+                            limit: { type: 'integer' },
+                            used: { type: 'integer' },
+                            remaining: { type: 'integer' },
+                            window: {
+                              type: 'object',
+                              properties: {
+                                id: { type: 'string' },
+                                resetsAt: { type: 'string', format: 'date-time' },
+                              },
+                            },
                           },
                         },
                         safety: {
@@ -825,6 +845,32 @@ export const openApiDocument = {
                           properties: {
                             moderationRequired: { type: 'boolean' },
                             reviewRequired: { type: 'boolean' },
+                            reasons: {
+                              type: 'array',
+                              items: {
+                                type: 'object',
+                                properties: {
+                                  id: { type: 'string' },
+                                  label: { type: 'string' },
+                                },
+                              },
+                            },
+                            policyVersion: { type: 'string' },
+                          },
+                        },
+                        policy: {
+                          type: 'object',
+                          properties: {
+                            version: { type: 'string' },
+                            enforcedAt: { type: 'string', format: 'date-time' },
+                            gates: {
+                              type: 'object',
+                              properties: {
+                                quota: { type: 'boolean' },
+                                moderation: { type: 'boolean' },
+                                review: { type: 'boolean' },
+                              },
+                            },
                           },
                         },
                         createdAt: { type: 'string', format: 'date-time' },
@@ -837,6 +883,8 @@ export const openApiDocument = {
           },
           '400': { description: 'Invalid workspace, mode, prompt, or parameter payload' },
           '401': { description: 'Authentication required' },
+          '422': { description: 'Creative moderation policy blocked the request before provider execution' },
+          '429': { description: 'Creative generation quota exceeded for the user/workspace/day window' },
           '503': { description: 'Creative provider unavailable' },
         },
       },
