@@ -4,11 +4,16 @@ import type {
   ApiTask,
   ApiTaskProposal,
   ApiTaskSubmission,
+  ApiTaskTimelineItem,
+  ApiAcceptanceChecklistItem,
+  CreateTaskDisputeRequest,
   CreateTaskProposalRequest,
   CreateTaskRequest,
   ReviewTaskProposalRequest,
   ReviewTaskRequest,
   SubmitTaskRequest,
+  SweepStaleTaskSubmissionsRequest,
+  SweepStaleTaskSubmissionsResponse,
   TaskChildListQuery,
   TaskListQuery,
 } from './contracts'
@@ -94,9 +99,20 @@ export const taskService = {
   async listSubmissions(id: string | number, query?: TaskChildListQuery) {
     return api.get<ApiTaskSubmission[]>(withQuery(`/tasks/${id}/submissions`, query))
   },
-  async review(id: string | number, decision: 'approve' | 'reject', reviewNote: string) {
-    const body: ReviewTaskRequest = { decision, reviewNote }
+  async listTimeline(id: string | number, query?: TaskChildListQuery) {
+    return api.get<ApiTaskTimelineItem[]>(withQuery(`/tasks/${id}/timeline`, query))
+  },
+  async review(id: string | number, decision: 'approve' | 'reject' | 'request_changes', reviewNote: string, acceptanceChecklist: ApiAcceptanceChecklistItem[] = []) {
+    const body: ReviewTaskRequest = { decision, reviewNote, acceptanceChecklist }
     const task = await api.post<ApiTask>(`/tasks/${id}/review`, body)
     return toTask(task)
+  },
+  async createDispute(id: string | number, reason: string) {
+    const body: CreateTaskDisputeRequest = { reason }
+    const task = await api.post<ApiTask>(`/tasks/${id}/disputes`, body)
+    return toTask(task)
+  },
+  async sweepStaleSubmissions(body: SweepStaleTaskSubmissionsRequest = {}) {
+    return api.post<SweepStaleTaskSubmissionsResponse>('/tasks/stale-submissions/sweep', body)
   },
 }

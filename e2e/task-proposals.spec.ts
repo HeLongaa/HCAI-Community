@@ -98,11 +98,36 @@ test('proposal, submission, and review can complete through the browser workflow
   await publisherPage.goto('/')
   await publisherPage.getByTestId('home-action-mine').click()
   await publisherPage.getByTestId(`mine-task-card-publisher-${task.id}`).click()
-  await expect(publisherPage.getByText('Deliverables submitted.')).toBeVisible()
+  await expect(publisherPage.getByText('Deliverables submitted.').first()).toBeVisible()
+  await expect(publisherPage.getByTestId('task-timeline-item-submitted')).toBeVisible()
+
+  const revisionResponse = publisherPage.waitForResponse((review) =>
+    review.url().includes(`/api/tasks/${task.id}/review`) && review.request().method() === 'POST',
+  )
+  await publisherPage.getByTestId('request-changes-button').click()
+  expect((await revisionResponse).ok()).toBeTruthy()
+
+  await creatorDeliveryPage.goto('/')
+  await creatorDeliveryPage.getByTestId('home-action-mine').click()
+  await creatorDeliveryPage.getByTestId(`mine-task-card-maker-${task.id}`).click()
+  await expect(creatorDeliveryPage.getByText('Revise against the acceptance criteria and resubmit.').first()).toBeVisible()
+  await expect(creatorDeliveryPage.getByTestId('task-timeline-item-revision_requested')).toBeVisible()
+
+  const revisedSubmissionResponse = creatorDeliveryPage.waitForResponse((submission) =>
+    submission.url().includes(`/api/tasks/${task.id}/submissions`) && submission.request().method() === 'POST',
+  )
+  await creatorDeliveryPage.getByTestId('submit-work-button').click()
+  expect((await revisedSubmissionResponse).ok()).toBeTruthy()
+
+  await publisherPage.goto('/')
+  await publisherPage.getByTestId('home-action-mine').click()
+  await publisherPage.getByTestId(`mine-task-card-publisher-${task.id}`).click()
+  await expect(publisherPage.getByText('Deliverables submitted.').first()).toBeVisible()
 
   const reviewResponse = publisherPage.waitForResponse((review) =>
     review.url().includes(`/api/tasks/${task.id}/review`) && review.request().method() === 'POST',
   )
+  await publisherPage.getByTestId('acceptance-checklist-item-0').locator('input').check()
   await publisherPage.getByTestId('approve-submission-button').click()
   expect((await reviewResponse).ok()).toBeTruthy()
 
@@ -112,12 +137,14 @@ test('proposal, submission, and review can complete through the browser workflow
     }),
   )
   expect(completedTask).toMatchObject({ status: 'Completed', assignee: 'promptlin' })
-  const submissions = await apiData<Array<{ assetIds: string[] }>>(
+  const submissions = await apiData<Array<{ assetIds: string[]; status: string }>>(
     request.get(`${apiBaseUrl}/api/tasks/${task.id}/submissions`, {
       headers: authHeaders(publisherSession.accessToken),
     }),
   )
-  expect(submissions[0]?.assetIds).toContain(uploadedAsset.id)
+  expect(submissions[0]?.status).toBe('approved')
+  expect(submissions[1]?.status).toBe('revision_requested')
+  expect(submissions.some((submission) => submission.assetIds.includes(uploadedAsset.id))).toBeTruthy()
 
   await publisherPage.close()
   await creatorDeliveryPage.close()

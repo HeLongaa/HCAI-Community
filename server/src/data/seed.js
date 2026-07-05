@@ -32,6 +32,7 @@ const taskStatusMap = {
   Open: 'open',
   'In Progress': 'in_progress',
   'Pending Review': 'pending_review',
+  Disputed: 'disputed',
   Completed: 'completed',
   Rejected: 'rejected',
   Cancelled: 'cancelled',

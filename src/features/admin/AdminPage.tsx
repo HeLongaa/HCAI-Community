@@ -42,8 +42,8 @@ import type {
 
 const pointPolicyRoles: Array<keyof PointAdjustmentPolicy['roleLimits']> = ['member', 'creator', 'publisher', 'moderator', 'admin']
 const notificationReadStates: Array<NonNullable<NotificationListQuery['readState']>> = ['unread', 'all', 'read']
-const notificationTypes = ['points.adjustment.requested', 'points.adjustment.approved', 'points.adjustment.rejected', 'points.policy.updated', 'points.policy.rolled_back', 'media.governance_policy.updated', 'media.governance_policy.rolled_back', 'media.scan.review_required', 'media.scan.rejected', 'media.scan.retry_requested', 'media.scan.alert', 'security.event.alert']
-const notificationResourceTypes = ['admin_review', 'point_adjustment_policy', 'media_governance_policy', 'media_asset', 'media_scan_alert', 'security_alert']
+const notificationTypes = ['task.proposal_submitted', 'task.proposal_accepted', 'task.proposal_rejected', 'task.submission_submitted', 'task.submission_resubmitted', 'task.revision_requested', 'task.submission_approved', 'task.submission_rejected', 'task.reward_settled', 'task.submission_stale', 'task.dispute_opened', 'task.dispute_received', 'points.adjustment.requested', 'points.adjustment.approved', 'points.adjustment.rejected', 'points.policy.updated', 'points.policy.rolled_back', 'media.governance_policy.updated', 'media.governance_policy.rolled_back', 'media.scan.review_required', 'media.scan.rejected', 'media.scan.retry_requested', 'media.scan.alert', 'security.event.alert']
+const notificationResourceTypes = ['task', 'admin_review', 'point_adjustment_policy', 'media_governance_policy', 'media_asset', 'media_scan_alert', 'security_alert']
 const mediaReviewStatuses: Array<NonNullable<MediaReviewQueueQuery['status']>> = ['review', 'scanning', 'pending', 'rejected', 'clean', 'all']
 const mediaPurposes: MediaAssetPurpose[] = ['task_attachment', 'submission_asset', 'profile_portfolio', 'library_asset']
 const securityEventSources: Array<NonNullable<AdminSecurityEventListQuery['source']>> = ['rate_limit', 'body_size', 'auth_failure']

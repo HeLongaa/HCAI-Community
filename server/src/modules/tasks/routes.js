@@ -4,9 +4,11 @@ import { requirePermission, requireUser } from '../../common/http/auth.js'
 import { readJsonBody } from '../../common/http/request.js'
 import {
   parseCreateTaskProposalRequest,
+  parseCreateTaskDisputeRequest,
   parseCreateTaskRequest,
   parseReviewTaskProposalRequest,
   parseReviewTaskRequest,
+  parseSweepStaleTaskSubmissionsRequest,
   parseSubmitTaskRequest,
   parseTaskChildListQuery,
   parseTaskListQuery,
@@ -100,11 +102,42 @@ export const registerTaskRoutes = (router) => {
     created(response, task)
   })
 
+  router.add('POST', '/api/tasks/:id/disputes', async (request, response, context) => {
+    const actor = requirePermission(context, 'task:submit')
+    const body = (await readJsonBody(request)) ?? {}
+    const task = await repositories.tasks.createDispute(context.params.id, parseCreateTaskDisputeRequest(body), actor)
+    if (!task) {
+      throw notFound(`/api/tasks/${context.params.id}`)
+    }
+    ok(response, task)
+  })
+
+  router.add('POST', '/api/tasks/stale-submissions/sweep', async (request, response, context) => {
+    const actor = requirePermission(context, 'task:moderate')
+    const body = (await readJsonBody(request)) ?? {}
+    const result = await repositories.tasks.sweepStaleSubmissions(parseSweepStaleTaskSubmissionsRequest(body), actor)
+    ok(response, result)
+  })
+
   router.add('GET', '/api/tasks/:id/submissions', async (_request, response, context) => {
     const actor = requireUser(context)
     const page = await repositories.tasks.listSubmissions(context.params.id, actor, parseTaskChildListQuery(context.query))
     if (!page) {
       throw notFound(`/api/tasks/${context.params.id}/submissions`)
+    }
+    ok(response, page.items, {
+      pagination: {
+        limit: page.limit,
+        nextCursor: page.nextCursor,
+      },
+    })
+  })
+
+  router.add('GET', '/api/tasks/:id/timeline', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const page = await repositories.tasks.listTimeline(context.params.id, actor, parseTaskChildListQuery(context.query))
+    if (!page) {
+      throw notFound(`/api/tasks/${context.params.id}/timeline`)
     }
     ok(response, page.items, {
       pagination: {

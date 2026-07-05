@@ -132,6 +132,9 @@ export type ApiTask = {
   resultLinks: string[]
   reviewNote: string
   rights: string
+  disputeStatus?: string | null
+  disputeReason?: string
+  disputeReviewId?: string | null
 }
 
 export type TaskListQuery = {
@@ -162,8 +165,14 @@ export type SubmitTaskRequest = {
 }
 
 export type ReviewTaskRequest = {
-  decision: 'approve' | 'reject'
+  decision: 'approve' | 'reject' | 'request_changes'
   reviewNote: string
+  acceptanceChecklist?: ApiAcceptanceChecklistItem[]
+}
+
+export type ApiAcceptanceChecklistItem = {
+  label: string
+  checked: boolean
 }
 
 export type TaskChildListQuery = {
@@ -199,11 +208,42 @@ export type ApiTaskSubmission = {
   content: string
   assetIds: string[]
   rightsNote: string
-  status: 'pending_review' | 'approved' | 'rejected'
+  status: 'pending_review' | 'revision_requested' | 'stale' | 'disputed' | 'approved' | 'rejected'
   reviewNote: string
+  acceptanceChecklist: ApiAcceptanceChecklistItem[]
+  dispute?: Record<string, unknown> | null
+  stale?: Record<string, unknown> | null
   reviewedBy: ApiProfileSummary | { handle: string } | null
   reviewedAt: string | null
   createdAt: string
+}
+
+export type CreateTaskDisputeRequest = {
+  reason: string
+}
+
+export type SweepStaleTaskSubmissionsRequest = {
+  olderThanHours?: number
+  limit?: number
+  taskId?: string | number | null
+}
+
+export type SweepStaleTaskSubmissionsResponse = {
+  marked: number
+  items: ApiTaskSubmission[]
+}
+
+export type ApiTaskTimelineItem = {
+  id: string
+  taskId: string
+  type: string
+  title: string
+  body: string
+  actor: ApiProfileSummary | { handle: string } | null
+  resourceType: string
+  resourceId: string | null
+  metadata: Record<string, unknown>
+  occurredAt: string
 }
 
 export type MediaAssetPurpose = 'task_attachment' | 'submission_asset' | 'profile_portfolio' | 'library_asset'

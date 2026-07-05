@@ -94,7 +94,7 @@ Stores login provider identities.
 | `content` | text | |
 | `asset_ids` | text[] | Uploaded/persisted asset references |
 | `rights_note` | text | |
-| `status` | enum | `pending_review`, `approved`, `rejected` |
+| `status` | enum | `pending_review`, `revision_requested`, `stale`, `disputed`, `approved`, `rejected` |
 | `review_note` | text | Nullable |
 | `reviewed_by_id` | uuid | FK users, nullable |
 | `reviewed_at` | timestamptz | Nullable |
@@ -246,7 +246,9 @@ Internal product notification inbox.
 | `read_at` | timestamptz | Nullable |
 | `created_at` | timestamptz | |
 
-Notification workflow metadata may include a `target` object with `{ page, admin }` deep-link hints. The frontend currently uses this to open the Admin Center, switch to the relevant tab/filter, and highlight review, policy-history, or media asset rows.
+Notification workflow metadata may include a `target` object with `{ page, admin }` deep-link hints. The frontend currently uses this to open Admin Center review/finance/security/media contexts, task workspaces, or the points ledger from task and operations notifications.
+
+Task lifecycle notification types currently include `task.proposal_submitted`, `task.proposal_accepted`, `task.proposal_rejected`, `task.submission_submitted`, `task.submission_resubmitted`, `task.revision_requested`, `task.submission_approved`, `task.submission_rejected`, `task.reward_settled`, `task.submission_stale`, `task.dispute_opened`, and `task.dispute_received`.
 
 ### `permissions`
 
@@ -344,7 +346,9 @@ Rules:
 - eligible makers can create proposals while task is `open`.
 - publisher or automated matching can move `open -> assigned`.
 - assignee can move `assigned -> in_progress -> submitted`.
-- publisher can move `submitted -> completed` or `submitted -> rejected`.
+- publisher can move `submitted -> completed`, `submitted -> rejected`, or request changes before final acceptance.
+- creator can move rejected or stale submissions into `disputed`, which opens a task dispute admin-review item.
+- moderators can mark long-pending submissions as `stale` through the stale submission sweep.
 - admin can move most non-terminal states to `cancelled` or `rejected`.
 - point ledger settlement happens in the same transaction as `completed`.
 

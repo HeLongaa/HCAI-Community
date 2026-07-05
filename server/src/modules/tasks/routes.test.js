@@ -2,11 +2,18 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
+import { registerAdminRoutes } from '../admin/routes.js'
+import { registerNotificationRoutes } from '../notifications/routes.js'
 import { registerPointsRoutes } from '../points/routes.js'
+import { registerProfileRoutes } from '../profiles/routes.js'
 import { registerTaskRoutes } from './routes.js'
 
 const createTestServer = () => createRouteTestServer(registerTaskRoutes)
 const createTaskAndPointsServer = () => createRouteTestServer(registerTaskRoutes, registerPointsRoutes)
+const createTaskPointsAndProfileServer = () => createRouteTestServer(registerTaskRoutes, registerPointsRoutes, registerProfileRoutes)
+const createTaskAndAdminServer = () => createRouteTestServer(registerTaskRoutes, registerAdminRoutes)
+const createTaskAndNotificationServer = () => createRouteTestServer(registerTaskRoutes, registerNotificationRoutes)
+const createTaskAdminAndNotificationServer = () => createRouteTestServer(registerTaskRoutes, registerAdminRoutes, registerNotificationRoutes)
 
 const validTaskBody = () => ({
   title: 'Integration test task',
@@ -536,6 +543,73 @@ test('GET /api/tasks/:id/submissions hides submissions from unrelated users', as
   }
 })
 
+test('GET /api/tasks/:id/timeline lists participant-visible task history', async () => {
+  const server = await createTestServer()
+  try {
+    const task = await createTask(server, {}, 'demo-access.launchteam')
+    const proposal = await createProposal(server, task.id)
+    await requestJson(server.url, `/api/tasks/${task.id}/proposals/${proposal.id}/actions`, {
+      body: { decision: 'accept', note: 'Selected for timeline coverage.' },
+      token: 'demo-access.launchteam',
+    })
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
+    await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: {
+        decision: 'request_changes',
+        reviewNote: 'Add a clearer revision note.',
+        acceptanceChecklist: [
+          { label: 'Delivery package included', checked: true },
+          { label: 'Rights note confirmed', checked: false },
+        ],
+      },
+      token: 'demo-access.launchteam',
+    })
+
+    const { status, payload } = await requestJson(server.url, `/api/tasks/${task.id}/timeline`, {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+
+    assert.equal(status, 200)
+    assert.equal(payload.error, undefined)
+    const eventTypes = payload.data.map((item) => item.type)
+    assert.ok(eventTypes.includes('created'))
+    assert.ok(eventTypes.includes('proposal_created'))
+    assert.ok(eventTypes.includes('proposal_accepted'))
+    assert.ok(eventTypes.includes('submitted'))
+    assert.ok(eventTypes.includes('revision_requested'))
+    assert.equal(payload.data[0].type, 'revision_requested')
+    assert.equal(payload.data[0].body, 'Add a clearer revision note.')
+    assert.equal(payload.data[0].actor.handle, 'launchteam')
+    assert.deepEqual(payload.data[0].metadata.acceptanceChecklist, [
+      { label: 'Delivery package included', checked: true },
+      { label: 'Rights note confirmed', checked: false },
+    ])
+  } finally {
+    await server.close()
+  }
+})
+
+test('GET /api/tasks/:id/timeline hides history from unrelated users', async () => {
+  const server = await createTestServer()
+  try {
+    const task = await createTask(server, {}, 'demo-access.launchteam')
+    const { status, payload } = await requestJson(server.url, `/api/tasks/${task.id}/timeline`, {
+      method: 'GET',
+      token: 'demo-access.taskops',
+    })
+
+    assert.equal(status, 404)
+    assert.equal(payload.data, null)
+    assert.equal(payload.error.code, 'NOT_FOUND')
+  } finally {
+    await server.close()
+  }
+})
+
 test('POST /api/tasks/:id/review requires task:review permission', async () => {
   const server = await createTestServer()
   try {
@@ -566,7 +640,31 @@ test('POST /api/tasks/:id/review returns VALIDATION_FAILED for unknown decisions
     assert.equal(status, 400)
     assert.equal(payload.data, null)
     assert.equal(payload.error.code, 'VALIDATION_FAILED')
-    assert.equal(payload.error.message, 'decision must be one of: approve, reject')
+    assert.equal(payload.error.message, 'decision must be one of: approve, reject, request_changes')
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST /api/tasks/:id/review requires checked acceptance checklist before approval', async () => {
+  const server = await createTestServer()
+  try {
+    const task = await createTask(server, {}, 'demo-access.launchteam')
+    const { status, payload } = await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: {
+        ...validReviewBody(),
+        acceptanceChecklist: [
+          { label: 'Delivery note included', checked: true },
+          { label: 'Rights note confirmed', checked: false },
+        ],
+      },
+      token: 'demo-access.launchteam',
+    })
+
+    assert.equal(status, 400)
+    assert.equal(payload.data, null)
+    assert.equal(payload.error.code, 'VALIDATION_FAILED')
+    assert.equal(payload.error.message, 'acceptanceChecklist must be fully checked before approval')
   } finally {
     await server.close()
   }
@@ -635,7 +733,13 @@ test('POST /api/tasks/:id/review updates the latest normalized submission review
     })
 
     const review = await requestJson(server.url, `/api/tasks/${task.id}/review`, {
-      body: validReviewBody(),
+      body: {
+        ...validReviewBody(),
+        acceptanceChecklist: [
+          { label: 'Delivery package included', checked: true },
+          { label: 'Rights note confirmed', checked: true },
+        ],
+      },
       token: 'demo-access.launchteam',
     })
 
@@ -649,6 +753,10 @@ test('POST /api/tasks/:id/review updates the latest normalized submission review
     assert.equal(submissions.status, 200)
     assert.equal(submissions.payload.data[0].status, 'approved')
     assert.equal(submissions.payload.data[0].reviewNote, validReviewBody().reviewNote)
+    assert.deepEqual(submissions.payload.data[0].acceptanceChecklist, [
+      { label: 'Delivery package included', checked: true },
+      { label: 'Rights note confirmed', checked: true },
+    ])
     assert.equal(submissions.payload.data[0].reviewedBy.handle, 'launchteam')
   } finally {
     await server.close()
@@ -701,6 +809,71 @@ test('POST /api/tasks/:id/review settles task reward points on approval', async 
   }
 })
 
+test('task lifecycle sends proposal, resubmission, approval, and settlement notifications', async () => {
+  const server = await createTaskAndNotificationServer()
+  try {
+    const task = await createTask(server, {
+      title: 'Notification lifecycle task',
+      pointsReward: 580,
+    }, 'demo-access.launchteam')
+    const proposal = await createProposal(server, task.id)
+
+    const publisherInbox = await requestJson(server.url, '/api/notifications?readState=all&type=task.proposal_submitted&resourceType=task', {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+    assert.equal(publisherInbox.status, 200)
+    assert.ok(publisherInbox.payload.data.some((item) => item.metadata.proposalId === proposal.id && item.metadata.target.page === 'mine'))
+
+    await requestJson(server.url, `/api/tasks/${task.id}/proposals/${proposal.id}/actions`, {
+      body: { decision: 'accept', note: 'Selected for notification coverage.' },
+      token: 'demo-access.launchteam',
+    })
+
+    const creatorProposalInbox = await requestJson(server.url, '/api/notifications?readState=all&type=task.proposal_accepted&resourceType=task', {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.ok(creatorProposalInbox.payload.data.some((item) => item.resourceId === String(task.id) && item.metadata.proposalId === proposal.id))
+
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
+    await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: { decision: 'request_changes', reviewNote: 'Add revision notes before final acceptance.' },
+      token: 'demo-access.launchteam',
+    })
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: {
+        ...validSubmissionBody(),
+        content: 'Revised delivery with revision notes included.',
+      },
+      token: 'demo-access.promptlin',
+    })
+
+    const resubmissionInbox = await requestJson(server.url, '/api/notifications?readState=all&type=task.submission_resubmitted&resourceType=task', {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+    assert.ok(resubmissionInbox.payload.data.some((item) => item.resourceId === String(task.id) && item.metadata.previousSubmissionStatus === 'revision_requested'))
+
+    await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: validReviewBody(),
+      token: 'demo-access.launchteam',
+    })
+
+    const creatorSettlementInbox = await requestJson(server.url, '/api/notifications?readState=all&resourceType=task', {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.ok(creatorSettlementInbox.payload.data.some((item) => item.type === 'task.submission_approved' && item.resourceId === String(task.id)))
+    assert.ok(creatorSettlementInbox.payload.data.some((item) => item.type === 'task.reward_settled' && item.metadata.target.page === 'points'))
+  } finally {
+    await server.close()
+  }
+})
+
 test('POST /api/tasks/:id/review is idempotent for task reward settlement', async () => {
   const server = await createTaskAndPointsServer()
   try {
@@ -732,6 +905,47 @@ test('POST /api/tasks/:id/review is idempotent for task reward settlement', asyn
     const completions = ledger.payload.data.filter((entry) => entry.sourceType === 'task_completion' && entry.sourceId === String(task.id))
     assert.equal(completions.length, 1)
     assert.equal(completions[0].delta, 510)
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST /api/tasks/:id/review updates creator and publisher reputation once on approval', async () => {
+  const server = await createTaskPointsAndProfileServer()
+  try {
+    const creatorBefore = await requestJson(server.url, '/api/profiles/promptlin', { method: 'GET' })
+    const publisherBefore = await requestJson(server.url, '/api/profiles/launchteam', { method: 'GET' })
+    assert.equal(creatorBefore.status, 200)
+    assert.equal(publisherBefore.status, 200)
+
+    const task = await createTask(server, {
+      title: 'Reputation integration task',
+      pointsReward: 610,
+    }, 'demo-access.launchteam')
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
+
+    const firstReview = await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: validReviewBody(),
+      token: 'demo-access.launchteam',
+    })
+    const secondReview = await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: validReviewBody(),
+      token: 'demo-access.launchteam',
+    })
+
+    assert.equal(firstReview.status, 200)
+    assert.equal(secondReview.status, 200)
+
+    const creatorAfter = await requestJson(server.url, '/api/profiles/promptlin', { method: 'GET' })
+    const publisherAfter = await requestJson(server.url, '/api/profiles/launchteam', { method: 'GET' })
+
+    assert.equal(creatorAfter.payload.data.stats.completed, creatorBefore.payload.data.stats.completed + 1)
+    assert.equal(creatorAfter.payload.data.stats.score, creatorBefore.payload.data.stats.score + 10)
+    assert.equal(publisherAfter.payload.data.stats.completed, publisherBefore.payload.data.stats.completed + 1)
+    assert.equal(publisherAfter.payload.data.stats.score, publisherBefore.payload.data.stats.score + 6)
   } finally {
     await server.close()
   }
@@ -779,6 +993,215 @@ test('POST /api/tasks/:id/review does not settle reward points on rejection', as
     })
     const cancelledEscrow = cancelledLedger.payload.data.find((entry) => entry.sourceType === 'task_escrow' && entry.sourceId === String(task.id))
     assert.ok(cancelledEscrow)
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST /api/tasks/:id/disputes opens an admin review for rejected submissions', async () => {
+  const server = await createTaskAdminAndNotificationServer()
+  try {
+    const task = await createTask(server, {
+      title: 'Rejected dispute integration task',
+      pointsReward: 710,
+    }, 'demo-access.launchteam')
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
+    await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: { decision: 'reject', reviewNote: 'Final package is missing the usage rights note.' },
+      token: 'demo-access.launchteam',
+    })
+
+    const dispute = await requestJson(server.url, `/api/tasks/${task.id}/disputes`, {
+      body: { reason: 'Rights note was included in the submitted delivery package.' },
+      token: 'demo-access.promptlin',
+    })
+
+    assert.equal(dispute.status, 200)
+    assert.equal(dispute.payload.data.status, 'Disputed')
+    assert.equal(dispute.payload.data.disputeStatus, 'open')
+
+    const submissions = await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+    assert.equal(submissions.status, 200)
+    assert.equal(submissions.payload.data[0].status, 'disputed')
+    assert.equal(submissions.payload.data[0].dispute.reason, 'Rights note was included in the submitted delivery package.')
+
+    const reviews = await requestJson(server.url, '/api/admin/reviews?queue=task_disputes&status=Task%20dispute', {
+      method: 'GET',
+      token: 'demo-access.legalpixel',
+    })
+    const review = reviews.payload.data.find((item) => item.metadata?.taskId === String(task.id))
+    assert.ok(review)
+    assert.equal(review.owner, 'promptlin')
+    assert.equal(review.metadata.submissionId, submissions.payload.data[0].id)
+
+    const timeline = await requestJson(server.url, `/api/tasks/${task.id}/timeline`, {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(timeline.status, 200)
+    assert.equal(timeline.payload.data[0].type, 'dispute_opened')
+    assert.equal(timeline.payload.data[0].body, 'Rights note was included in the submitted delivery package.')
+
+    const creatorInbox = await requestJson(server.url, '/api/notifications?readState=all&type=task.dispute_received&resourceType=task', {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.ok(creatorInbox.payload.data.some((item) => item.resourceId === String(task.id) && item.metadata.adminReviewId === review.id))
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST /api/tasks/stale-submissions/sweep marks overdue submissions and allows dispute', async () => {
+  const server = await createTaskAndAdminServer()
+  try {
+    const task = await createTask(server, {
+      title: 'Stale submission integration task',
+      pointsReward: 620,
+    }, 'demo-access.launchteam')
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
+
+    const sweep = await requestJson(server.url, '/api/tasks/stale-submissions/sweep', {
+      body: { olderThanHours: 0, limit: 5, taskId: String(task.id) },
+      token: 'demo-access.legalpixel',
+    })
+
+    assert.equal(sweep.status, 200)
+    assert.equal(sweep.payload.data.marked, 1)
+    assert.equal(sweep.payload.data.items[0].status, 'stale')
+
+    const submissions = await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+    assert.equal(submissions.payload.data[0].status, 'stale')
+    assert.equal(submissions.payload.data[0].stale.olderThanHours, 0)
+
+    const timeline = await requestJson(server.url, `/api/tasks/${task.id}/timeline`, {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+    assert.equal(timeline.payload.data[0].type, 'submission_stale')
+
+    const dispute = await requestJson(server.url, `/api/tasks/${task.id}/disputes`, {
+      body: { reason: 'The submission is overdue for review and needs platform follow-up.' },
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(dispute.status, 200)
+    assert.equal(dispute.payload.data.status, 'Disputed')
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST /api/tasks/:id/review requests changes without settling or releasing escrow', async () => {
+  const server = await createTaskAndPointsServer()
+  try {
+    const task = await createTask(server, {
+      title: 'Revision request integration task',
+      pointsReward: 720,
+    }, 'demo-access.launchteam')
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
+
+    const review = await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: { decision: 'request_changes', reviewNote: 'Add export links and tighten usage rights.' },
+      token: 'demo-access.launchteam',
+    })
+
+    assert.equal(review.status, 200)
+    assert.equal(review.payload.data.status, 'In Progress')
+    assert.equal(review.payload.data.reviewNote, 'Add export links and tighten usage rights.')
+
+    const submissions = await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+
+    assert.equal(submissions.status, 200)
+    assert.equal(submissions.payload.data[0].status, 'revision_requested')
+    assert.equal(submissions.payload.data[0].reviewNote, 'Add export links and tighten usage rights.')
+    assert.equal(submissions.payload.data[0].reviewedBy.handle, 'launchteam')
+
+    const settledCreatorLedger = await requestJson(server.url, '/api/points/ledger?limit=50&status=settled', {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(settledCreatorLedger.payload.data.some((entry) => entry.sourceType === 'task_completion' && entry.sourceId === String(task.id)), false)
+
+    const settledPublisherLedger = await requestJson(server.url, '/api/points/ledger?limit=50&status=settled', {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+    assert.equal(settledPublisherLedger.payload.data.some((entry) => entry.sourceType === 'task_escrow_release' && entry.sourceId === String(task.id)), false)
+
+    const cancelledPublisherLedger = await requestJson(server.url, '/api/points/ledger?limit=50&status=cancelled', {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+    assert.equal(cancelledPublisherLedger.payload.data.some((entry) => entry.sourceType === 'task_escrow' && entry.sourceId === String(task.id)), false)
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST /api/tasks/:id/submissions accepts resubmission after requested changes', async () => {
+  const server = await createTaskAndPointsServer()
+  try {
+    const task = await createTask(server, {
+      title: 'Revision resubmission task',
+      pointsReward: 640,
+    }, 'demo-access.launchteam')
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
+    await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: { decision: 'request_changes', reviewNote: 'Add a clearer rights summary.' },
+      token: 'demo-access.launchteam',
+    })
+
+    const revisedSubmission = await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: {
+        ...validSubmissionBody(),
+        content: 'Revised delivery with export links and clarified usage rights.',
+        assetIds: ['asset-2'],
+      },
+      token: 'demo-access.promptlin',
+    })
+
+    assert.equal(revisedSubmission.status, 201)
+    assert.equal(revisedSubmission.payload.data.status, 'Pending Review')
+    assert.equal(revisedSubmission.payload.data.submission, 'Revised delivery with export links and clarified usage rights.')
+
+    const submissions = await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+
+    assert.equal(submissions.payload.data.length, 2)
+    assert.equal(submissions.payload.data[0].status, 'pending_review')
+    assert.equal(submissions.payload.data[0].content, 'Revised delivery with export links and clarified usage rights.')
+    assert.equal(submissions.payload.data[1].status, 'revision_requested')
+
+    const approval = await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: validReviewBody(),
+      token: 'demo-access.launchteam',
+    })
+
+    assert.equal(approval.status, 200)
+    assert.equal(approval.payload.data.status, 'Completed')
   } finally {
     await server.close()
   }

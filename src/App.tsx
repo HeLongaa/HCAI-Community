@@ -27,8 +27,7 @@ import { useThemeState } from './hooks/useThemeState'
 import { copy } from './i18n/copy'
 import { notificationService } from './services/notificationService'
 import { profileService } from './services/profileService'
-import type { ApiNotification } from './services/contracts'
-import type { NotificationListQuery } from './services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiNotification, NotificationListQuery } from './services/contracts'
 
 function App() {
   const [locale, setLocale] = useState<Locale>('en')
@@ -251,6 +250,11 @@ function App() {
         },
       }
     }
+    if (notification.resourceType === 'task') {
+      return {
+        page: 'mine',
+      }
+    }
     return {
       page: 'admin',
       admin: {
@@ -305,6 +309,7 @@ function App() {
     taskStatus,
     proposalStateByTask,
     submissionStateByTask,
+    timelineStateByTask,
     publishTask,
     claimTask,
     submitProposal,
@@ -312,9 +317,12 @@ function App() {
     acceptProposal,
     rejectProposal,
     refreshSubmissions,
+    refreshTimeline,
     submitTask,
     approveTask,
     rejectTask,
+    requestRevisionTask,
+    openDisputeTask,
   } = useTaskWorkflows({ locale, pushLedger, pushToast, setPage })
 
   const {
@@ -412,14 +420,24 @@ function App() {
     await submitTask(task, options)
   }
 
-  const guardedApproveTask = async (task: Task) => {
+  const guardedApproveTask = async (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => {
     if (!requirePermission('task:review', locale === 'zh' ? '请使用发布方或管理员账号验收任务。' : 'Sign in as a publisher or admin to review tasks.')) return
-    await approveTask(task)
+    await approveTask(task, options)
   }
 
-  const guardedRejectTask = async (task: Task) => {
+  const guardedRejectTask = async (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => {
     if (!requirePermission('task:review', locale === 'zh' ? '请使用发布方或管理员账号驳回任务。' : 'Sign in as a publisher or admin to reject tasks.')) return
-    await rejectTask(task)
+    await rejectTask(task, options)
+  }
+
+  const guardedRequestRevisionTask = async (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => {
+    if (!requirePermission('task:review', locale === 'zh' ? '请使用发布方或管理员账号要求修改。' : 'Sign in as a publisher or admin to request changes.')) return
+    await requestRevisionTask(task, options)
+  }
+
+  const guardedOpenDisputeTask = async (task: Task) => {
+    if (!requirePermission('task:submit', locale === 'zh' ? '请使用创作者账号发起争议。' : 'Sign in as a maker to open disputes.')) return
+    await openDisputeTask(task)
   }
 
   const guardedConvertPostToTask = async (post: Post) => {
@@ -479,6 +497,7 @@ function App() {
           taskStatus,
           proposalStateByTask,
           submissionStateByTask,
+          timelineStateByTask,
           publishTask: guardedPublishTask,
           claimTask: guardedClaimTask,
           submitProposal: guardedSubmitProposal,
@@ -486,9 +505,12 @@ function App() {
           acceptProposal: guardedAcceptProposal,
           rejectProposal: guardedRejectProposal,
           refreshSubmissions,
+          refreshTimeline,
           submitTask: guardedSubmitTask,
           approveTask: guardedApproveTask,
           rejectTask: guardedRejectTask,
+          requestRevisionTask: guardedRequestRevisionTask,
+          openDisputeTask: guardedOpenDisputeTask,
         }}
         community={{
           postList,

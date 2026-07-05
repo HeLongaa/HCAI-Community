@@ -4,7 +4,7 @@ import { tasks } from '../data/mockData'
 import { copy } from '../i18n/copy'
 import { localeFirstTask } from '../domain/utils'
 import { taskService } from '../services/taskService'
-import type { ApiTaskProposal, ApiTaskSubmission } from '../services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem } from '../services/contracts'
 import { useAsyncResource } from './useAsyncResource'
 
 export type TaskChildCollection<T> = {
@@ -20,11 +20,16 @@ type TaskWorkflowOptions = {
   setPage: (page: Page) => void
 }
 
+type ReviewTaskOptions = {
+  acceptanceChecklist?: ApiAcceptanceChecklistItem[]
+}
+
 export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: TaskWorkflowOptions) {
   const [taskList, setTaskList] = useState<Task[]>(tasks)
   const [selectedTask, setSelectedTask] = useState<Task>(() => localeFirstTask(tasks, copy.en))
   const [proposalStateByTask, setProposalStateByTask] = useState<Record<string, TaskChildCollection<ApiTaskProposal>>>({})
   const [submissionStateByTask, setSubmissionStateByTask] = useState<Record<string, TaskChildCollection<ApiTaskSubmission>>>({})
+  const [timelineStateByTask, setTimelineStateByTask] = useState<Record<string, TaskChildCollection<ApiTaskTimelineItem>>>({})
 
   const taskStatus = useAsyncResource<Task[]>({
     load: () => taskService.list({ limit: 100 }),
@@ -117,6 +122,32 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     }
   }
 
+  const refreshTimeline = async (task: Task) => {
+    const key = String(task.id)
+    const isZh = locale === 'zh'
+    setTimelineStateByTask((current) => ({
+      ...current,
+      [key]: { items: current[key]?.items ?? [], loading: true, error: null },
+    }))
+    try {
+      const items = await taskService.listTimeline(task.id, { limit: 50 })
+      setTimelineStateByTask((current) => ({
+        ...current,
+        [key]: { items, loading: false, error: null },
+      }))
+    } catch (error) {
+      console.info('[task-service]', error)
+      setTimelineStateByTask((current) => ({
+        ...current,
+        [key]: {
+          items: current[key]?.items ?? [],
+          loading: false,
+          error: isZh ? '无法加载该任务的时间线。' : 'Could not load the task timeline.',
+        },
+      }))
+    }
+  }
+
   const submitProposal = async (task: Task) => {
     const isZh = locale === 'zh'
     try {
@@ -135,6 +166,7 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
         }
       })
       incrementTaskProposals(task.id)
+      await refreshTimeline(task)
       pushLedger(isZh ? `提交方案草稿：${task.title}` : `Submitted proposal draft: ${task.title}`, '+50')
       pushToast(isZh ? `方案已提交：${task.title}` : `Proposal submitted: ${task.title}`)
       setPage('mine')
@@ -165,6 +197,7 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
         return { ...current, [key]: { items: nextItems, loading: false, error: null } }
       })
       await taskStatus.refresh()
+      await refreshTimeline(task)
       pushToast(isZh ? `已采纳方案：${task.title}` : `Proposal accepted: ${task.title}`)
     } catch (error) {
       console.info('[task-service]', error)
@@ -184,6 +217,7 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
         const nextItems = (current[key]?.items ?? []).map((item) => (item.id === proposal.id ? proposal : item))
         return { ...current, [key]: { items: nextItems, loading: false, error: null } }
       })
+      await refreshTimeline(task)
       pushToast(isZh ? `已拒绝方案：${task.title}` : `Proposal rejected: ${task.title}`)
     } catch (error) {
       console.info('[task-service]', error)
@@ -200,6 +234,7 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
       })
       updateTask(task.id, updated)
       await refreshSubmissions(updated)
+      await refreshTimeline(updated)
       pushLedger(isZh ? `提交成果：${task.title}` : `Submitted deliverable: ${task.title}`, '+120')
       pushToast(isZh ? `已提交成果：${task.title}` : `Deliverable submitted: ${task.title}`)
       setPage('mine')
@@ -209,12 +244,13 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     }
   }
 
-  const approveTask = async (task: Task) => {
+  const approveTask = async (task: Task, options: ReviewTaskOptions = {}) => {
     const isZh = locale === 'zh'
     try {
-      const updated = await taskService.review(task.id, 'approve', isZh ? '验收通过，积分已发放。' : 'Accepted. Points released.')
+      const updated = await taskService.review(task.id, 'approve', isZh ? '验收通过，积分已发放。' : 'Accepted. Points released.', options.acceptanceChecklist ?? [])
       updateTask(task.id, updated)
       await refreshSubmissions(updated)
+      await refreshTimeline(updated)
       pushLedger(isZh ? `验收通过：${task.title}` : `Accepted task: ${task.title}`, `+${task.points.replace(/[^\d]/g, '') || '500'}`)
       pushToast(isZh ? `验收通过：${task.title}` : `Task accepted: ${task.title}`)
       setPage('points')
@@ -224,16 +260,50 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     }
   }
 
-  const rejectTask = async (task: Task) => {
+  const rejectTask = async (task: Task, options: ReviewTaskOptions = {}) => {
     const isZh = locale === 'zh'
     try {
-      const updated = await taskService.review(task.id, 'reject', isZh ? '请补充更明确的交付链接和版权确认。' : 'Add clearer delivery links and rights confirmation.')
+      const updated = await taskService.review(task.id, 'reject', isZh ? '请补充更明确的交付链接和版权确认。' : 'Add clearer delivery links and rights confirmation.', options.acceptanceChecklist ?? [])
       updateTask(task.id, updated)
       await refreshSubmissions(updated)
+      await refreshTimeline(updated)
       pushToast(isZh ? `已驳回任务：${task.title}` : `Task rejected: ${task.title}`)
     } catch (error) {
       console.info('[task-service]', error)
       pushToast(isZh ? '驳回失败，已保留本地状态。' : 'Reject failed. Local state kept.')
+    }
+  }
+
+  const requestRevisionTask = async (task: Task, options: ReviewTaskOptions = {}) => {
+    const isZh = locale === 'zh'
+    try {
+      const updated = await taskService.review(task.id, 'request_changes', isZh ? '请按验收标准补充修改后重新提交。' : 'Revise against the acceptance criteria and resubmit.', options.acceptanceChecklist ?? [])
+      updateTask(task.id, updated)
+      await refreshSubmissions(updated)
+      await refreshTimeline(updated)
+      pushToast(isZh ? `已要求修改：${task.title}` : `Changes requested: ${task.title}`)
+    } catch (error) {
+      console.info('[task-service]', error)
+      pushToast(isZh ? '要求修改失败，已保留本地状态。' : 'Request changes failed. Local state kept.')
+    }
+  }
+
+  const openDisputeTask = async (task: Task) => {
+    const isZh = locale === 'zh'
+    try {
+      const updated = await taskService.createDispute(
+        task.id,
+        isZh
+          ? '交付内容符合验收标准，请平台协助复核驳回或逾期未验收的处理。'
+          : 'The delivery appears to meet the acceptance criteria. Please review the rejection or overdue review.',
+      )
+      updateTask(task.id, updated)
+      await refreshSubmissions(updated)
+      await refreshTimeline(updated)
+      pushToast(isZh ? `已发起争议：${task.title}` : `Dispute opened: ${task.title}`)
+    } catch (error) {
+      console.info('[task-service]', error)
+      pushToast(isZh ? '发起争议失败，请确认该交付已被驳回或已验收逾期。' : 'Opening dispute failed. Confirm the submission was rejected or is review-overdue.')
     }
   }
 
@@ -244,6 +314,7 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     taskStatus,
     proposalStateByTask,
     submissionStateByTask,
+    timelineStateByTask,
     refreshTasks: taskStatus.refresh,
     publishTask,
     claimTask,
@@ -252,8 +323,11 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     acceptProposal,
     rejectProposal,
     refreshSubmissions,
+    refreshTimeline,
     submitTask,
     approveTask,
     rejectTask,
+    requestRevisionTask,
+    openDisputeTask,
   }
 }

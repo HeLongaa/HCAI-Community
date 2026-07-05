@@ -26,7 +26,6 @@ import {
   getTaskDto,
   parseTaskStatus,
   taskStatusFromLabel,
-  taskStatusToLabel,
 } from './prismaTransforms.js'
 import { serializeAuditEvent, serializeSecurityAlertDispatchEvent, serializeSecurityEvent } from './serializers.js'
 import { seedPrismaDatabase } from './prismaSeed.js'
@@ -175,6 +174,44 @@ const createPrismaRepository = async (fallbackRepository) => {
         occurredAtLabel: 'Just now',
       },
     })
+  }
+
+  const incrementProfileStat = (stats, key, delta) => {
+    const current = stats[key]
+    if (current === undefined || current === null) {
+      return delta
+    }
+    const numeric = Number(current)
+    return Number.isFinite(numeric) ? numeric + delta : current
+  }
+
+  const buildProfileStatsUpdate = (stats, deltas) => {
+    const nextStats = { ...(asObject(stats) ?? {}) }
+    for (const [key, delta] of Object.entries(deltas)) {
+      nextStats[key] = incrementProfileStat(nextStats, key, delta)
+    }
+    return nextStats
+  }
+
+  const applyTaskCompletionReputation = async (transaction, task, creatorId) => {
+    const updates = [
+      { userId: creatorId, deltas: { completed: 1, score: 10 } },
+      { userId: task.publisherId, deltas: { completed: 1, score: 6 } },
+    ].filter((entry) => entry.userId)
+
+    for (const update of updates) {
+      const profile = await transaction.profile.findUnique({
+        where: { userId: update.userId },
+        select: { userId: true, stats: true },
+      })
+      if (!profile) {
+        continue
+      }
+      await transaction.profile.update({
+        where: { userId: update.userId },
+        data: { stats: buildProfileStatsUpdate(profile.stats, update.deltas) },
+      })
+    }
   }
 
   const getLatestLedgerBalance = async (transaction, userId) => {
@@ -339,6 +376,43 @@ const createPrismaRepository = async (fallbackRepository) => {
 
   const userHandle = (user) => user?.profile?.handle ?? user?.id ?? null
 
+  const taskTimelineCopy = {
+    'task.created': { type: 'created', title: 'Task opened', body: 'The task was published.' },
+    'task.claimed': { type: 'claimed', title: 'Creator joined', body: 'A creator started work on this task.' },
+    'task.proposal.created': { type: 'proposal_created', title: 'Proposal submitted', body: 'A creator submitted a proposal.' },
+    'task.proposal.accepted': { type: 'proposal_accepted', title: 'Proposal accepted', body: 'The publisher accepted a proposal.' },
+    'task.proposal.rejected': { type: 'proposal_rejected', title: 'Proposal rejected', body: 'The publisher declined a proposal.' },
+    'task.submitted': { type: 'submitted', title: 'Work submitted', body: 'The creator submitted delivery work.' },
+    'task.revision_requested': { type: 'revision_requested', title: 'Changes requested', body: 'The publisher requested revisions.' },
+    'task.dispute.opened': { type: 'dispute_opened', title: 'Dispute opened', body: 'The creator opened a dispute for the submitted work.' },
+    'task.submission.stale': { type: 'submission_stale', title: 'Review overdue', body: 'A pending submission passed the review SLA.' },
+    'task.approved': { type: 'approved', title: 'Task approved', body: 'The task was approved and points were settled.' },
+    'task.rejected': { type: 'rejected', title: 'Task rejected', body: 'The publisher rejected the submitted work.' },
+  }
+
+  const taskTimelineItem = (event, taskId, actorById = new Map()) => {
+    const copy = taskTimelineCopy[event.action] ?? {
+      type: event.action.replace(/^task\./, '').replaceAll('.', '_'),
+      title: 'Task activity',
+      body: event.action,
+    }
+    const metadata = event.metadata && typeof event.metadata === 'object' && !Array.isArray(event.metadata)
+      ? event.metadata
+      : {}
+    return {
+      id: event.id,
+      taskId: String(taskId),
+      type: copy.type,
+      title: copy.title,
+      body: metadata.reviewNote ?? metadata.note ?? copy.body,
+      actor: event.actorId ? actorById.get(event.actorId) ?? null : null,
+      resourceType: event.resourceType,
+      resourceId: event.resourceId ?? null,
+      metadata,
+      occurredAt: event.createdAt?.toISOString?.() ?? '',
+    }
+  }
+
   const createNotificationsForUsers = async (db, users, payload) => {
     const uniqueUsers = [...new Map(users.filter(Boolean).map((user) => [user.id, user])).values()]
     return (await Promise.all(uniqueUsers.map(async (recipient) => {
@@ -411,12 +485,14 @@ const createPrismaRepository = async (fallbackRepository) => {
     return createNotificationsForUsers(db, users, payload)
   }
 
-  const notifyMediaQueueReaders = async (db, actor, payload) => {
+  const notifyAdminQueueReaders = async (db, actor, payload) => {
     const users = await findUsersByPermissions(db, ['admin:queue:read'], {
       excludeHandle: actor?.handle ?? null,
     })
     return createNotificationsForUsers(db, users, payload)
   }
+
+  const notifyMediaQueueReaders = notifyAdminQueueReaders
 
   const notifyAuditReaders = async (db, actor, payload) => {
     const users = await findUsersByPermissions(db, ['admin:audit:read'], {
@@ -424,6 +500,8 @@ const createPrismaRepository = async (fallbackRepository) => {
     })
     return createNotificationsForUsers(db, users, payload)
   }
+
+  const taskNotificationTarget = (page = 'mine') => ({ page })
 
   const mediaScanAlertNotification = (alert) => ({
     type: 'media.scan.alert',
@@ -1680,6 +1758,14 @@ const createPrismaRepository = async (fallbackRepository) => {
         resourceId: String(id),
         metadata: { proposalId: proposal.id },
       })
+      await createNotificationsForHandles([task.publisher?.profile?.handle ?? task.publisher?.id ?? null], {
+        type: 'task.proposal_submitted',
+        title: `Proposal submitted: ${task.title}`,
+        body: `${actor.handle} submitted a proposal for ${task.title}.`,
+        resourceType: 'task',
+        resourceId: String(id),
+        metadata: { taskId: String(id), proposalId: proposal.id, proposerHandle: actor.handle, target: taskNotificationTarget('mine') },
+      })
       return getTaskProposalDto(proposal)
     },
     listProposals: async (id, actor, options = {}) => {
@@ -1738,6 +1824,7 @@ const createPrismaRepository = async (fallbackRepository) => {
         return null
       }
       const proposalStatus = payload.decision === 'accept' ? 'accepted' : 'rejected'
+      let autoRejectedProposerHandles = []
       const updatedProposal = await client.$transaction(async (transaction) => {
         const updated = await transaction.taskProposal.update({
           where: { id: proposal.id },
@@ -1751,6 +1838,15 @@ const createPrismaRepository = async (fallbackRepository) => {
           include: { proposer: { include: { profile: true } } },
         })
         if (payload.decision === 'accept') {
+          const autoRejectedProposals = await transaction.taskProposal.findMany({
+            where: {
+              taskId: String(id),
+              id: { not: proposal.id },
+              status: 'pending',
+            },
+            include: { proposer: { include: { profile: true } } },
+          })
+          autoRejectedProposerHandles = autoRejectedProposals.map((entry) => userHandle(entry.proposer))
           const taskDto = getTaskDto(proposal.task)
           await transaction.task.update({
             where: { id: String(id) },
@@ -1790,6 +1886,28 @@ const createPrismaRepository = async (fallbackRepository) => {
           proposerId: proposal.proposerId,
         },
       })
+      const proposerHandle = userHandle(proposal.proposer)
+      await createNotificationsForHandles([proposerHandle], {
+        type: payload.decision === 'accept' ? 'task.proposal_accepted' : 'task.proposal_rejected',
+        title: payload.decision === 'accept' ? `Proposal accepted: ${proposal.task.title}` : `Proposal rejected: ${proposal.task.title}`,
+        body: payload.decision === 'accept'
+          ? `${proposal.task.title} is ready for delivery.`
+          : `${proposal.task.title} proposal was not selected.`,
+        resourceType: 'task',
+        resourceId: String(id),
+        metadata: { taskId: String(id), proposalId: proposal.id, reviewNote: payload.note ?? '', target: taskNotificationTarget('mine') },
+      })
+      if (autoRejectedProposerHandles.length > 0) {
+        await createNotificationsForHandles(autoRejectedProposerHandles, {
+          type: 'task.proposal_rejected',
+          title: `Proposal not selected: ${proposal.task.title}`,
+          body: `${proposal.task.title} moved forward with another proposal.`,
+          resourceType: 'task',
+          resourceId: String(id),
+          metadata: { taskId: String(id), selectedProposalId: proposal.id, target: taskNotificationTarget('mine') },
+          dedupeUnread: true,
+        })
+      }
       return getTaskProposalDto(updatedProposal)
     },
     submit: async (id, payload, actor = null) => {
@@ -1811,15 +1929,21 @@ const createPrismaRepository = async (fallbackRepository) => {
       if (!submitter) {
         return null
       }
+      const previousSubmission = await client.taskSubmission.findFirst({
+        where: { taskId: String(id), submitterId: submitter.id },
+        orderBy: { createdAt: 'desc' },
+      })
+      const isResubmission = previousSubmission?.status === 'revision_requested'
+      const taskDto = getTaskDto(task)
       const row = await client.task.update({
         where: { id: String(id) },
         data: {
           status: taskStatusFromLabel('Pending Review'),
           metadata: {
-            ...getTaskDto(task),
+            ...taskDto,
             submission: payload.content,
-            resultLinks: payload.assetIds?.length ? payload.assetIds : getTaskDto(task).resultLinks,
-            rights: payload.rightsNote ?? getTaskDto(task).rights,
+            resultLinks: payload.assetIds?.length ? payload.assetIds : taskDto.resultLinks,
+            rights: payload.rightsNote ?? taskDto.rights,
           },
         },
         include: {
@@ -1844,6 +1968,16 @@ const createPrismaRepository = async (fallbackRepository) => {
         resourceType: 'task',
         resourceId: row.id,
         metadata: { status: row.status, submissionId: submission.id },
+      })
+      await createNotificationsForHandles([publisherHandle], {
+        type: isResubmission ? 'task.submission_resubmitted' : 'task.submission_submitted',
+        title: isResubmission ? 'Task revision ready for review' : 'Task submission ready for review',
+        body: isResubmission
+          ? `${submitter.profile?.handle ?? submitter.id} resubmitted work for ${row.title}.`
+          : `${submitter.profile?.handle ?? submitter.id} submitted work for ${row.title}.`,
+        resourceType: 'task',
+        resourceId: row.id,
+        metadata: { taskId: row.id, submissionId: submission.id, status: submission.status, previousSubmissionStatus: previousSubmission?.status ?? null, target: taskNotificationTarget('mine') },
       })
       return getTaskDto(row)
     },
@@ -1888,6 +2022,305 @@ const createPrismaRepository = async (fallbackRepository) => {
         limit,
       }
     },
+    listTimeline: async (id, actor, options = {}) => {
+      const task = await client.task.findUnique({
+        where: { id: String(id) },
+        include: {
+          publisher: { include: { profile: true } },
+          assignee: { include: { profile: true } },
+          proposals: {
+            include: { proposer: { include: { profile: true } } },
+            orderBy: { createdAt: 'desc' },
+          },
+          submissions: {
+            include: {
+              submitter: { include: { profile: true } },
+              reviewedBy: { include: { profile: true } },
+            },
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+      })
+      if (!task) {
+        return null
+      }
+      const participantHandles = uniqueHandles([
+        userHandle(task.publisher),
+        userHandle(task.assignee),
+        ...task.proposals.map((proposal) => userHandle(proposal.proposer)),
+        ...task.submissions.map((submission) => userHandle(submission.submitter)),
+      ])
+      if (!participantHandles.includes(actor.handle) && !hasPermission(actor, 'admin:access')) {
+        return null
+      }
+
+      const proposalIds = task.proposals.map((proposal) => proposal.id)
+      const limit = options.limit ?? 50
+      const cursor = options.cursor
+        ? await client.auditEvent.findUnique({ where: { id: String(options.cursor) }, select: { id: true } })
+        : null
+      const rows = await client.auditEvent.findMany({
+        where: {
+          OR: [
+            { resourceType: 'task', resourceId: String(id) },
+            ...(proposalIds.length > 0 ? [{ resourceType: 'task_proposal', resourceId: { in: proposalIds } }] : []),
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor.id }, skip: 1 } : {}),
+      })
+      const hasCreatedEvent = rows.some((row) => row.action === 'task.created')
+      const syntheticCreated = hasCreatedEvent || cursor
+        ? []
+        : [{
+            id: `task-${task.id}-created`,
+            actorId: task.publisherId,
+            action: 'task.created',
+            resourceType: 'task',
+            resourceId: task.id,
+            metadata: { status: task.status, category: task.category },
+            createdAt: task.createdAt,
+          }]
+      const timelineRows = [...rows, ...syntheticCreated]
+        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+      const actorIds = [...new Set(timelineRows.map((row) => row.actorId).filter(Boolean))]
+      const actors = actorIds.length > 0
+        ? await client.user.findMany({
+          where: { id: { in: actorIds } },
+          include: { profile: true },
+        })
+        : []
+      const actorById = new Map(actors.map((user) => [user.id, buildUserSummary(user)]))
+      const pageRows = timelineRows.slice(0, limit)
+      return {
+        items: pageRows.map((row) => taskTimelineItem(row, id, actorById)),
+        nextCursor: rows.length > limit && rows.slice(0, limit).length > 0 ? rows.slice(0, limit)[rows.slice(0, limit).length - 1].id : null,
+        limit,
+      }
+    },
+    createDispute: async (id, payload, actor = null) => {
+      const task = await client.task.findUnique({
+        where: { id: String(id) },
+        include: {
+          publisher: { include: { profile: true } },
+          assignee: { include: { profile: true } },
+        },
+      })
+      if (!task) {
+        return null
+      }
+      const taskDto = getTaskDto(task)
+      const row = await client.$transaction(async (transaction) => {
+        const submission = await transaction.taskSubmission.findFirst({
+          where: {
+            taskId: String(id),
+            status: { in: ['rejected', 'stale', 'disputed'] },
+          },
+          include: {
+            submitter: { include: { profile: true } },
+            reviewedBy: { include: { profile: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        })
+        if (!submission) {
+          return null
+        }
+        const creatorHandle = userHandle(submission.submitter)
+        const publisherHandle = userHandle(task.publisher)
+        if (actor && actor.handle !== creatorHandle && !hasPermission(actor, 'admin:access')) {
+          return null
+        }
+        const submissionMetadata = asObject(submission.metadata) ?? {}
+        const existingDisputeId = submissionMetadata.dispute?.adminReviewId ?? null
+        const reviewId = existingDisputeId ?? `review-task-dispute-${task.id}-${submission.id}`
+        const disputeMetadata = {
+          kind: 'task_dispute',
+          taskId: String(task.id),
+          submissionId: submission.id,
+          creatorHandle,
+          publisherHandle,
+          reason: payload.reason,
+          previousSubmissionStatus: submission.status,
+          openedBy: actor?.handle ?? creatorHandle,
+          openedAt: new Date().toISOString(),
+        }
+        await transaction.adminReview.upsert({
+          where: { id: reviewId },
+          create: {
+            id: reviewId,
+            queue: 'task_disputes',
+            status: 'Task dispute',
+            title: `Task dispute: ${task.title}`,
+            owner: creatorHandle ?? actor?.handle ?? 'unknown',
+            note: payload.reason,
+            metadata: disputeMetadata,
+          },
+          update: {
+            note: payload.reason,
+            metadata: disputeMetadata,
+          },
+        })
+        await transaction.taskSubmission.update({
+          where: { id: submission.id },
+          data: {
+            status: 'disputed',
+            metadata: {
+              ...submissionMetadata,
+              dispute: {
+                ...disputeMetadata,
+                adminReviewId: reviewId,
+              },
+            },
+          },
+        })
+        const updatedTask = await transaction.task.update({
+          where: { id: String(task.id) },
+          data: {
+            status: 'disputed',
+            metadata: {
+              ...taskDto,
+              status: 'Disputed',
+              disputeStatus: 'open',
+              disputeReason: payload.reason,
+              disputeReviewId: reviewId,
+            },
+          },
+          include: {
+            publisher: { include: { profile: true } },
+            assignee: { include: { profile: true } },
+          },
+        })
+        await transaction.auditEvent.create({
+          data: buildAuditRecord({
+            actorType: actor ? 'user' : 'system',
+            actorId: actor?.id ?? null,
+            action: 'task.dispute.opened',
+            resourceType: 'task',
+            resourceId: String(task.id),
+            metadata: {
+              note: payload.reason,
+              submissionId: submission.id,
+              adminReviewId: reviewId,
+              previousSubmissionStatus: submission.status,
+            },
+          }),
+        })
+        const notificationPayload = {
+          type: 'task.dispute_opened',
+          title: `Task dispute opened: ${task.title}`,
+          body: `${actor?.handle ?? creatorHandle} opened a dispute: ${payload.reason}`,
+          resourceType: 'task',
+          resourceId: String(task.id),
+          metadata: { taskId: String(task.id), submissionId: submission.id, adminReviewId: reviewId, target: taskNotificationTarget('mine') },
+          dedupeUnread: true,
+        }
+        await createNotificationsForHandles([publisherHandle], notificationPayload, transaction)
+        await createNotificationsForHandles([creatorHandle], {
+          type: 'task.dispute_received',
+          title: `Dispute opened: ${task.title}`,
+          body: `Your dispute for ${task.title} is now in the task dispute queue.`,
+          resourceType: 'task',
+          resourceId: String(task.id),
+          metadata: { taskId: String(task.id), submissionId: submission.id, adminReviewId: reviewId, target: taskNotificationTarget('mine') },
+          dedupeUnread: true,
+        }, transaction)
+        await notifyAdminQueueReaders(transaction, actor, {
+          ...notificationPayload,
+          resourceType: 'admin_review',
+          resourceId: reviewId,
+          metadata: {
+            ...notificationPayload.metadata,
+            target: {
+              page: 'admin',
+              admin: { tab: 'Task review', queue: 'task_disputes', reviewId },
+            },
+          },
+        })
+        return updatedTask
+      })
+      return row ? getTaskDto(row) : null
+    },
+    sweepStaleSubmissions: async (payload, actor = null) => {
+      const cutoff = new Date(Date.now() - payload.olderThanHours * 60 * 60 * 1000)
+      const rows = await client.$transaction(async (transaction) => {
+        const submissions = await transaction.taskSubmission.findMany({
+          where: {
+            status: 'pending_review',
+            createdAt: { lt: cutoff },
+            ...(payload.taskId ? { taskId: String(payload.taskId) } : {}),
+          },
+          include: {
+            submitter: { include: { profile: true } },
+            task: {
+              include: {
+                publisher: { include: { profile: true } },
+                assignee: { include: { profile: true } },
+              },
+            },
+            reviewedBy: { include: { profile: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+          take: payload.limit,
+        })
+        const updated = []
+        for (const submission of submissions) {
+          const metadata = asObject(submission.metadata) ?? {}
+          const staleMetadata = {
+            staleAt: new Date().toISOString(),
+            olderThanHours: payload.olderThanHours,
+            previousSubmissionStatus: submission.status,
+          }
+          const row = await transaction.taskSubmission.update({
+            where: { id: submission.id },
+            data: {
+              status: 'stale',
+              metadata: {
+                ...metadata,
+                stale: staleMetadata,
+              },
+            },
+            include: {
+              submitter: { include: { profile: true } },
+              reviewedBy: { include: { profile: true } },
+            },
+          })
+          await transaction.auditEvent.create({
+            data: buildAuditRecord({
+              actorType: actor ? 'user' : 'system',
+              actorId: actor?.id ?? null,
+              action: 'task.submission.stale',
+              resourceType: 'task',
+              resourceId: String(submission.taskId),
+              metadata: {
+                submissionId: submission.id,
+                olderThanHours: payload.olderThanHours,
+                note: `Submission has been pending review for more than ${payload.olderThanHours} hours.`,
+              },
+            }),
+          })
+          await createNotificationsForHandles(
+            uniqueHandles([userHandle(submission.task.publisher), userHandle(submission.submitter)]),
+            {
+              type: 'task.submission_stale',
+              title: `Task review overdue: ${submission.task.title}`,
+              body: `A submission has been pending review for more than ${payload.olderThanHours} hours.`,
+              resourceType: 'task',
+              resourceId: String(submission.taskId),
+              metadata: { taskId: String(submission.taskId), submissionId: submission.id, olderThanHours: payload.olderThanHours, target: taskNotificationTarget('mine') },
+              dedupeUnread: true,
+            },
+            transaction,
+          )
+          updated.push(row)
+        }
+        return updated
+      })
+      return {
+        marked: rows.length,
+        items: rows.map(getTaskSubmissionDto),
+      }
+    },
     review: async (id, payload, actor = null) => {
       const task = await client.task.findUnique({
         where: { id: String(id) },
@@ -1904,51 +2337,137 @@ const createPrismaRepository = async (fallbackRepository) => {
         return null
       }
       const reviewer = actor ? await findUserByHandle(actor.handle) : null
+      let submissionRecipientHandle = null
       const row = await client.$transaction(async (transaction) => {
         const pendingSubmission = await transaction.taskSubmission.findFirst({
           where: { taskId: String(id), status: 'pending_review' },
+          include: { submitter: { include: { profile: true } } },
           orderBy: { createdAt: 'desc' },
         })
-        const updatedTask = await transaction.task.update({
-          where: { id: String(id) },
-          data: {
-            status: taskStatusFromLabel(payload.decision === 'approve' ? 'Completed' : 'Rejected'),
-            metadata: {
-              ...getTaskDto(task),
-              reviewNote: payload.reviewNote,
-              status: taskStatusToLabel(payload.decision === 'approve' ? 'completed' : 'rejected'),
+        submissionRecipientHandle = pendingSubmission?.submitter?.profile?.handle ?? pendingSubmission?.submitter?.id ?? null
+        const taskDto = getTaskDto(task)
+        const isApproval = payload.decision === 'approve'
+        const isRevisionRequest = payload.decision === 'request_changes'
+        const nextTaskStatus = isApproval ? 'Completed' : isRevisionRequest ? 'In Progress' : 'Rejected'
+        const nextSubmissionStatus = isApproval ? 'approved' : isRevisionRequest ? 'revision_requested' : 'rejected'
+        const acceptanceChecklist = payload.acceptanceChecklist ?? []
+        const reviewTaskData = {
+          status: taskStatusFromLabel(nextTaskStatus),
+          metadata: {
+            ...taskDto,
+            reviewNote: payload.reviewNote,
+            acceptanceChecklist,
+            status: nextTaskStatus,
+          },
+        }
+        let shouldApplyCompletionReputation = false
+        let updatedTask = null
+        if (isApproval) {
+          const completionTransition = await transaction.task.updateMany({
+            where: { id: String(id), status: { not: 'completed' } },
+            data: reviewTaskData,
+          })
+          shouldApplyCompletionReputation = completionTransition.count > 0
+          updatedTask = shouldApplyCompletionReputation
+            ? await transaction.task.findUnique({
+              where: { id: String(id) },
+              include: {
+                publisher: { include: { profile: true } },
+                assignee: { include: { profile: true } },
+              },
+            })
+            : await transaction.task.update({
+              where: { id: String(id) },
+              data: reviewTaskData,
+              include: {
+                publisher: { include: { profile: true } },
+                assignee: { include: { profile: true } },
+              },
+            })
+        } else {
+          updatedTask = await transaction.task.update({
+            where: { id: String(id) },
+            data: reviewTaskData,
+            include: {
+              publisher: { include: { profile: true } },
+              assignee: { include: { profile: true } },
             },
-          },
-          include: {
-            publisher: { include: { profile: true } },
-            assignee: { include: { profile: true } },
-          },
-        })
+          })
+        }
+        if (!updatedTask) {
+          throw new Error(`Task review update failed for ${id}`)
+        }
         if (pendingSubmission) {
           await transaction.taskSubmission.update({
             where: { id: pendingSubmission.id },
             data: {
-              status: payload.decision === 'approve' ? 'approved' : 'rejected',
+              status: nextSubmissionStatus,
               reviewNote: payload.reviewNote,
+              metadata: {
+                ...(
+                  pendingSubmission.metadata && typeof pendingSubmission.metadata === 'object' && !Array.isArray(pendingSubmission.metadata)
+                    ? pendingSubmission.metadata
+                    : {}
+                ),
+                acceptanceChecklist,
+              },
               reviewedById: reviewer?.id ?? null,
               reviewedAt: new Date(),
             },
           })
         }
-        if (payload.decision === 'approve') {
+        if (isApproval) {
           await finalizeTaskEscrow(transaction, task, task.publisherId, 'approve')
           await settleTaskReward(transaction, task, task.assigneeId ?? pendingSubmission?.submitterId ?? null)
-        } else {
+          if (shouldApplyCompletionReputation) {
+            await applyTaskCompletionReputation(transaction, task, task.assigneeId ?? pendingSubmission?.submitterId ?? null)
+          }
+        } else if (!isRevisionRequest) {
           await finalizeTaskEscrow(transaction, task, task.publisherId, 'reject')
         }
         return updatedTask
       })
-      await recordAudit({
-        actor,
-        action: payload.decision === 'approve' ? 'task.approved' : 'task.rejected',
+      const assigneeHandle = task.assignee?.profile?.handle ?? task.assignee?.id ?? submissionRecipientHandle
+      const notificationCopy = {
+        approve: {
+          type: 'task.submission_approved',
+          title: 'Task submission approved',
+          body: `${row.title} was approved and points were released.`,
+        },
+        reject: {
+          type: 'task.submission_rejected',
+          title: 'Task submission rejected',
+          body: `${row.title} was rejected.`,
+        },
+        request_changes: {
+          type: 'task.revision_requested',
+          title: 'Task changes requested',
+          body: `${row.title} needs revisions before acceptance.`,
+        },
+      }[payload.decision]
+      await createNotificationsForHandles([assigneeHandle], {
+        ...notificationCopy,
         resourceType: 'task',
         resourceId: row.id,
-        metadata: { status: row.status },
+        metadata: { taskId: row.id, status: row.status, reviewNote: payload.reviewNote, acceptanceChecklist: payload.acceptanceChecklist ?? [], target: taskNotificationTarget('mine') },
+      })
+      if (payload.decision === 'approve') {
+        await createNotificationsForHandles([assigneeHandle], {
+          type: 'task.reward_settled',
+          title: 'Task reward settled',
+          body: `${row.title} reward points were released to your ledger.`,
+          resourceType: 'task',
+          resourceId: row.id,
+          metadata: { taskId: row.id, status: row.status, target: { page: 'points' } },
+          dedupeUnread: true,
+        })
+      }
+      await recordAudit({
+        actor,
+        action: payload.decision === 'approve' ? 'task.approved' : payload.decision === 'request_changes' ? 'task.revision_requested' : 'task.rejected',
+        resourceType: 'task',
+        resourceId: row.id,
+        metadata: { status: row.status, reviewNote: payload.reviewNote, acceptanceChecklist: payload.acceptanceChecklist ?? [] },
       })
       return getTaskDto(row)
     },

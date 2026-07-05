@@ -174,10 +174,36 @@ test('parseReviewTaskRequest accepts known decisions and rejects unknown values'
   assert.deepEqual(parseReviewTaskRequest({ decision: 'approve', reviewNote: 'Looks good.' }), {
     decision: 'approve',
     reviewNote: 'Looks good.',
+    acceptanceChecklist: [],
+  })
+  assert.deepEqual(parseReviewTaskRequest({
+    decision: 'request_changes',
+    reviewNote: 'Tighten the rights note.',
+    acceptanceChecklist: [{ label: ' Rights note ', checked: false }],
+  }), {
+    decision: 'request_changes',
+    reviewNote: 'Tighten the rights note.',
+    acceptanceChecklist: [{ label: 'Rights note', checked: false }],
   })
   assertValidationError(
     () => parseReviewTaskRequest({ decision: 'hold', reviewNote: 'Wait.' }),
-    'decision must be one of: approve, reject',
+    'decision must be one of: approve, reject, request_changes',
+  )
+  assertValidationError(
+    () => parseReviewTaskRequest({
+      decision: 'approve',
+      reviewNote: 'Almost.',
+      acceptanceChecklist: [{ label: 'Rights note', checked: false }],
+    }),
+    'acceptanceChecklist must be fully checked before approval',
+  )
+  assertValidationError(
+    () => parseReviewTaskRequest({
+      decision: 'request_changes',
+      reviewNote: 'Almost.',
+      acceptanceChecklist: [{ label: 'Rights note', checked: 'no' }],
+    }),
+    'acceptanceChecklist[0].checked must be a boolean',
   )
 })
 

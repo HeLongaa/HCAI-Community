@@ -78,6 +78,18 @@ const optionalPositiveInteger = (body, field) => {
   return parsed
 }
 
+const optionalNonNegativeInteger = (body, field) => {
+  const value = body?.[field]
+  if (value == null || value === '') {
+    return undefined
+  }
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw validationFailed(`${field} must be a non-negative integer`)
+  }
+  return parsed
+}
+
 const optionalObject = (body, field) => {
   const value = body?.[field]
   if (value == null) {
@@ -87,6 +99,31 @@ const optionalObject = (body, field) => {
     throw validationFailed(`${field} must be an object`)
   }
   return value
+}
+
+const optionalAcceptanceChecklist = (body, field = 'acceptanceChecklist') => {
+  const value = body?.[field]
+  if (value == null) {
+    return []
+  }
+  if (!Array.isArray(value)) {
+    throw validationFailed(`${field} must be an array`)
+  }
+  return value.map((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw validationFailed(`${field}[${index}] must be an object`)
+    }
+    if (typeof item.label !== 'string' || !item.label.trim()) {
+      throw validationFailed(`${field}[${index}].label is required`)
+    }
+    if (typeof item.checked !== 'boolean') {
+      throw validationFailed(`${field}[${index}].checked must be a boolean`)
+    }
+    return {
+      label: item.label.trim(),
+      checked: item.checked,
+    }
+  })
 }
 
 export const parseEmailLoginRequest = (body) => ({
@@ -138,10 +175,28 @@ export const parseSubmitTaskRequest = (body) => ({
   rightsNote: optionalText(body, 'rightsNote', ''),
 })
 
-export const parseReviewTaskRequest = (body) => ({
-  decision: requireOneOf(body, 'decision', ['approve', 'reject']),
-  reviewNote: requireText(body, 'reviewNote'),
+export const parseCreateTaskDisputeRequest = (body) => ({
+  reason: requireText(body, 'reason'),
 })
+
+export const parseSweepStaleTaskSubmissionsRequest = (body) => ({
+  olderThanHours: optionalNonNegativeInteger(body, 'olderThanHours') ?? 72,
+  limit: Math.min(optionalPositiveInteger(body, 'limit') ?? 50, 100),
+  taskId: optionalText(body, 'taskId', null),
+})
+
+export const parseReviewTaskRequest = (body) => {
+  const decision = requireOneOf(body, 'decision', ['approve', 'reject', 'request_changes'])
+  const acceptanceChecklist = optionalAcceptanceChecklist(body)
+  if (decision === 'approve' && acceptanceChecklist.some((item) => !item.checked)) {
+    throw validationFailed('acceptanceChecklist must be fully checked before approval')
+  }
+  return {
+    decision,
+    reviewNote: requireText(body, 'reviewNote'),
+    acceptanceChecklist,
+  }
+}
 
 export const parseCreatePostRequest = (body) => ({
   title: requireText(body, 'title'),

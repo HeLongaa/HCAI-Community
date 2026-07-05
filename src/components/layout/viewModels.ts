@@ -20,7 +20,7 @@ import type {
 } from '../../domain/types'
 import type { TaskChildCollection } from '../../hooks/useTaskWorkflows'
 import type { OAuthLoginResult } from '../../hooks/useAccountState'
-import type { ApiNotification, ApiPointsSummary, ApiTaskProposal, ApiTaskSubmission, NotificationListQuery, OAuthProvider } from '../../services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiNotification, ApiPointsSummary, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, NotificationListQuery, OAuthProvider } from '../../services/contracts'
 
 export type AppCopyViewModel = {
   t: Record<string, string>
@@ -134,6 +134,7 @@ export type TaskWorkflowViewModel = {
   taskStatus: AsyncResourceState
   proposalStateByTask: Record<string, TaskChildCollection<ApiTaskProposal>>
   submissionStateByTask: Record<string, TaskChildCollection<ApiTaskSubmission>>
+  timelineStateByTask: Record<string, TaskChildCollection<ApiTaskTimelineItem>>
   publishTask: (draft: PublishDraft) => Promise<void>
   claimTask: (task: Task) => Promise<void>
   submitProposal: (task: Task) => Promise<void>
@@ -141,9 +142,12 @@ export type TaskWorkflowViewModel = {
   acceptProposal: (task: Task, proposalId: string) => Promise<void>
   rejectProposal: (task: Task, proposalId: string) => Promise<void>
   refreshSubmissions: (task: Task) => Promise<void>
+  refreshTimeline: (task: Task) => Promise<void>
   submitTask: (task: Task, options?: { assetIds?: string[]; rightsNote?: string }) => Promise<void>
-  approveTask: (task: Task) => Promise<void>
-  rejectTask: (task: Task) => Promise<void>
+  approveTask: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
+  rejectTask: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
+  requestRevisionTask: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
+  openDisputeTask: (task: Task) => Promise<void>
 }
 
 export type CommunityWorkflowViewModel = {

@@ -189,12 +189,39 @@ Body:
 
 ```ts
 {
-  decision: 'approve' | 'reject'
+  decision: 'approve' | 'reject' | 'request_changes'
   reviewNote: string
+  acceptanceChecklist?: Array<{ label: string; checked: boolean }>
 }
 ```
 
-Approving a task updates the latest pending submission and writes a settled point ledger entry for the assignee, or for the latest submitter when the compatibility path has no assignee.
+Approving a task requires every supplied acceptance checklist item to be checked, updates the latest pending submission, writes a settled point ledger entry for the assignee or latest submitter, and increments creator/publisher reputation stats once for the completion.
+
+### `POST /tasks/:id/disputes`
+
+Requires `task:submit`. The submitter can dispute the latest rejected or stale submission. The task moves to `Disputed`, the submission moves to `disputed`, an admin review is opened in the `task_disputes` queue, and the task timeline records `task.dispute.opened`.
+
+Body:
+
+```ts
+{
+  reason: string
+}
+```
+
+### `POST /tasks/stale-submissions/sweep`
+
+Requires `task:moderate`. Marks pending-review submissions older than `olderThanHours` as `stale`, notifies task participants, and writes `task.submission.stale` timeline events. `taskId` can scope the sweep to a single task.
+
+Body:
+
+```ts
+{
+  olderThanHours?: number // default 72
+  limit?: number // default 50, max 100
+  taskId?: string | null
+}
+```
 
 ### `GET /tasks/:id/events`
 
@@ -472,13 +499,13 @@ Query:
 }
 ```
 
-Returns the current user's notification inbox. Current notification producers cover high-value point adjustment requests, point adjustment approval/rejection results, point policy rollback events, media scan manual-review requests, media scan rejections, media scan retry requests, and scanner health alerts.
+Returns the current user's notification inbox. Current notification producers cover task proposal submission/acceptance/rejection, submission/resubmission, revision requests, submission approval/rejection, reward settlement, stale submissions, dispute open/receipt, high-value point adjustment requests, point adjustment approval/rejection results, point policy rollback events, media scan manual-review requests, media scan rejections, media scan retry requests, scanner health alerts, and security alerts.
 
 Notification `metadata.target` can carry a client deep link:
 
 ```ts
 {
-  page: 'admin'
+  page: 'admin' | 'mine' | 'points'
   admin?: {
     tab?: 'Task review' | 'Finance'
     queue?: string
@@ -1205,10 +1232,18 @@ type SubmitTaskRequest = {
 
 ```ts
 type ReviewTaskRequest = {
-  decision: 'approve' | 'reject'
+  decision: 'approve' | 'reject' | 'request_changes'
   reviewNote: string
+  acceptanceChecklist?: Array<{
+    label: string
+    checked: boolean
+  }>
 }
 ```
+
+`POST /tasks/:id/disputes` requires `task:submit` and accepts `{ reason: string }`.
+
+`POST /tasks/stale-submissions/sweep` requires `task:moderate` and accepts `{ olderThanHours?: number; limit?: number; taskId?: string | null }`.
 
 ### Community And Library
 
