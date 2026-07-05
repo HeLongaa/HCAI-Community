@@ -114,6 +114,20 @@ export const registerTaskRoutes = (router) => {
     })
   })
 
+  router.add('GET', '/api/tasks/:id/timeline', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const page = await repositories.tasks.listTimeline(context.params.id, actor, parseTaskChildListQuery(context.query))
+    if (!page) {
+      throw notFound(`/api/tasks/${context.params.id}/timeline`)
+    }
+    ok(response, page.items, {
+      pagination: {
+        limit: page.limit,
+        nextCursor: page.nextCursor,
+      },
+    })
+  })
+
   router.add('POST', '/api/tasks/:id/review', async (request, response, context) => {
     const actor = requirePermission(context, 'task:review')
     const body = (await readJsonBody(request)) ?? {}

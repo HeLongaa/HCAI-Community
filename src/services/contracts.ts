@@ -206,6 +206,19 @@ export type ApiTaskSubmission = {
   createdAt: string
 }
 
+export type ApiTaskTimelineItem = {
+  id: string
+  taskId: string
+  type: string
+  title: string
+  body: string
+  actor: ApiProfileSummary | { handle: string } | null
+  resourceType: string
+  resourceId: string | null
+  metadata: Record<string, unknown>
+  occurredAt: string
+}
+
 export type MediaAssetPurpose = 'task_attachment' | 'submission_asset' | 'profile_portfolio' | 'library_asset'
 
 export type ApiMediaAsset = {

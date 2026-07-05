@@ -338,6 +338,41 @@ const createPrismaRepository = async (fallbackRepository) => {
 
   const userHandle = (user) => user?.profile?.handle ?? user?.id ?? null
 
+  const taskTimelineCopy = {
+    'task.created': { type: 'created', title: 'Task opened', body: 'The task was published.' },
+    'task.claimed': { type: 'claimed', title: 'Creator joined', body: 'A creator started work on this task.' },
+    'task.proposal.created': { type: 'proposal_created', title: 'Proposal submitted', body: 'A creator submitted a proposal.' },
+    'task.proposal.accepted': { type: 'proposal_accepted', title: 'Proposal accepted', body: 'The publisher accepted a proposal.' },
+    'task.proposal.rejected': { type: 'proposal_rejected', title: 'Proposal rejected', body: 'The publisher declined a proposal.' },
+    'task.submitted': { type: 'submitted', title: 'Work submitted', body: 'The creator submitted delivery work.' },
+    'task.revision_requested': { type: 'revision_requested', title: 'Changes requested', body: 'The publisher requested revisions.' },
+    'task.approved': { type: 'approved', title: 'Task approved', body: 'The task was approved and points were settled.' },
+    'task.rejected': { type: 'rejected', title: 'Task rejected', body: 'The publisher rejected the submitted work.' },
+  }
+
+  const taskTimelineItem = (event, taskId, actorById = new Map()) => {
+    const copy = taskTimelineCopy[event.action] ?? {
+      type: event.action.replace(/^task\./, '').replaceAll('.', '_'),
+      title: 'Task activity',
+      body: event.action,
+    }
+    const metadata = event.metadata && typeof event.metadata === 'object' && !Array.isArray(event.metadata)
+      ? event.metadata
+      : {}
+    return {
+      id: event.id,
+      taskId: String(taskId),
+      type: copy.type,
+      title: copy.title,
+      body: metadata.reviewNote ?? metadata.note ?? copy.body,
+      actor: event.actorId ? actorById.get(event.actorId) ?? null : null,
+      resourceType: event.resourceType,
+      resourceId: event.resourceId ?? null,
+      metadata,
+      occurredAt: event.createdAt?.toISOString?.() ?? '',
+    }
+  }
+
   const createNotificationsForUsers = async (db, users, payload) => {
     const uniqueUsers = [...new Map(users.filter(Boolean).map((user) => [user.id, user])).values()]
     return (await Promise.all(uniqueUsers.map(async (recipient) => {
@@ -1896,6 +1931,83 @@ const createPrismaRepository = async (fallbackRepository) => {
         limit,
       }
     },
+    listTimeline: async (id, actor, options = {}) => {
+      const task = await client.task.findUnique({
+        where: { id: String(id) },
+        include: {
+          publisher: { include: { profile: true } },
+          assignee: { include: { profile: true } },
+          proposals: {
+            include: { proposer: { include: { profile: true } } },
+            orderBy: { createdAt: 'desc' },
+          },
+          submissions: {
+            include: {
+              submitter: { include: { profile: true } },
+              reviewedBy: { include: { profile: true } },
+            },
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+      })
+      if (!task) {
+        return null
+      }
+      const participantHandles = uniqueHandles([
+        userHandle(task.publisher),
+        userHandle(task.assignee),
+        ...task.proposals.map((proposal) => userHandle(proposal.proposer)),
+        ...task.submissions.map((submission) => userHandle(submission.submitter)),
+      ])
+      if (!participantHandles.includes(actor.handle) && !hasPermission(actor, 'admin:access')) {
+        return null
+      }
+
+      const proposalIds = task.proposals.map((proposal) => proposal.id)
+      const limit = options.limit ?? 50
+      const cursor = options.cursor
+        ? await client.auditEvent.findUnique({ where: { id: String(options.cursor) }, select: { id: true } })
+        : null
+      const rows = await client.auditEvent.findMany({
+        where: {
+          OR: [
+            { resourceType: 'task', resourceId: String(id) },
+            ...(proposalIds.length > 0 ? [{ resourceType: 'task_proposal', resourceId: { in: proposalIds } }] : []),
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor.id }, skip: 1 } : {}),
+      })
+      const hasCreatedEvent = rows.some((row) => row.action === 'task.created')
+      const syntheticCreated = hasCreatedEvent || cursor
+        ? []
+        : [{
+            id: `task-${task.id}-created`,
+            actorId: task.publisherId,
+            action: 'task.created',
+            resourceType: 'task',
+            resourceId: task.id,
+            metadata: { status: task.status, category: task.category },
+            createdAt: task.createdAt,
+          }]
+      const timelineRows = [...rows, ...syntheticCreated]
+        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+      const actorIds = [...new Set(timelineRows.map((row) => row.actorId).filter(Boolean))]
+      const actors = actorIds.length > 0
+        ? await client.user.findMany({
+          where: { id: { in: actorIds } },
+          include: { profile: true },
+        })
+        : []
+      const actorById = new Map(actors.map((user) => [user.id, buildUserSummary(user)]))
+      const pageRows = timelineRows.slice(0, limit)
+      return {
+        items: pageRows.map((row) => taskTimelineItem(row, id, actorById)),
+        nextCursor: rows.length > limit && rows.slice(0, limit).length > 0 ? rows.slice(0, limit)[rows.slice(0, limit).length - 1].id : null,
+        limit,
+      }
+    },
     review: async (id, payload, actor = null) => {
       const task = await client.task.findUnique({
         where: { id: String(id) },
@@ -1988,7 +2100,7 @@ const createPrismaRepository = async (fallbackRepository) => {
         action: payload.decision === 'approve' ? 'task.approved' : payload.decision === 'request_changes' ? 'task.revision_requested' : 'task.rejected',
         resourceType: 'task',
         resourceId: row.id,
-        metadata: { status: row.status },
+        metadata: { status: row.status, reviewNote: payload.reviewNote },
       })
       return getTaskDto(row)
     },

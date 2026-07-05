@@ -377,6 +377,42 @@ const auditMetadata = (event) => event?.metadata && typeof event.metadata === 'o
   ? event.metadata
   : {}
 
+const taskTimelineCopy = {
+  'task.created': { type: 'created', title: 'Task opened', body: 'The task was published.' },
+  'task.claimed': { type: 'claimed', title: 'Creator joined', body: 'A creator started work on this task.' },
+  'task.proposal.created': { type: 'proposal_created', title: 'Proposal submitted', body: 'A creator submitted a proposal.' },
+  'task.proposal.accepted': { type: 'proposal_accepted', title: 'Proposal accepted', body: 'The publisher accepted a proposal.' },
+  'task.proposal.rejected': { type: 'proposal_rejected', title: 'Proposal rejected', body: 'The publisher declined a proposal.' },
+  'task.submitted': { type: 'submitted', title: 'Work submitted', body: 'The creator submitted delivery work.' },
+  'task.revision_requested': { type: 'revision_requested', title: 'Changes requested', body: 'The publisher requested revisions.' },
+  'task.approved': { type: 'approved', title: 'Task approved', body: 'The task was approved and points were settled.' },
+  'task.rejected': { type: 'rejected', title: 'Task rejected', body: 'The publisher rejected the submitted work.' },
+}
+
+const serializeTaskTimelineItem = (event, taskId) => {
+  const copy = taskTimelineCopy[event.action] ?? {
+    type: event.action.replace(/^task\./, '').replaceAll('.', '_'),
+    title: 'Task activity',
+    body: event.action,
+  }
+  const metadata = auditMetadata(event)
+  const actor = event.actorId
+    ? seedStore.demoAccounts.find((account) => account.id === event.actorId)
+    : null
+  return {
+    id: String(event.id),
+    taskId: String(taskId),
+    type: copy.type,
+    title: copy.title,
+    body: metadata.reviewNote ?? metadata.note ?? copy.body,
+    actor: actor ? buildAccountSummary(actor) : null,
+    resourceType: event.resourceType,
+    resourceId: event.resourceId ?? null,
+    metadata,
+    occurredAt: event.createdAt ?? '',
+  }
+}
+
 const inAuditWindow = (event, since, until) => {
   const createdAt = new Date(event.createdAt)
   return !Number.isNaN(createdAt.getTime()) && createdAt >= since && createdAt <= until
@@ -1441,6 +1477,46 @@ export const createSeedRepository = () => ({
         .map(serializeTaskSubmission)
       return paginateByCursor(submissions, options)
     },
+    listTimeline: (id, actor, options = {}) => {
+      const task = getTaskById(id)
+      if (!task) {
+        return null
+      }
+      const proposalRows = taskProposals.filter((proposal) => proposal.taskId === String(task.id))
+      const submissionRows = taskSubmissions.filter((submission) => submission.taskId === String(task.id))
+      const participantHandles = uniqueHandles([
+        getHandle(task.publisher),
+        getHandle(task.assignee),
+        ...proposalRows.map((proposal) => proposal.proposerHandle),
+        ...submissionRows.map((submission) => submission.submitterHandle),
+      ])
+      if (!participantHandles.includes(actor.handle) && !hasPermission(actor, 'admin:access')) {
+        return null
+      }
+      const proposalIds = proposalRows.map((proposal) => proposal.id)
+      const timelineEvents = auditEvents.filter((event) =>
+        (event.resourceType === 'task' && String(event.resourceId) === String(task.id)) ||
+        (event.resourceType === 'task_proposal' && proposalIds.includes(String(event.resourceId))),
+      )
+      const hasCreatedEvent = timelineEvents.some((event) => event.action === 'task.created')
+      if (!hasCreatedEvent && !options.cursor) {
+        const publisher = getAccountByHandle(getHandle(task.publisher))
+        timelineEvents.push({
+          id: `task-${task.id}-created`,
+          actorType: publisher ? 'user' : 'system',
+          actorId: publisher?.id ?? null,
+          action: 'task.created',
+          resourceType: 'task',
+          resourceId: String(task.id),
+          metadata: { status: task.status, category: task.category },
+          createdAt: task.createdAt ?? '',
+        })
+      }
+      const items = timelineEvents
+        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+        .map((event) => serializeTaskTimelineItem(event, task.id))
+      return paginateByCursor(items, options)
+    },
     review: (id, payload, actor = null) => {
       const isApproval = payload.decision === 'approve'
       const isRevisionRequest = payload.decision === 'request_changes'
@@ -1487,7 +1563,10 @@ export const createSeedRepository = () => ({
           resourceId: String(task.id),
           metadata: { taskId: String(task.id), status: task.status, reviewNote: payload.reviewNote },
         })
-        recordAudit(actor, isApproval ? 'task.approved' : isRevisionRequest ? 'task.revision_requested' : 'task.rejected', 'task', task.id, { status: task.status })
+        recordAudit(actor, isApproval ? 'task.approved' : isRevisionRequest ? 'task.revision_requested' : 'task.rejected', 'task', task.id, {
+          status: task.status,
+          reviewNote: payload.reviewNote,
+        })
       }
       return task ? serializeTask(task) : null
     },

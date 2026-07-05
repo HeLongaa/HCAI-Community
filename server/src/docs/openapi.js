@@ -477,6 +477,20 @@ export const openApiDocument = {
         },
       },
     },
+    '/tasks/{id}/timeline': {
+      get: {
+        summary: 'List participant-visible task timeline events',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+        ],
+        responses: {
+          '200': { description: 'Task timeline event list' },
+          '404': { description: 'Task not found or not visible to the current user' },
+        },
+      },
+    },
     '/tasks/{id}/review': {
       post: {
         summary: 'Approve, reject, or request changes for a task submission',

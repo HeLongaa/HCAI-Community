@@ -65,12 +65,14 @@ export function PageRenderer({
     taskStatus,
     proposalStateByTask,
     submissionStateByTask,
+    timelineStateByTask,
     publishTask,
     submitProposal,
     refreshProposals,
     acceptProposal,
     rejectProposal,
     refreshSubmissions,
+    refreshTimeline,
     submitTask,
     approveTask,
     rejectTask,
@@ -148,10 +150,12 @@ export function PageRenderer({
           accountHandle={account.accountHandle}
           proposalStateByTask={proposalStateByTask}
           submissionStateByTask={submissionStateByTask}
+          timelineStateByTask={timelineStateByTask}
           refreshProposals={refreshProposals}
           acceptProposal={acceptProposal}
           rejectProposal={rejectProposal}
           refreshSubmissions={refreshSubmissions}
+          refreshTimeline={refreshTimeline}
           submitTask={submitTask}
           approveTask={approveTask}
           rejectTask={rejectTask}

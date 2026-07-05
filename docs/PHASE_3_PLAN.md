@@ -12,6 +12,19 @@ Reasoning:
 - Phase 2 already built the technical foundation for tasks, proposals, submissions, media assets, notifications, audit, and Admin review.
 - Marketplace depth improves the core user value before adding expensive creative-provider integrations.
 
+## Scope Decision
+
+Phase 3 is an umbrella plan with Tracks A, B, and C, but the first Phase 3 implementation and closeout package should complete **Track A: Marketplace Depth** only.
+
+Track B and Track C remain Phase 3 roadmap candidates, but they are explicitly deferred from the current closeout package unless Track A exposes a production blocker that must be fixed first.
+
+Current closeout target:
+
+1. Complete Track A end to end.
+2. Keep Track B production operations as a follow-up track.
+3. Keep Track C creative provider productization as a follow-up track.
+4. Do not open the Phase 3 PR until Track A is complete and `npm run check:deploy` is green.
+
 ## Phase 3 Tracks
 
 ### Track A: Marketplace Depth
@@ -33,6 +46,15 @@ Exit criteria:
 - A creator can resubmit against review notes.
 - A task has a clear event history and participant-facing status.
 - Points settlement remains idempotent and auditable.
+
+Implementation order:
+
+1. Revision requests and creator resubmission. Completed in `codex/phase-3-task-revisions`.
+2. Participant-facing timeline/audit view. Completed in `codex/phase-3-task-revisions`.
+3. Acceptance criteria checklist at review time.
+4. Creator and publisher reputation updates after completion.
+5. Dispute and stale-submission flow.
+6. Notification coverage polish across revision, resubmission, acceptance, rejection, settlement, and dispute events.
 
 ### Track B: Production Operations
 

@@ -99,6 +99,7 @@ test('proposal, submission, and review can complete through the browser workflow
   await publisherPage.getByTestId('home-action-mine').click()
   await publisherPage.getByTestId(`mine-task-card-publisher-${task.id}`).click()
   await expect(publisherPage.getByText('Deliverables submitted.').first()).toBeVisible()
+  await expect(publisherPage.getByTestId('task-timeline-item-submitted')).toBeVisible()
 
   const revisionResponse = publisherPage.waitForResponse((review) =>
     review.url().includes(`/api/tasks/${task.id}/review`) && review.request().method() === 'POST',
@@ -110,6 +111,7 @@ test('proposal, submission, and review can complete through the browser workflow
   await creatorDeliveryPage.getByTestId('home-action-mine').click()
   await creatorDeliveryPage.getByTestId(`mine-task-card-maker-${task.id}`).click()
   await expect(creatorDeliveryPage.getByText('Revise against the acceptance criteria and resubmit.').first()).toBeVisible()
+  await expect(creatorDeliveryPage.getByTestId('task-timeline-item-revision_requested')).toBeVisible()
 
   const revisedSubmissionResponse = creatorDeliveryPage.waitForResponse((submission) =>
     submission.url().includes(`/api/tasks/${task.id}/submissions`) && submission.request().method() === 'POST',

@@ -536,6 +536,62 @@ test('GET /api/tasks/:id/submissions hides submissions from unrelated users', as
   }
 })
 
+test('GET /api/tasks/:id/timeline lists participant-visible task history', async () => {
+  const server = await createTestServer()
+  try {
+    const task = await createTask(server, {}, 'demo-access.launchteam')
+    const proposal = await createProposal(server, task.id)
+    await requestJson(server.url, `/api/tasks/${task.id}/proposals/${proposal.id}/actions`, {
+      body: { decision: 'accept', note: 'Selected for timeline coverage.' },
+      token: 'demo-access.launchteam',
+    })
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
+    await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: { decision: 'request_changes', reviewNote: 'Add a clearer revision note.' },
+      token: 'demo-access.launchteam',
+    })
+
+    const { status, payload } = await requestJson(server.url, `/api/tasks/${task.id}/timeline`, {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+
+    assert.equal(status, 200)
+    assert.equal(payload.error, undefined)
+    const eventTypes = payload.data.map((item) => item.type)
+    assert.ok(eventTypes.includes('created'))
+    assert.ok(eventTypes.includes('proposal_created'))
+    assert.ok(eventTypes.includes('proposal_accepted'))
+    assert.ok(eventTypes.includes('submitted'))
+    assert.ok(eventTypes.includes('revision_requested'))
+    assert.equal(payload.data[0].type, 'revision_requested')
+    assert.equal(payload.data[0].body, 'Add a clearer revision note.')
+    assert.equal(payload.data[0].actor.handle, 'launchteam')
+  } finally {
+    await server.close()
+  }
+})
+
+test('GET /api/tasks/:id/timeline hides history from unrelated users', async () => {
+  const server = await createTestServer()
+  try {
+    const task = await createTask(server, {}, 'demo-access.launchteam')
+    const { status, payload } = await requestJson(server.url, `/api/tasks/${task.id}/timeline`, {
+      method: 'GET',
+      token: 'demo-access.taskops',
+    })
+
+    assert.equal(status, 404)
+    assert.equal(payload.data, null)
+    assert.equal(payload.error.code, 'NOT_FOUND')
+  } finally {
+    await server.close()
+  }
+})
+
 test('POST /api/tasks/:id/review requires task:review permission', async () => {
   const server = await createTestServer()
   try {

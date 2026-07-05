@@ -18,7 +18,7 @@ import type { AsyncResourceState, MarketplaceProfile, Page, PublishDraft, Simula
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import type { TaskChildCollection } from '../../hooks/useTaskWorkflows'
 import { mediaService } from '../../services/mediaService'
-import type { ApiMediaAsset, ApiProfileSummary, ApiTaskProposal, ApiTaskSubmission, MediaAssetPurpose } from '../../services/contracts'
+import type { ApiMediaAsset, ApiProfileSummary, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, MediaAssetPurpose } from '../../services/contracts'
 import {
   categoryLabel,
   findProfile,
@@ -677,10 +677,12 @@ export function MyTasksPage({
   accountHandle = 'taskops',
   proposalStateByTask = {},
   submissionStateByTask = {},
+  timelineStateByTask = {},
   refreshProposals = async () => undefined,
   acceptProposal = async () => undefined,
   rejectProposal = async () => undefined,
   refreshSubmissions = async () => undefined,
+  refreshTimeline = async () => undefined,
   submitTask,
   approveTask = async () => undefined,
   rejectTask = async () => undefined,
@@ -693,10 +695,12 @@ export function MyTasksPage({
   accountHandle?: string
   proposalStateByTask?: Record<string, TaskChildCollection<ApiTaskProposal>>
   submissionStateByTask?: Record<string, TaskChildCollection<ApiTaskSubmission>>
+  timelineStateByTask?: Record<string, TaskChildCollection<ApiTaskTimelineItem>>
   refreshProposals?: (task: Task) => Promise<void>
   acceptProposal?: (task: Task, proposalId: string) => Promise<void>
   rejectProposal?: (task: Task, proposalId: string) => Promise<void>
   refreshSubmissions?: (task: Task) => Promise<void>
+  refreshTimeline?: (task: Task) => Promise<void>
   submitTask: (task: Task, options?: { assetIds?: string[]; rightsNote?: string }) => Promise<void>
   approveTask?: (task: Task) => Promise<void>
   rejectTask?: (task: Task) => Promise<void>
@@ -930,6 +934,7 @@ export function MyTasksPage({
   }
   const proposalCollection = selectedTaskKey ? proposalStateByTask[selectedTaskKey] : undefined
   const submissionCollection = selectedTaskKey ? submissionStateByTask[selectedTaskKey] : undefined
+  const timelineCollection = selectedTaskKey ? timelineStateByTask[selectedTaskKey] : undefined
   const demoProposals: ApiTaskProposal[] = proposalRows.map((proposal, index) => ({
     id: `demo-proposal-${index}`,
     taskId: selectedTaskKey,
@@ -969,15 +974,27 @@ export function MyTasksPage({
         : []
   const handleFor = (summary: ApiProfileSummary | { handle: string } | null) =>
     summary?.handle ? `@${summary.handle}` : textFor(t, 'Unknown user', '未知用户')
+  const timelineDate = (value: string) => {
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return textFor(t, 'Just now', '刚刚')
+    return new Intl.DateTimeFormat(isZh ? 'zh-CN' : 'en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date)
+  }
 
   useEffect(() => {
     if (!selectedTask) return
     if (selectedRole === 'publisher') {
       void refreshProposals(selectedTask)
       void refreshSubmissions(selectedTask)
+      void refreshTimeline(selectedTask)
       return
     }
     void refreshSubmissions(selectedTask)
+    void refreshTimeline(selectedTask)
     // The workflow refresh callbacks are owned by the parent hook and may be recreated after they update task state.
     // This effect should only follow the selected task boundary to avoid a refresh/render loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1097,6 +1114,35 @@ export function MyTasksPage({
                 {categoryLabel(selectedTask.category, t)} · {selectedTask.points} · {selectedTask.deadline}
               </span>
               <small>{selectedTask.reviewNote || selectedTask.description}</small>
+            </div>
+            <div className="deliverable-box task-timeline-box" data-testid="task-timeline">
+              <strong>{textFor(t, 'Task timeline', '任务时间线')}</strong>
+              {timelineCollection?.loading && <p>{textFor(t, 'Loading timeline', '正在加载时间线')}</p>}
+              {timelineCollection?.error && (
+                <p>
+                  {timelineCollection.error}{' '}
+                  <button className="inline-link" type="button" onClick={() => void refreshTimeline(selectedTask)}>
+                    {textFor(t, 'Retry', '重试')}
+                  </button>
+                </p>
+              )}
+              {timelineCollection?.items.length ? (
+                <ol className="task-timeline-list">
+                  {timelineCollection.items.map((item) => (
+                    <li data-testid={`task-timeline-item-${item.type}`} key={item.id}>
+                      <div>
+                        <strong>{item.title}</strong>
+                        <span>{item.body}</span>
+                        <small>
+                          {handleFor(item.actor)} · {timelineDate(item.occurredAt)}
+                        </small>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              ) : !timelineCollection?.loading && !timelineCollection?.error ? (
+                <p>{textFor(t, 'Timeline will appear as proposals, delivery, review, and settlement happen.', '方案、交付、验收和结算发生后会形成时间线。')}</p>
+              ) : null}
             </div>
             {selectedRole === 'publisher' ? (
               <>
