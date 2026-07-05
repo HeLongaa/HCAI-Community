@@ -14,19 +14,18 @@ Reasoning:
 
 ## Scope Decision
 
-Phase 3 is an umbrella plan with Tracks A, B, and C, but the first Phase 3 implementation and closeout package should complete **Track A: Marketplace Depth** only.
-
-Track B and Track C remain Phase 3 roadmap candidates, but they are explicitly deferred from the current closeout package unless Track A exposes a production blocker that must be fixed first.
+Phase 3 is an umbrella plan with Tracks A, B, and C. Track A is closed out, and Track B is now the active production-operations track. Track C remains a follow-up track until the multi-instance operations baseline is clear.
 
 Current closeout target:
 
-1. Complete Track A end to end.
-2. Keep Track B production operations as a follow-up track.
+1. Keep Track A marketplace depth stable.
+2. Complete Track B production operations in scoped, reviewable slices.
 3. Keep Track C creative provider productization as a follow-up track.
-4. Do not open the Phase 3 PR until Track A is complete and `npm run check:deploy` is green.
+4. Keep each Track B PR green on `npm run check:deploy`.
 
 Track A closeout notes live in `docs/PHASE_3_TRACK_A_CLOSEOUT.md`.
 Track B planning notes live in `docs/PHASE_3_TRACK_B_PLAN.md`.
+Track B operations closeout notes live in `docs/PHASE_3_TRACK_B_OPERATIONS_CLOSEOUT.md`.
 
 ## Phase 3 Tracks
 

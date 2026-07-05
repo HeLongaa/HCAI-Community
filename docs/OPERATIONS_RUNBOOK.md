@@ -1,8 +1,11 @@
 # Operations Runbook
 
-This runbook covers the current phase 2 operational flows:
+This runbook covers the current operational flows:
 
 - production smoke checks
+- API and worker process topology
+- shared rate-limit state
+- distributed worker job leases
 - security alert disposition
 - security alert delivery failure triage
 - scan history archive before prune
@@ -18,7 +21,7 @@ Use the quality gate tiers in `docs/QUALITY_GATES.md`:
 
 Run `npm run smoke:production` in CI to validate the managed production checklist against the safe fixture profile. Run `npm run smoke:production:env` in a deployment environment to validate the real environment without printing secrets.
 
-The smoke profile verifies managed auth secrets, S3 storage, webhook media scanning, scanner request/callback signing, media and security alert channels, secure cross-site cookie settings, trusted frontend origins, rate-limit/body-size/auth-failure guards, and external OAuth provider metadata.
+The smoke profile verifies managed auth secrets, S3 storage, webhook media scanning, scanner request/callback signing, media and security alert channels, secure cross-site cookie settings, trusted frontend origins, rate-limit/body-size/auth-failure guards, worker lease settings, and external OAuth provider metadata.
 
 For multi-instance deployments, configure `RATE_LIMIT_STORE=redis` with `RATE_LIMIT_REDIS_URL`. Use `RATE_LIMIT_REDIS_FAILURE_MODE=fail_closed` when the app owns the primary abuse boundary; use `fail_open` only when an external gateway or WAF is enforcing equivalent limits. Redis store failures emit `rate_limit.store_unavailable` security events with warning severity for fail-open and critical severity for fail-closed.
 
@@ -43,15 +46,59 @@ Recommended production settings:
 - `API_EMBEDDED_WORKERS_ENABLED=false` on API instances.
 - `MEDIA_SCAN_WORKER_ENABLED=true` on worker instances when scanner timeout sweeps should run automatically.
 - `TASK_STALE_SUBMISSION_WORKER_ENABLED=true` on worker instances when overdue task-review submissions should be marked stale automatically.
+- `WORKER_LEASE_TTL_SECONDS=300` unless a deployment needs a longer stale-worker recovery window.
+- `WORKER_LEASE_RENEW_INTERVAL_SECONDS=60`; this must stay below the lease TTL.
 - Keep manual sweep endpoints available for operator-triggered recovery and one-off maintenance.
 
 Operational notes:
 
 1. Scale API instances for request traffic.
-2. Scale worker instances conservatively until distributed job leases are implemented.
-3. Keep worker intervals long enough to avoid overlapping runs; each process also skips a job if the previous local run is still active.
-4. If multiple workers are deployed before distributed leases are implemented, keep only one instance with mutating sweep jobs enabled.
-5. Review `rate_limit.store_unavailable`, `media.scan.timeout`, and `task.submission.stale` audit/security events during worker incident triage.
+2. Scale worker instances separately from API instances.
+3. Keep worker intervals long enough for normal job duration; each process also skips a job if the previous local run is still active.
+4. Mutating jobs use durable operation leases when `DATABASE_URL` is configured, so multiple worker instances can be deployed safely.
+5. Review `rate_limit.store_unavailable`, `operations.lease.skipped`, `operations.lease.renew_failed`, `media.scan.timeout`, and `task.submission.stale` audit/security events during worker incident triage.
+
+## Distributed Worker Leases
+
+Worker jobs that mutate shared state acquire operation leases before running.
+
+Protected jobs:
+
+- `media-scan-sweep`
+- `task-stale-submission-sweep`
+
+Lease lifecycle:
+
+1. Acquire the lease by key.
+2. Skip the run if another active worker owns the lease.
+3. Renew while the job is running.
+4. Release after the job finishes or fails.
+5. Recover after `WORKER_LEASE_TTL_SECONDS` if a worker crashes.
+
+Audit and metrics signals:
+
+- `operations.lease.acquired`
+- `operations.lease.recovered`
+- `operations.lease.skipped`
+- `operations.lease.renewed`
+- `operations.lease.renew_failed`
+- `operations.lease.released`
+
+Triage flow for high skipped-run volume:
+
+1. Confirm whether multiple worker instances are intentionally running.
+2. Check `operations.leases.skippedRuns.byKey` in operations metrics.
+3. Confirm the holder worker is healthy and completing runs.
+4. If skipped runs persist without job progress, inspect the `operation_leases` row for the key and compare `expires_at` with current time.
+5. If the holder has crashed, wait for TTL expiry or temporarily disable all but one worker process.
+
+Triage flow for lease renewal failures:
+
+1. Check database connectivity and Prisma error logs.
+2. Confirm worker clocks are reasonably synchronized.
+3. Compare job duration with `WORKER_LEASE_TTL_SECONDS`.
+4. Increase TTL only if normal job duration is consistently longer than the current lease window.
+5. Export an operations metrics snapshot before and after the mitigation.
 
 Use `docs/GITHUB_ENVIRONMENT.md` when configuring the GitHub Environment variables and secrets for real deployment smoke.
 Use `docs/RELEASE_CHECKLIST.md` for release execution, post-release verification, and rollback criteria.
@@ -135,6 +182,11 @@ Media scan:
 - `media_scan_history_pruned_total`
 - `media_scan_sweep_duration_ms`
 
+Worker leases:
+
+- `operation_lease_skipped_runs_total{key}`
+- `operation_lease_renew_failures_total{key}`
+
 Admin workflow:
 
 - `admin_security_alert_ack_latency_ms`
@@ -142,4 +194,4 @@ Admin workflow:
 - `admin_security_alert_unsilence_count`
 - `admin_scan_archive_export_count`
 
-The current API returns these as JSON aggregates for Admin dashboards or external polling. Dedicated Prometheus/OpenTelemetry emitters can be layered on later without changing the underlying audit/security event sources.
+The current API returns these as JSON aggregates for Admin dashboards or external polling. Dedicated Prometheus/OpenTelemetry emitters are still pending and can be layered on later without changing the underlying audit/security event sources.
