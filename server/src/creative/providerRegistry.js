@@ -62,7 +62,7 @@ const buildMockProvider = (config) => ({
   capabilities: creativeWorkspaces.map((workspace) => cloneCapability(creativeCapabilities[workspace])),
   safeMetadata: {
     externalCredentialsConfigured: false,
-    persistsOutputs: false,
+    persistsOutputs: true,
     costMetered: false,
   },
 })

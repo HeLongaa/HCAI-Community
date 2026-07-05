@@ -43,6 +43,7 @@ import {
 } from '../media/scanProvider.js'
 import { dispatchMediaScanAlert } from '../media/alertDispatcher.js'
 import { writeJsonArchive } from '../storage/archiveWriter.js'
+import { writeStorageObject } from '../storage/objectWriter.js'
 import {
   buildOperationsMetricSamples,
   buildOperationsMetrics,
@@ -965,6 +966,9 @@ const makeBudget = (payload) => {
 
 const makeStorageKey = (actor, payload, id = randomUUID()) =>
   `${actor.handle}/${payload.purpose}/${id}-${payload.fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`
+
+const makeGeneratedStorageKey = (actor, payload, id = randomUUID()) =>
+  `${actor.handle}/generated/${payload.generation.workspace}/${id}-${payload.artifact.fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`
 
 const makeUploadContract = (asset) => {
   return {
@@ -2443,6 +2447,70 @@ export const createSeedRepository = () => ({
       mediaAssetsById.set(updated.id, updated)
       recordAudit(actor, 'media.upload.completed', 'media_asset', updated.id, {
         purpose: updated.purpose,
+        scanStatus: updated.metadata?.security?.scanStatus,
+      })
+      return serializeMediaAsset(updated)
+    },
+    createGeneratedAsset: async (payload, actor) => {
+      const now = new Date().toISOString()
+      const id = `media-${randomUUID()}`
+      const storageKey = makeGeneratedStorageKey(actor, payload, id)
+      const storage = await writeStorageObject({
+        body: payload.artifact.body,
+        contentType: payload.artifact.contentType,
+        storageKey,
+      })
+      const asset = {
+        id,
+        ownerHandle: actor.handle,
+        fileName: payload.artifact.fileName,
+        storageKey,
+        contentType: payload.artifact.contentType,
+        sizeBytes: storage.bytes,
+        purpose: 'library_asset',
+        status: 'pending',
+        metadata: {
+          creative: payload.artifact.metadata,
+          storage: {
+            provider: storage.provider,
+            writtenAt: storage.writtenAt,
+          },
+        },
+        createdAt: now,
+        updatedAt: now,
+      }
+      const scanResult = await scanMediaAsset(asset)
+      const updated = {
+        ...asset,
+        status: scanResult?.status === 'rejected' ? 'rejected' : 'uploaded',
+        metadata: mediaSecurityMetadata(asset, {
+          declaredContentType: asset.contentType,
+          detectedContentType: asset.contentType,
+          scanProvider: scanResult?.provider ?? 'manual',
+          scanStatus: scanResult?.status ?? 'pending',
+          scanNote: scanResult?.note,
+          scanRequestedAt: scanResult?.requestedAt,
+          externalScanId: scanResult?.externalScanId,
+          scanJobStatus: scanResult?.scanJobStatus,
+          scanAttempts: scanResult?.scanAttempts,
+          scanTimeoutAt: scanResult?.scanTimeoutAt,
+          nextRetryAt: scanResult?.nextRetryAt,
+          scanRequestAdapter: scanResult?.requestAdapter,
+          scanDispatchStatus: scanResult?.dispatchStatus,
+          scanDispatchStatusCode: scanResult?.dispatchStatusCode,
+          scanDispatchError: scanResult?.dispatchError,
+          scanDispatchRequestedAt: scanResult?.dispatchRequestedAt,
+          rejectionReason: scanResult?.reason ?? undefined,
+          completedAt: new Date().toISOString(),
+        }),
+        updatedAt: new Date().toISOString(),
+      }
+      mediaAssetsById.set(updated.id, updated)
+      recordAudit(actor, 'media.generated_asset.created', 'media_asset', updated.id, {
+        generationId: payload.generation.id,
+        outputId: payload.output.id,
+        workspace: payload.generation.workspace,
+        providerId: payload.generation.provider.id,
         scanStatus: updated.metadata?.security?.scanStatus,
       })
       return serializeMediaAsset(updated)

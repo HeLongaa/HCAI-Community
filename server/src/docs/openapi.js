@@ -787,6 +787,9 @@ export const openApiDocument = {
                                 properties: {
                                   persisted: { type: 'boolean' },
                                   provider: { type: 'string' },
+                                  mediaAssetId: { type: 'string' },
+                                  scanStatus: { type: 'string' },
+                                  downloadPath: { type: 'string' },
                                 },
                               },
                               source: {
@@ -794,6 +797,16 @@ export const openApiDocument = {
                                 properties: {
                                   kind: { type: 'string', enum: ['mock_provider'] },
                                   persistedMediaAssetId: { type: ['string', 'null'] },
+                                },
+                              },
+                              mediaAsset: {
+                                type: 'object',
+                                properties: {
+                                  id: { type: 'string' },
+                                  status: { type: 'string' },
+                                  purpose: { type: 'string' },
+                                  contentType: { type: 'string' },
+                                  scanStatus: { type: 'string' },
                                 },
                               },
                             },
