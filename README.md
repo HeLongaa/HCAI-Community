@@ -100,7 +100,7 @@ cross-module actions, localization, responsive layout contracts, and prototype-b
 
 GitHub Actions configuration lives in `.github/workflows/quality-gates.yml`: PRs and pushes run the fixture deployment gate, while manual dispatch can run real environment smoke through a selected GitHub Environment.
 
-## Productization Phase 2
+## Productization Docs
 
 Planning docs for the API, data model, auth, and backend rollout live in `docs/`:
 
@@ -114,3 +114,7 @@ Planning docs for the API, data model, auth, and backend rollout live in `docs/`
 - `docs/QUALITY_GATES.md`
 - `docs/GITHUB_ENVIRONMENT.md`
 - `docs/RELEASE_CHECKLIST.md`
+- `docs/PHASE_3_PLAN.md`
+- `docs/PHASE_3_TRACK_A_CLOSEOUT.md`
+- `docs/PHASE_3_TRACK_B_PLAN.md`
+- `docs/PHASE_3_TRACK_B_OPERATIONS_CLOSEOUT.md`

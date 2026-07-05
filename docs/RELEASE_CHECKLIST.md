@@ -1,6 +1,6 @@
 # Release Checklist
 
-This checklist covers the current phase 2 API, auth, permissions, media operations, and deployment smoke surface.
+This checklist covers the current API, auth, permissions, media operations, worker, shared-state, and deployment smoke surface.
 
 ## Pre-Release
 
@@ -25,6 +25,9 @@ Confirm:
 - `AUTH_TRUSTED_ORIGINS` includes all browser frontend origins that will use cookie refresh.
 - `STORAGE_DRIVER=s3` and storage bucket/region/endpoint match the deployment.
 - `MEDIA_SCAN_PROVIDER=webhook` has request URL, request signing, callback base URL, and callback signature settings.
+- `RATE_LIMIT_STORE=redis` and `RATE_LIMIT_REDIS_URL` are configured for multi-instance API deployments.
+- `API_EMBEDDED_WORKERS_ENABLED=false` is set on API instances.
+- Worker processes have explicit job flags and lease settings.
 - At least one media alert channel and one security alert channel are configured.
 - OAuth redirect URIs match the deployed API callback URLs.
 
@@ -42,11 +45,13 @@ Before switching traffic:
 
 Deploy order:
 
-1. Deploy backend API.
-2. Run backend health check: `GET /health`.
-3. Run OpenAPI check: `GET /api/openapi.json`.
-4. Deploy frontend.
-5. Confirm frontend can reach the API origin with credentialed requests when cookie auth is enabled.
+1. Apply database migrations.
+2. Deploy backend API with embedded workers disabled.
+3. Run backend health check: `GET /health`.
+4. Run OpenAPI check: `GET /api/openapi.json`.
+5. Deploy worker process type with explicit job flags.
+6. Deploy frontend.
+7. Confirm frontend can reach the API origin with credentialed requests when cookie auth is enabled.
 
 Critical API smoke checks:
 
@@ -62,6 +67,12 @@ Critical API smoke checks:
 - `GET /api/media/governance-config`
 - `GET /api/media/scan-jobs/archive`
 
+Worker checks:
+
+- Confirm worker logs show enabled jobs.
+- Confirm at least one operation lease can be acquired and released during a worker run.
+- Confirm `operations.leases.skippedRuns` is low or explainable when multiple workers are running.
+
 ## Post-Release Operations
 
 Within the first operator review window:
@@ -71,10 +82,11 @@ Within the first operator review window:
 3. Export an operations metrics snapshot.
 4. Confirm `admin.operations.metrics_exported` appears in Audit log.
 5. Expand the audit event and reopen the matching metrics window.
-6. Review security alert delivery failures.
-7. Review media alert delivery failures.
-8. Preview scan history archive candidates.
-9. If candidates exist, write the archive before any pruning workflow.
+6. Review worker lease skipped runs and renewal failures.
+7. Review security alert delivery failures.
+8. Review media alert delivery failures.
+9. Preview scan history archive candidates.
+10. If candidates exist, write the archive before any pruning workflow.
 
 ## Alert Channel Verification
 
@@ -103,6 +115,8 @@ Rollback or pause rollout when any of these occur:
 - Scanner callbacks are rejected because shared secret or HMAC settings are mismatched.
 - Security or media alert channels fail across all configured delivery paths.
 - Admin operations metrics endpoint fails or audit export cannot be generated.
+- Redis rate-limit store is unavailable and the selected failure policy does not match the deployment risk posture.
+- Worker leases show persistent renew failures or stale holders that prevent recurring maintenance.
 - Error rate, latency, or 5xx responses exceed the deployment threshold.
 
 ## Rollback Steps
@@ -110,8 +124,9 @@ Rollback or pause rollout when any of these occur:
 1. Stop traffic shift to the new release.
 2. Restore the previous backend package.
 3. Restore the previous frontend package.
-4. Revert environment variable changes, especially token key ids, cookie settings, scanner secrets, and storage endpoints.
+4. Revert environment variable changes, especially token key ids, cookie settings, scanner secrets, storage endpoints, Redis settings, and worker flags.
 5. If migrations are not backward-compatible, follow the database rollback plan prepared before release.
-6. Run `npm run smoke:production:env` against the restored environment.
-7. Confirm `GET /health`, login/refresh, and Admin operations metrics are healthy.
-8. Record the incident and attach relevant audit exports or operations snapshot artifacts.
+6. Scale worker processes down to one instance or disable mutating job flags if the incident involves leases.
+7. Run `npm run smoke:production:env` against the restored environment.
+8. Confirm `GET /health`, login/refresh, worker logs, and Admin operations metrics are healthy.
+9. Record the incident and attach relevant audit exports or operations snapshot artifacts.
