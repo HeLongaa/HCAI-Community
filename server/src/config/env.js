@@ -24,8 +24,10 @@ const supportedMediaScanRequestAdapters = ['generic-webhook', 'clamav-http']
 const getMediaScanRequestAdapter = (source) => String(source.MEDIA_SCAN_REQUEST_ADAPTER ?? 'generic-webhook').trim().toLowerCase()
 const supportedRateLimitStores = ['memory', 'redis']
 const supportedRateLimitFailureModes = ['fail_open', 'fail_closed']
+const supportedMetricsExporterFormats = ['prometheus']
 const getRateLimitStore = (source) => String(source.RATE_LIMIT_STORE ?? 'memory').trim().toLowerCase()
 const getRateLimitFailureMode = (source) => String(source.RATE_LIMIT_REDIS_FAILURE_MODE ?? source.RATE_LIMIT_STORE_FAILURE_MODE ?? 'fail_closed').trim().toLowerCase()
+const getMetricsExporterFormat = (source) => String(source.METRICS_EXPORTER_FORMAT ?? 'prometheus').trim().toLowerCase()
 const getRedisUrl = (source) => {
   const value = String(source.RATE_LIMIT_REDIS_URL ?? '').trim()
   if (!value) return ''
@@ -90,6 +92,7 @@ export const buildEnv = (source = process.env) => {
   const rateLimitAuthMax = positiveInteger(source, 'RATE_LIMIT_AUTH_MAX', 120)
   const rateLimitUploadMax = positiveInteger(source, 'RATE_LIMIT_UPLOAD_MAX', 120)
   const rateLimitAdminMutationMax = positiveInteger(source, 'RATE_LIMIT_ADMIN_MUTATION_MAX', 180)
+  const metricsExporterFormat = getMetricsExporterFormat(source)
   const requestBodyMaxBytes = positiveInteger(source, 'REQUEST_BODY_MAX_BYTES', 1_048_576)
   const authFailureWindowMs = positiveInteger(source, 'AUTH_FAILURE_WINDOW_MS', 300_000)
   const authFailureIpAccountThreshold = positiveInteger(source, 'AUTH_FAILURE_IP_ACCOUNT_THRESHOLD', 5)
@@ -164,6 +167,9 @@ export const buildEnv = (source = process.env) => {
   }
   if (!supportedRateLimitFailureModes.includes(rateLimitRedisFailureMode)) {
     throw new Error(`RATE_LIMIT_REDIS_FAILURE_MODE must be one of: ${supportedRateLimitFailureModes.join(', ')}`)
+  }
+  if (!supportedMetricsExporterFormats.includes(metricsExporterFormat)) {
+    throw new Error(`METRICS_EXPORTER_FORMAT must be one of: ${supportedMetricsExporterFormats.join(', ')}`)
   }
   if (mediaScanAlertEmailWebhookUrl && mediaScanAlertEmailRecipients.length === 0) {
     throw new Error('MEDIA_SCAN_ALERT_EMAIL_TO is required when MEDIA_SCAN_ALERT_EMAIL_WEBHOOK_URL is configured')
@@ -246,6 +252,9 @@ export const buildEnv = (source = process.env) => {
     rateLimitAuthMax,
     rateLimitUploadMax,
     rateLimitAdminMutationMax,
+    metricsExporterEnabled: boolFlag(source, 'METRICS_EXPORTER_ENABLED', false),
+    metricsExporterFormat,
+    hasMetricsExporterToken: Boolean(String(source.METRICS_EXPORTER_TOKEN ?? '').trim()),
     requestBodySizeGuardEnabled: boolFlag(source, 'REQUEST_BODY_SIZE_GUARD_ENABLED', true),
     requestBodyMaxBytes,
     authFailureMonitorEnabled: boolFlag(source, 'AUTH_FAILURE_MONITOR_ENABLED', true),

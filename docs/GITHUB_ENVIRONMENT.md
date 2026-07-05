@@ -110,6 +110,8 @@ These have code defaults, but setting them explicitly makes production behavior 
 | `RATE_LIMIT_AUTH_MAX` | deployment-specific |
 | `RATE_LIMIT_UPLOAD_MAX` | deployment-specific |
 | `RATE_LIMIT_ADMIN_MUTATION_MAX` | deployment-specific |
+| `METRICS_EXPORTER_ENABLED` | `true` when Prometheus-compatible scrape is required |
+| `METRICS_EXPORTER_FORMAT` | `prometheus` |
 | `REQUEST_BODY_SIZE_GUARD_ENABLED` | `true` |
 | `REQUEST_BODY_MAX_BYTES` | deployment-specific |
 | `AUTH_FAILURE_MONITOR_ENABLED` | `true` |
@@ -132,6 +134,12 @@ Rate-limit shared store secret:
 | Secret | Notes |
 | --- | --- |
 | `RATE_LIMIT_REDIS_URL` | Redis-compatible URL. Use `rediss://` when the provider supports TLS. |
+
+Metrics exporter secret:
+
+| Secret | Notes |
+| --- | --- |
+| `METRICS_EXPORTER_TOKEN` | Bearer token for `/metrics` scrape access. If omitted, protect `/metrics` with private networking or an upstream gateway. |
 
 ## Validation Flow
 

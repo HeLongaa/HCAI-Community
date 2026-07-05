@@ -8,6 +8,7 @@ const permissionMatrixPath = path.join(workspaceRoot, 'docs/PERMISSION_MATRIX.md
 
 const ignoredRouteKeys = new Set([
   'GET /health',
+  'GET /metrics',
   'GET /api/openapi.json',
 ])
 

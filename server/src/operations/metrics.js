@@ -306,6 +306,7 @@ export const buildOperationsMetrics = ({
   const mediaAlertDispatchFailures = windowAuditEvents.filter((event) =>
     event.action === 'media.scan.alert.dispatch' && asObject(event.metadata).status === 'failed'
   )
+  const rateLimitExceededEvents = windowSecurityEvents.filter((event) => event.type === 'rate_limit.exceeded')
   const archiveWrites = windowAuditEvents.filter((event) => event.action === 'media.scan.history_archived')
   const historyPrunes = windowAuditEvents.filter((event) => event.action === 'media.scan.history_pruned')
   const operationLeaseSkips = windowAuditEvents.filter((event) => event.action === 'operations.lease.skipped')
@@ -321,8 +322,15 @@ export const buildOperationsMetrics = ({
     },
     security: {
       eventsTotal: windowSecurityEvents.length,
+      eventsByType: countBy(windowSecurityEvents, (event) => event.type),
       eventsBySource: countBy(windowSecurityEvents, (event) => event.source),
       eventsBySeverity: countBy(windowSecurityEvents, (event) => event.severity),
+      rateLimit: {
+        exceeded: {
+          total: rateLimitExceededEvents.length,
+          byBucket: countBy(rateLimitExceededEvents, (event) => asObject(event.details).bucket),
+        },
+      },
       alerts: {
         total: securityAlerts.length,
         byType: countBy(securityAlerts, (alert) => alert.type),

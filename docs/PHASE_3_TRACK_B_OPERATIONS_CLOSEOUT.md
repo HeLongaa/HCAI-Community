@@ -114,6 +114,8 @@ Rollback steps:
 
 External Metrics Exporter is not complete yet.
 
-Current observability is available through Admin/API JSON operations metrics and audit/security events. Prometheus/OpenTelemetry scrape/export support remains the next Track B runtime enhancement. Until that lands, external monitoring can poll the Admin metrics/export endpoints with an authorized operator token or use platform log/audit ingestion.
+Current observability is available through Admin/API JSON operations metrics, audit/security events, and the Prometheus-compatible `/metrics` scrape endpoint when `METRICS_EXPORTER_ENABLED=true`.
+
+OpenTelemetry export remains a later enhancement. The current `/metrics` endpoint intentionally starts with a safe Prometheus text format and a narrow label set.
 
 Track C creative provider work is out of scope for this closeout.
