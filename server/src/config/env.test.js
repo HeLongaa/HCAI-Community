@@ -11,6 +11,9 @@ test('buildEnv allows development without managed token secrets', () => {
     hasManagedAccessTokenSecret: false,
     storageDriver: 'mock',
     mediaScanProvider: 'manual',
+    creativeProviderMode: 'mock',
+    creativeProviderDefaultId: 'mock',
+    creativeProviderEnabled: true,
     mediaScanRequestAdapter: 'generic-webhook',
     hasMediaScanWebhookSecret: false,
     mediaScanRetryDelaySeconds: 300,
@@ -151,7 +154,24 @@ test('buildEnv accepts production token secret metadata', () => {
   assert.equal(env.hasManagedAccessTokenSecret, true)
   assert.equal(env.storageDriver, 'mock')
   assert.equal(env.mediaScanProvider, 'manual')
+  assert.equal(env.creativeProviderMode, 'mock')
   assert.equal(env.authCookieSecure, true)
+})
+
+test('buildEnv validates and exposes creative provider settings', () => {
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'external' }),
+    /CREATIVE_PROVIDER_MODE must be one of: mock, disabled/,
+  )
+
+  const env = buildEnv({
+    NODE_ENV: 'development',
+    CREATIVE_PROVIDER_MODE: 'disabled',
+  })
+
+  assert.equal(env.creativeProviderMode, 'disabled')
+  assert.equal(env.creativeProviderDefaultId, 'mock')
+  assert.equal(env.creativeProviderEnabled, false)
 })
 
 test('buildEnv validates and exposes rate-limit settings', () => {

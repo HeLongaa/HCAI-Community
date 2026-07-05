@@ -5,6 +5,7 @@ import {
   parseConvertLibraryItemToTaskRequest,
   parseConvertToTaskRequest,
   parseCompleteMediaUploadRequest,
+  parseCreateCreativeGenerationRequest,
   parseAdminAuditListQuery,
   parseAdminReviewListQuery,
   parseEmailLoginRequest,
@@ -268,6 +269,46 @@ test('parseCreateLibraryItemRequest applies library defaults and preserves metad
       sourceId: 'post-1',
       metadata,
     },
+  )
+})
+
+test('parseCreateCreativeGenerationRequest normalizes provider generation payloads', () => {
+  assert.deepEqual(
+    parseCreateCreativeGenerationRequest({
+      workspace: ' image ',
+      mode: ' text_to_image ',
+      prompt: ' Generate a bright poster. ',
+      inputAssetIds: [' asset-1 ', ''],
+      parameters: { aspectRatio: '16:9', seed: 42, safe: true, refs: ['a', 1, false] },
+      providerId: ' mock ',
+    }),
+    {
+      workspace: 'image',
+      mode: 'text_to_image',
+      prompt: 'Generate a bright poster.',
+      inputAssetIds: ['asset-1'],
+      parameters: { aspectRatio: '16:9', seed: 42, safe: true, refs: ['a', 1, false] },
+      providerId: 'mock',
+    },
+  )
+})
+
+test('parseCreateCreativeGenerationRequest validates creative payload boundaries', () => {
+  assertValidationError(
+    () => parseCreateCreativeGenerationRequest({ workspace: 'document', mode: 'text_to_image', prompt: 'Poster' }),
+    'workspace must be one of: image, video, music, chat',
+  )
+  assertValidationError(
+    () => parseCreateCreativeGenerationRequest({ workspace: 'image', mode: 'text_to_image', prompt: 'x'.repeat(4001) }),
+    'prompt must be 4000 characters or fewer',
+  )
+  assertValidationError(
+    () => parseCreateCreativeGenerationRequest({ workspace: 'image', mode: 'text_to_image', prompt: 'Poster', inputAssetIds: [42] }),
+    'inputAssetIds must be an array of strings',
+  )
+  assertValidationError(
+    () => parseCreateCreativeGenerationRequest({ workspace: 'image', mode: 'text_to_image', prompt: 'Poster', parameters: { nested: { no: true } } }),
+    'parameters.nested must be a string, number, boolean, array, or null',
   )
 })
 
