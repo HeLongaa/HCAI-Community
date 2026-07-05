@@ -14,18 +14,19 @@ Reasoning:
 
 ## Scope Decision
 
-Phase 3 is an umbrella plan with Tracks A, B, and C. Track A is closed out, and Track B is now the active production-operations track. Track C remains a follow-up track until the multi-instance operations baseline is clear.
+Phase 3 is an umbrella plan with Tracks A, B, and C. Track A and Track B are now closed out in the repository. Track C is the next candidate track when the project is ready to replace simulated creative outputs with provider-backed generation.
 
 Current closeout target:
 
 1. Keep Track A marketplace depth stable.
-2. Complete Track B production operations in scoped, reviewable slices.
+2. Keep Track B production operations closed unless a deployment blocker is found.
 3. Keep Track C creative provider productization as a follow-up track.
-4. Keep each Track B PR green on `npm run check:deploy`.
+4. Keep each remaining Phase 3 PR green on `npm run check:deploy`.
 
 Track A closeout notes live in `docs/PHASE_3_TRACK_A_CLOSEOUT.md`.
 Track B planning notes live in `docs/PHASE_3_TRACK_B_PLAN.md`.
 Track B operations closeout notes live in `docs/PHASE_3_TRACK_B_OPERATIONS_CLOSEOUT.md`.
+Track B multi-instance deployment runbook lives in `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md`.
 
 ## Phase 3 Tracks
 
@@ -62,17 +63,27 @@ Implementation order:
 
 Goal: harden the platform for multi-instance and observable deployments.
 
-Candidate scope:
+Status: closed out for repository, fixture CI, and PR-ready handoff. Real environment validation is still required before a production rollout.
 
-- Shared rate-limit store such as Redis.
-- Worker/queue topology for scan sweeps and alert dispatch.
-- Prometheus or OpenTelemetry exporters.
+Completed scope:
+
+- Shared Redis-compatible rate-limit store.
+- Independent worker topology for scan sweeps and stale submission sweeps.
+- Distributed worker job leases for mutating recurring jobs.
+- Prometheus-compatible `/metrics` endpoint with token/network protection guidance.
 - Deployment runbook updates for multi-instance operation.
 
 Exit criteria:
 
 - Stateless app instances can share abuse guards and background work safely.
 - Operators can observe auth, scan, queue, and alert health outside the app UI.
+- Operators have a repeatable multi-instance deployment, staging rehearsal, and rollback guide.
+
+Deferred operations follow-ups:
+
+- Real `npm run check:deploy:env` after deployment secrets and managed services are configured.
+- First real staging rehearsal with multiple API and worker instances.
+- OpenTelemetry/OTLP export or vendor-specific dashboard templates if needed.
 
 ### Track C: Creative Tool Productization
 

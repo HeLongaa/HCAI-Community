@@ -1,8 +1,8 @@
 # Phase 3 Track B Plan
 
-This document defines the Phase 3 Track B planning baseline: **Production Operations**.
+This document defines the Phase 3 Track B planning baseline and final implementation status: **Production Operations**.
 
-Track A made the task marketplace workflow deeper and more usable. Track B should now harden the runtime shape for multi-instance deployments and external observability without reopening marketplace product behavior or creative-provider productization.
+Track A made the task marketplace workflow deeper and more usable. Track B was created to harden the runtime shape for multi-instance deployments and external observability without reopening marketplace product behavior or creative-provider productization.
 
 ## Objective
 
@@ -27,7 +27,7 @@ The codebase already has a strong Phase 2/Track A operations foundation:
 - Scan job history, archive-before-prune, security alerts, media alerts, and operations metrics are visible through Admin/API JSON views.
 - `docs/OPERATIONS_RUNBOOK.md`, `docs/GITHUB_ENVIRONMENT.md`, and `docs/RELEASE_CHECKLIST.md` cover Phase 2 deployment readiness and incident flows.
 
-This is enough for local review, fixture CI, and single-instance staging. It is not yet a complete multi-instance production posture.
+This was enough for local review, fixture CI, and single-instance staging at the start of Track B. The current repository now has the multi-instance operations baseline described in `docs/PHASE_3_TRACK_B_OPERATIONS_CLOSEOUT.md` and `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md`.
 
 ## Scope
 
@@ -57,7 +57,8 @@ Current implementation status:
 3. Worker process topology: completed and merged through PR #6.
 4. Distributed job leases: completed and merged through PR #7.
 5. External metrics export: completed and merged through PR #9.
-6. Multi-instance runbook and smoke updates: in closeout. Core docs and smoke config are updated; final real-environment staging rehearsal remains pending.
+6. Multi-instance runbook and smoke updates: completed and merged through PR #10.
+7. Track B overall closeout: in closeout. Final real-environment staging rehearsal remains pending until deployment secrets and managed services exist.
 
 ### 0. Planning And Task Inventory
 
@@ -213,7 +214,29 @@ Validation:
 - `npm run check:deploy:env` in a real configured environment
 - Manual staging rehearsal for API + worker + shared store
 
-## Recommended First Implementation Slice
+## Final Closeout Status
+
+Track B is complete for repository and fixture-CI purposes.
+
+Delivered:
+
+- Redis-compatible shared rate-limit store.
+- Independent worker process topology.
+- Durable operation leases around mutating worker jobs.
+- Prometheus-compatible `/metrics` exporter with safe labels and token protection.
+- Multi-instance deployment runbook and release guidance.
+
+Deferred:
+
+- Real `npm run check:deploy:env` in a configured deployment environment.
+- First staging rehearsal with multiple API and worker instances.
+- OpenTelemetry/OTLP export and vendor-specific dashboard templates.
+
+Recommended next track:
+
+- Track C Creative Tool Productization, if product focus moves to provider-backed creative outputs.
+
+## Historical First Implementation Slice
 
 Start with **Shared Rate-Limit Store**.
 
