@@ -170,6 +170,23 @@ model SystemSetting {
   @@map("system_settings")
 }
 
+model OperationLease {
+  key        String    @id
+  ownerId    String    @map("owner_id")
+  token      String    @unique
+  metadata   Json?
+  acquiredAt DateTime  @default(now()) @map("acquired_at")
+  renewedAt  DateTime? @map("renewed_at")
+  expiresAt  DateTime  @map("expires_at")
+  releasedAt DateTime? @map("released_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@index([ownerId])
+  @@index([expiresAt])
+  @@map("operation_leases")
+}
+
 model AdminReview {
   id           String               @id @default(cuid())
   queue        String

@@ -60,6 +60,79 @@ test('startWorkerJobs starts only enabled definitions and can run jobs by id', a
   }
 })
 
+test('startIntervalWorkerJob skips a run when a durable lease is held elsewhere', async () => {
+  let ran = false
+  const job = startIntervalWorkerJob({
+    id: 'leased',
+    intervalSeconds: 60,
+    runImmediately: false,
+    lease: { key: 'leased-job', ttlSeconds: 30 },
+    leaseManager: {
+      acquire: async () => ({
+        acquired: false,
+        ownerId: 'other-worker',
+        expiresAt: '2026-07-06T00:00:00.000Z',
+      }),
+    },
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    run: async () => {
+      ran = true
+      return { done: true }
+    },
+  })
+  try {
+    assert.deepEqual(await job.run(), {
+      skipped: true,
+      reason: 'lease_unavailable',
+      lease: {
+        key: 'leased-job',
+        ownerId: 'other-worker',
+        expiresAt: '2026-07-06T00:00:00.000Z',
+      },
+    })
+    assert.equal(ran, false)
+  } finally {
+    job.stop()
+  }
+})
+
+test('startIntervalWorkerJob releases durable lease after a successful run', async () => {
+  const calls = []
+  const job = startIntervalWorkerJob({
+    id: 'leased',
+    intervalSeconds: 60,
+    runImmediately: false,
+    workerId: 'worker-a',
+    lease: { key: 'leased-job', ttlSeconds: 30 },
+    leaseManager: {
+      acquire: async (payload) => {
+        calls.push(['acquire', payload])
+        return { acquired: true, token: 'token-a' }
+      },
+      release: async (payload) => {
+        calls.push(['release', payload])
+        return { released: true }
+      },
+    },
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    run: async () => ({ done: true }),
+  })
+  try {
+    assert.deepEqual(await job.run(), { done: true })
+    assert.deepEqual(calls, [
+      ['acquire', {
+        key: 'leased-job',
+        ownerId: 'worker-a',
+        ttlSeconds: 30,
+        metadata: { jobId: 'leased' },
+      }],
+      ['release', { key: 'leased-job', token: 'token-a' }],
+    ])
+  } finally {
+    job.stop()
+  }
+})
+
 test('createProductionWorkerJobDefinitions maps enabled env to repository jobs', async () => {
   const calls = []
   const repositories = {
@@ -79,6 +152,8 @@ test('createProductionWorkerJobDefinitions maps enabled env to repository jobs',
   const env = {
     mediaScanWorkerEnabled: true,
     mediaScanWorkerIntervalSeconds: 15,
+    workerLeaseTtlSeconds: 120,
+    workerLeaseRenewIntervalSeconds: 30,
     taskStaleSubmissionWorkerEnabled: true,
     taskStaleSubmissionWorkerIntervalSeconds: 300,
     taskStaleSubmissionOlderThanHours: 48,
@@ -88,6 +163,16 @@ test('createProductionWorkerJobDefinitions maps enabled env to repository jobs',
   assert.deepEqual(definitions.map((definition) => definition.id), ['media-scan-sweep', 'task-stale-submission-sweep'])
   assert.equal(definitions[0].intervalSeconds, 15)
   assert.equal(definitions[1].intervalSeconds, 300)
+  assert.deepEqual(definitions[0].lease, {
+    key: 'media-scan-sweep',
+    ttlSeconds: 120,
+    renewIntervalSeconds: 30,
+  })
+  assert.deepEqual(definitions[1].lease, {
+    key: 'task-stale-submission-sweep',
+    ttlSeconds: 120,
+    renewIntervalSeconds: 30,
+  })
 
   assert.deepEqual(await definitions[0].run(), { retried: 0, failed: 0 })
   assert.deepEqual(await definitions[1].run(), { marked: 1 })

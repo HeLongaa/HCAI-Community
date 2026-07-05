@@ -54,7 +54,7 @@ Background operations can run as an independent worker process:
 npm --prefix server run worker
 ```
 
-For multi-instance deployments, keep `API_EMBEDDED_WORKERS_ENABLED=false` on API instances and run a separate worker process with job-specific flags such as `MEDIA_SCAN_WORKER_ENABLED=true` and `TASK_STALE_SUBMISSION_WORKER_ENABLED=true`. `MEDIA_SCAN_WORKER_INTERVAL_SECONDS`, `TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS`, `TASK_STALE_SUBMISSION_OLDER_THAN_HOURS`, and `TASK_STALE_SUBMISSION_SWEEP_LIMIT` tune worker cadence and stale-review scope.
+For multi-instance deployments, keep `API_EMBEDDED_WORKERS_ENABLED=false` on API instances and run a separate worker process with job-specific flags such as `MEDIA_SCAN_WORKER_ENABLED=true` and `TASK_STALE_SUBMISSION_WORKER_ENABLED=true`. `MEDIA_SCAN_WORKER_INTERVAL_SECONDS`, `TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS`, `TASK_STALE_SUBMISSION_OLDER_THAN_HOURS`, and `TASK_STALE_SUBMISSION_SWEEP_LIMIT` tune worker cadence and stale-review scope. Worker jobs use durable database leases when `DATABASE_URL` is configured; `WORKER_LEASE_TTL_SECONDS` and `WORKER_LEASE_RENEW_INTERVAL_SECONDS` control lock expiry and renewal cadence so multiple worker instances do not execute the same shared-state job at the same time.
 
 Backend environment:
 

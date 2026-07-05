@@ -111,6 +111,8 @@ export const buildEnv = (source = process.env) => {
   const mediaScanTimeoutSeconds = positiveInteger(source, 'MEDIA_SCAN_TIMEOUT_SECONDS', 900)
   const mediaScanMaxAttempts = positiveInteger(source, 'MEDIA_SCAN_MAX_ATTEMPTS', 3)
   const mediaScanWorkerIntervalSeconds = positiveInteger(source, 'MEDIA_SCAN_WORKER_INTERVAL_SECONDS', 60)
+  const workerLeaseTtlSeconds = positiveInteger(source, 'WORKER_LEASE_TTL_SECONDS', 300)
+  const workerLeaseRenewIntervalSeconds = positiveInteger(source, 'WORKER_LEASE_RENEW_INTERVAL_SECONDS', 60)
   const taskStaleSubmissionWorkerIntervalSeconds = positiveInteger(source, 'TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS', 300)
   const taskStaleSubmissionOlderThanHours = positiveInteger(source, 'TASK_STALE_SUBMISSION_OLDER_THAN_HOURS', 72)
   const taskStaleSubmissionSweepLimit = positiveInteger(source, 'TASK_STALE_SUBMISSION_SWEEP_LIMIT', 25)
@@ -169,6 +171,9 @@ export const buildEnv = (source = process.env) => {
   if (securityAlertEmailWebhookUrl && securityAlertEmailRecipients.length === 0) {
     throw new Error('SECURITY_ALERT_EMAIL_TO is required when SECURITY_ALERT_EMAIL_WEBHOOK_URL is configured')
   }
+  if (workerLeaseRenewIntervalSeconds >= workerLeaseTtlSeconds) {
+    throw new Error('WORKER_LEASE_RENEW_INTERVAL_SECONDS must be less than WORKER_LEASE_TTL_SECONDS')
+  }
   return {
     port: toPort(source.PORT),
     nodeEnv,
@@ -182,6 +187,8 @@ export const buildEnv = (source = process.env) => {
     mediaScanTimeoutSeconds,
     mediaScanMaxAttempts,
     apiEmbeddedWorkersEnabled: boolFlag(source, 'API_EMBEDDED_WORKERS_ENABLED', false),
+    workerLeaseTtlSeconds,
+    workerLeaseRenewIntervalSeconds,
     mediaScanWorkerEnabled: boolFlag(source, 'MEDIA_SCAN_WORKER_ENABLED', false),
     mediaScanWorkerIntervalSeconds,
     taskStaleSubmissionWorkerEnabled: boolFlag(source, 'TASK_STALE_SUBMISSION_WORKER_ENABLED', false),

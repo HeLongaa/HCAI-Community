@@ -124,6 +124,8 @@ These have code defaults, but setting them explicitly makes production behavior 
 | `TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS` | `300` or deployment-specific |
 | `TASK_STALE_SUBMISSION_OLDER_THAN_HOURS` | Review SLA threshold, e.g. `72` |
 | `TASK_STALE_SUBMISSION_SWEEP_LIMIT` | Per-run cap, e.g. `25` |
+| `WORKER_LEASE_TTL_SECONDS` | Lease expiry window, e.g. `300` |
+| `WORKER_LEASE_RENEW_INTERVAL_SECONDS` | Renewal cadence lower than TTL, e.g. `60` |
 
 Rate-limit shared store secret:
 

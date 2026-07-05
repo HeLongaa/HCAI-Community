@@ -43,6 +43,8 @@ const productionFixture = {
   TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS: '300',
   TASK_STALE_SUBMISSION_OLDER_THAN_HOURS: '72',
   TASK_STALE_SUBMISSION_SWEEP_LIMIT: '25',
+  WORKER_LEASE_TTL_SECONDS: '300',
+  WORKER_LEASE_RENEW_INTERVAL_SECONDS: '60',
   AUTH_COOKIE_SAMESITE: 'None',
   AUTH_COOKIE_DOMAIN: '.example.com',
   AUTH_TRUSTED_ORIGINS: 'https://app.example.com, https://admin.example.com',
@@ -109,6 +111,8 @@ const summarize = (env, oauthProviders) => ({
     apiEmbedded: env.apiEmbeddedWorkersEnabled,
     mediaScanEnabled: env.mediaScanWorkerEnabled,
     staleSubmissionEnabled: env.taskStaleSubmissionWorkerEnabled,
+    leaseTtlSeconds: env.workerLeaseTtlSeconds,
+    leaseRenewIntervalSeconds: env.workerLeaseRenewIntervalSeconds,
   },
 })
 
@@ -140,6 +144,7 @@ check(checks, 'shared rate limit store configured', env.rateLimitStore === 'redi
 check(checks, 'api embedded workers disabled', !env.apiEmbeddedWorkersEnabled, 'API_EMBEDDED_WORKERS_ENABLED should be false for multi-instance API deployments')
 check(checks, 'worker media scan sweep configured', env.mediaScanWorkerEnabled, 'MEDIA_SCAN_WORKER_ENABLED should be true for the worker process')
 check(checks, 'worker stale submission sweep configured', env.taskStaleSubmissionWorkerEnabled, 'TASK_STALE_SUBMISSION_WORKER_ENABLED should be true for the worker process')
+check(checks, 'worker lease renews before expiry', env.workerLeaseRenewIntervalSeconds < env.workerLeaseTtlSeconds, `renew=${env.workerLeaseRenewIntervalSeconds}s ttl=${env.workerLeaseTtlSeconds}s`)
 check(checks, 'request body guard enabled', env.requestBodySizeGuardEnabled, 'REQUEST_BODY_SIZE_GUARD_ENABLED must not be false')
 check(checks, 'auth failure monitor enabled', env.authFailureMonitorEnabled, 'AUTH_FAILURE_MONITOR_ENABLED must not be false')
 check(checks, 'external OAuth provider configured', oauthProviders.some((provider) => provider.mode === 'external'), 'At least one OAuth provider should be external in managed smoke')
