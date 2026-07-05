@@ -25,6 +25,8 @@ Current closeout target:
 3. Keep Track C creative provider productization as a follow-up track.
 4. Do not open the Phase 3 PR until Track A is complete and `npm run check:deploy` is green.
 
+Track A closeout notes live in `docs/PHASE_3_TRACK_A_CLOSEOUT.md`.
+
 ## Phase 3 Tracks
 
 ### Track A: Marketplace Depth
