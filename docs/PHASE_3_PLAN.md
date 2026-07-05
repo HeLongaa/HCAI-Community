@@ -26,6 +26,7 @@ Current closeout target:
 4. Do not open the Phase 3 PR until Track A is complete and `npm run check:deploy` is green.
 
 Track A closeout notes live in `docs/PHASE_3_TRACK_A_CLOSEOUT.md`.
+Track B planning notes live in `docs/PHASE_3_TRACK_B_PLAN.md`.
 
 ## Phase 3 Tracks
 
