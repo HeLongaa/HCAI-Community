@@ -197,6 +197,32 @@ Body:
 
 Approving a task requires every supplied acceptance checklist item to be checked, updates the latest pending submission, writes a settled point ledger entry for the assignee or latest submitter, and increments creator/publisher reputation stats once for the completion.
 
+### `POST /tasks/:id/disputes`
+
+Requires `task:submit`. The submitter can dispute the latest rejected or stale submission. The task moves to `Disputed`, the submission moves to `disputed`, an admin review is opened in the `task_disputes` queue, and the task timeline records `task.dispute.opened`.
+
+Body:
+
+```ts
+{
+  reason: string
+}
+```
+
+### `POST /tasks/stale-submissions/sweep`
+
+Requires `task:moderate`. Marks pending-review submissions older than `olderThanHours` as `stale`, notifies task participants, and writes `task.submission.stale` timeline events. `taskId` can scope the sweep to a single task.
+
+Body:
+
+```ts
+{
+  olderThanHours?: number // default 72
+  limit?: number // default 50, max 100
+  taskId?: string | null
+}
+```
+
 ### `GET /tasks/:id/events`
 
 Requires task participant or admin permission. Returns task audit timeline.
@@ -1214,6 +1240,10 @@ type ReviewTaskRequest = {
   }>
 }
 ```
+
+`POST /tasks/:id/disputes` requires `task:submit` and accepts `{ reason: string }`.
+
+`POST /tasks/stale-submissions/sweep` requires `task:moderate` and accepts `{ olderThanHours?: number; limit?: number; taskId?: string | null }`.
 
 ### Community And Library
 

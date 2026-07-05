@@ -94,7 +94,7 @@ Stores login provider identities.
 | `content` | text | |
 | `asset_ids` | text[] | Uploaded/persisted asset references |
 | `rights_note` | text | |
-| `status` | enum | `pending_review`, `revision_requested`, `approved`, `rejected` |
+| `status` | enum | `pending_review`, `revision_requested`, `stale`, `disputed`, `approved`, `rejected` |
 | `review_note` | text | Nullable |
 | `reviewed_by_id` | uuid | FK users, nullable |
 | `reviewed_at` | timestamptz | Nullable |
@@ -344,7 +344,9 @@ Rules:
 - eligible makers can create proposals while task is `open`.
 - publisher or automated matching can move `open -> assigned`.
 - assignee can move `assigned -> in_progress -> submitted`.
-- publisher can move `submitted -> completed` or `submitted -> rejected`.
+- publisher can move `submitted -> completed`, `submitted -> rejected`, or request changes before final acceptance.
+- creator can move rejected or stale submissions into `disputed`, which opens a task dispute admin-review item.
+- moderators can mark long-pending submissions as `stale` through the stale submission sweep.
 - admin can move most non-terminal states to `cancelled` or `rejected`.
 - point ledger settlement happens in the same transaction as `completed`.
 

@@ -33,6 +33,7 @@ enum TaskStatus {
   in_progress
   submitted
   pending_review
+  disputed
   completed
   rejected
   cancelled
@@ -54,6 +55,8 @@ enum TaskProposalStatus {
 enum TaskSubmissionStatus {
   pending_review
   revision_requested
+  stale
+  disputed
   approved
   rejected
 }

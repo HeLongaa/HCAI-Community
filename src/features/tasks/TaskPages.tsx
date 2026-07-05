@@ -687,6 +687,7 @@ export function MyTasksPage({
   approveTask = async () => undefined,
   rejectTask = async () => undefined,
   requestRevisionTask = async () => undefined,
+  openDisputeTask = async () => undefined,
   simulateAction,
 }: {
   t: Record<string, string>
@@ -705,6 +706,7 @@ export function MyTasksPage({
   approveTask?: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
   rejectTask?: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
   requestRevisionTask?: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
+  openDisputeTask?: (task: Task) => Promise<void>
   simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
@@ -989,6 +991,7 @@ export function MyTasksPage({
             },
           ]
         : []
+  const canOpenDispute = selectedRole === 'maker' && visibleSubmissions.some((submission) => ['rejected', 'stale'].includes(submission.status))
   const handleFor = (summary: ApiProfileSummary | { handle: string } | null) =>
     summary?.handle ? `@${summary.handle}` : textFor(t, 'Unknown user', '未知用户')
   const timelineDate = (value: string) => {
@@ -1353,6 +1356,12 @@ export function MyTasksPage({
                     <MessageCircle size={17} />
                     {textFor(t, 'Continue discussion', '继续沟通')}
                   </button>
+                  {canOpenDispute && (
+                    <button className="ghost-button" data-testid="open-dispute-button" type="button" onClick={() => void openDisputeTask(selectedTask)}>
+                      <MessageCircle size={17} />
+                      {textFor(t, 'Open dispute', '发起争议')}
+                    </button>
+                  )}
                 </div>
               </>
             )}

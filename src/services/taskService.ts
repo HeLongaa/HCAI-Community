@@ -6,11 +6,14 @@ import type {
   ApiTaskSubmission,
   ApiTaskTimelineItem,
   ApiAcceptanceChecklistItem,
+  CreateTaskDisputeRequest,
   CreateTaskProposalRequest,
   CreateTaskRequest,
   ReviewTaskProposalRequest,
   ReviewTaskRequest,
   SubmitTaskRequest,
+  SweepStaleTaskSubmissionsRequest,
+  SweepStaleTaskSubmissionsResponse,
   TaskChildListQuery,
   TaskListQuery,
 } from './contracts'
@@ -103,5 +106,13 @@ export const taskService = {
     const body: ReviewTaskRequest = { decision, reviewNote, acceptanceChecklist }
     const task = await api.post<ApiTask>(`/tasks/${id}/review`, body)
     return toTask(task)
+  },
+  async createDispute(id: string | number, reason: string) {
+    const body: CreateTaskDisputeRequest = { reason }
+    const task = await api.post<ApiTask>(`/tasks/${id}/disputes`, body)
+    return toTask(task)
+  },
+  async sweepStaleSubmissions(body: SweepStaleTaskSubmissionsRequest = {}) {
+    return api.post<SweepStaleTaskSubmissionsResponse>('/tasks/stale-submissions/sweep', body)
   },
 }

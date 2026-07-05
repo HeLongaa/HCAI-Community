@@ -147,6 +147,7 @@ export type TaskWorkflowViewModel = {
   approveTask: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
   rejectTask: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
   requestRevisionTask: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
+  openDisputeTask: (task: Task) => Promise<void>
 }
 
 export type CommunityWorkflowViewModel = {

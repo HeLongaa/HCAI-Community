@@ -317,6 +317,7 @@ function App() {
     approveTask,
     rejectTask,
     requestRevisionTask,
+    openDisputeTask,
   } = useTaskWorkflows({ locale, pushLedger, pushToast, setPage })
 
   const {
@@ -429,6 +430,11 @@ function App() {
     await requestRevisionTask(task, options)
   }
 
+  const guardedOpenDisputeTask = async (task: Task) => {
+    if (!requirePermission('task:submit', locale === 'zh' ? '请使用创作者账号发起争议。' : 'Sign in as a maker to open disputes.')) return
+    await openDisputeTask(task)
+  }
+
   const guardedConvertPostToTask = async (post: Post) => {
     if (!requirePermission('task:create', locale === 'zh' ? '请使用可发布任务的账号后再转任务。' : 'Sign in with task creation permission to convert posts.')) return
     await convertPostToTask(post)
@@ -499,6 +505,7 @@ function App() {
           approveTask: guardedApproveTask,
           rejectTask: guardedRejectTask,
           requestRevisionTask: guardedRequestRevisionTask,
+          openDisputeTask: guardedOpenDisputeTask,
         }}
         community={{
           postList,

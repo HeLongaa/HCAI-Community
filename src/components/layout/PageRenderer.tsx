@@ -77,6 +77,7 @@ export function PageRenderer({
     approveTask,
     rejectTask,
     requestRevisionTask,
+    openDisputeTask,
   } = tasks
   const {
     postList,
@@ -160,6 +161,7 @@ export function PageRenderer({
           approveTask={approveTask}
           rejectTask={rejectTask}
           requestRevisionTask={requestRevisionTask}
+          openDisputeTask={openDisputeTask}
           simulateAction={simulateAction}
         />
       )}

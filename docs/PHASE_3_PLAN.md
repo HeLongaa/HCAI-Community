@@ -53,7 +53,7 @@ Implementation order:
 2. Participant-facing timeline/audit view. Completed in `codex/phase-3-task-revisions`.
 3. Acceptance criteria checklist at review time. Completed in `codex/phase-3-task-revisions`.
 4. Creator and publisher reputation updates after completion. Completed in `codex/phase-3-task-revisions`.
-5. Dispute and stale-submission flow.
+5. Dispute and stale-submission flow. Completed in `codex/phase-3-task-revisions`.
 6. Notification coverage polish across revision, resubmission, acceptance, rejection, settlement, and dispute events.
 
 ### Track B: Production Operations

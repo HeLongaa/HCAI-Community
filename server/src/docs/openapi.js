@@ -491,6 +491,57 @@ export const openApiDocument = {
         },
       },
     },
+    '/tasks/{id}/disputes': {
+      post: {
+        summary: 'Open a dispute for a rejected or stale task submission',
+        description: 'The submitter can dispute the latest rejected or stale submission. This marks the task disputed, marks the submission disputed, opens a task_disputes admin review, notifies reviewers, and writes a task timeline event.',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['reason'],
+                properties: {
+                  reason: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Disputed task' },
+          '403': { description: 'Requires task submission permission and submission ownership' },
+          '404': { description: 'Task not found or no disputable submission exists' },
+        },
+      },
+    },
+    '/tasks/stale-submissions/sweep': {
+      post: {
+        summary: 'Mark overdue task submissions as stale',
+        description: 'Moderators can mark pending-review submissions older than the review SLA as stale. The sweep can be scoped to one task with taskId.',
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  olderThanHours: { type: 'integer', minimum: 0, default: 72 },
+                  limit: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
+                  taskId: { type: ['string', 'null'] },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Stale submission sweep summary' },
+          '403': { description: 'Requires task moderation permission' },
+        },
+      },
+    },
     '/tasks/{id}/review': {
       post: {
         summary: 'Approve, reject, or request changes for a task submission',

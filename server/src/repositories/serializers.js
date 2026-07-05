@@ -32,6 +32,9 @@ export const serializeTask = (task) => ({
   resultLinks: task.resultLinks,
   reviewNote: task.reviewNote,
   rights: task.rights,
+  disputeStatus: task.disputeStatus ?? null,
+  disputeReason: task.disputeReason ?? '',
+  disputeReviewId: task.disputeReviewId ?? null,
 })
 
 export const serializeTaskDetail = serializeTask
@@ -57,6 +60,8 @@ export const serializeTaskSubmission = (submission) => ({
   status: submission.status,
   reviewNote: submission.reviewNote ?? '',
   acceptanceChecklist: submission.acceptanceChecklist ?? submission.metadata?.acceptanceChecklist ?? [],
+  dispute: submission.dispute ?? submission.metadata?.dispute ?? null,
+  stale: submission.stale ?? submission.metadata?.stale ?? null,
   reviewedBy: submission.reviewedBy ?? null,
   reviewedAt: submission.reviewedAt ?? null,
   createdAt: submission.createdAt ?? '',

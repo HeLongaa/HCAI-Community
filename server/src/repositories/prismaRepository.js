@@ -384,6 +384,8 @@ const createPrismaRepository = async (fallbackRepository) => {
     'task.proposal.rejected': { type: 'proposal_rejected', title: 'Proposal rejected', body: 'The publisher declined a proposal.' },
     'task.submitted': { type: 'submitted', title: 'Work submitted', body: 'The creator submitted delivery work.' },
     'task.revision_requested': { type: 'revision_requested', title: 'Changes requested', body: 'The publisher requested revisions.' },
+    'task.dispute.opened': { type: 'dispute_opened', title: 'Dispute opened', body: 'The creator opened a dispute for the submitted work.' },
+    'task.submission.stale': { type: 'submission_stale', title: 'Review overdue', body: 'A pending submission passed the review SLA.' },
     'task.approved': { type: 'approved', title: 'Task approved', body: 'The task was approved and points were settled.' },
     'task.rejected': { type: 'rejected', title: 'Task rejected', body: 'The publisher rejected the submitted work.' },
   }
@@ -483,12 +485,14 @@ const createPrismaRepository = async (fallbackRepository) => {
     return createNotificationsForUsers(db, users, payload)
   }
 
-  const notifyMediaQueueReaders = async (db, actor, payload) => {
+  const notifyAdminQueueReaders = async (db, actor, payload) => {
     const users = await findUsersByPermissions(db, ['admin:queue:read'], {
       excludeHandle: actor?.handle ?? null,
     })
     return createNotificationsForUsers(db, users, payload)
   }
+
+  const notifyMediaQueueReaders = notifyAdminQueueReaders
 
   const notifyAuditReaders = async (db, actor, payload) => {
     const users = await findUsersByPermissions(db, ['admin:audit:read'], {
@@ -2044,6 +2048,219 @@ const createPrismaRepository = async (fallbackRepository) => {
         items: pageRows.map((row) => taskTimelineItem(row, id, actorById)),
         nextCursor: rows.length > limit && rows.slice(0, limit).length > 0 ? rows.slice(0, limit)[rows.slice(0, limit).length - 1].id : null,
         limit,
+      }
+    },
+    createDispute: async (id, payload, actor = null) => {
+      const task = await client.task.findUnique({
+        where: { id: String(id) },
+        include: {
+          publisher: { include: { profile: true } },
+          assignee: { include: { profile: true } },
+        },
+      })
+      if (!task) {
+        return null
+      }
+      const taskDto = getTaskDto(task)
+      const row = await client.$transaction(async (transaction) => {
+        const submission = await transaction.taskSubmission.findFirst({
+          where: {
+            taskId: String(id),
+            status: { in: ['rejected', 'stale', 'disputed'] },
+          },
+          include: {
+            submitter: { include: { profile: true } },
+            reviewedBy: { include: { profile: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        })
+        if (!submission) {
+          return null
+        }
+        const creatorHandle = userHandle(submission.submitter)
+        const publisherHandle = userHandle(task.publisher)
+        if (actor && actor.handle !== creatorHandle && !hasPermission(actor, 'admin:access')) {
+          return null
+        }
+        const submissionMetadata = asObject(submission.metadata) ?? {}
+        const existingDisputeId = submissionMetadata.dispute?.adminReviewId ?? null
+        const reviewId = existingDisputeId ?? `review-task-dispute-${task.id}-${submission.id}`
+        const disputeMetadata = {
+          kind: 'task_dispute',
+          taskId: String(task.id),
+          submissionId: submission.id,
+          creatorHandle,
+          publisherHandle,
+          reason: payload.reason,
+          previousSubmissionStatus: submission.status,
+          openedBy: actor?.handle ?? creatorHandle,
+          openedAt: new Date().toISOString(),
+        }
+        await transaction.adminReview.upsert({
+          where: { id: reviewId },
+          create: {
+            id: reviewId,
+            queue: 'task_disputes',
+            status: 'Task dispute',
+            title: `Task dispute: ${task.title}`,
+            owner: creatorHandle ?? actor?.handle ?? 'unknown',
+            note: payload.reason,
+            metadata: disputeMetadata,
+          },
+          update: {
+            note: payload.reason,
+            metadata: disputeMetadata,
+          },
+        })
+        await transaction.taskSubmission.update({
+          where: { id: submission.id },
+          data: {
+            status: 'disputed',
+            metadata: {
+              ...submissionMetadata,
+              dispute: {
+                ...disputeMetadata,
+                adminReviewId: reviewId,
+              },
+            },
+          },
+        })
+        const updatedTask = await transaction.task.update({
+          where: { id: String(task.id) },
+          data: {
+            status: 'disputed',
+            metadata: {
+              ...taskDto,
+              status: 'Disputed',
+              disputeStatus: 'open',
+              disputeReason: payload.reason,
+              disputeReviewId: reviewId,
+            },
+          },
+          include: {
+            publisher: { include: { profile: true } },
+            assignee: { include: { profile: true } },
+          },
+        })
+        await transaction.auditEvent.create({
+          data: buildAuditRecord({
+            actorType: actor ? 'user' : 'system',
+            actorId: actor?.id ?? null,
+            action: 'task.dispute.opened',
+            resourceType: 'task',
+            resourceId: String(task.id),
+            metadata: {
+              note: payload.reason,
+              submissionId: submission.id,
+              adminReviewId: reviewId,
+              previousSubmissionStatus: submission.status,
+            },
+          }),
+        })
+        const notificationPayload = {
+          type: 'task.dispute_opened',
+          title: `Task dispute opened: ${task.title}`,
+          body: `${actor?.handle ?? creatorHandle} opened a dispute: ${payload.reason}`,
+          resourceType: 'task',
+          resourceId: String(task.id),
+          metadata: { taskId: String(task.id), submissionId: submission.id, adminReviewId: reviewId },
+          dedupeUnread: true,
+        }
+        await createNotificationsForHandles([publisherHandle], notificationPayload, transaction)
+        await notifyAdminQueueReaders(transaction, actor, {
+          ...notificationPayload,
+          resourceType: 'admin_review',
+          resourceId: reviewId,
+          metadata: {
+            ...notificationPayload.metadata,
+            target: {
+              page: 'admin',
+              admin: { tab: 'Task review', queue: 'task_disputes', reviewId },
+            },
+          },
+        })
+        return updatedTask
+      })
+      return row ? getTaskDto(row) : null
+    },
+    sweepStaleSubmissions: async (payload, actor = null) => {
+      const cutoff = new Date(Date.now() - payload.olderThanHours * 60 * 60 * 1000)
+      const rows = await client.$transaction(async (transaction) => {
+        const submissions = await transaction.taskSubmission.findMany({
+          where: {
+            status: 'pending_review',
+            createdAt: { lt: cutoff },
+            ...(payload.taskId ? { taskId: String(payload.taskId) } : {}),
+          },
+          include: {
+            submitter: { include: { profile: true } },
+            task: {
+              include: {
+                publisher: { include: { profile: true } },
+                assignee: { include: { profile: true } },
+              },
+            },
+            reviewedBy: { include: { profile: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+          take: payload.limit,
+        })
+        const updated = []
+        for (const submission of submissions) {
+          const metadata = asObject(submission.metadata) ?? {}
+          const staleMetadata = {
+            staleAt: new Date().toISOString(),
+            olderThanHours: payload.olderThanHours,
+            previousSubmissionStatus: submission.status,
+          }
+          const row = await transaction.taskSubmission.update({
+            where: { id: submission.id },
+            data: {
+              status: 'stale',
+              metadata: {
+                ...metadata,
+                stale: staleMetadata,
+              },
+            },
+            include: {
+              submitter: { include: { profile: true } },
+              reviewedBy: { include: { profile: true } },
+            },
+          })
+          await transaction.auditEvent.create({
+            data: buildAuditRecord({
+              actorType: actor ? 'user' : 'system',
+              actorId: actor?.id ?? null,
+              action: 'task.submission.stale',
+              resourceType: 'task',
+              resourceId: String(submission.taskId),
+              metadata: {
+                submissionId: submission.id,
+                olderThanHours: payload.olderThanHours,
+                note: `Submission has been pending review for more than ${payload.olderThanHours} hours.`,
+              },
+            }),
+          })
+          await createNotificationsForHandles(
+            uniqueHandles([userHandle(submission.task.publisher), userHandle(submission.submitter)]),
+            {
+              type: 'task.submission_stale',
+              title: `Task review overdue: ${submission.task.title}`,
+              body: `A submission has been pending review for more than ${payload.olderThanHours} hours.`,
+              resourceType: 'task',
+              resourceId: String(submission.taskId),
+              metadata: { taskId: String(submission.taskId), submissionId: submission.id, olderThanHours: payload.olderThanHours },
+              dedupeUnread: true,
+            },
+            transaction,
+          )
+          updated.push(row)
+        }
+        return updated
+      })
+      return {
+        marked: rows.length,
+        items: rows.map(getTaskSubmissionDto),
       }
     },
     review: async (id, payload, actor = null) => {

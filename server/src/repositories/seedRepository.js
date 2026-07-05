@@ -385,6 +385,8 @@ const taskTimelineCopy = {
   'task.proposal.rejected': { type: 'proposal_rejected', title: 'Proposal rejected', body: 'The publisher declined a proposal.' },
   'task.submitted': { type: 'submitted', title: 'Work submitted', body: 'The creator submitted delivery work.' },
   'task.revision_requested': { type: 'revision_requested', title: 'Changes requested', body: 'The publisher requested revisions.' },
+  'task.dispute.opened': { type: 'dispute_opened', title: 'Dispute opened', body: 'The creator opened a dispute for the submitted work.' },
+  'task.submission.stale': { type: 'submission_stale', title: 'Review overdue', body: 'A pending submission passed the review SLA.' },
   'task.approved': { type: 'approved', title: 'Task approved', body: 'The task was approved and points were settled.' },
   'task.rejected': { type: 'rejected', title: 'Task rejected', body: 'The publisher rejected the submitted work.' },
 }
@@ -733,7 +735,7 @@ function notifyPolicyManagers(actor, payload) {
   )
 }
 
-function notifyMediaQueueReaders(actor, payload) {
+function notifyAdminQueueReaders(actor, payload) {
   return createNotificationsForHandles(
     seedStore.demoAccounts
       .filter((account) => account.handle !== actor?.handle && hasPermission(account, 'admin:queue:read'))
@@ -741,6 +743,8 @@ function notifyMediaQueueReaders(actor, payload) {
     payload,
   )
 }
+
+const notifyMediaQueueReaders = notifyAdminQueueReaders
 
 function notifyAuditReaders(actor, payload) {
   return createNotificationsForHandles(
@@ -1553,6 +1557,143 @@ export const createSeedRepository = () => ({
         .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
         .map((event) => serializeTaskTimelineItem(event, task.id))
       return paginateByCursor(items, options)
+    },
+    createDispute: (id, payload, actor = null) => {
+      const task = getTaskById(id)
+      if (!task) {
+        return null
+      }
+      const submission = taskSubmissions.find((entry) =>
+        entry.taskId === String(task.id) && ['rejected', 'stale', 'disputed'].includes(entry.status),
+      ) ?? null
+      if (!submission) {
+        return null
+      }
+      if (actor?.handle !== submission.submitterHandle && !hasPermission(actor, 'admin:access')) {
+        return null
+      }
+      const publisherHandle = getHandle(task.publisher)
+      const reviewId = submission.dispute?.adminReviewId ?? `review-task-dispute-${task.id}-${submission.id}`
+      const disputeMetadata = {
+        kind: 'task_dispute',
+        taskId: String(task.id),
+        submissionId: submission.id,
+        creatorHandle: submission.submitterHandle,
+        publisherHandle,
+        reason: payload.reason,
+        previousSubmissionStatus: submission.status,
+        openedBy: actor?.handle ?? submission.submitterHandle,
+        openedAt: new Date().toISOString(),
+      }
+      const existingReview = adminReviewById.get(reviewId)
+      const review = {
+        ...(existingReview ?? {
+          id: reviewId,
+          queue: 'task_disputes',
+          status: 'Task dispute',
+          title: `Task dispute: ${task.title}`,
+          owner: submission.submitterHandle,
+          decision: undefined,
+          reviewedBy: null,
+          reviewedAt: null,
+        }),
+        note: payload.reason,
+        metadata: disputeMetadata,
+      }
+      adminReviewById.set(reviewId, review)
+      if (!existingReview) {
+        adminReviewQueue.unshift(review)
+      } else {
+        const index = adminReviewQueue.findIndex((item) => item.id === reviewId)
+        if (index >= 0) {
+          adminReviewQueue[index] = review
+        }
+      }
+      submission.status = 'disputed'
+      submission.dispute = {
+        ...disputeMetadata,
+        adminReviewId: reviewId,
+      }
+      const updatedTask = updateTask(id, (task) => ({
+        ...task,
+        status: 'Disputed',
+        disputeStatus: 'open',
+        disputeReason: payload.reason,
+        disputeReviewId: reviewId,
+      }), () => true)
+      recordAudit(actor, 'task.dispute.opened', 'task', task.id, {
+        note: payload.reason,
+        submissionId: submission.id,
+        adminReviewId: reviewId,
+        previousSubmissionStatus: disputeMetadata.previousSubmissionStatus,
+      })
+      const notificationPayload = {
+        type: 'task.dispute_opened',
+        title: `Task dispute opened: ${task.title}`,
+        body: `${actor?.handle ?? submission.submitterHandle} opened a dispute: ${payload.reason}`,
+        resourceType: 'task',
+        resourceId: String(task.id),
+        metadata: { taskId: String(task.id), submissionId: submission.id, adminReviewId: reviewId },
+        dedupeUnread: true,
+      }
+      createNotificationsForHandles([publisherHandle], notificationPayload)
+      notifyAdminQueueReaders(actor, {
+        ...notificationPayload,
+        resourceType: 'admin_review',
+        resourceId: reviewId,
+        metadata: {
+          ...notificationPayload.metadata,
+          target: {
+            page: 'admin',
+            admin: { tab: 'Task review', queue: 'task_disputes', reviewId },
+          },
+        },
+      })
+      return updatedTask ? serializeTask(updatedTask) : null
+    },
+    sweepStaleSubmissions: (payload, actor = null) => {
+      const cutoff = Date.now() - payload.olderThanHours * 60 * 60 * 1000
+      const staleRows = taskSubmissions
+        .filter((submission) => {
+          const createdAt = new Date(submission.createdAt).getTime()
+          return submission.status === 'pending_review' &&
+            !Number.isNaN(createdAt) &&
+            createdAt < cutoff &&
+            (!payload.taskId || submission.taskId === String(payload.taskId))
+        })
+        .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
+        .slice(0, payload.limit)
+      for (const submission of staleRows) {
+        const task = getTaskById(submission.taskId)
+        const staleMetadata = {
+          staleAt: new Date().toISOString(),
+          olderThanHours: payload.olderThanHours,
+          previousSubmissionStatus: submission.status,
+        }
+        submission.status = 'stale'
+        submission.stale = staleMetadata
+        recordAudit(actor, 'task.submission.stale', 'task', submission.taskId, {
+          submissionId: submission.id,
+          olderThanHours: payload.olderThanHours,
+          note: `Submission has been pending review for more than ${payload.olderThanHours} hours.`,
+        })
+        createNotificationsForHandles(
+          uniqueHandles([getHandle(task?.publisher), submission.submitterHandle]),
+          {
+            type: 'task.submission_stale',
+            title: `Task review overdue: ${task?.title ?? submission.taskId}`,
+            body: `A submission has been pending review for more than ${payload.olderThanHours} hours.`,
+            resourceType: 'task',
+            resourceId: String(submission.taskId),
+            metadata: { taskId: String(submission.taskId), submissionId: submission.id, olderThanHours: payload.olderThanHours },
+            dedupeUnread: true,
+          },
+        )
+      }
+      return {
+        marked: staleRows.length,
+        items: staleRows.map(serializeTaskSubmission),
+      }
     },
     review: (id, payload, actor = null) => {
       const isApproval = payload.decision === 'approve'

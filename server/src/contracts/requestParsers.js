@@ -78,6 +78,18 @@ const optionalPositiveInteger = (body, field) => {
   return parsed
 }
 
+const optionalNonNegativeInteger = (body, field) => {
+  const value = body?.[field]
+  if (value == null || value === '') {
+    return undefined
+  }
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw validationFailed(`${field} must be a non-negative integer`)
+  }
+  return parsed
+}
+
 const optionalObject = (body, field) => {
   const value = body?.[field]
   if (value == null) {
@@ -161,6 +173,16 @@ export const parseSubmitTaskRequest = (body) => ({
   content: requireText(body, 'content'),
   assetIds: optionalStringArray(body, 'assetIds'),
   rightsNote: optionalText(body, 'rightsNote', ''),
+})
+
+export const parseCreateTaskDisputeRequest = (body) => ({
+  reason: requireText(body, 'reason'),
+})
+
+export const parseSweepStaleTaskSubmissionsRequest = (body) => ({
+  olderThanHours: optionalNonNegativeInteger(body, 'olderThanHours') ?? 72,
+  limit: Math.min(optionalPositiveInteger(body, 'limit') ?? 50, 100),
+  taskId: optionalText(body, 'taskId', null),
 })
 
 export const parseReviewTaskRequest = (body) => {

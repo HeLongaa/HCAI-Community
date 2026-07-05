@@ -113,6 +113,8 @@ export function statusLabel(status: string, t?: Record<string, string>) {
   const enLabels: Record<string, string> = {
     pending_review: 'Pending review',
     revision_requested: 'Changes requested',
+    stale: 'Review overdue',
+    disputed: 'Disputed',
     approved: 'Approved',
     rejected: 'Rejected',
   }
@@ -122,9 +124,12 @@ export function statusLabel(status: string, t?: Record<string, string>) {
     'In Progress': '进行中',
     'Pending Review': '待验收',
     Completed: '已完成',
+    Disputed: '争议中',
     Rejected: '已驳回',
     pending_review: '待验收',
     revision_requested: '要求修改',
+    stale: '验收逾期',
+    disputed: '争议中',
     approved: '已通过',
     rejected: '已拒绝',
     'Pending review': '待审核',

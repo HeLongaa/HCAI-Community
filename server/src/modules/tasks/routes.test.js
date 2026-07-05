@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
+import { registerAdminRoutes } from '../admin/routes.js'
 import { registerPointsRoutes } from '../points/routes.js'
 import { registerProfileRoutes } from '../profiles/routes.js'
 import { registerTaskRoutes } from './routes.js'
@@ -9,6 +10,7 @@ import { registerTaskRoutes } from './routes.js'
 const createTestServer = () => createRouteTestServer(registerTaskRoutes)
 const createTaskAndPointsServer = () => createRouteTestServer(registerTaskRoutes, registerPointsRoutes)
 const createTaskPointsAndProfileServer = () => createRouteTestServer(registerTaskRoutes, registerPointsRoutes, registerProfileRoutes)
+const createTaskAndAdminServer = () => createRouteTestServer(registerTaskRoutes, registerAdminRoutes)
 
 const validTaskBody = () => ({
   title: 'Integration test task',
@@ -923,6 +925,105 @@ test('POST /api/tasks/:id/review does not settle reward points on rejection', as
     })
     const cancelledEscrow = cancelledLedger.payload.data.find((entry) => entry.sourceType === 'task_escrow' && entry.sourceId === String(task.id))
     assert.ok(cancelledEscrow)
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST /api/tasks/:id/disputes opens an admin review for rejected submissions', async () => {
+  const server = await createTaskAndAdminServer()
+  try {
+    const task = await createTask(server, {
+      title: 'Rejected dispute integration task',
+      pointsReward: 710,
+    }, 'demo-access.launchteam')
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
+    await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: { decision: 'reject', reviewNote: 'Final package is missing the usage rights note.' },
+      token: 'demo-access.launchteam',
+    })
+
+    const dispute = await requestJson(server.url, `/api/tasks/${task.id}/disputes`, {
+      body: { reason: 'Rights note was included in the submitted delivery package.' },
+      token: 'demo-access.promptlin',
+    })
+
+    assert.equal(dispute.status, 200)
+    assert.equal(dispute.payload.data.status, 'Disputed')
+    assert.equal(dispute.payload.data.disputeStatus, 'open')
+
+    const submissions = await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+    assert.equal(submissions.status, 200)
+    assert.equal(submissions.payload.data[0].status, 'disputed')
+    assert.equal(submissions.payload.data[0].dispute.reason, 'Rights note was included in the submitted delivery package.')
+
+    const reviews = await requestJson(server.url, '/api/admin/reviews?queue=task_disputes&status=Task%20dispute', {
+      method: 'GET',
+      token: 'demo-access.legalpixel',
+    })
+    const review = reviews.payload.data.find((item) => item.metadata?.taskId === String(task.id))
+    assert.ok(review)
+    assert.equal(review.owner, 'promptlin')
+    assert.equal(review.metadata.submissionId, submissions.payload.data[0].id)
+
+    const timeline = await requestJson(server.url, `/api/tasks/${task.id}/timeline`, {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(timeline.status, 200)
+    assert.equal(timeline.payload.data[0].type, 'dispute_opened')
+    assert.equal(timeline.payload.data[0].body, 'Rights note was included in the submitted delivery package.')
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST /api/tasks/stale-submissions/sweep marks overdue submissions and allows dispute', async () => {
+  const server = await createTaskAndAdminServer()
+  try {
+    const task = await createTask(server, {
+      title: 'Stale submission integration task',
+      pointsReward: 620,
+    }, 'demo-access.launchteam')
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
+
+    const sweep = await requestJson(server.url, '/api/tasks/stale-submissions/sweep', {
+      body: { olderThanHours: 0, limit: 5, taskId: String(task.id) },
+      token: 'demo-access.legalpixel',
+    })
+
+    assert.equal(sweep.status, 200)
+    assert.equal(sweep.payload.data.marked, 1)
+    assert.equal(sweep.payload.data.items[0].status, 'stale')
+
+    const submissions = await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+    assert.equal(submissions.payload.data[0].status, 'stale')
+    assert.equal(submissions.payload.data[0].stale.olderThanHours, 0)
+
+    const timeline = await requestJson(server.url, `/api/tasks/${task.id}/timeline`, {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+    assert.equal(timeline.payload.data[0].type, 'submission_stale')
+
+    const dispute = await requestJson(server.url, `/api/tasks/${task.id}/disputes`, {
+      body: { reason: 'The submission is overdue for review and needs platform follow-up.' },
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(dispute.status, 200)
+    assert.equal(dispute.payload.data.status, 'Disputed')
   } finally {
     await server.close()
   }

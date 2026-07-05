@@ -288,6 +288,25 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     }
   }
 
+  const openDisputeTask = async (task: Task) => {
+    const isZh = locale === 'zh'
+    try {
+      const updated = await taskService.createDispute(
+        task.id,
+        isZh
+          ? '交付内容符合验收标准，请平台协助复核驳回或逾期未验收的处理。'
+          : 'The delivery appears to meet the acceptance criteria. Please review the rejection or overdue review.',
+      )
+      updateTask(task.id, updated)
+      await refreshSubmissions(updated)
+      await refreshTimeline(updated)
+      pushToast(isZh ? `已发起争议：${task.title}` : `Dispute opened: ${task.title}`)
+    } catch (error) {
+      console.info('[task-service]', error)
+      pushToast(isZh ? '发起争议失败，请确认该交付已被驳回或已验收逾期。' : 'Opening dispute failed. Confirm the submission was rejected or is review-overdue.')
+    }
+  }
+
   return {
     taskList,
     selectedTask,
@@ -309,5 +328,6 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     approveTask,
     rejectTask,
     requestRevisionTask,
+    openDisputeTask,
   }
 }
