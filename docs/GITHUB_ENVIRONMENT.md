@@ -102,7 +102,10 @@ These have code defaults, but setting them explicitly makes production behavior 
 | Name | Suggested Value |
 | --- | --- |
 | `RATE_LIMIT_ENABLED` | `true` |
-| `RATE_LIMIT_STORE` | `memory` until an external store is implemented |
+| `RATE_LIMIT_STORE` | `redis` for multi-instance deployments; `memory` only for single-instance/local deployments |
+| `RATE_LIMIT_REDIS_PREFIX` | Key prefix such as `newchat:prod:limits` |
+| `RATE_LIMIT_REDIS_TIMEOUT_MS` | `500` or deployment-specific |
+| `RATE_LIMIT_REDIS_FAILURE_MODE` | `fail_closed` for stricter managed deployments; `fail_open` only with external gateway protection |
 | `RATE_LIMIT_WINDOW_MS` | `60000` |
 | `RATE_LIMIT_AUTH_MAX` | deployment-specific |
 | `RATE_LIMIT_UPLOAD_MAX` | deployment-specific |
@@ -114,6 +117,12 @@ These have code defaults, but setting them explicitly makes production behavior 
 | `AUTH_FAILURE_IP_ACCOUNT_THRESHOLD` | deployment-specific |
 | `AUTH_FAILURE_ACCOUNT_IP_THRESHOLD` | deployment-specific |
 | `SECURITY_EVENT_MAX_ITEMS` | `1000` or higher for active operations teams |
+
+Rate-limit shared store secret:
+
+| Secret | Notes |
+| --- | --- |
+| `RATE_LIMIT_REDIS_URL` | Redis-compatible URL. Use `rediss://` when the provider supports TLS. |
 
 ## Validation Flow
 

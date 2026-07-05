@@ -22,8 +22,23 @@ const getStorageDriver = (source) => String(source.STORAGE_DRIVER ?? (source.STO
 const getMediaScanProvider = (source) => String(source.MEDIA_SCAN_PROVIDER ?? 'manual').trim().toLowerCase()
 const supportedMediaScanRequestAdapters = ['generic-webhook', 'clamav-http']
 const getMediaScanRequestAdapter = (source) => String(source.MEDIA_SCAN_REQUEST_ADAPTER ?? 'generic-webhook').trim().toLowerCase()
-const supportedRateLimitStores = ['memory']
+const supportedRateLimitStores = ['memory', 'redis']
+const supportedRateLimitFailureModes = ['fail_open', 'fail_closed']
 const getRateLimitStore = (source) => String(source.RATE_LIMIT_STORE ?? 'memory').trim().toLowerCase()
+const getRateLimitFailureMode = (source) => String(source.RATE_LIMIT_REDIS_FAILURE_MODE ?? source.RATE_LIMIT_STORE_FAILURE_MODE ?? 'fail_closed').trim().toLowerCase()
+const getRedisUrl = (source) => {
+  const value = String(source.RATE_LIMIT_REDIS_URL ?? '').trim()
+  if (!value) return ''
+  try {
+    const url = new URL(value)
+    if (!['redis:', 'rediss:'].includes(url.protocol)) {
+      throw new Error('unsupported protocol')
+    }
+    return url.toString()
+  } catch {
+    throw new Error('RATE_LIMIT_REDIS_URL must be a valid redis:// or rediss:// URL')
+  }
+}
 const getOptionalUrl = (source, key) => {
   const value = String(source[key] ?? '').trim()
   if (!value) {
@@ -67,6 +82,10 @@ export const buildEnv = (source = process.env) => {
   const mediaScanProvider = getMediaScanProvider(source)
   const mediaScanRequestAdapter = getMediaScanRequestAdapter(source)
   const rateLimitStore = getRateLimitStore(source)
+  const rateLimitRedisUrl = getRedisUrl(source)
+  const rateLimitRedisPrefix = String(source.RATE_LIMIT_REDIS_PREFIX ?? 'newchat:rate-limit').trim() || 'newchat:rate-limit'
+  const rateLimitRedisTimeoutMs = positiveInteger(source, 'RATE_LIMIT_REDIS_TIMEOUT_MS', 1000)
+  const rateLimitRedisFailureMode = getRateLimitFailureMode(source)
   const rateLimitWindowMs = positiveInteger(source, 'RATE_LIMIT_WINDOW_MS', 60_000)
   const rateLimitAuthMax = positiveInteger(source, 'RATE_LIMIT_AUTH_MAX', 120)
   const rateLimitUploadMax = positiveInteger(source, 'RATE_LIMIT_UPLOAD_MAX', 120)
@@ -135,6 +154,12 @@ export const buildEnv = (source = process.env) => {
   if (!supportedRateLimitStores.includes(rateLimitStore)) {
     throw new Error(`RATE_LIMIT_STORE must be one of: ${supportedRateLimitStores.join(', ')}`)
   }
+  if (rateLimitStore === 'redis' && !rateLimitRedisUrl) {
+    throw new Error('RATE_LIMIT_REDIS_URL is required when RATE_LIMIT_STORE=redis')
+  }
+  if (!supportedRateLimitFailureModes.includes(rateLimitRedisFailureMode)) {
+    throw new Error(`RATE_LIMIT_REDIS_FAILURE_MODE must be one of: ${supportedRateLimitFailureModes.join(', ')}`)
+  }
   if (mediaScanAlertEmailWebhookUrl && mediaScanAlertEmailRecipients.length === 0) {
     throw new Error('MEDIA_SCAN_ALERT_EMAIL_TO is required when MEDIA_SCAN_ALERT_EMAIL_WEBHOOK_URL is configured')
   }
@@ -198,6 +223,10 @@ export const buildEnv = (source = process.env) => {
     authTrustedOrigins: splitCsv(source.AUTH_TRUSTED_ORIGINS ?? source.CORS_ALLOWED_ORIGINS),
     rateLimitEnabled: boolFlag(source, 'RATE_LIMIT_ENABLED', true),
     rateLimitStore,
+    hasRateLimitRedisUrl: Boolean(rateLimitRedisUrl),
+    rateLimitRedisPrefix,
+    rateLimitRedisTimeoutMs,
+    rateLimitRedisFailureMode,
     rateLimitWindowMs,
     rateLimitAuthMax,
     rateLimitUploadMax,

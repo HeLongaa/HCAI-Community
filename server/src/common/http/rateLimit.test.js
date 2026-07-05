@@ -4,7 +4,12 @@ import test from 'node:test'
 import { createRouter } from './router.js'
 import { createServer } from './server.js'
 import { ok } from './responses.js'
-import { createMemoryRateLimitStore, resetRateLimitState } from './rateLimit.js'
+import {
+  createMemoryRateLimitStore,
+  createRateLimitStore,
+  createRedisRateLimitStore,
+  resetRateLimitState,
+} from './rateLimit.js'
 import { listSecurityEvents, resetSecurityEvents } from '../../security/securityEvents.js'
 
 const withProcessEnv = async (patch, run) => {
@@ -186,6 +191,114 @@ test('rate limiter accepts async stores and keeps observer failures non-fatal', 
       assert.equal(limited.status, 429)
       assert.equal(payload.error.code, 'RATE_LIMITED')
       assert.equal(payload.error.details.bucket, 'auth')
+    } finally {
+      await server.close()
+    }
+  })
+})
+
+test('redis rate limit store increments shared counters with prefixed keys', async () => {
+  const entries = new Map()
+  const commands = []
+  const client = {
+    sendCommand: async (parts) => {
+      commands.push(parts)
+      assert.equal(parts[0], 'EVAL')
+      assert.equal(parts[2], '1')
+      const key = parts[3]
+      const windowMs = Number(parts[4])
+      const current = entries.get(key)
+      const resetAt = current?.resetAt && current.resetAt > 1_000 ? current.resetAt : 1_000 + windowMs
+      const count = current?.resetAt && current.resetAt > 1_000 ? current.count + 1 : 1
+      entries.set(key, { count, resetAt })
+      return [count, resetAt - 1_000]
+    },
+  }
+  const store = createRedisRateLimitStore({ client, prefix: 'test-prefix' })
+
+  assert.deepEqual(await store.increment({ key: 'auth:198.51.100.50', windowMs: 60_000, now: 1_000 }), {
+    count: 1,
+    resetAt: 61_000,
+  })
+  assert.deepEqual(await store.increment({ key: 'auth:198.51.100.50', windowMs: 60_000, now: 1_000 }), {
+    count: 2,
+    resetAt: 61_000,
+  })
+  assert.equal(commands[0][3], 'test-prefix:auth:198.51.100.50')
+})
+
+test('rate limit store factory selects redis store with injected client', async () => {
+  const client = {
+    sendCommand: async () => [1, 30_000],
+  }
+  const store = createRateLimitStore({
+    RATE_LIMIT_STORE: 'redis',
+    RATE_LIMIT_REDIS_URL: 'redis://localhost:6379/0',
+    RATE_LIMIT_REDIS_PREFIX: 'factory-prefix',
+  }, { redisClient: client })
+
+  assert.deepEqual(await store.increment({ key: 'upload:client', windowMs: 30_000, now: 5_000 }), {
+    count: 1,
+    resetAt: 35_000,
+  })
+})
+
+test('rate limiter can fail open when the shared store is unavailable', async () => {
+  await withProcessEnv({
+    RATE_LIMIT_STORE: 'redis',
+    RATE_LIMIT_REDIS_FAILURE_MODE: 'fail_open',
+  }, async () => {
+    const events = []
+    const server = await createRateLimitTestServer({
+      rateLimitStore: {
+        increment: async () => {
+          throw new Error('redis unavailable')
+        },
+      },
+      onRateLimitStoreUnavailable: (event) => events.push(event),
+    })
+    try {
+      const response = await postJson(server.url, '/api/auth/login')
+      assert.equal(response.status, 200)
+      assert.equal(events.length, 1)
+      assert.equal(events[0].store, 'redis')
+      assert.equal(events[0].failureMode, 'fail_open')
+      const securityEvents = listSecurityEvents({ source: 'rate_limit', limit: 10 })
+      assert.ok(securityEvents.items.some((event) =>
+        event.type === 'rate_limit.store_unavailable' &&
+        event.severity === 'warning' &&
+        event.details.failureMode === 'fail_open'
+      ))
+    } finally {
+      await server.close()
+    }
+  })
+})
+
+test('rate limiter fails closed by default when the shared store is unavailable', async () => {
+  await withProcessEnv({
+    RATE_LIMIT_STORE: 'redis',
+  }, async () => {
+    const server = await createRateLimitTestServer({
+      rateLimitStore: {
+        increment: async () => {
+          throw new Error('redis unavailable')
+        },
+      },
+    })
+    try {
+      const response = await postJson(server.url, '/api/auth/login')
+      const payload = await response.json()
+      assert.equal(response.status, 503)
+      assert.equal(payload.error.code, 'RATE_LIMIT_STORE_UNAVAILABLE')
+      assert.equal(payload.error.details.store, 'redis')
+      assert.equal(payload.error.details.failureMode, 'fail_closed')
+      const securityEvents = listSecurityEvents({ source: 'rate_limit', limit: 10 })
+      assert.ok(securityEvents.items.some((event) =>
+        event.type === 'rate_limit.store_unavailable' &&
+        event.severity === 'critical' &&
+        event.details.failureMode === 'fail_closed'
+      ))
     } finally {
       await server.close()
     }

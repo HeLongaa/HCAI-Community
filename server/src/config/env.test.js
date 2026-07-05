@@ -61,6 +61,10 @@ test('buildEnv allows development without managed token secrets', () => {
     authTrustedOrigins: [],
     rateLimitEnabled: true,
     rateLimitStore: 'memory',
+    hasRateLimitRedisUrl: false,
+    rateLimitRedisPrefix: 'newchat:rate-limit',
+    rateLimitRedisTimeoutMs: 1000,
+    rateLimitRedisFailureMode: 'fail_closed',
     rateLimitWindowMs: 60000,
     rateLimitAuthMax: 120,
     rateLimitUploadMax: 120,
@@ -106,7 +110,19 @@ test('buildEnv accepts production token secret metadata', () => {
 test('buildEnv validates and exposes rate-limit settings', () => {
   assert.throws(
     () => buildEnv({ NODE_ENV: 'development', RATE_LIMIT_STORE: 'redis' }),
-    /RATE_LIMIT_STORE must be one of/,
+    /RATE_LIMIT_REDIS_URL is required/,
+  )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', RATE_LIMIT_STORE: 'redis', RATE_LIMIT_REDIS_URL: 'https://redis.example.com' }),
+    /RATE_LIMIT_REDIS_URL must be a valid redis:\/\/ or rediss:\/\/ URL/,
+  )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', RATE_LIMIT_REDIS_FAILURE_MODE: 'panic' }),
+    /RATE_LIMIT_REDIS_FAILURE_MODE must be one of/,
+  )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', RATE_LIMIT_REDIS_TIMEOUT_MS: '0' }),
+    /RATE_LIMIT_REDIS_TIMEOUT_MS must be a positive integer/,
   )
   assert.throws(
     () => buildEnv({ NODE_ENV: 'development', RATE_LIMIT_WINDOW_MS: '0' }),
@@ -129,10 +145,28 @@ test('buildEnv validates and exposes rate-limit settings', () => {
 
   assert.equal(env.rateLimitEnabled, false)
   assert.equal(env.rateLimitStore, 'memory')
+  assert.equal(env.hasRateLimitRedisUrl, false)
+  assert.equal(env.rateLimitRedisPrefix, 'newchat:rate-limit')
+  assert.equal(env.rateLimitRedisTimeoutMs, 1000)
+  assert.equal(env.rateLimitRedisFailureMode, 'fail_closed')
   assert.equal(env.rateLimitWindowMs, 30000)
   assert.equal(env.rateLimitAuthMax, 20)
   assert.equal(env.rateLimitUploadMax, 8)
   assert.equal(env.rateLimitAdminMutationMax, 12)
+
+  const redisEnv = buildEnv({
+    NODE_ENV: 'development',
+    RATE_LIMIT_STORE: 'redis',
+    RATE_LIMIT_REDIS_URL: 'rediss://:secret@redis.example.com:6380/1',
+    RATE_LIMIT_REDIS_PREFIX: 'hcai:limits',
+    RATE_LIMIT_REDIS_TIMEOUT_MS: '250',
+    RATE_LIMIT_REDIS_FAILURE_MODE: 'fail_open',
+  })
+  assert.equal(redisEnv.rateLimitStore, 'redis')
+  assert.equal(redisEnv.hasRateLimitRedisUrl, true)
+  assert.equal(redisEnv.rateLimitRedisPrefix, 'hcai:limits')
+  assert.equal(redisEnv.rateLimitRedisTimeoutMs, 250)
+  assert.equal(redisEnv.rateLimitRedisFailureMode, 'fail_open')
 })
 
 test('buildEnv validates and exposes request body size guard settings', () => {
@@ -457,6 +491,11 @@ test('deployment smoke accepts production auth, storage, scanner, and notificati
     AUTH_COOKIE_SAMESITE: 'None',
     AUTH_COOKIE_DOMAIN: '.example.com',
     AUTH_TRUSTED_ORIGINS: 'https://app.example.com, https://admin.example.com',
+    RATE_LIMIT_STORE: 'redis',
+    RATE_LIMIT_REDIS_URL: 'rediss://:redis-secret@redis.example.com:6380/0',
+    RATE_LIMIT_REDIS_PREFIX: 'newchat:prod:limits',
+    RATE_LIMIT_REDIS_TIMEOUT_MS: '500',
+    RATE_LIMIT_REDIS_FAILURE_MODE: 'fail_closed',
     RATE_LIMIT_WINDOW_MS: '60000',
     RATE_LIMIT_AUTH_MAX: '100',
     RATE_LIMIT_UPLOAD_MAX: '60',
@@ -490,7 +529,11 @@ test('deployment smoke accepts production auth, storage, scanner, and notificati
   assert.equal(env.authCookieSecure, true)
   assert.deepEqual(env.authTrustedOrigins, ['https://app.example.com', 'https://admin.example.com'])
   assert.equal(env.rateLimitEnabled, true)
-  assert.equal(env.rateLimitStore, 'memory')
+  assert.equal(env.rateLimitStore, 'redis')
+  assert.equal(env.hasRateLimitRedisUrl, true)
+  assert.equal(env.rateLimitRedisPrefix, 'newchat:prod:limits')
+  assert.equal(env.rateLimitRedisTimeoutMs, 500)
+  assert.equal(env.rateLimitRedisFailureMode, 'fail_closed')
   assert.equal(env.rateLimitWindowMs, 60000)
   assert.equal(env.rateLimitAuthMax, 100)
   assert.equal(env.rateLimitUploadMax, 60)
