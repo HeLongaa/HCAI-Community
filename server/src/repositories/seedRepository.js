@@ -357,6 +357,7 @@ for (const item of seedLibraryItems) {
 }
 
 const auditEvents = []
+const operationLeaseStore = new Map()
 
 const recordAudit = (actor, action, resourceType, resourceId = null, metadata = null) => {
   const event = {
@@ -371,6 +372,23 @@ const recordAudit = (actor, action, resourceType, resourceId = null, metadata = 
   }
   auditEvents.unshift(event)
   return event
+}
+
+const leaseExpiry = (ttlSeconds) => new Date(Date.now() + Math.max(1, Number(ttlSeconds ?? 300)) * 1000)
+
+const serializeOperationLease = (lease) => lease ? {
+  key: lease.key,
+  ownerId: lease.ownerId,
+  token: lease.token,
+  metadata: lease.metadata ?? null,
+  acquiredAt: lease.acquiredAt?.toISOString?.() ?? lease.acquiredAt,
+  renewedAt: lease.renewedAt?.toISOString?.() ?? lease.renewedAt ?? null,
+  expiresAt: lease.expiresAt?.toISOString?.() ?? lease.expiresAt,
+  releasedAt: lease.releasedAt?.toISOString?.() ?? lease.releasedAt ?? null,
+} : null
+
+const recordOperationLeaseAudit = (action, leaseKey, metadata = {}) => {
+  recordAudit(null, action, 'operation_lease', leaseKey, metadata)
 }
 
 const auditMetadata = (event) => event?.metadata && typeof event.metadata === 'object' && !Array.isArray(event.metadata)
@@ -2234,6 +2252,91 @@ export const createSeedRepository = () => ({
     silenceAlert: (id, payload, actor) => recordSeedSecurityAlertDisposition(id, 'silenced', payload, actor),
     unsilenceAlert: (id, payload, actor) => recordSeedSecurityAlertDisposition(id, 'unsilenced', payload, actor),
     notifyAlerts: (actor = null) => notifySecurityEventAlerts(actor),
+  },
+  operationLeases: {
+    acquire: async ({ key, ownerId, ttlSeconds = 300, metadata = null } = {}) => {
+      const leaseKey = String(key ?? '').trim()
+      if (!leaseKey) {
+        throw new Error('Operation lease key is required')
+      }
+      const holder = String(ownerId ?? '').trim() || `worker-${randomUUID()}`
+      const now = new Date()
+      const current = operationLeaseStore.get(leaseKey) ?? null
+      const active = current && !current.releasedAt && current.expiresAt > now
+      if (active) {
+        recordOperationLeaseAudit('operations.lease.skipped', leaseKey, {
+          ownerId: holder,
+          heldBy: current.ownerId,
+          expiresAt: current.expiresAt.toISOString(),
+        })
+        return {
+          acquired: false,
+          reason: 'active_lease',
+          ownerId: current.ownerId,
+          expiresAt: current.expiresAt.toISOString(),
+        }
+      }
+      const recoveredExpired = Boolean(current && !current.releasedAt && current.expiresAt <= now)
+      const lease = {
+        key: leaseKey,
+        ownerId: holder,
+        token: randomUUID(),
+        metadata,
+        acquiredAt: now,
+        renewedAt: now,
+        expiresAt: leaseExpiry(ttlSeconds),
+        releasedAt: null,
+      }
+      operationLeaseStore.set(leaseKey, lease)
+      recordOperationLeaseAudit(recoveredExpired ? 'operations.lease.recovered' : 'operations.lease.acquired', leaseKey, {
+        ownerId: holder,
+        ttlSeconds,
+        expiresAt: lease.expiresAt.toISOString(),
+        recoveredExpired,
+      })
+      return {
+        acquired: true,
+        recoveredExpired,
+        ...serializeOperationLease(lease),
+      }
+    },
+    renew: async ({ key, token, ttlSeconds = 300 } = {}) => {
+      const leaseKey = String(key ?? '').trim()
+      const current = operationLeaseStore.get(leaseKey) ?? null
+      const now = new Date()
+      const renewed = Boolean(current && current.token === token && !current.releasedAt && current.expiresAt > now)
+      if (renewed) {
+        current.renewedAt = now
+        current.expiresAt = leaseExpiry(ttlSeconds)
+      }
+      recordOperationLeaseAudit(renewed ? 'operations.lease.renewed' : 'operations.lease.renew_failed', leaseKey, {
+        ttlSeconds,
+        expiresAt: renewed ? current.expiresAt.toISOString() : null,
+      })
+      return {
+        renewed,
+        key: leaseKey,
+        expiresAt: renewed ? current.expiresAt.toISOString() : null,
+      }
+    },
+    release: async ({ key, token } = {}) => {
+      const leaseKey = String(key ?? '').trim()
+      const current = operationLeaseStore.get(leaseKey) ?? null
+      const now = new Date()
+      const released = Boolean(current && current.token === token && !current.releasedAt)
+      if (released) {
+        current.releasedAt = now
+        current.expiresAt = now
+      }
+      recordOperationLeaseAudit(released ? 'operations.lease.released' : 'operations.lease.release_failed', leaseKey, {
+        releasedAt: released ? now.toISOString() : null,
+      })
+      return {
+        released,
+        key: leaseKey,
+        releasedAt: released ? now.toISOString() : null,
+      }
+    },
   },
   operationsMetrics: {
     summary: async (options = {}) => buildSeedOperationsMetrics(options),

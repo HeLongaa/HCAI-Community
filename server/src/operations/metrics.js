@@ -130,6 +130,18 @@ export const operationsMetricsSampleDefinitions = {
     resourceType: 'media_scan_jobs',
     failedOnly: false,
   },
+  operationLeaseSkips: {
+    title: 'Operation lease skipped runs',
+    action: 'operations.lease.skipped',
+    resourceType: 'operation_lease',
+    failedOnly: false,
+  },
+  operationLeaseRenewFailures: {
+    title: 'Operation lease renewal failures',
+    action: 'operations.lease.renew_failed',
+    resourceType: 'operation_lease',
+    failedOnly: false,
+  },
 }
 
 export const buildOperationsMetricSamples = (sampleEventsByKey = {}) => Object.fromEntries(
@@ -296,6 +308,8 @@ export const buildOperationsMetrics = ({
   )
   const archiveWrites = windowAuditEvents.filter((event) => event.action === 'media.scan.history_archived')
   const historyPrunes = windowAuditEvents.filter((event) => event.action === 'media.scan.history_pruned')
+  const operationLeaseSkips = windowAuditEvents.filter((event) => event.action === 'operations.lease.skipped')
+  const operationLeaseRenewFailures = windowAuditEvents.filter((event) => event.action === 'operations.lease.renew_failed')
   const acknowledgements = securityDispositions.filter((event) => event.action === 'security.alert.acknowledged')
 
   return {
@@ -347,6 +361,20 @@ export const buildOperationsMetrics = ({
         latestAt: latestTimestamp(historyPrunes),
       },
       alertDeliveryFailures: deliveryFailureSummary(mediaAlertDispatchFailures),
+    },
+    operations: {
+      leases: {
+        skippedRuns: {
+          total: operationLeaseSkips.length,
+          byKey: countBy(operationLeaseSkips, (event) => event.resourceId),
+          latestAt: latestTimestamp(operationLeaseSkips),
+        },
+        renewFailures: {
+          total: operationLeaseRenewFailures.length,
+          byKey: countBy(operationLeaseRenewFailures, (event) => event.resourceId),
+          latestAt: latestTimestamp(operationLeaseRenewFailures),
+        },
+      },
     },
   }
 }

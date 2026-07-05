@@ -126,6 +126,155 @@ const createPrismaRepository = async (fallbackRepository) => {
     })
   }
 
+  const leaseExpiry = (ttlSeconds) => new Date(Date.now() + Math.max(1, Number(ttlSeconds ?? 300)) * 1000)
+
+  const getOperationLeaseDto = (lease) => lease ? {
+    key: lease.key,
+    ownerId: lease.ownerId,
+    token: lease.token,
+    metadata: asObject(lease.metadata) ?? null,
+    acquiredAt: lease.acquiredAt?.toISOString?.() ?? null,
+    renewedAt: lease.renewedAt?.toISOString?.() ?? null,
+    expiresAt: lease.expiresAt?.toISOString?.() ?? null,
+    releasedAt: lease.releasedAt?.toISOString?.() ?? null,
+  } : null
+
+  const recordOperationLeaseAudit = async (action, leaseKey, metadata = {}) => {
+    await recordAudit({
+      action,
+      resourceType: 'operation_lease',
+      resourceId: leaseKey,
+      metadata,
+    })
+  }
+
+  const operationLeases = {
+    acquire: async ({ key, ownerId, ttlSeconds = 300, metadata = null } = {}) => {
+      const leaseKey = String(key ?? '').trim()
+      if (!leaseKey) {
+        throw new Error('Operation lease key is required')
+      }
+      const holder = String(ownerId ?? '').trim() || `worker-${randomUUID()}`
+      const now = new Date()
+      const expiresAt = leaseExpiry(ttlSeconds)
+      const token = randomUUID()
+      const existing = await client.operationLease.findUnique({ where: { key: leaseKey } })
+      const recoveredExpired = Boolean(existing && !existing.releasedAt && existing.expiresAt <= now)
+      const leaseData = {
+        ownerId: holder,
+        token,
+        metadata,
+        acquiredAt: now,
+        renewedAt: now,
+        expiresAt,
+        releasedAt: null,
+      }
+      const updated = await client.operationLease.updateMany({
+        where: {
+          key: leaseKey,
+          OR: [
+            { expiresAt: { lte: now } },
+            { releasedAt: { not: null } },
+          ],
+        },
+        data: leaseData,
+      })
+      if (updated.count === 1) {
+        await recordOperationLeaseAudit(recoveredExpired ? 'operations.lease.recovered' : 'operations.lease.acquired', leaseKey, {
+          ownerId: holder,
+          ttlSeconds,
+          expiresAt: expiresAt.toISOString(),
+          recoveredExpired,
+        })
+        return {
+          acquired: true,
+          recoveredExpired,
+          ...getOperationLeaseDto({ key: leaseKey, ...leaseData }),
+        }
+      }
+      if (!existing) {
+        try {
+          await client.operationLease.create({
+            data: {
+              key: leaseKey,
+              ...leaseData,
+            },
+          })
+          await recordOperationLeaseAudit('operations.lease.acquired', leaseKey, {
+            ownerId: holder,
+            ttlSeconds,
+            expiresAt: expiresAt.toISOString(),
+            recoveredExpired: false,
+          })
+          return {
+            acquired: true,
+            recoveredExpired: false,
+            ...getOperationLeaseDto({ key: leaseKey, ...leaseData }),
+          }
+        } catch (error) {
+          if (error?.code !== 'P2002') {
+            throw error
+          }
+        }
+      }
+      const current = await client.operationLease.findUnique({ where: { key: leaseKey } })
+      await recordOperationLeaseAudit('operations.lease.skipped', leaseKey, {
+        ownerId: holder,
+        heldBy: current?.ownerId ?? null,
+        expiresAt: current?.expiresAt?.toISOString?.() ?? null,
+      })
+      return {
+        acquired: false,
+        reason: 'active_lease',
+        ownerId: current?.ownerId ?? null,
+        expiresAt: current?.expiresAt?.toISOString?.() ?? null,
+      }
+    },
+    renew: async ({ key, token, ttlSeconds = 300 } = {}) => {
+      const leaseKey = String(key ?? '').trim()
+      const now = new Date()
+      const expiresAt = leaseExpiry(ttlSeconds)
+      const result = await client.operationLease.updateMany({
+        where: {
+          key: leaseKey,
+          token: String(token ?? ''),
+          releasedAt: null,
+          expiresAt: { gt: now },
+        },
+        data: {
+          renewedAt: now,
+          expiresAt,
+        },
+      })
+      const renewed = result.count === 1
+      await recordOperationLeaseAudit(renewed ? 'operations.lease.renewed' : 'operations.lease.renew_failed', leaseKey, {
+        ttlSeconds,
+        expiresAt: expiresAt.toISOString(),
+      })
+      return { renewed, key: leaseKey, expiresAt: renewed ? expiresAt.toISOString() : null }
+    },
+    release: async ({ key, token } = {}) => {
+      const leaseKey = String(key ?? '').trim()
+      const now = new Date()
+      const result = await client.operationLease.updateMany({
+        where: {
+          key: leaseKey,
+          token: String(token ?? ''),
+          releasedAt: null,
+        },
+        data: {
+          releasedAt: now,
+          expiresAt: now,
+        },
+      })
+      const released = result.count === 1
+      await recordOperationLeaseAudit(released ? 'operations.lease.released' : 'operations.lease.release_failed', leaseKey, {
+        releasedAt: now.toISOString(),
+      })
+      return { released, key: leaseKey, releasedAt: released ? now.toISOString() : null }
+    },
+  }
+
   const securityEventRecord = (event) => {
     const occurredAt = new Date(event.occurredAt ?? Date.now())
     return {
@@ -4337,6 +4486,8 @@ const createPrismaRepository = async (fallbackRepository) => {
               'media.scan.alert.dispatch',
               'media.scan.history_archived',
               'media.scan.history_pruned',
+              'operations.lease.skipped',
+              'operations.lease.renew_failed',
             ],
           },
         },
@@ -4616,6 +4767,7 @@ const createPrismaRepository = async (fallbackRepository) => {
     library,
     audit,
     securityEvents,
+    operationLeases,
     operationsMetrics,
     authorization,
     adminReviews,

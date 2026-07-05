@@ -17,6 +17,8 @@ test('buildEnv allows development without managed token secrets', () => {
     mediaScanTimeoutSeconds: 900,
     mediaScanMaxAttempts: 3,
     apiEmbeddedWorkersEnabled: false,
+    workerLeaseTtlSeconds: 300,
+    workerLeaseRenewIntervalSeconds: 60,
     mediaScanWorkerEnabled: false,
     mediaScanWorkerIntervalSeconds: 60,
     taskStaleSubmissionWorkerEnabled: false,
@@ -82,6 +84,25 @@ test('buildEnv allows development without managed token secrets', () => {
     authFailureAccountIpThreshold: 5,
     securityEventMaxItems: 500,
   })
+})
+
+test('buildEnv validates worker lease settings', () => {
+  const env = buildEnv({
+    NODE_ENV: 'development',
+    WORKER_LEASE_TTL_SECONDS: '120',
+    WORKER_LEASE_RENEW_INTERVAL_SECONDS: '30',
+  })
+
+  assert.equal(env.workerLeaseTtlSeconds, 120)
+  assert.equal(env.workerLeaseRenewIntervalSeconds, 30)
+  assert.throws(
+    () => buildEnv({
+      NODE_ENV: 'development',
+      WORKER_LEASE_TTL_SECONDS: '60',
+      WORKER_LEASE_RENEW_INTERVAL_SECONDS: '60',
+    }),
+    /WORKER_LEASE_RENEW_INTERVAL_SECONDS must be less than WORKER_LEASE_TTL_SECONDS/,
+  )
 })
 
 test('buildEnv requires a sufficiently long token secret in production', () => {
@@ -415,6 +436,8 @@ test('buildEnv validates media scanner deployment settings', () => {
     MEDIA_SCAN_TIMEOUT_SECONDS: '120',
     MEDIA_SCAN_MAX_ATTEMPTS: '4',
     API_EMBEDDED_WORKERS_ENABLED: 'true',
+    WORKER_LEASE_TTL_SECONDS: '180',
+    WORKER_LEASE_RENEW_INTERVAL_SECONDS: '45',
     MEDIA_SCAN_WORKER_ENABLED: 'true',
     MEDIA_SCAN_WORKER_INTERVAL_SECONDS: '15',
     TASK_STALE_SUBMISSION_WORKER_ENABLED: 'true',
@@ -446,6 +469,8 @@ test('buildEnv validates media scanner deployment settings', () => {
   assert.equal(env.mediaScanTimeoutSeconds, 120)
   assert.equal(env.mediaScanMaxAttempts, 4)
   assert.equal(env.apiEmbeddedWorkersEnabled, true)
+  assert.equal(env.workerLeaseTtlSeconds, 180)
+  assert.equal(env.workerLeaseRenewIntervalSeconds, 45)
   assert.equal(env.mediaScanWorkerEnabled, true)
   assert.equal(env.mediaScanWorkerIntervalSeconds, 15)
   assert.equal(env.taskStaleSubmissionWorkerEnabled, true)
@@ -521,6 +546,8 @@ test('deployment smoke accepts production auth, storage, scanner, and notificati
     TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS: '300',
     TASK_STALE_SUBMISSION_OLDER_THAN_HOURS: '72',
     TASK_STALE_SUBMISSION_SWEEP_LIMIT: '25',
+    WORKER_LEASE_TTL_SECONDS: '300',
+    WORKER_LEASE_RENEW_INTERVAL_SECONDS: '60',
     AUTH_COOKIE_SAMESITE: 'None',
     AUTH_COOKIE_DOMAIN: '.example.com',
     AUTH_TRUSTED_ORIGINS: 'https://app.example.com, https://admin.example.com',
@@ -559,6 +586,8 @@ test('deployment smoke accepts production auth, storage, scanner, and notificati
   assert.equal(env.mediaScanAlertEmailRecipientCount, 2)
   assert.equal(env.hasMediaScanAlertEmailFrom, true)
   assert.equal(env.apiEmbeddedWorkersEnabled, false)
+  assert.equal(env.workerLeaseTtlSeconds, 300)
+  assert.equal(env.workerLeaseRenewIntervalSeconds, 60)
   assert.equal(env.mediaScanWorkerEnabled, true)
   assert.equal(env.mediaScanWorkerIntervalSeconds, 30)
   assert.equal(env.taskStaleSubmissionWorkerEnabled, true)

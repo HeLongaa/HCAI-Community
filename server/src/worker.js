@@ -5,6 +5,7 @@ import { repositories } from './repositories/index.js'
 
 const worker = startWorkerJobs(createProductionWorkerJobDefinitions(repositories, env), {
   logger: console,
+  leaseManager: repositories.operationLeases,
   unrefTimers: false,
 })
 
