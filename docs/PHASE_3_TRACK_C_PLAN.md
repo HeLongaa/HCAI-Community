@@ -1,6 +1,6 @@
 # Phase 3 Track C Plan
 
-This document defines the Phase 3 Track C planning baseline: **Creative Tool Productization**.
+This document defines the Phase 3 Track C planning baseline: **Creative Tool Productization**. The completed closeout handoff lives in `docs/PHASE_3_TRACK_C_CLOSEOUT.md`.
 
 Track A closed the task marketplace depth loop. Track B closed the production-operations baseline. Track C now focuses on replacing selected simulated creative outputs with provider-backed generation and persisted assets while keeping cost, quota, moderation, and review boundaries explicit.
 
@@ -33,14 +33,22 @@ The production foundation already available from earlier tracks:
 - Media scan governance with manual/mock/webhook scanner modes.
 - Admin operations and release quality gates.
 
-Current limitation:
+Original limitation before Track C implementation:
 
-- Creative outputs remain simulated or demo-content driven.
-- Generation state mostly lives in frontend UI state and mock data.
-- There is no unified generation request/response contract.
-- There is no provider registry or capability model.
-- Generated outputs are not yet consistently persisted as media assets.
-- Cost, quota, and moderation controls are not defined for provider-backed generation.
+- Creative outputs remained simulated or demo-content driven.
+- Generation state mostly lived in frontend UI state and mock data.
+- There was no unified generation request/response contract.
+- There was no provider registry or capability model.
+- Generated outputs were not yet consistently persisted as media assets.
+- Cost, quota, and moderation controls were not defined for provider-backed generation.
+
+Current closeout state:
+
+- Image Studio text-to-image uses `POST /api/creative/generations`.
+- The creative provider registry and mock provider adapter are implemented.
+- Generated outputs are persisted as media assets and reuse media scan/download governance.
+- Cost, quota, moderation, and review routing boundaries are implemented for the provider path.
+- Music, Video, Chat, Explore, and catalog surfaces still retain demo/mock content until follow-up phases.
 
 ## Scope
 
@@ -169,7 +177,7 @@ Validation:
 
 Goal: connect one user-facing workspace to the provider-backed API path.
 
-Implementation status: in progress on `codex/phase-3-track-c-image-studio-provider-integration`.
+Implementation status: completed in PR #15.
 
 Recommended first workspace: **Image Studio**.
 
@@ -211,7 +219,7 @@ Validation:
 
 Goal: prevent runaway provider spend and unsafe generated output.
 
-Implementation status: in progress on `codex/phase-3-track-c-cost-quota-moderation`.
+Implementation status: completed in PR #16.
 
 Recommended scope:
 
@@ -247,6 +255,8 @@ Validation:
 
 Goal: document usable provider-backed creative flows and remaining simulation boundaries.
 
+Implementation status: completed by `docs/PHASE_3_TRACK_C_CLOSEOUT.md`.
+
 Recommended scope:
 
 - Add a Track C closeout document.
@@ -254,6 +264,13 @@ Recommended scope:
 - Update Notion task statuses and next steps.
 - Document which workspaces are provider-backed, mock-provider backed, or still simulated.
 - Document required provider environment variables without exposing secrets.
+
+Current closeout slice:
+
+- Add `docs/PHASE_3_TRACK_C_CLOSEOUT.md`.
+- Update Phase 3 and README handoff links.
+- Record usable Image Studio flow, moderation block flow, policy review flow, and quota boundary.
+- Keep real provider, durable quota ledger, billing ledger, and broader workspace migration deferred.
 
 Exit criteria:
 
@@ -266,9 +283,9 @@ Validation:
 - `npm run check:quick`
 - `npm run check:deploy`
 
-## Recommended First Implementation Slice
+## Historical First Implementation Slice
 
-Start with **Creative Provider Abstraction**.
+Track C started with **Creative Provider Abstraction**, completed in PR #13.
 
 Reasoning:
 
@@ -277,7 +294,7 @@ Reasoning:
 - It lets tests cover request/response shape, capability metadata, and error mapping deterministically.
 - It gives the frontend a real API boundary while preserving mock/demo fallback.
 
-Suggested first PR scope:
+Completed first PR scope:
 
 1. Add provider registry and capability metadata.
 2. Add mock provider adapter.
@@ -286,13 +303,13 @@ Suggested first PR scope:
 5. Add backend tests.
 6. Update docs and Notion.
 
-Non-goals for first PR:
+Items that were intentionally deferred from the first PR and completed or reclassified later:
 
-- Real paid provider credentials.
-- Full generated asset persistence.
-- Full workspace UI integration.
-- Cost/quota/moderation enforcement beyond placeholder metadata.
-- Track C closeout.
+- Real paid provider credentials remain deferred beyond Track C.
+- Generated asset persistence was completed in PR #14.
+- First workspace UI integration was completed for Image Studio in PR #15.
+- Cost/quota/moderation boundaries were completed in PR #16.
+- Track C closeout is captured in `docs/PHASE_3_TRACK_C_CLOSEOUT.md`.
 
 ## Quality Gate
 

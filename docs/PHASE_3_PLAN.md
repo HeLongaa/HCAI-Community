@@ -14,20 +14,21 @@ Reasoning:
 
 ## Scope Decision
 
-Phase 3 is an umbrella plan with Tracks A, B, and C. Track A and Track B are now closed out in the repository. Track C is now the active planning track for replacing selected simulated creative outputs with provider-backed generation.
+Phase 3 is an umbrella plan with Tracks A, B, and C. Track A, Track B, and Track C are now closed out in the repository. Remaining work should be tracked as a new provider-readiness or real-provider integration phase rather than reopening the closed Track C baseline.
 
 Current closeout target:
 
 1. Keep Track A marketplace depth stable.
 2. Keep Track B production operations closed unless a deployment blocker is found.
-3. Complete Track C creative provider productization in scoped, reviewable slices.
-4. Keep each remaining Phase 3 PR green on `npm run check:deploy`.
+3. Keep Track C creative provider productization stable unless a production blocker is found.
+4. Move real provider, durable quota, or billing work into a new scoped follow-up phase.
 
 Track A closeout notes live in `docs/PHASE_3_TRACK_A_CLOSEOUT.md`.
 Track B planning notes live in `docs/PHASE_3_TRACK_B_PLAN.md`.
 Track B operations closeout notes live in `docs/PHASE_3_TRACK_B_OPERATIONS_CLOSEOUT.md`.
 Track B multi-instance deployment runbook lives in `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md`.
 Track C planning notes live in `docs/PHASE_3_TRACK_C_PLAN.md`.
+Track C creative tool closeout notes live in `docs/PHASE_3_TRACK_C_CLOSEOUT.md`.
 
 ## Phase 3 Tracks
 
@@ -90,7 +91,7 @@ Deferred operations follow-ups:
 
 Goal: replace remaining simulated creative outputs with provider-backed generation and persisted assets.
 
-Status: active planning track. The first recommended implementation slice is a provider abstraction and mock provider boundary, not a direct paid-provider integration.
+Status: closed out for repository, fixture CI, and PR-ready handoff. The completed baseline provides a provider abstraction, mock provider boundary, generated asset persistence, Image Studio integration, and cost/quota/moderation gates. Real paid-provider integration remains deferred.
 
 Candidate scope:
 
@@ -105,34 +106,21 @@ Exit criteria:
 - At least one creative workspace produces a real stored output through a provider adapter.
 - Runtime data-source labels clearly distinguish provider-backed outputs from demo/catalog content.
 
-Recommended implementation order:
+Completed implementation order:
 
 1. Planning and task inventory.
-2. Creative provider abstraction.
-3. Generated asset persistence.
-4. First workspace provider integration, with Image Studio recommended first.
-5. Cost, quota, and moderation boundaries.
-6. Track C closeout.
+2. Creative provider abstraction. Completed in PR #13.
+3. Generated asset persistence. Completed in PR #14.
+4. First workspace provider integration, with Image Studio as the first workspace. Completed in PR #15.
+5. Cost, quota, and moderation boundaries. Completed in PR #16.
+6. Track C closeout. Captured in `docs/PHASE_3_TRACK_C_CLOSEOUT.md`.
 
-## Recommended First Slice
-
-Implement the Track C provider abstraction and mock provider boundary.
-
-Suggested scope:
-
-1. Add provider registry and capability metadata.
-2. Add generation request/response contracts.
-3. Add mock provider adapter.
-4. Add safe provider config projection.
-5. Add backend tests.
-6. Keep generated asset persistence and real provider credentials for later slices.
-
-Non-goals:
+Deferred work:
 
 - Direct paid-provider integration.
-- Full generated asset persistence.
-- Cost/quota/moderation enforcement beyond placeholder metadata.
-- New visual redesign.
+- Durable cross-instance quota and billing ledger.
+- Full Music, Video, Chat, Explore, and catalog migration away from demo surfaces.
+- Provider-specific async job lifecycle and incident runbooks.
 
 ## Quality Gate
 
