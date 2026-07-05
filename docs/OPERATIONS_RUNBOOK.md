@@ -22,6 +22,37 @@ The smoke profile verifies managed auth secrets, S3 storage, webhook media scann
 
 For multi-instance deployments, configure `RATE_LIMIT_STORE=redis` with `RATE_LIMIT_REDIS_URL`. Use `RATE_LIMIT_REDIS_FAILURE_MODE=fail_closed` when the app owns the primary abuse boundary; use `fail_open` only when an external gateway or WAF is enforcing equivalent limits. Redis store failures emit `rate_limit.store_unavailable` security events with warning severity for fail-open and critical severity for fail-closed.
 
+## API And Worker Processes
+
+Run the HTTP API and recurring background work as separate process types in multi-instance deployments.
+
+API process:
+
+```bash
+npm --prefix server run start
+```
+
+Worker process:
+
+```bash
+npm --prefix server run worker
+```
+
+Recommended production settings:
+
+- `API_EMBEDDED_WORKERS_ENABLED=false` on API instances.
+- `MEDIA_SCAN_WORKER_ENABLED=true` on worker instances when scanner timeout sweeps should run automatically.
+- `TASK_STALE_SUBMISSION_WORKER_ENABLED=true` on worker instances when overdue task-review submissions should be marked stale automatically.
+- Keep manual sweep endpoints available for operator-triggered recovery and one-off maintenance.
+
+Operational notes:
+
+1. Scale API instances for request traffic.
+2. Scale worker instances conservatively until distributed job leases are implemented.
+3. Keep worker intervals long enough to avoid overlapping runs; each process also skips a job if the previous local run is still active.
+4. If multiple workers are deployed before distributed leases are implemented, keep only one instance with mutating sweep jobs enabled.
+5. Review `rate_limit.store_unavailable`, `media.scan.timeout`, and `task.submission.stale` audit/security events during worker incident triage.
+
 Use `docs/GITHUB_ENVIRONMENT.md` when configuring the GitHub Environment variables and secrets for real deployment smoke.
 Use `docs/RELEASE_CHECKLIST.md` for release execution, post-release verification, and rollback criteria.
 

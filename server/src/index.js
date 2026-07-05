@@ -32,7 +32,7 @@ const main = async () => {
   })
 
   startMediaScanWorker(repositories, {
-    enabled: env.mediaScanWorkerEnabled,
+    enabled: env.apiEmbeddedWorkersEnabled && env.mediaScanWorkerEnabled,
     intervalSeconds: env.mediaScanWorkerIntervalSeconds,
   })
 }

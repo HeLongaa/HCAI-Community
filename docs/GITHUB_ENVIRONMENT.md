@@ -117,6 +117,13 @@ These have code defaults, but setting them explicitly makes production behavior 
 | `AUTH_FAILURE_IP_ACCOUNT_THRESHOLD` | deployment-specific |
 | `AUTH_FAILURE_ACCOUNT_IP_THRESHOLD` | deployment-specific |
 | `SECURITY_EVENT_MAX_ITEMS` | `1000` or higher for active operations teams |
+| `API_EMBEDDED_WORKERS_ENABLED` | `false` for multi-instance API deployments |
+| `MEDIA_SCAN_WORKER_ENABLED` | `true` for the worker process |
+| `MEDIA_SCAN_WORKER_INTERVAL_SECONDS` | `30` or deployment-specific |
+| `TASK_STALE_SUBMISSION_WORKER_ENABLED` | `true` when stale task review sweeps should run automatically |
+| `TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS` | `300` or deployment-specific |
+| `TASK_STALE_SUBMISSION_OLDER_THAN_HOURS` | Review SLA threshold, e.g. `72` |
+| `TASK_STALE_SUBMISSION_SWEEP_LIMIT` | Per-run cap, e.g. `25` |
 
 Rate-limit shared store secret:
 

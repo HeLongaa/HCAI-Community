@@ -50,6 +50,15 @@ This is enough for local review, fixture CI, and single-instance staging. It is 
 
 ## Proposed Implementation Order
 
+Current implementation status:
+
+1. Planning and task inventory: completed in `codex/phase-3-track-b-planning`.
+2. Shared rate-limit store: completed and merged through PR #5.
+3. Worker process topology: implemented in `codex/phase-3-track-b-worker-topology`.
+4. Distributed job leases: pending.
+5. External metrics export: pending.
+6. Multi-instance runbook and smoke updates: partially updated with each operations slice; final staging rehearsal remains pending.
+
 ### 0. Planning And Task Inventory
 
 Create the Track B plan, confirm scope, and write the task list into Notion before implementation begins.
