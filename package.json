@@ -15,7 +15,7 @@
     "smoke:production": "node scripts/smoke-production.mjs --profile=fixture",
     "smoke:production:env": "node scripts/smoke-production.mjs --profile=env",
     "check:quick": "npm run lint && npm run test:sim",
-    "check:pr": "npm run check:quick && npm run build && npm --prefix server test && (cd server && npx prisma validate --schema ./prisma/schema.prisma) && npm run test:e2e",
+    "check:pr": "npm run check:quick && npm run build && npm --prefix server run db:generate && npm --prefix server test && (cd server && npx prisma validate --schema ./prisma/schema.prisma) && npm run test:e2e",
     "check:deploy": "npm run check:pr && npm run smoke:production",
     "check:deploy:env": "npm run check:pr && npm run smoke:production:env",
     "test:e2e": "playwright test"
