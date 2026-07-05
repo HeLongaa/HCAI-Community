@@ -1,6 +1,7 @@
 # Release Checklist
 
 This checklist covers the current API, auth, permissions, media operations, worker, shared-state, and deployment smoke surface.
+Use `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` as the topology-level companion when releasing a multi-instance environment.
 
 ## Pre-Release
 
@@ -19,6 +20,7 @@ npm run check:deploy:env
 Confirm:
 
 - GitHub Actions `Quality Gates` workflow is passing for the target commit.
+- The multi-instance deployment profile in `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` has been reviewed for the target environment.
 - `docs/GITHUB_ENVIRONMENT.md` required secrets and variables are configured for the selected GitHub Environment.
 - `ACCESS_TOKEN_KEY_ID` matches the active signing secret rotation plan.
 - `ACCESS_TOKEN_PREVIOUS_SECRETS` and `ACCESS_TOKEN_PREVIOUS_KEY_IDS` are set when rotating keys.
@@ -74,6 +76,7 @@ Worker checks:
 - Confirm worker logs show enabled jobs.
 - Confirm at least one operation lease can be acquired and released during a worker run.
 - Confirm `operations.leases.skippedRuns` is low or explainable when multiple workers are running.
+- Confirm the staging rehearsal from `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` has been completed before the first multi-instance production rollout.
 
 ## Post-Release Operations
 

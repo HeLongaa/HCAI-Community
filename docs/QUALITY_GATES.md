@@ -67,6 +67,7 @@ Includes:
 The environment profile does not print secrets. It reports booleans, counts, provider modes, and safe operational metadata only.
 
 Use `docs/RELEASE_CHECKLIST.md` after the deployment gate passes to run the release execution, post-release operations, alert verification, and rollback checks.
+Use `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` before scaling beyond one API or worker process so the deployment profile, smoke checks, metrics scrape, and rollback boundary are reviewed together.
 
 ## GitHub Actions
 
@@ -90,6 +91,8 @@ For the real environment smoke, configure GitHub Environment variables and secre
 - OAuth providers: `OAUTH_GOOGLE_*`, `OAUTH_DISCORD_*`, and/or `OAUTH_APPLE_*`.
 
 Use GitHub Secrets for credentials, shared secrets, tokens, webhook secrets, Slack webhook URLs, and private keys. Use GitHub Variables for non-secret URLs, ids, domains, counts, feature flags, and recipient lists unless your deployment policy treats them as sensitive.
+
+Multi-instance readiness is not just a passing fixture gate. Before a real rollout, rehearse two API instances with a shared Redis store, two worker instances with durable leases, and an external `/metrics` scrape as described in `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md`.
 
 ## Failure Handling
 
