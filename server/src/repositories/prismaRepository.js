@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { PrismaClient } from '@prisma/client'
+import prismaClientPkg from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 import { getPermissionsForRole, hasPermission } from '../auth/permissions.js'
@@ -44,6 +44,8 @@ import {
   scanMediaAsset,
 } from '../media/scanProvider.js'
 import { dispatchMediaScanAlert } from '../media/alertDispatcher.js'
+
+const { PrismaClient } = prismaClientPkg
 import { writeJsonArchive } from '../storage/archiveWriter.js'
 import {
   applySecurityAlertDispositions,
