@@ -570,10 +570,38 @@ export type ApiCreativeGeneration = {
     estimatedCredits: number
     providerCostCents: number
     metered: boolean
+    costModel?: string
+    currency?: string
+  }
+  quota?: {
+    policyVersion: string
+    scope: string
+    workspace: CreativeWorkspace
+    limit: number
+    used: number
+    remaining: number
+    window: {
+      id: string
+      resetsAt: string
+    }
   }
   safety: {
     moderationRequired: boolean
     reviewRequired: boolean
+    reasons?: Array<{
+      id: string
+      label: string
+    }>
+    policyVersion?: string
+  }
+  policy?: {
+    version: string
+    enforcedAt: string
+    gates: {
+      quota: boolean
+      moderation: boolean
+      review: boolean
+    }
   }
   createdAt: string
 }

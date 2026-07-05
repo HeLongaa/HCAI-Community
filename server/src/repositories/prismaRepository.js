@@ -3613,17 +3613,19 @@ const createPrismaRepository = async (fallbackRepository) => {
       })
       const scanResult = await scanMediaAsset(asset)
       const scanJob = await createMediaScanJob(asset, scanResult)
+      const policyReviewRequired = Boolean(payload.generation.safety?.reviewRequired)
+      const effectiveScanStatus = policyReviewRequired ? 'review' : scanResult?.status ?? 'pending'
       const updated = await client.mediaAsset.update({
         where: { id: asset.id },
         data: {
-          status: scanResult?.status === 'rejected' ? 'rejected' : 'uploaded',
+          status: effectiveScanStatus === 'rejected' ? 'rejected' : 'uploaded',
           metadata: compactObject({
             ...mediaSecurityMetadata(asset, {
               declaredContentType: asset.contentType,
               detectedContentType: asset.contentType,
               scanProvider: scanResult?.provider ?? 'manual',
-              scanStatus: scanResult?.status ?? 'pending',
-              scanNote: scanResult?.note,
+              scanStatus: effectiveScanStatus,
+              scanNote: policyReviewRequired ? 'Creative policy requires manual review.' : scanResult?.note,
               scanRequestedAt: scanResult?.requestedAt,
               externalScanId: scanResult?.externalScanId,
               scanJobStatus: scanResult?.scanJobStatus,
@@ -3636,6 +3638,8 @@ const createPrismaRepository = async (fallbackRepository) => {
               scanDispatchError: scanResult?.dispatchError,
               scanDispatchRequestedAt: scanResult?.dispatchRequestedAt,
               rejectionReason: scanResult?.reason ?? undefined,
+              creativeReviewRequired: policyReviewRequired,
+              creativeReviewReasons: payload.generation.safety?.reasons ?? [],
               completedAt: new Date().toISOString(),
             }),
           }),
@@ -3653,8 +3657,45 @@ const createPrismaRepository = async (fallbackRepository) => {
           workspace: payload.generation.workspace,
           providerId: payload.generation.provider.id,
           scanStatus: asObject(asObject(updatedWithJob.metadata)?.security)?.scanStatus,
+          creativeReviewRequired: policyReviewRequired,
         },
       })
+      if (policyReviewRequired) {
+        await recordAudit({
+          actor,
+          action: 'creative.generation.review_required',
+          resourceType: 'media_asset',
+          resourceId: updated.id,
+          metadata: {
+            generationId: payload.generation.id,
+            outputId: payload.output.id,
+            workspace: payload.generation.workspace,
+            providerId: payload.generation.provider.id,
+            reasons: payload.generation.safety?.reasons ?? [],
+          },
+        })
+        await notifyMediaQueueReaders(client, actor, {
+          type: 'creative.generation.review_required',
+          title: `Creative generation review: ${payload.generation.workspace}`,
+          body: `${actor.handle} generated an output that requires policy review.`,
+          resourceType: 'media_asset',
+          resourceId: updated.id,
+          metadata: {
+            generationId: payload.generation.id,
+            workspace: payload.generation.workspace,
+            providerId: payload.generation.provider.id,
+            reasons: payload.generation.safety?.reasons ?? [],
+            target: {
+              page: 'admin',
+              admin: {
+                tab: 'Review and moderation',
+                queue: 'media',
+                mediaAssetId: updated.id,
+              },
+            },
+          },
+        })
+      }
       return getMediaAssetDto(updatedWithJob)
     },
     listReviewQueue: async (options = {}) => {

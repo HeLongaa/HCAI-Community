@@ -609,7 +609,14 @@ function StudioPage({
             {generatedOutput && (
               <div className="provider-meta-row">
                 <span>{providerGeneration.state.result?.provider.label}</span>
+                <span>{textFor(t, `${providerGeneration.state.result?.usage.estimatedCredits ?? 0} credits`, `${providerGeneration.state.result?.usage.estimatedCredits ?? 0} 点额度`)}</span>
+                {providerGeneration.state.result?.quota && (
+                  <span>{textFor(t, `${providerGeneration.state.result.quota.remaining} quota left`, `剩余额度 ${providerGeneration.state.result.quota.remaining}`)}</span>
+                )}
                 <span>{generatedOutput.contentType}</span>
+                {providerGeneration.state.result?.safety.reviewRequired && (
+                  <span>{textFor(t, 'Policy review', '策略复核')}</span>
+                )}
                 <span>{scanStatus === 'clean' ? textFor(t, 'Download ready', '可下载') : textFor(t, 'Download gated', '下载受限')}</span>
               </div>
             )}

@@ -2480,15 +2480,17 @@ export const createSeedRepository = () => ({
         updatedAt: now,
       }
       const scanResult = await scanMediaAsset(asset)
+      const policyReviewRequired = Boolean(payload.generation.safety?.reviewRequired)
+      const effectiveScanStatus = policyReviewRequired ? 'review' : scanResult?.status ?? 'pending'
       const updated = {
         ...asset,
-        status: scanResult?.status === 'rejected' ? 'rejected' : 'uploaded',
+        status: effectiveScanStatus === 'rejected' ? 'rejected' : 'uploaded',
         metadata: mediaSecurityMetadata(asset, {
           declaredContentType: asset.contentType,
           detectedContentType: asset.contentType,
           scanProvider: scanResult?.provider ?? 'manual',
-          scanStatus: scanResult?.status ?? 'pending',
-          scanNote: scanResult?.note,
+          scanStatus: effectiveScanStatus,
+          scanNote: policyReviewRequired ? 'Creative policy requires manual review.' : scanResult?.note,
           scanRequestedAt: scanResult?.requestedAt,
           externalScanId: scanResult?.externalScanId,
           scanJobStatus: scanResult?.scanJobStatus,
@@ -2501,6 +2503,8 @@ export const createSeedRepository = () => ({
           scanDispatchError: scanResult?.dispatchError,
           scanDispatchRequestedAt: scanResult?.dispatchRequestedAt,
           rejectionReason: scanResult?.reason ?? undefined,
+          creativeReviewRequired: policyReviewRequired,
+          creativeReviewReasons: payload.generation.safety?.reasons ?? [],
           completedAt: new Date().toISOString(),
         }),
         updatedAt: new Date().toISOString(),
@@ -2512,7 +2516,38 @@ export const createSeedRepository = () => ({
         workspace: payload.generation.workspace,
         providerId: payload.generation.provider.id,
         scanStatus: updated.metadata?.security?.scanStatus,
+        creativeReviewRequired: policyReviewRequired,
       })
+      if (policyReviewRequired) {
+        recordAudit(actor, 'creative.generation.review_required', 'media_asset', updated.id, {
+          generationId: payload.generation.id,
+          outputId: payload.output.id,
+          workspace: payload.generation.workspace,
+          providerId: payload.generation.provider.id,
+          reasons: payload.generation.safety?.reasons ?? [],
+        })
+        notifyMediaQueueReaders(actor, {
+          type: 'creative.generation.review_required',
+          title: `Creative generation review: ${payload.generation.workspace}`,
+          body: `${actor.handle} generated an output that requires policy review.`,
+          resourceType: 'media_asset',
+          resourceId: updated.id,
+          metadata: {
+            generationId: payload.generation.id,
+            workspace: payload.generation.workspace,
+            providerId: payload.generation.provider.id,
+            reasons: payload.generation.safety?.reasons ?? [],
+            target: {
+              page: 'admin',
+              admin: {
+                tab: 'Review and moderation',
+                queue: 'media',
+                mediaAssetId: updated.id,
+              },
+            },
+          },
+        })
+      }
       return serializeMediaAsset(updated)
     },
     listReviewQueue: (options = {}) => {
