@@ -20,7 +20,7 @@ import type {
 } from '../../domain/types'
 import type { TaskChildCollection } from '../../hooks/useTaskWorkflows'
 import type { OAuthLoginResult } from '../../hooks/useAccountState'
-import type { ApiAcceptanceChecklistItem, ApiNotification, ApiPointsSummary, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, NotificationListQuery, OAuthProvider } from '../../services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiNotification, ApiPointsSummary, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, NotificationListQuery, OAuthProvider } from '../../services/contracts'
 
 export type AppCopyViewModel = {
   t: Record<string, string>
@@ -123,6 +123,12 @@ export type WorkspaceViewModel = {
   setPrompt: Dispatch<SetStateAction<string>>
   generationState: 'idle' | 'loading' | 'done'
   runGenerate: () => void
+  imageGeneration: {
+    status: 'idle' | 'loading' | 'done' | 'error'
+    result: ApiCreativeGeneration | null
+    error: string | null
+  }
+  runImageGeneration: (input: { prompt: string; option: string; controls: string[] }) => Promise<void>
   playgroundWorkspace: PlaygroundMode
   setPlaygroundWorkspace: Dispatch<SetStateAction<PlaygroundMode>>
 }

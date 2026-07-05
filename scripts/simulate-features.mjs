@@ -318,6 +318,19 @@ addCheck(
 )
 
 addCheck(
+  'creation tools',
+  'Image Studio uses provider-backed creative generation path',
+  includesAll(app, [
+    'creativeService.createGeneration',
+    "workspace: 'image'",
+    "mode: 'text_to_image'",
+    'storage.mediaAssetId',
+    'Download is gated until media scan is clean.',
+  ]),
+  'typed creative service, Image Studio provider request, persisted media asset and scan-gated download state',
+)
+
+addCheck(
   'points',
   'points ledger and reward redemption are represented',
   includesAll(app, ['Points history', 'Balance', 'Pending', 'Rank', 'Redeem', 'pointsLedger']),

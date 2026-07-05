@@ -27,7 +27,9 @@ import { useThemeState } from './hooks/useThemeState'
 import { copy } from './i18n/copy'
 import { notificationService } from './services/notificationService'
 import { profileService } from './services/profileService'
-import type { ApiAcceptanceChecklistItem, ApiNotification, NotificationListQuery } from './services/contracts'
+import { creativeService } from './services/creativeService'
+import { isApiClientError } from './services/apiClient'
+import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiNotification, NotificationListQuery } from './services/contracts'
 
 function App() {
   const [locale, setLocale] = useState<Locale>('en')
@@ -66,6 +68,15 @@ function App() {
   } = useAccountState()
   const [prompt, setPrompt] = useState('Lo-fi instrumental song for late-night coding')
   const [generationState, setGenerationState] = useState<'idle' | 'loading' | 'done'>('idle')
+  const [imageGeneration, setImageGeneration] = useState<{
+    status: 'idle' | 'loading' | 'done' | 'error'
+    result: ApiCreativeGeneration | null
+    error: string | null
+  }>({
+    status: 'idle',
+    result: null,
+    error: null,
+  })
   const accountProfile = userProfile ?? findProfile('taskops') ?? marketplaceProfiles[0]
   const [profileList, setProfileList] = useState<MarketplaceProfile[]>(marketplaceProfiles)
   const [selectedProfile, setSelectedProfile] = useState<MarketplaceProfile>(() => accountProfile)
@@ -135,6 +146,51 @@ function App() {
   const runGenerate = () => {
     setGenerationState('loading')
     window.setTimeout(() => setGenerationState('done'), 900)
+  }
+
+  const runImageGeneration = async ({ prompt: imagePrompt, option, controls }: { prompt: string; option: string; controls: string[] }) => {
+    const trimmedPrompt = imagePrompt.trim()
+    if (!trimmedPrompt) {
+      pushToast(locale === 'zh' ? '请先填写图片提示词。' : 'Add an image prompt first.')
+      return
+    }
+    if (accountSource === 'fallback') {
+      requireAuth()
+      pushToast(locale === 'zh' ? '请先登录后再使用 API 生成图片。' : 'Sign in before using API-backed image generation.')
+      return
+    }
+    const aspectRatio = controls.find((control) => ['1:1', '16:9', '4:5', '9:16'].includes(control)) ?? '1:1'
+    setGenerationState('loading')
+    setImageGeneration({ status: 'loading', result: null, error: null })
+    try {
+      const result = await creativeService.createGeneration({
+        workspace: 'image',
+        mode: 'text_to_image',
+        prompt: trimmedPrompt,
+        parameters: {
+          aspectRatio,
+          stylePreset: option,
+          controls,
+        },
+      })
+      setGenerationState('done')
+      setImageGeneration({ status: 'done', result, error: null })
+      const output = result.outputs[0]
+      pushToast(locale === 'zh'
+        ? `图片生成完成：${output?.storage.mediaAssetId ?? result.id}`
+        : `Image generation complete: ${output?.storage.mediaAssetId ?? result.id}`)
+    } catch (error) {
+      console.info('[creative-service]', error)
+      const message = isApiClientError(error) && error.code === 'AUTH_REQUIRED'
+        ? (locale === 'zh' ? '请先登录后再使用 API 生成图片。' : 'Sign in before using API-backed image generation.')
+        : (error instanceof Error ? error.message : (locale === 'zh' ? '图片生成失败。' : 'Image generation failed.'))
+      if (isApiClientError(error) && error.code === 'AUTH_REQUIRED') {
+        requireAuth()
+      }
+      setGenerationState('idle')
+      setImageGeneration({ status: 'error', result: null, error: message })
+      pushToast(message)
+    }
   }
 
   const requireAuth = () => setLoginOpen(true)
@@ -487,7 +543,7 @@ function App() {
       <PageRenderer
         t={t}
         navigation={{ page, navigateToPage }}
-        workspace={{ prompt, setPrompt, generationState, runGenerate, playgroundWorkspace, setPlaygroundWorkspace }}
+        workspace={{ prompt, setPrompt, generationState, runGenerate, imageGeneration, runImageGeneration, playgroundWorkspace, setPlaygroundWorkspace }}
         player={{ playTrack }}
         feedback={{ requireAuth, simulateAction }}
         tasks={{

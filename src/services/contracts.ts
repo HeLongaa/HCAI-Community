@@ -513,6 +513,71 @@ export type MediaDownloadContract = {
   }
 }
 
+export type CreativeWorkspace = 'image' | 'video' | 'music' | 'chat'
+
+export type CreateCreativeGenerationRequest = {
+  workspace: CreativeWorkspace
+  mode: string
+  prompt: string
+  inputAssetIds?: string[]
+  parameters?: Record<string, string | number | boolean | Array<string | number | boolean> | null>
+  providerId?: string | null
+}
+
+export type ApiCreativeProvider = {
+  id: string
+  label: string
+  mode: string
+}
+
+export type ApiCreativeGenerationOutput = {
+  id: string
+  type: 'image' | 'video' | 'audio' | 'text' | string
+  label: string
+  contentType: string
+  url: string
+  storage: {
+    persisted: boolean
+    provider: string
+    mediaAssetId?: string
+    scanStatus?: string
+    downloadPath?: string
+  }
+  source: {
+    kind: string
+    persistedMediaAssetId: string | null
+  }
+  mediaAsset?: {
+    id: string
+    status: string
+    purpose: MediaAssetPurpose | string
+    contentType: string
+    scanStatus: string
+  }
+}
+
+export type ApiCreativeGeneration = {
+  id: string
+  workspace: CreativeWorkspace
+  mode: string
+  status: 'completed' | string
+  provider: ApiCreativeProvider
+  prompt: string
+  inputAssetIds: string[]
+  parameters: Record<string, unknown>
+  outputs: ApiCreativeGenerationOutput[]
+  usage: {
+    estimatedCredits: number
+    providerCostCents: number
+    metered: boolean
+  }
+  safety: {
+    moderationRequired: boolean
+    reviewRequired: boolean
+  }
+  createdAt: string
+}
+
 export type ApiPost = {
   id: string
   title: string

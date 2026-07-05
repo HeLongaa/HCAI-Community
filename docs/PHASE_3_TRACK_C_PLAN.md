@@ -134,7 +134,7 @@ Validation:
 
 Goal: make generated outputs durable, inspectable, downloadable, and governable.
 
-Implementation status: in progress on `codex/phase-3-track-c-generated-asset-persistence`.
+Implementation status: completed in PR #14.
 
 Recommended scope:
 
@@ -169,6 +169,8 @@ Validation:
 
 Goal: connect one user-facing workspace to the provider-backed API path.
 
+Implementation status: in progress on `codex/phase-3-track-c-image-studio-provider-integration`.
+
 Recommended first workspace: **Image Studio**.
 
 Reasoning:
@@ -184,6 +186,13 @@ Recommended scope:
 - Keep demo/mock fallback visible and labeled.
 - Show loading, success, error, and generated-asset states.
 - Let result actions operate on generated asset metadata where available.
+
+Current implementation slice:
+
+- Add a typed `creativeService.createGeneration` client for `POST /api/creative/generations`.
+- Wire Image Studio generation to the provider-backed API path for `workspace=image` and `mode=text_to_image`.
+- Show provider/mock label, generated media asset id, scan status, and download-gated state in Image Studio.
+- Keep Music, Video, and Chat workspaces on their existing simulated surfaces until later slices.
 
 Exit criteria:
 
