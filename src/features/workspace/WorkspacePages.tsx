@@ -24,6 +24,13 @@ import type { Page, PlaygroundMode, SimulateAction, Track, Work } from '../../do
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { tracks, visualWorks } from '../../data/mockData'
 import { isZhCopy, textFor } from '../../domain/utils'
+import type { ApiCreativeGeneration } from '../../services/contracts'
+
+type ImageGenerationState = {
+  status: 'idle' | 'loading' | 'done' | 'error'
+  result: ApiCreativeGeneration | null
+  error: string | null
+}
 
 export function PlaygroundPage({
   t,
@@ -31,6 +38,8 @@ export function PlaygroundPage({
   setPrompt,
   generationState,
   runGenerate,
+  imageGeneration,
+  runImageGeneration,
   playTrack,
   requireAuth,
   simulateAction,
@@ -43,6 +52,8 @@ export function PlaygroundPage({
   setPrompt: (value: string) => void
   generationState: 'idle' | 'loading' | 'done'
   runGenerate: () => void
+  imageGeneration: ImageGenerationState
+  runImageGeneration: (input: { prompt: string; option: string; controls: string[] }) => Promise<void>
   playTrack: (track: Track) => void
   requireAuth: () => void
   simulateAction: SimulateAction
@@ -232,6 +243,10 @@ export function PlaygroundPage({
           results={visualWorks.filter((item) => item.type === 'Image')}
           requireAuth={requireAuth}
           simulateAction={simulateAction}
+          providerGeneration={{
+            state: imageGeneration,
+            onGenerate: runImageGeneration,
+          }}
         />
       )}
 
@@ -454,6 +469,7 @@ function StudioPage({
   simulateAction,
   extraAction,
   extraActionLabel,
+  providerGeneration,
 }: {
   t: Record<string, string>
   eyebrow: string
@@ -469,11 +485,16 @@ function StudioPage({
   simulateAction: SimulateAction
   extraAction?: () => void
   extraActionLabel?: string
+  providerGeneration?: {
+    state: ImageGenerationState
+    onGenerate: (input: { prompt: string; option: string; controls: string[] }) => Promise<void>
+  }
 }) {
   const isZh = isZhCopy(t)
   const [activeOption, setActiveOption] = useState(options[0])
   const [activeControls, setActiveControls] = useState<string[]>([controls[0]])
   const [renderState, setRenderState] = useState<'idle' | 'loading' | 'done'>('idle')
+  const [draftPrompt, setDraftPrompt] = useState(prompt)
 
   const toggleControl = (control: string) => {
     setActiveControls((current) =>
@@ -483,6 +504,14 @@ function StudioPage({
   }
 
   const runStudioGenerate = () => {
+    if (providerGeneration) {
+      void providerGeneration.onGenerate({
+        prompt: draftPrompt,
+        option: activeOption,
+        controls: activeControls,
+      })
+      return
+    }
     setRenderState('loading')
     simulateAction(isZh ? `已开始模拟生成：${activeOption}` : `Generation started: ${activeOption}`)
     window.setTimeout(() => {
@@ -490,6 +519,15 @@ function StudioPage({
       simulateAction(isZh ? `生成完成：${activeOption} 已加入结果区` : `Generated: ${activeOption} added to results`)
     }, 800)
   }
+
+  const activeState = providerGeneration?.state.status === 'loading'
+    ? 'loading'
+    : providerGeneration?.state.status === 'done'
+      ? 'done'
+      : renderState
+  const generatedOutput = providerGeneration?.state.result?.outputs[0] ?? null
+  const mediaAsset = generatedOutput?.mediaAsset
+  const scanStatus = generatedOutput?.storage.scanStatus ?? mediaAsset?.scanStatus ?? null
 
   return (
     <div className="stack">
@@ -502,7 +540,7 @@ function StudioPage({
         </div>
       </section>
       <section className="composer">
-        <textarea defaultValue={prompt} />
+        <textarea value={draftPrompt} onChange={(event) => setDraftPrompt(event.target.value)} />
         <div className="chip-row">
           {options.map((option) => (
             <button
@@ -534,7 +572,7 @@ function StudioPage({
         <div className="button-row">
           <button className="primary-button" type="button" onClick={runStudioGenerate}>
             <Sparkles size={17} />
-            {renderState === 'loading' ? t.generating : renderState === 'done' ? t.generated : primaryAction}
+            {activeState === 'loading' ? t.generating : activeState === 'done' ? t.generated : primaryAction}
           </button>
           {extraAction && (
             <button className="ghost-button" type="button" onClick={extraAction}>
@@ -543,9 +581,73 @@ function StudioPage({
             </button>
           )}
         </div>
+        {providerGeneration && (
+          <div className="provider-status-panel">
+            <div>
+              <span className={`status-dot ${providerGeneration.state.status === 'loading' ? 'loading' : providerGeneration.state.status === 'done' ? 'done' : ''}`} />
+              <strong>
+                {providerGeneration.state.status === 'loading'
+                  ? textFor(t, 'Provider generation running', '正在通过提供方生成')
+                  : providerGeneration.state.status === 'done'
+                    ? textFor(t, 'Mock provider result persisted', 'Mock 提供方结果已持久化')
+                    : providerGeneration.state.status === 'error'
+                      ? textFor(t, 'Provider generation failed', '提供方生成失败')
+                      : textFor(t, 'Provider-backed path ready', '提供方路径就绪')}
+              </strong>
+            </div>
+            <p>
+              {providerGeneration.state.error
+                ? providerGeneration.state.error
+                : generatedOutput
+                  ? textFor(
+                    t,
+                    `Asset ${generatedOutput.storage.mediaAssetId ?? 'pending'} · scan ${scanStatus ?? 'pending'} · ${providerGeneration.state.result?.provider.mode ?? generatedOutput.storage.provider}`,
+                    `资产 ${generatedOutput.storage.mediaAssetId ?? '待生成'} · 扫描 ${scanStatus ?? 'pending'} · ${generatedOutput.storage.provider}`,
+                  )
+                  : textFor(t, 'Image Studio will call /api/creative/generations and keep downloads gated by media scan state.', '图片工作台会调用 /api/creative/generations，下载仍受媒体扫描状态约束。')}
+            </p>
+            {generatedOutput && (
+              <div className="provider-meta-row">
+                <span>{providerGeneration.state.result?.provider.label}</span>
+                <span>{generatedOutput.contentType}</span>
+                <span>{scanStatus === 'clean' ? textFor(t, 'Download ready', '可下载') : textFor(t, 'Download gated', '下载受限')}</span>
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="visual-grid">
+        {generatedOutput && (
+          <article className="visual-card generated-result-card">
+            <div className="generated-preview">
+              <Sparkles size={26} />
+              <span>{generatedOutput.mediaAsset?.scanStatus ?? generatedOutput.storage.scanStatus ?? 'pending'}</span>
+            </div>
+            <div>
+              <strong>{textFor(t, 'Generated provider image', '提供方生成图片')}</strong>
+              <span>
+                {generatedOutput.storage.mediaAssetId ?? generatedOutput.id} · {providerGeneration?.state.result?.provider.mode ?? 'mock'}
+              </span>
+            </div>
+            <div className="card-actions">
+              <button type="button" onClick={() => simulateAction(isZh ? `已读取资产：${generatedOutput.storage.mediaAssetId}` : `Opened asset: ${generatedOutput.storage.mediaAssetId}`)}>
+                <FileText size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => simulateAction(scanStatus === 'clean'
+                  ? textFor(t, `Download contract: ${generatedOutput.storage.downloadPath ?? ''}`, `下载合约：${generatedOutput.storage.downloadPath ?? ''}`)
+                  : textFor(t, 'Download is gated until media scan is clean.', '媒体扫描 clean 前不可下载。'))}
+              >
+                <Download size={16} />
+              </button>
+              <button type="button" onClick={requireAuth}>
+                <Share2 size={16} />
+              </button>
+            </div>
+          </article>
+        )}
         {results.map((work) => (
           <article className="visual-card" key={work.title}>
             <img src={work.image} alt="" />
@@ -591,4 +693,3 @@ function WorkspaceTrackRow({ t, track, playTrack }: { t: Record<string, string>;
     </div>
   )
 }
-

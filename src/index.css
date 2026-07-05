@@ -2200,6 +2200,64 @@ kbd {
   background: var(--panel);
 }
 
+.provider-status-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+}
+
+.provider-status-panel > div:first-child,
+.provider-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.provider-status-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.provider-meta-row span {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.generated-result-card {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+}
+
+.generated-preview {
+  min-height: 160px;
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  background:
+    linear-gradient(135deg, rgba(31, 111, 235, 0.2), rgba(73, 209, 125, 0.16)),
+    var(--panel-soft);
+  color: var(--text);
+}
+
+.generated-preview span {
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
 .visual-grid.small {
   margin-top: 14px;
 }

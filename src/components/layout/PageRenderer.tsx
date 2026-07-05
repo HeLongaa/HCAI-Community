@@ -55,7 +55,7 @@ export function PageRenderer({
   admin,
 }: PageRendererProps) {
   const { page, navigateToPage } = navigation
-  const { prompt, setPrompt, generationState, runGenerate, playgroundWorkspace, setPlaygroundWorkspace } = workspace
+  const { prompt, setPrompt, generationState, runGenerate, imageGeneration, runImageGeneration, playgroundWorkspace, setPlaygroundWorkspace } = workspace
   const { playTrack } = player
   const { requireAuth, simulateAction } = feedback
   const {
@@ -108,6 +108,8 @@ export function PageRenderer({
           setPrompt={setPrompt}
           generationState={generationState}
           runGenerate={runGenerate}
+          imageGeneration={imageGeneration}
+          runImageGeneration={runImageGeneration}
           playTrack={playTrack}
           requireAuth={requireAuth}
           simulateAction={simulateAction}
