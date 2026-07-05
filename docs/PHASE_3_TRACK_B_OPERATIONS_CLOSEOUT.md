@@ -1,6 +1,6 @@
 # Phase 3 Track B Operations Closeout
 
-This closeout captures the current production-operations boundary after the shared rate-limit store, independent worker topology, and distributed job lease slices.
+This closeout captures the current production-operations boundary after the shared rate-limit store, independent worker topology, distributed job lease, external metrics exporter, and multi-instance runbook slices.
 
 ## Current Usable Topology
 
@@ -40,6 +40,11 @@ Shared infrastructure:
 - Postgres stores Prisma data, audit events, security events, media scan jobs, and `operation_leases`.
 - Redis stores shared rate-limit counters when `RATE_LIMIT_STORE=redis`.
 - Object storage stores media assets and scan archive manifests when `STORAGE_DRIVER=s3`.
+- External monitoring scrapes `/metrics` when `METRICS_EXPORTER_ENABLED=true`.
+
+Primary deployment guide:
+
+- `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md`
 
 ## Lease Behavior
 
@@ -112,10 +117,10 @@ Rollback steps:
 
 ## Still Pending
 
-External Metrics Exporter is not complete yet.
-
 Current observability is available through Admin/API JSON operations metrics, audit/security events, and the Prometheus-compatible `/metrics` scrape endpoint when `METRICS_EXPORTER_ENABLED=true`.
 
 OpenTelemetry export remains a later enhancement. The current `/metrics` endpoint intentionally starts with a safe Prometheus text format and a narrow label set.
+
+Real-environment staging rehearsal remains pending until deployment secrets and managed services are available.
 
 Track C creative provider work is out of scope for this closeout.

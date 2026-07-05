@@ -56,7 +56,7 @@ Current implementation status:
 2. Shared rate-limit store: completed and merged through PR #5.
 3. Worker process topology: completed and merged through PR #6.
 4. Distributed job leases: completed and merged through PR #7.
-5. External metrics export: pending.
+5. External metrics export: completed and merged through PR #9.
 6. Multi-instance runbook and smoke updates: in closeout. Core docs and smoke config are updated; final real-environment staging rehearsal remains pending.
 
 ### 0. Planning And Task Inventory

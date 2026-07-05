@@ -4,6 +4,8 @@ This checklist is for the `deployment-env-smoke` job in `.github/workflows/quali
 
 Use GitHub **Secrets** for credentials, signing secrets, tokens, private keys, and webhook URLs that grant access. Use GitHub **Variables** for non-secret ids, domains, public URLs, feature flags, thresholds, and counts.
 
+For the deployment sequence, process topology, staging rehearsal, and rollback boundary that use these values, see `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md`.
+
 ## Required Secrets
 
 At least one auth secret is required:
@@ -148,3 +150,4 @@ Metrics exporter secret:
 3. Select `smoke_profile=env`.
 4. Set `environment=production`.
 5. Confirm the `Deployment Environment Smoke` job prints only safe summary metadata and all checks pass.
+6. Complete the multi-instance rehearsal in `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` before the first production rollout with more than one API or worker process.

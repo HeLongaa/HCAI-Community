@@ -10,6 +10,8 @@ This runbook covers the current operational flows:
 - security alert delivery failure triage
 - scan history archive before prune
 
+For the complete multi-instance deployment sequence, environment profile, staging rehearsal, and rollback boundary, start with `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md`.
+
 ## Production Smoke Checks
 
 Use the quality gate tiers in `docs/QUALITY_GATES.md`:
@@ -103,6 +105,7 @@ Triage flow for lease renewal failures:
 
 Use `docs/GITHUB_ENVIRONMENT.md` when configuring the GitHub Environment variables and secrets for real deployment smoke.
 Use `docs/RELEASE_CHECKLIST.md` for release execution, post-release verification, and rollback criteria.
+Use `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` as the deployment topology entry point before scaling API or worker process counts.
 
 ## External Metrics Exporter
 
@@ -224,4 +227,4 @@ Admin workflow:
 - `admin_security_alert_unsilence_count`
 - `admin_scan_archive_export_count`
 
-The current API returns these as JSON aggregates for Admin dashboards or external polling. Dedicated Prometheus/OpenTelemetry emitters are still pending and can be layered on later without changing the underlying audit/security event sources.
+The Admin API returns these as JSON aggregates for Admin dashboards or external polling. The Prometheus-compatible `/metrics` endpoint exposes the safe external subset for scrapers when `METRICS_EXPORTER_ENABLED=true`; OpenTelemetry export remains a later integration layer.
