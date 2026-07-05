@@ -1,5 +1,6 @@
 import { createRouter } from './common/http/router.js'
 import { createServer } from './common/http/server.js'
+import { createRateLimitStore } from './common/http/rateLimit.js'
 import { env } from './config/env.js'
 import { registerModules } from './modules/index.js'
 import { startMediaScanWorker } from './media/scanWorker.js'
@@ -11,8 +12,12 @@ const main = async () => {
 
   const server = createServer(router, {
     resolveUser: (token) => repositories.auth.findDemoAccountByAccessToken(token),
+    rateLimitStore: createRateLimitStore(process.env),
     onRateLimitExceeded: (event) => {
       console.warn('[rate-limit]', JSON.stringify(event))
+    },
+    onRateLimitStoreUnavailable: (event) => {
+      console.warn('[rate-limit-store]', JSON.stringify(event))
     },
     onRequestBodyRejected: (event) => {
       console.warn('[body-size]', JSON.stringify(event))

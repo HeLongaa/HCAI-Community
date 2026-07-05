@@ -26,6 +26,16 @@ export const createServer = (router, context = {}) => {
           })
           await context.onRateLimitExceeded?.(event)
         },
+        onStoreUnavailable: async (event) => {
+          recordSecurityEvent({
+            ...event,
+            type: 'rate_limit.store_unavailable',
+            severity: event.failureMode === 'fail_open' ? 'warning' : 'critical',
+            source: 'rate_limit',
+            details: event,
+          })
+          await context.onRateLimitStoreUnavailable?.(event)
+        },
       })
       const authToken = parseBearerToken(request.headers.authorization)
       const requestContext = {

@@ -39,6 +39,11 @@ const productionFixture = {
   AUTH_COOKIE_SAMESITE: 'None',
   AUTH_COOKIE_DOMAIN: '.example.com',
   AUTH_TRUSTED_ORIGINS: 'https://app.example.com, https://admin.example.com',
+  RATE_LIMIT_STORE: 'redis',
+  RATE_LIMIT_REDIS_URL: 'rediss://:redis-secret@redis.example.com:6380/0',
+  RATE_LIMIT_REDIS_PREFIX: 'newchat:prod:limits',
+  RATE_LIMIT_REDIS_TIMEOUT_MS: '500',
+  RATE_LIMIT_REDIS_FAILURE_MODE: 'fail_closed',
   RATE_LIMIT_WINDOW_MS: '60000',
   RATE_LIMIT_AUTH_MAX: '100',
   RATE_LIMIT_UPLOAD_MAX: '60',
@@ -87,6 +92,12 @@ const summarize = (env, oauthProviders) => ({
     slack: env.hasSecurityAlertSlackWebhookUrl,
     emailRecipients: env.securityAlertEmailRecipientCount,
   },
+  rateLimit: {
+    enabled: env.rateLimitEnabled,
+    store: env.rateLimitStore,
+    redisConfigured: env.hasRateLimitRedisUrl,
+    failureMode: env.rateLimitRedisFailureMode,
+  },
 })
 
 const source = selectSource()
@@ -113,6 +124,7 @@ check(checks, 'security alert channel configured', hasAny(env.hasSecurityAlertWe
 check(checks, 'cross-site cookie mode is secure', env.authCookieSameSite !== 'None' || env.authCookieSecure, `SameSite=${env.authCookieSameSite}`)
 check(checks, 'trusted browser origins configured', env.authTrustedOrigins.length > 0, 'AUTH_TRUSTED_ORIGINS or CORS_ALLOWED_ORIGINS must include the frontend origin')
 check(checks, 'rate limit guard enabled', env.rateLimitEnabled, 'RATE_LIMIT_ENABLED must not be false')
+check(checks, 'shared rate limit store configured', env.rateLimitStore === 'redis' && env.hasRateLimitRedisUrl, `RATE_LIMIT_STORE=${env.rateLimitStore}`)
 check(checks, 'request body guard enabled', env.requestBodySizeGuardEnabled, 'REQUEST_BODY_SIZE_GUARD_ENABLED must not be false')
 check(checks, 'auth failure monitor enabled', env.authFailureMonitorEnabled, 'AUTH_FAILURE_MONITOR_ENABLED must not be false')
 check(checks, 'external OAuth provider configured', oauthProviders.some((provider) => provider.mode === 'external'), 'At least one OAuth provider should be external in managed smoke')
