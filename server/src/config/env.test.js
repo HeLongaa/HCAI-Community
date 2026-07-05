@@ -76,6 +76,9 @@ test('buildEnv allows development without managed token secrets', () => {
     rateLimitAuthMax: 120,
     rateLimitUploadMax: 120,
     rateLimitAdminMutationMax: 180,
+    metricsExporterEnabled: false,
+    metricsExporterFormat: 'prometheus',
+    hasMetricsExporterToken: false,
     requestBodySizeGuardEnabled: true,
     requestBodyMaxBytes: 1048576,
     authFailureMonitorEnabled: true,
@@ -103,6 +106,24 @@ test('buildEnv validates worker lease settings', () => {
     }),
     /WORKER_LEASE_RENEW_INTERVAL_SECONDS must be less than WORKER_LEASE_TTL_SECONDS/,
   )
+})
+
+test('buildEnv validates and exposes metrics exporter settings', () => {
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', METRICS_EXPORTER_FORMAT: 'otlp' }),
+    /METRICS_EXPORTER_FORMAT must be one of: prometheus/,
+  )
+
+  const env = buildEnv({
+    NODE_ENV: 'development',
+    METRICS_EXPORTER_ENABLED: 'true',
+    METRICS_EXPORTER_FORMAT: 'prometheus',
+    METRICS_EXPORTER_TOKEN: 'metrics-secret',
+  })
+
+  assert.equal(env.metricsExporterEnabled, true)
+  assert.equal(env.metricsExporterFormat, 'prometheus')
+  assert.equal(env.hasMetricsExporterToken, true)
 })
 
 test('buildEnv requires a sufficiently long token secret in production', () => {
@@ -560,6 +581,9 @@ test('deployment smoke accepts production auth, storage, scanner, and notificati
     RATE_LIMIT_AUTH_MAX: '100',
     RATE_LIMIT_UPLOAD_MAX: '60',
     RATE_LIMIT_ADMIN_MUTATION_MAX: '80',
+    METRICS_EXPORTER_ENABLED: 'true',
+    METRICS_EXPORTER_FORMAT: 'prometheus',
+    METRICS_EXPORTER_TOKEN: 'metrics-secret',
     REQUEST_BODY_MAX_BYTES: '2097152',
     AUTH_FAILURE_WINDOW_MS: '300000',
     AUTH_FAILURE_IP_ACCOUNT_THRESHOLD: '8',
@@ -607,6 +631,9 @@ test('deployment smoke accepts production auth, storage, scanner, and notificati
   assert.equal(env.rateLimitAuthMax, 100)
   assert.equal(env.rateLimitUploadMax, 60)
   assert.equal(env.rateLimitAdminMutationMax, 80)
+  assert.equal(env.metricsExporterEnabled, true)
+  assert.equal(env.metricsExporterFormat, 'prometheus')
+  assert.equal(env.hasMetricsExporterToken, true)
   assert.equal(env.requestBodySizeGuardEnabled, true)
   assert.equal(env.requestBodyMaxBytes, 2097152)
   assert.equal(env.authFailureMonitorEnabled, true)

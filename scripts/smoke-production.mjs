@@ -57,6 +57,9 @@ const productionFixture = {
   RATE_LIMIT_AUTH_MAX: '100',
   RATE_LIMIT_UPLOAD_MAX: '60',
   RATE_LIMIT_ADMIN_MUTATION_MAX: '80',
+  METRICS_EXPORTER_ENABLED: 'true',
+  METRICS_EXPORTER_FORMAT: 'prometheus',
+  METRICS_EXPORTER_TOKEN: 'metrics-secret',
   REQUEST_BODY_MAX_BYTES: '2097152',
   AUTH_FAILURE_WINDOW_MS: '300000',
   AUTH_FAILURE_IP_ACCOUNT_THRESHOLD: '8',
@@ -107,6 +110,11 @@ const summarize = (env, oauthProviders) => ({
     redisConfigured: env.hasRateLimitRedisUrl,
     failureMode: env.rateLimitRedisFailureMode,
   },
+  metricsExporter: {
+    enabled: env.metricsExporterEnabled,
+    format: env.metricsExporterFormat,
+    tokenProtected: env.hasMetricsExporterToken,
+  },
   workers: {
     apiEmbedded: env.apiEmbeddedWorkersEnabled,
     mediaScanEnabled: env.mediaScanWorkerEnabled,
@@ -141,6 +149,8 @@ check(checks, 'cross-site cookie mode is secure', env.authCookieSameSite !== 'No
 check(checks, 'trusted browser origins configured', env.authTrustedOrigins.length > 0, 'AUTH_TRUSTED_ORIGINS or CORS_ALLOWED_ORIGINS must include the frontend origin')
 check(checks, 'rate limit guard enabled', env.rateLimitEnabled, 'RATE_LIMIT_ENABLED must not be false')
 check(checks, 'shared rate limit store configured', env.rateLimitStore === 'redis' && env.hasRateLimitRedisUrl, `RATE_LIMIT_STORE=${env.rateLimitStore}`)
+check(checks, 'metrics exporter configured', env.metricsExporterEnabled && env.metricsExporterFormat === 'prometheus', `METRICS_EXPORTER_FORMAT=${env.metricsExporterFormat}`)
+check(checks, 'metrics exporter token protected', env.hasMetricsExporterToken, 'METRICS_EXPORTER_TOKEN should be set when exporter is enabled')
 check(checks, 'api embedded workers disabled', !env.apiEmbeddedWorkersEnabled, 'API_EMBEDDED_WORKERS_ENABLED should be false for multi-instance API deployments')
 check(checks, 'worker media scan sweep configured', env.mediaScanWorkerEnabled, 'MEDIA_SCAN_WORKER_ENABLED should be true for the worker process')
 check(checks, 'worker stale submission sweep configured', env.taskStaleSubmissionWorkerEnabled, 'TASK_STALE_SUBMISSION_WORKER_ENABLED should be true for the worker process')

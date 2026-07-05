@@ -26,6 +26,7 @@ Confirm:
 - `STORAGE_DRIVER=s3` and storage bucket/region/endpoint match the deployment.
 - `MEDIA_SCAN_PROVIDER=webhook` has request URL, request signing, callback base URL, and callback signature settings.
 - `RATE_LIMIT_STORE=redis` and `RATE_LIMIT_REDIS_URL` are configured for multi-instance API deployments.
+- `METRICS_EXPORTER_ENABLED` and `METRICS_EXPORTER_TOKEN` match the monitoring deployment plan.
 - `API_EMBEDDED_WORKERS_ENABLED=false` is set on API instances.
 - Worker processes have explicit job flags and lease settings.
 - At least one media alert channel and one security alert channel are configured.
@@ -66,6 +67,7 @@ Critical API smoke checks:
 - `GET /api/admin/operations/metrics?windowMinutes=60`
 - `GET /api/media/governance-config`
 - `GET /api/media/scan-jobs/archive`
+- `GET /metrics` with the configured metrics exporter token when the exporter is enabled
 
 Worker checks:
 
@@ -85,8 +87,9 @@ Within the first operator review window:
 6. Review worker lease skipped runs and renewal failures.
 7. Review security alert delivery failures.
 8. Review media alert delivery failures.
-9. Preview scan history archive candidates.
-10. If candidates exist, write the archive before any pruning workflow.
+9. Confirm the external monitoring system can scrape `/metrics`.
+10. Preview scan history archive candidates.
+11. If candidates exist, write the archive before any pruning workflow.
 
 ## Alert Channel Verification
 
@@ -116,6 +119,7 @@ Rollback or pause rollout when any of these occur:
 - Security or media alert channels fail across all configured delivery paths.
 - Admin operations metrics endpoint fails or audit export cannot be generated.
 - Redis rate-limit store is unavailable and the selected failure policy does not match the deployment risk posture.
+- `/metrics` is exposed without token or network protection in an environment that requires authenticated scraping.
 - Worker leases show persistent renew failures or stale holders that prevent recurring maintenance.
 - Error rate, latency, or 5xx responses exceed the deployment threshold.
 

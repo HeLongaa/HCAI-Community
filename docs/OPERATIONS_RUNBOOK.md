@@ -22,6 +22,7 @@ Use the quality gate tiers in `docs/QUALITY_GATES.md`:
 Run `npm run smoke:production` in CI to validate the managed production checklist against the safe fixture profile. Run `npm run smoke:production:env` in a deployment environment to validate the real environment without printing secrets.
 
 The smoke profile verifies managed auth secrets, S3 storage, webhook media scanning, scanner request/callback signing, media and security alert channels, secure cross-site cookie settings, trusted frontend origins, rate-limit/body-size/auth-failure guards, worker lease settings, and external OAuth provider metadata.
+It also verifies the Prometheus-compatible metrics exporter when `METRICS_EXPORTER_ENABLED=true`.
 
 For multi-instance deployments, configure `RATE_LIMIT_STORE=redis` with `RATE_LIMIT_REDIS_URL`. Use `RATE_LIMIT_REDIS_FAILURE_MODE=fail_closed` when the app owns the primary abuse boundary; use `fail_open` only when an external gateway or WAF is enforcing equivalent limits. Redis store failures emit `rate_limit.store_unavailable` security events with warning severity for fail-open and critical severity for fail-closed.
 
@@ -102,6 +103,35 @@ Triage flow for lease renewal failures:
 
 Use `docs/GITHUB_ENVIRONMENT.md` when configuring the GitHub Environment variables and secrets for real deployment smoke.
 Use `docs/RELEASE_CHECKLIST.md` for release execution, post-release verification, and rollback criteria.
+
+## External Metrics Exporter
+
+Enable the Prometheus-compatible scrape endpoint with:
+
+- `METRICS_EXPORTER_ENABLED=true`
+- `METRICS_EXPORTER_FORMAT=prometheus`
+- `METRICS_EXPORTER_TOKEN=<secret>` when the route is exposed beyond private network boundaries
+
+Scrape:
+
+```bash
+curl -H "Authorization: Bearer $METRICS_EXPORTER_TOKEN" https://api.example.com/metrics
+```
+
+The exporter reuses the Admin operations metrics source and emits a safe subset of labels. Unknown or unsafe label values are folded into `other`, so user input, raw request paths, tokens, emails, and raw metadata are not exported as label values.
+
+Initial metric families include:
+
+- `newchat_security_events_window_total`
+- `newchat_security_events_by_source_total`
+- `newchat_rate_limit_exceeded_total`
+- `newchat_rate_limit_exceeded_by_bucket_total`
+- `newchat_security_alerts_total`
+- `newchat_security_alert_delivery_failures_total`
+- `newchat_media_scan_archive_candidates_total`
+- `newchat_media_scan_history_pruned_jobs_total`
+- `newchat_operation_lease_skipped_runs_total`
+- `newchat_operation_lease_renew_failures_total`
 
 ## Security Alerts
 
