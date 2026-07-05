@@ -189,12 +189,13 @@ Body:
 
 ```ts
 {
-  decision: 'approve' | 'reject'
+  decision: 'approve' | 'reject' | 'request_changes'
   reviewNote: string
+  acceptanceChecklist?: Array<{ label: string; checked: boolean }>
 }
 ```
 
-Approving a task updates the latest pending submission and writes a settled point ledger entry for the assignee, or for the latest submitter when the compatibility path has no assignee.
+Approving a task requires every supplied acceptance checklist item to be checked, updates the latest pending submission, writes a settled point ledger entry for the assignee or latest submitter, and increments creator/publisher reputation stats once for the completion.
 
 ### `GET /tasks/:id/events`
 

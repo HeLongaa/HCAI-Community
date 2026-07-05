@@ -494,6 +494,7 @@ export const openApiDocument = {
     '/tasks/{id}/review': {
       post: {
         summary: 'Approve, reject, or request changes for a task submission',
+        description: 'Approval requires all supplied acceptance checklist items to be checked, settles the creator reward, and increments creator/publisher reputation once for the completion.',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         requestBody: {
           required: true,

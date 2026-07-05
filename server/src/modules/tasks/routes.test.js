@@ -3,10 +3,12 @@ import test from 'node:test'
 
 import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
 import { registerPointsRoutes } from '../points/routes.js'
+import { registerProfileRoutes } from '../profiles/routes.js'
 import { registerTaskRoutes } from './routes.js'
 
 const createTestServer = () => createRouteTestServer(registerTaskRoutes)
 const createTaskAndPointsServer = () => createRouteTestServer(registerTaskRoutes, registerPointsRoutes)
+const createTaskPointsAndProfileServer = () => createRouteTestServer(registerTaskRoutes, registerPointsRoutes, registerProfileRoutes)
 
 const validTaskBody = () => ({
   title: 'Integration test task',
@@ -833,6 +835,47 @@ test('POST /api/tasks/:id/review is idempotent for task reward settlement', asyn
     const completions = ledger.payload.data.filter((entry) => entry.sourceType === 'task_completion' && entry.sourceId === String(task.id))
     assert.equal(completions.length, 1)
     assert.equal(completions[0].delta, 510)
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST /api/tasks/:id/review updates creator and publisher reputation once on approval', async () => {
+  const server = await createTaskPointsAndProfileServer()
+  try {
+    const creatorBefore = await requestJson(server.url, '/api/profiles/promptlin', { method: 'GET' })
+    const publisherBefore = await requestJson(server.url, '/api/profiles/launchteam', { method: 'GET' })
+    assert.equal(creatorBefore.status, 200)
+    assert.equal(publisherBefore.status, 200)
+
+    const task = await createTask(server, {
+      title: 'Reputation integration task',
+      pointsReward: 610,
+    }, 'demo-access.launchteam')
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
+
+    const firstReview = await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: validReviewBody(),
+      token: 'demo-access.launchteam',
+    })
+    const secondReview = await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: validReviewBody(),
+      token: 'demo-access.launchteam',
+    })
+
+    assert.equal(firstReview.status, 200)
+    assert.equal(secondReview.status, 200)
+
+    const creatorAfter = await requestJson(server.url, '/api/profiles/promptlin', { method: 'GET' })
+    const publisherAfter = await requestJson(server.url, '/api/profiles/launchteam', { method: 'GET' })
+
+    assert.equal(creatorAfter.payload.data.stats.completed, creatorBefore.payload.data.stats.completed + 1)
+    assert.equal(creatorAfter.payload.data.stats.score, creatorBefore.payload.data.stats.score + 10)
+    assert.equal(publisherAfter.payload.data.stats.completed, publisherBefore.payload.data.stats.completed + 1)
+    assert.equal(publisherAfter.payload.data.stats.score, publisherBefore.payload.data.stats.score + 6)
   } finally {
     await server.close()
   }

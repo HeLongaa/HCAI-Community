@@ -473,6 +473,43 @@ const settleTaskReward = (task, recipientHandle) => {
   return entry
 }
 
+const incrementProfileStat = (stats, key, delta) => {
+  const current = stats[key]
+  if (current === undefined || current === null) {
+    return delta
+  }
+  const numeric = Number(current)
+  return Number.isFinite(numeric) ? numeric + delta : current
+}
+
+const applyProfileStatsUpdate = (handle, deltas) => {
+  if (!handle) {
+    return null
+  }
+  const profile = seedStore.profileByHandle.get(handle) ?? null
+  if (!profile) {
+    return null
+  }
+  const nextProfile = {
+    ...profile,
+    stats: { ...(profile.stats ?? {}) },
+  }
+  for (const [key, delta] of Object.entries(deltas)) {
+    nextProfile.stats[key] = incrementProfileStat(nextProfile.stats, key, delta)
+  }
+  seedStore.profileByHandle.set(handle, nextProfile)
+  const index = seedStore.profiles.findIndex((entry) => entry.handle === handle)
+  if (index >= 0) {
+    seedStore.profiles[index] = nextProfile
+  }
+  return nextProfile
+}
+
+const applyTaskCompletionReputation = (task, creatorHandle) => {
+  applyProfileStatsUpdate(creatorHandle, { completed: 1, score: 10 })
+  applyProfileStatsUpdate(getHandle(task.publisher), { completed: 1, score: 6 })
+}
+
 const createTaskEscrow = (task, publisherHandle) => {
   const pointsReward = Number(task.pointsReward) || parsePointsAmount(task.budget)
   if (!publisherHandle || pointsReward <= 0) {
@@ -1520,6 +1557,8 @@ export const createSeedRepository = () => ({
     review: (id, payload, actor = null) => {
       const isApproval = payload.decision === 'approve'
       const isRevisionRequest = payload.decision === 'request_changes'
+      const previousTask = seedStore.taskById.get(Number(id))
+      const shouldApplyCompletionReputation = isApproval && previousTask?.status !== 'Completed'
       const task = updateTask(id, (task) => ({
         ...task,
         status: isApproval ? 'Completed' : isRevisionRequest ? 'In Progress' : 'Rejected',
@@ -1538,6 +1577,9 @@ export const createSeedRepository = () => ({
         if (isApproval) {
           finalizeTaskEscrow(task, getHandle(task.publisher), 'approve')
           settleTaskReward(task, getHandle(task.assignee) ?? submission?.submitterHandle)
+          if (shouldApplyCompletionReputation) {
+            applyTaskCompletionReputation(task, getHandle(task.assignee) ?? submission?.submitterHandle)
+          }
         } else if (!isRevisionRequest) {
           finalizeTaskEscrow(task, getHandle(task.publisher), 'reject')
         }

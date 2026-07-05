@@ -176,6 +176,44 @@ const createPrismaRepository = async (fallbackRepository) => {
     })
   }
 
+  const incrementProfileStat = (stats, key, delta) => {
+    const current = stats[key]
+    if (current === undefined || current === null) {
+      return delta
+    }
+    const numeric = Number(current)
+    return Number.isFinite(numeric) ? numeric + delta : current
+  }
+
+  const buildProfileStatsUpdate = (stats, deltas) => {
+    const nextStats = { ...(asObject(stats) ?? {}) }
+    for (const [key, delta] of Object.entries(deltas)) {
+      nextStats[key] = incrementProfileStat(nextStats, key, delta)
+    }
+    return nextStats
+  }
+
+  const applyTaskCompletionReputation = async (transaction, task, creatorId) => {
+    const updates = [
+      { userId: creatorId, deltas: { completed: 1, score: 10 } },
+      { userId: task.publisherId, deltas: { completed: 1, score: 6 } },
+    ].filter((entry) => entry.userId)
+
+    for (const update of updates) {
+      const profile = await transaction.profile.findUnique({
+        where: { userId: update.userId },
+        select: { userId: true, stats: true },
+      })
+      if (!profile) {
+        continue
+      }
+      await transaction.profile.update({
+        where: { userId: update.userId },
+        data: { stats: buildProfileStatsUpdate(profile.stats, update.deltas) },
+      })
+    }
+  }
+
   const getLatestLedgerBalance = async (transaction, userId) => {
     const latest = await transaction.pointLedger.findFirst({
       where: { userId },
@@ -2038,22 +2076,52 @@ const createPrismaRepository = async (fallbackRepository) => {
         const nextTaskStatus = isApproval ? 'Completed' : isRevisionRequest ? 'In Progress' : 'Rejected'
         const nextSubmissionStatus = isApproval ? 'approved' : isRevisionRequest ? 'revision_requested' : 'rejected'
         const acceptanceChecklist = payload.acceptanceChecklist ?? []
-        const updatedTask = await transaction.task.update({
-          where: { id: String(id) },
-          data: {
-            status: taskStatusFromLabel(nextTaskStatus),
-            metadata: {
-              ...taskDto,
-              reviewNote: payload.reviewNote,
-              acceptanceChecklist,
-              status: nextTaskStatus,
+        const reviewTaskData = {
+          status: taskStatusFromLabel(nextTaskStatus),
+          metadata: {
+            ...taskDto,
+            reviewNote: payload.reviewNote,
+            acceptanceChecklist,
+            status: nextTaskStatus,
+          },
+        }
+        let shouldApplyCompletionReputation = false
+        let updatedTask = null
+        if (isApproval) {
+          const completionTransition = await transaction.task.updateMany({
+            where: { id: String(id), status: { not: 'completed' } },
+            data: reviewTaskData,
+          })
+          shouldApplyCompletionReputation = completionTransition.count > 0
+          updatedTask = shouldApplyCompletionReputation
+            ? await transaction.task.findUnique({
+              where: { id: String(id) },
+              include: {
+                publisher: { include: { profile: true } },
+                assignee: { include: { profile: true } },
+              },
+            })
+            : await transaction.task.update({
+              where: { id: String(id) },
+              data: reviewTaskData,
+              include: {
+                publisher: { include: { profile: true } },
+                assignee: { include: { profile: true } },
+              },
+            })
+        } else {
+          updatedTask = await transaction.task.update({
+            where: { id: String(id) },
+            data: reviewTaskData,
+            include: {
+              publisher: { include: { profile: true } },
+              assignee: { include: { profile: true } },
             },
-          },
-          include: {
-            publisher: { include: { profile: true } },
-            assignee: { include: { profile: true } },
-          },
-        })
+          })
+        }
+        if (!updatedTask) {
+          throw new Error(`Task review update failed for ${id}`)
+        }
         if (pendingSubmission) {
           await transaction.taskSubmission.update({
             where: { id: pendingSubmission.id },
@@ -2076,6 +2144,9 @@ const createPrismaRepository = async (fallbackRepository) => {
         if (isApproval) {
           await finalizeTaskEscrow(transaction, task, task.publisherId, 'approve')
           await settleTaskReward(transaction, task, task.assigneeId ?? pendingSubmission?.submitterId ?? null)
+          if (shouldApplyCompletionReputation) {
+            await applyTaskCompletionReputation(transaction, task, task.assigneeId ?? pendingSubmission?.submitterId ?? null)
+          }
         } else if (!isRevisionRequest) {
           await finalizeTaskEscrow(transaction, task, task.publisherId, 'reject')
         }
