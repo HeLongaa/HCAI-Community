@@ -250,6 +250,11 @@ function App() {
         },
       }
     }
+    if (notification.resourceType === 'task') {
+      return {
+        page: 'mine',
+      }
+    }
     return {
       page: 'admin',
       admin: {

@@ -246,7 +246,9 @@ Internal product notification inbox.
 | `read_at` | timestamptz | Nullable |
 | `created_at` | timestamptz | |
 
-Notification workflow metadata may include a `target` object with `{ page, admin }` deep-link hints. The frontend currently uses this to open the Admin Center, switch to the relevant tab/filter, and highlight review, policy-history, or media asset rows.
+Notification workflow metadata may include a `target` object with `{ page, admin }` deep-link hints. The frontend currently uses this to open Admin Center review/finance/security/media contexts, task workspaces, or the points ledger from task and operations notifications.
+
+Task lifecycle notification types currently include `task.proposal_submitted`, `task.proposal_accepted`, `task.proposal_rejected`, `task.submission_submitted`, `task.submission_resubmitted`, `task.revision_requested`, `task.submission_approved`, `task.submission_rejected`, `task.reward_settled`, `task.submission_stale`, `task.dispute_opened`, and `task.dispute_received`.
 
 ### `permissions`
 

@@ -755,6 +755,8 @@ function notifyAuditReaders(actor, payload) {
   )
 }
 
+const taskNotificationTarget = (page = 'mine') => ({ page })
+
 const mediaScanAlertNotification = (alert) => ({
   type: 'media.scan.alert',
   title: alert.title,
@@ -1419,6 +1421,14 @@ export const createSeedRepository = () => ({
       }
       taskProposals.unshift(proposal)
       recordAudit(actor, 'task.proposal.created', 'task', task.id, { proposalId: proposal.id })
+      createNotificationsForHandles([getHandle(task.publisher)], {
+        type: 'task.proposal_submitted',
+        title: `Proposal submitted: ${task.title}`,
+        body: `${actor.handle} submitted a proposal for ${task.title}.`,
+        resourceType: 'task',
+        resourceId: String(task.id),
+        metadata: { taskId: String(task.id), proposalId: proposal.id, proposerHandle: actor.handle, target: taskNotificationTarget('mine') },
+      })
       return serializeTaskProposal(proposal)
     },
     listProposals: (id, actor, options = {}) => {
@@ -1451,11 +1461,13 @@ export const createSeedRepository = () => ({
       }
       proposal.status = payload.decision === 'accept' ? 'accepted' : 'rejected'
       proposal.decisionNote = payload.note ?? ''
+      const autoRejectedProposerHandles = []
       if (payload.decision === 'accept') {
         for (const entry of taskProposals) {
           if (entry.taskId === String(id) && entry.id !== proposal.id && entry.status === 'pending') {
             entry.status = 'rejected'
             entry.decisionNote = 'Auto-rejected after another proposal was accepted.'
+            autoRejectedProposerHandles.push(entry.proposerHandle)
           }
         }
       }
@@ -1463,6 +1475,27 @@ export const createSeedRepository = () => ({
         taskId: String(id),
         proposer: proposal.proposerHandle,
       })
+      createNotificationsForHandles([proposal.proposerHandle], {
+        type: payload.decision === 'accept' ? 'task.proposal_accepted' : 'task.proposal_rejected',
+        title: payload.decision === 'accept' ? `Proposal accepted: ${task.title}` : `Proposal rejected: ${task.title}`,
+        body: payload.decision === 'accept'
+          ? `${task.title} is ready for delivery.`
+          : `${task.title} proposal was not selected.`,
+        resourceType: 'task',
+        resourceId: String(task.id),
+        metadata: { taskId: String(task.id), proposalId: proposal.id, reviewNote: payload.note ?? '', target: taskNotificationTarget('mine') },
+      })
+      if (autoRejectedProposerHandles.length > 0) {
+        createNotificationsForHandles(autoRejectedProposerHandles, {
+          type: 'task.proposal_rejected',
+          title: `Proposal not selected: ${task.title}`,
+          body: `${task.title} moved forward with another proposal.`,
+          resourceType: 'task',
+          resourceId: String(task.id),
+          metadata: { taskId: String(task.id), selectedProposalId: proposal.id, target: taskNotificationTarget('mine') },
+          dedupeUnread: true,
+        })
+      }
       return serializeTaskProposal(proposal)
     },
     submit: (id, payload, actor = null) => {
@@ -1474,6 +1507,8 @@ export const createSeedRepository = () => ({
         rights: payload.rightsNote ?? task.rights,
       }), (task) => canAccessOwnedResource(getHandle(task.assignee), actor))
       if (task) {
+        const previousSubmission = taskSubmissions.find((entry) => entry.taskId === String(task.id) && entry.submitterHandle === actor.handle) ?? null
+        const isResubmission = previousSubmission?.status === 'revision_requested'
         const submission = {
           id: `submission-${randomUUID()}`,
           taskId: String(task.id),
@@ -1491,12 +1526,14 @@ export const createSeedRepository = () => ({
         taskSubmissions.unshift(submission)
         recordAudit(actor, 'task.submitted', 'task', task.id, { status: task.status })
         createNotificationsForHandles([getHandle(task.publisher)], {
-          type: 'task.submission_submitted',
-          title: 'Task submission ready for review',
-          body: `${actor.handle} submitted work for ${task.title}.`,
+          type: isResubmission ? 'task.submission_resubmitted' : 'task.submission_submitted',
+          title: isResubmission ? 'Task revision ready for review' : 'Task submission ready for review',
+          body: isResubmission
+            ? `${actor.handle} resubmitted work for ${task.title}.`
+            : `${actor.handle} submitted work for ${task.title}.`,
           resourceType: 'task',
           resourceId: String(task.id),
-          metadata: { taskId: String(task.id), submissionId: submission.id, status: submission.status },
+          metadata: { taskId: String(task.id), submissionId: submission.id, status: submission.status, previousSubmissionStatus: previousSubmission?.status ?? null, target: taskNotificationTarget('mine') },
         })
       }
       return task ? serializeTask(task) : null
@@ -1633,10 +1670,19 @@ export const createSeedRepository = () => ({
         body: `${actor?.handle ?? submission.submitterHandle} opened a dispute: ${payload.reason}`,
         resourceType: 'task',
         resourceId: String(task.id),
-        metadata: { taskId: String(task.id), submissionId: submission.id, adminReviewId: reviewId },
+        metadata: { taskId: String(task.id), submissionId: submission.id, adminReviewId: reviewId, target: taskNotificationTarget('mine') },
         dedupeUnread: true,
       }
       createNotificationsForHandles([publisherHandle], notificationPayload)
+      createNotificationsForHandles([submission.submitterHandle], {
+        type: 'task.dispute_received',
+        title: `Dispute opened: ${task.title}`,
+        body: `Your dispute for ${task.title} is now in the task dispute queue.`,
+        resourceType: 'task',
+        resourceId: String(task.id),
+        metadata: { taskId: String(task.id), submissionId: submission.id, adminReviewId: reviewId, target: taskNotificationTarget('mine') },
+        dedupeUnread: true,
+      })
       notifyAdminQueueReaders(actor, {
         ...notificationPayload,
         resourceType: 'admin_review',
@@ -1685,7 +1731,7 @@ export const createSeedRepository = () => ({
             body: `A submission has been pending review for more than ${payload.olderThanHours} hours.`,
             resourceType: 'task',
             resourceId: String(submission.taskId),
-            metadata: { taskId: String(submission.taskId), submissionId: submission.id, olderThanHours: payload.olderThanHours },
+            metadata: { taskId: String(submission.taskId), submissionId: submission.id, olderThanHours: payload.olderThanHours, target: taskNotificationTarget('mine') },
             dedupeUnread: true,
           },
         )
@@ -1746,8 +1792,19 @@ export const createSeedRepository = () => ({
           ...notificationCopy,
           resourceType: 'task',
           resourceId: String(task.id),
-          metadata: { taskId: String(task.id), status: task.status, reviewNote: payload.reviewNote, acceptanceChecklist: payload.acceptanceChecklist ?? [] },
+          metadata: { taskId: String(task.id), status: task.status, reviewNote: payload.reviewNote, acceptanceChecklist: payload.acceptanceChecklist ?? [], target: taskNotificationTarget('mine') },
         })
+        if (payload.decision === 'approve') {
+          createNotificationsForHandles([assigneeHandle], {
+            type: 'task.reward_settled',
+            title: 'Task reward settled',
+            body: `${task.title} reward points were released to your ledger.`,
+            resourceType: 'task',
+            resourceId: String(task.id),
+            metadata: { taskId: String(task.id), status: task.status, target: { page: 'points' } },
+            dedupeUnread: true,
+          })
+        }
         recordAudit(actor, isApproval ? 'task.approved' : isRevisionRequest ? 'task.revision_requested' : 'task.rejected', 'task', task.id, {
           status: task.status,
           reviewNote: payload.reviewNote,

@@ -501,6 +501,8 @@ const createPrismaRepository = async (fallbackRepository) => {
     return createNotificationsForUsers(db, users, payload)
   }
 
+  const taskNotificationTarget = (page = 'mine') => ({ page })
+
   const mediaScanAlertNotification = (alert) => ({
     type: 'media.scan.alert',
     title: alert.title,
@@ -1756,6 +1758,14 @@ const createPrismaRepository = async (fallbackRepository) => {
         resourceId: String(id),
         metadata: { proposalId: proposal.id },
       })
+      await createNotificationsForHandles([task.publisher?.profile?.handle ?? task.publisher?.id ?? null], {
+        type: 'task.proposal_submitted',
+        title: `Proposal submitted: ${task.title}`,
+        body: `${actor.handle} submitted a proposal for ${task.title}.`,
+        resourceType: 'task',
+        resourceId: String(id),
+        metadata: { taskId: String(id), proposalId: proposal.id, proposerHandle: actor.handle, target: taskNotificationTarget('mine') },
+      })
       return getTaskProposalDto(proposal)
     },
     listProposals: async (id, actor, options = {}) => {
@@ -1814,6 +1824,7 @@ const createPrismaRepository = async (fallbackRepository) => {
         return null
       }
       const proposalStatus = payload.decision === 'accept' ? 'accepted' : 'rejected'
+      let autoRejectedProposerHandles = []
       const updatedProposal = await client.$transaction(async (transaction) => {
         const updated = await transaction.taskProposal.update({
           where: { id: proposal.id },
@@ -1827,6 +1838,15 @@ const createPrismaRepository = async (fallbackRepository) => {
           include: { proposer: { include: { profile: true } } },
         })
         if (payload.decision === 'accept') {
+          const autoRejectedProposals = await transaction.taskProposal.findMany({
+            where: {
+              taskId: String(id),
+              id: { not: proposal.id },
+              status: 'pending',
+            },
+            include: { proposer: { include: { profile: true } } },
+          })
+          autoRejectedProposerHandles = autoRejectedProposals.map((entry) => userHandle(entry.proposer))
           const taskDto = getTaskDto(proposal.task)
           await transaction.task.update({
             where: { id: String(id) },
@@ -1866,6 +1886,28 @@ const createPrismaRepository = async (fallbackRepository) => {
           proposerId: proposal.proposerId,
         },
       })
+      const proposerHandle = userHandle(proposal.proposer)
+      await createNotificationsForHandles([proposerHandle], {
+        type: payload.decision === 'accept' ? 'task.proposal_accepted' : 'task.proposal_rejected',
+        title: payload.decision === 'accept' ? `Proposal accepted: ${proposal.task.title}` : `Proposal rejected: ${proposal.task.title}`,
+        body: payload.decision === 'accept'
+          ? `${proposal.task.title} is ready for delivery.`
+          : `${proposal.task.title} proposal was not selected.`,
+        resourceType: 'task',
+        resourceId: String(id),
+        metadata: { taskId: String(id), proposalId: proposal.id, reviewNote: payload.note ?? '', target: taskNotificationTarget('mine') },
+      })
+      if (autoRejectedProposerHandles.length > 0) {
+        await createNotificationsForHandles(autoRejectedProposerHandles, {
+          type: 'task.proposal_rejected',
+          title: `Proposal not selected: ${proposal.task.title}`,
+          body: `${proposal.task.title} moved forward with another proposal.`,
+          resourceType: 'task',
+          resourceId: String(id),
+          metadata: { taskId: String(id), selectedProposalId: proposal.id, target: taskNotificationTarget('mine') },
+          dedupeUnread: true,
+        })
+      }
       return getTaskProposalDto(updatedProposal)
     },
     submit: async (id, payload, actor = null) => {
@@ -1887,6 +1929,11 @@ const createPrismaRepository = async (fallbackRepository) => {
       if (!submitter) {
         return null
       }
+      const previousSubmission = await client.taskSubmission.findFirst({
+        where: { taskId: String(id), submitterId: submitter.id },
+        orderBy: { createdAt: 'desc' },
+      })
+      const isResubmission = previousSubmission?.status === 'revision_requested'
       const taskDto = getTaskDto(task)
       const row = await client.task.update({
         where: { id: String(id) },
@@ -1923,12 +1970,14 @@ const createPrismaRepository = async (fallbackRepository) => {
         metadata: { status: row.status, submissionId: submission.id },
       })
       await createNotificationsForHandles([publisherHandle], {
-        type: 'task.submission_submitted',
-        title: 'Task submission ready for review',
-        body: `${submitter.profile?.handle ?? submitter.id} submitted work for ${row.title}.`,
+        type: isResubmission ? 'task.submission_resubmitted' : 'task.submission_submitted',
+        title: isResubmission ? 'Task revision ready for review' : 'Task submission ready for review',
+        body: isResubmission
+          ? `${submitter.profile?.handle ?? submitter.id} resubmitted work for ${row.title}.`
+          : `${submitter.profile?.handle ?? submitter.id} submitted work for ${row.title}.`,
         resourceType: 'task',
         resourceId: row.id,
-        metadata: { taskId: row.id, submissionId: submission.id, status: submission.status },
+        metadata: { taskId: row.id, submissionId: submission.id, status: submission.status, previousSubmissionStatus: previousSubmission?.status ?? null, target: taskNotificationTarget('mine') },
       })
       return getTaskDto(row)
     },
@@ -2163,10 +2212,19 @@ const createPrismaRepository = async (fallbackRepository) => {
           body: `${actor?.handle ?? creatorHandle} opened a dispute: ${payload.reason}`,
           resourceType: 'task',
           resourceId: String(task.id),
-          metadata: { taskId: String(task.id), submissionId: submission.id, adminReviewId: reviewId },
+          metadata: { taskId: String(task.id), submissionId: submission.id, adminReviewId: reviewId, target: taskNotificationTarget('mine') },
           dedupeUnread: true,
         }
         await createNotificationsForHandles([publisherHandle], notificationPayload, transaction)
+        await createNotificationsForHandles([creatorHandle], {
+          type: 'task.dispute_received',
+          title: `Dispute opened: ${task.title}`,
+          body: `Your dispute for ${task.title} is now in the task dispute queue.`,
+          resourceType: 'task',
+          resourceId: String(task.id),
+          metadata: { taskId: String(task.id), submissionId: submission.id, adminReviewId: reviewId, target: taskNotificationTarget('mine') },
+          dedupeUnread: true,
+        }, transaction)
         await notifyAdminQueueReaders(transaction, actor, {
           ...notificationPayload,
           resourceType: 'admin_review',
@@ -2249,7 +2307,7 @@ const createPrismaRepository = async (fallbackRepository) => {
               body: `A submission has been pending review for more than ${payload.olderThanHours} hours.`,
               resourceType: 'task',
               resourceId: String(submission.taskId),
-              metadata: { taskId: String(submission.taskId), submissionId: submission.id, olderThanHours: payload.olderThanHours },
+              metadata: { taskId: String(submission.taskId), submissionId: submission.id, olderThanHours: payload.olderThanHours, target: taskNotificationTarget('mine') },
               dedupeUnread: true,
             },
             transaction,
@@ -2391,8 +2449,19 @@ const createPrismaRepository = async (fallbackRepository) => {
         ...notificationCopy,
         resourceType: 'task',
         resourceId: row.id,
-        metadata: { taskId: row.id, status: row.status, reviewNote: payload.reviewNote, acceptanceChecklist: payload.acceptanceChecklist ?? [] },
+        metadata: { taskId: row.id, status: row.status, reviewNote: payload.reviewNote, acceptanceChecklist: payload.acceptanceChecklist ?? [], target: taskNotificationTarget('mine') },
       })
+      if (payload.decision === 'approve') {
+        await createNotificationsForHandles([assigneeHandle], {
+          type: 'task.reward_settled',
+          title: 'Task reward settled',
+          body: `${row.title} reward points were released to your ledger.`,
+          resourceType: 'task',
+          resourceId: row.id,
+          metadata: { taskId: row.id, status: row.status, target: { page: 'points' } },
+          dedupeUnread: true,
+        })
+      }
       await recordAudit({
         actor,
         action: payload.decision === 'approve' ? 'task.approved' : payload.decision === 'request_changes' ? 'task.revision_requested' : 'task.rejected',

@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
 import { registerAdminRoutes } from '../admin/routes.js'
+import { registerNotificationRoutes } from '../notifications/routes.js'
 import { registerPointsRoutes } from '../points/routes.js'
 import { registerProfileRoutes } from '../profiles/routes.js'
 import { registerTaskRoutes } from './routes.js'
@@ -11,6 +12,8 @@ const createTestServer = () => createRouteTestServer(registerTaskRoutes)
 const createTaskAndPointsServer = () => createRouteTestServer(registerTaskRoutes, registerPointsRoutes)
 const createTaskPointsAndProfileServer = () => createRouteTestServer(registerTaskRoutes, registerPointsRoutes, registerProfileRoutes)
 const createTaskAndAdminServer = () => createRouteTestServer(registerTaskRoutes, registerAdminRoutes)
+const createTaskAndNotificationServer = () => createRouteTestServer(registerTaskRoutes, registerNotificationRoutes)
+const createTaskAdminAndNotificationServer = () => createRouteTestServer(registerTaskRoutes, registerAdminRoutes, registerNotificationRoutes)
 
 const validTaskBody = () => ({
   title: 'Integration test task',
@@ -806,6 +809,71 @@ test('POST /api/tasks/:id/review settles task reward points on approval', async 
   }
 })
 
+test('task lifecycle sends proposal, resubmission, approval, and settlement notifications', async () => {
+  const server = await createTaskAndNotificationServer()
+  try {
+    const task = await createTask(server, {
+      title: 'Notification lifecycle task',
+      pointsReward: 580,
+    }, 'demo-access.launchteam')
+    const proposal = await createProposal(server, task.id)
+
+    const publisherInbox = await requestJson(server.url, '/api/notifications?readState=all&type=task.proposal_submitted&resourceType=task', {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+    assert.equal(publisherInbox.status, 200)
+    assert.ok(publisherInbox.payload.data.some((item) => item.metadata.proposalId === proposal.id && item.metadata.target.page === 'mine'))
+
+    await requestJson(server.url, `/api/tasks/${task.id}/proposals/${proposal.id}/actions`, {
+      body: { decision: 'accept', note: 'Selected for notification coverage.' },
+      token: 'demo-access.launchteam',
+    })
+
+    const creatorProposalInbox = await requestJson(server.url, '/api/notifications?readState=all&type=task.proposal_accepted&resourceType=task', {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.ok(creatorProposalInbox.payload.data.some((item) => item.resourceId === String(task.id) && item.metadata.proposalId === proposal.id))
+
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
+    await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: { decision: 'request_changes', reviewNote: 'Add revision notes before final acceptance.' },
+      token: 'demo-access.launchteam',
+    })
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: {
+        ...validSubmissionBody(),
+        content: 'Revised delivery with revision notes included.',
+      },
+      token: 'demo-access.promptlin',
+    })
+
+    const resubmissionInbox = await requestJson(server.url, '/api/notifications?readState=all&type=task.submission_resubmitted&resourceType=task', {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+    assert.ok(resubmissionInbox.payload.data.some((item) => item.resourceId === String(task.id) && item.metadata.previousSubmissionStatus === 'revision_requested'))
+
+    await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: validReviewBody(),
+      token: 'demo-access.launchteam',
+    })
+
+    const creatorSettlementInbox = await requestJson(server.url, '/api/notifications?readState=all&resourceType=task', {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.ok(creatorSettlementInbox.payload.data.some((item) => item.type === 'task.submission_approved' && item.resourceId === String(task.id)))
+    assert.ok(creatorSettlementInbox.payload.data.some((item) => item.type === 'task.reward_settled' && item.metadata.target.page === 'points'))
+  } finally {
+    await server.close()
+  }
+})
+
 test('POST /api/tasks/:id/review is idempotent for task reward settlement', async () => {
   const server = await createTaskAndPointsServer()
   try {
@@ -931,7 +999,7 @@ test('POST /api/tasks/:id/review does not settle reward points on rejection', as
 })
 
 test('POST /api/tasks/:id/disputes opens an admin review for rejected submissions', async () => {
-  const server = await createTaskAndAdminServer()
+  const server = await createTaskAdminAndNotificationServer()
   try {
     const task = await createTask(server, {
       title: 'Rejected dispute integration task',
@@ -979,6 +1047,12 @@ test('POST /api/tasks/:id/disputes opens an admin review for rejected submission
     assert.equal(timeline.status, 200)
     assert.equal(timeline.payload.data[0].type, 'dispute_opened')
     assert.equal(timeline.payload.data[0].body, 'Rights note was included in the submitted delivery package.')
+
+    const creatorInbox = await requestJson(server.url, '/api/notifications?readState=all&type=task.dispute_received&resourceType=task', {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.ok(creatorInbox.payload.data.some((item) => item.resourceId === String(task.id) && item.metadata.adminReviewId === review.id))
   } finally {
     await server.close()
   }

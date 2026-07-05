@@ -499,13 +499,13 @@ Query:
 }
 ```
 
-Returns the current user's notification inbox. Current notification producers cover high-value point adjustment requests, point adjustment approval/rejection results, point policy rollback events, media scan manual-review requests, media scan rejections, media scan retry requests, and scanner health alerts.
+Returns the current user's notification inbox. Current notification producers cover task proposal submission/acceptance/rejection, submission/resubmission, revision requests, submission approval/rejection, reward settlement, stale submissions, dispute open/receipt, high-value point adjustment requests, point adjustment approval/rejection results, point policy rollback events, media scan manual-review requests, media scan rejections, media scan retry requests, scanner health alerts, and security alerts.
 
 Notification `metadata.target` can carry a client deep link:
 
 ```ts
 {
-  page: 'admin'
+  page: 'admin' | 'mine' | 'points'
   admin?: {
     tab?: 'Task review' | 'Finance'
     queue?: string
