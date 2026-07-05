@@ -113,12 +113,11 @@ These items are intentionally outside the Track A closeout boundary.
 
 ### Track B: Production Operations
 
-- Shared rate-limit store for multi-instance deployments.
-- Dedicated worker or queue topology for scan sweeps, stale submission sweeps, retention pruning, and alert dispatch.
-- Prometheus/OpenTelemetry exporters.
-- Multi-instance deployment runbook updates.
+- Track B was intentionally outside the Track A PR boundary.
+- It has since shipped the shared Redis-compatible rate-limit store, independent worker topology, distributed job leases, Prometheus-compatible `/metrics`, and multi-instance deployment runbook.
+- OpenTelemetry/OTLP export, vendor-specific dashboard templates, and real environment staging rehearsal remain separate operations follow-ups.
 
-Current state: the app has in-process guards, Admin dashboards, audit events, security alerts, scan-job operations, and handoff exports. That is enough for local/staged product review, but not a complete horizontal-production operations story.
+Current state: the repository has a horizontal-production operations baseline for fixture CI and PR-ready handoff. Real environment validation still requires deployment secrets and managed services.
 
 ### Track C: Creative Tool Productization
 
@@ -205,4 +204,4 @@ The Track A PR should not include:
 - Confirm reputation updates are idempotent.
 - Confirm stale and dispute flows do not let unrelated users mutate tasks.
 - Confirm notification targets route users to the right workflow surfaces.
-- Confirm deferred Track B and Track C work is not hidden inside the Track A branch.
+- Confirm Track C or real-environment operations follow-ups are not hidden inside the Track A branch.

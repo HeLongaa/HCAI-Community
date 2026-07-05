@@ -1,6 +1,36 @@
 # Phase 3 Track B Operations Closeout
 
-This closeout captures the current production-operations boundary after the shared rate-limit store, independent worker topology, distributed job lease, external metrics exporter, and multi-instance runbook slices.
+This closeout captures the completed Phase 3 Track B production-operations baseline. Track B is considered complete for repository, fixture CI, and PR-ready handoff purposes after the shared rate-limit store, independent worker topology, distributed job leases, external metrics exporter, and multi-instance runbook slices.
+
+## Closeout Decision
+
+Track B can be closed as a Phase 3 implementation track.
+
+Completed scope:
+
+- Stateless API instances can share abuse-guard counters through Redis-compatible rate-limit storage.
+- Background maintenance can run outside API processes through an explicit worker entrypoint.
+- Multiple worker instances can run safely because mutating jobs use durable operation leases.
+- Operators can inspect Admin JSON operations metrics and scrape a safe Prometheus-compatible `/metrics` endpoint.
+- Release, GitHub Environment, quality-gate, and multi-instance runbook docs now describe the deployment and rollback path.
+
+Still not claimed:
+
+- Real deployment secrets and managed services have not been validated in this local environment.
+- `npm run check:deploy:env` still requires a configured GitHub Environment or equivalent deployment shell.
+- The first real multi-instance rollout still needs the staging rehearsal in `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md`.
+- OpenTelemetry/OTLP export and vendor-specific dashboard templates remain deferred follow-up work.
+- Track C creative provider productization remains out of scope.
+
+## Delivery Map
+
+| Slice | Outcome | Primary Docs |
+| --- | --- | --- |
+| Shared rate-limit store | Redis-compatible shared counters, failure policy, smoke metadata | `docs/GITHUB_ENVIRONMENT.md`, `docs/QUALITY_GATES.md` |
+| Worker process topology | `npm --prefix server run worker`, explicit worker flags, API embedded-worker opt-out | `README.md`, `docs/OPERATIONS_RUNBOOK.md` |
+| Distributed job leases | Durable operation leases for mutating worker jobs, skip/renew/release signals | `docs/OPERATIONS_RUNBOOK.md` |
+| External metrics exporter | Default-off Prometheus-compatible `/metrics`, token guard, safe label folding | `docs/OPERATIONS_RUNBOOK.md`, `docs/RELEASE_CHECKLIST.md` |
+| Multi-instance runbook | End-to-end topology, environment profile, staging rehearsal, incident triage, rollback boundary | `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` |
 
 ## Current Usable Topology
 
@@ -14,15 +44,55 @@ Recommended multi-instance deployment:
   - `TASK_STALE_SUBMISSION_WORKER_ENABLED=true`
 - Prisma-backed deployments set `DATABASE_URL` so operation leases are durable.
 - Horizontally scaled API deployments use `RATE_LIMIT_STORE=redis` and `RATE_LIMIT_REDIS_URL` so abuse-guard counters are shared.
+- External monitoring scrapes `/metrics` when `METRICS_EXPORTER_ENABLED=true`.
 
 This topology supports multiple API instances and multiple worker instances. Mutating recurring jobs are protected by durable operation leases, so only one worker should execute a given shared-state job at a time.
+
+## Operator Workflows
+
+Deploy and validate:
+
+1. Configure the GitHub Environment variables and secrets from `docs/GITHUB_ENVIRONMENT.md`.
+2. Run `npm run check:deploy` for fixture validation.
+3. Run `npm run check:deploy:env` in the real deployment environment.
+4. Deploy API instances with embedded workers disabled.
+5. Deploy worker instances with explicit job flags.
+6. Confirm `GET /health`, `GET /api/openapi.json`, Admin operations metrics, worker logs, and `/metrics` when enabled.
+7. Complete the staging rehearsal in `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` before the first production multi-instance rollout.
+
+Monitor and triage:
+
+1. Use the Admin Center Security tab or `GET /api/admin/operations/metrics?windowMinutes=60`.
+2. Watch lease signals:
+  - `operations.leases.skippedRuns.total`
+  - `operations.leases.skippedRuns.byKey`
+  - `operations.leases.renewFailures.total`
+  - `operations.leases.renewFailures.byKey`
+3. Watch delivery and scanner health:
+  - `security.deliveryFailures`
+  - `mediaScan.alertDeliveryFailures`
+  - `mediaScan.archiveCandidates`
+  - `mediaScan.historyPruned`
+4. Use `GET /api/admin/operations/metrics/export` for handoff snapshots.
+5. Use `/metrics` for external Prometheus-compatible scraping when enabled.
+
+Rollback:
+
+1. Stop new traffic shift.
+2. Scale workers down to one instance or disable mutating worker job flags.
+3. Restore the previous backend package.
+4. Restore the previous frontend package when needed.
+5. Revert risky environment changes, especially token key ids, cookie settings, scanner secrets, storage endpoints, Redis settings, worker flags, and metrics exporter exposure.
+6. Keep additive operational tables such as `operation_leases` unless a database rollback plan explicitly removes them.
+7. Re-run `npm run smoke:production:env`.
+8. Confirm login, media upload signing, Admin operations metrics, worker logs, and manual sweep endpoints are healthy.
 
 ## Runtime Responsibilities
 
 API process:
 
 - Serves HTTP routes.
-- Handles auth, task, media, notification, admin, and OpenAPI requests.
+- Handles auth, task, media, notification, admin, OpenAPI, and `/metrics` requests.
 - Applies rate limits for auth, media upload signing, and admin mutations.
 - Exposes Admin/API JSON operations metrics.
 - Keeps manual sweep endpoints available for operator recovery.
@@ -40,11 +110,7 @@ Shared infrastructure:
 - Postgres stores Prisma data, audit events, security events, media scan jobs, and `operation_leases`.
 - Redis stores shared rate-limit counters when `RATE_LIMIT_STORE=redis`.
 - Object storage stores media assets and scan archive manifests when `STORAGE_DRIVER=s3`.
-- External monitoring scrapes `/metrics` when `METRICS_EXPORTER_ENABLED=true`.
-
-Primary deployment guide:
-
-- `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md`
+- External monitoring scrapes `/metrics` when the exporter is enabled and protected.
 
 ## Lease Behavior
 
@@ -68,59 +134,61 @@ Defaults:
 
 The renewal interval must be lower than the TTL.
 
-## Operator Signals
+## Metrics Boundary
 
-Use the Admin Center Security tab or `GET /api/admin/operations/metrics?windowMinutes=60`.
+Admin/API metrics:
 
-Important signals:
+- `GET /api/admin/operations/metrics?windowMinutes=60` returns JSON aggregates for authorized operators.
+- `GET /api/admin/operations/metrics/export` returns an auditable handoff artifact and records `admin.operations.metrics_exported`.
 
-- `operations.leases.skippedRuns.total`
-- `operations.leases.skippedRuns.byKey`
-- `operations.leases.renewFailures.total`
-- `operations.leases.renewFailures.byKey`
-- `mediaScan.historyPruned`
-- `mediaScan.archiveCandidates`
-- `security.deliveryFailures`
-- `mediaScan.alertDeliveryFailures`
+External scrape:
 
-Audit filters:
+- `GET /metrics` is default-off through `METRICS_EXPORTER_ENABLED`.
+- `METRICS_EXPORTER_FORMAT=prometheus` is the supported format.
+- `METRICS_EXPORTER_TOKEN` enables Bearer or `x-metrics-token` protection.
+- If no token is configured, `/metrics` must be protected by private networking or an upstream gateway.
+- Labels are intentionally narrow; unsafe values are folded into `other` or `unknown`.
 
-- `action=operations.lease.skipped&resourceType=operation_lease`
-- `action=operations.lease.renew_failed&resourceType=operation_lease`
-- `action=media.scan.history_pruned&resourceType=media_scan_jobs`
-- `action=media.scan.history_archived&resourceType=media_scan_jobs`
+Current Prometheus-compatible families include:
 
-## Staging Rehearsal
+- `newchat_security_events_window_total`
+- `newchat_rate_limit_exceeded_total`
+- `newchat_security_alerts_total`
+- `newchat_security_alert_delivery_failures_total`
+- `newchat_media_scan_archive_candidates_total`
+- `newchat_media_scan_history_pruned_jobs_total`
+- `newchat_operation_lease_skipped_runs_total`
+- `newchat_operation_lease_renew_failures_total`
 
-Before production rollout, rehearse:
+## Closeout Validation
 
-1. Run two API processes against the same database and Redis store.
-2. Run two worker processes against the same database.
-3. Confirm rate limits are shared across API instances.
-4. Confirm only one worker executes `media-scan-sweep` while the other records skipped lease runs.
-5. Stop one worker during a run and confirm the lease expires and can be recovered.
-6. Run `npm run smoke:production:env` in the deployment environment.
-7. Export an operations metrics snapshot and attach it to release notes.
+Every Track B implementation PR has used the repository deployment gate. The final closeout package should pass:
 
-## Rollback Boundary
+```bash
+git diff --check
+npm run check:quick
+npm run check:deploy
+```
 
-Rollback is straightforward for API/worker package changes, but the `operation_leases` table is additive.
+Real environment validation remains separate:
 
-Rollback steps:
+```bash
+npm run check:deploy:env
+```
 
-1. Stop new traffic shift.
-2. Scale workers down to one instance or disable worker job flags.
-3. Restore the previous backend package.
-4. Keep the additive `operation_leases` table unless a database rollback plan explicitly drops it.
-5. Re-run `npm run smoke:production:env`.
-6. Confirm login, media upload signing, Admin operations metrics, and manual sweep endpoints are healthy.
+The environment profile is intentionally blocked until real secrets, Redis, object storage, scanner, OAuth providers, alert channels, and trusted origins are configured.
 
-## Still Pending
+## Follow-Up Options
 
-Current observability is available through Admin/API JSON operations metrics, audit/security events, and the Prometheus-compatible `/metrics` scrape endpoint when `METRICS_EXPORTER_ENABLED=true`.
+Recommended next product track:
 
-OpenTelemetry export remains a later enhancement. The current `/metrics` endpoint intentionally starts with a safe Prometheus text format and a narrow label set.
+- Start Track C Creative Tool Productization if the goal is to replace simulated creative outputs with provider-backed generation and persisted assets.
 
-Real-environment staging rehearsal remains pending until deployment secrets and managed services are available.
+Recommended operations follow-ups only if needed:
 
-Track C creative provider work is out of scope for this closeout.
+- Add OpenTelemetry/OTLP export.
+- Add managed dashboard templates for the chosen monitoring vendor.
+- Run and document the first real staging rehearsal after deployment infrastructure exists.
+- Add vendor-specific infrastructure examples if the deployment target is chosen.
+
+These follow-ups should be tracked as separate tasks and should not block Track B closeout.
