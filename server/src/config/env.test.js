@@ -16,8 +16,13 @@ test('buildEnv allows development without managed token secrets', () => {
     mediaScanRetryDelaySeconds: 300,
     mediaScanTimeoutSeconds: 900,
     mediaScanMaxAttempts: 3,
+    apiEmbeddedWorkersEnabled: false,
     mediaScanWorkerEnabled: false,
     mediaScanWorkerIntervalSeconds: 60,
+    taskStaleSubmissionWorkerEnabled: false,
+    taskStaleSubmissionWorkerIntervalSeconds: 300,
+    taskStaleSubmissionOlderThanHours: 72,
+    taskStaleSubmissionSweepLimit: 25,
     mediaScanHistoryRetentionDays: 180,
     mediaScanHistoryRetentionMaxPerAsset: 50,
     mediaScanAlertWindowMinutes: 60,
@@ -383,6 +388,18 @@ test('buildEnv validates media scanner deployment settings', () => {
     () => buildEnv({ NODE_ENV: 'development', MEDIA_SCAN_ALERT_EMAIL_TIMEOUT_SECONDS: '0' }),
     /MEDIA_SCAN_ALERT_EMAIL_TIMEOUT_SECONDS must be a positive integer/,
   )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS: '0' }),
+    /TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS must be a positive integer/,
+  )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', TASK_STALE_SUBMISSION_OLDER_THAN_HOURS: '0' }),
+    /TASK_STALE_SUBMISSION_OLDER_THAN_HOURS must be a positive integer/,
+  )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', TASK_STALE_SUBMISSION_SWEEP_LIMIT: '0' }),
+    /TASK_STALE_SUBMISSION_SWEEP_LIMIT must be a positive integer/,
+  )
   const env = buildEnv({
     NODE_ENV: 'development',
     MEDIA_SCAN_PROVIDER: 'webhook',
@@ -397,8 +414,13 @@ test('buildEnv validates media scanner deployment settings', () => {
     MEDIA_SCAN_RETRY_DELAY_SECONDS: '60',
     MEDIA_SCAN_TIMEOUT_SECONDS: '120',
     MEDIA_SCAN_MAX_ATTEMPTS: '4',
+    API_EMBEDDED_WORKERS_ENABLED: 'true',
     MEDIA_SCAN_WORKER_ENABLED: 'true',
     MEDIA_SCAN_WORKER_INTERVAL_SECONDS: '15',
+    TASK_STALE_SUBMISSION_WORKER_ENABLED: 'true',
+    TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS: '45',
+    TASK_STALE_SUBMISSION_OLDER_THAN_HOURS: '48',
+    TASK_STALE_SUBMISSION_SWEEP_LIMIT: '10',
     MEDIA_SCAN_HISTORY_RETENTION_DAYS: '30',
     MEDIA_SCAN_HISTORY_RETENTION_MAX_PER_ASSET: '8',
     MEDIA_SCAN_ALERT_WINDOW_MINUTES: '20',
@@ -423,8 +445,13 @@ test('buildEnv validates media scanner deployment settings', () => {
   assert.equal(env.mediaScanRetryDelaySeconds, 60)
   assert.equal(env.mediaScanTimeoutSeconds, 120)
   assert.equal(env.mediaScanMaxAttempts, 4)
+  assert.equal(env.apiEmbeddedWorkersEnabled, true)
   assert.equal(env.mediaScanWorkerEnabled, true)
   assert.equal(env.mediaScanWorkerIntervalSeconds, 15)
+  assert.equal(env.taskStaleSubmissionWorkerEnabled, true)
+  assert.equal(env.taskStaleSubmissionWorkerIntervalSeconds, 45)
+  assert.equal(env.taskStaleSubmissionOlderThanHours, 48)
+  assert.equal(env.taskStaleSubmissionSweepLimit, 10)
   assert.equal(env.mediaScanHistoryRetentionDays, 30)
   assert.equal(env.mediaScanHistoryRetentionMaxPerAsset, 8)
   assert.equal(env.mediaScanAlertWindowMinutes, 20)
@@ -488,6 +515,12 @@ test('deployment smoke accepts production auth, storage, scanner, and notificati
     MEDIA_SCAN_ALERT_EMAIL_WEBHOOK_SECRET: 'email-secret',
     MEDIA_SCAN_ALERT_EMAIL_TO: 'ops@example.com, security@example.com',
     MEDIA_SCAN_ALERT_EMAIL_FROM: 'alerts@example.com',
+    MEDIA_SCAN_WORKER_ENABLED: 'true',
+    MEDIA_SCAN_WORKER_INTERVAL_SECONDS: '30',
+    TASK_STALE_SUBMISSION_WORKER_ENABLED: 'true',
+    TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS: '300',
+    TASK_STALE_SUBMISSION_OLDER_THAN_HOURS: '72',
+    TASK_STALE_SUBMISSION_SWEEP_LIMIT: '25',
     AUTH_COOKIE_SAMESITE: 'None',
     AUTH_COOKIE_DOMAIN: '.example.com',
     AUTH_TRUSTED_ORIGINS: 'https://app.example.com, https://admin.example.com',
@@ -525,6 +558,13 @@ test('deployment smoke accepts production auth, storage, scanner, and notificati
   assert.equal(env.hasMediaScanAlertEmailWebhookSecret, true)
   assert.equal(env.mediaScanAlertEmailRecipientCount, 2)
   assert.equal(env.hasMediaScanAlertEmailFrom, true)
+  assert.equal(env.apiEmbeddedWorkersEnabled, false)
+  assert.equal(env.mediaScanWorkerEnabled, true)
+  assert.equal(env.mediaScanWorkerIntervalSeconds, 30)
+  assert.equal(env.taskStaleSubmissionWorkerEnabled, true)
+  assert.equal(env.taskStaleSubmissionWorkerIntervalSeconds, 300)
+  assert.equal(env.taskStaleSubmissionOlderThanHours, 72)
+  assert.equal(env.taskStaleSubmissionSweepLimit, 25)
   assert.equal(env.authCookieSameSite, 'None')
   assert.equal(env.authCookieSecure, true)
   assert.deepEqual(env.authTrustedOrigins, ['https://app.example.com', 'https://admin.example.com'])

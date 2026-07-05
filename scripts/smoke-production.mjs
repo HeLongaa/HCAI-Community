@@ -36,6 +36,13 @@ const productionFixture = {
   SECURITY_ALERT_EMAIL_WEBHOOK_SECRET: 'security-email-secret',
   SECURITY_ALERT_EMAIL_TO: 'security@example.com',
   SECURITY_ALERT_EMAIL_FROM: 'security-alerts@example.com',
+  API_EMBEDDED_WORKERS_ENABLED: 'false',
+  MEDIA_SCAN_WORKER_ENABLED: 'true',
+  MEDIA_SCAN_WORKER_INTERVAL_SECONDS: '30',
+  TASK_STALE_SUBMISSION_WORKER_ENABLED: 'true',
+  TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS: '300',
+  TASK_STALE_SUBMISSION_OLDER_THAN_HOURS: '72',
+  TASK_STALE_SUBMISSION_SWEEP_LIMIT: '25',
   AUTH_COOKIE_SAMESITE: 'None',
   AUTH_COOKIE_DOMAIN: '.example.com',
   AUTH_TRUSTED_ORIGINS: 'https://app.example.com, https://admin.example.com',
@@ -98,6 +105,11 @@ const summarize = (env, oauthProviders) => ({
     redisConfigured: env.hasRateLimitRedisUrl,
     failureMode: env.rateLimitRedisFailureMode,
   },
+  workers: {
+    apiEmbedded: env.apiEmbeddedWorkersEnabled,
+    mediaScanEnabled: env.mediaScanWorkerEnabled,
+    staleSubmissionEnabled: env.taskStaleSubmissionWorkerEnabled,
+  },
 })
 
 const source = selectSource()
@@ -125,6 +137,9 @@ check(checks, 'cross-site cookie mode is secure', env.authCookieSameSite !== 'No
 check(checks, 'trusted browser origins configured', env.authTrustedOrigins.length > 0, 'AUTH_TRUSTED_ORIGINS or CORS_ALLOWED_ORIGINS must include the frontend origin')
 check(checks, 'rate limit guard enabled', env.rateLimitEnabled, 'RATE_LIMIT_ENABLED must not be false')
 check(checks, 'shared rate limit store configured', env.rateLimitStore === 'redis' && env.hasRateLimitRedisUrl, `RATE_LIMIT_STORE=${env.rateLimitStore}`)
+check(checks, 'api embedded workers disabled', !env.apiEmbeddedWorkersEnabled, 'API_EMBEDDED_WORKERS_ENABLED should be false for multi-instance API deployments')
+check(checks, 'worker media scan sweep configured', env.mediaScanWorkerEnabled, 'MEDIA_SCAN_WORKER_ENABLED should be true for the worker process')
+check(checks, 'worker stale submission sweep configured', env.taskStaleSubmissionWorkerEnabled, 'TASK_STALE_SUBMISSION_WORKER_ENABLED should be true for the worker process')
 check(checks, 'request body guard enabled', env.requestBodySizeGuardEnabled, 'REQUEST_BODY_SIZE_GUARD_ENABLED must not be false')
 check(checks, 'auth failure monitor enabled', env.authFailureMonitorEnabled, 'AUTH_FAILURE_MONITOR_ENABLED must not be false')
 check(checks, 'external OAuth provider configured', oauthProviders.some((provider) => provider.mode === 'external'), 'At least one OAuth provider should be external in managed smoke')

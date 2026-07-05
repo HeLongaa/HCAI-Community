@@ -111,6 +111,9 @@ export const buildEnv = (source = process.env) => {
   const mediaScanTimeoutSeconds = positiveInteger(source, 'MEDIA_SCAN_TIMEOUT_SECONDS', 900)
   const mediaScanMaxAttempts = positiveInteger(source, 'MEDIA_SCAN_MAX_ATTEMPTS', 3)
   const mediaScanWorkerIntervalSeconds = positiveInteger(source, 'MEDIA_SCAN_WORKER_INTERVAL_SECONDS', 60)
+  const taskStaleSubmissionWorkerIntervalSeconds = positiveInteger(source, 'TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS', 300)
+  const taskStaleSubmissionOlderThanHours = positiveInteger(source, 'TASK_STALE_SUBMISSION_OLDER_THAN_HOURS', 72)
+  const taskStaleSubmissionSweepLimit = positiveInteger(source, 'TASK_STALE_SUBMISSION_SWEEP_LIMIT', 25)
   const mediaScanHistoryRetentionDays = positiveInteger(source, 'MEDIA_SCAN_HISTORY_RETENTION_DAYS', 180)
   const mediaScanHistoryRetentionMaxPerAsset = positiveInteger(source, 'MEDIA_SCAN_HISTORY_RETENTION_MAX_PER_ASSET', 50)
   const mediaScanAlertWindowMinutes = positiveInteger(source, 'MEDIA_SCAN_ALERT_WINDOW_MINUTES', 60)
@@ -178,8 +181,13 @@ export const buildEnv = (source = process.env) => {
     mediaScanRetryDelaySeconds,
     mediaScanTimeoutSeconds,
     mediaScanMaxAttempts,
+    apiEmbeddedWorkersEnabled: boolFlag(source, 'API_EMBEDDED_WORKERS_ENABLED', false),
     mediaScanWorkerEnabled: boolFlag(source, 'MEDIA_SCAN_WORKER_ENABLED', false),
     mediaScanWorkerIntervalSeconds,
+    taskStaleSubmissionWorkerEnabled: boolFlag(source, 'TASK_STALE_SUBMISSION_WORKER_ENABLED', false),
+    taskStaleSubmissionWorkerIntervalSeconds,
+    taskStaleSubmissionOlderThanHours,
+    taskStaleSubmissionSweepLimit,
     mediaScanHistoryRetentionDays,
     mediaScanHistoryRetentionMaxPerAsset,
     mediaScanAlertWindowMinutes,
