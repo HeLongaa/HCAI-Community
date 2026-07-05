@@ -6,6 +6,7 @@ import {
   listCreativeProviders,
 } from './providerRegistry.js'
 import { executeMockCreativeGeneration } from './mockProvider.js'
+import { buildCreativeArtifactObject } from './artifactBuilder.js'
 
 export const getCreativeProviderCatalog = (source = process.env) => {
   const registry = createCreativeProviderRegistry(source)
@@ -26,4 +27,48 @@ export const executeCreativeGeneration = ({ request, actor, source = process.env
   }
 
   throw new Error(`Unsupported creative provider adapter: ${provider.id}`)
+}
+
+export const persistCreativeGenerationOutputs = async (generation, { actor, mediaRepository }) => {
+  if (!mediaRepository?.createGeneratedAsset) {
+    return generation
+  }
+  const outputs = await Promise.all(generation.outputs.map(async (output) => {
+    const artifact = buildCreativeArtifactObject({ generation, output })
+    const asset = await mediaRepository.createGeneratedAsset({
+      generation,
+      output,
+      artifact,
+    }, actor)
+    if (!asset) {
+      return output
+    }
+    const scanStatus = asset.metadata?.security?.scanStatus ?? 'pending'
+    return {
+      ...output,
+      contentType: asset.contentType,
+      storage: {
+        persisted: true,
+        provider: 'media_asset',
+        mediaAssetId: asset.id,
+        scanStatus,
+        downloadPath: `/api/media/assets/${asset.id}/download`,
+      },
+      source: {
+        ...output.source,
+        persistedMediaAssetId: asset.id,
+      },
+      mediaAsset: {
+        id: asset.id,
+        status: asset.status,
+        purpose: asset.purpose,
+        contentType: asset.contentType,
+        scanStatus,
+      },
+    }
+  }))
+  return {
+    ...generation,
+    outputs,
+  }
 }

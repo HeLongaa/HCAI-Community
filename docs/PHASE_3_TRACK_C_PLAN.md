@@ -87,7 +87,7 @@ Validation:
 
 Goal: create a stable server-side boundary for generation without depending on a real paid provider yet.
 
-Implementation status: in progress on `codex/phase-3-track-c-provider-abstraction`.
+Implementation status: completed in PR #13.
 
 Recommended scope:
 
@@ -134,6 +134,8 @@ Validation:
 
 Goal: make generated outputs durable, inspectable, downloadable, and governable.
 
+Implementation status: in progress on `codex/phase-3-track-c-generated-asset-persistence`.
+
 Recommended scope:
 
 - Convert provider output descriptors into media asset records.
@@ -141,6 +143,14 @@ Recommended scope:
 - Attach provider metadata, prompt metadata, ownership, workspace type, and scan state.
 - Reuse media scanner governance before private downloads are allowed.
 - Keep generated asset metadata safe; do not store provider secrets or raw unsafe payloads.
+
+Current implementation slice:
+
+- Creative generation outputs are converted into generated media assets with `purpose=library_asset`.
+- Mock image outputs are written as safe SVG artifacts through the storage signing path; non-image outputs are written as JSON sidecar artifacts.
+- Generated assets store safe `metadata.creative` fields including generation id, output id, workspace, mode, provider id/mode, prompt hash, prompt preview, input asset ids, parameter keys, and source output URL.
+- Generated assets immediately enter existing media scan governance. Manual scan mode keeps downloads blocked until an operator marks the asset clean; mock/webhook scanner modes reuse existing scan status semantics.
+- Creative generation responses now include `storage.mediaAssetId`, `storage.scanStatus`, `storage.downloadPath`, and a compact `mediaAsset` summary.
 
 Exit criteria:
 

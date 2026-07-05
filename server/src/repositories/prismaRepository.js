@@ -43,6 +43,7 @@ import {
   scanMediaAsset,
 } from '../media/scanProvider.js'
 import { dispatchMediaScanAlert } from '../media/alertDispatcher.js'
+import { writeStorageObject } from '../storage/objectWriter.js'
 
 const { PrismaClient } = prismaClientPkg
 import { writeJsonArchive } from '../storage/archiveWriter.js'
@@ -717,6 +718,9 @@ const createPrismaRepository = async (fallbackRepository) => {
 
   const makeStorageKey = (actor, payload, id) =>
     `${actor.handle}/${payload.purpose}/${id}-${payload.fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`
+
+  const makeGeneratedStorageKey = (actor, payload, id) =>
+    `${actor.handle}/generated/${payload.generation.workspace}/${id}-${payload.artifact.fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`
 
   const makeUploadContract = (asset) => {
     return {
@@ -3571,6 +3575,83 @@ const createPrismaRepository = async (fallbackRepository) => {
         resourceId: updated.id,
         metadata: {
           purpose: updated.purpose,
+          scanStatus: asObject(asObject(updatedWithJob.metadata)?.security)?.scanStatus,
+        },
+      })
+      return getMediaAssetDto(updatedWithJob)
+    },
+    createGeneratedAsset: async (payload, actor) => {
+      const owner = await findUserByHandle(actor.handle)
+      if (!owner) {
+        return null
+      }
+      const id = `media-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
+      const storageKey = makeGeneratedStorageKey(actor, payload, id)
+      const storage = await writeStorageObject({
+        body: payload.artifact.body,
+        contentType: payload.artifact.contentType,
+        storageKey,
+      })
+      const asset = await client.mediaAsset.create({
+        data: {
+          id,
+          ownerId: owner.id,
+          fileName: payload.artifact.fileName,
+          storageKey,
+          contentType: payload.artifact.contentType,
+          sizeBytes: storage.bytes,
+          purpose: 'library_asset',
+          status: 'pending',
+          metadata: {
+            creative: payload.artifact.metadata,
+            storage: {
+              provider: storage.provider,
+              writtenAt: storage.writtenAt,
+            },
+          },
+        },
+      })
+      const scanResult = await scanMediaAsset(asset)
+      const scanJob = await createMediaScanJob(asset, scanResult)
+      const updated = await client.mediaAsset.update({
+        where: { id: asset.id },
+        data: {
+          status: scanResult?.status === 'rejected' ? 'rejected' : 'uploaded',
+          metadata: compactObject({
+            ...mediaSecurityMetadata(asset, {
+              declaredContentType: asset.contentType,
+              detectedContentType: asset.contentType,
+              scanProvider: scanResult?.provider ?? 'manual',
+              scanStatus: scanResult?.status ?? 'pending',
+              scanNote: scanResult?.note,
+              scanRequestedAt: scanResult?.requestedAt,
+              externalScanId: scanResult?.externalScanId,
+              scanJobStatus: scanResult?.scanJobStatus,
+              scanAttempts: scanResult?.scanAttempts,
+              scanTimeoutAt: scanResult?.scanTimeoutAt,
+              nextRetryAt: scanResult?.nextRetryAt,
+              scanRequestAdapter: scanResult?.requestAdapter,
+              scanDispatchStatus: scanResult?.dispatchStatus,
+              scanDispatchStatusCode: scanResult?.dispatchStatusCode,
+              scanDispatchError: scanResult?.dispatchError,
+              scanDispatchRequestedAt: scanResult?.dispatchRequestedAt,
+              rejectionReason: scanResult?.reason ?? undefined,
+              completedAt: new Date().toISOString(),
+            }),
+          }),
+        },
+      })
+      const updatedWithJob = mediaAssetWithScanJob(updated, scanJob)
+      await recordAudit({
+        actor,
+        action: 'media.generated_asset.created',
+        resourceType: 'media_asset',
+        resourceId: updated.id,
+        metadata: {
+          generationId: payload.generation.id,
+          outputId: payload.output.id,
+          workspace: payload.generation.workspace,
+          providerId: payload.generation.provider.id,
           scanStatus: asObject(asObject(updatedWithJob.metadata)?.security)?.scanStatus,
         },
       })

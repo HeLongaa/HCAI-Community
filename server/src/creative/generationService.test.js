@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { executeCreativeGeneration, getCreativeProviderCatalog } from './generationService.js'
+import { executeCreativeGeneration, getCreativeProviderCatalog, persistCreativeGenerationOutputs } from './generationService.js'
 
 const actor = {
   id: 'demo-user-creator',
@@ -25,7 +25,7 @@ test('getCreativeProviderCatalog exposes safe mock provider capabilities', () =>
   assert.equal(catalog.providers[0].id, 'mock')
   assert.equal(catalog.providers[0].enabled, true)
   assert.equal(catalog.providers[0].safeMetadata.externalCredentialsConfigured, false)
-  assert.equal(catalog.providers[0].safeMetadata.persistsOutputs, false)
+  assert.equal(catalog.providers[0].safeMetadata.persistsOutputs, true)
   assert.ok(catalog.providers[0].capabilities.find((capability) => capability.workspace === 'image'))
 })
 
@@ -67,4 +67,39 @@ test('executeCreativeGeneration reports disabled providers as unavailable', () =
     }),
     /Creative provider is not available: mock/,
   )
+})
+
+test('persistCreativeGenerationOutputs attaches media asset storage metadata', async () => {
+  const generation = executeCreativeGeneration({ request, actor, source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' } })
+  const createdAssets = []
+  const persisted = await persistCreativeGenerationOutputs(generation, {
+    actor,
+    mediaRepository: {
+      createGeneratedAsset: async (payload) => {
+        createdAssets.push(payload)
+        return {
+          id: 'media-generated-1',
+          status: 'uploaded',
+          purpose: 'library_asset',
+          contentType: payload.artifact.contentType,
+          metadata: {
+            security: {
+              scanStatus: 'clean',
+            },
+          },
+        }
+      },
+    },
+  })
+
+  assert.equal(createdAssets.length, 1)
+  assert.equal(createdAssets[0].generation.id, generation.id)
+  assert.equal(createdAssets[0].output.id, generation.outputs[0].id)
+  assert.equal(createdAssets[0].artifact.contentType, 'image/svg+xml')
+  assert.equal(createdAssets[0].artifact.metadata.promptHash.length, 64)
+  assert.equal(persisted.outputs[0].storage.persisted, true)
+  assert.equal(persisted.outputs[0].storage.provider, 'media_asset')
+  assert.equal(persisted.outputs[0].storage.mediaAssetId, 'media-generated-1')
+  assert.equal(persisted.outputs[0].storage.downloadPath, '/api/media/assets/media-generated-1/download')
+  assert.equal(persisted.outputs[0].mediaAsset.scanStatus, 'clean')
 })
