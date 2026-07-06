@@ -52,6 +52,11 @@ import {
   buildOperationsMetricsSnapshot,
   operationsMetricsSampleDefinitions,
 } from '../operations/metrics.js'
+import {
+  buildProviderLifecycleAuditPayload,
+  buildProviderLifecycleNotificationPayload,
+  hasProviderLifecycleSourceKey,
+} from './providerLifecycleWiring.js'
 
 const sessionByRefreshToken = new Map()
 const emailAccountByEmail = new Map()
@@ -780,6 +785,48 @@ function notifyAuditReaders(actor, payload) {
       .map((account) => account.handle),
     payload,
   )
+}
+
+function providerLifecycleRecipientHandles(actor, payload = {}) {
+  return uniqueHandles([
+    payload.actorHandle,
+    ...seedStore.demoAccounts
+      .filter((account) => account.handle !== actor?.handle && hasPermission(account, 'admin:audit:read'))
+      .map((account) => account.handle),
+  ])
+}
+
+function createProviderLifecycleNotifications(payload = {}, actor = null) {
+  const notificationPayload = buildProviderLifecycleNotificationPayload(payload)
+  const handles = providerLifecycleRecipientHandles(actor, payload)
+    .filter((handle) => !notifications.some((notification) =>
+      notification.recipientHandle === handle &&
+      notification.type === notificationPayload.type &&
+      notification.resourceType === notificationPayload.resourceType &&
+      notification.resourceId === notificationPayload.resourceId &&
+      hasProviderLifecycleSourceKey(notification, payload.sourceKey),
+    ))
+  return createNotificationsForHandles(handles, notificationPayload)
+}
+
+function recordProviderLifecycleAudit(payload = {}, actor = null) {
+  const auditPayload = buildProviderLifecycleAuditPayload(payload, actor)
+  const existing = auditEvents.find((event) =>
+    event.action === auditPayload.action &&
+    event.resourceType === auditPayload.resourceType &&
+    event.resourceId === auditPayload.resourceId &&
+    hasProviderLifecycleSourceKey(event, payload.sourceKey),
+  )
+  if (existing) {
+    return serializeAuditEvent(existing)
+  }
+  return serializeAuditEvent(recordAudit(
+    auditPayload.actor,
+    auditPayload.action,
+    auditPayload.resourceType,
+    auditPayload.resourceId,
+    auditPayload.metadata,
+  ))
 }
 
 const taskNotificationTarget = (page = 'mine') => ({ page })
@@ -2404,6 +2451,12 @@ export const createSeedRepository = () => ({
       return { updated }
     },
     createForHandles: createNotificationsForHandles,
+  },
+  providerLifecycleNotifications: {
+    create: createProviderLifecycleNotifications,
+  },
+  providerLifecycleAudit: {
+    record: recordProviderLifecycleAudit,
   },
   audit: {
     find: (id) => {

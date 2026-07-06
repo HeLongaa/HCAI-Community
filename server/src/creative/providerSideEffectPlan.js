@@ -163,7 +163,7 @@ export const buildProviderSideEffectPlan = ({
       replay,
       type: lifecycleOperations.audit,
       required: false,
-      metadata: { auditAction: `creative.provider_replay.${statusForReplay(replay) ?? 'updated'}` },
+      metadata: { auditAction: 'creative.provider_lifecycle.side_effect_applied' },
     }))
   }
 
@@ -264,6 +264,7 @@ const executeOperation = async ({ operation, replay, repositories, actor, state 
       return repositories.providerLifecycleNotifications?.create?.({
         sourceKey: operation.key,
         generationId,
+        actorHandle: generation?.actorHandle ?? replay?.generation?.actorHandle ?? actor?.handle ?? null,
         type: operation.metadata.notificationType,
         metadata: operation.metadata,
       }, actor) ?? null

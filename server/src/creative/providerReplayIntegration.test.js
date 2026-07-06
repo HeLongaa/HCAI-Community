@@ -130,6 +130,60 @@ test('applyProviderReplayThroughLedger records executes and marks completed side
   const found = await repository.creativeProviderReplays.findByIdempotencyKey(replay.idempotencyKey)
   assert.equal(found.id, result.replayRecord.id)
   assert.equal(found.sideEffectResult.completed, true)
+
+  const notifyOperation = result.execution.operations.find((operation) => operation.type === 'notify_lifecycle')
+  const auditOperation = result.execution.operations.find((operation) => operation.type === 'audit_lifecycle')
+  assert.ok(notifyOperation)
+  assert.ok(auditOperation)
+  assert.ok(notifyOperation.key.endsWith(':notify_lifecycle'))
+  assert.ok(auditOperation.key.endsWith(':audit_lifecycle'))
+
+  const ownerInbox = await repository.notifications.list(actor, {
+    readState: 'all',
+    type: 'creative.provider_lifecycle.completed',
+    resourceType: 'creative_generation',
+  })
+  const ownerNotification = ownerInbox.items.find((item) => item.resourceId === replay.generation.id)
+  assert.ok(ownerNotification)
+  assert.equal(ownerNotification.metadata.sourceKey, notifyOperation.key)
+  assert.equal(ownerNotification.metadata.nextStatus, 'completed')
+  assert.equal(JSON.stringify(ownerNotification.metadata).includes('mock://provider-ledger-output.png'), false)
+
+  const auditReaderInbox = await repository.notifications.list({ id: 'demo-user-admin', handle: 'opsplus' }, {
+    readState: 'all',
+    type: 'creative.provider_lifecycle.completed',
+    resourceType: 'creative_generation',
+  })
+  assert.ok(auditReaderInbox.items.some((item) =>
+    item.resourceId === replay.generation.id &&
+    item.metadata.sourceKey === notifyOperation.key))
+
+  const lifecycleAudit = await repository.audit.list({
+    action: 'creative.provider_lifecycle.side_effect_applied',
+    resourceType: 'creative_generation',
+  })
+  const auditEvent = lifecycleAudit.items.find((item) => item.resourceId === replay.generation.id)
+  assert.ok(auditEvent)
+  assert.equal(auditEvent.metadata.sourceKey, auditOperation.key)
+  assert.equal(auditEvent.metadata.providerJobId, replay.generation.providerJobId)
+  assert.equal(JSON.stringify(auditEvent.metadata).includes('mock://provider-ledger-output.png'), false)
+
+  const duplicateNotifications = await repository.providerLifecycleNotifications.create({
+    sourceKey: notifyOperation.key,
+    generationId: replay.generation.id,
+    actorHandle: actor.handle,
+    type: 'creative.provider_lifecycle.completed',
+    metadata: notifyOperation.result[0].metadata,
+  }, actor)
+  assert.equal(duplicateNotifications.length, 0)
+
+  const duplicateAudit = await repository.providerLifecycleAudit.record({
+    sourceKey: auditOperation.key,
+    generationId: replay.generation.id,
+    action: 'creative.provider_lifecycle.side_effect_applied',
+    metadata: auditEvent.metadata,
+  }, actor)
+  assert.equal(duplicateAudit.id, auditEvent.id)
 })
 
 test('applyProviderReplayThroughLedger suppresses duplicate completed replay execution', async () => {
