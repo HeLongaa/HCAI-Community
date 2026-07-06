@@ -6,7 +6,7 @@ Current decision: **no-go for provider callbacks, polling workers, and manual re
 
 This package is documentation only. It does not add a provider SDK, HTTP client, webhook endpoint, polling worker, provider network call, Admin mutation endpoint, payment refund flow, or production paid-provider path.
 
-Implementation status: the repository now has a durable replay ledger schema/repository foundation, a pure lifecycle replay reducer, provider callback auth/parser pure functions, provider polling lease/stop-condition pure functions, provider lifecycle side-effect plan/executor pure functions, fixture-only replay-ledger integration helpers that record side-effect plans/results without provider credentials, mocked provider-status client contract tests that require an injected client, and provider lifecycle notification/audit repository wiring behind stable source keys. Provider callback routes, polling worker intervals, default provider status HTTP clients, manual replay endpoints, and real provider network calls remain disabled and unimplemented.
+Implementation status: the repository now has a durable replay ledger schema/repository foundation, a pure lifecycle replay reducer, provider callback auth/parser pure functions, provider polling lease/stop-condition pure functions, provider lifecycle side-effect plan/executor pure functions, fixture-only replay-ledger integration helpers that record side-effect plans/results without provider credentials, mocked provider-status client contract tests that require an injected client, provider lifecycle notification/audit repository wiring behind stable source keys, and manual replay authorization/parser pure functions. Provider callback routes, polling worker intervals, default provider status HTTP clients, manual replay endpoints, and real provider network calls remain disabled and unimplemented.
 
 ## Scope
 
@@ -15,6 +15,7 @@ Covered event sources:
 - Provider webhook or callback delivery.
 - Provider polling worker status reads. Current tests cover an injected mocked provider-status client contract only; no default HTTP client or worker wiring is enabled.
 - Manual replay from an operator-controlled internal tool or script.
+  Current tests cover authorization/parser envelope construction only; no route, endpoint, worker, or side-effect execution path is enabled.
 
 Covered safety boundaries:
 
@@ -108,6 +109,8 @@ Before enabling manual replay:
 - Restrict access to approved internal operators.
 - Require an explicit reason code.
 - Require a target generation id and provider job id match.
+- Reject unsafe manual replay payloads that include raw provider payloads, raw prompts, output URLs, or provider responses.
+- Reject terminal-state reopen attempts unless a separate Admin mutation phase explicitly defines that behavior.
 - Use the same replay ledger and lifecycle reducer as webhook and polling events.
 - Return no-op for duplicate or stale replay attempts.
 - Emit audit events for accepted, rejected, and no-op replays.
@@ -248,6 +251,7 @@ Callback and polling code cannot be enabled until targeted tests cover:
 - Polling worker stop-condition plan stops terminal, mismatched, expired, missing, unsafe-runtime, unsupported-provider, or missing-job generations.
 - Mocked provider-status client contract maps provider status reads into safe polling envelopes without real credentials or network calls.
 - Mocked provider-status client contract rejects missing jobs, job mismatches, rate limits, timeouts, and unsafe error previews without lifecycle replay.
+- Manual replay authorization/parser tests require approved operator permissions, explicit reason codes, generation/provider/job matches, safe metadata, and terminal reopen rejection without route wiring.
 - Lifecycle reducer maps queued, running, completed, failed, and cancelled provider states.
 - Duplicate terminal replay returns no-op.
 - Duplicate non-terminal replay returns no-op.
@@ -280,12 +284,11 @@ No-go for provider callback, polling, or manual replay if any are true:
 
 ## Handoff To Future Implementation
 
-A future implementation task should continue from the mocked-client status contract and repository-backed lifecycle notification/audit wiring:
+A future implementation task should continue from the mocked-client status contract, repository-backed lifecycle notification/audit wiring, and manual replay auth/parser envelope:
 
-1. Add manual replay authorization/parser tests without route wiring.
-2. Add worker interval wiring only after lease, stop-condition, replay ledger, lifecycle reducer, side-effect executor, mocked status-client, and notification/audit repository wiring tests all pass.
-3. Add callback route wiring only after auth/parser tests, replay ledger, lifecycle reducer, side-effect executor, and notification/audit repository wiring tests all pass.
-4. Add smoke and quality-gate documentation only after the route or worker exists.
-5. Complete the external-call approval package before any real provider network call.
+1. Add worker interval wiring only after lease, stop-condition, replay ledger, lifecycle reducer, side-effect executor, mocked status-client, notification/audit repository wiring, and manual replay auth/parser tests all pass.
+2. Add callback route wiring only after auth/parser tests, replay ledger, lifecycle reducer, side-effect executor, notification/audit repository wiring, and manual replay envelope tests all pass.
+3. Add smoke and quality-gate documentation only after the route or worker exists.
+4. Complete the external-call approval package before any real provider network call.
 
 Do not broaden to production, Admin mutation controls, video/music/chat providers, or payment-provider reconciliation during the first callback/polling implementation.
