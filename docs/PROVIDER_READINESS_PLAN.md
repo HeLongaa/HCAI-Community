@@ -391,6 +391,14 @@ Deliverables:
 - safe detail DTO with linked media, quota, credit, and safety metadata
 - permission matrix and OpenAPI updates
 
+Current implementation boundary:
+
+- `GET /api/admin/creative/generations` and `GET /api/admin/creative/generations/:id` provide read-only Admin access to durable creative generation records.
+- Routes require `admin:audit:read`, matching existing read-only privileged operations surfaces.
+- List filters cover `userHandle`/`actorHandle`, `workspace`, `mode`, `providerId`, `status`, `reviewRequired`, `mediaAssetId`, `dateFrom`, `dateTo`, cursor, and limit.
+- Detail responses use the same safe durable generation DTO: prompt hash/preview only, output asset ids, usage, quota, credit, safety, and policy metadata.
+- Manual retry, cancel, force-review, refund, and real-provider controls remain deferred.
+
 Validation:
 
 - permission tests

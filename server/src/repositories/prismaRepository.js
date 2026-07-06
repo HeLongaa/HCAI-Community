@@ -3686,6 +3686,14 @@ const createPrismaRepository = async (fallbackRepository) => {
           ...(options.mode ? { mode: String(options.mode) } : {}),
           ...(options.providerId ? { providerId: String(options.providerId) } : {}),
           ...(options.status ? { status: String(options.status) } : {}),
+          ...(options.reviewRequired == null ? {} : { safety: { path: ['reviewRequired'], equals: Boolean(options.reviewRequired) } }),
+          ...(options.mediaAssetId ? { outputAssetIds: { has: String(options.mediaAssetId) } } : {}),
+          ...((options.dateFrom || options.dateTo) ? {
+            createdAt: {
+              ...(options.dateFrom ? { gte: new Date(options.dateFrom) } : {}),
+              ...(options.dateTo ? { lte: new Date(options.dateTo) } : {}),
+            },
+          } : {}),
         },
         orderBy: { createdAt: 'desc' },
         take: limit + 1,

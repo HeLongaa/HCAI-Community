@@ -1574,6 +1574,40 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/creative/generations': {
+      get: {
+        summary: 'List read-only creative generation history for Admin operations',
+        parameters: [
+          { name: 'userHandle', in: 'query', schema: { type: 'string' } },
+          { name: 'actorHandle', in: 'query', schema: { type: 'string' } },
+          { name: 'workspace', in: 'query', schema: { type: 'string', enum: ['image', 'video', 'music', 'chat'] } },
+          { name: 'mode', in: 'query', schema: { type: 'string' } },
+          { name: 'providerId', in: 'query', schema: { type: 'string' } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['queued', 'running', 'completed', 'failed', 'cancelled', 'review_required'] } },
+          { name: 'reviewRequired', in: 'query', schema: { type: 'boolean' } },
+          { name: 'mediaAssetId', in: 'query', schema: { type: 'string' } },
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+        ],
+        responses: {
+          '200': { description: 'Creative generation history list' },
+          '403': { description: 'Requires audit read permission' },
+        },
+      },
+    },
+    '/admin/creative/generations/{id}': {
+      get: {
+        summary: 'Read a single creative generation history record',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Creative generation history detail' },
+          '403': { description: 'Requires audit read permission' },
+          '404': { description: 'Creative generation record not found' },
+        },
+      },
+    },
     '/admin/security/events': {
       get: {
         summary: 'List recent security guard and anomaly events',

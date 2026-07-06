@@ -342,6 +342,14 @@ The response includes:
 
 Moderation-blocked and quota-exceeded requests do not reserve credits or create provider work.
 
+### `GET /admin/creative/generations`
+
+Requires `admin:audit:read`. Returns read-only creative generation history for operators. Supports `userHandle`/`actorHandle`, `workspace`, `mode`, `providerId`, `status`, `reviewRequired`, `mediaAssetId`, `dateFrom`, `dateTo`, `cursor`, and `limit` filters. The response uses the safe durable generation record shape: prompt hash/preview only, no raw prompt.
+
+### `GET /admin/creative/generations/:id`
+
+Requires `admin:audit:read`. Returns a single safe creative generation record with linked `outputAssetIds`, `usage`, `quota`, `credit`, `safety`, and `policy` metadata. This endpoint is read-only; retry, cancel, force-review, and refund controls remain out of scope.
+
 ### `POST /points/redemptions`
 
 Requires auth. Creates a redemption request.

@@ -3,9 +3,12 @@ import test from 'node:test'
 
 import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
 import { recordSecurityEvent, resetSecurityEvents } from '../../security/securityEvents.js'
+import { resetCreativePolicyState } from '../../creative/policy.js'
+import { registerCreativeRoutes } from '../creative/routes.js'
 import { registerAdminRoutes } from './routes.js'
 
 const createTestServer = () => createRouteTestServer(registerAdminRoutes)
+const createCreativeAdminServer = () => createRouteTestServer(registerCreativeRoutes, registerAdminRoutes)
 
 test('GET /api/admin/permissions returns AUTH_REQUIRED when missing auth', async () => {
   const server = await createTestServer()
@@ -123,6 +126,101 @@ test('GET /api/admin/operations/metrics returns operations aggregates for audito
     assert.ok(Array.isArray(payload.data.mediaScan.archiveWrites.byProvider))
   } finally {
     resetSecurityEvents()
+    await server.close()
+  }
+})
+
+test('GET /api/admin/creative/generations requires audit read permission', async () => {
+  const server = await createTestServer()
+  try {
+    const { status, payload } = await requestJson(server.url, '/api/admin/creative/generations', {
+      method: 'GET',
+      token: 'demo-access.taskops',
+    })
+
+    assert.equal(status, 403)
+    assert.equal(payload.data, null)
+    assert.equal(payload.error.code, 'PERMISSION_DENIED')
+    assert.equal(payload.error.message, 'Missing permission: admin:audit:read')
+  } finally {
+    await server.close()
+  }
+})
+
+test('GET /api/admin/creative/generations lists and filters provider generation history', async () => {
+  resetCreativePolicyState()
+  const previousProvider = process.env.MEDIA_SCAN_PROVIDER
+  process.env.MEDIA_SCAN_PROVIDER = 'mock'
+  const server = await createCreativeAdminServer()
+  try {
+    const generated = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        prompt: 'A celebrity campaign poster for Admin history review filter',
+      },
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(generated.status, 200)
+    assert.equal(generated.payload.data.status, 'review_required')
+    const generationId = generated.payload.data.id
+    const mediaAssetId = generated.payload.data.outputs[0].storage.mediaAssetId
+
+    const list = await requestJson(
+      server.url,
+      `/api/admin/creative/generations?userHandle=promptlin&workspace=image&providerId=mock&status=review_required&reviewRequired=true&mediaAssetId=${mediaAssetId}&limit=5`,
+      {
+        method: 'GET',
+        token: 'demo-access.legalpixel',
+      },
+    )
+
+    assert.equal(list.status, 200)
+    assert.equal(list.payload.error, undefined)
+    assert.equal(list.payload.meta.pagination.limit, 5)
+    const item = list.payload.data.find((entry) => entry.id === generationId)
+    assert.ok(item)
+    assert.equal(item.actorHandle, 'promptlin')
+    assert.equal(item.workspace, 'image')
+    assert.equal(item.providerId, 'mock')
+    assert.equal(item.status, 'review_required')
+    assert.equal(item.safety.reviewRequired, true)
+    assert.equal(item.credit.status, 'settled')
+    assert.equal(item.quota.reservationId, item.credit.quotaReservationId)
+    assert.deepEqual(item.outputAssetIds, [mediaAssetId])
+    assert.equal('prompt' in item, false)
+
+    const detail = await requestJson(server.url, `/api/admin/creative/generations/${generationId}`, {
+      method: 'GET',
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(detail.status, 200)
+    assert.equal(detail.payload.data.id, generationId)
+    assert.equal(detail.payload.data.promptPreview, 'A celebrity campaign poster for Admin history review filter')
+    assert.equal(detail.payload.data.credit.status, 'settled')
+  } finally {
+    await server.close()
+    resetCreativePolicyState()
+    if (previousProvider == null) {
+      delete process.env.MEDIA_SCAN_PROVIDER
+    } else {
+      process.env.MEDIA_SCAN_PROVIDER = previousProvider
+    }
+  }
+})
+
+test('GET /api/admin/creative/generations/:id returns not found for missing records', async () => {
+  const server = await createTestServer()
+  try {
+    const { status, payload } = await requestJson(server.url, '/api/admin/creative/generations/missing-generation', {
+      method: 'GET',
+      token: 'demo-access.legalpixel',
+    })
+
+    assert.equal(status, 404)
+    assert.equal(payload.data, null)
+    assert.equal(payload.error.code, 'NOT_FOUND')
+  } finally {
     await server.close()
   }
 })

@@ -20,7 +20,7 @@ The executable fallback role defaults live in `server/src/auth/permissions.js`. 
 | `points:read` | Read points ledger | `GET /api/points/ledger`; task approval writes settlement ledger entries | Not guarded yet |
 | `points:adjust` | Search/export user ledgers, adjust points, submit high-value adjustments for review, read point policy/history, and approve points queue reviews | `GET /api/admin/points/ledger`, `GET /api/admin/points/ledger.csv`, `GET /api/admin/points/policy`, `GET /api/admin/points/policy/history`, `POST /api/admin/points/adjustments`; also permits `userHandle` lookup on `GET /api/points/ledger`; required with `admin:queue:review` for `points` queue decisions | Admin Finance tab visibility and actions |
 | `admin:access` | Access operations/admin shell | Not a data route guard | Admin navigation visibility |
-| `admin:audit:read` | Read privileged audit events | `GET /api/admin/audit`, `GET /api/admin/audit/:id`, `GET /api/admin/audit/export` | Admin page audit API load, deep-link lookup, and JSON export |
+| `admin:audit:read` | Read privileged audit events and read-only operations history | `GET /api/admin/audit`, `GET /api/admin/audit/:id`, `GET /api/admin/audit/export`, `GET /api/admin/creative/generations`, `GET /api/admin/creative/generations/:id` | Admin page audit API load, deep-link lookup, JSON export, and read-only creative generation history |
 | `admin:queue:read` | Read admin review queues | `GET /api/admin/reviews`, `GET /api/media/review-queue` | Admin review queue and media governance API loads |
 | `admin:queue:review` | Perform admin review actions | `POST /api/admin/reviews/:id/actions`, `POST /api/media/uploads/:id/scan` | Admin queue and media approve/reject buttons |
 | `admin:permissions:manage` | Edit role permission grants and point policy | `PUT /api/admin/roles/:role/permissions`, `PUT /api/admin/points/policy`, `POST /api/admin/points/policy/rollback` | Admin permission matrix edit/save controls; point policy save/rollback |
@@ -118,6 +118,8 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `GET /api/admin/audit` | Required | `admin:audit:read` | Yes |
 | `GET /api/admin/audit/export` | Required | `admin:audit:read` | Yes |
 | `GET /api/admin/audit/:id` | Required | `admin:audit:read` | Yes |
+| `GET /api/admin/creative/generations` | Required | `admin:audit:read` | Yes |
+| `GET /api/admin/creative/generations/:id` | Required | `admin:audit:read` | Yes |
 
 ## Repository-Level Ownership Checks
 
