@@ -28,6 +28,8 @@ Current executable provider flag:
 - `CREATIVE_PROVIDER_MODE=disabled`: generation routes report provider unavailability. Use this for staging provider preflight so real credentials can be validated as present without enabling generation calls.
 - `CREATIVE_PROVIDER_MODE=replicate_staging`: guarded staging-only adapter shell. It requires `CREATIVE_PROVIDER_RUNTIME_ENV=staging`, `CREATIVE_STAGING_IMAGE_PROVIDER=replicate`, `CREATIVE_STAGING_PROVIDER_API_TOKEN`, and `CREATIVE_STAGING_PROVIDER_CONFIRMATION=staging-only`. The provider catalog may expose `replicate-staging` as safe metadata, but it remains unavailable and `networkCallsEnabled=false` until the mocked client contract and budget lifecycle tasks are complete.
 
+The Replicate staging client contract is tested with an injected mocked client only. It maps image request payloads, Replicate-like prediction statuses, output URLs, and provider failures into the internal generation contract without providing a default network client or wiring the route layer to Replicate.
+
 Preflight-only metadata:
 
 - `CREATIVE_PROVIDER_RUNTIME_ENV`: one of `development`, `test`, `ci`, `staging`, or `production`. This can differ from `NODE_ENV`; staging deployments can still run optimized `NODE_ENV=production` while setting this value to `staging`.
