@@ -4,8 +4,11 @@ import test from 'node:test'
 import {
   buildProviderPollingLeaseKey,
   buildProviderPollingPlan,
+  pollProviderGenerationOnce,
   providerPollingConfig,
+  runProviderPollingWorkerOnce,
 } from './providerPollingWorker.js'
+import { createSeedRepository } from '../repositories/seedRepository.js'
 
 const now = new Date('2026-07-06T12:00:00.000Z')
 
@@ -27,6 +30,63 @@ const generation = (overrides = {}) => ({
   ...overrides,
 })
 
+const actor = {
+  id: 'demo-user-creator',
+  handle: 'promptlin',
+}
+
+const uniqueId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
+
+const createRunningProviderGeneration = async (repository, overrides = {}) => {
+  const generationId = overrides.id ?? uniqueId('gen-provider-polling-worker')
+  const providerJobId = overrides.providerJobId ?? `${generationId}-prediction`
+  const quota = await repository.creativeQuota.reserve({
+    generationId,
+    actorId: actor.id,
+    actorHandle: actor.handle,
+    workspace: 'image',
+    windowType: 'daily',
+    windowStart: '2026-07-06T00:00:00.000Z',
+    windowEnd: '2026-07-06T23:59:59.999Z',
+    limit: 5,
+    costUnits: 1,
+    policyVersion: 'creative-policy-v1',
+  }, actor)
+  const credit = await repository.creativeCredits.reserve({
+    generationId,
+    quotaReservationId: quota.reservationId,
+    actorId: actor.id,
+    actorHandle: actor.handle,
+    workspace: 'image',
+    mode: 'text_to_image',
+    amount: 2,
+    reasonCode: 'generation_reserved',
+    metadata: { providerId: 'replicate', providerMode: 'replicate_staging' },
+  }, actor)
+  return repository.creativeGenerations.create({
+    id: generationId,
+    actorId: actor.id,
+    actorHandle: actor.handle,
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'replicate',
+    providerMode: 'replicate_staging',
+    status: 'running',
+    promptHash: 'd'.repeat(64),
+    promptPreview: 'Polling worker fixture prompt',
+    inputAssetIds: [],
+    parameterKeys: ['aspectRatio'],
+    quota: quota.quota,
+    credit: credit.credit,
+    usage: { estimatedCredits: 2, costModel: 'fixture' },
+    safety: { reviewRequired: false },
+    policy: { action: 'allow' },
+    providerJobId,
+    createdAt: '2026-07-06T11:45:00.000Z',
+    ...overrides,
+  }, actor)
+}
+
 test('buildProviderPollingLeaseKey returns stable low-cardinality keys', () => {
   assert.equal(
     buildProviderPollingLeaseKey({
@@ -41,11 +101,14 @@ test('buildProviderPollingLeaseKey returns stable low-cardinality keys', () => {
 test('providerPollingConfig defaults polling off and parses fixture settings', () => {
   assert.deepEqual(providerPollingConfig({}), {
     enabled: false,
+    workerEnabled: false,
     runtimeEnv: 'development',
     providerMode: 'mock',
     providerId: 'replicate',
     maxAgeSeconds: 3600,
     leaseTtlSeconds: 300,
+    intervalSeconds: 60,
+    sweepLimit: 10,
     requireCreditReservation: false,
   })
 
@@ -54,11 +117,14 @@ test('providerPollingConfig defaults polling off and parses fixture settings', (
     CREATIVE_PROVIDER_POLLING_REQUIRE_CREDIT_RESERVATION: 'true',
   }), {
     enabled: true,
+    workerEnabled: false,
     runtimeEnv: 'staging',
     providerMode: 'replicate_staging',
     providerId: 'replicate',
     maxAgeSeconds: 3600,
     leaseTtlSeconds: 120,
+    intervalSeconds: 60,
+    sweepLimit: 10,
     requireCreditReservation: true,
   })
 })
@@ -213,4 +279,113 @@ test('buildProviderPollingPlan can fail closed when credit reservation evidence 
   assert.equal(plan.reasonCode, 'credit_reservation_missing')
   assert.equal(plan.safeMetadata.creditReservationRequired, true)
   assert.equal(plan.safeMetadata.creditReservationPresent, false)
+})
+
+test('runProviderPollingWorkerOnce is disabled by default', async () => {
+  const repository = createSeedRepository()
+  await createRunningProviderGeneration(repository)
+
+  const result = await runProviderPollingWorkerOnce({
+    repositories: repository,
+    source: { ...pollingSource, CREATIVE_PROVIDER_POLLING_ENABLED: 'false' },
+    now,
+  })
+
+  assert.equal(result.enabled, false)
+  assert.equal(result.reasonCode, 'polling_disabled')
+  assert.equal(result.candidates, 0)
+  assert.equal(result.polled, 0)
+  assert.equal(result.replayed, 0)
+})
+
+test('pollProviderGenerationOnce fails closed without an injected status client', async () => {
+  const repository = createSeedRepository()
+  const record = await createRunningProviderGeneration(repository, { providerJobId: 'prediction-missing-client' })
+
+  const result = await pollProviderGenerationOnce({
+    generation: record,
+    repositories: repository,
+    source: pollingSource,
+    now,
+  })
+
+  assert.equal(result.polled, false)
+  assert.equal(result.replayed, false)
+  assert.equal(result.plan.reasonCode, 'status_client_missing')
+  assert.equal(result.plan.safeMetadata.statusClientInjected, false)
+})
+
+test('runProviderPollingWorkerOnce applies completed fixture status through replay ledger', async () => {
+  const repository = createSeedRepository()
+  const record = await createRunningProviderGeneration(repository, { providerJobId: 'prediction-completed-worker' })
+  const client = {
+    getPrediction: async (id) => ({
+      id,
+      status: 'succeeded',
+      output: ['mock://polling-worker-output.png'],
+      metrics: { predict_time: 1.25 },
+      created_at: '2026-07-06T11:45:30.000Z',
+      completed_at: '2026-07-06T11:46:00.000Z',
+    }),
+  }
+
+  const result = await runProviderPollingWorkerOnce({
+    repositories: repository,
+    providerStatusClients: { replicate: client },
+    source: pollingSource,
+    now,
+  })
+
+  assert.equal(result.enabled, true)
+  assert.ok(result.candidates >= 1)
+  assert.ok(result.polled >= 1)
+  assert.ok(result.replayed >= 1)
+  const targetResult = result.results.find((item) => item.generationId === record.id)
+  assert.ok(targetResult)
+  assert.equal(targetResult.applied.executed, true)
+  assert.equal(targetResult.applied.execution.completed, true)
+
+  const generationRecord = await repository.creativeGenerations.find(record.id)
+  assert.equal(generationRecord.status, 'completed')
+  assert.equal(generationRecord.credit.status, 'settled')
+  assert.ok(generationRecord.quota.used >= 1)
+  assert.equal(generationRecord.outputAssetIds.length, 1)
+
+  const replays = await repository.creativeProviderReplays.listForGeneration(record.id)
+  assert.equal(replays.items.length, 1)
+  assert.equal(replays.items[0].sourceType, 'polling')
+  assert.equal(replays.items[0].action, 'applied')
+  assert.equal(replays.items[0].sideEffectResult.completed, true)
+})
+
+test('pollProviderGenerationOnce maps failed and cancelled fixture status to refund/release paths', async () => {
+  for (const [providerStatus, expectedStatus] of [['failed', 'failed'], ['canceled', 'cancelled']]) {
+    const repository = createSeedRepository()
+    const record = await createRunningProviderGeneration(repository, { providerJobId: `prediction-${expectedStatus}-worker` })
+    const result = await pollProviderGenerationOnce({
+      generation: record,
+      repositories: repository,
+      providerStatusClients: {
+        replicate: {
+          getPrediction: async (id) => ({
+            id,
+            status: providerStatus,
+            error: 'provider failed with token=secret',
+          }),
+        },
+      },
+      source: pollingSource,
+      now,
+    })
+
+    assert.equal(result.polled, true)
+    assert.equal(result.replayed, true)
+    assert.equal(result.applied.execution.completed, true)
+
+    const generationRecord = await repository.creativeGenerations.find(record.id)
+    assert.equal(generationRecord.status, expectedStatus)
+    assert.equal(generationRecord.credit.status, 'refunded')
+    assert.ok(generationRecord.quota.released >= 1)
+    assert.equal(JSON.stringify(result.applied.replayRecord).includes('secret'), false)
+  }
 })

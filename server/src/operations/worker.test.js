@@ -181,3 +181,35 @@ test('createProductionWorkerJobDefinitions maps enabled env to repository jobs',
     ['tasks', { olderThanHours: 48, limit: 10 }],
   ])
 })
+
+test('createProductionWorkerJobDefinitions wires creative provider polling disabled by default', async () => {
+  const repositories = {
+    creativeGenerations: {
+      list: async () => ({ items: [] }),
+    },
+    creativeProviderReplays: {
+      record: async () => ({ created: true, replay: {} }),
+    },
+  }
+  const env = {
+    workerLeaseTtlSeconds: 120,
+    workerLeaseRenewIntervalSeconds: 30,
+    creativeProviderMode: 'replicate_staging',
+    creativeStagingImageProvider: 'replicate',
+    creativeProviderPollingEnabled: true,
+    creativeProviderPollingWorkerEnabled: false,
+    creativeProviderPollingIntervalSeconds: 25,
+    creativeProviderPollingLeaseTtlSeconds: 90,
+    creativeProviderPollingSweepLimit: 5,
+  }
+
+  const definitions = createProductionWorkerJobDefinitions(repositories, env)
+  assert.deepEqual(definitions.map((definition) => definition.id), ['creative-provider-polling'])
+  assert.equal(definitions[0].enabled, false)
+  assert.equal(definitions[0].intervalSeconds, 25)
+  assert.deepEqual(definitions[0].lease, {
+    key: 'creative-provider-polling:replicate:replicate_staging:default',
+    ttlSeconds: 90,
+    renewIntervalSeconds: 30,
+  })
+})

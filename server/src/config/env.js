@@ -131,6 +131,10 @@ export const buildEnv = (source = process.env) => {
   const taskStaleSubmissionWorkerIntervalSeconds = positiveInteger(source, 'TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS', 300)
   const taskStaleSubmissionOlderThanHours = positiveInteger(source, 'TASK_STALE_SUBMISSION_OLDER_THAN_HOURS', 72)
   const taskStaleSubmissionSweepLimit = positiveInteger(source, 'TASK_STALE_SUBMISSION_SWEEP_LIMIT', 25)
+  const creativeProviderPollingMaxAgeSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_MAX_AGE_SECONDS', 3600)
+  const creativeProviderPollingLeaseTtlSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_LEASE_TTL_SECONDS', 300)
+  const creativeProviderPollingIntervalSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_INTERVAL_SECONDS', 60)
+  const creativeProviderPollingSweepLimit = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_SWEEP_LIMIT', 10)
   const mediaScanHistoryRetentionDays = positiveInteger(source, 'MEDIA_SCAN_HISTORY_RETENTION_DAYS', 180)
   const mediaScanHistoryRetentionMaxPerAsset = positiveInteger(source, 'MEDIA_SCAN_HISTORY_RETENTION_MAX_PER_ASSET', 50)
   const mediaScanAlertWindowMinutes = positiveInteger(source, 'MEDIA_SCAN_ALERT_WINDOW_MINUTES', 60)
@@ -266,6 +270,13 @@ export const buildEnv = (source = process.env) => {
     taskStaleSubmissionWorkerIntervalSeconds,
     taskStaleSubmissionOlderThanHours,
     taskStaleSubmissionSweepLimit,
+    creativeProviderPollingEnabled: boolFlag(source, 'CREATIVE_PROVIDER_POLLING_ENABLED', false),
+    creativeProviderPollingWorkerEnabled: boolFlag(source, 'CREATIVE_PROVIDER_POLLING_WORKER_ENABLED', false),
+    creativeProviderPollingMaxAgeSeconds,
+    creativeProviderPollingLeaseTtlSeconds,
+    creativeProviderPollingIntervalSeconds,
+    creativeProviderPollingSweepLimit,
+    creativeProviderPollingRequireCreditReservation: boolFlag(source, 'CREATIVE_PROVIDER_POLLING_REQUIRE_CREDIT_RESERVATION', false),
     mediaScanHistoryRetentionDays,
     mediaScanHistoryRetentionMaxPerAsset,
     mediaScanAlertWindowMinutes,

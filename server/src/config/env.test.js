@@ -32,6 +32,13 @@ test('buildEnv allows development without managed token secrets', () => {
     taskStaleSubmissionWorkerIntervalSeconds: 300,
     taskStaleSubmissionOlderThanHours: 72,
     taskStaleSubmissionSweepLimit: 25,
+    creativeProviderPollingEnabled: false,
+    creativeProviderPollingWorkerEnabled: false,
+    creativeProviderPollingMaxAgeSeconds: 3600,
+    creativeProviderPollingLeaseTtlSeconds: 300,
+    creativeProviderPollingIntervalSeconds: 60,
+    creativeProviderPollingSweepLimit: 10,
+    creativeProviderPollingRequireCreditReservation: false,
     mediaScanHistoryRetentionDays: 180,
     mediaScanHistoryRetentionMaxPerAsset: 50,
     mediaScanAlertWindowMinutes: 60,
@@ -112,6 +119,32 @@ test('buildEnv validates worker lease settings', () => {
       WORKER_LEASE_RENEW_INTERVAL_SECONDS: '60',
     }),
     /WORKER_LEASE_RENEW_INTERVAL_SECONDS must be less than WORKER_LEASE_TTL_SECONDS/,
+  )
+})
+
+test('buildEnv exposes creative provider polling worker settings disabled by default', () => {
+  const env = buildEnv({
+    NODE_ENV: 'development',
+    CREATIVE_PROVIDER_POLLING_ENABLED: 'true',
+    CREATIVE_PROVIDER_POLLING_WORKER_ENABLED: 'true',
+    CREATIVE_PROVIDER_POLLING_MAX_AGE_SECONDS: '1800',
+    CREATIVE_PROVIDER_POLLING_LEASE_TTL_SECONDS: '90',
+    CREATIVE_PROVIDER_POLLING_INTERVAL_SECONDS: '20',
+    CREATIVE_PROVIDER_POLLING_SWEEP_LIMIT: '5',
+    CREATIVE_PROVIDER_POLLING_REQUIRE_CREDIT_RESERVATION: 'true',
+  })
+
+  assert.equal(env.creativeProviderPollingEnabled, true)
+  assert.equal(env.creativeProviderPollingWorkerEnabled, true)
+  assert.equal(env.creativeProviderPollingMaxAgeSeconds, 1800)
+  assert.equal(env.creativeProviderPollingLeaseTtlSeconds, 90)
+  assert.equal(env.creativeProviderPollingIntervalSeconds, 20)
+  assert.equal(env.creativeProviderPollingSweepLimit, 5)
+  assert.equal(env.creativeProviderPollingRequireCreditReservation, true)
+
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_POLLING_INTERVAL_SECONDS: '0' }),
+    /CREATIVE_PROVIDER_POLLING_INTERVAL_SECONDS must be a positive integer/,
   )
 })
 
@@ -710,6 +743,10 @@ test('buildEnv validates media scanner deployment settings', () => {
   assert.equal(env.taskStaleSubmissionWorkerIntervalSeconds, 45)
   assert.equal(env.taskStaleSubmissionOlderThanHours, 48)
   assert.equal(env.taskStaleSubmissionSweepLimit, 10)
+  assert.equal(env.creativeProviderPollingEnabled, false)
+  assert.equal(env.creativeProviderPollingWorkerEnabled, false)
+  assert.equal(env.creativeProviderPollingIntervalSeconds, 60)
+  assert.equal(env.creativeProviderPollingSweepLimit, 10)
   assert.equal(env.mediaScanHistoryRetentionDays, 30)
   assert.equal(env.mediaScanHistoryRetentionMaxPerAsset, 8)
   assert.equal(env.mediaScanAlertWindowMinutes, 20)
@@ -834,6 +871,10 @@ test('deployment smoke accepts production auth, storage, scanner, and notificati
   assert.equal(env.taskStaleSubmissionWorkerIntervalSeconds, 300)
   assert.equal(env.taskStaleSubmissionOlderThanHours, 72)
   assert.equal(env.taskStaleSubmissionSweepLimit, 25)
+  assert.equal(env.creativeProviderPollingEnabled, false)
+  assert.equal(env.creativeProviderPollingWorkerEnabled, false)
+  assert.equal(env.creativeProviderPollingIntervalSeconds, 60)
+  assert.equal(env.creativeProviderPollingSweepLimit, 10)
   assert.equal(env.authCookieSameSite, 'None')
   assert.equal(env.authCookieSecure, true)
   assert.deepEqual(env.authTrustedOrigins, ['https://app.example.com', 'https://admin.example.com'])
