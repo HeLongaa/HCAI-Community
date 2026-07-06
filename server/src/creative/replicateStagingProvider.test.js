@@ -6,6 +6,8 @@ import {
   buildReplicateProviderCostMetadata,
   buildReplicateLifecycleReplay,
   createReplicateStagingPrediction,
+  fetchReplicateStagingPredictionStatus,
+  mapReplicatePredictionStatus,
   mapReplicatePredictionToCreativeGeneration,
 } from './replicateStagingProvider.js'
 import { assertCreativeProviderAdapterContract } from './providerAdapterContract.js'
@@ -281,6 +283,179 @@ test('createReplicateStagingPrediction converts mocked client errors to failed c
   assert.equal(generation.errorMessagePreview.includes('replicate-token'), false)
   assert.equal(generation.errorMessagePreview.includes('<redacted>'), true)
   assert.doesNotThrow(() => assertCreativeProviderAdapterContract(generation, { request, provider }))
+})
+
+test('mapReplicatePredictionStatus normalizes provider lifecycle states', () => {
+  assert.equal(mapReplicatePredictionStatus('starting'), 'queued')
+  assert.equal(mapReplicatePredictionStatus('processing'), 'running')
+  assert.equal(mapReplicatePredictionStatus('succeeded'), 'completed')
+  assert.equal(mapReplicatePredictionStatus('canceled'), 'cancelled')
+  assert.equal(mapReplicatePredictionStatus('unknown'), 'failed')
+})
+
+test('fetchReplicateStagingPredictionStatus requires an injected mocked client', async () => {
+  await assert.rejects(
+    fetchReplicateStagingPredictionStatus({
+      providerJobId: 'pred_status_1',
+      request,
+      provider,
+      actor,
+    }),
+    /status client must be injected/,
+  )
+})
+
+test('fetchReplicateStagingPredictionStatus rejects missing provider jobs before polling', async () => {
+  await assert.rejects(
+    fetchReplicateStagingPredictionStatus({
+      providerJobId: '',
+      request,
+      provider,
+      actor,
+      client: { getPrediction: async () => ({ id: 'pred_status_1', status: 'processing' }) },
+    }),
+    (error) => error.code === 'CREATIVE_PROVIDER_STATUS_JOB_MISSING' &&
+      error.statusCode === 422 &&
+      error.details.reasonCode === 'provider_job_missing',
+  )
+})
+
+test('fetchReplicateStagingPredictionStatus maps running status without unsafe metadata', async () => {
+  const calls = []
+  const status = await fetchReplicateStagingPredictionStatus({
+    providerJobId: 'pred_status_running',
+    request,
+    provider,
+    actor,
+    client: {
+      getPrediction: async (providerJobId) => {
+        calls.push(providerJobId)
+        return {
+          id: providerJobId,
+          status: 'processing',
+          logs: 'internal log with token=replicate-token',
+        }
+      },
+    },
+    source: budgetSource,
+    now: new Date('2026-07-06T00:03:30.000Z'),
+  })
+
+  assert.deepEqual(calls, ['pred_status_running'])
+  assert.equal(status.ok, true)
+  assert.equal(status.shouldReplay, true)
+  assert.equal(status.sourceType, 'polling')
+  assert.equal(status.providerJobId, 'pred_status_running')
+  assert.equal(status.normalizedStatus, 'running')
+  assert.equal(status.generation.status, 'running')
+  assert.equal(status.payloadHash.length, 64)
+  assert.equal(status.safeMetadata.hasProviderError, true)
+  assert.equal(JSON.stringify(status.safeMetadata).includes('replicate-token'), false)
+})
+
+test('fetchReplicateStagingPredictionStatus maps completed outputs but keeps safe metadata output-only', async () => {
+  const status = await fetchReplicateStagingPredictionStatus({
+    providerJobId: 'pred_status_completed',
+    request,
+    provider,
+    actor,
+    client: {
+      getPrediction: async (providerJobId) => ({
+        id: providerJobId,
+        status: 'succeeded',
+        output: ['https://replicate.example/status-output.png'],
+        metrics: { predict_time: 2.2 },
+        costUsd: 0.18,
+      }),
+    },
+    source: budgetSource,
+    now: new Date('2026-07-06T00:03:45.000Z'),
+  })
+
+  assert.equal(status.ok, true)
+  assert.equal(status.normalizedStatus, 'completed')
+  assert.equal(status.generation.outputs.length, 1)
+  assert.equal(status.safeMetadata.outputCount, 1)
+  assert.equal(status.safeMetadata.usageReported, true)
+  assert.equal(JSON.stringify(status.safeMetadata).includes('https://replicate.example'), false)
+})
+
+test('fetchReplicateStagingPredictionStatus rejects timeout and rate-limit reads without lifecycle replay', async () => {
+  const timeout = await fetchReplicateStagingPredictionStatus({
+    providerJobId: 'pred_status_timeout',
+    request,
+    provider,
+    actor,
+    client: {
+      getPrediction: async () => {
+        const error = new Error('timed out with Bearer secret.value')
+        error.code = 'ETIMEDOUT'
+        throw error
+      },
+    },
+    source: budgetSource,
+    now: new Date('2026-07-06T00:03:50.000Z'),
+  })
+
+  assert.equal(timeout.ok, false)
+  assert.equal(timeout.shouldReplay, false)
+  assert.equal(timeout.action, 'reject')
+  assert.equal(timeout.reasonCode, 'provider_status_timeout')
+  assert.equal(timeout.safeMetadata.retryable, true)
+  assert.equal(timeout.safeMetadata.errorPreview.includes('secret.value'), false)
+
+  const rateLimited = await fetchReplicateStagingPredictionStatus({
+    providerJobId: 'pred_status_rate_limited',
+    request,
+    provider,
+    actor,
+    client: {
+      getPrediction: async () => {
+        const error = new Error('slow down api_key=replicate-token')
+        error.statusCode = 429
+        throw error
+      },
+    },
+    source: budgetSource,
+    now: new Date('2026-07-06T00:03:55.000Z'),
+  })
+
+  assert.equal(rateLimited.ok, false)
+  assert.equal(rateLimited.reasonCode, 'provider_status_rate_limited')
+  assert.equal(rateLimited.safeMetadata.statusCode, 429)
+  assert.equal(rateLimited.safeMetadata.errorPreview.includes('replicate-token'), false)
+})
+
+test('fetchReplicateStagingPredictionStatus rejects provider job mismatches', async () => {
+  await assert.rejects(
+    fetchReplicateStagingPredictionStatus({
+      providerJobId: 'pred_status_other',
+      expectedProviderJobId: 'pred_status_expected',
+      request,
+      provider,
+      actor,
+      client: { getPrediction: async () => ({ id: 'pred_status_other', status: 'processing' }) },
+      source: budgetSource,
+    }),
+    (error) => error.code === 'CREATIVE_PROVIDER_JOB_MISMATCH' &&
+      error.statusCode === 409 &&
+      error.details.currentProviderJobId === 'pred_status_expected' &&
+      error.details.incomingProviderJobId === 'pred_status_other',
+  )
+
+  await assert.rejects(
+    fetchReplicateStagingPredictionStatus({
+      providerJobId: 'pred_status_expected',
+      request,
+      provider,
+      actor,
+      client: { getPrediction: async () => ({ id: 'pred_status_other', status: 'processing' }) },
+      source: budgetSource,
+    }),
+    (error) => error.code === 'CREATIVE_PROVIDER_JOB_MISMATCH' &&
+      error.details.currentProviderJobId === 'pred_status_expected' &&
+      error.details.incomingProviderJobId === 'pred_status_other',
+  )
 })
 
 test('buildReplicateLifecycleReplay emits idempotent async lifecycle actions', () => {
