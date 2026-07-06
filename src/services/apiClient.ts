@@ -34,7 +34,7 @@ const buildUrl = (path: string) => {
   return `${base}${path.startsWith('/') ? path : `/${path}`}`
 }
 
-export const withQuery = (path: string, query?: Record<string, string | number | null | undefined>) => {
+export const withQuery = (path: string, query?: Record<string, string | number | boolean | null | undefined>) => {
   const params = new URLSearchParams()
   Object.entries(query ?? {}).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {

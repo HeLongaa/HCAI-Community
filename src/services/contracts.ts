@@ -586,6 +586,26 @@ export type ApiCreativeGenerationRecord = {
   updatedAt: string
 }
 
+export type AdminCreativeGenerationHistoryQuery = {
+  userHandle?: string | null
+  actorHandle?: string | null
+  workspace?: CreativeWorkspace | string | null
+  mode?: string | null
+  providerId?: string | null
+  status?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'review_required' | string | null
+  reviewRequired?: boolean | null
+  mediaAssetId?: string | null
+  dateFrom?: string | null
+  dateTo?: string | null
+  cursor?: string | null
+  limit?: number | null
+}
+
+export type AdminCreativeGenerationHistoryPage = {
+  items: ApiCreativeGenerationRecord[]
+  nextCursor: string | null
+}
+
 export type ApiCreativeCredit = {
   ledgerId: string
   generationId: string

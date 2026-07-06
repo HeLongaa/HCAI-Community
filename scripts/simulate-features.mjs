@@ -434,6 +434,13 @@ addCheck(
 )
 
 addCheck(
+  'admin',
+  'admin generation history is queryable as a read-only creative operations panel',
+  includesAll(app, ['admin-generation-history', 'Generation history', 'adminService.creativeGenerations', 'adminService.creativeGeneration', 'AdminCreativeGenerationHistoryQuery', 'generationRows', 'generationNextCursor', 'toggleGenerationDetail', 'loadMoreGenerations', 'focusGenerationMediaAsset', 'creative_generation', 'promptHash', 'outputAssetIds', 'reviewRequired', 'dateFrom', 'dateTo']),
+  'typed generation history service, filters, detail, pagination, media link, and audit link',
+)
+
+addCheck(
   'cross-module',
   'cross-module flows are wired with setPage transitions',
   includesAll(app, [
