@@ -31,6 +31,12 @@ Media scanner secrets:
 | `MEDIA_SCAN_REQUEST_SECRET` | Yes for managed smoke | Signs outbound scanner requests |
 | `MEDIA_SCAN_CALLBACK_SIGNATURE_SECRET` | Recommended | Dedicated callback HMAC secret; request secret can satisfy the smoke fallback |
 
+Creative provider staging preflight secret:
+
+| Name | Required When | Notes |
+| --- | --- | --- |
+| `CREATIVE_STAGING_PROVIDER_API_TOKEN` | `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true` | Store only in a dedicated staging environment. Presence is validated without enabling real provider calls. |
+
 OAuth provider secrets. Configure at least one external provider:
 
 | Name | Required When | Notes |
@@ -76,6 +82,18 @@ OAuth provider variables. Configure at least one provider:
 | Google | `OAUTH_GOOGLE_CLIENT_ID`, `OAUTH_GOOGLE_REDIRECT_URI` |
 | Discord | `OAUTH_DISCORD_CLIENT_ID`, `OAUTH_DISCORD_REDIRECT_URI` |
 | Apple | `OAUTH_APPLE_CLIENT_ID`, `OAUTH_APPLE_TEAM_ID`, `OAUTH_APPLE_KEY_ID`, `OAUTH_APPLE_REDIRECT_URI` |
+
+Creative provider preflight variables:
+
+| Name | Required When | Example |
+| --- | --- | --- |
+| `CREATIVE_PROVIDER_MODE` | Recommended | `mock` for CI/local; `disabled` for staging preflight |
+| `CREATIVE_PROVIDER_RUNTIME_ENV` | Staging provider preflight | `staging` |
+| `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED` | Staging provider preflight | `true` |
+| `CREATIVE_STAGING_IMAGE_PROVIDER` | Staging provider preflight | `replicate` |
+| `CREATIVE_STAGING_PROVIDER_CONFIRMATION` | Staging provider preflight | `staging-only` |
+
+Production environments must not set `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true` or `CREATIVE_STAGING_PROVIDER_API_TOKEN`.
 
 ## Alert Channel Configuration
 
@@ -151,3 +169,5 @@ Metrics exporter secret:
 4. Set `environment=production`.
 5. Confirm the `Deployment Environment Smoke` job prints only safe summary metadata and all checks pass.
 6. Complete the multi-instance rehearsal in `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` before the first production rollout with more than one API or worker process.
+
+For staging-only creative provider preflight, use a dedicated staging environment and follow `docs/REAL_PROVIDER_STAGING_STRATEGY.md`. Keep `CREATIVE_PROVIDER_MODE=disabled` so the smoke can validate secret presence without allowing paid provider calls.

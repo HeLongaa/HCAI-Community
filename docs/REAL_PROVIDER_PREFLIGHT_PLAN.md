@@ -18,7 +18,7 @@ Preflight work should answer five questions before any real provider adapter PR:
 
 ### 1. Provider Adapter Contract Tests
 
-Status: started.
+Status: complete in PR #25.
 
 Deliverables:
 
@@ -44,13 +44,21 @@ Non-goals:
 
 ### 2. Staging-Only Provider Selection And Secrets Strategy
 
+Status: in progress.
+
 Deliverables:
 
+- `docs/REAL_PROVIDER_STAGING_STRATEGY.md`
 - first provider candidate and selection rationale
 - environment flag strategy
 - secret storage and rotation checklist
 - CI/local/production protections to prevent paid calls
 - staging smoke requirements
+
+Current decision:
+
+- First candidate: Replicate image generation through its Predictions API.
+- Preflight is metadata-only and fail-closed: staging can validate secret presence only while `CREATIVE_PROVIDER_MODE=disabled`.
 
 Non-goals:
 
