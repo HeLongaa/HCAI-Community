@@ -15,6 +15,7 @@ import {
   buildTaskRecord,
   getLedgerDto,
   getCommentDto,
+  getCreativeGenerationDto,
   getMediaAssetDto,
   getMediaScanJobDto,
   getNotificationDto,
@@ -521,6 +522,36 @@ const createPrismaRepository = async (fallbackRepository) => {
       where: { profile: { handle } },
       include: { profile: true },
     })
+
+  const asDateOrNull = (value) => value ? new Date(value) : null
+
+  const buildCreativeGenerationData = (payload, actorUser = null) => ({
+    id: String(payload.id),
+    actorId: actorUser?.id ?? null,
+    actorHandle: payload.actorHandle ?? actorUser?.profile?.handle ?? null,
+    workspace: payload.workspace,
+    mode: payload.mode,
+    providerId: payload.providerId,
+    providerMode: payload.providerMode ?? null,
+    status: payload.status ?? 'queued',
+    promptHash: payload.promptHash,
+    promptPreview: payload.promptPreview ?? null,
+    inputAssetIds: payload.inputAssetIds ?? [],
+    parameterKeys: payload.parameterKeys ?? [],
+    outputAssetIds: payload.outputAssetIds ?? [],
+    usage: payload.usage ?? undefined,
+    quota: payload.quota ?? undefined,
+    safety: payload.safety ?? undefined,
+    policy: payload.policy ?? undefined,
+    providerRequestId: payload.providerRequestId ?? null,
+    providerJobId: payload.providerJobId ?? null,
+    errorCode: payload.errorCode ?? null,
+    errorMessagePreview: payload.errorMessagePreview ?? null,
+    startedAt: asDateOrNull(payload.startedAt),
+    completedAt: asDateOrNull(payload.completedAt),
+    failedAt: asDateOrNull(payload.failedAt),
+    createdAt: payload.createdAt ? new Date(payload.createdAt) : undefined,
+  })
 
   const uniqueHandles = (handles) => [...new Set(handles.filter(Boolean))]
 
@@ -3485,6 +3516,132 @@ const createPrismaRepository = async (fallbackRepository) => {
     return rolledBack
   }
 
+  const creativeGenerations = {
+    create: async (payload, actor) => {
+      const actorUser = payload.actorHandle || actor?.handle ? await findUserByHandle(payload.actorHandle ?? actor.handle) : null
+      const data = buildCreativeGenerationData(payload, actorUser)
+      const row = await client.creativeGeneration.upsert({
+        where: { id: data.id },
+        create: data,
+        update: {},
+      })
+      await recordAudit({
+        actor,
+        action: 'creative.generation.created',
+        resourceType: 'creative_generation',
+        resourceId: row.id,
+        metadata: {
+          workspace: row.workspace,
+          mode: row.mode,
+          providerId: row.providerId,
+          status: row.status,
+        },
+      })
+      return getCreativeGenerationDto(row)
+    },
+    markRunning: async (id, patch = {}, actor) => {
+      const row = await client.creativeGeneration.update({
+        where: { id: String(id) },
+        data: {
+          ...compactObject(patch),
+          status: 'running',
+          startedAt: patch.startedAt ? new Date(patch.startedAt) : new Date(),
+        },
+      })
+      await recordAudit({
+        actor,
+        action: 'creative.generation.running',
+        resourceType: 'creative_generation',
+        resourceId: row.id,
+        metadata: { status: row.status },
+      })
+      return getCreativeGenerationDto(row)
+    },
+    linkOutputAssets: async (id, assetIds = [], actor) => {
+      const current = await client.creativeGeneration.findUnique({ where: { id: String(id) } })
+      if (!current) {
+        return null
+      }
+      const outputAssetIds = [...new Set([...(current.outputAssetIds ?? []), ...assetIds.filter(Boolean)])]
+      const row = await client.creativeGeneration.update({
+        where: { id: current.id },
+        data: { outputAssetIds },
+      })
+      await recordAudit({
+        actor,
+        action: 'creative.generation.outputs_linked',
+        resourceType: 'creative_generation',
+        resourceId: row.id,
+        metadata: { status: row.status, outputAssetIds },
+      })
+      return getCreativeGenerationDto(row)
+    },
+    complete: async (id, patch = {}, actor) => {
+      const row = await client.creativeGeneration.update({
+        where: { id: String(id) },
+        data: {
+          ...compactObject(patch),
+          status: patch.status ?? 'completed',
+          completedAt: patch.completedAt ? new Date(patch.completedAt) : new Date(),
+        },
+      })
+      await recordAudit({
+        actor,
+        action: 'creative.generation.completed',
+        resourceType: 'creative_generation',
+        resourceId: row.id,
+        metadata: { status: row.status, outputAssetIds: row.outputAssetIds },
+      })
+      return getCreativeGenerationDto(row)
+    },
+    fail: async (id, patch = {}, actor) => {
+      const row = await client.creativeGeneration.update({
+        where: { id: String(id) },
+        data: {
+          ...compactObject(patch),
+          status: 'failed',
+          failedAt: patch.failedAt ? new Date(patch.failedAt) : new Date(),
+        },
+      })
+      await recordAudit({
+        actor,
+        action: 'creative.generation.failed',
+        resourceType: 'creative_generation',
+        resourceId: row.id,
+        metadata: { status: row.status, errorCode: row.errorCode },
+      })
+      return getCreativeGenerationDto(row)
+    },
+    find: async (id) => {
+      const row = await client.creativeGeneration.findUnique({ where: { id: String(id) } })
+      return row ? getCreativeGenerationDto(row) : null
+    },
+    list: async (options = {}) => {
+      const limit = options.limit ?? 20
+      const cursor = options.cursor
+        ? await client.creativeGeneration.findUnique({ where: { id: String(options.cursor) }, select: { id: true } })
+        : null
+      const rows = await client.creativeGeneration.findMany({
+        where: {
+          ...(options.actorHandle ? { actorHandle: String(options.actorHandle) } : {}),
+          ...(options.workspace ? { workspace: String(options.workspace) } : {}),
+          ...(options.mode ? { mode: String(options.mode) } : {}),
+          ...(options.providerId ? { providerId: String(options.providerId) } : {}),
+          ...(options.status ? { status: String(options.status) } : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor.id }, skip: 1 } : {}),
+      })
+      const pageRows = rows.slice(0, limit)
+      return {
+        items: pageRows.map(getCreativeGenerationDto),
+        nextCursor: rows.length > limit && pageRows.length > 0 ? pageRows[pageRows.length - 1].id : null,
+        limit,
+      }
+    },
+  }
+
   const media = {
     getGovernancePolicy: async () => getMediaGovernancePolicy(),
     updateGovernancePolicy: async (patch, actor) => updateMediaGovernancePolicy(patch, actor),
@@ -4885,6 +5042,7 @@ const createPrismaRepository = async (fallbackRepository) => {
     profiles,
     points,
     notifications,
+    creativeGenerations,
     media,
     library,
     audit,

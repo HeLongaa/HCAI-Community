@@ -162,4 +162,5 @@ test('persistCreativeGenerationOutputs attaches media asset storage metadata', a
   assert.equal(persisted.outputs[0].storage.mediaAssetId, 'media-generated-1')
   assert.equal(persisted.outputs[0].storage.downloadPath, '/api/media/assets/media-generated-1/download')
   assert.equal(persisted.outputs[0].mediaAsset.scanStatus, 'clean')
+  assert.equal(persisted.status, 'completed')
 })

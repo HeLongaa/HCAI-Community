@@ -80,6 +80,35 @@ export const serializeMediaAsset = (asset) => ({
   updatedAt: asset.updatedAt ?? '',
 })
 
+export const serializeCreativeGeneration = (generation) => ({
+  id: String(generation.id),
+  actorId: generation.actorId ?? null,
+  actorHandle: generation.actorHandle ?? null,
+  workspace: generation.workspace,
+  mode: generation.mode,
+  providerId: generation.providerId,
+  providerMode: generation.providerMode ?? null,
+  status: generation.status,
+  promptHash: generation.promptHash,
+  promptPreview: generation.promptPreview ?? null,
+  inputAssetIds: generation.inputAssetIds ?? [],
+  parameterKeys: generation.parameterKeys ?? [],
+  outputAssetIds: generation.outputAssetIds ?? [],
+  usage: generation.usage ?? null,
+  quota: generation.quota ?? null,
+  safety: generation.safety ?? null,
+  policy: generation.policy ?? null,
+  providerRequestId: generation.providerRequestId ?? null,
+  providerJobId: generation.providerJobId ?? null,
+  errorCode: generation.errorCode ?? null,
+  errorMessagePreview: generation.errorMessagePreview ?? null,
+  startedAt: generation.startedAt ?? null,
+  completedAt: generation.completedAt ?? null,
+  failedAt: generation.failedAt ?? null,
+  createdAt: generation.createdAt ?? '',
+  updatedAt: generation.updatedAt ?? '',
+})
+
 export const serializeNotification = (notification) => ({
   id: String(notification.id),
   type: notification.type,

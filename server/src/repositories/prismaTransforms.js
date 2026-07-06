@@ -182,6 +182,35 @@ export const getMediaAssetDto = (asset) => ({
   updatedAt: asset.updatedAt ? asset.updatedAt.toISOString() : '',
 })
 
+export const getCreativeGenerationDto = (generation) => ({
+  id: generation.id,
+  actorId: generation.actorId ?? null,
+  actorHandle: generation.actorHandle ?? null,
+  workspace: generation.workspace,
+  mode: generation.mode,
+  providerId: generation.providerId,
+  providerMode: generation.providerMode ?? null,
+  status: generation.status,
+  promptHash: generation.promptHash,
+  promptPreview: generation.promptPreview ?? null,
+  inputAssetIds: generation.inputAssetIds ?? [],
+  parameterKeys: generation.parameterKeys ?? [],
+  outputAssetIds: generation.outputAssetIds ?? [],
+  usage: generation.usage ?? null,
+  quota: generation.quota ?? null,
+  safety: generation.safety ?? null,
+  policy: generation.policy ?? null,
+  providerRequestId: generation.providerRequestId ?? null,
+  providerJobId: generation.providerJobId ?? null,
+  errorCode: generation.errorCode ?? null,
+  errorMessagePreview: generation.errorMessagePreview ?? null,
+  startedAt: generation.startedAt ? generation.startedAt.toISOString() : null,
+  completedAt: generation.completedAt ? generation.completedAt.toISOString() : null,
+  failedAt: generation.failedAt ? generation.failedAt.toISOString() : null,
+  createdAt: generation.createdAt ? generation.createdAt.toISOString() : '',
+  updatedAt: generation.updatedAt ? generation.updatedAt.toISOString() : '',
+})
+
 export const getMediaScanJobDto = (job) => ({
   id: job.id,
   assetId: job.assetId,

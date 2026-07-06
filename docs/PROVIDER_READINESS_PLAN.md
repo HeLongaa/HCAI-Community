@@ -315,6 +315,15 @@ Deliverables:
 - linked output asset ids
 - tests for create, complete, failed, review-required records
 
+Current implementation boundary:
+
+- `POST /api/creative/generations` creates a durable generation record for provider-executed mock generations after moderation/quota policy passes.
+- The synchronous mock flow records `queued -> running -> completed` or `queued -> running -> review_required`.
+- Output media asset ids are linked back onto the durable generation record after media persistence.
+- The API response includes `generationRecord`, a safe record view with prompt hash/preview but without raw prompt retention.
+- Provider/persistence failures after record creation mark the generation `failed` with safe error metadata.
+- Durable quota ledger, credit reservation lifecycle, and Admin generation history remain separate follow-up slices.
+
 Validation:
 
 - Prisma validation
