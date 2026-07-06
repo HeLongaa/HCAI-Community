@@ -130,7 +130,7 @@ The final UI slice was validated with:
 
 The next phase should be a real-provider readiness or staging-provider integration phase, not another provider-readiness accounting slice.
 
-The preflight plan lives in `docs/REAL_PROVIDER_PREFLIGHT_PLAN.md`; the staging-only provider candidate and secrets strategy live in `docs/REAL_PROVIDER_STAGING_STRATEGY.md`; the future Admin mutation requirements live in `docs/REAL_PROVIDER_ADMIN_MUTATION_REQUIREMENTS.md`; provider cost metadata and budget alarms live in `docs/REAL_PROVIDER_COST_METADATA_AND_BUDGET_ALARMS.md`; the final closeout gate lives in `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md`.
+The preflight plan lives in `docs/REAL_PROVIDER_PREFLIGHT_PLAN.md`; the staging-only provider candidate and secrets strategy live in `docs/REAL_PROVIDER_STAGING_STRATEGY.md`; the future Admin mutation requirements live in `docs/REAL_PROVIDER_ADMIN_MUTATION_REQUIREMENTS.md`; provider cost metadata and budget alarms live in `docs/REAL_PROVIDER_COST_METADATA_AND_BUDGET_ALARMS.md`; callback/polling prerequisites live in `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md`; the final closeout gate lives in `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md`.
 
 Recommended order:
 
@@ -138,6 +138,7 @@ Recommended order:
 2. Decide the first staging-only provider and its secret-management strategy.
 3. Define Admin mutation requirements for retry, cancel, force-review, refund, and manual settlement before implementing controls.
 4. Add provider-specific cost metadata mapping and budget alarms.
-5. Apply the real-provider readiness closeout gate before connecting one guarded staging image provider behind environment flags.
+5. Satisfy the callback/polling prerequisite checklist before enabling provider webhooks, polling workers, or manual lifecycle replay.
+6. Apply the real-provider readiness closeout gate before connecting one guarded staging image provider behind environment flags.
 
 Do not broaden to video, music, or chat until the first real image provider path proves provider failure handling, cost accounting, moderation, media governance, and operational history end to end.

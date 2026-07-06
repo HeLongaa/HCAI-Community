@@ -161,6 +161,7 @@ Before merging any future staging adapter PR that introduces real SDK or HTTP cl
 - Provider-side spending cap exists and is recorded.
 - App-side budget guard fails closed before dispatch.
 - Provider request and response redaction tests pass.
+- `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` is satisfied before provider callbacks, polling workers, or manual lifecycle replay are enabled.
 - Lifecycle replay idempotency tests pass for queued, running, completed, failed, and cancelled states.
 - Media persistence and scan governance tests pass before outputs are user-downloadable.
 - Admin generation history remains read-only unless a separate mutation permission phase is approved.
