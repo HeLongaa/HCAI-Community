@@ -243,7 +243,7 @@ export const assertReplicateProviderBudgetAllowsDispatch = (providerCost) => {
   }
 }
 
-const mapStatus = (status) => {
+export const mapReplicatePredictionStatus = (status) => {
   const normalized = String(status ?? '').trim().toLowerCase()
   if (!supportedReplicateStatuses.includes(normalized)) {
     return 'failed'
@@ -294,7 +294,7 @@ export const mapReplicatePredictionToCreativeGeneration = ({
   now = new Date(),
   options = {},
 }) => {
-  const status = mapStatus(prediction?.status)
+  const status = mapReplicatePredictionStatus(prediction?.status)
   const digest = digestForPrediction(request, actor, prediction)
   const outputs = status === 'completed'
     ? normalizeOutputs(prediction).map((output, index) => buildOutput({ request, prediction, digest, output, index }))
@@ -354,6 +354,113 @@ export const mapReplicatePredictionToCreativeGeneration = ({
           failedAt: now.toISOString(),
         }
       : {}),
+  }
+}
+
+const providerStatusPayloadHash = (prediction) => stableHash({
+  id: prediction?.id ?? null,
+  status: prediction?.status ?? null,
+  outputCount: normalizeOutputs(prediction).length,
+  hasMetrics: Boolean(prediction?.metrics || prediction?.usage),
+  hasError: Boolean(prediction?.error || prediction?.logs),
+})
+
+const statusFetchReasonCode = (failure) => {
+  if (failure.code === 'PROVIDER_RATE_LIMITED') return 'provider_status_rate_limited'
+  if (failure.code === 'PROVIDER_TIMEOUT') return 'provider_status_timeout'
+  return 'provider_status_fetch_failed'
+}
+
+export const fetchReplicateStagingPredictionStatus = async ({
+  providerJobId,
+  expectedProviderJobId = providerJobId,
+  request,
+  provider,
+  actor,
+  client,
+  source = process.env,
+  now = new Date(),
+  options = {},
+}) => {
+  if (!client?.getPrediction) {
+    throw new Error('Replicate staging status client must be injected; no default network client is available')
+  }
+  if (!providerJobId) {
+    throw new HttpError(422, 'CREATIVE_PROVIDER_STATUS_JOB_MISSING', 'Provider status fetch requires a provider job id', {
+      providerId: provider?.id ?? 'replicate',
+      reasonCode: 'provider_job_missing',
+    })
+  }
+  if (expectedProviderJobId && expectedProviderJobId !== providerJobId) {
+    throw new HttpError(409, 'CREATIVE_PROVIDER_JOB_MISMATCH', 'Provider status fetch targeted a different job', {
+      currentProviderJobId: expectedProviderJobId,
+      incomingProviderJobId: providerJobId,
+      providerId: provider?.id ?? 'replicate',
+    })
+  }
+
+  try {
+    const prediction = await client.getPrediction(providerJobId)
+    const incomingProviderJobId = prediction?.id ?? providerJobId
+    if (incomingProviderJobId !== providerJobId) {
+      throw new HttpError(409, 'CREATIVE_PROVIDER_JOB_MISMATCH', 'Provider status fetch returned a different job', {
+        currentProviderJobId: providerJobId,
+        incomingProviderJobId,
+        providerId: provider?.id ?? 'replicate',
+      })
+    }
+    const generation = mapReplicatePredictionToCreativeGeneration({
+      request,
+      provider,
+      actor,
+      prediction: { ...prediction, id: incomingProviderJobId },
+      source,
+      now,
+      options,
+    })
+    return {
+      ok: true,
+      shouldReplay: true,
+      sourceType: 'polling',
+      providerId: provider?.id ?? 'replicate',
+      providerMode: provider?.mode ?? 'replicate_staging',
+      providerJobId,
+      providerStatus: String(prediction?.status ?? ''),
+      normalizedStatus: generation.status,
+      generation,
+      receivedAt: now.toISOString(),
+      payloadHash: providerStatusPayloadHash(prediction),
+      safeMetadata: {
+        providerStatus: String(prediction?.status ?? ''),
+        normalizedStatus: generation.status,
+        outputCount: normalizeOutputs(prediction).length,
+        hasProviderError: Boolean(prediction?.error || prediction?.logs),
+        usageReported: Boolean(prediction?.metrics || prediction?.usage),
+        retryable: false,
+      },
+    }
+  } catch (error) {
+    if (error instanceof HttpError) {
+      throw error
+    }
+    const failure = safeProviderFailure(error)
+    return {
+      ok: false,
+      shouldReplay: false,
+      action: 'reject',
+      sourceType: 'polling',
+      providerId: provider?.id ?? 'replicate',
+      providerMode: provider?.mode ?? 'replicate_staging',
+      providerJobId,
+      receivedAt: now.toISOString(),
+      reasonCode: statusFetchReasonCode(failure),
+      safeMetadata: {
+        errorCode: failure.code,
+        errorPreview: failure.messagePreview,
+        retryable: failure.retryable,
+        statusCode: failure.statusCode,
+      },
+    }
   }
 }
 
