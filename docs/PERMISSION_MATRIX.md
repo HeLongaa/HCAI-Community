@@ -25,6 +25,20 @@ The executable fallback role defaults live in `server/src/auth/permissions.js`. 
 | `admin:queue:review` | Perform admin review actions | `POST /api/admin/reviews/:id/actions`, `POST /api/media/uploads/:id/scan` | Admin queue and media approve/reject buttons |
 | `admin:permissions:manage` | Edit role permission grants and point policy | `PUT /api/admin/roles/:role/permissions`, `PUT /api/admin/points/policy`, `POST /api/admin/points/policy/rollback` | Admin permission matrix edit/save controls; point policy save/rollback |
 
+## Planned Creative Generation Mutation Permissions
+
+These permissions are proposed for a future real-provider phase and are not executable yet. Admin generation history remains read-only under `admin:audit:read`; future mutation controls must not reuse read-only audit access, media queue review access, or point adjustment access.
+
+| Proposed permission | Future purpose | Planned actions |
+| --- | --- | --- |
+| `admin:creative:retry` | Controlled retry after retryable provider failure or timeout | Retry generation |
+| `admin:creative:cancel` | Stop queued/running provider work where cancellation is supported | Cancel generation |
+| `admin:creative:review` | Move completed generated output into manual review without accounting changes | Force review |
+| `admin:creative:credits:adjust` | Apply internal creative-credit refunds/corrections | Refund creative credits |
+| `admin:creative:settlement:manage` | Resolve stuck provider/accounting states | Manual settlement |
+
+The full requirements, audit metadata, notification inventory, idempotency rules, and rollback semantics live in `docs/REAL_PROVIDER_ADMIN_MUTATION_REQUIREMENTS.md`.
+
 ## Demo Accounts
 
 | Handle | Role | Permissions | Primary test use |

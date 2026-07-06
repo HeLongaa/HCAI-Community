@@ -84,7 +84,7 @@ Media uploads default to local `mock://` upload contracts. Set `STORAGE_DRIVER=s
 
 Creative generation now has a provider boundary. `GET /api/creative/providers` exposes safe provider capability metadata, and `POST /api/creative/generations` executes the mock creative provider, applies moderation/review gates, reserves and commits quota through a durable cross-instance quota ledger, reserves and settles/refunds creative credits through a dedicated durable credit ledger, persists generated outputs as media assets, writes a safe durable generation record with prompt hash/preview and linked output asset ids, and keeps downloads behind the same media scan governance boundary. Admin users with audit access can inspect read-only generation history in Admin Center, including quota, credit, safety, policy, linked media assets, and audit drill-downs. Image Studio is the first frontend workspace wired to this API path; Music, Video, Chat, Explore, and catalog surfaces still retain demo/mock workspace content until a real-provider phase. The first real-provider preflight candidate is Replicate image generation, but only as staging metadata while `CREATIVE_PROVIDER_MODE=disabled`; no real paid provider call is implemented or enabled.
 
-Provider readiness is closed out in `docs/PROVIDER_READINESS_CLOSEOUT.md`, with planning history in `docs/PROVIDER_READINESS_PLAN.md`. That follow-up phase is intentionally limited to durable generation records, cross-instance quota ledgers, credit reservation/settlement/refund semantics, and Admin generation history before any real paid provider integration. No real paid provider is connected yet.
+Provider readiness is closed out in `docs/PROVIDER_READINESS_CLOSEOUT.md`, with planning history in `docs/PROVIDER_READINESS_PLAN.md`. That follow-up phase is intentionally limited to durable generation records, cross-instance quota ledgers, credit reservation/settlement/refund semantics, and Admin generation history before any real paid provider integration. No real paid provider is connected yet. Future Admin generation mutations are planned separately in `docs/REAL_PROVIDER_ADMIN_MUTATION_REQUIREMENTS.md`; they remain disabled and unimplemented.
 
 ## Verification
 
@@ -129,3 +129,4 @@ Planning docs for the API, data model, auth, and backend rollout live in `docs/`
 - `docs/PROVIDER_READINESS_CLOSEOUT.md`
 - `docs/REAL_PROVIDER_PREFLIGHT_PLAN.md`
 - `docs/REAL_PROVIDER_STAGING_STRATEGY.md`
+- `docs/REAL_PROVIDER_ADMIN_MUTATION_REQUIREMENTS.md`

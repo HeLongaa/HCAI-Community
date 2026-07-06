@@ -44,7 +44,7 @@ Non-goals:
 
 ### 2. Staging-Only Provider Selection And Secrets Strategy
 
-Status: in progress.
+Status: complete in PR #26.
 
 Deliverables:
 
@@ -67,12 +67,21 @@ Non-goals:
 
 ### 3. Admin Generation Mutation Requirements
 
+Status: in progress.
+
 Deliverables:
 
+- `docs/REAL_PROVIDER_ADMIN_MUTATION_REQUIREMENTS.md`
 - retry, cancel, force-review, refund, and manual settlement requirements
 - permission matrix proposal
 - audit event and notification inventory
 - idempotency and rollback semantics
+
+Current recommendation:
+
+- Keep every Admin generation mutation disabled in the first real-provider staging phase.
+- Use dedicated future permissions instead of reusing `admin:audit:read`, `admin:queue:review`, or `points:adjust`.
+- Implement force-review first later, because it does not mutate quota or credit accounting.
 
 Non-goals:
 
