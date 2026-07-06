@@ -130,6 +130,8 @@ The final UI slice was validated with:
 
 The next phase should be a real-provider readiness or staging-provider integration phase, not another provider-readiness accounting slice.
 
+The preflight plan lives in `docs/REAL_PROVIDER_PREFLIGHT_PLAN.md`.
+
 Recommended order:
 
 1. Define provider adapter contract tests for async jobs, provider errors, rate limits, and webhook/polling replay.

@@ -127,3 +127,4 @@ Planning docs for the API, data model, auth, and backend rollout live in `docs/`
 - `docs/PHASE_3_TRACK_C_CLOSEOUT.md`
 - `docs/PROVIDER_READINESS_PLAN.md`
 - `docs/PROVIDER_READINESS_CLOSEOUT.md`
+- `docs/REAL_PROVIDER_PREFLIGHT_PLAN.md`
