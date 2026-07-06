@@ -829,12 +829,18 @@ export const openApiDocument = {
                             scope: { type: 'string' },
                             workspace: { type: 'string' },
                             limit: { type: 'integer' },
+                            reserved: { type: 'integer' },
                             used: { type: 'integer' },
+                            released: { type: 'integer' },
                             remaining: { type: 'integer' },
+                            reservationId: { type: ['string', 'null'] },
                             window: {
                               type: 'object',
                               properties: {
                                 id: { type: 'string' },
+                                type: { type: 'string' },
+                                start: { type: 'string', format: 'date-time' },
+                                end: { type: 'string', format: 'date-time' },
                                 resetsAt: { type: 'string', format: 'date-time' },
                               },
                             },

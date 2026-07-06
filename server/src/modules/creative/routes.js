@@ -19,21 +19,35 @@ export const registerCreativeRoutes = (router) => {
   router.add('POST', '/api/creative/generations', async (request, response, context) => {
     const actor = requireUser(context)
     const payload = parseCreateCreativeGenerationRequest((await readJsonBody(request)) ?? {})
-    const generation = executeCreativeGeneration({ request: payload, actor })
+    const quotaRepository = repositories.creativeQuota
     const generationRepository = repositories.creativeGenerations
-    const generationRecordPayload = buildCreativeGenerationRecordPayload(generation, actor)
-    let generationRecord = generationRepository
-      ? await generationRepository.create(generationRecordPayload, actor)
-      : null
-    if (generationRepository?.markRunning) {
-      generationRecord = await generationRepository.markRunning(generation.id, {}, actor)
-    }
+    let generation = null
+    let generationRecord = null
     try {
+      generation = await executeCreativeGeneration({
+        request: payload,
+        actor,
+        quotaRepository,
+      })
+      const generationRecordPayload = buildCreativeGenerationRecordPayload(generation, actor)
+      generationRecord = generationRepository
+        ? await generationRepository.create(generationRecordPayload, actor)
+        : null
+      if (generationRepository?.markRunning) {
+        generationRecord = await generationRepository.markRunning(generation.id, {}, actor)
+      }
       const persisted = await persistCreativeGenerationOutputs(generation, {
         actor,
         mediaRepository: repositories.media,
       })
       const outputAssetIds = getOutputAssetIds(persisted)
+      const committedQuota = generation.quota?.reservationId && quotaRepository?.commit
+        ? await quotaRepository.commit(generation.quota.reservationId, actor)
+        : null
+      const finalized = {
+        ...persisted,
+        quota: committedQuota ?? persisted.quota,
+      }
       if (generationRepository?.linkOutputAssets) {
         generationRecord = await generationRepository.linkOutputAssets(generation.id, outputAssetIds, actor)
       }
@@ -41,18 +55,21 @@ export const registerCreativeRoutes = (router) => {
         generationRecord = await generationRepository.complete(generation.id, {
           status: statusForPersistedGeneration(persisted),
           outputAssetIds,
-          usage: persisted.usage,
-          quota: persisted.quota,
-          safety: persisted.safety,
-          policy: persisted.policy,
+          usage: finalized.usage,
+          quota: finalized.quota,
+          safety: finalized.safety,
+          policy: finalized.policy,
         }, actor)
       }
       ok(response, {
-        ...persisted,
+        ...finalized,
         generationRecord,
       })
     } catch (error) {
-      if (generationRepository?.fail) {
+      if (generation?.quota?.reservationId && quotaRepository?.release) {
+        await quotaRepository.release(generation.quota.reservationId, error?.code ?? 'generation_failed', actor)
+      }
+      if (generation?.id && generationRepository?.fail) {
         await generationRepository.fail(generation.id, {
           errorCode: error?.code ?? 'CREATIVE_GENERATION_FAILED',
           errorMessagePreview: safeErrorPreview(error),

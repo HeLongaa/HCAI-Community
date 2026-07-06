@@ -56,6 +56,8 @@ const sessionByRefreshToken = new Map()
 const emailAccountByEmail = new Map()
 const oauthAccountByProviderKey = new Map()
 const creativeGenerationsById = new Map()
+const creativeQuotaWindowsById = new Map()
+const creativeQuotaReservationsById = new Map()
 
 const getAccountByHandle = (handle) => seedStore.demoAccountByHandle.get(handle) ?? null
 const getAccountById = (id) => seedStore.demoAccounts.find((account) => account.id === id) ?? null
@@ -1041,6 +1043,64 @@ const patchCreativeGeneration = (id, patch, actor, auditAction) => {
     outputAssetIds: updated.outputAssetIds,
   })
   return serializeCreativeGeneration(updated)
+}
+
+const creativeQuotaWindowId = ({ actorHandle, workspace, windowType, windowStart }) =>
+  `${actorHandle ?? 'unknown'}:${workspace}:${windowType}:${windowStart}`
+
+const getCreativeQuotaDto = (window, reservationId = null) => ({
+  policyVersion: window.policyVersion,
+  scope: 'user_workspace_daily',
+  workspace: window.workspace,
+  limit: window.limitUnits,
+  reserved: window.reservedUnits,
+  used: window.usedUnits,
+  released: window.releasedUnits,
+  remaining: Math.max(window.limitUnits - window.reservedUnits - window.usedUnits, 0),
+  reservationId,
+  window: {
+    id: window.windowStart.slice(0, 10),
+    type: window.windowType,
+    start: window.windowStart,
+    end: window.windowEnd,
+    resetsAt: window.windowEnd,
+  },
+})
+
+const getOrCreateCreativeQuotaWindow = (payload) => {
+  const id = creativeQuotaWindowId(payload)
+  const existing = creativeQuotaWindowsById.get(id)
+  if (existing) {
+    if (existing.limitUnits !== payload.limit) {
+      const updated = {
+        ...existing,
+        limitUnits: payload.limit,
+        updatedAt: new Date().toISOString(),
+      }
+      creativeQuotaWindowsById.set(id, updated)
+      return updated
+    }
+    return existing
+  }
+  const now = new Date().toISOString()
+  const created = {
+    id,
+    actorId: payload.actorId ?? null,
+    actorHandle: payload.actorHandle ?? null,
+    workspace: payload.workspace,
+    windowType: payload.windowType,
+    windowStart: payload.windowStart,
+    windowEnd: payload.windowEnd,
+    limitUnits: payload.limit,
+    reservedUnits: 0,
+    usedUnits: 0,
+    releasedUnits: 0,
+    policyVersion: payload.policyVersion,
+    createdAt: now,
+    updatedAt: now,
+  }
+  creativeQuotaWindowsById.set(id, created)
+  return created
 }
 
 const mediaAssetScanStatus = (asset) => asset.metadata?.security?.scanStatus ?? 'pending'
@@ -2486,6 +2546,127 @@ export const createSeedRepository = () => ({
         .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
         .map(serializeCreativeGeneration)
       return paginateByCursor(filtered, options)
+    },
+  },
+  creativeQuota: {
+    reserve: (payload, actor) => {
+      const units = Math.max(1, Number(payload.costUnits) || 1)
+      const window = getOrCreateCreativeQuotaWindow(payload)
+      if (window.usedUnits + window.reservedUnits + units > window.limitUnits) {
+        return {
+          reserved: false,
+          quota: getCreativeQuotaDto(window),
+        }
+      }
+      const reservationId = `quota-${randomUUID()}`
+      const updatedWindow = {
+        ...window,
+        reservedUnits: window.reservedUnits + units,
+        updatedAt: new Date().toISOString(),
+      }
+      const reservation = {
+        id: reservationId,
+        quotaWindowId: updatedWindow.id,
+        generationId: payload.generationId ?? null,
+        actorId: payload.actorId ?? null,
+        actorHandle: payload.actorHandle ?? null,
+        workspace: payload.workspace,
+        units,
+        status: 'reserved',
+        reason: null,
+        reservedAt: new Date().toISOString(),
+        committedAt: null,
+        releasedAt: null,
+      }
+      creativeQuotaWindowsById.set(updatedWindow.id, updatedWindow)
+      creativeQuotaReservationsById.set(reservation.id, reservation)
+      recordAudit(actor, 'creative.quota.reserved', 'creative_quota_reservation', reservation.id, {
+        generationId: reservation.generationId,
+        workspace: reservation.workspace,
+        units,
+        quotaWindowId: reservation.quotaWindowId,
+      })
+      return {
+        reserved: true,
+        reservationId,
+        quota: getCreativeQuotaDto(updatedWindow, reservationId),
+      }
+    },
+    commit: (reservationId, actor) => {
+      const reservation = creativeQuotaReservationsById.get(String(reservationId))
+      if (!reservation) {
+        return null
+      }
+      const window = creativeQuotaWindowsById.get(reservation.quotaWindowId)
+      if (!window) {
+        return null
+      }
+      if (reservation.status === 'committed') {
+        return getCreativeQuotaDto(window, reservation.id)
+      }
+      if (reservation.status === 'released') {
+        return getCreativeQuotaDto(window, reservation.id)
+      }
+      const updatedWindow = {
+        ...window,
+        reservedUnits: Math.max(window.reservedUnits - reservation.units, 0),
+        usedUnits: window.usedUnits + reservation.units,
+        updatedAt: new Date().toISOString(),
+      }
+      const updatedReservation = {
+        ...reservation,
+        status: 'committed',
+        committedAt: new Date().toISOString(),
+      }
+      creativeQuotaWindowsById.set(updatedWindow.id, updatedWindow)
+      creativeQuotaReservationsById.set(updatedReservation.id, updatedReservation)
+      recordAudit(actor, 'creative.quota.committed', 'creative_quota_reservation', updatedReservation.id, {
+        generationId: updatedReservation.generationId,
+        workspace: updatedReservation.workspace,
+        units: updatedReservation.units,
+      })
+      return getCreativeQuotaDto(updatedWindow, updatedReservation.id)
+    },
+    release: (reservationId, reason = 'released', actor) => {
+      const reservation = creativeQuotaReservationsById.get(String(reservationId))
+      if (!reservation) {
+        return null
+      }
+      const window = creativeQuotaWindowsById.get(reservation.quotaWindowId)
+      if (!window) {
+        return null
+      }
+      if (reservation.status === 'released') {
+        return getCreativeQuotaDto(window, reservation.id)
+      }
+      if (reservation.status === 'committed') {
+        return getCreativeQuotaDto(window, reservation.id)
+      }
+      const updatedWindow = {
+        ...window,
+        reservedUnits: Math.max(window.reservedUnits - reservation.units, 0),
+        releasedUnits: window.releasedUnits + reservation.units,
+        updatedAt: new Date().toISOString(),
+      }
+      const updatedReservation = {
+        ...reservation,
+        status: 'released',
+        reason,
+        releasedAt: new Date().toISOString(),
+      }
+      creativeQuotaWindowsById.set(updatedWindow.id, updatedWindow)
+      creativeQuotaReservationsById.set(updatedReservation.id, updatedReservation)
+      recordAudit(actor, 'creative.quota.released', 'creative_quota_reservation', updatedReservation.id, {
+        generationId: updatedReservation.generationId,
+        workspace: updatedReservation.workspace,
+        units: updatedReservation.units,
+        reason,
+      })
+      return getCreativeQuotaDto(updatedWindow, updatedReservation.id)
+    },
+    getQuotaWindow: (payload) => {
+      const window = creativeQuotaWindowsById.get(creativeQuotaWindowId(payload))
+      return window ? getCreativeQuotaDto(window) : null
     },
   },
   media: {

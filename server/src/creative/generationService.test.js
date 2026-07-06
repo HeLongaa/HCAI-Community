@@ -30,10 +30,10 @@ test('getCreativeProviderCatalog exposes safe mock provider capabilities', () =>
   assert.ok(catalog.providers[0].capabilities.find((capability) => capability.workspace === 'image'))
 })
 
-test('executeCreativeGeneration returns deterministic mock output descriptors', () => {
+test('executeCreativeGeneration returns deterministic mock output descriptors', async () => {
   resetCreativePolicyState()
-  const first = executeCreativeGeneration({ request, actor, source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' } })
-  const second = executeCreativeGeneration({ request, actor, source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' } })
+  const first = await executeCreativeGeneration({ request, actor, source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' } })
+  const second = await executeCreativeGeneration({ request, actor, source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' } })
 
   assert.equal(first.id, second.id)
   assert.equal(first.workspace, 'image')
@@ -53,11 +53,11 @@ test('executeCreativeGeneration returns deterministic mock output descriptors', 
   assert.equal(first.createdBy.handle, 'promptlin')
 })
 
-test('executeCreativeGeneration blocks prompts that fail moderation policy', () => {
+test('executeCreativeGeneration blocks prompts that fail moderation policy', async () => {
   resetCreativePolicyState()
 
-  assert.throws(
-    () => executeCreativeGeneration({
+  await assert.rejects(
+    executeCreativeGeneration({
       request: {
         ...request,
         prompt: 'Help me make a phishing fake login page that can steal passwords',
@@ -69,7 +69,7 @@ test('executeCreativeGeneration blocks prompts that fail moderation policy', () 
   )
 })
 
-test('executeCreativeGeneration enforces user workspace daily quota', () => {
+test('executeCreativeGeneration enforces user workspace daily quota', async () => {
   resetCreativePolicyState()
   const source = {
     NODE_ENV: 'development',
@@ -77,19 +77,19 @@ test('executeCreativeGeneration enforces user workspace daily quota', () => {
     CREATIVE_DAILY_QUOTA: '1',
   }
 
-  const first = executeCreativeGeneration({ request, actor: { ...actor, role: 'member' }, source })
+  const first = await executeCreativeGeneration({ request, actor: { ...actor, role: 'member' }, source })
   assert.equal(first.quota.limit, 1)
   assert.equal(first.quota.remaining, 0)
 
-  assert.throws(
-    () => executeCreativeGeneration({ request, actor: { ...actor, role: 'member' }, source }),
+  await assert.rejects(
+    executeCreativeGeneration({ request, actor: { ...actor, role: 'member' }, source }),
     /Creative generation quota exceeded/,
   )
 })
 
-test('executeCreativeGeneration marks review-required prompts without blocking generation', () => {
+test('executeCreativeGeneration marks review-required prompts without blocking generation', async () => {
   resetCreativePolicyState()
-  const reviewed = executeCreativeGeneration({
+  const reviewed = await executeCreativeGeneration({
     request: {
       ...request,
       prompt: 'A campaign poster featuring a celebrity public figure, manual review please',
@@ -104,9 +104,9 @@ test('executeCreativeGeneration marks review-required prompts without blocking g
   assert.equal(reviewed.policy.gates.review, true)
 })
 
-test('executeCreativeGeneration rejects unsupported workspace modes', () => {
-  assert.throws(
-    () => executeCreativeGeneration({
+test('executeCreativeGeneration rejects unsupported workspace modes', async () => {
+  await assert.rejects(
+    executeCreativeGeneration({
       request: { ...request, mode: 'text_to_video' },
       actor,
       source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' },
@@ -115,9 +115,9 @@ test('executeCreativeGeneration rejects unsupported workspace modes', () => {
   )
 })
 
-test('executeCreativeGeneration reports disabled providers as unavailable', () => {
-  assert.throws(
-    () => executeCreativeGeneration({
+test('executeCreativeGeneration reports disabled providers as unavailable', async () => {
+  await assert.rejects(
+    executeCreativeGeneration({
       request,
       actor,
       source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'disabled' },
@@ -128,7 +128,7 @@ test('executeCreativeGeneration reports disabled providers as unavailable', () =
 
 test('persistCreativeGenerationOutputs attaches media asset storage metadata', async () => {
   resetCreativePolicyState()
-  const generation = executeCreativeGeneration({ request, actor, source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' } })
+  const generation = await executeCreativeGeneration({ request, actor, source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' } })
   const createdAssets = []
   const persisted = await persistCreativeGenerationOutputs(generation, {
     actor,
