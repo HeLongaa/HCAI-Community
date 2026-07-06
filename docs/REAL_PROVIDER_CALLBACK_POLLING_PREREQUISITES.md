@@ -6,7 +6,7 @@ Current decision: **no-go for provider callbacks, polling workers, and manual re
 
 This package is documentation only. It does not add a provider SDK, HTTP client, webhook endpoint, polling worker, provider network call, Admin mutation endpoint, payment refund flow, or production paid-provider path.
 
-Implementation status: the repository now has a durable replay ledger schema/repository foundation, a pure lifecycle replay reducer, provider callback auth/parser pure functions, provider polling lease/stop-condition pure functions, provider lifecycle side-effect plan/executor pure functions, fixture-only replay-ledger integration helpers that record side-effect plans/results without provider credentials, and mocked provider-status client contract tests that require an injected client. Provider callback routes, polling worker intervals, default provider status HTTP clients, manual replay endpoints, concrete notification/audit repository wiring, and real provider network calls remain disabled and unimplemented.
+Implementation status: the repository now has a durable replay ledger schema/repository foundation, a pure lifecycle replay reducer, provider callback auth/parser pure functions, provider polling lease/stop-condition pure functions, provider lifecycle side-effect plan/executor pure functions, fixture-only replay-ledger integration helpers that record side-effect plans/results without provider credentials, mocked provider-status client contract tests that require an injected client, and provider lifecycle notification/audit repository wiring behind stable source keys. Provider callback routes, polling worker intervals, default provider status HTTP clients, manual replay endpoints, and real provider network calls remain disabled and unimplemented.
 
 ## Scope
 
@@ -256,7 +256,7 @@ Callback and polling code cannot be enabled until targeted tests cover:
 - Output persistence has a stable side-effect operation key and is not duplicated after partial replay.
 - Quota commit/release has stable side-effect operation keys and is not duplicated after partial replay.
 - Credit settlement/refund has stable side-effect operation keys and is not duplicated after partial replay.
-- Notification and audit source ids are represented as stable side-effect operation keys.
+- Notification and audit source ids are represented as stable side-effect operation keys and persisted with source-key dedupe in repository tests.
 - Partial side-effect failure can be replayed without duplicating completed side effects in fixture executor and replay-ledger integration tests.
 - Fixture integration tests write replay ledger plans/results using mocked provider data only.
 - CI passes without real provider credentials.
@@ -280,13 +280,12 @@ No-go for provider callback, polling, or manual replay if any are true:
 
 ## Handoff To Future Implementation
 
-A future implementation task should continue from the mocked-client status contract:
+A future implementation task should continue from the mocked-client status contract and repository-backed lifecycle notification/audit wiring:
 
-1. Add concrete notification/audit repository wiring behind stable source keys.
-2. Add manual replay authorization/parser tests without route wiring.
-3. Add worker interval wiring only after lease, stop-condition, replay ledger, lifecycle reducer, side-effect executor, and mocked status-client tests all pass.
-4. Add callback route wiring only after auth/parser tests, replay ledger, lifecycle reducer, and side-effect executor tests all pass.
-5. Add smoke and quality-gate documentation only after the route or worker exists.
-6. Complete the external-call approval package before any real provider network call.
+1. Add manual replay authorization/parser tests without route wiring.
+2. Add worker interval wiring only after lease, stop-condition, replay ledger, lifecycle reducer, side-effect executor, mocked status-client, and notification/audit repository wiring tests all pass.
+3. Add callback route wiring only after auth/parser tests, replay ledger, lifecycle reducer, side-effect executor, and notification/audit repository wiring tests all pass.
+4. Add smoke and quality-gate documentation only after the route or worker exists.
+5. Complete the external-call approval package before any real provider network call.
 
 Do not broaden to production, Admin mutation controls, video/music/chat providers, or payment-provider reconciliation during the first callback/polling implementation.

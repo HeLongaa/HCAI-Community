@@ -162,6 +162,9 @@ test('executeProviderSideEffectPlan applies completed operations through injecte
   assert.deepEqual(calls[2][1].payload.metadata.outputAssetIds, ['media-output-1'])
   assert.equal(calls[3][1].reservationId, 'quota-side-effects-1')
   assert.equal(calls[4][1].payload.status, 'completed')
+  assert.equal(calls[5][1].actorHandle, actor.handle)
+  assert.equal(calls[5][1].metadata.notificationType, 'creative.provider_lifecycle.completed')
+  assert.equal(calls[6][1].metadata.auditAction, 'creative.provider_lifecycle.side_effect_applied')
   assert.equal(result.sideEffectResult.completedOperationKeys.length, 7)
 })
 

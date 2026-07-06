@@ -63,6 +63,11 @@ import {
   buildOperationsMetricsSnapshot,
   operationsMetricsSampleDefinitions,
 } from '../operations/metrics.js'
+import {
+  buildProviderLifecycleAuditPayload,
+  buildProviderLifecycleNotificationPayload,
+  hasProviderLifecycleSourceKey,
+} from './providerLifecycleWiring.js'
 
 const getHandleFromToken = (token, prefix) => {
   if (typeof token !== 'string' || !token.startsWith(prefix)) {
@@ -739,6 +744,67 @@ const createPrismaRepository = async (fallbackRepository) => {
       excludeHandle: actor?.handle ?? null,
     })
     return createNotificationsForUsers(db, users, payload)
+  }
+
+  const providerLifecycleRecipientUsers = async (db, actor, payload = {}) => {
+    const [owner, auditReaders] = await Promise.all([
+      payload.actorHandle
+        ? db.user.findFirst({ where: { profile: { handle: payload.actorHandle } }, include: { profile: true } })
+        : null,
+      findUsersByPermissions(db, ['admin:audit:read'], {
+        excludeHandle: actor?.handle ?? null,
+      }),
+    ])
+    return [...new Map([owner, ...auditReaders].filter(Boolean).map((user) => [user.id, user])).values()]
+  }
+
+  const createProviderLifecycleNotifications = async (payload = {}, actor = null, db = client) => {
+    const notificationPayload = buildProviderLifecycleNotificationPayload(payload)
+    const recipients = await providerLifecycleRecipientUsers(db, actor, payload)
+    if (recipients.length === 0) {
+      return []
+    }
+    const existing = await db.notification.findMany({
+      where: {
+        recipientId: { in: recipients.map((recipient) => recipient.id) },
+        type: notificationPayload.type,
+        resourceType: notificationPayload.resourceType,
+        resourceId: notificationPayload.resourceId,
+      },
+    })
+    const existingRecipientIds = new Set(existing
+      .filter((notification) => hasProviderLifecycleSourceKey(notification, payload.sourceKey))
+      .map((notification) => notification.recipientId))
+    const missingRecipients = recipients.filter((recipient) => !existingRecipientIds.has(recipient.id))
+    return createNotificationsForUsers(db, missingRecipients, notificationPayload)
+  }
+
+  const recordProviderLifecycleAudit = async (payload = {}, actor = null, db = client) => {
+    const auditPayload = buildProviderLifecycleAuditPayload(payload, actor)
+    const existing = await db.auditEvent.findMany({
+      where: {
+        action: auditPayload.action,
+        resourceType: auditPayload.resourceType,
+        resourceId: auditPayload.resourceId,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 25,
+    })
+    const existingEvent = existing.find((event) => hasProviderLifecycleSourceKey(event, payload.sourceKey))
+    if (existingEvent) {
+      return serializeAuditEvent(existingEvent)
+    }
+    const row = await db.auditEvent.create({
+      data: buildAuditRecord({
+        actorType: actor ? 'user' : 'system',
+        actorId: actor?.id ?? null,
+        action: auditPayload.action,
+        resourceType: auditPayload.resourceType,
+        resourceId: auditPayload.resourceId,
+        metadata: auditPayload.metadata,
+      }),
+    })
+    return serializeAuditEvent(row)
   }
 
   const taskNotificationTarget = (page = 'mine') => ({ page })
@@ -3440,6 +3506,14 @@ const createPrismaRepository = async (fallbackRepository) => {
     createForHandles: createNotificationsForHandles,
   }
 
+  const providerLifecycleNotifications = {
+    create: (payload, actor = null) => createProviderLifecycleNotifications(payload, actor),
+  }
+
+  const providerLifecycleAudit = {
+    record: (payload, actor = null) => recordProviderLifecycleAudit(payload, actor),
+  }
+
   const getMediaGovernancePolicy = async () => {
     const row = await client.systemSetting.findUnique({ where: { key: 'media_governance_policy' } })
     return normalizeMediaGovernancePolicy(row?.value ?? {}, buildDefaultMediaGovernancePolicy())
@@ -5584,6 +5658,8 @@ const createPrismaRepository = async (fallbackRepository) => {
     profiles,
     points,
     notifications,
+    providerLifecycleNotifications,
+    providerLifecycleAudit,
     creativeGenerations,
     creativeProviderReplays,
     creativeCredits,
