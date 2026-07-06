@@ -67,11 +67,38 @@ const buildMockProvider = (config) => ({
   },
 })
 
+const buildReplicateStagingProvider = (configProvider) => ({
+  id: configProvider.id,
+  label: configProvider.label,
+  mode: configProvider.mode,
+  enabled: false,
+  configured: configProvider.configured,
+  default: false,
+  capabilities: [{
+    ...cloneCapability(creativeCapabilities.image),
+    modes: ['text_to_image'],
+    inputAssetPurposes: [],
+    supportedParameters: ['aspectRatio', 'stylePreset', 'seed'],
+  }],
+  safeMetadata: {
+    externalCredentialsConfigured: configProvider.externalCredentialsConfigured,
+    persistsOutputs: true,
+    costMetered: true,
+    stagingOnly: true,
+    productionDenied: true,
+    adapterImplemented: false,
+    networkCallsEnabled: false,
+  },
+})
+
 export const createCreativeProviderRegistry = (source = process.env) => {
   const config = buildCreativeProviderConfig(source)
+  const providerShells = config.providers
+    .filter((provider) => provider.id === 'replicate-staging')
+    .map(buildReplicateStagingProvider)
   return {
     config,
-    providers: [buildMockProvider(config)],
+    providers: [buildMockProvider(config), ...providerShells],
   }
 }
 

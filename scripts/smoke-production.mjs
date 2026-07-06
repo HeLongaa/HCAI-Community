@@ -94,6 +94,8 @@ const summarize = (env, oauthProviders) => ({
     mode: env.creativeProviderMode,
     runtimeEnv: env.creativeProviderRuntimeEnv,
     stagingPreflightEnabled: env.creativeStagingProviderPreflightEnabled,
+    stagingAdapterShellEnabled: env.creativeProviderMode === 'replicate_staging',
+    stagingAdapterNetworkCallsEnabled: false,
     stagingImageProvider: env.creativeStagingImageProvider || null,
     stagingApiTokenConfigured: env.hasCreativeStagingProviderApiToken,
   },
@@ -150,7 +152,7 @@ check(checks, 'media scanner request dispatch configured', env.hasMediaScanReque
 check(checks, 'media scanner request signing configured', env.hasMediaScanRequestSecret, 'MEDIA_SCAN_REQUEST_SECRET is recommended for managed smoke')
 check(checks, 'media scanner callback base URL configured', env.hasMediaScanCallbackBaseUrl, 'MEDIA_SCAN_CALLBACK_BASE_URL is required')
 check(checks, 'media scanner callback signature configured', env.hasMediaScanCallbackSignatureSecret, 'MEDIA_SCAN_CALLBACK_SIGNATURE_SECRET or request secret is required')
-check(checks, 'creative provider mode remains safe', ['mock', 'disabled'].includes(env.creativeProviderMode), `CREATIVE_PROVIDER_MODE=${env.creativeProviderMode}`)
+check(checks, 'creative provider mode remains safe', ['mock', 'disabled'].includes(env.creativeProviderMode), `CREATIVE_PROVIDER_MODE=${env.creativeProviderMode}; production smoke allows only mock or disabled`)
 check(checks, 'creative staging preflight disabled in production smoke', !env.creativeStagingProviderPreflightEnabled && !env.hasCreativeStagingProviderApiToken, 'Staging provider preflight must not be enabled in production smoke')
 check(checks, 'media alert channel configured', hasAny(env.hasMediaScanAlertWebhookUrl, env.hasMediaScanAlertSlackWebhookUrl, env.mediaScanAlertEmailRecipientCount > 0), 'At least one media alert channel must be configured')
 check(checks, 'security alert channel configured', hasAny(env.hasSecurityAlertWebhookUrl, env.hasSecurityAlertSlackWebhookUrl, env.securityAlertEmailRecipientCount > 0), 'At least one security alert channel must be configured')

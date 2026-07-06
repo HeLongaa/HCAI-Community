@@ -26,6 +26,7 @@ Current executable provider flag:
 
 - `CREATIVE_PROVIDER_MODE=mock`: default local/CI fixture behavior. Only the deterministic mock provider executes.
 - `CREATIVE_PROVIDER_MODE=disabled`: generation routes report provider unavailability. Use this for staging provider preflight so real credentials can be validated as present without enabling generation calls.
+- `CREATIVE_PROVIDER_MODE=replicate_staging`: guarded staging-only adapter shell. It requires `CREATIVE_PROVIDER_RUNTIME_ENV=staging`, `CREATIVE_STAGING_IMAGE_PROVIDER=replicate`, `CREATIVE_STAGING_PROVIDER_API_TOKEN`, and `CREATIVE_STAGING_PROVIDER_CONFIRMATION=staging-only`. The provider catalog may expose `replicate-staging` as safe metadata, but it remains unavailable and `networkCallsEnabled=false` until the mocked client contract and budget lifecycle tasks are complete.
 
 Preflight-only metadata:
 
@@ -40,8 +41,10 @@ Fail-closed rules:
 - Staging provider preflight requires `CREATIVE_PROVIDER_RUNTIME_ENV=staging`.
 - Staging provider preflight requires `CREATIVE_PROVIDER_MODE=disabled`.
 - Staging provider preflight requires `CREATIVE_STAGING_IMAGE_PROVIDER=replicate`.
+- Replicate staging adapter shell requires `CREATIVE_PROVIDER_MODE=replicate_staging` and rejects every runtime except `CREATIVE_PROVIDER_RUNTIME_ENV=staging`.
+- Production smoke allows only `CREATIVE_PROVIDER_MODE=mock` or `disabled`; `replicate_staging` is production-denied.
 - Staging provider preflight requires `CREATIVE_STAGING_PROVIDER_API_TOKEN`.
-- The staging token is rejected unless preflight is enabled.
+- The staging token is rejected unless preflight is enabled or the guarded `replicate_staging` shell is selected.
 - The staging token is rejected outside `CREATIVE_PROVIDER_RUNTIME_ENV=staging`.
 - Production smoke requires staging preflight to be disabled.
 

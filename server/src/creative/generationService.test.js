@@ -30,6 +30,32 @@ test('getCreativeProviderCatalog exposes safe mock provider capabilities', () =>
   assert.ok(catalog.providers[0].capabilities.find((capability) => capability.workspace === 'image'))
 })
 
+test('getCreativeProviderCatalog exposes Replicate staging shell as unavailable safe metadata', () => {
+  const catalog = getCreativeProviderCatalog({
+    NODE_ENV: 'production',
+    ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_PROVIDER_MODE: 'replicate_staging',
+    CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+    CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-token',
+    CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+  })
+  const provider = catalog.providers.find((candidate) => candidate.id === 'replicate-staging')
+
+  assert.equal(catalog.defaultProviderId, 'mock')
+  assert.ok(provider)
+  assert.equal(provider.enabled, false)
+  assert.equal(provider.configured, true)
+  assert.deepEqual(provider.capabilities.map((capability) => capability.workspace), ['image'])
+  assert.deepEqual(provider.capabilities[0].modes, ['text_to_image'])
+  assert.equal(provider.safeMetadata.externalCredentialsConfigured, true)
+  assert.equal(provider.safeMetadata.costMetered, true)
+  assert.equal(provider.safeMetadata.stagingOnly, true)
+  assert.equal(provider.safeMetadata.productionDenied, true)
+  assert.equal(provider.safeMetadata.adapterImplemented, false)
+  assert.equal(provider.safeMetadata.networkCallsEnabled, false)
+})
+
 test('executeCreativeGeneration returns deterministic mock output descriptors', async () => {
   resetCreativePolicyState()
   const first = await executeCreativeGeneration({ request, actor, source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' } })
@@ -123,6 +149,25 @@ test('executeCreativeGeneration reports disabled providers as unavailable', asyn
       source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'disabled' },
     }),
     /Creative provider is not available: mock/,
+  )
+})
+
+test('executeCreativeGeneration refuses the Replicate staging shell before adapter implementation', async () => {
+  await assert.rejects(
+    executeCreativeGeneration({
+      request: { ...request, providerId: 'replicate-staging' },
+      actor,
+      source: {
+        NODE_ENV: 'production',
+        ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+        CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+        CREATIVE_PROVIDER_MODE: 'replicate_staging',
+        CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+        CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-token',
+        CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+      },
+    }),
+    /Creative provider is not available: replicate-staging/,
   )
 })
 
