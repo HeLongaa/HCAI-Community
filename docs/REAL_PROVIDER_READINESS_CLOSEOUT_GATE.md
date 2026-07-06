@@ -16,6 +16,7 @@ The repository remains mock-provider only. This closeout gate does not implement
 | Provider cost metadata and budget alarms | Complete, PR #28 | `docs/REAL_PROVIDER_COST_METADATA_AND_BUDGET_ALARMS.md` |
 | Staging smoke runbook and adapter closeout gate | Complete after this package merges | `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` |
 | External-call go/no-go approval package | Complete after this package merges | `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` |
+| Callback/polling prerequisite plan | Complete after this package merges | `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` |
 | Final closeout gate | Complete after this package merges | `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` |
 
 ## Gate Decision
@@ -168,6 +169,7 @@ Before starting a staging adapter PR:
 - `docs/REAL_PROVIDER_PREFLIGHT_PLAN.md` points to the closeout gate.
 - `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` has been reviewed for the adapter scope.
 - `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` has been reviewed before any external-call rehearsal.
+- `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` has been reviewed before any callback, polling worker, or manual lifecycle replay work.
 - `README.md` lists every real-provider preflight artifact.
 - `docs/GITHUB_ENVIRONMENT.md` documents any new provider env/secrets.
 - `docs/QUALITY_GATES.md` documents any new validation command.
@@ -214,7 +216,7 @@ Recommended first implementation scope:
 2. Keep production denied by env validation.
 3. Implement request construction and safe failure mapping with mocked provider client tests first.
 4. Add cost metadata mapping and budget fail-closed checks before any external dispatch.
-5. Add callback/polling idempotency tests before enabling async provider lifecycle.
+5. Satisfy `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` and add callback/polling idempotency tests before enabling async provider lifecycle.
 6. Run a staging-only smoke with a low provider-side spending cap.
 
 Do not broaden to video, music, chat, production, or Admin mutation controls during the first staging adapter phase.

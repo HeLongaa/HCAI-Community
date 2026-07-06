@@ -131,4 +131,5 @@ The next preflight tasks should use this boundary as input:
 
 - Admin mutation requirements should keep retry/cancel/refund controls deferred until provider idempotency and audit semantics are written.
 - Provider cost metadata should start with Replicate official model pricing units and map them into internal cost estimate, settled cost, currency, and provider usage metadata.
+- Callback/polling enablement should satisfy `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` before any webhook route, polling worker, or manual replay path is enabled.
 - Real-provider closeout should require staging preflight to pass before allowing an adapter branch to make any external API call.

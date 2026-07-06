@@ -183,6 +183,8 @@ Notes:
 
 ## Callback And Polling Prerequisite Plan
 
+The full callback/polling prerequisite checklist lives in `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md`.
+
 Before enabling provider webhooks or polling workers:
 
 1. Add callback or polling replay tests for queued, running, succeeded, failed, cancelled, duplicate terminal, duplicate non-terminal, stale event, and provider job id mismatch cases.
