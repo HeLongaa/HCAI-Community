@@ -168,6 +168,27 @@ Append-only audit log.
 | `status` | enum | `pending`, `settled`, `cancelled` |
 | `created_at` | timestamptz | |
 
+### `creative_credit_ledger`
+
+Dedicated accounting table for provider-readiness creative generation credits. This is intentionally separate from task reward settlement in `point_ledger`.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | text | Primary key |
+| `generation_id` | text | Creative generation source id |
+| `quota_reservation_id` | text | Unique idempotency key for a generation attempt |
+| `actor_id` | uuid | Nullable FK users |
+| `actor_handle` | text | Safe actor handle snapshot |
+| `workspace` | text | Creative workspace |
+| `mode` | text | Creative generation mode |
+| `reservation_amount` | integer | Credits reserved |
+| `settled_amount` | integer | Credits charged after successful provider work |
+| `refunded_amount` | integer | Credits returned after provider/persistence failure |
+| `status` | enum | `reserved`, `settled`, `refunded`, `cancelled` |
+| `reason_code` | text | Stable lifecycle reason |
+| `metadata` | jsonb | Safe provider/cost/output metadata |
+| `reserved_at`, `settled_at`, `refunded_at`, `cancelled_at` | timestamptz | Lifecycle timestamps |
+
 ### `audit_events`
 
 Privileged/system event log used by admin audit views.

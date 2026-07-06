@@ -21,6 +21,7 @@ export const buildCreativeGenerationRecordPayload = (generation, actor, override
   parameterKeys: Object.keys(generation.parameters ?? {}).sort(),
   outputAssetIds: overrides.outputAssetIds ?? [],
   usage: generation.usage ?? null,
+  credit: generation.credit ?? null,
   quota: generation.quota ?? null,
   safety: generation.safety ?? null,
   policy: generation.policy ?? null,

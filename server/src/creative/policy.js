@@ -233,6 +233,7 @@ export const applyCreativeGenerationPolicy = async ({
       enforcedAt: now.toISOString(),
       gates: {
         quota: true,
+        credit: true,
         moderation: true,
         review: safety.reviewRequired,
       },

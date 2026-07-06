@@ -319,6 +319,29 @@ Query:
 
 Returns `meta.summary` with available, frozen, pending settlement, projected balance, and lifetime totals.
 
+## Creative Generation
+
+### `GET /creative/providers`
+
+Requires auth-compatible public access. Returns safe creative provider capability metadata without secrets.
+
+### `POST /creative/generations`
+
+Requires auth. Executes the mock provider path, applies moderation/review policy, reserves quota, reserves creative credits, persists generated outputs as media assets, commits quota, settles credits, and returns a safe generation response. Provider or media persistence failure releases quota and refunds the credit reservation.
+
+The response includes:
+
+```ts
+{
+  usage: { estimatedCredits: number; providerCostCents: number; currency: 'credits' }
+  quota: { reservationId: string; reserved: number; used: number; released: number; remaining: number }
+  credit: { ledgerId: string; status: 'settled' | 'refunded' | 'reserved' | 'cancelled'; reserved: number; settled: number; refunded: number }
+  generationRecord: { id: string; promptHash: string; promptPreview: string | null; credit?: object; quota?: object }
+}
+```
+
+Moderation-blocked and quota-exceeded requests do not reserve credits or create provider work.
+
 ### `POST /points/redemptions`
 
 Requires auth. Creates a redemption request.

@@ -822,6 +822,29 @@ export const openApiDocument = {
                             currency: { type: 'string' },
                           },
                         },
+                        credit: {
+                          type: ['object', 'null'],
+                          properties: {
+                            ledgerId: { type: 'string' },
+                            generationId: { type: 'string' },
+                            quotaReservationId: { type: ['string', 'null'] },
+                            status: {
+                              type: 'string',
+                              enum: ['reserved', 'settled', 'refunded', 'cancelled'],
+                            },
+                            currency: { type: 'string' },
+                            reserved: { type: 'integer' },
+                            settled: { type: 'integer' },
+                            refunded: { type: 'integer' },
+                            amount: { type: 'integer' },
+                            reasonCode: { type: ['string', 'null'] },
+                            metadata: { type: ['object', 'null'], additionalProperties: true },
+                            reservedAt: { type: ['string', 'null'], format: 'date-time' },
+                            settledAt: { type: ['string', 'null'], format: 'date-time' },
+                            refundedAt: { type: ['string', 'null'], format: 'date-time' },
+                            cancelledAt: { type: ['string', 'null'], format: 'date-time' },
+                          },
+                        },
                         quota: {
                           type: 'object',
                           properties: {
@@ -873,6 +896,7 @@ export const openApiDocument = {
                               type: 'object',
                               properties: {
                                 quota: { type: 'boolean' },
+                                credit: { type: 'boolean' },
                                 moderation: { type: 'boolean' },
                                 review: { type: 'boolean' },
                               },
@@ -901,6 +925,7 @@ export const openApiDocument = {
                             parameterKeys: { type: 'array', items: { type: 'string' } },
                             outputAssetIds: { type: 'array', items: { type: 'string' } },
                             usage: { type: ['object', 'null'], additionalProperties: true },
+                            credit: { type: ['object', 'null'], additionalProperties: true },
                             quota: { type: ['object', 'null'], additionalProperties: true },
                             safety: { type: ['object', 'null'], additionalProperties: true },
                             policy: { type: ['object', 'null'], additionalProperties: true },

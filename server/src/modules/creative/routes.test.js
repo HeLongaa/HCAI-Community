@@ -100,6 +100,12 @@ test('POST /api/creative/generations persists mock provider output through media
     assert.equal(payload.data.outputs[0].source.persistedMediaAssetId, payload.data.outputs[0].storage.mediaAssetId)
     assert.equal(payload.data.outputs[0].url.startsWith('mock://creative/image/'), true)
     assert.equal(payload.data.usage.providerCostCents, 0)
+    assert.equal(payload.data.credit.status, 'settled')
+    assert.equal(payload.data.credit.reserved, 1)
+    assert.equal(payload.data.credit.settled, 1)
+    assert.equal(payload.data.credit.refunded, 0)
+    assert.ok(payload.data.credit.ledgerId)
+    assert.equal(payload.data.credit.quotaReservationId, payload.data.quota.reservationId)
     assert.equal(payload.data.quota.reserved, 0)
     assert.equal(payload.data.quota.used, 1)
     assert.ok(payload.data.quota.reservationId)
@@ -107,6 +113,8 @@ test('POST /api/creative/generations persists mock provider output through media
     assert.equal(payload.data.generationRecord.id, payload.data.id)
     assert.equal(payload.data.generationRecord.status, 'completed')
     assert.equal(payload.data.generationRecord.actorHandle, 'promptlin')
+    assert.equal(payload.data.generationRecord.credit.status, 'settled')
+    assert.equal(payload.data.generationRecord.credit.ledgerId, payload.data.credit.ledgerId)
     assert.equal(payload.data.generationRecord.promptHash.length, 64)
     assert.equal(payload.data.generationRecord.promptPreview, 'A neon marketplace poster')
     assert.deepEqual(payload.data.generationRecord.outputAssetIds, [payload.data.outputs[0].storage.mediaAssetId])
@@ -148,6 +156,10 @@ test('POST /api/creative/generations returns moderation errors before generation
   resetCreativePolicyState()
   const server = await createRouteTestServer(registerCreativeRoutes)
   try {
+    const before = await repositories.creativeGenerations.list({
+      actorHandle: 'promptlin',
+      limit: 100,
+    })
     const { status, payload } = await requestJson(server.url, '/api/creative/generations', {
       body: {
         workspace: 'image',
@@ -162,6 +174,11 @@ test('POST /api/creative/generations returns moderation errors before generation
     assert.equal(payload.error.code, 'CREATIVE_MODERATION_BLOCKED')
     assert.equal(payload.error.details.policyVersion, 'creative-policy-v1')
     assert.equal(payload.error.details.reasons[0].id, 'credential_abuse')
+    const after = await repositories.creativeGenerations.list({
+      actorHandle: 'promptlin',
+      limit: 100,
+    })
+    assert.equal(after.items.length, before.items.length)
   } finally {
     await server.close()
   }
@@ -186,7 +203,12 @@ test('POST /api/creative/generations enforces daily quota boundaries', async () 
     assert.equal(first.payload.data.quota.limit, 1)
     assert.equal(first.payload.data.quota.used, 1)
     assert.equal(first.payload.data.quota.remaining, 0)
+    assert.equal(first.payload.data.credit.status, 'settled')
 
+    const beforeExceeded = await repositories.creativeGenerations.list({
+      actorHandle: 'taskops',
+      limit: 100,
+    })
     const second = await requestJson(server.url, '/api/creative/generations', {
       body,
       token: 'demo-access.taskops',
@@ -196,6 +218,11 @@ test('POST /api/creative/generations enforces daily quota boundaries', async () 
     assert.equal(second.payload.error.details.limit, 1)
     assert.equal(second.payload.error.details.used, 1)
     assert.equal(second.payload.error.details.remaining, 0)
+    const afterExceeded = await repositories.creativeGenerations.list({
+      actorHandle: 'taskops',
+      limit: 100,
+    })
+    assert.equal(afterExceeded.items.length, beforeExceeded.items.length)
   } finally {
     await server.close()
     resetCreativePolicyState()
@@ -239,6 +266,16 @@ test('POST /api/creative/generations releases reserved quota when output persist
     assert.equal(quota.used, 0)
     assert.equal(quota.released, 1)
     assert.equal(quota.remaining, quota.limit)
+    const generations = await repositories.creativeGenerations.list({
+      actorHandle: 'launchteam',
+      status: 'failed',
+      limit: 5,
+    })
+    const failedRecord = generations.items.find((item) => item.promptPreview === 'A quota release poster')
+    assert.ok(failedRecord)
+    assert.equal(failedRecord.credit.status, 'refunded')
+    assert.equal(failedRecord.credit.refunded, 1)
+    assert.equal(failedRecord.credit.reasonCode, 'MEDIA_PERSISTENCE_FAILED')
 
     const retry = await requestJson(server.url, '/api/creative/generations', {
       body: {
@@ -279,7 +316,10 @@ test('POST /api/creative/generations routes policy review outputs to media revie
     assert.equal(status, 200)
     assert.equal(payload.data.safety.reviewRequired, true)
     assert.equal(payload.data.status, 'review_required')
+    assert.equal(payload.data.credit.status, 'settled')
+    assert.equal(payload.data.credit.reasonCode, 'generation_review_required')
     assert.equal(payload.data.generationRecord.status, 'review_required')
+    assert.equal(payload.data.generationRecord.credit.status, 'settled')
     assert.equal(payload.data.outputs[0].storage.scanStatus, 'review')
     assert.equal(payload.data.outputs[0].mediaAsset.scanStatus, 'review')
 

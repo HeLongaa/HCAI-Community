@@ -322,7 +322,7 @@ Current implementation boundary:
 - Output media asset ids are linked back onto the durable generation record after media persistence.
 - The API response includes `generationRecord`, a safe record view with prompt hash/preview but without raw prompt retention.
 - Provider/persistence failures after record creation mark the generation `failed` with safe error metadata.
-- Durable quota ledger, credit reservation lifecycle, and Admin generation history remain separate follow-up slices.
+- Durable quota ledger and credit reservation lifecycle are separate completed slices. Admin generation history remains the next follow-up slice.
 
 Validation:
 
@@ -348,7 +348,7 @@ Current implementation boundary:
 - Successful output persistence commits reserved units to used units.
 - Provider or persistence failure before commit releases reserved units and records safe audit metadata.
 - Moderation-blocked and quota-exceeded requests still avoid provider execution and do not create credit reservations.
-- Credit reservation/settlement/refund remains the next provider-readiness slice.
+- Credit reservation/settlement/refund is covered by its own completed provider-readiness slice; Admin generation history remains next.
 
 Validation:
 
@@ -364,6 +364,16 @@ Deliverables:
 - reserve/settle/refund/cancel operations
 - integration with generation success/failure/review paths
 - idempotency tests
+
+Current implementation boundary:
+
+- Creative credits use a dedicated durable `creative_credit_ledger` table in Prisma-backed deployments, with seed repository parity for local tests.
+- Credit reservations are created only after moderation and quota reservation pass. Moderation-blocked and quota-exceeded requests do not reserve credits.
+- The ledger tracks `reserved`, `settled`, `refunded`, and `cancelled` states with reservation, settled, and refunded amounts.
+- `quotaReservationId` is used as the strongest idempotency key for the synchronous generation attempt; repeated settle/refund calls return the existing ledger state without double accounting.
+- Successful generated output persistence settles credits. Review-required output also settles credits because provider work completed, while media download remains gated by review.
+- Provider or media persistence failure refunds the credit reservation and marks the durable generation record with safe refunded credit metadata.
+- External payment packages, subscription balances, real provider charges, and manual Admin retry/refund controls remain out of scope.
 
 Validation:
 

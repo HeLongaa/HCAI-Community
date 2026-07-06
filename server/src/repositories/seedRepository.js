@@ -56,6 +56,7 @@ const sessionByRefreshToken = new Map()
 const emailAccountByEmail = new Map()
 const oauthAccountByProviderKey = new Map()
 const creativeGenerationsById = new Map()
+const creativeCreditLedgerById = new Map()
 const creativeQuotaWindowsById = new Map()
 const creativeQuotaReservationsById = new Map()
 
@@ -1011,6 +1012,7 @@ const makeCreativeGenerationRecord = (payload, patch = {}) => {
     parameterKeys: payload.parameterKeys ?? [],
     outputAssetIds: payload.outputAssetIds ?? [],
     usage: payload.usage ?? null,
+    credit: payload.credit ?? null,
     quota: payload.quota ?? null,
     safety: payload.safety ?? null,
     policy: payload.policy ?? null,
@@ -1047,6 +1049,35 @@ const patchCreativeGeneration = (id, patch, actor, auditAction) => {
 
 const creativeQuotaWindowId = ({ actorHandle, workspace, windowType, windowStart }) =>
   `${actorHandle ?? 'unknown'}:${workspace}:${windowType}:${windowStart}`
+
+const getCreativeCreditDto = (ledger) => ledger ? ({
+  ledgerId: ledger.id,
+  generationId: ledger.generationId,
+  quotaReservationId: ledger.quotaReservationId ?? null,
+  status: ledger.status,
+  currency: 'credits',
+  reserved: ledger.reservationAmount,
+  settled: ledger.settledAmount,
+  refunded: ledger.refundedAmount,
+  amount: ledger.reservationAmount,
+  reasonCode: ledger.reasonCode ?? null,
+  metadata: ledger.metadata ?? null,
+  reservedAt: ledger.reservedAt ?? null,
+  settledAt: ledger.settledAt ?? null,
+  refundedAt: ledger.refundedAt ?? null,
+  cancelledAt: ledger.cancelledAt ?? null,
+}) : null
+
+const findCreativeCreditLedger = (reference) => {
+  const key = String(reference ?? '')
+  if (!key) {
+    return null
+  }
+  return creativeCreditLedgerById.get(key) ??
+    [...creativeCreditLedgerById.values()].find((ledger) =>
+      ledger.generationId === key || ledger.quotaReservationId === key) ??
+    null
+}
 
 const getCreativeQuotaDto = (window, reservationId = null) => ({
   policyVersion: window.policyVersion,
@@ -2546,6 +2577,145 @@ export const createSeedRepository = () => ({
         .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
         .map(serializeCreativeGeneration)
       return paginateByCursor(filtered, options)
+    },
+  },
+  creativeCredits: {
+    reserve: (payload, actor) => {
+      const existing = payload.quotaReservationId
+        ? findCreativeCreditLedger(payload.quotaReservationId)
+        : null
+      if (existing) {
+        return {
+          reserved: existing.status === 'reserved',
+          credit: getCreativeCreditDto(existing),
+        }
+      }
+
+      const now = new Date().toISOString()
+      const amount = Math.max(0, Number.parseInt(String(payload.amount ?? payload.estimatedCredits ?? 0), 10) || 0)
+      const ledger = {
+        id: `credit-${randomUUID()}`,
+        generationId: String(payload.generationId ?? ''),
+        quotaReservationId: payload.quotaReservationId ?? null,
+        actorId: payload.actorId ?? null,
+        actorHandle: payload.actorHandle ?? null,
+        workspace: payload.workspace,
+        mode: payload.mode,
+        reservationAmount: amount,
+        settledAmount: 0,
+        refundedAmount: 0,
+        status: 'reserved',
+        reasonCode: payload.reasonCode ?? 'generation_reserved',
+        metadata: payload.metadata ?? null,
+        reservedAt: now,
+        settledAt: null,
+        refundedAt: null,
+        cancelledAt: null,
+        createdAt: now,
+        updatedAt: now,
+      }
+      creativeCreditLedgerById.set(ledger.id, ledger)
+      recordAudit(actor, 'creative.credit.reserved', 'creative_credit_ledger', ledger.id, {
+        generationId: ledger.generationId,
+        quotaReservationId: ledger.quotaReservationId,
+        workspace: ledger.workspace,
+        mode: ledger.mode,
+        amount,
+      })
+      return {
+        reserved: true,
+        credit: getCreativeCreditDto(ledger),
+      }
+    },
+    settle: (reference, payload = {}, actor) => {
+      const ledger = findCreativeCreditLedger(reference)
+      if (!ledger) {
+        return null
+      }
+      if (ledger.status !== 'reserved') {
+        return getCreativeCreditDto(ledger)
+      }
+      const now = new Date().toISOString()
+      const settledAmount = Math.max(0, Number.parseInt(String(payload.settledAmount ?? ledger.reservationAmount), 10) || 0)
+      const updated = {
+        ...ledger,
+        status: 'settled',
+        settledAmount,
+        refundedAmount: 0,
+        reasonCode: payload.reasonCode ?? 'generation_completed',
+        metadata: payload.metadata ?? ledger.metadata ?? null,
+        settledAt: now,
+        updatedAt: now,
+      }
+      creativeCreditLedgerById.set(updated.id, updated)
+      recordAudit(actor, 'creative.credit.settled', 'creative_credit_ledger', updated.id, {
+        generationId: updated.generationId,
+        quotaReservationId: updated.quotaReservationId,
+        workspace: updated.workspace,
+        mode: updated.mode,
+        settledAmount,
+      })
+      return getCreativeCreditDto(updated)
+    },
+    refund: (reference, payload = {}, actor) => {
+      const ledger = findCreativeCreditLedger(reference)
+      if (!ledger) {
+        return null
+      }
+      if (ledger.status !== 'reserved') {
+        return getCreativeCreditDto(ledger)
+      }
+      const now = new Date().toISOString()
+      const refundedAmount = Math.max(0, Number.parseInt(String(payload.refundedAmount ?? ledger.reservationAmount), 10) || 0)
+      const updated = {
+        ...ledger,
+        status: 'refunded',
+        settledAmount: 0,
+        refundedAmount,
+        reasonCode: payload.reasonCode ?? 'generation_failed',
+        metadata: payload.metadata ?? ledger.metadata ?? null,
+        refundedAt: now,
+        updatedAt: now,
+      }
+      creativeCreditLedgerById.set(updated.id, updated)
+      recordAudit(actor, 'creative.credit.refunded', 'creative_credit_ledger', updated.id, {
+        generationId: updated.generationId,
+        quotaReservationId: updated.quotaReservationId,
+        workspace: updated.workspace,
+        mode: updated.mode,
+        refundedAmount,
+        reasonCode: updated.reasonCode,
+      })
+      return getCreativeCreditDto(updated)
+    },
+    cancel: (reference, payload = {}, actor) => {
+      const ledger = findCreativeCreditLedger(reference)
+      if (!ledger) {
+        return null
+      }
+      if (ledger.status !== 'reserved') {
+        return getCreativeCreditDto(ledger)
+      }
+      const now = new Date().toISOString()
+      const updated = {
+        ...ledger,
+        status: 'cancelled',
+        settledAmount: 0,
+        refundedAmount: 0,
+        reasonCode: payload.reasonCode ?? 'no_charge',
+        metadata: payload.metadata ?? ledger.metadata ?? null,
+        cancelledAt: now,
+        updatedAt: now,
+      }
+      creativeCreditLedgerById.set(updated.id, updated)
+      recordAudit(actor, 'creative.credit.cancelled', 'creative_credit_ledger', updated.id, {
+        generationId: updated.generationId,
+        quotaReservationId: updated.quotaReservationId,
+        workspace: updated.workspace,
+        mode: updated.mode,
+        reasonCode: updated.reasonCode,
+      })
+      return getCreativeCreditDto(updated)
     },
   },
   creativeQuota: {

@@ -571,6 +571,7 @@ export type ApiCreativeGenerationRecord = {
   parameterKeys: string[]
   outputAssetIds: string[]
   usage?: unknown
+  credit?: unknown
   quota?: unknown
   safety?: unknown
   policy?: unknown
@@ -583,6 +584,24 @@ export type ApiCreativeGenerationRecord = {
   failedAt: string | null
   createdAt: string
   updatedAt: string
+}
+
+export type ApiCreativeCredit = {
+  ledgerId: string
+  generationId: string
+  quotaReservationId: string | null
+  status: 'reserved' | 'settled' | 'refunded' | 'cancelled' | string
+  currency: 'credits' | string
+  reserved: number
+  settled: number
+  refunded: number
+  amount: number
+  reasonCode: string | null
+  metadata?: unknown
+  reservedAt: string | null
+  settledAt: string | null
+  refundedAt: string | null
+  cancelledAt: string | null
 }
 
 export type ApiCreativeGeneration = {
@@ -602,6 +621,7 @@ export type ApiCreativeGeneration = {
     costModel?: string
     currency?: string
   }
+  credit?: ApiCreativeCredit | null
   quota?: {
     policyVersion: string
     scope: string
@@ -634,6 +654,7 @@ export type ApiCreativeGeneration = {
     enforcedAt: string
     gates: {
       quota: boolean
+      credit?: boolean
       moderation: boolean
       review: boolean
     }

@@ -120,6 +120,13 @@ enum CreativeQuotaReservationStatus {
   released
 }
 
+enum CreativeCreditLedgerStatus {
+  reserved
+  settled
+  refunded
+  cancelled
+}
+
 model AuditEvent {
   id           String         @id @default(cuid())
   actorType    AuditActorType @map("actor_type")
@@ -253,6 +260,7 @@ model User {
   creativeGenerations     CreativeGeneration[]
   creativeQuotaWindows    CreativeQuotaWindow[]
   creativeQuotaReservations CreativeQuotaReservation[]
+  creativeCreditLedger    CreativeCreditLedger[]
 
   @@map("users")
 }
@@ -525,6 +533,7 @@ model CreativeGeneration {
   parameterKeys       String[]                 @map("parameter_keys")
   outputAssetIds      String[]                 @map("output_asset_ids")
   usage               Json?
+  credit              Json?
   quota               Json?
   safety              Json?
   policy              Json?
@@ -546,6 +555,35 @@ model CreativeGeneration {
   @@index([providerId, createdAt])
   @@index([status, createdAt])
   @@map("creative_generations")
+}
+
+model CreativeCreditLedger {
+  id                String                     @id @default(cuid())
+  generationId      String                     @map("generation_id")
+  quotaReservationId String?                   @unique @map("quota_reservation_id")
+  actorId           String?                    @map("actor_id")
+  actorHandle       String?                    @map("actor_handle")
+  workspace         String
+  mode              String
+  reservationAmount Int                        @map("reservation_amount")
+  settledAmount     Int                        @default(0) @map("settled_amount")
+  refundedAmount    Int                        @default(0) @map("refunded_amount")
+  status            CreativeCreditLedgerStatus
+  reasonCode        String?                    @map("reason_code")
+  metadata          Json?
+  reservedAt        DateTime                   @default(now()) @map("reserved_at")
+  settledAt         DateTime?                  @map("settled_at")
+  refundedAt        DateTime?                  @map("refunded_at")
+  cancelledAt       DateTime?                  @map("cancelled_at")
+  createdAt         DateTime                   @default(now()) @map("created_at")
+  updatedAt         DateTime                   @updatedAt @map("updated_at")
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([generationId])
+  @@index([actorHandle, workspace, createdAt])
+  @@index([status, createdAt])
+  @@map("creative_credit_ledger")
 }
 
 model CreativeQuotaWindow {
