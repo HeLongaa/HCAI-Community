@@ -3745,6 +3745,23 @@ const createPrismaRepository = async (fallbackRepository) => {
       })
       return getCreativeGenerationDto(row)
     },
+    cancel: async (id, patch = {}, actor) => {
+      const row = await client.creativeGeneration.update({
+        where: { id: String(id) },
+        data: {
+          ...compactObject(patch),
+          status: 'cancelled',
+        },
+      })
+      await recordAudit({
+        actor,
+        action: 'creative.generation.cancelled',
+        resourceType: 'creative_generation',
+        resourceId: row.id,
+        metadata: { status: row.status, reasonCode: patch.reasonCode ?? null },
+      })
+      return getCreativeGenerationDto(row)
+    },
     find: async (id) => {
       const row = await client.creativeGeneration.findUnique({ where: { id: String(id) } })
       return row ? getCreativeGenerationDto(row) : null

@@ -1,4 +1,6 @@
-export const createProductionWorkerJobDefinitions = (repositories, env) => {
+import { buildProviderPollingLeaseKey, runProviderPollingWorkerOnce } from '../creative/providerPollingWorker.js'
+
+export const createProductionWorkerJobDefinitions = (repositories, env, options = {}) => {
   const jobs = []
   const lease = (key) => ({
     key,
@@ -23,6 +25,27 @@ export const createProductionWorkerJobDefinitions = (repositories, env) => {
       run: () => repositories.tasks.sweepStaleSubmissions({
         olderThanHours: env.taskStaleSubmissionOlderThanHours,
         limit: env.taskStaleSubmissionSweepLimit,
+      }),
+    })
+  }
+  if (repositories.creativeGenerations?.list && repositories.creativeProviderReplays?.record) {
+    jobs.push({
+      id: 'creative-provider-polling',
+      enabled: env.creativeProviderPollingWorkerEnabled,
+      intervalSeconds: env.creativeProviderPollingIntervalSeconds,
+      lease: {
+        key: buildProviderPollingLeaseKey({
+          providerId: env.creativeStagingImageProvider || 'replicate',
+          providerMode: env.creativeProviderMode,
+        }),
+        ttlSeconds: env.creativeProviderPollingLeaseTtlSeconds ?? env.workerLeaseTtlSeconds,
+        renewIntervalSeconds: env.workerLeaseRenewIntervalSeconds,
+      },
+      run: () => runProviderPollingWorkerOnce({
+        repositories,
+        providerStatusClients: options.providerStatusClients ?? {},
+        source: env,
+        limit: env.creativeProviderPollingSweepLimit,
       }),
     })
   }

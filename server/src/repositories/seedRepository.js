@@ -2646,6 +2646,10 @@ export const createSeedRepository = () => ({
       status: 'failed',
       failedAt: patch.failedAt ?? new Date().toISOString(),
     }, actor, 'creative.generation.failed'),
+    cancel: (id, patch = {}, actor) => patchCreativeGeneration(String(id), {
+      ...patch,
+      status: 'cancelled',
+    }, actor, 'creative.generation.cancelled'),
     find: (id) => {
       const record = creativeGenerationsById.get(String(id))
       return record ? serializeCreativeGeneration(record) : null
