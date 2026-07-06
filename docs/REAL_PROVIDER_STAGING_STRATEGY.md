@@ -30,6 +30,8 @@ Current executable provider flag:
 
 The Replicate staging client contract is tested with an injected mocked client only. It maps image request payloads, Replicate-like prediction statuses, output URLs, and provider failures into the internal generation contract without providing a default network client or wiring the route layer to Replicate.
 
+The mocked contract also requires provider cost estimate and daily budget cap metadata before any injected client dispatch. Missing estimate, missing cap, or projected spend above the cap fails closed before the mocked client is called. Budget metadata remains staging-scoped and low-cardinality: `CREATIVE_STAGING_PROVIDER_BUDGET_SCOPE=staging:replicate:image`, `CREATIVE_STAGING_PROVIDER_ESTIMATE_USD`, `CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD`, `CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD`, and `CREATIVE_STAGING_PROVIDER_BUDGET_THRESHOLD_PERCENT`.
+
 Preflight-only metadata:
 
 - `CREATIVE_PROVIDER_RUNTIME_ENV`: one of `development`, `test`, `ci`, `staging`, or `production`. This can differ from `NODE_ENV`; staging deployments can still run optimized `NODE_ENV=production` while setting this value to `staging`.
@@ -45,6 +47,8 @@ Fail-closed rules:
 - Staging provider preflight requires `CREATIVE_STAGING_IMAGE_PROVIDER=replicate`.
 - Replicate staging adapter shell requires `CREATIVE_PROVIDER_MODE=replicate_staging` and rejects every runtime except `CREATIVE_PROVIDER_RUNTIME_ENV=staging`.
 - Production smoke allows only `CREATIVE_PROVIDER_MODE=mock` or `disabled`; `replicate_staging` is production-denied.
+- Replicate staging client contract blocks dispatch when provider cost estimate or daily budget cap metadata is missing.
+- Replicate staging client contract blocks dispatch when projected daily spend exceeds the configured cap.
 - Staging provider preflight requires `CREATIVE_STAGING_PROVIDER_API_TOKEN`.
 - The staging token is rejected unless preflight is enabled or the guarded `replicate_staging` shell is selected.
 - The staging token is rejected outside `CREATIVE_PROVIDER_RUNTIME_ENV=staging`.
