@@ -2,7 +2,7 @@
 
 This closeout captures the completed Phase 3 Track C creative-tool productization baseline. Track C is considered complete for repository, fixture CI, and PR-ready handoff purposes after the provider abstraction, generated asset persistence, Image Studio integration, and cost/quota/moderation boundaries.
 
-The key product boundary is deliberate: the app now has a real creative generation API path and durable generated assets, but the only provider adapter is still the deterministic mock provider. Real paid providers, durable billing ledgers, and broader workspace migrations are follow-up work.
+The key product boundary is deliberate: the app now has a real creative generation API path and durable generated assets, but the only provider adapter is still the deterministic mock provider. Real paid providers, external billing/reconciliation flows, and broader workspace migrations are follow-up work.
 
 ## Completed Scope
 

@@ -14,14 +14,14 @@ Reasoning:
 
 ## Scope Decision
 
-Phase 3 is an umbrella plan with Tracks A, B, and C. Track A, Track B, and Track C are now closed out in the repository. Remaining work should be tracked as a new provider-readiness or real-provider integration phase rather than reopening the closed Track C baseline.
+Phase 3 is an umbrella plan with Tracks A, B, and C. Track A, Track B, Track C, and the provider-readiness follow-up are now closed out in the repository. Remaining work should be tracked as a real-provider integration phase rather than reopening the closed Track C or provider-readiness baselines.
 
 Current closeout target:
 
 1. Keep Track A marketplace depth stable.
 2. Keep Track B production operations closed unless a deployment blocker is found.
 3. Keep Track C creative provider productization stable unless a production blocker is found.
-4. Move real provider, durable quota, or billing work into a new scoped follow-up phase.
+4. Move real provider integration, provider-specific async lifecycle, and external billing work into a new scoped follow-up phase.
 
 Track A closeout notes live in `docs/PHASE_3_TRACK_A_CLOSEOUT.md`.
 Track B planning notes live in `docs/PHASE_3_TRACK_B_PLAN.md`.
@@ -30,6 +30,7 @@ Track B multi-instance deployment runbook lives in `docs/PHASE_3_TRACK_B_MULTI_I
 Track C planning notes live in `docs/PHASE_3_TRACK_C_PLAN.md`.
 Track C creative tool closeout notes live in `docs/PHASE_3_TRACK_C_CLOSEOUT.md`.
 Provider readiness planning lives in `docs/PROVIDER_READINESS_PLAN.md`.
+Provider readiness closeout lives in `docs/PROVIDER_READINESS_CLOSEOUT.md`.
 
 ## Phase 3 Tracks
 
@@ -119,7 +120,7 @@ Completed implementation order:
 Deferred work:
 
 - Direct paid-provider integration.
-- Durable cross-instance quota and billing ledger.
+- External billing, subscription, invoice, checkout, and real provider reconciliation.
 - Full Music, Video, Chat, Explore, and catalog migration away from demo surfaces.
 - Provider-specific async job lifecycle and incident runbooks.
 
@@ -127,9 +128,9 @@ Deferred work:
 
 Goal: add durable generation, quota, credit, and Admin history foundations before any real paid provider integration.
 
-Status: planned as a post-Phase 3 follow-up. It should not connect a real provider.
+Status: closed out for repository, fixture CI, and PR-ready handoff. It did not connect a real provider.
 
-Recommended scope:
+Completed scope:
 
 - durable creative generation records
 - cross-instance quota ledger
@@ -146,6 +147,7 @@ Non-goals:
 - provider-specific async video/music job lifecycle
 
 Provider readiness planning lives in `docs/PROVIDER_READINESS_PLAN.md`.
+Provider readiness closeout lives in `docs/PROVIDER_READINESS_CLOSEOUT.md`.
 
 ## Quality Gate
 
