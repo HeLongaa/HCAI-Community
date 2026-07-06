@@ -91,7 +91,7 @@ Non-goals:
 
 ### 4. Provider Cost Metadata And Budget Alarms
 
-Status: in progress.
+Status: complete in PR #28.
 
 Deliverables:
 
@@ -114,13 +114,22 @@ Non-goals:
 
 ### 5. Real-Provider Readiness Closeout Gate
 
+Status: in progress.
+
 Deliverables:
 
+- `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md`
 - final go/no-go checklist
 - required validation commands
 - staging-only environment checklist
 - rollback and kill-switch checklist
 - Notion/README/docs status sync
+
+Current recommendation:
+
+- Conditional go for a guarded staging-only Replicate image adapter phase after this closeout gate merges.
+- No-go for production paid-provider enablement.
+- Keep video, music, chat, production, and Admin mutation controls out of the first staging adapter phase.
 
 Non-goals:
 
