@@ -69,7 +69,7 @@ The environment profile does not print secrets. It reports booleans, counts, pro
 
 Use `docs/RELEASE_CHECKLIST.md` after the deployment gate passes to run the release execution, post-release operations, alert verification, and rollback checks.
 Use `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` before scaling beyond one API or worker process so the deployment profile, smoke checks, metrics scrape, and rollback boundary are reviewed together.
-Use `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` before starting or merging any staging-only real provider adapter PR. Use `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` for the manual creative staging smoke and adapter closeout evidence.
+Use `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` before starting or merging any staging-only real provider adapter PR. Use `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` for the manual creative staging smoke and adapter closeout evidence. Use `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` before any PR or operator runs a real provider external-call rehearsal.
 
 ## GitHub Actions
 

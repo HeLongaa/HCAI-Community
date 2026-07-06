@@ -153,6 +153,7 @@ Verification:
 
 Before merging any future staging adapter PR that introduces real SDK or HTTP client code:
 
+- `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` has a completed approval record for any external-call rehearsal.
 - Notion task exists and is updated in Chinese.
 - Local fixture smoke passes.
 - GitHub `creative-staging` smoke passes in preflight mode.
@@ -163,6 +164,6 @@ Before merging any future staging adapter PR that introduces real SDK or HTTP cl
 - Lifecycle replay idempotency tests pass for queued, running, completed, failed, and cancelled states.
 - Media persistence and scan governance tests pass before outputs are user-downloadable.
 - Admin generation history remains read-only unless a separate mutation permission phase is approved.
-- User explicitly approves the first external-call staging run.
+- User explicitly approves the first external-call staging run with the scope and maximum provider call count recorded.
 
 No-go if any item above is missing, if CI needs real provider credentials, or if production would contain staging provider secrets.

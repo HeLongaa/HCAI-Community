@@ -15,6 +15,7 @@ The repository remains mock-provider only. This closeout gate does not implement
 | Admin generation mutation requirements | Complete, PR #27 | `docs/REAL_PROVIDER_ADMIN_MUTATION_REQUIREMENTS.md` |
 | Provider cost metadata and budget alarms | Complete, PR #28 | `docs/REAL_PROVIDER_COST_METADATA_AND_BUDGET_ALARMS.md` |
 | Staging smoke runbook and adapter closeout gate | Complete after this package merges | `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` |
+| External-call go/no-go approval package | Complete after this package merges | `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` |
 | Final closeout gate | Complete after this package merges | `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` |
 
 ## Gate Decision
@@ -90,6 +91,8 @@ Before any staging external-call test:
 - Run the creative staging smoke in `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` with `smoke_profile=creative-staging`.
 - Confirm the smoke output prints only safe booleans, counts, provider modes, and provider ids.
 - Attach or summarize the smoke result in Notion.
+- Complete the approval record in `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md`.
+- Record the maximum provider call count and approval expiry in Notion.
 
 ## Staging-Only Environment Checklist
 
@@ -164,6 +167,7 @@ Before starting a staging adapter PR:
 - Notion task for the adapter phase exists in Chinese.
 - `docs/REAL_PROVIDER_PREFLIGHT_PLAN.md` points to the closeout gate.
 - `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` has been reviewed for the adapter scope.
+- `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` has been reviewed before any external-call rehearsal.
 - `README.md` lists every real-provider preflight artifact.
 - `docs/GITHUB_ENVIRONMENT.md` documents any new provider env/secrets.
 - `docs/QUALITY_GATES.md` documents any new validation command.
@@ -182,6 +186,7 @@ Go for a staging-only adapter when all are true:
 - Admin mutation requirements are documented and mutation controls remain disabled.
 - Provider cost metadata and budget alarm schema is documented.
 - Budget cap and kill-switch plan are documented.
+- External-call approval record is complete when a real provider call is proposed.
 - Notion task list is current.
 - User explicitly approves starting the staging adapter implementation.
 
@@ -195,6 +200,7 @@ No-go if any are true:
 - Provider callback/polling replay idempotency is untested.
 - CI fixture requires real provider credentials.
 - User has not explicitly approved moving from preflight to adapter implementation.
+- The external-call rehearsal scope or call count is not explicitly approved.
 
 ## Next Recommended Phase
 
