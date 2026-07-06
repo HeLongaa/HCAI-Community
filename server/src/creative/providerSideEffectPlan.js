@@ -202,36 +202,48 @@ const executeOperation = async ({ operation, replay, repositories, actor, state 
       const outputAssetIds = state.outputAssetIds ?? getOutputAssetIds(state.generation ?? generation)
       return repositories.creativeGenerations?.linkOutputAssets?.(generationId, outputAssetIds, actor)
     }
-    case lifecycleOperations.settleCredits:
-      return generation?.credit?.ledgerId && repositories.creativeCredits?.settle
-        ? repositories.creativeCredits.settle(generation.credit.ledgerId, {
+    case lifecycleOperations.settleCredits: {
+      const settled = generation?.credit?.ledgerId && repositories.creativeCredits?.settle
+        ? await repositories.creativeCredits.settle(generation.credit.ledgerId, {
           settledAmount: generation.credit.reserved ?? generation.usage?.estimatedCredits ?? 0,
           reasonCode: statusForReplay(replay) === 'review_required' ? 'generation_review_required' : 'generation_completed',
           metadata: { outputAssetIds: state.outputAssetIds ?? getOutputAssetIds(state.generation ?? generation) },
         }, actor)
         : null
-    case lifecycleOperations.refundCredits:
-      return generation?.credit?.ledgerId && repositories.creativeCredits?.refund
-        ? repositories.creativeCredits.refund(generation.credit.ledgerId, {
+      state.credit = settled ?? state.credit ?? generation?.credit ?? null
+      return settled
+    }
+    case lifecycleOperations.refundCredits: {
+      const refunded = generation?.credit?.ledgerId && repositories.creativeCredits?.refund
+        ? await repositories.creativeCredits.refund(generation.credit.ledgerId, {
           refundedAmount: generation.credit.reserved ?? generation.usage?.estimatedCredits ?? 0,
           reasonCode: operation.reasonCode ?? 'provider_failed',
         }, actor)
         : null
-    case lifecycleOperations.commitQuota:
-      return generation?.quota?.reservationId && repositories.creativeQuota?.commit
-        ? repositories.creativeQuota.commit(generation.quota.reservationId, actor)
+      state.credit = refunded ?? state.credit ?? generation?.credit ?? null
+      return refunded
+    }
+    case lifecycleOperations.commitQuota: {
+      const committed = generation?.quota?.reservationId && repositories.creativeQuota?.commit
+        ? await repositories.creativeQuota.commit(generation.quota.reservationId, actor)
         : null
-    case lifecycleOperations.releaseQuota:
-      return generation?.quota?.reservationId && repositories.creativeQuota?.release
-        ? repositories.creativeQuota.release(generation.quota.reservationId, operation.reasonCode ?? 'provider_failed', actor)
+      state.quota = committed ?? state.quota ?? generation?.quota ?? null
+      return committed
+    }
+    case lifecycleOperations.releaseQuota: {
+      const released = generation?.quota?.reservationId && repositories.creativeQuota?.release
+        ? await repositories.creativeQuota.release(generation.quota.reservationId, operation.reasonCode ?? 'provider_failed', actor)
         : null
+      state.quota = released ?? state.quota ?? generation?.quota ?? null
+      return released
+    }
     case lifecycleOperations.complete:
       return repositories.creativeGenerations?.complete?.(generationId, {
         status: statusForPersistedGeneration(state.generation ?? generation),
         outputAssetIds: state.outputAssetIds ?? getOutputAssetIds(state.generation ?? generation),
         usage: generation?.usage ?? null,
-        credit: generation?.credit ?? null,
-        quota: generation?.quota ?? null,
+        credit: state.credit ?? generation?.credit ?? null,
+        quota: state.quota ?? generation?.quota ?? null,
         safety: generation?.safety ?? null,
         policy: generation?.policy ?? null,
       }, actor)
@@ -239,12 +251,14 @@ const executeOperation = async ({ operation, replay, repositories, actor, state 
       return repositories.creativeGenerations?.fail?.(generationId, {
         errorCode: generation?.errorCode ?? 'CREATIVE_PROVIDER_FAILED',
         errorMessagePreview: generation?.errorMessagePreview ?? safeErrorPreview(generation?.error ?? 'Provider failed'),
-        credit: generation?.credit ?? null,
+        credit: state.credit ?? generation?.credit ?? null,
+        quota: state.quota ?? generation?.quota ?? null,
       }, actor)
     case lifecycleOperations.cancel:
       return repositories.creativeGenerations?.cancel?.(generationId, {
         reasonCode: operation.reasonCode ?? 'provider_cancelled',
-        credit: generation?.credit ?? null,
+        credit: state.credit ?? generation?.credit ?? null,
+        quota: state.quota ?? generation?.quota ?? null,
       }, actor)
     case lifecycleOperations.notify:
       return repositories.providerLifecycleNotifications?.create?.({
@@ -272,15 +286,28 @@ export const executeProviderSideEffectPlan = async ({
   sideEffectResult = replay?.sideEffectResult ?? {},
 } = {}) => {
   const plan = buildProviderSideEffectPlan({ replay, sideEffectResult })
+  const previousOperations = new Map((sideEffectResult?.operations ?? []).map((operation) => [operation.key, operation]))
   const state = {
     generation: replay?.generation ?? null,
     outputAssetIds: null,
+    credit: null,
+    quota: null,
   }
   const operations = []
 
   for (const operation of plan.operations) {
     if (operation.alreadyCompleted) {
-      operations.push({ key: operation.key, type: operation.type, status: 'skipped' })
+      const previous = previousOperations.get(operation.key)
+      if (operation.type === lifecycleOperations.persistOutputs && previous?.result?.outputAssetIds) {
+        state.outputAssetIds = previous.result.outputAssetIds
+      }
+      if ([lifecycleOperations.settleCredits, lifecycleOperations.refundCredits].includes(operation.type) && previous?.result) {
+        state.credit = previous.result
+      }
+      if ([lifecycleOperations.commitQuota, lifecycleOperations.releaseQuota].includes(operation.type) && previous?.result) {
+        state.quota = previous.result
+      }
+      operations.push({ key: operation.key, type: operation.type, status: 'skipped', result: previous?.result ?? null })
       continue
     }
     try {

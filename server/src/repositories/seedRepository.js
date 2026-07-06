@@ -2662,6 +2662,31 @@ export const createSeedRepository = () => ({
       })
       return serializeCreativeProviderReplay(updated)
     },
+    markSideEffectResult: (id, sideEffectResult = {}, actor) => {
+      const current = creativeProviderReplayLedgerById.get(String(id))
+      if (!current) {
+        return null
+      }
+      const completed = Boolean(sideEffectResult.completed)
+      const failed = sideEffectResult.operations?.find?.((operation) => operation.status === 'failed') ?? null
+      const updated = {
+        ...current,
+        action: completed ? 'applied' : 'rejected',
+        sideEffectResult,
+        errorPreview: completed ? null : failed?.errorPreview ?? current.errorPreview ?? null,
+        appliedAt: completed ? current.appliedAt ?? new Date().toISOString() : current.appliedAt,
+        updatedAt: new Date().toISOString(),
+      }
+      creativeProviderReplayLedgerById.set(updated.id, updated)
+      recordAudit(actor, 'creative.provider_replay.side_effect_result_recorded', 'creative_provider_replay_ledger', updated.id, {
+        generationId: updated.generationId,
+        providerId: updated.providerId,
+        providerJobId: updated.providerJobId,
+        sourceType: updated.sourceType,
+        action: updated.action,
+      })
+      return serializeCreativeProviderReplay(updated)
+    },
     findByIdempotencyKey: (idempotencyKey) => {
       const id = creativeProviderReplayLedgerByIdempotencyKey.get(String(idempotencyKey ?? ''))
       const record = id ? creativeProviderReplayLedgerById.get(id) : null
