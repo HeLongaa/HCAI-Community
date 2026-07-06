@@ -4,6 +4,7 @@ import test from 'node:test'
 import { HttpError } from '../../common/errors/httpError.js'
 import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
 import { quotaWindowFor, resetCreativePolicyState } from '../../creative/policy.js'
+import { createReplicateStagingPrediction } from '../../creative/replicateStagingProvider.js'
 import { repositories } from '../../repositories/index.js'
 import { registerMediaRoutes } from '../media/routes.js'
 import { registerCreativeRoutes } from './routes.js'
@@ -149,6 +150,113 @@ test('POST /api/creative/generations persists mock provider output through media
     } else {
       process.env.MEDIA_SCAN_PROVIDER = previousProvider
     }
+  }
+})
+
+test('POST /api/creative/generations can run a Replicate staging fixture through policy and media governance', async () => {
+  resetCreativePolicyState()
+  const previousEnv = {
+    NODE_ENV: process.env.NODE_ENV,
+    CREATIVE_PROVIDER_RUNTIME_ENV: process.env.CREATIVE_PROVIDER_RUNTIME_ENV,
+    CREATIVE_PROVIDER_MODE: process.env.CREATIVE_PROVIDER_MODE,
+    CREATIVE_STAGING_IMAGE_PROVIDER: process.env.CREATIVE_STAGING_IMAGE_PROVIDER,
+    CREATIVE_STAGING_PROVIDER_API_TOKEN: process.env.CREATIVE_STAGING_PROVIDER_API_TOKEN,
+    CREATIVE_STAGING_PROVIDER_CONFIRMATION: process.env.CREATIVE_STAGING_PROVIDER_CONFIRMATION,
+    CREATIVE_STAGING_PROVIDER_ESTIMATE_USD: process.env.CREATIVE_STAGING_PROVIDER_ESTIMATE_USD,
+    CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD: process.env.CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD,
+    CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD: process.env.CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD,
+    ACCESS_TOKEN_SECRET: process.env.ACCESS_TOKEN_SECRET,
+    MEDIA_SCAN_PROVIDER: process.env.MEDIA_SCAN_PROVIDER,
+  }
+  Object.assign(process.env, {
+    NODE_ENV: 'production',
+    ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_PROVIDER_MODE: 'replicate_staging',
+    CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+    CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-fixture-token',
+    CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+    CREATIVE_STAGING_PROVIDER_ESTIMATE_USD: '0.25',
+    CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD: '5',
+    CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD: '1',
+    MEDIA_SCAN_PROVIDER: 'manual',
+  })
+  const calls = []
+  const mockedClient = {
+    createPrediction: async (payload) => {
+      calls.push(payload)
+      return {
+        id: 'pred_route_fixture_1',
+        status: 'succeeded',
+        output: ['https://replicate.example/route-fixture-1.png'],
+        metrics: { predict_time: 2 },
+        costUsd: 0.2,
+        completed_at: '2026-07-06T00:20:00.000Z',
+      }
+    },
+  }
+  const fixtureAdapters = {
+    'replicate-staging': ({ request, provider, actor, source, now }) =>
+      createReplicateStagingPrediction({
+        request,
+        provider,
+        actor,
+        source,
+        now,
+        client: mockedClient,
+      }),
+  }
+  const server = await createRouteTestServer(
+    (router) => registerCreativeRoutes(router, { fixtureAdapters }),
+    registerMediaRoutes,
+  )
+  try {
+    const { status, payload } = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        providerId: 'replicate-staging',
+        prompt: 'A staging Replicate integration fixture poster',
+        parameters: { aspectRatio: '1:1', seed: 9 },
+      },
+      token: 'demo-access.promptlin',
+    })
+
+    assert.equal(status, 200)
+    assert.equal(payload.error, undefined)
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].input.prompt, 'A staging Replicate integration fixture poster')
+    assert.equal(payload.data.provider.id, 'replicate-staging')
+    assert.equal(payload.data.status, 'completed')
+    assert.equal(payload.data.outputs[0].type, 'image')
+    assert.equal(payload.data.outputs[0].storage.persisted, true)
+    assert.equal(payload.data.outputs[0].storage.provider, 'media_asset')
+    assert.equal(payload.data.outputs[0].source.kind, 'replicate_prediction')
+    assert.equal(payload.data.outputs[0].source.predictionId, 'pred_route_fixture_1')
+    assert.equal(payload.data.usage.metered, true)
+    assert.equal(payload.data.usage.providerCost.schemaVersion, 'provider-cost-v1')
+    assert.equal(payload.data.usage.providerCost.budget.status, 'within_budget')
+    assert.equal(payload.data.usage.providerCost.actual.amount, 0.2)
+    assert.equal(JSON.stringify(payload.data).includes('replicate-fixture-token'), false)
+    assert.equal(payload.data.credit.status, 'settled')
+    assert.equal(payload.data.credit.reserved, 1)
+    assert.equal(payload.data.credit.quotaReservationId, payload.data.quota.reservationId)
+    assert.equal(payload.data.quota.reserved, 0)
+    assert.ok(payload.data.quota.used >= payload.data.credit.reserved)
+    assert.equal(payload.data.generationRecord.providerId, 'replicate-staging')
+    assert.equal(payload.data.generationRecord.status, 'completed')
+    assert.equal(payload.data.generationRecord.usage.providerCost.schemaVersion, 'provider-cost-v1')
+    assert.deepEqual(payload.data.generationRecord.outputAssetIds, [payload.data.outputs[0].storage.mediaAssetId])
+  } finally {
+    await server.close()
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value == null) {
+        delete process.env[key]
+      } else {
+        process.env[key] = value
+      }
+    }
+    resetCreativePolicyState()
   }
 })
 
