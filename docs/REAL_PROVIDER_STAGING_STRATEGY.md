@@ -121,6 +121,7 @@ Before any real adapter PR:
 6. Set `CREATIVE_STAGING_PROVIDER_API_TOKEN` as a secret.
 7. Set `CREATIVE_STAGING_PROVIDER_CONFIRMATION=staging-only`.
 8. Run the environment smoke profile and confirm the summary reports only safe booleans/provider ids.
+   Use `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` for the dedicated creative staging smoke command and GitHub Actions workflow inputs.
 9. Confirm `POST /api/creative/generations` still reports provider unavailable rather than calling the provider.
 10. Record the result in Notion before starting the real adapter implementation task.
 

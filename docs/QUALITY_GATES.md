@@ -69,7 +69,7 @@ The environment profile does not print secrets. It reports booleans, counts, pro
 
 Use `docs/RELEASE_CHECKLIST.md` after the deployment gate passes to run the release execution, post-release operations, alert verification, and rollback checks.
 Use `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` before scaling beyond one API or worker process so the deployment profile, smoke checks, metrics scrape, and rollback boundary are reviewed together.
-Use `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` before starting or merging any staging-only real provider adapter PR.
+Use `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` before starting or merging any staging-only real provider adapter PR. Use `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` for the manual creative staging smoke and adapter closeout evidence.
 
 ## GitHub Actions
 
@@ -78,6 +78,7 @@ Use `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` before starting or merging a
 - Pull requests and pushes to `main` / `master` run `npm run check:deploy` with the safe fixture smoke profile.
 - Manual `workflow_dispatch` with `smoke_profile=fixture` runs the same fixture gate.
 - Manual `workflow_dispatch` with `smoke_profile=env` runs `npm run smoke:production:env` against a selected GitHub Environment.
+- Manual `workflow_dispatch` with `smoke_profile=creative-staging` runs `npm run smoke:creative-staging:env` against a selected dedicated staging GitHub Environment.
 
 For the real environment smoke, configure GitHub Environment variables and secrets by category. The detailed checklist lives in `docs/GITHUB_ENVIRONMENT.md`.
 
@@ -91,7 +92,7 @@ For the real environment smoke, configure GitHub Environment variables and secre
 - Metrics exporter: `METRICS_EXPORTER_ENABLED`, `METRICS_EXPORTER_FORMAT`, optional secret `METRICS_EXPORTER_TOKEN`.
 - Worker topology: `API_EMBEDDED_WORKERS_ENABLED`, `MEDIA_SCAN_WORKER_*`, `TASK_STALE_SUBMISSION_WORKER_*`, `WORKER_LEASE_*`.
 - OAuth providers: `OAUTH_GOOGLE_*`, `OAUTH_DISCORD_*`, and/or `OAUTH_APPLE_*`.
-- Creative provider preflight: keep `CREATIVE_PROVIDER_MODE=mock` or `disabled` in production smoke. Use `CREATIVE_PROVIDER_RUNTIME_ENV=staging`, `CREATIVE_PROVIDER_MODE=disabled`, `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true`, `CREATIVE_STAGING_IMAGE_PROVIDER=replicate`, `CREATIVE_STAGING_PROVIDER_API_TOKEN`, and `CREATIVE_STAGING_PROVIDER_CONFIRMATION=staging-only` only in a dedicated staging environment.
+- Creative provider preflight: keep `CREATIVE_PROVIDER_MODE=mock` or `disabled` in production smoke. Use `CREATIVE_PROVIDER_RUNTIME_ENV=staging`, `CREATIVE_PROVIDER_MODE=disabled`, `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true`, `CREATIVE_STAGING_IMAGE_PROVIDER=replicate`, `CREATIVE_STAGING_PROVIDER_API_TOKEN`, `CREATIVE_STAGING_PROVIDER_CONFIRMATION=staging-only`, and `CREATIVE_STAGING_SMOKE_MODE=preflight` only in a dedicated staging environment.
 
 Use GitHub Secrets for credentials, shared secrets, tokens, webhook secrets, Slack webhook URLs, and private keys. Use GitHub Variables for non-secret URLs, ids, domains, counts, feature flags, and recipient lists unless your deployment policy treats them as sensitive.
 

@@ -14,6 +14,7 @@ The repository remains mock-provider only. This closeout gate does not implement
 | Staging-only provider selection and secrets strategy | Complete, PR #26 | `docs/REAL_PROVIDER_STAGING_STRATEGY.md` |
 | Admin generation mutation requirements | Complete, PR #27 | `docs/REAL_PROVIDER_ADMIN_MUTATION_REQUIREMENTS.md` |
 | Provider cost metadata and budget alarms | Complete, PR #28 | `docs/REAL_PROVIDER_COST_METADATA_AND_BUDGET_ALARMS.md` |
+| Staging smoke runbook and adapter closeout gate | Complete after this package merges | `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` |
 | Final closeout gate | Complete after this package merges | `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` |
 
 ## Gate Decision
@@ -86,6 +87,7 @@ Before merge:
 Before any staging external-call test:
 
 - Run the real environment smoke against a dedicated staging GitHub Environment.
+- Run the creative staging smoke in `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` with `smoke_profile=creative-staging`.
 - Confirm the smoke output prints only safe booleans, counts, provider modes, and provider ids.
 - Attach or summarize the smoke result in Notion.
 
@@ -161,6 +163,7 @@ Before starting a staging adapter PR:
 
 - Notion task for the adapter phase exists in Chinese.
 - `docs/REAL_PROVIDER_PREFLIGHT_PLAN.md` points to the closeout gate.
+- `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` has been reviewed for the adapter scope.
 - `README.md` lists every real-provider preflight artifact.
 - `docs/GITHUB_ENVIRONMENT.md` documents any new provider env/secrets.
 - `docs/QUALITY_GATES.md` documents any new validation command.

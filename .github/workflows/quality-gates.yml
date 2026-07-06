@@ -9,13 +9,14 @@ on:
   workflow_dispatch:
     inputs:
       smoke_profile:
-        description: Run fixture smoke or real environment smoke
+        description: Run fixture, real environment, or creative staging smoke
         required: true
         default: fixture
         type: choice
         options:
           - fixture
           - env
+          - creative-staging
       environment:
         description: GitHub Environment used for real environment smoke
         required: false
@@ -55,7 +56,7 @@ jobs:
   deployment-env-smoke:
     name: Deployment Environment Smoke
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && inputs.smoke_profile == 'env'
+    if: github.event_name == 'workflow_dispatch' && (inputs.smoke_profile == 'env' || inputs.smoke_profile == 'creative-staging')
     environment: ${{ inputs.environment }}
     env:
       NODE_ENV: production
@@ -136,6 +137,13 @@ jobs:
       OAUTH_APPLE_KEY_ID: ${{ vars.OAUTH_APPLE_KEY_ID }}
       OAUTH_APPLE_PRIVATE_KEY: ${{ secrets.OAUTH_APPLE_PRIVATE_KEY }}
       OAUTH_APPLE_REDIRECT_URI: ${{ vars.OAUTH_APPLE_REDIRECT_URI }}
+      CREATIVE_PROVIDER_RUNTIME_ENV: ${{ vars.CREATIVE_PROVIDER_RUNTIME_ENV }}
+      CREATIVE_PROVIDER_MODE: ${{ vars.CREATIVE_PROVIDER_MODE }}
+      CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED: ${{ vars.CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED }}
+      CREATIVE_STAGING_IMAGE_PROVIDER: ${{ vars.CREATIVE_STAGING_IMAGE_PROVIDER }}
+      CREATIVE_STAGING_PROVIDER_API_TOKEN: ${{ secrets.CREATIVE_STAGING_PROVIDER_API_TOKEN }}
+      CREATIVE_STAGING_PROVIDER_CONFIRMATION: ${{ vars.CREATIVE_STAGING_PROVIDER_CONFIRMATION }}
+      CREATIVE_STAGING_SMOKE_MODE: ${{ vars.CREATIVE_STAGING_SMOKE_MODE }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -145,7 +153,20 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm --prefix server ci
 
       - name: Run real environment smoke
+        if: inputs.smoke_profile == 'env'
         run: npm run smoke:production:env
+
+      - name: Run creative staging smoke
+        if: inputs.smoke_profile == 'creative-staging'
+        run: npm run smoke:creative-staging:env
