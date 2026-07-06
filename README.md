@@ -84,6 +84,8 @@ Media uploads default to local `mock://` upload contracts. Set `STORAGE_DRIVER=s
 
 Creative generation now has a provider boundary. `GET /api/creative/providers` exposes safe provider capability metadata, and `POST /api/creative/generations` executes the mock creative provider, applies quota/moderation/review gates, persists generated outputs as media assets, and keeps downloads behind the same media scan governance boundary. Image Studio is the first frontend workspace wired to this API path; Music, Video, Chat, Explore, and catalog surfaces still retain demo/mock workspace content until a follow-up provider-readiness or real-provider phase.
 
+Provider readiness planning is tracked in `docs/PROVIDER_READINESS_PLAN.md`. That follow-up phase is intentionally limited to durable generation records, cross-instance quota ledgers, credit reservation/settlement/refund semantics, and Admin generation history before any real paid provider integration.
+
 ## Verification
 
 ```bash
@@ -123,3 +125,4 @@ Planning docs for the API, data model, auth, and backend rollout live in `docs/`
 - `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md`
 - `docs/PHASE_3_TRACK_C_PLAN.md`
 - `docs/PHASE_3_TRACK_C_CLOSEOUT.md`
+- `docs/PROVIDER_READINESS_PLAN.md`

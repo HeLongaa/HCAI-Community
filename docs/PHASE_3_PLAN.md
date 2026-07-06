@@ -29,6 +29,7 @@ Track B operations closeout notes live in `docs/PHASE_3_TRACK_B_OPERATIONS_CLOSE
 Track B multi-instance deployment runbook lives in `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md`.
 Track C planning notes live in `docs/PHASE_3_TRACK_C_PLAN.md`.
 Track C creative tool closeout notes live in `docs/PHASE_3_TRACK_C_CLOSEOUT.md`.
+Provider readiness planning lives in `docs/PROVIDER_READINESS_PLAN.md`.
 
 ## Phase 3 Tracks
 
@@ -121,6 +122,30 @@ Deferred work:
 - Durable cross-instance quota and billing ledger.
 - Full Music, Video, Chat, Explore, and catalog migration away from demo surfaces.
 - Provider-specific async job lifecycle and incident runbooks.
+
+### Provider Readiness Follow-Up
+
+Goal: add durable generation, quota, credit, and Admin history foundations before any real paid provider integration.
+
+Status: planned as a post-Phase 3 follow-up. It should not connect a real provider.
+
+Recommended scope:
+
+- durable creative generation records
+- cross-instance quota ledger
+- credit reservation, settlement, refund, and cancellation lifecycle
+- explicit generation status and failure states
+- read-only Admin generation history
+- docs, OpenAPI, permission matrix, and closeout updates
+
+Non-goals:
+
+- real paid provider credentials or API calls
+- payment/subscription/plan management
+- replacing Music, Video, Chat, Explore, or catalog demo flows
+- provider-specific async video/music job lifecycle
+
+Provider readiness planning lives in `docs/PROVIDER_READINESS_PLAN.md`.
 
 ## Quality Gate
 
