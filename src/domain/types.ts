@@ -47,7 +47,7 @@ export type NavigateOptions = {
 }
 
 export type AdminDeepLink = {
-  tab?: 'Task review' | 'Access' | 'Security' | 'Finance' | 'Submissions' | 'Community' | 'Audit log' | 'Users' | 'Tags' | 'AI config'
+  tab?: 'Task review' | 'Access' | 'Security' | 'Finance' | 'Generations' | 'Submissions' | 'Community' | 'Audit log' | 'Users' | 'Tags' | 'AI config'
   queue?: string | null
   reviewId?: string | null
   auditEventId?: string | null

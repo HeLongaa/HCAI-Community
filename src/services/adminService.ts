@@ -1,6 +1,8 @@
 import { api, withQuery } from './apiClient'
 import type {
   AdminAuditListQuery,
+  AdminCreativeGenerationHistoryPage,
+  AdminCreativeGenerationHistoryQuery,
   AdminPointAdjustmentRequest,
   AdminPointAdjustmentResponse,
   AdminPermissionDto,
@@ -15,6 +17,7 @@ import type {
   AdminSecurityEventDto,
   AdminSecurityEventListQuery,
   ApiLedgerEntry,
+  ApiCreativeGenerationRecord,
   ApiPointsSummary,
   ApiPaginationMeta,
   PointAdjustmentPolicyHistoryItem,
@@ -48,6 +51,16 @@ export const adminService = {
   },
   async auditEvent(id: string) {
     return api.get<AuditEventDto>(`/admin/audit/${id}`)
+  },
+  async creativeGenerations(query?: AdminCreativeGenerationHistoryQuery): Promise<AdminCreativeGenerationHistoryPage> {
+    const envelope = await api.getEnvelope<ApiCreativeGenerationRecord[]>(withQuery('/admin/creative/generations', query))
+    return {
+      items: envelope.data,
+      nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null,
+    }
+  },
+  async creativeGeneration(id: string) {
+    return api.get<AdminCreativeGenerationHistoryPage['items'][number]>(`/admin/creative/generations/${id}`)
   },
   async exportAuditJson(query?: AdminAuditListQuery) {
     return api.text(withQuery('/admin/audit/export', query))

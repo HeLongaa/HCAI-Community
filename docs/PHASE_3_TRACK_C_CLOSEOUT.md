@@ -135,22 +135,21 @@ These items are intentionally outside the Track C closeout boundary:
 
 - Real paid provider adapter selection and integration.
 - Provider-specific job polling or webhook lifecycle for long-running video/music generation.
-- Durable quota ledger shared across API instances.
-- Real billing, point deduction, credit reservation, or refund settlement.
-- Admin UI dedicated to creative generation history beyond the existing media review queue.
 - Image-to-image frontend integration.
 - Music Studio, Video Studio, and AI chat workspace API-backed generation.
 - Explore/catalog/player/profile replacement with generated or stored creative assets.
 - Provider-specific abuse monitoring, cost dashboards, and provider incident runbooks.
 
+Provider-readiness follow-up has since added durable generation records, a cross-instance quota ledger, credit reservation/settlement/refund semantics, and a read-only Admin generation history UI. These remain mock-provider/provider-boundary slices; real paid provider integration, retry/cancel/refund operations, and provider-specific async job orchestration are still deferred.
+
 ## Recommended Next Phase
 
 Do not connect a paid provider until the durable accounting layer is planned. The best next phase is a narrow provider-readiness track:
 
-1. Add a durable creative generation record and quota ledger.
-2. Add credit reservation/settlement/refund semantics.
-3. Add provider adapter contract tests for async jobs and external failures.
-4. Add Admin generation history and cost inspection.
+1. Close out provider-readiness documentation and validation.
+2. Add provider adapter contract tests for async jobs and external failures.
+3. Decide staging-only provider selection and secrets strategy.
+4. Add explicit Admin retry/cancel/refund requirements before exposing any mutation controls.
 5. Select one real image provider for a guarded staging-only adapter.
 
 After that, expand from Image Studio to image-to-image, then consider video/music/chat separately because their lifecycle and cost profile are different.

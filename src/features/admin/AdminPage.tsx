@@ -12,6 +12,7 @@ import { mediaService } from '../../services/mediaService'
 import { useAsyncResource } from '../../hooks/useAsyncResource'
 import type {
   AdminPermissionDto,
+  AdminCreativeGenerationHistoryQuery,
   AdminOperationsMetricsDto,
   AdminReviewDecision,
   AdminReviewQueueItemDto,
@@ -20,6 +21,7 @@ import type {
   AdminSecurityAlertDto,
   AdminSecurityEventDto,
   AdminSecurityEventListQuery,
+  ApiCreativeGenerationRecord,
   ApiLedgerEntry,
   ApiMediaGovernanceConfig,
   ApiMediaAsset,
@@ -46,6 +48,8 @@ const notificationTypes = ['task.proposal_submitted', 'task.proposal_accepted', 
 const notificationResourceTypes = ['task', 'admin_review', 'point_adjustment_policy', 'media_governance_policy', 'media_asset', 'media_scan_alert', 'security_alert']
 const mediaReviewStatuses: Array<NonNullable<MediaReviewQueueQuery['status']>> = ['review', 'scanning', 'pending', 'rejected', 'clean', 'all']
 const mediaPurposes: MediaAssetPurpose[] = ['task_attachment', 'submission_asset', 'profile_portfolio', 'library_asset']
+const creativeHistoryWorkspaces = ['image', 'video', 'music', 'chat']
+const creativeHistoryStatuses = ['queued', 'running', 'completed', 'failed', 'cancelled', 'review_required']
 const securityEventSources: Array<NonNullable<AdminSecurityEventListQuery['source']>> = ['rate_limit', 'body_size', 'auth_failure']
 const securityEventSeverities = ['warning', 'info', 'critical']
 const operationsMetricWindows = [15, 60, 240, 1440]
@@ -148,6 +152,18 @@ const isOperationsMetricsExportAudit = (event: AuditEvent) =>
   event.action === 'admin.operations.metrics_exported' && event.resourceType === 'operations_metrics'
 const metadataEntries = (metadata: Record<string, unknown>) =>
   Object.entries(metadata).filter(([key]) => !['diff', 'previous', 'next', 'summary'].includes(key))
+const formatGenerationStatus = (status: string) => status.replaceAll('_', ' ')
+const recordNumber = (record: Record<string, unknown>, key: string) => {
+  const value = Number(record[key] ?? 0)
+  return Number.isFinite(value) ? value : 0
+}
+const generationCredit = (generation: ApiCreativeGenerationRecord) => asRecord(generation.credit)
+const generationQuota = (generation: ApiCreativeGenerationRecord) => asRecord(generation.quota)
+const generationSafety = (generation: ApiCreativeGenerationRecord) => asRecord(generation.safety)
+const generationCreditStatus = (generation: ApiCreativeGenerationRecord) => String(generationCredit(generation).status ?? 'none')
+const generationCreditAmount = (generation: ApiCreativeGenerationRecord, key: 'reserved' | 'settled' | 'refunded') => recordNumber(generationCredit(generation), key)
+const generationQuotaAmount = (generation: ApiCreativeGenerationRecord, key: 'limit' | 'used' | 'remaining' | 'released' | 'reserved') => recordNumber(generationQuota(generation), key)
+const generationReviewRequired = (generation: ApiCreativeGenerationRecord) => Boolean(generationSafety(generation).reviewRequired)
 const mediaGovernancePreviewFields = [
   {
     key: 'retryDelaySeconds',
@@ -346,12 +362,13 @@ export function AdminPage({
   onOpenNotificationResource?: (notification: ApiNotification) => void
 }) {
   const isZh = isZhCopy(t)
-  const adminTabs = ['Task review', 'Access', 'Security', 'Finance', 'Submissions', 'Community', 'Audit log', 'Users', 'Tags', 'AI config']
+  const adminTabs = ['Task review', 'Access', 'Security', 'Finance', 'Generations', 'Submissions', 'Community', 'Audit log', 'Users', 'Tags', 'AI config']
   const adminTabLabels: Record<string, string> = {
     'Task review': textFor(t, 'Task review', '任务审核'),
     Access: textFor(t, 'Access', '权限'),
     Security: textFor(t, 'Security', '安全'),
     Finance: textFor(t, 'Finance', '账务'),
+    Generations: textFor(t, 'Generations', '生成历史'),
     Submissions: textFor(t, 'Submissions', '交付物'),
     Community: textFor(t, 'Community', '社区'),
     'Audit log': textFor(t, 'Audit log', '审计日志'),
@@ -395,6 +412,21 @@ export function AdminPage({
   const [ledgerSearch, setLedgerSearch] = useState('')
   const [ledgerRows, setLedgerRows] = useState<ApiLedgerEntry[]>([])
   const [ledgerSummary, setLedgerSummary] = useState<ApiPointsSummary | null>(null)
+  const [generationRows, setGenerationRows] = useState<ApiCreativeGenerationRecord[]>([])
+  const [generationNextCursor, setGenerationNextCursor] = useState<string | null>(null)
+  const [loadingMoreGenerations, setLoadingMoreGenerations] = useState(false)
+  const [selectedGenerationId, setSelectedGenerationId] = useState<string | null>(null)
+  const [selectedGeneration, setSelectedGeneration] = useState<ApiCreativeGenerationRecord | null>(null)
+  const [loadingGenerationDetail, setLoadingGenerationDetail] = useState(false)
+  const [generationDetailError, setGenerationDetailError] = useState<string | null>(null)
+  const [generationUserHandle, setGenerationUserHandle] = useState('')
+  const [generationWorkspace, setGenerationWorkspace] = useState('')
+  const [generationProviderId, setGenerationProviderId] = useState('')
+  const [generationStatusFilter, setGenerationStatusFilter] = useState('')
+  const [generationReviewFilter, setGenerationReviewFilter] = useState<'all' | 'true' | 'false'>('all')
+  const [generationMediaAssetId, setGenerationMediaAssetId] = useState('')
+  const [generationDateFrom, setGenerationDateFrom] = useState('')
+  const [generationDateTo, setGenerationDateTo] = useState('')
   const [adjustDelta, setAdjustDelta] = useState('100')
   const [adjustReason, setAdjustReason] = useState('')
   const [adjustReasonCode, setAdjustReasonCode] = useState('')
@@ -477,6 +509,17 @@ export function AdminPage({
     userHandle: ledgerUserHandle,
     status: ledgerStatus,
     search: ledgerSearch,
+    limit: 12,
+  }
+  const generationQuery: AdminCreativeGenerationHistoryQuery = {
+    userHandle: generationUserHandle || null,
+    workspace: generationWorkspace || null,
+    providerId: generationProviderId || null,
+    status: generationStatusFilter || null,
+    reviewRequired: generationReviewFilter === 'all' ? null : generationReviewFilter === 'true',
+    mediaAssetId: generationMediaAssetId || null,
+    dateFrom: generationDateFrom || null,
+    dateTo: generationDateTo || null,
     limit: 12,
   }
   const visibleQueueItems = reviewQueueFilter
@@ -573,6 +616,23 @@ export function AdminPage({
     },
     getErrorMessage: () => (isZh ? '无法读取用户账本，请确认账号具备积分调整权限。' : 'Could not load user ledger. Confirm points adjustment access.'),
     deps: [canAdjustPoints, isZh, ledgerUserHandle, ledgerStatus, ledgerSearch],
+    logLabel: 'admin-service',
+  })
+  const generationHistoryStatus = useAsyncResource<{ items: ApiCreativeGenerationRecord[]; nextCursor: string | null }>({
+    load: () => canReadAudit
+      ? adminService.creativeGenerations(generationQuery)
+      : Promise.resolve({ items: [], nextCursor: null }),
+    onSuccess: ({ items, nextCursor }) => {
+      setGenerationRows(items)
+      setGenerationNextCursor(nextCursor)
+      if (selectedGenerationId && !items.some((item) => item.id === selectedGenerationId)) {
+        setSelectedGenerationId(null)
+        setSelectedGeneration(null)
+        setGenerationDetailError(null)
+      }
+    },
+    getErrorMessage: () => (isZh ? '无法读取生成历史，请确认账号具备审计读取权限。' : 'Could not load generation history. Confirm audit read access.'),
+    deps: [canReadAudit, isZh, generationUserHandle, generationWorkspace, generationProviderId, generationStatusFilter, generationReviewFilter, generationMediaAssetId, generationDateFrom, generationDateTo],
     logLabel: 'admin-service',
   })
   const pointPolicyStatus = useAsyncResource<PointAdjustmentPolicy | null>({
@@ -1138,6 +1198,89 @@ export function AdminPage({
     setSecurityTypeFilter('')
     setSecurityNextCursor(null)
     simulateAction(isZh ? '已清除安全事件筛选。' : 'Cleared security event filters.')
+  }
+
+  const clearGenerationFilters = () => {
+    setGenerationUserHandle('')
+    setGenerationWorkspace('')
+    setGenerationProviderId('')
+    setGenerationStatusFilter('')
+    setGenerationReviewFilter('all')
+    setGenerationMediaAssetId('')
+    setGenerationDateFrom('')
+    setGenerationDateTo('')
+    setGenerationNextCursor(null)
+    setSelectedGenerationId(null)
+    setSelectedGeneration(null)
+    setGenerationDetailError(null)
+    simulateAction(isZh ? '已清除生成历史筛选。' : 'Cleared generation history filters.')
+  }
+
+  const loadMoreGenerations = async () => {
+    if (!generationNextCursor || loadingMoreGenerations || !canReadAudit) return
+    setLoadingMoreGenerations(true)
+    try {
+      const page = await adminService.creativeGenerations({
+        ...generationQuery,
+        cursor: generationNextCursor,
+      })
+      setGenerationRows((current) => [...current, ...page.items.filter((item) => !current.some((row) => row.id === item.id))])
+      setGenerationNextCursor(page.nextCursor)
+      simulateAction(isZh ? '已加载更多生成历史。' : 'Loaded more generation history.')
+    } catch (error) {
+      console.info('[admin-service]', error)
+      simulateAction(isZh ? '加载更多生成历史失败。' : 'Could not load more generation history.')
+    } finally {
+      setLoadingMoreGenerations(false)
+    }
+  }
+
+  const toggleGenerationDetail = async (generation: ApiCreativeGenerationRecord) => {
+    if (selectedGenerationId === generation.id) {
+      setSelectedGenerationId(null)
+      setSelectedGeneration(null)
+      setGenerationDetailError(null)
+      return
+    }
+    setSelectedGenerationId(generation.id)
+    setSelectedGeneration(generation)
+    setGenerationDetailError(null)
+    setLoadingGenerationDetail(true)
+    try {
+      const detail = await adminService.creativeGeneration(generation.id)
+      setSelectedGeneration(detail)
+      simulateAction(isZh ? '已读取生成历史详情。' : 'Loaded generation history detail.')
+    } catch (error) {
+      console.info('[admin-service]', error)
+      setGenerationDetailError(isZh ? '无法读取生成历史详情。' : 'Could not load generation detail.')
+    } finally {
+      setLoadingGenerationDetail(false)
+    }
+  }
+
+  const focusGenerationMediaAsset = (assetId: string) => {
+    setActiveTab('Task review')
+    setMediaStatus('all')
+    setMediaPurpose(null)
+    setMediaSearch(assetId)
+    setHighlightedMediaAssetId(assetId)
+    setMediaScanHistory([])
+    setMediaScanHistoryNextCursor(null)
+    setLoadingMoreMediaScanHistory(false)
+    setSelectedMediaAssetId(assetId)
+    simulateAction(isZh ? '已定位到生成输出媒体资产。' : 'Focused the generated media asset.')
+  }
+
+  const focusGenerationAudit = (generationId?: string) => {
+    setAuditActionFilter('')
+    setAuditResourceTypeFilter('creative_generation')
+    setHighlightedAuditEventId(null)
+    setActiveTab('Audit log')
+    simulateAction(
+      generationId
+        ? (isZh ? `已筛选生成记录审计：${generationId}` : `Filtered creative generation audit for ${generationId}.`)
+        : (isZh ? '已筛选创作生成审计事件。' : 'Filtered creative generation audit events.'),
+    )
   }
 
   const refreshSecurityPanel = async () => {
@@ -2724,6 +2867,271 @@ export function AdminPage({
             </div>
           ))}
         </div>
+      </section>
+      <section className="panel" data-testid="admin-generation-history">
+        <SectionHeader
+          eyebrow={textFor(t, 'Creative operations', '创作运营')}
+          title={textFor(t, 'Generation history', '生成历史')}
+          action={
+            <button className="ghost-button" type="button" onClick={() => void generationHistoryStatus.refresh()} disabled={!canReadAudit || generationHistoryStatus.loading}>
+              {generationHistoryStatus.loading ? textFor(t, 'Loading', '加载中') : textFor(t, 'Refresh', '刷新')}
+            </button>
+          }
+        />
+        <div className="permission-summary">
+          <label>
+            <span>{textFor(t, 'User', '用户')}</span>
+            <input
+              aria-label={textFor(t, 'Generation user handle', '生成用户 Handle')}
+              value={generationUserHandle}
+              onChange={(event) => setGenerationUserHandle(event.target.value)}
+              placeholder="promptlin"
+              disabled={!canReadAudit}
+            />
+          </label>
+          <label>
+            <span>{textFor(t, 'Workspace', '工作区')}</span>
+            <select
+              aria-label={textFor(t, 'Generation workspace', '生成工作区')}
+              value={generationWorkspace}
+              onChange={(event) => setGenerationWorkspace(event.target.value)}
+              disabled={!canReadAudit}
+            >
+              <option value="">{textFor(t, 'All workspaces', '全部工作区')}</option>
+              {creativeHistoryWorkspaces.map((workspace) => (
+                <option value={workspace} key={workspace}>{workspace}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{textFor(t, 'Provider', '提供方')}</span>
+            <input
+              aria-label={textFor(t, 'Generation provider', '生成提供方')}
+              value={generationProviderId}
+              onChange={(event) => setGenerationProviderId(event.target.value)}
+              placeholder="mock-image"
+              disabled={!canReadAudit}
+            />
+          </label>
+          <label>
+            <span>{textFor(t, 'Status', '状态')}</span>
+            <select
+              aria-label={textFor(t, 'Generation status', '生成状态')}
+              value={generationStatusFilter}
+              onChange={(event) => setGenerationStatusFilter(event.target.value)}
+              disabled={!canReadAudit}
+            >
+              <option value="">{textFor(t, 'All statuses', '全部状态')}</option>
+              {creativeHistoryStatuses.map((status) => (
+                <option value={status} key={status}>{formatGenerationStatus(status)}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{textFor(t, 'Review', '复核')}</span>
+            <select
+              aria-label={textFor(t, 'Generation review filter', '生成复核筛选')}
+              value={generationReviewFilter}
+              onChange={(event) => setGenerationReviewFilter(event.target.value as 'all' | 'true' | 'false')}
+              disabled={!canReadAudit}
+            >
+              <option value="all">{textFor(t, 'All', '全部')}</option>
+              <option value="true">{textFor(t, 'Review required', '需要复核')}</option>
+              <option value="false">{textFor(t, 'No review gate', '无需复核')}</option>
+            </select>
+          </label>
+          <label>
+            <span>{textFor(t, 'Media asset', '媒体资产')}</span>
+            <input
+              aria-label={textFor(t, 'Generation media asset id', '生成媒体资产 ID')}
+              value={generationMediaAssetId}
+              onChange={(event) => setGenerationMediaAssetId(event.target.value)}
+              placeholder="media-..."
+              disabled={!canReadAudit}
+            />
+          </label>
+          <label>
+            <span>{textFor(t, 'From', '开始日期')}</span>
+            <input
+              aria-label={textFor(t, 'Generation date from', '生成开始日期')}
+              type="date"
+              value={generationDateFrom}
+              onChange={(event) => setGenerationDateFrom(event.target.value)}
+              disabled={!canReadAudit}
+            />
+          </label>
+          <label>
+            <span>{textFor(t, 'To', '结束日期')}</span>
+            <input
+              aria-label={textFor(t, 'Generation date to', '生成结束日期')}
+              type="date"
+              value={generationDateTo}
+              onChange={(event) => setGenerationDateTo(event.target.value)}
+              disabled={!canReadAudit}
+            />
+          </label>
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={clearGenerationFilters}
+            disabled={!canReadAudit || (!generationUserHandle && !generationWorkspace && !generationProviderId && !generationStatusFilter && generationReviewFilter === 'all' && !generationMediaAssetId && !generationDateFrom && !generationDateTo)}
+          >
+            {textFor(t, 'Clear filters', '清除筛选')}
+          </button>
+        </div>
+        <div className="market-dashboard">
+          {[
+            [textFor(t, 'Visible rows', '当前记录'), generationRows.length, textFor(t, 'Read-only generation records', '只读生成记录')],
+            [textFor(t, 'Needs review', '需要复核'), generationRows.filter(generationReviewRequired).length, textFor(t, 'Safety or media gate active', '安全或媒体门禁生效')],
+            [textFor(t, 'Settled credits', '已结算 Credits'), generationRows.reduce((sum, row) => sum + generationCreditAmount(row, 'settled'), 0), textFor(t, 'From durable credit metadata', '来自持久化 credit 元数据')],
+            [textFor(t, 'Output assets', '输出资产'), generationRows.reduce((sum, row) => sum + row.outputAssetIds.length, 0), textFor(t, 'Linked media asset ids', '已关联媒体资产 ID')],
+          ].map(([label, value, detail]) => (
+            <article className="metric-card highlight" key={label}>
+              <span>{label}</span>
+              <strong>{formatMetricNumber(Number(value))}</strong>
+              <small>{detail}</small>
+            </article>
+          ))}
+        </div>
+        <div className="admin-table">
+          {generationHistoryStatus.loading && (
+            <div className="empty-state">
+              <strong>{textFor(t, 'Loading generation history', '正在加载生成历史')}</strong>
+              <span>{textFor(t, 'Reading durable generation, quota, credit, and safety metadata.', '正在读取持久化生成、额度、Credit 与安全元数据。')}</span>
+            </div>
+          )}
+          {!generationHistoryStatus.loading && generationHistoryStatus.error && (
+            <div className="empty-state">
+              <strong>{textFor(t, 'Generation history unavailable', '生成历史不可用')}</strong>
+              <span>{generationHistoryStatus.error}</span>
+              <button className="ghost-button" type="button" onClick={() => void generationHistoryStatus.refresh()}>
+                {textFor(t, 'Retry sync', '重试同步')}
+              </button>
+            </div>
+          )}
+          {!generationHistoryStatus.loading && !generationHistoryStatus.error && generationRows.length === 0 && (
+            <div className="empty-state">
+              <strong>{textFor(t, 'No generation records', '暂无生成记录')}</strong>
+              <span>{textFor(t, 'Try another user, provider, media asset, date, or status filter.', '尝试其他用户、提供方、媒体资产、日期或状态筛选。')}</span>
+            </div>
+          )}
+          {!generationHistoryStatus.error && generationRows.map((generation) => {
+            const firstOutputAssetId = generation.outputAssetIds[0]
+            const title = generation.promptPreview || `${generation.promptHash.slice(0, 12)}...`
+            const creditStatus = generationCreditStatus(generation)
+            const quotaUsed = generationQuotaAmount(generation, 'used')
+            const quotaLimit = generationQuotaAmount(generation, 'limit')
+            const isSelected = selectedGenerationId === generation.id
+            return (
+              <div className={isSelected ? 'admin-row deep-linked' : 'admin-row'} key={generation.id}>
+                <StatusBadge status={formatGenerationStatus(generation.status)} t={t} />
+                <strong>{title}</strong>
+                <span>
+                  @{generation.actorHandle ?? generation.actorId ?? 'system'} · {generation.workspace}/{generation.mode} · {generation.providerId}
+                </span>
+                <small>
+                  {formatAuditTime(generation.createdAt)}
+                  {' · '}
+                  {creditStatus} {generationCreditAmount(generation, 'settled')}/{generationCreditAmount(generation, 'reserved')}
+                  {' · '}
+                  {textFor(t, 'quota', '额度')} {quotaUsed}/{quotaLimit || '-'}
+                  {' · '}
+                  {textFor(t, 'outputs', '输出')} {generation.outputAssetIds.length}
+                  {generationReviewRequired(generation) ? ` · ${textFor(t, 'review required', '需要复核')}` : ''}
+                </small>
+                <div className="button-row">
+                  <button className={isSelected ? 'ghost-button active' : 'ghost-button'} type="button" onClick={() => void toggleGenerationDetail(generation)}>
+                    {isSelected ? textFor(t, 'Hide details', '收起详情') : textFor(t, 'Details', '详情')}
+                  </button>
+                  <button className="ghost-button" type="button" onClick={() => firstOutputAssetId && focusGenerationMediaAsset(firstOutputAssetId)} disabled={!firstOutputAssetId || !canReadQueues}>
+                    {textFor(t, 'Media', '媒体')}
+                  </button>
+                  <button className="ghost-button" type="button" onClick={() => focusGenerationAudit(generation.id)} disabled={!canReadAudit}>
+                    {textFor(t, 'Audit', '审计')}
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        {generationNextCursor && !generationHistoryStatus.error && (
+          <div className="button-row">
+            <button className="ghost-button" type="button" onClick={() => void loadMoreGenerations()} disabled={loadingMoreGenerations || !canReadAudit}>
+              {loadingMoreGenerations ? textFor(t, 'Loading', '加载中') : textFor(t, 'Load more', '加载更多')}
+            </button>
+          </div>
+        )}
+        {selectedGenerationId && (
+          <div className="admin-detail-panel">
+            <div>
+              <strong>{textFor(t, 'Generation detail', '生成详情')}</strong>
+              <span>{selectedGenerationId}</span>
+            </div>
+            {loadingGenerationDetail && (
+              <p>{textFor(t, 'Refreshing detail from the API.', '正在从 API 刷新详情。')}</p>
+            )}
+            {generationDetailError && (
+              <p>{generationDetailError}</p>
+            )}
+            {selectedGeneration && (
+              <>
+                <div className="audit-metadata-grid">
+                  <div>
+                    <strong>{textFor(t, 'Prompt', '提示词')}</strong>
+                    <span>{selectedGeneration.promptPreview ?? textFor(t, 'Preview unavailable', '无预览')} · {selectedGeneration.promptHash}</span>
+                  </div>
+                  <div>
+                    <strong>{textFor(t, 'Provider job', '提供方任务')}</strong>
+                    <span>{selectedGeneration.providerRequestId ?? '-'} / {selectedGeneration.providerJobId ?? '-'}</span>
+                  </div>
+                  <div>
+                    <strong>{textFor(t, 'Timeline', '时间线')}</strong>
+                    <span>
+                      {textFor(t, 'started', '开始')} {selectedGeneration.startedAt ? formatAuditTime(selectedGeneration.startedAt) : '-'}
+                      {' · '}
+                      {textFor(t, 'completed', '完成')} {selectedGeneration.completedAt ? formatAuditTime(selectedGeneration.completedAt) : '-'}
+                      {' · '}
+                      {textFor(t, 'failed', '失败')} {selectedGeneration.failedAt ? formatAuditTime(selectedGeneration.failedAt) : '-'}
+                    </span>
+                  </div>
+                  <div>
+                    <strong>{textFor(t, 'Error', '错误')}</strong>
+                    <span>{selectedGeneration.errorCode ?? '-'} {selectedGeneration.errorMessagePreview ?? ''}</span>
+                  </div>
+                  <div>
+                    <strong>{textFor(t, 'Quota', '额度')}</strong>
+                    <span>{formatMetadataJson(selectedGeneration.quota ?? {})}</span>
+                  </div>
+                  <div>
+                    <strong>{textFor(t, 'Credit', 'Credit')}</strong>
+                    <span>{formatMetadataJson(selectedGeneration.credit ?? {})}</span>
+                  </div>
+                  <div>
+                    <strong>{textFor(t, 'Safety', '安全')}</strong>
+                    <span>{formatMetadataJson(selectedGeneration.safety ?? {})}</span>
+                  </div>
+                  <div>
+                    <strong>{textFor(t, 'Policy', '策略')}</strong>
+                    <span>{formatMetadataJson(selectedGeneration.policy ?? {})}</span>
+                  </div>
+                </div>
+                <div className="permission-chip-grid">
+                  {selectedGeneration.inputAssetIds.map((assetId) => (
+                    <span className="permission-chip" key={`input-${assetId}`}>{textFor(t, 'input', '输入')}:{assetId}</span>
+                  ))}
+                  {selectedGeneration.outputAssetIds.map((assetId) => (
+                    <button className="permission-chip editable" type="button" key={`output-${assetId}`} onClick={() => focusGenerationMediaAsset(assetId)} disabled={!canReadQueues}>
+                      {textFor(t, 'output', '输出')}:{assetId}
+                    </button>
+                  ))}
+                  {selectedGeneration.parameterKeys.map((key) => (
+                    <span className="permission-chip granted" key={`parameter-${key}`}>{textFor(t, 'parameter', '参数')}:{key}</span>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </section>
       <section className="panel">
         <SectionHeader eyebrow={textFor(t, 'Queue', '队列')} title={textFor(t, 'Review and moderation', '审核与治理')} />

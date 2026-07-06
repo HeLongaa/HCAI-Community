@@ -322,7 +322,7 @@ Current implementation boundary:
 - Output media asset ids are linked back onto the durable generation record after media persistence.
 - The API response includes `generationRecord`, a safe record view with prompt hash/preview but without raw prompt retention.
 - Provider/persistence failures after record creation mark the generation `failed` with safe error metadata.
-- Durable quota ledger and credit reservation lifecycle are separate completed slices. Admin generation history remains the next follow-up slice.
+- Durable quota ledger, credit reservation lifecycle, and Admin generation history are covered by separate completed provider-readiness slices.
 
 Validation:
 
@@ -348,7 +348,7 @@ Current implementation boundary:
 - Successful output persistence commits reserved units to used units.
 - Provider or persistence failure before commit releases reserved units and records safe audit metadata.
 - Moderation-blocked and quota-exceeded requests still avoid provider execution and do not create credit reservations.
-- Credit reservation/settlement/refund is covered by its own completed provider-readiness slice; Admin generation history remains next.
+- Credit reservation/settlement/refund and Admin generation history are covered by separate completed provider-readiness slices.
 
 Validation:
 
@@ -416,6 +416,15 @@ Deliverables:
 - filters for user/workspace/provider/status/review/date
 - linked media asset display
 - feature simulation or focused browser coverage
+
+Current implementation boundary:
+
+- Admin Center includes a read-only `Generation history` creative operations panel backed by `GET /api/admin/creative/generations`.
+- Operators can filter by user handle, workspace, provider, status, review-required state, media asset id, and created date range.
+- The panel shows visible-row, review-required, settled-credit, and output-asset summaries derived from the safe generation DTO.
+- Each row can open a safe detail view with prompt hash/preview, provider job ids, timeline, error preview, quota, credit, safety, policy, input assets, output assets, and parameter keys.
+- Output asset ids link into the existing Admin media governance queue/search; generation audit actions link into the existing Audit log filtered to `creative_generation`.
+- The UI remains read-only. Manual retry, cancel, force-review, refund, provider job polling, and real paid provider controls remain deferred.
 
 Validation:
 
