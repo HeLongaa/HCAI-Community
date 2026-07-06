@@ -11,7 +11,10 @@ import {
 } from '../../creative/generationRecords.js'
 import { repositories } from '../../repositories/index.js'
 
-export const registerCreativeRoutes = (router) => {
+export const registerCreativeRoutes = (router, options = {}) => {
+  const executeGeneration = options.executeCreativeGeneration ?? executeCreativeGeneration
+  const fixtureAdapters = options.fixtureAdapters ?? {}
+
   router.add('GET', '/api/creative/providers', async (_request, response) => {
     ok(response, getCreativeProviderCatalog())
   })
@@ -27,10 +30,11 @@ export const registerCreativeRoutes = (router) => {
     let quotaFinalized = false
     let creditFinalized = false
     try {
-      generation = await executeCreativeGeneration({
+      generation = await executeGeneration({
         request: payload,
         actor,
         quotaRepository,
+        fixtureAdapters,
       })
       if (creditRepository?.reserve) {
         const reservedCredit = await creditRepository.reserve({

@@ -2,7 +2,7 @@
 
 This document closes the fourth real-provider preflight task: define provider cost metadata, safe Admin visibility, budget thresholds, anomaly alerts, and metrics/audit mapping before any paid provider adapter is allowed to run.
 
-The repository remains mock-provider only. This document does not add a real provider adapter, provider billing reconciliation, subscription management, invoice management, checkout/payment flows, or production paid-provider enforcement. A later staging-adapter task added a mocked Replicate client contract with local fail-closed budget guard tests, but it is not wired to route execution or real provider calls.
+The repository remains mock-provider only. This document does not add a real provider adapter, provider billing reconciliation, subscription management, invoice management, checkout/payment flows, or production paid-provider enforcement. Later staging-adapter tasks added a mocked Replicate client contract, local fail-closed budget guard tests, and a route-level fixture path that requires explicit test injection. They still do not add a default route execution path, real SDK, network client, or production real-provider calls.
 
 ## Source Context
 

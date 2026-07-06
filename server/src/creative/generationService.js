@@ -11,6 +11,17 @@ import { applyCreativeGenerationPolicy } from './policy.js'
 import { statusForPersistedGeneration } from './generationRecords.js'
 import { assertCreativeProviderAdapterContract } from './providerAdapterContract.js'
 
+const getFixtureProvider = (providerId, registry) => {
+  const provider = registry.providers.find((candidate) => candidate.id === providerId)
+  if (!provider) {
+    return getCreativeProvider(providerId, registry)
+  }
+  if (!provider.configured) {
+    return getCreativeProvider(providerId, registry)
+  }
+  return provider
+}
+
 export const getCreativeProviderCatalog = (source = process.env) => {
   const registry = createCreativeProviderRegistry(source)
   return {
@@ -25,17 +36,23 @@ export const executeCreativeGeneration = async ({
   source = process.env,
   now = new Date(),
   quotaRepository = null,
+  fixtureAdapters = {},
 }) => {
   const registry = createCreativeProviderRegistry(source)
-  const provider = getCreativeProvider(request.providerId, registry)
+  const fixtureAdapter = request.providerId ? fixtureAdapters[request.providerId] : null
+  const provider = fixtureAdapter
+    ? getFixtureProvider(request.providerId, registry)
+    : getCreativeProvider(request.providerId, registry)
   const capability = getCreativeCapability(provider, request.workspace)
   assertCreativeModeSupported(capability, request.mode)
 
-  if (provider.id !== 'mock') {
+  if (provider.id !== 'mock' && !fixtureAdapter) {
     throw new Error(`Unsupported creative provider adapter: ${provider.id}`)
   }
 
-  const generated = executeMockCreativeGeneration({ request, provider, actor, now })
+  const generated = fixtureAdapter
+    ? await fixtureAdapter({ request, provider, actor, source, now })
+    : executeMockCreativeGeneration({ request, provider, actor, now })
   assertCreativeProviderAdapterContract(generated, { request, provider })
   const policyResult = await applyCreativeGenerationPolicy({
     request,
@@ -49,7 +66,11 @@ export const executeCreativeGeneration = async ({
 
   const attachPolicy = (generation) => ({
     ...generation,
-    usage: policyResult.usage,
+    usage: {
+      ...generation.usage,
+      ...policyResult.usage,
+      ...(generation.usage?.providerCost ? { providerCost: generation.usage.providerCost } : {}),
+    },
     quota: policyResult.quota,
     safety: policyResult.safety,
     policy: policyResult.policy,
