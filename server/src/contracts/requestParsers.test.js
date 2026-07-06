@@ -7,6 +7,7 @@ import {
   parseCompleteMediaUploadRequest,
   parseCreateCreativeGenerationRequest,
   parseAdminAuditListQuery,
+  parseAdminCreativeGenerationListQuery,
   parseAdminReviewListQuery,
   parseEmailLoginRequest,
   parseCreateMediaUploadRequest,
@@ -493,9 +494,42 @@ test('admin list query parsers normalize pagination and filters', () => {
     resourceType: null,
     actorId: null,
   })
+  assert.deepEqual(parseAdminCreativeGenerationListQuery({
+    limit: '5',
+    cursor: 'gen-1',
+    userHandle: ' promptlin ',
+    workspace: ' image ',
+    mode: ' text_to_image ',
+    providerId: ' mock ',
+    status: ' review_required ',
+    reviewRequired: 'true',
+    mediaAssetId: ' media-1 ',
+    dateFrom: '2026-07-06T00:00:00.000Z',
+    dateTo: '2026-07-06T23:59:59.999Z',
+  }), {
+    cursor: 'gen-1',
+    limit: 5,
+    actorHandle: 'promptlin',
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'mock',
+    status: 'review_required',
+    reviewRequired: true,
+    mediaAssetId: 'media-1',
+    dateFrom: '2026-07-06T00:00:00.000Z',
+    dateTo: '2026-07-06T23:59:59.999Z',
+  })
   assertValidationError(
     () => parseAdminReviewListQuery({ limit: '0' }),
     'limit must be an integer between 1 and 100',
+  )
+  assertValidationError(
+    () => parseAdminCreativeGenerationListQuery({ status: 'unknown' }),
+    'status must be one of: queued, running, completed, failed, cancelled, review_required',
+  )
+  assertValidationError(
+    () => parseAdminCreativeGenerationListQuery({ reviewRequired: 'maybe' }),
+    'reviewRequired must be a boolean',
   )
 })
 

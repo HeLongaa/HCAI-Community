@@ -32,6 +32,7 @@ const mediaPurposePolicies = {
   },
 }
 const creativeWorkspaces = ['image', 'video', 'music', 'chat']
+const creativeGenerationStatuses = ['queued', 'running', 'completed', 'failed', 'cancelled', 'review_required']
 
 const normalizeEmail = (email) => email.trim().toLowerCase()
 const defaultHandleForEmail = (email) => {
@@ -450,6 +451,51 @@ export const parseAdminSecurityEventListQuery = (query) => ({
   source: optionalText(query, 'source', null),
   severity: optionalText(query, 'severity', null),
 })
+
+const optionalBooleanText = (query, field) => {
+  const value = optionalText(query, field, null)
+  if (value == null) {
+    return null
+  }
+  if (['1', 'true', 'yes'].includes(value.toLowerCase())) {
+    return true
+  }
+  if (['0', 'false', 'no'].includes(value.toLowerCase())) {
+    return false
+  }
+  throw validationFailed(`${field} must be a boolean`)
+}
+
+const optionalIsoDateText = (query, field) => {
+  const value = optionalText(query, field, null)
+  if (value == null) {
+    return null
+  }
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) {
+    throw validationFailed(`${field} must be an ISO timestamp`)
+  }
+  return new Date(timestamp).toISOString()
+}
+
+export const parseAdminCreativeGenerationListQuery = (query) => {
+  const status = optionalText(query, 'status', null)
+  if (status && !creativeGenerationStatuses.includes(status)) {
+    throw validationFailed(`status must be one of: ${creativeGenerationStatuses.join(', ')}`)
+  }
+  return {
+    ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 }),
+    actorHandle: optionalText(query, 'userHandle', null) ?? optionalText(query, 'actorHandle', null),
+    workspace: optionalText(query, 'workspace', null),
+    mode: optionalText(query, 'mode', null),
+    providerId: optionalText(query, 'providerId', null),
+    status,
+    reviewRequired: optionalBooleanText(query, 'reviewRequired'),
+    mediaAssetId: optionalText(query, 'mediaAssetId', null),
+    dateFrom: optionalIsoDateText(query, 'dateFrom'),
+    dateTo: optionalIsoDateText(query, 'dateTo'),
+  }
+}
 
 export const parseAdminOperationsMetricsQuery = (query) => {
   const windowMinutes = Number(query.windowMinutes ?? 60)

@@ -5,6 +5,7 @@ import { validationFailed } from '../../common/http/validation.js'
 import { readJsonBody } from '../../common/http/request.js'
 import {
   parseAdminAuditListQuery,
+  parseAdminCreativeGenerationListQuery,
   parseAdminOperationsMetricsQuery,
   parseAdminPointsLedgerQuery,
   parseAdminReviewActionRequest,
@@ -156,6 +157,26 @@ export const registerAdminRoutes = (router) => {
       throw notFound(`/api/admin/audit/${context.params.id}`)
     }
     ok(response, event)
+  })
+
+  router.add('GET', '/api/admin/creative/generations', async (_request, response, context) => {
+    requirePermission(context, 'admin:audit:read')
+    const page = await repositories.creativeGenerations.list(parseAdminCreativeGenerationListQuery(context.query))
+    ok(response, page.items, {
+      pagination: {
+        limit: page.limit,
+        nextCursor: page.nextCursor,
+      },
+    })
+  })
+
+  router.add('GET', '/api/admin/creative/generations/:id', async (_request, response, context) => {
+    requirePermission(context, 'admin:audit:read')
+    const generation = await repositories.creativeGenerations.find(context.params.id)
+    if (!generation) {
+      throw notFound(`/api/admin/creative/generations/${context.params.id}`)
+    }
+    ok(response, generation)
   })
 
   router.add('GET', '/api/admin/security/events', async (_request, response, context) => {
