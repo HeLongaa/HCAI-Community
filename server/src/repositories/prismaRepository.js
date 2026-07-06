@@ -553,6 +553,28 @@ const createPrismaRepository = async (fallbackRepository) => {
     createdAt: payload.createdAt ? new Date(payload.createdAt) : undefined,
   })
 
+  const creativeQuotaWindowId = ({ actorHandle, workspace, windowType, windowStart }) =>
+    `${actorHandle ?? 'unknown'}:${workspace}:${windowType}:${windowStart}`
+
+  const getCreativeQuotaDto = (window, reservationId = null) => ({
+    policyVersion: window.policyVersion,
+    scope: 'user_workspace_daily',
+    workspace: window.workspace,
+    limit: window.limitUnits,
+    reserved: window.reservedUnits,
+    used: window.usedUnits,
+    released: window.releasedUnits,
+    remaining: Math.max(window.limitUnits - window.reservedUnits - window.usedUnits, 0),
+    reservationId,
+    window: {
+      id: window.windowStart.toISOString().slice(0, 10),
+      type: window.windowType,
+      start: window.windowStart.toISOString(),
+      end: window.windowEnd.toISOString(),
+      resetsAt: window.windowEnd.toISOString(),
+    },
+  })
+
   const uniqueHandles = (handles) => [...new Set(handles.filter(Boolean))]
 
   const userHandle = (user) => user?.profile?.handle ?? user?.id ?? null
@@ -3642,6 +3664,178 @@ const createPrismaRepository = async (fallbackRepository) => {
     },
   }
 
+  const creativeQuota = {
+    reserve: async (payload, actor) => {
+      const units = Math.max(1, Number(payload.costUnits) || 1)
+      const actorUser = payload.actorHandle || actor?.handle ? await findUserByHandle(payload.actorHandle ?? actor.handle) : null
+      const windowId = creativeQuotaWindowId(payload)
+      return client.$transaction(async (transaction) => {
+        await transaction.creativeQuotaWindow.upsert({
+          where: { id: windowId },
+          create: {
+            id: windowId,
+            actorId: actorUser?.id ?? null,
+            actorHandle: payload.actorHandle ?? actorUser?.profile?.handle ?? null,
+            workspace: payload.workspace,
+            windowType: payload.windowType,
+            windowStart: new Date(payload.windowStart),
+            windowEnd: new Date(payload.windowEnd),
+            limitUnits: payload.limit,
+            reservedUnits: 0,
+            usedUnits: 0,
+            releasedUnits: 0,
+            policyVersion: payload.policyVersion,
+          },
+          update: {
+            limitUnits: payload.limit,
+            policyVersion: payload.policyVersion,
+          },
+        })
+        const updatedCount = await transaction.$executeRaw`
+          UPDATE "creative_quota_windows"
+          SET "reserved_units" = "reserved_units" + ${units}, "updated_at" = NOW()
+          WHERE "id" = ${windowId}
+            AND ("used_units" + "reserved_units" + ${units}) <= "limit_units"
+        `
+        const reserved = Number(updatedCount) === 1
+        const window = await transaction.creativeQuotaWindow.findUnique({ where: { id: windowId } })
+        if (!reserved) {
+          return {
+            reserved: false,
+            quota: window ? getCreativeQuotaDto(window) : null,
+          }
+        }
+        const reservation = await transaction.creativeQuotaReservation.create({
+          data: {
+            id: `quota-${randomUUID()}`,
+            quotaWindowId: windowId,
+            generationId: String(payload.generationId ?? ''),
+            actorId: actorUser?.id ?? null,
+            actorHandle: payload.actorHandle ?? actorUser?.profile?.handle ?? null,
+            workspace: payload.workspace,
+            units,
+            status: 'reserved',
+          },
+        })
+        await transaction.auditEvent.create({
+          data: buildAuditRecord({
+            actorType: actor ? 'user' : 'system',
+            actorId: actor?.id ?? null,
+            action: 'creative.quota.reserved',
+            resourceType: 'creative_quota_reservation',
+            resourceId: reservation.id,
+            metadata: {
+              generationId: reservation.generationId,
+              workspace: reservation.workspace,
+              units,
+              quotaWindowId: windowId,
+            },
+          }),
+        })
+        const reservedWindow = await transaction.creativeQuotaWindow.findUnique({ where: { id: windowId } })
+        return {
+          reserved: true,
+          reservationId: reservation.id,
+          quota: getCreativeQuotaDto(reservedWindow, reservation.id),
+        }
+      })
+    },
+    commit: async (reservationId, actor) => {
+      return client.$transaction(async (transaction) => {
+        const reservation = await transaction.creativeQuotaReservation.findUnique({
+          where: { id: String(reservationId) },
+          include: { quotaWindow: true },
+        })
+        if (!reservation) {
+          return null
+        }
+        if (reservation.status !== 'reserved') {
+          return getCreativeQuotaDto(reservation.quotaWindow, reservation.id)
+        }
+        await transaction.creativeQuotaWindow.update({
+          where: { id: reservation.quotaWindowId },
+          data: {
+            reservedUnits: { decrement: reservation.units },
+            usedUnits: { increment: reservation.units },
+          },
+        })
+        const updatedReservation = await transaction.creativeQuotaReservation.update({
+          where: { id: reservation.id },
+          data: {
+            status: 'committed',
+            committedAt: new Date(),
+          },
+        })
+        await transaction.auditEvent.create({
+          data: buildAuditRecord({
+            actorType: actor ? 'user' : 'system',
+            actorId: actor?.id ?? null,
+            action: 'creative.quota.committed',
+            resourceType: 'creative_quota_reservation',
+            resourceId: updatedReservation.id,
+            metadata: {
+              generationId: updatedReservation.generationId,
+              workspace: updatedReservation.workspace,
+              units: updatedReservation.units,
+            },
+          }),
+        })
+        const window = await transaction.creativeQuotaWindow.findUnique({ where: { id: reservation.quotaWindowId } })
+        return getCreativeQuotaDto(window, updatedReservation.id)
+      })
+    },
+    release: async (reservationId, reason = 'released', actor) => {
+      return client.$transaction(async (transaction) => {
+        const reservation = await transaction.creativeQuotaReservation.findUnique({
+          where: { id: String(reservationId) },
+          include: { quotaWindow: true },
+        })
+        if (!reservation) {
+          return null
+        }
+        if (reservation.status !== 'reserved') {
+          return getCreativeQuotaDto(reservation.quotaWindow, reservation.id)
+        }
+        await transaction.creativeQuotaWindow.update({
+          where: { id: reservation.quotaWindowId },
+          data: {
+            reservedUnits: { decrement: reservation.units },
+            releasedUnits: { increment: reservation.units },
+          },
+        })
+        const updatedReservation = await transaction.creativeQuotaReservation.update({
+          where: { id: reservation.id },
+          data: {
+            status: 'released',
+            reason,
+            releasedAt: new Date(),
+          },
+        })
+        await transaction.auditEvent.create({
+          data: buildAuditRecord({
+            actorType: actor ? 'user' : 'system',
+            actorId: actor?.id ?? null,
+            action: 'creative.quota.released',
+            resourceType: 'creative_quota_reservation',
+            resourceId: updatedReservation.id,
+            metadata: {
+              generationId: updatedReservation.generationId,
+              workspace: updatedReservation.workspace,
+              units: updatedReservation.units,
+              reason,
+            },
+          }),
+        })
+        const window = await transaction.creativeQuotaWindow.findUnique({ where: { id: reservation.quotaWindowId } })
+        return getCreativeQuotaDto(window, updatedReservation.id)
+      })
+    },
+    getQuotaWindow: async (payload) => {
+      const window = await client.creativeQuotaWindow.findUnique({ where: { id: creativeQuotaWindowId(payload) } })
+      return window ? getCreativeQuotaDto(window) : null
+    },
+  }
+
   const media = {
     getGovernancePolicy: async () => getMediaGovernancePolicy(),
     updateGovernancePolicy: async (patch, actor) => updateMediaGovernancePolicy(patch, actor),
@@ -5043,6 +5237,7 @@ const createPrismaRepository = async (fallbackRepository) => {
     points,
     notifications,
     creativeGenerations,
+    creativeQuota,
     media,
     library,
     audit,

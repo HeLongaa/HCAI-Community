@@ -114,6 +114,12 @@ enum CreativeGenerationStatus {
   review_required
 }
 
+enum CreativeQuotaReservationStatus {
+  reserved
+  committed
+  released
+}
+
 model AuditEvent {
   id           String         @id @default(cuid())
   actorType    AuditActorType @map("actor_type")
@@ -245,6 +251,8 @@ model User {
   notifications           Notification[]
   mediaScanJobsReviewed   MediaScanJob[]   @relation("MediaScanJobReviewer")
   creativeGenerations     CreativeGeneration[]
+  creativeQuotaWindows    CreativeQuotaWindow[]
+  creativeQuotaReservations CreativeQuotaReservation[]
 
   @@map("users")
 }
@@ -538,6 +546,57 @@ model CreativeGeneration {
   @@index([providerId, createdAt])
   @@index([status, createdAt])
   @@map("creative_generations")
+}
+
+model CreativeQuotaWindow {
+  id            String   @id
+  actorId       String?  @map("actor_id")
+  actorHandle   String?  @map("actor_handle")
+  workspace     String
+  windowType    String   @map("window_type")
+  windowStart   DateTime @map("window_start")
+  windowEnd     DateTime @map("window_end")
+  limitUnits    Int      @map("limit_units")
+  reservedUnits Int      @default(0) @map("reserved_units")
+  usedUnits     Int      @default(0) @map("used_units")
+  releasedUnits Int      @default(0) @map("released_units")
+  policyVersion String   @map("policy_version")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  reservations CreativeQuotaReservation[]
+
+  @@unique([actorHandle, workspace, windowType, windowStart])
+  @@index([actorId, windowStart])
+  @@index([actorHandle, workspace, windowStart])
+  @@index([workspace, windowStart])
+  @@map("creative_quota_windows")
+}
+
+model CreativeQuotaReservation {
+  id            String                         @id @default(cuid())
+  quotaWindowId String                         @map("quota_window_id")
+  generationId  String                         @map("generation_id")
+  actorId       String?                        @map("actor_id")
+  actorHandle   String?                        @map("actor_handle")
+  workspace     String
+  units         Int
+  status        CreativeQuotaReservationStatus
+  reason        String?
+  reservedAt    DateTime                       @default(now()) @map("reserved_at")
+  committedAt   DateTime?                      @map("committed_at")
+  releasedAt    DateTime?                      @map("released_at")
+  createdAt     DateTime                       @default(now()) @map("created_at")
+  updatedAt     DateTime                       @updatedAt @map("updated_at")
+
+  quotaWindow CreativeQuotaWindow @relation(fields: [quotaWindowId], references: [id], onDelete: Cascade)
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([generationId])
+  @@index([actorHandle, workspace, createdAt])
+  @@index([quotaWindowId, status])
+  @@map("creative_quota_reservations")
 }
 
 model Notification {

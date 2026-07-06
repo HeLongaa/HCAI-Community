@@ -77,11 +77,14 @@ const clampDailyQuota = (value) => {
   return Math.min(parsed, 500)
 }
 
-const quotaWindowFor = (now) => {
+export const quotaWindowFor = (now) => {
   const date = now.toISOString().slice(0, 10)
   return {
     id: date,
+    type: 'daily',
+    start: `${date}T00:00:00.000Z`,
     resetsAt: `${date}T23:59:59.999Z`,
+    end: `${date}T23:59:59.999Z`,
   }
 }
 
@@ -123,12 +126,50 @@ export const moderateCreativePrompt = (prompt) => {
   }
 }
 
-export const reserveCreativeQuota = ({ request, actor, source = process.env, now = new Date() }) => {
+export const reserveCreativeQuota = async ({
+  request,
+  actor,
+  source = process.env,
+  now = new Date(),
+  generationId = null,
+  costUnits = 1,
+  quotaRepository = null,
+}) => {
   const limit = quotaLimitFor({ actor, source })
   const window = quotaWindowFor(now)
+  const units = Math.max(1, Number.parseInt(String(costUnits ?? 1), 10) || 1)
+  if (quotaRepository?.reserve) {
+    const result = await quotaRepository.reserve({
+      generationId,
+      actorId: actor.id,
+      actorHandle: actor.handle,
+      workspace: request.workspace,
+      windowType: window.type,
+      windowStart: window.start,
+      windowEnd: window.end,
+      limit,
+      costUnits: units,
+      policyVersion,
+    }, actor)
+    if (!result?.reserved) {
+      const quota = result?.quota ?? {}
+      throw new HttpError(429, 'CREATIVE_QUOTA_EXCEEDED', 'Creative generation quota exceeded', {
+        policyVersion,
+        workspace: request.workspace,
+        limit,
+        used: quota.used ?? 0,
+        reserved: quota.reserved ?? 0,
+        released: quota.released ?? 0,
+        remaining: quota.remaining ?? 0,
+        window,
+      })
+    }
+    return result.quota
+  }
+
   const key = quotaKeyFor({ actor, request, now })
   const used = quotaCounters.get(key) ?? 0
-  if (used >= limit) {
+  if (used + units > limit) {
     throw new HttpError(429, 'CREATIVE_QUOTA_EXCEEDED', 'Creative generation quota exceeded', {
       policyVersion,
       workspace: request.workspace,
@@ -139,14 +180,16 @@ export const reserveCreativeQuota = ({ request, actor, source = process.env, now
     })
   }
 
-  const nextUsed = used + 1
+  const nextUsed = used + units
   quotaCounters.set(key, nextUsed)
   return {
     policyVersion,
     scope: 'user_workspace_daily',
     workspace: request.workspace,
     limit,
+    reserved: 0,
     used: nextUsed,
+    released: 0,
     remaining: Math.max(limit - nextUsed, 0),
     window,
   }
@@ -163,10 +206,26 @@ export const estimateCreativeUsage = ({ request, provider }) => {
   }
 }
 
-export const applyCreativeGenerationPolicy = ({ request, actor, provider, source = process.env, now = new Date() }) => {
+export const applyCreativeGenerationPolicy = async ({
+  request,
+  actor,
+  provider,
+  source = process.env,
+  now = new Date(),
+  generationId = null,
+  quotaRepository = null,
+}) => {
   const safety = moderateCreativePrompt(request.prompt)
-  const quota = reserveCreativeQuota({ request, actor, source, now })
   const usage = estimateCreativeUsage({ request, provider })
+  const quota = await reserveCreativeQuota({
+    request,
+    actor,
+    source,
+    now,
+    generationId,
+    costUnits: usage.estimatedCredits,
+    quotaRepository,
+  })
 
   return {
     policy: {

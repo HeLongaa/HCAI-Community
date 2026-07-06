@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { HttpError } from '../../common/errors/httpError.js'
 import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
-import { resetCreativePolicyState } from '../../creative/policy.js'
+import { quotaWindowFor, resetCreativePolicyState } from '../../creative/policy.js'
+import { repositories } from '../../repositories/index.js'
 import { registerMediaRoutes } from '../media/routes.js'
 import { registerCreativeRoutes } from './routes.js'
 
@@ -98,6 +100,9 @@ test('POST /api/creative/generations persists mock provider output through media
     assert.equal(payload.data.outputs[0].source.persistedMediaAssetId, payload.data.outputs[0].storage.mediaAssetId)
     assert.equal(payload.data.outputs[0].url.startsWith('mock://creative/image/'), true)
     assert.equal(payload.data.usage.providerCostCents, 0)
+    assert.equal(payload.data.quota.reserved, 0)
+    assert.equal(payload.data.quota.used, 1)
+    assert.ok(payload.data.quota.reservationId)
     assert.equal(payload.data.createdBy.handle, 'promptlin')
     assert.equal(payload.data.generationRecord.id, payload.data.id)
     assert.equal(payload.data.generationRecord.status, 'completed')
@@ -179,6 +184,7 @@ test('POST /api/creative/generations enforces daily quota boundaries', async () 
     })
     assert.equal(first.status, 200)
     assert.equal(first.payload.data.quota.limit, 1)
+    assert.equal(first.payload.data.quota.used, 1)
     assert.equal(first.payload.data.quota.remaining, 0)
 
     const second = await requestJson(server.url, '/api/creative/generations', {
@@ -188,9 +194,64 @@ test('POST /api/creative/generations enforces daily quota boundaries', async () 
     assert.equal(second.status, 429)
     assert.equal(second.payload.error.code, 'CREATIVE_QUOTA_EXCEEDED')
     assert.equal(second.payload.error.details.limit, 1)
+    assert.equal(second.payload.error.details.used, 1)
     assert.equal(second.payload.error.details.remaining, 0)
   } finally {
     await server.close()
+    resetCreativePolicyState()
+    if (previousQuota == null) {
+      delete process.env.CREATIVE_DAILY_QUOTA
+    } else {
+      process.env.CREATIVE_DAILY_QUOTA = previousQuota
+    }
+  }
+})
+
+test('POST /api/creative/generations releases reserved quota when output persistence fails', async () => {
+  resetCreativePolicyState()
+  const previousQuota = process.env.CREATIVE_DAILY_QUOTA
+  process.env.CREATIVE_DAILY_QUOTA = '1'
+  const originalCreateGeneratedAsset = repositories.media.createGeneratedAsset
+  repositories.media.createGeneratedAsset = async () => {
+    throw new HttpError(503, 'MEDIA_PERSISTENCE_FAILED', 'Generated asset persistence failed')
+  }
+  const server = await createRouteTestServer(registerCreativeRoutes)
+  try {
+    const failed = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        prompt: 'A quota release poster',
+      },
+      token: 'demo-access.launchteam',
+    })
+    assert.equal(failed.status, 503)
+    assert.equal(failed.payload.error.code, 'MEDIA_PERSISTENCE_FAILED')
+
+    const window = quotaWindowFor(new Date())
+    const quota = await repositories.creativeQuota.getQuotaWindow({
+      actorHandle: 'launchteam',
+      workspace: 'image',
+      windowType: window.type,
+      windowStart: window.start,
+    })
+    assert.equal(quota.reserved, 0)
+    assert.equal(quota.used, 0)
+    assert.equal(quota.released, 1)
+    assert.equal(quota.remaining, quota.limit)
+
+    const retry = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        prompt: 'A quota release retry poster',
+      },
+      token: 'demo-access.launchteam',
+    })
+    assert.equal(retry.status, 503)
+  } finally {
+    await server.close()
+    repositories.media.createGeneratedAsset = originalCreateGeneratedAsset
     resetCreativePolicyState()
     if (previousQuota == null) {
       delete process.env.CREATIVE_DAILY_QUOTA

@@ -18,12 +18,32 @@ export const getCreativeProviderCatalog = (source = process.env) => {
   }
 }
 
-export const executeCreativeGeneration = ({ request, actor, source = process.env, now = new Date() }) => {
+export const executeCreativeGeneration = async ({
+  request,
+  actor,
+  source = process.env,
+  now = new Date(),
+  quotaRepository = null,
+}) => {
   const registry = createCreativeProviderRegistry(source)
   const provider = getCreativeProvider(request.providerId, registry)
   const capability = getCreativeCapability(provider, request.workspace)
   assertCreativeModeSupported(capability, request.mode)
-  const policyResult = applyCreativeGenerationPolicy({ request, actor, provider, source, now })
+
+  if (provider.id !== 'mock') {
+    throw new Error(`Unsupported creative provider adapter: ${provider.id}`)
+  }
+
+  const generated = executeMockCreativeGeneration({ request, provider, actor, now })
+  const policyResult = await applyCreativeGenerationPolicy({
+    request,
+    actor,
+    provider,
+    source,
+    now,
+    generationId: generated.id,
+    quotaRepository,
+  })
 
   const attachPolicy = (generation) => ({
     ...generation,
@@ -33,11 +53,7 @@ export const executeCreativeGeneration = ({ request, actor, source = process.env
     policy: policyResult.policy,
   })
 
-  if (provider.id === 'mock') {
-    return attachPolicy(executeMockCreativeGeneration({ request, provider, actor, now }))
-  }
-
-  throw new Error(`Unsupported creative provider adapter: ${provider.id}`)
+  return attachPolicy(generated)
 }
 
 export const persistCreativeGenerationOutputs = async (generation, { actor, mediaRepository }) => {

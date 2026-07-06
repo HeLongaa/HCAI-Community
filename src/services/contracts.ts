@@ -607,10 +607,16 @@ export type ApiCreativeGeneration = {
     scope: string
     workspace: CreativeWorkspace
     limit: number
+    reserved: number
     used: number
+    released: number
     remaining: number
+    reservationId?: string | null
     window: {
       id: string
+      type?: string
+      start?: string
+      end?: string
       resetsAt: string
     }
   }

@@ -340,6 +340,16 @@ Deliverables:
 - concurrent reservation tests
 - quota release/commit behavior for failures
 
+Current implementation boundary:
+
+- Creative quota now uses durable `creative_quota_windows` and `creative_quota_reservations` state in Prisma-backed deployments, with seed repository parity for local tests.
+- Quota windows are keyed by actor/workspace/daily window and track `limit`, `reserved`, `used`, `released`, and `remaining` units.
+- Each generation attempt receives a distinct quota `reservationId`; repeated identical prompts do not reuse deterministic mock generation ids to bypass quota.
+- Successful output persistence commits reserved units to used units.
+- Provider or persistence failure before commit releases reserved units and records safe audit metadata.
+- Moderation-blocked and quota-exceeded requests still avoid provider execution and do not create credit reservations.
+- Credit reservation/settlement/refund remains the next provider-readiness slice.
+
 Validation:
 
 - quota accounting tests
