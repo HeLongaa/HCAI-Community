@@ -6,7 +6,7 @@ Current decision: **no-go for provider callbacks, polling workers, and manual re
 
 This package is documentation only. It does not add a provider SDK, HTTP client, webhook endpoint, polling worker, provider network call, Admin mutation endpoint, payment refund flow, or production paid-provider path.
 
-Implementation status: the repository now has a durable replay ledger schema/repository foundation and a pure lifecycle replay reducer for mocked/fixture-only provider lifecycle decisions. Provider callback routes, polling workers, manual replay endpoints, side-effect executors, and real provider network calls remain disabled and unimplemented.
+Implementation status: the repository now has a durable replay ledger schema/repository foundation, a pure lifecycle replay reducer, and provider callback auth/parser pure functions with fixture tests for mocked/fixture-only provider lifecycle decisions. Provider callback routes, polling workers, manual replay endpoints, side-effect executors, and real provider network calls remain disabled and unimplemented.
 
 ## Scope
 
@@ -279,10 +279,10 @@ No-go for provider callback, polling, or manual replay if any are true:
 
 A future implementation task should start with mocked-client tests only:
 
-1. Add route parser and signature tests without registering a production callback route.
-2. Add polling worker lease tests without enabling a worker interval.
-3. Add side-effect plan execution behind idempotent repository calls.
-4. Add fixture-only integration tests that write replay ledger rows without provider credentials.
+1. Add polling worker lease tests without enabling a worker interval.
+2. Add side-effect plan execution behind idempotent repository calls.
+3. Add fixture-only integration tests that write replay ledger rows without provider credentials.
+4. Add callback route wiring only after auth/parser tests, replay ledger, lifecycle reducer, and side-effect executor tests all pass.
 5. Add smoke and quality-gate documentation only after the route or worker exists.
 6. Complete the external-call approval package before any real provider network call.
 
