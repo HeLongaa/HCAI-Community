@@ -95,6 +95,7 @@ export const serializeCreativeGeneration = (generation) => ({
   parameterKeys: generation.parameterKeys ?? [],
   outputAssetIds: generation.outputAssetIds ?? [],
   usage: generation.usage ?? null,
+  credit: generation.credit ?? null,
   quota: generation.quota ?? null,
   safety: generation.safety ?? null,
   policy: generation.policy ?? null,

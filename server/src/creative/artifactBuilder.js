@@ -24,6 +24,7 @@ export const buildCreativeArtifactMetadata = ({ generation, output }) => ({
   outputType: output.type,
   sourceUrl: output.url,
   usage: generation.usage,
+  credit: generation.credit,
   quota: generation.quota,
   safety: generation.safety,
   policy: generation.policy,
