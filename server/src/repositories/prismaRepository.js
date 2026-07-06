@@ -16,6 +16,7 @@ import {
   getLedgerDto,
   getCommentDto,
   getCreativeGenerationDto,
+  getCreativeProviderReplayDto,
   getMediaAssetDto,
   getMediaScanJobDto,
   getNotificationDto,
@@ -3708,6 +3709,109 @@ const createPrismaRepository = async (fallbackRepository) => {
     },
   }
 
+  const creativeProviderReplays = {
+    record: async (payload, actor) => {
+      const idempotencyKey = String(payload.idempotencyKey ?? '')
+      const existing = await client.creativeProviderReplayLedger.findUnique({
+        where: { idempotencyKey },
+      })
+      if (existing) {
+        return {
+          created: false,
+          replay: getCreativeProviderReplayDto(existing),
+        }
+      }
+
+      const row = await client.creativeProviderReplayLedger.create({
+        data: {
+          id: payload.id ?? `provider-replay-${randomUUID()}`,
+          generationId: String(payload.generationId ?? ''),
+          providerId: payload.providerId,
+          providerMode: payload.providerMode ?? null,
+          providerJobId: payload.providerJobId ?? null,
+          providerEventId: payload.providerEventId ?? null,
+          sourceType: payload.sourceType,
+          idempotencyKey,
+          payloadHash: payload.payloadHash ?? null,
+          previousStatus: payload.previousStatus ?? null,
+          normalizedStatus: payload.normalizedStatus ?? null,
+          action: payload.action ?? 'noop',
+          reasonCode: payload.reasonCode ?? null,
+          sideEffectPlan: payload.sideEffectPlan ?? undefined,
+          sideEffectResult: payload.sideEffectResult ?? undefined,
+          errorPreview: payload.errorPreview ?? null,
+          receivedAt: payload.receivedAt ? new Date(payload.receivedAt) : undefined,
+          appliedAt: payload.appliedAt ? new Date(payload.appliedAt) : null,
+        },
+      })
+      await recordAudit({
+        actor,
+        action: 'creative.provider_replay.recorded',
+        resourceType: 'creative_provider_replay_ledger',
+        resourceId: row.id,
+        metadata: {
+          generationId: row.generationId,
+          providerId: row.providerId,
+          providerJobId: row.providerJobId,
+          sourceType: row.sourceType,
+          action: row.action,
+          reasonCode: row.reasonCode,
+        },
+      })
+      return {
+        created: true,
+        replay: getCreativeProviderReplayDto(row),
+      }
+    },
+    markApplied: async (id, sideEffectResult = {}, actor) => {
+      const row = await client.creativeProviderReplayLedger.update({
+        where: { id: String(id) },
+        data: {
+          action: 'applied',
+          sideEffectResult,
+          appliedAt: new Date(),
+        },
+      })
+      await recordAudit({
+        actor,
+        action: 'creative.provider_replay.applied',
+        resourceType: 'creative_provider_replay_ledger',
+        resourceId: row.id,
+        metadata: {
+          generationId: row.generationId,
+          providerId: row.providerId,
+          providerJobId: row.providerJobId,
+          sourceType: row.sourceType,
+        },
+      })
+      return getCreativeProviderReplayDto(row)
+    },
+    findByIdempotencyKey: async (idempotencyKey) => {
+      const row = await client.creativeProviderReplayLedger.findUnique({
+        where: { idempotencyKey: String(idempotencyKey ?? '') },
+      })
+      return row ? getCreativeProviderReplayDto(row) : null
+    },
+    listForGeneration: async (generationId, options = {}) => {
+      const limit = options.limit ?? 20
+      const cursor = options.cursor
+        ? await client.creativeProviderReplayLedger.findUnique({ where: { id: String(options.cursor) }, select: { id: true } })
+        : null
+      const rows = await client.creativeProviderReplayLedger.findMany({
+        where: { generationId: String(generationId) },
+        orderBy: { receivedAt: 'desc' },
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor.id }, skip: 1 } : {}),
+      })
+      const pageRows = rows.slice(0, limit)
+      return {
+        items: pageRows.map(getCreativeProviderReplayDto),
+        nextCursor: rows.length > limit && pageRows.length > 0 ? pageRows[pageRows.length - 1].id : null,
+        limit,
+      }
+    },
+  }
+
   const creativeCredits = {
     reserve: async (payload, actor) => {
       const actorUser = payload.actorHandle || actor?.handle ? await findUserByHandle(payload.actorHandle ?? actor.handle) : null
@@ -5454,6 +5558,7 @@ const createPrismaRepository = async (fallbackRepository) => {
     points,
     notifications,
     creativeGenerations,
+    creativeProviderReplays,
     creativeCredits,
     creativeQuota,
     media,

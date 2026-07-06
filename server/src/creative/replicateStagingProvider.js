@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import { HttpError } from '../common/errors/httpError.js'
+import { buildProviderLifecycleReplay } from './providerLifecycleReplay.js'
 import { safeProviderFailure } from './providerAdapterContract.js'
 
 const defaultModel = 'replicate:image:staging'
@@ -11,8 +12,6 @@ const defaultEstimateSource = 'pre_dispatch_estimate'
 const defaultEstimateConfidence = 'estimated'
 const defaultUsageUnit = 'prediction_seconds'
 const supportedReplicateStatuses = ['starting', 'processing', 'succeeded', 'failed', 'canceled', 'cancelled']
-const terminalGenerationStatuses = ['completed', 'failed', 'cancelled', 'review_required']
-
 const digestForPrediction = (request, actor, prediction) =>
   createHash('sha256')
     .update(JSON.stringify({
@@ -377,70 +376,22 @@ export const buildReplicateLifecycleReplay = ({
     now,
     options,
   })
-  const previousStatus = currentRecord?.status ?? null
   const providerJobId = prediction?.id ?? generation.providerJobId ?? null
-  if (currentRecord?.providerJobId && providerJobId && currentRecord.providerJobId !== providerJobId) {
-    throw new HttpError(409, 'CREATIVE_PROVIDER_JOB_MISMATCH', 'Provider lifecycle replay targeted a different job', {
-      currentProviderJobId: currentRecord.providerJobId,
-      incomingProviderJobId: providerJobId,
-      providerId: provider.id,
-    })
-  }
-
-  const currentTerminal = terminalGenerationStatuses.includes(previousStatus)
-  const staleQueuedReplay = previousStatus === 'running' && generation.status === 'queued'
-  const duplicateRunningReplay = previousStatus === 'running' && generation.status === 'running'
-  const duplicateQueuedReplay = previousStatus === 'queued' && generation.status === 'queued'
-  const ignored = currentTerminal || staleQueuedReplay || duplicateRunningReplay || duplicateQueuedReplay
-  const terminal = terminalGenerationStatuses.includes(generation.status)
   const outputDigest = outputDigestForPrediction(prediction)
   const idempotencyKey = `replicate:${providerJobId ?? generation.id}:${generation.status}:${outputDigest ?? 'no-output'}`
 
-  if (ignored) {
-    return {
-      generation,
-      previousStatus,
-      nextStatus: previousStatus,
-      changed: false,
-      terminal: currentTerminal,
-      ignored: true,
-      reason: currentTerminal ? 'terminal_record' : 'duplicate_or_stale_replay',
-      idempotencyKey,
-      outputDigest,
-      actions: {
-        markRunning: false,
-        complete: false,
-        fail: false,
-        cancel: false,
-        persistOutputs: false,
-        settleCredits: false,
-        refundCredits: false,
-        linkOutputAssets: false,
-      },
-    }
-  }
-
-  return {
+  const replay = buildProviderLifecycleReplay({
+    currentRecord,
     generation,
-    previousStatus,
-    nextStatus: generation.status,
-    changed: previousStatus !== generation.status,
-    terminal,
-    ignored: false,
-    reason: null,
+    providerId: provider.id,
+    providerJobId,
     idempotencyKey,
     outputDigest,
-    actions: {
-      markRunning: generation.status === 'running',
-      complete: generation.status === 'completed',
-      fail: generation.status === 'failed',
-      cancel: generation.status === 'cancelled',
-      persistOutputs: generation.status === 'completed' && generation.outputs.length > 0,
-      settleCredits: generation.status === 'completed' && generation.outputs.length > 0,
-      refundCredits: generation.status === 'failed' || generation.status === 'cancelled',
-      linkOutputAssets: generation.status === 'completed' && generation.outputs.length > 0,
-    },
-  }
+  })
+
+  return replay.reason === 'duplicate_non_terminal' || replay.reason === 'stale_replay'
+    ? { ...replay, reason: 'duplicate_or_stale_replay' }
+    : replay
 }
 
 export const createReplicateStagingPrediction = async ({

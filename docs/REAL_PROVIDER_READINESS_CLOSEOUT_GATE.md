@@ -33,7 +33,7 @@ A future first real image provider adapter may start only if it is:
 - default-disabled in production
 - covered by provider adapter contract tests
 - covered by cost metadata/budget guard tests
-- covered by provider callback/polling replay tests before async execution is enabled
+- covered by the durable replay ledger and lifecycle reducer foundation, with callback/polling route and worker tests before async execution is enabled
 - documented in Notion before implementation starts
 
 ### Production Enablement

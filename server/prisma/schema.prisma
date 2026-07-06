@@ -127,6 +127,13 @@ enum CreativeCreditLedgerStatus {
   cancelled
 }
 
+enum CreativeProviderReplayAction {
+  applied
+  ignored
+  rejected
+  noop
+}
+
 model AuditEvent {
   id           String         @id @default(cuid())
   actorType    AuditActorType @map("actor_type")
@@ -548,6 +555,7 @@ model CreativeGeneration {
   updatedAt           DateTime                 @updatedAt @map("updated_at")
 
   actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  providerReplays CreativeProviderReplayLedger[]
 
   @@index([actorId, createdAt])
   @@index([actorHandle, createdAt])
@@ -555,6 +563,37 @@ model CreativeGeneration {
   @@index([providerId, createdAt])
   @@index([status, createdAt])
   @@map("creative_generations")
+}
+
+model CreativeProviderReplayLedger {
+  id               String                       @id @default(cuid())
+  generationId     String                       @map("generation_id")
+  providerId       String                       @map("provider_id")
+  providerMode     String?                      @map("provider_mode")
+  providerJobId    String?                      @map("provider_job_id")
+  providerEventId  String?                      @map("provider_event_id")
+  sourceType       String                       @map("source_type")
+  idempotencyKey   String                       @unique @map("idempotency_key")
+  payloadHash      String?                      @map("payload_hash")
+  previousStatus   CreativeGenerationStatus?    @map("previous_status")
+  normalizedStatus CreativeGenerationStatus?    @map("normalized_status")
+  action           CreativeProviderReplayAction
+  reasonCode       String?                      @map("reason_code")
+  sideEffectPlan   Json?                        @map("side_effect_plan")
+  sideEffectResult Json?                        @map("side_effect_result")
+  errorPreview     String?                      @map("error_preview")
+  receivedAt       DateTime                     @default(now()) @map("received_at")
+  appliedAt        DateTime?                    @map("applied_at")
+  createdAt        DateTime                     @default(now()) @map("created_at")
+  updatedAt        DateTime                     @updatedAt @map("updated_at")
+
+  generation CreativeGeneration @relation(fields: [generationId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, providerEventId])
+  @@index([generationId, receivedAt])
+  @@index([providerId, providerJobId, normalizedStatus])
+  @@index([sourceType, action, receivedAt])
+  @@map("creative_provider_replay_ledger")
 }
 
 model CreativeCreditLedger {

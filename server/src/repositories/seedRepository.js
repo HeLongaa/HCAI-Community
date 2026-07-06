@@ -16,6 +16,7 @@ import {
   serializeAdminReview,
   serializeAuditEvent,
   serializeCreativeGeneration,
+  serializeCreativeProviderReplay,
   serializeLedgerEntry,
   serializeLibraryItem,
   serializeMediaAsset,
@@ -56,6 +57,8 @@ const sessionByRefreshToken = new Map()
 const emailAccountByEmail = new Map()
 const oauthAccountByProviderKey = new Map()
 const creativeGenerationsById = new Map()
+const creativeProviderReplayLedgerById = new Map()
+const creativeProviderReplayLedgerByIdempotencyKey = new Map()
 const creativeCreditLedgerById = new Map()
 const creativeQuotaWindowsById = new Map()
 const creativeQuotaReservationsById = new Map()
@@ -1023,6 +1026,33 @@ const makeCreativeGenerationRecord = (payload, patch = {}) => {
     startedAt: payload.startedAt ?? null,
     completedAt: payload.completedAt ?? null,
     failedAt: payload.failedAt ?? null,
+    createdAt: payload.createdAt ?? now,
+    updatedAt: now,
+    ...patch,
+  }
+}
+
+const makeCreativeProviderReplayRecord = (payload, patch = {}) => {
+  const now = new Date().toISOString()
+  return {
+    id: payload.id ?? `provider-replay-${randomUUID()}`,
+    generationId: String(payload.generationId ?? ''),
+    providerId: payload.providerId,
+    providerMode: payload.providerMode ?? null,
+    providerJobId: payload.providerJobId ?? null,
+    providerEventId: payload.providerEventId ?? null,
+    sourceType: payload.sourceType,
+    idempotencyKey: payload.idempotencyKey,
+    payloadHash: payload.payloadHash ?? null,
+    previousStatus: payload.previousStatus ?? null,
+    normalizedStatus: payload.normalizedStatus ?? null,
+    action: payload.action ?? 'noop',
+    reasonCode: payload.reasonCode ?? null,
+    sideEffectPlan: payload.sideEffectPlan ?? null,
+    sideEffectResult: payload.sideEffectResult ?? null,
+    errorPreview: payload.errorPreview ?? null,
+    receivedAt: payload.receivedAt ?? now,
+    appliedAt: payload.appliedAt ?? null,
     createdAt: payload.createdAt ?? now,
     updatedAt: now,
     ...patch,
@@ -2581,6 +2611,68 @@ export const createSeedRepository = () => ({
         .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
         .map(serializeCreativeGeneration)
       return paginateByCursor(filtered, options)
+    },
+  },
+  creativeProviderReplays: {
+    record: (payload, actor) => {
+      const idempotencyKey = String(payload.idempotencyKey ?? '')
+      const existingId = creativeProviderReplayLedgerByIdempotencyKey.get(idempotencyKey)
+      const existing = existingId ? creativeProviderReplayLedgerById.get(existingId) : null
+      if (existing) {
+        return {
+          created: false,
+          replay: serializeCreativeProviderReplay(existing),
+        }
+      }
+
+      const record = makeCreativeProviderReplayRecord({ ...payload, idempotencyKey })
+      creativeProviderReplayLedgerById.set(record.id, record)
+      creativeProviderReplayLedgerByIdempotencyKey.set(record.idempotencyKey, record.id)
+      recordAudit(actor, 'creative.provider_replay.recorded', 'creative_provider_replay_ledger', record.id, {
+        generationId: record.generationId,
+        providerId: record.providerId,
+        providerJobId: record.providerJobId,
+        sourceType: record.sourceType,
+        action: record.action,
+        reasonCode: record.reasonCode,
+      })
+      return {
+        created: true,
+        replay: serializeCreativeProviderReplay(record),
+      }
+    },
+    markApplied: (id, sideEffectResult = {}, actor) => {
+      const current = creativeProviderReplayLedgerById.get(String(id))
+      if (!current) {
+        return null
+      }
+      const updated = {
+        ...current,
+        action: 'applied',
+        sideEffectResult,
+        appliedAt: current.appliedAt ?? new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      creativeProviderReplayLedgerById.set(updated.id, updated)
+      recordAudit(actor, 'creative.provider_replay.applied', 'creative_provider_replay_ledger', updated.id, {
+        generationId: updated.generationId,
+        providerId: updated.providerId,
+        providerJobId: updated.providerJobId,
+        sourceType: updated.sourceType,
+      })
+      return serializeCreativeProviderReplay(updated)
+    },
+    findByIdempotencyKey: (idempotencyKey) => {
+      const id = creativeProviderReplayLedgerByIdempotencyKey.get(String(idempotencyKey ?? ''))
+      const record = id ? creativeProviderReplayLedgerById.get(id) : null
+      return record ? serializeCreativeProviderReplay(record) : null
+    },
+    listForGeneration: (generationId, options = {}) => {
+      const items = [...creativeProviderReplayLedgerById.values()]
+        .filter((record) => record.generationId === String(generationId))
+        .sort((left, right) => new Date(right.receivedAt).getTime() - new Date(left.receivedAt).getTime())
+        .map(serializeCreativeProviderReplay)
+      return paginateByCursor(items, options)
     },
   },
   creativeCredits: {
