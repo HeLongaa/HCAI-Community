@@ -2,7 +2,7 @@
 
 This document closes the third real-provider preflight task: define the requirements, permissions, audit events, notifications, idempotency rules, and rollback semantics for future Admin creative generation mutations.
 
-The current Admin generation history surface remains read-only. This document does not add mutation endpoints, Admin UI controls, provider API calls, payment-provider refunds, retry workers, polling routes, or webhook handlers.
+The current Admin generation history surface remains read-only. This document does not add mutation endpoints, Admin UI controls, provider API calls, payment-provider refunds, retry workers, polling routes, or webhook handlers. Provider spend metadata and budget alarm requirements are defined separately in `docs/REAL_PROVIDER_COST_METADATA_AND_BUDGET_ALARMS.md`.
 
 ## Current Boundary
 

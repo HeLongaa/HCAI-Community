@@ -136,6 +136,8 @@ Initial metric families include:
 - `newchat_operation_lease_skipped_runs_total`
 - `newchat_operation_lease_renew_failures_total`
 
+Future creative provider cost metrics are planned in `docs/REAL_PROVIDER_COST_METADATA_AND_BUDGET_ALARMS.md`. They should use low-cardinality labels only and must not expose generation ids, provider job ids, prompt hashes, raw error text, or user ids as labels.
+
 ## Security Alerts
 
 Use `GET /api/admin/security/alerts` to inspect active alert summaries.
@@ -218,6 +220,14 @@ Media scan:
 Worker leases:
 
 - `operation_lease_skipped_runs_total{key}`
+- `operation_lease_renew_failures_total{key}`
+
+Future creative provider spend:
+
+- `creative_provider_cost_estimated_total{provider,workspace,currency,confidence}`
+- `creative_provider_cost_actual_total{provider,workspace,currency,confidence}`
+- `creative_provider_budget_alerts_total{provider,workspace,severity,type}`
+- `creative_provider_cost_anomalies_total{provider,workspace,type,severity}`
 - `operation_lease_renew_failures_total{key}`
 
 Admin workflow:

@@ -67,7 +67,7 @@ Non-goals:
 
 ### 3. Admin Generation Mutation Requirements
 
-Status: in progress.
+Status: complete in PR #27.
 
 Deliverables:
 
@@ -91,12 +91,21 @@ Non-goals:
 
 ### 4. Provider Cost Metadata And Budget Alarms
 
+Status: in progress.
+
 Deliverables:
 
+- `docs/REAL_PROVIDER_COST_METADATA_AND_BUDGET_ALARMS.md`
 - provider cost metadata schema
 - safe Admin visibility boundary
 - budget threshold and anomaly alert policy
 - metrics and audit mapping
+
+Current recommendation:
+
+- Keep product creative credits separate from provider spend metadata.
+- Store estimate/actual cost with confidence, usage unit, pricing snapshot, and budget scope.
+- Fail closed before paid dispatch when estimate, currency, budget scope, or cap state is missing.
 
 Non-goals:
 
