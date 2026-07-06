@@ -1,0 +1,110 @@
+import { buildCreativeProviderConfig, buildEnv } from '../server/src/config/env.js'
+
+const args = new Set(process.argv.slice(2))
+const profile = [...args].find((arg) => arg.startsWith('--profile='))?.split('=')[1] ?? 'env'
+const mode = [...args].find((arg) => arg.startsWith('--mode='))?.split('=')[1] ?? 'preflight'
+
+const stagingPreflightFixture = {
+  NODE_ENV: 'production',
+  ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+  CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+  CREATIVE_PROVIDER_MODE: 'disabled',
+  CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED: 'true',
+  CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+  CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-fixture-token',
+  CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+}
+
+const stagingAdapterShellFixture = {
+  ...stagingPreflightFixture,
+  CREATIVE_PROVIDER_MODE: 'replicate_staging',
+  CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED: 'false',
+}
+
+const selectSource = () => {
+  if (profile === 'env') return process.env
+  if (profile === 'fixture' && mode === 'preflight') return stagingPreflightFixture
+  if (profile === 'fixture' && mode === 'adapter-shell') return stagingAdapterShellFixture
+  throw new Error('Unsupported creative staging smoke options. Use --profile=env|fixture and --mode=preflight|adapter-shell')
+}
+
+const check = (checks, name, pass, detail = '') => {
+  checks.push({ name, pass: Boolean(pass), detail })
+}
+
+const summarize = (env, config, provider) => ({
+  nodeEnv: env.nodeEnv,
+  creativeProvider: {
+    mode: config.providerMode,
+    runtimeEnv: config.runtimeEnv,
+    enabled: config.enabled,
+    defaultProviderId: config.defaultProviderId,
+  },
+  stagingPreflight: {
+    enabled: config.stagingPreflight.enabled,
+    imageProvider: config.stagingPreflight.imageProvider || null,
+    apiTokenConfigured: config.stagingPreflight.apiTokenConfigured,
+  },
+  replicateStagingProvider: provider
+    ? {
+        configured: provider.configured,
+        enabled: provider.enabled,
+        externalCredentialsConfigured: provider.externalCredentialsConfigured,
+        stagingOnly: provider.stagingOnly,
+        productionDenied: provider.productionDenied,
+        adapterImplemented: provider.adapterImplemented,
+        networkCallsEnabled: provider.networkCallsEnabled,
+      }
+    : null,
+})
+
+const source = selectSource()
+let env
+let config
+try {
+  env = buildEnv(source)
+  config = buildCreativeProviderConfig(source)
+} catch (error) {
+  console.error(`Creative staging smoke failed during environment parsing: ${error.message}`)
+  process.exit(1)
+}
+
+const provider = config.providers.find((candidate) => candidate.id === 'replicate-staging') ?? null
+const checks = []
+
+check(checks, 'production runtime parity', env.nodeEnv === 'production', `NODE_ENV=${env.nodeEnv}`)
+check(checks, 'creative runtime is staging', env.creativeProviderRuntimeEnv === 'staging', `CREATIVE_PROVIDER_RUNTIME_ENV=${env.creativeProviderRuntimeEnv}`)
+check(checks, 'staging provider candidate is Replicate', env.creativeStagingImageProvider === 'replicate', `CREATIVE_STAGING_IMAGE_PROVIDER=${env.creativeStagingImageProvider || '<unset>'}`)
+check(checks, 'staging provider token configured as secret presence only', env.hasCreativeStagingProviderApiToken, 'token value is not printed')
+check(checks, 'replicate staging provider safe metadata exists', Boolean(provider), 'provider id replicate-staging')
+check(checks, 'replicate staging provider is never enabled by smoke', provider?.enabled === false, 'provider.enabled must stay false')
+check(checks, 'replicate staging provider remains staging-only', provider?.stagingOnly === true && provider?.productionDenied === true, 'stagingOnly=true productionDenied=true')
+check(checks, 'replicate staging provider network calls disabled', provider?.networkCallsEnabled === false, 'networkCallsEnabled=false')
+check(checks, 'replicate staging adapter not production-wired', provider?.adapterImplemented === false, 'adapterImplemented=false')
+
+if (mode === 'preflight') {
+  check(checks, 'preflight uses disabled provider mode', env.creativeProviderMode === 'disabled', `CREATIVE_PROVIDER_MODE=${env.creativeProviderMode}`)
+  check(checks, 'staging preflight flag enabled', env.creativeStagingProviderPreflightEnabled, 'CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true')
+  check(checks, 'creative generation remains globally disabled', config.enabled === false, 'config.enabled=false')
+} else if (mode === 'adapter-shell') {
+  check(checks, 'adapter shell uses explicit replicate_staging mode', env.creativeProviderMode === 'replicate_staging', `CREATIVE_PROVIDER_MODE=${env.creativeProviderMode}`)
+  check(checks, 'adapter shell does not require preflight flag', env.creativeStagingProviderPreflightEnabled === false, 'CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=false')
+  check(checks, 'adapter shell remains default-disabled', config.enabled === false, 'config.enabled=false')
+} else {
+  throw new Error('Unsupported creative staging smoke mode. Use preflight or adapter-shell')
+}
+
+const failed = checks.filter((item) => !item.pass)
+
+console.log(`Creative staging smoke profile: ${profile}`)
+console.log(`Creative staging smoke mode: ${mode}`)
+for (const item of checks) {
+  console.log(`${item.pass ? 'PASS' : 'FAIL'} ${item.name}${item.detail ? ` (${item.detail})` : ''}`)
+}
+console.log('Safe summary:')
+console.log(JSON.stringify(summarize(env, config, provider), null, 2))
+
+if (failed.length > 0) {
+  console.error(`Creative staging smoke failed: ${failed.length} check(s) failed`)
+  process.exit(1)
+}
