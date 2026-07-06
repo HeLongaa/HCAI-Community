@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   buildReplicateImagePredictionPayload,
   buildReplicateProviderCostMetadata,
+  buildReplicateLifecycleReplay,
   createReplicateStagingPrediction,
   mapReplicatePredictionToCreativeGeneration,
 } from './replicateStagingProvider.js'
@@ -280,4 +281,238 @@ test('createReplicateStagingPrediction converts mocked client errors to failed c
   assert.equal(generation.errorMessagePreview.includes('replicate-token'), false)
   assert.equal(generation.errorMessagePreview.includes('<redacted>'), true)
   assert.doesNotThrow(() => assertCreativeProviderAdapterContract(generation, { request, provider }))
+})
+
+test('buildReplicateLifecycleReplay emits idempotent async lifecycle actions', () => {
+  const queued = buildReplicateLifecycleReplay({
+    currentRecord: null,
+    request,
+    provider,
+    actor,
+    prediction: {
+      id: 'pred_lifecycle_1',
+      status: 'starting',
+    },
+    source: budgetSource,
+    now: new Date('2026-07-06T00:04:00.000Z'),
+  })
+  assert.equal(queued.nextStatus, 'queued')
+  assert.equal(queued.changed, true)
+  assert.equal(queued.actions.markRunning, false)
+  assert.equal(queued.actions.persistOutputs, false)
+  assert.equal(queued.idempotencyKey, 'replicate:pred_lifecycle_1:queued:no-output')
+
+  const running = buildReplicateLifecycleReplay({
+    currentRecord: {
+      id: queued.generation.id,
+      status: 'queued',
+      providerJobId: 'pred_lifecycle_1',
+    },
+    request,
+    provider,
+    actor,
+    prediction: {
+      id: 'pred_lifecycle_1',
+      status: 'processing',
+    },
+    source: budgetSource,
+    now: new Date('2026-07-06T00:05:00.000Z'),
+  })
+  assert.equal(running.nextStatus, 'running')
+  assert.equal(running.actions.markRunning, true)
+  assert.equal(running.actions.persistOutputs, false)
+  assert.equal(running.actions.settleCredits, false)
+
+  const completed = buildReplicateLifecycleReplay({
+    currentRecord: {
+      id: queued.generation.id,
+      status: 'running',
+      providerJobId: 'pred_lifecycle_1',
+    },
+    request,
+    provider,
+    actor,
+    prediction: {
+      id: 'pred_lifecycle_1',
+      status: 'succeeded',
+      output: ['https://replicate.example/lifecycle-1.png'],
+      metrics: { predict_time: 1.5 },
+      costUsd: 0.2,
+    },
+    source: budgetSource,
+    now: new Date('2026-07-06T00:06:00.000Z'),
+  })
+  assert.equal(completed.nextStatus, 'completed')
+  assert.equal(completed.terminal, true)
+  assert.equal(completed.actions.complete, true)
+  assert.equal(completed.actions.persistOutputs, true)
+  assert.equal(completed.actions.settleCredits, true)
+  assert.equal(completed.actions.refundCredits, false)
+  assert.equal(completed.outputDigest.length, 64)
+  assert.doesNotThrow(() => assertCreativeProviderAdapterContract(completed.generation, { request, provider }))
+})
+
+test('buildReplicateLifecycleReplay suppresses duplicate terminal replays before side effects', () => {
+  const replay = buildReplicateLifecycleReplay({
+    currentRecord: {
+      id: 'gen_replicate_existing',
+      status: 'completed',
+      providerJobId: 'pred_duplicate_1',
+      outputAssetIds: ['media-existing-1'],
+      credit: { status: 'settled', ledgerId: 'credit-existing-1' },
+    },
+    request,
+    provider,
+    actor,
+    prediction: {
+      id: 'pred_duplicate_1',
+      status: 'succeeded',
+      output: ['https://replicate.example/duplicate-1.png'],
+      metrics: { predict_time: 1.5 },
+      costUsd: 0.2,
+    },
+    source: budgetSource,
+    now: new Date('2026-07-06T00:07:00.000Z'),
+  })
+
+  assert.equal(replay.ignored, true)
+  assert.equal(replay.reason, 'terminal_record')
+  assert.equal(replay.nextStatus, 'completed')
+  assert.equal(replay.actions.complete, false)
+  assert.equal(replay.actions.persistOutputs, false)
+  assert.equal(replay.actions.settleCredits, false)
+  assert.equal(replay.actions.linkOutputAssets, false)
+})
+
+test('buildReplicateLifecycleReplay suppresses duplicate and stale non-terminal replays', () => {
+  const duplicateRunning = buildReplicateLifecycleReplay({
+    currentRecord: {
+      id: 'gen_replicate_running',
+      status: 'running',
+      providerJobId: 'pred_running_1',
+    },
+    request,
+    provider,
+    actor,
+    prediction: {
+      id: 'pred_running_1',
+      status: 'processing',
+    },
+    source: budgetSource,
+    now: new Date('2026-07-06T00:08:00.000Z'),
+  })
+  assert.equal(duplicateRunning.ignored, true)
+  assert.equal(duplicateRunning.reason, 'duplicate_or_stale_replay')
+  assert.equal(duplicateRunning.actions.markRunning, false)
+
+  const staleQueued = buildReplicateLifecycleReplay({
+    currentRecord: {
+      id: 'gen_replicate_running',
+      status: 'running',
+      providerJobId: 'pred_running_1',
+    },
+    request,
+    provider,
+    actor,
+    prediction: {
+      id: 'pred_running_1',
+      status: 'starting',
+    },
+    source: budgetSource,
+    now: new Date('2026-07-06T00:09:00.000Z'),
+  })
+  assert.equal(staleQueued.ignored, true)
+  assert.equal(staleQueued.nextStatus, 'running')
+  assert.equal(staleQueued.actions.markRunning, false)
+})
+
+test('buildReplicateLifecycleReplay maps failed and cancelled replays to one refund signal', () => {
+  const failed = buildReplicateLifecycleReplay({
+    currentRecord: {
+      id: 'gen_replicate_running',
+      status: 'running',
+      providerJobId: 'pred_failed_replay_1',
+    },
+    request,
+    provider,
+    actor,
+    prediction: {
+      id: 'pred_failed_replay_1',
+      status: 'failed',
+      error: 'Provider failed with token=replicate-token',
+    },
+    source: budgetSource,
+    now: new Date('2026-07-06T00:10:00.000Z'),
+  })
+  assert.equal(failed.nextStatus, 'failed')
+  assert.equal(failed.actions.fail, true)
+  assert.equal(failed.actions.refundCredits, true)
+  assert.equal(failed.actions.settleCredits, false)
+  assert.equal(failed.generation.errorMessagePreview.includes('replicate-token'), false)
+
+  const duplicateFailed = buildReplicateLifecycleReplay({
+    currentRecord: {
+      id: 'gen_replicate_failed',
+      status: 'failed',
+      providerJobId: 'pred_failed_replay_1',
+      credit: { status: 'refunded', ledgerId: 'credit-refunded-1' },
+    },
+    request,
+    provider,
+    actor,
+    prediction: {
+      id: 'pred_failed_replay_1',
+      status: 'failed',
+      error: 'Provider failed again with token=replicate-token',
+    },
+    source: budgetSource,
+    now: new Date('2026-07-06T00:11:00.000Z'),
+  })
+  assert.equal(duplicateFailed.ignored, true)
+  assert.equal(duplicateFailed.actions.refundCredits, false)
+
+  const cancelled = buildReplicateLifecycleReplay({
+    currentRecord: {
+      id: 'gen_replicate_running',
+      status: 'running',
+      providerJobId: 'pred_cancelled_1',
+    },
+    request,
+    provider,
+    actor,
+    prediction: {
+      id: 'pred_cancelled_1',
+      status: 'canceled',
+    },
+    source: budgetSource,
+    now: new Date('2026-07-06T00:12:00.000Z'),
+  })
+  assert.equal(cancelled.nextStatus, 'cancelled')
+  assert.equal(cancelled.actions.cancel, true)
+  assert.equal(cancelled.actions.refundCredits, true)
+})
+
+test('buildReplicateLifecycleReplay rejects provider job mismatches', () => {
+  assert.throws(
+    () => buildReplicateLifecycleReplay({
+      currentRecord: {
+        id: 'gen_replicate_running',
+        status: 'running',
+        providerJobId: 'pred_expected',
+      },
+      request,
+      provider,
+      actor,
+      prediction: {
+        id: 'pred_other',
+        status: 'processing',
+      },
+      source: budgetSource,
+      now: new Date('2026-07-06T00:13:00.000Z'),
+    }),
+    (error) => error.code === 'CREATIVE_PROVIDER_JOB_MISMATCH' &&
+      error.statusCode === 409 &&
+      error.details.currentProviderJobId === 'pred_expected' &&
+      error.details.incomingProviderJobId === 'pred_other',
+  )
 })

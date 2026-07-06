@@ -32,6 +32,8 @@ The Replicate staging client contract is tested with an injected mocked client o
 
 The mocked contract also requires provider cost estimate and daily budget cap metadata before any injected client dispatch. Missing estimate, missing cap, or projected spend above the cap fails closed before the mocked client is called. Budget metadata remains staging-scoped and low-cardinality: `CREATIVE_STAGING_PROVIDER_BUDGET_SCOPE=staging:replicate:image`, `CREATIVE_STAGING_PROVIDER_ESTIMATE_USD`, `CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD`, `CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD`, and `CREATIVE_STAGING_PROVIDER_BUDGET_THRESHOLD_PERCENT`.
 
+Async lifecycle replay is also contract-tested without route wiring. Replicate-like `starting`, `processing`, `succeeded`, `failed`, and `canceled` events map to internal `queued`, `running`, `completed`, `failed`, and `cancelled` states. Duplicate terminal replays, duplicate running replays, and stale queued replays return no-op action signals so later webhook or polling wiring can avoid duplicate output persistence, credit settlement, or refunds.
+
 Preflight-only metadata:
 
 - `CREATIVE_PROVIDER_RUNTIME_ENV`: one of `development`, `test`, `ci`, `staging`, or `production`. This can differ from `NODE_ENV`; staging deployments can still run optimized `NODE_ENV=production` while setting this value to `staging`.
@@ -49,6 +51,7 @@ Fail-closed rules:
 - Production smoke allows only `CREATIVE_PROVIDER_MODE=mock` or `disabled`; `replicate_staging` is production-denied.
 - Replicate staging client contract blocks dispatch when provider cost estimate or daily budget cap metadata is missing.
 - Replicate staging client contract blocks dispatch when projected daily spend exceeds the configured cap.
+- Replicate staging lifecycle replay rejects provider job id mismatches and suppresses duplicate/stale events before side-effect actions.
 - Staging provider preflight requires `CREATIVE_STAGING_PROVIDER_API_TOKEN`.
 - The staging token is rejected unless preflight is enabled or the guarded `replicate_staging` shell is selected.
 - The staging token is rejected outside `CREATIVE_PROVIDER_RUNTIME_ENV=staging`.

@@ -11,6 +11,7 @@ const defaultEstimateSource = 'pre_dispatch_estimate'
 const defaultEstimateConfidence = 'estimated'
 const defaultUsageUnit = 'prediction_seconds'
 const supportedReplicateStatuses = ['starting', 'processing', 'succeeded', 'failed', 'canceled', 'cancelled']
+const terminalGenerationStatuses = ['completed', 'failed', 'cancelled', 'review_required']
 
 const digestForPrediction = (request, actor, prediction) =>
   createHash('sha256')
@@ -261,6 +262,11 @@ const normalizeOutputs = (prediction) => {
   return output ? [output] : []
 }
 
+const outputDigestForPrediction = (prediction) => {
+  const outputs = normalizeOutputs(prediction).map((output) => String(output))
+  return outputs.length > 0 ? stableHash(outputs) : null
+}
+
 const buildOutput = ({ request, prediction, digest, output, index }) => ({
   id: `out_replicate_${digest}_${index + 1}`,
   type: 'image',
@@ -349,6 +355,91 @@ export const mapReplicatePredictionToCreativeGeneration = ({
           failedAt: now.toISOString(),
         }
       : {}),
+  }
+}
+
+export const buildReplicateLifecycleReplay = ({
+  currentRecord = null,
+  request,
+  provider,
+  actor,
+  prediction,
+  source = process.env,
+  now = new Date(),
+  options = {},
+}) => {
+  const generation = mapReplicatePredictionToCreativeGeneration({
+    request,
+    provider,
+    actor,
+    prediction,
+    source,
+    now,
+    options,
+  })
+  const previousStatus = currentRecord?.status ?? null
+  const providerJobId = prediction?.id ?? generation.providerJobId ?? null
+  if (currentRecord?.providerJobId && providerJobId && currentRecord.providerJobId !== providerJobId) {
+    throw new HttpError(409, 'CREATIVE_PROVIDER_JOB_MISMATCH', 'Provider lifecycle replay targeted a different job', {
+      currentProviderJobId: currentRecord.providerJobId,
+      incomingProviderJobId: providerJobId,
+      providerId: provider.id,
+    })
+  }
+
+  const currentTerminal = terminalGenerationStatuses.includes(previousStatus)
+  const staleQueuedReplay = previousStatus === 'running' && generation.status === 'queued'
+  const duplicateRunningReplay = previousStatus === 'running' && generation.status === 'running'
+  const duplicateQueuedReplay = previousStatus === 'queued' && generation.status === 'queued'
+  const ignored = currentTerminal || staleQueuedReplay || duplicateRunningReplay || duplicateQueuedReplay
+  const terminal = terminalGenerationStatuses.includes(generation.status)
+  const outputDigest = outputDigestForPrediction(prediction)
+  const idempotencyKey = `replicate:${providerJobId ?? generation.id}:${generation.status}:${outputDigest ?? 'no-output'}`
+
+  if (ignored) {
+    return {
+      generation,
+      previousStatus,
+      nextStatus: previousStatus,
+      changed: false,
+      terminal: currentTerminal,
+      ignored: true,
+      reason: currentTerminal ? 'terminal_record' : 'duplicate_or_stale_replay',
+      idempotencyKey,
+      outputDigest,
+      actions: {
+        markRunning: false,
+        complete: false,
+        fail: false,
+        cancel: false,
+        persistOutputs: false,
+        settleCredits: false,
+        refundCredits: false,
+        linkOutputAssets: false,
+      },
+    }
+  }
+
+  return {
+    generation,
+    previousStatus,
+    nextStatus: generation.status,
+    changed: previousStatus !== generation.status,
+    terminal,
+    ignored: false,
+    reason: null,
+    idempotencyKey,
+    outputDigest,
+    actions: {
+      markRunning: generation.status === 'running',
+      complete: generation.status === 'completed',
+      fail: generation.status === 'failed',
+      cancel: generation.status === 'cancelled',
+      persistOutputs: generation.status === 'completed' && generation.outputs.length > 0,
+      settleCredits: generation.status === 'completed' && generation.outputs.length > 0,
+      refundCredits: generation.status === 'failed' || generation.status === 'cancelled',
+      linkOutputAssets: generation.status === 'completed' && generation.outputs.length > 0,
+    },
   }
 }
 
