@@ -3786,6 +3786,33 @@ const createPrismaRepository = async (fallbackRepository) => {
       })
       return getCreativeProviderReplayDto(row)
     },
+    markSideEffectResult: async (id, sideEffectResult = {}, actor) => {
+      const completed = Boolean(sideEffectResult.completed)
+      const failed = sideEffectResult.operations?.find?.((operation) => operation.status === 'failed') ?? null
+      const row = await client.creativeProviderReplayLedger.update({
+        where: { id: String(id) },
+        data: {
+          action: completed ? 'applied' : 'rejected',
+          sideEffectResult,
+          errorPreview: completed ? null : failed?.errorPreview ?? null,
+          appliedAt: completed ? new Date() : undefined,
+        },
+      })
+      await recordAudit({
+        actor,
+        action: 'creative.provider_replay.side_effect_result_recorded',
+        resourceType: 'creative_provider_replay_ledger',
+        resourceId: row.id,
+        metadata: {
+          generationId: row.generationId,
+          providerId: row.providerId,
+          providerJobId: row.providerJobId,
+          sourceType: row.sourceType,
+          action: row.action,
+        },
+      })
+      return getCreativeProviderReplayDto(row)
+    },
     findByIdempotencyKey: async (idempotencyKey) => {
       const row = await client.creativeProviderReplayLedger.findUnique({
         where: { idempotencyKey: String(idempotencyKey ?? '') },

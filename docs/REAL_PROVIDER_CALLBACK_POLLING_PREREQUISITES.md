@@ -6,7 +6,7 @@ Current decision: **no-go for provider callbacks, polling workers, and manual re
 
 This package is documentation only. It does not add a provider SDK, HTTP client, webhook endpoint, polling worker, provider network call, Admin mutation endpoint, payment refund flow, or production paid-provider path.
 
-Implementation status: the repository now has a durable replay ledger schema/repository foundation, a pure lifecycle replay reducer, provider callback auth/parser pure functions, provider polling lease/stop-condition pure functions, and provider lifecycle side-effect plan/executor pure functions with fixture tests for mocked/fixture-only provider lifecycle decisions. Provider callback routes, polling worker intervals, provider status HTTP reads, manual replay endpoints, concrete side-effect repository wiring, and real provider network calls remain disabled and unimplemented.
+Implementation status: the repository now has a durable replay ledger schema/repository foundation, a pure lifecycle replay reducer, provider callback auth/parser pure functions, provider polling lease/stop-condition pure functions, provider lifecycle side-effect plan/executor pure functions, and fixture-only replay-ledger integration helpers that record side-effect plans/results without provider credentials. Provider callback routes, polling worker intervals, provider status HTTP reads, manual replay endpoints, concrete notification/audit repository wiring, and real provider network calls remain disabled and unimplemented.
 
 ## Scope
 
@@ -254,8 +254,8 @@ Callback and polling code cannot be enabled until targeted tests cover:
 - Quota commit/release has stable side-effect operation keys and is not duplicated after partial replay.
 - Credit settlement/refund has stable side-effect operation keys and is not duplicated after partial replay.
 - Notification and audit source ids are represented as stable side-effect operation keys.
-- Partial side-effect failure can be replayed without duplicating completed side effects in fixture executor tests.
-- Fixture integration tests use a mocked provider client only.
+- Partial side-effect failure can be replayed without duplicating completed side effects in fixture executor and replay-ledger integration tests.
+- Fixture integration tests write replay ledger plans/results using mocked provider data only.
 - CI passes without real provider credentials.
 
 ## No-Go Checklist
@@ -279,9 +279,9 @@ No-go for provider callback, polling, or manual replay if any are true:
 
 A future implementation task should start with mocked-client tests only:
 
-1. Add fixture-only integration tests that write replay ledger rows and side-effect results without provider credentials.
-2. Add mocked provider-status client tests without real provider credentials or network calls.
-3. Add concrete notification/audit repository wiring behind stable source keys.
+1. Add mocked provider-status client tests without real provider credentials or network calls.
+2. Add concrete notification/audit repository wiring behind stable source keys.
+3. Add manual replay authorization/parser tests without route wiring.
 4. Add worker interval wiring only after lease, stop-condition, replay ledger, lifecycle reducer, and side-effect executor tests all pass.
 5. Add callback route wiring only after auth/parser tests, replay ledger, lifecycle reducer, and side-effect executor tests all pass.
 6. Add smoke and quality-gate documentation only after the route or worker exists.
