@@ -15,6 +15,7 @@ import { dispatchSecurityAlert } from '../security/alertDispatcher.js'
 import {
   serializeAdminReview,
   serializeAuditEvent,
+  serializeCreativeGeneration,
   serializeLedgerEntry,
   serializeLibraryItem,
   serializeMediaAsset,
@@ -54,6 +55,7 @@ import {
 const sessionByRefreshToken = new Map()
 const emailAccountByEmail = new Map()
 const oauthAccountByProviderKey = new Map()
+const creativeGenerationsById = new Map()
 
 const getAccountByHandle = (handle) => seedStore.demoAccountByHandle.get(handle) ?? null
 const getAccountById = (id) => seedStore.demoAccounts.find((account) => account.id === id) ?? null
@@ -989,6 +991,57 @@ const mediaSecurityMetadata = (asset, patch = {}) => ({
     ...patch,
   },
 })
+
+const makeCreativeGenerationRecord = (payload, patch = {}) => {
+  const now = new Date().toISOString()
+  return {
+    id: String(payload.id),
+    actorId: payload.actorId ?? null,
+    actorHandle: payload.actorHandle ?? null,
+    workspace: payload.workspace,
+    mode: payload.mode,
+    providerId: payload.providerId,
+    providerMode: payload.providerMode ?? null,
+    status: payload.status ?? 'queued',
+    promptHash: payload.promptHash,
+    promptPreview: payload.promptPreview ?? null,
+    inputAssetIds: payload.inputAssetIds ?? [],
+    parameterKeys: payload.parameterKeys ?? [],
+    outputAssetIds: payload.outputAssetIds ?? [],
+    usage: payload.usage ?? null,
+    quota: payload.quota ?? null,
+    safety: payload.safety ?? null,
+    policy: payload.policy ?? null,
+    providerRequestId: payload.providerRequestId ?? null,
+    providerJobId: payload.providerJobId ?? null,
+    errorCode: payload.errorCode ?? null,
+    errorMessagePreview: payload.errorMessagePreview ?? null,
+    startedAt: payload.startedAt ?? null,
+    completedAt: payload.completedAt ?? null,
+    failedAt: payload.failedAt ?? null,
+    createdAt: payload.createdAt ?? now,
+    updatedAt: now,
+    ...patch,
+  }
+}
+
+const patchCreativeGeneration = (id, patch, actor, auditAction) => {
+  const current = creativeGenerationsById.get(String(id))
+  if (!current) {
+    return null
+  }
+  const updated = {
+    ...current,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  }
+  creativeGenerationsById.set(updated.id, updated)
+  recordAudit(actor, auditAction, 'creative_generation', updated.id, {
+    status: updated.status,
+    outputAssetIds: updated.outputAssetIds,
+  })
+  return serializeCreativeGeneration(updated)
+}
 
 const mediaAssetScanStatus = (asset) => asset.metadata?.security?.scanStatus ?? 'pending'
 const mediaScanJobStatus = (asset) => {
@@ -2381,6 +2434,58 @@ export const createSeedRepository = () => ({
         role,
         permissions: [...permissionIds],
       }
+    },
+  },
+  creativeGenerations: {
+    create: (payload, actor) => {
+      const existing = creativeGenerationsById.get(String(payload.id))
+      if (existing) {
+        return serializeCreativeGeneration(existing)
+      }
+      const record = makeCreativeGenerationRecord(payload)
+      creativeGenerationsById.set(record.id, record)
+      recordAudit(actor, 'creative.generation.created', 'creative_generation', record.id, {
+        workspace: record.workspace,
+        mode: record.mode,
+        providerId: record.providerId,
+        status: record.status,
+      })
+      return serializeCreativeGeneration(record)
+    },
+    markRunning: (id, patch = {}, actor) => patchCreativeGeneration(String(id), {
+      ...patch,
+      status: 'running',
+      startedAt: patch.startedAt ?? new Date().toISOString(),
+    }, actor, 'creative.generation.running'),
+    linkOutputAssets: (id, assetIds = [], actor) => {
+      const current = creativeGenerationsById.get(String(id))
+      const nextAssetIds = [...new Set([...(current?.outputAssetIds ?? []), ...assetIds.filter(Boolean)])]
+      return patchCreativeGeneration(String(id), { outputAssetIds: nextAssetIds }, actor, 'creative.generation.outputs_linked')
+    },
+    complete: (id, patch = {}, actor) => patchCreativeGeneration(String(id), {
+      ...patch,
+      status: patch.status ?? 'completed',
+      completedAt: patch.completedAt ?? new Date().toISOString(),
+    }, actor, 'creative.generation.completed'),
+    fail: (id, patch = {}, actor) => patchCreativeGeneration(String(id), {
+      ...patch,
+      status: 'failed',
+      failedAt: patch.failedAt ?? new Date().toISOString(),
+    }, actor, 'creative.generation.failed'),
+    find: (id) => {
+      const record = creativeGenerationsById.get(String(id))
+      return record ? serializeCreativeGeneration(record) : null
+    },
+    list: (options = {}) => {
+      const filtered = [...creativeGenerationsById.values()]
+        .filter((record) => !options.actorHandle || record.actorHandle === options.actorHandle)
+        .filter((record) => !options.workspace || record.workspace === options.workspace)
+        .filter((record) => !options.mode || record.mode === options.mode)
+        .filter((record) => !options.providerId || record.providerId === options.providerId)
+        .filter((record) => !options.status || record.status === options.status)
+        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+        .map(serializeCreativeGeneration)
+      return paginateByCursor(filtered, options)
     },
   },
   media: {

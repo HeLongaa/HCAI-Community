@@ -556,11 +556,40 @@ export type ApiCreativeGenerationOutput = {
   }
 }
 
+export type ApiCreativeGenerationRecord = {
+  id: string
+  actorId: string | null
+  actorHandle: string | null
+  workspace: CreativeWorkspace
+  mode: string
+  providerId: string
+  providerMode: string | null
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'review_required' | string
+  promptHash: string
+  promptPreview: string | null
+  inputAssetIds: string[]
+  parameterKeys: string[]
+  outputAssetIds: string[]
+  usage?: unknown
+  quota?: unknown
+  safety?: unknown
+  policy?: unknown
+  providerRequestId: string | null
+  providerJobId: string | null
+  errorCode: string | null
+  errorMessagePreview: string | null
+  startedAt: string | null
+  completedAt: string | null
+  failedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export type ApiCreativeGeneration = {
   id: string
   workspace: CreativeWorkspace
   mode: string
-  status: 'completed' | string
+  status: 'completed' | 'review_required' | string
   provider: ApiCreativeProvider
   prompt: string
   inputAssetIds: string[]
@@ -604,6 +633,7 @@ export type ApiCreativeGeneration = {
     }
   }
   createdAt: string
+  generationRecord?: ApiCreativeGenerationRecord | null
 }
 
 export type ApiPost = {

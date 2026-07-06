@@ -99,6 +99,13 @@ test('POST /api/creative/generations persists mock provider output through media
     assert.equal(payload.data.outputs[0].url.startsWith('mock://creative/image/'), true)
     assert.equal(payload.data.usage.providerCostCents, 0)
     assert.equal(payload.data.createdBy.handle, 'promptlin')
+    assert.equal(payload.data.generationRecord.id, payload.data.id)
+    assert.equal(payload.data.generationRecord.status, 'completed')
+    assert.equal(payload.data.generationRecord.actorHandle, 'promptlin')
+    assert.equal(payload.data.generationRecord.promptHash.length, 64)
+    assert.equal(payload.data.generationRecord.promptPreview, 'A neon marketplace poster')
+    assert.deepEqual(payload.data.generationRecord.outputAssetIds, [payload.data.outputs[0].storage.mediaAssetId])
+    assert.equal('prompt' in payload.data.generationRecord, false)
 
     const assetId = payload.data.outputs[0].storage.mediaAssetId
     const gatedDownload = await requestJson(server.url, `/api/media/assets/${assetId}/download`, {
@@ -210,6 +217,8 @@ test('POST /api/creative/generations routes policy review outputs to media revie
 
     assert.equal(status, 200)
     assert.equal(payload.data.safety.reviewRequired, true)
+    assert.equal(payload.data.status, 'review_required')
+    assert.equal(payload.data.generationRecord.status, 'review_required')
     assert.equal(payload.data.outputs[0].storage.scanStatus, 'review')
     assert.equal(payload.data.outputs[0].mediaAsset.scanStatus, 'review')
 

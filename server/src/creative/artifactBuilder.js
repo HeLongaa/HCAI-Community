@@ -1,7 +1,5 @@
-import { createHash } from 'node:crypto'
+import { promptPreview, sha256 } from './generationRecords.js'
 
-const promptPreview = (prompt) => String(prompt ?? '').replace(/\s+/g, ' ').trim().slice(0, 160)
-const sha256 = (value) => createHash('sha256').update(String(value ?? '')).digest('hex')
 const escapeXml = (value) =>
   String(value ?? '')
     .replace(/&/g, '&amp;')

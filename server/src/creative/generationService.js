@@ -8,6 +8,7 @@ import {
 import { executeMockCreativeGeneration } from './mockProvider.js'
 import { buildCreativeArtifactObject } from './artifactBuilder.js'
 import { applyCreativeGenerationPolicy } from './policy.js'
+import { statusForPersistedGeneration } from './generationRecords.js'
 
 export const getCreativeProviderCatalog = (source = process.env) => {
   const registry = createCreativeProviderRegistry(source)
@@ -79,6 +80,7 @@ export const persistCreativeGenerationOutputs = async (generation, { actor, medi
   }))
   return {
     ...generation,
+    status: statusForPersistedGeneration({ ...generation, outputs }),
     outputs,
   }
 }

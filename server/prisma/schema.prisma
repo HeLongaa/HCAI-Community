@@ -105,6 +105,15 @@ enum MediaScanJobStatus {
   failed
 }
 
+enum CreativeGenerationStatus {
+  queued
+  running
+  completed
+  failed
+  cancelled
+  review_required
+}
+
 model AuditEvent {
   id           String         @id @default(cuid())
   actorType    AuditActorType @map("actor_type")
@@ -235,6 +244,7 @@ model User {
   mediaAssets             MediaAsset[]
   notifications           Notification[]
   mediaScanJobsReviewed   MediaScanJob[]   @relation("MediaScanJobReviewer")
+  creativeGenerations     CreativeGeneration[]
 
   @@map("users")
 }
@@ -490,6 +500,44 @@ model MediaScanJob {
   @@index([scanStatus])
   @@index([externalScanId])
   @@map("media_scan_jobs")
+}
+
+model CreativeGeneration {
+  id                  String                   @id
+  actorId             String?                  @map("actor_id")
+  actorHandle         String?                  @map("actor_handle")
+  workspace           String
+  mode                String
+  providerId          String                   @map("provider_id")
+  providerMode        String?                  @map("provider_mode")
+  status              CreativeGenerationStatus
+  promptHash          String                   @map("prompt_hash")
+  promptPreview       String?                  @map("prompt_preview")
+  inputAssetIds       String[]                 @map("input_asset_ids")
+  parameterKeys       String[]                 @map("parameter_keys")
+  outputAssetIds      String[]                 @map("output_asset_ids")
+  usage               Json?
+  quota               Json?
+  safety              Json?
+  policy              Json?
+  providerRequestId   String?                  @map("provider_request_id")
+  providerJobId       String?                  @map("provider_job_id")
+  errorCode           String?                  @map("error_code")
+  errorMessagePreview String?                  @map("error_message_preview")
+  startedAt           DateTime?                @map("started_at")
+  completedAt         DateTime?                @map("completed_at")
+  failedAt            DateTime?                @map("failed_at")
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  updatedAt           DateTime                 @updatedAt @map("updated_at")
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([actorHandle, createdAt])
+  @@index([workspace, createdAt])
+  @@index([providerId, createdAt])
+  @@index([status, createdAt])
+  @@map("creative_generations")
 }
 
 model Notification {
