@@ -6,7 +6,7 @@ Current decision: **no-go for provider callbacks, polling workers, and manual re
 
 This package is documentation only. It does not add a provider SDK, HTTP client, webhook endpoint, polling worker, provider network call, Admin mutation endpoint, payment refund flow, or production paid-provider path.
 
-Implementation status: the repository now has a durable replay ledger schema/repository foundation, a pure lifecycle replay reducer, and provider callback auth/parser pure functions with fixture tests for mocked/fixture-only provider lifecycle decisions. Provider callback routes, polling workers, manual replay endpoints, side-effect executors, and real provider network calls remain disabled and unimplemented.
+Implementation status: the repository now has a durable replay ledger schema/repository foundation, a pure lifecycle replay reducer, provider callback auth/parser pure functions, and provider polling lease/stop-condition pure functions with fixture tests for mocked/fixture-only provider lifecycle decisions. Provider callback routes, polling worker intervals, provider status HTTP reads, manual replay endpoints, side-effect executors, and real provider network calls remain disabled and unimplemented.
 
 ## Scope
 
@@ -243,8 +243,8 @@ Callback and polling code cannot be enabled until targeted tests cover:
 - Signature validation accepts valid timestamped signatures.
 - Signature validation rejects missing, malformed, stale, future-skewed, and mismatched signatures.
 - Request body and content-type guards reject unsafe callback payloads.
-- Polling worker lease prevents duplicate side-effect application across instances.
-- Polling worker stops terminal, mismatched, expired, or missing generations.
+- Polling worker lease plan prevents duplicate side-effect application across instances before any worker interval is enabled.
+- Polling worker stop-condition plan stops terminal, mismatched, expired, missing, unsafe-runtime, unsupported-provider, or missing-job generations.
 - Lifecycle reducer maps queued, running, completed, failed, and cancelled provider states.
 - Duplicate terminal replay returns no-op.
 - Duplicate non-terminal replay returns no-op.
@@ -279,11 +279,12 @@ No-go for provider callback, polling, or manual replay if any are true:
 
 A future implementation task should start with mocked-client tests only:
 
-1. Add polling worker lease tests without enabling a worker interval.
-2. Add side-effect plan execution behind idempotent repository calls.
-3. Add fixture-only integration tests that write replay ledger rows without provider credentials.
-4. Add callback route wiring only after auth/parser tests, replay ledger, lifecycle reducer, and side-effect executor tests all pass.
-5. Add smoke and quality-gate documentation only after the route or worker exists.
-6. Complete the external-call approval package before any real provider network call.
+1. Add side-effect plan execution behind idempotent repository calls.
+2. Add fixture-only integration tests that write replay ledger rows without provider credentials.
+3. Add mocked provider-status client tests without real provider credentials or network calls.
+4. Add worker interval wiring only after lease, stop-condition, replay ledger, lifecycle reducer, and side-effect executor tests all pass.
+5. Add callback route wiring only after auth/parser tests, replay ledger, lifecycle reducer, and side-effect executor tests all pass.
+6. Add smoke and quality-gate documentation only after the route or worker exists.
+7. Complete the external-call approval package before any real provider network call.
 
 Do not broaden to production, Admin mutation controls, video/music/chat providers, or payment-provider reconciliation during the first callback/polling implementation.
