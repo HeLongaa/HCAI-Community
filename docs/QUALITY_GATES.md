@@ -63,6 +63,7 @@ Includes:
 - Prometheus-compatible metrics exporter configuration validation
 - worker topology and lease renewal sanity checks
 - external OAuth provider metadata validation
+- creative provider safety validation: production smoke must keep staging provider preflight disabled and must not expose real provider tokens
 
 The environment profile does not print secrets. It reports booleans, counts, provider modes, and safe operational metadata only.
 
@@ -89,6 +90,7 @@ For the real environment smoke, configure GitHub Environment variables and secre
 - Metrics exporter: `METRICS_EXPORTER_ENABLED`, `METRICS_EXPORTER_FORMAT`, optional secret `METRICS_EXPORTER_TOKEN`.
 - Worker topology: `API_EMBEDDED_WORKERS_ENABLED`, `MEDIA_SCAN_WORKER_*`, `TASK_STALE_SUBMISSION_WORKER_*`, `WORKER_LEASE_*`.
 - OAuth providers: `OAUTH_GOOGLE_*`, `OAUTH_DISCORD_*`, and/or `OAUTH_APPLE_*`.
+- Creative provider preflight: keep `CREATIVE_PROVIDER_MODE=mock` or `disabled` in production smoke. Use `CREATIVE_PROVIDER_RUNTIME_ENV=staging`, `CREATIVE_PROVIDER_MODE=disabled`, `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true`, `CREATIVE_STAGING_IMAGE_PROVIDER=replicate`, `CREATIVE_STAGING_PROVIDER_API_TOKEN`, and `CREATIVE_STAGING_PROVIDER_CONFIRMATION=staging-only` only in a dedicated staging environment.
 
 Use GitHub Secrets for credentials, shared secrets, tokens, webhook secrets, Slack webhook URLs, and private keys. Use GitHub Variables for non-secret URLs, ids, domains, counts, feature flags, and recipient lists unless your deployment policy treats them as sensitive.
 

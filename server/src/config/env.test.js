@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { buildEnv, buildMediaGovernanceConfig } from './env.js'
+import { buildCreativeProviderConfig, buildEnv, buildMediaGovernanceConfig } from './env.js'
 
 test('buildEnv allows development without managed token secrets', () => {
   assert.deepEqual(buildEnv({ NODE_ENV: 'development', PORT: '9999' }), {
@@ -12,8 +12,12 @@ test('buildEnv allows development without managed token secrets', () => {
     storageDriver: 'mock',
     mediaScanProvider: 'manual',
     creativeProviderMode: 'mock',
+    creativeProviderRuntimeEnv: 'development',
     creativeProviderDefaultId: 'mock',
     creativeProviderEnabled: true,
+    creativeStagingImageProvider: '',
+    creativeStagingProviderPreflightEnabled: false,
+    hasCreativeStagingProviderApiToken: false,
     mediaScanRequestAdapter: 'generic-webhook',
     hasMediaScanWebhookSecret: false,
     mediaScanRetryDelaySeconds: 300,
@@ -155,6 +159,7 @@ test('buildEnv accepts production token secret metadata', () => {
   assert.equal(env.storageDriver, 'mock')
   assert.equal(env.mediaScanProvider, 'manual')
   assert.equal(env.creativeProviderMode, 'mock')
+  assert.equal(env.creativeProviderRuntimeEnv, 'production')
   assert.equal(env.authCookieSecure, true)
 })
 
@@ -163,6 +168,64 @@ test('buildEnv validates and exposes creative provider settings', () => {
     () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'external' }),
     /CREATIVE_PROVIDER_MODE must be one of: mock, disabled/,
   )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_RUNTIME_ENV: 'preview' }),
+    /CREATIVE_PROVIDER_RUNTIME_ENV must be one of/,
+  )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', CREATIVE_STAGING_IMAGE_PROVIDER: 'vendor-x' }),
+    /CREATIVE_STAGING_IMAGE_PROVIDER must be one of: replicate/,
+  )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED: 'true' }),
+    /requires CREATIVE_PROVIDER_RUNTIME_ENV=staging/,
+  )
+  assert.throws(
+    () => buildEnv({
+      NODE_ENV: 'development',
+      CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+      CREATIVE_PROVIDER_MODE: 'mock',
+      CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED: 'true',
+    }),
+    /requires CREATIVE_PROVIDER_MODE=disabled/,
+  )
+  assert.throws(
+    () => buildEnv({
+      NODE_ENV: 'development',
+      CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+      CREATIVE_PROVIDER_MODE: 'disabled',
+      CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED: 'true',
+    }),
+    /CREATIVE_STAGING_IMAGE_PROVIDER is required/,
+  )
+  assert.throws(
+    () => buildEnv({
+      NODE_ENV: 'development',
+      CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+      CREATIVE_PROVIDER_MODE: 'disabled',
+      CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED: 'true',
+      CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+    }),
+    /CREATIVE_STAGING_PROVIDER_API_TOKEN is required/,
+  )
+  assert.throws(
+    () => buildEnv({
+      NODE_ENV: 'development',
+      CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+      CREATIVE_PROVIDER_MODE: 'disabled',
+      CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED: 'true',
+      CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+      CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-token',
+    }),
+    /CREATIVE_STAGING_PROVIDER_CONFIRMATION must be staging-only/,
+  )
+  assert.throws(
+    () => buildEnv({
+      NODE_ENV: 'development',
+      CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-token',
+    }),
+    /CREATIVE_STAGING_PROVIDER_API_TOKEN requires CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true/,
+  )
 
   const env = buildEnv({
     NODE_ENV: 'development',
@@ -170,8 +233,50 @@ test('buildEnv validates and exposes creative provider settings', () => {
   })
 
   assert.equal(env.creativeProviderMode, 'disabled')
+  assert.equal(env.creativeProviderRuntimeEnv, 'development')
   assert.equal(env.creativeProviderDefaultId, 'mock')
   assert.equal(env.creativeProviderEnabled, false)
+  assert.equal(env.creativeStagingImageProvider, '')
+  assert.equal(env.creativeStagingProviderPreflightEnabled, false)
+  assert.equal(env.hasCreativeStagingProviderApiToken, false)
+})
+
+test('buildEnv accepts staging-only creative provider preflight metadata without enabling real calls', () => {
+  const env = buildEnv({
+    NODE_ENV: 'production',
+    ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_PROVIDER_MODE: 'disabled',
+    CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED: 'true',
+    CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+    CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-token',
+    CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+  })
+
+  assert.equal(env.creativeProviderMode, 'disabled')
+  assert.equal(env.creativeProviderRuntimeEnv, 'staging')
+  assert.equal(env.creativeProviderEnabled, false)
+  assert.equal(env.creativeStagingImageProvider, 'replicate')
+  assert.equal(env.creativeStagingProviderPreflightEnabled, true)
+  assert.equal(env.hasCreativeStagingProviderApiToken, true)
+
+  const config = buildCreativeProviderConfig({
+    NODE_ENV: 'production',
+    ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_PROVIDER_MODE: 'disabled',
+    CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED: 'true',
+    CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+    CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-token',
+    CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+  })
+
+  assert.deepEqual(config.stagingPreflight, {
+    enabled: true,
+    imageProvider: 'replicate',
+    apiTokenConfigured: true,
+  })
+  assert.equal(config.enabled, false)
 })
 
 test('buildEnv validates and exposes rate-limit settings', () => {
@@ -616,6 +721,10 @@ test('deployment smoke accepts production auth, storage, scanner, and notificati
   assert.equal(env.accessTokenKeyId, '2026-07')
   assert.equal(env.storageDriver, 's3')
   assert.equal(env.mediaScanProvider, 'webhook')
+  assert.equal(env.creativeProviderMode, 'mock')
+  assert.equal(env.creativeProviderRuntimeEnv, 'production')
+  assert.equal(env.creativeStagingProviderPreflightEnabled, false)
+  assert.equal(env.hasCreativeStagingProviderApiToken, false)
   assert.equal(env.mediaScanRequestAdapter, 'clamav-http')
   assert.equal(env.hasMediaScanWebhookSecret, true)
   assert.equal(env.hasMediaScanRequestUrl, true)

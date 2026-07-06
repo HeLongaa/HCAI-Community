@@ -21,8 +21,12 @@ const storageRequiredKeys = ['STORAGE_ENDPOINT', 'STORAGE_REGION', 'STORAGE_BUCK
 const getStorageDriver = (source) => String(source.STORAGE_DRIVER ?? (source.STORAGE_BUCKET ? 's3' : 'mock')).trim().toLowerCase()
 const getMediaScanProvider = (source) => String(source.MEDIA_SCAN_PROVIDER ?? 'manual').trim().toLowerCase()
 const getCreativeProviderMode = (source) => String(source.CREATIVE_PROVIDER_MODE ?? 'mock').trim().toLowerCase()
+const getCreativeProviderRuntimeEnv = (source) =>
+  String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? source.DEPLOYMENT_ENV ?? source.NODE_ENV ?? 'development').trim().toLowerCase()
 const supportedMediaScanRequestAdapters = ['generic-webhook', 'clamav-http']
 const supportedCreativeProviderModes = ['mock', 'disabled']
+const supportedCreativeProviderRuntimeEnvs = ['development', 'test', 'ci', 'staging', 'production']
+const supportedCreativeStagingImageProviders = ['replicate']
 const getMediaScanRequestAdapter = (source) => String(source.MEDIA_SCAN_REQUEST_ADAPTER ?? 'generic-webhook').trim().toLowerCase()
 const supportedRateLimitStores = ['memory', 'redis']
 const supportedRateLimitFailureModes = ['fail_open', 'fail_closed']
@@ -85,6 +89,11 @@ export const buildEnv = (source = process.env) => {
   const storageDriver = getStorageDriver(source)
   const mediaScanProvider = getMediaScanProvider(source)
   const creativeProviderMode = getCreativeProviderMode(source)
+  const creativeProviderRuntimeEnv = getCreativeProviderRuntimeEnv(source)
+  const creativeStagingImageProvider = String(source.CREATIVE_STAGING_IMAGE_PROVIDER ?? '').trim().toLowerCase()
+  const creativeStagingProviderPreflightEnabled = boolFlag(source, 'CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED', false)
+  const hasCreativeStagingProviderApiToken = Boolean(String(source.CREATIVE_STAGING_PROVIDER_API_TOKEN ?? '').trim())
+  const creativeStagingProviderConfirmation = String(source.CREATIVE_STAGING_PROVIDER_CONFIRMATION ?? '').trim().toLowerCase()
   const mediaScanRequestAdapter = getMediaScanRequestAdapter(source)
   const rateLimitStore = getRateLimitStore(source)
   const rateLimitRedisUrl = getRedisUrl(source)
@@ -159,6 +168,35 @@ export const buildEnv = (source = process.env) => {
   if (!supportedCreativeProviderModes.includes(creativeProviderMode)) {
     throw new Error(`CREATIVE_PROVIDER_MODE must be one of: ${supportedCreativeProviderModes.join(', ')}`)
   }
+  if (!supportedCreativeProviderRuntimeEnvs.includes(creativeProviderRuntimeEnv)) {
+    throw new Error(`CREATIVE_PROVIDER_RUNTIME_ENV must be one of: ${supportedCreativeProviderRuntimeEnvs.join(', ')}`)
+  }
+  if (creativeStagingImageProvider && !supportedCreativeStagingImageProviders.includes(creativeStagingImageProvider)) {
+    throw new Error(`CREATIVE_STAGING_IMAGE_PROVIDER must be one of: ${supportedCreativeStagingImageProviders.join(', ')}`)
+  }
+  if (creativeStagingProviderPreflightEnabled) {
+    if (creativeProviderRuntimeEnv !== 'staging') {
+      throw new Error('CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
+    }
+    if (creativeProviderMode !== 'disabled') {
+      throw new Error('CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED requires CREATIVE_PROVIDER_MODE=disabled')
+    }
+    if (!creativeStagingImageProvider) {
+      throw new Error('CREATIVE_STAGING_IMAGE_PROVIDER is required when staging provider preflight is enabled')
+    }
+    if (!hasCreativeStagingProviderApiToken) {
+      throw new Error('CREATIVE_STAGING_PROVIDER_API_TOKEN is required when staging provider preflight is enabled')
+    }
+    if (creativeStagingProviderConfirmation !== 'staging-only') {
+      throw new Error('CREATIVE_STAGING_PROVIDER_CONFIRMATION must be staging-only when staging provider preflight is enabled')
+    }
+  }
+  if (hasCreativeStagingProviderApiToken && !creativeStagingProviderPreflightEnabled) {
+    throw new Error('CREATIVE_STAGING_PROVIDER_API_TOKEN requires CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true')
+  }
+  if (hasCreativeStagingProviderApiToken && creativeProviderRuntimeEnv !== 'staging') {
+    throw new Error('CREATIVE_STAGING_PROVIDER_API_TOKEN is only allowed with CREATIVE_PROVIDER_RUNTIME_ENV=staging')
+  }
   if (mediaScanProvider === 'webhook' && !String(source.MEDIA_SCAN_WEBHOOK_SECRET ?? '').trim()) {
     throw new Error('MEDIA_SCAN_WEBHOOK_SECRET is required when MEDIA_SCAN_PROVIDER=webhook')
   }
@@ -194,8 +232,12 @@ export const buildEnv = (source = process.env) => {
     storageDriver,
     mediaScanProvider,
     creativeProviderMode,
+    creativeProviderRuntimeEnv,
     creativeProviderDefaultId: 'mock',
     creativeProviderEnabled: creativeProviderMode !== 'disabled',
+    creativeStagingImageProvider,
+    creativeStagingProviderPreflightEnabled,
+    hasCreativeStagingProviderApiToken,
     mediaScanRequestAdapter,
     hasMediaScanWebhookSecret: Boolean(String(source.MEDIA_SCAN_WEBHOOK_SECRET ?? '').trim()),
     mediaScanRetryDelaySeconds,
@@ -454,8 +496,14 @@ export const buildCreativeProviderConfig = (source = process.env) => {
   const current = buildEnv(source)
   return {
     providerMode: current.creativeProviderMode,
+    runtimeEnv: current.creativeProviderRuntimeEnv,
     defaultProviderId: current.creativeProviderDefaultId,
     enabled: current.creativeProviderEnabled,
+    stagingPreflight: {
+      enabled: current.creativeStagingProviderPreflightEnabled,
+      imageProvider: current.creativeStagingImageProvider,
+      apiTokenConfigured: current.hasCreativeStagingProviderApiToken,
+    },
     providers: [
       {
         id: 'mock',

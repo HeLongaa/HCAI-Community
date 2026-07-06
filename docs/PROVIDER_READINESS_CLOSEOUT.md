@@ -130,7 +130,7 @@ The final UI slice was validated with:
 
 The next phase should be a real-provider readiness or staging-provider integration phase, not another provider-readiness accounting slice.
 
-The preflight plan lives in `docs/REAL_PROVIDER_PREFLIGHT_PLAN.md`.
+The preflight plan lives in `docs/REAL_PROVIDER_PREFLIGHT_PLAN.md`; the staging-only provider candidate and secrets strategy live in `docs/REAL_PROVIDER_STAGING_STRATEGY.md`.
 
 Recommended order:
 
