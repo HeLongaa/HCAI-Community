@@ -24,7 +24,7 @@ const getCreativeProviderMode = (source) => String(source.CREATIVE_PROVIDER_MODE
 const getCreativeProviderRuntimeEnv = (source) =>
   String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? source.DEPLOYMENT_ENV ?? source.NODE_ENV ?? 'development').trim().toLowerCase()
 const supportedMediaScanRequestAdapters = ['generic-webhook', 'clamav-http']
-const supportedCreativeProviderModes = ['mock', 'disabled']
+const supportedCreativeProviderModes = ['mock', 'disabled', 'replicate_staging']
 const supportedCreativeProviderRuntimeEnvs = ['development', 'test', 'ci', 'staging', 'production']
 const supportedCreativeStagingImageProviders = ['replicate']
 const getMediaScanRequestAdapter = (source) => String(source.MEDIA_SCAN_REQUEST_ADAPTER ?? 'generic-webhook').trim().toLowerCase()
@@ -191,8 +191,22 @@ export const buildEnv = (source = process.env) => {
       throw new Error('CREATIVE_STAGING_PROVIDER_CONFIRMATION must be staging-only when staging provider preflight is enabled')
     }
   }
-  if (hasCreativeStagingProviderApiToken && !creativeStagingProviderPreflightEnabled) {
-    throw new Error('CREATIVE_STAGING_PROVIDER_API_TOKEN requires CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true')
+  if (creativeProviderMode === 'replicate_staging') {
+    if (creativeProviderRuntimeEnv !== 'staging') {
+      throw new Error('CREATIVE_PROVIDER_MODE=replicate_staging requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
+    }
+    if (creativeStagingImageProvider !== 'replicate') {
+      throw new Error('CREATIVE_PROVIDER_MODE=replicate_staging requires CREATIVE_STAGING_IMAGE_PROVIDER=replicate')
+    }
+    if (!hasCreativeStagingProviderApiToken) {
+      throw new Error('CREATIVE_STAGING_PROVIDER_API_TOKEN is required when CREATIVE_PROVIDER_MODE=replicate_staging')
+    }
+    if (creativeStagingProviderConfirmation !== 'staging-only') {
+      throw new Error('CREATIVE_STAGING_PROVIDER_CONFIRMATION must be staging-only when CREATIVE_PROVIDER_MODE=replicate_staging')
+    }
+  }
+  if (hasCreativeStagingProviderApiToken && !creativeStagingProviderPreflightEnabled && creativeProviderMode !== 'replicate_staging') {
+    throw new Error('CREATIVE_STAGING_PROVIDER_API_TOKEN requires CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true or CREATIVE_PROVIDER_MODE=replicate_staging')
   }
   if (hasCreativeStagingProviderApiToken && creativeProviderRuntimeEnv !== 'staging') {
     throw new Error('CREATIVE_STAGING_PROVIDER_API_TOKEN is only allowed with CREATIVE_PROVIDER_RUNTIME_ENV=staging')
@@ -234,7 +248,7 @@ export const buildEnv = (source = process.env) => {
     creativeProviderMode,
     creativeProviderRuntimeEnv,
     creativeProviderDefaultId: 'mock',
-    creativeProviderEnabled: creativeProviderMode !== 'disabled',
+    creativeProviderEnabled: creativeProviderMode === 'mock',
     creativeStagingImageProvider,
     creativeStagingProviderPreflightEnabled,
     hasCreativeStagingProviderApiToken,
@@ -494,6 +508,9 @@ export const buildMediaGovernanceConfig = (source = process.env, policy = null) 
 
 export const buildCreativeProviderConfig = (source = process.env) => {
   const current = buildEnv(source)
+  const replicateStagingShellConfigured =
+    current.creativeProviderMode === 'replicate_staging' ||
+    (current.creativeStagingProviderPreflightEnabled && current.creativeStagingImageProvider === 'replicate')
   return {
     providerMode: current.creativeProviderMode,
     runtimeEnv: current.creativeProviderRuntimeEnv,
@@ -513,6 +530,20 @@ export const buildCreativeProviderConfig = (source = process.env) => {
         configured: current.creativeProviderMode === 'mock',
         externalCredentialsConfigured: false,
       },
+      ...(replicateStagingShellConfigured
+        ? [{
+            id: 'replicate-staging',
+            label: 'Replicate Image Staging Provider',
+            mode: 'replicate_staging',
+            enabled: false,
+            configured: current.creativeStagingImageProvider === 'replicate' && current.hasCreativeStagingProviderApiToken,
+            externalCredentialsConfigured: current.hasCreativeStagingProviderApiToken,
+            stagingOnly: true,
+            productionDenied: true,
+            adapterImplemented: false,
+            networkCallsEnabled: false,
+          }]
+        : []),
     ],
   }
 }
