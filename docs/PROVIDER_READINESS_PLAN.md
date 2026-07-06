@@ -2,6 +2,8 @@
 
 This document defines the follow-up phase after Phase 3 Track C closeout. The goal is to make the creative generation system ready for real provider integration without connecting any paid external provider yet.
 
+Provider readiness is now closed out for repository, fixture CI, and PR-ready handoff. The closeout summary lives in `docs/PROVIDER_READINESS_CLOSEOUT.md`.
+
 The current Track C baseline already has a creative provider abstraction, mock provider, Image Studio integration, generated media assets, scan/download governance, quota policy, moderation blocks, and policy review routing. Provider readiness adds the durable records and ledgers required before a real provider can safely spend money or run long-lived jobs.
 
 ## Objective
@@ -442,22 +444,37 @@ Deliverables:
 - Notion task status updates
 - explicit boundary for real provider integration
 
+Current implementation boundary:
+
+- `docs/PROVIDER_READINESS_CLOSEOUT.md` summarizes the completed provider-readiness implementation chain across PRs #18 through #23.
+- README and Phase 3 planning docs point to the closeout and classify provider readiness as closed.
+- The closeout explicitly preserves the boundary that real paid providers, provider-specific async job orchestration, external billing, and Admin retry/cancel/refund mutation controls remain deferred.
+- Notion status updates are part of the operating cadence, but require an active Notion OAuth session before Codex can write them.
+
 Validation:
 
 - `git diff --check`
 - `npm run check:quick`
 - `npm run check:deploy`
 
-## Open Decisions
+## Resolved And Deferred Decisions
 
-These decisions should be made in the first implementation PR before schema is finalized:
+Provider-readiness implementation resolved the accounting and read-only operations decisions needed before real provider work:
 
-1. **Dedicated credit ledger or point ledger extension:** recommended default is a dedicated creative credit ledger to avoid mixing task reward semantics with provider cost accounting.
-2. **Blocked generation records:** decide whether moderation/quota blocked attempts create generation records or audit events only.
-3. **Quota release policy:** decide whether provider failures release quota or count against daily usage. Recommended default: release quota on provider/persistence failure, commit quota on completed or review-required output.
-4. **Credit settlement on review-required output:** recommended default: settle credits because provider work completed, while download remains gated by media governance.
-5. **Admin permissions:** decide whether read-only generation history uses `admin:queue:read`, `admin:audit:read`, or a new creative admin permission.
-6. **Prompt retention:** recommended default: prompt hash and short preview only; no full prompt in Admin list or media metadata.
+1. **Dedicated credit ledger:** implemented as `creative_credit_ledger`, separate from task reward settlement.
+2. **Blocked generation records:** moderation-blocked and quota-exceeded requests do not reserve quota or credits; provider-executed attempts receive durable records.
+3. **Quota release policy:** provider or persistence failure before commit releases reserved quota; completed and review-required output commits quota.
+4. **Credit settlement on review-required output:** credits settle because provider work completed, while download remains gated by media governance.
+5. **Admin permissions:** read-only generation history uses `admin:audit:read`, matching existing privileged read-only operations surfaces.
+6. **Prompt retention:** Admin and media metadata expose prompt hash and short preview only; full raw prompts are not retained in the safe DTO.
+
+Deferred decisions for the next real-provider phase:
+
+- first real provider selection and staging-only rollout strategy
+- provider secret-management and environment protection
+- async job polling/webhook replay contract
+- provider-specific cost mapping and budget alarms
+- Admin retry, cancel, force-review, refund, and manual settlement permissions
 
 ## Quality Gate
 

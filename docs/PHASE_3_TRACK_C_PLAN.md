@@ -270,7 +270,7 @@ Current closeout slice:
 - Add `docs/PHASE_3_TRACK_C_CLOSEOUT.md`.
 - Update Phase 3 and README handoff links.
 - Record usable Image Studio flow, moderation block flow, policy review flow, and quota boundary.
-- Keep real provider, durable quota ledger, billing ledger, and broader workspace migration deferred.
+- Keep real provider integration, external billing/reconciliation, and broader workspace migration deferred.
 
 Exit criteria:
 
