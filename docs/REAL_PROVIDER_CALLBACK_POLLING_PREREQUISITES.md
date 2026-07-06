@@ -6,6 +6,8 @@ Current decision: **no-go for provider callbacks, polling workers, and manual re
 
 This package is documentation only. It does not add a provider SDK, HTTP client, webhook endpoint, polling worker, provider network call, Admin mutation endpoint, payment refund flow, or production paid-provider path.
 
+Implementation status: the repository now has a durable replay ledger schema/repository foundation and a pure lifecycle replay reducer for mocked/fixture-only provider lifecycle decisions. Provider callback routes, polling workers, manual replay endpoints, side-effect executors, and real provider network calls remain disabled and unimplemented.
+
 ## Scope
 
 Covered event sources:
@@ -277,12 +279,11 @@ No-go for provider callback, polling, or manual replay if any are true:
 
 A future implementation task should start with mocked-client tests only:
 
-1. Add the durable replay ledger model/repository.
-2. Add a pure lifecycle reducer that produces `applied`, `ignored`, `rejected`, and `noop` actions.
-3. Add route parser and signature tests without registering a production callback route.
-4. Add polling worker lease tests without enabling a worker interval.
-5. Add side-effect plan execution behind idempotent repository calls.
-6. Add smoke and quality-gate documentation only after the route or worker exists.
-7. Complete the external-call approval package before any real provider network call.
+1. Add route parser and signature tests without registering a production callback route.
+2. Add polling worker lease tests without enabling a worker interval.
+3. Add side-effect plan execution behind idempotent repository calls.
+4. Add fixture-only integration tests that write replay ledger rows without provider credentials.
+5. Add smoke and quality-gate documentation only after the route or worker exists.
+6. Complete the external-call approval package before any real provider network call.
 
 Do not broaden to production, Admin mutation controls, video/music/chat providers, or payment-provider reconciliation during the first callback/polling implementation.

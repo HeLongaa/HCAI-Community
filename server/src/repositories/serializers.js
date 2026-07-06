@@ -110,6 +110,29 @@ export const serializeCreativeGeneration = (generation) => ({
   updatedAt: generation.updatedAt ?? '',
 })
 
+export const serializeCreativeProviderReplay = (replay) => ({
+  id: String(replay.id),
+  generationId: replay.generationId,
+  providerId: replay.providerId,
+  providerMode: replay.providerMode ?? null,
+  providerJobId: replay.providerJobId ?? null,
+  providerEventId: replay.providerEventId ?? null,
+  sourceType: replay.sourceType,
+  idempotencyKey: replay.idempotencyKey,
+  payloadHash: replay.payloadHash ?? null,
+  previousStatus: replay.previousStatus ?? null,
+  normalizedStatus: replay.normalizedStatus ?? null,
+  action: replay.action,
+  reasonCode: replay.reasonCode ?? null,
+  sideEffectPlan: replay.sideEffectPlan ?? null,
+  sideEffectResult: replay.sideEffectResult ?? null,
+  errorPreview: replay.errorPreview ?? null,
+  receivedAt: replay.receivedAt ?? '',
+  appliedAt: replay.appliedAt ?? null,
+  createdAt: replay.createdAt ?? '',
+  updatedAt: replay.updatedAt ?? '',
+})
+
 export const serializeNotification = (notification) => ({
   id: String(notification.id),
   type: notification.type,

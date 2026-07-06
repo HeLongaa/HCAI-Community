@@ -212,6 +212,29 @@ export const getCreativeGenerationDto = (generation) => ({
   updatedAt: generation.updatedAt ? generation.updatedAt.toISOString() : '',
 })
 
+export const getCreativeProviderReplayDto = (replay) => ({
+  id: String(replay.id),
+  generationId: replay.generationId,
+  providerId: replay.providerId,
+  providerMode: replay.providerMode ?? null,
+  providerJobId: replay.providerJobId ?? null,
+  providerEventId: replay.providerEventId ?? null,
+  sourceType: replay.sourceType,
+  idempotencyKey: replay.idempotencyKey,
+  payloadHash: replay.payloadHash ?? null,
+  previousStatus: replay.previousStatus ?? null,
+  normalizedStatus: replay.normalizedStatus ?? null,
+  action: replay.action,
+  reasonCode: replay.reasonCode ?? null,
+  sideEffectPlan: replay.sideEffectPlan ?? null,
+  sideEffectResult: replay.sideEffectResult ?? null,
+  errorPreview: replay.errorPreview ?? null,
+  receivedAt: replay.receivedAt ? replay.receivedAt.toISOString() : '',
+  appliedAt: replay.appliedAt ? replay.appliedAt.toISOString() : null,
+  createdAt: replay.createdAt ? replay.createdAt.toISOString() : '',
+  updatedAt: replay.updatedAt ? replay.updatedAt.toISOString() : '',
+})
+
 export const getMediaScanJobDto = (job) => ({
   id: job.id,
   assetId: job.assetId,
