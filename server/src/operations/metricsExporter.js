@@ -6,6 +6,20 @@ const allowedLabelPattern = /^[a-z][a-z0-9_.:-]{0,63}$/
 
 const asArray = (value) => Array.isArray(value) ? value : []
 
+const providerBudgetReasonValues = [
+  'budget_threshold_crossed',
+  'dispatch_blocked',
+  'over_budget',
+  'missing_cost_estimate',
+  'missing_budget_cap',
+  'missing_usage',
+  'estimate_exceeded',
+  'estimate_exceeded_critical',
+  'currency_mismatch',
+  'zero_cost_anomaly',
+  'unknown',
+]
+
 const numeric = (value) => {
   const number = Number(value ?? 0)
   return Number.isFinite(number) ? number : 0
@@ -72,6 +86,35 @@ const addCountBy = (lines, name, help, items, labelName, allowedValues = null) =
   }
 }
 
+const addProviderBudgetBreakdown = (lines, prefix, label, summary = {}) => {
+  addGauge(lines, `${prefix}_total`, `Windowed creative provider ${label} count.`, summary.total)
+  addCountBy(lines, `${prefix}_by_severity_total`, `Windowed creative provider ${label} count by severity.`, summary.bySeverity, 'severity', ['info', 'warning', 'critical', 'unknown'])
+  addCountBy(lines, `${prefix}_by_provider_total`, `Windowed creative provider ${label} count by provider.`, summary.byProvider, 'provider')
+  addCountBy(lines, `${prefix}_by_workspace_total`, `Windowed creative provider ${label} count by workspace.`, summary.byWorkspace, 'workspace', ['image', 'video', 'music', 'chat', 'unknown'])
+}
+
+const addProviderBudgetMetrics = (lines, providerBudget = {}) => {
+  addProviderBudgetBreakdown(lines, 'newchat_creative_provider_budget_alerts', 'budget threshold alert', providerBudget.thresholdAlerts)
+  addCountBy(
+    lines,
+    'newchat_creative_provider_budget_alerts_by_threshold_total',
+    'Windowed creative provider budget threshold alert count by crossed threshold.',
+    asArray(providerBudget.thresholdAlerts?.byThreshold).map((item) => ({ ...item, key: `pct_${item.key}` })),
+    'threshold',
+  )
+  addProviderBudgetBreakdown(lines, 'newchat_creative_provider_budget_dispatch_blocked', 'budget dispatch block', providerBudget.dispatchBlocked)
+  addCountBy(lines, 'newchat_creative_provider_budget_dispatch_blocked_by_reason_total', 'Windowed creative provider budget dispatch block count by reason.', providerBudget.dispatchBlocked?.byReason, 'reason', providerBudgetReasonValues)
+  addProviderBudgetBreakdown(lines, 'newchat_creative_provider_cost_anomalies', 'cost anomaly', providerBudget.costAnomalies)
+  addCountBy(lines, 'newchat_creative_provider_cost_anomalies_by_reason_total', 'Windowed creative provider cost anomaly count by reason.', providerBudget.costAnomalies?.byReason, 'reason', providerBudgetReasonValues)
+
+  const currencies = asArray(providerBudget.spend?.byCurrency)
+  const currency = currencies.length === 1 ? safeMetricLabel(currencies[0].key) : currencies.length > 1 ? 'mixed' : 'unknown'
+  addGauge(lines, 'newchat_creative_provider_cost_estimated_total', 'Windowed observed creative provider estimated cost amount.', providerBudget.spend?.estimatedAmount, { currency, confidence: 'observed' })
+  addGauge(lines, 'newchat_creative_provider_cost_actual_total', 'Windowed observed creative provider actual cost amount.', providerBudget.spend?.actualAmount, { currency, confidence: 'observed' })
+  addGauge(lines, 'newchat_creative_provider_cost_projected_total', 'Windowed observed creative provider projected spend amount.', providerBudget.spend?.projectedSpendAmount, { currency, confidence: 'observed' })
+  addCountBy(lines, 'newchat_creative_provider_cost_observations_by_currency_total', 'Windowed creative provider cost observation count by currency.', currencies, 'currency')
+}
+
 const deliveryMetrics = (lines, prefix, summary = {}) => {
   addGauge(lines, `${prefix}_total`, 'Windowed delivery failure count.', summary.total)
   addCountBy(lines, `${prefix}_by_channel_total`, 'Windowed delivery failure count by channel.', summary.byChannel, 'channel', ['webhook', 'slack', 'email', 'unknown'])
@@ -103,6 +146,7 @@ export const buildPrometheusMetrics = (metrics = {}) => {
   addCountBy(lines, 'newchat_operation_lease_skipped_runs_by_key_total', 'Windowed worker job runs skipped by lease key.', metrics.operations?.leases?.skippedRuns?.byKey, 'key', ['media-scan-sweep', 'task-stale-submission-sweep'])
   addGauge(lines, 'newchat_operation_lease_renew_failures_total', 'Windowed worker lease renewal failure count.', metrics.operations?.leases?.renewFailures?.total)
   addCountBy(lines, 'newchat_operation_lease_renew_failures_by_key_total', 'Windowed worker lease renewal failures by lease key.', metrics.operations?.leases?.renewFailures?.byKey, 'key', ['media-scan-sweep', 'task-stale-submission-sweep'])
+  addProviderBudgetMetrics(lines, metrics.creativeProviderBudget)
   lines.push('')
   return lines.join('\n')
 }

@@ -2,7 +2,7 @@
 
 This plan defines how the fixture-only provider budget event plan should later connect to durable audit records, notifications, Admin operations metrics, and Prometheus-compatible metrics.
 
-Current decision: **audit persistence, internal notification routing, and Admin operations metrics are implemented; Prometheus metrics and external alerts remain deferred**. The repository has `server/src/creative/providerBudgetEvents.js`, which builds pure event plans from normalized provider cost metadata, `server/src/creative/providerBudgetAuditPersistence.js`, which persists safe audit records through an injected repository boundary, `server/src/repositories/providerBudgetNotificationWiring.js`, which derives safe internal notification payloads from persisted audit events, and `server/src/operations/metrics.js`, which aggregates safe provider budget audit events into Admin operations metrics. This document does not add Prometheus metrics, external alert delivery, Admin mutation controls, real provider SDKs, default HTTP clients, or provider network calls.
+Current decision: **audit persistence, internal notification routing, Admin operations metrics, and Prometheus-compatible exporter metrics are implemented; external alerts remain deferred**. The repository has `server/src/creative/providerBudgetEvents.js`, which builds pure event plans from normalized provider cost metadata, `server/src/creative/providerBudgetAuditPersistence.js`, which persists safe audit records through an injected repository boundary, `server/src/repositories/providerBudgetNotificationWiring.js`, which derives safe internal notification payloads from persisted audit events, `server/src/operations/metrics.js`, which aggregates safe provider budget audit events into Admin operations metrics, and `server/src/operations/metricsExporter.js`, which derives a safe external Prometheus subset from those aggregates. This document does not add external alert delivery, Admin mutation controls, real provider SDKs, default HTTP clients, or provider network calls.
 
 ## Current Fixture Baseline
 
@@ -22,7 +22,6 @@ These helpers produce:
 
 They do not:
 
-- expose Prometheus metrics
 - send Slack, webhook, or email alerts
 - create or poll real provider jobs
 
@@ -191,20 +190,34 @@ Still deferred:
 
 ## Phase 4: Prometheus Exporter
 
-Prometheus-compatible metrics should be derived from Admin operations metrics.
+Status: **implemented as a safe external subset**. Prometheus-compatible metrics are derived from Admin operations metrics, not from raw provider payloads.
 
-Recommended metric families:
+Implemented metric families:
 
-- `newchat_creative_provider_budget_alerts_total{provider,workspace,severity,type}`
-- `newchat_creative_provider_budget_dispatch_blocked_total{provider,workspace,reason}`
-- `newchat_creative_provider_cost_anomalies_total{provider,workspace,type,severity}`
-- `newchat_creative_provider_cost_estimated_total{provider,workspace,currency,confidence}`
-- `newchat_creative_provider_cost_actual_total{provider,workspace,currency,confidence}`
+- `newchat_creative_provider_budget_alerts_total`
+- `newchat_creative_provider_budget_alerts_by_severity_total{severity}`
+- `newchat_creative_provider_budget_alerts_by_provider_total{provider}`
+- `newchat_creative_provider_budget_alerts_by_workspace_total{workspace}`
+- `newchat_creative_provider_budget_alerts_by_threshold_total{threshold}`
+- `newchat_creative_provider_budget_dispatch_blocked_total`
+- `newchat_creative_provider_budget_dispatch_blocked_by_severity_total{severity}`
+- `newchat_creative_provider_budget_dispatch_blocked_by_provider_total{provider}`
+- `newchat_creative_provider_budget_dispatch_blocked_by_workspace_total{workspace}`
+- `newchat_creative_provider_budget_dispatch_blocked_by_reason_total{reason}`
+- `newchat_creative_provider_cost_anomalies_total`
+- `newchat_creative_provider_cost_anomalies_by_severity_total{severity}`
+- `newchat_creative_provider_cost_anomalies_by_provider_total{provider}`
+- `newchat_creative_provider_cost_anomalies_by_workspace_total{workspace}`
+- `newchat_creative_provider_cost_anomalies_by_reason_total{reason}`
+- `newchat_creative_provider_cost_estimated_total{currency,confidence}`
+- `newchat_creative_provider_cost_actual_total{currency,confidence}`
+- `newchat_creative_provider_cost_projected_total{currency,confidence}`
+- `newchat_creative_provider_cost_observations_by_currency_total{currency}`
 
 Label rules:
 
 - Allowed labels: provider, workspace, severity, type, reason, currency, confidence.
-- Optional label: budget scope only if it stays low-cardinality and is passed through `safeMetricLabel`.
+- Budget scope remains out of exporter labels to avoid accidental cardinality growth.
 - Forbidden labels: user id, generation id, provider job id, prompt hash, media asset id, raw error text, raw model version.
 
 ## Phase 5: External Alert Delivery
@@ -246,10 +259,8 @@ Implemented metrics tests:
 - Aggregates threshold, dispatch-blocked, and anomaly events by safe labels.
 - Does not expose generation ids or provider job ids as labels.
 - Adds operations handoff hints for critical budget events.
-
-Deferred metrics tests:
-
 - Exports Prometheus metrics with safe label fallback.
+- Keeps provider job ids, prompt hashes, unsafe workspace values, tokens, and unsupported reason codes out of exporter labels.
 
 Smoke and deploy tests:
 
@@ -262,7 +273,7 @@ Smoke and deploy tests:
 1. **Audit persistence**: add repository boundary and seed/Prisma parity tests. Implemented.
 2. **Notification routing**: create internal creative ops notifications from persisted events. Implemented.
 3. **Admin operations metrics**: aggregate provider budget events and expose drill-down filters. Implemented.
-4. **Prometheus exporter**: add safe metric families from operations metrics.
+4. **Prometheus exporter**: add safe metric families from operations metrics. Implemented.
 5. **External alert delivery**: separate phase only after explicit approval.
 
 ## No-Go Conditions
@@ -279,10 +290,10 @@ No-go for implementation if any are true:
 
 ## Next Suggested Implementation
 
-The safest next implementation is **Prometheus-compatible exporter metrics derived from Admin operations metrics**:
+The safest next implementation is **external alert delivery planning only, before any code that sends Slack/email/webhook messages**:
 
-- derive metric families from the existing `creativeProviderBudget` aggregate instead of raw provider payloads
-- enforce low-cardinality labels with provider, workspace, severity, reason, type, currency, and confidence only
-- keep external alert delivery, Admin mutation controls, provider callback/manual replay endpoints, and real provider calls deferred
+- define `CREATIVE_PROVIDER_ALERT_*` env names and smoke criteria
+- decide whether provider budget alerts should reuse existing audit-reader recipients or require a dedicated creative operations role
+- keep actual external delivery, Admin mutation controls, provider callback/manual replay endpoints, and real provider calls deferred until explicitly approved
 
-The durable audit source of truth, internal notification routing, and Admin read-only metrics now exist, so exporter work can build on safe aggregate evidence instead of provider internals.
+The durable audit source of truth, internal notification routing, Admin read-only metrics, and Prometheus-compatible exporter metrics now exist. External alert delivery should be treated as a separate approval boundary because it creates outbound side effects.
