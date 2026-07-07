@@ -8,6 +8,7 @@ import {
   buildProviderBudgetExternalAlertPayloads,
   buildProviderBudgetExternalAlertDispatchAuditRecords,
   dispatchProviderBudgetExternalAlerts,
+  persistProviderBudgetExternalAlertDispatchAuditEvents,
 } from './providerBudgetExternalAlerts.js'
 import { persistProviderBudgetAuditEvents } from './providerBudgetAuditPersistence.js'
 import { buildProviderBudgetEventPlan } from './providerBudgetEvents.js'
@@ -345,4 +346,146 @@ test('buildProviderBudgetExternalAlertDispatchAuditRecords maps dispatch results
   assert.equal(serialized.includes('api_key=provider-secret'), false)
   assert.equal(serialized.includes('ops.example.com'), false)
   assert.equal(serialized.includes('creative-ops@example.com'), false)
+})
+
+test('persistProviderBudgetExternalAlertDispatchAuditEvents records per-channel dispatch audit events and dedupes', async () => {
+  const repository = createSeedRepository()
+  const payload = buildProviderBudgetExternalAlertPayload({
+    id: 'audit-provider-budget-alert-5',
+    action: 'creative.provider_budget.threshold_crossed',
+    resourceType: 'creative_provider_budget',
+    resourceId: 'staging:replicate:image:external-alert-persist',
+    createdAt: '2026-07-07T06:00:00.000Z',
+    metadata: {
+      sourceKey: 'creative-provider-budget:audit-persist-safe:audit',
+      alertType: 'creative.provider_budget.threshold_80',
+      providerId: 'replicate',
+      budgetScope: 'staging:replicate:image:external-alert-persist',
+      workspace: 'image',
+      severity: 'warning',
+      reasonCode: 'budget_threshold_crossed',
+      crossedThresholdPercent: 80,
+      providerJobId: 'pred_audit_persist_should_not_copy',
+      rawPrompt: 'raw prompt should not copy',
+      rawProviderPayload: 'token=provider-secret',
+      outputUrl: 'https://cdn.example.com/private-output.png',
+      slackWebhookUrl: 'https://hooks.slack.com/services/T000/B000/SECRET',
+      recipientEmail: 'creative-ops@example.com',
+    },
+  })
+  const dispatch = await dispatchProviderBudgetExternalAlerts({
+    payloads: [payload],
+    channels: ['webhook', 'slack'],
+    clients: {
+      webhook: {
+        send: async () => ({ statusCode: 202 }),
+      },
+    },
+  })
+
+  const first = await persistProviderBudgetExternalAlertDispatchAuditEvents({
+    dispatch,
+    repositories: repository,
+    actor,
+    now: new Date('2026-07-07T06:01:00.000Z'),
+  })
+  const second = await persistProviderBudgetExternalAlertDispatchAuditEvents({
+    dispatch,
+    repositories: repository,
+    actor,
+    now: new Date('2026-07-07T06:01:00.000Z'),
+  })
+
+  assert.equal(first.completed, true)
+  assert.equal(first.total, 2)
+  assert.equal(first.createdCount, 2)
+  assert.equal(first.duplicateCount, 0)
+  assert.equal(second.completed, true)
+  assert.equal(second.createdCount, 0)
+  assert.equal(second.duplicateCount, 2)
+  assert.deepEqual(
+    second.records.map((record) => record.event.id),
+    first.records.map((record) => record.event.id),
+  )
+
+  const audit = repository.audit.list({
+    action: 'creative.provider_alert.dispatch',
+    resourceType: 'creative_provider_budget_alert',
+  })
+  assert.equal(audit.items.length, 2)
+  const webhookAudit = audit.items.find((event) => event.metadata.channel === 'webhook')
+  const slackAudit = audit.items.find((event) => event.metadata.channel === 'slack')
+  assert.ok(webhookAudit)
+  assert.ok(slackAudit)
+  assert.equal(webhookAudit.metadata.status, 'succeeded')
+  assert.equal(slackAudit.metadata.status, 'failed')
+  assert.equal(webhookAudit.metadata.statusCode, 202)
+  assert.equal(webhookAudit.metadata.persistedFrom, 'provider_budget_external_alert_dispatch')
+  assert.equal(webhookAudit.metadata.attemptedAt, '2026-07-07T06:01:00.000Z')
+  assert.equal(slackAudit.metadata.reasonCode, 'missing_provider_alert_client')
+
+  const serialized = JSON.stringify(audit.items)
+  assert.equal(serialized.includes('pred_audit_persist_should_not_copy'), false)
+  assert.equal(serialized.includes('raw prompt should not copy'), false)
+  assert.equal(serialized.includes('token=provider-secret'), false)
+  assert.equal(serialized.includes('private-output.png'), false)
+  assert.equal(serialized.includes('hooks.slack.com'), false)
+  assert.equal(serialized.includes('creative-ops@example.com'), false)
+})
+
+test('persistProviderBudgetExternalAlertDispatchAuditEvents rejects unsafe candidates before writing', async () => {
+  const writes = []
+  const result = await persistProviderBudgetExternalAlertDispatchAuditEvents({
+    records: [{
+      action: 'creative.provider_alert.dispatch',
+      resourceType: 'creative_provider_budget_alert',
+      resourceId: 'creative-provider-alert:webhook:bad',
+      metadata: {
+        sourceKey: 'creative-provider-alert:email:bad',
+        channel: 'sms',
+        status: 'succeeded',
+      },
+    }],
+    repositories: {
+      providerBudgetAudit: {
+        recordMany: async (records) => {
+          writes.push(...records)
+          return []
+        },
+      },
+    },
+  })
+
+  assert.equal(result.completed, false)
+  assert.equal(result.failed.reasonCode, 'invalid_provider_alert_dispatch_audit_event')
+  assert.match(result.failed.errorPreview, /unsupported channel/)
+  assert.equal(writes.length, 0)
+})
+
+test('persistProviderBudgetExternalAlertDispatchAuditEvents returns explicit failure for repository errors', async () => {
+  const result = await persistProviderBudgetExternalAlertDispatchAuditEvents({
+    results: [{
+      channel: 'webhook',
+      key: 'creative-provider-alert:webhook:repo-error',
+      status: 'failed',
+      reasonCode: 'relay_failed',
+      metadata: {
+        sourceKey: 'creative-provider-budget:repo-error:audit',
+        budgetScope: 'staging:replicate:image:external-alert-error',
+      },
+    }],
+    repositories: {
+      providerBudgetAudit: {
+        recordMany: async () => {
+          throw new Error('audit dispatch store unavailable')
+        },
+      },
+    },
+    now: new Date('2026-07-07T06:02:00.000Z'),
+  })
+
+  assert.equal(result.completed, false)
+  assert.equal(result.total, 1)
+  assert.equal(result.failed.reasonCode, 'provider_alert_dispatch_audit_persistence_failed')
+  assert.match(result.failed.errorPreview, /audit dispatch store unavailable/)
 })

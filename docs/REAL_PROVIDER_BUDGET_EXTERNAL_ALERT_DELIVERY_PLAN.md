@@ -2,7 +2,7 @@
 
 This plan defines the approval boundary and implementation checklist for future external Slack, webhook, or email delivery of creative provider budget alerts.
 
-Current decision: **dispatch audit planning only**. Durable audit persistence, internal station notifications, Admin operations metrics, Prometheus-compatible exporter metrics, `CREATIVE_PROVIDER_ALERT_*` env/smoke validation, a pure channel-neutral provider alert payload builder, an injected dispatcher boundary for tests, and safe dispatch audit record candidate planning exist. External alert delivery still must not send outbound Slack, webhook, or email messages until a later explicitly approved implementation PR provides approved clients.
+Current decision: **dispatch audit persistence without real external delivery**. Durable audit persistence, internal station notifications, Admin operations metrics, Prometheus-compatible exporter metrics, `CREATIVE_PROVIDER_ALERT_*` env/smoke validation, a pure channel-neutral provider alert payload builder, an injected dispatcher boundary for tests, safe dispatch audit record candidate planning, and per-channel dispatch audit persistence exist. External alert delivery still must not send outbound Slack, webhook, or email messages until a later explicitly approved implementation PR provides approved clients.
 
 ## Non-Goals For This Planning Step
 
@@ -30,9 +30,10 @@ buildProviderBudgetExternalAlertPayloads(auditEvents)
 buildProviderBudgetExternalAlertDispatchPlan({ payloads, channels })
 dispatchProviderBudgetExternalAlerts({ payloads, channels, clients })
 buildProviderBudgetExternalAlertDispatchAuditRecords({ results, now })
+persistProviderBudgetExternalAlertDispatchAuditEvents({ dispatch, results, records, repositories, actor, now })
 ```
 
-The builder is pure and channel-neutral. The dispatcher boundary is injected-only: tests can pass mocked `webhook`, `slack`, or `email` clients, and missing clients fail closed with safe per-channel results. Dispatch audit planning maps those results into safe `creative.provider_alert.dispatch` audit record candidates without writing them. There is still no default HTTP client, Slack webhook client, email relay client, repository write, or provider SDK call.
+The builder is pure and channel-neutral. The dispatcher boundary is injected-only: tests can pass mocked `webhook`, `slack`, or `email` clients, and missing clients fail closed with safe per-channel results. Dispatch audit planning maps those results into safe `creative.provider_alert.dispatch` audit record candidates, and the persistence helper can write those candidates through `repositories.providerBudgetAudit.recordMany` with source-key dedupe. There is still no default HTTP client, Slack webhook client, email relay client, or provider SDK call.
 
 ## Environment Variables
 
