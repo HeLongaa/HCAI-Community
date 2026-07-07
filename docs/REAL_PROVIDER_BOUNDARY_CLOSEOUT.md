@@ -13,6 +13,7 @@ The repository has enough fixture-safe lifecycle foundation to continue planning
 - Durable creative generation records.
 - Cross-instance creative quota ledger.
 - Creative credit reservation, settlement, and refund ledger.
+- Pre-provider moderation and quota gating before fixture/staging provider adapter work.
 - Read-only Admin generation history.
 - Provider adapter contract and safe failure mapping tests.
 - Staging-only Replicate provider shell metadata with `networkCallsEnabled=false`.
@@ -104,6 +105,7 @@ Allowed without real-provider approval:
 4. Read-only Admin history refinements.
 5. Budget/cost guard implementation that does not dispatch externally.
 6. Fixture-only provider budget event planning that does not persist or send alerts externally.
+7. Fixture-only hardening that proves moderation, quota, budget, and accounting gates run before provider adapter work.
 
 Requires explicit external-call approval:
 
