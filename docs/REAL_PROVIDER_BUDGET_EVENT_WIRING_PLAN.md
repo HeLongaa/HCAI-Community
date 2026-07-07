@@ -2,7 +2,7 @@
 
 This plan defines how the fixture-only provider budget event plan should later connect to durable audit records, notifications, Admin operations metrics, and Prometheus-compatible metrics.
 
-Current decision: **audit persistence, internal notification routing, Admin operations metrics, Prometheus-compatible exporter metrics, external alert env/smoke readiness, pure external alert payload building, injected mock dispatcher boundary, disabled channel adapter shells, approval/config wiring, and safe dispatch audit persistence are implemented; external alert delivery remains deferred**. The repository has `server/src/creative/providerBudgetEvents.js`, which builds pure event plans from normalized provider cost metadata, `server/src/creative/providerBudgetAuditPersistence.js`, which persists safe audit records through an injected repository boundary, `server/src/repositories/providerBudgetNotificationWiring.js`, which derives safe internal notification payloads from persisted audit events, `server/src/operations/metrics.js`, which aggregates safe provider budget audit events into Admin operations metrics, `server/src/operations/metricsExporter.js`, which derives a safe external Prometheus subset from those aggregates, `server/src/config/env.js` plus `scripts/smoke-production.mjs`, which parse and smoke-gate `CREATIVE_PROVIDER_ALERT_*` configuration without sending messages, and `server/src/creative/providerBudgetExternalAlerts.js`, which derives channel-neutral external alert payloads, builds disabled/fixture-only delivery wiring, dispatches only through explicitly injected test clients, maps per-channel dispatch results into safe audit record candidates, and persists those candidates through `repositories.providerBudgetAudit.recordMany`. This document does not add external alert delivery, Admin mutation controls, real provider SDKs, default HTTP clients, or provider network calls.
+Current decision: **audit persistence, internal notification routing, Admin operations metrics, Prometheus-compatible exporter metrics, external alert env/smoke readiness, pure external alert payload building, injected mock dispatcher boundary, disabled channel adapter shells, approval/config wiring, fixture dry-run harness, and safe dispatch audit persistence are implemented; external alert delivery remains deferred**. The repository has `server/src/creative/providerBudgetEvents.js`, which builds pure event plans from normalized provider cost metadata, `server/src/creative/providerBudgetAuditPersistence.js`, which persists safe audit records through an injected repository boundary, `server/src/repositories/providerBudgetNotificationWiring.js`, which derives safe internal notification payloads from persisted audit events, `server/src/operations/metrics.js`, which aggregates safe provider budget audit events into Admin operations metrics, `server/src/operations/metricsExporter.js`, which derives a safe external Prometheus subset from those aggregates, `server/src/config/env.js` plus `scripts/smoke-production.mjs`, which parse and smoke-gate `CREATIVE_PROVIDER_ALERT_*` configuration without sending messages, and `server/src/creative/providerBudgetExternalAlerts.js`, which derives channel-neutral external alert payloads, builds disabled/fixture-only delivery wiring, dispatches only through explicitly injected test clients, maps per-channel dispatch results into safe audit record candidates, persists those candidates through `repositories.providerBudgetAudit.recordMany`, and exposes a fixture-only dry-run harness over those pieces. This document does not add external alert delivery, Admin mutation controls, real provider SDKs, default HTTP clients, or provider network calls.
 
 ## Current Fixture Baseline
 
@@ -279,11 +279,12 @@ buildProviderBudgetExternalAlertDeliveryWiring({ config, approval, fixtureClient
 dispatchProviderBudgetExternalAlerts({ payloads, channels, clients })
 buildProviderBudgetExternalAlertDispatchAuditRecords({ results, now })
 persistProviderBudgetExternalAlertDispatchAuditEvents({ dispatch, results, records, repositories, actor, now })
+runProviderBudgetExternalAlertFixtureDryRun({ auditEvents, config, approval, fixtureClients, repositories, actor, now })
 ```
 
 The dispatch persistence helper writes only `creative.provider_alert.dispatch` records with `creative_provider_budget_alert` resource type and safe metadata. It reuses the provider budget audit repository for durable source-key dedupe and does not introduce real outbound channel clients.
 
-The helper emits no default outbound side effects. Dispatch only succeeds when a caller explicitly injects a mocked or future-approved channel client. The approved webhook, Slack, and email adapter shells are disabled by default and fail closed with `provider_alert_client_disabled`; the approval/config wiring helper only enables fixture-injected clients when explicit approval includes `fixtureOnly=true`. There are still no built-in Slack webhook, webhook delivery, email relay, or HTTP clients. Dispatch audit candidates can be persisted through the existing provider budget audit repository after passing the dedicated safe-record validator.
+The helper emits no default outbound side effects. Dispatch only succeeds when a caller explicitly injects a mocked or future-approved channel client. The approved webhook, Slack, and email adapter shells are disabled by default and fail closed with `provider_alert_client_disabled`; the approval/config wiring helper only enables fixture-injected clients when explicit approval includes `fixtureOnly=true`. The fixture dry-run harness can exercise payload building, fixture dispatch, and dispatch audit persistence from safe audit events without adding a route or a real network client. There are still no built-in Slack webhook, webhook delivery, email relay, or HTTP clients.
 
 ## Testing Matrix
 
@@ -321,6 +322,7 @@ Smoke and deploy tests:
 - External provider alert payload, injected dispatcher, and dispatch-audit-planning tests cover threshold, dispatch-blocked, anomaly, missing-client, success, and redacted-failure paths without real outbound sends.
 - Disabled channel adapter shell tests cover webhook, Slack, and email shells, preserve explicitly injected clients, and verify no default network client is used.
 - Approval/config wiring tests cover unapproved disabled mode, missing channel config, fixture-only injected clients, and no default network client.
+- Fixture dry-run harness tests cover unapproved short-circuit, fixture-only partial dispatch, dispatch audit persistence, duplicate suppression, safe summaries, and no default network client.
 
 ## Recommended PR Order
 
@@ -337,7 +339,8 @@ Smoke and deploy tests:
 11. **Provider alert dispatch failure spike policy**: derive thresholded failure-spike signals from persisted dispatch audit rows. Implemented.
 12. **Approved provider alert channel client adapter shell**: define disabled webhook, Slack, and email client shells without real outbound delivery. Implemented.
 13. **Explicit provider alert delivery approval/config wiring**: build safe wiring summaries and fixture-only client activation while real delivery remains unavailable. Implemented.
-14. **External alert delivery**: separate phase only after explicit approval.
+14. **Fixture provider alert dispatch dry-run harness**: exercise safe audit events through fixture clients and dispatch audit persistence without real delivery. Implemented.
+15. **External alert delivery**: separate phase only after explicit approval.
 
 ## No-Go Conditions
 
@@ -353,11 +356,11 @@ No-go for implementation if any are true:
 
 ## Next Suggested Implementation
 
-The safest next implementation is **fixture dispatch dry-run harness for provider alerts**, still without sending real outbound messages by default:
+The safest next implementation is **Admin read-only fixture dry-run visibility**, still without sending real outbound messages by default:
 
-- create an operator/test-only dry-run path that consumes persisted safe audit events and fixture clients
-- persist dry-run dispatch audit records through the existing dispatch audit persistence helper
+- surface fixture dry-run dispatch audit rows and safe summaries in the existing Admin operations/read-only surfaces
+- keep all controls read-only and avoid Admin mutation, replay, retry, recovery, or real delivery
 - preserve current audit, idempotency, metrics, and failure-spike boundaries
 - keep actual external delivery, Admin mutation controls, provider callback/manual replay endpoints, and real provider calls deferred until explicitly approved
 
-The durable audit source of truth, internal notification routing, Admin read-only metrics, Prometheus-compatible exporter metrics, external alert env/smoke validation, pure payload builder, injected mock dispatcher boundary, disabled channel adapter shell, approval/config wiring, dispatch audit planning, dispatch audit persistence, dispatch observability, failure-spike policy, and external alert delivery plan now exist. External delivery should still be staged behind explicit channel-client approval before any outbound message is sent.
+The durable audit source of truth, internal notification routing, Admin read-only metrics, Prometheus-compatible exporter metrics, external alert env/smoke validation, pure payload builder, injected mock dispatcher boundary, disabled channel adapter shell, approval/config wiring, fixture dry-run harness, dispatch audit planning, dispatch audit persistence, dispatch observability, failure-spike policy, and external alert delivery plan now exist. External delivery should still be staged behind explicit channel-client approval before any outbound message is sent.
