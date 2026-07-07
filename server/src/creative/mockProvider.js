@@ -36,12 +36,14 @@ const digestForGeneration = (request, actor) =>
     .digest('hex')
     .slice(0, 16)
 
+export const buildMockCreativeGenerationId = (request, actor) => `gen_mock_${digestForGeneration(request, actor)}`
+
 export const executeMockCreativeGeneration = ({ request, provider, actor, now = new Date() }) => {
   const digest = digestForGeneration(request, actor)
   const outputMetadata = outputMetadataByWorkspace[request.workspace]
   const createdAt = now.toISOString()
   return {
-    id: `gen_mock_${digest}`,
+    id: buildMockCreativeGenerationId(request, actor),
     workspace: request.workspace,
     mode: request.mode,
     status: 'completed',

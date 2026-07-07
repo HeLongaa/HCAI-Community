@@ -5,7 +5,7 @@ import {
   getCreativeProvider,
   listCreativeProviders,
 } from './providerRegistry.js'
-import { executeMockCreativeGeneration } from './mockProvider.js'
+import { buildMockCreativeGenerationId, executeMockCreativeGeneration } from './mockProvider.js'
 import { buildCreativeArtifactObject } from './artifactBuilder.js'
 import { applyCreativeGenerationPolicy } from './policy.js'
 import { statusForPersistedGeneration } from './generationRecords.js'
@@ -20,6 +20,13 @@ const getFixtureProvider = (providerId, registry) => {
     return getCreativeProvider(providerId, registry)
   }
   return provider
+}
+
+const plannedGenerationId = ({ request, actor, provider }) => {
+  if (provider.id === 'mock') {
+    return buildMockCreativeGenerationId(request, actor)
+  }
+  return `gen_${provider.id.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}_${buildMockCreativeGenerationId(request, actor).slice('gen_mock_'.length)}`
 }
 
 export const getCreativeProviderCatalog = (source = process.env) => {
@@ -50,19 +57,29 @@ export const executeCreativeGeneration = async ({
     throw new Error(`Unsupported creative provider adapter: ${provider.id}`)
   }
 
-  const generated = fixtureAdapter
-    ? await fixtureAdapter({ request, provider, actor, source, now })
-    : executeMockCreativeGeneration({ request, provider, actor, now })
-  assertCreativeProviderAdapterContract(generated, { request, provider })
+  const generationId = plannedGenerationId({ request, actor, provider })
   const policyResult = await applyCreativeGenerationPolicy({
     request,
     actor,
     provider,
     source,
     now,
-    generationId: generated.id,
+    generationId,
     quotaRepository,
   })
+
+  let generated
+  try {
+    generated = fixtureAdapter
+      ? await fixtureAdapter({ request, provider, actor, source, now, generationId })
+      : executeMockCreativeGeneration({ request, provider, actor, now })
+  } catch (error) {
+    if (policyResult.quota?.reservationId && quotaRepository?.release) {
+      await quotaRepository.release(policyResult.quota.reservationId, error?.code ?? 'provider_adapter_failed', actor)
+    }
+    throw error
+  }
+  assertCreativeProviderAdapterContract(generated, { request, provider })
 
   const attachPolicy = (generation) => ({
     ...generation,

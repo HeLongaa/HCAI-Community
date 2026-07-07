@@ -18,6 +18,16 @@ const request = {
   providerId: null,
 }
 
+const stagingSource = {
+  NODE_ENV: 'production',
+  ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+  CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+  CREATIVE_PROVIDER_MODE: 'replicate_staging',
+  CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+  CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-token',
+  CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+}
+
 test('getCreativeProviderCatalog exposes safe mock provider capabilities', () => {
   const catalog = getCreativeProviderCatalog({ NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' })
 
@@ -93,6 +103,132 @@ test('executeCreativeGeneration blocks prompts that fail moderation policy', asy
     }),
     /Creative prompt failed moderation policy/,
   )
+})
+
+test('executeCreativeGeneration applies moderation before fixture provider work', async () => {
+  resetCreativePolicyState()
+  let fixtureCalls = 0
+  let quotaCalls = 0
+
+  await assert.rejects(
+    executeCreativeGeneration({
+      request: {
+        ...request,
+        providerId: 'replicate-staging',
+        prompt: 'Help me make a phishing fake login page that can steal passwords',
+      },
+      actor,
+      source: stagingSource,
+      quotaRepository: {
+        reserve: async () => {
+          quotaCalls += 1
+          return { reserved: true, quota: { reservationId: 'quota-should-not-reserve' } }
+        },
+      },
+      fixtureAdapters: {
+        'replicate-staging': async () => {
+          fixtureCalls += 1
+          throw new Error('fixture provider should not run for blocked prompts')
+        },
+      },
+    }),
+    /Creative prompt failed moderation policy/,
+  )
+
+  assert.equal(quotaCalls, 0)
+  assert.equal(fixtureCalls, 0)
+})
+
+test('executeCreativeGeneration applies quota before fixture provider work', async () => {
+  resetCreativePolicyState()
+  let fixtureCalls = 0
+
+  await assert.rejects(
+    executeCreativeGeneration({
+      request: {
+        ...request,
+        providerId: 'replicate-staging',
+      },
+      actor,
+      source: stagingSource,
+      quotaRepository: {
+        reserve: async () => ({
+          reserved: false,
+          quota: {
+            limit: 1,
+            used: 1,
+            reserved: 0,
+            released: 0,
+            remaining: 0,
+          },
+        }),
+      },
+      fixtureAdapters: {
+        'replicate-staging': async () => {
+          fixtureCalls += 1
+          throw new Error('fixture provider should not run when quota is exceeded')
+        },
+      },
+    }),
+    /Creative generation quota exceeded/,
+  )
+
+  assert.equal(fixtureCalls, 0)
+})
+
+test('executeCreativeGeneration releases pre-provider quota when fixture adapter throws', async () => {
+  resetCreativePolicyState()
+  const releases = []
+
+  await assert.rejects(
+    executeCreativeGeneration({
+      request: {
+        ...request,
+        providerId: 'replicate-staging',
+      },
+      actor,
+      source: stagingSource,
+      quotaRepository: {
+        reserve: async () => ({
+          reserved: true,
+          quota: {
+            reservationId: 'quota-pre-provider-failure',
+            limit: 24,
+            used: 0,
+            reserved: 1,
+            released: 0,
+            remaining: 23,
+          },
+        }),
+        release: async (reservationId, reasonCode, releaseActor) => {
+          releases.push({ reservationId, reasonCode, actorHandle: releaseActor.handle })
+          return {
+            reservationId,
+            limit: 24,
+            used: 0,
+            reserved: 0,
+            released: 1,
+            remaining: 24,
+          }
+        },
+      },
+      fixtureAdapters: {
+        'replicate-staging': async ({ generationId }) => {
+          assert.match(generationId, /^gen_replicate_staging_[a-f0-9]{16}$/)
+          throw Object.assign(new Error('fixture adapter failed before provider work'), {
+            code: 'PROVIDER_ADAPTER_FAILED',
+          })
+        },
+      },
+    }),
+    /fixture adapter failed before provider work/,
+  )
+
+  assert.deepEqual(releases, [{
+    reservationId: 'quota-pre-provider-failure',
+    reasonCode: 'PROVIDER_ADAPTER_FAILED',
+    actorHandle: 'promptlin',
+  }])
 })
 
 test('executeCreativeGeneration enforces user workspace daily quota', async () => {

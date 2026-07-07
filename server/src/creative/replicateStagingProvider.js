@@ -350,7 +350,7 @@ export const mapReplicatePredictionToCreativeGeneration = ({
   })
 
   return {
-    id: `gen_replicate_${digest}`,
+    id: options.generationId ?? `gen_replicate_${digest}`,
     workspace: request.workspace,
     mode: request.mode,
     status,
@@ -542,6 +542,7 @@ export const createReplicateStagingPrediction = async ({
   client,
   source = process.env,
   now = new Date(),
+  generationId = null,
   options = {},
 }) => {
   if (!client?.createPrediction) {
@@ -551,7 +552,15 @@ export const createReplicateStagingPrediction = async ({
   assertReplicateProviderBudgetAllowsDispatch(providerCost)
   try {
     const prediction = await client.createPrediction(buildReplicateImagePredictionPayload(request, options))
-    return mapReplicatePredictionToCreativeGeneration({ request, provider, actor, prediction, source, now, options })
+    return mapReplicatePredictionToCreativeGeneration({
+      request,
+      provider,
+      actor,
+      prediction,
+      source,
+      now,
+      options: { ...options, generationId: generationId ?? options.generationId },
+    })
   } catch (error) {
     const failure = safeProviderFailure(error)
     return mapReplicatePredictionToCreativeGeneration({
@@ -567,7 +576,7 @@ export const createReplicateStagingPrediction = async ({
       },
       source,
       now,
-      options,
+      options: { ...options, generationId: generationId ?? options.generationId },
     })
   }
 }

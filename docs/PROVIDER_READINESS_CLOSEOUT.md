@@ -28,6 +28,7 @@ The completed baseline includes:
 - Atomic quota reservation, commit, and release behavior for Prisma-backed deployments, with seed repository parity for tests.
 - Dedicated `creative_credit_ledger` state for reserved, settled, refunded, and cancelled creative credits.
 - Idempotent credit settlement/refund behavior keyed through the generation/quota reservation boundary.
+- Pre-provider policy gating: moderation and quota reservation run before any fixture/staging provider adapter work, and adapter failures release the pre-provider quota reservation.
 - `GET /api/admin/creative/generations` and `GET /api/admin/creative/generations/:id` for audit-authorized read-only generation history.
 - Admin Center `Generation history` panel with filters, pagination, safe details, output asset linking, and `creative_generation` audit drill-downs.
 - Documentation and feature-contract coverage that keep the mock-provider/provider-boundary distinction explicit.
@@ -38,11 +39,11 @@ The completed baseline includes:
 
 1. A signed-in user runs Image Studio text-to-image generation.
 2. The frontend calls `POST /api/creative/generations`.
-3. The backend validates request shape, auth, provider availability, moderation, and policy gates.
-4. A durable generation record is created and marked through the mock-provider lifecycle.
-5. Quota is reserved in the durable quota ledger.
-6. Creative credits are reserved in the durable credit ledger.
-7. The mock provider executes and outputs are persisted as governed media assets.
+3. The backend validates request shape, auth, provider availability, moderation, and policy gates before provider adapter work.
+4. Quota is reserved in the durable quota ledger before provider adapter work.
+5. The mock provider executes only after moderation and quota have passed.
+6. The durable accounting path creates the generation record and reserves creative credits.
+7. The generation record is marked through the mock-provider lifecycle.
 8. Output media asset ids are linked back to the generation record.
 9. Quota is committed and credits are settled when provider work completes.
 10. The API response includes the safe generation record and gated media asset download state.
@@ -124,7 +125,7 @@ The final UI slice was validated with:
 - Treat generation records, quota ledger, credit ledger, and media assets as separate ownership boundaries.
 - Keep Admin generation history read-only until retry/cancel/refund requirements and permissions are separately planned.
 - Preserve prompt safety posture: Admin surfaces should continue to expose prompt hash and short preview only, not raw full prompt text.
-- Any future provider adapter should exercise the same durable generation, quota, credit, media governance, and Admin history paths as the mock provider.
+- Any future provider adapter should exercise the same pre-provider moderation/quota gate, durable generation, quota, credit, media governance, and Admin history paths as the mock provider.
 
 ## Recommended Next Phase
 

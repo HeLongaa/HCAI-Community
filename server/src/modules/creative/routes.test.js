@@ -196,13 +196,14 @@ test('POST /api/creative/generations can run a Replicate staging fixture through
     },
   }
   const fixtureAdapters = {
-    'replicate-staging': ({ request, provider, actor, source, now }) =>
+    'replicate-staging': ({ request, provider, actor, source, now, generationId }) =>
       createReplicateStagingPrediction({
         request,
         provider,
         actor,
         source,
         now,
+        generationId,
         client: mockedClient,
       }),
   }
