@@ -5,6 +5,7 @@ import { createSeedRepository } from '../repositories/seedRepository.js'
 import {
   buildProviderBudgetExternalAlertPayload,
   buildProviderBudgetExternalAlertClientAdapters,
+  buildProviderBudgetExternalAlertDeliveryWiring,
   buildProviderBudgetExternalAlertDispatchPlan,
   buildProviderBudgetExternalAlertPayloads,
   buildProviderBudgetExternalAlertDispatchAuditRecords,
@@ -259,6 +260,155 @@ test('buildProviderBudgetExternalAlertClientAdapters preserves explicit injected
   const result = await clients.webhook.send({ channel: 'webhook', idempotencyKey: 'safe-key' })
   assert.equal(result.statusCode, 202)
   assert.deepEqual(sent, [{ channel: 'webhook', idempotencyKey: 'safe-key' }])
+})
+
+test('buildProviderBudgetExternalAlertDeliveryWiring keeps configured channels disabled without approval', async () => {
+  const wiring = buildProviderBudgetExternalAlertDeliveryWiring({
+    config: {
+      creativeProviderAlertsEnabled: true,
+      creativeProviderAlertChannels: ['webhook', 'slack', 'email'],
+      hasCreativeProviderAlertWebhookUrl: true,
+      hasCreativeProviderAlertWebhookSecret: true,
+      creativeProviderAlertWebhookTimeoutSeconds: 6,
+      hasCreativeProviderAlertSlackWebhookUrl: true,
+      creativeProviderAlertSlackTimeoutSeconds: 7,
+      hasCreativeProviderAlertEmailWebhookUrl: true,
+      hasCreativeProviderAlertEmailWebhookSecret: true,
+      creativeProviderAlertEmailRecipientCount: 2,
+      creativeProviderAlertEmailTimeoutSeconds: 8,
+      rawWebhookUrl: 'https://ops.example.com/provider-alerts',
+      recipientEmail: 'creative-ops@example.com',
+      secret: 'provider-secret',
+    },
+  })
+
+  assert.equal(wiring.enabled, true)
+  assert.equal(wiring.mode, 'disabled')
+  assert.equal(wiring.reasonCode, 'provider_alert_delivery_approval_required')
+  assert.deepEqual(wiring.channels, ['webhook', 'slack', 'email'])
+  assert.deepEqual(Object.keys(wiring.clients), ['webhook', 'slack', 'email'])
+  assert.equal(wiring.clients.webhook.enabled, false)
+  assert.equal(wiring.safeSummary.deliveryApproved, false)
+  assert.equal(wiring.safeSummary.configuredChannelCount, 3)
+  assert.equal(wiring.safeSummary.realDeliveryAvailable, false)
+  assert.deepEqual(wiring.safeSummary.missingConfig, [])
+
+  const serialized = JSON.stringify(wiring)
+  assert.equal(serialized.includes('ops.example.com'), false)
+  assert.equal(serialized.includes('creative-ops@example.com'), false)
+  assert.equal(serialized.includes('provider-secret'), false)
+})
+
+test('buildProviderBudgetExternalAlertDeliveryWiring reports missing channel config safely', () => {
+  const wiring = buildProviderBudgetExternalAlertDeliveryWiring({
+    config: {
+      creativeProviderAlertsEnabled: true,
+      creativeProviderAlertChannels: ['webhook', 'email'],
+      hasCreativeProviderAlertWebhookUrl: true,
+      hasCreativeProviderAlertEmailWebhookUrl: true,
+      creativeProviderAlertEmailRecipientCount: 0,
+    },
+    approval: {
+      deliveryApproved: true,
+      fixtureOnly: true,
+    },
+  })
+
+  assert.equal(wiring.mode, 'disabled')
+  assert.equal(wiring.reasonCode, 'provider_alert_channel_config_missing')
+  assert.deepEqual(wiring.safeSummary.missingConfig, ['email'])
+  assert.deepEqual(
+    wiring.safeSummary.channelReadiness.map((item) => ({
+      channel: item.channel,
+      configured: item.configured,
+      reasonCode: item.reasonCode,
+    })),
+    [
+      { channel: 'webhook', configured: true, reasonCode: undefined },
+      { channel: 'email', configured: false, reasonCode: 'provider_alert_channel_config_missing' },
+    ],
+  )
+})
+
+test('buildProviderBudgetExternalAlertDeliveryWiring only uses injected fixture clients when approved', async () => {
+  const payload = buildProviderBudgetExternalAlertPayload({
+    id: 'audit-provider-budget-alert-fixture-wiring',
+    action: 'creative.provider_budget.threshold_crossed',
+    resourceType: 'creative_provider_budget',
+    resourceId: 'staging:replicate:image:fixture-wiring',
+    createdAt: '2026-07-08T03:00:00.000Z',
+    metadata: {
+      sourceKey: 'creative-provider-budget:fixture-wiring-safe:audit',
+      alertType: 'creative.provider_budget.threshold_80',
+      providerId: 'replicate',
+      budgetScope: 'staging:replicate:image:fixture-wiring',
+      workspace: 'image',
+      severity: 'warning',
+      reasonCode: 'budget_threshold_crossed',
+      webhookUrl: 'https://ops.example.com/provider-alerts',
+      slackWebhookUrl: 'https://hooks.slack.com/services/T000/B000/SECRET',
+      recipientEmail: 'creative-ops@example.com',
+    },
+  })
+  const sent = []
+  const originalFetch = globalThis.fetch
+  let fetchCalls = 0
+  globalThis.fetch = async () => {
+    fetchCalls += 1
+    throw new Error('fetch should not be used by fixture-only provider alert wiring')
+  }
+
+  try {
+    const wiring = buildProviderBudgetExternalAlertDeliveryWiring({
+      config: {
+        creativeProviderAlertsEnabled: true,
+        creativeProviderAlertChannels: ['webhook', 'slack', 'email'],
+        hasCreativeProviderAlertWebhookUrl: true,
+        hasCreativeProviderAlertSlackWebhookUrl: true,
+        hasCreativeProviderAlertEmailWebhookUrl: true,
+        creativeProviderAlertEmailRecipientCount: 1,
+      },
+      approval: {
+        deliveryApproved: true,
+        fixtureOnly: true,
+      },
+      fixtureClients: {
+        webhook: {
+          enabled: true,
+          send: async (envelope) => {
+            sent.push(envelope)
+            return { statusCode: 202, reasonCode: 'fixture_accepted' }
+          },
+        },
+      },
+    })
+
+    assert.equal(wiring.mode, 'fixture')
+    assert.equal(wiring.reasonCode, 'provider_alert_fixture_delivery_ready')
+    assert.equal(wiring.safeSummary.realDeliveryAvailable, false)
+
+    const dispatch = await dispatchProviderBudgetExternalAlerts({
+      payloads: [payload],
+      channels: wiring.channels,
+      clients: wiring.clients,
+    })
+
+    assert.equal(fetchCalls, 0)
+    assert.equal(sent.length, 1)
+    assert.equal(dispatch.safeSummary.total, 3)
+    assert.equal(dispatch.safeSummary.succeeded, 1)
+    assert.equal(dispatch.safeSummary.failed, 2)
+    assert.equal(dispatch.results.find((item) => item.channel === 'webhook').reasonCode, 'fixture_accepted')
+    assert.equal(dispatch.results.find((item) => item.channel === 'slack').reasonCode, 'provider_alert_client_disabled')
+    assert.equal(dispatch.results.find((item) => item.channel === 'email').reasonCode, 'provider_alert_client_disabled')
+
+    const serialized = JSON.stringify({ wiring, sent, dispatch })
+    assert.equal(serialized.includes('ops.example.com'), false)
+    assert.equal(serialized.includes('hooks.slack.com'), false)
+    assert.equal(serialized.includes('creative-ops@example.com'), false)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 test('dispatchProviderBudgetExternalAlerts fails closed through disabled channel shells without default network', async () => {
