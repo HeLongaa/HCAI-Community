@@ -115,6 +115,19 @@ Security alert channel variables/secrets:
 | Slack | none | `SECURITY_ALERT_SLACK_WEBHOOK_URL` |
 | Email webhook | `SECURITY_ALERT_EMAIL_WEBHOOK_URL`, `SECURITY_ALERT_EMAIL_TO`, `SECURITY_ALERT_EMAIL_FROM` optional | `SECURITY_ALERT_EMAIL_WEBHOOK_SECRET` optional/recommended |
 
+Planned creative provider budget alert variables/secrets:
+
+These are reserved for the future provider budget external alert delivery phase. They are not active until a later implementation wires `CREATIVE_PROVIDER_ALERTS_ENABLED`, env validation, dispatch audit events, and smoke checks.
+
+| Channel | Variables | Secrets |
+| --- | --- | --- |
+| Master switch | `CREATIVE_PROVIDER_ALERTS_ENABLED=false`, `CREATIVE_PROVIDER_ALERT_CHANNELS`, `CREATIVE_PROVIDER_ALERT_WINDOW_MINUTES`, `CREATIVE_PROVIDER_ALERT_DELIVERY_FAILED_ALERT_THRESHOLD` | none |
+| Webhook | `CREATIVE_PROVIDER_ALERT_WEBHOOK_URL`, `CREATIVE_PROVIDER_ALERT_WEBHOOK_TIMEOUT_SECONDS` | `CREATIVE_PROVIDER_ALERT_WEBHOOK_SECRET` optional/recommended |
+| Slack | `CREATIVE_PROVIDER_ALERT_SLACK_TIMEOUT_SECONDS` | `CREATIVE_PROVIDER_ALERT_SLACK_WEBHOOK_URL` |
+| Email webhook | `CREATIVE_PROVIDER_ALERT_EMAIL_WEBHOOK_URL`, `CREATIVE_PROVIDER_ALERT_EMAIL_TO`, `CREATIVE_PROVIDER_ALERT_EMAIL_FROM`, `CREATIVE_PROVIDER_ALERT_EMAIL_TIMEOUT_SECONDS` | `CREATIVE_PROVIDER_ALERT_EMAIL_WEBHOOK_SECRET` optional/recommended |
+
+Do not reuse `MEDIA_SCAN_ALERT_*` or `SECURITY_ALERT_*` secrets for creative provider budget alerts.
+
 ## Guard Rail Variables
 
 These have code defaults, but setting them explicitly makes production behavior reviewable:

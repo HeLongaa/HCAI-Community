@@ -222,17 +222,29 @@ Label rules:
 
 ## Phase 5: External Alert Delivery
 
-External alert delivery remains deferred.
+Status: **planning-ready; delivery implementation still deferred**. The implementation checklist is now maintained in `docs/REAL_PROVIDER_BUDGET_EXTERNAL_ALERT_DELIVERY_PLAN.md`.
+
+External alert delivery remains an explicit approval boundary because it creates outbound side effects.
 
 Before adding Slack, webhook, or email delivery:
 
 - Audit persistence must exist.
 - Notification dedupe must exist.
 - Admin metrics must expose delivery failure samples.
-- A separate env and smoke plan must be written for `CREATIVE_PROVIDER_ALERT_*`.
+- A separate env and smoke plan must be written for `CREATIVE_PROVIDER_ALERT_*`. Planned in `docs/REAL_PROVIDER_BUDGET_EXTERNAL_ALERT_DELIVERY_PLAN.md`.
 - Delivery failures must not block provider budget kill switches.
 
 Do not reuse media scan alert secrets or security alert secrets for provider budget alerts.
+
+Planned external alert env prefix:
+
+- `CREATIVE_PROVIDER_ALERTS_ENABLED`
+- `CREATIVE_PROVIDER_ALERT_CHANNELS`
+- `CREATIVE_PROVIDER_ALERT_WEBHOOK_*`
+- `CREATIVE_PROVIDER_ALERT_SLACK_*`
+- `CREATIVE_PROVIDER_ALERT_EMAIL_*`
+
+Future implementation must record safe dispatch audit events, suppress duplicate channel sends by audit `sourceKey`, and keep provider tokens, raw prompts, output URLs, provider job ids, and raw provider payloads out of alert payloads.
 
 ## Testing Matrix
 
@@ -290,10 +302,10 @@ No-go for implementation if any are true:
 
 ## Next Suggested Implementation
 
-The safest next implementation is **external alert delivery planning only, before any code that sends Slack/email/webhook messages**:
+The safest next implementation is **external alert delivery env and smoke validation**, still without sending Slack/email/webhook messages:
 
-- define `CREATIVE_PROVIDER_ALERT_*` env names and smoke criteria
-- decide whether provider budget alerts should reuse existing audit-reader recipients or require a dedicated creative operations role
+- add parser and safe config summaries for `CREATIVE_PROVIDER_ALERT_*`
+- add smoke checks that only require provider alert channels when `CREATIVE_PROVIDER_ALERTS_ENABLED=true`
 - keep actual external delivery, Admin mutation controls, provider callback/manual replay endpoints, and real provider calls deferred until explicitly approved
 
-The durable audit source of truth, internal notification routing, Admin read-only metrics, and Prometheus-compatible exporter metrics now exist. External alert delivery should be treated as a separate approval boundary because it creates outbound side effects.
+The durable audit source of truth, internal notification routing, Admin read-only metrics, Prometheus-compatible exporter metrics, and external alert delivery plan now exist. External delivery should still be staged behind env/smoke validation before any outbound message is sent.
