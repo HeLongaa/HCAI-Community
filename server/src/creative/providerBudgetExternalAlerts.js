@@ -7,6 +7,7 @@ const providerBudgetExternalAlertActions = new Set([
 ])
 
 const providerBudgetExternalAlertChannels = new Set(['webhook', 'slack', 'email'])
+const providerBudgetExternalAlertDispatchAuditStatuses = new Set(['succeeded', 'failed', 'skipped'])
 
 const compactObject = (value) =>
   Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ''))
@@ -15,6 +16,10 @@ const safeString = (value, fallback = null) => {
   const normalized = String(value ?? '').trim()
   return normalized || fallback
 }
+
+const errorPreview = (error) => String(error?.message ?? error ?? 'Unknown error').slice(0, 240)
+
+const isObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 
 const metadataFor = (auditEvent) =>
   auditEvent?.metadata && typeof auditEvent.metadata === 'object' && !Array.isArray(auditEvent.metadata)
@@ -219,7 +224,7 @@ const failureResult = (operation, error) => {
 
 const safeDispatchAuditStatus = (status) => {
   const normalized = safeString(status, 'failed')
-  return ['succeeded', 'failed', 'skipped'].includes(normalized) ? normalized : 'failed'
+  return providerBudgetExternalAlertDispatchAuditStatuses.has(normalized) ? normalized : 'failed'
 }
 
 export const buildProviderBudgetExternalAlertDispatchAuditRecords = ({
@@ -256,6 +261,128 @@ export const buildProviderBudgetExternalAlertDispatchAuditRecords = ({
         }),
       }
     })
+}
+
+const validateProviderBudgetExternalAlertDispatchAuditRecord = (record, index) => {
+  if (!isObject(record)) {
+    throw new Error(`provider alert dispatch audit record ${index} must be an object`)
+  }
+  if (record.action !== 'creative.provider_alert.dispatch') {
+    throw new Error(`provider alert dispatch audit record ${index} has unsupported action`)
+  }
+  if (record.resourceType !== 'creative_provider_budget_alert') {
+    throw new Error(`provider alert dispatch audit record ${index} has unsupported resource type`)
+  }
+  if (!isObject(record.metadata)) {
+    throw new Error(`provider alert dispatch audit record ${index} is missing metadata`)
+  }
+  if (!safeString(record.metadata.sourceKey)) {
+    throw new Error(`provider alert dispatch audit record ${index} is missing metadata.sourceKey`)
+  }
+  if (!providerBudgetExternalAlertChannels.has(record.metadata.channel)) {
+    throw new Error(`provider alert dispatch audit record ${index} has unsupported channel`)
+  }
+  if (!providerBudgetExternalAlertDispatchAuditStatuses.has(record.metadata.status)) {
+    throw new Error(`provider alert dispatch audit record ${index} has unsupported status`)
+  }
+  if (safeString(record.resourceId) !== safeString(record.metadata.sourceKey)) {
+    throw new Error(`provider alert dispatch audit record ${index} has unstable resource id`)
+  }
+}
+
+const normalizeProviderBudgetExternalAlertDispatchAuditRecords = (records = []) =>
+  (Array.isArray(records) ? records : []).map((record, index) => {
+    validateProviderBudgetExternalAlertDispatchAuditRecord(record, index)
+    return {
+      action: record.action,
+      resourceType: 'creative_provider_budget_alert',
+      resourceId: safeString(record.resourceId),
+      metadata: compactObject({
+        sourceKey: safeString(record.metadata.sourceKey),
+        auditEventSourceKey: safeString(record.metadata.auditEventSourceKey, null),
+        channel: record.metadata.channel,
+        status: record.metadata.status,
+        statusCode: Number.isInteger(record.metadata.statusCode) ? record.metadata.statusCode : null,
+        errorPreview: safeString(record.metadata.errorPreview, null),
+        alertAction: safeString(record.metadata.alertAction, null),
+        auditEventId: safeString(record.metadata.auditEventId, null),
+        budgetScope: safeString(record.metadata.budgetScope, null),
+        providerId: safeString(record.metadata.providerId, null),
+        workspace: safeString(record.metadata.workspace, null),
+        severity: safeString(record.metadata.severity, null),
+        reasonCode: safeString(record.metadata.reasonCode, null),
+        attemptedAt: safeString(record.metadata.attemptedAt, null),
+        persistedFrom: 'provider_budget_external_alert_dispatch',
+      }),
+    }
+  })
+
+export const persistProviderBudgetExternalAlertDispatchAuditEvents = async ({
+  dispatch = null,
+  results = dispatch?.results ?? [],
+  records = null,
+  repositories = {},
+  actor = null,
+  now = new Date(),
+} = {}) => {
+  const repository = repositories.providerBudgetAudit
+  if (!repository?.recordMany) {
+    throw new Error('providerBudgetAudit.recordMany repository is required')
+  }
+
+  const candidates = records ?? buildProviderBudgetExternalAlertDispatchAuditRecords({ results, now })
+  let normalizedRecords
+  try {
+    normalizedRecords = normalizeProviderBudgetExternalAlertDispatchAuditRecords(candidates)
+  } catch (error) {
+    return {
+      completed: false,
+      total: Array.isArray(candidates) ? candidates.length : 0,
+      createdCount: 0,
+      duplicateCount: 0,
+      records: [],
+      failed: {
+        reasonCode: 'invalid_provider_alert_dispatch_audit_event',
+        errorPreview: errorPreview(error),
+      },
+    }
+  }
+
+  if (normalizedRecords.length === 0) {
+    return {
+      completed: true,
+      total: 0,
+      createdCount: 0,
+      duplicateCount: 0,
+      records: [],
+      failed: null,
+    }
+  }
+
+  try {
+    const persisted = await repository.recordMany(normalizedRecords, actor)
+    const persistedRecords = Array.isArray(persisted) ? persisted : []
+    return {
+      completed: true,
+      total: normalizedRecords.length,
+      createdCount: persistedRecords.filter((item) => item?.created).length,
+      duplicateCount: persistedRecords.filter((item) => item && item.created === false).length,
+      records: persistedRecords,
+      failed: null,
+    }
+  } catch (error) {
+    return {
+      completed: false,
+      total: normalizedRecords.length,
+      createdCount: 0,
+      duplicateCount: 0,
+      records: [],
+      failed: {
+        reasonCode: 'provider_alert_dispatch_audit_persistence_failed',
+        errorPreview: errorPreview(error),
+      },
+    }
+  }
 }
 
 export const dispatchProviderBudgetExternalAlerts = async ({
