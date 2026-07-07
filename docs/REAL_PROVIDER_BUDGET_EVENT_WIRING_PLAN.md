@@ -159,6 +159,18 @@ Implemented fields under `metrics.creativeProviderBudget`:
     projectedSpendAmount,
     byCurrency,
   },
+  providerAlertDispatches: {
+    total,
+    succeeded,
+    failed,
+    skipped,
+    byChannel,
+    byStatus,
+    byReason,
+    byProvider,
+    byWorkspace,
+    latestAt,
+  },
 }
 ```
 
@@ -167,23 +179,25 @@ Implemented Admin handoff hints:
 - Critical dispatch blocks should generate a handoff hint to keep the provider kill switch active.
 - Threshold 100/120 should recommend checking the app-side cap and provider-side cap.
 - Currency mismatch should recommend blocking settlement until normalized.
+- Failed provider alert dispatch audit records should recommend reviewing channel readiness while real external delivery stays disabled.
 
 Implemented sample drill-downs:
 
 - `creativeProviderBudgetThresholds`
 - `creativeProviderBudgetDispatchBlocks`
 - `creativeProviderCostAnomalies`
+- `creativeProviderAlertDispatches`
 
 Admin UI exposure:
 
 - summary cards for Provider budget threshold alerts and observed spend signals
 - breakdown rows for Provider dispatch blocks and Provider cost anomalies
+- breakdown row for Provider alert dispatches, including audit filtering and recent samples
 - audit filter buttons for threshold, dispatch-blocked, and anomaly events
 - recent sample panels that keep provider job ids and raw provider payloads out of metric-facing labels
 
 Still deferred:
 
-- Prometheus/exporter metric families
 - external alert delivery
 - Admin mutation controls for replay, settlement, or provider recovery
 - real provider SDK/HTTP calls
@@ -305,8 +319,10 @@ Smoke and deploy tests:
 5. **External alert env/smoke readiness**: parse and smoke-gate `CREATIVE_PROVIDER_ALERT_*` without sending messages. Implemented.
 6. **External alert payload builder**: derive channel-neutral safe payloads from persisted audit events without sending messages. Implemented.
 7. **Injected mock dispatcher boundary**: route safe payloads to explicitly injected mocked clients and fail closed without clients. Implemented.
-8. **Dispatch audit event planning**: map per-channel dispatch results to safe audit record candidates without persisting them. Implemented.
-9. **External alert delivery**: separate phase only after explicit approval.
+8. **Dispatch audit event planning**: map per-channel dispatch results to safe audit record candidates. Implemented.
+9. **Dispatch audit persistence**: persist `creative.provider_alert.dispatch` records through the provider budget audit repository with source-key dedupe. Implemented.
+10. **Provider alert dispatch metrics/exporter**: aggregate persisted dispatch attempts in Admin operations metrics and Prometheus-compatible exporter output. Implemented.
+11. **External alert delivery**: separate phase only after explicit approval.
 
 ## No-Go Conditions
 
@@ -322,11 +338,11 @@ No-go for implementation if any are true:
 
 ## Next Suggested Implementation
 
-The safest next implementation is **per-channel dispatch audit persistence**, still without default Slack/email/webhook clients:
+The safest next implementation is **provider alert dispatch failure spike policy**, still without default Slack/email/webhook clients:
 
-- add a small repository boundary to persist `creative.provider_alert.dispatch` audit record candidates
-- dedupe by action + resource type + resource id + metadata source key
-- return created/duplicate/failed counts for retry safety
+- derive a safe delivery-failure spike signal from persisted `creative.provider_alert.dispatch` audit rows
+- keep labels low-cardinality by channel, status, and reason
+- surface the signal through Admin operations/handoff first; do not page external recipients yet
 - keep actual external delivery, Admin mutation controls, provider callback/manual replay endpoints, and real provider calls deferred until explicitly approved
 
-The durable audit source of truth, internal notification routing, Admin read-only metrics, Prometheus-compatible exporter metrics, external alert env/smoke validation, pure payload builder, injected mock dispatcher boundary, dispatch audit planning, and external alert delivery plan now exist. External delivery should still be staged behind per-channel dispatch audit persistence before any outbound message is sent.
+The durable audit source of truth, internal notification routing, Admin read-only metrics, Prometheus-compatible exporter metrics, external alert env/smoke validation, pure payload builder, injected mock dispatcher boundary, dispatch audit planning, dispatch audit persistence, dispatch observability, and external alert delivery plan now exist. External delivery should still be staged behind failure-spike policy and explicit channel-client approval before any outbound message is sent.

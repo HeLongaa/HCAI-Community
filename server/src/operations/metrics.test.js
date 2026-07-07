@@ -113,6 +113,48 @@ test('buildOperationsMetrics summarizes creative provider budget audit events', 
       createdAt: '2026-07-07T11:58:00.000Z',
     },
     {
+      id: 'audit-provider-alert-dispatch-webhook',
+      action: 'creative.provider_alert.dispatch',
+      resourceType: 'creative_provider_budget_alert',
+      resourceId: 'creative-provider-alert:webhook:creative-provider-budget:audit',
+      metadata: {
+        sourceKey: 'creative-provider-alert:webhook:creative-provider-budget:audit',
+        auditEventSourceKey: 'creative-provider-budget:audit',
+        channel: 'webhook',
+        status: 'succeeded',
+        statusCode: 202,
+        providerId: 'replicate',
+        workspace: 'image',
+        severity: 'warning',
+        reasonCode: 'budget_threshold_crossed',
+        budgetScope: 'staging:replicate:image',
+        webhookUrl: 'https://ops.example.com/provider-alerts',
+        recipientEmail: 'creative-ops@example.com',
+        providerJobId: 'pred_should_not_be_metric_label',
+      },
+      createdAt: '2026-07-07T11:58:30.000Z',
+    },
+    {
+      id: 'audit-provider-alert-dispatch-slack',
+      action: 'creative.provider_alert.dispatch',
+      resourceType: 'creative_provider_budget_alert',
+      resourceId: 'creative-provider-alert:slack:creative-provider-budget:audit',
+      metadata: {
+        sourceKey: 'creative-provider-alert:slack:creative-provider-budget:audit',
+        auditEventSourceKey: 'creative-provider-budget:audit',
+        channel: 'slack',
+        status: 'failed',
+        statusCode: 503,
+        providerId: 'replicate',
+        workspace: 'image',
+        severity: 'warning',
+        reasonCode: 'missing_provider_alert_client',
+        errorPreview: 'missing mocked client',
+        budgetScope: 'staging:replicate:image',
+      },
+      createdAt: '2026-07-07T11:59:00.000Z',
+    },
+    {
       id: 'audit-provider-old',
       action: 'creative.provider_budget.dispatch_blocked',
       resourceType: 'creative_provider_budget',
@@ -147,6 +189,24 @@ test('buildOperationsMetrics summarizes creative provider budget audit events', 
   assert.deepEqual(metrics.creativeProviderBudget.dispatchBlocked.byReason, [{ key: 'over_budget', count: 1 }])
   assert.equal(metrics.creativeProviderBudget.costAnomalies.total, 1)
   assert.deepEqual(metrics.creativeProviderBudget.costAnomalies.byReason, [{ key: 'currency_mismatch', count: 1 }])
+  assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.total, 2)
+  assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.succeeded, 1)
+  assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.failed, 1)
+  assert.deepEqual(metrics.creativeProviderBudget.providerAlertDispatches.byChannel, [
+    { key: 'slack', count: 1 },
+    { key: 'webhook', count: 1 },
+  ])
+  assert.deepEqual(metrics.creativeProviderBudget.providerAlertDispatches.byStatus, [
+    { key: 'failed', count: 1 },
+    { key: 'succeeded', count: 1 },
+  ])
+  assert.deepEqual(metrics.creativeProviderBudget.providerAlertDispatches.byReason, [
+    { key: 'budget_threshold_crossed', count: 1 },
+    { key: 'missing_provider_alert_client', count: 1 },
+  ])
+  assert.equal(JSON.stringify(metrics.creativeProviderBudget.providerAlertDispatches).includes('ops.example.com'), false)
+  assert.equal(JSON.stringify(metrics.creativeProviderBudget.providerAlertDispatches).includes('creative-ops@example.com'), false)
+  assert.equal(JSON.stringify(metrics.creativeProviderBudget.providerAlertDispatches).includes('pred_should_not_be_metric_label'), false)
   assert.equal(metrics.creativeProviderBudget.spend.estimatedAmount, 1.75)
   assert.equal(metrics.creativeProviderBudget.spend.actualAmount, 3.75)
   assert.equal(metrics.creativeProviderBudget.spend.projectedSpendAmount, 14.5)
@@ -157,6 +217,7 @@ test('buildOperationsMetrics summarizes creative provider budget audit events', 
 
   const handoff = buildOperationsHandoff(metrics)
   assert.ok(handoff.remediationHints.some((hint) => hint.id === 'provider-budget-critical-dispatch-blocks'))
+  assert.ok(handoff.remediationHints.some((hint) => hint.id === 'provider-alert-dispatch-failures'))
   assert.ok(handoff.remediationHints.some((hint) => hint.id === 'provider-budget-threshold-100'))
   assert.ok(handoff.remediationHints.some((hint) => hint.id === 'provider-cost-currency-mismatch'))
 })
@@ -175,6 +236,21 @@ test('buildOperationsMetricSamples includes creative provider budget sample buck
       },
       createdAt: '2026-07-07T11:57:00.000Z',
     }],
+    creativeProviderAlertDispatches: [{
+      id: 'audit-provider-alert-dispatch',
+      action: 'creative.provider_alert.dispatch',
+      resourceType: 'creative_provider_budget_alert',
+      resourceId: 'creative-provider-alert:webhook:sample',
+      metadata: {
+        sourceKey: 'creative-provider-alert:webhook:sample',
+        channel: 'webhook',
+        status: 'failed',
+        reasonCode: 'missing_provider_alert_client',
+        providerId: 'replicate',
+        workspace: 'image',
+      },
+      createdAt: '2026-07-07T11:58:00.000Z',
+    }],
   })
 
   assert.equal(samples.creativeProviderBudgetDispatchBlocks.count, 1)
@@ -182,4 +258,7 @@ test('buildOperationsMetricSamples includes creative provider budget sample buck
   assert.equal(samples.creativeProviderBudgetDispatchBlocks.query.resourceType, 'creative_provider_budget')
   assert.equal(JSON.stringify(samples.creativeProviderBudgetDispatchBlocks.events).includes('pred_should_not_be_metric_label'), false)
   assert.equal(JSON.stringify(samples.creativeProviderBudgetDispatchBlocks.events).includes('token='), false)
+  assert.equal(samples.creativeProviderAlertDispatches.count, 1)
+  assert.equal(samples.creativeProviderAlertDispatches.query.action, 'creative.provider_alert.dispatch')
+  assert.equal(samples.creativeProviderAlertDispatches.query.resourceType, 'creative_provider_budget_alert')
 })

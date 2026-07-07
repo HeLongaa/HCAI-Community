@@ -61,6 +61,7 @@ type OperationsSampleKey =
   | 'creativeProviderBudgetThresholds'
   | 'creativeProviderBudgetDispatchBlocks'
   | 'creativeProviderCostAnomalies'
+  | 'creativeProviderAlertDispatches'
 const mediaScanHistoryPageSize = 6
 const mediaPolicyDraftKeys = [
   'retryDelaySeconds',
@@ -954,6 +955,12 @@ export function AdminPage({
       resourceType: 'creative_provider_budget',
       failedOnly: false,
     },
+    creativeProviderAlertDispatches: {
+      title: textFor(t, 'Provider alert dispatch samples', 'Provider 告警派发样本'),
+      action: 'creative.provider_alert.dispatch',
+      resourceType: 'creative_provider_budget_alert',
+      failedOnly: false,
+    },
   }[key])
 
   const operationSampleCountLabel = (key: string) => ({
@@ -964,10 +971,11 @@ export function AdminPage({
     creativeProviderBudgetThresholds: textFor(t, 'Provider thresholds', 'Provider 阈值'),
     creativeProviderBudgetDispatchBlocks: textFor(t, 'Provider blocks', 'Provider 阻断'),
     creativeProviderCostAnomalies: textFor(t, 'Provider anomalies', 'Provider 异常'),
+    creativeProviderAlertDispatches: textFor(t, 'Provider alert dispatches', 'Provider 告警派发'),
   }[key] ?? key)
 
   const operationSampleMetaEntries = (event: AuditEvent) => {
-    const preferred = ['channel', 'status', 'error', 'provider', 'providerId', 'workspace', 'budgetScope', 'severity', 'reasonCode', 'crossedThresholdPercent', 'usageRatioPercent', 'currency', 'storageKey', 'count', 'totalCandidates', 'bytes', 'pruned', 'alertType']
+    const preferred = ['channel', 'status', 'statusCode', 'error', 'errorPreview', 'provider', 'providerId', 'workspace', 'budgetScope', 'severity', 'reasonCode', 'crossedThresholdPercent', 'usageRatioPercent', 'currency', 'storageKey', 'count', 'totalCandidates', 'bytes', 'pruned', 'alertType']
     const metadata = asRecord(event.metadata)
     const entries = preferred
       .filter((key) => metadata[key] != null && metadata[key] !== '')
@@ -996,6 +1004,7 @@ export function AdminPage({
     const securityDeliveryFailures = metrics.security.deliveryFailures.total
     const mediaDeliveryFailures = metrics.mediaScan.alertDeliveryFailures.total
     const providerCriticalDispatchBlocks = metricCount(metrics.creativeProviderBudget.dispatchBlocked.bySeverity, 'critical')
+    const providerAlertDispatchFailures = metrics.creativeProviderBudget.providerAlertDispatches.failed
     const providerThreshold100 = metrics.creativeProviderBudget.thresholdAlerts.byThreshold
       .filter((item) => Number(item.key) >= 100)
       .reduce((total, item) => total + item.count, 0)
@@ -1048,6 +1057,17 @@ export function AdminPage({
           textFor(t, 'Confirm app-side and provider-side caps still match the intended budget scope.', '确认应用侧和 Provider 侧 cap 仍匹配目标预算范围。'),
         ],
         auditFilter: { action: 'creative.provider_budget.dispatch_blocked', resourceType: 'creative_provider_budget' },
+      }] : []),
+      ...(providerAlertDispatchFailures > 0 ? [{
+        id: 'provider-alert-dispatch-failures',
+        severity: 'warning',
+        title: textFor(t, 'Check provider alert dispatch readiness', '检查 Provider 告警派发就绪度'),
+        reason: textFor(t, `${providerAlertDispatchFailures} provider alert dispatch failure(s) were recorded.`, `记录到 ${providerAlertDispatchFailures} 次 Provider 告警派发失败。`),
+        recommendedActions: [
+          textFor(t, 'Review provider alert dispatch samples by channel and reason.', '按渠道和原因复核 Provider 告警派发样本。'),
+          textFor(t, 'Keep real external delivery disabled until approved clients are explicitly wired.', '在批准的 client 明确接入前，保持真实外部投递关闭。'),
+        ],
+        auditFilter: { action: 'creative.provider_alert.dispatch', resourceType: 'creative_provider_budget_alert' },
       }] : []),
       ...(providerThreshold100 > 0 ? [{
         id: 'provider-budget-threshold-100',
@@ -3527,6 +3547,26 @@ export function AdminPage({
                   <button className="ghost-button small" type="button" onClick={() => void toggleOperationSamples('creativeProviderCostAnomalies')} disabled={!canReadAudit || loadingOperationsSamples}>
                     <BarChart3 size={15} />
                     {textFor(t, 'Recent anomalies', '近期异常')}
+                  </button>
+                </div>
+                <div>
+                  <strong>{textFor(t, 'Provider alert dispatches', 'Provider 告警派发')}</strong>
+                  <span>{`${formatMetricNumber(operationsMetrics.creativeProviderBudget.providerAlertDispatches.total)} · ${formatMetricNumber(operationsMetrics.creativeProviderBudget.providerAlertDispatches.failed)} ${textFor(t, 'failed', '失败')} · ${metricCountSummary(operationsMetrics.creativeProviderBudget.providerAlertDispatches.byChannel)}`}</span>
+                  <button
+                    className="ghost-button small"
+                    type="button"
+                    onClick={() => focusAuditFilter('creative.provider_alert.dispatch', 'creative_provider_budget_alert', {
+                      en: 'Filtered audit log to provider alert dispatches.',
+                      zh: '已筛选 Provider 告警派发审计事件。',
+                    })}
+                    disabled={!canReadAudit}
+                  >
+                    <Clipboard size={15} />
+                    {textFor(t, 'Dispatch audit', '派发审计')}
+                  </button>
+                  <button className="ghost-button small" type="button" onClick={() => void toggleOperationSamples('creativeProviderAlertDispatches')} disabled={!canReadAudit || loadingOperationsSamples}>
+                    <Bell size={15} />
+                    {textFor(t, 'Recent dispatches', '近期派发')}
                   </button>
                 </div>
                 <div>

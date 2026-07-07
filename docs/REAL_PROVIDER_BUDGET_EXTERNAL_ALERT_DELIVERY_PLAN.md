@@ -136,27 +136,31 @@ Recommended audit metadata:
 
 Do not include external URLs, secrets, raw request payloads, raw response bodies, or provider job ids in dispatch audit metadata.
 
-## Planned Audit Actions
+## Audit Actions
 
-Future implementation should record delivery attempts as audit events:
+Implemented delivery-attempt audit event:
 
 | Action | Resource Type | Purpose |
 | --- | --- | --- |
 | `creative.provider_alert.dispatch` | `creative_provider_budget_alert` | One row per channel delivery attempt. |
 | `creative.provider_alert.delivery_failed` | `creative_provider_budget_alert` | Optional normalized failure signal for delivery-failure spike aggregation. |
 
-Admin operations metrics can later aggregate failed delivery attempts into:
+Admin operations metrics aggregate persisted delivery attempts into:
 
-- total failed provider alert dispatches
-- failures by channel
-- failures by status
-- latest failure timestamp
+- total provider alert dispatches
+- succeeded, failed, and skipped counts
+- dispatches by channel, status, reason, provider, and workspace
+- latest dispatch audit timestamp
 
-Prometheus exporter can then derive:
+Prometheus exporter derives:
 
-- `newchat_creative_provider_alert_delivery_failures_total`
-- `newchat_creative_provider_alert_delivery_failures_by_channel_total{channel}`
-- `newchat_creative_provider_alert_delivery_failures_by_status_total{status}`
+- `newchat_creative_provider_alert_dispatches_total`
+- `newchat_creative_provider_alert_dispatches_succeeded_total`
+- `newchat_creative_provider_alert_dispatches_failed_total`
+- `newchat_creative_provider_alert_dispatches_skipped_total`
+- `newchat_creative_provider_alert_dispatches_by_channel_total{channel}`
+- `newchat_creative_provider_alert_dispatches_by_status_total{status}`
+- `newchat_creative_provider_alert_dispatches_by_reason_total{reason}`
 
 ## Failure Isolation
 
