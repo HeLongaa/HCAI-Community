@@ -274,14 +274,15 @@ Implemented payload helper:
 buildProviderBudgetExternalAlertPayload(auditEvent)
 buildProviderBudgetExternalAlertPayloads(auditEvents)
 buildProviderBudgetExternalAlertDispatchPlan({ payloads, channels })
+buildProviderBudgetExternalAlertClientAdapters({ channels, clients })
 dispatchProviderBudgetExternalAlerts({ payloads, channels, clients })
 buildProviderBudgetExternalAlertDispatchAuditRecords({ results, now })
 persistProviderBudgetExternalAlertDispatchAuditEvents({ dispatch, results, records, repositories, actor, now })
 ```
 
-The dispatch persistence helper writes only `creative.provider_alert.dispatch` records with `creative_provider_budget_alert` resource type and safe metadata. It reuses the provider budget audit repository for durable source-key dedupe and does not introduce real channel clients.
+The dispatch persistence helper writes only `creative.provider_alert.dispatch` records with `creative_provider_budget_alert` resource type and safe metadata. It reuses the provider budget audit repository for durable source-key dedupe and does not introduce real outbound channel clients.
 
-The helper emits no default outbound side effects. Dispatch only occurs when a caller explicitly injects a mocked channel client; there are no built-in Slack, webhook, email, or HTTP clients. Dispatch audit candidates can be persisted through the existing provider budget audit repository after passing the dedicated safe-record validator.
+The helper emits no default outbound side effects. Dispatch only succeeds when a caller explicitly injects a mocked or future-approved channel client. The approved webhook, Slack, and email adapter shells are disabled by default and fail closed with `provider_alert_client_disabled`; there are still no built-in Slack webhook, webhook delivery, email relay, or HTTP clients. Dispatch audit candidates can be persisted through the existing provider budget audit repository after passing the dedicated safe-record validator.
 
 ## Testing Matrix
 
@@ -317,6 +318,7 @@ Smoke and deploy tests:
 - Production smoke still requires `CREATIVE_PROVIDER_MODE=mock` or `disabled`.
 - Provider alert channel env is optional by default and required only when `CREATIVE_PROVIDER_ALERTS_ENABLED=true`.
 - External provider alert payload, injected dispatcher, and dispatch-audit-planning tests cover threshold, dispatch-blocked, anomaly, missing-client, success, and redacted-failure paths without real outbound sends.
+- Disabled channel adapter shell tests cover webhook, Slack, and email shells, preserve explicitly injected clients, and verify no default network client is used.
 
 ## Recommended PR Order
 
@@ -331,7 +333,8 @@ Smoke and deploy tests:
 9. **Dispatch audit persistence**: persist `creative.provider_alert.dispatch` records through the provider budget audit repository with source-key dedupe. Implemented.
 10. **Provider alert dispatch metrics/exporter**: aggregate persisted dispatch attempts in Admin operations metrics and Prometheus-compatible exporter output. Implemented.
 11. **Provider alert dispatch failure spike policy**: derive thresholded failure-spike signals from persisted dispatch audit rows. Implemented.
-12. **External alert delivery**: separate phase only after explicit approval.
+12. **Approved provider alert channel client adapter shell**: define disabled webhook, Slack, and email client shells without real outbound delivery. Implemented.
+13. **External alert delivery**: separate phase only after explicit approval.
 
 ## No-Go Conditions
 
@@ -347,11 +350,11 @@ No-go for implementation if any are true:
 
 ## Next Suggested Implementation
 
-The safest next implementation is **approved provider alert channel client adapter shell**, still without enabling real outbound delivery by default:
+The safest next implementation is **explicit provider alert delivery approval and configuration wiring**, still without sending real outbound messages by default:
 
-- define explicit channel client interfaces for webhook, Slack, and email relay
-- keep every client disabled unless injected or explicitly configured in a later delivery PR
+- define the exact feature gate and env-to-client wiring that would be required before any real webhook, Slack, or email relay client can be enabled
+- keep every client disabled unless the approved gate, channel config, and test fixture path are present
 - preserve current audit, idempotency, metrics, and failure-spike boundaries
 - keep actual external delivery, Admin mutation controls, provider callback/manual replay endpoints, and real provider calls deferred until explicitly approved
 
-The durable audit source of truth, internal notification routing, Admin read-only metrics, Prometheus-compatible exporter metrics, external alert env/smoke validation, pure payload builder, injected mock dispatcher boundary, dispatch audit planning, dispatch audit persistence, dispatch observability, failure-spike policy, and external alert delivery plan now exist. External delivery should still be staged behind explicit channel-client approval before any outbound message is sent.
+The durable audit source of truth, internal notification routing, Admin read-only metrics, Prometheus-compatible exporter metrics, external alert env/smoke validation, pure payload builder, injected mock dispatcher boundary, disabled channel adapter shell, dispatch audit planning, dispatch audit persistence, dispatch observability, failure-spike policy, and external alert delivery plan now exist. External delivery should still be staged behind explicit channel-client approval before any outbound message is sent.

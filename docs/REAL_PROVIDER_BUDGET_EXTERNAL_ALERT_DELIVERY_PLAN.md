@@ -2,7 +2,7 @@
 
 This plan defines the approval boundary and implementation checklist for future external Slack, webhook, or email delivery of creative provider budget alerts.
 
-Current decision: **dispatch audit persistence without real external delivery**. Durable audit persistence, internal station notifications, Admin operations metrics, Prometheus-compatible exporter metrics, `CREATIVE_PROVIDER_ALERT_*` env/smoke validation, a pure channel-neutral provider alert payload builder, an injected dispatcher boundary for tests, safe dispatch audit record candidate planning, and per-channel dispatch audit persistence exist. External alert delivery still must not send outbound Slack, webhook, or email messages until a later explicitly approved implementation PR provides approved clients.
+Current decision: **dispatch audit persistence and approved channel client shells without real external delivery**. Durable audit persistence, internal station notifications, Admin operations metrics, Prometheus-compatible exporter metrics, `CREATIVE_PROVIDER_ALERT_*` env/smoke validation, a pure channel-neutral provider alert payload builder, an injected dispatcher boundary for tests, explicit disabled client adapter shells for webhook/Slack/email, safe dispatch audit record candidate planning, per-channel dispatch audit persistence, dispatch observability, and failure-spike policy exist. External alert delivery still must not send outbound Slack, webhook, or email messages until a later explicitly approved implementation PR provides approved clients.
 
 ## Non-Goals For This Planning Step
 
@@ -28,12 +28,13 @@ Implemented payload builder:
 buildProviderBudgetExternalAlertPayload(auditEvent)
 buildProviderBudgetExternalAlertPayloads(auditEvents)
 buildProviderBudgetExternalAlertDispatchPlan({ payloads, channels })
+buildProviderBudgetExternalAlertClientAdapters({ channels, clients })
 dispatchProviderBudgetExternalAlerts({ payloads, channels, clients })
 buildProviderBudgetExternalAlertDispatchAuditRecords({ results, now })
 persistProviderBudgetExternalAlertDispatchAuditEvents({ dispatch, results, records, repositories, actor, now })
 ```
 
-The builder is pure and channel-neutral. The dispatcher boundary is injected-only: tests can pass mocked `webhook`, `slack`, or `email` clients, and missing clients fail closed with safe per-channel results. Dispatch audit planning maps those results into safe `creative.provider_alert.dispatch` audit record candidates, and the persistence helper can write those candidates through `repositories.providerBudgetAudit.recordMany` with source-key dedupe. There is still no default HTTP client, Slack webhook client, email relay client, or provider SDK call.
+The builder is pure and channel-neutral. The dispatcher boundary is injected-only: tests can pass mocked `webhook`, `slack`, or `email` clients, missing clients fail closed with safe per-channel results, and the approved channel adapter shell returns disabled clients unless a caller explicitly injects a client. Disabled shells report `provider_alert_client_disabled` and never create default HTTP, Slack webhook, email relay, or provider SDK behavior. Dispatch audit planning maps those results into safe `creative.provider_alert.dispatch` audit record candidates, and the persistence helper can write those candidates through `repositories.providerBudgetAudit.recordMany` with source-key dedupe.
 
 ## Environment Variables
 
@@ -194,7 +195,7 @@ Smoke verifies:
 - secrets are present as booleans in safe summaries only
 - production smoke still keeps `CREATIVE_PROVIDER_MODE=mock` or `disabled` unless a separate provider rollout approves otherwise
 
-Payload-builder, injected-dispatcher, and dispatch-audit-planning tests verify that no provider token, webhook URL, email address, Slack webhook, raw prompt, raw provider payload, output URL, generation id, or provider job id appears in payload output, dispatch envelopes, dispatch results, or dispatch audit record candidates. Future production-client tests must additionally verify the same rule for logs, metrics labels, and real request bodies.
+Payload-builder, disabled adapter shell, injected-dispatcher, and dispatch-audit-planning tests verify that no provider token, webhook URL, email address, Slack webhook, raw prompt, raw provider payload, output URL, generation id, or provider job id appears in payload output, dispatch envelopes, dispatch results, disabled shell JSON, or dispatch audit record candidates. Future production-client tests must additionally verify the same rule for logs, metrics labels, and real request bodies.
 
 ## Implementation Order
 
@@ -203,9 +204,11 @@ Payload-builder, injected-dispatcher, and dispatch-audit-planning tests verify t
 3. Add a pure payload builder from persisted audit events, still without outbound sends. Implemented.
 4. Add an injected dispatcher boundary with mocked webhook, Slack, and email clients in tests, still without default outbound clients. Implemented.
 5. Plan per-channel dispatch audit event candidates with safe metadata. Implemented.
-6. Persist per-channel dispatch audit events with safe metadata.
-7. Add delivery-failure aggregation to Admin operations metrics and `/metrics`.
-8. Only then consider enabling a staging external channel with fixture events.
+6. Persist per-channel dispatch audit events with safe metadata. Implemented.
+7. Add delivery-failure aggregation to Admin operations metrics and `/metrics`. Implemented.
+8. Add thresholded delivery-failure spike policy. Implemented.
+9. Add approved webhook/Slack/email client adapter shells that remain disabled unless clients are explicitly injected. Implemented.
+10. Only then consider enabling a staging external channel with fixture events after explicit approval.
 
 ## Explicit Approval Required
 
@@ -217,4 +220,4 @@ Before any implementation PR sends outbound messages, the user must approve:
 - whether delivery failure alerts should page humans or stay dashboard-only
 - retention expectations for dispatch audit records
 
-Until then, external alert delivery remains deferred even though env parsing and smoke validation exist.
+Until then, external alert delivery remains deferred even though env parsing, smoke validation, dispatch audit persistence, observability, failure-spike policy, and disabled channel adapter shells exist.
