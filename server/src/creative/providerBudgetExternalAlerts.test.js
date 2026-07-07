@@ -11,6 +11,7 @@ import {
   buildProviderBudgetExternalAlertDispatchAuditRecords,
   dispatchProviderBudgetExternalAlerts,
   persistProviderBudgetExternalAlertDispatchAuditEvents,
+  runProviderBudgetExternalAlertFixtureDryRun,
 } from './providerBudgetExternalAlerts.js'
 import { persistProviderBudgetAuditEvents } from './providerBudgetAuditPersistence.js'
 import { buildProviderBudgetEventPlan } from './providerBudgetEvents.js'
@@ -411,6 +412,177 @@ test('buildProviderBudgetExternalAlertDeliveryWiring only uses injected fixture 
   }
 })
 
+test('runProviderBudgetExternalAlertFixtureDryRun short-circuits safely without fixture approval', async () => {
+  const repository = createSeedRepository()
+  const plan = buildProviderBudgetEventPlan({
+    providerCost,
+    workspace: 'image',
+    mode: 'text_to_image',
+    block: { reasonCode: 'over_budget', statusCode: 429 },
+    now: new Date('2026-07-08T04:00:00.000Z'),
+  })
+  const persisted = await persistProviderBudgetAuditEvents({
+    plan,
+    repositories: repository,
+    actor,
+  })
+  const writes = []
+  const result = await runProviderBudgetExternalAlertFixtureDryRun({
+    auditEvents: persisted.records.map((record) => record.event),
+    config: {
+      creativeProviderAlertsEnabled: true,
+      creativeProviderAlertChannels: ['webhook'],
+      hasCreativeProviderAlertWebhookUrl: true,
+      rawWebhookUrl: 'https://ops.example.com/provider-alerts',
+      secret: 'provider-secret',
+    },
+    repositories: {
+      providerBudgetAudit: {
+        recordMany: async (records) => {
+          writes.push(...records)
+          return []
+        },
+      },
+    },
+    actor,
+  })
+
+  assert.equal(result.completed, false)
+  assert.equal(result.reasonCode, 'provider_alert_delivery_approval_required')
+  assert.equal(result.dispatch, null)
+  assert.equal(result.persistence, null)
+  assert.equal(result.safeSummary.payloadCount, 5)
+  assert.equal(result.safeSummary.operationCount, 5)
+  assert.equal(result.safeSummary.dispatchTotal, 0)
+  assert.equal(writes.length, 0)
+
+  const serialized = JSON.stringify(result)
+  assert.equal(serialized.includes('ops.example.com'), false)
+  assert.equal(serialized.includes('provider-secret'), false)
+  assert.equal(serialized.includes('pred_external_alert_should_not_leak'), false)
+})
+
+test('runProviderBudgetExternalAlertFixtureDryRun dispatches fixture clients and persists safe audit records', async () => {
+  const repository = createSeedRepository()
+  const plan = buildProviderBudgetEventPlan({
+    providerCost,
+    workspace: 'image',
+    mode: 'text_to_image',
+    block: { reasonCode: 'over_budget', statusCode: 429 },
+    now: new Date('2026-07-08T05:00:00.000Z'),
+  })
+  const persisted = await persistProviderBudgetAuditEvents({
+    plan,
+    repositories: repository,
+    actor,
+  })
+  const sent = []
+  const originalFetch = globalThis.fetch
+  let fetchCalls = 0
+  globalThis.fetch = async () => {
+    fetchCalls += 1
+    throw new Error('fetch should not be used by provider alert dry-run harness')
+  }
+
+  try {
+    const first = await runProviderBudgetExternalAlertFixtureDryRun({
+      auditEvents: persisted.records.map((record) => record.event),
+      config: {
+        creativeProviderAlertsEnabled: true,
+        creativeProviderAlertChannels: ['webhook', 'slack', 'email'],
+        hasCreativeProviderAlertWebhookUrl: true,
+        hasCreativeProviderAlertWebhookSecret: true,
+        hasCreativeProviderAlertSlackWebhookUrl: true,
+        hasCreativeProviderAlertEmailWebhookUrl: true,
+        hasCreativeProviderAlertEmailWebhookSecret: true,
+        creativeProviderAlertEmailRecipientCount: 1,
+        rawWebhookUrl: 'https://ops.example.com/provider-alerts',
+        recipientEmail: 'creative-ops@example.com',
+      },
+      approval: {
+        deliveryApproved: true,
+        fixtureOnly: true,
+      },
+      fixtureClients: {
+        webhook: {
+          enabled: true,
+          send: async (envelope) => {
+            sent.push(envelope)
+            return { statusCode: 202, reasonCode: 'fixture_accepted' }
+          },
+        },
+      },
+      repositories: repository,
+      actor,
+      now: new Date('2026-07-08T05:01:00.000Z'),
+    })
+    const second = await runProviderBudgetExternalAlertFixtureDryRun({
+      auditEvents: persisted.records.map((record) => record.event),
+      config: {
+        creativeProviderAlertsEnabled: true,
+        creativeProviderAlertChannels: ['webhook', 'slack', 'email'],
+        hasCreativeProviderAlertWebhookUrl: true,
+        hasCreativeProviderAlertSlackWebhookUrl: true,
+        hasCreativeProviderAlertEmailWebhookUrl: true,
+        creativeProviderAlertEmailRecipientCount: 1,
+      },
+      approval: {
+        deliveryApproved: true,
+        fixtureOnly: true,
+      },
+      fixtureClients: {
+        webhook: {
+          enabled: true,
+          send: async () => ({ statusCode: 202, reasonCode: 'fixture_accepted' }),
+        },
+      },
+      repositories: repository,
+      actor,
+      now: new Date('2026-07-08T05:01:00.000Z'),
+    })
+
+    assert.equal(fetchCalls, 0)
+    assert.equal(first.completed, true)
+    assert.equal(first.reasonCode, 'provider_alert_fixture_delivery_ready')
+    assert.equal(first.safeSummary.payloadCount, 5)
+    assert.equal(first.safeSummary.channelCount, 3)
+    assert.equal(first.safeSummary.operationCount, 15)
+    assert.equal(first.safeSummary.dispatchTotal, 15)
+    assert.equal(first.safeSummary.dispatchSucceeded, 5)
+    assert.equal(first.safeSummary.dispatchFailed, 10)
+    assert.deepEqual(first.safeSummary.dispatchReasons, [
+      { key: 'fixture_accepted', count: 5 },
+      { key: 'provider_alert_client_disabled', count: 10 },
+    ])
+    assert.equal(first.safeSummary.auditCreatedCount, 15)
+    assert.equal(first.safeSummary.auditDuplicateCount, 0)
+    assert.equal(second.safeSummary.auditCreatedCount, 0)
+    assert.equal(second.safeSummary.auditDuplicateCount, 15)
+    assert.equal(sent.length, 5)
+    assert.equal(sent.every((envelope) => envelope.channel === 'webhook'), true)
+
+    const audit = repository.audit.list({
+      action: 'creative.provider_alert.dispatch',
+      resourceType: 'creative_provider_budget_alert',
+    })
+    const persistedIds = new Set(first.persistence.records.map((record) => record.event.id))
+    const dryRunAudit = audit.items.filter((event) => persistedIds.has(event.id))
+    assert.equal(dryRunAudit.length, 15)
+    assert.equal(dryRunAudit.filter((event) => event.metadata.channel === 'webhook').length, 5)
+    assert.equal(dryRunAudit.filter((event) => event.metadata.reasonCode === 'provider_alert_client_disabled').length, 10)
+    assert.equal(dryRunAudit.every((event) => event.metadata.persistedFrom === 'provider_budget_external_alert_dispatch'), true)
+
+    const serialized = JSON.stringify({ first, second, sent, audit: dryRunAudit })
+    assert.equal(serialized.includes('pred_external_alert_should_not_leak'), false)
+    assert.equal(serialized.includes('ops.example.com'), false)
+    assert.equal(serialized.includes('hooks.slack.com'), false)
+    assert.equal(serialized.includes('creative-ops@example.com'), false)
+    assert.equal(serialized.includes('provider-secret'), false)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('dispatchProviderBudgetExternalAlerts fails closed through disabled channel shells without default network', async () => {
   const payload = buildProviderBudgetExternalAlertPayload({
     id: 'audit-provider-budget-alert-shell',
@@ -663,9 +835,12 @@ test('persistProviderBudgetExternalAlertDispatchAuditEvents records per-channel 
     action: 'creative.provider_alert.dispatch',
     resourceType: 'creative_provider_budget_alert',
   })
-  assert.equal(audit.items.length, 2)
-  const webhookAudit = audit.items.find((event) => event.metadata.channel === 'webhook')
-  const slackAudit = audit.items.find((event) => event.metadata.channel === 'slack')
+  const currentAudit = audit.items.filter((event) => (
+    event.metadata.auditEventSourceKey === 'creative-provider-budget:audit-persist-safe:audit'
+  ))
+  assert.equal(currentAudit.length, 2)
+  const webhookAudit = currentAudit.find((event) => event.metadata.channel === 'webhook')
+  const slackAudit = currentAudit.find((event) => event.metadata.channel === 'slack')
   assert.ok(webhookAudit)
   assert.ok(slackAudit)
   assert.equal(webhookAudit.metadata.status, 'succeeded')
@@ -675,7 +850,7 @@ test('persistProviderBudgetExternalAlertDispatchAuditEvents records per-channel 
   assert.equal(webhookAudit.metadata.attemptedAt, '2026-07-07T06:01:00.000Z')
   assert.equal(slackAudit.metadata.reasonCode, 'missing_provider_alert_client')
 
-  const serialized = JSON.stringify(audit.items)
+  const serialized = JSON.stringify(currentAudit)
   assert.equal(serialized.includes('pred_audit_persist_should_not_copy'), false)
   assert.equal(serialized.includes('raw prompt should not copy'), false)
   assert.equal(serialized.includes('token=provider-secret'), false)

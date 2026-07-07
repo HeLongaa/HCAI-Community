@@ -556,3 +556,86 @@ export const dispatchProviderBudgetExternalAlerts = async ({
     },
   }
 }
+
+const countProviderBudgetExternalAlertResultsByReason = (results = []) =>
+  Object.entries((Array.isArray(results) ? results : []).reduce((counts, result) => {
+    const reason = safeString(result?.reasonCode, 'unknown')
+    counts[reason] = (counts[reason] ?? 0) + 1
+    return counts
+  }, {}))
+    .map(([key, count]) => ({ key, count }))
+    .sort((left, right) => left.key.localeCompare(right.key))
+
+export const runProviderBudgetExternalAlertFixtureDryRun = async ({
+  auditEvents = [],
+  config = {},
+  approval = {},
+  fixtureClients = {},
+  repositories = {},
+  actor = null,
+  now = new Date(),
+} = {}) => {
+  const payloads = buildProviderBudgetExternalAlertPayloads(auditEvents)
+  const wiring = buildProviderBudgetExternalAlertDeliveryWiring({
+    config,
+    approval,
+    fixtureClients,
+  })
+
+  const baseSummary = {
+    mode: wiring.mode,
+    reasonCode: wiring.reasonCode,
+    payloadCount: payloads.length,
+    channelCount: wiring.channels.length,
+    operationCount: payloads.length * wiring.channels.length,
+    dispatchTotal: 0,
+    dispatchSucceeded: 0,
+    dispatchFailed: 0,
+    dispatchReasons: [],
+    auditCreatedCount: 0,
+    auditDuplicateCount: 0,
+    realDeliveryAvailable: false,
+  }
+
+  if (wiring.mode !== 'fixture') {
+    return {
+      completed: false,
+      reasonCode: wiring.reasonCode,
+      payloads,
+      wiring,
+      dispatch: null,
+      persistence: null,
+      safeSummary: baseSummary,
+    }
+  }
+
+  const dispatch = await dispatchProviderBudgetExternalAlerts({
+    payloads,
+    channels: wiring.channels,
+    clients: wiring.clients,
+  })
+  const persistence = await persistProviderBudgetExternalAlertDispatchAuditEvents({
+    dispatch,
+    repositories,
+    actor,
+    now,
+  })
+
+  return {
+    completed: persistence.completed,
+    reasonCode: persistence.failed?.reasonCode ?? wiring.reasonCode,
+    payloads,
+    wiring,
+    dispatch,
+    persistence,
+    safeSummary: {
+      ...baseSummary,
+      dispatchTotal: dispatch.safeSummary.total,
+      dispatchSucceeded: dispatch.safeSummary.succeeded,
+      dispatchFailed: dispatch.safeSummary.failed,
+      dispatchReasons: countProviderBudgetExternalAlertResultsByReason(dispatch.results),
+      auditCreatedCount: persistence.createdCount,
+      auditDuplicateCount: persistence.duplicateCount,
+    },
+  }
+}
