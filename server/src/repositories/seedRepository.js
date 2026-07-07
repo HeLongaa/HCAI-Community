@@ -463,6 +463,7 @@ const buildSeedOperationsMetrics = (options = {}, generatedAt = new Date()) => b
   auditEvents,
   securityAlerts: getSeedSecurityEventAlerts(),
   mediaScanArchiveManifest: getSeedMediaScanJobArchiveManifest({ limit: 1 }),
+  providerAlertDispatchFailureThreshold: Number.parseInt(process.env.CREATIVE_PROVIDER_ALERT_DELIVERY_FAILED_ALERT_THRESHOLD ?? '2', 10) || 2,
 })
 
 const getSeedOperationsMetricSamples = (options = {}, generatedAt = new Date()) => {

@@ -5510,6 +5510,7 @@ const createPrismaRepository = async (fallbackRepository) => {
       auditEvents: auditRows.map(serializeAuditEvent),
       securityAlerts,
       mediaScanArchiveManifest: archiveManifest,
+      providerAlertDispatchFailureThreshold: Number.parseInt(process.env.CREATIVE_PROVIDER_ALERT_DELIVERY_FAILED_ALERT_THRESHOLD ?? '2', 10) || 2,
     })
   }
 

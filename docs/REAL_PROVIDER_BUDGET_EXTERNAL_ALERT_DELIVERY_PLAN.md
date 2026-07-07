@@ -151,6 +151,7 @@ Admin operations metrics aggregate persisted delivery attempts into:
 - succeeded, failed, and skipped counts
 - dispatches by channel, status, reason, provider, and workspace
 - latest dispatch audit timestamp
+- thresholded failure-spike status, threshold, failure count, channel breakdown, and reason breakdown
 
 Prometheus exporter derives:
 
@@ -161,6 +162,11 @@ Prometheus exporter derives:
 - `newchat_creative_provider_alert_dispatches_by_channel_total{channel}`
 - `newchat_creative_provider_alert_dispatches_by_status_total{status}`
 - `newchat_creative_provider_alert_dispatches_by_reason_total{reason}`
+- `newchat_creative_provider_alert_dispatch_failure_spike_active`
+- `newchat_creative_provider_alert_dispatch_failure_spike_threshold`
+- `newchat_creative_provider_alert_dispatch_failure_spike_failures_total`
+- `newchat_creative_provider_alert_dispatch_failure_spike_by_channel_total{channel}`
+- `newchat_creative_provider_alert_dispatch_failure_spike_by_reason_total{reason}`
 
 ## Failure Isolation
 

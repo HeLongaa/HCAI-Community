@@ -1070,6 +1070,14 @@ export type AdminOperationsMetricsDto = {
       byProvider: AdminOperationsMetricCount[]
       byWorkspace: AdminOperationsMetricCount[]
       latestAt: string | null
+      failureSpike: {
+        active: boolean
+        threshold: number
+        failures: number
+        byChannel: AdminOperationsMetricCount[]
+        byReason: AdminOperationsMetricCount[]
+        latestAt: string | null
+      }
     }
   }
 }

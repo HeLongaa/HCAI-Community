@@ -126,6 +126,11 @@ const addProviderBudgetMetrics = (lines, providerBudget = {}) => {
   addCountBy(lines, 'newchat_creative_provider_alert_dispatches_by_reason_total', 'Windowed creative provider alert dispatch audit count by reason.', dispatches.byReason, 'reason', providerBudgetReasonValues)
   addCountBy(lines, 'newchat_creative_provider_alert_dispatches_by_provider_total', 'Windowed creative provider alert dispatch audit count by provider.', dispatches.byProvider, 'provider')
   addCountBy(lines, 'newchat_creative_provider_alert_dispatches_by_workspace_total', 'Windowed creative provider alert dispatch audit count by workspace.', dispatches.byWorkspace, 'workspace', ['image', 'video', 'music', 'chat', 'unknown'])
+  addGauge(lines, 'newchat_creative_provider_alert_dispatch_failure_spike_active', 'Whether provider alert dispatch failures reached the configured threshold.', dispatches.failureSpike?.active ? 1 : 0)
+  addGauge(lines, 'newchat_creative_provider_alert_dispatch_failure_spike_threshold', 'Configured provider alert dispatch failure spike threshold.', dispatches.failureSpike?.threshold)
+  addGauge(lines, 'newchat_creative_provider_alert_dispatch_failure_spike_failures_total', 'Windowed provider alert dispatch failures counted by the spike policy.', dispatches.failureSpike?.failures)
+  addCountBy(lines, 'newchat_creative_provider_alert_dispatch_failure_spike_by_channel_total', 'Windowed provider alert dispatch spike failures by channel.', dispatches.failureSpike?.byChannel, 'channel', ['webhook', 'slack', 'email', 'unknown'])
+  addCountBy(lines, 'newchat_creative_provider_alert_dispatch_failure_spike_by_reason_total', 'Windowed provider alert dispatch spike failures by reason.', dispatches.failureSpike?.byReason, 'reason', providerBudgetReasonValues)
 }
 
 const deliveryMetrics = (lines, prefix, summary = {}) => {

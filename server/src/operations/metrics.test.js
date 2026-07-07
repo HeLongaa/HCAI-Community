@@ -192,6 +192,9 @@ test('buildOperationsMetrics summarizes creative provider budget audit events', 
   assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.total, 2)
   assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.succeeded, 1)
   assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.failed, 1)
+  assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.failureSpike.active, false)
+  assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.failureSpike.threshold, 2)
+  assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.failureSpike.failures, 1)
   assert.deepEqual(metrics.creativeProviderBudget.providerAlertDispatches.byChannel, [
     { key: 'slack', count: 1 },
     { key: 'webhook', count: 1 },
@@ -217,9 +220,97 @@ test('buildOperationsMetrics summarizes creative provider budget audit events', 
 
   const handoff = buildOperationsHandoff(metrics)
   assert.ok(handoff.remediationHints.some((hint) => hint.id === 'provider-budget-critical-dispatch-blocks'))
-  assert.ok(handoff.remediationHints.some((hint) => hint.id === 'provider-alert-dispatch-failures'))
+  assert.equal(handoff.remediationHints.some((hint) => hint.id === 'provider-alert-dispatch-failures'), false)
   assert.ok(handoff.remediationHints.some((hint) => hint.id === 'provider-budget-threshold-100'))
   assert.ok(handoff.remediationHints.some((hint) => hint.id === 'provider-cost-currency-mismatch'))
+})
+
+test('buildOperationsMetrics activates provider alert dispatch failure spike at threshold', () => {
+  const generatedAt = new Date('2026-07-07T12:00:00.000Z')
+  const auditEvents = [
+    {
+      id: 'audit-provider-alert-dispatch-slack',
+      action: 'creative.provider_alert.dispatch',
+      resourceType: 'creative_provider_budget_alert',
+      resourceId: 'creative-provider-alert:slack:creative-provider-budget:audit',
+      metadata: {
+        sourceKey: 'creative-provider-alert:slack:creative-provider-budget:audit',
+        channel: 'slack',
+        status: 'failed',
+        statusCode: 503,
+        providerId: 'replicate',
+        workspace: 'image',
+        reasonCode: 'missing_provider_alert_client',
+        errorPreview: 'missing mocked client',
+        webhookUrl: 'https://ops.example.com/provider-alerts',
+        recipientEmail: 'creative-ops@example.com',
+        providerJobId: 'pred_should_not_be_metric_label',
+      },
+      createdAt: '2026-07-07T11:58:00.000Z',
+    },
+    {
+      id: 'audit-provider-alert-dispatch-email',
+      action: 'creative.provider_alert.dispatch',
+      resourceType: 'creative_provider_budget_alert',
+      resourceId: 'creative-provider-alert:email:creative-provider-budget:audit',
+      metadata: {
+        sourceKey: 'creative-provider-alert:email:creative-provider-budget:audit',
+        channel: 'email',
+        status: 'failed',
+        statusCode: 502,
+        providerId: 'replicate',
+        workspace: 'image',
+        reasonCode: 'relay_failed',
+        errorPreview: 'relay failed',
+      },
+      createdAt: '2026-07-07T11:59:00.000Z',
+    },
+    {
+      id: 'audit-provider-alert-dispatch-old',
+      action: 'creative.provider_alert.dispatch',
+      resourceType: 'creative_provider_budget_alert',
+      resourceId: 'creative-provider-alert:webhook:old',
+      metadata: {
+        channel: 'webhook',
+        status: 'failed',
+        reasonCode: 'relay_failed',
+      },
+      createdAt: '2026-07-07T10:00:00.000Z',
+    },
+  ]
+
+  const metrics = buildOperationsMetrics({
+    windowMinutes: 15,
+    generatedAt,
+    auditEvents,
+    providerAlertDispatchFailureThreshold: 2,
+  })
+
+  assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.failed, 2)
+  assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.failureSpike.active, true)
+  assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.failureSpike.threshold, 2)
+  assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.failureSpike.failures, 2)
+  assert.deepEqual(metrics.creativeProviderBudget.providerAlertDispatches.failureSpike.byChannel, [
+    { key: 'email', count: 1 },
+    { key: 'slack', count: 1 },
+  ])
+  assert.deepEqual(metrics.creativeProviderBudget.providerAlertDispatches.failureSpike.byReason, [
+    { key: 'missing_provider_alert_client', count: 1 },
+    { key: 'relay_failed', count: 1 },
+  ])
+  assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.failureSpike.latestAt, '2026-07-07T11:59:00.000Z')
+  assert.equal(JSON.stringify(metrics.creativeProviderBudget.providerAlertDispatches.failureSpike).includes('ops.example.com'), false)
+  assert.equal(JSON.stringify(metrics.creativeProviderBudget.providerAlertDispatches.failureSpike).includes('creative-ops@example.com'), false)
+  assert.equal(JSON.stringify(metrics.creativeProviderBudget.providerAlertDispatches.failureSpike).includes('pred_should_not_be_metric_label'), false)
+
+  const handoff = buildOperationsHandoff(metrics)
+  const hint = handoff.remediationHints.find((item) => item.id === 'provider-alert-dispatch-failures')
+  assert.ok(hint)
+  assert.match(hint.reason, /configured threshold of 2/)
+  assert.deepEqual(hint.auditFilter, {
+    action: 'creative.provider_alert.dispatch',
+    resourceType: 'creative_provider_budget_alert',
+  })
 })
 
 test('buildOperationsMetricSamples includes creative provider budget sample buckets', () => {

@@ -1,6 +1,7 @@
 import { securityAlertDispositionActions } from '../security/alertPolicy.js'
 
 const DEFAULT_WINDOW_MINUTES = 60
+const DEFAULT_PROVIDER_ALERT_DISPATCH_FAILURE_THRESHOLD = 2
 
 const asObject = (value) => value && typeof value === 'object' && !Array.isArray(value) ? value : {}
 
@@ -114,24 +115,37 @@ const providerBudgetEventActions = Object.freeze({
   alertDispatch: 'creative.provider_alert.dispatch',
 })
 
-const providerAlertDispatchSummary = (events = []) => ({
-  total: events.length,
-  succeeded: events.filter((event) => asObject(event.metadata).status === 'succeeded').length,
-  failed: events.filter((event) => asObject(event.metadata).status === 'failed').length,
-  skipped: events.filter((event) => asObject(event.metadata).status === 'skipped').length,
-  byChannel: countBy(events, (event) => asObject(event.metadata).channel),
-  byStatus: countBy(events, (event) => asObject(event.metadata).status),
-  byReason: countBy(events, (event) => asObject(event.metadata).reasonCode),
-  byProvider: countBy(events, (event) => asObject(event.metadata).providerId),
-  byWorkspace: countBy(events, (event) => asObject(event.metadata).workspace),
-  latestAt: latestTimestamp(events),
-})
+const providerAlertDispatchSummary = (events = [], failureThreshold = DEFAULT_PROVIDER_ALERT_DISPATCH_FAILURE_THRESHOLD) => {
+  const failedEvents = events.filter((event) => asObject(event.metadata).status === 'failed')
+  const threshold = Math.max(1, Number.parseInt(String(failureThreshold ?? DEFAULT_PROVIDER_ALERT_DISPATCH_FAILURE_THRESHOLD), 10) || DEFAULT_PROVIDER_ALERT_DISPATCH_FAILURE_THRESHOLD)
+  return {
+    total: events.length,
+    succeeded: events.filter((event) => asObject(event.metadata).status === 'succeeded').length,
+    failed: failedEvents.length,
+    skipped: events.filter((event) => asObject(event.metadata).status === 'skipped').length,
+    byChannel: countBy(events, (event) => asObject(event.metadata).channel),
+    byStatus: countBy(events, (event) => asObject(event.metadata).status),
+    byReason: countBy(events, (event) => asObject(event.metadata).reasonCode),
+    byProvider: countBy(events, (event) => asObject(event.metadata).providerId),
+    byWorkspace: countBy(events, (event) => asObject(event.metadata).workspace),
+    latestAt: latestTimestamp(events),
+    failureSpike: {
+      active: failedEvents.length >= threshold,
+      threshold,
+      failures: failedEvents.length,
+      byChannel: countBy(failedEvents, (event) => asObject(event.metadata).channel),
+      byReason: countBy(failedEvents, (event) => asObject(event.metadata).reasonCode),
+      latestAt: latestTimestamp(failedEvents),
+    },
+  }
+}
 
 const providerBudgetSummary = ({
   thresholdEvents = [],
   dispatchBlockedEvents = [],
   anomalyEvents = [],
   alertDispatchEvents = [],
+  alertDispatchFailureThreshold = DEFAULT_PROVIDER_ALERT_DISPATCH_FAILURE_THRESHOLD,
 } = {}) => ({
   thresholdAlerts: {
     total: thresholdEvents.length,
@@ -166,7 +180,7 @@ const providerBudgetSummary = ({
     projectedSpendAmount: sumMetadataNumber([...thresholdEvents, ...dispatchBlockedEvents, ...anomalyEvents], 'projectedSpendAmount'),
     byCurrency: countBy([...thresholdEvents, ...dispatchBlockedEvents, ...anomalyEvents], (event) => asObject(event.metadata).currency),
   },
-  providerAlertDispatches: providerAlertDispatchSummary(alertDispatchEvents),
+  providerAlertDispatches: providerAlertDispatchSummary(alertDispatchEvents, alertDispatchFailureThreshold),
 })
 
 export const operationsMetricsSampleDefinitions = {
@@ -254,7 +268,7 @@ export const buildOperationsHandoff = (metrics) => {
   const securityDeliveryFailures = metrics.security.deliveryFailures.total
   const mediaDeliveryFailures = metrics.mediaScan.alertDeliveryFailures.total
   const providerCriticalDispatchBlocks = metricCount(metrics.creativeProviderBudget.dispatchBlocked.bySeverity, 'critical')
-  const providerAlertDispatchFailures = metrics.creativeProviderBudget.providerAlertDispatches.failed
+  const providerAlertDispatchFailureSpike = metrics.creativeProviderBudget.providerAlertDispatches.failureSpike
   const providerThreshold100 = metrics.creativeProviderBudget.thresholdAlerts.byThreshold
     .filter((item) => Number(item.key) >= 100)
     .reduce((total, item) => total + item.count, 0)
@@ -308,11 +322,11 @@ export const buildOperationsHandoff = (metrics) => {
       ],
       auditFilter: { action: providerBudgetEventActions.dispatchBlocked, resourceType: 'creative_provider_budget' },
     }] : []),
-    ...(providerAlertDispatchFailures > 0 ? [{
+    ...(providerAlertDispatchFailureSpike.active ? [{
       id: 'provider-alert-dispatch-failures',
       severity: 'warning',
       title: 'Check provider alert dispatch readiness',
-      reason: `${providerAlertDispatchFailures} provider alert dispatch failure(s) were recorded.`,
+      reason: `${providerAlertDispatchFailureSpike.failures} provider alert dispatch failure(s) reached the configured threshold of ${providerAlertDispatchFailureSpike.threshold}.`,
       recommendedActions: [
         'Review creative provider alert dispatch samples by channel and reason.',
         'Keep real external delivery disabled until webhook, Slack, and email clients are explicitly approved.',
@@ -432,6 +446,7 @@ export const buildOperationsMetrics = ({
   auditEvents = [],
   securityAlerts = [],
   mediaScanArchiveManifest = null,
+  providerAlertDispatchFailureThreshold = DEFAULT_PROVIDER_ALERT_DISPATCH_FAILURE_THRESHOLD,
 } = {}) => {
   const until = toDate(generatedAt) ?? new Date()
   const since = new Date(until.getTime() - windowMinutes * 60 * 1000)
@@ -531,6 +546,7 @@ export const buildOperationsMetrics = ({
       dispatchBlockedEvents: providerBudgetDispatchBlocks,
       anomalyEvents: providerCostAnomalies,
       alertDispatchEvents: providerAlertDispatches,
+      alertDispatchFailureThreshold: providerAlertDispatchFailureThreshold,
     }),
   }
 }

@@ -100,6 +100,13 @@ test('buildPrometheusMetrics renders safe Prometheus text without unsafe labels'
         byReason: [{ key: 'missing_provider_alert_client', count: 1 }, { key: 'provider_job_mismatch', count: 1 }],
         byProvider: [{ key: 'replicate', count: 2 }, { key: 'user@example.com', count: 1 }],
         byWorkspace: [{ key: 'image', count: 2 }, { key: 'prompt-hash-123', count: 1 }],
+        failureSpike: {
+          active: true,
+          threshold: 2,
+          failures: 2,
+          byChannel: [{ key: 'slack', count: 1 }, { key: 'sms', count: 1 }],
+          byReason: [{ key: 'missing_provider_alert_client', count: 1 }, { key: 'provider_job_mismatch', count: 1 }],
+        },
       },
     },
   })
@@ -138,6 +145,13 @@ test('buildPrometheusMetrics renders safe Prometheus text without unsafe labels'
   assert.match(body, /newchat_creative_provider_alert_dispatches_by_provider_total\{provider="other"\} 1/)
   assert.match(body, /newchat_creative_provider_alert_dispatches_by_workspace_total\{workspace="image"\} 2/)
   assert.match(body, /newchat_creative_provider_alert_dispatches_by_workspace_total\{workspace="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_dispatch_failure_spike_active 1/)
+  assert.match(body, /newchat_creative_provider_alert_dispatch_failure_spike_threshold 2/)
+  assert.match(body, /newchat_creative_provider_alert_dispatch_failure_spike_failures_total 2/)
+  assert.match(body, /newchat_creative_provider_alert_dispatch_failure_spike_by_channel_total\{channel="slack"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_dispatch_failure_spike_by_channel_total\{channel="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_dispatch_failure_spike_by_reason_total\{reason="missing_provider_alert_client"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_dispatch_failure_spike_by_reason_total\{reason="other"\} 1/)
   assert.equal(body.includes('user@example.com'), false)
   assert.equal(body.includes('prompt-hash-123'), false)
   assert.equal(body.includes('provider_job_mismatch'), false)
