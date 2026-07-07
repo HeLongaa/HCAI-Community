@@ -217,6 +217,47 @@ const failureResult = (operation, error) => {
   }
 }
 
+const safeDispatchAuditStatus = (status) => {
+  const normalized = safeString(status, 'failed')
+  return ['succeeded', 'failed', 'skipped'].includes(normalized) ? normalized : 'failed'
+}
+
+export const buildProviderBudgetExternalAlertDispatchAuditRecords = ({
+  results = [],
+  now = new Date(),
+} = {}) => {
+  const attemptedAt = now instanceof Date ? now.toISOString() : safeString(now, null)
+  return (Array.isArray(results) ? results : [])
+    .filter((result) => safeString(result?.key) && providerBudgetExternalAlertChannels.has(result?.channel))
+    .map((result) => {
+      const metadata = result.metadata && typeof result.metadata === 'object' && !Array.isArray(result.metadata)
+        ? result.metadata
+        : {}
+      const status = safeDispatchAuditStatus(result.status)
+      return {
+        action: 'creative.provider_alert.dispatch',
+        resourceType: 'creative_provider_budget_alert',
+        resourceId: result.key,
+        metadata: compactObject({
+          sourceKey: result.key,
+          auditEventSourceKey: metadata.sourceKey,
+          channel: result.channel,
+          status,
+          statusCode: Number.isInteger(result.statusCode) ? result.statusCode : null,
+          errorPreview: safeString(result.errorPreview, null),
+          alertAction: metadata.alertAction,
+          auditEventId: metadata.auditEventId,
+          budgetScope: metadata.budgetScope,
+          providerId: metadata.providerId,
+          workspace: metadata.workspace,
+          severity: metadata.severity,
+          reasonCode: result.reasonCode ?? metadata.reasonCode,
+          attemptedAt,
+        }),
+      }
+    })
+}
+
 export const dispatchProviderBudgetExternalAlerts = async ({
   payloads = [],
   channels = [],

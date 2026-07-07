@@ -2,7 +2,7 @@
 
 This plan defines the approval boundary and implementation checklist for future external Slack, webhook, or email delivery of creative provider budget alerts.
 
-Current decision: **mock dispatcher boundary only**. Durable audit persistence, internal station notifications, Admin operations metrics, Prometheus-compatible exporter metrics, `CREATIVE_PROVIDER_ALERT_*` env/smoke validation, a pure channel-neutral provider alert payload builder, and an injected dispatcher boundary for tests exist. External alert delivery still must not send outbound Slack, webhook, or email messages until a later explicitly approved implementation PR provides approved clients.
+Current decision: **dispatch audit planning only**. Durable audit persistence, internal station notifications, Admin operations metrics, Prometheus-compatible exporter metrics, `CREATIVE_PROVIDER_ALERT_*` env/smoke validation, a pure channel-neutral provider alert payload builder, an injected dispatcher boundary for tests, and safe dispatch audit record candidate planning exist. External alert delivery still must not send outbound Slack, webhook, or email messages until a later explicitly approved implementation PR provides approved clients.
 
 ## Non-Goals For This Planning Step
 
@@ -29,9 +29,10 @@ buildProviderBudgetExternalAlertPayload(auditEvent)
 buildProviderBudgetExternalAlertPayloads(auditEvents)
 buildProviderBudgetExternalAlertDispatchPlan({ payloads, channels })
 dispatchProviderBudgetExternalAlerts({ payloads, channels, clients })
+buildProviderBudgetExternalAlertDispatchAuditRecords({ results, now })
 ```
 
-The builder is pure and channel-neutral. The dispatcher boundary is injected-only: tests can pass mocked `webhook`, `slack`, or `email` clients, and missing clients fail closed with safe per-channel results. There is still no default HTTP client, Slack webhook client, email relay client, repository write, or provider SDK call.
+The builder is pure and channel-neutral. The dispatcher boundary is injected-only: tests can pass mocked `webhook`, `slack`, or `email` clients, and missing clients fail closed with safe per-channel results. Dispatch audit planning maps those results into safe `creative.provider_alert.dispatch` audit record candidates without writing them. There is still no default HTTP client, Slack webhook client, email relay client, repository write, or provider SDK call.
 
 ## Environment Variables
 
@@ -182,7 +183,7 @@ Smoke verifies:
 - secrets are present as booleans in safe summaries only
 - production smoke still keeps `CREATIVE_PROVIDER_MODE=mock` or `disabled` unless a separate provider rollout approves otherwise
 
-Payload-builder and injected-dispatcher tests verify that no provider token, webhook URL, email address, Slack webhook, raw prompt, raw provider payload, output URL, generation id, or provider job id appears in payload output, dispatch envelopes, or dispatch results. Future production-client tests must additionally verify the same rule for logs, metrics labels, real request bodies, and dispatch audit metadata.
+Payload-builder, injected-dispatcher, and dispatch-audit-planning tests verify that no provider token, webhook URL, email address, Slack webhook, raw prompt, raw provider payload, output URL, generation id, or provider job id appears in payload output, dispatch envelopes, dispatch results, or dispatch audit record candidates. Future production-client tests must additionally verify the same rule for logs, metrics labels, and real request bodies.
 
 ## Implementation Order
 
@@ -190,9 +191,10 @@ Payload-builder and injected-dispatcher tests verify that no provider token, web
 2. Add smoke checks gated by `CREATIVE_PROVIDER_ALERTS_ENABLED=true`. Implemented.
 3. Add a pure payload builder from persisted audit events, still without outbound sends. Implemented.
 4. Add an injected dispatcher boundary with mocked webhook, Slack, and email clients in tests, still without default outbound clients. Implemented.
-5. Persist per-channel dispatch audit events with safe metadata.
-6. Add delivery-failure aggregation to Admin operations metrics and `/metrics`.
-7. Only then consider enabling a staging external channel with fixture events.
+5. Plan per-channel dispatch audit event candidates with safe metadata. Implemented.
+6. Persist per-channel dispatch audit events with safe metadata.
+7. Add delivery-failure aggregation to Admin operations metrics and `/metrics`.
+8. Only then consider enabling a staging external channel with fixture events.
 
 ## Explicit Approval Required
 
