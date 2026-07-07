@@ -53,7 +53,14 @@ const creativeHistoryStatuses = ['queued', 'running', 'completed', 'failed', 'ca
 const securityEventSources: Array<NonNullable<AdminSecurityEventListQuery['source']>> = ['rate_limit', 'body_size', 'auth_failure']
 const securityEventSeverities = ['warning', 'info', 'critical']
 const operationsMetricWindows = [15, 60, 240, 1440]
-type OperationsSampleKey = 'securityDispatchFailures' | 'mediaDispatchFailures' | 'archiveWrites' | 'historyPruned'
+type OperationsSampleKey =
+  | 'securityDispatchFailures'
+  | 'mediaDispatchFailures'
+  | 'archiveWrites'
+  | 'historyPruned'
+  | 'creativeProviderBudgetThresholds'
+  | 'creativeProviderBudgetDispatchBlocks'
+  | 'creativeProviderCostAnomalies'
 const mediaScanHistoryPageSize = 6
 const mediaPolicyDraftKeys = [
   'retryDelaySeconds',
@@ -877,6 +884,9 @@ export function AdminPage({
   const formatMetricNumber = (value: number | null | undefined) =>
     new Intl.NumberFormat(isZh ? 'zh-CN' : 'en-US', { maximumFractionDigits: 0 }).format(Number(value ?? 0))
 
+  const formatMetricAmount = (value: number | null | undefined) =>
+    new Intl.NumberFormat(isZh ? 'zh-CN' : 'en-US', { maximumFractionDigits: 2 }).format(Number(value ?? 0))
+
   const formatMetricBytes = (value: number | null | undefined) => {
     const bytes = Number(value ?? 0)
     if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
@@ -926,6 +936,24 @@ export function AdminPage({
       resourceType: 'media_scan_jobs',
       failedOnly: false,
     },
+    creativeProviderBudgetThresholds: {
+      title: textFor(t, 'Provider budget threshold samples', 'Provider 预算阈值样本'),
+      action: 'creative.provider_budget.threshold_crossed',
+      resourceType: 'creative_provider_budget',
+      failedOnly: false,
+    },
+    creativeProviderBudgetDispatchBlocks: {
+      title: textFor(t, 'Provider budget dispatch blocks', 'Provider 预算阻断样本'),
+      action: 'creative.provider_budget.dispatch_blocked',
+      resourceType: 'creative_provider_budget',
+      failedOnly: false,
+    },
+    creativeProviderCostAnomalies: {
+      title: textFor(t, 'Provider cost anomaly samples', 'Provider 成本异常样本'),
+      action: 'creative.provider_cost.anomaly_detected',
+      resourceType: 'creative_provider_budget',
+      failedOnly: false,
+    },
   }[key])
 
   const operationSampleCountLabel = (key: string) => ({
@@ -933,10 +961,13 @@ export function AdminPage({
     mediaDispatchFailures: textFor(t, 'Media dispatch', '媒体派发'),
     archiveWrites: textFor(t, 'Archive writes', '归档写入'),
     historyPruned: textFor(t, 'History pruned', '历史清理'),
+    creativeProviderBudgetThresholds: textFor(t, 'Provider thresholds', 'Provider 阈值'),
+    creativeProviderBudgetDispatchBlocks: textFor(t, 'Provider blocks', 'Provider 阻断'),
+    creativeProviderCostAnomalies: textFor(t, 'Provider anomalies', 'Provider 异常'),
   }[key] ?? key)
 
   const operationSampleMetaEntries = (event: AuditEvent) => {
-    const preferred = ['channel', 'status', 'error', 'provider', 'storageKey', 'count', 'totalCandidates', 'bytes', 'pruned', 'alertType']
+    const preferred = ['channel', 'status', 'error', 'provider', 'providerId', 'workspace', 'budgetScope', 'severity', 'reasonCode', 'crossedThresholdPercent', 'usageRatioPercent', 'currency', 'storageKey', 'count', 'totalCandidates', 'bytes', 'pruned', 'alertType']
     const metadata = asRecord(event.metadata)
     const entries = preferred
       .filter((key) => metadata[key] != null && metadata[key] !== '')
@@ -964,6 +995,11 @@ export function AdminPage({
     const activeAlerts = metricCount(metrics.security.alerts.byState, 'active')
     const securityDeliveryFailures = metrics.security.deliveryFailures.total
     const mediaDeliveryFailures = metrics.mediaScan.alertDeliveryFailures.total
+    const providerCriticalDispatchBlocks = metricCount(metrics.creativeProviderBudget.dispatchBlocked.bySeverity, 'critical')
+    const providerThreshold100 = metrics.creativeProviderBudget.thresholdAlerts.byThreshold
+      .filter((item) => Number(item.key) >= 100)
+      .reduce((total, item) => total + item.count, 0)
+    const providerCurrencyMismatches = metricCount(metrics.creativeProviderBudget.costAnomalies.byReason, 'currency_mismatch')
     const archiveCandidates = metrics.mediaScan.archiveCandidates.total
     const archiveWrites = metrics.mediaScan.archiveWrites.total
     const prunedJobs = metrics.mediaScan.historyPruned.jobs
@@ -1001,6 +1037,39 @@ export function AdminPage({
           textFor(t, 'Confirm channel secrets and timeout values before re-running scanner operations.', '重新执行扫描运营动作前，确认渠道密钥与超时配置。'),
         ],
         auditFilter: { action: 'media.scan.alert.dispatch', resourceType: 'media_scan_alert' },
+      }] : []),
+      ...(providerCriticalDispatchBlocks > 0 ? [{
+        id: 'provider-budget-critical-dispatch-blocks',
+        severity: 'critical',
+        title: textFor(t, 'Keep provider budget kill switch active', '保持 Provider 预算熔断开启'),
+        reason: textFor(t, `${providerCriticalDispatchBlocks} critical provider budget dispatch block(s) were recorded.`, `记录到 ${providerCriticalDispatchBlocks} 次 critical Provider 预算派发阻断。`),
+        recommendedActions: [
+          textFor(t, 'Review provider budget dispatch-block samples before allowing paid dispatch.', '允许付费派发前，先复核 Provider 预算阻断样本。'),
+          textFor(t, 'Confirm app-side and provider-side caps still match the intended budget scope.', '确认应用侧和 Provider 侧 cap 仍匹配目标预算范围。'),
+        ],
+        auditFilter: { action: 'creative.provider_budget.dispatch_blocked', resourceType: 'creative_provider_budget' },
+      }] : []),
+      ...(providerThreshold100 > 0 ? [{
+        id: 'provider-budget-threshold-100',
+        severity: 'critical',
+        title: textFor(t, 'Provider budget reached or exceeded cap', 'Provider 预算已达到或超过上限'),
+        reason: textFor(t, `${providerThreshold100} provider budget threshold event(s) were at or above 100%.`, `有 ${providerThreshold100} 条 Provider 预算阈值事件达到或超过 100%。`),
+        recommendedActions: [
+          textFor(t, 'Check daily caps before re-enabling paid provider dispatch for the affected scope.', '为受影响范围重新开启付费 Provider 派发前，先检查每日 cap。'),
+          textFor(t, 'Compare threshold samples with recent creative generation cost metadata.', '对比阈值样本和近期创意生成成本元数据。'),
+        ],
+        auditFilter: { action: 'creative.provider_budget.threshold_crossed', resourceType: 'creative_provider_budget' },
+      }] : []),
+      ...(providerCurrencyMismatches > 0 ? [{
+        id: 'provider-cost-currency-mismatch',
+        severity: 'critical',
+        title: textFor(t, 'Block provider settlement until currency is normalized', '币种归一前阻止 Provider 结算'),
+        reason: textFor(t, `${providerCurrencyMismatches} provider cost currency mismatch anomaly event(s) were recorded.`, `记录到 ${providerCurrencyMismatches} 条 Provider 成本币种不匹配异常。`),
+        recommendedActions: [
+          textFor(t, 'Review cost anomaly samples and adapter currency mapping.', '复核成本异常样本和适配器币种映射。'),
+          textFor(t, 'Do not settle provider cost accounting until the expected and actual currency match.', '预期币种和实际币种一致前，不要结算 Provider 成本账。'),
+        ],
+        auditFilter: { action: 'creative.provider_cost.anomaly_detected', resourceType: 'creative_provider_budget' },
       }] : []),
       ...(archiveCandidates > 0 ? [{
         id: 'scan-archive-candidates',
@@ -3348,6 +3417,36 @@ export function AdminPage({
                     </button>
                   </div>
                 </article>
+                <article className="operations-metric-card">
+                  <Bell size={18} />
+                  <span>{textFor(t, 'Provider budget alerts', 'Provider 预算告警')}</span>
+                  <strong>{formatMetricNumber(operationsMetrics.creativeProviderBudget.thresholdAlerts.total)}</strong>
+                  <small>{metricCountSummary(operationsMetrics.creativeProviderBudget.thresholdAlerts.byThreshold)}</small>
+                  <div className="operations-card-actions">
+                    <button
+                      className="ghost-button small"
+                      type="button"
+                      onClick={() => focusAuditFilter('creative.provider_budget.threshold_crossed', 'creative_provider_budget', {
+                        en: 'Filtered audit log to provider budget threshold events.',
+                        zh: '已筛选 Provider 预算阈值审计事件。',
+                      })}
+                      disabled={!canReadAudit}
+                    >
+                      <Clipboard size={15} />
+                      {textFor(t, 'Audit thresholds', '阈值审计')}
+                    </button>
+                    <button className="ghost-button small" type="button" onClick={() => void toggleOperationSamples('creativeProviderBudgetThresholds')} disabled={!canReadAudit || loadingOperationsSamples}>
+                      <Bell size={15} />
+                      {textFor(t, 'Recent alerts', '近期告警')}
+                    </button>
+                  </div>
+                </article>
+                <article className="operations-metric-card">
+                  <BarChart3 size={18} />
+                  <span>{textFor(t, 'Provider spend signals', 'Provider 成本信号')}</span>
+                  <strong>{formatMetricAmount(operationsMetrics.creativeProviderBudget.spend.projectedSpendAmount)}</strong>
+                  <small>{`${textFor(t, 'estimated', '预估')} ${formatMetricAmount(operationsMetrics.creativeProviderBudget.spend.estimatedAmount)} · ${textFor(t, 'actual', '实际')} ${formatMetricAmount(operationsMetrics.creativeProviderBudget.spend.actualAmount)}`}</small>
+                </article>
               </div>
               <div className="operations-breakdown-grid">
                 <div>
@@ -3388,6 +3487,46 @@ export function AdminPage({
                   <button className="ghost-button small" type="button" onClick={() => void toggleOperationSamples('mediaDispatchFailures')} disabled={!canReadAudit || loadingOperationsSamples}>
                     <ShieldAlert size={15} />
                     {textFor(t, 'Recent failures', '近期失败')}
+                  </button>
+                </div>
+                <div>
+                  <strong>{textFor(t, 'Provider dispatch blocked', 'Provider 派发阻断')}</strong>
+                  <span>{`${formatMetricNumber(operationsMetrics.creativeProviderBudget.dispatchBlocked.total)} · ${metricCountSummary(operationsMetrics.creativeProviderBudget.dispatchBlocked.byReason)}`}</span>
+                  <button
+                    className="ghost-button small"
+                    type="button"
+                    onClick={() => focusAuditFilter('creative.provider_budget.dispatch_blocked', 'creative_provider_budget', {
+                      en: 'Filtered audit log to provider budget dispatch blocks.',
+                      zh: '已筛选 Provider 预算派发阻断审计事件。',
+                    })}
+                    disabled={!canReadAudit}
+                  >
+                    <Clipboard size={15} />
+                    {textFor(t, 'Block audit', '阻断审计')}
+                  </button>
+                  <button className="ghost-button small" type="button" onClick={() => void toggleOperationSamples('creativeProviderBudgetDispatchBlocks')} disabled={!canReadAudit || loadingOperationsSamples}>
+                    <ShieldAlert size={15} />
+                    {textFor(t, 'Recent blocks', '近期阻断')}
+                  </button>
+                </div>
+                <div>
+                  <strong>{textFor(t, 'Provider cost anomalies', 'Provider 成本异常')}</strong>
+                  <span>{`${formatMetricNumber(operationsMetrics.creativeProviderBudget.costAnomalies.total)} · ${metricCountSummary(operationsMetrics.creativeProviderBudget.costAnomalies.byReason)}`}</span>
+                  <button
+                    className="ghost-button small"
+                    type="button"
+                    onClick={() => focusAuditFilter('creative.provider_cost.anomaly_detected', 'creative_provider_budget', {
+                      en: 'Filtered audit log to provider cost anomalies.',
+                      zh: '已筛选 Provider 成本异常审计事件。',
+                    })}
+                    disabled={!canReadAudit}
+                  >
+                    <Clipboard size={15} />
+                    {textFor(t, 'Anomaly audit', '异常审计')}
+                  </button>
+                  <button className="ghost-button small" type="button" onClick={() => void toggleOperationSamples('creativeProviderCostAnomalies')} disabled={!canReadAudit || loadingOperationsSamples}>
+                    <BarChart3 size={15} />
+                    {textFor(t, 'Recent anomalies', '近期异常')}
                   </button>
                 </div>
                 <div>
