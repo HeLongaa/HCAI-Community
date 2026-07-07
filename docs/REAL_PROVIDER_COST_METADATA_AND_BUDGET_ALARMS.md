@@ -321,8 +321,10 @@ The first real adapter implementation should fail closed when:
 - pricing snapshot is missing
 - estimate amount cannot be calculated
 - budget scope is missing
+- budget scope or provider account reference is not a safe low-cardinality identifier
 - currency is unsupported
 - daily cap is reached or unknown
+- budget threshold is configured outside the supported range
 - provider usage parser is disabled
 - provider cost confidence is `unknown` for the previous completed jobs above a configured threshold
 
@@ -343,6 +345,7 @@ Before adding real paid provider calls:
 - Add provider cost metadata to generation record DTOs and persistence transforms.
 - Add parser tests for provider usage and cost metadata.
 - Add budget policy config and fail-closed dispatch guard.
+- Keep budget scope, provider account references, alert labels, and error metadata low-cardinality and free of provider secrets or raw payloads.
 - Add budget threshold and anomaly alert event generation.
 - Add operations metrics snapshot and Prometheus exporter fields with safe labels.
 - Add Admin generation history cost fields behind the safe visibility boundary.
