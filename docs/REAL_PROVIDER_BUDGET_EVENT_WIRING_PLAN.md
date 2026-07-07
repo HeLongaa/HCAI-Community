@@ -2,7 +2,7 @@
 
 This plan defines how the fixture-only provider budget event plan should later connect to durable audit records, notifications, Admin operations metrics, and Prometheus-compatible metrics.
 
-Current decision: **audit persistence, internal notification routing, Admin operations metrics, Prometheus-compatible exporter metrics, and external alert env/smoke readiness are implemented; external alert delivery remains deferred**. The repository has `server/src/creative/providerBudgetEvents.js`, which builds pure event plans from normalized provider cost metadata, `server/src/creative/providerBudgetAuditPersistence.js`, which persists safe audit records through an injected repository boundary, `server/src/repositories/providerBudgetNotificationWiring.js`, which derives safe internal notification payloads from persisted audit events, `server/src/operations/metrics.js`, which aggregates safe provider budget audit events into Admin operations metrics, `server/src/operations/metricsExporter.js`, which derives a safe external Prometheus subset from those aggregates, and `server/src/config/env.js` plus `scripts/smoke-production.mjs`, which parse and smoke-gate `CREATIVE_PROVIDER_ALERT_*` configuration without sending messages. This document does not add external alert delivery, Admin mutation controls, real provider SDKs, default HTTP clients, or provider network calls.
+Current decision: **audit persistence, internal notification routing, Admin operations metrics, Prometheus-compatible exporter metrics, external alert env/smoke readiness, and pure external alert payload building are implemented; external alert delivery remains deferred**. The repository has `server/src/creative/providerBudgetEvents.js`, which builds pure event plans from normalized provider cost metadata, `server/src/creative/providerBudgetAuditPersistence.js`, which persists safe audit records through an injected repository boundary, `server/src/repositories/providerBudgetNotificationWiring.js`, which derives safe internal notification payloads from persisted audit events, `server/src/operations/metrics.js`, which aggregates safe provider budget audit events into Admin operations metrics, `server/src/operations/metricsExporter.js`, which derives a safe external Prometheus subset from those aggregates, `server/src/config/env.js` plus `scripts/smoke-production.mjs`, which parse and smoke-gate `CREATIVE_PROVIDER_ALERT_*` configuration without sending messages, and `server/src/creative/providerBudgetExternalAlerts.js`, which derives channel-neutral external alert payloads without dispatching them. This document does not add external alert delivery, Admin mutation controls, real provider SDKs, default HTTP clients, or provider network calls.
 
 ## Current Fixture Baseline
 
@@ -222,7 +222,7 @@ Label rules:
 
 ## Phase 5: External Alert Delivery
 
-Status: **env/smoke-ready; delivery implementation still deferred**. `CREATIVE_PROVIDER_ALERT_*` config is parsed into safe summaries, validated, documented, and gated by production smoke only when `CREATIVE_PROVIDER_ALERTS_ENABLED=true`. The remaining implementation checklist is maintained in `docs/REAL_PROVIDER_BUDGET_EXTERNAL_ALERT_DELIVERY_PLAN.md`.
+Status: **payload-ready; delivery implementation still deferred**. `CREATIVE_PROVIDER_ALERT_*` config is parsed into safe summaries, validated, documented, and gated by production smoke only when `CREATIVE_PROVIDER_ALERTS_ENABLED=true`. A pure channel-neutral payload builder now derives safe alert payloads from persisted provider budget audit events. The remaining implementation checklist is maintained in `docs/REAL_PROVIDER_BUDGET_EXTERNAL_ALERT_DELIVERY_PLAN.md`.
 
 External alert delivery remains an explicit approval boundary because it creates outbound side effects.
 
@@ -245,6 +245,15 @@ Implemented external alert env prefix:
 - `CREATIVE_PROVIDER_ALERT_EMAIL_*`
 
 Future implementation must record safe dispatch audit events, suppress duplicate channel sends by audit `sourceKey`, and keep provider tokens, raw prompts, output URLs, provider job ids, and raw provider payloads out of alert payloads.
+
+Implemented payload helper:
+
+```js
+buildProviderBudgetExternalAlertPayload(auditEvent)
+buildProviderBudgetExternalAlertPayloads(auditEvents)
+```
+
+The helper emits no side effects and does not know about Slack, webhook, or email clients.
 
 ## Testing Matrix
 
@@ -279,6 +288,7 @@ Smoke and deploy tests:
 - Fixture checks pass without provider credentials.
 - Production smoke still requires `CREATIVE_PROVIDER_MODE=mock` or `disabled`.
 - Provider alert channel env is optional by default and required only when `CREATIVE_PROVIDER_ALERTS_ENABLED=true`.
+- External provider alert payload tests cover threshold, dispatch-blocked, and anomaly audit events without outbound sends.
 
 ## Recommended PR Order
 
@@ -287,7 +297,8 @@ Smoke and deploy tests:
 3. **Admin operations metrics**: aggregate provider budget events and expose drill-down filters. Implemented.
 4. **Prometheus exporter**: add safe metric families from operations metrics. Implemented.
 5. **External alert env/smoke readiness**: parse and smoke-gate `CREATIVE_PROVIDER_ALERT_*` without sending messages. Implemented.
-6. **External alert delivery**: separate phase only after explicit approval.
+6. **External alert payload builder**: derive channel-neutral safe payloads from persisted audit events without sending messages. Implemented.
+7. **External alert delivery**: separate phase only after explicit approval.
 
 ## No-Go Conditions
 
@@ -303,11 +314,11 @@ No-go for implementation if any are true:
 
 ## Next Suggested Implementation
 
-The safest next implementation is a **pure external alert payload builder from persisted audit events**, still without sending Slack/email/webhook messages:
+The safest next implementation is an **injected mock dispatcher boundary**, still without default Slack/email/webhook clients:
 
-- derive channel-neutral payloads from persisted safe audit events
-- keep provider tokens, raw prompts, output URLs, provider job ids, raw provider payloads, webhook URLs, Slack webhooks, and recipient emails out of payload-facing metadata
-- cover threshold, dispatch-blocked, and anomaly events with fixture tests
+- accept the existing channel-neutral payloads and env-selected channel names
+- require injected mocked clients in tests and fail closed when no client is provided
+- produce per-channel side-effect plans or in-memory dispatch results only; do not add production HTTP clients yet
 - keep actual external delivery, Admin mutation controls, provider callback/manual replay endpoints, and real provider calls deferred until explicitly approved
 
-The durable audit source of truth, internal notification routing, Admin read-only metrics, Prometheus-compatible exporter metrics, external alert env/smoke validation, and external alert delivery plan now exist. External delivery should still be staged behind a pure payload-builder step before any outbound message is sent.
+The durable audit source of truth, internal notification routing, Admin read-only metrics, Prometheus-compatible exporter metrics, external alert env/smoke validation, pure payload builder, and external alert delivery plan now exist. External delivery should still be staged behind an injected mock dispatcher boundary before any outbound message is sent.
