@@ -4,6 +4,8 @@ This document defines the prerequisites for enabling real-provider webhooks, cal
 
 Current decision: **fixture-safe polling worker interval wiring exists, but real provider callbacks, default provider status polling, manual replay endpoints, and real provider network calls remain no-go until a separate approved external-call task**.
 
+The current real-provider boundary handoff is summarized in `docs/REAL_PROVIDER_BOUNDARY_CLOSEOUT.md`. This prerequisite document controls callback, polling, and manual replay enablement; the external-call approval package controls any first real provider network call.
+
 This package does not add a provider SDK, default HTTP client, webhook endpoint, manual replay endpoint, provider network call, Admin mutation endpoint, payment refund flow, or production paid-provider path. The polling worker interval skeleton is disabled by default and only accepts injected mocked status clients.
 
 Implementation status: the repository now has a durable replay ledger schema/repository foundation, a pure lifecycle replay reducer, provider callback auth/parser pure functions, provider polling lease/stop-condition pure functions, provider lifecycle side-effect plan/executor pure functions, fixture-only replay-ledger integration helpers that record side-effect plans/results without provider credentials, mocked provider-status client contract tests that require an injected client, provider lifecycle notification/audit repository wiring behind stable source keys, manual replay authorization/parser pure functions, and fixture-safe polling worker interval wiring. Provider callback routes, default provider status HTTP clients, manual replay endpoints, and real provider network calls remain disabled and unimplemented.
@@ -290,5 +292,6 @@ A future implementation task should continue from the mocked-client status contr
 2. Add callback route wiring only after auth/parser tests, replay ledger, lifecycle reducer, side-effect executor, notification/audit repository wiring, and manual replay envelope tests all pass.
 3. Add smoke and quality-gate documentation only after the route or worker exists.
 4. Complete the external-call approval package before any real provider network call.
+5. Keep `docs/REAL_PROVIDER_BOUNDARY_CLOSEOUT.md`, this document, and `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` in sync whenever the boundary changes.
 
 Do not broaden to production, Admin mutation controls, video/music/chat providers, or payment-provider reconciliation during the first callback/polling implementation.
