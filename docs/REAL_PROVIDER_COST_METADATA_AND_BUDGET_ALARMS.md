@@ -274,7 +274,7 @@ Minimum metadata:
 
 Do not store raw provider payloads or secrets in audit metadata.
 
-Current fixture status: `server/src/creative/providerBudgetEvents.js` now builds a pure event plan for `creative.provider_budget.threshold_crossed`, `creative.provider_budget.dispatch_blocked`, and `creative.provider_cost.anomaly_detected`. It emits safe audit-event metadata, threshold alert summaries, and idempotency keys only. It does not write to the audit repository, send notifications, call external alert channels, or enable real provider dispatch.
+Current fixture status: `server/src/creative/providerBudgetEvents.js` now builds a pure event plan for `creative.provider_budget.threshold_crossed`, `creative.provider_budget.dispatch_blocked`, and `creative.provider_cost.anomaly_detected`. It emits safe audit-event metadata, threshold alert summaries, and idempotency keys only. It does not write to the audit repository, send notifications, call external alert channels, or enable real provider dispatch. The follow-up wiring plan lives in `docs/REAL_PROVIDER_BUDGET_EVENT_WIRING_PLAN.md`.
 
 ## Metrics Mapping
 
@@ -348,7 +348,7 @@ Before adding real paid provider calls:
 - Add parser tests for provider usage and cost metadata.
 - Add budget policy config and fail-closed dispatch guard.
 - Keep budget scope, provider account references, alert labels, and error metadata low-cardinality and free of provider secrets or raw payloads.
-- Add budget threshold and anomaly alert event generation. Fixture-only pure event planning exists; future work still needs repository persistence, notification routing, and metrics exporter wiring.
+- Add budget threshold and anomaly alert event generation. Fixture-only pure event planning exists; future work still needs repository persistence, notification routing, and metrics exporter wiring per `docs/REAL_PROVIDER_BUDGET_EVENT_WIRING_PLAN.md`.
 - Add operations metrics snapshot and Prometheus exporter fields with safe labels.
 - Add Admin generation history cost fields behind the safe visibility boundary.
 - Add audit event and notification tests.
