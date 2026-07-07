@@ -4,7 +4,9 @@ import test from 'node:test'
 import { createSeedRepository } from '../repositories/seedRepository.js'
 import {
   buildProviderBudgetExternalAlertPayload,
+  buildProviderBudgetExternalAlertDispatchPlan,
   buildProviderBudgetExternalAlertPayloads,
+  dispatchProviderBudgetExternalAlerts,
 } from './providerBudgetExternalAlerts.js'
 import { persistProviderBudgetAuditEvents } from './providerBudgetAuditPersistence.js'
 import { buildProviderBudgetEventPlan } from './providerBudgetEvents.js'
@@ -166,4 +168,118 @@ test('buildProviderBudgetExternalAlertPayload ignores unsupported or unsafe audi
   }), null)
 
   assert.deepEqual(buildProviderBudgetExternalAlertPayloads(null), [])
+})
+
+test('buildProviderBudgetExternalAlertDispatchPlan creates per-channel safe envelopes', () => {
+  const payload = buildProviderBudgetExternalAlertPayload({
+    id: 'audit-provider-budget-alert-2',
+    action: 'creative.provider_budget.dispatch_blocked',
+    resourceType: 'creative_provider_budget',
+    resourceId: 'staging:replicate:image:external-alert',
+    createdAt: '2026-07-07T03:00:00.000Z',
+    metadata: {
+      sourceKey: 'creative-provider-budget:blocked-safe:audit',
+      providerId: 'replicate',
+      budgetScope: 'staging:replicate:image:external-alert',
+      workspace: 'image',
+      severity: 'critical',
+      reasonCode: 'over_budget',
+      usageRatioPercent: 101,
+      providerJobId: 'pred_dispatch_plan_should_not_copy',
+      rawProviderPayload: 'Bearer secret.value',
+      webhookUrl: 'https://ops.example.com/provider-alerts',
+      recipientEmail: 'creative-ops@example.com',
+    },
+  })
+
+  const plan = buildProviderBudgetExternalAlertDispatchPlan({
+    payloads: [payload],
+    channels: ['webhook', 'slack', 'webhook', 'pager'],
+  })
+
+  assert.deepEqual(plan.channels, ['webhook', 'slack'])
+  assert.equal(plan.operations.length, 2)
+  assert.equal(plan.operations[0].key, 'creative-provider-alert:webhook:creative-provider-budget:blocked-safe:audit')
+  assert.equal(plan.operations[0].payload.channel, 'webhook')
+  assert.equal(plan.operations[0].payload.reasonCode, 'over_budget')
+  assert.equal(plan.operations[0].payload.idempotencyKey, plan.operations[0].key)
+  assert.equal(plan.operations[0].metadata.sourceKey, 'creative-provider-budget:blocked-safe:audit')
+
+  const serialized = JSON.stringify(plan)
+  assert.equal(serialized.includes('pred_dispatch_plan_should_not_copy'), false)
+  assert.equal(serialized.includes('Bearer secret.value'), false)
+  assert.equal(serialized.includes('ops.example.com'), false)
+  assert.equal(serialized.includes('creative-ops@example.com'), false)
+})
+
+test('dispatchProviderBudgetExternalAlerts requires injected clients and redacts failures', async () => {
+  const payload = buildProviderBudgetExternalAlertPayload({
+    id: 'audit-provider-budget-alert-3',
+    action: 'creative.provider_cost.anomaly_detected',
+    resourceType: 'creative_provider_budget',
+    resourceId: 'staging:replicate:image:external-alert',
+    createdAt: '2026-07-07T04:00:00.000Z',
+    metadata: {
+      sourceKey: 'creative-provider-budget:anomaly-safe:audit',
+      providerId: 'replicate',
+      budgetScope: 'staging:replicate:image:external-alert',
+      workspace: 'image',
+      severity: 'warning',
+      reasonCode: 'missing_usage',
+      estimateAmount: 0.25,
+      actualAmount: 1.5,
+      currency: 'USD',
+      providerJobId: 'pred_dispatch_should_not_copy',
+      rawPrompt: 'raw prompt should not copy',
+      rawProviderPayload: 'api_key=provider-secret',
+      outputUrl: 'https://cdn.example.com/private-output.png',
+      slackWebhookUrl: 'https://hooks.slack.com/services/T000/B000/SECRET',
+    },
+  })
+  const sent = []
+
+  const result = await dispatchProviderBudgetExternalAlerts({
+    payloads: [payload],
+    channels: ['webhook', 'slack', 'email'],
+    clients: {
+      webhook: {
+        send: async (envelope) => {
+          sent.push(envelope)
+          return { statusCode: 202 }
+        },
+      },
+      email: {
+        send: async () => {
+          throw Object.assign(new Error('relay failed with token=provider-secret'), { statusCode: 503 })
+        },
+      },
+    },
+  })
+
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].channel, 'webhook')
+  assert.equal(sent[0].sourceKey, 'creative-provider-budget:anomaly-safe:audit')
+  assert.equal(result.safeSummary.total, 3)
+  assert.equal(result.safeSummary.succeeded, 1)
+  assert.equal(result.safeSummary.failed, 2)
+
+  const webhook = result.results.find((item) => item.channel === 'webhook')
+  const slack = result.results.find((item) => item.channel === 'slack')
+  const email = result.results.find((item) => item.channel === 'email')
+
+  assert.equal(webhook.status, 'succeeded')
+  assert.equal(webhook.statusCode, 202)
+  assert.equal(slack.status, 'failed')
+  assert.equal(slack.reasonCode, 'missing_provider_alert_client')
+  assert.equal(email.status, 'failed')
+  assert.equal(email.statusCode, 503)
+  assert.equal(email.errorPreview.includes('provider-secret'), false)
+  assert.equal(email.errorPreview.includes('<redacted>'), true)
+
+  const serialized = JSON.stringify({ sent, result })
+  assert.equal(serialized.includes('pred_dispatch_should_not_copy'), false)
+  assert.equal(serialized.includes('raw prompt should not copy'), false)
+  assert.equal(serialized.includes('api_key=provider-secret'), false)
+  assert.equal(serialized.includes('private-output.png'), false)
+  assert.equal(serialized.includes('hooks.slack.com'), false)
 })

@@ -2,7 +2,7 @@
 
 This plan defines the approval boundary and implementation checklist for future external Slack, webhook, or email delivery of creative provider budget alerts.
 
-Current decision: **payload readiness only**. Durable audit persistence, internal station notifications, Admin operations metrics, Prometheus-compatible exporter metrics, `CREATIVE_PROVIDER_ALERT_*` env/smoke validation, and a pure channel-neutral provider alert payload builder exist. External alert delivery still must not send outbound Slack, webhook, or email messages until a later explicitly approved implementation PR.
+Current decision: **mock dispatcher boundary only**. Durable audit persistence, internal station notifications, Admin operations metrics, Prometheus-compatible exporter metrics, `CREATIVE_PROVIDER_ALERT_*` env/smoke validation, a pure channel-neutral provider alert payload builder, and an injected dispatcher boundary for tests exist. External alert delivery still must not send outbound Slack, webhook, or email messages until a later explicitly approved implementation PR provides approved clients.
 
 ## Non-Goals For This Planning Step
 
@@ -27,9 +27,11 @@ Implemented payload builder:
 ```js
 buildProviderBudgetExternalAlertPayload(auditEvent)
 buildProviderBudgetExternalAlertPayloads(auditEvents)
+buildProviderBudgetExternalAlertDispatchPlan({ payloads, channels })
+dispatchProviderBudgetExternalAlerts({ payloads, channels, clients })
 ```
 
-The builder is pure and channel-neutral. It creates safe payloads from persisted audit events only; it does not call any dispatcher, repository, HTTP client, Slack webhook, email relay, or provider SDK.
+The builder is pure and channel-neutral. The dispatcher boundary is injected-only: tests can pass mocked `webhook`, `slack`, or `email` clients, and missing clients fail closed with safe per-channel results. There is still no default HTTP client, Slack webhook client, email relay client, repository write, or provider SDK call.
 
 ## Environment Variables
 
@@ -180,14 +182,14 @@ Smoke verifies:
 - secrets are present as booleans in safe summaries only
 - production smoke still keeps `CREATIVE_PROVIDER_MODE=mock` or `disabled` unless a separate provider rollout approves otherwise
 
-Payload-builder tests verify that no provider token, webhook URL, email address, Slack webhook, raw prompt, raw provider payload, output URL, generation id, or provider job id appears in payload output. Future dispatcher tests must additionally verify the same rule for logs, metrics labels, request bodies, and dispatch audit metadata.
+Payload-builder and injected-dispatcher tests verify that no provider token, webhook URL, email address, Slack webhook, raw prompt, raw provider payload, output URL, generation id, or provider job id appears in payload output, dispatch envelopes, or dispatch results. Future production-client tests must additionally verify the same rule for logs, metrics labels, real request bodies, and dispatch audit metadata.
 
 ## Implementation Order
 
 1. Add env parsing and safe config summaries for `CREATIVE_PROVIDER_ALERT_*`. Implemented.
 2. Add smoke checks gated by `CREATIVE_PROVIDER_ALERTS_ENABLED=true`. Implemented.
 3. Add a pure payload builder from persisted audit events, still without outbound sends. Implemented.
-4. Add an injected dispatcher boundary with mocked webhook, Slack, and email clients in tests, still without default outbound clients.
+4. Add an injected dispatcher boundary with mocked webhook, Slack, and email clients in tests, still without default outbound clients. Implemented.
 5. Persist per-channel dispatch audit events with safe metadata.
 6. Add delivery-failure aggregation to Admin operations metrics and `/metrics`.
 7. Only then consider enabling a staging external channel with fixture events.
