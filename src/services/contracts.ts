@@ -960,6 +960,15 @@ export type AdminOperationsMetricCount = {
   count: number
 }
 
+export type AdminOperationsMetricBreakdown = {
+  total: number
+  bySeverity: AdminOperationsMetricCount[]
+  byBudgetScope: AdminOperationsMetricCount[]
+  byProvider: AdminOperationsMetricCount[]
+  byWorkspace: AdminOperationsMetricCount[]
+  latestAt: string | null
+}
+
 export type AdminOperationsMetricsDto = {
   generatedAt: string
   window: {
@@ -1018,6 +1027,37 @@ export type AdminOperationsMetricsDto = {
       byChannel: AdminOperationsMetricCount[]
       byStatus: AdminOperationsMetricCount[]
       latestAt: string | null
+    }
+  }
+  operations: {
+    leases: {
+      skippedRuns: {
+        total: number
+        byKey: AdminOperationsMetricCount[]
+        latestAt: string | null
+      }
+      renewFailures: {
+        total: number
+        byKey: AdminOperationsMetricCount[]
+        latestAt: string | null
+      }
+    }
+  }
+  creativeProviderBudget: {
+    thresholdAlerts: AdminOperationsMetricBreakdown & {
+      byThreshold: AdminOperationsMetricCount[]
+    }
+    dispatchBlocked: AdminOperationsMetricBreakdown & {
+      byReason: AdminOperationsMetricCount[]
+    }
+    costAnomalies: AdminOperationsMetricBreakdown & {
+      byReason: AdminOperationsMetricCount[]
+    }
+    spend: {
+      estimatedAmount: number
+      actualAmount: number
+      projectedSpendAmount: number
+      byCurrency: AdminOperationsMetricCount[]
     }
   }
 }

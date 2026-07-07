@@ -26,6 +26,8 @@ const countBy = (items, selector) => {
     .sort((left, right) => right.count - left.count || left.key.localeCompare(right.key))
 }
 
+const metricCount = (items, key) => items.find((item) => item.key === key)?.count ?? 0
+
 const sumMetadataNumber = (items, key) => items.reduce((total, item) => {
   const value = Number(asObject(item.metadata)[key] ?? 0)
   return total + (Number.isFinite(value) ? value : 0)
@@ -105,6 +107,48 @@ const deliveryFailureSummary = (events) => ({
   latestAt: latestTimestamp(events),
 })
 
+const providerBudgetEventActions = Object.freeze({
+  threshold: 'creative.provider_budget.threshold_crossed',
+  dispatchBlocked: 'creative.provider_budget.dispatch_blocked',
+  anomaly: 'creative.provider_cost.anomaly_detected',
+})
+
+const providerBudgetSummary = ({ thresholdEvents = [], dispatchBlockedEvents = [], anomalyEvents = [] } = {}) => ({
+  thresholdAlerts: {
+    total: thresholdEvents.length,
+    bySeverity: countBy(thresholdEvents, (event) => asObject(event.metadata).severity),
+    byBudgetScope: countBy(thresholdEvents, (event) => asObject(event.metadata).budgetScope),
+    byProvider: countBy(thresholdEvents, (event) => asObject(event.metadata).providerId),
+    byWorkspace: countBy(thresholdEvents, (event) => asObject(event.metadata).workspace),
+    byThreshold: countBy(thresholdEvents, (event) => asObject(event.metadata).crossedThresholdPercent ?? asObject(event.metadata).thresholdPercent),
+    latestAt: latestTimestamp(thresholdEvents),
+  },
+  dispatchBlocked: {
+    total: dispatchBlockedEvents.length,
+    bySeverity: countBy(dispatchBlockedEvents, (event) => asObject(event.metadata).severity),
+    byReason: countBy(dispatchBlockedEvents, (event) => asObject(event.metadata).reasonCode),
+    byBudgetScope: countBy(dispatchBlockedEvents, (event) => asObject(event.metadata).budgetScope),
+    byProvider: countBy(dispatchBlockedEvents, (event) => asObject(event.metadata).providerId),
+    byWorkspace: countBy(dispatchBlockedEvents, (event) => asObject(event.metadata).workspace),
+    latestAt: latestTimestamp(dispatchBlockedEvents),
+  },
+  costAnomalies: {
+    total: anomalyEvents.length,
+    bySeverity: countBy(anomalyEvents, (event) => asObject(event.metadata).severity),
+    byReason: countBy(anomalyEvents, (event) => asObject(event.metadata).reasonCode),
+    byBudgetScope: countBy(anomalyEvents, (event) => asObject(event.metadata).budgetScope),
+    byProvider: countBy(anomalyEvents, (event) => asObject(event.metadata).providerId),
+    byWorkspace: countBy(anomalyEvents, (event) => asObject(event.metadata).workspace),
+    latestAt: latestTimestamp(anomalyEvents),
+  },
+  spend: {
+    estimatedAmount: sumMetadataNumber([...thresholdEvents, ...dispatchBlockedEvents, ...anomalyEvents], 'estimateAmount'),
+    actualAmount: sumMetadataNumber([...thresholdEvents, ...dispatchBlockedEvents, ...anomalyEvents], 'actualAmount'),
+    projectedSpendAmount: sumMetadataNumber([...thresholdEvents, ...dispatchBlockedEvents, ...anomalyEvents], 'projectedSpendAmount'),
+    byCurrency: countBy([...thresholdEvents, ...dispatchBlockedEvents, ...anomalyEvents], (event) => asObject(event.metadata).currency),
+  },
+})
+
 export const operationsMetricsSampleDefinitions = {
   securityDispatchFailures: {
     title: 'Security dispatch failure samples',
@@ -142,6 +186,24 @@ export const operationsMetricsSampleDefinitions = {
     resourceType: 'operation_lease',
     failedOnly: false,
   },
+  creativeProviderBudgetThresholds: {
+    title: 'Creative provider budget threshold samples',
+    action: providerBudgetEventActions.threshold,
+    resourceType: 'creative_provider_budget',
+    failedOnly: false,
+  },
+  creativeProviderBudgetDispatchBlocks: {
+    title: 'Creative provider budget dispatch blocks',
+    action: providerBudgetEventActions.dispatchBlocked,
+    resourceType: 'creative_provider_budget',
+    failedOnly: false,
+  },
+  creativeProviderCostAnomalies: {
+    title: 'Creative provider cost anomalies',
+    action: providerBudgetEventActions.anomaly,
+    resourceType: 'creative_provider_budget',
+    failedOnly: false,
+  },
 }
 
 export const buildOperationsMetricSamples = (sampleEventsByKey = {}) => Object.fromEntries(
@@ -165,6 +227,11 @@ export const buildOperationsHandoff = (metrics) => {
   const activeAlerts = stateCounts.get('active') ?? 0
   const securityDeliveryFailures = metrics.security.deliveryFailures.total
   const mediaDeliveryFailures = metrics.mediaScan.alertDeliveryFailures.total
+  const providerCriticalDispatchBlocks = metricCount(metrics.creativeProviderBudget.dispatchBlocked.bySeverity, 'critical')
+  const providerThreshold100 = metrics.creativeProviderBudget.thresholdAlerts.byThreshold
+    .filter((item) => Number(item.key) >= 100)
+    .reduce((total, item) => total + item.count, 0)
+  const providerCurrencyMismatches = metricCount(metrics.creativeProviderBudget.costAnomalies.byReason, 'currency_mismatch')
   const archiveCandidates = metrics.mediaScan.archiveCandidates.total
   const archiveWrites = metrics.mediaScan.archiveWrites.total
   const prunedJobs = metrics.mediaScan.historyPruned.jobs
@@ -202,6 +269,39 @@ export const buildOperationsHandoff = (metrics) => {
         'Confirm channel secrets and timeout values before re-running scanner operations.',
       ],
       auditFilter: { action: 'media.scan.alert.dispatch', resourceType: 'media_scan_alert' },
+    }] : []),
+    ...(providerCriticalDispatchBlocks > 0 ? [{
+      id: 'provider-budget-critical-dispatch-blocks',
+      severity: 'critical',
+      title: 'Keep provider budget kill switch active',
+      reason: `${providerCriticalDispatchBlocks} critical provider budget dispatch block(s) were recorded.`,
+      recommendedActions: [
+        'Review creative provider budget dispatch-block samples before allowing paid dispatch.',
+        'Confirm app-side and provider-side caps still match the intended budget scope.',
+      ],
+      auditFilter: { action: providerBudgetEventActions.dispatchBlocked, resourceType: 'creative_provider_budget' },
+    }] : []),
+    ...(providerThreshold100 > 0 ? [{
+      id: 'provider-budget-threshold-100',
+      severity: 'critical',
+      title: 'Provider budget reached or exceeded cap',
+      reason: `${providerThreshold100} provider budget threshold event(s) were at or above 100%.`,
+      recommendedActions: [
+        'Check daily caps before re-enabling paid provider dispatch for the affected scope.',
+        'Compare threshold samples with recent creative generation cost metadata.',
+      ],
+      auditFilter: { action: providerBudgetEventActions.threshold, resourceType: 'creative_provider_budget' },
+    }] : []),
+    ...(providerCurrencyMismatches > 0 ? [{
+      id: 'provider-cost-currency-mismatch',
+      severity: 'critical',
+      title: 'Block provider settlement until currency is normalized',
+      reason: `${providerCurrencyMismatches} provider cost currency mismatch anomaly event(s) were recorded.`,
+      recommendedActions: [
+        'Review cost anomaly samples and adapter currency mapping.',
+        'Do not settle provider cost accounting until the expected and actual currency match.',
+      ],
+      auditFilter: { action: providerBudgetEventActions.anomaly, resourceType: 'creative_provider_budget' },
     }] : []),
     ...(archiveCandidates > 0 ? [{
       id: 'scan-archive-candidates',
@@ -311,6 +411,9 @@ export const buildOperationsMetrics = ({
   const historyPrunes = windowAuditEvents.filter((event) => event.action === 'media.scan.history_pruned')
   const operationLeaseSkips = windowAuditEvents.filter((event) => event.action === 'operations.lease.skipped')
   const operationLeaseRenewFailures = windowAuditEvents.filter((event) => event.action === 'operations.lease.renew_failed')
+  const providerBudgetThresholds = windowAuditEvents.filter((event) => event.action === providerBudgetEventActions.threshold)
+  const providerBudgetDispatchBlocks = windowAuditEvents.filter((event) => event.action === providerBudgetEventActions.dispatchBlocked)
+  const providerCostAnomalies = windowAuditEvents.filter((event) => event.action === providerBudgetEventActions.anomaly)
   const acknowledgements = securityDispositions.filter((event) => event.action === 'security.alert.acknowledged')
 
   return {
@@ -384,5 +487,10 @@ export const buildOperationsMetrics = ({
         },
       },
     },
+    creativeProviderBudget: providerBudgetSummary({
+      thresholdEvents: providerBudgetThresholds,
+      dispatchBlockedEvents: providerBudgetDispatchBlocks,
+      anomalyEvents: providerCostAnomalies,
+    }),
   }
 }

@@ -2,7 +2,7 @@
 
 This plan defines how the fixture-only provider budget event plan should later connect to durable audit records, notifications, Admin operations metrics, and Prometheus-compatible metrics.
 
-Current decision: **audit persistence and internal notification routing implemented; metrics and external alerts still deferred**. The repository has `server/src/creative/providerBudgetEvents.js`, which builds pure event plans from normalized provider cost metadata, `server/src/creative/providerBudgetAuditPersistence.js`, which persists safe audit records through an injected repository boundary, and `server/src/repositories/providerBudgetNotificationWiring.js`, which derives safe internal notification payloads from persisted audit events. This document does not add Admin operations metrics, Prometheus metrics, external alert delivery, Admin mutation controls, real provider SDKs, default HTTP clients, or provider network calls.
+Current decision: **audit persistence, internal notification routing, and Admin operations metrics are implemented; Prometheus metrics and external alerts remain deferred**. The repository has `server/src/creative/providerBudgetEvents.js`, which builds pure event plans from normalized provider cost metadata, `server/src/creative/providerBudgetAuditPersistence.js`, which persists safe audit records through an injected repository boundary, `server/src/repositories/providerBudgetNotificationWiring.js`, which derives safe internal notification payloads from persisted audit events, and `server/src/operations/metrics.js`, which aggregates safe provider budget audit events into Admin operations metrics. This document does not add Prometheus metrics, external alert delivery, Admin mutation controls, real provider SDKs, default HTTP clients, or provider network calls.
 
 ## Current Fixture Baseline
 
@@ -22,7 +22,6 @@ These helpers produce:
 
 They do not:
 
-- update Admin operations metrics
 - expose Prometheus metrics
 - send Slack, webhook, or email alerts
 - create or poll real provider jobs
@@ -122,46 +121,73 @@ Future role option:
 
 ## Phase 3: Admin Operations Metrics
 
-Admin operations metrics should aggregate persisted audit events in the selected window.
+Status: **implemented for read-only Admin visibility**. Admin operations metrics now aggregate persisted provider budget audit events inside the selected metrics window.
 
-Recommended fields under `metrics.creativeProviderBudget`:
+Implemented fields under `metrics.creativeProviderBudget`:
 
-```js
+```ts
 {
   thresholdAlerts: {
     total,
     bySeverity,
     byBudgetScope,
+    byProvider,
+    byWorkspace,
+    byThreshold,
+    latestAt,
   },
   dispatchBlocked: {
     total,
+    bySeverity,
     byReason,
     byBudgetScope,
+    byProvider,
+    byWorkspace,
+    latestAt,
   },
   costAnomalies: {
     total,
     byReason,
     bySeverity,
+    byBudgetScope,
+    byProvider,
+    byWorkspace,
+    latestAt,
   },
   spend: {
     estimatedAmount,
     actualAmount,
-    currency,
+    projectedSpendAmount,
+    byCurrency,
   },
 }
 ```
 
-Admin handoff hints:
+Implemented Admin handoff hints:
 
 - Critical dispatch blocks should generate a handoff hint to keep the provider kill switch active.
 - Threshold 100/120 should recommend checking the app-side cap and provider-side cap.
 - Currency mismatch should recommend blocking settlement until normalized.
 
-Sample drill-downs:
+Implemented sample drill-downs:
 
-- `creativeProviderThresholds`
-- `creativeProviderDispatchBlocks`
+- `creativeProviderBudgetThresholds`
+- `creativeProviderBudgetDispatchBlocks`
 - `creativeProviderCostAnomalies`
+
+Admin UI exposure:
+
+- summary cards for Provider budget threshold alerts and observed spend signals
+- breakdown rows for Provider dispatch blocks and Provider cost anomalies
+- audit filter buttons for threshold, dispatch-blocked, and anomaly events
+- recent sample panels that keep provider job ids and raw provider payloads out of metric-facing labels
+
+Still deferred:
+
+- Prometheus/exporter metric families
+- external alert delivery
+- Admin mutation controls for replay, settlement, or provider recovery
+- real provider SDK/HTTP calls
 
 ## Phase 4: Prometheus Exporter
 
@@ -215,12 +241,15 @@ Implemented notification tests:
 - Does not notify the actor who triggered the internal routing operation.
 - Does not include raw prompt, raw provider payload, token, output URL, or provider job id.
 
-Metrics tests:
+Implemented metrics tests:
 
 - Aggregates threshold, dispatch-blocked, and anomaly events by safe labels.
-- Exports Prometheus metrics with safe label fallback.
 - Does not expose generation ids or provider job ids as labels.
 - Adds operations handoff hints for critical budget events.
+
+Deferred metrics tests:
+
+- Exports Prometheus metrics with safe label fallback.
 
 Smoke and deploy tests:
 
@@ -232,7 +261,7 @@ Smoke and deploy tests:
 
 1. **Audit persistence**: add repository boundary and seed/Prisma parity tests. Implemented.
 2. **Notification routing**: create internal creative ops notifications from persisted events. Implemented.
-3. **Admin operations metrics**: aggregate provider budget events and expose drill-down filters.
+3. **Admin operations metrics**: aggregate provider budget events and expose drill-down filters. Implemented.
 4. **Prometheus exporter**: add safe metric families from operations metrics.
 5. **External alert delivery**: separate phase only after explicit approval.
 
@@ -250,10 +279,10 @@ No-go for implementation if any are true:
 
 ## Next Suggested Implementation
 
-The safest next implementation is **Admin operations metrics from persisted provider budget audit events**:
+The safest next implementation is **Prometheus-compatible exporter metrics derived from Admin operations metrics**:
 
-- aggregate persisted threshold, dispatch-blocked, and anomaly audit events inside the existing operations metrics window
-- expose safe sample buckets and handoff hints for critical provider budget events
-- keep Prometheus metrics, external alert delivery, Admin mutation controls, and real provider calls deferred
+- derive metric families from the existing `creativeProviderBudget` aggregate instead of raw provider payloads
+- enforce low-cardinality labels with provider, workspace, severity, reason, type, currency, and confidence only
+- keep external alert delivery, Admin mutation controls, provider callback/manual replay endpoints, and real provider calls deferred
 
-The durable audit source of truth and internal notification routing now exist, so Admin metrics can build on persisted evidence instead of raw provider payloads.
+The durable audit source of truth, internal notification routing, and Admin read-only metrics now exist, so exporter work can build on safe aggregate evidence instead of provider internals.
