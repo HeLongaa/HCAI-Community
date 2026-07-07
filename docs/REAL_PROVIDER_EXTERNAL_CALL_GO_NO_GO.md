@@ -4,6 +4,8 @@ This package defines the approval evidence required before the first real provid
 
 Current decision: **no-go until the approval record is completed in Notion and the user explicitly approves the first external-call staging run**.
 
+The current real-provider boundary handoff is summarized in `docs/REAL_PROVIDER_BOUNDARY_CLOSEOUT.md`. If that document and this approval package disagree, treat the safer no-go interpretation as authoritative until both documents and the Notion task are updated.
+
 This document does not add a real provider SDK, provider HTTP client, webhook endpoint, polling worker, provider job creation, production paid-provider path, or Admin generation mutation control.
 
 ## Scope
@@ -48,6 +50,8 @@ Create or update a Notion task in Chinese before any external-call staging run. 
 | Expiry | Approval expires after the run or within 24 hours, whichever comes first |
 
 Approval text must be explicit. Phrases like "continue", "looks good", or "ship it" are not enough to approve a real paid provider call.
+
+The same rule applies to CLI, chat, PR, and Notion notes. If the approval text does not name the provider, staging environment, maximum provider call count, spending cap, expiry, and production no-go boundary, the decision remains no-go.
 
 ## Required Evidence Before Approval
 
