@@ -30,7 +30,7 @@ Current executable provider flag:
 
 The Replicate staging client contract is tested with an injected mocked client only. It maps image request payloads, Replicate-like prediction statuses, output URLs, and provider failures into the internal generation contract without providing a default network client. A route-level fixture test can inject the mocked adapter to exercise policy, quota, credit, generation record, and media persistence boundaries, but production/default route registration does not wire Replicate execution.
 
-The mocked contract also requires provider cost estimate and daily budget cap metadata before any injected client dispatch. Missing estimate, missing cap, or projected spend above the cap fails closed before the mocked client is called. Budget metadata remains staging-scoped and low-cardinality: `CREATIVE_STAGING_PROVIDER_BUDGET_SCOPE=staging:replicate:image`, `CREATIVE_STAGING_PROVIDER_ESTIMATE_USD`, `CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD`, `CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD`, and `CREATIVE_STAGING_PROVIDER_BUDGET_THRESHOLD_PERCENT`.
+The mocked contract also requires provider cost estimate and daily budget cap metadata before any injected client dispatch. Missing estimate, missing cap, unsafe budget scope/account references, invalid threshold values, or projected spend above the cap fail closed before the mocked client is called. Budget metadata remains staging-scoped and low-cardinality: `CREATIVE_STAGING_PROVIDER_BUDGET_SCOPE=staging:replicate:image`, `CREATIVE_STAGING_PROVIDER_ESTIMATE_USD`, `CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD`, `CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD`, `CREATIVE_STAGING_PROVIDER_BUDGET_THRESHOLD_PERCENT`, and optional `CREATIVE_STAGING_PROVIDER_ACCOUNT_REF`. Budget scope and account references must be short safe identifiers, and the threshold must be between `1` and `100`.
 
 Async lifecycle replay is also contract-tested without route wiring. Replicate-like `starting`, `processing`, `succeeded`, `failed`, and `canceled` events map to internal `queued`, `running`, `completed`, `failed`, and `cancelled` states. Duplicate terminal replays, duplicate running replays, and stale queued replays return no-op action signals so later webhook or polling wiring can avoid duplicate output persistence, credit settlement, or refunds.
 
@@ -50,6 +50,7 @@ Fail-closed rules:
 - Replicate staging adapter shell requires `CREATIVE_PROVIDER_MODE=replicate_staging` and rejects every runtime except `CREATIVE_PROVIDER_RUNTIME_ENV=staging`.
 - Production smoke allows only `CREATIVE_PROVIDER_MODE=mock` or `disabled`; `replicate_staging` is production-denied.
 - Replicate staging client contract blocks dispatch when provider cost estimate or daily budget cap metadata is missing.
+- Replicate staging client contract blocks dispatch when budget scope/account metadata is unsafe or the configured threshold is outside `1` to `100`.
 - Replicate staging client contract blocks dispatch when projected daily spend exceeds the configured cap.
 - Replicate staging lifecycle replay rejects provider job id mismatches and suppresses duplicate/stale events before side-effect actions.
 - Staging provider preflight requires `CREATIVE_STAGING_PROVIDER_API_TOKEN`.

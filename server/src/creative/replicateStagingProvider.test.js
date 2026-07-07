@@ -173,6 +173,68 @@ test('createReplicateStagingPrediction fails closed before dispatch when budget 
   assert.equal(called, false)
 })
 
+test('createReplicateStagingPrediction fails closed on unsafe budget guard metadata', async () => {
+  let calls = 0
+  const client = {
+    createPrediction: async () => {
+      calls += 1
+      return { id: 'pred_unsafe_budget', status: 'starting' }
+    },
+  }
+
+  await assert.rejects(
+    createReplicateStagingPrediction({
+      request,
+      provider,
+      actor,
+      client,
+      source: {
+        ...budgetSource,
+        CREATIVE_STAGING_PROVIDER_BUDGET_SCOPE: 'staging:replicate:image token=replicate-token',
+      },
+    }),
+    (error) => error.code === 'CREATIVE_PROVIDER_BUDGET_BLOCKED' &&
+      error.statusCode === 503 &&
+      error.details.reason === 'unsafe_budget_scope' &&
+      JSON.stringify(error.details).includes('replicate-token') === false,
+  )
+
+  await assert.rejects(
+    createReplicateStagingPrediction({
+      request,
+      provider,
+      actor,
+      client,
+      source: {
+        ...budgetSource,
+        CREATIVE_STAGING_PROVIDER_ACCOUNT_REF: 'staging Bearer secret.value',
+      },
+    }),
+    (error) => error.code === 'CREATIVE_PROVIDER_BUDGET_BLOCKED' &&
+      error.statusCode === 503 &&
+      error.details.reason === 'unsafe_provider_account_ref' &&
+      JSON.stringify(error.details).includes('secret.value') === false,
+  )
+
+  await assert.rejects(
+    createReplicateStagingPrediction({
+      request,
+      provider,
+      actor,
+      client,
+      source: {
+        ...budgetSource,
+        CREATIVE_STAGING_PROVIDER_BUDGET_THRESHOLD_PERCENT: '250',
+      },
+    }),
+    (error) => error.code === 'CREATIVE_PROVIDER_BUDGET_BLOCKED' &&
+      error.statusCode === 503 &&
+      error.details.reason === 'invalid_budget_threshold',
+  )
+
+  assert.equal(calls, 0)
+})
+
 test('createReplicateStagingPrediction fails closed before dispatch when projected spend exceeds budget', async () => {
   let called = false
   const client = {

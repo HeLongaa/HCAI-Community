@@ -12,6 +12,8 @@ const defaultEstimateSource = 'pre_dispatch_estimate'
 const defaultEstimateConfidence = 'estimated'
 const defaultUsageUnit = 'prediction_seconds'
 const supportedReplicateStatuses = ['starting', 'processing', 'succeeded', 'failed', 'canceled', 'cancelled']
+const safeLowCardinalityPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
+
 const digestForPrediction = (request, actor, prediction) =>
   createHash('sha256')
     .update(JSON.stringify({
@@ -56,6 +58,16 @@ const stableHash = (value) =>
 const budgetValue = (source, options, optionKey, envKey) =>
   options[optionKey] ?? source[envKey]
 
+const safeLowCardinalityValue = (value) => {
+  const normalized = String(value ?? '').trim()
+  return safeLowCardinalityPattern.test(normalized) ? normalized : null
+}
+
+const boundedPercent = (value) => {
+  const parsed = optionalInteger(value)
+  return parsed != null && parsed >= 1 && parsed <= 100 ? parsed : null
+}
+
 const buildInput = (request) => {
   const input = {
     prompt: request.prompt,
@@ -93,11 +105,12 @@ export const buildReplicateImagePredictionPayload = (request, options = {}) => {
 const buildBudgetConfig = (source = process.env, options = {}) => {
   const dailyCapAmount = positiveAmount(budgetValue(source, options, 'dailyCapAmountUsd', 'CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD'))
   const spentAmount = optionalAmount(budgetValue(source, options, 'spentAmountUsd', 'CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD')) ?? 0
-  const thresholdPercent = optionalInteger(
-    budgetValue(source, options, 'thresholdPercent', 'CREATIVE_STAGING_PROVIDER_BUDGET_THRESHOLD_PERCENT'),
-  ) ?? defaultBudgetThresholdPercent
+  const thresholdValue = budgetValue(source, options, 'thresholdPercent', 'CREATIVE_STAGING_PROVIDER_BUDGET_THRESHOLD_PERCENT')
+  const thresholdPercent = thresholdValue == null || thresholdValue === ''
+    ? defaultBudgetThresholdPercent
+    : boundedPercent(thresholdValue)
   return {
-    budgetScope: options.budgetScope ?? source.CREATIVE_STAGING_PROVIDER_BUDGET_SCOPE ?? defaultBudgetScope,
+    budgetScope: safeLowCardinalityValue(options.budgetScope ?? source.CREATIVE_STAGING_PROVIDER_BUDGET_SCOPE ?? defaultBudgetScope),
     dailyCapCurrency: 'USD',
     dailyCapAmount,
     spentAmount,
@@ -163,7 +176,7 @@ export const buildReplicateProviderCostMetadata = ({
   return {
     schemaVersion: 'provider-cost-v1',
     providerId: 'replicate',
-    providerAccountRef: options.providerAccountRef ?? source.CREATIVE_STAGING_PROVIDER_ACCOUNT_REF ?? defaultProviderAccountRef,
+    providerAccountRef: safeLowCardinalityValue(options.providerAccountRef ?? source.CREATIVE_STAGING_PROVIDER_ACCOUNT_REF ?? defaultProviderAccountRef),
     model: {
       providerModelId: options.model ?? defaultModel,
       providerModelVersion: options.modelVersion ?? null,
@@ -217,6 +230,20 @@ export const buildReplicateProviderCostMetadata = ({
 }
 
 export const assertReplicateProviderBudgetAllowsDispatch = (providerCost) => {
+  if (!providerCost?.budget?.budgetScope) {
+    throw new HttpError(503, 'CREATIVE_PROVIDER_BUDGET_BLOCKED', 'Provider budget guard blocked dispatch: unsafe budget scope', {
+      providerId: providerCost?.providerId ?? 'replicate',
+      budgetScope: defaultBudgetScope,
+      reason: 'unsafe_budget_scope',
+    })
+  }
+  if (!providerCost?.providerAccountRef) {
+    throw new HttpError(503, 'CREATIVE_PROVIDER_BUDGET_BLOCKED', 'Provider budget guard blocked dispatch: unsafe provider account reference', {
+      providerId: providerCost?.providerId ?? 'replicate',
+      budgetScope: providerCost?.budget?.budgetScope ?? defaultBudgetScope,
+      reason: 'unsafe_provider_account_ref',
+    })
+  }
   if (providerCost?.estimate?.amount == null) {
     throw new HttpError(503, 'CREATIVE_PROVIDER_BUDGET_BLOCKED', 'Provider budget guard blocked dispatch: missing cost estimate', {
       providerId: providerCost?.providerId ?? 'replicate',
@@ -229,6 +256,13 @@ export const assertReplicateProviderBudgetAllowsDispatch = (providerCost) => {
       providerId: providerCost.providerId,
       budgetScope: providerCost.budget?.budgetScope ?? defaultBudgetScope,
       reason: 'missing_budget_cap',
+    })
+  }
+  if (providerCost?.budget?.thresholdPercent == null) {
+    throw new HttpError(503, 'CREATIVE_PROVIDER_BUDGET_BLOCKED', 'Provider budget guard blocked dispatch: invalid budget threshold', {
+      providerId: providerCost.providerId,
+      budgetScope: providerCost.budget.budgetScope,
+      reason: 'invalid_budget_threshold',
     })
   }
   if (providerCost.budget.status === 'over_budget') {
