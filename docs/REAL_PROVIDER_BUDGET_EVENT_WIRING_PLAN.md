@@ -170,6 +170,18 @@ Implemented fields under `metrics.creativeProviderBudget`:
     byProvider,
     byWorkspace,
     latestAt,
+    fixtureDryRuns: {
+      total,
+      succeeded,
+      failed,
+      skipped,
+      byChannel,
+      byStatus,
+      byReason,
+      byProvider,
+      byWorkspace,
+      latestAt,
+    },
     failureSpike: {
       active,
       threshold,
@@ -200,13 +212,13 @@ Admin UI exposure:
 
 - summary cards for Provider budget threshold alerts and observed spend signals
 - breakdown rows for Provider dispatch blocks and Provider cost anomalies
-- breakdown row for Provider alert dispatches, including audit filtering and recent samples
+- breakdown row for Provider alert dispatches, including fixture dry-run totals, audit filtering, and recent samples
 - audit filter buttons for threshold, dispatch-blocked, and anomaly events
 - recent sample panels that keep provider job ids and raw provider payloads out of metric-facing labels
 
 Still deferred:
 
-- external alert delivery
+- real external alert delivery to Slack, webhook, or email
 - Admin mutation controls for replay, settlement, or provider recovery
 - real provider SDK/HTTP calls
 

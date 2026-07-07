@@ -155,6 +155,31 @@ test('buildOperationsMetrics summarizes creative provider budget audit events', 
       createdAt: '2026-07-07T11:59:00.000Z',
     },
     {
+      id: 'audit-provider-alert-dispatch-fixture-dry-run',
+      action: 'creative.provider_alert.dispatch',
+      resourceType: 'creative_provider_budget_alert',
+      resourceId: 'creative-provider-alert:email:creative-provider-budget:audit',
+      metadata: {
+        sourceKey: 'creative-provider-alert:email:creative-provider-budget:audit',
+        auditEventSourceKey: 'creative-provider-budget:audit',
+        channel: 'email',
+        status: 'failed',
+        statusCode: 503,
+        providerId: 'openai-image',
+        workspace: 'image',
+        severity: 'warning',
+        reasonCode: 'fixture_client_failed',
+        errorPreview: 'fixture failed with <redacted>',
+        budgetScope: 'staging:openai-image:image',
+        dispatchMode: 'fixture_dry_run',
+        fixtureDryRun: true,
+        webhookUrl: 'https://ops.example.com/provider-alerts',
+        recipientEmail: 'creative-ops@example.com',
+        providerJobId: 'pred_fixture_should_not_be_metric_label',
+      },
+      createdAt: '2026-07-07T11:59:30.000Z',
+    },
+    {
       id: 'audit-provider-old',
       action: 'creative.provider_budget.dispatch_blocked',
       resourceType: 'creative_provider_budget',
@@ -189,27 +214,42 @@ test('buildOperationsMetrics summarizes creative provider budget audit events', 
   assert.deepEqual(metrics.creativeProviderBudget.dispatchBlocked.byReason, [{ key: 'over_budget', count: 1 }])
   assert.equal(metrics.creativeProviderBudget.costAnomalies.total, 1)
   assert.deepEqual(metrics.creativeProviderBudget.costAnomalies.byReason, [{ key: 'currency_mismatch', count: 1 }])
-  assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.total, 2)
+  assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.total, 3)
   assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.succeeded, 1)
-  assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.failed, 1)
+  assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.failed, 2)
   assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.failureSpike.active, false)
   assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.failureSpike.threshold, 2)
   assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.failureSpike.failures, 1)
   assert.deepEqual(metrics.creativeProviderBudget.providerAlertDispatches.byChannel, [
+    { key: 'email', count: 1 },
     { key: 'slack', count: 1 },
     { key: 'webhook', count: 1 },
   ])
   assert.deepEqual(metrics.creativeProviderBudget.providerAlertDispatches.byStatus, [
-    { key: 'failed', count: 1 },
+    { key: 'failed', count: 2 },
     { key: 'succeeded', count: 1 },
   ])
   assert.deepEqual(metrics.creativeProviderBudget.providerAlertDispatches.byReason, [
     { key: 'budget_threshold_crossed', count: 1 },
+    { key: 'fixture_client_failed', count: 1 },
     { key: 'missing_provider_alert_client', count: 1 },
   ])
+  assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.fixtureDryRuns.total, 1)
+  assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.fixtureDryRuns.failed, 1)
+  assert.deepEqual(metrics.creativeProviderBudget.providerAlertDispatches.fixtureDryRuns.byChannel, [
+    { key: 'email', count: 1 },
+  ])
+  assert.deepEqual(metrics.creativeProviderBudget.providerAlertDispatches.fixtureDryRuns.byReason, [
+    { key: 'fixture_client_failed', count: 1 },
+  ])
+  assert.deepEqual(metrics.creativeProviderBudget.providerAlertDispatches.fixtureDryRuns.byProvider, [
+    { key: 'openai-image', count: 1 },
+  ])
+  assert.equal(metrics.creativeProviderBudget.providerAlertDispatches.fixtureDryRuns.latestAt, '2026-07-07T11:59:30.000Z')
   assert.equal(JSON.stringify(metrics.creativeProviderBudget.providerAlertDispatches).includes('ops.example.com'), false)
   assert.equal(JSON.stringify(metrics.creativeProviderBudget.providerAlertDispatches).includes('creative-ops@example.com'), false)
   assert.equal(JSON.stringify(metrics.creativeProviderBudget.providerAlertDispatches).includes('pred_should_not_be_metric_label'), false)
+  assert.equal(JSON.stringify(metrics.creativeProviderBudget.providerAlertDispatches.fixtureDryRuns).includes('pred_fixture_should_not_be_metric_label'), false)
   assert.equal(metrics.creativeProviderBudget.spend.estimatedAmount, 1.75)
   assert.equal(metrics.creativeProviderBudget.spend.actualAmount, 3.75)
   assert.equal(metrics.creativeProviderBudget.spend.projectedSpendAmount, 14.5)

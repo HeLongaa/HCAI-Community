@@ -4,6 +4,8 @@ This plan defines the approval boundary and implementation checklist for future 
 
 Current decision: **dispatch audit persistence, approved channel client shells, explicit approval/config wiring, and fixture dry-run harness without real external delivery**. Durable audit persistence, internal station notifications, Admin operations metrics, Prometheus-compatible exporter metrics, `CREATIVE_PROVIDER_ALERT_*` env/smoke validation, a pure channel-neutral provider alert payload builder, an injected dispatcher boundary for tests, explicit disabled client adapter shells for webhook/Slack/email, explicit approval/config wiring for fixture-only readiness, a fixture-only dry-run harness, safe dispatch audit record candidate planning, per-channel dispatch audit persistence, dispatch observability, and failure-spike policy exist. External alert delivery still must not send outbound Slack, webhook, or email messages until a later explicitly approved implementation PR provides approved real clients.
 
+Admin read-only visibility now includes fixture dry-run dispatch audit rows and safe aggregate summaries. The UI and metrics can show dry-run totals, failures, channel/status/reason/provider/workspace breakdowns, and latest audit time from persisted audit records marked with `dispatchMode=fixture_dry_run` or `fixtureDryRun=true`; this visibility does not add a run button, retry button, replay endpoint, recovery control, or any real outbound client.
+
 ## Non-Goals For This Planning Step
 
 - Do not send external Slack, webhook, or email alerts.
@@ -136,6 +138,8 @@ Recommended audit metadata:
 - `workspace`
 - `severity`
 - `reasonCode`
+- `dispatchMode`
+- `fixtureDryRun`
 
 Do not include external URLs, secrets, raw request payloads, raw response bodies, or provider job ids in dispatch audit metadata.
 
@@ -154,7 +158,8 @@ Admin operations metrics aggregate persisted delivery attempts into:
 - succeeded, failed, and skipped counts
 - dispatches by channel, status, reason, provider, and workspace
 - latest dispatch audit timestamp
-- thresholded failure-spike status, threshold, failure count, channel breakdown, and reason breakdown
+- fixture dry-run dispatch totals, success/failure/skipped counts, breakdowns, and latest audit timestamp
+- thresholded failure-spike status, threshold, failure count, channel breakdown, and reason breakdown for non-fixture dispatches only
 
 Prometheus exporter derives:
 
@@ -165,6 +170,17 @@ Prometheus exporter derives:
 - `newchat_creative_provider_alert_dispatches_by_channel_total{channel}`
 - `newchat_creative_provider_alert_dispatches_by_status_total{status}`
 - `newchat_creative_provider_alert_dispatches_by_reason_total{reason}`
+- `newchat_creative_provider_alert_dispatches_by_provider_total{provider}`
+- `newchat_creative_provider_alert_dispatches_by_workspace_total{workspace}`
+- `newchat_creative_provider_alert_fixture_dry_run_dispatches_total`
+- `newchat_creative_provider_alert_fixture_dry_run_dispatches_succeeded_total`
+- `newchat_creative_provider_alert_fixture_dry_run_dispatches_failed_total`
+- `newchat_creative_provider_alert_fixture_dry_run_dispatches_skipped_total`
+- `newchat_creative_provider_alert_fixture_dry_run_dispatches_by_channel_total{channel}`
+- `newchat_creative_provider_alert_fixture_dry_run_dispatches_by_status_total{status}`
+- `newchat_creative_provider_alert_fixture_dry_run_dispatches_by_reason_total{reason}`
+- `newchat_creative_provider_alert_fixture_dry_run_dispatches_by_provider_total{provider}`
+- `newchat_creative_provider_alert_fixture_dry_run_dispatches_by_workspace_total{workspace}`
 - `newchat_creative_provider_alert_dispatch_failure_spike_active`
 - `newchat_creative_provider_alert_dispatch_failure_spike_threshold`
 - `newchat_creative_provider_alert_dispatch_failure_spike_failures_total`
@@ -212,7 +228,8 @@ Payload-builder, disabled adapter shell, approval/config wiring, fixture dry-run
 9. Add approved webhook/Slack/email client adapter shells that remain disabled unless clients are explicitly injected. Implemented.
 10. Add explicit approval/config wiring that only permits fixture-injected clients and keeps real delivery unavailable. Implemented.
 11. Add fixture-only dry-run harness that dispatches through injected clients and persists safe dispatch audit records. Implemented.
-12. Only then consider enabling a staging external channel with fixture events after explicit approval.
+12. Surface fixture dry-run dispatch audit records in Admin read-only metrics and Prometheus-compatible exporter summaries. Implemented.
+13. Only then consider enabling a staging external channel with fixture events after explicit approval.
 
 ## Explicit Approval Required
 
@@ -224,4 +241,4 @@ Before any implementation PR sends outbound messages, the user must approve:
 - whether delivery failure alerts should page humans or stay dashboard-only
 - retention expectations for dispatch audit records
 
-Until then, external alert delivery remains deferred even though env parsing, smoke validation, dispatch audit persistence, observability, failure-spike policy, disabled channel adapter shells, fixture-only approval/config wiring, and fixture dry-run harness exist.
+Until then, real external alert delivery remains deferred even though env parsing, smoke validation, dispatch audit persistence, observability, failure-spike policy, disabled channel adapter shells, fixture-only approval/config wiring, fixture dry-run harness, and Admin read-only dry-run visibility exist.

@@ -3551,7 +3551,7 @@ export function AdminPage({
                 </div>
                 <div>
                   <strong>{textFor(t, 'Provider alert dispatches', 'Provider 告警派发')}</strong>
-                  <span>{`${formatMetricNumber(operationsMetrics.creativeProviderBudget.providerAlertDispatches.total)} · ${formatMetricNumber(operationsMetrics.creativeProviderBudget.providerAlertDispatches.failed)} ${textFor(t, 'failed', '失败')} · ${metricCountSummary(operationsMetrics.creativeProviderBudget.providerAlertDispatches.byChannel)}`}</span>
+                  <span>{`${formatMetricNumber(operationsMetrics.creativeProviderBudget.providerAlertDispatches.total)} · ${formatMetricNumber(operationsMetrics.creativeProviderBudget.providerAlertDispatches.failed)} ${textFor(t, 'failed', '失败')} · ${metricCountSummary(operationsMetrics.creativeProviderBudget.providerAlertDispatches.byChannel)} · ${textFor(t, 'dry-run', '演练')} ${formatMetricNumber(operationsMetrics.creativeProviderBudget.providerAlertDispatches.fixtureDryRuns.total)} · ${formatMetricNumber(operationsMetrics.creativeProviderBudget.providerAlertDispatches.fixtureDryRuns.failed)} ${textFor(t, 'failed', '失败')}`}</span>
                   <button
                     className="ghost-button small"
                     type="button"

@@ -394,6 +394,8 @@ export const buildProviderBudgetExternalAlertDispatchAuditRecords = ({
           workspace: metadata.workspace,
           severity: metadata.severity,
           reasonCode: result.reasonCode ?? metadata.reasonCode,
+          dispatchMode: metadata.dispatchMode,
+          fixtureDryRun: metadata.fixtureDryRun === true ? true : undefined,
           attemptedAt,
         }),
       }
@@ -448,6 +450,8 @@ const normalizeProviderBudgetExternalAlertDispatchAuditRecords = (records = []) 
         workspace: safeString(record.metadata.workspace, null),
         severity: safeString(record.metadata.severity, null),
         reasonCode: safeString(record.metadata.reasonCode, null),
+        dispatchMode: safeString(record.metadata.dispatchMode, null),
+        fixtureDryRun: record.metadata.fixtureDryRun === true ? true : undefined,
         attemptedAt: safeString(record.metadata.attemptedAt, null),
         persistedFrom: 'provider_budget_external_alert_dispatch',
       }),
@@ -614,11 +618,21 @@ export const runProviderBudgetExternalAlertFixtureDryRun = async ({
     channels: wiring.channels,
     clients: wiring.clients,
   })
+  const records = buildProviderBudgetExternalAlertDispatchAuditRecords({
+    results: dispatch.results.map((result) => ({
+      ...result,
+      metadata: {
+        ...(isObject(result.metadata) ? result.metadata : {}),
+        dispatchMode: 'fixture_dry_run',
+        fixtureDryRun: true,
+      },
+    })),
+    now,
+  })
   const persistence = await persistProviderBudgetExternalAlertDispatchAuditEvents({
-    dispatch,
+    records,
     repositories,
     actor,
-    now,
   })
 
   return {
