@@ -92,6 +92,7 @@ Before the first staging external-call rehearsal, the approval record must expli
 | Can a staging adapter planning branch start? | `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` |
 | Are Admin mutations allowed? | `docs/REAL_PROVIDER_ADMIN_MUTATION_REQUIREMENTS.md` |
 | How are provider spend and product credits separated? | `docs/REAL_PROVIDER_COST_METADATA_AND_BUDGET_ALARMS.md` |
+| How should provider budget events connect to audit, notifications, and metrics? | `docs/REAL_PROVIDER_BUDGET_EVENT_WIRING_PLAN.md` |
 
 ## Next Allowed Work
 
