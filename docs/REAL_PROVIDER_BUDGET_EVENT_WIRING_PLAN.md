@@ -2,7 +2,7 @@
 
 This plan defines how the fixture-only provider budget event plan should later connect to durable audit records, notifications, Admin operations metrics, and Prometheus-compatible metrics.
 
-Current decision: **audit persistence foundation implemented; fan-out still deferred**. The repository has `server/src/creative/providerBudgetEvents.js`, which builds pure event plans from normalized provider cost metadata, and `server/src/creative/providerBudgetAuditPersistence.js`, which persists safe audit records through an injected repository boundary. This document does not add notification fan-out, external alert delivery, Admin mutation controls, real provider SDKs, default HTTP clients, or provider network calls.
+Current decision: **audit persistence and internal notification routing implemented; metrics and external alerts still deferred**. The repository has `server/src/creative/providerBudgetEvents.js`, which builds pure event plans from normalized provider cost metadata, `server/src/creative/providerBudgetAuditPersistence.js`, which persists safe audit records through an injected repository boundary, and `server/src/repositories/providerBudgetNotificationWiring.js`, which derives safe internal notification payloads from persisted audit events. This document does not add Admin operations metrics, Prometheus metrics, external alert delivery, Admin mutation controls, real provider SDKs, default HTTP clients, or provider network calls.
 
 ## Current Fixture Baseline
 
@@ -22,13 +22,12 @@ These helpers produce:
 
 They do not:
 
-- create notifications
 - update Admin operations metrics
 - expose Prometheus metrics
 - send Slack, webhook, or email alerts
 - create or poll real provider jobs
 
-Audit persistence now exists as an explicit helper/repository boundary and is not automatically wired to real provider dispatch.
+Audit persistence and internal notification routing now exist as explicit helper/repository boundaries and are not automatically wired to real provider dispatch.
 
 ## Wiring Principles
 
@@ -89,9 +88,15 @@ Still deferred:
 
 ## Phase 2: Notification Routing
 
-Notifications should be derived from persisted audit events, not from raw provider responses.
+Status: **implemented for internal station notifications**. Notifications are derived from persisted audit events, not from raw provider responses.
 
-Recommended first routing:
+Implemented repository surface:
+
+```js
+repositories.providerBudgetNotifications.createFromAuditEvents(auditEvents, actor)
+```
+
+Implemented first routing:
 
 | Event | Recipients | User-facing? | Severity |
 | --- | --- | --- | --- |
@@ -104,10 +109,10 @@ Recommended first routing:
 
 Notification rules:
 
-- Deduplicate by idempotency key and recipient.
+- Deduplicate by audit `sourceKey` and recipient.
 - Do not notify the generation owner until a user-visible product outcome exists.
 - Do not include provider job ids, raw URLs, raw prompt text, or provider error bodies.
-- Link to Admin generation history or audit detail when available.
+- Link metadata to Admin audit detail through `metadata.target.admin.auditEventId`.
 - Keep notification payloads readable but operational, for example "Provider budget dispatch blocked for staging:replicate:image".
 
 Future role option:
@@ -202,12 +207,13 @@ Implemented audit persistence tests:
 - Returns explicit failure when the audit repository is unavailable.
 - Rejects unsupported or non-idempotent audit events before writing.
 
-Notification tests:
+Implemented notification tests:
 
 - Sends warning/critical notifications to audit readers.
-- Deduplicates per recipient and idempotency key.
+- Deduplicates per recipient and audit `sourceKey`.
 - Does not notify ordinary generation owners.
-- Does not include raw prompt, raw provider payload, token, or output URL.
+- Does not notify the actor who triggered the internal routing operation.
+- Does not include raw prompt, raw provider payload, token, output URL, or provider job id.
 
 Metrics tests:
 
@@ -224,8 +230,8 @@ Smoke and deploy tests:
 
 ## Recommended PR Order
 
-1. **Audit persistence**: add repository boundary and seed/Prisma parity tests.
-2. **Notification routing**: create internal creative ops notifications from persisted events.
+1. **Audit persistence**: add repository boundary and seed/Prisma parity tests. Implemented.
+2. **Notification routing**: create internal creative ops notifications from persisted events. Implemented.
 3. **Admin operations metrics**: aggregate provider budget events and expose drill-down filters.
 4. **Prometheus exporter**: add safe metric families from operations metrics.
 5. **External alert delivery**: separate phase only after explicit approval.
@@ -244,11 +250,10 @@ No-go for implementation if any are true:
 
 ## Next Suggested Implementation
 
-The safest next implementation is **notification routing from persisted audit events**:
+The safest next implementation is **Admin operations metrics from persisted provider budget audit events**:
 
-- create internal creative ops notifications from persisted budget audit events
-- deduplicate per recipient and audit `sourceKey`
-- keep notification payloads safe and operational
-- keep Admin metrics, Prometheus metrics, external alert delivery, and real provider calls deferred
+- aggregate persisted threshold, dispatch-blocked, and anomaly audit events inside the existing operations metrics window
+- expose safe sample buckets and handoff hints for critical provider budget events
+- keep Prometheus metrics, external alert delivery, Admin mutation controls, and real provider calls deferred
 
-The durable audit source of truth now exists, so notification fan-out can build on persisted evidence instead of raw provider payloads.
+The durable audit source of truth and internal notification routing now exist, so Admin metrics can build on persisted evidence instead of raw provider payloads.

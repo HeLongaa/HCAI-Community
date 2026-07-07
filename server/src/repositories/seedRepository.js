@@ -57,6 +57,10 @@ import {
   buildProviderLifecycleNotificationPayload,
   hasProviderLifecycleSourceKey,
 } from './providerLifecycleWiring.js'
+import {
+  buildProviderBudgetNotificationPayload,
+  hasProviderBudgetNotificationSourceKey,
+} from './providerBudgetNotificationWiring.js'
 
 const sessionByRefreshToken = new Map()
 const emailAccountByEmail = new Map()
@@ -807,6 +811,32 @@ function createProviderLifecycleNotifications(payload = {}, actor = null) {
       hasProviderLifecycleSourceKey(notification, payload.sourceKey),
     ))
   return createNotificationsForHandles(handles, notificationPayload)
+}
+
+function providerBudgetRecipientHandles(actor) {
+  return uniqueHandles(seedStore.demoAccounts
+    .filter((account) => account.handle !== actor?.handle && hasPermission(account, 'admin:audit:read'))
+    .map((account) => account.handle))
+}
+
+function createProviderBudgetNotificationsFromAuditEvents(auditEventsToNotify = [], actor = null) {
+  const handles = providerBudgetRecipientHandles(actor)
+  const created = []
+  for (const auditEvent of auditEventsToNotify) {
+    const notificationPayload = buildProviderBudgetNotificationPayload(auditEvent)
+    if (!notificationPayload) {
+      continue
+    }
+    const missingHandles = handles.filter((handle) => !notifications.some((notification) =>
+      notification.recipientHandle === handle &&
+      notification.type === notificationPayload.type &&
+      notification.resourceType === notificationPayload.resourceType &&
+      notification.resourceId === notificationPayload.resourceId &&
+      hasProviderBudgetNotificationSourceKey(notification, notificationPayload.metadata.sourceKey),
+    ))
+    created.push(...createNotificationsForHandles(missingHandles, notificationPayload))
+  }
+  return created
 }
 
 function recordProviderLifecycleAudit(payload = {}, actor = null) {
@@ -2485,6 +2515,9 @@ export const createSeedRepository = () => ({
   },
   providerLifecycleNotifications: {
     create: createProviderLifecycleNotifications,
+  },
+  providerBudgetNotifications: {
+    createFromAuditEvents: createProviderBudgetNotificationsFromAuditEvents,
   },
   providerLifecycleAudit: {
     record: recordProviderLifecycleAudit,
