@@ -4,6 +4,7 @@ import test from 'node:test'
 import { createSeedRepository } from '../repositories/seedRepository.js'
 import {
   buildProviderBudgetExternalAlertPayload,
+  buildProviderBudgetExternalAlertClientAdapters,
   buildProviderBudgetExternalAlertDispatchPlan,
   buildProviderBudgetExternalAlertPayloads,
   buildProviderBudgetExternalAlertDispatchAuditRecords,
@@ -212,6 +213,106 @@ test('buildProviderBudgetExternalAlertDispatchPlan creates per-channel safe enve
   assert.equal(serialized.includes('Bearer secret.value'), false)
   assert.equal(serialized.includes('ops.example.com'), false)
   assert.equal(serialized.includes('creative-ops@example.com'), false)
+})
+
+test('buildProviderBudgetExternalAlertClientAdapters creates disabled approved channel shells', async () => {
+  const clients = buildProviderBudgetExternalAlertClientAdapters()
+
+  assert.deepEqual(Object.keys(clients), ['webhook', 'slack', 'email'])
+  assert.equal(clients.webhook.enabled, false)
+  assert.equal(clients.slack.channel, 'slack')
+  assert.equal(clients.email.reasonCode, 'provider_alert_client_disabled')
+  await assert.rejects(
+    () => clients.webhook.send({ url: 'https://ops.example.com/provider-alerts', token: 'secret' }),
+    {
+      code: 'PROVIDER_ALERT_CLIENT_DISABLED',
+      reasonCode: 'provider_alert_client_disabled',
+      statusCode: 503,
+    },
+  )
+
+  const serialized = JSON.stringify(clients)
+  assert.equal(serialized.includes('ops.example.com'), false)
+  assert.equal(serialized.includes('secret'), false)
+})
+
+test('buildProviderBudgetExternalAlertClientAdapters preserves explicit injected clients only', async () => {
+  const sent = []
+  const clients = buildProviderBudgetExternalAlertClientAdapters({
+    channels: ['webhook', 'slack', 'sms', 'email', 'webhook'],
+    clients: {
+      webhook: {
+        enabled: true,
+        send: async (envelope) => {
+          sent.push(envelope)
+          return { statusCode: 202, reasonCode: 'accepted' }
+        },
+      },
+    },
+  })
+
+  assert.deepEqual(Object.keys(clients), ['webhook', 'slack', 'email'])
+  assert.equal(clients.webhook.enabled, true)
+  assert.equal(clients.slack.enabled, false)
+  assert.equal(clients.email.enabled, false)
+
+  const result = await clients.webhook.send({ channel: 'webhook', idempotencyKey: 'safe-key' })
+  assert.equal(result.statusCode, 202)
+  assert.deepEqual(sent, [{ channel: 'webhook', idempotencyKey: 'safe-key' }])
+})
+
+test('dispatchProviderBudgetExternalAlerts fails closed through disabled channel shells without default network', async () => {
+  const payload = buildProviderBudgetExternalAlertPayload({
+    id: 'audit-provider-budget-alert-shell',
+    action: 'creative.provider_budget.dispatch_blocked',
+    resourceType: 'creative_provider_budget',
+    resourceId: 'staging:replicate:image:external-alert-shell',
+    createdAt: '2026-07-07T04:30:00.000Z',
+    metadata: {
+      sourceKey: 'creative-provider-budget:disabled-shell-safe:audit',
+      providerId: 'replicate',
+      budgetScope: 'staging:replicate:image:external-alert-shell',
+      workspace: 'image',
+      severity: 'critical',
+      reasonCode: 'over_budget',
+      webhookUrl: 'https://ops.example.com/provider-alerts',
+      slackWebhookUrl: 'https://hooks.slack.com/services/T000/B000/SECRET',
+      recipientEmail: 'creative-ops@example.com',
+    },
+  })
+  const originalFetch = globalThis.fetch
+  let fetchCalls = 0
+  globalThis.fetch = async () => {
+    fetchCalls += 1
+    throw new Error('fetch should not be used by provider alert client shells')
+  }
+
+  try {
+    const dispatch = await dispatchProviderBudgetExternalAlerts({
+      payloads: [payload],
+      channels: ['webhook', 'slack', 'email'],
+      clients: buildProviderBudgetExternalAlertClientAdapters(),
+    })
+
+    assert.equal(fetchCalls, 0)
+    assert.equal(dispatch.safeSummary.total, 3)
+    assert.equal(dispatch.safeSummary.succeeded, 0)
+    assert.equal(dispatch.safeSummary.failed, 3)
+    assert.deepEqual(dispatch.results.map((result) => result.reasonCode), [
+      'provider_alert_client_disabled',
+      'provider_alert_client_disabled',
+      'provider_alert_client_disabled',
+    ])
+    assert.deepEqual(dispatch.results.map((result) => result.statusCode), [503, 503, 503])
+    assert.equal(dispatch.results.every((result) => result.errorPreview.includes('disabled')), true)
+
+    const serialized = JSON.stringify(dispatch)
+    assert.equal(serialized.includes('ops.example.com'), false)
+    assert.equal(serialized.includes('hooks.slack.com'), false)
+    assert.equal(serialized.includes('creative-ops@example.com'), false)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 test('dispatchProviderBudgetExternalAlerts requires injected clients and redacts failures', async () => {

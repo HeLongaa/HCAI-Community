@@ -8,6 +8,7 @@ const providerBudgetExternalAlertActions = new Set([
 
 const providerBudgetExternalAlertChannels = new Set(['webhook', 'slack', 'email'])
 const providerBudgetExternalAlertDispatchAuditStatuses = new Set(['succeeded', 'failed', 'skipped'])
+const defaultProviderBudgetExternalAlertChannels = Object.freeze([...providerBudgetExternalAlertChannels])
 
 const compactObject = (value) =>
   Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ''))
@@ -200,6 +201,36 @@ const missingClientResult = (operation) => ({
   metadata: operation.metadata,
 })
 
+const disabledProviderBudgetExternalAlertClientError = (channel) =>
+  Object.assign(new Error(`Provider alert ${channel} client is disabled`), {
+    code: 'PROVIDER_ALERT_CLIENT_DISABLED',
+    reasonCode: 'provider_alert_client_disabled',
+    statusCode: 503,
+  })
+
+const disabledProviderBudgetExternalAlertClient = (channel) => Object.freeze({
+  channel,
+  enabled: false,
+  reasonCode: 'provider_alert_client_disabled',
+  send: async () => {
+    throw disabledProviderBudgetExternalAlertClientError(channel)
+  },
+})
+
+export const buildProviderBudgetExternalAlertClientAdapters = ({
+  channels = defaultProviderBudgetExternalAlertChannels,
+  clients = {},
+} = {}) => {
+  const safeChannels = normalizeChannels(channels?.length ? channels : defaultProviderBudgetExternalAlertChannels)
+  return Object.fromEntries(safeChannels.map((channel) => {
+    const client = clients?.[channel]
+    return [
+      channel,
+      client?.send ? client : disabledProviderBudgetExternalAlertClient(channel),
+    ]
+  }))
+}
+
 const successResult = (operation, result = {}) => ({
   channel: operation.channel,
   key: operation.key,
@@ -216,7 +247,7 @@ const failureResult = (operation, error) => {
     key: operation.key,
     status: 'failed',
     statusCode: Number.isInteger(error?.statusCode) ? error.statusCode : null,
-    reasonCode: failure.reasonCode,
+    reasonCode: safeString(error?.reasonCode ?? error?.details?.reasonCode ?? failure.reasonCode, null),
     errorPreview: failure.messagePreview,
     metadata: operation.metadata,
   }

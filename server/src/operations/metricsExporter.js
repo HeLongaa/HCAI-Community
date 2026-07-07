@@ -11,6 +11,7 @@ const providerBudgetReasonValues = [
   'dispatch_blocked',
   'over_budget',
   'missing_provider_alert_client',
+  'provider_alert_client_disabled',
   'relay_failed',
   'missing_cost_estimate',
   'missing_budget_cap',
