@@ -71,6 +71,20 @@ test('buildEnv allows development without managed token secrets', () => {
     securityAlertEmailRecipientCount: 0,
     hasSecurityAlertEmailFrom: false,
     securityAlertEmailTimeoutSeconds: 5,
+    creativeProviderAlertsEnabled: false,
+    creativeProviderAlertChannels: [],
+    creativeProviderAlertWindowMinutes: 60,
+    creativeProviderAlertDeliveryFailureThreshold: 2,
+    hasCreativeProviderAlertWebhookUrl: false,
+    hasCreativeProviderAlertWebhookSecret: false,
+    creativeProviderAlertWebhookTimeoutSeconds: 5,
+    hasCreativeProviderAlertSlackWebhookUrl: false,
+    creativeProviderAlertSlackTimeoutSeconds: 5,
+    hasCreativeProviderAlertEmailWebhookUrl: false,
+    hasCreativeProviderAlertEmailWebhookSecret: false,
+    creativeProviderAlertEmailRecipientCount: 0,
+    hasCreativeProviderAlertEmailFrom: false,
+    creativeProviderAlertEmailTimeoutSeconds: 5,
     hasMediaScanRequestUrl: false,
     hasMediaScanRequestSecret: false,
     hasMediaScanCallbackBaseUrl: false,
@@ -573,6 +587,87 @@ test('buildEnv validates and exposes security event collector settings', () => {
   assert.equal(env.securityAlertEmailTimeoutSeconds, 8)
 })
 
+test('buildEnv validates and exposes creative provider alert settings without enabling delivery', () => {
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_ALERT_WINDOW_MINUTES: '0' }),
+    /CREATIVE_PROVIDER_ALERT_WINDOW_MINUTES must be a positive integer/,
+  )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_ALERT_DELIVERY_FAILED_ALERT_THRESHOLD: 'nope' }),
+    /CREATIVE_PROVIDER_ALERT_DELIVERY_FAILED_ALERT_THRESHOLD must be a positive integer/,
+  )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_ALERT_WEBHOOK_URL: 'notaurl' }),
+    /CREATIVE_PROVIDER_ALERT_WEBHOOK_URL must be a valid URL/,
+  )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_ALERT_EMAIL_WEBHOOK_URL: 'https://mailer.example.com/provider-alerts' }),
+    /CREATIVE_PROVIDER_ALERT_EMAIL_TO is required/,
+  )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_ALERT_CHANNELS: 'webhook,pager' }),
+    /CREATIVE_PROVIDER_ALERT_CHANNELS must contain only: webhook, slack, email/,
+  )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_ALERTS_ENABLED: 'true' }),
+    /CREATIVE_PROVIDER_ALERT_CHANNELS must include at least one channel/,
+  )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_ALERT_CHANNELS: 'webhook' }),
+    /CREATIVE_PROVIDER_ALERT_WEBHOOK_URL is required/,
+  )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_ALERT_CHANNELS: 'slack' }),
+    /CREATIVE_PROVIDER_ALERT_SLACK_WEBHOOK_URL is required/,
+  )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_ALERT_CHANNELS: 'email' }),
+    /CREATIVE_PROVIDER_ALERT_EMAIL_WEBHOOK_URL is required/,
+  )
+
+  const disabled = buildEnv({ NODE_ENV: 'development' })
+  assert.equal(disabled.creativeProviderAlertsEnabled, false)
+  assert.deepEqual(disabled.creativeProviderAlertChannels, [])
+  assert.equal(disabled.creativeProviderAlertWindowMinutes, 60)
+  assert.equal(disabled.creativeProviderAlertDeliveryFailureThreshold, 2)
+  assert.equal(disabled.hasCreativeProviderAlertWebhookUrl, false)
+  assert.equal(disabled.hasCreativeProviderAlertSlackWebhookUrl, false)
+  assert.equal(disabled.hasCreativeProviderAlertEmailWebhookUrl, false)
+
+  const enabled = buildEnv({
+    NODE_ENV: 'development',
+    CREATIVE_PROVIDER_ALERTS_ENABLED: 'true',
+    CREATIVE_PROVIDER_ALERT_CHANNELS: 'Webhook,slack,email',
+    CREATIVE_PROVIDER_ALERT_WINDOW_MINUTES: '30',
+    CREATIVE_PROVIDER_ALERT_DELIVERY_FAILED_ALERT_THRESHOLD: '4',
+    CREATIVE_PROVIDER_ALERT_WEBHOOK_URL: 'https://ops.example.com/provider-alerts',
+    CREATIVE_PROVIDER_ALERT_WEBHOOK_SECRET: 'provider-webhook-secret',
+    CREATIVE_PROVIDER_ALERT_WEBHOOK_TIMEOUT_SECONDS: '6',
+    CREATIVE_PROVIDER_ALERT_SLACK_WEBHOOK_URL: 'https://hooks.slack.com/services/T000/B000/ZZZ',
+    CREATIVE_PROVIDER_ALERT_SLACK_TIMEOUT_SECONDS: '7',
+    CREATIVE_PROVIDER_ALERT_EMAIL_WEBHOOK_URL: 'https://mailer.example.com/provider-alerts',
+    CREATIVE_PROVIDER_ALERT_EMAIL_WEBHOOK_SECRET: 'provider-email-secret',
+    CREATIVE_PROVIDER_ALERT_EMAIL_TO: 'creative-ops@example.com, finance@example.com',
+    CREATIVE_PROVIDER_ALERT_EMAIL_FROM: 'provider-alerts@example.com',
+    CREATIVE_PROVIDER_ALERT_EMAIL_TIMEOUT_SECONDS: '8',
+  })
+
+  assert.equal(enabled.creativeProviderAlertsEnabled, true)
+  assert.deepEqual(enabled.creativeProviderAlertChannels, ['webhook', 'slack', 'email'])
+  assert.equal(enabled.creativeProviderAlertWindowMinutes, 30)
+  assert.equal(enabled.creativeProviderAlertDeliveryFailureThreshold, 4)
+  assert.equal(enabled.hasCreativeProviderAlertWebhookUrl, true)
+  assert.equal(enabled.hasCreativeProviderAlertWebhookSecret, true)
+  assert.equal(enabled.creativeProviderAlertWebhookTimeoutSeconds, 6)
+  assert.equal(enabled.hasCreativeProviderAlertSlackWebhookUrl, true)
+  assert.equal(enabled.creativeProviderAlertSlackTimeoutSeconds, 7)
+  assert.equal(enabled.hasCreativeProviderAlertEmailWebhookUrl, true)
+  assert.equal(enabled.hasCreativeProviderAlertEmailWebhookSecret, true)
+  assert.equal(enabled.creativeProviderAlertEmailRecipientCount, 2)
+  assert.equal(enabled.hasCreativeProviderAlertEmailFrom, true)
+  assert.equal(enabled.creativeProviderAlertEmailTimeoutSeconds, 8)
+})
+
 test('buildEnv validates explicit object storage settings', () => {
   assert.throws(
     () => buildEnv({ NODE_ENV: 'development', STORAGE_DRIVER: 's3', STORAGE_BUCKET: 'media' }),
@@ -862,6 +957,11 @@ test('deployment smoke accepts production auth, storage, scanner, and notificati
   assert.equal(env.hasMediaScanAlertEmailWebhookSecret, true)
   assert.equal(env.mediaScanAlertEmailRecipientCount, 2)
   assert.equal(env.hasMediaScanAlertEmailFrom, true)
+  assert.equal(env.creativeProviderAlertsEnabled, false)
+  assert.deepEqual(env.creativeProviderAlertChannels, [])
+  assert.equal(env.hasCreativeProviderAlertWebhookUrl, false)
+  assert.equal(env.hasCreativeProviderAlertSlackWebhookUrl, false)
+  assert.equal(env.hasCreativeProviderAlertEmailWebhookUrl, false)
   assert.equal(env.apiEmbeddedWorkersEnabled, false)
   assert.equal(env.workerLeaseTtlSeconds, 300)
   assert.equal(env.workerLeaseRenewIntervalSeconds, 60)
