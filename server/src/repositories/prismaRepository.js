@@ -68,6 +68,10 @@ import {
   buildProviderLifecycleNotificationPayload,
   hasProviderLifecycleSourceKey,
 } from './providerLifecycleWiring.js'
+import {
+  buildProviderBudgetNotificationPayload,
+  hasProviderBudgetNotificationSourceKey,
+} from './providerBudgetNotificationWiring.js'
 
 const getHandleFromToken = (token, prefix) => {
   if (typeof token !== 'string' || !token.startsWith(prefix)) {
@@ -3510,6 +3514,47 @@ const createPrismaRepository = async (fallbackRepository) => {
     create: (payload, actor = null) => createProviderLifecycleNotifications(payload, actor),
   }
 
+  const providerBudgetRecipientUsers = (db, actor) => findUsersByPermissions(db, ['admin:audit:read'], {
+    excludeHandle: actor?.handle ?? null,
+  })
+
+  const createProviderBudgetNotificationsFromAuditEvents = async (auditEventsToNotify = [], actor = null, db = client) => {
+    const recipients = await providerBudgetRecipientUsers(db, actor)
+    if (recipients.length === 0) {
+      return []
+    }
+    const created = []
+    for (const auditEvent of auditEventsToNotify) {
+      const notificationPayload = buildProviderBudgetNotificationPayload(auditEvent)
+      if (!notificationPayload) {
+        continue
+      }
+      const existing = await db.notification.findMany({
+        where: {
+          recipientId: { in: recipients.map((recipient) => recipient.id) },
+          type: notificationPayload.type,
+          resourceType: notificationPayload.resourceType,
+          resourceId: notificationPayload.resourceId,
+        },
+      })
+      const existingRecipientIds = new Set(existing
+        .filter((notification) => hasProviderBudgetNotificationSourceKey(
+          notification,
+          notificationPayload.metadata.sourceKey,
+        ))
+        .map((notification) => notification.recipientId))
+      const missingRecipients = recipients.filter((recipient) => !existingRecipientIds.has(recipient.id))
+      const rows = await createNotificationsForUsers(db, missingRecipients, notificationPayload)
+      created.push(...rows.map(getNotificationDto))
+    }
+    return created
+  }
+
+  const providerBudgetNotifications = {
+    createFromAuditEvents: (auditEventsToNotify, actor = null) =>
+      createProviderBudgetNotificationsFromAuditEvents(auditEventsToNotify, actor),
+  }
+
   const providerLifecycleAudit = {
     record: (payload, actor = null) => recordProviderLifecycleAudit(payload, actor),
   }
@@ -5722,6 +5767,7 @@ const createPrismaRepository = async (fallbackRepository) => {
     points,
     notifications,
     providerLifecycleNotifications,
+    providerBudgetNotifications,
     providerLifecycleAudit,
     providerBudgetAudit,
     creativeGenerations,
