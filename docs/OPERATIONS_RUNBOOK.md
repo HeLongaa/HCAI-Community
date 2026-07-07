@@ -222,13 +222,29 @@ Worker leases:
 - `operation_lease_skipped_runs_total{key}`
 - `operation_lease_renew_failures_total{key}`
 
-Future creative provider spend:
+Creative provider budget and spend signals:
 
-- `creative_provider_cost_estimated_total{provider,workspace,currency,confidence}`
-- `creative_provider_cost_actual_total{provider,workspace,currency,confidence}`
-- `creative_provider_budget_alerts_total{provider,workspace,severity,type}`
-- `creative_provider_cost_anomalies_total{provider,workspace,type,severity}`
-- `operation_lease_renew_failures_total{key}`
+- `newchat_creative_provider_budget_alerts_total`
+- `newchat_creative_provider_budget_alerts_by_severity_total{severity}`
+- `newchat_creative_provider_budget_alerts_by_provider_total{provider}`
+- `newchat_creative_provider_budget_alerts_by_workspace_total{workspace}`
+- `newchat_creative_provider_budget_alerts_by_threshold_total{threshold}`
+- `newchat_creative_provider_budget_dispatch_blocked_total`
+- `newchat_creative_provider_budget_dispatch_blocked_by_severity_total{severity}`
+- `newchat_creative_provider_budget_dispatch_blocked_by_provider_total{provider}`
+- `newchat_creative_provider_budget_dispatch_blocked_by_workspace_total{workspace}`
+- `newchat_creative_provider_budget_dispatch_blocked_by_reason_total{reason}`
+- `newchat_creative_provider_cost_anomalies_total`
+- `newchat_creative_provider_cost_anomalies_by_severity_total{severity}`
+- `newchat_creative_provider_cost_anomalies_by_provider_total{provider}`
+- `newchat_creative_provider_cost_anomalies_by_workspace_total{workspace}`
+- `newchat_creative_provider_cost_anomalies_by_reason_total{reason}`
+- `newchat_creative_provider_cost_estimated_total{currency,confidence}`
+- `newchat_creative_provider_cost_actual_total{currency,confidence}`
+- `newchat_creative_provider_cost_projected_total{currency,confidence}`
+- `newchat_creative_provider_cost_observations_by_currency_total{currency}`
+
+Creative provider exporter labels are derived from Admin operations metrics, not raw provider payloads. Provider job ids, generation ids, prompt hashes, media asset ids, raw URLs, raw error text, model versions, and tokens must not appear in labels.
 
 Admin workflow:
 

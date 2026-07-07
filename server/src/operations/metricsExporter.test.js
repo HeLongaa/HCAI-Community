@@ -62,6 +62,35 @@ test('buildPrometheusMetrics renders safe Prometheus text without unsafe labels'
         },
       },
     },
+    creativeProviderBudget: {
+      thresholdAlerts: {
+        total: 2,
+        bySeverity: [{ key: 'critical', count: 1 }, { key: 'warning', count: 1 }],
+        byProvider: [{ key: 'replicate', count: 1 }, { key: 'user@example.com', count: 1 }],
+        byWorkspace: [{ key: 'image', count: 1 }, { key: 'prompt-hash-123', count: 1 }],
+        byThreshold: [{ key: '100', count: 1 }, { key: '80', count: 1 }],
+      },
+      dispatchBlocked: {
+        total: 1,
+        bySeverity: [{ key: 'critical', count: 1 }],
+        byProvider: [{ key: 'replicate', count: 1 }],
+        byWorkspace: [{ key: 'image', count: 1 }],
+        byReason: [{ key: 'over_budget', count: 1 }],
+      },
+      costAnomalies: {
+        total: 2,
+        bySeverity: [{ key: 'critical', count: 1 }, { key: 'warning', count: 1 }],
+        byProvider: [{ key: 'replicate', count: 2 }],
+        byWorkspace: [{ key: 'image', count: 2 }],
+        byReason: [{ key: 'currency_mismatch', count: 1 }, { key: 'provider_job_mismatch', count: 1 }],
+      },
+      spend: {
+        estimatedAmount: 1.75,
+        actualAmount: 3.75,
+        projectedSpendAmount: 14.5,
+        byCurrency: [{ key: 'USD', count: 3 }, { key: 'EUR', count: 1 }],
+      },
+    },
   })
 
   assert.match(body, /# TYPE newchat_security_events_window_total gauge/)
@@ -71,6 +100,22 @@ test('buildPrometheusMetrics renders safe Prometheus text without unsafe labels'
   assert.match(body, /newchat_rate_limit_exceeded_by_bucket_total\{bucket="auth"\} 1/)
   assert.match(body, /newchat_operation_lease_skipped_runs_by_key_total\{key="task-stale-submission-sweep"\} 1/)
   assert.match(body, /newchat_operation_lease_renew_failures_by_key_total\{key="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_budget_alerts_total 2/)
+  assert.match(body, /newchat_creative_provider_budget_alerts_by_severity_total\{severity="critical"\} 1/)
+  assert.match(body, /newchat_creative_provider_budget_alerts_by_provider_total\{provider="replicate"\} 1/)
+  assert.match(body, /newchat_creative_provider_budget_alerts_by_provider_total\{provider="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_budget_alerts_by_workspace_total\{workspace="image"\} 1/)
+  assert.match(body, /newchat_creative_provider_budget_alerts_by_workspace_total\{workspace="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_budget_alerts_by_threshold_total\{threshold="pct_100"\} 1/)
+  assert.match(body, /newchat_creative_provider_budget_dispatch_blocked_by_reason_total\{reason="over_budget"\} 1/)
+  assert.match(body, /newchat_creative_provider_cost_anomalies_by_reason_total\{reason="currency_mismatch"\} 1/)
+  assert.match(body, /newchat_creative_provider_cost_anomalies_by_reason_total\{reason="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_cost_estimated_total\{currency="mixed",confidence="observed"\} 1.75/)
+  assert.match(body, /newchat_creative_provider_cost_actual_total\{currency="mixed",confidence="observed"\} 3.75/)
+  assert.match(body, /newchat_creative_provider_cost_projected_total\{currency="mixed",confidence="observed"\} 14.5/)
+  assert.match(body, /newchat_creative_provider_cost_observations_by_currency_total\{currency="usd"\} 3/)
   assert.equal(body.includes('user@example.com'), false)
+  assert.equal(body.includes('prompt-hash-123'), false)
+  assert.equal(body.includes('provider_job_mismatch'), false)
   assert.equal(body.includes('secret-token'), false)
 })
