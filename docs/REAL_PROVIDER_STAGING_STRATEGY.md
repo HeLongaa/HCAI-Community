@@ -32,6 +32,8 @@ The Replicate staging client contract is tested with an injected mocked client o
 
 The mocked contract also requires provider cost estimate and daily budget cap metadata before any injected client dispatch. Missing estimate, missing cap, unsafe budget scope/account references, invalid threshold values, or projected spend above the cap fail closed before the mocked client is called. Budget metadata remains staging-scoped and low-cardinality: `CREATIVE_STAGING_PROVIDER_BUDGET_SCOPE=staging:replicate:image`, `CREATIVE_STAGING_PROVIDER_ESTIMATE_USD`, `CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD`, `CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD`, `CREATIVE_STAGING_PROVIDER_BUDGET_THRESHOLD_PERCENT`, and optional `CREATIVE_STAGING_PROVIDER_ACCOUNT_REF`. Budget scope and account references must be short safe identifiers, and the threshold must be between `1` and `100`.
 
+Provider budget event planning is fixture-only. `providerBudgetEvents` can derive safe threshold-crossed alerts, dispatch-blocked audit events, and cost-anomaly audit events from normalized provider cost metadata, but it does not persist events, send alerts, or enable paid dispatch.
+
 Async lifecycle replay is also contract-tested without route wiring. Replicate-like `starting`, `processing`, `succeeded`, `failed`, and `canceled` events map to internal `queued`, `running`, `completed`, `failed`, and `cancelled` states. Duplicate terminal replays, duplicate running replays, and stale queued replays return no-op action signals so later webhook or polling wiring can avoid duplicate output persistence, credit settlement, or refunds.
 
 Preflight-only metadata:

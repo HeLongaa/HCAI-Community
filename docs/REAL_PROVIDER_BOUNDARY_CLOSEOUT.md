@@ -27,6 +27,7 @@ The repository has enough fixture-safe lifecycle foundation to continue planning
 - Source-keyed provider lifecycle notification/audit repository wiring.
 - Manual replay authorization/parser pure functions.
 - Fixture-safe polling worker interval skeleton.
+- Fixture-only provider budget event plan for safe threshold-crossed, dispatch-blocked, and cost-anomaly audit/alert summaries.
 
 The polling worker skeleton is disabled by default. It requires `CREATIVE_PROVIDER_POLLING_WORKER_ENABLED=true`, `CREATIVE_PROVIDER_POLLING_ENABLED=true`, and an injected mocked status client in tests. There is no default provider-status HTTP client.
 
@@ -101,6 +102,7 @@ Allowed without real-provider approval:
 3. Metadata-only staging smoke improvements.
 4. Read-only Admin history refinements.
 5. Budget/cost guard implementation that does not dispatch externally.
+6. Fixture-only provider budget event planning that does not persist or send alerts externally.
 
 Requires explicit external-call approval:
 
