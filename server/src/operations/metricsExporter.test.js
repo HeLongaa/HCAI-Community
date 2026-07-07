@@ -100,6 +100,17 @@ test('buildPrometheusMetrics renders safe Prometheus text without unsafe labels'
         byReason: [{ key: 'missing_provider_alert_client', count: 1 }, { key: 'provider_job_mismatch', count: 1 }],
         byProvider: [{ key: 'replicate', count: 2 }, { key: 'user@example.com', count: 1 }],
         byWorkspace: [{ key: 'image', count: 2 }, { key: 'prompt-hash-123', count: 1 }],
+        fixtureDryRuns: {
+          total: 2,
+          succeeded: 1,
+          failed: 1,
+          skipped: 0,
+          byChannel: [{ key: 'email', count: 1 }, { key: 'sms', count: 1 }],
+          byStatus: [{ key: 'failed', count: 1 }, { key: 'succeeded', count: 1 }],
+          byReason: [{ key: 'missing_provider_alert_client', count: 1 }, { key: 'provider_job_mismatch', count: 1 }],
+          byProvider: [{ key: 'replicate', count: 1 }, { key: 'user@example.com', count: 1 }],
+          byWorkspace: [{ key: 'image', count: 1 }, { key: 'prompt-hash-123', count: 1 }],
+        },
         failureSpike: {
           active: true,
           threshold: 2,
@@ -145,6 +156,19 @@ test('buildPrometheusMetrics renders safe Prometheus text without unsafe labels'
   assert.match(body, /newchat_creative_provider_alert_dispatches_by_provider_total\{provider="other"\} 1/)
   assert.match(body, /newchat_creative_provider_alert_dispatches_by_workspace_total\{workspace="image"\} 2/)
   assert.match(body, /newchat_creative_provider_alert_dispatches_by_workspace_total\{workspace="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_fixture_dry_run_dispatches_total 2/)
+  assert.match(body, /newchat_creative_provider_alert_fixture_dry_run_dispatches_succeeded_total 1/)
+  assert.match(body, /newchat_creative_provider_alert_fixture_dry_run_dispatches_failed_total 1/)
+  assert.match(body, /newchat_creative_provider_alert_fixture_dry_run_dispatches_skipped_total 0/)
+  assert.match(body, /newchat_creative_provider_alert_fixture_dry_run_dispatches_by_channel_total\{channel="email"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_fixture_dry_run_dispatches_by_channel_total\{channel="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_fixture_dry_run_dispatches_by_status_total\{status="failed"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_fixture_dry_run_dispatches_by_reason_total\{reason="missing_provider_alert_client"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_fixture_dry_run_dispatches_by_reason_total\{reason="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_fixture_dry_run_dispatches_by_provider_total\{provider="replicate"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_fixture_dry_run_dispatches_by_provider_total\{provider="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_fixture_dry_run_dispatches_by_workspace_total\{workspace="image"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_fixture_dry_run_dispatches_by_workspace_total\{workspace="other"\} 1/)
   assert.match(body, /newchat_creative_provider_alert_dispatch_failure_spike_active 1/)
   assert.match(body, /newchat_creative_provider_alert_dispatch_failure_spike_threshold 2/)
   assert.match(body, /newchat_creative_provider_alert_dispatch_failure_spike_failures_total 2/)

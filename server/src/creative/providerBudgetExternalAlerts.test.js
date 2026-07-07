@@ -570,6 +570,8 @@ test('runProviderBudgetExternalAlertFixtureDryRun dispatches fixture clients and
     assert.equal(dryRunAudit.length, 15)
     assert.equal(dryRunAudit.filter((event) => event.metadata.channel === 'webhook').length, 5)
     assert.equal(dryRunAudit.filter((event) => event.metadata.reasonCode === 'provider_alert_client_disabled').length, 10)
+    assert.equal(dryRunAudit.every((event) => event.metadata.dispatchMode === 'fixture_dry_run'), true)
+    assert.equal(dryRunAudit.every((event) => event.metadata.fixtureDryRun === true), true)
     assert.equal(dryRunAudit.every((event) => event.metadata.persistedFrom === 'provider_budget_external_alert_dispatch'), true)
 
     const serialized = JSON.stringify({ first, second, sent, audit: dryRunAudit })

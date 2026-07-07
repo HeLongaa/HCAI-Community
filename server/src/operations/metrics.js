@@ -115,20 +115,32 @@ const providerBudgetEventActions = Object.freeze({
   alertDispatch: 'creative.provider_alert.dispatch',
 })
 
+const providerAlertDispatchBreakdown = (events = []) => ({
+  total: events.length,
+  succeeded: events.filter((event) => asObject(event.metadata).status === 'succeeded').length,
+  failed: events.filter((event) => asObject(event.metadata).status === 'failed').length,
+  skipped: events.filter((event) => asObject(event.metadata).status === 'skipped').length,
+  byChannel: countBy(events, (event) => asObject(event.metadata).channel),
+  byStatus: countBy(events, (event) => asObject(event.metadata).status),
+  byReason: countBy(events, (event) => asObject(event.metadata).reasonCode),
+  byProvider: countBy(events, (event) => asObject(event.metadata).providerId),
+  byWorkspace: countBy(events, (event) => asObject(event.metadata).workspace),
+  latestAt: latestTimestamp(events),
+})
+
+const providerAlertFixtureDryRunEvents = (events = []) => events.filter((event) => {
+  const metadata = asObject(event.metadata)
+  return metadata.fixtureDryRun === true || metadata.dispatchMode === 'fixture_dry_run'
+})
+
 const providerAlertDispatchSummary = (events = [], failureThreshold = DEFAULT_PROVIDER_ALERT_DISPATCH_FAILURE_THRESHOLD) => {
-  const failedEvents = events.filter((event) => asObject(event.metadata).status === 'failed')
+  const fixtureDryRuns = providerAlertFixtureDryRunEvents(events)
+  const realOrUnknownDispatches = events.filter((event) => !fixtureDryRuns.includes(event))
+  const failedEvents = realOrUnknownDispatches.filter((event) => asObject(event.metadata).status === 'failed')
   const threshold = Math.max(1, Number.parseInt(String(failureThreshold ?? DEFAULT_PROVIDER_ALERT_DISPATCH_FAILURE_THRESHOLD), 10) || DEFAULT_PROVIDER_ALERT_DISPATCH_FAILURE_THRESHOLD)
   return {
-    total: events.length,
-    succeeded: events.filter((event) => asObject(event.metadata).status === 'succeeded').length,
-    failed: failedEvents.length,
-    skipped: events.filter((event) => asObject(event.metadata).status === 'skipped').length,
-    byChannel: countBy(events, (event) => asObject(event.metadata).channel),
-    byStatus: countBy(events, (event) => asObject(event.metadata).status),
-    byReason: countBy(events, (event) => asObject(event.metadata).reasonCode),
-    byProvider: countBy(events, (event) => asObject(event.metadata).providerId),
-    byWorkspace: countBy(events, (event) => asObject(event.metadata).workspace),
-    latestAt: latestTimestamp(events),
+    ...providerAlertDispatchBreakdown(events),
+    fixtureDryRuns: providerAlertDispatchBreakdown(fixtureDryRuns),
     failureSpike: {
       active: failedEvents.length >= threshold,
       threshold,
