@@ -10,6 +10,8 @@ const providerBudgetReasonValues = [
   'budget_threshold_crossed',
   'dispatch_blocked',
   'over_budget',
+  'missing_provider_alert_client',
+  'relay_failed',
   'missing_cost_estimate',
   'missing_budget_cap',
   'missing_usage',
@@ -113,6 +115,17 @@ const addProviderBudgetMetrics = (lines, providerBudget = {}) => {
   addGauge(lines, 'newchat_creative_provider_cost_actual_total', 'Windowed observed creative provider actual cost amount.', providerBudget.spend?.actualAmount, { currency, confidence: 'observed' })
   addGauge(lines, 'newchat_creative_provider_cost_projected_total', 'Windowed observed creative provider projected spend amount.', providerBudget.spend?.projectedSpendAmount, { currency, confidence: 'observed' })
   addCountBy(lines, 'newchat_creative_provider_cost_observations_by_currency_total', 'Windowed creative provider cost observation count by currency.', currencies, 'currency')
+
+  const dispatches = providerBudget.providerAlertDispatches ?? {}
+  addGauge(lines, 'newchat_creative_provider_alert_dispatches_total', 'Windowed creative provider alert dispatch audit count.', dispatches.total)
+  addGauge(lines, 'newchat_creative_provider_alert_dispatches_succeeded_total', 'Windowed creative provider alert successful dispatch audit count.', dispatches.succeeded)
+  addGauge(lines, 'newchat_creative_provider_alert_dispatches_failed_total', 'Windowed creative provider alert failed dispatch audit count.', dispatches.failed)
+  addGauge(lines, 'newchat_creative_provider_alert_dispatches_skipped_total', 'Windowed creative provider alert skipped dispatch audit count.', dispatches.skipped)
+  addCountBy(lines, 'newchat_creative_provider_alert_dispatches_by_channel_total', 'Windowed creative provider alert dispatch audit count by channel.', dispatches.byChannel, 'channel', ['webhook', 'slack', 'email', 'unknown'])
+  addCountBy(lines, 'newchat_creative_provider_alert_dispatches_by_status_total', 'Windowed creative provider alert dispatch audit count by status.', dispatches.byStatus, 'status', ['succeeded', 'failed', 'skipped', 'unknown'])
+  addCountBy(lines, 'newchat_creative_provider_alert_dispatches_by_reason_total', 'Windowed creative provider alert dispatch audit count by reason.', dispatches.byReason, 'reason', providerBudgetReasonValues)
+  addCountBy(lines, 'newchat_creative_provider_alert_dispatches_by_provider_total', 'Windowed creative provider alert dispatch audit count by provider.', dispatches.byProvider, 'provider')
+  addCountBy(lines, 'newchat_creative_provider_alert_dispatches_by_workspace_total', 'Windowed creative provider alert dispatch audit count by workspace.', dispatches.byWorkspace, 'workspace', ['image', 'video', 'music', 'chat', 'unknown'])
 }
 
 const deliveryMetrics = (lines, prefix, summary = {}) => {

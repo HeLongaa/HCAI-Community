@@ -111,9 +111,28 @@ const providerBudgetEventActions = Object.freeze({
   threshold: 'creative.provider_budget.threshold_crossed',
   dispatchBlocked: 'creative.provider_budget.dispatch_blocked',
   anomaly: 'creative.provider_cost.anomaly_detected',
+  alertDispatch: 'creative.provider_alert.dispatch',
 })
 
-const providerBudgetSummary = ({ thresholdEvents = [], dispatchBlockedEvents = [], anomalyEvents = [] } = {}) => ({
+const providerAlertDispatchSummary = (events = []) => ({
+  total: events.length,
+  succeeded: events.filter((event) => asObject(event.metadata).status === 'succeeded').length,
+  failed: events.filter((event) => asObject(event.metadata).status === 'failed').length,
+  skipped: events.filter((event) => asObject(event.metadata).status === 'skipped').length,
+  byChannel: countBy(events, (event) => asObject(event.metadata).channel),
+  byStatus: countBy(events, (event) => asObject(event.metadata).status),
+  byReason: countBy(events, (event) => asObject(event.metadata).reasonCode),
+  byProvider: countBy(events, (event) => asObject(event.metadata).providerId),
+  byWorkspace: countBy(events, (event) => asObject(event.metadata).workspace),
+  latestAt: latestTimestamp(events),
+})
+
+const providerBudgetSummary = ({
+  thresholdEvents = [],
+  dispatchBlockedEvents = [],
+  anomalyEvents = [],
+  alertDispatchEvents = [],
+} = {}) => ({
   thresholdAlerts: {
     total: thresholdEvents.length,
     bySeverity: countBy(thresholdEvents, (event) => asObject(event.metadata).severity),
@@ -147,6 +166,7 @@ const providerBudgetSummary = ({ thresholdEvents = [], dispatchBlockedEvents = [
     projectedSpendAmount: sumMetadataNumber([...thresholdEvents, ...dispatchBlockedEvents, ...anomalyEvents], 'projectedSpendAmount'),
     byCurrency: countBy([...thresholdEvents, ...dispatchBlockedEvents, ...anomalyEvents], (event) => asObject(event.metadata).currency),
   },
+  providerAlertDispatches: providerAlertDispatchSummary(alertDispatchEvents),
 })
 
 export const operationsMetricsSampleDefinitions = {
@@ -204,6 +224,12 @@ export const operationsMetricsSampleDefinitions = {
     resourceType: 'creative_provider_budget',
     failedOnly: false,
   },
+  creativeProviderAlertDispatches: {
+    title: 'Creative provider alert dispatches',
+    action: providerBudgetEventActions.alertDispatch,
+    resourceType: 'creative_provider_budget_alert',
+    failedOnly: false,
+  },
 }
 
 export const buildOperationsMetricSamples = (sampleEventsByKey = {}) => Object.fromEntries(
@@ -228,6 +254,7 @@ export const buildOperationsHandoff = (metrics) => {
   const securityDeliveryFailures = metrics.security.deliveryFailures.total
   const mediaDeliveryFailures = metrics.mediaScan.alertDeliveryFailures.total
   const providerCriticalDispatchBlocks = metricCount(metrics.creativeProviderBudget.dispatchBlocked.bySeverity, 'critical')
+  const providerAlertDispatchFailures = metrics.creativeProviderBudget.providerAlertDispatches.failed
   const providerThreshold100 = metrics.creativeProviderBudget.thresholdAlerts.byThreshold
     .filter((item) => Number(item.key) >= 100)
     .reduce((total, item) => total + item.count, 0)
@@ -280,6 +307,17 @@ export const buildOperationsHandoff = (metrics) => {
         'Confirm app-side and provider-side caps still match the intended budget scope.',
       ],
       auditFilter: { action: providerBudgetEventActions.dispatchBlocked, resourceType: 'creative_provider_budget' },
+    }] : []),
+    ...(providerAlertDispatchFailures > 0 ? [{
+      id: 'provider-alert-dispatch-failures',
+      severity: 'warning',
+      title: 'Check provider alert dispatch readiness',
+      reason: `${providerAlertDispatchFailures} provider alert dispatch failure(s) were recorded.`,
+      recommendedActions: [
+        'Review creative provider alert dispatch samples by channel and reason.',
+        'Keep real external delivery disabled until webhook, Slack, and email clients are explicitly approved.',
+      ],
+      auditFilter: { action: providerBudgetEventActions.alertDispatch, resourceType: 'creative_provider_budget_alert' },
     }] : []),
     ...(providerThreshold100 > 0 ? [{
       id: 'provider-budget-threshold-100',
@@ -414,6 +452,7 @@ export const buildOperationsMetrics = ({
   const providerBudgetThresholds = windowAuditEvents.filter((event) => event.action === providerBudgetEventActions.threshold)
   const providerBudgetDispatchBlocks = windowAuditEvents.filter((event) => event.action === providerBudgetEventActions.dispatchBlocked)
   const providerCostAnomalies = windowAuditEvents.filter((event) => event.action === providerBudgetEventActions.anomaly)
+  const providerAlertDispatches = windowAuditEvents.filter((event) => event.action === providerBudgetEventActions.alertDispatch)
   const acknowledgements = securityDispositions.filter((event) => event.action === 'security.alert.acknowledged')
 
   return {
@@ -491,6 +530,7 @@ export const buildOperationsMetrics = ({
       thresholdEvents: providerBudgetThresholds,
       dispatchBlockedEvents: providerBudgetDispatchBlocks,
       anomalyEvents: providerCostAnomalies,
+      alertDispatchEvents: providerAlertDispatches,
     }),
   }
 }

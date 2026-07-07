@@ -90,6 +90,17 @@ test('buildPrometheusMetrics renders safe Prometheus text without unsafe labels'
         projectedSpendAmount: 14.5,
         byCurrency: [{ key: 'USD', count: 3 }, { key: 'EUR', count: 1 }],
       },
+      providerAlertDispatches: {
+        total: 3,
+        succeeded: 1,
+        failed: 1,
+        skipped: 1,
+        byChannel: [{ key: 'webhook', count: 1 }, { key: 'slack', count: 1 }, { key: 'sms', count: 1 }],
+        byStatus: [{ key: 'succeeded', count: 1 }, { key: 'failed', count: 1 }, { key: 'skipped', count: 1 }],
+        byReason: [{ key: 'missing_provider_alert_client', count: 1 }, { key: 'provider_job_mismatch', count: 1 }],
+        byProvider: [{ key: 'replicate', count: 2 }, { key: 'user@example.com', count: 1 }],
+        byWorkspace: [{ key: 'image', count: 2 }, { key: 'prompt-hash-123', count: 1 }],
+      },
     },
   })
 
@@ -114,6 +125,19 @@ test('buildPrometheusMetrics renders safe Prometheus text without unsafe labels'
   assert.match(body, /newchat_creative_provider_cost_actual_total\{currency="mixed",confidence="observed"\} 3.75/)
   assert.match(body, /newchat_creative_provider_cost_projected_total\{currency="mixed",confidence="observed"\} 14.5/)
   assert.match(body, /newchat_creative_provider_cost_observations_by_currency_total\{currency="usd"\} 3/)
+  assert.match(body, /newchat_creative_provider_alert_dispatches_total 3/)
+  assert.match(body, /newchat_creative_provider_alert_dispatches_succeeded_total 1/)
+  assert.match(body, /newchat_creative_provider_alert_dispatches_failed_total 1/)
+  assert.match(body, /newchat_creative_provider_alert_dispatches_skipped_total 1/)
+  assert.match(body, /newchat_creative_provider_alert_dispatches_by_channel_total\{channel="webhook"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_dispatches_by_channel_total\{channel="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_dispatches_by_status_total\{status="succeeded"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_dispatches_by_reason_total\{reason="missing_provider_alert_client"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_dispatches_by_reason_total\{reason="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_dispatches_by_provider_total\{provider="replicate"\} 2/)
+  assert.match(body, /newchat_creative_provider_alert_dispatches_by_provider_total\{provider="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_alert_dispatches_by_workspace_total\{workspace="image"\} 2/)
+  assert.match(body, /newchat_creative_provider_alert_dispatches_by_workspace_total\{workspace="other"\} 1/)
   assert.equal(body.includes('user@example.com'), false)
   assert.equal(body.includes('prompt-hash-123'), false)
   assert.equal(body.includes('provider_job_mismatch'), false)

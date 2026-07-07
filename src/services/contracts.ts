@@ -1059,6 +1059,18 @@ export type AdminOperationsMetricsDto = {
       projectedSpendAmount: number
       byCurrency: AdminOperationsMetricCount[]
     }
+    providerAlertDispatches: {
+      total: number
+      succeeded: number
+      failed: number
+      skipped: number
+      byChannel: AdminOperationsMetricCount[]
+      byStatus: AdminOperationsMetricCount[]
+      byReason: AdminOperationsMetricCount[]
+      byProvider: AdminOperationsMetricCount[]
+      byWorkspace: AdminOperationsMetricCount[]
+      latestAt: string | null
+    }
   }
 }
 
