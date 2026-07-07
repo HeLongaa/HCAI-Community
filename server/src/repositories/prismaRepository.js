@@ -3514,6 +3514,52 @@ const createPrismaRepository = async (fallbackRepository) => {
     record: (payload, actor = null) => recordProviderLifecycleAudit(payload, actor),
   }
 
+  const recordProviderBudgetAuditEvents = async (payloads = [], actor = null, db = client) => {
+    const results = []
+    for (const payload of payloads) {
+      const metadata = asObject(payload.metadata) ?? {}
+      const sourceKey = metadata.sourceKey
+      const resourceId = payload.resourceId ?? null
+      const existing = await db.auditEvent.findMany({
+        where: {
+          action: payload.action,
+          resourceType: payload.resourceType,
+          resourceId,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 25,
+      })
+      const existingEvent = existing.find((event) =>
+        Boolean(sourceKey) && asObject(event.metadata)?.sourceKey === sourceKey)
+      if (existingEvent) {
+        results.push({
+          created: false,
+          event: serializeAuditEvent(existingEvent),
+        })
+        continue
+      }
+      const row = await db.auditEvent.create({
+        data: buildAuditRecord({
+          actorType: actor ? 'user' : 'system',
+          actorId: actor?.id ?? null,
+          action: payload.action,
+          resourceType: payload.resourceType,
+          resourceId,
+          metadata,
+        }),
+      })
+      results.push({
+        created: true,
+        event: serializeAuditEvent(row),
+      })
+    }
+    return results
+  }
+
+  const providerBudgetAudit = {
+    recordMany: (payloads, actor = null) => recordProviderBudgetAuditEvents(payloads, actor),
+  }
+
   const getMediaGovernancePolicy = async () => {
     const row = await client.systemSetting.findUnique({ where: { key: 'media_governance_policy' } })
     return normalizeMediaGovernancePolicy(row?.value ?? {}, buildDefaultMediaGovernancePolicy())
@@ -5677,6 +5723,7 @@ const createPrismaRepository = async (fallbackRepository) => {
     notifications,
     providerLifecycleNotifications,
     providerLifecycleAudit,
+    providerBudgetAudit,
     creativeGenerations,
     creativeProviderReplays,
     creativeCredits,

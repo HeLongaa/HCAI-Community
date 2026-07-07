@@ -2,7 +2,7 @@
 
 This plan defines how the fixture-only provider budget event plan should later connect to durable audit records, notifications, Admin operations metrics, and Prometheus-compatible metrics.
 
-Current decision: **planning only**. The repository has `server/src/creative/providerBudgetEvents.js`, which builds pure event plans from normalized provider cost metadata. This document does not add repository persistence, notification fan-out, external alert delivery, Admin mutation controls, real provider SDKs, default HTTP clients, or provider network calls.
+Current decision: **audit persistence foundation implemented; fan-out still deferred**. The repository has `server/src/creative/providerBudgetEvents.js`, which builds pure event plans from normalized provider cost metadata, and `server/src/creative/providerBudgetAuditPersistence.js`, which persists safe audit records through an injected repository boundary. This document does not add notification fan-out, external alert delivery, Admin mutation controls, real provider SDKs, default HTTP clients, or provider network calls.
 
 ## Current Fixture Baseline
 
@@ -22,12 +22,13 @@ These helpers produce:
 
 They do not:
 
-- write to `auditEvent`
 - create notifications
 - update Admin operations metrics
 - expose Prometheus metrics
 - send Slack, webhook, or email alerts
 - create or poll real provider jobs
+
+Audit persistence now exists as an explicit helper/repository boundary and is not automatically wired to real provider dispatch.
 
 ## Wiring Principles
 
@@ -41,13 +42,20 @@ They do not:
 
 ## Phase 1: Audit Persistence
 
-First implementation target: persist event-plan audit events through a small repository boundary.
+Status: **implemented as a foundation**. Event-plan audit events can now be persisted through a small repository boundary.
 
-Recommended repository surface:
+Implemented repository surface:
 
 ```js
-repositories.providerBudgetAudit.recordPlan({
-  auditEvents,
+repositories.providerBudgetAudit.recordMany(records, actor)
+```
+
+Implemented helper:
+
+```js
+persistProviderBudgetAuditEvents({
+  plan,
+  repositories,
   actor,
 })
 ```
@@ -59,8 +67,10 @@ Persistence rules:
 - Use `resourceType=creative_provider_budget`.
 - Use `resourceId` as the budget scope or the event idempotency key, depending on the action.
 - Store the idempotency key inside metadata.
-- Suppress duplicates by action + resource type + resource id + metadata idempotency key.
-- Return created and skipped counts so callers can safely retry.
+- Add a stable `sourceKey` derived from the event idempotency key.
+- Suppress duplicates by action + resource type + resource id + metadata source key.
+- Return created and duplicate counts so callers can safely retry.
+- Return an explicit failed result for invalid events or repository failures.
 
 Initial actions:
 
@@ -182,13 +192,15 @@ Do not reuse media scan alert secrets or security alert secrets for provider bud
 
 ## Testing Matrix
 
-Audit persistence tests:
+Implemented audit persistence tests:
 
 - Creates one audit event per unique idempotency key.
 - Suppresses duplicate threshold events.
 - Suppresses duplicate dispatch-blocked events.
 - Stores only safe metadata.
 - Keeps provider job ids out of metric-facing metadata.
+- Returns explicit failure when the audit repository is unavailable.
+- Rejects unsupported or non-idempotent audit events before writing.
 
 Notification tests:
 
@@ -232,11 +244,11 @@ No-go for implementation if any are true:
 
 ## Next Suggested Implementation
 
-The safest next implementation is **audit persistence only**:
+The safest next implementation is **notification routing from persisted audit events**:
 
-- use existing audit event storage
-- record provider budget event plans with dedupe
-- add repository tests
-- keep notification and metrics wiring deferred
+- create internal creative ops notifications from persisted budget audit events
+- deduplicate per recipient and audit `sourceKey`
+- keep notification payloads safe and operational
+- keep Admin metrics, Prometheus metrics, external alert delivery, and real provider calls deferred
 
-This gives the system a durable source of truth before any fan-out or dashboard behavior.
+The durable audit source of truth now exists, so notification fan-out can build on persisted evidence instead of raw provider payloads.

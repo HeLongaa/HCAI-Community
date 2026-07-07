@@ -829,6 +829,37 @@ function recordProviderLifecycleAudit(payload = {}, actor = null) {
   ))
 }
 
+function recordProviderBudgetAuditEvents(payloads = [], actor = null) {
+  return payloads.map((payload) => {
+    const metadata = auditMetadata(payload)
+    const sourceKey = metadata.sourceKey
+    const existing = auditEvents.find((event) =>
+      event.action === payload.action &&
+      event.resourceType === payload.resourceType &&
+      event.resourceId === (payload.resourceId ?? null) &&
+      Boolean(sourceKey) &&
+      auditMetadata(event).sourceKey === sourceKey,
+    )
+    if (existing) {
+      return {
+        created: false,
+        event: serializeAuditEvent(existing),
+      }
+    }
+    const event = recordAudit(
+      actor,
+      payload.action,
+      payload.resourceType,
+      payload.resourceId ?? null,
+      metadata,
+    )
+    return {
+      created: true,
+      event: serializeAuditEvent(event),
+    }
+  })
+}
+
 const taskNotificationTarget = (page = 'mine') => ({ page })
 
 const mediaScanAlertNotification = (alert) => ({
@@ -2457,6 +2488,9 @@ export const createSeedRepository = () => ({
   },
   providerLifecycleAudit: {
     record: recordProviderLifecycleAudit,
+  },
+  providerBudgetAudit: {
+    recordMany: recordProviderBudgetAuditEvents,
   },
   audit: {
     find: (id) => {
