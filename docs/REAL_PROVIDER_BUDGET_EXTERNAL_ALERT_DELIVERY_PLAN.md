@@ -2,7 +2,7 @@
 
 This plan defines the approval boundary and implementation checklist for future external Slack, webhook, or email delivery of creative provider budget alerts.
 
-Current decision: **planning only**. Durable audit persistence, internal station notifications, Admin operations metrics, and Prometheus-compatible exporter metrics exist. External alert delivery still must not send outbound Slack, webhook, or email messages until a later explicitly approved implementation PR.
+Current decision: **env readiness only**. Durable audit persistence, internal station notifications, Admin operations metrics, Prometheus-compatible exporter metrics, and `CREATIVE_PROVIDER_ALERT_*` env/smoke validation exist. External alert delivery still must not send outbound Slack, webhook, or email messages until a later explicitly approved implementation PR.
 
 ## Non-Goals For This Planning Step
 
@@ -22,9 +22,9 @@ External alert delivery must derive from already persisted provider budget audit
 
 The delivery layer must consume safe audit event metadata or the existing internal notification payloads. It must not read raw provider responses, raw prompts, output URLs, provider tokens, provider job ids as routing keys, or provider error bodies.
 
-## Planned Environment Variables
+## Environment Variables
 
-All variables are planned and inactive until an implementation PR wires them into `buildEnv`, dispatchers, smoke checks, and tests.
+These variables are parsed by `buildEnv`, exposed only as safe booleans/counts/small enums, and included in production smoke readiness checks. They do not activate outbound delivery yet because no dispatcher or external clients are wired.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -43,7 +43,7 @@ All variables are planned and inactive until an implementation PR wires them int
 | `CREATIVE_PROVIDER_ALERT_EMAIL_FROM` | empty | Optional sender identity for email relay payloads. |
 | `CREATIVE_PROVIDER_ALERT_EMAIL_TIMEOUT_SECONDS` | `5` | Email relay timeout. |
 
-Validation rules for a later implementation:
+Implemented validation rules:
 
 - If `CREATIVE_PROVIDER_ALERTS_ENABLED=true`, at least one configured channel must be present.
 - Every configured URL must be a valid URL.
@@ -160,26 +160,27 @@ If every configured channel fails repeatedly, surface that through Admin operati
 
 ## Smoke Criteria
 
-Future managed smoke may require provider alert channels only when `CREATIVE_PROVIDER_ALERTS_ENABLED=true`.
+Managed smoke requires provider alert channels only when `CREATIVE_PROVIDER_ALERTS_ENABLED=true`.
 
-Smoke should verify:
+Smoke verifies:
 
 - provider alert delivery is disabled by default
 - enabled delivery has at least one configured channel
 - configured URLs parse as URLs
 - email webhook requires recipients
 - secrets are present as booleans in safe summaries only
-- no provider token, webhook URL, email address, or Slack webhook appears in logs or metrics labels
 - production smoke still keeps `CREATIVE_PROVIDER_MODE=mock` or `disabled` unless a separate provider rollout approves otherwise
+
+Future dispatcher tests must additionally verify that no provider token, webhook URL, email address, Slack webhook, raw prompt, raw provider payload, output URL, or provider job id appears in logs, metrics labels, or dispatch audit metadata.
 
 ## Implementation Order
 
-1. Add env parsing and safe config summaries for `CREATIVE_PROVIDER_ALERT_*`.
-2. Add a pure payload builder from persisted audit events.
-3. Add an injected dispatcher boundary with mocked webhook, Slack, and email clients in tests.
-4. Persist per-channel dispatch audit events with safe metadata.
-5. Add delivery-failure aggregation to Admin operations metrics and `/metrics`.
-6. Add smoke checks gated by `CREATIVE_PROVIDER_ALERTS_ENABLED=true`.
+1. Add env parsing and safe config summaries for `CREATIVE_PROVIDER_ALERT_*`. Implemented.
+2. Add smoke checks gated by `CREATIVE_PROVIDER_ALERTS_ENABLED=true`. Implemented.
+3. Add a pure payload builder from persisted audit events, still without outbound sends.
+4. Add an injected dispatcher boundary with mocked webhook, Slack, and email clients in tests.
+5. Persist per-channel dispatch audit events with safe metadata.
+6. Add delivery-failure aggregation to Admin operations metrics and `/metrics`.
 7. Only then consider enabling a staging external channel with fixture events.
 
 ## Explicit Approval Required
@@ -192,4 +193,4 @@ Before any implementation PR sends outbound messages, the user must approve:
 - whether delivery failure alerts should page humans or stay dashboard-only
 - retention expectations for dispatch audit records
 
-Until then, external alert delivery remains deferred.
+Until then, external alert delivery remains deferred even though env parsing and smoke validation exist.

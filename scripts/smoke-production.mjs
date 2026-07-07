@@ -113,6 +113,13 @@ const summarize = (env, oauthProviders) => ({
     slack: env.hasSecurityAlertSlackWebhookUrl,
     emailRecipients: env.securityAlertEmailRecipientCount,
   },
+  creativeProviderAlertChannels: {
+    enabled: env.creativeProviderAlertsEnabled,
+    configuredChannels: env.creativeProviderAlertChannels,
+    webhook: env.hasCreativeProviderAlertWebhookUrl,
+    slack: env.hasCreativeProviderAlertSlackWebhookUrl,
+    emailRecipients: env.creativeProviderAlertEmailRecipientCount,
+  },
   rateLimit: {
     enabled: env.rateLimitEnabled,
     store: env.rateLimitStore,
@@ -156,6 +163,14 @@ check(checks, 'creative provider mode remains safe', ['mock', 'disabled'].includ
 check(checks, 'creative staging preflight disabled in production smoke', !env.creativeStagingProviderPreflightEnabled && !env.hasCreativeStagingProviderApiToken, 'Staging provider preflight must not be enabled in production smoke')
 check(checks, 'media alert channel configured', hasAny(env.hasMediaScanAlertWebhookUrl, env.hasMediaScanAlertSlackWebhookUrl, env.mediaScanAlertEmailRecipientCount > 0), 'At least one media alert channel must be configured')
 check(checks, 'security alert channel configured', hasAny(env.hasSecurityAlertWebhookUrl, env.hasSecurityAlertSlackWebhookUrl, env.securityAlertEmailRecipientCount > 0), 'At least one security alert channel must be configured')
+check(
+  checks,
+  'creative provider alert channel gated',
+  !env.creativeProviderAlertsEnabled || hasAny(env.hasCreativeProviderAlertWebhookUrl, env.hasCreativeProviderAlertSlackWebhookUrl, env.creativeProviderAlertEmailRecipientCount > 0),
+  env.creativeProviderAlertsEnabled
+    ? 'At least one creative provider alert channel must be configured when enabled'
+    : 'CREATIVE_PROVIDER_ALERTS_ENABLED=false',
+)
 check(checks, 'cross-site cookie mode is secure', env.authCookieSameSite !== 'None' || env.authCookieSecure, `SameSite=${env.authCookieSameSite}`)
 check(checks, 'trusted browser origins configured', env.authTrustedOrigins.length > 0, 'AUTH_TRUSTED_ORIGINS or CORS_ALLOWED_ORIGINS must include the frontend origin')
 check(checks, 'rate limit guard enabled', env.rateLimitEnabled, 'RATE_LIMIT_ENABLED must not be false')

@@ -31,6 +31,7 @@ const getMediaScanRequestAdapter = (source) => String(source.MEDIA_SCAN_REQUEST_
 const supportedRateLimitStores = ['memory', 'redis']
 const supportedRateLimitFailureModes = ['fail_open', 'fail_closed']
 const supportedMetricsExporterFormats = ['prometheus']
+const supportedCreativeProviderAlertChannels = ['webhook', 'slack', 'email']
 const getRateLimitStore = (source) => String(source.RATE_LIMIT_STORE ?? 'memory').trim().toLowerCase()
 const getRateLimitFailureMode = (source) => String(source.RATE_LIMIT_REDIS_FAILURE_MODE ?? source.RATE_LIMIT_STORE_FAILURE_MODE ?? 'fail_closed').trim().toLowerCase()
 const getMetricsExporterFormat = (source) => String(source.METRICS_EXPORTER_FORMAT ?? 'prometheus').trim().toLowerCase()
@@ -70,6 +71,8 @@ const splitCsv = (value) =>
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean)
+
+const splitLowerCsv = (value) => splitCsv(value).map((item) => item.toLowerCase())
 
 const positiveIntegerValue = (value, fallback) => {
   const parsed = Number.parseInt(value ?? '', 10)
@@ -122,6 +125,17 @@ export const buildEnv = (source = process.env) => {
   const securityAlertEmailWebhookUrl = getOptionalUrl(source, 'SECURITY_ALERT_EMAIL_WEBHOOK_URL')
   const securityAlertEmailRecipients = splitCsv(source.SECURITY_ALERT_EMAIL_TO)
   const securityAlertEmailTimeoutSeconds = positiveInteger(source, 'SECURITY_ALERT_EMAIL_TIMEOUT_SECONDS', 5)
+  const creativeProviderAlertsEnabled = boolFlag(source, 'CREATIVE_PROVIDER_ALERTS_ENABLED', false)
+  const creativeProviderAlertChannels = splitLowerCsv(source.CREATIVE_PROVIDER_ALERT_CHANNELS)
+  const creativeProviderAlertWindowMinutes = positiveInteger(source, 'CREATIVE_PROVIDER_ALERT_WINDOW_MINUTES', 60)
+  const creativeProviderAlertDeliveryFailureThreshold = positiveInteger(source, 'CREATIVE_PROVIDER_ALERT_DELIVERY_FAILED_ALERT_THRESHOLD', 2)
+  const creativeProviderAlertWebhookUrl = getOptionalUrl(source, 'CREATIVE_PROVIDER_ALERT_WEBHOOK_URL')
+  const creativeProviderAlertWebhookTimeoutSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_ALERT_WEBHOOK_TIMEOUT_SECONDS', 5)
+  const creativeProviderAlertSlackWebhookUrl = getOptionalUrl(source, 'CREATIVE_PROVIDER_ALERT_SLACK_WEBHOOK_URL')
+  const creativeProviderAlertSlackTimeoutSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_ALERT_SLACK_TIMEOUT_SECONDS', 5)
+  const creativeProviderAlertEmailWebhookUrl = getOptionalUrl(source, 'CREATIVE_PROVIDER_ALERT_EMAIL_WEBHOOK_URL')
+  const creativeProviderAlertEmailRecipients = splitCsv(source.CREATIVE_PROVIDER_ALERT_EMAIL_TO)
+  const creativeProviderAlertEmailTimeoutSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_ALERT_EMAIL_TIMEOUT_SECONDS', 5)
   const mediaScanRetryDelaySeconds = positiveInteger(source, 'MEDIA_SCAN_RETRY_DELAY_SECONDS', 300)
   const mediaScanTimeoutSeconds = positiveInteger(source, 'MEDIA_SCAN_TIMEOUT_SECONDS', 900)
   const mediaScanMaxAttempts = positiveInteger(source, 'MEDIA_SCAN_MAX_ATTEMPTS', 3)
@@ -239,6 +253,25 @@ export const buildEnv = (source = process.env) => {
   if (securityAlertEmailWebhookUrl && securityAlertEmailRecipients.length === 0) {
     throw new Error('SECURITY_ALERT_EMAIL_TO is required when SECURITY_ALERT_EMAIL_WEBHOOK_URL is configured')
   }
+  const unsupportedCreativeAlertChannel = creativeProviderAlertChannels.find((channel) => !supportedCreativeProviderAlertChannels.includes(channel))
+  if (unsupportedCreativeAlertChannel) {
+    throw new Error(`CREATIVE_PROVIDER_ALERT_CHANNELS must contain only: ${supportedCreativeProviderAlertChannels.join(', ')}`)
+  }
+  if (creativeProviderAlertEmailWebhookUrl && creativeProviderAlertEmailRecipients.length === 0) {
+    throw new Error('CREATIVE_PROVIDER_ALERT_EMAIL_TO is required when CREATIVE_PROVIDER_ALERT_EMAIL_WEBHOOK_URL is configured')
+  }
+  if (creativeProviderAlertsEnabled && creativeProviderAlertChannels.length === 0) {
+    throw new Error('CREATIVE_PROVIDER_ALERT_CHANNELS must include at least one channel when CREATIVE_PROVIDER_ALERTS_ENABLED=true')
+  }
+  if (creativeProviderAlertChannels.includes('webhook') && !creativeProviderAlertWebhookUrl) {
+    throw new Error('CREATIVE_PROVIDER_ALERT_WEBHOOK_URL is required when CREATIVE_PROVIDER_ALERT_CHANNELS includes webhook')
+  }
+  if (creativeProviderAlertChannels.includes('slack') && !creativeProviderAlertSlackWebhookUrl) {
+    throw new Error('CREATIVE_PROVIDER_ALERT_SLACK_WEBHOOK_URL is required when CREATIVE_PROVIDER_ALERT_CHANNELS includes slack')
+  }
+  if (creativeProviderAlertChannels.includes('email') && !creativeProviderAlertEmailWebhookUrl) {
+    throw new Error('CREATIVE_PROVIDER_ALERT_EMAIL_WEBHOOK_URL is required when CREATIVE_PROVIDER_ALERT_CHANNELS includes email')
+  }
   if (workerLeaseRenewIntervalSeconds >= workerLeaseTtlSeconds) {
     throw new Error('WORKER_LEASE_RENEW_INTERVAL_SECONDS must be less than WORKER_LEASE_TTL_SECONDS')
   }
@@ -309,6 +342,20 @@ export const buildEnv = (source = process.env) => {
     securityAlertEmailRecipientCount: securityAlertEmailRecipients.length,
     hasSecurityAlertEmailFrom: Boolean(String(source.SECURITY_ALERT_EMAIL_FROM ?? '').trim()),
     securityAlertEmailTimeoutSeconds,
+    creativeProviderAlertsEnabled,
+    creativeProviderAlertChannels,
+    creativeProviderAlertWindowMinutes,
+    creativeProviderAlertDeliveryFailureThreshold,
+    hasCreativeProviderAlertWebhookUrl: Boolean(creativeProviderAlertWebhookUrl),
+    hasCreativeProviderAlertWebhookSecret: Boolean(String(source.CREATIVE_PROVIDER_ALERT_WEBHOOK_SECRET ?? '').trim()),
+    creativeProviderAlertWebhookTimeoutSeconds,
+    hasCreativeProviderAlertSlackWebhookUrl: Boolean(creativeProviderAlertSlackWebhookUrl),
+    creativeProviderAlertSlackTimeoutSeconds,
+    hasCreativeProviderAlertEmailWebhookUrl: Boolean(creativeProviderAlertEmailWebhookUrl),
+    hasCreativeProviderAlertEmailWebhookSecret: Boolean(String(source.CREATIVE_PROVIDER_ALERT_EMAIL_WEBHOOK_SECRET ?? '').trim()),
+    creativeProviderAlertEmailRecipientCount: creativeProviderAlertEmailRecipients.length,
+    hasCreativeProviderAlertEmailFrom: Boolean(String(source.CREATIVE_PROVIDER_ALERT_EMAIL_FROM ?? '').trim()),
+    creativeProviderAlertEmailTimeoutSeconds,
     hasMediaScanRequestUrl: Boolean(mediaScanRequestUrl),
     hasMediaScanRequestSecret: Boolean(String(source.MEDIA_SCAN_REQUEST_SECRET ?? '').trim()),
     hasMediaScanCallbackBaseUrl: Boolean(mediaScanCallbackBaseUrl),

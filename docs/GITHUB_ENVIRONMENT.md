@@ -115,9 +115,9 @@ Security alert channel variables/secrets:
 | Slack | none | `SECURITY_ALERT_SLACK_WEBHOOK_URL` |
 | Email webhook | `SECURITY_ALERT_EMAIL_WEBHOOK_URL`, `SECURITY_ALERT_EMAIL_TO`, `SECURITY_ALERT_EMAIL_FROM` optional | `SECURITY_ALERT_EMAIL_WEBHOOK_SECRET` optional/recommended |
 
-Planned creative provider budget alert variables/secrets:
+Creative provider budget alert variables/secrets:
 
-These are reserved for the future provider budget external alert delivery phase. They are not active until a later implementation wires `CREATIVE_PROVIDER_ALERTS_ENABLED`, env validation, dispatch audit events, and smoke checks.
+These are parsed and exposed only through safe config summaries for provider budget alert readiness. Production smoke gates channel presence only when `CREATIVE_PROVIDER_ALERTS_ENABLED=true`. External provider budget alert delivery is still inactive: no Slack, webhook, or email message is sent until a later explicitly approved delivery implementation wires dispatch audit events and outbound clients.
 
 | Channel | Variables | Secrets |
 | --- | --- | --- |
