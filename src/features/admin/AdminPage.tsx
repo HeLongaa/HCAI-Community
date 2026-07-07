@@ -1004,7 +1004,7 @@ export function AdminPage({
     const securityDeliveryFailures = metrics.security.deliveryFailures.total
     const mediaDeliveryFailures = metrics.mediaScan.alertDeliveryFailures.total
     const providerCriticalDispatchBlocks = metricCount(metrics.creativeProviderBudget.dispatchBlocked.bySeverity, 'critical')
-    const providerAlertDispatchFailures = metrics.creativeProviderBudget.providerAlertDispatches.failed
+    const providerAlertDispatchFailureSpike = metrics.creativeProviderBudget.providerAlertDispatches.failureSpike
     const providerThreshold100 = metrics.creativeProviderBudget.thresholdAlerts.byThreshold
       .filter((item) => Number(item.key) >= 100)
       .reduce((total, item) => total + item.count, 0)
@@ -1058,11 +1058,11 @@ export function AdminPage({
         ],
         auditFilter: { action: 'creative.provider_budget.dispatch_blocked', resourceType: 'creative_provider_budget' },
       }] : []),
-      ...(providerAlertDispatchFailures > 0 ? [{
+      ...(providerAlertDispatchFailureSpike.active ? [{
         id: 'provider-alert-dispatch-failures',
         severity: 'warning',
         title: textFor(t, 'Check provider alert dispatch readiness', '检查 Provider 告警派发就绪度'),
-        reason: textFor(t, `${providerAlertDispatchFailures} provider alert dispatch failure(s) were recorded.`, `记录到 ${providerAlertDispatchFailures} 次 Provider 告警派发失败。`),
+        reason: textFor(t, `${providerAlertDispatchFailureSpike.failures} provider alert dispatch failure(s) reached the configured threshold of ${providerAlertDispatchFailureSpike.threshold}.`, `${providerAlertDispatchFailureSpike.failures} 次 Provider 告警派发失败已达到配置阈值 ${providerAlertDispatchFailureSpike.threshold}。`),
         recommendedActions: [
           textFor(t, 'Review provider alert dispatch samples by channel and reason.', '按渠道和原因复核 Provider 告警派发样本。'),
           textFor(t, 'Keep real external delivery disabled until approved clients are explicitly wired.', '在批准的 client 明确接入前，保持真实外部投递关闭。'),

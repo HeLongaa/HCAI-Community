@@ -170,6 +170,14 @@ Implemented fields under `metrics.creativeProviderBudget`:
     byProvider,
     byWorkspace,
     latestAt,
+    failureSpike: {
+      active,
+      threshold,
+      failures,
+      byChannel,
+      byReason,
+      latestAt,
+    },
   },
 }
 ```
@@ -179,7 +187,7 @@ Implemented Admin handoff hints:
 - Critical dispatch blocks should generate a handoff hint to keep the provider kill switch active.
 - Threshold 100/120 should recommend checking the app-side cap and provider-side cap.
 - Currency mismatch should recommend blocking settlement until normalized.
-- Failed provider alert dispatch audit records should recommend reviewing channel readiness while real external delivery stays disabled.
+- Failed provider alert dispatch audit records should recommend reviewing channel readiness only after the configured failure threshold is reached.
 
 Implemented sample drill-downs:
 
@@ -322,7 +330,8 @@ Smoke and deploy tests:
 8. **Dispatch audit event planning**: map per-channel dispatch results to safe audit record candidates. Implemented.
 9. **Dispatch audit persistence**: persist `creative.provider_alert.dispatch` records through the provider budget audit repository with source-key dedupe. Implemented.
 10. **Provider alert dispatch metrics/exporter**: aggregate persisted dispatch attempts in Admin operations metrics and Prometheus-compatible exporter output. Implemented.
-11. **External alert delivery**: separate phase only after explicit approval.
+11. **Provider alert dispatch failure spike policy**: derive thresholded failure-spike signals from persisted dispatch audit rows. Implemented.
+12. **External alert delivery**: separate phase only after explicit approval.
 
 ## No-Go Conditions
 
@@ -338,11 +347,11 @@ No-go for implementation if any are true:
 
 ## Next Suggested Implementation
 
-The safest next implementation is **provider alert dispatch failure spike policy**, still without default Slack/email/webhook clients:
+The safest next implementation is **approved provider alert channel client adapter shell**, still without enabling real outbound delivery by default:
 
-- derive a safe delivery-failure spike signal from persisted `creative.provider_alert.dispatch` audit rows
-- keep labels low-cardinality by channel, status, and reason
-- surface the signal through Admin operations/handoff first; do not page external recipients yet
+- define explicit channel client interfaces for webhook, Slack, and email relay
+- keep every client disabled unless injected or explicitly configured in a later delivery PR
+- preserve current audit, idempotency, metrics, and failure-spike boundaries
 - keep actual external delivery, Admin mutation controls, provider callback/manual replay endpoints, and real provider calls deferred until explicitly approved
 
-The durable audit source of truth, internal notification routing, Admin read-only metrics, Prometheus-compatible exporter metrics, external alert env/smoke validation, pure payload builder, injected mock dispatcher boundary, dispatch audit planning, dispatch audit persistence, dispatch observability, and external alert delivery plan now exist. External delivery should still be staged behind failure-spike policy and explicit channel-client approval before any outbound message is sent.
+The durable audit source of truth, internal notification routing, Admin read-only metrics, Prometheus-compatible exporter metrics, external alert env/smoke validation, pure payload builder, injected mock dispatcher boundary, dispatch audit planning, dispatch audit persistence, dispatch observability, failure-spike policy, and external alert delivery plan now exist. External delivery should still be staged behind explicit channel-client approval before any outbound message is sent.
