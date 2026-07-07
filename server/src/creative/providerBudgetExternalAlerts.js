@@ -218,10 +218,10 @@ const disabledProviderBudgetExternalAlertClient = (channel) => Object.freeze({
 })
 
 export const buildProviderBudgetExternalAlertClientAdapters = ({
-  channels = defaultProviderBudgetExternalAlertChannels,
+  channels,
   clients = {},
 } = {}) => {
-  const safeChannels = normalizeChannels(channels?.length ? channels : defaultProviderBudgetExternalAlertChannels)
+  const safeChannels = normalizeChannels(channels === undefined ? defaultProviderBudgetExternalAlertChannels : channels)
   return Object.fromEntries(safeChannels.map((channel) => {
     const client = clients?.[channel]
     return [
@@ -229,6 +229,112 @@ export const buildProviderBudgetExternalAlertClientAdapters = ({
       client?.send ? client : disabledProviderBudgetExternalAlertClient(channel),
     ]
   }))
+}
+
+const hasConfiguredProviderBudgetExternalAlertChannel = (channel, config) => {
+  if (channel === 'webhook') {
+    return config?.hasCreativeProviderAlertWebhookUrl === true
+  }
+  if (channel === 'slack') {
+    return config?.hasCreativeProviderAlertSlackWebhookUrl === true
+  }
+  if (channel === 'email') {
+    return (
+      config?.hasCreativeProviderAlertEmailWebhookUrl === true &&
+      Number(config?.creativeProviderAlertEmailRecipientCount ?? 0) > 0
+    )
+  }
+  return false
+}
+
+const safeProviderBudgetExternalAlertChannelReadiness = (channel, config) => {
+  const configured = hasConfiguredProviderBudgetExternalAlertChannel(channel, config)
+  return compactObject({
+    channel,
+    configured,
+    hasSecret: channel === 'webhook'
+      ? config?.hasCreativeProviderAlertWebhookSecret === true
+      : channel === 'email'
+        ? config?.hasCreativeProviderAlertEmailWebhookSecret === true
+        : undefined,
+    timeoutSeconds: channel === 'webhook'
+      ? safeNumber(config?.creativeProviderAlertWebhookTimeoutSeconds)
+      : channel === 'slack'
+        ? safeNumber(config?.creativeProviderAlertSlackTimeoutSeconds)
+        : safeNumber(config?.creativeProviderAlertEmailTimeoutSeconds),
+    recipientCount: channel === 'email'
+      ? safeNumber(config?.creativeProviderAlertEmailRecipientCount)
+      : undefined,
+    reasonCode: configured ? null : 'provider_alert_channel_config_missing',
+  })
+}
+
+const providerBudgetExternalAlertDeliveryReasonCode = ({
+  enabled,
+  channels,
+  missingConfig,
+  deliveryApproved,
+  fixtureOnly,
+}) => {
+  if (!enabled) {
+    return 'provider_alert_delivery_disabled'
+  }
+  if (channels.length === 0) {
+    return 'provider_alert_channels_missing'
+  }
+  if (missingConfig.length > 0) {
+    return 'provider_alert_channel_config_missing'
+  }
+  if (!deliveryApproved) {
+    return 'provider_alert_delivery_approval_required'
+  }
+  if (!fixtureOnly) {
+    return 'provider_alert_real_delivery_not_implemented'
+  }
+  return 'provider_alert_fixture_delivery_ready'
+}
+
+export const buildProviderBudgetExternalAlertDeliveryWiring = ({
+  config = {},
+  approval = {},
+  fixtureClients = {},
+} = {}) => {
+  const enabled = config?.creativeProviderAlertsEnabled === true
+  const channels = enabled ? normalizeChannels(config?.creativeProviderAlertChannels) : []
+  const channelReadiness = channels.map((channel) => safeProviderBudgetExternalAlertChannelReadiness(channel, config))
+  const missingConfig = channelReadiness.filter((item) => item.configured !== true).map((item) => item.channel)
+  const deliveryApproved = approval?.deliveryApproved === true
+  const fixtureOnly = approval?.fixtureOnly === true
+  const mode = enabled && missingConfig.length === 0 && deliveryApproved && fixtureOnly ? 'fixture' : 'disabled'
+  const reasonCode = providerBudgetExternalAlertDeliveryReasonCode({
+    enabled,
+    channels,
+    missingConfig,
+    deliveryApproved,
+    fixtureOnly,
+  })
+
+  return {
+    enabled: enabled && channels.length > 0,
+    mode,
+    reasonCode,
+    channels,
+    clients: mode === 'fixture'
+      ? buildProviderBudgetExternalAlertClientAdapters({ channels, clients: fixtureClients })
+      : buildProviderBudgetExternalAlertClientAdapters({ channels }),
+    safeSummary: {
+      enabled,
+      mode,
+      reasonCode,
+      deliveryApproved,
+      fixtureOnly,
+      channelCount: channels.length,
+      configuredChannelCount: channelReadiness.filter((item) => item.configured === true).length,
+      missingConfig,
+      channelReadiness,
+      realDeliveryAvailable: false,
+    },
+  }
 }
 
 const successResult = (operation, result = {}) => ({
