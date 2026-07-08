@@ -6,6 +6,8 @@ Current decision: **no-go for real provider external calls, provider callbacks, 
 
 This document does not approve an external call by itself. A real external-call rehearsal still requires the approval record in `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md`, current Notion task evidence in Chinese, and explicit user approval for the exact staging run.
 
+Callback, polling, and manual replay boundaries are closed out in `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md`. That document currently allows fixture-safe pure functions, disabled-by-default worker wiring, mocked/injected status-client tests, and read-only Admin replay evidence only; it does not approve callback routes, default provider HTTP clients, manual replay endpoints, enabled real polling, or async lifecycle side effects from provider data.
+
 ## Completed Safe Foundation
 
 The repository has enough fixture-safe lifecycle foundation to continue planning and testing without contacting a paid provider:
@@ -28,6 +30,7 @@ The repository has enough fixture-safe lifecycle foundation to continue planning
 - Fixture-only polling replay idempotency uses hashed output digests for completed status payloads without storing raw provider output URLs.
 - Read-only Admin generation history can surface safe provider replay evidence summaries without exposing replay payloads or enabling replay mutations.
 - Provider replay ledger records safe no-op and rejected outcome evidence so duplicate/stale and failed side-effect paths are observable without raw errors or payloads.
+- Read-only Admin replay evidence includes safe side-effect outcome and error-preview presence without raw provider errors, raw responses, raw payloads, or output URLs.
 - Source-keyed provider lifecycle notification/audit repository wiring.
 - Manual replay authorization/parser pure functions.
 - Fixture-safe polling worker interval skeleton.
@@ -105,11 +108,13 @@ Allowed without real-provider approval:
 
 1. Documentation closeout and consistency updates.
 2. Fixture-only tests for lifecycle reducers, replay ledgers, side-effect plans, and mocked provider-status clients.
-3. Metadata-only staging smoke improvements.
-4. Read-only Admin history refinements.
-5. Budget/cost guard implementation that does not dispatch externally.
-6. Fixture-only provider budget event planning that does not persist or send alerts externally.
-7. Fixture-only hardening that proves moderation, quota, budget, and accounting gates run before provider adapter work.
+3. Fixture-only hardening for callback auth/parser helpers, manual replay envelope helpers, polling leases, stop conditions, notification/audit source keys, and Admin read-only evidence.
+4. Metadata-only staging smoke improvements.
+5. Read-only Admin history refinements.
+6. Budget/cost guard implementation that does not dispatch externally.
+7. Fixture-only provider budget event planning that does not persist or send alerts externally.
+8. Fixture-only hardening that proves moderation, quota, budget, and accounting gates run before provider adapter work.
+9. Staging adapter shell work that uses mocked or injected clients only and remains production-denied.
 
 Requires explicit external-call approval:
 
@@ -117,6 +122,7 @@ Requires explicit external-call approval:
 2. Any route or worker that can dispatch to a provider API.
 3. Any staging run that creates a provider job.
 4. Any callback/polling/manual replay path that can apply lifecycle side effects from provider data.
+5. Any callback route, real provider polling client, or manual replay endpoint wired to live provider data.
 
 Requires a separate production phase:
 

@@ -6,6 +6,8 @@ Current go/no-go conclusion: **conditional go for a staging-only adapter plannin
 
 The repository remains mock-provider only. This closeout gate does not implement a real provider adapter, external API call, webhook/polling route, Admin mutation endpoint, payment refund flow, provider billing reconciliation, or production paid-provider path.
 
+The callback/polling prerequisite closeout in `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` is documentation and fixture-safety evidence only. It does not approve async provider lifecycle enablement, real provider polling, callback route wiring, manual replay endpoints, or Admin lifecycle mutations.
+
 ## Completed Preflight Package
 
 | Step | Status | Artifact |

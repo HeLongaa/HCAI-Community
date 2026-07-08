@@ -10,6 +10,45 @@ This package does not add a provider SDK, default HTTP client, webhook endpoint,
 
 Implementation status: the repository now has a durable replay ledger schema/repository foundation, a pure lifecycle replay reducer, provider callback auth/parser pure functions, provider polling lease/stop-condition pure functions, provider lifecycle side-effect plan/executor pure functions, fixture-only replay-ledger integration helpers that record side-effect plans/results without provider credentials, mocked provider-status client contract tests that require an injected client, provider lifecycle notification/audit repository wiring behind stable source keys, manual replay authorization/parser pure functions, and fixture-safe polling worker interval wiring. Provider callback routes, default provider status HTTP clients, manual replay endpoints, and real provider network calls remain disabled and unimplemented.
 
+## Closeout Status And Implementation Map
+
+This closeout records the current boundary for callback, polling, and manual lifecycle replay. It is a maintenance handoff, not an approval to enable async provider lifecycle handling.
+
+| Capability | Current status | Boundary |
+| --- | --- | --- |
+| Callback authentication and parser helpers | Available as pure functions | Fixture-safe only; no route or provider webhook target exists. |
+| Provider callback route | Disabled and unimplemented | Requires separate route approval, signature tests, replay-ledger wiring, and kill-switch verification. |
+| Default provider status HTTP client | Disabled and unimplemented | No SDK, default HTTP client, or real provider status read is present. |
+| Polling worker interval skeleton | Available, disabled by default | Requires explicit worker flags and an injected mocked status client in tests. |
+| Polling lease and stop-condition helpers | Available as pure functions | Fixture-safe only; they do not read provider APIs. |
+| Manual replay authorization and parser helpers | Available as pure functions | No route, endpoint, Admin action, worker, or side-effect execution path is enabled. |
+| Durable replay ledger and lifecycle reducer | Available for fixture-safe tests | Used to prove duplicate, stale, mismatch, no-op, rejected, and applied decisions without real provider data. |
+| Lifecycle side-effect plan and executor helpers | Available for fixture-safe tests | Records safe plan/result summaries; does not persist raw provider payloads or output URLs. |
+| Notification and audit source-key wiring | Available in repository-backed tests | Uses stable source keys and safe metadata only. |
+| Admin provider replay evidence | Available read-only | Shows safe replay counts, latest summaries, side-effect outcome, and error-preview presence; no mutation controls. |
+| Provider network calls | No-go | Requires the external-call approval package and explicit user approval for a named staging rehearsal. |
+
+This document does not approve:
+
+- A provider SDK or network-capable HTTP client.
+- A webhook or callback route.
+- A manual replay endpoint or Admin replay action.
+- Enabled real provider status polling.
+- Admin retry, cancel, refund, force-review, or manual settlement controls.
+- Production paid-provider enablement.
+
+## Next Work Ordering
+
+Future work should proceed in this order unless a later approved closeout replaces this one:
+
+1. Keep documentation consistency and prerequisite closeout current.
+2. Continue fixture-only lifecycle replay, polling, side-effect, notification, audit, and Admin evidence hardening.
+3. Add a staging adapter shell only with a mocked/injected client and production-denied environment checks.
+4. Complete the external-call go/no-go approval record before any provider network call.
+5. Run at most one explicitly approved staging external-call rehearsal with call count, budget cap, expiry, and rollback owners recorded in Notion.
+6. Add callback route or real polling client wiring only after a separate callback/polling enablement approval.
+7. Add Admin mutation controls only in a separate Admin mutation phase with permissions, accounting idempotency, and audit tests.
+
 ## Scope
 
 Covered event sources:
@@ -268,6 +307,7 @@ Callback and polling code cannot be enabled until targeted tests cover:
 - Notification and audit source ids are represented as stable side-effect operation keys and persisted with source-key dedupe in repository tests.
 - Partial side-effect failure can be replayed without duplicating completed side effects in fixture executor and replay-ledger integration tests.
 - Fixture integration tests write replay ledger plans/results using mocked provider data only.
+- Admin read-only replay evidence shows safe no-op, rejected, side-effect outcome, and error-preview presence without raw error text, raw payloads, raw provider responses, or output URLs.
 - CI passes without real provider credentials.
 
 ## No-Go Checklist
@@ -292,9 +332,11 @@ No-go for provider callback, polling, or manual replay if any are true:
 A future implementation task should continue from the mocked-client status contract, repository-backed lifecycle notification/audit wiring, and manual replay auth/parser envelope:
 
 1. Keep worker interval wiring fixture-safe and disabled by default until an external-call task explicitly approves a real status client.
-2. Add callback route wiring only after auth/parser tests, replay ledger, lifecycle reducer, side-effect executor, notification/audit repository wiring, and manual replay envelope tests all pass.
-3. Add smoke and quality-gate documentation only after the route or worker exists.
-4. Complete the external-call approval package before any real provider network call.
-5. Keep `docs/REAL_PROVIDER_BOUNDARY_CLOSEOUT.md`, this document, and `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` in sync whenever the boundary changes.
+2. Keep the first staging adapter branch mocked/injected until the external-call approval package is complete.
+3. Add callback route wiring only after auth/parser tests, replay ledger, lifecycle reducer, side-effect executor, notification/audit repository wiring, and manual replay envelope tests all pass.
+4. Add real polling status-client wiring only after the same approval record names the provider, environment, call count, budget cap, expiry, and rollback owners.
+5. Add smoke and quality-gate documentation only after the route or worker exists.
+6. Complete the external-call approval package before any real provider network call.
+7. Keep `docs/REAL_PROVIDER_BOUNDARY_CLOSEOUT.md`, this document, and `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` in sync whenever the boundary changes.
 
 Do not broaden to production, Admin mutation controls, video/music/chat providers, or payment-provider reconciliation during the first callback/polling implementation.
