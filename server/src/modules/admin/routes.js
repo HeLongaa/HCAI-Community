@@ -24,6 +24,69 @@ import { defaultPointAdjustmentPolicy, getDirectLimitForActor } from '../../poin
 
 const isPointAdjustmentReview = (review) => review?.queue === 'points' || review?.metadata?.kind === 'point_adjustment'
 
+const replaySideEffectCompleted = (replay) =>
+  replay?.sideEffectResult?.completed === true
+
+const replayCompletedOperationCount = (replay) =>
+  Array.isArray(replay?.sideEffectResult?.completedOperationKeys)
+    ? replay.sideEffectResult.completedOperationKeys.length
+    : 0
+
+const replayFailedOperationType = (replay) =>
+  replay?.sideEffectResult?.failedOperationType ??
+  replay?.sideEffectResult?.operations?.find?.((operation) => operation?.status === 'failed')?.type ??
+  null
+
+const summarizeProviderReplay = (replay) => replay
+  ? {
+      id: replay.id,
+      sourceType: replay.sourceType,
+      action: replay.action,
+      previousStatus: replay.previousStatus ?? null,
+      normalizedStatus: replay.normalizedStatus ?? null,
+      reasonCode: replay.reasonCode ?? null,
+      providerEventIdPresent: Boolean(replay.providerEventId),
+      payloadHashPresent: Boolean(replay.payloadHash),
+      payloadHashPreview: replay.payloadHash ? String(replay.payloadHash).slice(0, 12) : null,
+      sideEffectCompleted: replaySideEffectCompleted(replay),
+      completedOperationCount: replayCompletedOperationCount(replay),
+      failedOperationType: replayFailedOperationType(replay),
+      receivedAt: replay.receivedAt ?? null,
+      appliedAt: replay.appliedAt ?? null,
+    }
+  : null
+
+const buildProviderReplayEvidence = async (generation, replayLedger) => {
+  if (!replayLedger?.listForGeneration) {
+    return {
+      available: false,
+      count: 0,
+      appliedCount: 0,
+      rejectedCount: 0,
+      noopCount: 0,
+      latest: null,
+    }
+  }
+  const page = await replayLedger.listForGeneration(generation.id, { limit: 20 })
+  const replays = page?.items ?? []
+  return {
+    available: true,
+    count: replays.length,
+    appliedCount: replays.filter((replay) => replay.action === 'applied').length,
+    rejectedCount: replays.filter((replay) => replay.action === 'rejected').length,
+    noopCount: replays.filter((replay) => replay.action === 'noop' || replay.action === 'ignored').length,
+    latest: summarizeProviderReplay(replays[0] ?? null),
+  }
+}
+
+const attachProviderReplayEvidence = async (generation, replayLedger) => ({
+  ...generation,
+  providerReplayEvidence: await buildProviderReplayEvidence(generation, replayLedger),
+})
+
+const attachProviderReplayEvidenceToPage = async (items, replayLedger) =>
+  Promise.all(items.map((generation) => attachProviderReplayEvidence(generation, replayLedger)))
+
 const csvCell = (value) => {
   const textValue = String(value ?? '')
   return /[",\n]/.test(textValue) ? `"${textValue.replace(/"/g, '""')}"` : textValue
@@ -162,7 +225,8 @@ export const registerAdminRoutes = (router) => {
   router.add('GET', '/api/admin/creative/generations', async (_request, response, context) => {
     requirePermission(context, 'admin:audit:read')
     const page = await repositories.creativeGenerations.list(parseAdminCreativeGenerationListQuery(context.query))
-    ok(response, page.items, {
+    const items = await attachProviderReplayEvidenceToPage(page.items, repositories.creativeProviderReplays)
+    ok(response, items, {
       pagination: {
         limit: page.limit,
         nextCursor: page.nextCursor,
@@ -176,7 +240,7 @@ export const registerAdminRoutes = (router) => {
     if (!generation) {
       throw notFound(`/api/admin/creative/generations/${context.params.id}`)
     }
-    ok(response, generation)
+    ok(response, await attachProviderReplayEvidence(generation, repositories.creativeProviderReplays))
   })
 
   router.add('GET', '/api/admin/security/events', async (_request, response, context) => {

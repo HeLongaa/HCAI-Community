@@ -584,6 +584,29 @@ export type ApiCreativeGenerationRecord = {
   failedAt: string | null
   createdAt: string
   updatedAt: string
+  providerReplayEvidence?: {
+    available: boolean
+    count: number
+    appliedCount: number
+    rejectedCount: number
+    noopCount: number
+    latest: null | {
+      id: string
+      sourceType: string
+      action: string
+      previousStatus: string | null
+      normalizedStatus: string | null
+      reasonCode: string | null
+      providerEventIdPresent: boolean
+      payloadHashPresent: boolean
+      payloadHashPreview: string | null
+      sideEffectCompleted: boolean
+      completedOperationCount: number
+      failedOperationType: string | null
+      receivedAt: string | null
+      appliedAt: string | null
+    }
+  }
 }
 
 export type AdminCreativeGenerationHistoryQuery = {

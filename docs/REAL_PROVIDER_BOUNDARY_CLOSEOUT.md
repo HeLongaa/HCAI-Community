@@ -26,6 +26,7 @@ The repository has enough fixture-safe lifecycle foundation to continue planning
 - Fixture replay-ledger integration helpers.
 - Mocked injected provider-status client contract.
 - Fixture-only polling replay idempotency uses hashed output digests for completed status payloads without storing raw provider output URLs.
+- Read-only Admin generation history can surface safe provider replay evidence summaries without exposing replay payloads or enabling replay mutations.
 - Source-keyed provider lifecycle notification/audit repository wiring.
 - Manual replay authorization/parser pure functions.
 - Fixture-safe polling worker interval skeleton.
@@ -41,6 +42,7 @@ The polling worker skeleton is disabled by default. It requires `CREATIVE_PROVID
 | `GET /api/creative/providers` | Usable safe metadata | `replicate_staging` remains unavailable/default-disabled with `networkCallsEnabled=false`. |
 | `POST /api/creative/generations` | Usable mock route | Does not dispatch to Replicate or any paid provider. |
 | Admin generation history | Usable read-only | No retry, cancel, refund, force-review, or manual settlement controls. |
+| Admin provider replay evidence | Usable read-only | Shows replay counts and latest safe replay summary; does not expose raw payloads or mutation controls. |
 | Creative staging smoke | Usable metadata-only | Validates env gates and safe provider metadata only. |
 | Provider lifecycle replay tests | Usable fixtures | Uses mocked data and injected clients only. |
 

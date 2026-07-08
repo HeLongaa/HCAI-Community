@@ -4,6 +4,7 @@ import test from 'node:test'
 import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
 import { recordSecurityEvent, resetSecurityEvents } from '../../security/securityEvents.js'
 import { resetCreativePolicyState } from '../../creative/policy.js'
+import { repositories } from '../../repositories/index.js'
 import { registerCreativeRoutes } from '../creative/routes.js'
 import { registerAdminRoutes } from './routes.js'
 
@@ -165,6 +166,31 @@ test('GET /api/admin/creative/generations lists and filters provider generation 
     assert.equal(generated.payload.data.status, 'review_required')
     const generationId = generated.payload.data.id
     const mediaAssetId = generated.payload.data.outputs[0].storage.mediaAssetId
+    await repositories.creativeProviderReplays.record({
+      generationId,
+      providerId: 'mock',
+      providerMode: null,
+      providerJobId: generated.payload.data.providerJobId,
+      providerEventId: 'event-admin-history-replay-1',
+      sourceType: 'polling',
+      idempotencyKey: `admin-history:${generationId}:review_required:digest`,
+      payloadHash: 'payload-hash-admin-history-replay-1',
+      previousStatus: 'running',
+      normalizedStatus: 'review_required',
+      action: 'applied',
+      reasonCode: null,
+      sideEffectResult: {
+        completed: true,
+        completedOperationKeys: ['provider-output.persist', 'credit.settle'],
+        operations: [{
+          type: 'persist_outputs',
+          status: 'completed',
+          metadata: { rawOutputUrl: 'mock://admin-history-output-should-not-leak.png' },
+        }],
+      },
+      receivedAt: '2026-07-06T13:00:00.000Z',
+      appliedAt: '2026-07-06T13:00:01.000Z',
+    }, { id: 'demo-user-admin', handle: 'legalpixel' })
 
     const list = await requestJson(
       server.url,
@@ -189,6 +215,26 @@ test('GET /api/admin/creative/generations lists and filters provider generation 
     assert.equal(item.quota.reservationId, item.credit.quotaReservationId)
     assert.deepEqual(item.outputAssetIds, [mediaAssetId])
     assert.equal('prompt' in item, false)
+    assert.equal(item.providerReplayEvidence.available, true)
+    assert.equal(item.providerReplayEvidence.count, 1)
+    assert.equal(item.providerReplayEvidence.appliedCount, 1)
+    assert.equal(item.providerReplayEvidence.rejectedCount, 0)
+    assert.equal(item.providerReplayEvidence.noopCount, 0)
+    assert.match(item.providerReplayEvidence.latest.id, /^provider-replay-/)
+    assert.equal(item.providerReplayEvidence.latest.sourceType, 'polling')
+    assert.equal(item.providerReplayEvidence.latest.action, 'applied')
+    assert.equal(item.providerReplayEvidence.latest.previousStatus, 'running')
+    assert.equal(item.providerReplayEvidence.latest.normalizedStatus, 'review_required')
+    assert.equal(item.providerReplayEvidence.latest.reasonCode, null)
+    assert.equal(item.providerReplayEvidence.latest.providerEventIdPresent, true)
+    assert.equal(item.providerReplayEvidence.latest.payloadHashPresent, true)
+    assert.equal(item.providerReplayEvidence.latest.payloadHashPreview, 'payload-hash')
+    assert.equal(item.providerReplayEvidence.latest.sideEffectCompleted, true)
+    assert.equal(item.providerReplayEvidence.latest.completedOperationCount, 2)
+    assert.equal(item.providerReplayEvidence.latest.failedOperationType, null)
+    assert.equal(item.providerReplayEvidence.latest.receivedAt, '2026-07-06T13:00:00.000Z')
+    assert.equal(item.providerReplayEvidence.latest.appliedAt, '2026-07-06T13:00:01.000Z')
+    assert.equal(JSON.stringify(item.providerReplayEvidence).includes('admin-history-output-should-not-leak'), false)
 
     const detail = await requestJson(server.url, `/api/admin/creative/generations/${generationId}`, {
       method: 'GET',
@@ -198,6 +244,9 @@ test('GET /api/admin/creative/generations lists and filters provider generation 
     assert.equal(detail.payload.data.id, generationId)
     assert.equal(detail.payload.data.promptPreview, 'A celebrity campaign poster for Admin history review filter')
     assert.equal(detail.payload.data.credit.status, 'settled')
+    assert.equal(detail.payload.data.providerReplayEvidence.count, 1)
+    assert.equal(detail.payload.data.providerReplayEvidence.latest.payloadHashPreview, 'payload-hash')
+    assert.equal(JSON.stringify(detail.payload.data.providerReplayEvidence).includes('mock://'), false)
   } finally {
     await server.close()
     resetCreativePolicyState()
