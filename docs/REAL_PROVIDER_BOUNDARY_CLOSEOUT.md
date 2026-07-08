@@ -1,6 +1,6 @@
 # Real Provider Boundary Closeout
 
-This closeout is the current handoff point for real-provider work after the fixture-safe polling worker wiring. It summarizes what is available, what is still disabled, and what must happen before any real paid provider call is attempted.
+This closeout is the detailed handoff point for real-provider work after the fixture-safe polling worker wiring. For the shortest decision entry point, start with `docs/REAL_PROVIDER_CURRENT_STATUS.md`; this document then summarizes what is available, what is still disabled, and what must happen before any real paid provider call is attempted.
 
 Current decision: **no-go for real provider external calls, provider callbacks, default provider status polling, manual replay endpoints, Admin generation mutations, and production paid-provider enablement**.
 
@@ -95,6 +95,7 @@ Before the first staging external-call rehearsal, the approval record must expli
 
 | Question | Source |
 | --- | --- |
+| What is the current overall real-provider status? | `docs/REAL_PROVIDER_CURRENT_STATUS.md` |
 | Can the first external-call staging rehearsal run? | `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` |
 | Can callbacks, polling, or manual replay be enabled? | `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` |
 | How is metadata-only staging smoke run? | `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` |
