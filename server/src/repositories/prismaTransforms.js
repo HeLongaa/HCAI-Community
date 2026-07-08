@@ -1,3 +1,5 @@
+import { safeErrorPreview } from '../creative/generationRecords.js'
+
 const asObject = (value) => (value && typeof value === 'object' && !Array.isArray(value) ? value : null)
 
 const firstNonEmpty = (...values) => values.find((value) => value !== undefined && value !== null && value !== '')
@@ -204,7 +206,7 @@ export const getCreativeGenerationDto = (generation) => ({
   providerRequestId: generation.providerRequestId ?? null,
   providerJobId: generation.providerJobId ?? null,
   errorCode: generation.errorCode ?? null,
-  errorMessagePreview: generation.errorMessagePreview ?? null,
+  errorMessagePreview: generation.errorMessagePreview ? safeErrorPreview(generation.errorMessagePreview) : null,
   startedAt: generation.startedAt ? generation.startedAt.toISOString() : null,
   completedAt: generation.completedAt ? generation.completedAt.toISOString() : null,
   failedAt: generation.failedAt ? generation.failedAt.toISOString() : null,

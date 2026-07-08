@@ -1,3 +1,5 @@
+import { safeErrorPreview } from '../creative/generationRecords.js'
+
 const parsePoints = (value) => {
   const cleaned = String(value).replace(/[^\d-]/g, '')
   const parsed = Number.parseInt(cleaned, 10)
@@ -102,7 +104,7 @@ export const serializeCreativeGeneration = (generation) => ({
   providerRequestId: generation.providerRequestId ?? null,
   providerJobId: generation.providerJobId ?? null,
   errorCode: generation.errorCode ?? null,
-  errorMessagePreview: generation.errorMessagePreview ?? null,
+  errorMessagePreview: generation.errorMessagePreview ? safeErrorPreview(generation.errorMessagePreview) : null,
   startedAt: generation.startedAt ?? null,
   completedAt: generation.completedAt ?? null,
   failedAt: generation.failedAt ?? null,
