@@ -72,6 +72,7 @@ import {
   buildProviderBudgetNotificationPayload,
   hasProviderBudgetNotificationSourceKey,
 } from './providerBudgetNotificationWiring.js'
+import { safeErrorPreview } from '../creative/generationRecords.js'
 
 const getHandleFromToken = (token, prefix) => {
   if (typeof token !== 'string' || !token.startsWith(prefix)) {
@@ -4326,6 +4327,7 @@ const createPrismaRepository = async (fallbackRepository) => {
         if (reservation.status !== 'reserved') {
           return getCreativeQuotaDto(reservation.quotaWindow, reservation.id)
         }
+        const safeReason = safeErrorPreview(reason)
         await transaction.creativeQuotaWindow.update({
           where: { id: reservation.quotaWindowId },
           data: {
@@ -4337,7 +4339,7 @@ const createPrismaRepository = async (fallbackRepository) => {
           where: { id: reservation.id },
           data: {
             status: 'released',
-            reason,
+            reason: safeReason,
             releasedAt: new Date(),
           },
         })
@@ -4352,7 +4354,7 @@ const createPrismaRepository = async (fallbackRepository) => {
               generationId: updatedReservation.generationId,
               workspace: updatedReservation.workspace,
               units: updatedReservation.units,
-              reason,
+              reason: safeReason,
             },
           }),
         })
