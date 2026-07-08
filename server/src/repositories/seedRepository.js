@@ -61,6 +61,7 @@ import {
   buildProviderBudgetNotificationPayload,
   hasProviderBudgetNotificationSourceKey,
 } from './providerBudgetNotificationWiring.js'
+import { safeErrorPreview } from '../creative/generationRecords.js'
 
 const sessionByRefreshToken = new Map()
 const emailAccountByEmail = new Map()
@@ -3058,6 +3059,7 @@ export const createSeedRepository = () => ({
       if (reservation.status === 'committed') {
         return getCreativeQuotaDto(window, reservation.id)
       }
+      const safeReason = safeErrorPreview(reason)
       const updatedWindow = {
         ...window,
         reservedUnits: Math.max(window.reservedUnits - reservation.units, 0),
@@ -3067,7 +3069,7 @@ export const createSeedRepository = () => ({
       const updatedReservation = {
         ...reservation,
         status: 'released',
-        reason,
+        reason: safeReason,
         releasedAt: new Date().toISOString(),
       }
       creativeQuotaWindowsById.set(updatedWindow.id, updatedWindow)
@@ -3076,7 +3078,7 @@ export const createSeedRepository = () => ({
         generationId: updatedReservation.generationId,
         workspace: updatedReservation.workspace,
         units: updatedReservation.units,
-        reason,
+        reason: safeReason,
       })
       return getCreativeQuotaDto(updatedWindow, updatedReservation.id)
     },

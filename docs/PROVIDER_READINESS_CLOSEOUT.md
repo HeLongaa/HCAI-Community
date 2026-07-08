@@ -26,7 +26,7 @@ The completed baseline includes:
 - Lifecycle transitions for queued, running, completed, review-required, and failed generation states.
 - Failed generation evidence uses redacted error previews on durable record write/read paths, so Admin history can show the failure boundary without exposing provider tokens, raw keys, or provider output URLs.
 - Durable `creative_quota_windows` and `creative_quota_reservations` accounting for actor/workspace/day quota.
-- Atomic quota reservation, commit, and release behavior for Prisma-backed deployments, with seed repository parity for tests.
+- Atomic quota reservation, commit, and release behavior for Prisma-backed deployments, with seed repository parity for tests. Repeated commit/release calls are idempotent and release reasons are redacted before they are stored in quota audit metadata.
 - Dedicated `creative_credit_ledger` state for reserved, settled, refunded, and cancelled creative credits.
 - Idempotent credit settlement/refund behavior keyed through the generation/quota reservation boundary.
 - Pre-provider policy gating: moderation and quota reservation run before any fixture/staging provider adapter work, and adapter failures release the pre-provider quota reservation.
@@ -57,7 +57,8 @@ The completed baseline includes:
 3. The generation is marked failed with safe, redacted error metadata.
 4. Reserved quota is released when provider work should not count against usage.
 5. Reserved credits are refunded idempotently.
-6. The user receives a stable error response without double-charging on retries.
+6. Repeated release/commit attempts return the already-finalized quota state without double-counting usage or released units.
+7. The user receives a stable error response without double-charging on retries.
 
 ### Review-Required Output
 
@@ -128,6 +129,7 @@ The final UI slice was validated with:
 - Keep Admin generation history read-only until retry/cancel/refund requirements and permissions are separately planned.
 - Preserve prompt safety posture: Admin surfaces should continue to expose prompt hash and short preview only, not raw full prompt text.
 - Preserve failure-evidence safety posture: durable generation and Admin DTOs should continue to redact Bearer tokens, API keys, secret-like values, and provider URLs from `errorMessagePreview`.
+- Preserve quota-evidence safety posture: quota reservation audit metadata should stay limited to generation id, workspace, units, quota window id, and redacted reason text; it must not include raw prompts, provider payloads, tokens, secrets, or provider output URLs.
 - Any future provider adapter should exercise the same pre-provider moderation/quota gate, durable generation, quota, credit, media governance, and Admin history paths as the mock provider.
 
 ## Recommended Next Phase
