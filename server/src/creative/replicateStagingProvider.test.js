@@ -100,6 +100,8 @@ test('createReplicateStagingPrediction uses the injected mocked client and retur
 
   assert.equal(calls.length, 1)
   assert.equal(calls[0].input.prompt, request.prompt)
+  assert.equal(JSON.stringify(calls[0]).includes('https://replicate.example'), false)
+  assert.equal(JSON.stringify(calls[0]).includes('rawProvider'), false)
   assert.equal(generation.status, 'queued')
   assert.equal(generation.providerRequestId, 'pred_starting_1')
   assert.deepEqual(generation.outputs, [])
@@ -129,6 +131,51 @@ test('buildReplicateProviderCostMetadata exposes safe budget and estimate metada
   assert.equal(providerCost.budget.status, 'within_budget')
   assert.equal(providerCost.risk.costKnown, true)
   assert.equal(JSON.stringify(providerCost).includes('replicate-token'), false)
+})
+
+test('buildReplicateProviderCostMetadata reports threshold and hardware usage without blocking shell dispatch', async () => {
+  const source = {
+    CREATIVE_STAGING_PROVIDER_ESTIMATE_USD: '1',
+    CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD: '5',
+    CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD: '3',
+    CREATIVE_STAGING_PROVIDER_BUDGET_THRESHOLD_PERCENT: '80',
+  }
+  const providerCost = buildReplicateProviderCostMetadata({
+    request,
+    source,
+    prediction: {
+      id: 'pred_threshold_1',
+      status: 'succeeded',
+      output: ['https://replicate.example/threshold.png'],
+      usage: { hardwareSeconds: 3.25 },
+      actualCostUsd: 1.1,
+    },
+    now: new Date('2026-07-06T00:00:30.000Z'),
+  })
+
+  assert.equal(providerCost.budget.status, 'threshold_exceeded')
+  assert.equal(providerCost.budget.projectedSpendAmount, 4)
+  assert.equal(providerCost.usage.unit, 'hardware_seconds')
+  assert.equal(providerCost.usage.quantity, 3.25)
+  assert.equal(providerCost.actual.amount, 1.1)
+  assert.equal(providerCost.risk.costExceededEstimate, true)
+  assert.equal(JSON.stringify(providerCost).includes('threshold.png'), false)
+
+  let called = false
+  await createReplicateStagingPrediction({
+    request,
+    provider,
+    actor,
+    client: {
+      createPrediction: async () => {
+        called = true
+        return { id: 'pred_threshold_dispatch', status: 'processing' }
+      },
+    },
+    source,
+    now: new Date('2026-07-06T00:00:31.000Z'),
+  })
+  assert.equal(called, true)
 })
 
 test('createReplicateStagingPrediction fails closed before dispatch when budget metadata is missing', async () => {
@@ -352,6 +399,8 @@ test('mapReplicatePredictionStatus normalizes provider lifecycle states', () => 
   assert.equal(mapReplicatePredictionStatus('processing'), 'running')
   assert.equal(mapReplicatePredictionStatus('succeeded'), 'completed')
   assert.equal(mapReplicatePredictionStatus('canceled'), 'cancelled')
+  assert.equal(mapReplicatePredictionStatus('cancelled'), 'cancelled')
+  assert.equal(mapReplicatePredictionStatus(' SUCCEEDED '), 'completed')
   assert.equal(mapReplicatePredictionStatus('unknown'), 'failed')
 })
 
