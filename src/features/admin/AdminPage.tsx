@@ -172,6 +172,25 @@ const generationCreditStatus = (generation: ApiCreativeGenerationRecord) => Stri
 const generationCreditAmount = (generation: ApiCreativeGenerationRecord, key: 'reserved' | 'settled' | 'refunded') => recordNumber(generationCredit(generation), key)
 const generationQuotaAmount = (generation: ApiCreativeGenerationRecord, key: 'limit' | 'used' | 'remaining' | 'released' | 'reserved') => recordNumber(generationQuota(generation), key)
 const generationReviewRequired = (generation: ApiCreativeGenerationRecord) => Boolean(generationSafety(generation).reviewRequired)
+const generationReplayCount = (generation: ApiCreativeGenerationRecord) =>
+  generation.providerReplayEvidence?.available ? generation.providerReplayEvidence.count : 0
+const providerReplayEvidenceSummary = (generation: ApiCreativeGenerationRecord, t: Record<string, string>) => {
+  const evidence = generation.providerReplayEvidence
+  if (!evidence?.available) return textFor(t, 'Replay ledger unavailable', 'Replay ledger 不可用')
+  if (!evidence.count) return textFor(t, 'No replay records', '暂无 replay 记录')
+  const latest = evidence.latest
+  if (!latest) return `${evidence.count} ${textFor(t, 'records', '条记录')}`
+  return [
+    `${evidence.count} ${textFor(t, 'records', '条记录')}`,
+    `${latest.sourceType}/${latest.action}/${latest.normalizedStatus ?? '-'}`,
+    latest.payloadHashPresent
+      ? `${textFor(t, 'payload hash', 'payload hash')} ${latest.payloadHashPreview ?? textFor(t, 'present', '存在')}`
+      : textFor(t, 'payload hash missing', '缺少 payload hash'),
+    latest.sideEffectCompleted
+      ? textFor(t, 'side effects complete', 'side effect 已完成')
+      : textFor(t, 'side effects pending', 'side effect 未完成'),
+  ].join(' · ')
+}
 const mediaGovernancePreviewFields = [
   {
     key: 'retryDelaySeconds',
@@ -3126,6 +3145,8 @@ export function AdminPage({
                   {textFor(t, 'quota', '额度')} {quotaUsed}/{quotaLimit || '-'}
                   {' · '}
                   {textFor(t, 'outputs', '输出')} {generation.outputAssetIds.length}
+                  {' · '}
+                  {textFor(t, 'replays', 'Replay')} {generationReplayCount(generation)}
                   {generationReviewRequired(generation) ? ` · ${textFor(t, 'review required', '需要复核')}` : ''}
                 </small>
                 <div className="button-row">
@@ -3173,6 +3194,27 @@ export function AdminPage({
                     <strong>{textFor(t, 'Provider job', '提供方任务')}</strong>
                     <span>{selectedGeneration.providerRequestId ?? '-'} / {selectedGeneration.providerJobId ?? '-'}</span>
                   </div>
+                  <div>
+                    <strong>{textFor(t, 'Provider replay', 'Provider replay')}</strong>
+                    <span>{providerReplayEvidenceSummary(selectedGeneration, t)}</span>
+                  </div>
+                  {selectedGeneration.providerReplayEvidence?.latest && (
+                    <div>
+                      <strong>{textFor(t, 'Latest replay', '最新 replay')}</strong>
+                      <span>
+                        {textFor(t, 'previous', '之前')} {selectedGeneration.providerReplayEvidence.latest.previousStatus ?? '-'}
+                        {' -> '}
+                        {selectedGeneration.providerReplayEvidence.latest.normalizedStatus ?? '-'}
+                        {' · '}
+                        {textFor(t, 'reason', '原因')} {selectedGeneration.providerReplayEvidence.latest.reasonCode ?? '-'}
+                        {' · '}
+                        {textFor(t, 'ops', '操作')} {selectedGeneration.providerReplayEvidence.latest.completedOperationCount}
+                        {selectedGeneration.providerReplayEvidence.latest.failedOperationType
+                          ? ` · ${textFor(t, 'failed', '失败')} ${selectedGeneration.providerReplayEvidence.latest.failedOperationType}`
+                          : ''}
+                      </span>
+                    </div>
+                  )}
                   <div>
                     <strong>{textFor(t, 'Timeline', '时间线')}</strong>
                     <span>
