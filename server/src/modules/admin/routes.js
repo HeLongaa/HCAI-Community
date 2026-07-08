@@ -27,6 +27,13 @@ const isPointAdjustmentReview = (review) => review?.queue === 'points' || review
 const replaySideEffectCompleted = (replay) =>
   replay?.sideEffectResult?.completed === true
 
+const replaySideEffectOutcome = (replay) => {
+  if (replay?.sideEffectResult?.outcome) return replay.sideEffectResult.outcome
+  if (replay?.action === 'noop' || replay?.action === 'ignored') return 'noop'
+  if (replay?.action === 'rejected') return 'failed'
+  return replaySideEffectCompleted(replay) ? 'completed' : 'pending'
+}
+
 const replayCompletedOperationCount = (replay) =>
   Array.isArray(replay?.sideEffectResult?.completedOperationKeys)
     ? replay.sideEffectResult.completedOperationKeys.length
@@ -48,9 +55,11 @@ const summarizeProviderReplay = (replay) => replay
       providerEventIdPresent: Boolean(replay.providerEventId),
       payloadHashPresent: Boolean(replay.payloadHash),
       payloadHashPreview: replay.payloadHash ? String(replay.payloadHash).slice(0, 12) : null,
+      sideEffectOutcome: replaySideEffectOutcome(replay),
       sideEffectCompleted: replaySideEffectCompleted(replay),
       completedOperationCount: replayCompletedOperationCount(replay),
       failedOperationType: replayFailedOperationType(replay),
+      errorPreviewPresent: Boolean(replay.errorPreview),
       receivedAt: replay.receivedAt ?? null,
       appliedAt: replay.appliedAt ?? null,
     }

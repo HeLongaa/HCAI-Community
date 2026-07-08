@@ -20,6 +20,14 @@ const buildLedgerSideEffectPlan = (plan, replay) => ({
   summary: plan.safeSummary,
 })
 
+const buildNoopSideEffectResult = ({ replay, plan }) => ({
+  completed: true,
+  outcome: 'noop',
+  reasonCode: replay?.reason ?? replay?.reasonCode ?? plan.reasonCode ?? 'noop',
+  completedOperationKeys: [],
+  operations: [],
+})
+
 const generationIdFor = (replay) => replay?.generation?.id ?? replay?.generationId ?? null
 const providerJobIdFor = (replay) => replay?.generation?.providerJobId ?? replay?.providerJobId ?? null
 const providerIdFor = (replay) => replay?.providerId ?? replay?.generation?.provider?.id ?? null
@@ -65,6 +73,7 @@ export const applyProviderReplayThroughLedger = async ({
   }
 
   const initialPlan = buildProviderSideEffectPlan({ replay })
+  const initialAction = replayActionFor(replay, initialPlan)
   const recorded = await replayLedger.record(compactObject({
     generationId: generationIdFor(replay),
     providerId: providerIdFor(replay),
@@ -76,9 +85,12 @@ export const applyProviderReplayThroughLedger = async ({
     payloadHash,
     previousStatus: replay?.previousStatus ?? null,
     normalizedStatus: replay?.nextStatus ?? replay?.generation?.status ?? null,
-    action: replayActionFor(replay, initialPlan),
+    action: initialAction,
     reasonCode: replay?.reason ?? replay?.reasonCode ?? null,
     sideEffectPlan: buildLedgerSideEffectPlan(initialPlan, replay),
+    sideEffectResult: initialAction === 'noop'
+      ? buildNoopSideEffectResult({ replay, plan: initialPlan })
+      : undefined,
     receivedAt,
   }), actor)
 
