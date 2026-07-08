@@ -25,6 +25,7 @@ The repository has enough fixture-safe lifecycle foundation to continue planning
 - Lifecycle side-effect plan/executor pure functions.
 - Fixture replay-ledger integration helpers.
 - Mocked injected provider-status client contract.
+- Fixture-only polling replay idempotency uses hashed output digests for completed status payloads without storing raw provider output URLs.
 - Source-keyed provider lifecycle notification/audit repository wiring.
 - Manual replay authorization/parser pure functions.
 - Fixture-safe polling worker interval skeleton.

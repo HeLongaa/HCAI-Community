@@ -437,9 +437,40 @@ test('fetchReplicateStagingPredictionStatus maps completed outputs but keeps saf
   assert.equal(status.ok, true)
   assert.equal(status.normalizedStatus, 'completed')
   assert.equal(status.generation.outputs.length, 1)
+  assert.equal(status.outputDigest.length, 64)
+  assert.equal(status.payloadHash.length, 64)
   assert.equal(status.safeMetadata.outputCount, 1)
   assert.equal(status.safeMetadata.usageReported, true)
   assert.equal(JSON.stringify(status.safeMetadata).includes('https://replicate.example'), false)
+})
+
+test('fetchReplicateStagingPredictionStatus hashes completed output identity without exposing raw urls', async () => {
+  const fetchStatus = (output) => fetchReplicateStagingPredictionStatus({
+    providerJobId: 'pred_status_completed_digest',
+    request,
+    provider,
+    actor,
+    client: {
+      getPrediction: async (providerJobId) => ({
+        id: providerJobId,
+        status: 'succeeded',
+        output: [output],
+        metrics: { predict_time: 2.2 },
+      }),
+    },
+    source: budgetSource,
+    now: new Date('2026-07-06T00:03:47.000Z'),
+  })
+
+  const first = await fetchStatus('https://replicate.example/status-output-a.png')
+  const second = await fetchStatus('https://replicate.example/status-output-b.png')
+
+  assert.equal(first.outputDigest.length, 64)
+  assert.equal(second.outputDigest.length, 64)
+  assert.notEqual(first.outputDigest, second.outputDigest)
+  assert.notEqual(first.payloadHash, second.payloadHash)
+  assert.equal(JSON.stringify(first.safeMetadata).includes('status-output-a.png'), false)
+  assert.equal(JSON.stringify(second.safeMetadata).includes('status-output-b.png'), false)
 })
 
 test('fetchReplicateStagingPredictionStatus rejects timeout and rate-limit reads without lifecycle replay', async () => {

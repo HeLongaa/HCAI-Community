@@ -342,6 +342,7 @@ test('runProviderPollingWorkerOnce applies completed fixture status through repl
   assert.ok(result.replayed >= 1)
   const targetResult = result.results.find((item) => item.generationId === record.id)
   assert.ok(targetResult)
+  assert.equal(targetResult.statusResult.outputDigest.length, 64)
   assert.equal(targetResult.applied.executed, true)
   assert.equal(targetResult.applied.execution.completed, true)
 
@@ -355,6 +356,9 @@ test('runProviderPollingWorkerOnce applies completed fixture status through repl
   assert.equal(replays.items.length, 1)
   assert.equal(replays.items[0].sourceType, 'polling')
   assert.equal(replays.items[0].action, 'applied')
+  assert.equal(replays.items[0].payloadHash, targetResult.statusResult.payloadHash)
+  assert.equal(replays.items[0].idempotencyKey.endsWith(`:${targetResult.statusResult.outputDigest}`), true)
+  assert.equal(JSON.stringify(replays.items[0]).includes('mock://polling-worker-output.png'), false)
   assert.equal(replays.items[0].sideEffectResult.completed, true)
 })
 

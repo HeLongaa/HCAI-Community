@@ -218,6 +218,9 @@ const mergeLifecycleGeneration = ({ currentRecord, providerGeneration, plan }) =
   policy: currentRecord.policy ?? providerGeneration.policy ?? null,
 })
 
+const replayPayloadDigest = (statusResult) =>
+  statusResult.outputDigest ?? statusResult.payloadHash ?? null
+
 const pollingIdempotencyKey = ({ plan, generation, statusResult }) =>
   [
     'polling',
@@ -226,7 +229,7 @@ const pollingIdempotencyKey = ({ plan, generation, statusResult }) =>
     generation.id,
     plan.providerJobId,
     statusResult.normalizedStatus ?? 'unknown',
-    statusResult.payloadHash ?? 'no-payload',
+    replayPayloadDigest(statusResult) ?? 'no-payload',
   ].map((part) => normalizeSegment(part)).join(':')
 
 const pollingProviderEventId = ({ plan, statusResult }) =>
@@ -310,7 +313,7 @@ export const pollProviderGenerationOnce = async ({
     providerId: plan.providerId,
     providerJobId: plan.providerJobId,
     idempotencyKey: pollingIdempotencyKey({ plan, generation, statusResult }),
-    outputDigest: statusResult.payloadHash ?? null,
+    outputDigest: replayPayloadDigest(statusResult),
   })
   const applied = await applyProviderReplayThroughLedger({
     replay: {

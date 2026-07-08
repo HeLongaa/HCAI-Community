@@ -391,13 +391,17 @@ export const mapReplicatePredictionToCreativeGeneration = ({
   }
 }
 
-const providerStatusPayloadHash = (prediction) => stableHash({
-  id: prediction?.id ?? null,
-  status: prediction?.status ?? null,
-  outputCount: normalizeOutputs(prediction).length,
-  hasMetrics: Boolean(prediction?.metrics || prediction?.usage),
-  hasError: Boolean(prediction?.error || prediction?.logs),
-})
+const providerStatusPayloadHash = (prediction) => {
+  const outputDigest = outputDigestForPrediction(prediction)
+  return stableHash({
+    id: prediction?.id ?? null,
+    status: prediction?.status ?? null,
+    outputCount: normalizeOutputs(prediction).length,
+    outputDigest,
+    hasMetrics: Boolean(prediction?.metrics || prediction?.usage),
+    hasError: Boolean(prediction?.error || prediction?.logs),
+  })
+}
 
 const statusFetchReasonCode = (failure) => {
   if (failure.code === 'PROVIDER_RATE_LIMITED') return 'provider_status_rate_limited'
@@ -443,6 +447,7 @@ export const fetchReplicateStagingPredictionStatus = async ({
         providerId: provider?.id ?? 'replicate',
       })
     }
+    const outputDigest = outputDigestForPrediction(prediction)
     const generation = mapReplicatePredictionToCreativeGeneration({
       request,
       provider,
@@ -464,6 +469,7 @@ export const fetchReplicateStagingPredictionStatus = async ({
       generation,
       receivedAt: now.toISOString(),
       payloadHash: providerStatusPayloadHash(prediction),
+      outputDigest,
       safeMetadata: {
         providerStatus: String(prediction?.status ?? ''),
         normalizedStatus: generation.status,

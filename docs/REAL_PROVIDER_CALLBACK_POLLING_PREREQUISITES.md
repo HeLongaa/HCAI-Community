@@ -100,6 +100,7 @@ Before enabling a polling worker:
 - Separate provider dispatch enablement from polling enablement.
 - Rate-limit provider status reads.
 - Keep provider-status clients injected and disabled by default until the external-call approval package explicitly authorizes a concrete HTTP client.
+- Derive polling replay idempotency from safe status payload hashes and hashed output digests only; do not store raw provider output URLs in replay metadata, audit metadata, logs, or Admin read models.
 - Stop polling terminal generations.
 - Stop polling when the generation is cancelled, expired, missing, or no longer mapped to the expected provider job id.
 - Fail closed when cost budget caps, provider mode checks, or runtime environment checks are invalid.
@@ -151,6 +152,8 @@ Unique constraints should cover at least:
 - Provider event id when available.
 - Provider job id plus normalized status plus payload hash.
 - Internal generation id plus idempotency key.
+
+For completed polling results, the payload hash should include a digest of normalized provider outputs rather than raw output URLs. The replay idempotency key may use that digest so two different completed outputs with the same provider job id, status, and output count do not collapse into the same replay record.
 
 ## Lifecycle Idempotency Matrix
 
