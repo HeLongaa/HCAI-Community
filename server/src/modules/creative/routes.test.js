@@ -267,6 +267,7 @@ test('POST /api/creative/generations can run a Replicate staging fixture through
       stylePreset: 'editorial_launch',
     })
     assert.equal(payload.data.outputs[0].type, 'image')
+    assert.equal(payload.data.outputs[0].url, `/api/media/assets/${payload.data.outputs[0].storage.mediaAssetId}/download`)
     assert.equal(payload.data.outputs[0].storage.persisted, true)
     assert.equal(payload.data.outputs[0].storage.provider, 'media_asset')
     assert.equal(payload.data.outputs[0].source.kind, 'replicate_prediction')
@@ -275,6 +276,8 @@ test('POST /api/creative/generations can run a Replicate staging fixture through
     assert.equal(payload.data.usage.providerCost.schemaVersion, 'provider-cost-v1')
     assert.equal(payload.data.usage.providerCost.budget.status, 'within_budget')
     assert.equal(payload.data.usage.providerCost.actual.amount, 0.2)
+    assert.equal(JSON.stringify(payload.data).includes('route-fixture-1.png'), false)
+    assert.equal(JSON.stringify(payload.data).includes('https://replicate.example'), false)
     assert.equal(JSON.stringify(payload.data).includes('replicate-fixture-token'), false)
     assert.equal(JSON.stringify(payload.data).includes('secret.value'), false)
     assert.equal(payload.data.credit.status, 'settled')

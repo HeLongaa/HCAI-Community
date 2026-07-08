@@ -7,6 +7,9 @@ const escapeXml = (value) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
 
+const publicSourceUrl = (output) =>
+  output.storage?.provider === 'replicate' ? null : output.url
+
 export const buildCreativeArtifactMetadata = ({ generation, output }) => ({
   generated: true,
   generationId: generation.id,
@@ -22,7 +25,7 @@ export const buildCreativeArtifactMetadata = ({ generation, output }) => ({
   inputAssetIds: generation.inputAssetIds,
   parameterKeys: Object.keys(generation.parameters ?? {}).sort(),
   outputType: output.type,
-  sourceUrl: output.url,
+  sourceUrl: publicSourceUrl(output),
   usage: generation.usage,
   credit: generation.credit,
   quota: generation.quota,
