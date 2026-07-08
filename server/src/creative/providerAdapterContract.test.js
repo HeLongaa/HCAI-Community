@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { executeMockCreativeGeneration } from './mockProvider.js'
+import { safeErrorPreview } from './generationRecords.js'
 import { assertCreativeProviderAdapterContract, safeProviderFailure } from './providerAdapterContract.js'
 
 const actor = {
@@ -141,4 +142,18 @@ test('safeProviderFailure maps rate limits, timeouts, and redacts secrets', () =
     retryable: false,
     statusCode: 502,
   })
+})
+
+test('safeErrorPreview redacts durable generation failure evidence', () => {
+  const preview = safeErrorPreview(
+    'provider persistence failed with Bearer secret.value token=provider-token api_key=raw-key sk-secret123456 https://replicate.example/private-output.png',
+  )
+
+  assert.equal(preview.includes('secret.value'), false)
+  assert.equal(preview.includes('provider-token'), false)
+  assert.equal(preview.includes('raw-key'), false)
+  assert.equal(preview.includes('sk-secret123456'), false)
+  assert.equal(preview.includes('https://replicate.example'), false)
+  assert.equal(preview.includes('<redacted>'), true)
+  assert.equal(preview.includes('<redacted-url>'), true)
 })

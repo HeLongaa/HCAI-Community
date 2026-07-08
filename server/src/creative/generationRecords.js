@@ -6,6 +6,12 @@ export const promptPreview = (prompt) => String(prompt ?? '').replace(/\s+/g, ' 
 
 export const sha256 = (value) => createHash('sha256').update(String(value ?? '')).digest('hex')
 
+const redactSensitiveText = (value) => String(value ?? '')
+  .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, '<redacted>')
+  .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/gi, '<redacted>')
+  .replace(/\b(api[_-]?key|token|secret|password)=([^&\s]+)/gi, '$1=<redacted>')
+  .replace(/https?:\/\/[^\s)]+/gi, '<redacted-url>')
+
 export const buildCreativeGenerationRecordPayload = (generation, actor, overrides = {}) => ({
   id: generation.id,
   actorId: actor?.id ?? generation.createdBy?.id ?? null,
@@ -50,4 +56,5 @@ export const statusForPersistedGeneration = (generation) => {
   return 'completed'
 }
 
-export const safeErrorPreview = (error) => String(error?.message ?? error ?? 'Generation failed').replace(/\s+/g, ' ').trim().slice(0, 240)
+export const safeErrorPreview = (error) =>
+  redactSensitiveText(error?.message ?? error ?? 'Generation failed').replace(/\s+/g, ' ').trim().slice(0, 240)

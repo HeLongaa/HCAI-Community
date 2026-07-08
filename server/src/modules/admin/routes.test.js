@@ -609,6 +609,87 @@ test('GET /api/admin/creative/generations surfaces sanitized provider cost and b
   }
 })
 
+test('GET /api/admin/creative/generations redacts durable failed generation evidence', async () => {
+  const generationId = 'admin-failed-generation-redaction-fixture'
+  await repositories.creativeGenerations.create({
+    id: generationId,
+    actorId: 'demo-user-promptlin',
+    actorHandle: 'promptlin',
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'replicate-staging',
+    providerMode: 'replicate_staging',
+    status: 'queued',
+    promptHash: 'c'.repeat(64),
+    promptPreview: 'Admin failed generation redaction fixture',
+    inputAssetIds: [],
+    parameterKeys: ['aspectRatio'],
+    outputAssetIds: [],
+    usage: { estimatedCredits: 1, metered: true },
+    credit: {
+      status: 'refunded',
+      reserved: 1,
+      settled: 0,
+      refunded: 1,
+      reasonCode: 'PROVIDER_EXECUTION_FAILED',
+      quotaReservationId: 'quota-admin-failed-redaction-fixture',
+    },
+    quota: {
+      reservationId: 'quota-admin-failed-redaction-fixture',
+      scope: 'user:promptlin',
+      workspace: 'image',
+      limit: 20,
+      reserved: 0,
+      used: 0,
+      released: 1,
+      remaining: 20,
+    },
+    safety: { moderationRequired: false, reviewRequired: false },
+    policy: { version: 'creative-policy-v1' },
+    providerRequestId: 'pred_admin_failed_redaction_fixture',
+    providerJobId: 'pred_admin_failed_redaction_fixture',
+    createdAt: '2026-07-06T12:10:00.000Z',
+  }, { id: 'demo-user-admin', handle: 'legalpixel' })
+  await repositories.creativeGenerations.fail(generationId, {
+    errorCode: 'PROVIDER_EXECUTION_FAILED',
+    errorMessagePreview: 'provider failed with Bearer secret.value token=provider-token api_key=raw-key https://replicate.example/private-output.png',
+  }, { id: 'demo-user-admin', handle: 'legalpixel' })
+
+  const server = await createTestServer()
+  try {
+    const list = await requestJson(
+      server.url,
+      '/api/admin/creative/generations?providerId=replicate-staging&status=failed&limit=5',
+      {
+        method: 'GET',
+        token: 'demo-access.legalpixel',
+      },
+    )
+    assert.equal(list.status, 200)
+    const item = list.payload.data.find((entry) => entry.id === generationId)
+    assert.ok(item)
+    assert.equal(item.status, 'failed')
+    assert.equal(item.errorCode, 'PROVIDER_EXECUTION_FAILED')
+    assert.equal(item.errorMessagePreview.includes('<redacted>'), true)
+    assert.equal(item.errorMessagePreview.includes('<redacted-url>'), true)
+    assert.equal('prompt' in item, false)
+
+    const detail = await requestJson(server.url, `/api/admin/creative/generations/${generationId}`, {
+      method: 'GET',
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(detail.status, 200)
+    assert.equal(detail.payload.data.errorMessagePreview.includes('<redacted>'), true)
+    const serialized = JSON.stringify(detail.payload.data)
+    assert.equal(serialized.includes('secret.value'), false)
+    assert.equal(serialized.includes('provider-token'), false)
+    assert.equal(serialized.includes('raw-key'), false)
+    assert.equal(serialized.includes('https://replicate.example'), false)
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/admin/creative/generations/:id returns not found for missing records', async () => {
   const server = await createTestServer()
   try {
