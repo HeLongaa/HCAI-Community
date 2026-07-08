@@ -98,6 +98,7 @@ Before the first staging external-call rehearsal, the approval record must expli
 | Can callbacks, polling, or manual replay be enabled? | `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` |
 | How is metadata-only staging smoke run? | `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` |
 | Can a staging adapter planning branch start? | `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` |
+| What shell fixture work is allowed before external calls? | `docs/REAL_PROVIDER_STAGING_ADAPTER_SHELL_PLAN.md` |
 | Are Admin mutations allowed? | `docs/REAL_PROVIDER_ADMIN_MUTATION_REQUIREMENTS.md` |
 | How are provider spend and product credits separated? | `docs/REAL_PROVIDER_COST_METADATA_AND_BUDGET_ALARMS.md` |
 | How should provider budget events connect to audit, notifications, and metrics? | `docs/REAL_PROVIDER_BUDGET_EVENT_WIRING_PLAN.md` |
@@ -114,7 +115,7 @@ Allowed without real-provider approval:
 6. Budget/cost guard implementation that does not dispatch externally.
 7. Fixture-only provider budget event planning that does not persist or send alerts externally.
 8. Fixture-only hardening that proves moderation, quota, budget, and accounting gates run before provider adapter work.
-9. Staging adapter shell work that uses mocked or injected clients only and remains production-denied.
+9. Staging adapter shell work that uses mocked or injected clients only and remains production-denied, following `docs/REAL_PROVIDER_STAGING_ADAPTER_SHELL_PLAN.md`.
 
 Requires explicit external-call approval:
 

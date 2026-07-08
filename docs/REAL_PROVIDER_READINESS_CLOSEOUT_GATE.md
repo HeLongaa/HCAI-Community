@@ -169,6 +169,7 @@ Before starting a staging adapter PR:
 
 - Notion task for the adapter phase exists in Chinese.
 - `docs/REAL_PROVIDER_PREFLIGHT_PLAN.md` points to the closeout gate.
+- `docs/REAL_PROVIDER_STAGING_ADAPTER_SHELL_PLAN.md` has been reviewed for fixture-only shell scope before any SDK or network-capable client is proposed.
 - `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` has been reviewed for the adapter scope.
 - `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` has been reviewed before any external-call rehearsal.
 - `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` has been reviewed before any callback, polling worker, or manual lifecycle replay work.
@@ -214,11 +215,11 @@ The next phase should be named separately from Phase 3 and provider-readiness, f
 
 Recommended first implementation scope:
 
-1. Add a staging-only provider adapter shell behind a new explicit real-provider mode.
+1. Continue the staging-only provider adapter shell under `docs/REAL_PROVIDER_STAGING_ADAPTER_SHELL_PLAN.md`.
 2. Keep production denied by env validation.
-3. Implement request construction and safe failure mapping with mocked provider client tests first.
-4. Add cost metadata mapping and budget fail-closed checks before any external dispatch.
+3. Harden request construction and safe failure mapping with mocked provider client tests first.
+4. Add or preserve cost metadata mapping and budget fail-closed checks before any external dispatch.
 5. Satisfy `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` and add callback/polling idempotency tests before enabling async provider lifecycle.
-6. Run a staging-only smoke with a low provider-side spending cap.
+6. Run metadata-only staging smoke before any explicit external-call approval.
 
 Do not broaden to video, music, chat, production, or Admin mutation controls during the first staging adapter phase.
