@@ -1,6 +1,6 @@
 # Real Provider Staging Smoke Runbook
 
-This runbook defines the safe staging rehearsal that must pass before any real-provider adapter PR can move from mocked fixture coverage toward an external-call staging test.
+This runbook defines the safe staging rehearsal that must pass before any real-provider adapter PR can move from mocked fixture coverage toward an external-call staging test. For the short readiness and closeout checklist, start with `docs/REAL_PROVIDER_STAGING_SMOKE_READINESS.md`, then use this runbook for execution details.
 
 Current status: staging smoke is metadata-only. It validates environment gates, secret presence, provider catalog safety metadata, and default-disabled execution. It does not call Replicate, download provider outputs, create generation records, run webhook or polling workers, or enable production paid-provider traffic.
 

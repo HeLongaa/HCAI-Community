@@ -98,6 +98,7 @@ Before the first staging external-call rehearsal, the approval record must expli
 | What is the current overall real-provider status? | `docs/REAL_PROVIDER_CURRENT_STATUS.md` |
 | Can the first external-call staging rehearsal run? | `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` |
 | Can callbacks, polling, or manual replay be enabled? | `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` |
+| Is metadata-only staging smoke ready to run? | `docs/REAL_PROVIDER_STAGING_SMOKE_READINESS.md` |
 | How is metadata-only staging smoke run? | `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` |
 | Can a staging adapter planning branch start? | `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` |
 | What shell fixture work is allowed before external calls? | `docs/REAL_PROVIDER_STAGING_ADAPTER_SHELL_PLAN.md` |

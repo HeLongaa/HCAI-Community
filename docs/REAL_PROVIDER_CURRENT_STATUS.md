@@ -101,6 +101,7 @@ Without those details, the decision remains no-go.
 | Can a staging adapter planning branch start? | `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` |
 | What fixture-only staging shell work is allowed? | `docs/REAL_PROVIDER_STAGING_ADAPTER_SHELL_PLAN.md` |
 | What must happen before an external provider call? | `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` |
+| Is metadata-only staging smoke ready to run? | `docs/REAL_PROVIDER_STAGING_SMOKE_READINESS.md` |
 | What smoke checks apply to staging provider metadata? | `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` |
 | Can callbacks, polling, or manual replay be enabled? | `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` |
 | Are Admin mutations allowed? | `docs/REAL_PROVIDER_ADMIN_MUTATION_REQUIREMENTS.md` |
@@ -112,7 +113,7 @@ Without those details, the decision remains no-go.
 Allowed next:
 
 1. Documentation consistency updates.
-2. Metadata-only staging smoke improvements.
+2. Metadata-only staging smoke improvements and readiness evidence updates.
 3. Fixture-only staging adapter shell hardening with mocked/injected clients.
 4. Fixture-only tests for request construction, safe failure mapping, cost metadata, budget guards, lifecycle replay, and read-only Admin evidence.
 
