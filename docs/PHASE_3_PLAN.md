@@ -31,6 +31,7 @@ Track C planning notes live in `docs/PHASE_3_TRACK_C_PLAN.md`.
 Track C creative tool closeout notes live in `docs/PHASE_3_TRACK_C_CLOSEOUT.md`.
 Provider readiness planning lives in `docs/PROVIDER_READINESS_PLAN.md`.
 Provider readiness closeout lives in `docs/PROVIDER_READINESS_CLOSEOUT.md`.
+Provider budget operations read-side closeout lives in `docs/REAL_PROVIDER_BUDGET_OPERATIONS_READSIDE_CLOSEOUT.md`.
 
 ## Phase 3 Tracks
 
