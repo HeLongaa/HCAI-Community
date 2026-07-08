@@ -60,6 +60,50 @@ test('buildReplicateImagePredictionPayload maps image requests without secret ma
   assert.equal(JSON.stringify(payload).includes('Authorization'), false)
 })
 
+test('buildReplicateImagePredictionPayload allowlists provider input parameters', () => {
+  const payload = buildReplicateImagePredictionPayload({
+    ...request,
+    parameters: {
+      aspectRatio: 'not-a-ratio token=replicate-token',
+      seed: '7',
+      stylePreset: 'editorial_launch',
+      apiKey: 'replicate-token',
+      Authorization: 'Bearer secret.value',
+      callbackUrl: 'https://internal.example/callback',
+      rawProviderPayload: { token: 'replicate-token' },
+    },
+  })
+
+  assert.deepEqual(payload.input, {
+    prompt: request.prompt,
+    aspect_ratio: '1:1',
+    seed: 7,
+    style_preset: 'editorial_launch',
+  })
+  assert.deepEqual(payload.metadata.parameterKeys, ['aspectRatio', 'seed', 'stylePreset'])
+  const serialized = JSON.stringify(payload)
+  assert.equal(serialized.includes('replicate-token'), false)
+  assert.equal(serialized.includes('secret.value'), false)
+  assert.equal(serialized.includes('callbackUrl'), false)
+  assert.equal(serialized.includes('rawProviderPayload'), false)
+})
+
+test('buildReplicateImagePredictionPayload drops unsafe style presets', () => {
+  const payload = buildReplicateImagePredictionPayload({
+    ...request,
+    parameters: {
+      stylePreset: 'editorial Bearer secret.value',
+    },
+  })
+
+  assert.deepEqual(payload.input, {
+    prompt: request.prompt,
+    aspect_ratio: '1:1',
+  })
+  assert.deepEqual(payload.metadata.parameterKeys, ['aspectRatio'])
+  assert.equal(JSON.stringify(payload).includes('secret.value'), false)
+})
+
 test('buildReplicateImagePredictionPayload rejects non-image staging modes', () => {
   assert.throws(
     () => buildReplicateImagePredictionPayload({ ...request, workspace: 'video' }),

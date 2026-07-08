@@ -236,7 +236,15 @@ test('POST /api/creative/generations can run a Replicate staging fixture through
         mode: 'text_to_image',
         providerId: 'replicate-staging',
         prompt: 'A staging Replicate integration fixture poster',
-        parameters: { aspectRatio: '1:1', seed: 9 },
+        parameters: {
+          aspectRatio: '1:1',
+          seed: 9,
+          stylePreset: 'editorial_launch',
+          apiKey: 'replicate-fixture-token',
+          Authorization: 'Bearer secret.value',
+          callbackUrl: 'https://internal.example/callback',
+          rawProviderPayload: ['replicate-fixture-token', 'raw-response-body'],
+        },
       },
       token: 'demo-access.promptlin',
     })
@@ -245,8 +253,19 @@ test('POST /api/creative/generations can run a Replicate staging fixture through
     assert.equal(payload.error, undefined)
     assert.equal(calls.length, 1)
     assert.equal(calls[0].input.prompt, 'A staging Replicate integration fixture poster')
+    assert.deepEqual(calls[0].metadata.parameterKeys, ['aspectRatio', 'seed', 'stylePreset'])
+    assert.equal(JSON.stringify(calls[0]).includes('replicate-fixture-token'), false)
+    assert.equal(JSON.stringify(calls[0]).includes('secret.value'), false)
+    assert.equal(JSON.stringify(calls[0]).includes('callbackUrl'), false)
+    assert.equal(JSON.stringify(calls[0]).includes('rawProviderPayload'), false)
+    assert.equal(JSON.stringify(calls[0]).includes('raw-response-body'), false)
     assert.equal(payload.data.provider.id, 'replicate-staging')
     assert.equal(payload.data.status, 'completed')
+    assert.deepEqual(payload.data.parameters, {
+      aspectRatio: '1:1',
+      seed: 9,
+      stylePreset: 'editorial_launch',
+    })
     assert.equal(payload.data.outputs[0].type, 'image')
     assert.equal(payload.data.outputs[0].storage.persisted, true)
     assert.equal(payload.data.outputs[0].storage.provider, 'media_asset')
@@ -257,6 +276,7 @@ test('POST /api/creative/generations can run a Replicate staging fixture through
     assert.equal(payload.data.usage.providerCost.budget.status, 'within_budget')
     assert.equal(payload.data.usage.providerCost.actual.amount, 0.2)
     assert.equal(JSON.stringify(payload.data).includes('replicate-fixture-token'), false)
+    assert.equal(JSON.stringify(payload.data).includes('secret.value'), false)
     assert.equal(payload.data.credit.status, 'settled')
     assert.equal(payload.data.credit.reserved, 1)
     assert.equal(payload.data.credit.quotaReservationId, payload.data.quota.reservationId)

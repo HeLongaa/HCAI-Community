@@ -14,23 +14,9 @@ const defaultUsageUnit = 'prediction_seconds'
 const supportedReplicateStatuses = ['starting', 'processing', 'succeeded', 'failed', 'canceled', 'cancelled']
 const safeLowCardinalityPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
 
-const digestForPrediction = (request, actor, prediction) =>
-  createHash('sha256')
-    .update(JSON.stringify({
-      actorId: actor?.id ?? 'anonymous',
-      workspace: request.workspace,
-      mode: request.mode,
-      prompt: request.prompt,
-      inputAssetIds: request.inputAssetIds,
-      parameters: request.parameters,
-      predictionId: prediction?.id ?? null,
-    }))
-    .digest('hex')
-    .slice(0, 16)
-
 const normalizeAspectRatio = (value) => {
   const normalized = String(value ?? '1:1').trim()
-  return normalized || '1:1'
+  return /^[1-9][0-9]?:[1-9][0-9]?$/.test(normalized) ? normalized : '1:1'
 }
 
 const optionalInteger = (value) => {
@@ -68,19 +54,49 @@ const boundedPercent = (value) => {
   return parsed != null && parsed >= 1 && parsed <= 100 ? parsed : null
 }
 
-const buildInput = (request) => {
-  const input = {
-    prompt: request.prompt,
-    aspect_ratio: normalizeAspectRatio(request.parameters?.aspectRatio),
+const buildSafeReplicateParameters = (request) => {
+  const parameters = {
+    aspectRatio: normalizeAspectRatio(request.parameters?.aspectRatio),
   }
   const seed = optionalInteger(request.parameters?.seed)
   if (seed != null) {
-    input.seed = seed
+    parameters.seed = seed
   }
-  if (request.parameters?.stylePreset) {
-    input.style_preset = String(request.parameters.stylePreset)
+  const stylePreset = safeLowCardinalityValue(request.parameters?.stylePreset)
+  if (stylePreset) {
+    parameters.stylePreset = stylePreset
   }
-  return input
+  return parameters
+}
+
+const digestForPrediction = (request, actor, prediction) =>
+  createHash('sha256')
+    .update(JSON.stringify({
+      actorId: actor?.id ?? 'anonymous',
+      workspace: request.workspace,
+      mode: request.mode,
+      prompt: request.prompt,
+      inputAssetIds: request.inputAssetIds,
+      parameters: buildSafeReplicateParameters(request),
+      predictionId: prediction?.id ?? null,
+    }))
+    .digest('hex')
+    .slice(0, 16)
+
+const buildInput = (request) => {
+  const parameters = buildSafeReplicateParameters(request)
+  const parameterKeys = Object.keys(parameters)
+  const input = {
+    prompt: request.prompt,
+    aspect_ratio: parameters.aspectRatio,
+  }
+  if (parameters.seed != null) {
+    input.seed = parameters.seed
+  }
+  if (parameters.stylePreset) {
+    input.style_preset = parameters.stylePreset
+  }
+  return { input, parameterKeys }
 }
 
 export const buildReplicateImagePredictionPayload = (request, options = {}) => {
@@ -90,14 +106,15 @@ export const buildReplicateImagePredictionPayload = (request, options = {}) => {
   if (request.mode !== 'text_to_image') {
     throw new Error('Replicate staging provider only supports text_to_image mode')
   }
+  const { input, parameterKeys } = buildInput(request)
   return {
     model: options.model ?? defaultModel,
-    input: buildInput(request),
+    input,
     metadata: {
       workspace: request.workspace,
       mode: request.mode,
       inputAssetCount: request.inputAssetIds?.length ?? 0,
-      parameterKeys: Object.keys(request.parameters ?? {}).sort(),
+      parameterKeys,
     },
   }
 }
@@ -363,7 +380,7 @@ export const mapReplicatePredictionToCreativeGeneration = ({
     providerJobId: prediction?.id ?? null,
     prompt: request.prompt,
     inputAssetIds: request.inputAssetIds,
-    parameters: request.parameters,
+    parameters: buildSafeReplicateParameters(request),
     outputs,
     usage: {
       estimatedCredits: 1,

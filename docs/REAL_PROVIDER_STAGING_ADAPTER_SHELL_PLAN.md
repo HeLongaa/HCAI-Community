@@ -23,7 +23,7 @@ The goal of the staging adapter shell phase is to make the future first external
 | --- | --- | --- |
 | Provider registry metadata | Available safe metadata | `replicate-staging` is configured only in staging mode, remains `enabled=false`, `default=false`, `adapterImplemented=false`, and `networkCallsEnabled=false`. |
 | Environment validation | Available | `CREATIVE_PROVIDER_MODE=replicate_staging` requires staging runtime, Replicate candidate, token presence, and `staging-only` confirmation; production rejects staging token usage. |
-| Request construction | Available fixture-safe | `buildReplicateImagePredictionPayload` maps image `text_to_image` requests to a Replicate-like payload without making network calls. |
+| Request construction | Available fixture-safe | `buildReplicateImagePredictionPayload` maps image `text_to_image` requests to a Replicate-like payload without making network calls, and allowlists provider-facing parameters before an injected client can see them. |
 | Provider cost metadata | Available fixture-safe | Cost estimate, daily cap, spend, threshold, budget scope, and account reference are normalized into safe low-cardinality metadata. |
 | Budget guard | Available fixture-safe | Missing estimate, missing cap, unsafe metadata, invalid threshold, or projected over-budget spend blocks before an injected client can dispatch. |
 | Generation mapping | Available fixture-safe | Replicate-like prediction statuses map to internal generation states with safe failure previews. |
@@ -73,6 +73,7 @@ Every staging shell PR must preserve these contracts:
 - `POST /api/creative/generations` must not dispatch to Replicate unless the test injects a fixture adapter.
 - Missing or unsafe budget metadata must fail before injected provider dispatch.
 - Provider request payloads must exclude app secrets, raw internal audit metadata, payment data, and user credentials.
+- Provider-facing request parameters and returned generation parameters must be allowlisted so unsupported provider-like fields such as API keys, authorization values, callback URLs, raw payload markers, or raw response hints cannot be echoed through fixture paths.
 - Provider responses must store only safe ids, hashes, counts, status names, cost metadata, and redacted previews.
 - Completed fixture outputs must still flow through media persistence and scan-governance boundaries before user download.
 - Quota and creative credit reservation/settlement/refund behavior must remain idempotent.
