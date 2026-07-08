@@ -290,6 +290,159 @@ test('GET /api/admin/creative/generations lists and filters provider generation 
   }
 })
 
+test('GET /api/admin/creative/generations surfaces sanitized provider cost and budget metadata', async () => {
+  const generationId = 'admin-provider-cost-history-fixture'
+  await repositories.creativeGenerations.create({
+    id: generationId,
+    actorId: 'demo-user-promptlin',
+    actorHandle: 'promptlin',
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'replicate-staging',
+    providerMode: 'staging',
+    status: 'completed',
+    promptHash: 'a'.repeat(64),
+    promptPreview: 'Admin provider cost fixture preview',
+    inputAssetIds: [],
+    parameterKeys: ['aspectRatio', 'seed'],
+    outputAssetIds: ['media-admin-provider-cost-fixture'],
+    usage: {
+      estimatedCredits: 1,
+      providerCostCents: 20,
+      metered: true,
+      providerUsageUnit: 'prediction',
+      providerCost: {
+        schemaVersion: 'provider-cost-v1',
+        providerId: 'replicate',
+        providerAccountRef: 'staging',
+        rawProviderPayload: 'raw-provider-payload-should-not-leak',
+        model: {
+          providerModelId: 'replicate:image:staging',
+          providerModelVersion: 'v1',
+          displayName: 'Replicate image staging',
+          family: 'image',
+          pricingSource: 'fixture_public_pricing',
+          pricingSnapshotAt: '2026-07-06T00:00:00.000Z',
+          rawPricingPayload: 'raw-pricing-payload-should-not-leak',
+        },
+        job: {
+          providerRequestId: 'pred_admin_provider_cost_fixture',
+          providerJobId: 'pred_admin_provider_cost_fixture',
+          region: 'fixture-region',
+          startedAt: '2026-07-06T12:00:00.000Z',
+          completedAt: '2026-07-06T12:00:01.000Z',
+          outputUrl: 'mock://provider-output-url-should-not-leak.png',
+        },
+        usage: {
+          unit: 'hardware_seconds',
+          quantity: 2.5,
+          hardwareClass: 'fixture-gpu',
+          outputCount: 1,
+          inputTokenCount: null,
+          outputTokenCount: null,
+          rawProviderUsageHash: 'b'.repeat(64),
+          rawProviderUsage: { billingAccount: 'billing-account-should-not-leak' },
+        },
+        estimate: {
+          currency: 'USD',
+          amount: 0.25,
+          source: 'pre_dispatch_estimate',
+          confidence: 'estimated',
+          calculatedAt: '2026-07-06T12:00:00.000Z',
+        },
+        actual: {
+          currency: 'USD',
+          amount: 0.2,
+          source: 'provider_result_metadata',
+          confidence: 'provider_reported',
+          settledAt: '2026-07-06T12:00:01.000Z',
+        },
+        budget: {
+          budgetScope: 'staging:replicate:image',
+          dailyCapCurrency: 'USD',
+          dailyCapAmount: 5,
+          spentAmount: 1,
+          projectedSpendAmount: 1.25,
+          remainingAfterEstimateAmount: 3.75,
+          thresholdPercent: 80,
+          status: 'within_budget',
+          rawBudgetSource: 'budget-source-should-not-leak',
+        },
+        risk: {
+          costKnown: true,
+          costExceededEstimate: false,
+          providerUsageMissing: false,
+          billingReconciliationRequired: false,
+          rawRiskTrace: 'risk-trace-should-not-leak',
+        },
+      },
+      rawUsagePayload: 'raw-usage-payload-should-not-leak',
+    },
+    credit: { status: 'settled', reserved: 1, settled: 1, refunded: 0, quotaReservationId: 'quota-admin-provider-cost-fixture' },
+    quota: { reservationId: 'quota-admin-provider-cost-fixture', scope: 'user:promptlin', workspace: 'image', limit: 20, reserved: 0, used: 1, released: 0, remaining: 19 },
+    safety: { moderationRequired: false, reviewRequired: false },
+    policy: { version: 'creative-policy-v1', gates: { quota: true, credit: true, moderation: true, review: true } },
+    providerRequestId: 'pred_admin_provider_cost_fixture',
+    providerJobId: 'pred_admin_provider_cost_fixture',
+    createdAt: '2026-07-06T12:00:00.000Z',
+    completedAt: '2026-07-06T12:00:01.000Z',
+  }, { id: 'demo-user-admin', handle: 'legalpixel' })
+
+  const server = await createTestServer()
+  try {
+    const list = await requestJson(
+      server.url,
+      '/api/admin/creative/generations?providerId=replicate-staging&mediaAssetId=media-admin-provider-cost-fixture&limit=5',
+      {
+        method: 'GET',
+        token: 'demo-access.legalpixel',
+      },
+    )
+
+    assert.equal(list.status, 200)
+    const item = list.payload.data.find((entry) => entry.id === generationId)
+    assert.ok(item)
+    assert.equal(item.usage.estimatedCredits, 1)
+    assert.equal(item.usage.providerCostCents, 20)
+    assert.equal(item.usage.providerCost.schemaVersion, 'provider-cost-v1')
+    assert.equal(item.usage.providerCost.providerId, 'replicate')
+    assert.equal(item.usage.providerCost.providerAccountRef, 'staging')
+    assert.equal(item.usage.providerCost.model.providerModelId, 'replicate:image:staging')
+    assert.equal(item.usage.providerCost.usage.unit, 'hardware_seconds')
+    assert.equal(item.usage.providerCost.usage.quantity, 2.5)
+    assert.equal(item.usage.providerCost.usage.rawProviderUsageHash, 'b'.repeat(64))
+    assert.equal(item.usage.providerCost.estimate.amount, 0.25)
+    assert.equal(item.usage.providerCost.actual.amount, 0.2)
+    assert.equal(item.usage.providerCost.budget.budgetScope, 'staging:replicate:image')
+    assert.equal(item.usage.providerCost.budget.status, 'within_budget')
+    assert.equal(item.usage.providerCost.budget.projectedSpendAmount, 1.25)
+    assert.equal(item.usage.providerCost.risk.costKnown, true)
+    assert.equal(item.usage.providerCost.risk.costExceededEstimate, false)
+    assert.equal(item.providerReplayEvidence.available, true)
+    assert.equal(item.providerReplayEvidence.count, 0)
+    assert.equal('prompt' in item, false)
+
+    const detail = await requestJson(server.url, `/api/admin/creative/generations/${generationId}`, {
+      method: 'GET',
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(detail.status, 200)
+    assert.equal(detail.payload.data.usage.providerCost.actual.confidence, 'provider_reported')
+    assert.equal(detail.payload.data.usage.providerCost.job.providerJobId, 'pred_admin_provider_cost_fixture')
+
+    const serialized = JSON.stringify(detail.payload.data)
+    assert.equal(serialized.includes('raw-provider-payload-should-not-leak'), false)
+    assert.equal(serialized.includes('raw-pricing-payload-should-not-leak'), false)
+    assert.equal(serialized.includes('provider-output-url-should-not-leak'), false)
+    assert.equal(serialized.includes('billing-account-should-not-leak'), false)
+    assert.equal(serialized.includes('budget-source-should-not-leak'), false)
+    assert.equal(serialized.includes('risk-trace-should-not-leak'), false)
+    assert.equal(serialized.includes('raw-usage-payload-should-not-leak'), false)
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/admin/creative/generations/:id returns not found for missing records', async () => {
   const server = await createTestServer()
   try {

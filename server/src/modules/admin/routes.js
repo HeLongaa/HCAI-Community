@@ -44,6 +44,112 @@ const replayFailedOperationType = (replay) =>
   replay?.sideEffectResult?.operations?.find?.((operation) => operation?.status === 'failed')?.type ??
   null
 
+const asRecord = (value) =>
+  value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+
+const safeNumber = (value) => {
+  if (value == null || value === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const safeString = (value) => value == null ? null : String(value)
+
+const safeBoolean = (value) => typeof value === 'boolean' ? value : null
+
+const safeProviderCost = (providerCost) => {
+  const source = asRecord(providerCost)
+  if (!source.schemaVersion && !source.providerId && !source.budget && !source.estimate && !source.actual) {
+    return null
+  }
+  const model = asRecord(source.model)
+  const job = asRecord(source.job)
+  const usage = asRecord(source.usage)
+  const estimate = asRecord(source.estimate)
+  const actual = asRecord(source.actual)
+  const budget = asRecord(source.budget)
+  const risk = asRecord(source.risk)
+
+  return {
+    schemaVersion: safeString(source.schemaVersion),
+    providerId: safeString(source.providerId),
+    providerAccountRef: safeString(source.providerAccountRef),
+    model: {
+      providerModelId: safeString(model.providerModelId),
+      providerModelVersion: safeString(model.providerModelVersion),
+      displayName: safeString(model.displayName),
+      family: safeString(model.family),
+      pricingSource: safeString(model.pricingSource),
+      pricingSnapshotAt: safeString(model.pricingSnapshotAt),
+    },
+    job: {
+      providerRequestId: safeString(job.providerRequestId),
+      providerJobId: safeString(job.providerJobId),
+      region: safeString(job.region),
+      startedAt: safeString(job.startedAt),
+      completedAt: safeString(job.completedAt),
+    },
+    usage: {
+      unit: safeString(usage.unit),
+      quantity: safeNumber(usage.quantity),
+      hardwareClass: safeString(usage.hardwareClass),
+      outputCount: safeNumber(usage.outputCount),
+      inputTokenCount: safeNumber(usage.inputTokenCount),
+      outputTokenCount: safeNumber(usage.outputTokenCount),
+      rawProviderUsageHash: safeString(usage.rawProviderUsageHash),
+    },
+    estimate: {
+      currency: safeString(estimate.currency),
+      amount: safeNumber(estimate.amount),
+      source: safeString(estimate.source),
+      confidence: safeString(estimate.confidence),
+      calculatedAt: safeString(estimate.calculatedAt),
+    },
+    actual: {
+      currency: safeString(actual.currency),
+      amount: safeNumber(actual.amount),
+      source: safeString(actual.source),
+      confidence: safeString(actual.confidence),
+      settledAt: safeString(actual.settledAt),
+    },
+    budget: {
+      budgetScope: safeString(budget.budgetScope),
+      dailyCapCurrency: safeString(budget.dailyCapCurrency),
+      dailyCapAmount: safeNumber(budget.dailyCapAmount),
+      spentAmount: safeNumber(budget.spentAmount),
+      projectedSpendAmount: safeNumber(budget.projectedSpendAmount),
+      remainingAfterEstimateAmount: safeNumber(budget.remainingAfterEstimateAmount),
+      thresholdPercent: safeNumber(budget.thresholdPercent),
+      status: safeString(budget.status),
+    },
+    risk: {
+      costKnown: safeBoolean(risk.costKnown),
+      costExceededEstimate: safeBoolean(risk.costExceededEstimate),
+      providerUsageMissing: safeBoolean(risk.providerUsageMissing),
+      billingReconciliationRequired: safeBoolean(risk.billingReconciliationRequired),
+    },
+  }
+}
+
+const safeGenerationUsage = (usage) => {
+  const source = asRecord(usage)
+  if (Object.keys(source).length === 0) return null
+  return {
+    estimatedCredits: safeNumber(source.estimatedCredits),
+    providerCostCents: safeNumber(source.providerCostCents),
+    metered: safeBoolean(source.metered),
+    costModel: safeString(source.costModel),
+    currency: safeString(source.currency),
+    providerUsageUnit: safeString(source.providerUsageUnit),
+    providerCost: safeProviderCost(source.providerCost),
+  }
+}
+
+const sanitizeCreativeGenerationHistory = (generation) => ({
+  ...generation,
+  usage: safeGenerationUsage(generation.usage),
+})
+
 const summarizeProviderReplay = (replay) => replay
   ? {
       id: replay.id,
@@ -89,7 +195,7 @@ const buildProviderReplayEvidence = async (generation, replayLedger) => {
 }
 
 const attachProviderReplayEvidence = async (generation, replayLedger) => ({
-  ...generation,
+  ...sanitizeCreativeGenerationHistory(generation),
   providerReplayEvidence: await buildProviderReplayEvidence(generation, replayLedger),
 })
 

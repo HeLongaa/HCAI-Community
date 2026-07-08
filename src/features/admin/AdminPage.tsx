@@ -174,6 +174,7 @@ const generationQuotaAmount = (generation: ApiCreativeGenerationRecord, key: 'li
 const generationReviewRequired = (generation: ApiCreativeGenerationRecord) => Boolean(generationSafety(generation).reviewRequired)
 const generationReplayCount = (generation: ApiCreativeGenerationRecord) =>
   generation.providerReplayEvidence?.available ? generation.providerReplayEvidence.count : 0
+const generationProviderCost = (generation: ApiCreativeGenerationRecord) => generation.usage?.providerCost ?? null
 const providerReplayEvidenceSummary = (generation: ApiCreativeGenerationRecord, t: Record<string, string>) => {
   const evidence = generation.providerReplayEvidence
   if (!evidence?.available) return textFor(t, 'Replay ledger unavailable', 'Replay ledger 不可用')
@@ -907,6 +908,31 @@ export function AdminPage({
 
   const formatMetricAmount = (value: number | null | undefined) =>
     new Intl.NumberFormat(isZh ? 'zh-CN' : 'en-US', { maximumFractionDigits: 2 }).format(Number(value ?? 0))
+
+  const formatProviderCostAmount = (amount: number | null | undefined, currency: string | null | undefined) =>
+    amount == null ? '-' : `${currency ?? 'USD'} ${formatMetricAmount(amount)}`
+
+  const formatProviderCostSummary = (generation: ApiCreativeGenerationRecord) => {
+    const providerCost = generationProviderCost(generation)
+    if (!providerCost) return textFor(t, 'cost unavailable', '成本不可用')
+    const currency = providerCost.actual.currency ?? providerCost.estimate.currency ?? providerCost.budget.dailyCapCurrency
+    const amount = providerCost.actual.amount ?? providerCost.estimate.amount
+    const confidence = providerCost.actual.confidence ?? providerCost.estimate.confidence ?? textFor(t, 'unknown', '未知')
+    return `${formatProviderCostAmount(amount, currency)} · ${confidence}`
+  }
+
+  const formatProviderBudgetSummary = (generation: ApiCreativeGenerationRecord) => {
+    const providerCost = generationProviderCost(generation)
+    if (!providerCost) return textFor(t, 'budget unavailable', '预算不可用')
+    const budget = providerCost.budget
+    const currency = budget.dailyCapCurrency ?? providerCost.estimate.currency ?? providerCost.actual.currency
+    return [
+      budget.status ?? textFor(t, 'unknown', '未知'),
+      budget.budgetScope ?? '-',
+      `${textFor(t, 'cap', '上限')} ${formatProviderCostAmount(budget.dailyCapAmount, currency)}`,
+      `${textFor(t, 'projected', '预计')} ${formatProviderCostAmount(budget.projectedSpendAmount, currency)}`,
+    ].join(' · ')
+  }
 
   const formatMetricBytes = (value: number | null | undefined) => {
     const bytes = Number(value ?? 0)
@@ -3130,6 +3156,7 @@ export function AdminPage({
             const creditStatus = generationCreditStatus(generation)
             const quotaUsed = generationQuotaAmount(generation, 'used')
             const quotaLimit = generationQuotaAmount(generation, 'limit')
+            const providerCost = generationProviderCost(generation)
             const isSelected = selectedGenerationId === generation.id
             return (
               <div className={isSelected ? 'admin-row deep-linked' : 'admin-row'} key={generation.id}>
@@ -3148,6 +3175,7 @@ export function AdminPage({
                   {textFor(t, 'outputs', '输出')} {generation.outputAssetIds.length}
                   {' · '}
                   {textFor(t, 'replays', 'Replay')} {generationReplayCount(generation)}
+                  {providerCost ? ` · ${textFor(t, 'cost', '成本')} ${formatProviderCostSummary(generation)} · ${textFor(t, 'budget', '预算')} ${providerCost.budget.status ?? '-'}` : ''}
                   {generationReviewRequired(generation) ? ` · ${textFor(t, 'review required', '需要复核')}` : ''}
                 </small>
                 <div className="button-row">
@@ -3198,6 +3226,14 @@ export function AdminPage({
                   <div>
                     <strong>{textFor(t, 'Provider replay', 'Provider replay')}</strong>
                     <span>{providerReplayEvidenceSummary(selectedGeneration, t)}</span>
+                  </div>
+                  <div>
+                    <strong>{textFor(t, 'Provider cost', 'Provider cost')}</strong>
+                    <span>{formatProviderCostSummary(selectedGeneration)}</span>
+                  </div>
+                  <div>
+                    <strong>{textFor(t, 'Provider budget', 'Provider budget')}</strong>
+                    <span>{formatProviderBudgetSummary(selectedGeneration)}</span>
                   </div>
                   {selectedGeneration.providerReplayEvidence?.latest && (
                     <div>
