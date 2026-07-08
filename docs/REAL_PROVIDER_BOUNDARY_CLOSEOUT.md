@@ -35,6 +35,7 @@ The repository has enough fixture-safe lifecycle foundation to continue planning
 - Manual replay authorization/parser pure functions.
 - Fixture-safe polling worker interval skeleton.
 - Fixture-only provider budget event plan for safe threshold-crossed, dispatch-blocked, and cost-anomaly audit/alert summaries.
+- Provider budget operations read-side closeout: durable audit persistence, internal notifications, Admin operations metrics, Prometheus exporter metrics, fixture dry-run dispatch audit rows, and Admin generation cost/budget visibility are available read-only.
 
 The polling worker skeleton is disabled by default. It requires `CREATIVE_PROVIDER_POLLING_WORKER_ENABLED=true`, `CREATIVE_PROVIDER_POLLING_ENABLED=true`, and an injected mocked status client in tests. There is no default provider-status HTTP client.
 
@@ -102,6 +103,7 @@ Before the first staging external-call rehearsal, the approval record must expli
 | Are Admin mutations allowed? | `docs/REAL_PROVIDER_ADMIN_MUTATION_REQUIREMENTS.md` |
 | How are provider spend and product credits separated? | `docs/REAL_PROVIDER_COST_METADATA_AND_BUDGET_ALARMS.md` |
 | How should provider budget events connect to audit, notifications, and metrics? | `docs/REAL_PROVIDER_BUDGET_EVENT_WIRING_PLAN.md` |
+| What provider budget read-side surfaces are usable now? | `docs/REAL_PROVIDER_BUDGET_OPERATIONS_READSIDE_CLOSEOUT.md` |
 
 ## Next Allowed Work
 

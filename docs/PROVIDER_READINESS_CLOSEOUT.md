@@ -31,6 +31,7 @@ The completed baseline includes:
 - Pre-provider policy gating: moderation and quota reservation run before any fixture/staging provider adapter work, and adapter failures release the pre-provider quota reservation.
 - `GET /api/admin/creative/generations` and `GET /api/admin/creative/generations/:id` for audit-authorized read-only generation history.
 - Admin Center `Generation history` panel with filters, pagination, safe details, output asset linking, and `creative_generation` audit drill-downs.
+- Read-only provider budget operations surfaces for safe provider budget audit rows, internal notifications, Admin operations metrics, Prometheus-compatible exporter metrics, fixture dry-run dispatch audit rows, and sanitized generation cost/budget summaries.
 - Documentation and feature-contract coverage that keep the mock-provider/provider-boundary distinction explicit.
 
 ## Usable Operational Flows
@@ -132,6 +133,8 @@ The final UI slice was validated with:
 The next phase should be a real-provider readiness or staging-provider integration phase, not another provider-readiness accounting slice.
 
 The current real-provider boundary handoff lives in `docs/REAL_PROVIDER_BOUNDARY_CLOSEOUT.md`; check it first before starting provider work. The preflight plan lives in `docs/REAL_PROVIDER_PREFLIGHT_PLAN.md`; the staging-only provider candidate and secrets strategy live in `docs/REAL_PROVIDER_STAGING_STRATEGY.md`; the future Admin mutation requirements live in `docs/REAL_PROVIDER_ADMIN_MUTATION_REQUIREMENTS.md`; provider cost metadata and budget alarms live in `docs/REAL_PROVIDER_COST_METADATA_AND_BUDGET_ALARMS.md`; callback/polling prerequisites live in `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md`; the final closeout gate lives in `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md`.
+
+Provider budget operations read-side closeout lives in `docs/REAL_PROVIDER_BUDGET_OPERATIONS_READSIDE_CLOSEOUT.md`; use it to distinguish safe read-only audit/notification/metrics/generation-history visibility from deferred real external alert delivery and Admin mutation controls.
 
 Recommended order:
 
