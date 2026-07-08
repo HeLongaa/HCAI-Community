@@ -570,7 +570,7 @@ export type ApiCreativeGenerationRecord = {
   inputAssetIds: string[]
   parameterKeys: string[]
   outputAssetIds: string[]
-  usage?: unknown
+  usage?: ApiCreativeGenerationUsage | null
   credit?: unknown
   quota?: unknown
   safety?: unknown
@@ -609,6 +609,76 @@ export type ApiCreativeGenerationRecord = {
       appliedAt: string | null
     }
   }
+}
+
+export type ApiCreativeProviderCost = {
+  schemaVersion: string | null
+  providerId: string | null
+  providerAccountRef: string | null
+  model: {
+    providerModelId: string | null
+    providerModelVersion: string | null
+    displayName: string | null
+    family: string | null
+    pricingSource: string | null
+    pricingSnapshotAt: string | null
+  }
+  job: {
+    providerRequestId: string | null
+    providerJobId: string | null
+    region: string | null
+    startedAt: string | null
+    completedAt: string | null
+  }
+  usage: {
+    unit: string | null
+    quantity: number | null
+    hardwareClass: string | null
+    outputCount: number | null
+    inputTokenCount: number | null
+    outputTokenCount: number | null
+    rawProviderUsageHash: string | null
+  }
+  estimate: {
+    currency: string | null
+    amount: number | null
+    source: string | null
+    confidence: string | null
+    calculatedAt: string | null
+  }
+  actual: {
+    currency: string | null
+    amount: number | null
+    source: string | null
+    confidence: string | null
+    settledAt: string | null
+  }
+  budget: {
+    budgetScope: string | null
+    dailyCapCurrency: string | null
+    dailyCapAmount: number | null
+    spentAmount: number | null
+    projectedSpendAmount: number | null
+    remainingAfterEstimateAmount: number | null
+    thresholdPercent: number | null
+    status: string | null
+  }
+  risk: {
+    costKnown: boolean | null
+    costExceededEstimate: boolean | null
+    providerUsageMissing: boolean | null
+    billingReconciliationRequired: boolean | null
+  }
+}
+
+export type ApiCreativeGenerationUsage = {
+  estimatedCredits: number | null
+  providerCostCents: number | null
+  metered: boolean | null
+  costModel: string | null
+  currency: string | null
+  providerUsageUnit: string | null
+  providerCost: ApiCreativeProviderCost | null
 }
 
 export type AdminCreativeGenerationHistoryQuery = {

@@ -92,6 +92,7 @@ Every staging shell PR must preserve these contracts:
 3. **Cost and budget observability**
    - Persist and surface safe provider cost metadata in read-only Admin generation history.
    - Keep provider spend separate from product creative credits and external billing.
+   - Current fixture-safe status: Admin generation history sanitizes `usage.providerCost` through an allowlist before returning list/detail records, and the Admin UI shows read-only provider cost and budget summaries. Tests prove raw provider payload fields, output URLs, billing-account traces, and other unknown provider metadata are not exposed.
 
 4. **Metadata smoke closeout**
    - Keep `networkCallsEnabled=false` and `adapterImplemented=false` until a separately approved PR intentionally changes the closeout state.

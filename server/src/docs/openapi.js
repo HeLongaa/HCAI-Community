@@ -1592,7 +1592,7 @@ export const openApiDocument = {
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
         ],
         responses: {
-          '200': { description: 'Creative generation history list with safe provider replay evidence summaries when available' },
+          '200': { description: 'Creative generation history list with sanitized provider cost, budget, and replay evidence summaries when available' },
           '403': { description: 'Requires audit read permission' },
         },
       },
@@ -1602,7 +1602,7 @@ export const openApiDocument = {
         summary: 'Read a single creative generation history record',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         responses: {
-          '200': { description: 'Creative generation history detail with safe provider replay evidence summary when available' },
+          '200': { description: 'Creative generation history detail with sanitized provider cost, budget, and replay evidence summaries when available' },
           '403': { description: 'Requires audit read permission' },
           '404': { description: 'Creative generation record not found' },
         },
