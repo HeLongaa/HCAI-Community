@@ -9,6 +9,47 @@ import { repositories } from '../../repositories/index.js'
 import { registerMediaRoutes } from '../media/routes.js'
 import { registerCreativeRoutes } from './routes.js'
 
+const replicateStagingEnvKeys = [
+  'NODE_ENV',
+  'ACCESS_TOKEN_SECRET',
+  'CREATIVE_PROVIDER_RUNTIME_ENV',
+  'CREATIVE_PROVIDER_MODE',
+  'CREATIVE_STAGING_IMAGE_PROVIDER',
+  'CREATIVE_STAGING_PROVIDER_API_TOKEN',
+  'CREATIVE_STAGING_PROVIDER_CONFIRMATION',
+  'CREATIVE_STAGING_PROVIDER_ESTIMATE_USD',
+  'CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD',
+  'CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD',
+  'CREATIVE_DAILY_QUOTA',
+  'MEDIA_SCAN_PROVIDER',
+]
+
+const applyReplicateStagingFixtureEnv = (overrides = {}) => {
+  const previous = Object.fromEntries(replicateStagingEnvKeys.map((key) => [key, process.env[key]]))
+  Object.assign(process.env, {
+    NODE_ENV: 'production',
+    ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_PROVIDER_MODE: 'replicate_staging',
+    CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+    CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-fixture-token',
+    CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+    CREATIVE_STAGING_PROVIDER_ESTIMATE_USD: '0.25',
+    CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD: '5',
+    CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD: '1',
+    ...overrides,
+  })
+  return () => {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value == null) {
+        delete process.env[key]
+      } else {
+        process.env[key] = value
+      }
+    }
+  }
+}
+
 test('GET /api/creative/providers lists safe provider capability metadata', async () => {
   const server = await createRouteTestServer(registerCreativeRoutes)
   try {
@@ -155,30 +196,7 @@ test('POST /api/creative/generations persists mock provider output through media
 
 test('POST /api/creative/generations can run a Replicate staging fixture through policy and media governance', async () => {
   resetCreativePolicyState()
-  const previousEnv = {
-    NODE_ENV: process.env.NODE_ENV,
-    CREATIVE_PROVIDER_RUNTIME_ENV: process.env.CREATIVE_PROVIDER_RUNTIME_ENV,
-    CREATIVE_PROVIDER_MODE: process.env.CREATIVE_PROVIDER_MODE,
-    CREATIVE_STAGING_IMAGE_PROVIDER: process.env.CREATIVE_STAGING_IMAGE_PROVIDER,
-    CREATIVE_STAGING_PROVIDER_API_TOKEN: process.env.CREATIVE_STAGING_PROVIDER_API_TOKEN,
-    CREATIVE_STAGING_PROVIDER_CONFIRMATION: process.env.CREATIVE_STAGING_PROVIDER_CONFIRMATION,
-    CREATIVE_STAGING_PROVIDER_ESTIMATE_USD: process.env.CREATIVE_STAGING_PROVIDER_ESTIMATE_USD,
-    CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD: process.env.CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD,
-    CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD: process.env.CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD,
-    ACCESS_TOKEN_SECRET: process.env.ACCESS_TOKEN_SECRET,
-    MEDIA_SCAN_PROVIDER: process.env.MEDIA_SCAN_PROVIDER,
-  }
-  Object.assign(process.env, {
-    NODE_ENV: 'production',
-    ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
-    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
-    CREATIVE_PROVIDER_MODE: 'replicate_staging',
-    CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
-    CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-fixture-token',
-    CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
-    CREATIVE_STAGING_PROVIDER_ESTIMATE_USD: '0.25',
-    CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD: '5',
-    CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD: '1',
+  const restoreEnv = applyReplicateStagingFixtureEnv({
     MEDIA_SCAN_PROVIDER: 'manual',
   })
   const calls = []
@@ -250,13 +268,168 @@ test('POST /api/creative/generations can run a Replicate staging fixture through
     assert.deepEqual(payload.data.generationRecord.outputAssetIds, [payload.data.outputs[0].storage.mediaAssetId])
   } finally {
     await server.close()
-    for (const [key, value] of Object.entries(previousEnv)) {
-      if (value == null) {
-        delete process.env[key]
-      } else {
-        process.env[key] = value
-      }
-    }
+    restoreEnv()
+    resetCreativePolicyState()
+  }
+})
+
+test('POST /api/creative/generations blocks unsafe Replicate fixture prompts before adapter dispatch', async () => {
+  resetCreativePolicyState()
+  const restoreEnv = applyReplicateStagingFixtureEnv()
+  let adapterCalls = 0
+  const fixtureAdapters = {
+    'replicate-staging': async () => {
+      adapterCalls += 1
+      throw new Error('fixture adapter should not run for moderated prompts')
+    },
+  }
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, { fixtureAdapters }))
+  try {
+    const before = await repositories.creativeGenerations.list({
+      actorHandle: 'promptlin',
+      limit: 100,
+    })
+    const { status, payload } = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        providerId: 'replicate-staging',
+        prompt: 'Make a phishing fake login page to steal passwords',
+      },
+      token: 'demo-access.promptlin',
+    })
+
+    assert.equal(status, 422)
+    assert.equal(payload.data, null)
+    assert.equal(payload.error.code, 'CREATIVE_MODERATION_BLOCKED')
+    assert.equal(adapterCalls, 0)
+    const after = await repositories.creativeGenerations.list({
+      actorHandle: 'promptlin',
+      limit: 100,
+    })
+    assert.equal(after.items.length, before.items.length)
+  } finally {
+    await server.close()
+    restoreEnv()
+    resetCreativePolicyState()
+  }
+})
+
+test('POST /api/creative/generations blocks Replicate fixture dispatch when quota is exhausted', async () => {
+  resetCreativePolicyState()
+  const restoreEnv = applyReplicateStagingFixtureEnv({
+    CREATIVE_DAILY_QUOTA: '1',
+  })
+  let adapterCalls = 0
+  const fixtureAdapters = {
+    'replicate-staging': async () => {
+      adapterCalls += 1
+      throw new Error('fixture adapter should not run after quota is exhausted')
+    },
+  }
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, { fixtureAdapters }))
+  try {
+    const window = quotaWindowFor(new Date())
+    const reservation = await repositories.creativeQuota.reserve({
+      generationId: 'gen_quota_prefill_legalpixel',
+      actorId: 'demo-user-moderator',
+      actorHandle: 'legalpixel',
+      workspace: 'image',
+      windowType: window.type,
+      windowStart: window.start,
+      windowEnd: window.end,
+      limit: 3,
+      costUnits: 3,
+      policyVersion: 'creative-policy-v1',
+    }, { id: 'demo-user-moderator', handle: 'legalpixel' })
+    assert.equal(reservation.reserved, true)
+    await repositories.creativeQuota.commit(reservation.quota.reservationId, {
+      id: 'demo-user-moderator',
+      handle: 'legalpixel',
+    })
+
+    const beforeExceeded = await repositories.creativeGenerations.list({
+      actorHandle: 'legalpixel',
+      limit: 100,
+    })
+    const second = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        providerId: 'replicate-staging',
+        prompt: 'A staging quota blocked poster',
+      },
+      token: 'demo-access.legalpixel',
+    })
+
+    assert.equal(second.status, 429)
+    assert.equal(second.payload.error.code, 'CREATIVE_QUOTA_EXCEEDED')
+    assert.equal(adapterCalls, 0)
+    const afterExceeded = await repositories.creativeGenerations.list({
+      actorHandle: 'legalpixel',
+      limit: 100,
+    })
+    assert.equal(afterExceeded.items.length, beforeExceeded.items.length)
+  } finally {
+    await server.close()
+    restoreEnv()
+    resetCreativePolicyState()
+  }
+})
+
+test('POST /api/creative/generations releases quota without records when Replicate fixture adapter fails before output', async () => {
+  resetCreativePolicyState()
+  const restoreEnv = applyReplicateStagingFixtureEnv({
+    CREATIVE_DAILY_QUOTA: '1',
+  })
+  let adapterCalls = 0
+  const fixtureAdapters = {
+    'replicate-staging': async () => {
+      adapterCalls += 1
+      throw new HttpError(503, 'PROVIDER_FIXTURE_FAILED', 'Injected Replicate fixture failed before provider work')
+    },
+  }
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, { fixtureAdapters }))
+  try {
+    const before = await repositories.creativeGenerations.list({
+      actorHandle: 'opsplus',
+      limit: 100,
+    })
+    const failed = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        providerId: 'replicate-staging',
+        prompt: 'A staging fixture failure poster',
+      },
+      token: 'demo-access.opsplus',
+    })
+
+    assert.equal(failed.status, 503)
+    assert.equal(failed.payload.error.code, 'PROVIDER_FIXTURE_FAILED')
+    assert.equal(adapterCalls, 1)
+
+    const window = quotaWindowFor(new Date())
+    const quota = await repositories.creativeQuota.getQuotaWindow({
+      actorHandle: 'opsplus',
+      workspace: 'image',
+      windowType: window.type,
+      windowStart: window.start,
+    })
+    assert.equal(quota.reserved, 0)
+    assert.equal(quota.used, 0)
+    assert.equal(quota.released, 1)
+    assert.equal(quota.remaining, quota.limit)
+
+    const after = await repositories.creativeGenerations.list({
+      actorHandle: 'opsplus',
+      limit: 100,
+    })
+    assert.equal(after.items.length, before.items.length)
+    assert.equal(after.items.some((item) => item.promptPreview === 'A staging fixture failure poster'), false)
+  } finally {
+    await server.close()
+    restoreEnv()
     resetCreativePolicyState()
   }
 })
