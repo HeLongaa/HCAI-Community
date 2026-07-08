@@ -31,6 +31,7 @@ The goal of the staging adapter shell phase is to make the future first external
 | Prediction creation contract | Available injected only | Prediction creation requires an injected `createPrediction` client; no SDK or network-capable client exists. |
 | Lifecycle replay helpers | Available fixture-safe | Replicate-like lifecycle events map into replay reducer decisions with output digests, duplicate suppression, and job mismatch rejection. |
 | Route-level fixture path | Available through injected adapters | Policy, quota, credit, generation records, and media persistence can be exercised with fixture adapters only. |
+| Fixture output evidence | Available fixture-safe | Completed Replicate fixture outputs are persisted behind media-governed download paths; raw provider output URLs are not returned from creative generation responses, stored in media artifact metadata, or exposed through read-only Admin generation evidence. |
 | Staging smoke | Available metadata-only | Validates env gates and safe catalog metadata; it does not call Replicate. |
 
 ## Allowed Shell Work
@@ -76,6 +77,7 @@ Every staging shell PR must preserve these contracts:
 - Provider-facing request parameters and returned generation parameters must be allowlisted so unsupported provider-like fields such as API keys, authorization values, callback URLs, raw payload markers, or raw response hints cannot be echoed through fixture paths.
 - Provider responses must store only safe ids, hashes, counts, status names, cost metadata, and redacted previews.
 - Completed fixture outputs must still flow through media persistence and scan-governance boundaries before user download.
+- Replicate fixture output URLs must remain provider-private evidence: user/API/Admin surfaces may expose only the media asset download path and safe storage ids after persistence.
 - Quota and creative credit reservation/settlement/refund behavior must remain idempotent.
 - Production smoke must keep creative provider mode `mock` or `disabled`.
 

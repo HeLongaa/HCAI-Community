@@ -29,6 +29,11 @@ const plannedGenerationId = ({ request, actor, provider }) => {
   return `gen_${provider.id.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}_${buildMockCreativeGenerationId(request, actor).slice('gen_mock_'.length)}`
 }
 
+const publicOutputUrl = ({ output, assetId }) =>
+  output.storage?.provider === 'replicate'
+    ? `/api/media/assets/${assetId}/download`
+    : output.url
+
 export const getCreativeProviderCatalog = (source = process.env) => {
   const registry = createCreativeProviderRegistry(source)
   return {
@@ -111,15 +116,17 @@ export const persistCreativeGenerationOutputs = async (generation, { actor, medi
       return output
     }
     const scanStatus = asset.metadata?.security?.scanStatus ?? 'pending'
+    const downloadPath = `/api/media/assets/${asset.id}/download`
     return {
       ...output,
       contentType: asset.contentType,
+      url: publicOutputUrl({ output, assetId: asset.id }),
       storage: {
         persisted: true,
         provider: 'media_asset',
         mediaAssetId: asset.id,
         scanStatus,
-        downloadPath: `/api/media/assets/${asset.id}/download`,
+        downloadPath,
       },
       source: {
         ...output.source,

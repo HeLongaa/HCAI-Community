@@ -4,12 +4,55 @@ import test from 'node:test'
 import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
 import { recordSecurityEvent, resetSecurityEvents } from '../../security/securityEvents.js'
 import { resetCreativePolicyState } from '../../creative/policy.js'
+import { createReplicateStagingPrediction } from '../../creative/replicateStagingProvider.js'
 import { repositories } from '../../repositories/index.js'
+import { registerMediaRoutes } from '../media/routes.js'
 import { registerCreativeRoutes } from '../creative/routes.js'
 import { registerAdminRoutes } from './routes.js'
 
 const createTestServer = () => createRouteTestServer(registerAdminRoutes)
 const createCreativeAdminServer = () => createRouteTestServer(registerCreativeRoutes, registerAdminRoutes)
+
+const replicateStagingEnvKeys = [
+  'NODE_ENV',
+  'ACCESS_TOKEN_SECRET',
+  'CREATIVE_PROVIDER_RUNTIME_ENV',
+  'CREATIVE_PROVIDER_MODE',
+  'CREATIVE_STAGING_IMAGE_PROVIDER',
+  'CREATIVE_STAGING_PROVIDER_API_TOKEN',
+  'CREATIVE_STAGING_PROVIDER_CONFIRMATION',
+  'CREATIVE_STAGING_PROVIDER_ESTIMATE_USD',
+  'CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD',
+  'CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD',
+  'MEDIA_SCAN_PROVIDER',
+]
+
+const applyReplicateStagingAdminFixtureEnv = (overrides = {}) => {
+  const previous = Object.fromEntries(replicateStagingEnvKeys.map((key) => [key, process.env[key]]))
+  Object.assign(process.env, {
+    NODE_ENV: 'production',
+    ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_PROVIDER_MODE: 'replicate_staging',
+    CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+    CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-admin-fixture-token',
+    CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+    CREATIVE_STAGING_PROVIDER_ESTIMATE_USD: '0.25',
+    CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD: '5',
+    CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD: '1',
+    MEDIA_SCAN_PROVIDER: 'manual',
+    ...overrides,
+  })
+  return () => {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value == null) {
+        delete process.env[key]
+      } else {
+        process.env[key] = value
+      }
+    }
+  }
+}
 
 test('GET /api/admin/permissions returns AUTH_REQUIRED when missing auth', async () => {
   const server = await createTestServer()
@@ -287,6 +330,129 @@ test('GET /api/admin/creative/generations lists and filters provider generation 
     } else {
       process.env.MEDIA_SCAN_PROVIDER = previousProvider
     }
+  }
+})
+
+test('GET /api/admin/creative/generations reads Replicate fixture evidence without raw provider data', async () => {
+  resetCreativePolicyState()
+  const restoreEnv = applyReplicateStagingAdminFixtureEnv()
+  const calls = []
+  const mockedClient = {
+    createPrediction: async (payload) => {
+      calls.push(payload)
+      return {
+        id: 'pred_admin_route_fixture_1',
+        status: 'succeeded',
+        output: ['https://replicate.example/admin-route-output-should-not-leak.png'],
+        metrics: { predict_time: 2.75 },
+        costUsd: 0.2,
+        completed_at: '2026-07-06T14:20:00.000Z',
+      }
+    },
+  }
+  const fixtureAdapters = {
+    'replicate-staging': ({ request, provider, actor, source, now, generationId }) =>
+      createReplicateStagingPrediction({
+        request,
+        provider,
+        actor,
+        source,
+        now,
+        generationId,
+        client: mockedClient,
+      }),
+  }
+  const server = await createRouteTestServer(
+    (router) => registerCreativeRoutes(router, { fixtureAdapters }),
+    registerMediaRoutes,
+    registerAdminRoutes,
+  )
+  try {
+    const generated = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        providerId: 'replicate-staging',
+        prompt: 'A Replicate fixture for Admin read-only evidence',
+        parameters: {
+          aspectRatio: '1:1',
+          seed: 11,
+          apiKey: 'replicate-admin-fixture-token',
+          rawProviderPayload: ['raw-admin-provider-payload'],
+        },
+      },
+      token: 'demo-access.promptlin',
+    })
+
+    assert.equal(generated.status, 200)
+    assert.equal(calls.length, 1)
+    assert.equal(JSON.stringify(calls[0]).includes('replicate-admin-fixture-token'), false)
+    assert.equal(JSON.stringify(calls[0]).includes('raw-admin-provider-payload'), false)
+    const generationId = generated.payload.data.id
+    const mediaAssetId = generated.payload.data.outputs[0].storage.mediaAssetId
+    assert.equal(generated.payload.data.providerRequestId, 'pred_admin_route_fixture_1')
+    assert.equal(generated.payload.data.providerJobId, 'pred_admin_route_fixture_1')
+    assert.equal(generated.payload.data.outputs[0].url, `/api/media/assets/${mediaAssetId}/download`)
+    const generatedSerialized = JSON.stringify(generated.payload.data)
+    assert.equal(generatedSerialized.includes('admin-route-output-should-not-leak'), false)
+    assert.equal(generatedSerialized.includes('https://replicate.example'), false)
+    assert.equal(generatedSerialized.includes('replicate-admin-fixture-token'), false)
+    assert.equal(generatedSerialized.includes('raw-admin-provider-payload'), false)
+
+    const mediaQueue = await requestJson(server.url, `/api/media/review-queue?status=all&search=${mediaAssetId}&limit=5`, {
+      method: 'GET',
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(mediaQueue.status, 200)
+    const mediaItem = mediaQueue.payload.data.find((asset) => asset.id === mediaAssetId)
+    assert.ok(mediaItem)
+    assert.equal(mediaItem.metadata.creative.sourceUrl, null)
+    assert.equal(JSON.stringify(mediaItem.metadata.creative).includes('admin-route-output-should-not-leak'), false)
+
+    const list = await requestJson(
+      server.url,
+      `/api/admin/creative/generations?providerId=replicate-staging&mediaAssetId=${mediaAssetId}&limit=5`,
+      {
+        method: 'GET',
+        token: 'demo-access.legalpixel',
+      },
+    )
+    assert.equal(list.status, 200)
+    const item = list.payload.data.find((entry) => entry.id === generationId)
+    assert.ok(item)
+    assert.equal(item.providerId, 'replicate-staging')
+    assert.equal(item.providerRequestId, 'pred_admin_route_fixture_1')
+    assert.equal(item.providerJobId, 'pred_admin_route_fixture_1')
+    assert.deepEqual(item.parameterKeys, ['aspectRatio', 'seed'])
+    assert.deepEqual(item.outputAssetIds, [mediaAssetId])
+    assert.equal(item.usage.providerCost.schemaVersion, 'provider-cost-v1')
+    assert.equal(item.usage.providerCost.job.providerJobId, 'pred_admin_route_fixture_1')
+    assert.equal(item.usage.providerCost.usage.quantity, 2.75)
+    assert.equal(item.usage.providerCost.usage.rawProviderUsageHash.length, 64)
+    assert.equal(item.usage.providerCost.actual.amount, 0.2)
+    assert.equal(item.usage.providerCost.budget.budgetScope, 'staging:replicate:image')
+    assert.equal(item.usage.providerCost.budget.status, 'within_budget')
+    assert.equal(item.providerReplayEvidence.available, true)
+    assert.equal(item.providerReplayEvidence.count, 0)
+    assert.equal('prompt' in item, false)
+
+    const detail = await requestJson(server.url, `/api/admin/creative/generations/${generationId}`, {
+      method: 'GET',
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(detail.status, 200)
+    assert.equal(detail.payload.data.promptPreview, 'A Replicate fixture for Admin read-only evidence')
+    assert.equal(detail.payload.data.usage.providerCost.job.providerRequestId, 'pred_admin_route_fixture_1')
+
+    const serialized = JSON.stringify(detail.payload.data)
+    assert.equal(serialized.includes('admin-route-output-should-not-leak'), false)
+    assert.equal(serialized.includes('https://replicate.example'), false)
+    assert.equal(serialized.includes('replicate-admin-fixture-token'), false)
+    assert.equal(serialized.includes('raw-admin-provider-payload'), false)
+  } finally {
+    await server.close()
+    restoreEnv()
+    resetCreativePolicyState()
   }
 })
 
@@ -874,7 +1040,7 @@ test('GET /api/admin/audit returns audit data and pagination for admins', async 
     assert.equal(status, 200)
     assert.ok(Array.isArray(payload.data))
     assert.equal(payload.error, undefined)
-    assert.equal(payload.meta.pagination.nextCursor, null)
+    assert.equal('nextCursor' in payload.meta.pagination, true)
     assert.equal(payload.meta.pagination.limit, 20)
   } finally {
     await server.close()
@@ -929,7 +1095,7 @@ test('GET /api/admin/audit allows moderators with audit read permission', async 
     assert.equal(status, 200)
     assert.ok(Array.isArray(payload.data))
     assert.equal(payload.error, undefined)
-    assert.equal(payload.meta.pagination.nextCursor, null)
+    assert.equal('nextCursor' in payload.meta.pagination, true)
   } finally {
     await server.close()
   }
