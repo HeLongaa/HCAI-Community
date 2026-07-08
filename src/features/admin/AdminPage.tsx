@@ -183,6 +183,7 @@ const providerReplayEvidenceSummary = (generation: ApiCreativeGenerationRecord, 
   return [
     `${evidence.count} ${textFor(t, 'records', '条记录')}`,
     `${latest.sourceType}/${latest.action}/${latest.normalizedStatus ?? '-'}`,
+    `${textFor(t, 'outcome', '结果')} ${latest.sideEffectOutcome}`,
     latest.payloadHashPresent
       ? `${textFor(t, 'payload hash', 'payload hash')} ${latest.payloadHashPreview ?? textFor(t, 'present', '存在')}`
       : textFor(t, 'payload hash missing', '缺少 payload hash'),
@@ -3211,6 +3212,9 @@ export function AdminPage({
                         {textFor(t, 'ops', '操作')} {selectedGeneration.providerReplayEvidence.latest.completedOperationCount}
                         {selectedGeneration.providerReplayEvidence.latest.failedOperationType
                           ? ` · ${textFor(t, 'failed', '失败')} ${selectedGeneration.providerReplayEvidence.latest.failedOperationType}`
+                          : ''}
+                        {selectedGeneration.providerReplayEvidence.latest.errorPreviewPresent
+                          ? ` · ${textFor(t, 'error preview present', '存在错误预览')}`
                           : ''}
                       </span>
                     </div>

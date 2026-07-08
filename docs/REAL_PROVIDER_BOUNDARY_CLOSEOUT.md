@@ -27,6 +27,7 @@ The repository has enough fixture-safe lifecycle foundation to continue planning
 - Mocked injected provider-status client contract.
 - Fixture-only polling replay idempotency uses hashed output digests for completed status payloads without storing raw provider output URLs.
 - Read-only Admin generation history can surface safe provider replay evidence summaries without exposing replay payloads or enabling replay mutations.
+- Provider replay ledger records safe no-op and rejected outcome evidence so duplicate/stale and failed side-effect paths are observable without raw errors or payloads.
 - Source-keyed provider lifecycle notification/audit repository wiring.
 - Manual replay authorization/parser pure functions.
 - Fixture-safe polling worker interval skeleton.

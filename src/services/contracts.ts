@@ -600,9 +600,11 @@ export type ApiCreativeGenerationRecord = {
       providerEventIdPresent: boolean
       payloadHashPresent: boolean
       payloadHashPreview: string | null
+      sideEffectOutcome: string
       sideEffectCompleted: boolean
       completedOperationCount: number
       failedOperationType: string | null
+      errorPreviewPresent: boolean
       receivedAt: string | null
       appliedAt: string | null
     }
