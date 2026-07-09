@@ -273,6 +273,22 @@ const safeReplayEvidence = ({ replay, plan }) => {
   }
 }
 
+const safePollingStatusResult = ({ statusResult, plan }) => {
+  if (!statusResult) return statusResult
+  const providerJobId = pollingEvidenceProviderJobId(plan)
+  return {
+    ...statusResult,
+    providerJobId,
+    generation: statusResult.generation
+      ? {
+          ...statusResult.generation,
+          providerRequestId: providerJobId,
+          providerJobId,
+        }
+      : statusResult.generation,
+  }
+}
+
 export const pollProviderGenerationOnce = async ({
   generation,
   repositories = {},
@@ -330,7 +346,7 @@ export const pollProviderGenerationOnce = async ({
       polled: true,
       replayed: false,
       plan,
-      statusResult,
+      statusResult: safePollingStatusResult({ statusResult, plan }),
     }
   }
 
@@ -367,7 +383,7 @@ export const pollProviderGenerationOnce = async ({
     polled: true,
     replayed: true,
     plan,
-    statusResult,
+    statusResult: safePollingStatusResult({ statusResult, plan }),
     applied,
   }
 }

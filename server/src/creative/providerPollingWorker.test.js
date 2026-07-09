@@ -407,6 +407,56 @@ test('pollProviderGenerationOnce redacts unsafe persisted provider job ids from 
   assert.equal(replayEvidence.includes('mock://unsafe-provider-job-output.png'), false)
 })
 
+test('pollProviderGenerationOnce redacts unsafe provider job ids from failed status results', async () => {
+  const repository = createSeedRepository()
+  const unsafeProviderJobId = 'https://replicate.example/predictions/pred_failed?token=secret-status'
+  const record = await repository.creativeGenerations.create({
+    id: uniqueId('gen-provider-polling-status-failure'),
+    actorId: actor.id,
+    actorHandle: actor.handle,
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'replicate',
+    providerMode: 'replicate_staging',
+    status: 'running',
+    promptHash: 'e'.repeat(64),
+    promptPreview: 'Polling status failure fixture prompt',
+    inputAssetIds: [],
+    parameterKeys: [],
+    providerJobId: unsafeProviderJobId,
+    createdAt: '2026-07-06T11:45:00.000Z',
+  }, actor)
+  const calls = []
+  const result = await pollProviderGenerationOnce({
+    generation: record,
+    repositories: repository,
+    providerStatusClients: {
+      replicate: {
+        getPrediction: async (id) => {
+          calls.push(id)
+          throw new Error('status lookup failed with token=provider-secret')
+        },
+      },
+    },
+    source: pollingSource,
+    now,
+  })
+
+  assert.deepEqual(calls, [unsafeProviderJobId])
+  assert.equal(result.polled, true)
+  assert.equal(result.replayed, false)
+  assert.equal(result.statusResult.ok, false)
+  assert.match(result.statusResult.providerJobId, /^redacted_[a-f0-9]{16}$/)
+  assert.equal(result.statusResult.safeMetadata.errorPreview.includes('provider-secret'), false)
+  assert.equal(result.statusResult.safeMetadata.errorPreview.includes('<redacted>'), true)
+
+  const statusEvidence = JSON.stringify(result.statusResult)
+  assert.equal(statusEvidence.includes(unsafeProviderJobId), false)
+  assert.equal(statusEvidence.includes('secret-status'), false)
+  assert.equal(statusEvidence.includes('replicate.example'), false)
+  assert.equal(statusEvidence.includes('provider-secret'), false)
+})
+
 test('pollProviderGenerationOnce maps failed and cancelled fixture status to refund/release paths', async () => {
   for (const [providerStatus, expectedStatus] of [['failed', 'failed'], ['canceled', 'cancelled']]) {
     const repository = createSeedRepository()
