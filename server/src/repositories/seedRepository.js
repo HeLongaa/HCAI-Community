@@ -61,7 +61,7 @@ import {
   buildProviderBudgetNotificationPayload,
   hasProviderBudgetNotificationSourceKey,
 } from './providerBudgetNotificationWiring.js'
-import { safeErrorPreview } from '../creative/generationRecords.js'
+import { safeCreativeCreditMetadata, safeErrorPreview } from '../creative/generationRecords.js'
 
 const sessionByRefreshToken = new Map()
 const emailAccountByEmail = new Map()
@@ -2852,8 +2852,8 @@ export const createSeedRepository = () => ({
         settledAmount: 0,
         refundedAmount: 0,
         status: 'reserved',
-        reasonCode: payload.reasonCode ?? 'generation_reserved',
-        metadata: payload.metadata ?? null,
+        reasonCode: safeErrorPreview(payload.reasonCode ?? 'generation_reserved'),
+        metadata: safeCreativeCreditMetadata(payload.metadata),
         reservedAt: now,
         settledAt: null,
         refundedAt: null,
@@ -2889,8 +2889,8 @@ export const createSeedRepository = () => ({
         status: 'settled',
         settledAmount,
         refundedAmount: 0,
-        reasonCode: payload.reasonCode ?? 'generation_completed',
-        metadata: payload.metadata ?? ledger.metadata ?? null,
+        reasonCode: safeErrorPreview(payload.reasonCode ?? 'generation_completed'),
+        metadata: safeCreativeCreditMetadata(payload.metadata) ?? ledger.metadata ?? null,
         settledAt: now,
         updatedAt: now,
       }
@@ -2919,8 +2919,8 @@ export const createSeedRepository = () => ({
         status: 'refunded',
         settledAmount: 0,
         refundedAmount,
-        reasonCode: payload.reasonCode ?? 'generation_failed',
-        metadata: payload.metadata ?? ledger.metadata ?? null,
+        reasonCode: safeErrorPreview(payload.reasonCode ?? 'generation_failed'),
+        metadata: safeCreativeCreditMetadata(payload.metadata) ?? ledger.metadata ?? null,
         refundedAt: now,
         updatedAt: now,
       }
@@ -2949,8 +2949,8 @@ export const createSeedRepository = () => ({
         status: 'cancelled',
         settledAmount: 0,
         refundedAmount: 0,
-        reasonCode: payload.reasonCode ?? 'no_charge',
-        metadata: payload.metadata ?? ledger.metadata ?? null,
+        reasonCode: safeErrorPreview(payload.reasonCode ?? 'no_charge'),
+        metadata: safeCreativeCreditMetadata(payload.metadata) ?? ledger.metadata ?? null,
         cancelledAt: now,
         updatedAt: now,
       }
