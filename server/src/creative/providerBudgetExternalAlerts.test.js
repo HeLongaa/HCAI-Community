@@ -585,6 +585,142 @@ test('runProviderBudgetExternalAlertFixtureDryRun dispatches fixture clients and
   }
 })
 
+test('provider budget read-side chain keeps failed provider closeout evidence sanitized', async () => {
+  const repository = createSeedRepository()
+  const unsafeProviderCost = {
+    ...providerCost,
+    providerAccountRef: 'staging-secret-account-ref',
+    model: {
+      ...providerCost.model,
+      providerModelId: 'replicate:image:staging-private-model-token',
+    },
+    job: {
+      providerJobId: 'pred_failed_closeout_should_not_leak',
+      rawProviderPayload: {
+        token: 'provider-secret-token',
+        output: 'https://replicate.delivery/private-output.png?token=provider-secret-token',
+      },
+      rawProviderResponse: 'provider error body api_key=provider-secret-token',
+    },
+    usage: {
+      unit: 'prediction_seconds',
+      quantity: 12.5,
+      rawUsagePayload: 'usage bearer provider-secret-token',
+    },
+    estimate: {
+      currency: 'USD',
+      amount: 0.25,
+      confidence: 'estimated',
+      rawPrompt: 'raw prompt should never leave provider cost internals',
+    },
+    actual: {
+      currency: 'USD',
+      amount: 2.25,
+      confidence: 'provider_reported',
+      rawErrorBody: 'replicate failure token=provider-secret-token',
+    },
+    budget: {
+      ...providerCost.budget,
+      budgetScope: 'staging:replicate:image:failed-closeout-readside',
+      spentAmount: 4.75,
+      projectedSpendAmount: 7,
+      remainingAfterEstimateAmount: -2,
+      status: 'over_budget',
+      unsafeBudgetDebug: 'https://ops.example.com/private-budget?token=provider-secret-token',
+    },
+    risk: {
+      costKnown: true,
+      costExceededEstimate: true,
+      providerUsageMissing: true,
+    },
+  }
+
+  const plan = buildProviderBudgetEventPlan({
+    providerCost: unsafeProviderCost,
+    workspace: 'image',
+    mode: 'text_to_image',
+    block: { reasonCode: 'over_budget', statusCode: 429 },
+    now: new Date('2026-07-08T06:00:00.000Z'),
+  })
+  const persisted = await persistProviderBudgetAuditEvents({
+    plan,
+    repositories: repository,
+    actor,
+  })
+  const auditEvents = persisted.records.map((record) => record.event)
+  const notifications = repository.providerBudgetNotifications.createFromAuditEvents(auditEvents, actor)
+  const sent = []
+  const dryRun = await runProviderBudgetExternalAlertFixtureDryRun({
+    auditEvents,
+    config: {
+      creativeProviderAlertsEnabled: true,
+      creativeProviderAlertChannels: ['webhook', 'slack'],
+      hasCreativeProviderAlertWebhookUrl: true,
+      hasCreativeProviderAlertWebhookSecret: true,
+      hasCreativeProviderAlertSlackWebhookUrl: true,
+      rawWebhookUrl: 'https://ops.example.com/provider-alerts?token=provider-secret-token',
+      slackWebhookUrl: 'https://hooks.slack.com/services/T000/B000/SECRET',
+    },
+    approval: {
+      deliveryApproved: true,
+      fixtureOnly: true,
+    },
+    fixtureClients: {
+      webhook: {
+        enabled: true,
+        send: async (envelope) => {
+          sent.push(envelope)
+          return { statusCode: 202, reasonCode: 'fixture_accepted' }
+        },
+      },
+    },
+    repositories: repository,
+    actor,
+    now: new Date('2026-07-08T06:01:00.000Z'),
+  })
+  const dispatchAudit = repository.audit.list({
+    action: 'creative.provider_alert.dispatch',
+    resourceType: 'creative_provider_budget_alert',
+  })
+  const dryRunAuditIds = new Set(dryRun.persistence.records.map((record) => record.event.id))
+  const dryRunAudit = dispatchAudit.items.filter((event) => dryRunAuditIds.has(event.id))
+
+  assert.equal(persisted.completed, true)
+  assert.equal(auditEvents.length, 7)
+  assert.equal(notifications.length, 14)
+  assert.equal(dryRun.completed, true)
+  assert.equal(dryRun.safeSummary.payloadCount, 7)
+  assert.equal(dryRun.safeSummary.operationCount, 14)
+  assert.equal(dryRun.safeSummary.dispatchSucceeded, 7)
+  assert.equal(dryRun.safeSummary.dispatchFailed, 7)
+  assert.equal(sent.length, 7)
+  assert.equal(dryRunAudit.length, 14)
+  assert.ok(auditEvents.some((event) => event.metadata.reasonCode === 'over_budget'))
+  assert.ok(auditEvents.some((event) => event.metadata.reasonCode === 'missing_usage'))
+  assert.ok(auditEvents.some((event) => event.metadata.reasonCode === 'estimate_exceeded_critical'))
+  assert.equal(auditEvents.every((event) => event.metadata.providerId === 'replicate'), true)
+  assert.equal(auditEvents.every((event) => event.metadata.budgetScope === 'staging:replicate:image:failed-closeout-readside'), true)
+  assert.equal(sent.every((envelope) => envelope.target.admin.tab === 'Audit log'), true)
+  assert.equal(dryRunAudit.every((event) => event.metadata.dispatchMode === 'fixture_dry_run'), true)
+
+  const serialized = JSON.stringify({
+    plan,
+    persisted,
+    notifications,
+    dryRun,
+    sent,
+    dryRunAudit,
+  })
+  assert.equal(serialized.includes('pred_failed_closeout_should_not_leak'), false)
+  assert.equal(serialized.includes('provider-secret-token'), false)
+  assert.equal(serialized.includes('private-output.png'), false)
+  assert.equal(serialized.includes('raw prompt should never leave'), false)
+  assert.equal(serialized.includes('provider error body'), false)
+  assert.equal(serialized.includes('replicate failure token'), false)
+  assert.equal(serialized.includes('ops.example.com'), false)
+  assert.equal(serialized.includes('hooks.slack.com'), false)
+})
+
 test('dispatchProviderBudgetExternalAlerts fails closed through disabled channel shells without default network', async () => {
   const payload = buildProviderBudgetExternalAlertPayload({
     id: 'audit-provider-budget-alert-shell',
