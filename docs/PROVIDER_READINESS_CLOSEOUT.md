@@ -28,7 +28,8 @@ The completed baseline includes:
 - Durable `creative_quota_windows` and `creative_quota_reservations` accounting for actor/workspace/day quota.
 - Atomic quota reservation, commit, and release behavior for Prisma-backed deployments, with seed repository parity for tests. Repeated commit/release calls are idempotent and release reasons are redacted before they are stored in quota audit metadata.
 - Dedicated `creative_credit_ledger` state for reserved, settled, refunded, and cancelled creative credits.
-- Idempotent credit settlement/refund behavior keyed through the generation/quota reservation boundary.
+- Idempotent credit settlement/refund behavior keyed through the generation/quota reservation boundary, including fixture coverage that repeated settlement/refund does not duplicate credit audit events.
+- Creative credit metadata is allowlisted to provider id/mode, cost model, metering flag, review flag, and linked output media asset ids; credit reason text is redacted before storage so ledger DTOs and audit evidence do not expose raw prompts, tokens, provider payloads, provider output URLs, or secrets.
 - Pre-provider policy gating: moderation and quota reservation run before any fixture/staging provider adapter work, and adapter failures release the pre-provider quota reservation.
 - `GET /api/admin/creative/generations` and `GET /api/admin/creative/generations/:id` for audit-authorized read-only generation history.
 - Admin Center `Generation history` panel with filters, pagination, safe details, output asset linking, and `creative_generation` audit drill-downs.
@@ -58,7 +59,8 @@ The completed baseline includes:
 4. Reserved quota is released when provider work should not count against usage.
 5. Reserved credits are refunded idempotently.
 6. Repeated release/commit attempts return the already-finalized quota state without double-counting usage or released units.
-7. The user receives a stable error response without double-charging on retries.
+7. Repeated settlement/refund attempts return the already-finalized credit ledger state without duplicating credit audit events.
+8. The user receives a stable error response without double-charging on retries.
 
 ### Review-Required Output
 
@@ -130,6 +132,7 @@ The final UI slice was validated with:
 - Preserve prompt safety posture: Admin surfaces should continue to expose prompt hash and short preview only, not raw full prompt text.
 - Preserve failure-evidence safety posture: durable generation and Admin DTOs should continue to redact Bearer tokens, API keys, secret-like values, and provider URLs from `errorMessagePreview`.
 - Preserve quota-evidence safety posture: quota reservation audit metadata should stay limited to generation id, workspace, units, quota window id, and redacted reason text; it must not include raw prompts, provider payloads, tokens, secrets, or provider output URLs.
+- Preserve credit-evidence safety posture: credit ledger metadata should stay limited to provider id/mode, cost model, metering flag, review flag, and linked output media asset ids; reason text and string metadata must remain redacted, and unknown metadata keys must not be stored.
 - Any future provider adapter should exercise the same pre-provider moderation/quota gate, durable generation, quota, credit, media governance, and Admin history paths as the mock provider.
 
 ## Recommended Next Phase

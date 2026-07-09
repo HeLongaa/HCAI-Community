@@ -21,6 +21,14 @@ const creditPayload = (overrides = {}) => ({
   ...overrides,
 })
 
+const creditAuditEvents = async (repository, ledgerId) => {
+  const audit = await repository.audit.list({
+    resourceType: 'creative_credit_ledger',
+    limit: 50,
+  })
+  return audit.items.filter((event) => event.resourceId === ledgerId)
+}
+
 test('seed creative credit repository reserves and settles idempotently', async () => {
   const repository = createSeedRepository()
 
@@ -44,6 +52,10 @@ test('seed creative credit repository reserves and settles idempotently', async 
     settledAmount: 2,
   }, actor)
   assert.deepEqual(replayed, settled)
+
+  const auditEvents = await creditAuditEvents(repository, reserved.credit.ledgerId)
+  assert.equal(auditEvents.filter((event) => event.action === 'creative.credit.reserved').length, 1)
+  assert.equal(auditEvents.filter((event) => event.action === 'creative.credit.settled').length, 1)
 })
 
 test('seed creative credit repository refunds reserved credits once', async () => {
@@ -68,6 +80,10 @@ test('seed creative credit repository refunds reserved credits once', async () =
     refundedAmount: 1,
   }, { id: 'demo-user-publisher', handle: 'launchteam' })
   assert.deepEqual(replayed, refunded)
+
+  const auditEvents = await creditAuditEvents(repository, reserved.credit.ledgerId)
+  assert.equal(auditEvents.filter((event) => event.action === 'creative.credit.reserved').length, 1)
+  assert.equal(auditEvents.filter((event) => event.action === 'creative.credit.refunded').length, 1)
 })
 
 test('seed creative credit repository reuses quota reservation id as idempotency key', async () => {
@@ -83,4 +99,59 @@ test('seed creative credit repository reuses quota reservation id as idempotency
   assert.equal(replayed.reserved, true)
   assert.equal(replayed.credit.ledgerId, reserved.credit.ledgerId)
   assert.equal(replayed.credit.reserved, 2)
+})
+
+test('seed creative credit repository stores only safe metadata and audit evidence', async () => {
+  const repository = createSeedRepository()
+  const reserved = await repository.creativeCredits.reserve(creditPayload({
+    generationId: 'gen-credit-audit-safe',
+    quotaReservationId: 'quota-credit-audit-safe',
+    reasonCode: 'generation_reserved token=credit-secret https://replicate.example/reserve',
+    metadata: {
+      providerId: 'mock token=provider-secret',
+      providerMode: 'fixture https://replicate.example/mode',
+      costModel: 'fixture',
+      metered: true,
+      prompt: 'raw prompt should not be stored',
+      providerPayload: { token: 'payload-secret' },
+      outputUrl: 'https://replicate.example/raw-output.png',
+    },
+  }), actor)
+
+  assert.equal(reserved.credit.reasonCode.includes('credit-secret'), false)
+  assert.equal(reserved.credit.reasonCode.includes('https://replicate.example'), false)
+  assert.equal(reserved.credit.metadata.providerId.includes('provider-secret'), false)
+  assert.equal(reserved.credit.metadata.providerMode.includes('https://replicate.example'), false)
+  assert.equal(reserved.credit.metadata.costModel, 'fixture')
+  assert.equal(reserved.credit.metadata.metered, true)
+  assert.equal(Object.hasOwn(reserved.credit.metadata, 'prompt'), false)
+  assert.equal(Object.hasOwn(reserved.credit.metadata, 'providerPayload'), false)
+  assert.equal(Object.hasOwn(reserved.credit.metadata, 'outputUrl'), false)
+
+  const refunded = await repository.creativeCredits.refund(reserved.credit.ledgerId, {
+    refundedAmount: 2,
+    reasonCode: 'provider_failed token=refund-secret https://replicate.example/refund',
+    metadata: {
+      outputAssetIds: ['media-safe-1', 'https://replicate.example/raw-output.png'],
+      reviewRequired: false,
+      token: 'refund-metadata-secret',
+    },
+  }, actor)
+
+  const serializedCredit = JSON.stringify(refunded)
+  assert.equal(serializedCredit.includes('refund-secret'), false)
+  assert.equal(serializedCredit.includes('refund-metadata-secret'), false)
+  assert.equal(serializedCredit.includes('raw-output.png'), false)
+  assert.deepEqual(refunded.metadata.outputAssetIds, ['media-safe-1', '<redacted-url>'])
+
+  const auditEvents = await creditAuditEvents(repository, reserved.credit.ledgerId)
+  const serializedAudit = JSON.stringify(auditEvents)
+  assert.equal(serializedAudit.includes('gen-credit-audit-safe'), true)
+  assert.equal(serializedAudit.includes('credit-secret'), false)
+  assert.equal(serializedAudit.includes('provider-secret'), false)
+  assert.equal(serializedAudit.includes('refund-secret'), false)
+  assert.equal(serializedAudit.includes('refund-metadata-secret'), false)
+  assert.equal(serializedAudit.includes('raw prompt'), false)
+  assert.equal(serializedAudit.includes('https://replicate.example'), false)
+  assert.equal(auditEvents.filter((event) => event.action === 'creative.credit.refunded').length, 1)
 })

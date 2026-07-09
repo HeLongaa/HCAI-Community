@@ -12,6 +12,29 @@ const redactSensitiveText = (value) => String(value ?? '')
   .replace(/\b(api[_-]?key|token|secret|password)=([^&\s]+)/gi, '$1=<redacted>')
   .replace(/https?:\/\/[^\s)]+/gi, '<redacted-url>')
 
+const safeMetadataText = (value) =>
+  redactSensitiveText(value).replace(/\s+/g, ' ').trim().slice(0, 160)
+
+const safeMetadataStringArray = (value) =>
+  Array.isArray(value)
+    ? value.map(safeMetadataText).filter(Boolean).slice(0, 20)
+    : []
+
+export const safeCreativeCreditMetadata = (metadata) => {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return null
+  }
+  const safe = {}
+  if (metadata.providerId != null) safe.providerId = safeMetadataText(metadata.providerId)
+  if (metadata.providerMode != null) safe.providerMode = safeMetadataText(metadata.providerMode)
+  if (metadata.costModel != null) safe.costModel = safeMetadataText(metadata.costModel)
+  if (metadata.metered != null) safe.metered = Boolean(metadata.metered)
+  if (metadata.reviewRequired != null) safe.reviewRequired = Boolean(metadata.reviewRequired)
+  const outputAssetIds = safeMetadataStringArray(metadata.outputAssetIds)
+  if (outputAssetIds.length > 0) safe.outputAssetIds = outputAssetIds
+  return Object.keys(safe).length > 0 ? safe : null
+}
+
 export const buildCreativeGenerationRecordPayload = (generation, actor, overrides = {}) => ({
   id: generation.id,
   actorId: actor?.id ?? generation.createdBy?.id ?? null,

@@ -72,7 +72,7 @@ import {
   buildProviderBudgetNotificationPayload,
   hasProviderBudgetNotificationSourceKey,
 } from './providerBudgetNotificationWiring.js'
-import { safeErrorPreview } from '../creative/generationRecords.js'
+import { safeCreativeCreditMetadata, safeErrorPreview } from '../creative/generationRecords.js'
 
 const getHandleFromToken = (token, prefix) => {
   if (typeof token !== 'string' || !token.startsWith(prefix)) {
@@ -4048,8 +4048,8 @@ const createPrismaRepository = async (fallbackRepository) => {
           settledAmount: 0,
           refundedAmount: 0,
           status: 'reserved',
-          reasonCode: payload.reasonCode ?? 'generation_reserved',
-          metadata: payload.metadata ?? undefined,
+          reasonCode: safeErrorPreview(payload.reasonCode ?? 'generation_reserved'),
+          metadata: safeCreativeCreditMetadata(payload.metadata) ?? undefined,
         },
       })
       await client.auditEvent.create({
@@ -4089,8 +4089,8 @@ const createPrismaRepository = async (fallbackRepository) => {
             status: 'settled',
             settledAmount,
             refundedAmount: 0,
-            reasonCode: payload.reasonCode ?? 'generation_completed',
-            metadata: payload.metadata ?? ledger.metadata ?? undefined,
+            reasonCode: safeErrorPreview(payload.reasonCode ?? 'generation_completed'),
+            metadata: safeCreativeCreditMetadata(payload.metadata) ?? ledger.metadata ?? undefined,
             settledAt: new Date(),
           },
         })
@@ -4129,8 +4129,8 @@ const createPrismaRepository = async (fallbackRepository) => {
             status: 'refunded',
             settledAmount: 0,
             refundedAmount,
-            reasonCode: payload.reasonCode ?? 'generation_failed',
-            metadata: payload.metadata ?? ledger.metadata ?? undefined,
+            reasonCode: safeErrorPreview(payload.reasonCode ?? 'generation_failed'),
+            metadata: safeCreativeCreditMetadata(payload.metadata) ?? ledger.metadata ?? undefined,
             refundedAt: new Date(),
           },
         })
@@ -4169,8 +4169,8 @@ const createPrismaRepository = async (fallbackRepository) => {
             status: 'cancelled',
             settledAmount: 0,
             refundedAmount: 0,
-            reasonCode: payload.reasonCode ?? 'no_charge',
-            metadata: payload.metadata ?? ledger.metadata ?? undefined,
+            reasonCode: safeErrorPreview(payload.reasonCode ?? 'no_charge'),
+            metadata: safeCreativeCreditMetadata(payload.metadata) ?? ledger.metadata ?? undefined,
             cancelledAt: new Date(),
           },
         })
