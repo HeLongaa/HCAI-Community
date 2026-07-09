@@ -1,6 +1,7 @@
 import { ok } from '../../common/http/responses.js'
 import { requireUser } from '../../common/http/auth.js'
 import { readJsonBody } from '../../common/http/request.js'
+import { HttpError } from '../../common/errors/httpError.js'
 import { parseCreateCreativeGenerationRequest } from '../../contracts/requestParsers.js'
 import { executeCreativeGeneration, getCreativeProviderCatalog, persistCreativeGenerationOutputs } from '../../creative/generationService.js'
 import {
@@ -10,6 +11,15 @@ import {
   statusForPersistedGeneration,
 } from '../../creative/generationRecords.js'
 import { repositories } from '../../repositories/index.js'
+
+const terminalProviderFailureStatuses = new Set(['failed', 'cancelled'])
+
+const statusCodeForProviderFailure = (generation) => {
+  if (generation?.status === 'cancelled') return 409
+  if (generation?.errorCode === 'PROVIDER_TIMEOUT') return 504
+  if (generation?.errorCode === 'PROVIDER_RATE_LIMITED') return 429
+  return 502
+}
 
 export const registerCreativeRoutes = (router, options = {}) => {
   const executeGeneration = options.executeCreativeGeneration ?? executeCreativeGeneration
@@ -64,6 +74,20 @@ export const registerCreativeRoutes = (router, options = {}) => {
         : null
       if (generationRepository?.markRunning) {
         generationRecord = await generationRepository.markRunning(generation.id, {}, actor)
+      }
+      if (terminalProviderFailureStatuses.has(generation.status)) {
+        throw new HttpError(
+          statusCodeForProviderFailure(generation),
+          generation.errorCode ?? 'CREATIVE_PROVIDER_GENERATION_FAILED',
+          generation.errorMessagePreview ?? 'Creative provider returned a terminal failure',
+          {
+            providerId: generation.provider?.id ?? null,
+            providerMode: generation.provider?.mode ?? null,
+            providerRequestId: generation.providerRequestId ?? null,
+            providerJobId: generation.providerJobId ?? null,
+            generationStatus: generation.status,
+          },
+        )
       }
       const persisted = await persistCreativeGenerationOutputs(generation, {
         actor,
