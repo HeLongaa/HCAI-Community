@@ -124,4 +124,32 @@ test('buildProviderLifecycleReplay rejects provider job mismatches before side e
       error.details.currentProviderJobId === 'provider-job-expected' &&
       error.details.incomingProviderJobId === 'provider-job-other',
   )
+
+  assert.throws(
+    () => buildProviderLifecycleReplay({
+      currentRecord: {
+        id: 'gen-provider-replay',
+        status: 'running',
+        providerJobId: 'https://provider.example/jobs/current?token=current-secret',
+      },
+      generation: baseGeneration({
+        status: 'running',
+        providerJobId: 'https://provider.example/jobs/incoming?token=incoming-secret',
+      }),
+      providerId: 'replicate',
+      providerJobId: 'https://provider.example/jobs/incoming?token=incoming-secret',
+      idempotencyKey: 'provider:job:mismatch:unsafe',
+    }),
+    (error) => {
+      assert.equal(error.code, 'CREATIVE_PROVIDER_JOB_MISMATCH')
+      assert.equal(error.statusCode, 409)
+      assert.match(error.details.currentProviderJobId, /^redacted_[a-f0-9]{16}$/)
+      assert.match(error.details.incomingProviderJobId, /^redacted_[a-f0-9]{16}$/)
+      const details = JSON.stringify(error.details)
+      assert.equal(details.includes('provider.example'), false)
+      assert.equal(details.includes('current-secret'), false)
+      assert.equal(details.includes('incoming-secret'), false)
+      return true
+    },
+  )
 })

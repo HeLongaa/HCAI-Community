@@ -47,6 +47,12 @@ const safeProviderJobId = (value) => {
   return normalized ?? `redacted_${stableHash(value).slice(0, 16)}`
 }
 
+const providerJobMismatchDetails = ({ currentProviderJobId, incomingProviderJobId, providerId }) => ({
+  currentProviderJobId: safeProviderJobId(currentProviderJobId),
+  incomingProviderJobId: safeProviderJobId(incomingProviderJobId),
+  providerId,
+})
+
 const budgetValue = (source, options, optionKey, envKey) =>
   options[optionKey] ?? source[envKey]
 
@@ -459,22 +465,22 @@ export const fetchReplicateStagingPredictionStatus = async ({
     })
   }
   if (expectedProviderJobId && expectedProviderJobId !== providerJobId) {
-    throw new HttpError(409, 'CREATIVE_PROVIDER_JOB_MISMATCH', 'Provider status fetch targeted a different job', {
+    throw new HttpError(409, 'CREATIVE_PROVIDER_JOB_MISMATCH', 'Provider status fetch targeted a different job', providerJobMismatchDetails({
       currentProviderJobId: expectedProviderJobId,
       incomingProviderJobId: providerJobId,
       providerId: provider?.id ?? 'replicate',
-    })
+    }))
   }
 
   try {
     const prediction = await client.getPrediction(providerJobId)
     const incomingProviderJobId = prediction?.id ?? providerJobId
     if (incomingProviderJobId !== providerJobId) {
-      throw new HttpError(409, 'CREATIVE_PROVIDER_JOB_MISMATCH', 'Provider status fetch returned a different job', {
+      throw new HttpError(409, 'CREATIVE_PROVIDER_JOB_MISMATCH', 'Provider status fetch returned a different job', providerJobMismatchDetails({
         currentProviderJobId: providerJobId,
         incomingProviderJobId,
         providerId: provider?.id ?? 'replicate',
-      })
+      }))
     }
     const outputDigest = outputDigestForPrediction(prediction)
     const generation = mapReplicatePredictionToCreativeGeneration({
