@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { hasPermission, permissions, rolePermissions } from '../auth/permissions.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
@@ -377,6 +377,18 @@ for (const item of seedLibraryItems) {
 
 const auditEvents = []
 const operationLeaseStore = new Map()
+const safeProviderJobIdPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
+
+const stableHash = (value) =>
+  createHash('sha256').update(JSON.stringify(value ?? null)).digest('hex')
+
+const safeProviderJobIdEvidence = (value) => {
+  if (value == null || value === '') return null
+  const normalized = String(value).trim()
+  return safeProviderJobIdPattern.test(normalized)
+    ? normalized
+    : `redacted_${stableHash(value).slice(0, 16)}`
+}
 
 const recordAudit = (actor, action, resourceType, resourceId = null, metadata = null) => {
   const event = {
@@ -1149,7 +1161,7 @@ const makeCreativeProviderReplayRecord = (payload, patch = {}) => {
     generationId: String(payload.generationId ?? ''),
     providerId: payload.providerId,
     providerMode: payload.providerMode ?? null,
-    providerJobId: payload.providerJobId ?? null,
+    providerJobId: safeProviderJobIdEvidence(payload.providerJobId),
     providerEventId: payload.providerEventId ?? null,
     sourceType: payload.sourceType,
     idempotencyKey: payload.idempotencyKey,
@@ -2757,7 +2769,7 @@ export const createSeedRepository = () => ({
       recordAudit(actor, 'creative.provider_replay.recorded', 'creative_provider_replay_ledger', record.id, {
         generationId: record.generationId,
         providerId: record.providerId,
-        providerJobId: record.providerJobId,
+        providerJobId: safeProviderJobIdEvidence(record.providerJobId),
         sourceType: record.sourceType,
         action: record.action,
         reasonCode: record.reasonCode,
@@ -2783,7 +2795,7 @@ export const createSeedRepository = () => ({
       recordAudit(actor, 'creative.provider_replay.applied', 'creative_provider_replay_ledger', updated.id, {
         generationId: updated.generationId,
         providerId: updated.providerId,
-        providerJobId: updated.providerJobId,
+        providerJobId: safeProviderJobIdEvidence(updated.providerJobId),
         sourceType: updated.sourceType,
       })
       return serializeCreativeProviderReplay(updated)
@@ -2807,7 +2819,7 @@ export const createSeedRepository = () => ({
       recordAudit(actor, 'creative.provider_replay.side_effect_result_recorded', 'creative_provider_replay_ledger', updated.id, {
         generationId: updated.generationId,
         providerId: updated.providerId,
-        providerJobId: updated.providerJobId,
+        providerJobId: safeProviderJobIdEvidence(updated.providerJobId),
         sourceType: updated.sourceType,
         action: updated.action,
       })

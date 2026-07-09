@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import prismaClientPkg from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
@@ -46,9 +46,22 @@ import {
 } from '../media/scanProvider.js'
 import { dispatchMediaScanAlert } from '../media/alertDispatcher.js'
 import { writeStorageObject } from '../storage/objectWriter.js'
+import { writeJsonArchive } from '../storage/archiveWriter.js'
 
 const { PrismaClient } = prismaClientPkg
-import { writeJsonArchive } from '../storage/archiveWriter.js'
+const safeProviderJobIdPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
+
+const stableHash = (value) =>
+  createHash('sha256').update(JSON.stringify(value ?? null)).digest('hex')
+
+const safeProviderJobIdEvidence = (value) => {
+  if (value == null || value === '') return null
+  const normalized = String(value).trim()
+  return safeProviderJobIdPattern.test(normalized)
+    ? normalized
+    : `redacted_${stableHash(value).slice(0, 16)}`
+}
+
 import {
   applySecurityAlertDispositions,
   buildSecurityAlertPolicy,
@@ -3935,7 +3948,7 @@ const createPrismaRepository = async (fallbackRepository) => {
         metadata: {
           generationId: row.generationId,
           providerId: row.providerId,
-          providerJobId: row.providerJobId,
+          providerJobId: safeProviderJobIdEvidence(row.providerJobId),
           sourceType: row.sourceType,
           action: row.action,
           reasonCode: row.reasonCode,
@@ -3963,7 +3976,7 @@ const createPrismaRepository = async (fallbackRepository) => {
         metadata: {
           generationId: row.generationId,
           providerId: row.providerId,
-          providerJobId: row.providerJobId,
+          providerJobId: safeProviderJobIdEvidence(row.providerJobId),
           sourceType: row.sourceType,
         },
       })
@@ -3989,7 +4002,7 @@ const createPrismaRepository = async (fallbackRepository) => {
         metadata: {
           generationId: row.generationId,
           providerId: row.providerId,
-          providerJobId: row.providerJobId,
+          providerJobId: safeProviderJobIdEvidence(row.providerJobId),
           sourceType: row.sourceType,
           action: row.action,
         },
