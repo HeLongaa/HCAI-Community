@@ -36,6 +36,7 @@ The completed baseline includes:
 - Admin generation history applies a read-side allowlist/redaction layer over usage, provider cost, credit, quota, safety, policy, provider ids, and failure previews, so historical or manually seeded records cannot expose raw provider payloads, provider URLs, prompt text, tokens, or secrets through the operations surface.
 - Read-only provider budget operations surfaces for safe provider budget audit rows, internal notifications, Admin operations metrics, Prometheus-compatible exporter metrics, fixture dry-run dispatch audit rows, and sanitized generation cost/budget summaries.
 - Documentation and feature-contract coverage that keep the mock-provider/provider-boundary distinction explicit.
+- Final provider-readiness consistency review in `docs/PROVIDER_READINESS_CLOSEOUT_REVIEW.md`.
 
 ## Usable Operational Flows
 
@@ -142,6 +143,8 @@ The final UI slice was validated with:
 The next phase should be a real-provider readiness or staging-provider integration phase, not another provider-readiness accounting slice.
 
 The current real-provider status entry point lives in `docs/REAL_PROVIDER_CURRENT_STATUS.md`; check it first before starting provider work. The detailed boundary handoff lives in `docs/REAL_PROVIDER_BOUNDARY_CLOSEOUT.md`. The preflight plan lives in `docs/REAL_PROVIDER_PREFLIGHT_PLAN.md`; the staging-only provider candidate and secrets strategy live in `docs/REAL_PROVIDER_STAGING_STRATEGY.md`; the future Admin mutation requirements live in `docs/REAL_PROVIDER_ADMIN_MUTATION_REQUIREMENTS.md`; provider cost metadata and budget alarms live in `docs/REAL_PROVIDER_COST_METADATA_AND_BUDGET_ALARMS.md`; callback/polling prerequisites live in `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md`; the final closeout gate lives in `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md`.
+
+The provider-readiness consistency review lives in `docs/PROVIDER_READINESS_CLOSEOUT_REVIEW.md`; use it as the evidence index for durable generation, quota, credit, Admin history, provider replay, staging shell, and budget operations boundaries.
 
 Provider budget operations read-side closeout lives in `docs/REAL_PROVIDER_BUDGET_OPERATIONS_READSIDE_CLOSEOUT.md`; use it to distinguish safe read-only audit/notification/metrics/generation-history visibility from deferred real external alert delivery and Admin mutation controls.
 
