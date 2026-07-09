@@ -8,6 +8,7 @@ import {
   buildCreativeGenerationRecordPayload,
   getOutputAssetIds,
   safeErrorPreview,
+  safeProviderJobIdEvidence,
   statusForPersistedGeneration,
 } from '../../creative/generationRecords.js'
 import { repositories } from '../../repositories/index.js'
@@ -32,6 +33,13 @@ const statusCodeForProviderFailure = (generation) => {
   if (generation?.errorCode === 'PROVIDER_RATE_LIMITED') return 429
   return 502
 }
+
+const sanitizeGenerationRecordForResponse = (generationRecord) => generationRecord
+  ? {
+      ...generationRecord,
+      providerJobId: safeProviderJobIdEvidence(generationRecord.providerJobId),
+    }
+  : generationRecord
 
 export const registerCreativeRoutes = (router, options = {}) => {
   const executeGeneration = options.executeCreativeGeneration ?? executeCreativeGeneration
@@ -96,7 +104,7 @@ export const registerCreativeRoutes = (router, options = {}) => {
             providerId: generation.provider?.id ?? null,
             providerMode: generation.provider?.mode ?? null,
             providerRequestId: generation.providerRequestId ?? null,
-            providerJobId: generation.providerJobId ?? null,
+            providerJobId: safeProviderJobIdEvidence(generation.providerJobId),
             generationStatus: generation.status,
           },
         )
@@ -144,7 +152,7 @@ export const registerCreativeRoutes = (router, options = {}) => {
       }
       ok(response, {
         ...finalized,
-        generationRecord,
+        generationRecord: sanitizeGenerationRecordForResponse(generationRecord),
       })
     } catch (error) {
       if (generation?.credit?.ledgerId && !creditFinalized && creditRepository?.refund) {

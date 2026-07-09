@@ -21,7 +21,7 @@ import {
 import { repositories } from '../../repositories/index.js'
 import { getProtectedRolePermissions } from '../../auth/permissions.js'
 import { defaultPointAdjustmentPolicy, getDirectLimitForActor } from '../../points/adjustmentPolicy.js'
-import { safeCreativeCreditMetadata, safeErrorPreview } from '../../creative/generationRecords.js'
+import { safeCreativeCreditMetadata, safeErrorPreview, safeProviderJobIdEvidence } from '../../creative/generationRecords.js'
 
 const isPointAdjustmentReview = (review) => review?.queue === 'points' || review?.metadata?.kind === 'point_adjustment'
 
@@ -85,7 +85,7 @@ const safeProviderCost = (providerCost) => {
     },
     job: {
       providerRequestId: safeString(job.providerRequestId),
-      providerJobId: safeString(job.providerJobId),
+      providerJobId: safeProviderJobIdEvidence(job.providerJobId),
       region: safeString(job.region),
       startedAt: safeString(job.startedAt),
       completedAt: safeString(job.completedAt),
@@ -231,7 +231,7 @@ const sanitizeCreativeGenerationHistory = (generation) => ({
   safety: safeGenerationSafety(generation.safety),
   policy: safeGenerationPolicy(generation.policy),
   providerRequestId: safeString(generation.providerRequestId),
-  providerJobId: safeString(generation.providerJobId),
+  providerJobId: safeProviderJobIdEvidence(generation.providerJobId),
   errorMessagePreview: generation.errorMessagePreview ? safeErrorPreview(generation.errorMessagePreview) : null,
 })
 
