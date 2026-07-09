@@ -8,6 +8,16 @@ The repository remains mock-provider only. This closeout gate does not implement
 
 The callback/polling prerequisite closeout in `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` is documentation and fixture-safety evidence only. It does not approve async provider lifecycle enablement, real provider polling, callback route wiring, manual replay endpoints, or Admin lifecycle mutations.
 
+## Current Gate Interpretation
+
+After the PR #82 through PR #89 closeout sequence, this gate should be read narrowly:
+
+- **Allowed:** staging adapter planning, documentation consistency work, metadata-only smoke readiness work, and fixture-only Replicate image adapter hardening with mocked or injected clients.
+- **Still blocked:** real provider SDK installation, default network-capable provider clients, real provider job creation, provider output download, outbound external alert delivery, callback route enablement, polling worker enablement, manual replay endpoints, Admin generation mutation controls, and production paid-provider mode.
+- **Approval required:** the first real external-call rehearsal needs the separate approval package in `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md`, a current Notion record in Chinese, explicit user approval for the exact run, a provider-side spending cap, an app-side budget cap, a maximum provider call count, approval expiry, token rotation owner, kill-switch owner, and rollback owner.
+
+Ordinary continuation language such as "continue", "next", or "ship it" is not enough to cross from fixture-only hardening into a real external-call rehearsal.
+
 ## Completed Preflight Package
 
 | Step | Status | Artifact |
@@ -21,13 +31,26 @@ The callback/polling prerequisite closeout in `docs/REAL_PROVIDER_CALLBACK_POLLI
 | Callback/polling prerequisite plan | Complete after this package merges | `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` |
 | Final closeout gate | Complete after this package merges | `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` |
 
+## Completed Post-Closeout Hardening
+
+| Area | Status | Boundary |
+| --- | --- | --- |
+| Quota ledger closeout, PR #82 | Complete | Idempotent commit/release behavior and redacted quota release audit metadata. |
+| Credit ledger closeout, PR #83 | Complete | Idempotent settle/refund behavior and allowlisted/redacted credit metadata. |
+| Admin generation history closeout, PR #84 | Complete | Read-side allowlist/redaction coverage for unsafe historical generation evidence. |
+| Provider readiness consistency review, PR #85 | Complete | Evidence index across durable accounting, Admin history, replay, staging shell, and budget operations. |
+| Replicate staging failure closeout, PR #86 | Complete | Fixture-only failure mapping and safe provider evidence. |
+| Replicate staging cancellation closeout, PR #87 | Complete | Fixture-only cancellation boundary evidence. |
+| Replicate staging observability closeout, PR #88 | Complete | Safe read-only observability evidence for the staging shell. |
+| Provider budget read-side closeout, PR #89 | Complete | Sanitized budget event, audit, notification, external-alert dry-run, and dispatch audit evidence. |
+
 ## Gate Decision
 
 ### Staging Adapter
 
-Conditional go.
+Conditional go for fixture-only and planning work.
 
-A future first real image provider adapter may start only if it is:
+A future first real image provider adapter implementation branch may start only if it is:
 
 - image-only
 - staging-only
@@ -37,6 +60,7 @@ A future first real image provider adapter may start only if it is:
 - covered by cost metadata/budget guard tests
 - covered by the durable replay ledger and lifecycle reducer foundation, with callback/polling route and worker tests before async execution is enabled
 - documented in Notion before implementation starts
+- free of real network calls until the external-call approval package is completed
 
 ### Production Enablement
 
