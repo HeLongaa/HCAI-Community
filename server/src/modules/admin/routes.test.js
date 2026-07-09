@@ -690,6 +690,129 @@ test('GET /api/admin/creative/generations redacts durable failed generation evid
   }
 })
 
+test('GET /api/admin/creative/generations sanitizes accounting and policy read models', async () => {
+  const generationId = 'admin-generation-accounting-readside-safety-fixture'
+  await repositories.creativeGenerations.create({
+    id: generationId,
+    actorId: 'demo-user-promptlin',
+    actorHandle: 'promptlin',
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'mock',
+    providerMode: 'mock',
+    status: 'completed',
+    promptHash: 'd'.repeat(64),
+    promptPreview: 'Admin accounting readside safety fixture',
+    inputAssetIds: [],
+    parameterKeys: ['aspectRatio'],
+    outputAssetIds: ['media-admin-accounting-readside-safe'],
+    usage: { estimatedCredits: 1, rawUsagePayload: 'raw-usage-should-not-leak' },
+    credit: {
+      ledgerId: 'credit-admin-readside-safe',
+      generationId,
+      quotaReservationId: 'quota-admin-readside-safe',
+      status: 'settled',
+      currency: 'credits',
+      reserved: 1,
+      settled: 1,
+      refunded: 0,
+      amount: 1,
+      reasonCode: 'generation_completed token=credit-readside-secret https://replicate.example/credit',
+      metadata: {
+        providerId: 'mock token=credit-provider-secret',
+        providerMode: 'mock https://replicate.example/mode',
+        costModel: 'fixture',
+        metered: true,
+        outputAssetIds: ['media-admin-accounting-readside-safe', 'https://replicate.example/raw-output.png'],
+        prompt: 'raw prompt should not leak through credit metadata',
+        rawProviderPayload: { token: 'credit-raw-payload-secret' },
+      },
+    },
+    quota: {
+      policyVersion: 'creative-policy-v1',
+      scope: 'user_workspace_daily',
+      workspace: 'image',
+      limit: 20,
+      reserved: 0,
+      used: 1,
+      released: 0,
+      remaining: 19,
+      reservationId: 'quota-admin-readside-safe',
+      reason: 'quota reason token=quota-secret https://replicate.example/quota',
+      rawProviderPayload: 'quota-raw-payload-should-not-leak',
+      window: {
+        id: '2026-07-06',
+        type: 'daily',
+        start: '2026-07-06T00:00:00.000Z',
+        end: '2026-07-06T23:59:59.999Z',
+        resetsAt: '2026-07-06T23:59:59.999Z',
+      },
+    },
+    safety: {
+      moderationRequired: false,
+      reviewRequired: false,
+      reviewReason: 'safe review note token=safety-secret https://replicate.example/safety',
+      rawPrompt: 'unsafe prompt should not leak through safety',
+    },
+    policy: {
+      version: 'creative-policy-v1',
+      action: 'allow',
+      reasonCode: 'policy_allow token=policy-secret https://replicate.example/policy',
+      gates: { quota: true, credit: true, moderation: true, review: true },
+      rawPolicyTrace: 'policy-trace-should-not-leak',
+    },
+    providerRequestId: 'mock-request-token=provider-request-secret',
+    providerJobId: 'https://replicate.example/provider-job-should-not-leak',
+    createdAt: '2026-07-06T12:20:00.000Z',
+    completedAt: '2026-07-06T12:20:01.000Z',
+  }, { id: 'demo-user-admin', handle: 'legalpixel' })
+
+  const server = await createTestServer()
+  try {
+    const list = await requestJson(
+      server.url,
+      '/api/admin/creative/generations?providerId=mock&mediaAssetId=media-admin-accounting-readside-safe&limit=5',
+      {
+        method: 'GET',
+        token: 'demo-access.legalpixel',
+      },
+    )
+
+    assert.equal(list.status, 200)
+    const item = list.payload.data.find((entry) => entry.id === generationId)
+    assert.ok(item)
+    assert.equal(item.credit.status, 'settled')
+    assert.equal(item.credit.reasonCode.includes('credit-readside-secret'), false)
+    assert.equal(item.credit.metadata.costModel, 'fixture')
+    assert.deepEqual(item.credit.metadata.outputAssetIds, ['media-admin-accounting-readside-safe', '<redacted-url>'])
+    assert.equal(item.quota.reservationId, 'quota-admin-readside-safe')
+    assert.equal(item.policy.gates.credit, true)
+    assert.equal(item.safety.reviewRequired, false)
+
+    const detail = await requestJson(server.url, `/api/admin/creative/generations/${generationId}`, {
+      method: 'GET',
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(detail.status, 200)
+    const serialized = JSON.stringify(detail.payload.data)
+    assert.equal(serialized.includes('raw prompt should not leak'), false)
+    assert.equal(serialized.includes('credit-provider-secret'), false)
+    assert.equal(serialized.includes('credit-raw-payload-secret'), false)
+    assert.equal(serialized.includes('quota-secret'), false)
+    assert.equal(serialized.includes('quota-raw-payload-should-not-leak'), false)
+    assert.equal(serialized.includes('safety-secret'), false)
+    assert.equal(serialized.includes('unsafe prompt should not leak'), false)
+    assert.equal(serialized.includes('policy-secret'), false)
+    assert.equal(serialized.includes('policy-trace-should-not-leak'), false)
+    assert.equal(serialized.includes('provider-request-secret'), false)
+    assert.equal(serialized.includes('https://replicate.example'), false)
+    assert.equal(serialized.includes('raw-usage-should-not-leak'), false)
+    assert.equal('prompt' in detail.payload.data, false)
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/admin/creative/generations/:id returns not found for missing records', async () => {
   const server = await createTestServer()
   try {
