@@ -204,7 +204,7 @@ test('POST /api/creative/generations can run a Replicate staging fixture through
     createPrediction: async (payload) => {
       calls.push(payload)
       return {
-        id: 'pred_route_fixture_1',
+        id: 'https://replicate.example/predictions/route-fixture?token=route-secret',
         status: 'succeeded',
         output: ['https://replicate.example/route-fixture-1.png'],
         metrics: { predict_time: 2 },
@@ -271,7 +271,7 @@ test('POST /api/creative/generations can run a Replicate staging fixture through
     assert.equal(payload.data.outputs[0].storage.persisted, true)
     assert.equal(payload.data.outputs[0].storage.provider, 'media_asset')
     assert.equal(payload.data.outputs[0].source.kind, 'replicate_prediction')
-    assert.equal(payload.data.outputs[0].source.predictionId, 'pred_route_fixture_1')
+    assert.match(payload.data.outputs[0].source.predictionId, /^redacted_[a-f0-9]{16}$/)
     assert.equal(payload.data.usage.metered, true)
     assert.equal(payload.data.usage.providerCost.schemaVersion, 'provider-cost-v1')
     assert.equal(payload.data.usage.providerCost.budget.status, 'within_budget')
@@ -287,6 +287,7 @@ test('POST /api/creative/generations can run a Replicate staging fixture through
     assert.ok(payload.data.quota.used >= payload.data.credit.reserved)
     assert.equal(payload.data.generationRecord.providerId, 'replicate-staging')
     assert.equal(payload.data.generationRecord.status, 'completed')
+    assert.equal(payload.data.generationRecord.providerJobId, payload.data.outputs[0].source.predictionId)
     assert.equal(payload.data.generationRecord.usage.providerCost.schemaVersion, 'provider-cost-v1')
     assert.deepEqual(payload.data.generationRecord.outputAssetIds, [payload.data.outputs[0].storage.mediaAssetId])
   } finally {

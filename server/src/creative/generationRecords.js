@@ -6,6 +6,19 @@ export const promptPreview = (prompt) => String(prompt ?? '').replace(/\s+/g, ' 
 
 export const sha256 = (value) => createHash('sha256').update(String(value ?? '')).digest('hex')
 
+const safeProviderJobIdPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
+
+const stableEvidenceHash = (value) =>
+  createHash('sha256').update(JSON.stringify(value ?? null)).digest('hex')
+
+export const safeProviderJobIdEvidence = (value) => {
+  if (value == null || value === '') return null
+  const normalized = String(value).trim()
+  return safeProviderJobIdPattern.test(normalized)
+    ? normalized
+    : `redacted_${stableEvidenceHash(value).slice(0, 16)}`
+}
+
 const redactSensitiveText = (value) => String(value ?? '')
   .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, '<redacted>')
   .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/gi, '<redacted>')

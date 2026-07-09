@@ -934,6 +934,7 @@ test('GET /api/admin/creative/generations sanitizes accounting and policy read m
     assert.equal(item.quota.reservationId, 'quota-admin-readside-safe')
     assert.equal(item.policy.gates.credit, true)
     assert.equal(item.safety.reviewRequired, false)
+    assert.match(item.providerJobId, /^redacted_[a-f0-9]{16}$/)
 
     const detail = await requestJson(server.url, `/api/admin/creative/generations/${generationId}`, {
       method: 'GET',
@@ -951,6 +952,7 @@ test('GET /api/admin/creative/generations sanitizes accounting and policy read m
     assert.equal(serialized.includes('policy-secret'), false)
     assert.equal(serialized.includes('policy-trace-should-not-leak'), false)
     assert.equal(serialized.includes('provider-request-secret'), false)
+    assert.equal(serialized.includes('provider-job-should-not-leak'), false)
     assert.equal(serialized.includes('https://replicate.example'), false)
     assert.equal(serialized.includes('raw-usage-should-not-leak'), false)
     assert.equal('prompt' in detail.payload.data, false)
