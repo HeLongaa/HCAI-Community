@@ -58,6 +58,33 @@ const summarize = (env, config, provider) => ({
     : null,
 })
 
+const collectStringValues = (value) => {
+  if (typeof value === 'string') return [value]
+  if (Array.isArray(value)) return value.flatMap(collectStringValues)
+  if (!value || typeof value !== 'object') return []
+  return Object.values(value).flatMap(collectStringValues)
+}
+
+const summaryContainsUnsafeMaterial = (summary, source) => {
+  const serialized = JSON.stringify(summary)
+  const secretCandidates = [
+    source.CREATIVE_STAGING_PROVIDER_API_TOKEN,
+  ].filter((value) => typeof value === 'string' && value.trim().length >= 8)
+  if (secretCandidates.some((secret) => serialized.includes(secret))) {
+    return true
+  }
+
+  return collectStringValues(summary).some((value) =>
+    /https?:\/\//i.test(value) ||
+    /raw[_-]?provider/i.test(value) ||
+    /provider[_-]?output/i.test(value) ||
+    /callback[_-]?url/i.test(value) ||
+    /\bBearer\s+[A-Za-z0-9._~+/-]+=*/i.test(value) ||
+    /\b(api[_-]?key|token|secret|password)=/i.test(value) ||
+    /\bsk-[A-Za-z0-9_-]{8,}\b/i.test(value),
+  )
+}
+
 const source = selectSource()
 let env
 let config
@@ -71,6 +98,7 @@ try {
 
 const provider = config.providers.find((candidate) => candidate.id === 'replicate-staging') ?? null
 const checks = []
+const safeSummary = summarize(env, config, provider)
 
 check(checks, 'production runtime parity', env.nodeEnv === 'production', `NODE_ENV=${env.nodeEnv}`)
 check(checks, 'creative runtime is staging', env.creativeProviderRuntimeEnv === 'staging', `CREATIVE_PROVIDER_RUNTIME_ENV=${env.creativeProviderRuntimeEnv}`)
@@ -81,6 +109,7 @@ check(checks, 'replicate staging provider is never enabled by smoke', provider?.
 check(checks, 'replicate staging provider remains staging-only', provider?.stagingOnly === true && provider?.productionDenied === true, 'stagingOnly=true productionDenied=true')
 check(checks, 'replicate staging provider network calls disabled', provider?.networkCallsEnabled === false, 'networkCallsEnabled=false')
 check(checks, 'replicate staging adapter not production-wired', provider?.adapterImplemented === false, 'adapterImplemented=false')
+check(checks, 'safe summary contains no raw provider or secret material', !summaryContainsUnsafeMaterial(safeSummary, source), 'summary values are low-cardinality metadata only')
 
 if (mode === 'preflight') {
   check(checks, 'preflight uses disabled provider mode', env.creativeProviderMode === 'disabled', `CREATIVE_PROVIDER_MODE=${env.creativeProviderMode}`)
@@ -102,7 +131,7 @@ for (const item of checks) {
   console.log(`${item.pass ? 'PASS' : 'FAIL'} ${item.name}${item.detail ? ` (${item.detail})` : ''}`)
 }
 console.log('Safe summary:')
-console.log(JSON.stringify(summarize(env, config, provider), null, 2))
+console.log(JSON.stringify(safeSummary, null, 2))
 
 if (failed.length > 0) {
   console.error(`Creative staging smoke failed: ${failed.length} check(s) failed`)
