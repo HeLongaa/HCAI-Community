@@ -690,6 +690,146 @@ test('GET /api/admin/creative/generations redacts durable failed generation evid
   }
 })
 
+test('GET /api/admin/creative/generations exposes sanitized Replicate failed closeout observability', async () => {
+  resetCreativePolicyState()
+  const restoreEnv = applyReplicateStagingAdminFixtureEnv()
+  const fixtureCalls = []
+  const mockedClient = {
+    createPrediction: async (payload) => {
+      fixtureCalls.push(payload)
+      if (payload.input.prompt.includes('cancelled')) {
+        return {
+          id: 'pred_admin_cancelled_observability',
+          status: 'canceled',
+          logs: 'provider cancelled request with token=replicate-admin-fixture-token https://replicate.example/admin-cancelled-output.png',
+        }
+      }
+      const error = new Error('timeout while creating prediction with token=replicate-admin-fixture-token https://replicate.example/admin-timeout-output.png')
+      error.code = 'ETIMEDOUT'
+      error.predictionId = 'pred_admin_timeout_observability'
+      throw error
+    },
+  }
+  const fixtureAdapters = {
+    'replicate-staging': ({ request, provider, actor, source, now, generationId }) =>
+      createReplicateStagingPrediction({
+        request,
+        provider,
+        actor,
+        source,
+        now,
+        generationId,
+        client: mockedClient,
+      }),
+  }
+  const server = await createRouteTestServer(
+    (router) => registerCreativeRoutes(router, { fixtureAdapters }),
+    registerAdminRoutes,
+  )
+  try {
+    const timeout = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        providerId: 'replicate-staging',
+        prompt: 'Admin observability Replicate timeout fixture',
+      },
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(timeout.status, 504)
+    assert.equal(timeout.payload.error.code, 'PROVIDER_TIMEOUT')
+
+    const cancelled = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        providerId: 'replicate-staging',
+        prompt: 'Admin observability Replicate cancelled fixture',
+      },
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(cancelled.status, 409)
+    assert.equal(cancelled.payload.error.code, 'PROVIDER_CANCELLED')
+
+    assert.equal(fixtureCalls.length, 2)
+    const serializedCalls = JSON.stringify(fixtureCalls)
+    assert.equal(serializedCalls.includes('replicate-admin-fixture-token'), false)
+    assert.equal(serializedCalls.includes('https://replicate.example'), false)
+
+    const list = await requestJson(
+      server.url,
+      '/api/admin/creative/generations?providerId=replicate-staging&status=failed&limit=20',
+      {
+        method: 'GET',
+        token: 'demo-access.legalpixel',
+      },
+    )
+    assert.equal(list.status, 200)
+
+    const timeoutItem = list.payload.data.find((entry) => entry.promptPreview === 'Admin observability Replicate timeout fixture')
+    const cancelledItem = list.payload.data.find((entry) => entry.promptPreview === 'Admin observability Replicate cancelled fixture')
+    assert.ok(timeoutItem)
+    assert.ok(cancelledItem)
+
+    assert.equal(timeoutItem.errorCode, 'PROVIDER_TIMEOUT')
+    assert.equal(timeoutItem.providerRequestId, 'pred_admin_timeout_observability')
+    assert.equal(timeoutItem.usage.providerCost.schemaVersion, 'provider-cost-v1')
+    assert.equal(timeoutItem.usage.providerCost.budget.budgetScope, 'staging:replicate:image')
+    assert.equal(timeoutItem.usage.providerCost.budget.status, 'within_budget')
+    assert.equal(timeoutItem.usage.providerCost.risk.providerUsageMissing, true)
+    assert.equal(timeoutItem.credit.status, 'refunded')
+    assert.equal(timeoutItem.credit.reasonCode, 'PROVIDER_TIMEOUT')
+    assert.equal(timeoutItem.quota.reserved, 0)
+    assert.equal(timeoutItem.quota.released, 1)
+    assert.ok(timeoutItem.quota.remaining > 0)
+    assert.deepEqual(timeoutItem.outputAssetIds, [])
+
+    assert.equal(cancelledItem.errorCode, 'PROVIDER_CANCELLED')
+    assert.equal(cancelledItem.providerRequestId, 'pred_admin_cancelled_observability')
+    assert.equal(cancelledItem.usage.providerCost.schemaVersion, 'provider-cost-v1')
+    assert.equal(cancelledItem.usage.providerCost.actual.amount, null)
+    assert.equal(cancelledItem.usage.providerCost.budget.status, 'within_budget')
+    assert.equal(cancelledItem.usage.providerCost.risk.providerUsageMissing, true)
+    assert.equal(cancelledItem.credit.status, 'refunded')
+    assert.equal(cancelledItem.credit.reasonCode, 'PROVIDER_CANCELLED')
+    assert.equal(cancelledItem.quota.reserved, 0)
+    assert.equal(cancelledItem.quota.released, 2)
+    assert.ok(cancelledItem.quota.remaining > 0)
+    assert.deepEqual(cancelledItem.outputAssetIds, [])
+
+    const timeoutDetail = await requestJson(server.url, `/api/admin/creative/generations/${timeoutItem.id}`, {
+      method: 'GET',
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(timeoutDetail.status, 200)
+    assert.equal(timeoutDetail.payload.data.usage.providerCost.job.providerJobId, 'pred_admin_timeout_observability')
+
+    const cancelledDetail = await requestJson(server.url, `/api/admin/creative/generations/${cancelledItem.id}`, {
+      method: 'GET',
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(cancelledDetail.status, 200)
+    assert.equal(cancelledDetail.payload.data.usage.providerCost.job.providerJobId, 'pred_admin_cancelled_observability')
+
+    const serialized = JSON.stringify({
+      list: list.payload.data,
+      timeout: timeoutDetail.payload.data,
+      cancelled: cancelledDetail.payload.data,
+    })
+    assert.equal(serialized.includes('replicate-admin-fixture-token'), false)
+    assert.equal(serialized.includes('admin-timeout-output.png'), false)
+    assert.equal(serialized.includes('admin-cancelled-output.png'), false)
+    assert.equal(serialized.includes('https://replicate.example'), false)
+    assert.equal(serialized.includes('rawProviderPayload'), false)
+    assert.equal(serialized.includes('"rawProviderUsage"'), false)
+    assert.equal(serialized.includes('prompt"'), false)
+  } finally {
+    await server.close()
+    restoreEnv()
+    resetCreativePolicyState()
+  }
+})
+
 test('GET /api/admin/creative/generations sanitizes accounting and policy read models', async () => {
   const generationId = 'admin-generation-accounting-readside-safety-fixture'
   await repositories.creativeGenerations.create({
