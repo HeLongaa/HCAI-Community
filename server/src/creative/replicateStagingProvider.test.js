@@ -508,6 +508,54 @@ test('fetchReplicateStagingPredictionStatus maps running status without unsafe m
   assert.equal(JSON.stringify(status.safeMetadata).includes('replicate-token'), false)
 })
 
+test('fetchReplicateStagingPredictionStatus keeps provider status metadata low-cardinality', async () => {
+  const status = await fetchReplicateStagingPredictionStatus({
+    providerJobId: 'pred_status_unsafe_status',
+    request,
+    provider,
+    actor,
+    client: {
+      getPrediction: async (providerJobId) => ({
+        id: providerJobId,
+        status: 'failed token=replicate-token https://replicate.example/private-status',
+        logs: 'provider logs with Bearer secret.value',
+        output: ['https://replicate.example/private-status-output.png'],
+        usage: {
+          predictionSeconds: 1.75,
+          rawProviderPayload: {
+            token: 'replicate-token',
+            callbackUrl: 'https://internal.example/provider-callback',
+          },
+        },
+      }),
+    },
+    source: budgetSource,
+    now: new Date('2026-07-06T00:03:40.000Z'),
+  })
+
+  assert.equal(status.ok, true)
+  assert.equal(status.providerStatus, 'unsupported')
+  assert.equal(status.normalizedStatus, 'failed')
+  assert.equal(status.safeMetadata.providerStatus, 'unsupported')
+  assert.equal(status.safeMetadata.normalizedStatus, 'failed')
+  assert.equal(status.safeMetadata.hasProviderError, true)
+  assert.equal(status.generation.status, 'failed')
+  assert.equal(status.generation.errorMessagePreview.includes('secret.value'), false)
+  assert.equal(status.generation.usage.providerCost.usage.quantity, 1.75)
+  assert.equal(status.generation.usage.providerCost.usage.rawProviderUsageHash.length, 64)
+  const serialized = JSON.stringify({
+    providerStatus: status.providerStatus,
+    safeMetadata: status.safeMetadata,
+    providerCost: status.generation.usage.providerCost,
+  })
+  assert.equal(serialized.includes('replicate-token'), false)
+  assert.equal(serialized.includes('https://replicate.example'), false)
+  assert.equal(serialized.includes('private-status'), false)
+  assert.equal(serialized.includes('private-status-output'), false)
+  assert.equal(serialized.includes('https://internal.example'), false)
+  assert.equal(serialized.includes('rawProviderPayload'), false)
+})
+
 test('fetchReplicateStagingPredictionStatus maps completed outputs but keeps safe metadata output-only', async () => {
   const status = await fetchReplicateStagingPredictionStatus({
     providerJobId: 'pred_status_completed',
