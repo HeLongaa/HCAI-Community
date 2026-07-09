@@ -33,6 +33,7 @@ The completed baseline includes:
 - Pre-provider policy gating: moderation and quota reservation run before any fixture/staging provider adapter work, and adapter failures release the pre-provider quota reservation.
 - `GET /api/admin/creative/generations` and `GET /api/admin/creative/generations/:id` for audit-authorized read-only generation history.
 - Admin Center `Generation history` panel with filters, pagination, safe details, output asset linking, and `creative_generation` audit drill-downs.
+- Admin generation history applies a read-side allowlist/redaction layer over usage, provider cost, credit, quota, safety, policy, provider ids, and failure previews, so historical or manually seeded records cannot expose raw provider payloads, provider URLs, prompt text, tokens, or secrets through the operations surface.
 - Read-only provider budget operations surfaces for safe provider budget audit rows, internal notifications, Admin operations metrics, Prometheus-compatible exporter metrics, fixture dry-run dispatch audit rows, and sanitized generation cost/budget summaries.
 - Documentation and feature-contract coverage that keep the mock-provider/provider-boundary distinction explicit.
 
@@ -133,6 +134,7 @@ The final UI slice was validated with:
 - Preserve failure-evidence safety posture: durable generation and Admin DTOs should continue to redact Bearer tokens, API keys, secret-like values, and provider URLs from `errorMessagePreview`.
 - Preserve quota-evidence safety posture: quota reservation audit metadata should stay limited to generation id, workspace, units, quota window id, and redacted reason text; it must not include raw prompts, provider payloads, tokens, secrets, or provider output URLs.
 - Preserve credit-evidence safety posture: credit ledger metadata should stay limited to provider id/mode, cost model, metering flag, review flag, and linked output media asset ids; reason text and string metadata must remain redacted, and unknown metadata keys must not be stored.
+- Preserve Admin generation history read-side safety posture: list/detail DTOs should remain allowlisted and redacted even when underlying historical records contain unsafe accounting, policy, provider job, or failure metadata.
 - Any future provider adapter should exercise the same pre-provider moderation/quota gate, durable generation, quota, credit, media governance, and Admin history paths as the mock provider.
 
 ## Recommended Next Phase

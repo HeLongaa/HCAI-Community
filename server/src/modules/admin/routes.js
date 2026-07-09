@@ -21,6 +21,7 @@ import {
 import { repositories } from '../../repositories/index.js'
 import { getProtectedRolePermissions } from '../../auth/permissions.js'
 import { defaultPointAdjustmentPolicy, getDirectLimitForActor } from '../../points/adjustmentPolicy.js'
+import { safeCreativeCreditMetadata, safeErrorPreview } from '../../creative/generationRecords.js'
 
 const isPointAdjustmentReview = (review) => review?.queue === 'points' || review?.metadata?.kind === 'point_adjustment'
 
@@ -53,7 +54,7 @@ const safeNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-const safeString = (value) => value == null ? null : String(value)
+const safeString = (value) => value == null ? null : safeErrorPreview(value)
 
 const safeBoolean = (value) => typeof value === 'boolean' ? value : null
 
@@ -145,9 +146,93 @@ const safeGenerationUsage = (usage) => {
   }
 }
 
+const safeGenerationCredit = (credit) => {
+  const source = asRecord(credit)
+  if (Object.keys(source).length === 0) return null
+  return {
+    ledgerId: safeString(source.ledgerId),
+    generationId: safeString(source.generationId),
+    quotaReservationId: safeString(source.quotaReservationId),
+    status: safeString(source.status),
+    currency: safeString(source.currency),
+    reserved: safeNumber(source.reserved),
+    settled: safeNumber(source.settled),
+    refunded: safeNumber(source.refunded),
+    amount: safeNumber(source.amount),
+    reasonCode: safeString(source.reasonCode),
+    metadata: safeCreativeCreditMetadata(source.metadata),
+    reservedAt: safeString(source.reservedAt),
+    settledAt: safeString(source.settledAt),
+    refundedAt: safeString(source.refundedAt),
+    cancelledAt: safeString(source.cancelledAt),
+  }
+}
+
+const safeGenerationQuota = (quota) => {
+  const source = asRecord(quota)
+  if (Object.keys(source).length === 0) return null
+  const window = asRecord(source.window)
+  return {
+    policyVersion: safeString(source.policyVersion),
+    scope: safeString(source.scope),
+    workspace: safeString(source.workspace),
+    limit: safeNumber(source.limit),
+    reserved: safeNumber(source.reserved),
+    used: safeNumber(source.used),
+    released: safeNumber(source.released),
+    remaining: safeNumber(source.remaining),
+    reservationId: safeString(source.reservationId),
+    window: Object.keys(window).length > 0
+      ? {
+          id: safeString(window.id),
+          type: safeString(window.type),
+          start: safeString(window.start),
+          end: safeString(window.end),
+          resetsAt: safeString(window.resetsAt),
+        }
+      : null,
+  }
+}
+
+const safeGenerationSafety = (safety) => {
+  const source = asRecord(safety)
+  if (Object.keys(source).length === 0) return null
+  return {
+    moderationRequired: safeBoolean(source.moderationRequired),
+    reviewRequired: safeBoolean(source.reviewRequired),
+    reviewReason: safeString(source.reviewReason),
+  }
+}
+
+const safeGenerationPolicy = (policy) => {
+  const source = asRecord(policy)
+  if (Object.keys(source).length === 0) return null
+  const gates = asRecord(source.gates)
+  return {
+    version: safeString(source.version),
+    action: safeString(source.action),
+    reasonCode: safeString(source.reasonCode),
+    gates: Object.keys(gates).length > 0
+      ? {
+          quota: safeBoolean(gates.quota),
+          credit: safeBoolean(gates.credit),
+          moderation: safeBoolean(gates.moderation),
+          review: safeBoolean(gates.review),
+        }
+      : null,
+  }
+}
+
 const sanitizeCreativeGenerationHistory = (generation) => ({
   ...generation,
   usage: safeGenerationUsage(generation.usage),
+  credit: safeGenerationCredit(generation.credit),
+  quota: safeGenerationQuota(generation.quota),
+  safety: safeGenerationSafety(generation.safety),
+  policy: safeGenerationPolicy(generation.policy),
+  providerRequestId: safeString(generation.providerRequestId),
+  providerJobId: safeString(generation.providerJobId),
+  errorMessagePreview: generation.errorMessagePreview ? safeErrorPreview(generation.errorMessagePreview) : null,
 })
 
 const summarizeProviderReplay = (replay) => replay
