@@ -158,13 +158,18 @@ export const registerCreativeRoutes = (router, options = {}) => {
         }
       }
       if (generation?.quota?.reservationId && !quotaFinalized && quotaRepository?.release) {
-        await quotaRepository.release(generation.quota.reservationId, error?.code ?? 'generation_failed', actor)
+        const releasedQuota = await quotaRepository.release(generation.quota.reservationId, error?.code ?? 'generation_failed', actor)
+        generation = {
+          ...generation,
+          quota: releasedQuota ?? generation.quota,
+        }
       }
       if (generation?.id && generationRepository?.fail) {
         await generationRepository.fail(generation.id, {
           errorCode: error?.code ?? 'CREATIVE_GENERATION_FAILED',
           errorMessagePreview: safeErrorPreview(error),
           credit: generation.credit ?? null,
+          quota: generation.quota ?? null,
         }, actor)
       }
       throw error
