@@ -51,6 +51,14 @@ const assertHttpError = (fn, { statusCode, code, message }) => {
   })
 }
 
+const assertHttpErrorDetails = (fn, assertion) => {
+  assert.throws(fn, (error) => {
+    assert.equal(error.name, 'HttpError')
+    assertion(error)
+    return true
+  })
+}
+
 test('authorizeManualProviderReplay requires approved internal operator permissions', () => {
   assert.equal(authorizeManualProviderReplay(operator), operator)
   assertHttpError(
@@ -147,6 +155,27 @@ test('buildManualProviderReplayEnvelope rejects target mismatches before replay'
       actor: operator,
     }),
     { statusCode: 409, code: 'CREATIVE_PROVIDER_MISMATCH' },
+  )
+})
+
+test('buildManualProviderReplayEnvelope redacts unsafe provider job mismatch details', () => {
+  assertHttpErrorDetails(
+    () => buildManualProviderReplayEnvelope({
+      body: replayBody({ providerJobId: 'pred-manual-replay-safe' }),
+      currentRecord: currentRecord({
+        providerJobId: 'https://replicate.example/predictions/current?token=current-secret',
+      }),
+      actor: operator,
+    }),
+    (error) => {
+      assert.equal(error.statusCode, 409)
+      assert.equal(error.code, 'CREATIVE_PROVIDER_JOB_MISMATCH')
+      assert.match(error.details.currentProviderJobId, /^redacted_[a-f0-9]{16}$/)
+      assert.equal(error.details.incomingProviderJobId, 'pred-manual-replay-safe')
+      const details = JSON.stringify(error.details)
+      assert.equal(details.includes('replicate.example'), false)
+      assert.equal(details.includes('current-secret'), false)
+    },
   )
 })
 

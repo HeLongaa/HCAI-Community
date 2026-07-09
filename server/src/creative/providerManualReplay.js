@@ -25,6 +25,16 @@ const unsafeManualReplayFields = [
 const stableHash = (value) =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex')
 
+const safeProviderJobIdPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
+
+const safeProviderJobIdEvidence = (value) => {
+  if (value == null || value === '') return null
+  const normalized = String(value).trim()
+  return safeProviderJobIdPattern.test(normalized)
+    ? normalized
+    : `redacted_${stableHash(value).slice(0, 16)}`
+}
+
 const providerIdFor = (record) => record?.providerId ?? record?.provider?.id ?? null
 const providerModeFor = (record) => record?.providerMode ?? record?.provider?.mode ?? null
 
@@ -162,8 +172,8 @@ export const buildManualProviderReplayEnvelope = ({
   }
   if (currentRecord.providerJobId && currentRecord.providerJobId !== request.providerJobId) {
     throw new HttpError(409, 'CREATIVE_PROVIDER_JOB_MISMATCH', 'Manual provider replay targeted a different provider job', {
-      currentProviderJobId: currentRecord.providerJobId,
-      incomingProviderJobId: request.providerJobId,
+      currentProviderJobId: safeProviderJobIdEvidence(currentRecord.providerJobId),
+      incomingProviderJobId: safeProviderJobIdEvidence(request.providerJobId),
       providerId: request.providerId,
       reasonCode: 'provider_job_mismatch',
     })
