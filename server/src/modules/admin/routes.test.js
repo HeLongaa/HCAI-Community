@@ -341,7 +341,7 @@ test('GET /api/admin/creative/generations reads Replicate fixture evidence witho
     createPrediction: async (payload) => {
       calls.push(payload)
       return {
-        id: 'pred_admin_route_fixture_1',
+        id: 'pred admin route token=replicate-admin-fixture-token https://replicate.example/admin-route-job',
         status: 'succeeded',
         output: ['https://replicate.example/admin-route-output-should-not-leak.png'],
         metrics: { predict_time: 2.75 },
@@ -390,10 +390,13 @@ test('GET /api/admin/creative/generations reads Replicate fixture evidence witho
     assert.equal(JSON.stringify(calls[0]).includes('raw-admin-provider-payload'), false)
     const generationId = generated.payload.data.id
     const mediaAssetId = generated.payload.data.outputs[0].storage.mediaAssetId
-    assert.equal(generated.payload.data.providerRequestId, 'pred_admin_route_fixture_1')
-    assert.equal(generated.payload.data.providerJobId, 'pred_admin_route_fixture_1')
+    const safeProviderJobId = generated.payload.data.providerRequestId
+    assert.match(safeProviderJobId, /^redacted_[a-f0-9]{16}$/)
+    assert.equal(generated.payload.data.providerJobId, safeProviderJobId)
     assert.equal(generated.payload.data.outputs[0].url, `/api/media/assets/${mediaAssetId}/download`)
+    assert.equal(generated.payload.data.outputs[0].source.predictionId, safeProviderJobId)
     const generatedSerialized = JSON.stringify(generated.payload.data)
+    assert.equal(generatedSerialized.includes('admin-route-job'), false)
     assert.equal(generatedSerialized.includes('admin-route-output-should-not-leak'), false)
     assert.equal(generatedSerialized.includes('https://replicate.example'), false)
     assert.equal(generatedSerialized.includes('replicate-admin-fixture-token'), false)
@@ -421,12 +424,12 @@ test('GET /api/admin/creative/generations reads Replicate fixture evidence witho
     const item = list.payload.data.find((entry) => entry.id === generationId)
     assert.ok(item)
     assert.equal(item.providerId, 'replicate-staging')
-    assert.equal(item.providerRequestId, 'pred_admin_route_fixture_1')
-    assert.equal(item.providerJobId, 'pred_admin_route_fixture_1')
+    assert.equal(item.providerRequestId, safeProviderJobId)
+    assert.equal(item.providerJobId, safeProviderJobId)
     assert.deepEqual(item.parameterKeys, ['aspectRatio', 'seed'])
     assert.deepEqual(item.outputAssetIds, [mediaAssetId])
     assert.equal(item.usage.providerCost.schemaVersion, 'provider-cost-v1')
-    assert.equal(item.usage.providerCost.job.providerJobId, 'pred_admin_route_fixture_1')
+    assert.equal(item.usage.providerCost.job.providerJobId, safeProviderJobId)
     assert.equal(item.usage.providerCost.usage.quantity, 2.75)
     assert.equal(item.usage.providerCost.usage.rawProviderUsageHash.length, 64)
     assert.equal(item.usage.providerCost.actual.amount, 0.2)
@@ -442,9 +445,12 @@ test('GET /api/admin/creative/generations reads Replicate fixture evidence witho
     })
     assert.equal(detail.status, 200)
     assert.equal(detail.payload.data.promptPreview, 'A Replicate fixture for Admin read-only evidence')
-    assert.equal(detail.payload.data.usage.providerCost.job.providerRequestId, 'pred_admin_route_fixture_1')
+    assert.equal(detail.payload.data.providerRequestId, safeProviderJobId)
+    assert.equal(detail.payload.data.providerJobId, safeProviderJobId)
+    assert.equal(detail.payload.data.usage.providerCost.job.providerRequestId, safeProviderJobId)
 
     const serialized = JSON.stringify(detail.payload.data)
+    assert.equal(serialized.includes('admin-route-job'), false)
     assert.equal(serialized.includes('admin-route-output-should-not-leak'), false)
     assert.equal(serialized.includes('https://replicate.example'), false)
     assert.equal(serialized.includes('replicate-admin-fixture-token'), false)
