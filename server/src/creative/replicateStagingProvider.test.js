@@ -723,6 +723,54 @@ test('fetchReplicateStagingPredictionStatus rejects provider job mismatches', as
   )
 })
 
+test('fetchReplicateStagingPredictionStatus redacts unsafe provider job mismatch details', async () => {
+  const currentProviderJobId = 'https://replicate.example/predictions/current?token=current-secret'
+  const incomingProviderJobId = 'https://replicate.example/predictions/incoming?token=incoming-secret'
+  await assert.rejects(
+    fetchReplicateStagingPredictionStatus({
+      providerJobId: incomingProviderJobId,
+      expectedProviderJobId: currentProviderJobId,
+      request,
+      provider,
+      actor,
+      client: { getPrediction: async () => ({ id: incomingProviderJobId, status: 'processing' }) },
+      source: budgetSource,
+    }),
+    (error) => {
+      assert.equal(error.code, 'CREATIVE_PROVIDER_JOB_MISMATCH')
+      assert.equal(error.statusCode, 409)
+      assert.match(error.details.currentProviderJobId, /^redacted_[a-f0-9]{16}$/)
+      assert.match(error.details.incomingProviderJobId, /^redacted_[a-f0-9]{16}$/)
+      const details = JSON.stringify(error.details)
+      assert.equal(details.includes('replicate.example'), false)
+      assert.equal(details.includes('current-secret'), false)
+      assert.equal(details.includes('incoming-secret'), false)
+      return true
+    },
+  )
+
+  await assert.rejects(
+    fetchReplicateStagingPredictionStatus({
+      providerJobId: currentProviderJobId,
+      request,
+      provider,
+      actor,
+      client: { getPrediction: async () => ({ id: incomingProviderJobId, status: 'processing' }) },
+      source: budgetSource,
+    }),
+    (error) => {
+      assert.equal(error.code, 'CREATIVE_PROVIDER_JOB_MISMATCH')
+      assert.match(error.details.currentProviderJobId, /^redacted_[a-f0-9]{16}$/)
+      assert.match(error.details.incomingProviderJobId, /^redacted_[a-f0-9]{16}$/)
+      const details = JSON.stringify(error.details)
+      assert.equal(details.includes('replicate.example'), false)
+      assert.equal(details.includes('current-secret'), false)
+      assert.equal(details.includes('incoming-secret'), false)
+      return true
+    },
+  )
+})
+
 test('buildReplicateLifecycleReplay emits idempotent async lifecycle actions', () => {
   const queued = buildReplicateLifecycleReplay({
     currentRecord: null,
