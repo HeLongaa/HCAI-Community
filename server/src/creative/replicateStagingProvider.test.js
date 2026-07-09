@@ -387,6 +387,37 @@ test('mapReplicatePredictionToCreativeGeneration maps completed image outputs to
   assert.doesNotThrow(() => assertCreativeProviderAdapterContract(generation, { request, provider }))
 })
 
+test('mapReplicatePredictionToCreativeGeneration folds unsafe provider job ids in provider evidence', () => {
+  const generation = mapReplicatePredictionToCreativeGeneration({
+    request,
+    provider,
+    actor,
+    prediction: {
+      id: 'pred unsafe token=replicate-token https://replicate.example/private-job',
+      status: 'succeeded',
+      output: ['https://replicate.example/private-output.png'],
+      metrics: { predict_time: 2.5 },
+    },
+    source: budgetSource,
+    now: new Date('2026-07-06T00:01:45.000Z'),
+  })
+
+  assert.match(generation.providerRequestId, /^redacted_[a-f0-9]{16}$/)
+  assert.equal(generation.providerJobId, generation.providerRequestId)
+  assert.equal(generation.outputs[0].source.predictionId, generation.providerRequestId)
+  assert.equal(generation.usage.providerCost.job.providerRequestId, generation.providerRequestId)
+  assert.equal(generation.usage.providerCost.job.providerJobId, generation.providerRequestId)
+  const serialized = JSON.stringify({
+    providerRequestId: generation.providerRequestId,
+    providerJobId: generation.providerJobId,
+    outputSource: generation.outputs[0].source,
+    providerCostJob: generation.usage.providerCost.job,
+  })
+  assert.equal(serialized.includes('replicate-token'), false)
+  assert.equal(serialized.includes('https://replicate.example/private-job'), false)
+  assert.doesNotThrow(() => assertCreativeProviderAdapterContract(generation, { request, provider }))
+})
+
 test('mapReplicatePredictionToCreativeGeneration maps provider failures with redacted previews', () => {
   const generation = mapReplicatePredictionToCreativeGeneration({
     request,

@@ -41,6 +41,12 @@ const stableHash = (value) =>
     .update(JSON.stringify(value ?? null))
     .digest('hex')
 
+const safeProviderJobId = (value) => {
+  if (value == null || value === '') return null
+  const normalized = safeLowCardinalityValue(value)
+  return normalized ?? `redacted_${stableHash(value).slice(0, 16)}`
+}
+
 const budgetValue = (source, options, optionKey, envKey) =>
   options[optionKey] ?? source[envKey]
 
@@ -188,7 +194,7 @@ export const buildReplicateProviderCostMetadata = ({
   })
   const providerUsage = providerUsageForPrediction(prediction)
   const actualAmount = optionalAmount(prediction?.costUsd ?? prediction?.actualCostUsd)
-  const predictionId = prediction?.id ?? null
+  const predictionId = safeProviderJobId(prediction?.id)
   const nowIso = now.toISOString()
   return {
     schemaVersion: 'provider-cost-v1',
@@ -334,7 +340,7 @@ const buildOutput = ({ request, prediction, digest, output, index }) => ({
   },
   source: {
     kind: 'replicate_prediction',
-    predictionId: prediction.id,
+    predictionId: safeProviderJobId(prediction.id),
     predictionStatus: prediction.status,
     outputIndex: index,
     workspace: request.workspace,
@@ -352,6 +358,7 @@ export const mapReplicatePredictionToCreativeGeneration = ({
 }) => {
   const status = mapReplicatePredictionStatus(prediction?.status)
   const digest = digestForPrediction(request, actor, prediction)
+  const providerJobId = safeProviderJobId(prediction?.id)
   const outputs = status === 'completed'
     ? normalizeOutputs(prediction).map((output, index) => buildOutput({ request, prediction, digest, output, index }))
     : []
@@ -381,8 +388,8 @@ export const mapReplicatePredictionToCreativeGeneration = ({
       mode: provider.mode,
       label: provider.label,
     },
-    providerRequestId: prediction?.id ?? null,
-    providerJobId: prediction?.id ?? null,
+    providerRequestId: providerJobId,
+    providerJobId,
     prompt: request.prompt,
     inputAssetIds: request.inputAssetIds,
     parameters: buildSafeReplicateParameters(request),
@@ -545,7 +552,7 @@ export const buildReplicateLifecycleReplay = ({
     now,
     options,
   })
-  const providerJobId = prediction?.id ?? generation.providerJobId ?? null
+  const providerJobId = safeProviderJobId(prediction?.id) ?? generation.providerJobId ?? null
   const outputDigest = outputDigestForPrediction(prediction)
   const idempotencyKey = `replicate:${providerJobId ?? generation.id}:${generation.status}:${outputDigest ?? 'no-output'}`
 
