@@ -306,6 +306,11 @@ export const mapReplicatePredictionStatus = (status) => {
   return 'failed'
 }
 
+const safeProviderStatusForMetadata = (status) => {
+  const normalized = String(status ?? '').trim().toLowerCase()
+  return supportedReplicateStatuses.includes(normalized) ? normalized : 'unsupported'
+}
+
 const normalizeOutputs = (prediction) => {
   const output = prediction?.output
   if (Array.isArray(output)) return output.filter(Boolean)
@@ -481,14 +486,14 @@ export const fetchReplicateStagingPredictionStatus = async ({
       providerId: provider?.id ?? 'replicate',
       providerMode: provider?.mode ?? 'replicate_staging',
       providerJobId,
-      providerStatus: String(prediction?.status ?? ''),
+      providerStatus: safeProviderStatusForMetadata(prediction?.status),
       normalizedStatus: generation.status,
       generation,
       receivedAt: now.toISOString(),
       payloadHash: providerStatusPayloadHash(prediction),
       outputDigest,
       safeMetadata: {
-        providerStatus: String(prediction?.status ?? ''),
+        providerStatus: safeProviderStatusForMetadata(prediction?.status),
         normalizedStatus: generation.status,
         outputCount: normalizeOutputs(prediction).length,
         hasProviderError: Boolean(prediction?.error || prediction?.logs),
