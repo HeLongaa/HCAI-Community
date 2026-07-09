@@ -8,6 +8,23 @@ The current real-provider boundary handoff is summarized in `docs/REAL_PROVIDER_
 
 This document does not add a real provider SDK, provider HTTP client, webhook endpoint, polling worker, provider job creation, production paid-provider path, or Admin generation mutation control.
 
+## Current Evidence Position
+
+PRs #82 through #89 completed the fixture-only and read-side hardening needed to prepare a final staging decision record. That evidence improves the safety case, but it does not approve a real external call.
+
+Use the current evidence as follows:
+
+- PR #82 proves quota commit/release idempotency and redacted quota release audit metadata.
+- PR #83 proves creative credit settle/refund idempotency and allowlisted/redacted credit metadata.
+- PR #84 proves Admin generation history remains read-side allowlisted/redacted over unsafe historical records.
+- PR #85 indexes provider-readiness consistency evidence across durable accounting, Admin history, replay, staging shell, and budget operations.
+- PRs #86, #87, and #88 prove fixture-only Replicate staging failure, cancellation, and observability boundaries.
+- PR #89 proves provider budget read-side evidence stays sanitized across event planning, audit persistence, internal notifications, external-alert dry-run payloads, and dispatch audit rows.
+
+Even with this evidence, the decision remains no-go unless the approval record names the exact provider, staging environment, maximum provider call count, provider-side spending cap, app-side budget cap, approval expiry, token rotation owner, kill-switch owner, rollback owner, and production no-go boundary.
+
+Ordinary continuation language such as "continue", "next", "looks good", or "ship it" must be treated as no-go for real provider calls.
+
 ## Scope
 
 The first external-call rehearsal may be considered only for:

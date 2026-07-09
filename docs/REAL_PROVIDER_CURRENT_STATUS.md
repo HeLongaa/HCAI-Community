@@ -6,6 +6,25 @@ Current decision: **the repository is provider-ready, not real-provider-connecte
 
 Ordinary continuation language such as "continue", "next", "looks good", or "ship it" is not approval for real provider calls or outbound provider alerts.
 
+## Final Go/No-Go Position
+
+As of PR #89, the post-readiness fixture and read-side closeout package is complete enough to prepare a final staging decision record. The decision remains:
+
+- **Conditional go** for documentation updates, metadata-only smoke evidence, and fixture-only Replicate image staging adapter hardening with mocked or injected clients.
+- **No-go** for the first real provider external-call rehearsal until the approval record in `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` is complete in Notion and the user explicitly approves the exact staging run.
+- **No-go** for production paid-provider enablement.
+
+Completed evidence through PR #89:
+
+| Area | Evidence |
+| --- | --- |
+| Quota ledger closeout | PR #82 added idempotent quota commit/release coverage and redacted quota release reasons. |
+| Credit ledger closeout | PR #83 added idempotent settle/refund coverage and allowlisted/redacted credit metadata. |
+| Admin generation history closeout | PR #84 added read-side allowlist/redaction coverage over unsafe historical records. |
+| Provider readiness review | PR #85 added a consistency review across durable records, quota, credit, Admin history, replay, staging shell, and budget operations. |
+| Replicate staging failure/cancellation/observability | PRs #86, #87, and #88 hardened fixture-only failure mapping, cancellation boundaries, and observability evidence. |
+| Provider budget read-side chain | PR #89 added end-to-end sanitized evidence coverage from budget event planning through audit persistence, notifications, external-alert dry-run payloads, and dispatch audit rows. |
+
 ## At A Glance
 
 | Category | Current Status | Practical Meaning |
@@ -16,7 +35,7 @@ Ordinary continuation language such as "continue", "next", "looks good", or "shi
 | Admin generation history | Usable read-only | Operators can inspect sanitized generation, cost, budget, quota, credit, safety, policy, media, audit, and replay evidence. |
 | Provider lifecycle foundation | Fixture-only | Replay ledger, lifecycle reducer, side-effect plan, callback parser helpers, polling plan, and worker skeleton exist without real provider side effects. |
 | Provider budget operations | Usable read-only / fixture-only | Audit persistence, internal notifications, Admin operations metrics, exporter metrics, and fixture dry-run dispatch audit rows exist. |
-| Staging adapter shell | Fixture-only | Mocked/injected-client hardening may continue; no default SDK or network client is available. |
+| Staging adapter shell | Fixture-only | Mocked/injected-client hardening may continue; no default SDK or network client is available. PRs #86-#89 improved the fixture-only evidence chain, but did not approve real provider calls. |
 | First real external-call rehearsal | No-go until explicit approval | Requires the go/no-go approval package, Notion evidence in Chinese, call count, budget cap, expiry, token/rollback owners, and production no-go. |
 | Production paid-provider enablement | No-go | Requires a later production phase after staging proves safety, spend caps, rollback, and operations runbooks. |
 
