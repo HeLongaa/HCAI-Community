@@ -59,6 +59,44 @@ const baseOperation = ({ replay, type, reasonCode = null, required = true, metad
   }),
 })
 
+const safeGenerationOperationResult = (generation) => {
+  if (!generation || typeof generation !== 'object' || Array.isArray(generation)) return generation ?? null
+  return compactObject({
+    id: generation.id ?? null,
+    status: statusForPersistedGeneration(generation),
+    outputAssetIds: Array.isArray(generation.outputAssetIds) ? generation.outputAssetIds : undefined,
+    credit: generation.credit
+      ? compactObject({
+          ledgerId: generation.credit.ledgerId ?? null,
+          status: generation.credit.status ?? null,
+          reserved: generation.credit.reserved ?? undefined,
+          settled: generation.credit.settled ?? undefined,
+          refunded: generation.credit.refunded ?? undefined,
+        })
+      : undefined,
+    quota: generation.quota
+      ? compactObject({
+          reservationId: generation.quota.reservationId ?? null,
+          used: generation.quota.used ?? undefined,
+          released: generation.quota.released ?? undefined,
+        })
+      : undefined,
+  })
+}
+
+const ledgerOperationResult = (operation, result) => {
+  if ([
+    lifecycleOperations.markRunning,
+    lifecycleOperations.linkOutputAssets,
+    lifecycleOperations.complete,
+    lifecycleOperations.fail,
+    lifecycleOperations.cancel,
+  ].includes(operation.type)) {
+    return safeGenerationOperationResult(result)
+  }
+  return result ?? null
+}
+
 export const buildProviderSideEffectPlan = ({
   replay,
   sideEffectResult = replay?.sideEffectResult ?? {},
@@ -313,7 +351,7 @@ export const executeProviderSideEffectPlan = async ({
     }
     try {
       const result = await executeOperation({ operation, replay, repositories, actor, state })
-      operations.push({ key: operation.key, type: operation.type, status: 'succeeded', result })
+      operations.push({ key: operation.key, type: operation.type, status: 'succeeded', result: ledgerOperationResult(operation, result) })
     } catch (error) {
       const failure = safeProviderFailure(error)
       operations.push({

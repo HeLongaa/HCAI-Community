@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import { fetchReplicateStagingPredictionStatus } from './replicateStagingProvider.js'
 import { buildProviderLifecycleReplay, terminalGenerationStatuses } from './providerLifecycleReplay.js'
 import { applyProviderReplayThroughLedger } from './providerReplayIntegration.js'
@@ -10,6 +12,7 @@ const supportedPollingProviderIds = ['replicate']
 const supportedPollingProviderModes = ['replicate_staging']
 const supportedPollingRuntimeEnvs = ['staging']
 const pollingCandidateStatuses = ['queued', 'running']
+const safeEvidenceIdentifierPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
 const providerIdAliases = {
   'replicate-staging': 'replicate',
 }
@@ -20,6 +23,19 @@ const normalizeSegment = (value, fallback = 'unknown') => {
   const normalized = String(value ?? '').trim().toLowerCase()
   if (!normalized) return fallback
   return normalized.replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || fallback
+}
+
+const stableHash = (value) =>
+  createHash('sha256')
+    .update(JSON.stringify(value ?? null))
+    .digest('hex')
+
+const safeEvidenceIdentifier = (value) => {
+  if (value == null || value === '') return null
+  const normalized = String(value).trim()
+  return safeEvidenceIdentifierPattern.test(normalized)
+    ? normalized
+    : `redacted_${stableHash(value).slice(0, 16)}`
 }
 
 const normalizeProviderId = (value, fallback = 'replicate') => {
@@ -221,13 +237,16 @@ const mergeLifecycleGeneration = ({ currentRecord, providerGeneration, plan }) =
 const replayPayloadDigest = (statusResult) =>
   statusResult.outputDigest ?? statusResult.payloadHash ?? null
 
+const pollingEvidenceProviderJobId = (plan) =>
+  safeEvidenceIdentifier(plan?.providerJobId) ?? 'provider-job-missing'
+
 const pollingIdempotencyKey = ({ plan, generation, statusResult }) =>
   [
     'polling',
     plan.providerId,
     plan.providerMode,
     generation.id,
-    plan.providerJobId,
+    pollingEvidenceProviderJobId(plan),
     statusResult.normalizedStatus ?? 'unknown',
     replayPayloadDigest(statusResult) ?? 'no-payload',
   ].map((part) => normalizeSegment(part)).join(':')
@@ -237,9 +256,22 @@ const pollingProviderEventId = ({ plan, statusResult }) =>
     'polling',
     plan.providerId,
     plan.providerMode,
-    plan.providerJobId,
+    pollingEvidenceProviderJobId(plan),
     statusResult.normalizedStatus ?? 'unknown',
   ].map((part) => normalizeSegment(part)).join(':')
+
+const safeReplayEvidence = ({ replay, plan }) => {
+  const providerJobId = pollingEvidenceProviderJobId(plan)
+  return {
+    ...replay,
+    providerJobId,
+    generation: {
+      ...replay.generation,
+      providerRequestId: providerJobId,
+      providerJobId,
+    },
+  }
+}
 
 export const pollProviderGenerationOnce = async ({
   generation,
@@ -317,7 +349,7 @@ export const pollProviderGenerationOnce = async ({
   })
   const applied = await applyProviderReplayThroughLedger({
     replay: {
-      ...replay,
+      ...safeReplayEvidence({ replay, plan }),
       providerId: plan.providerId,
       providerMode: plan.providerMode,
       sourceType: 'polling',

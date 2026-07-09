@@ -362,6 +362,51 @@ test('runProviderPollingWorkerOnce applies completed fixture status through repl
   assert.equal(replays.items[0].sideEffectResult.completed, true)
 })
 
+test('pollProviderGenerationOnce redacts unsafe persisted provider job ids from polling replay evidence', async () => {
+  const repository = createSeedRepository()
+  const unsafeProviderJobId = 'https://replicate.example/predictions/pred_unsafe?token=secret-value'
+  const record = await createRunningProviderGeneration(repository, { providerJobId: unsafeProviderJobId })
+  const calls = []
+  const result = await pollProviderGenerationOnce({
+    generation: record,
+    repositories: repository,
+    providerStatusClients: {
+      replicate: {
+        getPrediction: async (id) => {
+          calls.push(id)
+          return {
+            id,
+            status: 'succeeded',
+            output: ['mock://unsafe-provider-job-output.png'],
+            created_at: '2026-07-06T11:45:30.000Z',
+            completed_at: '2026-07-06T11:46:00.000Z',
+          }
+        },
+      },
+    },
+    source: pollingSource,
+    now,
+  })
+
+  assert.deepEqual(calls, [unsafeProviderJobId])
+  assert.equal(result.polled, true)
+  assert.equal(result.replayed, true)
+  assert.equal(result.applied.execution.completed, true)
+
+  const replays = await repository.creativeProviderReplays.listForGeneration(record.id)
+  assert.equal(replays.items.length, 1)
+  const replay = replays.items[0]
+  assert.match(replay.providerJobId, /^redacted_[a-f0-9]{16}$/)
+  assert.equal(replay.providerEventId.includes(replay.providerJobId), true)
+  assert.equal(replay.idempotencyKey.includes(replay.providerJobId), true)
+
+  const replayEvidence = JSON.stringify(replay)
+  assert.equal(replayEvidence.includes(unsafeProviderJobId), false)
+  assert.equal(replayEvidence.includes('secret-value'), false)
+  assert.equal(replayEvidence.includes('replicate.example'), false)
+  assert.equal(replayEvidence.includes('mock://unsafe-provider-job-output.png'), false)
+})
+
 test('pollProviderGenerationOnce maps failed and cancelled fixture status to refund/release paths', async () => {
   for (const [providerStatus, expectedStatus] of [['failed', 'failed'], ['canceled', 'cancelled']]) {
     const repository = createSeedRepository()
