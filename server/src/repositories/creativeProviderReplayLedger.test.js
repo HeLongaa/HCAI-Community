@@ -92,6 +92,61 @@ test('seed creative provider replay ledger records idempotent lifecycle decision
   assert.equal(listed.items[0].id, recorded.replay.id)
 })
 
+test('seed creative provider replay ledger folds unsafe provider job ids in records and audit metadata', async () => {
+  const repository = createSeedRepository()
+  const generation = await createGeneration(repository, `gen-provider-replay-unsafe-${Date.now()}`)
+  const unsafeProviderJobId = 'https://replicate.example/predictions/replay?token=replay-secret'
+
+  const recorded = await repository.creativeProviderReplays.record({
+    generationId: generation.id,
+    providerId: 'replicate',
+    providerMode: 'replicate_staging',
+    providerJobId: unsafeProviderJobId,
+    providerEventId: 'event-ledger-unsafe',
+    sourceType: 'polling',
+    idempotencyKey: `replicate:${generation.id}:unsafe-provider-job`,
+    payloadHash: 'payload-hash-unsafe-provider-job',
+    previousStatus: 'running',
+    normalizedStatus: 'failed',
+    action: 'applied',
+    reasonCode: 'provider_failed',
+    sideEffectPlan: { fail: true, refundCredits: true },
+  }, actor)
+
+  assert.equal(recorded.created, true)
+  assert.match(recorded.replay.providerJobId, /^redacted_[a-f0-9]{16}$/)
+  assert.equal(JSON.stringify(recorded.replay).includes(unsafeProviderJobId), false)
+  assert.equal(JSON.stringify(recorded.replay).includes('replay-secret'), false)
+
+  const applied = await repository.creativeProviderReplays.markApplied(recorded.replay.id, {
+    completed: true,
+    completedOperationKeys: ['manual-safe-key'],
+  }, actor)
+  assert.equal(applied.providerJobId, recorded.replay.providerJobId)
+
+  const sideEffectRecorded = await repository.creativeProviderReplays.markSideEffectResult(recorded.replay.id, {
+    completed: false,
+    operations: [{ key: 'manual-safe-key', type: 'fail_generation', status: 'failed', errorPreview: 'safe failure' }],
+  }, actor)
+  assert.equal(sideEffectRecorded.providerJobId, recorded.replay.providerJobId)
+
+  for (const action of [
+    'creative.provider_replay.recorded',
+    'creative.provider_replay.applied',
+    'creative.provider_replay.side_effect_result_recorded',
+  ]) {
+    const audit = await repository.audit.list({
+      action,
+      resourceType: 'creative_provider_replay_ledger',
+    })
+    const event = audit.items.find((item) => item.resourceId === recorded.replay.id)
+    assert.ok(event)
+    assert.equal(event.metadata.providerJobId, recorded.replay.providerJobId)
+    assert.equal(JSON.stringify(event.metadata).includes(unsafeProviderJobId), false)
+    assert.equal(JSON.stringify(event.metadata).includes('replay-secret'), false)
+  }
+})
+
 test('seed creative provider replay ledger stores duplicate no-op plans without side effects', async () => {
   const repository = createSeedRepository()
   const generation = await createGeneration(repository, `gen-provider-replay-noop-${Date.now()}`)
