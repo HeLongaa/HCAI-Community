@@ -2,7 +2,9 @@
 
 This runbook defines the safe staging rehearsal that must pass before any real-provider adapter PR can move from mocked fixture coverage toward an external-call staging test. For the short readiness and closeout checklist, start with `docs/REAL_PROVIDER_STAGING_SMOKE_READINESS.md`, then use this runbook for execution details.
 
-Current status: staging smoke is metadata-only. It validates environment gates, secret presence, provider catalog safety metadata, and default-disabled execution. It does not call Replicate, download provider outputs, create generation records, run webhook or polling workers, or enable production paid-provider traffic.
+Current status: staging smoke is metadata-only. It validates environment gates, secret presence, provider catalog safety metadata, default-disabled execution, and safe-summary self-redaction. It does not call Replicate, download provider outputs, create generation records, run webhook or polling workers, or enable production paid-provider traffic.
+
+The smoke fails before closeout if its safe summary values contain the configured staging token value, raw provider markers, provider URLs, callback URLs, Bearer values, or API-key-like material.
 
 ## When To Use This Runbook
 
@@ -76,6 +78,7 @@ Expected result:
 - `adapter-shell` fixture passes with `CREATIVE_PROVIDER_MODE=replicate_staging`.
 - Safe summary reports `networkCallsEnabled=false`.
 - Safe summary reports `adapterImplemented=false`.
+- Safe summary self-redaction check passes.
 - No token value is printed.
 
 This local fixture uses a fake token string and does not call a provider.
@@ -126,6 +129,7 @@ Record the following in Notion before starting any external-call adapter task:
 - GitHub workflow run URL.
 - Smoke mode used: `preflight` or `adapter-shell`.
 - Safe summary fields for provider mode, runtime env, token configured boolean, `networkCallsEnabled`, and `adapterImplemented`.
+- Confirmation that the safe-summary self-redaction guard passed.
 - Manual API check result.
 - Provider-side spending cap confirmation.
 - Kill switch owner and rollback owner.

@@ -4,7 +4,7 @@ This closeout records the current metadata-only creative staging smoke readiness
 
 Current decision: **ready for metadata-only staging smoke, no-go for external provider calls**.
 
-The smoke validates environment gates, secret presence as a boolean, safe provider catalog metadata, and default-disabled execution. It does not call Replicate, create provider jobs, download provider outputs, enable provider callbacks or polling, deliver external budget alerts, expose Admin mutation controls, or enable production paid-provider traffic.
+The smoke validates environment gates, secret presence as a boolean, safe provider catalog metadata, default-disabled execution, and a self-redaction guard over the emitted safe summary. It does not call Replicate, create provider jobs, download provider outputs, enable provider callbacks or polling, deliver external budget alerts, expose Admin mutation controls, or enable production paid-provider traffic.
 
 ## What Is Ready
 
@@ -40,6 +40,7 @@ Expected meaning:
 - `CREATIVE_PROVIDER_MODE=disabled` is required.
 - `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true` is required.
 - Provider token presence is validated only as a boolean.
+- Safe summary values are checked before output so the configured token value, raw provider markers, provider URLs, callback URLs, Bearer values, and API-key-like material cannot be printed.
 - Creative generation remains globally disabled.
 
 ### Fixture adapter-shell
@@ -57,6 +58,7 @@ Expected meaning:
 - `replicate-staging` remains unavailable/default-disabled.
 - `networkCallsEnabled=false`.
 - `adapterImplemented=false`.
+- Safe summary values pass the self-redaction guard before they are printed.
 
 ### Environment smoke
 
@@ -79,6 +81,7 @@ Before recording metadata-only staging smoke as complete, all items below should
 - Local `npm run smoke:creative-staging` passes without real provider credentials.
 - Manual GitHub `creative-staging` smoke can be run against a dedicated staging environment.
 - Smoke output contains no token values, raw prompts, raw provider payloads, raw response bodies, output URLs, or secrets.
+- Smoke output has passed the built-in safe summary self-redaction guard.
 - Smoke output reports only safe booleans, provider modes, provider ids, and default-disabled metadata.
 - `replicate-staging` reports `networkCallsEnabled=false`.
 - `replicate-staging` reports `adapterImplemented=false` unless a later explicitly approved adapter PR changes the shell contract.
