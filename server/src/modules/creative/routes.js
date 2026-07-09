@@ -14,6 +14,18 @@ import { repositories } from '../../repositories/index.js'
 
 const terminalProviderFailureStatuses = new Set(['failed', 'cancelled'])
 
+const errorCodeForProviderFailure = (generation) => {
+  if (generation?.errorCode) return generation.errorCode
+  if (generation?.status === 'cancelled') return 'PROVIDER_CANCELLED'
+  return 'CREATIVE_PROVIDER_GENERATION_FAILED'
+}
+
+const errorMessageForProviderFailure = (generation) => {
+  if (generation?.errorMessagePreview) return generation.errorMessagePreview
+  if (generation?.status === 'cancelled') return 'Creative provider cancelled the generation'
+  return 'Creative provider returned a terminal failure'
+}
+
 const statusCodeForProviderFailure = (generation) => {
   if (generation?.status === 'cancelled') return 409
   if (generation?.errorCode === 'PROVIDER_TIMEOUT') return 504
@@ -78,8 +90,8 @@ export const registerCreativeRoutes = (router, options = {}) => {
       if (terminalProviderFailureStatuses.has(generation.status)) {
         throw new HttpError(
           statusCodeForProviderFailure(generation),
-          generation.errorCode ?? 'CREATIVE_PROVIDER_GENERATION_FAILED',
-          generation.errorMessagePreview ?? 'Creative provider returned a terminal failure',
+          errorCodeForProviderFailure(generation),
+          errorMessageForProviderFailure(generation),
           {
             providerId: generation.provider?.id ?? null,
             providerMode: generation.provider?.mode ?? null,
