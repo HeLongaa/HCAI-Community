@@ -457,6 +457,93 @@ test('POST /api/creative/generations releases quota without records when Replica
   }
 })
 
+test('POST /api/creative/generations refunds credits and releases quota when Replicate fixture returns provider failure', async () => {
+  resetCreativePolicyState()
+  const restoreEnv = applyReplicateStagingFixtureEnv({
+    CREATIVE_DAILY_QUOTA: '1',
+    MEDIA_SCAN_PROVIDER: 'manual',
+  })
+  const mockedClient = {
+    createPrediction: async () => {
+      const error = new Error('timeout while creating prediction with token=replicate-fixture-token https://replicate.example/private-output.png')
+      error.code = 'ETIMEDOUT'
+      error.predictionId = 'pred_route_timeout_1'
+      throw error
+    },
+  }
+  const fixtureAdapters = {
+    'replicate-staging': ({ request, provider, actor, source, now, generationId }) =>
+      createReplicateStagingPrediction({
+        request,
+        provider,
+        actor,
+        source,
+        now,
+        generationId,
+        client: mockedClient,
+      }),
+  }
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, { fixtureAdapters }))
+  try {
+    const window = quotaWindowFor(new Date())
+    const beforeQuota = await repositories.creativeQuota.getQuotaWindow({
+      actorHandle: 'opsplus',
+      workspace: 'image',
+      windowType: window.type,
+      windowStart: window.start,
+    })
+    const beforeReleased = beforeQuota?.released ?? 0
+
+    const failed = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        providerId: 'replicate-staging',
+        prompt: 'A staging provider timeout refund poster',
+      },
+      token: 'demo-access.opsplus',
+    })
+
+    assert.equal(failed.status, 504)
+    assert.equal(failed.payload.data, null)
+    assert.equal(failed.payload.error.code, 'PROVIDER_TIMEOUT')
+    assert.equal(JSON.stringify(failed.payload).includes('replicate-fixture-token'), false)
+    assert.equal(JSON.stringify(failed.payload).includes('https://replicate.example'), false)
+
+    const quota = await repositories.creativeQuota.getQuotaWindow({
+      actorHandle: 'opsplus',
+      workspace: 'image',
+      windowType: window.type,
+      windowStart: window.start,
+    })
+    assert.equal(quota.reserved, 0)
+    assert.equal(quota.used, 0)
+    assert.equal(quota.released, beforeReleased + 1)
+    assert.equal(quota.remaining, quota.limit)
+
+    const generations = await repositories.creativeGenerations.list({
+      actorHandle: 'opsplus',
+      status: 'failed',
+      limit: 20,
+    })
+    const failedRecord = generations.items.find((item) => item.promptPreview === 'A staging provider timeout refund poster')
+    assert.ok(failedRecord)
+    assert.equal(failedRecord.providerId, 'replicate-staging')
+    assert.equal(failedRecord.providerRequestId, 'pred_route_timeout_1')
+    assert.equal(failedRecord.errorCode, 'PROVIDER_TIMEOUT')
+    assert.equal(failedRecord.errorMessagePreview.includes('replicate-fixture-token'), false)
+    assert.equal(failedRecord.errorMessagePreview.includes('https://replicate.example'), false)
+    assert.deepEqual(failedRecord.outputAssetIds, [])
+    assert.equal(failedRecord.credit.status, 'refunded')
+    assert.equal(failedRecord.credit.refunded, 1)
+    assert.equal(failedRecord.credit.reasonCode, 'PROVIDER_TIMEOUT')
+  } finally {
+    await server.close()
+    restoreEnv()
+    resetCreativePolicyState()
+  }
+})
+
 test('POST /api/creative/generations returns moderation errors before generation', async () => {
   resetCreativePolicyState()
   const server = await createRouteTestServer(registerCreativeRoutes)
