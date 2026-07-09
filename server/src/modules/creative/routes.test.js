@@ -544,6 +544,99 @@ test('POST /api/creative/generations refunds credits and releases quota when Rep
   }
 })
 
+test('POST /api/creative/generations closes out cancelled Replicate fixture generations without settlement', async () => {
+  resetCreativePolicyState()
+  const restoreEnv = applyReplicateStagingFixtureEnv({
+    CREATIVE_DAILY_QUOTA: '1',
+    MEDIA_SCAN_PROVIDER: 'manual',
+  })
+  const mockedClient = {
+    createPrediction: async () => ({
+      id: 'pred_route_cancelled_1',
+      status: 'canceled',
+      logs: 'provider cancelled request with token=replicate-fixture-token https://replicate.example/cancelled-output.png',
+    }),
+  }
+  const fixtureAdapters = {
+    'replicate-staging': ({ request, provider, actor, source, now, generationId }) =>
+      createReplicateStagingPrediction({
+        request,
+        provider,
+        actor,
+        source,
+        now,
+        generationId,
+        client: mockedClient,
+      }),
+  }
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, { fixtureAdapters }))
+  try {
+    const window = quotaWindowFor(new Date())
+    const beforeQuota = await repositories.creativeQuota.getQuotaWindow({
+      actorHandle: 'opsplus',
+      workspace: 'image',
+      windowType: window.type,
+      windowStart: window.start,
+    })
+    const beforeReleased = beforeQuota?.released ?? 0
+
+    const cancelled = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        providerId: 'replicate-staging',
+        prompt: 'A staging provider cancelled refund poster',
+      },
+      token: 'demo-access.opsplus',
+    })
+
+    assert.equal(cancelled.status, 409)
+    assert.equal(cancelled.payload.data, null)
+    assert.equal(cancelled.payload.error.code, 'PROVIDER_CANCELLED')
+    assert.equal(cancelled.payload.error.details.generationStatus, 'cancelled')
+    assert.equal(JSON.stringify(cancelled.payload).includes('replicate-fixture-token'), false)
+    assert.equal(JSON.stringify(cancelled.payload).includes('https://replicate.example'), false)
+
+    const quota = await repositories.creativeQuota.getQuotaWindow({
+      actorHandle: 'opsplus',
+      workspace: 'image',
+      windowType: window.type,
+      windowStart: window.start,
+    })
+    assert.equal(quota.reserved, 0)
+    assert.equal(quota.used, 0)
+    assert.equal(quota.released, beforeReleased + 1)
+    assert.equal(quota.remaining, quota.limit)
+
+    const failedGenerations = await repositories.creativeGenerations.list({
+      actorHandle: 'opsplus',
+      status: 'failed',
+      limit: 20,
+    })
+    const failedRecord = failedGenerations.items.find((item) => item.promptPreview === 'A staging provider cancelled refund poster')
+    assert.ok(failedRecord)
+    assert.equal(failedRecord.providerId, 'replicate-staging')
+    assert.equal(failedRecord.providerRequestId, 'pred_route_cancelled_1')
+    assert.equal(failedRecord.errorCode, 'PROVIDER_CANCELLED')
+    assert.equal(failedRecord.errorMessagePreview, 'Creative provider cancelled the generation')
+    assert.deepEqual(failedRecord.outputAssetIds, [])
+    assert.equal(failedRecord.credit.status, 'refunded')
+    assert.equal(failedRecord.credit.refunded, 1)
+    assert.equal(failedRecord.credit.reasonCode, 'PROVIDER_CANCELLED')
+
+    const completedGenerations = await repositories.creativeGenerations.list({
+      actorHandle: 'opsplus',
+      status: 'completed',
+      limit: 20,
+    })
+    assert.equal(completedGenerations.items.some((item) => item.promptPreview === 'A staging provider cancelled refund poster'), false)
+  } finally {
+    await server.close()
+    restoreEnv()
+    resetCreativePolicyState()
+  }
+})
+
 test('POST /api/creative/generations returns moderation errors before generation', async () => {
   resetCreativePolicyState()
   const server = await createRouteTestServer(registerCreativeRoutes)
