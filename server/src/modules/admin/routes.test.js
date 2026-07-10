@@ -2342,6 +2342,119 @@ test('GET /api/admin/audit list, export, and detail sanitize creative credit and
   }
 })
 
+test('GET /api/admin/audit list, export, and detail sanitize media asset lifecycle evidence', async () => {
+  const server = await createTestServer()
+  try {
+    const unsafeValues = {
+      resource: 'https://media.example/assets/audit?token=resource-secret',
+      generation: 'https://provider.example/generations/media?token=generation-secret',
+      output: 'https://provider.example/outputs/media?token=output-secret',
+      provider: 'replicate?token=provider-secret',
+      workspace: 'image?token=workspace-secret',
+      purpose: 'generated_output?token=purpose-secret',
+      scanStatus: 'clean?token=scan-secret',
+    }
+    const actions = [
+      'media.upload.created',
+      'media.upload.completed',
+      'media.generated_asset.created',
+      'media.download.signed',
+    ]
+    const payloads = actions.map((action, index) => ({
+      action,
+      resourceType: 'media_asset',
+      resourceId: `${unsafeValues.resource}&event=${index}`,
+      metadata: {
+        generationId: unsafeValues.generation,
+        outputId: unsafeValues.output,
+        providerId: unsafeValues.provider,
+        workspace: unsafeValues.workspace,
+        purpose: unsafeValues.purpose,
+        scanStatus: unsafeValues.scanStatus,
+        sizeBytes: 4096,
+        creativeReviewRequired: true,
+        note: 'Inspect https://media.example/runbook?token=note-secret',
+      },
+    }))
+    payloads.push({
+      action: 'media.generated_asset.created',
+      resourceType: 'media_asset',
+      resourceId: 'media-safe-lifecycle-evidence',
+      metadata: {
+        generationId: 'gen-safe-lifecycle-evidence',
+        outputId: 'output-safe-lifecycle-evidence',
+        providerId: 'mock',
+        workspace: 'image',
+        purpose: 'generated_output',
+        scanStatus: 'clean',
+        sizeBytes: 2048,
+        creativeReviewRequired: false,
+      },
+    })
+    const recorded = await repositories.providerBudgetAudit.recordMany(payloads)
+    const eventIds = recorded.map((item) => item.event.id)
+
+    const list = await requestJson(
+      server.url,
+      '/api/admin/audit?resourceType=media_asset&limit=100',
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )
+    const listedEvents = list.payload.data.filter((event) => eventIds.includes(event.id))
+
+    const exported = await requestJson(
+      server.url,
+      '/api/admin/audit/export?resourceType=media_asset&limit=100',
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )
+    const exportedEvents = exported.payload.events.filter((event) => eventIds.includes(event.id))
+
+    const details = await Promise.all(eventIds.map((eventId) => requestJson(
+      server.url,
+      `/api/admin/audit/${eventId}`,
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )))
+
+    assert.equal(list.status, 200)
+    assert.equal(exported.status, 200)
+    assert.equal(listedEvents.length, payloads.length)
+    assert.equal(exportedEvents.length, payloads.length)
+    for (const detail of details) assert.equal(detail.status, 200)
+
+    const events = [...listedEvents, ...exportedEvents, ...details.map((detail) => detail.payload.data)]
+    const unsafeEventIds = new Set(eventIds.slice(0, actions.length))
+    for (const event of events.filter((item) => unsafeEventIds.has(item.id))) {
+      assert.match(event.resourceId, /^redacted_[a-f0-9]{16}$/)
+      for (const key of ['generationId', 'outputId', 'providerId', 'workspace', 'purpose', 'scanStatus']) {
+        assert.match(event.metadata[key], /^redacted_[a-f0-9]{16}$/)
+      }
+      assert.equal(event.metadata.sizeBytes, 4096)
+      assert.equal(event.metadata.creativeReviewRequired, true)
+      assert.equal(event.metadata.note.includes('<redacted-url>'), true)
+    }
+
+    for (const event of events.filter((item) => !unsafeEventIds.has(item.id))) {
+      assert.equal(event.resourceId, 'media-safe-lifecycle-evidence')
+      assert.equal(event.metadata.generationId, 'gen-safe-lifecycle-evidence')
+      assert.equal(event.metadata.outputId, 'output-safe-lifecycle-evidence')
+      assert.equal(event.metadata.providerId, 'mock')
+      assert.equal(event.metadata.workspace, 'image')
+      assert.equal(event.metadata.purpose, 'generated_output')
+      assert.equal(event.metadata.scanStatus, 'clean')
+      assert.equal(event.metadata.sizeBytes, 2048)
+      assert.equal(event.metadata.creativeReviewRequired, false)
+    }
+
+    const serialized = JSON.stringify(events)
+    for (const unsafe of [...Object.values(unsafeValues), 'note-secret']) {
+      assert.equal(serialized.includes(unsafe), false)
+    }
+    assert.equal(serialized.includes('media.example'), false)
+    assert.equal(serialized.includes('provider.example'), false)
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/admin/audit/export requires audit read permission', async () => {
   const server = await createTestServer()
   try {
