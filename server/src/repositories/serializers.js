@@ -19,6 +19,12 @@ const providerLifecycleAuditActions = new Set([
   'creative.provider_replay.updated',
 ])
 
+const providerReplayLedgerAuditActions = new Set([
+  'creative.provider_replay.recorded',
+  'creative.provider_replay.applied',
+  'creative.provider_replay.side_effect_result_recorded',
+])
+
 const providerBudgetIdentifierKeys = new Set([
   'alertAction',
   'alertType',
@@ -61,6 +67,14 @@ const providerLifecycleProviderEvidenceKeys = new Set([
   'providerEventId',
   'providerJobId',
   'providerRequestId',
+])
+
+const providerReplayLedgerIdentifierKeys = new Set([
+  'action',
+  'generationId',
+  'providerId',
+  'reasonCode',
+  'sourceType',
 ])
 
 const isProviderBudgetAuditEvent = (event) =>
@@ -114,6 +128,33 @@ const safeProviderLifecycleAuditMetadataValue = (value, key = '') => {
 const safeProviderLifecycleAuditMetadata = (metadata) =>
   metadata && typeof metadata === 'object' && !Array.isArray(metadata)
     ? safeProviderLifecycleAuditMetadataValue(metadata)
+    : null
+
+const isProviderReplayLedgerAuditEvent = (event) =>
+  providerReplayLedgerAuditActions.has(event?.action) && event?.resourceType === 'creative_provider_replay_ledger'
+
+const safeProviderReplayLedgerAuditMetadataValue = (value, key = '') => {
+  if (typeof value === 'string') {
+    if (key === 'providerJobId') return safeProviderJobIdEvidence(value)
+    return providerReplayLedgerIdentifierKeys.has(key)
+      ? safeProviderLifecycleEvidenceIdentifier(value)
+      : safeErrorPreview(value)
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => safeProviderReplayLedgerAuditMetadataValue(item))
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([childKey, childValue]) => [
+      childKey,
+      safeProviderReplayLedgerAuditMetadataValue(childValue, childKey),
+    ]))
+  }
+  return value
+}
+
+const safeProviderReplayLedgerAuditMetadata = (metadata) =>
+  metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+    ? safeProviderReplayLedgerAuditMetadataValue(metadata)
     : null
 
 const parsePoints = (value) => {
@@ -266,6 +307,7 @@ export const serializeNotification = (notification) => ({
 export const serializeAuditEvent = (event) => {
   const providerBudgetEvent = isProviderBudgetAuditEvent(event)
   const providerLifecycleEvent = isProviderLifecycleAuditEvent(event)
+  const providerReplayLedgerEvent = isProviderReplayLedgerAuditEvent(event)
   return {
     id: String(event.id),
     actorType: event.actorType,
@@ -276,12 +318,16 @@ export const serializeAuditEvent = (event) => {
       ? safeProviderBudgetEvidenceIdentifier(event.resourceId)
       : providerLifecycleEvent
         ? safeProviderLifecycleEvidenceIdentifier(event.resourceId)
-        : event.resourceId ?? null,
+        : providerReplayLedgerEvent
+          ? safeProviderLifecycleEvidenceIdentifier(event.resourceId)
+          : event.resourceId ?? null,
     metadata: providerBudgetEvent
       ? safeProviderBudgetAuditMetadata(event.metadata)
       : providerLifecycleEvent
         ? safeProviderLifecycleAuditMetadata(event.metadata)
-        : event.metadata ?? null,
+        : providerReplayLedgerEvent
+          ? safeProviderReplayLedgerAuditMetadata(event.metadata)
+          : event.metadata ?? null,
     createdAt: event.createdAt?.toISOString?.() ?? event.createdAt ?? '',
   }
 }

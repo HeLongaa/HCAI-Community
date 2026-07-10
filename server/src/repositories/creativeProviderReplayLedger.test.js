@@ -141,7 +141,17 @@ test('seed creative provider replay ledger folds unsafe provider job ids in reco
     })
     const event = audit.items.find((item) => item.resourceId === recorded.replay.id)
     assert.ok(event)
+    assert.equal(event.metadata.generationId, generation.id)
+    assert.equal(event.metadata.providerId, 'replicate')
     assert.equal(event.metadata.providerJobId, recorded.replay.providerJobId)
+    assert.equal(event.metadata.sourceType, 'polling')
+    if (action === 'creative.provider_replay.recorded') {
+      assert.equal(event.metadata.action, 'applied')
+      assert.equal(event.metadata.reasonCode, 'provider_failed')
+    }
+    if (action === 'creative.provider_replay.side_effect_result_recorded') {
+      assert.equal(event.metadata.action, 'rejected')
+    }
     assert.equal(JSON.stringify(event.metadata).includes(unsafeProviderJobId), false)
     assert.equal(JSON.stringify(event.metadata).includes('replay-secret'), false)
   }
