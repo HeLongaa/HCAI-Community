@@ -1609,6 +1609,105 @@ test('GET /api/admin/audit/export returns filtered audit JSON', async () => {
   }
 })
 
+test('GET /api/admin/audit list, export, and detail sanitize provider budget evidence', async () => {
+  const server = await createTestServer()
+  try {
+    const unsafeValues = {
+      resource: 'https://ops.example.com/budget/audit?token=resource-secret',
+      source: 'creative-provider-budget:https://ops.example.com/source?token=source-secret:audit',
+      provider: 'replicate?token=provider-secret',
+      account: 'https://replicate.example/accounts/audit?token=account-secret',
+      workspace: 'image?token=workspace-secret',
+      mode: 'text_to_image?token=mode-secret',
+      model: 'replicate:image?token=model-secret',
+      budget: 'https://ops.example.com/budget/scope?token=budget-secret',
+      reason: 'over_budget?token=reason-secret',
+      alert: 'creative.provider_budget.threshold_80?token=alert-secret',
+      idempotency: 'https://ops.example.com/idempotency?token=idempotency-secret',
+    }
+    const [recorded] = await repositories.providerBudgetAudit.recordMany([{
+      action: 'creative.provider_budget.threshold_crossed',
+      resourceType: 'creative_provider_budget',
+      resourceId: unsafeValues.resource,
+      metadata: {
+        sourceKey: unsafeValues.source,
+        providerId: unsafeValues.provider,
+        providerAccountRef: unsafeValues.account,
+        workspace: unsafeValues.workspace,
+        mode: unsafeValues.mode,
+        providerModelId: unsafeValues.model,
+        budgetScope: unsafeValues.budget,
+        severity: 'warning',
+        reasonCode: unsafeValues.reason,
+        alertType: unsafeValues.alert,
+        idempotencyKey: unsafeValues.idempotency,
+        errorPreview: 'Provider failed at https://replicate.example/jobs/audit?token=preview-secret',
+        note: 'Inspect https://ops.example.com/runbook?token=note-secret',
+        safeLabel: 'fixture_safe',
+        usageRatioPercent: 85,
+      },
+    }])
+    const eventId = recorded.event.id
+
+    const list = await requestJson(
+      server.url,
+      '/api/admin/audit?action=creative.provider_budget.threshold_crossed&resourceType=creative_provider_budget&limit=100',
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )
+    const listedEvent = list.payload.data.find((event) => event.id === eventId)
+
+    const exported = await requestJson(
+      server.url,
+      '/api/admin/audit/export?action=creative.provider_budget.threshold_crossed&resourceType=creative_provider_budget&limit=100',
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )
+    const exportedEvent = exported.payload.events.find((event) => event.id === eventId)
+
+    const detail = await requestJson(server.url, `/api/admin/audit/${eventId}`, {
+      method: 'GET',
+      token: 'demo-access.opsplus',
+    })
+
+    assert.equal(list.status, 200)
+    assert.equal(exported.status, 200)
+    assert.equal(detail.status, 200)
+    assert.ok(listedEvent)
+    assert.ok(exportedEvent)
+
+    for (const event of [listedEvent, exportedEvent, detail.payload.data]) {
+      assert.match(event.resourceId, /^redacted_[a-f0-9]{16}$/)
+      for (const key of [
+        'sourceKey',
+        'providerId',
+        'providerAccountRef',
+        'workspace',
+        'mode',
+        'providerModelId',
+        'budgetScope',
+        'reasonCode',
+        'alertType',
+        'idempotencyKey',
+      ]) {
+        assert.match(event.metadata[key], /^redacted_[a-f0-9]{16}$/)
+      }
+      assert.equal(event.metadata.severity, 'warning')
+      assert.equal(event.metadata.safeLabel, 'fixture_safe')
+      assert.equal(event.metadata.usageRatioPercent, 85)
+      assert.equal(event.metadata.errorPreview.includes('<redacted-url>'), true)
+      assert.equal(event.metadata.note.includes('<redacted-url>'), true)
+    }
+
+    const serialized = JSON.stringify([listedEvent, exportedEvent, detail.payload.data])
+    for (const unsafe of [...Object.values(unsafeValues), 'preview-secret', 'note-secret']) {
+      assert.equal(serialized.includes(unsafe), false)
+    }
+    assert.equal(serialized.includes('replicate.example'), false)
+    assert.equal(serialized.includes('ops.example.com'), false)
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/admin/audit/export requires audit read permission', async () => {
   const server = await createTestServer()
   try {

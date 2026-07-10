@@ -44,7 +44,7 @@ const safeString = (value, fallback = null) => {
   return normalized || fallback
 }
 
-const safeEvidenceIdentifier = (value, fallback = null) => {
+export const safeProviderBudgetEvidenceIdentifier = (value, fallback = null) => {
   const normalized = safeString(value, fallback)
   if (!normalized) return null
   return safeEvidencePattern.test(normalized)
@@ -53,12 +53,12 @@ const safeEvidenceIdentifier = (value, fallback = null) => {
 }
 
 const baseMetadata = ({ providerCost, workspace = null, mode = null }) => ({
-  providerId: safeEvidenceIdentifier(providerCost?.providerId, 'unknown'),
-  providerAccountRef: safeEvidenceIdentifier(providerCost?.providerAccountRef, 'unknown'),
-  workspace: safeEvidenceIdentifier(workspace ?? providerCost?.model?.family, null),
-  mode: safeEvidenceIdentifier(mode, null),
-  providerModelId: safeEvidenceIdentifier(providerCost?.model?.providerModelId, null),
-  budgetScope: safeEvidenceIdentifier(providerCost?.budget?.budgetScope, 'unknown'),
+  providerId: safeProviderBudgetEvidenceIdentifier(providerCost?.providerId, 'unknown'),
+  providerAccountRef: safeProviderBudgetEvidenceIdentifier(providerCost?.providerAccountRef, 'unknown'),
+  workspace: safeProviderBudgetEvidenceIdentifier(workspace ?? providerCost?.model?.family, null),
+  mode: safeProviderBudgetEvidenceIdentifier(mode, null),
+  providerModelId: safeProviderBudgetEvidenceIdentifier(providerCost?.model?.providerModelId, null),
+  budgetScope: safeProviderBudgetEvidenceIdentifier(providerCost?.budget?.budgetScope, 'unknown'),
   currency: safeString(providerCost?.budget?.dailyCapCurrency ?? providerCost?.estimate?.currency ?? providerCost?.actual?.currency, 'USD'),
   estimateAmount: roundAmount(providerCost?.estimate?.amount),
   actualAmount: roundAmount(providerCost?.actual?.amount),
@@ -84,7 +84,7 @@ const usageRatioPercent = (providerCost) => {
 }
 
 const alertId = ({ prefix, providerCost, suffix, now }) =>
-  `${prefix}:${safeEvidenceIdentifier(providerCost?.budget?.budgetScope, 'unknown')}:${isoDate(now)}:${suffix}`
+  `${prefix}:${safeProviderBudgetEvidenceIdentifier(providerCost?.budget?.budgetScope, 'unknown')}:${isoDate(now)}:${suffix}`
 
 const auditEvent = ({ action, resourceId = null, metadata, now }) => ({
   action,
