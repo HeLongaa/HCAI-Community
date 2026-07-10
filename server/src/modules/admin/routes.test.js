@@ -2003,6 +2003,105 @@ test('GET /api/admin/audit list, export, and detail sanitize provider lifecycle 
   }
 })
 
+test('GET /api/admin/audit list, export, and detail sanitize provider replay ledger evidence', async () => {
+  const server = await createTestServer()
+  try {
+    const unsafeValues = {
+      resource: 'https://provider.example/replays/admin?token=resource-secret',
+      generation: 'https://provider.example/generations/replay?token=generation-secret',
+      provider: 'replicate?token=provider-secret',
+      job: 'https://provider.example/jobs/replay?token=job-secret',
+      sourceType: 'webhook?token=source-type-secret',
+      action: 'applied?token=action-secret',
+      reason: 'provider_failed?token=reason-secret',
+    }
+    const actions = [
+      'creative.provider_replay.recorded',
+      'creative.provider_replay.applied',
+      'creative.provider_replay.side_effect_result_recorded',
+    ]
+    const recorded = await repositories.providerBudgetAudit.recordMany(actions.map((action, index) => ({
+      action,
+      resourceType: 'creative_provider_replay_ledger',
+      resourceId: `${unsafeValues.resource}&event=${index}`,
+      metadata: {
+        generationId: unsafeValues.generation,
+        providerId: unsafeValues.provider,
+        providerJobId: unsafeValues.job,
+        sourceType: unsafeValues.sourceType,
+        action: unsafeValues.action,
+        reasonCode: unsafeValues.reason,
+        note: 'Inspect https://provider.example/runbook?token=note-secret',
+        diagnostics: {
+          callbackUrl: 'https://provider.example/callback?token=callback-secret',
+          retryable: false,
+        },
+      },
+    })))
+    const eventIds = recorded.map((item) => item.event.id)
+
+    const list = await requestJson(
+      server.url,
+      '/api/admin/audit?resourceType=creative_provider_replay_ledger&limit=100',
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )
+    const listedEvents = list.payload.data.filter((event) => eventIds.includes(event.id))
+
+    const exported = await requestJson(
+      server.url,
+      '/api/admin/audit/export?resourceType=creative_provider_replay_ledger&limit=100',
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )
+    const exportedEvents = exported.payload.events.filter((event) => eventIds.includes(event.id))
+
+    const details = await Promise.all(eventIds.map((eventId) => requestJson(
+      server.url,
+      `/api/admin/audit/${eventId}`,
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )))
+
+    assert.equal(list.status, 200)
+    assert.equal(exported.status, 200)
+    assert.equal(listedEvents.length, actions.length)
+    assert.equal(exportedEvents.length, actions.length)
+    assert.deepEqual(new Set(listedEvents.map((event) => event.action)), new Set(actions))
+    assert.deepEqual(new Set(exportedEvents.map((event) => event.action)), new Set(actions))
+    for (const detail of details) assert.equal(detail.status, 200)
+
+    const events = [...listedEvents, ...exportedEvents, ...details.map((detail) => detail.payload.data)]
+    for (const event of events) {
+      assert.match(event.resourceId, /^redacted_[a-f0-9]{16}$/)
+      for (const key of ['generationId', 'providerId', 'providerJobId', 'sourceType', 'action', 'reasonCode']) {
+        assert.match(event.metadata[key], /^redacted_[a-f0-9]{16}$/)
+      }
+      assert.equal(event.metadata.note.includes('<redacted-url>'), true)
+      assert.equal(event.metadata.diagnostics.callbackUrl, '<redacted-url>')
+      assert.equal(event.metadata.diagnostics.retryable, false)
+    }
+
+    const serialized = JSON.stringify(events)
+    for (const unsafe of [...Object.values(unsafeValues), 'note-secret', 'callback-secret']) {
+      assert.equal(serialized.includes(unsafe), false)
+    }
+    assert.equal(serialized.includes('provider.example'), false)
+
+    const unrelated = await repositories.providerBudgetAudit.recordMany([{
+      action: 'admin.fixture.audit_recorded',
+      resourceType: 'fixture',
+      resourceId: unsafeValues.resource,
+      metadata: { note: unsafeValues.reason },
+    }])
+    const unrelatedDetail = await requestJson(server.url, `/api/admin/audit/${unrelated[0].event.id}`, {
+      method: 'GET',
+      token: 'demo-access.opsplus',
+    })
+    assert.equal(unrelatedDetail.payload.data.resourceId, unsafeValues.resource)
+    assert.equal(unrelatedDetail.payload.data.metadata.note, unsafeValues.reason)
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/admin/audit/export requires audit read permission', async () => {
   const server = await createTestServer()
   try {
