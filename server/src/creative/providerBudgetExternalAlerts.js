@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import { safeProviderFailure } from './providerAdapterContract.js'
 
 const providerBudgetExternalAlertActions = new Set([
@@ -10,6 +12,7 @@ const providerBudgetExternalAlertChannels = new Set(['webhook', 'slack', 'email'
 const providerBudgetExternalAlertDispatchAuditStatuses = new Set(['succeeded', 'failed', 'skipped'])
 const defaultProviderBudgetExternalAlertChannels = Object.freeze([...providerBudgetExternalAlertChannels])
 const safeSourceKeyPattern = /^[a-z0-9][a-z0-9:._-]{0,240}$/i
+const safeEvidencePattern = /^[a-z0-9][a-z0-9:._-]{0,160}$/i
 
 const compactObject = (value) =>
   Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ''))
@@ -17,6 +20,24 @@ const compactObject = (value) =>
 const safeString = (value, fallback = null) => {
   const normalized = String(value ?? '').trim()
   return normalized || fallback
+}
+
+const stableHash = (value) =>
+  createHash('sha256')
+    .update(JSON.stringify(value ?? null))
+    .digest('hex')
+
+const safeEvidenceIdentifier = (value, fallback = null) => {
+  const normalized = safeString(value, fallback)
+  if (!normalized) return null
+  return safeEvidencePattern.test(normalized)
+    ? normalized
+    : `redacted_${stableHash(value).slice(0, 16)}`
+}
+
+const safeEvidenceType = (value, fallback) => {
+  const normalized = safeString(value, null)
+  return normalized && safeEvidencePattern.test(normalized) ? normalized : fallback
 }
 
 const safeSourceKey = (value) => {
@@ -40,7 +61,7 @@ const safeNumber = (value) => {
 
 const alertActionFor = (auditEvent, metadata) => {
   if (auditEvent.action === 'creative.provider_budget.threshold_crossed') {
-    return safeString(metadata.alertType, auditEvent.action)
+    return safeEvidenceType(metadata.alertType, auditEvent.action)
   }
   return auditEvent.action
 }
@@ -56,7 +77,7 @@ const titleFor = (auditEvent, metadata) => {
 }
 
 const summaryFor = (auditEvent, metadata) => {
-  const budgetScope = safeString(metadata.budgetScope, 'unknown budget scope')
+  const budgetScope = safeEvidenceIdentifier(metadata.budgetScope, 'unknown_budget_scope')
   if (auditEvent.action === 'creative.provider_budget.threshold_crossed') {
     return `${budgetScope} projected spend crossed ${metadata.crossedThresholdPercent ?? metadata.thresholdPercent ?? 'a configured'}% of the daily cap.`
   }
@@ -77,7 +98,8 @@ export const buildProviderBudgetExternalAlertPayload = (auditEvent = {}) => {
     return null
   }
 
-  const resourceId = safeString(auditEvent.resourceId, safeString(metadata.budgetScope, null))
+  const budgetScope = safeEvidenceIdentifier(metadata.budgetScope, null)
+  const resourceId = safeEvidenceIdentifier(auditEvent.resourceId, budgetScope)
   const auditEventId = safeString(auditEvent.id, null)
   const alertAction = alertActionFor(auditEvent, metadata)
 
@@ -88,11 +110,11 @@ export const buildProviderBudgetExternalAlertPayload = (auditEvent = {}) => {
     alertAction,
     title: titleFor(auditEvent, metadata),
     summary: summaryFor(auditEvent, metadata),
-    severity: safeString(metadata.severity, 'warning'),
-    reasonCode: safeString(metadata.reasonCode, null),
-    budgetScope: safeString(metadata.budgetScope, resourceId),
-    providerId: safeString(metadata.providerId, null),
-    workspace: safeString(metadata.workspace, null),
+    severity: safeEvidenceIdentifier(metadata.severity, 'warning'),
+    reasonCode: safeEvidenceIdentifier(metadata.reasonCode, null),
+    budgetScope: budgetScope ?? resourceId,
+    providerId: safeEvidenceIdentifier(metadata.providerId, null),
+    workspace: safeEvidenceIdentifier(metadata.workspace, null),
     crossedThresholdPercent: safeNumber(metadata.crossedThresholdPercent),
     usageRatioPercent: safeNumber(metadata.usageRatioPercent),
     estimateAmount: safeNumber(metadata.estimateAmount),

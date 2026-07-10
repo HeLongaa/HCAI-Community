@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 const providerBudgetNotificationActions = new Set([
   'creative.provider_budget.threshold_crossed',
   'creative.provider_budget.dispatch_blocked',
@@ -5,6 +7,7 @@ const providerBudgetNotificationActions = new Set([
 ])
 
 const safeSourceKeyPattern = /^[a-z0-9][a-z0-9:._-]{0,240}$/i
+const safeEvidencePattern = /^[a-z0-9][a-z0-9:._-]{0,160}$/i
 
 const compactObject = (value) =>
   Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ''))
@@ -12,6 +15,24 @@ const compactObject = (value) =>
 const safeString = (value, fallback = null) => {
   const normalized = String(value ?? '').trim()
   return normalized || fallback
+}
+
+const stableHash = (value) =>
+  createHash('sha256')
+    .update(JSON.stringify(value ?? null))
+    .digest('hex')
+
+const safeEvidenceIdentifier = (value, fallback = null) => {
+  const normalized = safeString(value, fallback)
+  if (!normalized) return null
+  return safeEvidencePattern.test(normalized)
+    ? normalized
+    : `redacted_${stableHash(value).slice(0, 16)}`
+}
+
+const safeEvidenceType = (value, fallback) => {
+  const normalized = safeString(value, null)
+  return normalized && safeEvidencePattern.test(normalized) ? normalized : fallback
 }
 
 const safeSourceKey = (value) => {
@@ -35,7 +56,7 @@ const titleFor = (auditEvent, metadata) => {
 }
 
 const bodyFor = (auditEvent, metadata) => {
-  const budgetScope = safeString(metadata.budgetScope, 'unknown budget scope')
+  const budgetScope = safeEvidenceIdentifier(metadata.budgetScope, 'unknown_budget_scope')
   if (auditEvent.action === 'creative.provider_budget.threshold_crossed') {
     return `${budgetScope} projected spend crossed ${metadata.crossedThresholdPercent ?? metadata.thresholdPercent ?? 'a configured'}% of the daily cap.`
   }
@@ -47,7 +68,7 @@ const bodyFor = (auditEvent, metadata) => {
 
 const typeFor = (auditEvent, metadata) => {
   if (auditEvent.action === 'creative.provider_budget.threshold_crossed') {
-    return safeString(metadata.alertType, 'creative.provider_budget.threshold_crossed')
+    return safeEvidenceType(metadata.alertType, 'creative.provider_budget.threshold_crossed')
   }
   return auditEvent.action
 }
@@ -58,7 +79,8 @@ export const buildProviderBudgetNotificationPayload = (auditEvent = {}) => {
   if (!providerBudgetNotificationActions.has(auditEvent.action) || !sourceKey) {
     return null
   }
-  const resourceId = safeString(auditEvent.resourceId, safeString(metadata.budgetScope, null))
+  const budgetScope = safeEvidenceIdentifier(metadata.budgetScope, null)
+  const resourceId = safeEvidenceIdentifier(auditEvent.resourceId, budgetScope)
   return {
     type: typeFor(auditEvent, metadata),
     title: titleFor(auditEvent, metadata),
@@ -69,13 +91,13 @@ export const buildProviderBudgetNotificationPayload = (auditEvent = {}) => {
       sourceKey,
       auditEventId: auditEvent.id,
       auditAction: auditEvent.action,
-      providerId: metadata.providerId,
-      workspace: metadata.workspace,
-      mode: metadata.mode,
-      budgetScope: metadata.budgetScope,
-      severity: metadata.severity,
-      reasonCode: metadata.reasonCode,
-      alertType: metadata.alertType,
+      providerId: safeEvidenceIdentifier(metadata.providerId, null),
+      workspace: safeEvidenceIdentifier(metadata.workspace, null),
+      mode: safeEvidenceIdentifier(metadata.mode, null),
+      budgetScope,
+      severity: safeEvidenceIdentifier(metadata.severity, null),
+      reasonCode: safeEvidenceIdentifier(metadata.reasonCode, null),
+      alertType: safeEvidenceIdentifier(metadata.alertType, null),
       usageRatioPercent: metadata.usageRatioPercent,
       crossedThresholdPercent: metadata.crossedThresholdPercent,
       currency: metadata.currency,
