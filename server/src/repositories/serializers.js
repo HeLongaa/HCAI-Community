@@ -1,4 +1,69 @@
 import { safeErrorPreview } from '../creative/generationRecords.js'
+import { safeProviderBudgetEvidenceIdentifier } from '../creative/providerBudgetEvents.js'
+
+const providerBudgetAuditActions = new Set([
+  'creative.provider_budget.threshold_crossed',
+  'creative.provider_budget.dispatch_blocked',
+  'creative.provider_cost.anomaly_detected',
+  'creative.provider_alert.dispatch',
+])
+
+const providerBudgetAuditResourceTypes = new Set([
+  'creative_provider_budget',
+  'creative_provider_budget_alert',
+])
+
+const providerBudgetIdentifierKeys = new Set([
+  'alertAction',
+  'alertType',
+  'auditEventId',
+  'auditEventSourceKey',
+  'budgetEventIdempotencyKey',
+  'budgetScope',
+  'budgetStatus',
+  'channel',
+  'currency',
+  'dispatchMode',
+  'estimateConfidence',
+  'idempotencyKey',
+  'mode',
+  'persistedFrom',
+  'providerAccountRef',
+  'providerId',
+  'providerModelId',
+  'providerUsageUnit',
+  'reasonCode',
+  'severity',
+  'sourceKey',
+  'status',
+  'workspace',
+])
+
+const isProviderBudgetAuditEvent = (event) =>
+  providerBudgetAuditActions.has(event?.action) && providerBudgetAuditResourceTypes.has(event?.resourceType)
+
+const safeProviderBudgetAuditMetadataValue = (value, key = '') => {
+  if (typeof value === 'string') {
+    return providerBudgetIdentifierKeys.has(key)
+      ? safeProviderBudgetEvidenceIdentifier(value)
+      : safeErrorPreview(value)
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => safeProviderBudgetAuditMetadataValue(item))
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([childKey, childValue]) => [
+      childKey,
+      safeProviderBudgetAuditMetadataValue(childValue, childKey),
+    ]))
+  }
+  return value
+}
+
+const safeProviderBudgetAuditMetadata = (metadata) =>
+  metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+    ? safeProviderBudgetAuditMetadataValue(metadata)
+    : null
 
 const parsePoints = (value) => {
   const cleaned = String(value).replace(/[^\d-]/g, '')
@@ -147,16 +212,23 @@ export const serializeNotification = (notification) => ({
   createdAt: notification.createdAt ?? '',
 })
 
-export const serializeAuditEvent = (event) => ({
-  id: String(event.id),
-  actorType: event.actorType,
-  actorId: event.actorId ?? null,
-  action: event.action,
-  resourceType: event.resourceType,
-  resourceId: event.resourceId ?? null,
-  metadata: event.metadata ?? null,
-  createdAt: event.createdAt?.toISOString?.() ?? event.createdAt ?? '',
-})
+export const serializeAuditEvent = (event) => {
+  const providerBudgetEvent = isProviderBudgetAuditEvent(event)
+  return {
+    id: String(event.id),
+    actorType: event.actorType,
+    actorId: event.actorId ?? null,
+    action: event.action,
+    resourceType: event.resourceType,
+    resourceId: providerBudgetEvent
+      ? safeProviderBudgetEvidenceIdentifier(event.resourceId)
+      : event.resourceId ?? null,
+    metadata: providerBudgetEvent
+      ? safeProviderBudgetAuditMetadata(event.metadata)
+      : event.metadata ?? null,
+    createdAt: event.createdAt?.toISOString?.() ?? event.createdAt ?? '',
+  }
+}
 
 export const serializeSecurityEvent = (event) => ({
   id: String(event.id),
