@@ -55,6 +55,7 @@ const safeNumber = (value) => {
 }
 
 const safeString = (value) => value == null ? null : safeErrorPreview(value)
+const safeProviderCostEvidence = (value) => safeProviderJobIdEvidence(value)
 
 const safeBoolean = (value) => typeof value === 'boolean' ? value : null
 
@@ -73,10 +74,10 @@ const safeProviderCost = (providerCost) => {
 
   return {
     schemaVersion: safeString(source.schemaVersion),
-    providerId: safeString(source.providerId),
-    providerAccountRef: safeString(source.providerAccountRef),
+    providerId: safeProviderCostEvidence(source.providerId),
+    providerAccountRef: safeProviderCostEvidence(source.providerAccountRef),
     model: {
-      providerModelId: safeString(model.providerModelId),
+      providerModelId: safeProviderCostEvidence(model.providerModelId),
       providerModelVersion: safeString(model.providerModelVersion),
       displayName: safeString(model.displayName),
       family: safeString(model.family),
@@ -84,7 +85,7 @@ const safeProviderCost = (providerCost) => {
       pricingSnapshotAt: safeString(model.pricingSnapshotAt),
     },
     job: {
-      providerRequestId: safeString(job.providerRequestId),
+      providerRequestId: safeProviderCostEvidence(job.providerRequestId),
       providerJobId: safeProviderJobIdEvidence(job.providerJobId),
       region: safeString(job.region),
       startedAt: safeString(job.startedAt),
@@ -114,7 +115,7 @@ const safeProviderCost = (providerCost) => {
       settledAt: safeString(actual.settledAt),
     },
     budget: {
-      budgetScope: safeString(budget.budgetScope),
+      budgetScope: safeProviderCostEvidence(budget.budgetScope),
       dailyCapCurrency: safeString(budget.dailyCapCurrency),
       dailyCapAmount: safeNumber(budget.dailyCapAmount),
       spentAmount: safeNumber(budget.spentAmount),
