@@ -164,6 +164,18 @@ test('buildProviderBudgetExternalAlertPayload ignores unsupported or unsafe audi
   }), null)
 
   assert.equal(buildProviderBudgetExternalAlertPayload({
+    id: 'audit-unsafe-source-key',
+    action: 'creative.provider_budget.dispatch_blocked',
+    resourceType: 'creative_provider_budget',
+    metadata: {
+      sourceKey: 'https://replicate.example/predictions/pred_alert?token=provider-secret',
+      providerId: 'replicate',
+      budgetScope: 'staging:replicate:image:external-alert',
+      providerJobId: 'pred_alert_unsafe_source_key',
+    },
+  }), null)
+
+  assert.equal(buildProviderBudgetExternalAlertPayload({
     id: 'audit-wrong-resource-type',
     action: 'creative.provider_budget.dispatch_blocked',
     resourceType: 'creative_generation',
