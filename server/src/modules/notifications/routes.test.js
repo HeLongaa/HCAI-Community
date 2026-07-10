@@ -4,6 +4,7 @@ import http from 'node:http'
 import test from 'node:test'
 
 import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
+import { repositories } from '../../repositories/index.js'
 import { registerAdminRoutes } from '../admin/routes.js'
 import { registerMediaRoutes } from '../media/routes.js'
 import { registerNotificationRoutes } from './routes.js'
@@ -50,6 +51,77 @@ test('GET /api/notifications validates read state filters', async () => {
     assert.equal(payload.data, null)
     assert.equal(payload.error.code, 'VALIDATION_FAILED')
     assert.equal(payload.error.message, 'readState must be one of: unread, read, all')
+  } finally {
+    await server.close()
+  }
+})
+
+test('GET /api/notifications returns sanitized provider lifecycle evidence and dedupes unsafe source keys', async () => {
+  const server = await createTestServer()
+  try {
+    const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
+    const unsafeValues = {
+      source: `https://provider.example/lifecycle/source/${suffix}?token=source-secret`,
+      generation: `https://provider.example/generations/${suffix}?token=generation-secret`,
+      provider: 'replicate?token=provider-secret',
+      mode: 'replicate_staging?token=mode-secret',
+      job: `https://provider.example/jobs/${suffix}?token=job-secret`,
+      sourceType: 'webhook?token=source-type-secret',
+    }
+    const payload = {
+      sourceKey: unsafeValues.source,
+      generationId: unsafeValues.generation,
+      actorHandle: 'promptlin',
+      type: 'creative.provider_lifecycle.completed',
+      metadata: {
+        providerId: unsafeValues.provider,
+        providerMode: unsafeValues.mode,
+        providerJobId: unsafeValues.job,
+        sourceType: unsafeValues.sourceType,
+        nextStatus: 'completed',
+        notificationType: 'creative.provider_lifecycle.completed',
+      },
+    }
+
+    const first = await repositories.providerLifecycleNotifications.create(payload)
+    const second = await repositories.providerLifecycleNotifications.create(payload)
+    assert.ok(first.length > 0)
+    assert.equal(second.length, 0)
+
+    const ownerInbox = await requestJson(
+      server.url,
+      '/api/notifications?readState=all&type=creative.provider_lifecycle.completed&resourceType=creative_generation&limit=100',
+      { method: 'GET', token: 'demo-access.promptlin' },
+    )
+    const adminInbox = await requestJson(
+      server.url,
+      '/api/notifications?readState=all&type=creative.provider_lifecycle.completed&resourceType=creative_generation&limit=100',
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )
+
+    assert.equal(ownerInbox.status, 200)
+    assert.equal(adminInbox.status, 200)
+    for (const inbox of [ownerInbox, adminInbox]) {
+      const notification = inbox.payload.data.find((item) => item.metadata.sourceKey === first[0].metadata.sourceKey)
+      assert.ok(notification)
+      assert.equal(notification.type, 'creative.provider_lifecycle.completed')
+      assert.match(notification.resourceId, /^redacted_[a-f0-9]{16}$/)
+      assert.match(notification.metadata.sourceKey, /^redacted_[a-f0-9]{16}$/)
+      assert.match(notification.metadata.generationId, /^redacted_[a-f0-9]{16}$/)
+      assert.match(notification.metadata.providerId, /^redacted_[a-f0-9]{16}$/)
+      assert.match(notification.metadata.providerMode, /^redacted_[a-f0-9]{16}$/)
+      assert.match(notification.metadata.providerJobId, /^redacted_[a-f0-9]{16}$/)
+      assert.match(notification.metadata.sourceType, /^redacted_[a-f0-9]{16}$/)
+      assert.equal(notification.metadata.nextStatus, 'completed')
+      assert.equal(notification.metadata.target.admin.generationId, notification.resourceId)
+      assert.equal(notification.metadata.target.admin.auditSourceKey, notification.metadata.sourceKey)
+
+      const serialized = JSON.stringify(notification)
+      for (const unsafe of Object.values(unsafeValues)) {
+        assert.equal(serialized.includes(unsafe), false)
+      }
+      assert.equal(serialized.includes('provider.example'), false)
+    }
   } finally {
     await server.close()
   }
