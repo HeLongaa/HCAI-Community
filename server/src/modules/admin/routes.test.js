@@ -333,6 +333,123 @@ test('GET /api/admin/creative/generations lists and filters provider generation 
   }
 })
 
+test('GET /api/admin/creative/generations folds unsafe provider replay summary evidence', async () => {
+  const generationId = `generation-admin-replay-summary-${Date.now()}`
+  const unsafeValues = {
+    replayId: 'https://provider.example/replays/admin?token=replay-secret',
+    sourceType: 'webhook?token=source-type-secret',
+    action: 'rejected?token=action-secret',
+    previousStatus: 'running?token=previous-secret',
+    normalizedStatus: 'failed?token=normalized-secret',
+    reasonCode: 'side_effect_failed?token=reason-secret',
+    payloadHash: 'https://provider.example/payload?token=payload-secret',
+    outcome: 'failed?token=outcome-secret',
+    failedOperationType: 'settle_credits?token=operation-secret',
+  }
+  const actor = { id: 'demo-user-creator', handle: 'promptlin' }
+  await repositories.creativeGenerations.create({
+    id: generationId,
+    actorId: actor.id,
+    actorHandle: actor.handle,
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'mock',
+    providerMode: 'mock',
+    status: 'failed',
+    promptHash: 'd'.repeat(64),
+    promptPreview: 'Unsafe replay summary fixture',
+    inputAssetIds: [],
+    parameterKeys: [],
+    outputAssetIds: [],
+    usage: { estimatedCredits: 0, costModel: 'fixture' },
+    credit: null,
+    quota: null,
+    safety: { reviewRequired: false },
+    policy: { action: 'allow' },
+    providerJobId: 'mock-provider-job-safe',
+  }, actor)
+  await repositories.creativeProviderReplays.record({
+    id: unsafeValues.replayId,
+    generationId,
+    providerId: 'mock',
+    providerMode: 'mock',
+    providerJobId: 'mock-provider-job-safe',
+    providerEventId: 'event-admin-replay-summary',
+    sourceType: unsafeValues.sourceType,
+    idempotencyKey: `admin-replay-summary:${generationId}`,
+    payloadHash: unsafeValues.payloadHash,
+    previousStatus: unsafeValues.previousStatus,
+    normalizedStatus: unsafeValues.normalizedStatus,
+    action: unsafeValues.action,
+    reasonCode: unsafeValues.reasonCode,
+    sideEffectPlan: {
+      operations: [{ key: 'https://provider.example/operation?token=plan-secret' }],
+    },
+    sideEffectResult: {
+      completed: false,
+      outcome: unsafeValues.outcome,
+      completedOperationKeys: [],
+      failedOperationType: unsafeValues.failedOperationType,
+      operations: [{
+        type: unsafeValues.failedOperationType,
+        status: 'failed',
+        errorPreview: 'failed at https://provider.example/error?token=result-secret',
+      }],
+    },
+    errorPreview: 'failed at https://provider.example/error?token=replay-error-secret',
+    receivedAt: '2026-07-10T14:40:00.000Z',
+  }, actor)
+
+  const server = await createTestServer()
+  try {
+    const list = await requestJson(server.url, '/api/admin/creative/generations?providerId=mock&limit=100', {
+      method: 'GET',
+      token: 'demo-access.opsplus',
+    })
+    const detail = await requestJson(server.url, `/api/admin/creative/generations/${generationId}`, {
+      method: 'GET',
+      token: 'demo-access.opsplus',
+    })
+
+    assert.equal(list.status, 200)
+    assert.equal(detail.status, 200)
+    const listed = list.payload.data.find((item) => item.id === generationId)
+    assert.ok(listed)
+
+    for (const item of [listed, detail.payload.data]) {
+      const latest = item.providerReplayEvidence.latest
+      for (const key of [
+        'id',
+        'sourceType',
+        'action',
+        'previousStatus',
+        'normalizedStatus',
+        'reasonCode',
+        'payloadHashPreview',
+        'sideEffectOutcome',
+        'failedOperationType',
+      ]) {
+        assert.match(latest[key], /^redacted_[a-f0-9]{16}$/)
+      }
+      assert.equal(latest.providerEventIdPresent, true)
+      assert.equal(latest.payloadHashPresent, true)
+      assert.equal(latest.sideEffectCompleted, false)
+      assert.equal(latest.completedOperationCount, 0)
+      assert.equal(latest.errorPreviewPresent, true)
+      assert.equal('sideEffectPlan' in latest, false)
+      assert.equal('sideEffectResult' in latest, false)
+
+      const serialized = JSON.stringify(item.providerReplayEvidence)
+      for (const unsafe of [...Object.values(unsafeValues), 'plan-secret', 'result-secret', 'replay-error-secret']) {
+        assert.equal(serialized.includes(unsafe), false)
+      }
+      assert.equal(serialized.includes('provider.example'), false)
+    }
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/admin/creative/generations reads Replicate fixture evidence without raw provider data', async () => {
   resetCreativePolicyState()
   const restoreEnv = applyReplicateStagingAdminFixtureEnv()
