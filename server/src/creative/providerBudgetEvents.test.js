@@ -169,3 +169,53 @@ test('buildProviderBudgetEventPlan combines alerts and audit events', () => {
   assert.equal(plan.auditEvents[2].metadata.reasonCode, 'missing_budget_cap')
   assert.equal(JSON.stringify(plan).includes('https://replicate.example'), false)
 })
+
+test('buildProviderBudgetEventPlan folds unsafe low-cardinality audit metadata', () => {
+  const unsafeProviderCost = {
+    ...providerCost,
+    providerId: 'replicate',
+    providerAccountRef: 'https://replicate.example/accounts/staging?token=account-secret',
+    model: {
+      ...providerCost.model,
+      providerModelId: 'replicate:image:staging?token=model-secret',
+    },
+    job: {
+      providerJobId: 'https://replicate.example/predictions/pred_budget?token=job-secret',
+    },
+    budget: {
+      ...providerCost.budget,
+      budgetScope: 'https://ops.example.com/budget/staging?token=budget-secret',
+    },
+    risk: {
+      costExceededEstimate: true,
+      providerUsageMissing: true,
+    },
+  }
+
+  const plan = buildProviderBudgetEventPlan({
+    providerCost: unsafeProviderCost,
+    workspace: 'image',
+    mode: 'text_to_image',
+    block: { reasonCode: 'over_budget', statusCode: 429 },
+    now: new Date('2026-07-07T00:05:00.000Z'),
+  })
+
+  assert.equal(plan.alerts.length, 2)
+  assert.equal(plan.auditEvents.length, 5)
+  for (const event of plan.auditEvents) {
+    assert.equal(event.metadata.providerId, 'replicate')
+    assert.match(event.metadata.providerAccountRef, /^redacted_[a-f0-9]{16}$/)
+    assert.match(event.metadata.providerModelId, /^redacted_[a-f0-9]{16}$/)
+    assert.match(event.metadata.budgetScope, /^redacted_[a-f0-9]{16}$/)
+  }
+  assert.equal(plan.alerts.every((alert) => alert.resourceId === plan.alerts[0].metadata.budgetScope), true)
+  assert.equal(plan.alerts.every((alert) => alert.metadata.idempotencyKey.includes(alert.metadata.budgetScope)), true)
+
+  const serialized = JSON.stringify(plan)
+  assert.equal(serialized.includes('account-secret'), false)
+  assert.equal(serialized.includes('model-secret'), false)
+  assert.equal(serialized.includes('job-secret'), false)
+  assert.equal(serialized.includes('budget-secret'), false)
+  assert.equal(serialized.includes('replicate.example'), false)
+  assert.equal(serialized.includes('ops.example.com'), false)
+})
