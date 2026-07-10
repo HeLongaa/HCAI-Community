@@ -22,6 +22,7 @@ import { repositories } from '../../repositories/index.js'
 import { getProtectedRolePermissions } from '../../auth/permissions.js'
 import { defaultPointAdjustmentPolicy, getDirectLimitForActor } from '../../points/adjustmentPolicy.js'
 import { safeCreativeCreditMetadata, safeErrorPreview, safeProviderJobIdEvidence } from '../../creative/generationRecords.js'
+import { safeProviderLifecycleEvidenceIdentifier } from '../../repositories/providerLifecycleWiring.js'
 
 const isPointAdjustmentReview = (review) => review?.queue === 'points' || review?.metadata?.kind === 'point_adjustment'
 
@@ -238,19 +239,21 @@ const sanitizeCreativeGenerationHistory = (generation) => ({
 
 const summarizeProviderReplay = (replay) => replay
   ? {
-      id: replay.id,
-      sourceType: replay.sourceType,
-      action: replay.action,
-      previousStatus: replay.previousStatus ?? null,
-      normalizedStatus: replay.normalizedStatus ?? null,
-      reasonCode: replay.reasonCode ?? null,
+      id: safeProviderLifecycleEvidenceIdentifier(replay.id),
+      sourceType: safeProviderLifecycleEvidenceIdentifier(replay.sourceType),
+      action: safeProviderLifecycleEvidenceIdentifier(replay.action),
+      previousStatus: safeProviderLifecycleEvidenceIdentifier(replay.previousStatus),
+      normalizedStatus: safeProviderLifecycleEvidenceIdentifier(replay.normalizedStatus),
+      reasonCode: safeProviderLifecycleEvidenceIdentifier(replay.reasonCode),
       providerEventIdPresent: Boolean(replay.providerEventId),
       payloadHashPresent: Boolean(replay.payloadHash),
-      payloadHashPreview: replay.payloadHash ? String(replay.payloadHash).slice(0, 12) : null,
-      sideEffectOutcome: replaySideEffectOutcome(replay),
+      payloadHashPreview: replay.payloadHash
+        ? safeProviderLifecycleEvidenceIdentifier(String(replay.payloadHash).slice(0, 12))
+        : null,
+      sideEffectOutcome: safeProviderLifecycleEvidenceIdentifier(replaySideEffectOutcome(replay)),
       sideEffectCompleted: replaySideEffectCompleted(replay),
       completedOperationCount: replayCompletedOperationCount(replay),
-      failedOperationType: replayFailedOperationType(replay),
+      failedOperationType: safeProviderLifecycleEvidenceIdentifier(replayFailedOperationType(replay)),
       errorPreviewPresent: Boolean(replay.errorPreview),
       receivedAt: replay.receivedAt ?? null,
       appliedAt: replay.appliedAt ?? null,
