@@ -114,6 +114,15 @@ test('POST /api/media/uploads creates a pending asset and upload contract', asyn
     assert.ok(upload.url.startsWith('mock://media/'))
     assert.equal(upload.headers['content-type'], validUploadBody().contentType)
     assert.ok(upload.expiresAt)
+
+    const audit = await requestJson(server.url, `/api/admin/audit?action=media.upload.created&resourceType=media_asset&limit=100`, {
+      method: 'GET',
+      token: 'demo-access.opsplus',
+    })
+    const event = audit.payload.data.find((item) => item.resourceId === asset.id)
+    assert.ok(event)
+    assert.equal(event.metadata.purpose, 'task_attachment')
+    assert.equal(event.metadata.sizeBytes, 2048)
   } finally {
     await server.close()
   }
@@ -135,6 +144,15 @@ test('POST /api/media/uploads/:id/complete marks owner uploads as uploaded', asy
     assert.equal(payload.data.metadata.checksum, 'sha256:abc123')
     assert.equal(payload.data.metadata.security.scanStatus, 'pending')
     assert.equal(payload.data.metadata.security.detectedContentType, 'application/pdf')
+
+    const audit = await requestJson(server.url, `/api/admin/audit?action=media.upload.completed&resourceType=media_asset&limit=100`, {
+      method: 'GET',
+      token: 'demo-access.opsplus',
+    })
+    const event = audit.payload.data.find((item) => item.resourceId === asset.id)
+    assert.ok(event)
+    assert.equal(event.metadata.purpose, 'submission_asset')
+    assert.equal(event.metadata.scanStatus, 'pending')
   } finally {
     await server.close()
   }
@@ -224,6 +242,14 @@ test('media scan and private download contracts require clean assets', async () 
     assert.equal(download.payload.data.download.provider, 'mock')
     assert.equal(download.payload.data.download.method, 'GET')
     assert.ok(download.payload.data.download.url.startsWith('mock://media/'))
+
+    const audit = await requestJson(server.url, `/api/admin/audit?action=media.download.signed&resourceType=media_asset&limit=100`, {
+      method: 'GET',
+      token: 'demo-access.opsplus',
+    })
+    const event = audit.payload.data.find((item) => item.resourceId === asset.id)
+    assert.ok(event)
+    assert.equal(event.metadata.purpose, 'submission_asset')
 
     const otherUserDownload = await requestJson(server.url, `/api/media/assets/${asset.id}/download`, {
       method: 'GET',

@@ -47,6 +47,13 @@ const creativeQuotaAuditActions = new Set([
   'creative.quota.released',
 ])
 
+const mediaAssetLifecycleAuditActions = new Set([
+  'media.upload.created',
+  'media.upload.completed',
+  'media.generated_asset.created',
+  'media.download.signed',
+])
+
 const providerBudgetIdentifierKeys = new Set([
   'alertAction',
   'alertType',
@@ -121,6 +128,15 @@ const creativeAccountingIdentifierKeys = new Set([
   'quotaWindowId',
   'reservationId',
   'status',
+  'workspace',
+])
+
+const mediaAssetLifecycleIdentifierKeys = new Set([
+  'generationId',
+  'outputId',
+  'providerId',
+  'purpose',
+  'scanStatus',
   'workspace',
 ])
 
@@ -257,6 +273,32 @@ const safeCreativeAccountingAuditMetadataValue = (value, key = '') => {
 const safeCreativeAccountingAuditMetadata = (metadata) =>
   metadata && typeof metadata === 'object' && !Array.isArray(metadata)
     ? safeCreativeAccountingAuditMetadataValue(metadata)
+    : null
+
+const isMediaAssetLifecycleAuditEvent = (event) =>
+  mediaAssetLifecycleAuditActions.has(event?.action) && event?.resourceType === 'media_asset'
+
+const safeMediaAssetLifecycleAuditMetadataValue = (value, key = '') => {
+  if (typeof value === 'string') {
+    return mediaAssetLifecycleIdentifierKeys.has(key)
+      ? safeProviderLifecycleEvidenceIdentifier(value)
+      : safeErrorPreview(value)
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => safeMediaAssetLifecycleAuditMetadataValue(item, key))
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([childKey, childValue]) => [
+      childKey,
+      safeMediaAssetLifecycleAuditMetadataValue(childValue, childKey),
+    ]))
+  }
+  return value
+}
+
+const safeMediaAssetLifecycleAuditMetadata = (metadata) =>
+  metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+    ? safeMediaAssetLifecycleAuditMetadataValue(metadata)
     : null
 
 const parsePoints = (value) => {
@@ -412,6 +454,7 @@ export const serializeAuditEvent = (event) => {
   const providerReplayLedgerEvent = isProviderReplayLedgerAuditEvent(event)
   const creativeGenerationEvent = isCreativeGenerationAuditEvent(event)
   const creativeAccountingEvent = isCreativeAccountingAuditEvent(event)
+  const mediaAssetLifecycleEvent = isMediaAssetLifecycleAuditEvent(event)
   return {
     id: String(event.id),
     actorType: event.actorType,
@@ -428,7 +471,9 @@ export const serializeAuditEvent = (event) => {
             ? safeProviderLifecycleEvidenceIdentifier(event.resourceId)
             : creativeAccountingEvent
               ? safeProviderLifecycleEvidenceIdentifier(event.resourceId)
-              : event.resourceId ?? null,
+              : mediaAssetLifecycleEvent
+                ? safeProviderLifecycleEvidenceIdentifier(event.resourceId)
+                : event.resourceId ?? null,
     metadata: providerBudgetEvent
       ? safeProviderBudgetAuditMetadata(event.metadata)
       : providerLifecycleEvent
@@ -439,7 +484,9 @@ export const serializeAuditEvent = (event) => {
             ? safeCreativeGenerationAuditMetadata(event.metadata)
             : creativeAccountingEvent
               ? safeCreativeAccountingAuditMetadata(event.metadata)
-              : event.metadata ?? null,
+              : mediaAssetLifecycleEvent
+                ? safeMediaAssetLifecycleAuditMetadata(event.metadata)
+                : event.metadata ?? null,
     createdAt: event.createdAt?.toISOString?.() ?? event.createdAt ?? '',
   }
 }
