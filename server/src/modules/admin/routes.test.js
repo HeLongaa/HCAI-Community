@@ -1708,6 +1708,112 @@ test('GET /api/admin/audit list, export, and detail sanitize provider budget evi
   }
 })
 
+test('GET /api/admin/audit list, export, and detail sanitize provider alert dispatch evidence', async () => {
+  const server = await createTestServer()
+  try {
+    const unsafeValues = {
+      resource: 'https://alerts.example.com/dispatch/audit?token=resource-secret',
+      source: 'https://alerts.example.com/source/audit?token=source-secret',
+      auditSource: 'https://ops.example.com/audit/source?token=audit-source-secret',
+      alertAction: 'creative.provider_budget.threshold_80?token=alert-action-secret',
+      auditEventId: 'audit-provider-budget?token=audit-id-secret',
+      budget: 'https://ops.example.com/budget/dispatch?token=budget-secret',
+      provider: 'replicate?token=provider-secret',
+      workspace: 'image?token=workspace-secret',
+      reason: 'missing_provider_alert_client?token=reason-secret',
+    }
+    const attemptedAt = '2026-07-10T14:05:00.000Z'
+    const [recorded] = await repositories.providerBudgetAudit.recordMany([{
+      action: 'creative.provider_alert.dispatch',
+      resourceType: 'creative_provider_budget_alert',
+      resourceId: unsafeValues.resource,
+      metadata: {
+        sourceKey: unsafeValues.source,
+        auditEventSourceKey: unsafeValues.auditSource,
+        channel: 'webhook',
+        status: 'failed',
+        statusCode: 503,
+        errorPreview: 'Dispatch failed at https://alerts.example.com/send?token=preview-secret',
+        alertAction: unsafeValues.alertAction,
+        auditEventId: unsafeValues.auditEventId,
+        budgetScope: unsafeValues.budget,
+        providerId: unsafeValues.provider,
+        workspace: unsafeValues.workspace,
+        severity: 'warning',
+        reasonCode: unsafeValues.reason,
+        dispatchMode: 'fixture_dry_run',
+        fixtureDryRun: true,
+        attemptedAt,
+        diagnostics: {
+          callbackUrl: 'https://alerts.example.com/callback?token=callback-secret',
+          retryable: false,
+        },
+      },
+    }])
+    const eventId = recorded.event.id
+
+    const list = await requestJson(
+      server.url,
+      '/api/admin/audit?action=creative.provider_alert.dispatch&resourceType=creative_provider_budget_alert&limit=100',
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )
+    const listedEvent = list.payload.data.find((event) => event.id === eventId)
+
+    const exported = await requestJson(
+      server.url,
+      '/api/admin/audit/export?action=creative.provider_alert.dispatch&resourceType=creative_provider_budget_alert&limit=100',
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )
+    const exportedEvent = exported.payload.events.find((event) => event.id === eventId)
+
+    const detail = await requestJson(server.url, `/api/admin/audit/${eventId}`, {
+      method: 'GET',
+      token: 'demo-access.opsplus',
+    })
+
+    assert.equal(list.status, 200)
+    assert.equal(exported.status, 200)
+    assert.equal(detail.status, 200)
+    assert.ok(listedEvent)
+    assert.ok(exportedEvent)
+
+    for (const event of [listedEvent, exportedEvent, detail.payload.data]) {
+      assert.match(event.resourceId, /^redacted_[a-f0-9]{16}$/)
+      for (const key of [
+        'sourceKey',
+        'auditEventSourceKey',
+        'alertAction',
+        'auditEventId',
+        'budgetScope',
+        'providerId',
+        'workspace',
+        'reasonCode',
+      ]) {
+        assert.match(event.metadata[key], /^redacted_[a-f0-9]{16}$/)
+      }
+      assert.equal(event.metadata.channel, 'webhook')
+      assert.equal(event.metadata.status, 'failed')
+      assert.equal(event.metadata.statusCode, 503)
+      assert.equal(event.metadata.severity, 'warning')
+      assert.equal(event.metadata.dispatchMode, 'fixture_dry_run')
+      assert.equal(event.metadata.fixtureDryRun, true)
+      assert.equal(event.metadata.attemptedAt, attemptedAt)
+      assert.equal(event.metadata.errorPreview.includes('<redacted-url>'), true)
+      assert.equal(event.metadata.diagnostics.callbackUrl, '<redacted-url>')
+      assert.equal(event.metadata.diagnostics.retryable, false)
+    }
+
+    const serialized = JSON.stringify([listedEvent, exportedEvent, detail.payload.data])
+    for (const unsafe of [...Object.values(unsafeValues), 'preview-secret', 'callback-secret']) {
+      assert.equal(serialized.includes(unsafe), false)
+    }
+    assert.equal(serialized.includes('alerts.example.com'), false)
+    assert.equal(serialized.includes('ops.example.com'), false)
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/admin/audit/export requires audit read permission', async () => {
   const server = await createTestServer()
   try {
