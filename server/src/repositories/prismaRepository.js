@@ -791,7 +791,7 @@ const createPrismaRepository = async (fallbackRepository) => {
       },
     })
     const existingRecipientIds = new Set(existing
-      .filter((notification) => hasProviderLifecycleSourceKey(notification, payload.sourceKey))
+      .filter((notification) => hasProviderLifecycleSourceKey(notification, notificationPayload.metadata.sourceKey))
       .map((notification) => notification.recipientId))
     const missingRecipients = recipients.filter((recipient) => !existingRecipientIds.has(recipient.id))
     return createNotificationsForUsers(db, missingRecipients, notificationPayload)
@@ -808,7 +808,7 @@ const createPrismaRepository = async (fallbackRepository) => {
       orderBy: { createdAt: 'desc' },
       take: 25,
     })
-    const existingEvent = existing.find((event) => hasProviderLifecycleSourceKey(event, payload.sourceKey))
+    const existingEvent = existing.find((event) => hasProviderLifecycleSourceKey(event, auditPayload.metadata.sourceKey))
     if (existingEvent) {
       return serializeAuditEvent(existingEvent)
     }

@@ -1,5 +1,6 @@
-import { safeErrorPreview } from '../creative/generationRecords.js'
+import { safeErrorPreview, safeProviderJobIdEvidence } from '../creative/generationRecords.js'
 import { safeProviderBudgetEvidenceIdentifier } from '../creative/providerBudgetEvents.js'
+import { safeProviderLifecycleEvidenceIdentifier } from './providerLifecycleWiring.js'
 
 const providerBudgetAuditActions = new Set([
   'creative.provider_budget.threshold_crossed',
@@ -11,6 +12,11 @@ const providerBudgetAuditActions = new Set([
 const providerBudgetAuditResourceTypes = new Set([
   'creative_provider_budget',
   'creative_provider_budget_alert',
+])
+
+const providerLifecycleAuditActions = new Set([
+  'creative.provider_lifecycle.side_effect_applied',
+  'creative.provider_replay.updated',
 ])
 
 const providerBudgetIdentifierKeys = new Set([
@@ -39,6 +45,24 @@ const providerBudgetIdentifierKeys = new Set([
   'workspace',
 ])
 
+const providerLifecycleIdentifierKeys = new Set([
+  'auditAction',
+  'auditSourceKey',
+  'generationId',
+  'nextStatus',
+  'notificationType',
+  'providerId',
+  'providerMode',
+  'sourceKey',
+  'sourceType',
+])
+
+const providerLifecycleProviderEvidenceKeys = new Set([
+  'providerEventId',
+  'providerJobId',
+  'providerRequestId',
+])
+
 const isProviderBudgetAuditEvent = (event) =>
   providerBudgetAuditActions.has(event?.action) && providerBudgetAuditResourceTypes.has(event?.resourceType)
 
@@ -63,6 +87,33 @@ const safeProviderBudgetAuditMetadataValue = (value, key = '') => {
 const safeProviderBudgetAuditMetadata = (metadata) =>
   metadata && typeof metadata === 'object' && !Array.isArray(metadata)
     ? safeProviderBudgetAuditMetadataValue(metadata)
+    : null
+
+const isProviderLifecycleAuditEvent = (event) =>
+  providerLifecycleAuditActions.has(event?.action) && event?.resourceType === 'creative_generation'
+
+const safeProviderLifecycleAuditMetadataValue = (value, key = '') => {
+  if (typeof value === 'string') {
+    if (providerLifecycleProviderEvidenceKeys.has(key)) return safeProviderJobIdEvidence(value)
+    return providerLifecycleIdentifierKeys.has(key)
+      ? safeProviderLifecycleEvidenceIdentifier(value)
+      : safeErrorPreview(value)
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => safeProviderLifecycleAuditMetadataValue(item))
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([childKey, childValue]) => [
+      childKey,
+      safeProviderLifecycleAuditMetadataValue(childValue, childKey),
+    ]))
+  }
+  return value
+}
+
+const safeProviderLifecycleAuditMetadata = (metadata) =>
+  metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+    ? safeProviderLifecycleAuditMetadataValue(metadata)
     : null
 
 const parsePoints = (value) => {
@@ -214,6 +265,7 @@ export const serializeNotification = (notification) => ({
 
 export const serializeAuditEvent = (event) => {
   const providerBudgetEvent = isProviderBudgetAuditEvent(event)
+  const providerLifecycleEvent = isProviderLifecycleAuditEvent(event)
   return {
     id: String(event.id),
     actorType: event.actorType,
@@ -222,10 +274,14 @@ export const serializeAuditEvent = (event) => {
     resourceType: event.resourceType,
     resourceId: providerBudgetEvent
       ? safeProviderBudgetEvidenceIdentifier(event.resourceId)
-      : event.resourceId ?? null,
+      : providerLifecycleEvent
+        ? safeProviderLifecycleEvidenceIdentifier(event.resourceId)
+        : event.resourceId ?? null,
     metadata: providerBudgetEvent
       ? safeProviderBudgetAuditMetadata(event.metadata)
-      : event.metadata ?? null,
+      : providerLifecycleEvent
+        ? safeProviderLifecycleAuditMetadata(event.metadata)
+        : event.metadata ?? null,
     createdAt: event.createdAt?.toISOString?.() ?? event.createdAt ?? '',
   }
 }

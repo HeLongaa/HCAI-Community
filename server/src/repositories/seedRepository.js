@@ -822,7 +822,7 @@ function createProviderLifecycleNotifications(payload = {}, actor = null) {
       notification.type === notificationPayload.type &&
       notification.resourceType === notificationPayload.resourceType &&
       notification.resourceId === notificationPayload.resourceId &&
-      hasProviderLifecycleSourceKey(notification, payload.sourceKey),
+      hasProviderLifecycleSourceKey(notification, notificationPayload.metadata.sourceKey),
     ))
   return createNotificationsForHandles(handles, notificationPayload)
 }
@@ -859,7 +859,7 @@ function recordProviderLifecycleAudit(payload = {}, actor = null) {
     event.action === auditPayload.action &&
     event.resourceType === auditPayload.resourceType &&
     event.resourceId === auditPayload.resourceId &&
-    hasProviderLifecycleSourceKey(event, payload.sourceKey),
+    hasProviderLifecycleSourceKey(event, auditPayload.metadata.sourceKey),
   )
   if (existing) {
     return serializeAuditEvent(existing)
