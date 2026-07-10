@@ -34,6 +34,19 @@ const creativeGenerationAuditActions = new Set([
   'creative.generation.cancelled',
 ])
 
+const creativeCreditAuditActions = new Set([
+  'creative.credit.reserved',
+  'creative.credit.settled',
+  'creative.credit.refunded',
+  'creative.credit.cancelled',
+])
+
+const creativeQuotaAuditActions = new Set([
+  'creative.quota.reserved',
+  'creative.quota.committed',
+  'creative.quota.released',
+])
+
 const providerBudgetIdentifierKeys = new Set([
   'alertAction',
   'alertType',
@@ -95,6 +108,18 @@ const creativeGenerationIdentifierKeys = new Set([
   'providerId',
   'reasonCode',
   'reasons',
+  'status',
+  'workspace',
+])
+
+const creativeAccountingIdentifierKeys = new Set([
+  'creditLedgerId',
+  'generationId',
+  'ledgerId',
+  'mode',
+  'quotaReservationId',
+  'quotaWindowId',
+  'reservationId',
   'status',
   'workspace',
 ])
@@ -204,6 +229,34 @@ const safeCreativeGenerationAuditMetadataValue = (value, key = '') => {
 const safeCreativeGenerationAuditMetadata = (metadata) =>
   metadata && typeof metadata === 'object' && !Array.isArray(metadata)
     ? safeCreativeGenerationAuditMetadataValue(metadata)
+    : null
+
+const isCreativeAccountingAuditEvent = (event) =>
+  (creativeCreditAuditActions.has(event?.action) && event?.resourceType === 'creative_credit_ledger') ||
+  (creativeQuotaAuditActions.has(event?.action) && event?.resourceType === 'creative_quota_reservation')
+
+const safeCreativeAccountingAuditMetadataValue = (value, key = '') => {
+  if (typeof value === 'string') {
+    if (key === 'reason' || key === 'reasonCode') return safeErrorPreview(value)
+    return creativeAccountingIdentifierKeys.has(key)
+      ? safeProviderLifecycleEvidenceIdentifier(value)
+      : safeErrorPreview(value)
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => safeCreativeAccountingAuditMetadataValue(item, key))
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([childKey, childValue]) => [
+      childKey,
+      safeCreativeAccountingAuditMetadataValue(childValue, childKey),
+    ]))
+  }
+  return value
+}
+
+const safeCreativeAccountingAuditMetadata = (metadata) =>
+  metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+    ? safeCreativeAccountingAuditMetadataValue(metadata)
     : null
 
 const parsePoints = (value) => {
@@ -358,6 +411,7 @@ export const serializeAuditEvent = (event) => {
   const providerLifecycleEvent = isProviderLifecycleAuditEvent(event)
   const providerReplayLedgerEvent = isProviderReplayLedgerAuditEvent(event)
   const creativeGenerationEvent = isCreativeGenerationAuditEvent(event)
+  const creativeAccountingEvent = isCreativeAccountingAuditEvent(event)
   return {
     id: String(event.id),
     actorType: event.actorType,
@@ -372,7 +426,9 @@ export const serializeAuditEvent = (event) => {
           ? safeProviderLifecycleEvidenceIdentifier(event.resourceId)
           : creativeGenerationEvent
             ? safeProviderLifecycleEvidenceIdentifier(event.resourceId)
-            : event.resourceId ?? null,
+            : creativeAccountingEvent
+              ? safeProviderLifecycleEvidenceIdentifier(event.resourceId)
+              : event.resourceId ?? null,
     metadata: providerBudgetEvent
       ? safeProviderBudgetAuditMetadata(event.metadata)
       : providerLifecycleEvent
@@ -381,7 +437,9 @@ export const serializeAuditEvent = (event) => {
           ? safeProviderReplayLedgerAuditMetadata(event.metadata)
           : creativeGenerationEvent
             ? safeCreativeGenerationAuditMetadata(event.metadata)
-            : event.metadata ?? null,
+            : creativeAccountingEvent
+              ? safeCreativeAccountingAuditMetadata(event.metadata)
+              : event.metadata ?? null,
     createdAt: event.createdAt?.toISOString?.() ?? event.createdAt ?? '',
   }
 }
