@@ -1,7 +1,10 @@
+import { createHash } from 'node:crypto'
+
 import { securityAlertDispositionActions } from '../security/alertPolicy.js'
 
 const DEFAULT_WINDOW_MINUTES = 60
 const DEFAULT_PROVIDER_ALERT_DISPATCH_FAILURE_THRESHOLD = 2
+const safeEvidencePattern = /^[a-z0-9][a-z0-9:._-]{0,160}$/i
 
 const asObject = (value) => value && typeof value === 'object' && !Array.isArray(value) ? value : {}
 
@@ -25,6 +28,19 @@ const countBy = (items, selector) => {
   return [...counts.entries()]
     .map(([key, count]) => ({ key, count }))
     .sort((left, right) => right.count - left.count || left.key.localeCompare(right.key))
+}
+
+const stableHash = (value) =>
+  createHash('sha256')
+    .update(JSON.stringify(value ?? null))
+    .digest('hex')
+
+const safeEvidenceIdentifier = (value, fallback = 'unknown') => {
+  const normalized = String(value ?? '').trim() || fallback
+  if (!normalized) return null
+  return safeEvidencePattern.test(normalized)
+    ? normalized
+    : `redacted_${stableHash(value).slice(0, 16)}`
 }
 
 const metricCount = (items, key) => items.find((item) => item.key === key)?.count ?? 0
@@ -120,11 +136,11 @@ const providerAlertDispatchBreakdown = (events = []) => ({
   succeeded: events.filter((event) => asObject(event.metadata).status === 'succeeded').length,
   failed: events.filter((event) => asObject(event.metadata).status === 'failed').length,
   skipped: events.filter((event) => asObject(event.metadata).status === 'skipped').length,
-  byChannel: countBy(events, (event) => asObject(event.metadata).channel),
-  byStatus: countBy(events, (event) => asObject(event.metadata).status),
-  byReason: countBy(events, (event) => asObject(event.metadata).reasonCode),
-  byProvider: countBy(events, (event) => asObject(event.metadata).providerId),
-  byWorkspace: countBy(events, (event) => asObject(event.metadata).workspace),
+  byChannel: countBy(events, (event) => safeEvidenceIdentifier(asObject(event.metadata).channel)),
+  byStatus: countBy(events, (event) => safeEvidenceIdentifier(asObject(event.metadata).status)),
+  byReason: countBy(events, (event) => safeEvidenceIdentifier(asObject(event.metadata).reasonCode)),
+  byProvider: countBy(events, (event) => safeEvidenceIdentifier(asObject(event.metadata).providerId)),
+  byWorkspace: countBy(events, (event) => safeEvidenceIdentifier(asObject(event.metadata).workspace)),
   latestAt: latestTimestamp(events),
 })
 
@@ -145,8 +161,8 @@ const providerAlertDispatchSummary = (events = [], failureThreshold = DEFAULT_PR
       active: failedEvents.length >= threshold,
       threshold,
       failures: failedEvents.length,
-      byChannel: countBy(failedEvents, (event) => asObject(event.metadata).channel),
-      byReason: countBy(failedEvents, (event) => asObject(event.metadata).reasonCode),
+      byChannel: countBy(failedEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).channel)),
+      byReason: countBy(failedEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).reasonCode)),
       latestAt: latestTimestamp(failedEvents),
     },
   }
@@ -161,36 +177,36 @@ const providerBudgetSummary = ({
 } = {}) => ({
   thresholdAlerts: {
     total: thresholdEvents.length,
-    bySeverity: countBy(thresholdEvents, (event) => asObject(event.metadata).severity),
-    byBudgetScope: countBy(thresholdEvents, (event) => asObject(event.metadata).budgetScope),
-    byProvider: countBy(thresholdEvents, (event) => asObject(event.metadata).providerId),
-    byWorkspace: countBy(thresholdEvents, (event) => asObject(event.metadata).workspace),
-    byThreshold: countBy(thresholdEvents, (event) => asObject(event.metadata).crossedThresholdPercent ?? asObject(event.metadata).thresholdPercent),
+    bySeverity: countBy(thresholdEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).severity)),
+    byBudgetScope: countBy(thresholdEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).budgetScope)),
+    byProvider: countBy(thresholdEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).providerId)),
+    byWorkspace: countBy(thresholdEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).workspace)),
+    byThreshold: countBy(thresholdEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).crossedThresholdPercent ?? asObject(event.metadata).thresholdPercent)),
     latestAt: latestTimestamp(thresholdEvents),
   },
   dispatchBlocked: {
     total: dispatchBlockedEvents.length,
-    bySeverity: countBy(dispatchBlockedEvents, (event) => asObject(event.metadata).severity),
-    byReason: countBy(dispatchBlockedEvents, (event) => asObject(event.metadata).reasonCode),
-    byBudgetScope: countBy(dispatchBlockedEvents, (event) => asObject(event.metadata).budgetScope),
-    byProvider: countBy(dispatchBlockedEvents, (event) => asObject(event.metadata).providerId),
-    byWorkspace: countBy(dispatchBlockedEvents, (event) => asObject(event.metadata).workspace),
+    bySeverity: countBy(dispatchBlockedEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).severity)),
+    byReason: countBy(dispatchBlockedEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).reasonCode)),
+    byBudgetScope: countBy(dispatchBlockedEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).budgetScope)),
+    byProvider: countBy(dispatchBlockedEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).providerId)),
+    byWorkspace: countBy(dispatchBlockedEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).workspace)),
     latestAt: latestTimestamp(dispatchBlockedEvents),
   },
   costAnomalies: {
     total: anomalyEvents.length,
-    bySeverity: countBy(anomalyEvents, (event) => asObject(event.metadata).severity),
-    byReason: countBy(anomalyEvents, (event) => asObject(event.metadata).reasonCode),
-    byBudgetScope: countBy(anomalyEvents, (event) => asObject(event.metadata).budgetScope),
-    byProvider: countBy(anomalyEvents, (event) => asObject(event.metadata).providerId),
-    byWorkspace: countBy(anomalyEvents, (event) => asObject(event.metadata).workspace),
+    bySeverity: countBy(anomalyEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).severity)),
+    byReason: countBy(anomalyEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).reasonCode)),
+    byBudgetScope: countBy(anomalyEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).budgetScope)),
+    byProvider: countBy(anomalyEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).providerId)),
+    byWorkspace: countBy(anomalyEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).workspace)),
     latestAt: latestTimestamp(anomalyEvents),
   },
   spend: {
     estimatedAmount: sumMetadataNumber([...thresholdEvents, ...dispatchBlockedEvents, ...anomalyEvents], 'estimateAmount'),
     actualAmount: sumMetadataNumber([...thresholdEvents, ...dispatchBlockedEvents, ...anomalyEvents], 'actualAmount'),
     projectedSpendAmount: sumMetadataNumber([...thresholdEvents, ...dispatchBlockedEvents, ...anomalyEvents], 'projectedSpendAmount'),
-    byCurrency: countBy([...thresholdEvents, ...dispatchBlockedEvents, ...anomalyEvents], (event) => asObject(event.metadata).currency),
+    byCurrency: countBy([...thresholdEvents, ...dispatchBlockedEvents, ...anomalyEvents], (event) => safeEvidenceIdentifier(asObject(event.metadata).currency)),
   },
   providerAlertDispatches: providerAlertDispatchSummary(alertDispatchEvents, alertDispatchFailureThreshold),
 })
@@ -258,9 +274,56 @@ export const operationsMetricsSampleDefinitions = {
   },
 }
 
+const providerBudgetSampleKeys = new Set([
+  'creativeProviderBudgetThresholds',
+  'creativeProviderBudgetDispatchBlocks',
+  'creativeProviderCostAnomalies',
+  'creativeProviderAlertDispatches',
+])
+
+const compactObject = (value) =>
+  Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ''))
+
+const safeProviderBudgetSampleMetadata = (metadata) => {
+  const source = asObject(metadata)
+  return compactObject({
+    sourceKey: safeEvidenceIdentifier(source.sourceKey, null),
+    providerId: safeEvidenceIdentifier(source.providerId, null),
+    workspace: safeEvidenceIdentifier(source.workspace, null),
+    mode: safeEvidenceIdentifier(source.mode, null),
+    budgetScope: safeEvidenceIdentifier(source.budgetScope, null),
+    severity: safeEvidenceIdentifier(source.severity, null),
+    reasonCode: safeEvidenceIdentifier(source.reasonCode, null),
+    alertType: safeEvidenceIdentifier(source.alertType, null),
+    channel: safeEvidenceIdentifier(source.channel, null),
+    status: safeEvidenceIdentifier(source.status, null),
+    usageRatioPercent: source.usageRatioPercent,
+    crossedThresholdPercent: source.crossedThresholdPercent,
+    thresholdPercent: source.thresholdPercent,
+    estimateAmount: source.estimateAmount,
+    actualAmount: source.actualAmount,
+    spentAmount: source.spentAmount,
+    dailyCapAmount: source.dailyCapAmount,
+    projectedSpendAmount: source.projectedSpendAmount,
+    currency: safeEvidenceIdentifier(source.currency, null),
+  })
+}
+
+const safeProviderBudgetSampleEvent = (event) => compactObject({
+  id: safeEvidenceIdentifier(event?.id, null),
+  action: event?.action,
+  resourceType: event?.resourceType,
+  resourceId: safeEvidenceIdentifier(event?.resourceId, null),
+  metadata: safeProviderBudgetSampleMetadata(event?.metadata),
+  createdAt: event?.createdAt ?? null,
+})
+
 export const buildOperationsMetricSamples = (sampleEventsByKey = {}) => Object.fromEntries(
   Object.entries(operationsMetricsSampleDefinitions).map(([key, definition]) => {
     const events = sampleEventsByKey[key] ?? []
+    const sampleEvents = providerBudgetSampleKeys.has(key)
+      ? events.map((event) => safeProviderBudgetSampleEvent(event))
+      : events
     return [key, {
       title: definition.title,
       query: {
@@ -269,7 +332,7 @@ export const buildOperationsMetricSamples = (sampleEventsByKey = {}) => Object.f
         failedOnly: definition.failedOnly,
       },
       count: events.length,
-      events,
+      events: sampleEvents,
     }]
   }),
 )

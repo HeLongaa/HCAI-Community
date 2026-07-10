@@ -265,6 +265,71 @@ test('buildOperationsMetrics summarizes creative provider budget audit events', 
   assert.ok(handoff.remediationHints.some((hint) => hint.id === 'provider-cost-currency-mismatch'))
 })
 
+test('buildOperationsMetrics folds unsafe provider budget summary keys', () => {
+  const metrics = buildOperationsMetrics({
+    windowMinutes: 15,
+    generatedAt: new Date('2026-07-07T12:00:00.000Z'),
+    auditEvents: [
+      {
+        id: 'audit-provider-unsafe-threshold',
+        action: 'creative.provider_budget.threshold_crossed',
+        resourceType: 'creative_provider_budget',
+        resourceId: 'https://ops.example.com/budget/resource?token=resource-secret',
+        metadata: {
+          providerId: 'replicate?token=provider-secret',
+          workspace: 'image?token=workspace-secret',
+          budgetScope: 'https://ops.example.com/budget/metrics?token=budget-secret',
+          severity: 'critical?token=severity-secret',
+          crossedThresholdPercent: '100?token=threshold-secret',
+          currency: 'USD?token=currency-secret',
+          estimateAmount: 0.75,
+          actualAmount: 1.25,
+          projectedSpendAmount: 4.25,
+        },
+        createdAt: '2026-07-07T11:55:00.000Z',
+      },
+      {
+        id: 'audit-provider-unsafe-alert-dispatch',
+        action: 'creative.provider_alert.dispatch',
+        resourceType: 'creative_provider_budget_alert',
+        resourceId: 'creative-provider-alert:webhook:unsafe',
+        metadata: {
+          channel: 'webhook?token=channel-secret',
+          status: 'failed?token=status-secret',
+          providerId: 'replicate?token=provider-secret',
+          workspace: 'image?token=workspace-secret',
+          reasonCode: 'missing_provider_alert_client?token=reason-secret',
+        },
+        createdAt: '2026-07-07T11:56:00.000Z',
+      },
+    ],
+  })
+
+  const threshold = metrics.creativeProviderBudget.thresholdAlerts
+  assert.match(threshold.bySeverity[0].key, /^redacted_[a-f0-9]{16}$/)
+  assert.match(threshold.byBudgetScope[0].key, /^redacted_[a-f0-9]{16}$/)
+  assert.match(threshold.byProvider[0].key, /^redacted_[a-f0-9]{16}$/)
+  assert.match(threshold.byWorkspace[0].key, /^redacted_[a-f0-9]{16}$/)
+  assert.match(threshold.byThreshold[0].key, /^redacted_[a-f0-9]{16}$/)
+  assert.match(metrics.creativeProviderBudget.spend.byCurrency[0].key, /^redacted_[a-f0-9]{16}$/)
+  assert.match(metrics.creativeProviderBudget.providerAlertDispatches.byChannel[0].key, /^redacted_[a-f0-9]{16}$/)
+  assert.match(metrics.creativeProviderBudget.providerAlertDispatches.byStatus[0].key, /^redacted_[a-f0-9]{16}$/)
+  assert.match(metrics.creativeProviderBudget.providerAlertDispatches.byReason[0].key, /^redacted_[a-f0-9]{16}$/)
+
+  const serialized = JSON.stringify(metrics.creativeProviderBudget)
+  assert.equal(serialized.includes('resource-secret'), false)
+  assert.equal(serialized.includes('provider-secret'), false)
+  assert.equal(serialized.includes('workspace-secret'), false)
+  assert.equal(serialized.includes('budget-secret'), false)
+  assert.equal(serialized.includes('severity-secret'), false)
+  assert.equal(serialized.includes('threshold-secret'), false)
+  assert.equal(serialized.includes('currency-secret'), false)
+  assert.equal(serialized.includes('channel-secret'), false)
+  assert.equal(serialized.includes('status-secret'), false)
+  assert.equal(serialized.includes('reason-secret'), false)
+  assert.equal(serialized.includes('ops.example.com'), false)
+})
+
 test('buildOperationsMetrics activates provider alert dispatch failure spike at threshold', () => {
   const generatedAt = new Date('2026-07-07T12:00:00.000Z')
   const auditEvents = [
@@ -359,11 +424,14 @@ test('buildOperationsMetricSamples includes creative provider budget sample buck
       id: 'audit-provider-dispatch-blocked',
       action: 'creative.provider_budget.dispatch_blocked',
       resourceType: 'creative_provider_budget',
-      resourceId: 'staging:replicate:image',
+      resourceId: 'https://ops.example.com/budget/sample?token=resource-secret',
       metadata: {
-        sourceKey: 'creative-provider-budget:sample:audit',
-        providerId: 'replicate',
-        budgetScope: 'staging:replicate:image',
+        sourceKey: 'creative-provider-budget:sample:audit?token=source-secret',
+        providerId: 'replicate?token=provider-secret',
+        budgetScope: 'https://ops.example.com/budget/sample?token=budget-secret',
+        reasonCode: 'over_budget?token=reason-secret',
+        providerJobId: 'pred_should_not_be_metric_label',
+        rawProviderPayload: 'token=raw-secret',
       },
       createdAt: '2026-07-07T11:57:00.000Z',
     }],
@@ -387,8 +455,20 @@ test('buildOperationsMetricSamples includes creative provider budget sample buck
   assert.equal(samples.creativeProviderBudgetDispatchBlocks.count, 1)
   assert.equal(samples.creativeProviderBudgetDispatchBlocks.query.action, 'creative.provider_budget.dispatch_blocked')
   assert.equal(samples.creativeProviderBudgetDispatchBlocks.query.resourceType, 'creative_provider_budget')
-  assert.equal(JSON.stringify(samples.creativeProviderBudgetDispatchBlocks.events).includes('pred_should_not_be_metric_label'), false)
-  assert.equal(JSON.stringify(samples.creativeProviderBudgetDispatchBlocks.events).includes('token='), false)
+  assert.match(samples.creativeProviderBudgetDispatchBlocks.events[0].resourceId, /^redacted_[a-f0-9]{16}$/)
+  assert.match(samples.creativeProviderBudgetDispatchBlocks.events[0].metadata.sourceKey, /^redacted_[a-f0-9]{16}$/)
+  assert.match(samples.creativeProviderBudgetDispatchBlocks.events[0].metadata.providerId, /^redacted_[a-f0-9]{16}$/)
+  assert.match(samples.creativeProviderBudgetDispatchBlocks.events[0].metadata.budgetScope, /^redacted_[a-f0-9]{16}$/)
+  assert.match(samples.creativeProviderBudgetDispatchBlocks.events[0].metadata.reasonCode, /^redacted_[a-f0-9]{16}$/)
+  const dispatchBlockSample = JSON.stringify(samples.creativeProviderBudgetDispatchBlocks.events)
+  assert.equal(dispatchBlockSample.includes('pred_should_not_be_metric_label'), false)
+  assert.equal(dispatchBlockSample.includes('raw-secret'), false)
+  assert.equal(dispatchBlockSample.includes('resource-secret'), false)
+  assert.equal(dispatchBlockSample.includes('source-secret'), false)
+  assert.equal(dispatchBlockSample.includes('provider-secret'), false)
+  assert.equal(dispatchBlockSample.includes('budget-secret'), false)
+  assert.equal(dispatchBlockSample.includes('reason-secret'), false)
+  assert.equal(dispatchBlockSample.includes('ops.example.com'), false)
   assert.equal(samples.creativeProviderAlertDispatches.count, 1)
   assert.equal(samples.creativeProviderAlertDispatches.query.action, 'creative.provider_alert.dispatch')
   assert.equal(samples.creativeProviderAlertDispatches.query.resourceType, 'creative_provider_budget_alert')
