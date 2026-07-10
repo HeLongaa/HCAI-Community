@@ -9,6 +9,7 @@ const providerBudgetExternalAlertActions = new Set([
 const providerBudgetExternalAlertChannels = new Set(['webhook', 'slack', 'email'])
 const providerBudgetExternalAlertDispatchAuditStatuses = new Set(['succeeded', 'failed', 'skipped'])
 const defaultProviderBudgetExternalAlertChannels = Object.freeze([...providerBudgetExternalAlertChannels])
+const safeSourceKeyPattern = /^[a-z0-9][a-z0-9:._-]{0,240}$/i
 
 const compactObject = (value) =>
   Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ''))
@@ -16,6 +17,11 @@ const compactObject = (value) =>
 const safeString = (value, fallback = null) => {
   const normalized = String(value ?? '').trim()
   return normalized || fallback
+}
+
+const safeSourceKey = (value) => {
+  const normalized = safeString(value)
+  return normalized && safeSourceKeyPattern.test(normalized) ? normalized : null
 }
 
 const errorPreview = (error) => String(error?.message ?? error ?? 'Unknown error').slice(0, 240)
@@ -62,7 +68,7 @@ const summaryFor = (auditEvent, metadata) => {
 
 export const buildProviderBudgetExternalAlertPayload = (auditEvent = {}) => {
   const metadata = metadataFor(auditEvent)
-  const sourceKey = safeString(metadata.sourceKey)
+  const sourceKey = safeSourceKey(metadata.sourceKey)
   if (
     !providerBudgetExternalAlertActions.has(auditEvent.action) ||
     (auditEvent.resourceType && auditEvent.resourceType !== 'creative_provider_budget') ||

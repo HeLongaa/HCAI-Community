@@ -4,12 +4,19 @@ const providerBudgetNotificationActions = new Set([
   'creative.provider_cost.anomaly_detected',
 ])
 
+const safeSourceKeyPattern = /^[a-z0-9][a-z0-9:._-]{0,240}$/i
+
 const compactObject = (value) =>
   Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ''))
 
 const safeString = (value, fallback = null) => {
   const normalized = String(value ?? '').trim()
   return normalized || fallback
+}
+
+const safeSourceKey = (value) => {
+  const normalized = safeString(value)
+  return normalized && safeSourceKeyPattern.test(normalized) ? normalized : null
 }
 
 const metadataFor = (auditEvent) =>
@@ -47,7 +54,7 @@ const typeFor = (auditEvent, metadata) => {
 
 export const buildProviderBudgetNotificationPayload = (auditEvent = {}) => {
   const metadata = metadataFor(auditEvent)
-  const sourceKey = safeString(metadata.sourceKey)
+  const sourceKey = safeSourceKey(metadata.sourceKey)
   if (!providerBudgetNotificationActions.has(auditEvent.action) || !sourceKey) {
     return null
   }

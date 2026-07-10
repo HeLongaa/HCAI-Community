@@ -150,4 +150,17 @@ test('buildProviderBudgetNotificationPayload ignores unsupported audit events', 
   })
 
   assert.equal(payload, null)
+
+  const unsafeSourceKeyPayload = buildProviderBudgetNotificationPayload({
+    id: 'audit-unsafe-source-key',
+    action: 'creative.provider_budget.dispatch_blocked',
+    metadata: {
+      sourceKey: 'https://replicate.example/predictions/pred_notification?token=provider-secret',
+      providerId: 'replicate',
+      budgetScope: 'staging:replicate:image:notification-routing',
+      providerJobId: 'pred_notification_unsafe_source_key',
+    },
+  })
+
+  assert.equal(unsafeSourceKeyPayload, null)
 })
