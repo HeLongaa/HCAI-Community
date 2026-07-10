@@ -1,33 +1,62 @@
+import { createHash } from 'node:crypto'
+
+import { safeProviderJobIdEvidence } from '../creative/generationRecords.js'
+
+const safeEvidencePattern = /^[a-z0-9][a-z0-9:._-]{0,240}$/i
+const safeLifecycleActionPattern = /^creative\.provider_(?:lifecycle|replay)\.[a-z0-9._-]+$/i
+
 const compactObject = (value) =>
   Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ''))
 
 const statusLabel = (status) => String(status ?? 'updated').replaceAll('_', ' ')
 
-const safeLifecycleMetadata = ({ sourceKey, generationId, metadata = {} }) => compactObject({
-  sourceKey,
-  generationId,
-  providerId: metadata.providerId,
-  providerMode: metadata.providerMode,
-  providerJobId: metadata.providerJobId,
-  sourceType: metadata.sourceType,
-  nextStatus: metadata.nextStatus,
-  notificationType: metadata.notificationType,
-  auditAction: metadata.auditAction,
-  target: {
-    page: 'admin',
-    admin: {
-      tab: 'Generations',
-      generationId,
-      auditSourceKey: sourceKey,
+const stableHash = (value) =>
+  createHash('sha256')
+    .update(JSON.stringify(value ?? null))
+    .digest('hex')
+
+export const safeProviderLifecycleEvidenceIdentifier = (value, fallback = null) => {
+  const normalized = String(value ?? '').trim() || fallback
+  if (!normalized) return null
+  return safeEvidencePattern.test(normalized)
+    ? normalized
+    : `redacted_${stableHash(value).slice(0, 16)}`
+}
+
+const safeLifecycleAction = (value, fallback) => {
+  const normalized = String(value ?? '').trim()
+  return normalized && safeLifecycleActionPattern.test(normalized) ? normalized : fallback
+}
+
+const safeLifecycleMetadata = ({ sourceKey, generationId, metadata = {} }) => {
+  const safeSourceKey = safeProviderLifecycleEvidenceIdentifier(sourceKey)
+  const safeGenerationId = safeProviderLifecycleEvidenceIdentifier(generationId)
+  return compactObject({
+    sourceKey: safeSourceKey,
+    generationId: safeGenerationId,
+    providerId: safeProviderLifecycleEvidenceIdentifier(metadata.providerId),
+    providerMode: safeProviderLifecycleEvidenceIdentifier(metadata.providerMode),
+    providerJobId: safeProviderJobIdEvidence(metadata.providerJobId),
+    sourceType: safeProviderLifecycleEvidenceIdentifier(metadata.sourceType),
+    nextStatus: safeProviderLifecycleEvidenceIdentifier(metadata.nextStatus),
+    notificationType: safeLifecycleAction(metadata.notificationType, null),
+    auditAction: safeLifecycleAction(metadata.auditAction, null),
+    target: {
+      page: 'admin',
+      admin: {
+        tab: 'Generations',
+        generationId: safeGenerationId,
+        auditSourceKey: safeSourceKey,
+      },
     },
-  },
-})
+  })
+}
 
 export const buildProviderLifecycleNotificationPayload = (payload = {}) => {
-  const generationId = String(payload.generationId ?? '')
-  const status = payload.metadata?.nextStatus ?? 'updated'
+  const generationId = safeProviderLifecycleEvidenceIdentifier(payload.generationId, 'unknown_generation')
+  const status = safeProviderLifecycleEvidenceIdentifier(payload.metadata?.nextStatus, 'updated')
   return {
-    type: payload.type ?? `creative.provider_lifecycle.${status}`,
+    type: safeLifecycleAction(payload.type ?? payload.metadata?.notificationType, `creative.provider_lifecycle.${status}`),
     title: `Creative generation ${statusLabel(status)}`,
     body: `Provider lifecycle replay updated generation ${generationId}.`,
     resourceType: 'creative_generation',
@@ -38,10 +67,13 @@ export const buildProviderLifecycleNotificationPayload = (payload = {}) => {
 }
 
 export const buildProviderLifecycleAuditPayload = (payload = {}, actor = null) => {
-  const generationId = String(payload.generationId ?? '')
+  const generationId = safeProviderLifecycleEvidenceIdentifier(payload.generationId, 'unknown_generation')
   return {
     actor,
-    action: payload.action ?? payload.metadata?.auditAction ?? 'creative.provider_replay.updated',
+    action: safeLifecycleAction(
+      payload.action ?? payload.metadata?.auditAction,
+      'creative.provider_replay.updated',
+    ),
     resourceType: 'creative_generation',
     resourceId: generationId,
     metadata: safeLifecycleMetadata(payload),

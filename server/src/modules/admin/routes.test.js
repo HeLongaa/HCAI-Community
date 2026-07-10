@@ -1814,6 +1814,78 @@ test('GET /api/admin/audit list, export, and detail sanitize provider alert disp
   }
 })
 
+test('GET /api/admin/audit list, export, and detail sanitize provider lifecycle evidence', async () => {
+  const server = await createTestServer()
+  try {
+    const unsafeValues = {
+      source: 'https://provider.example/lifecycle/source?token=source-secret',
+      generation: 'https://provider.example/generations/admin?token=generation-secret',
+      provider: 'replicate?token=provider-secret',
+      mode: 'replicate_staging?token=mode-secret',
+      job: 'https://provider.example/jobs/admin?token=job-secret',
+      sourceType: 'webhook?token=source-type-secret',
+    }
+    const recorded = await repositories.providerLifecycleAudit.record({
+      sourceKey: unsafeValues.source,
+      generationId: unsafeValues.generation,
+      action: 'creative.provider_lifecycle.side_effect_applied',
+      metadata: {
+        providerId: unsafeValues.provider,
+        providerMode: unsafeValues.mode,
+        providerJobId: unsafeValues.job,
+        sourceType: unsafeValues.sourceType,
+        nextStatus: 'completed',
+        auditAction: 'creative.provider_lifecycle.side_effect_applied',
+      },
+    })
+    const eventId = recorded.id
+
+    const list = await requestJson(
+      server.url,
+      '/api/admin/audit?action=creative.provider_lifecycle.side_effect_applied&resourceType=creative_generation&limit=100',
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )
+    const listedEvent = list.payload.data.find((event) => event.id === eventId)
+
+    const exported = await requestJson(
+      server.url,
+      '/api/admin/audit/export?action=creative.provider_lifecycle.side_effect_applied&resourceType=creative_generation&limit=100',
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )
+    const exportedEvent = exported.payload.events.find((event) => event.id === eventId)
+
+    const detail = await requestJson(server.url, `/api/admin/audit/${eventId}`, {
+      method: 'GET',
+      token: 'demo-access.opsplus',
+    })
+
+    assert.equal(list.status, 200)
+    assert.equal(exported.status, 200)
+    assert.equal(detail.status, 200)
+    assert.ok(listedEvent)
+    assert.ok(exportedEvent)
+
+    for (const event of [listedEvent, exportedEvent, detail.payload.data]) {
+      assert.match(event.resourceId, /^redacted_[a-f0-9]{16}$/)
+      for (const key of ['sourceKey', 'generationId', 'providerId', 'providerMode', 'providerJobId', 'sourceType']) {
+        assert.match(event.metadata[key], /^redacted_[a-f0-9]{16}$/)
+      }
+      assert.equal(event.metadata.nextStatus, 'completed')
+      assert.equal(event.metadata.auditAction, 'creative.provider_lifecycle.side_effect_applied')
+      assert.equal(event.metadata.target.admin.generationId, event.resourceId)
+      assert.equal(event.metadata.target.admin.auditSourceKey, event.metadata.sourceKey)
+    }
+
+    const serialized = JSON.stringify([listedEvent, exportedEvent, detail.payload.data])
+    for (const unsafe of Object.values(unsafeValues)) {
+      assert.equal(serialized.includes(unsafe), false)
+    }
+    assert.equal(serialized.includes('provider.example'), false)
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/admin/audit/export requires audit read permission', async () => {
   const server = await createTestServer()
   try {
