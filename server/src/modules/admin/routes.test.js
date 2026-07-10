@@ -2213,6 +2213,135 @@ test('GET /api/admin/audit list, export, and detail sanitize creative generation
   }
 })
 
+test('GET /api/admin/audit list, export, and detail sanitize creative credit and quota evidence', async () => {
+  const server = await createTestServer()
+  try {
+    const unsafeValues = {
+      resource: 'https://billing.example/ledger/audit?token=resource-secret',
+      generation: 'https://provider.example/generations/accounting?token=generation-secret',
+      ledger: 'https://billing.example/credits/ledger?token=ledger-secret',
+      reservation: 'https://billing.example/quota/reservation?token=reservation-secret',
+      quotaWindow: 'https://billing.example/quota/window?token=window-secret',
+      workspace: 'image?token=workspace-secret',
+      mode: 'text_to_image?token=mode-secret',
+      status: 'reserved?token=status-secret',
+      reason: 'provider_failed?token=reason-secret',
+    }
+    const creditActions = [
+      'creative.credit.reserved',
+      'creative.credit.settled',
+      'creative.credit.refunded',
+      'creative.credit.cancelled',
+    ]
+    const quotaActions = [
+      'creative.quota.reserved',
+      'creative.quota.committed',
+      'creative.quota.released',
+    ]
+    const payloads = creditActions.map((action, index) => ({
+      action,
+      resourceType: 'creative_credit_ledger',
+      resourceId: `${unsafeValues.resource}&credit=${index}`,
+      metadata: {
+        generationId: unsafeValues.generation,
+        creditLedgerId: unsafeValues.ledger,
+        quotaReservationId: unsafeValues.reservation,
+        workspace: unsafeValues.workspace,
+        mode: unsafeValues.mode,
+        status: unsafeValues.status,
+        reasonCode: unsafeValues.reason,
+        amount: 3,
+        settledAmount: 2,
+        refundedAmount: 1,
+        note: 'Inspect https://billing.example/runbook?token=note-secret',
+      },
+    }))
+    payloads.push(...quotaActions.map((action, index) => ({
+      action,
+      resourceType: 'creative_quota_reservation',
+      resourceId: `${unsafeValues.resource}&quota=${index}`,
+      metadata: {
+        generationId: unsafeValues.generation,
+        reservationId: unsafeValues.reservation,
+        quotaWindowId: unsafeValues.quotaWindow,
+        workspace: unsafeValues.workspace,
+        status: unsafeValues.status,
+        reason: unsafeValues.reason,
+        units: 2,
+        note: 'Inspect https://billing.example/quota-policy?token=quota-note-secret',
+      },
+    })))
+    const recorded = await repositories.providerBudgetAudit.recordMany(payloads)
+    const eventIds = recorded.map((item) => item.event.id)
+    const resourceTypes = ['creative_credit_ledger', 'creative_quota_reservation']
+
+    const listResponses = await Promise.all(resourceTypes.map((resourceType) => requestJson(
+      server.url,
+      `/api/admin/audit?resourceType=${resourceType}&limit=100`,
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )))
+    const listedEvents = listResponses.flatMap((response) => response.payload.data)
+      .filter((event) => eventIds.includes(event.id))
+
+    const exportResponses = await Promise.all(resourceTypes.map((resourceType) => requestJson(
+      server.url,
+      `/api/admin/audit/export?resourceType=${resourceType}&limit=100`,
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )))
+    const exportedEvents = exportResponses.flatMap((response) => response.payload.events)
+      .filter((event) => eventIds.includes(event.id))
+
+    const details = await Promise.all(eventIds.map((eventId) => requestJson(
+      server.url,
+      `/api/admin/audit/${eventId}`,
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )))
+
+    for (const response of [...listResponses, ...exportResponses, ...details]) assert.equal(response.status, 200)
+    assert.equal(listedEvents.length, payloads.length)
+    assert.equal(exportedEvents.length, payloads.length)
+    assert.deepEqual(new Set(listedEvents.map((event) => event.action)), new Set(payloads.map((item) => item.action)))
+    assert.deepEqual(new Set(exportedEvents.map((event) => event.action)), new Set(payloads.map((item) => item.action)))
+
+    const events = [...listedEvents, ...exportedEvents, ...details.map((detail) => detail.payload.data)]
+    for (const event of events) {
+      assert.match(event.resourceId, /^redacted_[a-f0-9]{16}$/)
+      for (const key of [
+        'generationId',
+        'creditLedgerId',
+        'quotaReservationId',
+        'reservationId',
+        'quotaWindowId',
+        'workspace',
+        'mode',
+        'status',
+      ]) {
+        if (event.metadata[key]) assert.match(event.metadata[key], /^redacted_[a-f0-9]{16}$/)
+      }
+      for (const key of ['reason', 'reasonCode']) {
+        if (event.metadata[key]) {
+          assert.equal(event.metadata[key].includes('provider_failed'), true)
+          assert.equal(event.metadata[key].includes('reason-secret'), false)
+          assert.equal(event.metadata[key].includes('<redacted>'), true)
+        }
+      }
+      assert.equal(event.metadata.note.includes('<redacted-url>'), true)
+      for (const key of ['amount', 'settledAmount', 'refundedAmount', 'units']) {
+        if (key in event.metadata) assert.equal(typeof event.metadata[key], 'number')
+      }
+    }
+
+    const serialized = JSON.stringify(events)
+    for (const unsafe of [...Object.values(unsafeValues), 'note-secret', 'quota-note-secret']) {
+      assert.equal(serialized.includes(unsafe), false)
+    }
+    assert.equal(serialized.includes('billing.example'), false)
+    assert.equal(serialized.includes('provider.example'), false)
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/admin/audit/export requires audit read permission', async () => {
   const server = await createTestServer()
   try {
