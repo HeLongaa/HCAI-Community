@@ -2102,6 +2102,117 @@ test('GET /api/admin/audit list, export, and detail sanitize provider replay led
   }
 })
 
+test('GET /api/admin/audit list, export, and detail sanitize creative generation lifecycle evidence', async () => {
+  const server = await createTestServer()
+  try {
+    const unsafeValues = {
+      resource: 'https://provider.example/generations/audit?token=resource-secret',
+      generation: 'https://provider.example/generations/legacy?token=generation-secret',
+      provider: 'replicate?token=provider-secret',
+      workspace: 'image?token=workspace-secret',
+      mode: 'text_to_image?token=mode-secret',
+      status: 'completed?token=status-secret',
+      output: 'https://provider.example/outputs/legacy?token=output-secret',
+      error: 'provider_failed?token=error-secret',
+      reason: 'policy_review?token=reason-secret',
+    }
+    const generationActions = [
+      'creative.generation.created',
+      'creative.generation.running',
+      'creative.generation.outputs_linked',
+      'creative.generation.completed',
+      'creative.generation.failed',
+      'creative.generation.cancelled',
+    ]
+    const payloads = generationActions.map((action, index) => ({
+      action,
+      resourceType: 'creative_generation',
+      resourceId: `${unsafeValues.resource}&event=${index}`,
+      metadata: {
+        generationId: unsafeValues.generation,
+        providerId: unsafeValues.provider,
+        workspace: unsafeValues.workspace,
+        mode: unsafeValues.mode,
+        status: unsafeValues.status,
+        outputAssetIds: [unsafeValues.output],
+        errorCode: unsafeValues.error,
+        reasonCode: unsafeValues.reason,
+        note: 'Inspect https://provider.example/runbook?token=note-secret',
+        attempt: 2,
+      },
+    }))
+    payloads.push({
+      action: 'creative.generation.review_required',
+      resourceType: 'media_asset',
+      resourceId: `${unsafeValues.resource}&event=review`,
+      metadata: {
+        generationId: unsafeValues.generation,
+        outputId: unsafeValues.output,
+        providerId: unsafeValues.provider,
+        workspace: unsafeValues.workspace,
+        reasons: [unsafeValues.reason],
+        note: 'Inspect https://provider.example/policy?token=policy-note-secret',
+        creativeReviewRequired: true,
+      },
+    })
+    const recorded = await repositories.providerBudgetAudit.recordMany(payloads)
+    const eventIds = recorded.map((item) => item.event.id)
+
+    const listResponses = await Promise.all(['creative_generation', 'media_asset'].map((resourceType) => requestJson(
+      server.url,
+      `/api/admin/audit?resourceType=${resourceType}&limit=100`,
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )))
+    const listedEvents = listResponses.flatMap((response) => response.payload.data)
+      .filter((event) => eventIds.includes(event.id))
+
+    const exportResponses = await Promise.all(['creative_generation', 'media_asset'].map((resourceType) => requestJson(
+      server.url,
+      `/api/admin/audit/export?resourceType=${resourceType}&limit=100`,
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )))
+    const exportedEvents = exportResponses.flatMap((response) => response.payload.events)
+      .filter((event) => eventIds.includes(event.id))
+
+    const details = await Promise.all(eventIds.map((eventId) => requestJson(
+      server.url,
+      `/api/admin/audit/${eventId}`,
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )))
+
+    for (const response of [...listResponses, ...exportResponses, ...details]) assert.equal(response.status, 200)
+    assert.equal(listedEvents.length, payloads.length)
+    assert.equal(exportedEvents.length, payloads.length)
+    assert.deepEqual(new Set(listedEvents.map((event) => event.action)), new Set(payloads.map((item) => item.action)))
+    assert.deepEqual(new Set(exportedEvents.map((event) => event.action)), new Set(payloads.map((item) => item.action)))
+
+    const events = [...listedEvents, ...exportedEvents, ...details.map((detail) => detail.payload.data)]
+    for (const event of events) {
+      assert.match(event.resourceId, /^redacted_[a-f0-9]{16}$/)
+      for (const key of ['generationId', 'providerId', 'workspace']) {
+        assert.match(event.metadata[key], /^redacted_[a-f0-9]{16}$/)
+      }
+      for (const key of ['mode', 'status', 'errorCode', 'reasonCode']) {
+        if (event.metadata[key]) assert.match(event.metadata[key], /^redacted_[a-f0-9]{16}$/)
+      }
+      for (const value of event.metadata.outputAssetIds ?? []) assert.match(value, /^redacted_[a-f0-9]{16}$/)
+      for (const value of event.metadata.reasons ?? []) assert.match(value, /^redacted_[a-f0-9]{16}$/)
+      if (event.metadata.outputId) assert.match(event.metadata.outputId, /^redacted_[a-f0-9]{16}$/)
+      assert.equal(event.metadata.note.includes('<redacted-url>'), true)
+      if ('attempt' in event.metadata) assert.equal(event.metadata.attempt, 2)
+      if ('creativeReviewRequired' in event.metadata) assert.equal(event.metadata.creativeReviewRequired, true)
+    }
+
+    const serialized = JSON.stringify(events)
+    for (const unsafe of [...Object.values(unsafeValues), 'note-secret', 'policy-note-secret']) {
+      assert.equal(serialized.includes(unsafe), false)
+    }
+    assert.equal(serialized.includes('provider.example'), false)
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/admin/audit/export requires audit read permission', async () => {
   const server = await createTestServer()
   try {
