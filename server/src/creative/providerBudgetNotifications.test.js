@@ -83,6 +83,50 @@ test('buildProviderBudgetNotificationPayload derives safe notification payloads 
   assert.equal(JSON.stringify(payload).includes('token=secret'), false)
 })
 
+test('buildProviderBudgetNotificationPayload folds unsafe summary metadata from non-standard audit events', () => {
+  const payload = buildProviderBudgetNotificationPayload({
+    id: 'audit-provider-budget-unsafe-summary',
+    action: 'creative.provider_budget.threshold_crossed',
+    resourceType: 'creative_provider_budget',
+    resourceId: 'https://ops.example.com/budget/resource?token=resource-secret',
+    metadata: {
+      sourceKey: 'creative-provider-budget:unsafe-summary:audit',
+      alertType: 'creative.provider_budget.threshold_80?token=alert-secret',
+      providerId: 'replicate?token=provider-secret',
+      budgetScope: 'https://ops.example.com/budget/summary?token=budget-secret',
+      workspace: 'image?token=workspace-secret',
+      mode: 'text_to_image?token=mode-secret',
+      severity: 'critical?token=severity-secret',
+      reasonCode: 'over_budget?token=reason-secret',
+      crossedThresholdPercent: 80,
+      usageRatioPercent: 101,
+    },
+  })
+
+  assert.equal(payload.type, 'creative.provider_budget.threshold_crossed')
+  assert.match(payload.resourceId, /^redacted_[a-f0-9]{16}$/)
+  assert.match(payload.body, /^redacted_[a-f0-9]{16} projected spend crossed 80% of the daily cap\.$/)
+  assert.match(payload.metadata.providerId, /^redacted_[a-f0-9]{16}$/)
+  assert.match(payload.metadata.budgetScope, /^redacted_[a-f0-9]{16}$/)
+  assert.match(payload.metadata.workspace, /^redacted_[a-f0-9]{16}$/)
+  assert.match(payload.metadata.mode, /^redacted_[a-f0-9]{16}$/)
+  assert.match(payload.metadata.severity, /^redacted_[a-f0-9]{16}$/)
+  assert.match(payload.metadata.reasonCode, /^redacted_[a-f0-9]{16}$/)
+  assert.match(payload.metadata.alertType, /^redacted_[a-f0-9]{16}$/)
+  assert.equal(payload.metadata.target.admin.resourceId, payload.resourceId)
+
+  const serialized = JSON.stringify(payload)
+  assert.equal(serialized.includes('resource-secret'), false)
+  assert.equal(serialized.includes('alert-secret'), false)
+  assert.equal(serialized.includes('provider-secret'), false)
+  assert.equal(serialized.includes('budget-secret'), false)
+  assert.equal(serialized.includes('workspace-secret'), false)
+  assert.equal(serialized.includes('mode-secret'), false)
+  assert.equal(serialized.includes('severity-secret'), false)
+  assert.equal(serialized.includes('reason-secret'), false)
+  assert.equal(serialized.includes('ops.example.com'), false)
+})
+
 test('providerBudgetNotifications creates audit-reader notifications and dedupes by recipient source key', async () => {
   const repository = createSeedRepository()
   const plan = buildProviderBudgetEventPlan({

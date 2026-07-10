@@ -117,6 +117,52 @@ test('buildProviderBudgetExternalAlertPayload derives a channel-neutral safe pay
   assert.equal(serialized.includes('creative-ops@example.com'), false)
 })
 
+test('buildProviderBudgetExternalAlertPayload folds unsafe summary metadata from non-standard audit events', () => {
+  const payload = buildProviderBudgetExternalAlertPayload({
+    id: 'audit-provider-budget-alert-unsafe-summary',
+    action: 'creative.provider_budget.threshold_crossed',
+    resourceType: 'creative_provider_budget',
+    resourceId: 'https://ops.example.com/budget/resource?token=resource-secret',
+    createdAt: '2026-07-07T02:05:00.000Z',
+    metadata: {
+      sourceKey: 'creative-provider-budget:unsafe-summary:audit',
+      alertType: 'creative.provider_budget.threshold_80?token=alert-secret',
+      providerId: 'replicate?token=provider-secret',
+      budgetScope: 'https://ops.example.com/budget/summary?token=budget-secret',
+      workspace: 'image?token=workspace-secret',
+      severity: 'critical?token=severity-secret',
+      reasonCode: 'over_budget?token=reason-secret',
+      crossedThresholdPercent: 80,
+      usageRatioPercent: 101,
+      estimateAmount: 0.25,
+      actualAmount: 1.5,
+      spentAmount: 3.25,
+      dailyCapAmount: 5,
+      projectedSpendAmount: 5.25,
+      currency: 'USD',
+    },
+  })
+
+  assert.equal(payload.alertAction, 'creative.provider_budget.threshold_crossed')
+  assert.match(payload.summary, /^redacted_[a-f0-9]{16} projected spend crossed 80% of the daily cap\.$/)
+  assert.match(payload.budgetScope, /^redacted_[a-f0-9]{16}$/)
+  assert.match(payload.providerId, /^redacted_[a-f0-9]{16}$/)
+  assert.match(payload.workspace, /^redacted_[a-f0-9]{16}$/)
+  assert.match(payload.severity, /^redacted_[a-f0-9]{16}$/)
+  assert.match(payload.reasonCode, /^redacted_[a-f0-9]{16}$/)
+  assert.match(payload.target.admin.resourceId, /^redacted_[a-f0-9]{16}$/)
+
+  const serialized = JSON.stringify(payload)
+  assert.equal(serialized.includes('resource-secret'), false)
+  assert.equal(serialized.includes('alert-secret'), false)
+  assert.equal(serialized.includes('provider-secret'), false)
+  assert.equal(serialized.includes('budget-secret'), false)
+  assert.equal(serialized.includes('workspace-secret'), false)
+  assert.equal(serialized.includes('severity-secret'), false)
+  assert.equal(serialized.includes('reason-secret'), false)
+  assert.equal(serialized.includes('ops.example.com'), false)
+})
+
 test('buildProviderBudgetExternalAlertPayloads covers persisted threshold block and anomaly events', async () => {
   const repository = createSeedRepository()
   const plan = buildProviderBudgetEventPlan({
