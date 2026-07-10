@@ -25,6 +25,15 @@ const providerReplayLedgerAuditActions = new Set([
   'creative.provider_replay.side_effect_result_recorded',
 ])
 
+const creativeGenerationAuditActions = new Set([
+  'creative.generation.created',
+  'creative.generation.running',
+  'creative.generation.outputs_linked',
+  'creative.generation.completed',
+  'creative.generation.failed',
+  'creative.generation.cancelled',
+])
+
 const providerBudgetIdentifierKeys = new Set([
   'alertAction',
   'alertType',
@@ -75,6 +84,19 @@ const providerReplayLedgerIdentifierKeys = new Set([
   'providerId',
   'reasonCode',
   'sourceType',
+])
+
+const creativeGenerationIdentifierKeys = new Set([
+  'errorCode',
+  'generationId',
+  'mode',
+  'outputAssetIds',
+  'outputId',
+  'providerId',
+  'reasonCode',
+  'reasons',
+  'status',
+  'workspace',
 ])
 
 const isProviderBudgetAuditEvent = (event) =>
@@ -155,6 +177,33 @@ const safeProviderReplayLedgerAuditMetadataValue = (value, key = '') => {
 const safeProviderReplayLedgerAuditMetadata = (metadata) =>
   metadata && typeof metadata === 'object' && !Array.isArray(metadata)
     ? safeProviderReplayLedgerAuditMetadataValue(metadata)
+    : null
+
+const isCreativeGenerationAuditEvent = (event) =>
+  (creativeGenerationAuditActions.has(event?.action) && event?.resourceType === 'creative_generation') ||
+  (event?.action === 'creative.generation.review_required' && event?.resourceType === 'media_asset')
+
+const safeCreativeGenerationAuditMetadataValue = (value, key = '') => {
+  if (typeof value === 'string') {
+    return creativeGenerationIdentifierKeys.has(key)
+      ? safeProviderLifecycleEvidenceIdentifier(value)
+      : safeErrorPreview(value)
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => safeCreativeGenerationAuditMetadataValue(item, key))
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([childKey, childValue]) => [
+      childKey,
+      safeCreativeGenerationAuditMetadataValue(childValue, childKey),
+    ]))
+  }
+  return value
+}
+
+const safeCreativeGenerationAuditMetadata = (metadata) =>
+  metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+    ? safeCreativeGenerationAuditMetadataValue(metadata)
     : null
 
 const parsePoints = (value) => {
@@ -308,6 +357,7 @@ export const serializeAuditEvent = (event) => {
   const providerBudgetEvent = isProviderBudgetAuditEvent(event)
   const providerLifecycleEvent = isProviderLifecycleAuditEvent(event)
   const providerReplayLedgerEvent = isProviderReplayLedgerAuditEvent(event)
+  const creativeGenerationEvent = isCreativeGenerationAuditEvent(event)
   return {
     id: String(event.id),
     actorType: event.actorType,
@@ -320,14 +370,18 @@ export const serializeAuditEvent = (event) => {
         ? safeProviderLifecycleEvidenceIdentifier(event.resourceId)
         : providerReplayLedgerEvent
           ? safeProviderLifecycleEvidenceIdentifier(event.resourceId)
-          : event.resourceId ?? null,
+          : creativeGenerationEvent
+            ? safeProviderLifecycleEvidenceIdentifier(event.resourceId)
+            : event.resourceId ?? null,
     metadata: providerBudgetEvent
       ? safeProviderBudgetAuditMetadata(event.metadata)
       : providerLifecycleEvent
         ? safeProviderLifecycleAuditMetadata(event.metadata)
         : providerReplayLedgerEvent
           ? safeProviderReplayLedgerAuditMetadata(event.metadata)
-          : event.metadata ?? null,
+          : creativeGenerationEvent
+            ? safeCreativeGenerationAuditMetadata(event.metadata)
+            : event.metadata ?? null,
     createdAt: event.createdAt?.toISOString?.() ?? event.createdAt ?? '',
   }
 }

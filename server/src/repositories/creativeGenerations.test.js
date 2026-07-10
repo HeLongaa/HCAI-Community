@@ -51,4 +51,19 @@ test('seed creative generation repository records lifecycle and output assets', 
 
   const listed = await repository.creativeGenerations.list({ actorHandle: actor.handle, workspace: 'image' })
   assert.ok(listed.items.some((item) => item.id === id))
+
+  for (const action of [
+    'creative.generation.created',
+    'creative.generation.running',
+    'creative.generation.outputs_linked',
+    'creative.generation.completed',
+  ]) {
+    const audit = await repository.audit.list({ action, resourceType: 'creative_generation' })
+    const event = audit.items.find((item) => item.resourceId === id)
+    assert.ok(event)
+    assert.equal(['queued', 'running', 'completed'].includes(event.metadata.status), true)
+    for (const outputAssetId of event.metadata.outputAssetIds ?? []) {
+      assert.equal(['media-1', 'media-2'].includes(outputAssetId), true)
+    }
+  }
 })
