@@ -69,6 +69,11 @@ responsibility chain, user message codes, and safety audit contract are frozen i
 `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. Runtime enforcement remains
 incomplete until the downstream V1-59 through V1-63 implementation tasks pass their own release evidence.
 
+The complete data asset inventory, five-level classification, bounded retention, allowed/forbidden flows,
+external-processor mapping, export/deletion targets, legal-hold rules, and secondary-surface redaction contract are
+frozen in `docs/V1_DATA_GOVERNANCE_BASELINE.md` and `config/v1-data-governance.json`. Account rights automation,
+Provider deletion receipts, and backup expiry/restore deletion evidence remain downstream release work.
+
 Ordinary continuation language is not approval for a paid provider call. The exact provider, environment, maximum calls, app/provider budget, expiry, token owner, kill-switch owner, and rollback owner must be approved first.
 
 ## Technical Definition Of Done
@@ -89,6 +94,7 @@ Run the local contract with:
 ```bash
 npm run test:v1-scope
 npm run test:v1-safety-policy
+npm run test:v1-data-governance
 ```
 
 Run the complete safe deployment gate with:

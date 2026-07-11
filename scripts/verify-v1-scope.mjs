@@ -29,6 +29,7 @@ const expectedDomains = [
 ]
 const expectedExclusions = ['invoice-tax-settlement', 'kyc', 'rmb-payment', 'withdrawal-payout']
 const expectedModalities = ['chat', 'image', 'music', 'video']
+const expectedDataClassifications = ['confidential', 'internal', 'public', 'restricted', 'secret']
 
 addCheck('release is frozen V1', manifest.release === 'V1' && manifest.scopeStatus === 'frozen', `${manifest.release}/${manifest.scopeStatus}`)
 addCheck(
@@ -92,6 +93,36 @@ addCheck(
     ['V1-45', 'V1-59', 'V1-60', 'V1-61', 'V1-62', 'V1-63', 'V1-78'],
   ),
   manifest.creativeSafetyPolicy.implementationTasks.join(', '),
+)
+addCheck(
+  'all required data classifications are frozen',
+  sameMembers(manifest.dataGovernancePolicy.requiredClassifications, expectedDataClassifications),
+  manifest.dataGovernancePolicy.requiredClassifications.join(', '),
+)
+addCheck(
+  'unknown data and flows fail closed',
+  manifest.dataGovernancePolicy.unknownDataClassification === 'restricted' &&
+    manifest.dataGovernancePolicy.unknownDataFlow === 'deny',
+  JSON.stringify(manifest.dataGovernancePolicy),
+)
+addCheck(
+  'data governance artifacts exist',
+  fs.existsSync(path.join(root, manifest.dataGovernancePolicy.inventory)) &&
+    fs.existsSync(path.join(root, manifest.dataGovernancePolicy.policyDocument)),
+  `${manifest.dataGovernancePolicy.inventory}, ${manifest.dataGovernancePolicy.policyDocument}`,
+)
+addCheck(
+  'data governance verification command is frozen',
+  manifest.dataGovernancePolicy.verificationCommand === 'npm run test:v1-data-governance',
+  manifest.dataGovernancePolicy.verificationCommand,
+)
+addCheck(
+  'data governance downstream implementation owners are frozen',
+  sameMembers(
+    manifest.dataGovernancePolicy.implementationTasks,
+    ['V1-05', 'V1-48', 'V1-49', 'V1-50', 'V1-51', 'V1-53', 'V1-54', 'V1-59', 'V1-60', 'V1-61', 'V1-62', 'V1-63', 'V1-67', 'V1-69', 'V1-73', 'V1-78'],
+  ),
+  manifest.dataGovernancePolicy.implementationTasks.join(', '),
 )
 addCheck(
   'runtime surface inventory exists',
@@ -181,6 +212,12 @@ addCheck(
   'content safety verification is part of the quick gate',
   packageJson.scripts['test:v1-safety-policy'] === 'node scripts/verify-v1-content-safety-policy.mjs' &&
     packageJson.scripts['check:quick']?.includes('npm run test:v1-safety-policy'),
+  packageJson.scripts['check:quick'],
+)
+addCheck(
+  'data governance verification is part of the quick gate',
+  packageJson.scripts['test:v1-data-governance'] === 'node scripts/verify-v1-data-governance.mjs' &&
+    packageJson.scripts['check:quick']?.includes('npm run test:v1-data-governance'),
   packageJson.scripts['check:quick'],
 )
 

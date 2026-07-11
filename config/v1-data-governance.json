@@ -1,0 +1,1016 @@
+{
+  "schemaVersion": 1,
+  "taskId": "V1-45",
+  "asOf": "2026-07-11",
+  "policyVersion": "v1-data-governance-2026-07-11",
+  "policyStatus": "frozen_for_implementation",
+  "runtimeStatus": {
+    "inventoryComplete": true,
+    "retentionAutomationComplete": false,
+    "accountExportImplemented": false,
+    "accountDeletionImplemented": false,
+    "providerDeletionAutomationImplemented": false,
+    "backupDeletionRehearsed": false,
+    "productionApproved": false,
+    "realProviderCallsApproved": false,
+    "ordinaryContinuationIsApproval": false
+  },
+  "guardrails": {
+    "dataMinimizationRequired": true,
+    "purposeLimitationRequired": true,
+    "highestApplicableRestrictionWins": true,
+    "unknownDataClassification": "restricted",
+    "unknownDataFlow": "deny",
+    "unknownExternalProcessor": "deny",
+    "productionDataInFixtures": "forbidden",
+    "rawProviderPayloadPersistence": "forbidden",
+    "secretPersistenceOutsideSecretStore": "forbidden",
+    "privateUrlPersistenceOutsideOwningRecord": "forbidden",
+    "policyDocument": "docs/V1_DATA_GOVERNANCE_BASELINE.md",
+    "contentSafetyPolicy": "config/v1-content-safety-policy.json",
+    "providerDecisionMatrix": "config/v1-provider-matrix.json",
+    "legalApprovalStatus": "required_before_production"
+  },
+  "classifications": [
+    {
+      "id": "public",
+      "rank": 1,
+      "meaning": "Explicitly published content intended for unauthenticated or broad product visibility.",
+      "requiredControls": ["owner-controlled publication", "content policy", "cache invalidation", "deletion propagation"]
+    },
+    {
+      "id": "internal",
+      "rank": 2,
+      "meaning": "Low-risk operational metadata not intended for public display.",
+      "requiredControls": ["authenticated service or staff access", "purpose allowlist", "bounded retention"]
+    },
+    {
+      "id": "confidential",
+      "rank": 3,
+      "meaning": "User, account, marketplace, creative, or commercial data requiring ownership and role controls.",
+      "requiredControls": ["encryption in transit and at rest", "ownership or RBAC", "audit for elevated access", "export and deletion mapping"]
+    },
+    {
+      "id": "restricted",
+      "rank": 4,
+      "meaning": "Credentials, private media, safety, moderation, security, raw inputs, or sensitive personal data.",
+      "requiredControls": ["least privilege", "field allowlist and redaction", "encrypted storage", "access audit", "shortest practical retention"]
+    },
+    {
+      "id": "secret",
+      "rank": 5,
+      "meaning": "API keys, signing secrets, authorization headers, encryption keys, private keys, or live session material.",
+      "requiredControls": ["managed secret store only", "never log or export", "runtime injection", "rotation and incident revocation"]
+    }
+  ],
+  "purposes": [
+    { "id": "account_service", "meaning": "Create and operate user accounts, profiles, settings, and sessions." },
+    { "id": "auth_security", "meaning": "Authenticate users, authorize actions, prevent abuse, and respond to security incidents." },
+    { "id": "marketplace_delivery", "meaning": "Publish, propose, deliver, review, dispute, and settle internal task rewards." },
+    { "id": "community_participation", "meaning": "Publish and interact with community, profile, portfolio, and library content." },
+    { "id": "creative_generation", "meaning": "Create, persist, review, recover, and deliver Image, Chat, Video, and Music outputs." },
+    { "id": "media_delivery", "meaning": "Upload, scan, quarantine, store, preview, and privately download media." },
+    { "id": "safety_moderation", "meaning": "Apply content policy, investigate reports, review outputs, and handle appeals." },
+    { "id": "internal_accounting", "meaning": "Operate non-withdrawable points, creative credits, quotas, escrow, and compensation." },
+    { "id": "support_operations", "meaning": "Provide user support, observability, incident response, and audited Admin operations." },
+    { "id": "legal_compliance", "meaning": "Meet validated legal holds, rights requests, contractual duties, and evidence obligations." }
+  ],
+  "retentionPolicies": [
+    {
+      "id": "account_deletion_plus_30d",
+      "trigger": "verified_account_deletion_request_accepted",
+      "maximumDaysAfterTrigger": 30,
+      "action": "delete_or_irreversibly_anonymize",
+      "fieldOverrides": { "session_access": 0, "public_profile_visibility": 0 },
+      "exceptions": ["scoped_legal_hold", "shared_transaction_record_anonymization"]
+    },
+    {
+      "id": "auth_expiry_plus_30d",
+      "trigger": "credential_unlinked_token_expired_or_revoked",
+      "maximumDaysAfterTrigger": 30,
+      "action": "hard_delete_credential_material",
+      "fieldOverrides": { "live_access_token": 0, "live_refresh_token": 0 },
+      "exceptions": ["hashed_security_evidence_under_security_policy"]
+    },
+    {
+      "id": "configuration_superseded_plus_365d",
+      "trigger": "configuration_superseded",
+      "maximumDaysAfterTrigger": 365,
+      "action": "delete_history_or_retain_non_secret_diff",
+      "fieldOverrides": {},
+      "exceptions": ["active_configuration"]
+    },
+    {
+      "id": "lease_expiry_plus_7d",
+      "trigger": "operation_lease_expired_or_released",
+      "maximumDaysAfterTrigger": 7,
+      "action": "hard_delete",
+      "fieldOverrides": { "live_lease_token": 0 },
+      "exceptions": []
+    },
+    {
+      "id": "marketplace_close_plus_730d",
+      "trigger": "task_and_dispute_terminal",
+      "maximumDaysAfterTrigger": 730,
+      "action": "delete_private_content_and_anonymize_shared_transaction_evidence",
+      "fieldOverrides": { "abandoned_draft": 30 },
+      "exceptions": ["scoped_legal_hold", "open_dispute"]
+    },
+    {
+      "id": "community_delete_plus_30d",
+      "trigger": "user_content_or_account_deletion_accepted",
+      "maximumDaysAfterTrigger": 30,
+      "action": "delete_or_anonymize_thread_structure",
+      "fieldOverrides": { "cache_and_search_index": 1 },
+      "exceptions": ["content_required_for_active_report_or_appeal"]
+    },
+    {
+      "id": "private_library_delete_plus_30d",
+      "trigger": "item_or_account_deletion_accepted",
+      "maximumDaysAfterTrigger": 30,
+      "action": "hard_delete",
+      "fieldOverrides": {},
+      "exceptions": []
+    },
+    {
+      "id": "internal_ledger_plus_730d",
+      "trigger": "entry_terminal_and_account_closed",
+      "maximumDaysAfterTrigger": 730,
+      "action": "anonymize_subject_and_retain_immutable_entry",
+      "fieldOverrides": {},
+      "exceptions": ["open_reconciliation_or_dispute"]
+    },
+    {
+      "id": "media_asset_delete_plus_30d",
+      "trigger": "asset_deleted_rejected_or_abandoned",
+      "maximumDaysAfterTrigger": 30,
+      "action": "revoke_access_delete_object_then_delete_metadata",
+      "fieldOverrides": { "private_signed_url": 0, "abandoned_pending_upload": 1, "cache_and_cdn": 1 },
+      "exceptions": ["active_review_or_legal_hold"]
+    },
+    {
+      "id": "media_scan_history_180d",
+      "trigger": "scan_job_terminal",
+      "maximumDaysAfterTrigger": 180,
+      "action": "archive_manifest_then_prune",
+      "fieldOverrides": { "maximum_records_per_asset": 50 },
+      "exceptions": ["active_queued_retrying_or_timeout_investigation"]
+    },
+    {
+      "id": "generation_terminal_365d",
+      "trigger": "generation_terminal",
+      "maximumDaysAfterTrigger": 365,
+      "action": "delete_or_anonymize_generation_metadata",
+      "fieldOverrides": { "safe_prompt_preview": 30, "raw_prompt": 0, "private_output_url": 0 },
+      "exceptions": ["active_review_appeal_or_legal_hold"]
+    },
+    {
+      "id": "provider_lifecycle_terminal_180d",
+      "trigger": "provider_lifecycle_terminal",
+      "maximumDaysAfterTrigger": 180,
+      "action": "prune_safe_replay_evidence",
+      "fieldOverrides": { "raw_provider_payload": 0 },
+      "exceptions": ["open_incident_or_reconciliation"]
+    },
+    {
+      "id": "notification_created_plus_180d",
+      "trigger": "notification_created",
+      "maximumDaysAfterTrigger": 180,
+      "action": "hard_delete",
+      "fieldOverrides": {},
+      "exceptions": []
+    },
+    {
+      "id": "moderation_close_plus_730d",
+      "trigger": "review_or_appeal_closed",
+      "maximumDaysAfterTrigger": 730,
+      "action": "retain_redacted_decision_evidence_then_delete",
+      "fieldOverrides": { "raw_report_attachment": 30 },
+      "exceptions": ["scoped_legal_hold", "repeat_abuse_investigation"]
+    },
+    {
+      "id": "audit_event_plus_730d",
+      "trigger": "audit_event_created",
+      "maximumDaysAfterTrigger": 730,
+      "action": "archive_allowlisted_evidence_then_delete",
+      "fieldOverrides": {},
+      "exceptions": ["scoped_legal_hold", "open_incident"]
+    },
+    {
+      "id": "security_event_365d",
+      "trigger": "security_event_created",
+      "maximumDaysAfterTrigger": 365,
+      "action": "delete_or_retain_anonymized_aggregate",
+      "fieldOverrides": { "critical_confirmed_incident": 730 },
+      "exceptions": ["open_incident", "scoped_legal_hold"]
+    },
+    {
+      "id": "transient_request_zero",
+      "trigger": "request_normalized_or_failed",
+      "maximumDaysAfterTrigger": 0,
+      "action": "discard_raw_payload",
+      "fieldOverrides": {},
+      "exceptions": ["separately_approved_minimal_safety_evidence"]
+    },
+    {
+      "id": "observability_bounded",
+      "trigger": "telemetry_emitted",
+      "maximumDaysAfterTrigger": 30,
+      "action": "delete_raw_and_retain_anonymized_aggregate",
+      "fieldOverrides": { "trace": 7, "aggregate_metric": 90 },
+      "exceptions": ["open_incident_snapshot"]
+    },
+    {
+      "id": "rolling_backup_35d",
+      "trigger": "backup_created",
+      "maximumDaysAfterTrigger": 35,
+      "action": "cryptographic_expiry_and_delete",
+      "fieldOverrides": {},
+      "exceptions": ["time_limited_legal_hold_backup"]
+    },
+    {
+      "id": "export_package_7d",
+      "trigger": "export_package_created",
+      "maximumDaysAfterTrigger": 7,
+      "action": "delete_package_and_revoke_key",
+      "fieldOverrides": { "private_signed_download": 1 },
+      "exceptions": []
+    },
+    {
+      "id": "retired_secret_30d",
+      "trigger": "secret_rotated_or_revoked",
+      "maximumDaysAfterTrigger": 30,
+      "action": "disable_immediately_then_delete_secret_version",
+      "fieldOverrides": { "rotation_interval_days": 90, "incident_revocation": 0 },
+      "exceptions": ["managed_key_version_required_for_decryption"]
+    }
+  ],
+  "dataAssets": [
+    {
+      "id": "governance_configuration",
+      "classification": "internal",
+      "prismaModels": ["Permission", "RolePermission", "SystemSetting"],
+      "locations": ["postgres"],
+      "dataSubjects": ["staff_role", "system"],
+      "purposes": ["auth_security", "support_operations"],
+      "exampleFields": ["permission id", "role mapping", "non-secret setting value"],
+      "accessRoles": ["authorized_service", "admin_permission_manager", "security_operator"],
+      "retentionPolicyId": "configuration_superseded_plus_365d",
+      "exportPolicy": "exclude_system_configuration",
+      "deletionPolicy": "retain_current_configuration_remove_superseded_history",
+      "ownerTasks": ["V1-69"]
+    },
+    {
+      "id": "operation_leases",
+      "classification": "internal",
+      "prismaModels": ["OperationLease"],
+      "locations": ["postgres"],
+      "dataSubjects": ["system"],
+      "purposes": ["support_operations"],
+      "exampleFields": ["lease key", "owner id", "expiry", "safe metadata"],
+      "accessRoles": ["authorized_service", "operations_operator"],
+      "retentionPolicyId": "lease_expiry_plus_7d",
+      "exportPolicy": "exclude_system_coordination",
+      "deletionPolicy": "hard_delete_after_expiry",
+      "ownerTasks": ["V1-52"]
+    },
+    {
+      "id": "identity_account_profile",
+      "classification": "confidential",
+      "prismaModels": ["User", "Profile"],
+      "locations": ["postgres"],
+      "dataSubjects": ["user"],
+      "purposes": ["account_service", "community_participation", "support_operations"],
+      "exampleFields": ["email", "display name", "avatar", "handle", "bio", "skills", "languages", "portfolio"],
+      "accessRoles": ["user_self", "authorized_service", "support_operator_allowlisted"],
+      "retentionPolicyId": "account_deletion_plus_30d",
+      "exportPolicy": "include_user_owned_fields",
+      "deletionPolicy": "disable_immediately_delete_profile_and_tombstone_shared_identity",
+      "ownerTasks": ["V1-67"]
+    },
+    {
+      "id": "authentication_credentials_sessions",
+      "classification": "restricted",
+      "prismaModels": ["AuthAccount", "RefreshToken"],
+      "locations": ["postgres"],
+      "dataSubjects": ["user"],
+      "purposes": ["account_service", "auth_security"],
+      "exampleFields": ["provider user id", "password hash", "token hash", "token family", "expiry", "revocation"],
+      "accessRoles": ["authorized_auth_service", "security_operator_redacted"],
+      "retentionPolicyId": "auth_expiry_plus_30d",
+      "exportPolicy": "include_provider_names_and_session_summary_only",
+      "deletionPolicy": "revoke_immediately_then_hard_delete",
+      "ownerTasks": ["V1-48", "V1-67"]
+    },
+    {
+      "id": "marketplace_records",
+      "classification": "confidential",
+      "prismaModels": ["Task", "TaskProposal", "TaskSubmission"],
+      "locations": ["postgres"],
+      "dataSubjects": ["publisher", "creator", "reviewer"],
+      "purposes": ["marketplace_delivery", "internal_accounting", "support_operations"],
+      "exampleFields": ["public/private brief", "proposal", "submission", "asset ids", "rights note", "review note", "reward semantics"],
+      "accessRoles": ["participant", "authorized_service", "task_moderator", "support_operator_allowlisted"],
+      "retentionPolicyId": "marketplace_close_plus_730d",
+      "exportPolicy": "include_subject_rows_and_counterparty_safe_context",
+      "deletionPolicy": "delete_private_drafts_and_anonymize_shared_transaction_history",
+      "ownerTasks": ["V1-64", "V1-67"]
+    },
+    {
+      "id": "community_content_interactions",
+      "classification": "public",
+      "prismaModels": ["Post", "Comment", "PostLike"],
+      "locations": ["postgres"],
+      "dataSubjects": ["author", "participant"],
+      "purposes": ["community_participation", "safety_moderation"],
+      "exampleFields": ["post title/body", "comment", "like", "category", "tag", "publication metadata"],
+      "accessRoles": ["public_reader", "owner", "authorized_service", "community_moderator"],
+      "retentionPolicyId": "community_delete_plus_30d",
+      "exportPolicy": "include_user_authored_content_and_interactions",
+      "deletionPolicy": "delete_user_content_or_anonymize_thread_structure_when_required",
+      "ownerTasks": ["V1-66", "V1-67"]
+    },
+    {
+      "id": "private_library_items",
+      "classification": "confidential",
+      "prismaModels": ["LibraryItem"],
+      "locations": ["postgres"],
+      "dataSubjects": ["user"],
+      "purposes": ["community_participation", "creative_generation"],
+      "exampleFields": ["saved title", "saved content", "source reference", "metadata"],
+      "accessRoles": ["user_self", "authorized_service"],
+      "retentionPolicyId": "private_library_delete_plus_30d",
+      "exportPolicy": "include_user_owned_fields",
+      "deletionPolicy": "hard_delete",
+      "ownerTasks": ["V1-67"]
+    },
+    {
+      "id": "internal_points_ledger",
+      "classification": "confidential",
+      "prismaModels": ["PointLedger"],
+      "locations": ["postgres"],
+      "dataSubjects": ["user"],
+      "purposes": ["internal_accounting", "marketplace_delivery", "support_operations"],
+      "exampleFields": ["delta", "balance", "status", "source", "description"],
+      "accessRoles": ["user_self", "authorized_service", "points_operator", "auditor"],
+      "retentionPolicyId": "internal_ledger_plus_730d",
+      "exportPolicy": "include_user_ledger",
+      "deletionPolicy": "anonymize_subject_and_retain_immutable_reconciliation_evidence",
+      "ownerTasks": ["V1-65", "V1-67"]
+    },
+    {
+      "id": "media_asset_metadata",
+      "classification": "confidential",
+      "prismaModels": ["MediaAsset"],
+      "locations": ["postgres"],
+      "dataSubjects": ["user", "depicted_third_party"],
+      "purposes": ["media_delivery", "creative_generation", "marketplace_delivery", "safety_moderation"],
+      "exampleFields": ["owner id", "file name", "storage key", "content type", "size", "purpose", "status", "safe metadata"],
+      "accessRoles": ["owner", "authorized_service", "media_reviewer", "support_operator_allowlisted"],
+      "retentionPolicyId": "media_asset_delete_plus_30d",
+      "exportPolicy": "include_metadata_and_owned_asset_reference",
+      "deletionPolicy": "revoke_access_delete_object_then_delete_metadata",
+      "ownerTasks": ["V1-50", "V1-67"]
+    },
+    {
+      "id": "media_object_bytes",
+      "classification": "restricted",
+      "prismaModels": [],
+      "locations": ["object_storage"],
+      "dataSubjects": ["user", "depicted_third_party"],
+      "purposes": ["media_delivery", "creative_generation", "marketplace_delivery", "safety_moderation"],
+      "exampleFields": ["uploaded bytes", "generated image/video/audio", "attachment", "quarantined output"],
+      "accessRoles": ["owner_via_private_contract", "authorized_service", "media_scanner", "media_reviewer"],
+      "retentionPolicyId": "media_asset_delete_plus_30d",
+      "exportPolicy": "include_owned_clean_assets_only",
+      "deletionPolicy": "revoke_download_immediately_and_delete_object_within_24h",
+      "ownerTasks": ["V1-50", "V1-67"]
+    },
+    {
+      "id": "media_scan_safety_records",
+      "classification": "restricted",
+      "prismaModels": ["MediaScanJob"],
+      "locations": ["postgres", "backup_archive"],
+      "dataSubjects": ["user", "reviewer"],
+      "purposes": ["media_delivery", "safety_moderation", "support_operations"],
+      "exampleFields": ["scan provider", "scan status", "external scan id", "reviewer", "safe rejection reason", "attempt metadata"],
+      "accessRoles": ["authorized_service", "media_reviewer", "security_operator"],
+      "retentionPolicyId": "media_scan_history_180d",
+      "exportPolicy": "include_user_visible_status_not_internal_scanner_evidence",
+      "deletionPolicy": "archive_manifest_then_prune_with_asset",
+      "ownerTasks": ["V1-51", "V1-67"]
+    },
+    {
+      "id": "creative_generation_records",
+      "classification": "restricted",
+      "prismaModels": ["CreativeGeneration"],
+      "locations": ["postgres"],
+      "dataSubjects": ["user", "depicted_third_party"],
+      "purposes": ["creative_generation", "safety_moderation", "internal_accounting", "support_operations"],
+      "exampleFields": ["prompt hash", "safe prompt preview", "provider ids", "asset ids", "usage", "quota", "credit", "safety", "policy", "safe error preview"],
+      "accessRoles": ["user_self", "authorized_service", "creative_operator_allowlisted", "trust_safety_reviewer"],
+      "retentionPolicyId": "generation_terminal_365d",
+      "exportPolicy": "include_user_generation_history_with_safe_metadata",
+      "deletionPolicy": "delete_preview_and_assets_anonymize_actor_then_prune_record",
+      "ownerTasks": ["V1-35", "V1-67"]
+    },
+    {
+      "id": "provider_lifecycle_records",
+      "classification": "restricted",
+      "prismaModels": ["CreativeProviderReplayLedger"],
+      "locations": ["postgres"],
+      "dataSubjects": ["user"],
+      "purposes": ["creative_generation", "support_operations", "safety_moderation"],
+      "exampleFields": ["provider job/event id", "idempotency key", "payload hash", "normalized status", "safe plan/result", "safe error preview"],
+      "accessRoles": ["authorized_service", "creative_operator_allowlisted", "auditor"],
+      "retentionPolicyId": "provider_lifecycle_terminal_180d",
+      "exportPolicy": "include_user_visible_status_summary_only",
+      "deletionPolicy": "unlink_subject_then_prune_safe_replay_evidence",
+      "ownerTasks": ["V1-13", "V1-67"]
+    },
+    {
+      "id": "creative_accounting_records",
+      "classification": "confidential",
+      "prismaModels": ["CreativeCreditLedger", "CreativeQuotaWindow", "CreativeQuotaReservation"],
+      "locations": ["postgres"],
+      "dataSubjects": ["user"],
+      "purposes": ["creative_generation", "internal_accounting", "support_operations"],
+      "exampleFields": ["credit amount/status", "quota window", "reservation", "settlement/refund/release timestamps", "safe metadata"],
+      "accessRoles": ["user_self_summary", "authorized_service", "creative_accounting_operator", "auditor"],
+      "retentionPolicyId": "internal_ledger_plus_730d",
+      "exportPolicy": "include_user_credit_and_quota_history",
+      "deletionPolicy": "anonymize_subject_and_retain_immutable_reconciliation_evidence",
+      "ownerTasks": ["V1-40", "V1-65", "V1-67"]
+    },
+    {
+      "id": "notification_records",
+      "classification": "confidential",
+      "prismaModels": ["Notification"],
+      "locations": ["postgres"],
+      "dataSubjects": ["user"],
+      "purposes": ["account_service", "marketplace_delivery", "creative_generation", "support_operations"],
+      "exampleFields": ["type", "title", "body", "deep link", "safe metadata", "read state"],
+      "accessRoles": ["user_self", "authorized_service", "notification_operator_redacted"],
+      "retentionPolicyId": "notification_created_plus_180d",
+      "exportPolicy": "include_user_notifications",
+      "deletionPolicy": "hard_delete",
+      "ownerTasks": ["V1-68", "V1-67"]
+    },
+    {
+      "id": "moderation_review_records",
+      "classification": "restricted",
+      "prismaModels": ["AdminReview"],
+      "locations": ["postgres"],
+      "dataSubjects": ["user", "reporter", "reviewer", "depicted_third_party"],
+      "purposes": ["safety_moderation", "support_operations", "legal_compliance"],
+      "exampleFields": ["queue", "status", "safe title/note", "decision", "reviewer", "policy metadata"],
+      "accessRoles": ["authorized_service", "trust_safety_reviewer", "appeal_reviewer", "auditor"],
+      "retentionPolicyId": "moderation_close_plus_730d",
+      "exportPolicy": "include_decision_and_user_visible_reason_exclude_internal_investigation",
+      "deletionPolicy": "redact_subject_and_retain_decision_evidence_until_expiry",
+      "ownerTasks": ["V1-63", "V1-67", "V1-69"]
+    },
+    {
+      "id": "audit_event_records",
+      "classification": "restricted",
+      "prismaModels": ["AuditEvent"],
+      "locations": ["postgres", "backup_archive"],
+      "dataSubjects": ["user", "staff_role", "system"],
+      "purposes": ["auth_security", "safety_moderation", "support_operations", "legal_compliance"],
+      "exampleFields": ["actor", "action", "resource id", "allowlisted metadata", "timestamp"],
+      "accessRoles": ["authorized_service", "auditor", "security_operator", "trust_safety_reviewer_allowlisted"],
+      "retentionPolicyId": "audit_event_plus_730d",
+      "exportPolicy": "include_subject_action_summary_exclude_other_subjects_and_internal_controls",
+      "deletionPolicy": "pseudonymize_subject_and_retain_allowlisted_evidence_until_expiry",
+      "ownerTasks": ["V1-67", "V1-69", "V1-73"]
+    },
+    {
+      "id": "security_event_records",
+      "classification": "restricted",
+      "prismaModels": ["SecurityEvent"],
+      "locations": ["postgres"],
+      "dataSubjects": ["user", "visitor", "system"],
+      "purposes": ["auth_security", "support_operations", "legal_compliance"],
+      "exampleFields": ["event type", "severity", "source", "folded client key", "safe identity", "path", "redacted details"],
+      "accessRoles": ["authorized_security_service", "security_operator", "auditor"],
+      "retentionPolicyId": "security_event_365d",
+      "exportPolicy": "exclude_detection_logic_provide_subject_security_summary_when_safe",
+      "deletionPolicy": "pseudonymize_subject_retain_incident_evidence_until_expiry",
+      "ownerTasks": ["V1-67", "V1-73"]
+    },
+    {
+      "id": "raw_generation_inputs",
+      "classification": "restricted",
+      "prismaModels": [],
+      "locations": ["browser", "api_memory", "worker_memory"],
+      "dataSubjects": ["user", "depicted_third_party"],
+      "purposes": ["creative_generation", "safety_moderation"],
+      "exampleFields": ["raw prompt", "conversation message", "reference input", "attachment bytes", "rights attestation"],
+      "accessRoles": ["user_self", "authorized_service_in_memory", "approved_external_processor"],
+      "retentionPolicyId": "transient_request_zero",
+      "exportPolicy": "include_only_if_separately_persisted_as_user_content",
+      "deletionPolicy": "discard_after_normalization_dispatch_or_failure",
+      "ownerTasks": ["V1-59", "V1-60", "V1-61", "V1-62"]
+    },
+    {
+      "id": "raw_provider_payloads",
+      "classification": "restricted",
+      "prismaModels": [],
+      "locations": ["api_memory", "worker_memory"],
+      "dataSubjects": ["user", "depicted_third_party"],
+      "purposes": ["creative_generation", "support_operations"],
+      "exampleFields": ["provider request", "provider response", "callback payload", "polling response"],
+      "accessRoles": ["authorized_provider_adapter_in_memory"],
+      "retentionPolicyId": "transient_request_zero",
+      "exportPolicy": "exclude_raw_payload_include_normalized_user_result",
+      "deletionPolicy": "discard_after_allowlisted_normalization_and_hashing",
+      "ownerTasks": ["V1-05", "V1-06", "V1-07"]
+    },
+    {
+      "id": "observability_logs_traces_metrics",
+      "classification": "internal",
+      "prismaModels": [],
+      "locations": ["observability"],
+      "dataSubjects": ["user", "staff_role", "system"],
+      "purposes": ["auth_security", "support_operations"],
+      "exampleFields": ["request id", "route template", "status family", "latency", "low-cardinality error code", "aggregate count"],
+      "accessRoles": ["authorized_service", "operations_operator", "security_operator"],
+      "retentionPolicyId": "observability_bounded",
+      "exportPolicy": "exclude_internal_telemetry_provide_user_event_summary_when_required",
+      "deletionPolicy": "delete_raw_telemetry_and_retain_anonymized_aggregate",
+      "ownerTasks": ["V1-53", "V1-73"]
+    },
+    {
+      "id": "backup_archive_copies",
+      "classification": "restricted",
+      "prismaModels": [],
+      "locations": ["backup_archive"],
+      "dataSubjects": ["user", "staff_role", "system"],
+      "purposes": ["support_operations", "legal_compliance"],
+      "exampleFields": ["encrypted database backup", "encrypted object backup", "archive manifest"],
+      "accessRoles": ["backup_service", "break_glass_operator_audited"],
+      "retentionPolicyId": "rolling_backup_35d",
+      "exportPolicy": "never_export_backup_container",
+      "deletionPolicy": "expire_backup_and_destroy_key_on_schedule",
+      "ownerTasks": ["V1-49", "V1-50", "V1-67"]
+    },
+    {
+      "id": "user_export_packages",
+      "classification": "restricted",
+      "prismaModels": [],
+      "locations": ["export_storage"],
+      "dataSubjects": ["user"],
+      "purposes": ["account_service", "legal_compliance"],
+      "exampleFields": ["manifest", "JSON records", "owned clean assets", "checksum", "expiry"],
+      "accessRoles": ["export_service", "user_self_via_short_lived_link"],
+      "retentionPolicyId": "export_package_7d",
+      "exportPolicy": "package_itself_is_the_export",
+      "deletionPolicy": "delete_package_and_revoke_link_key",
+      "ownerTasks": ["V1-67"]
+    },
+    {
+      "id": "deployment_secrets",
+      "classification": "secret",
+      "prismaModels": [],
+      "locations": ["secret_store", "api_memory", "worker_memory"],
+      "dataSubjects": ["system"],
+      "purposes": ["auth_security", "creative_generation", "media_delivery", "support_operations"],
+      "exampleFields": ["API key", "signing secret", "private key", "database credential", "webhook secret", "encryption key"],
+      "accessRoles": ["deployment_identity", "authorized_runtime_process", "break_glass_security_operator"],
+      "retentionPolicyId": "retired_secret_30d",
+      "exportPolicy": "never_export",
+      "deletionPolicy": "rotate_disable_and_delete_secret_version",
+      "ownerTasks": ["V1-05", "V1-54", "V1-73"]
+    }
+  ],
+  "flowNodes": [
+    { "id": "browser", "type": "client", "persistent": false },
+    { "id": "api_memory", "type": "application", "persistent": false },
+    { "id": "worker_memory", "type": "application", "persistent": false },
+    { "id": "postgres", "type": "database", "persistent": true },
+    { "id": "object_storage", "type": "object_store", "persistent": true },
+    { "id": "secret_store", "type": "secret_store", "persistent": true },
+    { "id": "oauth_provider", "type": "external_processor", "persistent": true },
+    { "id": "creative_provider", "type": "external_processor", "persistent": true },
+    { "id": "media_scanner", "type": "external_processor", "persistent": true },
+    { "id": "admin_console", "type": "privileged_client", "persistent": false },
+    { "id": "notification_channel", "type": "delivery_processor", "persistent": true },
+    { "id": "observability", "type": "telemetry_store", "persistent": true },
+    { "id": "backup_archive", "type": "backup_store", "persistent": true },
+    { "id": "export_storage", "type": "temporary_object_store", "persistent": true }
+  ],
+  "dataFlows": [
+    {
+      "id": "browser_to_api",
+      "from": "browser",
+      "to": "api_memory",
+      "dataAssetIds": ["identity_account_profile", "marketplace_records", "community_content_interactions", "private_library_items", "raw_generation_inputs"],
+      "requiredControls": ["TLS", "authentication where required", "CSRF/origin controls", "body limits", "purpose-specific parser"],
+      "destinationPersistence": "none_until_validated"
+    },
+    {
+      "id": "api_to_postgres",
+      "from": "api_memory",
+      "to": "postgres",
+      "dataAssetIds": ["governance_configuration", "identity_account_profile", "authentication_credentials_sessions", "marketplace_records", "community_content_interactions", "private_library_items", "internal_points_ledger", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "notification_records", "moderation_review_records", "audit_event_records", "security_event_records"],
+      "requiredControls": ["validated DTO", "field allowlist", "transaction and ownership checks", "encrypted connection", "no secret or raw Provider payload"],
+      "destinationPersistence": "retention_policy_applies"
+    },
+    {
+      "id": "browser_to_object_storage",
+      "from": "browser",
+      "to": "object_storage",
+      "dataAssetIds": ["media_object_bytes"],
+      "requiredControls": ["short-lived scoped upload contract", "content length/type policy", "private bucket", "untrusted quarantine"],
+      "destinationPersistence": "media_asset_policy_applies"
+    },
+    {
+      "id": "object_storage_to_scanner",
+      "from": "object_storage",
+      "to": "media_scanner",
+      "dataAssetIds": ["media_object_bytes", "media_asset_metadata"],
+      "requiredControls": ["signed request", "minimum metadata", "private fetch contract", "timeout and callback authentication"],
+      "destinationPersistence": "processor_contract_applies"
+    },
+    {
+      "id": "scanner_to_api",
+      "from": "media_scanner",
+      "to": "api_memory",
+      "dataAssetIds": ["media_scan_safety_records"],
+      "requiredControls": ["signed callback", "replay protection", "allowlisted status/reason", "raw payload discarded"],
+      "destinationPersistence": "normalized_record_only"
+    },
+    {
+      "id": "secret_store_to_runtime",
+      "from": "secret_store",
+      "to": "api_memory",
+      "dataAssetIds": ["deployment_secrets"],
+      "requiredControls": ["workload identity", "runtime injection", "no child-process or log inheritance beyond need", "rotation"],
+      "destinationPersistence": "memory_only"
+    },
+    {
+      "id": "secret_store_to_worker",
+      "from": "secret_store",
+      "to": "worker_memory",
+      "dataAssetIds": ["deployment_secrets"],
+      "requiredControls": ["workload identity", "runtime injection", "least privilege", "rotation"],
+      "destinationPersistence": "memory_only"
+    },
+    {
+      "id": "api_to_oauth_provider",
+      "from": "api_memory",
+      "to": "oauth_provider",
+      "dataAssetIds": ["authentication_credentials_sessions"],
+      "requiredControls": ["approved Provider", "state/PKCE where applicable", "minimum scopes", "redirect allowlist", "no application session token"],
+      "destinationPersistence": "processor_contract_applies"
+    },
+    {
+      "id": "runtime_to_creative_provider",
+      "from": "worker_memory",
+      "to": "creative_provider",
+      "dataAssetIds": ["raw_generation_inputs", "media_object_bytes"],
+      "requiredControls": ["explicit real-call approval", "region eligibility", "content policy", "minimum payload", "retention/training contract", "budget gate"],
+      "destinationPersistence": "processor_contract_applies"
+    },
+    {
+      "id": "worker_auth_to_creative_provider",
+      "from": "worker_memory",
+      "to": "creative_provider",
+      "dataAssetIds": ["deployment_secrets"],
+      "requiredControls": ["explicit real-call approval", "TLS Authorization header only", "per-Provider least-privilege credential", "never URL/body/log", "rotation and kill switch"],
+      "destinationPersistence": "transport_authentication_only_no_provider_storage"
+    },
+    {
+      "id": "creative_provider_to_runtime",
+      "from": "creative_provider",
+      "to": "worker_memory",
+      "dataAssetIds": ["raw_provider_payloads", "media_object_bytes"],
+      "requiredControls": ["authenticated response/callback", "size/type limits", "allowlisted normalization", "payload hash", "raw payload discard"],
+      "destinationPersistence": "memory_only_until_normalized"
+    },
+    {
+      "id": "runtime_to_object_storage",
+      "from": "worker_memory",
+      "to": "object_storage",
+      "dataAssetIds": ["media_object_bytes"],
+      "requiredControls": ["private object key", "content validation", "checksum", "scan pending", "no expiring Provider URL persistence"],
+      "destinationPersistence": "media_asset_policy_applies"
+    },
+    {
+      "id": "runtime_to_postgres_normalized_provider_evidence",
+      "from": "worker_memory",
+      "to": "postgres",
+      "dataAssetIds": ["creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "audit_event_records"],
+      "requiredControls": ["field allowlist", "safe ids and hashes", "redacted previews", "no raw request/response", "idempotency"],
+      "destinationPersistence": "retention_policy_applies"
+    },
+    {
+      "id": "api_to_admin_console",
+      "from": "api_memory",
+      "to": "admin_console",
+      "dataAssetIds": ["marketplace_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "moderation_review_records", "audit_event_records", "security_event_records"],
+      "requiredControls": ["RBAC", "purpose-specific allowlist", "redaction", "pagination", "elevated access audit", "no private URL or raw prompt"],
+      "destinationPersistence": "none"
+    },
+    {
+      "id": "api_to_notification_channel",
+      "from": "api_memory",
+      "to": "notification_channel",
+      "dataAssetIds": ["notification_records"],
+      "requiredControls": ["template allowlist", "minimum destination", "safe deep link", "no raw content/secret/private URL", "delivery audit"],
+      "destinationPersistence": "processor_contract_applies"
+    },
+    {
+      "id": "runtime_to_observability",
+      "from": "api_memory",
+      "to": "observability",
+      "dataAssetIds": ["observability_logs_traces_metrics"],
+      "requiredControls": ["structured allowlist", "route templates", "low-cardinality labels", "secret/PII scanner", "bounded retention"],
+      "destinationPersistence": "observability_policy_applies"
+    },
+    {
+      "id": "worker_to_observability",
+      "from": "worker_memory",
+      "to": "observability",
+      "dataAssetIds": ["observability_logs_traces_metrics"],
+      "requiredControls": ["structured allowlist", "safe job ids", "low-cardinality labels", "secret/PII scanner", "bounded retention"],
+      "destinationPersistence": "observability_policy_applies"
+    },
+    {
+      "id": "worker_to_postgres_coordination",
+      "from": "worker_memory",
+      "to": "postgres",
+      "dataAssetIds": ["operation_leases"],
+      "requiredControls": ["short-lived token", "owner allowlist", "expiry", "atomic acquire/renew/release", "safe metadata only"],
+      "destinationPersistence": "lease_retention_policy_applies"
+    },
+    {
+      "id": "primary_stores_to_backup",
+      "from": "postgres",
+      "to": "backup_archive",
+      "dataAssetIds": ["backup_archive_copies"],
+      "requiredControls": ["encryption", "separate access role", "immutable audit", "35-day expiry", "restore rehearsal"],
+      "destinationPersistence": "rolling_backup_policy_applies"
+    },
+    {
+      "id": "object_storage_to_backup",
+      "from": "object_storage",
+      "to": "backup_archive",
+      "dataAssetIds": ["backup_archive_copies"],
+      "requiredControls": ["encryption", "private source and destination", "separate access role", "35-day expiry", "restore deletion replay"],
+      "destinationPersistence": "rolling_backup_policy_applies"
+    },
+    {
+      "id": "primary_data_to_export_storage",
+      "from": "postgres",
+      "to": "export_storage",
+      "dataAssetIds": ["user_export_packages"],
+      "requiredControls": ["verified subject request", "per-asset export policy", "other-subject redaction", "checksum", "encryption", "7-day deletion"],
+      "destinationPersistence": "export_policy_applies"
+    },
+    {
+      "id": "export_storage_to_browser",
+      "from": "export_storage",
+      "to": "browser",
+      "dataAssetIds": ["user_export_packages"],
+      "requiredControls": ["recent authentication", "one-day private signed link", "single subject scope", "download audit"],
+      "destinationPersistence": "user_controlled_after_download"
+    },
+    {
+      "id": "object_storage_to_export_storage",
+      "from": "object_storage",
+      "to": "export_storage",
+      "dataAssetIds": ["user_export_packages"],
+      "requiredControls": ["owned clean assets only", "other-subject review", "server-side copy", "checksum manifest", "7-day package deletion"],
+      "destinationPersistence": "export_policy_applies"
+    }
+  ],
+  "forbiddenFlows": [
+    { "id": "secret_to_logs_or_database", "dataAssetId": "deployment_secrets", "forbiddenDestinations": ["postgres", "observability", "backup_archive", "export_storage", "admin_console", "notification_channel", "browser"] },
+    { "id": "raw_provider_payload_to_persistence", "dataAssetId": "raw_provider_payloads", "forbiddenDestinations": ["postgres", "object_storage", "observability", "backup_archive", "export_storage", "admin_console", "notification_channel"] },
+    { "id": "raw_generation_input_to_admin_or_logs", "dataAssetId": "raw_generation_inputs", "forbiddenDestinations": ["admin_console", "observability", "notification_channel", "backup_archive"] },
+    { "id": "private_url_to_secondary_surfaces", "dataAssetId": "media_asset_metadata", "forbiddenFields": ["private signed URL", "Provider output URL"], "forbiddenDestinations": ["observability", "notification_channel", "audit_event_records"] },
+    { "id": "unredacted_identity_to_metrics", "dataAssetId": "identity_account_profile", "forbiddenFields": ["email", "handle", "display name", "IP address"], "forbiddenDestinations": ["observability"] },
+    { "id": "production_data_to_fixture_or_mock", "dataAssetId": "all_non_public_assets", "forbiddenDestinations": ["fixture", "mock", "demo_seed"] },
+    { "id": "unsupported_region_or_processor", "dataAssetId": "all_external_processor_data", "forbiddenDestinations": ["unapproved_region", "unknown_processor"] },
+    { "id": "cross_user_export", "dataAssetId": "user_export_packages", "forbiddenDestinations": ["other_user", "public_download"] }
+  ],
+  "subjectRights": {
+    "export": {
+      "implementationTaskId": "V1-67",
+      "implementationStatus": "not_implemented",
+      "authentication": "recent_authentication_and_step_up_for_sensitive_export",
+      "format": ["JSON manifest", "UTF-8 JSON records", "owned clean assets", "SHA-256 checksums"],
+      "targetDays": 30,
+      "packageRetentionDays": 7,
+      "downloadLinkHours": 24,
+      "requiredEvidence": ["request id", "subject id", "asset manifest", "redaction summary", "checksum", "created/expires/deleted timestamps", "download audit"]
+    },
+    "deletion": {
+      "implementationTaskId": "V1-67",
+      "implementationStatus": "not_implemented",
+      "authentication": "recent_authentication_and_explicit_confirmation",
+      "immediateActions": ["disable account", "revoke sessions and OAuth tokens", "revoke private downloads", "block new jobs and notifications"],
+      "primaryStoreTargetDays": 30,
+      "privateObjectTargetHours": 24,
+      "cacheSearchTargetHours": 24,
+      "externalProcessorRequestHours": 24,
+      "externalProcessorConfirmationDays": 30,
+      "backupExpiryDaysAfterPrimaryPurge": 35,
+      "requiredEvidence": ["request id", "verified subject", "asset plan", "per-store results", "processor receipts", "exceptions", "completed timestamp"]
+    },
+    "legalHold": {
+      "implementationStatus": "not_implemented",
+      "authorizedRoles": ["legal_hold_admin", "security_legal_incident_owner"],
+      "requiredFields": ["hold id", "scope", "reason code", "authority reference", "owner", "createdAt", "reviewAt", "expiresAt"],
+      "reviewIntervalDays": 90,
+      "indefiniteHoldAllowed": false,
+      "behavior": "retain_only_scoped_data_and_continue_deleting_unrelated_data"
+    }
+  },
+  "externalProcessors": {
+    "creativeProviders": [
+      {
+        "providerId": "openai-gpt-image-2",
+        "modality": "image",
+        "approvalStatus": "not_approved",
+        "allowedDataAssetIds": ["raw_generation_inputs", "media_object_bytes"],
+        "defaultRetention": "Up to 30 days in abuse-monitoring logs; no application-state retention for image generation and edits.",
+        "trainingDefault": false,
+        "regionCondition": "supported deployment and user-access footprint only",
+        "deletionEvidence": "contract configuration and Provider support evidence"
+      },
+      {
+        "providerId": "replicate-flux-1-1-pro",
+        "modality": "image",
+        "approvalStatus": "not_approved",
+        "allowedDataAssetIds": ["raw_generation_inputs", "media_object_bytes"],
+        "defaultRetention": "API prediction inputs, outputs, files, values, and logs are removed after one hour by default.",
+        "trainingDefault": "requires_contract_confirmation",
+        "regionCondition": "customer and end-user geography must be approved",
+        "deletionEvidence": "prediction deletion behavior and contract evidence"
+      },
+      {
+        "providerId": "openai-gpt-5-6-terra",
+        "modality": "chat",
+        "approvalStatus": "not_approved",
+        "allowedDataAssetIds": ["raw_generation_inputs"],
+        "defaultRetention": "Up to 30 days in abuse-monitoring logs with store=false and background mode disabled.",
+        "trainingDefault": false,
+        "regionCondition": "supported deployment and user-access footprint only",
+        "deletionEvidence": "store=false/ZDR configuration and Provider support evidence"
+      },
+      {
+        "providerId": "anthropic-claude-sonnet-5",
+        "modality": "chat",
+        "approvalStatus": "not_approved",
+        "allowedDataAssetIds": ["raw_generation_inputs"],
+        "defaultRetention": "API inputs and outputs are deleted within 30 days, with documented policy, legal, safety, and feedback exceptions.",
+        "trainingDefault": false,
+        "regionCondition": "supported-country access and US storage must be approved",
+        "deletionEvidence": "contract retention and exception evidence"
+      },
+      {
+        "providerId": "google-veo-3-1-fast",
+        "modality": "video",
+        "approvalStatus": "not_approved",
+        "allowedDataAssetIds": ["raw_generation_inputs", "media_object_bytes"],
+        "defaultRetention": "Request/response logging is off by default; abuse logging may apply and in-memory caching can last up to 24 hours.",
+        "trainingDefault": false,
+        "regionCondition": "approved us-central1 processing and cross-border review",
+        "deletionEvidence": "logging/cache configuration and contract evidence"
+      },
+      {
+        "providerId": "runway-gen-4-5",
+        "modality": "video",
+        "approvalStatus": "not_approved",
+        "allowedDataAssetIds": ["raw_generation_inputs", "media_object_bytes"],
+        "defaultRetention": "Ephemeral uploads expire after 24 hours and output URLs within 24-48 hours; broader retention requires contract confirmation.",
+        "trainingDefault": true,
+        "regionCondition": "access geography, data transfers, and no-training enterprise terms required",
+        "deletionEvidence": "enterprise retention and deletion evidence"
+      },
+      {
+        "providerId": "elevenlabs-music-v2-enterprise",
+        "modality": "music",
+        "approvalStatus": "not_approved",
+        "allowedDataAssetIds": ["raw_generation_inputs", "media_object_bytes"],
+        "defaultRetention": "US hosting by default; Music content deletion period requires Enterprise contract confirmation.",
+        "trainingDefault": "opt_out_required_before_any_approved_call",
+        "regionCondition": "eligible Enterprise Music region and ZRM support must be contracted",
+        "deletionEvidence": "Enterprise Music order and deletion receipt"
+      },
+      {
+        "providerId": "google-lyria-3-pro-preview",
+        "modality": "music",
+        "approvalStatus": "not_approved",
+        "allowedDataAssetIds": ["raw_generation_inputs", "media_object_bytes"],
+        "defaultRetention": "General abuse-monitoring and cache rules apply; Preview-specific retention requires written confirmation.",
+        "trainingDefault": false,
+        "regionCondition": "global Preview processing requires legal and contract approval",
+        "deletionEvidence": "model-specific retention and deletion evidence"
+      }
+    ],
+    "serviceClasses": [
+      {
+        "id": "oauth_provider",
+        "approvalOwnerTask": "V1-48",
+        "allowedDataAssetIds": ["authentication_credentials_sessions"],
+        "requiredContract": ["minimum scopes", "account unlink/revocation", "supported region", "incident contact"]
+      },
+      {
+        "id": "object_storage_cdn",
+        "approvalOwnerTask": "V1-50",
+        "allowedDataAssetIds": ["media_object_bytes", "media_asset_metadata", "backup_archive_copies", "user_export_packages"],
+        "requiredContract": ["private bucket", "encryption", "region", "lifecycle deletion", "access logs"]
+      },
+      {
+        "id": "media_scanner",
+        "approvalOwnerTask": "V1-51",
+        "allowedDataAssetIds": ["media_object_bytes", "media_asset_metadata", "media_scan_safety_records"],
+        "requiredContract": ["minimum retention", "signed request/callback", "malware isolation", "deletion", "incident contact"]
+      },
+      {
+        "id": "notification_delivery",
+        "approvalOwnerTask": "V1-53",
+        "allowedDataAssetIds": ["notification_records"],
+        "requiredContract": ["template allowlist", "retention", "recipient controls", "deletion", "incident contact"]
+      }
+    ]
+  },
+  "redactionPolicy": {
+    "promptPreviewMaxChars": 160,
+    "errorPreviewMaxChars": 240,
+    "safeIdentifierPattern": "^[a-zA-Z0-9][a-zA-Z0-9:._-]{0,160}$",
+    "replacementTokens": ["<redacted>", "<redacted-url>", "redacted_<stable-hash>"],
+    "forbiddenKeys": [
+      "authorization",
+      "cookie",
+      "password",
+      "passwordHash",
+      "token",
+      "tokenHash",
+      "secret",
+      "privateKey",
+      "apiKey",
+      "rawPrompt",
+      "rawConversation",
+      "rawProviderRequest",
+      "rawProviderResponse",
+      "privateDownloadUrl"
+    ],
+    "observabilityAllowlist": ["requestId", "routeTemplate", "method", "statusFamily", "durationBucket", "errorCode", "jobType", "safeProviderId", "safeWorkspace", "aggregateCount"],
+    "adminRules": ["purpose-specific serializer", "RBAC before query", "safe ids/hashes/previews only", "no raw prompt/payload/private URL", "elevated read audit"],
+    "notificationRules": ["template allowlist", "safe deep link", "no raw content", "no secret", "no private URL", "other-subject minimization"],
+    "exportRules": ["subject-owned data only", "redact other subjects", "exclude credentials and internal detection logic", "manifest every omission", "encrypt temporary package"]
+  },
+  "currentRuntimeBaseline": {
+    "schemaFile": "server/prisma/schema.prisma",
+    "modelCount": 27,
+    "availableCapabilities": [
+      "User has an explicit deleted status",
+      "refresh sessions can be revoked and have expiry timestamps",
+      "media scan history supports archive-before-prune with 180-day and per-asset defaults",
+      "creative generation records store prompt hash and bounded preview instead of a raw prompt field",
+      "Provider adapter contracts reject secret-like metadata keys",
+      "Admin creative serializers redact unsafe identifiers, URLs, and error previews",
+      "archive and object writers support mock/S3-compatible boundaries"
+    ],
+    "knownGaps": [
+      "no account export API or package builder",
+      "no account deletion propagation orchestrator",
+      "no field-level retention sweeper outside media scan history",
+      "no Provider deletion request/receipt ledger",
+      "no backup expiry and restore deletion rehearsal evidence",
+      "no global structured log allowlist enforcement",
+      "current foreign-key behavior can cascade or restrict deletion without the frozen anonymization plan",
+      "no legal-hold registry or expiry workflow"
+    ],
+    "evidenceFiles": [
+      "server/src/creative/generationRecords.js",
+      "server/src/creative/providerAdapterContract.js",
+      "server/src/modules/admin/routes.js",
+      "server/src/media/scanProvider.js",
+      "server/src/storage/archiveWriter.js",
+      "server/src/modules/auth/routes.js"
+    ]
+  },
+  "implementationHandoff": [
+    { "taskId": "V1-05", "scope": "Provider secrets and minimum-payload HTTP client boundary." },
+    { "taskId": "V1-48", "scope": "OAuth scopes, identifiers, unlink, region, and session evidence." },
+    { "taskId": "V1-49", "scope": "PostgreSQL migration, encrypted backup, expiry, restore, and deletion rehearsal." },
+    { "taskId": "V1-50", "scope": "Object storage/CDN private access and lifecycle deletion." },
+    { "taskId": "V1-51", "scope": "Scanner request/callback minimization, isolation, retention, and deletion." },
+    { "taskId": "V1-53", "scope": "Observability and notification processor retention and redaction." },
+    { "taskId": "V1-54", "scope": "Managed secrets, runtime injection, rotation, and revocation." },
+    { "taskId": "V1-59", "scope": "Image safety-event data minimization and deletion propagation." },
+    { "taskId": "V1-60", "scope": "Chat message/context retention and streaming safety evidence." },
+    { "taskId": "V1-61", "scope": "Video input/output lifecycle and provenance retention." },
+    { "taskId": "V1-62", "scope": "Music input/output, license, and takedown retention." },
+    { "taskId": "V1-63", "scope": "Review, appeal, legal hold, and safety audit implementation." },
+    { "taskId": "V1-67", "scope": "Account export, deletion, anonymization, and per-store evidence orchestration." },
+    { "taskId": "V1-69", "scope": "Admin least privilege, elevated-read audit, and high-risk controls." },
+    { "taskId": "V1-73", "scope": "Privacy, secret, supply-chain, and deletion rehearsal release review." },
+    { "taskId": "V1-78", "scope": "Privacy notice, AUP, user rights, processor disclosure, and support entry points." }
+  ]
+}

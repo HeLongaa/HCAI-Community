@@ -17,6 +17,7 @@ Includes:
 - `npm run test:v1-surfaces`
 - `npm run test:v1-providers`
 - `npm run test:v1-safety-policy`
+- `npm run test:v1-data-governance`
 - `npm run test:sim`
 - API contract drift check through `scripts/verify-api-contracts.mjs`
 
@@ -36,6 +37,10 @@ The V1 content-safety contract checks the prohibited/block/review/allow partitio
 categories, the five-stage responsibility chain, all eight Provider policy mappings, official policy sources, region
 behavior, user messages, review/appeal rules, audit allowlists, sensitive-field exclusions, and downstream task owners.
 It deliberately records that runtime enforcement is incomplete and rejects any drift that implies production approval.
+
+The V1 data-governance contract checks every Prisma model and non-Prisma data asset, classification, purpose, retention
+limit, allowed/forbidden flow, export/delete target, legal-hold rule, external processor, secondary-surface redaction,
+and downstream implementation owner. It records that export/deletion automation and backup rehearsal are incomplete.
 
 Use this before handing off small frontend, contract, or documentation changes.
 
@@ -89,6 +94,8 @@ Includes:
   SLA, budget, and replacement conditions
 - content safety validation: all four modalities retain a fail-closed policy partition, Provider-native safety remains
   defense in depth, and unknown content, safety responses, or regions cannot dispatch or release output
+- data governance validation: every data model remains classified with bounded retention, unknown flows/processors are
+  denied, secrets/raw Provider payloads cannot enter persistence, and export/deletion targets stay explicit
 
 The environment profile does not print secrets. It reports booleans, counts, provider modes, and safe operational metadata only.
 
@@ -99,6 +106,8 @@ Use `docs/V1_PROVIDER_DECISION_MATRIX.md` before choosing a provider/model, chan
 provider terms, or implementing a primary/backup adapter.
 Use `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` before changing moderation categories, Provider safety mappings,
 review/reject/release behavior, appeals, user safety messages, or safety-event audit fields.
+Use `docs/V1_DATA_GOVERNANCE_BASELINE.md` before adding a Prisma model, persistent payload, processor, log field,
+retention job, export/delete path, backup, Admin view, notification field, or secret boundary.
 
 ## GitHub Actions
 
