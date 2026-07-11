@@ -1,5 +1,12 @@
 # Data Model And Auth Design
 
+## V1 Data Governance Contract
+
+`config/v1-data-governance.json` and `docs/V1_DATA_GOVERNANCE_BASELINE.md` are the V1 source of truth for data
+classification, purpose, retention, flow, export, deletion, legal holds, external processors, and redaction. Every
+Prisma model in this document must remain assigned to exactly one governed data asset. Schema changes must pass
+`npm run test:v1-data-governance` and name the retention/deletion owner before merge.
+
 ## Core Entities
 
 ### `users`
