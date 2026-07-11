@@ -38,6 +38,7 @@ Confirm:
 - Worker processes have explicit job flags and lease settings.
 - At least one media alert channel and one security alert channel are configured.
 - OAuth redirect URIs match the deployed API callback URLs.
+- `CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=false`; no production release may register the staging Provider HTTP client.
 
 ## Database And Migration
 

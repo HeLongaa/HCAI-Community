@@ -39,6 +39,8 @@ const summarize = (env, config, provider) => ({
     runtimeEnv: config.runtimeEnv,
     enabled: config.enabled,
     defaultProviderId: config.defaultProviderId,
+    httpClientImplemented: config.httpClient.implemented,
+    httpClientEnabled: config.httpClient.enabled,
   },
   stagingPreflight: {
     enabled: config.stagingPreflight.enabled,
@@ -53,6 +55,7 @@ const summarize = (env, config, provider) => ({
         stagingOnly: provider.stagingOnly,
         productionDenied: provider.productionDenied,
         adapterImplemented: provider.adapterImplemented,
+        httpClientImplemented: provider.httpClientImplemented,
         networkCallsEnabled: provider.networkCallsEnabled,
       }
     : null,
@@ -107,6 +110,7 @@ check(checks, 'staging provider token configured as secret presence only', env.h
 check(checks, 'replicate staging provider safe metadata exists', Boolean(provider), 'provider id replicate-staging')
 check(checks, 'replicate staging provider is never enabled by smoke', provider?.enabled === false, 'provider.enabled must stay false')
 check(checks, 'replicate staging provider remains staging-only', provider?.stagingOnly === true && provider?.productionDenied === true, 'stagingOnly=true productionDenied=true')
+check(checks, 'provider HTTP client boundary is implemented but disabled', config.httpClient.implemented === true && config.httpClient.enabled === false && provider?.httpClientImplemented === true, 'httpClientImplemented=true httpClientEnabled=false')
 check(checks, 'replicate staging provider network calls disabled', provider?.networkCallsEnabled === false, 'networkCallsEnabled=false')
 check(checks, 'replicate staging adapter not production-wired', provider?.adapterImplemented === false, 'adapterImplemented=false')
 check(checks, 'safe summary contains no raw provider or secret material', !summaryContainsUnsafeMaterial(safeSummary, source), 'summary values are low-cardinality metadata only')

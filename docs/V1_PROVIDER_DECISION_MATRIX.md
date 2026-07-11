@@ -73,8 +73,8 @@ operations alert is planned. Budget exhaustion does not silently route traffic t
   and required end-user flow-down must be approved before use.
 - Limits: 600 prediction creations/minute and 3,000 requests/minute for other endpoints; model throughput can queue.
 - SLA: public terms disclaim uninterrupted service; enterprise pricing advertises optional performance SLAs.
-- Existing code: the current Replicate adapter remains fixture-only with `networkCallsEnabled=false`. This decision does
-  not convert it into a real client.
+- Existing code: the Replicate adapter remains fixture-only and unavailable on the default route. V1-05 adds a separate
+  default-disabled, minimum-payload HTTP client factory; this decision does not approve enabling it or making a call.
 
 ## Chat Decision
 

@@ -95,7 +95,8 @@ Includes:
 - Prometheus-compatible metrics exporter configuration validation
 - worker topology and lease renewal sanity checks
 - external OAuth provider metadata validation
-- creative provider safety validation: production smoke must keep staging provider preflight disabled and must not expose real provider tokens
+- creative provider safety validation: production smoke must keep staging provider preflight and the Provider HTTP
+  client disabled, while client tests use injected fetch implementations and never expose real Provider tokens
 - provider decision validation: all four modalities retain a conditional primary and backup with explicit legal, data,
   SLA, budget, and replacement conditions
 - content safety validation: all four modalities retain a fail-closed policy partition, Provider-native safety remains
@@ -109,7 +110,15 @@ The environment profile does not print secrets. It reports booleans, counts, pro
 
 Use `docs/RELEASE_CHECKLIST.md` after the deployment gate passes to run the release execution, post-release operations, alert verification, and rollback checks.
 Use `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` before scaling beyond one API or worker process so the deployment profile, smoke checks, metrics scrape, and rollback boundary are reviewed together.
-Use `docs/REAL_PROVIDER_CURRENT_STATUS.md` as the first decision entry point before starting provider work. Use `docs/REAL_PROVIDER_BOUNDARY_CLOSEOUT.md` as the detailed handoff document. Use `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` before starting or merging any staging-only real provider adapter PR. Use `docs/REAL_PROVIDER_STAGING_SMOKE_READINESS.md` for the metadata-only smoke readiness closeout, then use `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` for the manual creative staging smoke execution and adapter closeout evidence. Use `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` before any PR or operator runs a real provider external-call rehearsal. Use `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` before enabling provider callbacks, polling workers, or manual lifecycle replay.
+Use `docs/REAL_PROVIDER_CURRENT_STATUS.md` as the first decision entry point before starting provider work. Use
+`docs/V1_PROVIDER_HTTP_AND_SECRETS_BOUNDARY.md` for the default-disabled client and deployment-secret contract. Use
+`docs/REAL_PROVIDER_BOUNDARY_CLOSEOUT.md` as the detailed handoff document. Use
+`docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` before starting or merging any staging-only real provider adapter PR.
+Use `docs/REAL_PROVIDER_STAGING_SMOKE_READINESS.md` for the metadata-only smoke readiness closeout, then use
+`docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` for the manual creative staging smoke execution and adapter closeout
+evidence. Use `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` before any PR or operator runs a real provider external-call
+rehearsal. Use `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` before enabling provider callbacks, polling workers,
+or manual lifecycle replay.
 Use `docs/V1_PROVIDER_DECISION_MATRIX.md` before choosing a provider/model, changing modality budgets, negotiating
 provider terms, or implementing a primary/backup adapter.
 Use `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` before changing moderation categories, Provider safety mappings,
@@ -140,7 +149,12 @@ For the real environment smoke, configure GitHub Environment variables and secre
 - Metrics exporter: `METRICS_EXPORTER_ENABLED`, `METRICS_EXPORTER_FORMAT`, optional secret `METRICS_EXPORTER_TOKEN`.
 - Worker topology: `API_EMBEDDED_WORKERS_ENABLED`, `MEDIA_SCAN_WORKER_*`, `TASK_STALE_SUBMISSION_WORKER_*`, `WORKER_LEASE_*`.
 - OAuth providers: `OAUTH_GOOGLE_*`, `OAUTH_DISCORD_*`, and/or `OAUTH_APPLE_*`.
-- Creative provider preflight: keep `CREATIVE_PROVIDER_MODE=mock` or `disabled` in production smoke. Use `CREATIVE_PROVIDER_RUNTIME_ENV=staging`, `CREATIVE_PROVIDER_MODE=disabled`, `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true`, `CREATIVE_STAGING_IMAGE_PROVIDER=replicate`, `CREATIVE_STAGING_PROVIDER_API_TOKEN`, `CREATIVE_STAGING_PROVIDER_CONFIRMATION=staging-only`, and `CREATIVE_STAGING_SMOKE_MODE=preflight` only in a dedicated staging environment.
+- Creative provider preflight: keep `CREATIVE_PROVIDER_MODE=mock` or `disabled` and
+  `CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=false` in production smoke. Use `CREATIVE_PROVIDER_RUNTIME_ENV=staging`,
+  `CREATIVE_PROVIDER_MODE=disabled`, `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true`,
+  `CREATIVE_STAGING_IMAGE_PROVIDER=replicate`, `CREATIVE_STAGING_PROVIDER_API_TOKEN`,
+  `CREATIVE_STAGING_PROVIDER_CONFIRMATION=staging-only`, and `CREATIVE_STAGING_SMOKE_MODE=preflight` only in a dedicated
+  staging environment. The HTTP client flag is not an external-call approval.
 
 Use GitHub Secrets for credentials, shared secrets, tokens, webhook secrets, Slack webhook URLs, and private keys. Use GitHub Variables for non-secret URLs, ids, domains, counts, feature flags, and recipient lists unless your deployment policy treats them as sensitive.
 

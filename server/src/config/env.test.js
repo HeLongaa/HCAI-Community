@@ -18,6 +18,7 @@ test('buildEnv allows development without managed token secrets', () => {
     creativeStagingImageProvider: '',
     creativeStagingProviderPreflightEnabled: false,
     hasCreativeStagingProviderApiToken: false,
+    creativeProviderHttpClientEnabled: false,
     mediaScanRequestAdapter: 'generic-webhook',
     hasMediaScanWebhookSecret: false,
     mediaScanRetryDelaySeconds: 300,
@@ -212,6 +213,10 @@ test('buildEnv accepts production token secret metadata', () => {
 
 test('buildEnv validates and exposes creative provider settings', () => {
   assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED: 'yes' }),
+    /CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED must be true or false/,
+  )
+  assert.throws(
     () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'external' }),
     /CREATIVE_PROVIDER_MODE must be one of: mock, disabled, replicate_staging/,
   )
@@ -286,9 +291,22 @@ test('buildEnv validates and exposes creative provider settings', () => {
   assert.equal(env.creativeStagingImageProvider, '')
   assert.equal(env.creativeStagingProviderPreflightEnabled, false)
   assert.equal(env.hasCreativeStagingProviderApiToken, false)
+  assert.equal(env.creativeProviderHttpClientEnabled, false)
 })
 
 test('buildEnv gates the Replicate staging adapter shell to staging-only safe metadata', () => {
+  assert.throws(
+    () => buildEnv({
+      NODE_ENV: 'test',
+      CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+      CREATIVE_PROVIDER_MODE: 'replicate_staging',
+      CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+      CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-token',
+      CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+      CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED: 'true',
+    }),
+    /CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED requires NODE_ENV=production/,
+  )
   assert.throws(
     () => buildEnv({
       NODE_ENV: 'development',
@@ -353,6 +371,7 @@ test('buildEnv gates the Replicate staging adapter shell to staging-only safe me
   assert.equal(env.creativeStagingImageProvider, 'replicate')
   assert.equal(env.creativeStagingProviderPreflightEnabled, false)
   assert.equal(env.hasCreativeStagingProviderApiToken, true)
+  assert.equal(env.creativeProviderHttpClientEnabled, false)
 
   const config = buildCreativeProviderConfig({
     NODE_ENV: 'production',
@@ -372,7 +391,52 @@ test('buildEnv gates the Replicate staging adapter shell to staging-only safe me
   assert.equal(provider.stagingOnly, true)
   assert.equal(provider.productionDenied, true)
   assert.equal(provider.adapterImplemented, false)
+  assert.equal(provider.httpClientImplemented, true)
   assert.equal(provider.networkCallsEnabled, false)
+})
+
+test('buildEnv enables the Provider HTTP client only in an explicit staging adapter runtime', () => {
+  assert.throws(
+    () => buildEnv({
+      NODE_ENV: 'production',
+      ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+      CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+      CREATIVE_PROVIDER_MODE: 'disabled',
+      CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED: 'true',
+      CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+      CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-token',
+      CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+      CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED: 'true',
+    }),
+    /CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED requires CREATIVE_PROVIDER_MODE=replicate_staging/,
+  )
+
+  const source = {
+    NODE_ENV: 'production',
+    ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_PROVIDER_MODE: 'replicate_staging',
+    CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+    CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-token',
+    CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+    CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED: 'true',
+  }
+  const env = buildEnv(source)
+  const config = buildCreativeProviderConfig(source)
+  const provider = config.providers.find((candidate) => candidate.id === 'replicate-staging')
+
+  assert.equal(env.creativeProviderHttpClientEnabled, true)
+  assert.deepEqual(config.httpClient, {
+    implemented: true,
+    enabled: true,
+    supportedProviderIds: ['replicate-staging'],
+  })
+  assert.equal(config.enabled, false)
+  assert.equal(provider.enabled, false)
+  assert.equal(provider.adapterImplemented, false)
+  assert.equal(provider.httpClientImplemented, true)
+  assert.equal(provider.networkCallsEnabled, true)
+  assert.equal(JSON.stringify(config).includes('replicate-token'), false)
 })
 
 test('buildEnv accepts staging-only creative provider preflight metadata without enabling real calls', () => {

@@ -26,7 +26,8 @@ Ordinary continuation language such as "continue", "next", "looks good", or "shi
 
 As of PR #89, the post-readiness fixture and read-side closeout package is complete enough to prepare a final staging decision record. The decision remains:
 
-- **Conditional go** for documentation updates, metadata-only smoke evidence, and fixture-only Replicate image staging adapter hardening with mocked or injected clients.
+- **Conditional go** for documentation updates, metadata-only smoke evidence, fixture-only Replicate image staging adapter
+  hardening, and default-disabled HTTP client contract tests with injected fetch implementations.
 - **No-go** for the first real provider external-call rehearsal until the approval record in `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` is complete in Notion and the user explicitly approves the exact staging run.
 - **No-go** for production paid-provider enablement.
 
@@ -40,6 +41,7 @@ Completed evidence through PR #89:
 | Provider readiness review | PR #85 added a consistency review across durable records, quota, credit, Admin history, replay, staging shell, and budget operations. |
 | Replicate staging failure/cancellation/observability | PRs #86, #87, and #88 hardened fixture-only failure mapping, cancellation boundaries, and observability evidence. |
 | Provider budget read-side chain | PR #89 added end-to-end sanitized evidence coverage from budget event planning through audit persistence, notifications, external-alert dry-run payloads, and dispatch audit rows. |
+| V1-05 Provider HTTP boundary | A fixed-endpoint, minimum-payload Replicate client factory reads only deployment secrets, rejects unknown Providers, and remains disabled/unregistered by default. |
 
 ## V1-04 Conditional Provider Decisions
 
@@ -62,12 +64,13 @@ Sora 2 models on 2026-09-24 without a recommended replacement.
 | Category | Current Status | Practical Meaning |
 | --- | --- | --- |
 | Product generation path | Usable with mock provider | Image Studio can create stored generated assets through the creative API and durable accounting path. |
-| Provider catalog | Safe metadata only | `replicate_staging` can appear as unavailable/default-disabled metadata with `networkCallsEnabled=false`. |
+| Provider catalog | Safe metadata only | `replicate_staging` can report client implementation and guarded network-state booleans while remaining unavailable/default-disabled. |
 | Durable accounting | Usable | Generation records, quota windows/reservations, credit reservation/settlement/refund, and media governance are wired. |
 | Admin generation history | Usable read-only | Operators can inspect sanitized generation, cost, budget, quota, credit, safety, policy, media, audit, and replay evidence. |
 | Provider lifecycle foundation | Fixture-only | Replay ledger, lifecycle reducer, side-effect plan, callback parser helpers, polling plan, and worker skeleton exist without real provider side effects. |
 | Provider budget operations | Usable read-only / fixture-only | Audit persistence, internal notifications, Admin operations metrics, exporter metrics, and fixture dry-run dispatch audit rows exist. |
-| Staging adapter shell | Fixture-only | Mocked/injected-client hardening may continue; no default SDK or network client is available. PRs #86-#89 improved the fixture-only evidence chain, but did not approve real provider calls. |
+| Provider HTTP client boundary | Implemented / default-disabled | A fixed Replicate client factory and deployment-secret boundary exist, but no product route or worker registers the client and no external call is approved. |
+| Staging adapter shell | Fixture-only | Mocked/injected-client hardening may continue. PRs #86-#89 improved the fixture-only evidence chain, but did not approve real provider calls. |
 | V1 provider decision matrix | Conditional planning evidence | Four primary/backup pairs, budgets, legal/data/SLA conditions, and replacement triggers are machine-verified; no provider is production-approved. |
 | V1 content safety matrix | Frozen implementation policy | Four modality partitions, Provider policy mappings, review/appeal, and audit contracts are machine-verified; downstream enforcement is not complete. |
 | V1 data governance baseline | Frozen implementation policy | Data inventory, retention, flows, processors, export/deletion, holds, and redaction are machine-verified; runtime automation is not complete. |
@@ -95,6 +98,7 @@ These pieces are implemented for tests, planning, and safe dry-runs only:
 
 - provider adapter contract tests
 - Replicate staging shell metadata and fixture adapter tests
+- default-disabled Replicate HTTP client tests with fixed endpoint, minimum payload, secret isolation, and injected fetch
 - provider budget event planning and fail-closed budget guard tests
 - provider callback signature/parser helpers
 - provider polling lease and stop-condition helpers
@@ -116,7 +120,7 @@ Fixture-only means no route, worker, or default client should contact a real pro
 These are intentionally unavailable:
 
 - real provider SDK or package integration
-- default provider HTTP client
+- default route or worker registration for the Provider HTTP client
 - real provider network calls
 - provider callback route
 - webhook target handling for provider lifecycle
@@ -152,6 +156,7 @@ Without those details, the decision remains no-go.
 | --- | --- |
 | What is the current overall status? | `docs/REAL_PROVIDER_CURRENT_STATUS.md` |
 | What is the real-provider handoff boundary? | `docs/REAL_PROVIDER_BOUNDARY_CLOSEOUT.md` |
+| What HTTP client and secret boundary exists? | `docs/V1_PROVIDER_HTTP_AND_SECRETS_BOUNDARY.md` |
 | Can a staging adapter planning branch start? | `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` |
 | What fixture-only staging shell work is allowed? | `docs/REAL_PROVIDER_STAGING_ADAPTER_SHELL_PLAN.md` |
 | What must happen before an external provider call? | `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` |
@@ -176,7 +181,7 @@ Allowed next:
 
 Not allowed without explicit approval:
 
-1. Real provider SDKs or HTTP clients.
+1. Additional real Provider SDKs/HTTP clients or default registration/enabling of the V1-05 client.
 2. Real provider network calls.
 3. Real outbound provider budget alerts.
 4. Callback route, real polling, or manual replay endpoint.

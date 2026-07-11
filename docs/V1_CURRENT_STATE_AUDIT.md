@@ -6,7 +6,11 @@
 
 ## Audit Decision
 
-The repository is a strong productionization baseline, but it is not yet a V1 release candidate. Core marketplace and operations domains have substantial API, persistence, permission, audit, and test coverage. Image generation uses the durable creative path with a deterministic mock provider. Music, Video, Chat, Explore, and catalog-facing experiences still include demo or local simulation surfaces. Real environment evidence and real paid Provider execution remain unavailable.
+The repository is a strong productionization baseline, but it is not yet a V1 release candidate. Core marketplace and
+operations domains have substantial API, persistence, permission, audit, and test coverage. Image generation uses the
+durable creative path with a deterministic mock provider; a default-disabled Replicate HTTP client and deployment-secret
+boundary now exist but are not registered on a product route. Music, Video, Chat, Explore, and catalog-facing experiences
+still include demo or local simulation surfaces. Real environment evidence and real paid Provider execution remain unavailable.
 
 Production classification must fail closed: a production surface is either backed by an approved real service/data source or shows an explicit unavailable state. Demo, fixture, seed, or mock data must never be a silent production fallback.
 
@@ -21,7 +25,7 @@ Production classification must fail closed: a production surface is either backe
 | Notifications | API baseline | Delivery/deep-link/retry and operations closeout |
 | Media governance | API/worker baseline, fixture-capable integrations | Real S3/CDN, scanner, callback, isolation, and lifecycle evidence |
 | Admin and operations | Strong read-side/audit baseline | High-risk generation controls, RBAC closeout, rollback evidence |
-| Image Studio | Durable API path with mock execution; staging shell is fixture-only | Approved real provider, edit modes, production UX, staging gate |
+| Image Studio | Durable mock path plus default-disabled staging HTTP client boundary | Approved adapter/Provider, edit modes, production UX, staging gate |
 | Chat Studio | Demo/local workspace | Streaming API, durable history, attachments, moderation, load gate |
 | Video Studio | Demo/local workspace | Async provider lifecycle, governed outputs, production UX, staging gate |
 | Music Studio | Demo/local workspace | Async provider lifecycle, license policy, player, production UX, staging gate |
@@ -54,6 +58,7 @@ These surfaces remain valid for deterministic tests. V1-02 and V1-39 own their c
 - `config/v1-compliance-policy.json` and `docs/V1_COMPLIANCE_AND_SUPPORT_BASELINE.md` own versioned policy text,
   exact-version consent, Provider disclosures, support categories, and data-rights entry points; legal approval remains open.
 - `docs/REAL_PROVIDER_CURRENT_STATUS.md` remains authoritative for real-provider approval boundaries.
+- `docs/V1_PROVIDER_HTTP_AND_SECRETS_BOUNDARY.md` owns the V1-05 default-disabled client and secret-injection contract.
 - `docs/RELEASE_CHECKLIST.md` and `docs/QUALITY_GATES.md` remain authoritative for release execution and checks.
 - Phase 2/3 documents are historical evidence; they do not define current V1 stage or scope.
 - Notion `V1 Milestone` replaces the legacy `Phase` field for V1 planning.

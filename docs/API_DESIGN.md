@@ -345,11 +345,16 @@ Returns `meta.summary` with available, frozen, pending settlement, projected bal
 
 ### `GET /creative/providers`
 
-Requires auth-compatible public access. Returns safe creative provider capability metadata without secrets.
+Requires auth-compatible public access. Returns safe creative provider capability metadata without secrets. Staging
+metadata may report `httpClientImplemented` and `networkCallsEnabled` booleans, but never returns a token, endpoint, raw
+Provider payload, or private URL. A true HTTP-client flag does not make the Provider enabled or default.
 
 ### `POST /creative/generations`
 
-Requires auth. Executes the mock provider path, applies moderation/review policy, reserves quota, reserves creative credits, persists generated outputs as media assets, commits quota, settles credits, and returns a safe generation response. Provider or media persistence failure releases quota and refunds the credit reservation.
+Requires auth. Executes the mock provider path or an explicitly injected fixture adapter, applies moderation/review
+policy, reserves quota, reserves creative credits, persists generated outputs as media assets, commits quota, settles
+credits, and returns a safe generation response. V1-05 does not register the guarded Provider HTTP client on this route.
+Provider or media persistence failure releases quota and refunds the credit reservation.
 
 The response includes:
 

@@ -4,7 +4,11 @@ This review records the final provider-readiness consistency pass after the dura
 
 Review date: 2026-07-09.
 
-Current conclusion: **provider readiness is closed out for fixture CI and handoff purposes, but the repository remains provider-ready, not real-provider-connected**. Real paid-provider calls, default provider HTTP clients, real provider SDKs, callback routes, enabled real polling, manual replay endpoints, Admin retry/cancel/refund mutations, external provider alert delivery, and production paid-provider enablement remain no-go.
+Current conclusion: **provider readiness is closed out for fixture CI and handoff purposes, but the repository remains
+provider-ready, not real-provider-connected**. V1-05 adds a default-disabled HTTP client and deployment-secret boundary;
+real paid-provider calls, default route/worker registration, real Provider SDKs, callback routes, enabled real polling,
+manual replay endpoints, Admin retry/cancel/refund mutations, external Provider alert delivery, and production
+paid-provider enablement remain no-go.
 
 ## Source Of Truth
 
@@ -27,7 +31,7 @@ Ordinary continuation language such as "continue", "next", "looks good", or "shi
 | Credit ledger | Reserve product creative credits, settle on completed/review-required outputs, refund on failure, and dedupe repeated settle/refund. | `server/src/repositories/creativeCredits.test.js`, `server/src/modules/creative/routes.test.js`, `server/src/creative/providerSideEffectPlan.test.js` | Aligned. Credit metadata is allowlisted; reason text and string metadata are redacted. |
 | Admin generation history | Read-only list/detail surface with safe filters and safe replay evidence. No mutation controls. | `server/src/modules/admin/routes.test.js`, `docs/REAL_PROVIDER_ADMIN_MUTATION_REQUIREMENTS.md` | Aligned. Read-side sanitizer covers usage/provider cost, credit, quota, safety, policy, provider ids, failure previews, and replay summaries. |
 | Provider replay foundation | Fixture-only replay ledger, lifecycle reducer, side-effect plan, and integration helpers. No callback route, default status client, or manual replay endpoint. | `server/src/creative/providerReplayIntegration.test.js`, `server/src/creative/providerSideEffectPlan.test.js`, `server/src/creative/providerPollingWorker.test.js` | Aligned. Duplicate/stale replay behavior is idempotent and evidence remains safe. |
-| Staging provider shell | Replicate staging shell can expose safe metadata and injected-client fixture behavior only. `networkCallsEnabled=false`; no default SDK or network client. | `server/src/creative/replicateStagingProvider.test.js`, `server/src/creative/generationService.test.js`, `scripts/smoke-creative-staging.mjs` | Aligned. Smoke validates metadata-only preflight and disabled adapter shell state. |
+| Staging provider shell | Replicate staging shell exposes safe metadata and injected fixture behavior; V1-05 adds a separate default-disabled HTTP client without route registration. | `server/src/creative/replicateStagingProvider.test.js`, `server/src/creative/providerHttpClient.test.js`, `server/src/creative/generationService.test.js`, `scripts/smoke-creative-staging.mjs` | Aligned. Smoke validates metadata-only preflight, implemented client metadata, and disabled adapter/network state. |
 | Provider budget operations | Safe read-side audit, notification, metrics, exporter, fixture dry-run, and Admin cost/budget summaries. No real external alert delivery. | `server/src/creative/providerBudget*.test.js`, `docs/REAL_PROVIDER_BUDGET_OPERATIONS_READSIDE_CLOSEOUT.md` | Aligned. Payloads and dispatch audit records avoid raw prompts, provider payloads, output URLs, tokens, secrets, and high-cardinality routing keys. |
 | Real-provider handoff | Conditional go only for a guarded staging-only adapter planning branch; external-call rehearsal requires explicit approval package. | `docs/REAL_PROVIDER_CURRENT_STATUS.md`, `docs/REAL_PROVIDER_BOUNDARY_CLOSEOUT.md`, `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md`, `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` | Aligned. Production paid-provider enablement remains no-go. |
 

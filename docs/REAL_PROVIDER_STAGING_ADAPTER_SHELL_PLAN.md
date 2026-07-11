@@ -15,20 +15,20 @@ The goal of the staging adapter shell phase is to make the future first external
 - provider spend metadata and budget guards fail closed before dispatch
 - production remains denied by environment validation and smoke checks
 - the default route continues to use mock or disabled provider behavior
-- all external-call approval evidence is ready before a real network-capable client is introduced
+- all external-call approval evidence is ready before the default-disabled client is registered or used for a real call
 
 ## Current Implementation Inventory
 
 | Surface | Current status | Boundary |
 | --- | --- | --- |
-| Provider registry metadata | Available safe metadata | `replicate-staging` is configured only in staging mode, remains `enabled=false`, `default=false`, `adapterImplemented=false`, and `networkCallsEnabled=false`. |
-| Environment validation | Available | `CREATIVE_PROVIDER_MODE=replicate_staging` requires staging runtime, Replicate candidate, token presence, and `staging-only` confirmation; production rejects staging token usage. |
+| Provider registry metadata | Available safe metadata | `replicate-staging` remains `enabled=false`, `default=false`, and `adapterImplemented=false`; safe booleans report the implemented/default-disabled HTTP boundary. |
+| Environment validation | Available | `CREATIVE_PROVIDER_MODE=replicate_staging` requires staging runtime, Replicate candidate, token presence, and `staging-only` confirmation. HTTP construction additionally requires exact `CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=true` and `NODE_ENV=production`. |
 | Request construction | Available fixture-safe | `buildReplicateImagePredictionPayload` maps image `text_to_image` requests to a Replicate-like payload without making network calls, and allowlists provider-facing parameters before an injected client can see them. |
 | Provider cost metadata | Available fixture-safe | Cost estimate, daily cap, spend, threshold, budget scope, and account reference are normalized into safe low-cardinality metadata. |
 | Budget guard | Available fixture-safe | Missing estimate, missing cap, unsafe metadata, invalid threshold, or projected over-budget spend blocks before an injected client can dispatch. |
 | Generation mapping | Available fixture-safe | Replicate-like prediction statuses map to internal generation states with safe failure previews. |
 | Status polling client contract | Available injected only | Status reads require an injected `getPrediction` client; no default HTTP client exists. |
-| Prediction creation contract | Available injected only | Prediction creation requires an injected `createPrediction` client; no SDK or network-capable client exists. |
+| Prediction creation contract | Available, not registered | Prediction creation still requires an injected `createPrediction` client. V1-05 supplies a fixed-endpoint implementation, but no route or worker registers it. |
 | Lifecycle replay helpers | Available fixture-safe | Replicate-like lifecycle events map into replay reducer decisions with output digests, duplicate suppression, and job mismatch rejection. |
 | Route-level fixture path | Available through injected adapters | Policy, quota, credit, generation records, and media persistence can be exercised with fixture adapters only. |
 | Fixture output evidence | Available fixture-safe | Completed Replicate fixture outputs are persisted behind media-governed download paths; raw provider output URLs are not returned from creative generation responses, stored in media artifact metadata, or exposed through read-only Admin generation evidence. |
@@ -43,7 +43,7 @@ The next implementation PRs may do the following without external-call approval:
 3. Add fixture tests for cost estimate, daily budget cap, threshold, budget scope, and provider account reference guards.
 4. Add fixture tests proving route-level policy, quota, credit reservation, generation record, and media persistence run before or around injected provider work.
 5. Add fixture tests that status reads and prediction creation fail closed unless a test explicitly injects a client.
-6. Improve metadata-only smoke assertions while keeping `networkCallsEnabled=false`.
+6. Improve metadata-only smoke assertions while keeping the HTTP client disabled and `networkCallsEnabled=false`.
 7. Improve read-only Admin history display of provider cost, budget, and replay evidence when backed by fixture records.
 8. Update docs, OpenAPI descriptions, or runbooks when they describe the existing mock/fixture boundary.
 
@@ -54,7 +54,8 @@ These tasks can be split into multiple small PRs. Each task must keep CI indepen
 This plan does not approve:
 
 - Installing or importing a real Replicate SDK.
-- Adding a default provider HTTP client.
+- Registering the Provider HTTP client as a default route or worker dependency.
+- Setting the HTTP client flag for an unapproved external-call rehearsal.
 - Creating a provider prediction/job from app code.
 - Reading provider status from a real provider API.
 - Downloading provider output URLs.
@@ -98,7 +99,7 @@ Every staging shell PR must preserve these contracts:
    - Current fixture-safe status: Admin generation history sanitizes `usage.providerCost` through an allowlist before returning list/detail records, and the Admin UI shows read-only provider cost and budget summaries. Tests prove raw provider payload fields, output URLs, billing-account traces, and other unknown provider metadata are not exposed.
 
 4. **Metadata smoke closeout**
-   - Keep `networkCallsEnabled=false` and `adapterImplemented=false` until a separately approved PR intentionally changes the closeout state.
+   - Keep `networkCallsEnabled=false` in smoke and `adapterImplemented=false` until a separately approved task changes the closeout state.
    - Record smoke results in Notion in Chinese.
 
 5. **External-call approval preparation**
@@ -106,7 +107,7 @@ Every staging shell PR must preserve these contracts:
    - Require explicit user approval naming provider, staging environment, maximum call count, budget cap, expiry, token rotation owner, kill-switch owner, and production no-go.
 
 6. **Single staging external-call rehearsal**
-   - Only after approval, introduce a network-capable client in a narrow PR or operator-run branch.
+   - Only after approval, pass the guarded client into the approved adapter/rehearsal path in a narrow PR or operator-run branch.
    - Keep the rehearsal limited to the approved maximum call count.
 
 Callback/polling route/client work remains later than the first external-call rehearsal unless separately approved through `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md`.

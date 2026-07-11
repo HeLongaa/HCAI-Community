@@ -63,6 +63,9 @@ Image, Chat, Video, and Music each require:
 The current conditional primary/backup choices, public-price budget envelope, contract blockers, data/SLA dispositions,
 and replacement triggers are frozen in `docs/V1_PROVIDER_DECISION_MATRIX.md` and
 `config/v1-provider-matrix.json`. That decision record authorizes implementation planning only.
+The V1-05 default-disabled HTTP client, deployment-secret isolation, fixed destination, and minimum-payload contract are
+implemented in `server/src/creative/providerHttpClient.js` and documented in
+`docs/V1_PROVIDER_HTTP_AND_SECRETS_BOUNDARY.md`; no product route registration or external call is approved by that work.
 
 The four-modality prohibited/block/review/allow taxonomy, Provider policy mapping, pre-dispatch through appeal
 responsibility chain, user message codes, and safety audit contract are frozen in
