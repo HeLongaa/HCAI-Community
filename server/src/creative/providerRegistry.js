@@ -87,7 +87,8 @@ const buildReplicateStagingProvider = (configProvider) => ({
     stagingOnly: true,
     productionDenied: true,
     adapterImplemented: false,
-    networkCallsEnabled: false,
+    httpClientImplemented: configProvider.httpClientImplemented,
+    networkCallsEnabled: configProvider.networkCallsEnabled,
   },
 })
 

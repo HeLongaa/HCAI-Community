@@ -43,8 +43,10 @@ test('signed-in user can submit and track a content report from support center',
   expect(response.ok()).toBeTruthy()
   const payload = await response.json()
   const requestId = payload.data.id as string
+  const requestArticle = page.getByRole('article').filter({ hasText: requestId })
 
-  await expect(page.getByText('Review a reported community post')).toBeVisible()
-  await expect(page.getByText(requestId)).toBeVisible()
-  await expect(page.getByText('Submitted').last()).toBeVisible()
+  await expect(requestArticle).toBeVisible()
+  await expect(requestArticle.getByText('Review a reported community post')).toBeVisible()
+  await expect(requestArticle.getByText(requestId)).toBeVisible()
+  await expect(requestArticle.getByText('Submitted')).toBeVisible()
 })

@@ -6,7 +6,10 @@ Current decision: **no-go for real provider external calls, provider callbacks, 
 
 This document does not approve an external call by itself. A real external-call rehearsal still requires the approval record in `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md`, current Notion task evidence in Chinese, and explicit user approval for the exact staging run.
 
-Callback, polling, and manual replay boundaries are closed out in `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md`. That document currently allows fixture-safe pure functions, disabled-by-default worker wiring, mocked/injected status-client tests, and read-only Admin replay evidence only; it does not approve callback routes, default provider HTTP clients, manual replay endpoints, enabled real polling, or async lifecycle side effects from provider data.
+Callback, polling, and manual replay boundaries are closed out in `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md`.
+That document currently allows fixture-safe pure functions, disabled-by-default worker wiring, mocked/injected status-client
+tests, and read-only Admin replay evidence only; it does not approve callback routes, default route/worker registration of
+the V1-05 HTTP client, manual replay endpoints, enabled real polling, or async lifecycle side effects from Provider data.
 
 ## Completed Safe Foundation
 
@@ -18,7 +21,7 @@ The repository has enough fixture-safe lifecycle foundation to continue planning
 - Pre-provider moderation and quota gating before fixture/staging provider adapter work.
 - Read-only Admin generation history.
 - Provider adapter contract and safe failure mapping tests.
-- Staging-only Replicate provider shell metadata with `networkCallsEnabled=false`.
+- Staging-only Replicate provider shell metadata plus a V1-05 default-disabled HTTP client and deployment-secret boundary.
 - Cost metadata and budget alarm planning.
 - Durable replay ledger schema and repository foundation.
 - Pure provider lifecycle reducer for queued, running, completed, failed, cancelled, duplicate, stale, and mismatch decisions.
@@ -44,7 +47,7 @@ The polling worker skeleton is disabled by default. It requires `CREATIVE_PROVID
 | Path | Status | Notes |
 | --- | --- | --- |
 | Image Studio generation | Usable through mock provider | Durable generation, quota, credit, media, and Admin history paths are exercised. |
-| `GET /api/creative/providers` | Usable safe metadata | `replicate_staging` remains unavailable/default-disabled with `networkCallsEnabled=false`. |
+| `GET /api/creative/providers` | Usable safe metadata | `replicate_staging` remains unavailable/default-disabled and may expose only safe client/network-state booleans. |
 | `POST /api/creative/generations` | Usable mock route | Does not dispatch to Replicate or any paid provider. |
 | Admin generation history | Usable read-only | No retry, cancel, refund, force-review, or manual settlement controls. |
 | Admin provider replay evidence | Usable read-only | Shows replay counts and latest safe replay summary; does not expose raw payloads or mutation controls. |
@@ -56,7 +59,7 @@ The polling worker skeleton is disabled by default. It requires `CREATIVE_PROVID
 The following remain intentionally unavailable:
 
 - Real provider SDK or package integration.
-- Default provider HTTP client.
+- Default route or worker registration of the V1-05 Provider HTTP client.
 - Real provider network calls.
 - Provider callback route.
 - Provider webhook target handling.

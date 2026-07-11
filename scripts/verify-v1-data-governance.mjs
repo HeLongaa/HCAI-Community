@@ -17,6 +17,9 @@ const includesMembers = (actual, expected) => expected.every((item) => actual.in
 const unique = (values) => new Set(values).size === values.length
 const nonEmptyArray = (value) => Array.isArray(value) && value.length > 0
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
+const providerHttpClientSource = read('server/src/creative/providerHttpClient.js')
+const providerEnvSource = read('server/src/config/env.js')
+const generationServiceSource = read('server/src/creative/generationService.js')
 
 const expectedClassifications = ['confidential', 'internal', 'public', 'restricted', 'secret']
 const expectedPurposes = [
@@ -625,6 +628,29 @@ addCheck(
   'current runtime evidence files exist',
   governance.currentRuntimeBaseline.evidenceFiles.every((file) => fs.existsSync(path.join(root, file))),
   governance.currentRuntimeBaseline.evidenceFiles.join(', '),
+)
+addCheck(
+  'runtime Provider HTTP client keeps secrets in the deployment boundary',
+  providerHttpClientSource.includes("secretEnvKey: 'CREATIVE_STAGING_PROVIDER_API_TOKEN'") &&
+    providerHttpClientSource.includes('source[definition.secretEnvKey]') &&
+    providerHttpClientSource.includes('authorization: `Bearer ${apiToken}`') &&
+    !providerHttpClientSource.includes('apiToken,'),
+  'server/src/creative/providerHttpClient.js',
+)
+addCheck(
+  'runtime Provider HTTP client uses fixed destination and minimum payload',
+  providerHttpClientSource.includes("baseUrl: 'https://api.replicate.com/v1'") &&
+    providerHttpClientSource.includes("modelId: 'black-forest-labs/flux-1.1-pro'") &&
+    providerHttpClientSource.includes("const allowedKeys = ['prompt', 'aspect_ratio', 'seed', 'style_preset']"),
+  'fixed Replicate endpoint and four allowlisted input fields',
+)
+addCheck(
+  'runtime Provider HTTP client is staging-only and not registered by default',
+  providerEnvSource.includes("strictBoolFlag(source, 'CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED', false)") &&
+    providerEnvSource.includes("CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED requires NODE_ENV=production") &&
+    providerEnvSource.includes("CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging") &&
+    !generationServiceSource.includes('createCreativeProviderHttpClient'),
+  'explicit env gate with no default generation-service registration',
 )
 
 const authRoutes = read('server/src/modules/auth/routes.js')

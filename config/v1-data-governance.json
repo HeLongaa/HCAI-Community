@@ -975,6 +975,7 @@
       "media scan history supports archive-before-prune with 180-day and per-asset defaults",
       "creative generation records store prompt hash and bounded preview instead of a raw prompt field",
       "Provider adapter contracts reject secret-like metadata keys",
+      "Provider HTTP client uses a fixed endpoint, minimum payload, deployment-only secret injection, and default-disabled network gate",
       "Admin creative serializers redact unsafe identifiers, URLs, and error previews",
       "archive and object writers support mock/S3-compatible boundaries"
     ],
@@ -991,6 +992,7 @@
     "evidenceFiles": [
       "server/src/creative/generationRecords.js",
       "server/src/creative/providerAdapterContract.js",
+      "server/src/creative/providerHttpClient.js",
       "server/src/modules/admin/routes.js",
       "server/src/media/scanProvider.js",
       "server/src/storage/archiveWriter.js",

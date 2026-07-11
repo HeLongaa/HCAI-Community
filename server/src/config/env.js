@@ -66,6 +66,17 @@ const boolFlag = (source, key, fallback = false) => {
   }
   return String(raw).trim().toLowerCase() === 'true'
 }
+const strictBoolFlag = (source, key, fallback = false) => {
+  const raw = source[key]
+  if (raw == null || raw === '') {
+    return fallback
+  }
+  const normalized = String(raw).trim().toLowerCase()
+  if (!['true', 'false'].includes(normalized)) {
+    throw new Error(`${key} must be true or false`)
+  }
+  return normalized === 'true'
+}
 const splitCsv = (value) =>
   String(value ?? '')
     .split(',')
@@ -97,6 +108,7 @@ export const buildEnv = (source = process.env) => {
   const creativeStagingProviderPreflightEnabled = boolFlag(source, 'CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED', false)
   const hasCreativeStagingProviderApiToken = Boolean(String(source.CREATIVE_STAGING_PROVIDER_API_TOKEN ?? '').trim())
   const creativeStagingProviderConfirmation = String(source.CREATIVE_STAGING_PROVIDER_CONFIRMATION ?? '').trim().toLowerCase()
+  const creativeProviderHttpClientEnabled = strictBoolFlag(source, 'CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED', false)
   const mediaScanRequestAdapter = getMediaScanRequestAdapter(source)
   const rateLimitStore = getRateLimitStore(source)
   const rateLimitRedisUrl = getRedisUrl(source)
@@ -229,6 +241,17 @@ export const buildEnv = (source = process.env) => {
   if (hasCreativeStagingProviderApiToken && creativeProviderRuntimeEnv !== 'staging') {
     throw new Error('CREATIVE_STAGING_PROVIDER_API_TOKEN is only allowed with CREATIVE_PROVIDER_RUNTIME_ENV=staging')
   }
+  if (creativeProviderHttpClientEnabled) {
+    if (nodeEnv !== 'production') {
+      throw new Error('CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED requires NODE_ENV=production')
+    }
+    if (creativeProviderRuntimeEnv !== 'staging') {
+      throw new Error('CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
+    }
+    if (creativeProviderMode !== 'replicate_staging') {
+      throw new Error('CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED requires CREATIVE_PROVIDER_MODE=replicate_staging')
+    }
+  }
   if (mediaScanProvider === 'webhook' && !String(source.MEDIA_SCAN_WEBHOOK_SECRET ?? '').trim()) {
     throw new Error('MEDIA_SCAN_WEBHOOK_SECRET is required when MEDIA_SCAN_PROVIDER=webhook')
   }
@@ -289,6 +312,7 @@ export const buildEnv = (source = process.env) => {
     creativeStagingImageProvider,
     creativeStagingProviderPreflightEnabled,
     hasCreativeStagingProviderApiToken,
+    creativeProviderHttpClientEnabled,
     mediaScanRequestAdapter,
     hasMediaScanWebhookSecret: Boolean(String(source.MEDIA_SCAN_WEBHOOK_SECRET ?? '').trim()),
     mediaScanRetryDelaySeconds,
@@ -579,6 +603,11 @@ export const buildCreativeProviderConfig = (source = process.env) => {
       imageProvider: current.creativeStagingImageProvider,
       apiTokenConfigured: current.hasCreativeStagingProviderApiToken,
     },
+    httpClient: {
+      implemented: true,
+      enabled: current.creativeProviderHttpClientEnabled,
+      supportedProviderIds: ['replicate-staging'],
+    },
     providers: [
       {
         id: 'mock',
@@ -599,7 +628,8 @@ export const buildCreativeProviderConfig = (source = process.env) => {
             stagingOnly: true,
             productionDenied: true,
             adapterImplemented: false,
-            networkCallsEnabled: false,
+            httpClientImplemented: true,
+            networkCallsEnabled: current.creativeProviderHttpClientEnabled,
           }]
         : []),
     ],

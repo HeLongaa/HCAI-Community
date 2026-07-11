@@ -56,6 +56,7 @@ Expected meaning:
 - `CREATIVE_PROVIDER_MODE=replicate_staging` is selected only for safe shell metadata.
 - `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=false` is accepted.
 - `replicate-staging` remains unavailable/default-disabled.
+- `httpClientImplemented=true` and `httpClientEnabled=false`.
 - `networkCallsEnabled=false`.
 - `adapterImplemented=false`.
 - Safe summary values pass the self-redaction guard before they are printed.
@@ -84,8 +85,9 @@ Before recording metadata-only staging smoke as complete, all items below should
 - Smoke output has passed the built-in safe summary self-redaction guard.
 - Smoke output reports only safe booleans, provider modes, provider ids, and default-disabled metadata.
 - `replicate-staging` reports `networkCallsEnabled=false`.
+- The safe summary reports the V1-05 HTTP boundary as implemented but disabled.
 - `replicate-staging` reports `adapterImplemented=false` unless a later explicitly approved adapter PR changes the shell contract.
-- Production smoke still rejects staging preflight and staging provider token presence.
+- Production smoke still rejects staging preflight, the Provider HTTP client flag, and staging provider token presence.
 - The Notion task for the smoke or adapter step is current and written in Chinese.
 - The run result is recorded with the smoke mode, GitHub workflow URL if applicable, safe summary fields, and a statement that no real provider call was made.
 

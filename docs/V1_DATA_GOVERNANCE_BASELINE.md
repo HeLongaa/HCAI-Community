@@ -224,6 +224,8 @@ Available foundations:
 - Media scan history supports archive-before-prune with 180-day and 50-record defaults.
 - Creative records store prompt hash and bounded preview, not a raw prompt column.
 - Provider adapter metadata rejects secret-like keys.
+- The default-disabled Provider HTTP client reads its credential only from deployment secrets, fixes the destination and
+  model endpoint, and sends only an allowlisted minimum payload.
 - Admin creative serializers fold unsafe identifiers, URLs, and errors.
 - Mock/S3-compatible object and archive writer boundaries exist.
 - Versioned policy consent is stored as an allowlisted immutable `AuditEvent` without IP, token, user-agent, or raw-content fields.
@@ -243,7 +245,7 @@ Known gaps:
 
 | Task | Data-governance ownership |
 | --- | --- |
-| V1-05 | Provider secret and minimum-payload HTTP boundary |
+| V1-05 | Implemented default-disabled Provider secret and minimum-payload HTTP boundary; external calls remain approval-gated |
 | V1-48 | OAuth scopes, identifiers, unlink, region, and sessions |
 | V1-49 | PostgreSQL backup, expiry, restore, and deletion rehearsal |
 | V1-50 | Private object storage/CDN and lifecycle deletion |

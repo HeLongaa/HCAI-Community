@@ -26,9 +26,17 @@ Current executable provider flag:
 
 - `CREATIVE_PROVIDER_MODE=mock`: default local/CI fixture behavior. Only the deterministic mock provider executes.
 - `CREATIVE_PROVIDER_MODE=disabled`: generation routes report provider unavailability. Use this for staging provider preflight so real credentials can be validated as present without enabling generation calls.
-- `CREATIVE_PROVIDER_MODE=replicate_staging`: guarded staging-only adapter shell. It requires `CREATIVE_PROVIDER_RUNTIME_ENV=staging`, `CREATIVE_STAGING_IMAGE_PROVIDER=replicate`, `CREATIVE_STAGING_PROVIDER_API_TOKEN`, and `CREATIVE_STAGING_PROVIDER_CONFIRMATION=staging-only`. The provider catalog may expose `replicate-staging` as safe metadata, but it remains unavailable on the default route path and `networkCallsEnabled=false` unless a test explicitly injects a fixture adapter.
+- `CREATIVE_PROVIDER_MODE=replicate_staging`: guarded staging-only adapter shell. It requires
+  `CREATIVE_PROVIDER_RUNTIME_ENV=staging`, `CREATIVE_STAGING_IMAGE_PROVIDER=replicate`,
+  `CREATIVE_STAGING_PROVIDER_API_TOKEN`, and `CREATIVE_STAGING_PROVIDER_CONFIRMATION=staging-only`. The provider catalog
+  may expose `replicate-staging` as safe metadata, but it remains unavailable on the default route path.
 
-The Replicate staging client contract is tested with an injected mocked client only. It maps image request payloads, Replicate-like prediction statuses, output URLs, and provider failures into the internal generation contract without providing a default network client. A route-level fixture test can inject the mocked adapter to exercise policy, quota, credit, generation record, and media persistence boundaries, but production/default route registration does not wire Replicate execution.
+V1-05 adds a real Replicate HTTP client factory with a fixed host/model endpoint, deployment-secret injection, and a
+minimum-payload request builder. `CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED` defaults to false and is rejected unless
+`NODE_ENV=production`, the runtime is staging, and the explicit `replicate_staging` contract is complete. All automated
+client tests inject `fetch`; production/default route registration still does not wire Replicate execution. The fixture
+adapter continues to exercise policy, quota, credit, generation record, and media persistence boundaries without network
+access.
 
 The mocked contract also requires provider cost estimate and daily budget cap metadata before any injected client dispatch. Missing estimate, missing cap, unsafe budget scope/account references, invalid threshold values, or projected spend above the cap fail closed before the mocked client is called. Budget metadata remains staging-scoped and low-cardinality: `CREATIVE_STAGING_PROVIDER_BUDGET_SCOPE=staging:replicate:image`, `CREATIVE_STAGING_PROVIDER_ESTIMATE_USD`, `CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD`, `CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD`, `CREATIVE_STAGING_PROVIDER_BUDGET_THRESHOLD_PERCENT`, and optional `CREATIVE_STAGING_PROVIDER_ACCOUNT_REF`. Budget scope and account references must be short safe identifiers, and the threshold must be between `1` and `100`.
 
@@ -51,6 +59,9 @@ Fail-closed rules:
 - Staging provider preflight requires `CREATIVE_STAGING_IMAGE_PROVIDER=replicate`.
 - Replicate staging adapter shell requires `CREATIVE_PROVIDER_MODE=replicate_staging` and rejects every runtime except `CREATIVE_PROVIDER_RUNTIME_ENV=staging`.
 - Production smoke allows only `CREATIVE_PROVIDER_MODE=mock` or `disabled`; `replicate_staging` is production-denied.
+- Provider HTTP client construction requires exact `CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=true`, `NODE_ENV=production`,
+  and the complete staging adapter-shell environment; local, test, and CI runtime values are rejected.
+- Production smoke requires `CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=false`.
 - Replicate staging client contract blocks dispatch when provider cost estimate or daily budget cap metadata is missing.
 - Replicate staging client contract blocks dispatch when budget scope/account metadata is unsafe or the configured threshold is outside `1` to `100`.
 - Replicate staging client contract blocks dispatch when projected daily spend exceeds the configured cap.

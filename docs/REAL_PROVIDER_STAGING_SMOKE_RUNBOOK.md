@@ -8,7 +8,9 @@ The smoke fails before closeout if its safe summary values contain the configure
 
 ## When To Use This Runbook
 
-Use this runbook after the mocked adapter contract and route fixture path pass, and before any PR proposes a real provider SDK, provider HTTP client, webhook endpoint, polling worker, or external-call staging run.
+Use this runbook after the mocked adapter contract and route fixture path pass, and before any task registers or enables
+the default-disabled Provider HTTP client, adds a Provider SDK, webhook endpoint, polling worker, or external-call staging
+run.
 
 Do not use this runbook as production approval. Production paid-provider enablement remains no-go until a later explicit phase.
 

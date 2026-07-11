@@ -63,6 +63,7 @@ test('getCreativeProviderCatalog exposes Replicate staging shell as unavailable 
   assert.equal(provider.safeMetadata.stagingOnly, true)
   assert.equal(provider.safeMetadata.productionDenied, true)
   assert.equal(provider.safeMetadata.adapterImplemented, false)
+  assert.equal(provider.safeMetadata.httpClientImplemented, true)
   assert.equal(provider.safeMetadata.networkCallsEnabled, false)
 })
 
@@ -301,6 +302,7 @@ test('executeCreativeGeneration refuses the Replicate staging shell before adapt
         CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
         CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-token',
         CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+        CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED: 'true',
       },
     }),
     /Creative provider is not available: replicate-staging/,

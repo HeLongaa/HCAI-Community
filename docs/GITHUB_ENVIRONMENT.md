@@ -35,7 +35,7 @@ Creative provider staging preflight secret:
 
 | Name | Required When | Notes |
 | --- | --- | --- |
-| `CREATIVE_STAGING_PROVIDER_API_TOKEN` | `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true` | Store only in a dedicated staging environment. Presence is validated without enabling real provider calls. |
+| `CREATIVE_STAGING_PROVIDER_API_TOKEN` | Staging preflight or guarded HTTP client | Store only in a dedicated staging environment. Presence alone never enables a Provider call. |
 
 OAuth provider secrets. Configure at least one external provider:
 
@@ -92,8 +92,10 @@ Creative provider preflight variables:
 | `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED` | Staging provider preflight | `true` |
 | `CREATIVE_STAGING_IMAGE_PROVIDER` | Staging provider preflight | `replicate` |
 | `CREATIVE_STAGING_PROVIDER_CONFIRMATION` | Staging provider preflight | `staging-only` |
+| `CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED` | Guarded V1-05 client construction | `false` by default; exact `true` is accepted only with production-parity staging and `replicate_staging` mode |
 
-Production environments must not set `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true` or `CREATIVE_STAGING_PROVIDER_API_TOKEN`.
+Production environments must not set `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true`,
+`CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=true`, or `CREATIVE_STAGING_PROVIDER_API_TOKEN`.
 
 ## Alert Channel Configuration
 
