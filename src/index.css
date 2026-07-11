@@ -3247,6 +3247,16 @@ kbd {
   grid-column: 1 / -1;
 }
 
+.admin-row.generation-row {
+  grid-template-columns: 120px minmax(180px, 0.85fr) minmax(180px, 1fr) minmax(240px, 1.35fr);
+  align-items: start;
+}
+
+.admin-row.generation-row .button-row {
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+
 .operations-overview {
   display: grid;
   gap: 12px;
@@ -3829,6 +3839,20 @@ kbd {
 .permission-summary span {
   color: var(--muted);
   font-size: 12px;
+}
+
+.generation-mutation-controls {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.generation-mutation-controls .button-row {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .permission-matrix {
@@ -7852,6 +7876,15 @@ kbd {
   .admin-row,
   .ledger-row {
     align-items: flex-start;
+  }
+
+  .admin-row.generation-row,
+  .generation-mutation-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-row.generation-row .button-row {
+    justify-content: flex-start;
   }
 
   .review-detail {

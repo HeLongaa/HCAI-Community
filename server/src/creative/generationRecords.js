@@ -69,6 +69,8 @@ export const buildCreativeGenerationRecordPayload = (generation, actor, override
   policy: generation.policy ?? null,
   providerRequestId: generation.providerRequestId ?? null,
   providerJobId: generation.providerJobId ?? null,
+  retryOfId: overrides.retryOfId ?? generation.retryOfId ?? null,
+  attemptNumber: Number(overrides.attemptNumber ?? generation.attemptNumber ?? 1),
   errorCode: overrides.errorCode ?? null,
   errorMessagePreview: overrides.errorMessagePreview ?? null,
   createdAt: overrides.createdAt ?? generation.createdAt ?? new Date().toISOString(),

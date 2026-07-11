@@ -134,6 +134,22 @@ enum CreativeProviderReplayAction {
   noop
 }
 
+enum CreativeGenerationMutationType {
+  cancel
+  retry
+  manual_replay
+}
+
+enum CreativeGenerationMutationStatus {
+  requested
+  pending_review
+  approved
+  processing
+  succeeded
+  failed
+  rejected
+}
+
 model AuditEvent {
   id           String         @id @default(cuid())
   actorType    AuditActorType @map("actor_type")
@@ -247,27 +263,27 @@ model User {
   createdAt   DateTime   @default(now()) @map("created_at")
   updatedAt   DateTime   @updatedAt @map("updated_at")
 
-  profile                 Profile?
-  authAccounts            AuthAccount[]
-  refreshTokens           RefreshToken[]
-  publisherTasks          Task[]           @relation("TaskPublisher")
-  assigneeTasks           Task[]           @relation("TaskAssignee")
-  taskProposals           TaskProposal[]
-  taskSubmissions         TaskSubmission[] @relation("TaskSubmissionSubmitter")
-  reviewedTaskSubmissions TaskSubmission[] @relation("TaskSubmissionReviewer")
-  authoredPosts           Post[]
-  comments                Comment[]
-  postLikes               PostLike[]
-  libraryItems            LibraryItem[]
-  pointLedger             PointLedger[]
-  adminReviews            AdminReview[]    @relation("AdminReviewReviewer")
-  mediaAssets             MediaAsset[]
-  notifications           Notification[]
-  mediaScanJobsReviewed   MediaScanJob[]   @relation("MediaScanJobReviewer")
-  creativeGenerations     CreativeGeneration[]
-  creativeQuotaWindows    CreativeQuotaWindow[]
+  profile                   Profile?
+  authAccounts              AuthAccount[]
+  refreshTokens             RefreshToken[]
+  publisherTasks            Task[]                     @relation("TaskPublisher")
+  assigneeTasks             Task[]                     @relation("TaskAssignee")
+  taskProposals             TaskProposal[]
+  taskSubmissions           TaskSubmission[]           @relation("TaskSubmissionSubmitter")
+  reviewedTaskSubmissions   TaskSubmission[]           @relation("TaskSubmissionReviewer")
+  authoredPosts             Post[]
+  comments                  Comment[]
+  postLikes                 PostLike[]
+  libraryItems              LibraryItem[]
+  pointLedger               PointLedger[]
+  adminReviews              AdminReview[]              @relation("AdminReviewReviewer")
+  mediaAssets               MediaAsset[]
+  notifications             Notification[]
+  mediaScanJobsReviewed     MediaScanJob[]             @relation("MediaScanJobReviewer")
+  creativeGenerations       CreativeGeneration[]
+  creativeQuotaWindows      CreativeQuotaWindow[]
   creativeQuotaReservations CreativeQuotaReservation[]
-  creativeCreditLedger    CreativeCreditLedger[]
+  creativeCreditLedger      CreativeCreditLedger[]
 
   @@map("users")
 }
@@ -485,7 +501,7 @@ model MediaAsset {
   createdAt   DateTime          @default(now()) @map("created_at")
   updatedAt   DateTime          @updatedAt @map("updated_at")
 
-  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner    User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   scanJobs MediaScanJob[]
 
   @@index([ownerId])
@@ -546,6 +562,8 @@ model CreativeGeneration {
   policy              Json?
   providerRequestId   String?                  @map("provider_request_id")
   providerJobId       String?                  @map("provider_job_id")
+  retryOfId           String?                  @map("retry_of_id")
+  attemptNumber       Int                      @default(1) @map("attempt_number")
   errorCode           String?                  @map("error_code")
   errorMessagePreview String?                  @map("error_message_preview")
   startedAt           DateTime?                @map("started_at")
@@ -554,15 +572,44 @@ model CreativeGeneration {
   createdAt           DateTime                 @default(now()) @map("created_at")
   updatedAt           DateTime                 @updatedAt @map("updated_at")
 
-  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actor           User?                          @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  retryOf         CreativeGeneration?            @relation("CreativeGenerationRetries", fields: [retryOfId], references: [id], onDelete: SetNull)
+  retryAttempts   CreativeGeneration[]           @relation("CreativeGenerationRetries")
+  mutations       CreativeGenerationMutation[]
   providerReplays CreativeProviderReplayLedger[]
 
   @@index([actorId, createdAt])
   @@index([actorHandle, createdAt])
   @@index([workspace, createdAt])
   @@index([providerId, createdAt])
+  @@index([retryOfId, attemptNumber])
   @@index([status, createdAt])
   @@map("creative_generations")
+}
+
+model CreativeGenerationMutation {
+  id                 String                           @id @default(cuid())
+  generationId       String                           @map("generation_id")
+  type               CreativeGenerationMutationType
+  status             CreativeGenerationMutationStatus
+  idempotencyKey     String                           @unique @map("idempotency_key")
+  requestedById      String?                          @map("requested_by_id")
+  requestedByHandle  String?                          @map("requested_by_handle")
+  reasonCode         String                           @map("reason_code")
+  notePreview        String?                          @map("note_preview")
+  reviewId           String?                          @unique @map("review_id")
+  targetGenerationId String?                          @map("target_generation_id")
+  safeMetadata       Json?                            @map("safe_metadata")
+  result             Json?
+  completedAt        DateTime?                        @map("completed_at")
+  createdAt          DateTime                         @default(now()) @map("created_at")
+  updatedAt          DateTime                         @updatedAt @map("updated_at")
+
+  generation CreativeGeneration @relation(fields: [generationId], references: [id], onDelete: Cascade)
+
+  @@index([generationId, createdAt])
+  @@index([type, status, createdAt])
+  @@map("creative_generation_mutations")
 }
 
 model CreativeProviderReplayLedger {
@@ -597,25 +644,25 @@ model CreativeProviderReplayLedger {
 }
 
 model CreativeCreditLedger {
-  id                String                     @id @default(cuid())
-  generationId      String                     @map("generation_id")
-  quotaReservationId String?                   @unique @map("quota_reservation_id")
-  actorId           String?                    @map("actor_id")
-  actorHandle       String?                    @map("actor_handle")
-  workspace         String
-  mode              String
-  reservationAmount Int                        @map("reservation_amount")
-  settledAmount     Int                        @default(0) @map("settled_amount")
-  refundedAmount    Int                        @default(0) @map("refunded_amount")
-  status            CreativeCreditLedgerStatus
-  reasonCode        String?                    @map("reason_code")
-  metadata          Json?
-  reservedAt        DateTime                   @default(now()) @map("reserved_at")
-  settledAt         DateTime?                  @map("settled_at")
-  refundedAt        DateTime?                  @map("refunded_at")
-  cancelledAt       DateTime?                  @map("cancelled_at")
-  createdAt         DateTime                   @default(now()) @map("created_at")
-  updatedAt         DateTime                   @updatedAt @map("updated_at")
+  id                 String                     @id @default(cuid())
+  generationId       String                     @map("generation_id")
+  quotaReservationId String?                    @unique @map("quota_reservation_id")
+  actorId            String?                    @map("actor_id")
+  actorHandle        String?                    @map("actor_handle")
+  workspace          String
+  mode               String
+  reservationAmount  Int                        @map("reservation_amount")
+  settledAmount      Int                        @default(0) @map("settled_amount")
+  refundedAmount     Int                        @default(0) @map("refunded_amount")
+  status             CreativeCreditLedgerStatus
+  reasonCode         String?                    @map("reason_code")
+  metadata           Json?
+  reservedAt         DateTime                   @default(now()) @map("reserved_at")
+  settledAt          DateTime?                  @map("settled_at")
+  refundedAt         DateTime?                  @map("refunded_at")
+  cancelledAt        DateTime?                  @map("cancelled_at")
+  createdAt          DateTime                   @default(now()) @map("created_at")
+  updatedAt          DateTime                   @updatedAt @map("updated_at")
 
   actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
@@ -641,7 +688,7 @@ model CreativeQuotaWindow {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actor        User?                      @relation(fields: [actorId], references: [id], onDelete: SetNull)
   reservations CreativeQuotaReservation[]
 
   @@unique([actorHandle, workspace, windowType, windowStart])
@@ -668,7 +715,7 @@ model CreativeQuotaReservation {
   updatedAt     DateTime                       @updatedAt @map("updated_at")
 
   quotaWindow CreativeQuotaWindow @relation(fields: [quotaWindowId], references: [id], onDelete: Cascade)
-  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actor       User?               @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([generationId])
   @@index([actorHandle, workspace, createdAt])

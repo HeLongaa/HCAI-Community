@@ -435,9 +435,9 @@ addCheck(
 
 addCheck(
   'admin',
-  'admin generation history is queryable as a read-only creative operations panel',
-  includesAll(app, ['admin-generation-history', 'Generation history', 'adminService.creativeGenerations', 'adminService.creativeGeneration', 'AdminCreativeGenerationHistoryQuery', 'generationRows', 'generationNextCursor', 'toggleGenerationDetail', 'loadMoreGenerations', 'focusGenerationMediaAsset', 'creative_generation', 'promptHash', 'outputAssetIds', 'reviewRequired', 'dateFrom', 'dateTo', 'providerReplayEvidence', 'providerReplayEvidenceSummary']),
-  'typed generation history service, filters, detail, pagination, media link, audit link, and read-only provider replay evidence',
+  'admin generation history exposes permission-scoped creative operations',
+  includesAll(app, ['admin-generation-history', 'Generation history', 'adminService.creativeGenerations', 'adminService.creativeGeneration', 'cancelCreativeGeneration', 'requestCreativeGenerationRetry', 'requestCreativeGenerationManualReplay', 'runGenerationMutation', 'admin:creative:cancel', 'admin:creative:retry', 'admin:creative:replay', 'generationRows', 'generationNextCursor', 'toggleGenerationDetail', 'loadMoreGenerations', 'focusGenerationMediaAsset', 'creative_generation', 'promptHash', 'outputAssetIds', 'retryOfId', 'attemptNumber', 'providerReplayEvidence', 'mutationEvidence']),
+  'typed generation history, safe mutation controls, child-attempt evidence, reviewed replay, media links, and audit links',
 )
 
 addCheck(

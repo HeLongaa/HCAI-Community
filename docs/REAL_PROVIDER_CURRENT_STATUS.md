@@ -2,7 +2,7 @@
 
 This is the first decision page to read before starting any real-provider work. It compresses the current provider readiness state into one handoff: what is usable now, what is fixture-only, what remains deferred, and what requires explicit approval.
 
-Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, read-only Admin history, provider budget observability, a default-disabled staging callback API, and a default-disabled dedicated polling worker are available. Real paid-provider calls, real Provider webhook target registration/delivery, external provider alert delivery, enabled real polling, manual replay endpoints, Admin generation mutations, and production paid-provider enablement remain no-go.
+Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, Admin generation history and V1-08 internal mutation controls, provider budget observability, a default-disabled staging callback API, and a default-disabled dedicated polling worker are available. Real paid-provider calls, real Provider webhook target registration/delivery, external provider alert delivery, enabled real polling, real Provider mutation clients, and production paid-provider enablement remain no-go. V1-08 manual replay is an internal, two-person-reviewed lifecycle replay and performs no Provider network request.
 
 V1-04 now records conditional implementation-planning decisions for all four modalities in
 `docs/V1_PROVIDER_DECISION_MATRIX.md` and `config/v1-provider-matrix.json`. These selections define primary/backup
@@ -91,12 +91,13 @@ These paths are available without real-provider approval:
 - Durable generation history records prompt hash/preview, provider ids, usage, quota, credit, safety, policy, lifecycle timestamps, and linked output media assets.
 - Durable quota and credit ledgers reserve, commit, release, settle, refund, and dedupe accounting decisions.
 - Media scan governance gates generated asset downloads.
-- Admin generation history provides read-only filters and details.
+- Admin generation history provides filters, details, dedicated cancel/retry/replay permissions, and safe mutation evidence.
 - Admin generation history exposes sanitized provider cost/budget summaries and safe provider replay evidence.
 - Admin operations metrics and Prometheus-compatible exporter expose low-cardinality provider budget and cost observability.
 - Internal provider budget notifications route to audit readers from persisted safe audit rows.
 - The Provider callback route can be exercised with signed fixtures behind its independent staging-only kill switch without making an outbound Provider request.
 - The Provider polling worker can be exercised with injected status fixtures or injected `fetch` behind independent staging-only kill switches without making an external Provider request.
+- User and Admin generation cancellation, user-confirmed child retries, and two-person manual lifecycle replay can be exercised without a default Provider mutation client.
 
 ## Fixture-Only Foundations
 
@@ -131,8 +132,8 @@ These are intentionally unavailable:
 - real provider network calls
 - real Provider webhook target registration or callback delivery
 - enabled real provider status polling
-- manual replay endpoint
-- Admin retry, cancel, refund, force-review, replay, recovery, or settlement mutations
+- real Provider cancel/retry client registration
+- Admin refund, force-review, recovery, or manual settlement mutations
 - real external Slack, webhook, or email delivery for provider budget alerts
 - provider billing reconciliation, invoice matching, checkout, subscription, or payment-provider refund flow
 - production paid-provider mode
@@ -191,8 +192,8 @@ Not allowed without explicit approval:
 1. Additional real Provider SDKs/HTTP clients or default registration/enabling of the V1-05 client.
 2. Real provider network calls.
 3. Real outbound provider budget alerts.
-4. Real callback delivery, enabled real polling, or a manual replay endpoint.
-5. Admin mutation controls.
+4. Real callback delivery, enabled real polling, or any manual replay based on live Provider traffic.
+5. Real Provider mutation clients or broader Admin refund/settlement controls.
 6. Production paid-provider enablement.
 
 ## Validation Gate

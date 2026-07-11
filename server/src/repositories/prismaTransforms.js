@@ -205,6 +205,8 @@ export const getCreativeGenerationDto = (generation) => ({
   policy: generation.policy ?? null,
   providerRequestId: generation.providerRequestId ?? null,
   providerJobId: generation.providerJobId ?? null,
+  retryOfId: generation.retryOfId ?? null,
+  attemptNumber: Number(generation.attemptNumber ?? 1),
   errorCode: generation.errorCode ?? null,
   errorMessagePreview: generation.errorMessagePreview ? safeErrorPreview(generation.errorMessagePreview) : null,
   startedAt: generation.startedAt ? generation.startedAt.toISOString() : null,
@@ -212,6 +214,25 @@ export const getCreativeGenerationDto = (generation) => ({
   failedAt: generation.failedAt ? generation.failedAt.toISOString() : null,
   createdAt: generation.createdAt ? generation.createdAt.toISOString() : '',
   updatedAt: generation.updatedAt ? generation.updatedAt.toISOString() : '',
+})
+
+export const getCreativeGenerationMutationDto = (mutation) => ({
+  id: String(mutation.id),
+  generationId: mutation.generationId,
+  type: mutation.type,
+  status: mutation.status,
+  idempotencyKey: mutation.idempotencyKey,
+  requestedById: mutation.requestedById ?? null,
+  requestedByHandle: mutation.requestedByHandle ?? null,
+  reasonCode: mutation.reasonCode,
+  notePreview: mutation.notePreview ?? null,
+  reviewId: mutation.reviewId ?? null,
+  targetGenerationId: mutation.targetGenerationId ?? null,
+  safeMetadata: mutation.safeMetadata ?? null,
+  result: mutation.result ?? null,
+  completedAt: mutation.completedAt ? mutation.completedAt.toISOString() : null,
+  createdAt: mutation.createdAt ? mutation.createdAt.toISOString() : '',
+  updatedAt: mutation.updatedAt ? mutation.updatedAt.toISOString() : '',
 })
 
 export const getCreativeProviderReplayDto = (replay) => ({

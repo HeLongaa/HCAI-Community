@@ -120,7 +120,7 @@ addCheck(
   'data governance downstream implementation owners are frozen',
   sameMembers(
     manifest.dataGovernancePolicy.implementationTasks,
-    ['V1-05', 'V1-06', 'V1-07', 'V1-48', 'V1-49', 'V1-50', 'V1-51', 'V1-53', 'V1-54', 'V1-59', 'V1-60', 'V1-61', 'V1-62', 'V1-63', 'V1-67', 'V1-69', 'V1-73', 'V1-78'],
+    ['V1-05', 'V1-06', 'V1-07', 'V1-08', 'V1-48', 'V1-49', 'V1-50', 'V1-51', 'V1-53', 'V1-54', 'V1-59', 'V1-60', 'V1-61', 'V1-62', 'V1-63', 'V1-67', 'V1-69', 'V1-73', 'V1-78'],
   ),
   manifest.dataGovernancePolicy.implementationTasks.join(', '),
 )

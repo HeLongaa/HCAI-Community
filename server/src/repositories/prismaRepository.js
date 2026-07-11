@@ -16,6 +16,7 @@ import {
   getLedgerDto,
   getCommentDto,
   getCreativeGenerationDto,
+  getCreativeGenerationMutationDto,
   getCreativeProviderReplayDto,
   getMediaAssetDto,
   getMediaScanJobDto,
@@ -591,6 +592,8 @@ const createPrismaRepository = async (fallbackRepository) => {
     policy: payload.policy ?? undefined,
     providerRequestId: payload.providerRequestId ?? null,
     providerJobId: payload.providerJobId ?? null,
+    retryOfId: payload.retryOfId ?? null,
+    attemptNumber: Number(payload.attemptNumber ?? 1),
     errorCode: payload.errorCode ?? null,
     errorMessagePreview: payload.errorMessagePreview ?? null,
     startedAt: asDateOrNull(payload.startedAt),
@@ -3998,6 +4001,116 @@ const createPrismaRepository = async (fallbackRepository) => {
     },
   }
 
+  const creativeGenerationMutations = {
+    record: async (payload, actor) => {
+      const idempotencyKey = String(payload.idempotencyKey ?? '')
+      const existing = await client.creativeGenerationMutation.findUnique({
+        where: { idempotencyKey },
+      })
+      if (existing) {
+        return {
+          created: false,
+          mutation: getCreativeGenerationMutationDto(existing),
+        }
+      }
+
+      let row
+      try {
+        row = await client.creativeGenerationMutation.create({
+          data: {
+            id: payload.id ?? `generation-mutation-${randomUUID()}`,
+            generationId: String(payload.generationId),
+            type: payload.type,
+            status: payload.status ?? 'requested',
+            idempotencyKey,
+            requestedById: payload.requestedById ?? actor?.id ?? null,
+            requestedByHandle: payload.requestedByHandle ?? actor?.handle ?? null,
+            reasonCode: payload.reasonCode,
+            notePreview: payload.notePreview ?? null,
+            reviewId: payload.reviewId ?? null,
+            targetGenerationId: payload.targetGenerationId ?? null,
+            safeMetadata: payload.safeMetadata ?? undefined,
+            result: payload.result ?? undefined,
+            completedAt: asDateOrNull(payload.completedAt),
+            createdAt: payload.createdAt ? new Date(payload.createdAt) : undefined,
+          },
+        })
+      } catch (error) {
+        if (error?.code !== 'P2002') throw error
+        const duplicate = await client.creativeGenerationMutation.findUnique({ where: { idempotencyKey } })
+        if (!duplicate) throw error
+        return {
+          created: false,
+          mutation: getCreativeGenerationMutationDto(duplicate),
+        }
+      }
+
+      await recordAudit({
+        actor,
+        action: 'creative.generation_mutation.requested',
+        resourceType: 'creative_generation_mutation',
+        resourceId: row.id,
+        metadata: {
+          generationId: row.generationId,
+          mutationType: row.type,
+          mutationStatus: row.status,
+          reasonCode: row.reasonCode,
+        },
+      })
+      return {
+        created: true,
+        mutation: getCreativeGenerationMutationDto(row),
+      }
+    },
+    find: async (id) => {
+      const row = await client.creativeGenerationMutation.findUnique({ where: { id: String(id) } })
+      return row ? getCreativeGenerationMutationDto(row) : null
+    },
+    findByIdempotencyKey: async (key) => {
+      const row = await client.creativeGenerationMutation.findUnique({
+        where: { idempotencyKey: String(key) },
+      })
+      return row ? getCreativeGenerationMutationDto(row) : null
+    },
+    listForGeneration: async (generationId) => {
+      const rows = await client.creativeGenerationMutation.findMany({
+        where: { generationId: String(generationId) },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      })
+      return { items: rows.map(getCreativeGenerationMutationDto) }
+    },
+    update: async (id, patch = {}, actor) => {
+      const row = await client.creativeGenerationMutation.update({
+        where: { id: String(id) },
+        data: {
+          ...compactObject({
+            status: patch.status,
+            reasonCode: patch.reasonCode,
+            notePreview: patch.notePreview,
+            reviewId: patch.reviewId,
+            targetGenerationId: patch.targetGenerationId,
+            safeMetadata: patch.safeMetadata,
+            result: patch.result,
+          }),
+          ...(patch.completedAt === undefined ? {} : { completedAt: asDateOrNull(patch.completedAt) }),
+        },
+      })
+      await recordAudit({
+        actor,
+        action: 'creative.generation_mutation.updated',
+        resourceType: 'creative_generation_mutation',
+        resourceId: row.id,
+        metadata: {
+          generationId: row.generationId,
+          mutationType: row.type,
+          mutationStatus: row.status,
+          reasonCode: row.reasonCode,
+        },
+      })
+      return getCreativeGenerationMutationDto(row)
+    },
+  }
+
   const creativeProviderReplays = {
     record: async (payload, actor) => {
       const idempotencyKey = String(payload.idempotencyKey ?? '')
@@ -5820,6 +5933,33 @@ const createPrismaRepository = async (fallbackRepository) => {
   }
 
   const adminReviews = {
+    create: async (payload, actor) => {
+      const row = await client.adminReview.create({
+        data: {
+          id: payload.id,
+          queue: payload.queue,
+          status: payload.status ?? 'Pending review',
+          title: payload.title,
+          owner: payload.owner,
+          note: payload.note ?? '',
+          metadata: payload.metadata ?? undefined,
+        },
+        include: {
+          reviewedBy: { include: { profile: true } },
+        },
+      })
+      await recordAudit({
+        actor,
+        action: 'admin.review.requested',
+        resourceType: 'admin_review',
+        resourceId: row.id,
+        metadata: {
+          queue: row.queue,
+          kind: asObject(row.metadata)?.kind ?? null,
+        },
+      })
+      return getAdminReviewDto(row)
+    },
     find: async (id) => {
       const row = await client.adminReview.findUnique({
         where: { id: String(id) },
@@ -6051,6 +6191,7 @@ const createPrismaRepository = async (fallbackRepository) => {
     providerLifecycleAudit,
     providerBudgetAudit,
     creativeGenerations,
+    creativeGenerationMutations,
     creativeProviderReplays,
     creativeCredits,
     creativeQuota,

@@ -8,6 +8,7 @@ import { signProviderCallbackNonce, signProviderCallbackPayload } from '../../cr
 import { createReplicateStagingPrediction } from '../../creative/replicateStagingProvider.js'
 import { repositories } from '../../repositories/index.js'
 import { createSeedRepository } from '../../repositories/seedRepository.js'
+import { sha256 } from '../../creative/generationRecords.js'
 import { registerMediaRoutes } from '../media/routes.js'
 import { registerCreativeRoutes } from './routes.js'
 
@@ -1248,5 +1249,118 @@ test('POST /api/creative/generations routes policy review outputs to media revie
     } else {
       process.env.MEDIA_SCAN_PROVIDER = previousProvider
     }
+  }
+})
+
+test('POST generation cancel is owner-scoped and idempotent', async () => {
+  const repository = createSeedRepository()
+  const generationId = `gen-route-cancel-${Date.now()}`
+  await repository.creativeGenerations.create({
+    id: generationId,
+    actorId: 'demo-user-creator',
+    actorHandle: 'promptlin',
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'mock',
+    providerMode: 'mock',
+    status: 'queued',
+    promptHash: sha256('Cancel route fixture'),
+    promptPreview: 'Cancel route fixture',
+    inputAssetIds: [],
+    parameterKeys: [],
+  }, { id: 'demo-user-creator', handle: 'promptlin' })
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+  }))
+  const body = {
+    idempotencyKey: `cancel:${generationId}:request-1`,
+    reasonCode: 'user_cancelled',
+  }
+  try {
+    const denied = await requestJson(server.url, `/api/creative/generations/${generationId}/cancel`, {
+      body: { ...body, idempotencyKey: `${body.idempotencyKey}:other` },
+      token: 'demo-access.launchteam',
+    })
+    assert.equal(denied.status, 403)
+
+    const cancelled = await requestJson(server.url, `/api/creative/generations/${generationId}/cancel`, {
+      body,
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(cancelled.status, 200)
+    assert.equal(cancelled.payload.data.generation.status, 'cancelled')
+    assert.equal(cancelled.payload.data.mutation.status, 'succeeded')
+
+    const duplicate = await requestJson(server.url, `/api/creative/generations/${generationId}/cancel`, {
+      body,
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(duplicate.status, 200)
+    assert.equal(duplicate.payload.data.duplicate, true)
+    assert.equal(duplicate.payload.data.mutation.id, cancelled.payload.data.mutation.id)
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST generation retry creates a child attempt without storing a raw prompt in its record', async () => {
+  const repository = createSeedRepository()
+  const generationId = `gen-route-retry-${Date.now()}`
+  const prompt = 'Retry route fixture'
+  await repository.creativeGenerations.create({
+    id: generationId,
+    actorId: 'demo-user-creator',
+    actorHandle: 'promptlin',
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'mock',
+    providerMode: 'mock',
+    status: 'failed',
+    promptHash: sha256(prompt),
+    promptPreview: prompt,
+    inputAssetIds: [],
+    parameterKeys: ['seed'],
+    attemptNumber: 1,
+  }, { id: 'demo-user-creator', handle: 'promptlin' })
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+  }))
+  const body = {
+    idempotencyKey: `retry:${generationId}:request-1`,
+    reasonCode: 'user_retry',
+    generation: {
+      workspace: 'image',
+      mode: 'text_to_image',
+      providerId: 'mock',
+      prompt,
+      parameters: { seed: 7 },
+    },
+  }
+  try {
+    const retried = await requestJson(server.url, `/api/creative/generations/${generationId}/retry`, {
+      body,
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(retried.status, 200)
+    assert.equal(retried.payload.data.duplicate, false)
+    assert.equal(retried.payload.data.mutation.status, 'succeeded')
+    assert.equal(retried.payload.data.generation.generationRecord.retryOfId, generationId)
+    assert.equal(retried.payload.data.generation.generationRecord.attemptNumber, 2)
+    assert.notEqual(retried.payload.data.generation.id, generationId)
+
+    const child = await repository.creativeGenerations.find(retried.payload.data.generation.id)
+    assert.equal(child.retryOfId, generationId)
+    assert.equal(child.attemptNumber, 2)
+    assert.equal(Object.hasOwn(child, 'prompt'), false)
+
+    const duplicate = await requestJson(server.url, `/api/creative/generations/${generationId}/retry`, {
+      body,
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(duplicate.status, 200)
+    assert.equal(duplicate.payload.data.duplicate, true)
+    assert.equal(duplicate.payload.data.targetGeneration.id, child.id)
+  } finally {
+    await server.close()
   }
 })

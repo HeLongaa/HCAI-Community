@@ -18,6 +18,9 @@ import type {
   AdminSecurityEventListQuery,
   ApiLedgerEntry,
   ApiCreativeGenerationRecord,
+  ApiCreativeGenerationMutationResponse,
+  AdminManualReplayRequest,
+  CreativeGenerationMutationRequest,
   ApiPointsSummary,
   ApiPaginationMeta,
   PointAdjustmentPolicyHistoryItem,
@@ -61,6 +64,15 @@ export const adminService = {
   },
   async creativeGeneration(id: string) {
     return api.get<AdminCreativeGenerationHistoryPage['items'][number]>(`/admin/creative/generations/${id}`)
+  },
+  async cancelCreativeGeneration(id: string, body: CreativeGenerationMutationRequest) {
+    return api.post<ApiCreativeGenerationMutationResponse>(`/admin/creative/generations/${id}/cancel`, body)
+  },
+  async requestCreativeGenerationRetry(id: string, body: CreativeGenerationMutationRequest) {
+    return api.post<ApiCreativeGenerationMutationResponse>(`/admin/creative/generations/${id}/retry-requests`, body)
+  },
+  async requestCreativeGenerationManualReplay(id: string, body: AdminManualReplayRequest) {
+    return api.post<ApiCreativeGenerationMutationResponse>(`/admin/creative/generations/${id}/manual-replay-requests`, body)
   },
   async exportAuditJson(query?: AdminAuditListQuery) {
     return api.text(withQuery('/admin/audit/export', query))

@@ -416,6 +416,8 @@ export const serializeCreativeGeneration = (generation) => ({
   policy: generation.policy ?? null,
   providerRequestId: generation.providerRequestId ?? null,
   providerJobId: generation.providerJobId ?? null,
+  retryOfId: generation.retryOfId ?? null,
+  attemptNumber: Number(generation.attemptNumber ?? 1),
   errorCode: generation.errorCode ?? null,
   errorMessagePreview: generation.errorMessagePreview ? safeErrorPreview(generation.errorMessagePreview) : null,
   startedAt: generation.startedAt ?? null,
@@ -423,6 +425,25 @@ export const serializeCreativeGeneration = (generation) => ({
   failedAt: generation.failedAt ?? null,
   createdAt: generation.createdAt ?? '',
   updatedAt: generation.updatedAt ?? '',
+})
+
+export const serializeCreativeGenerationMutation = (mutation) => ({
+  id: String(mutation.id),
+  generationId: String(mutation.generationId),
+  type: mutation.type,
+  status: mutation.status,
+  idempotencyKey: mutation.idempotencyKey,
+  requestedById: mutation.requestedById ?? null,
+  requestedByHandle: mutation.requestedByHandle ?? null,
+  reasonCode: mutation.reasonCode,
+  notePreview: mutation.notePreview ?? null,
+  reviewId: mutation.reviewId ?? null,
+  targetGenerationId: mutation.targetGenerationId ?? null,
+  safeMetadata: mutation.safeMetadata ?? null,
+  result: mutation.result ?? null,
+  completedAt: mutation.completedAt ?? null,
+  createdAt: mutation.createdAt ?? '',
+  updatedAt: mutation.updatedAt ?? '',
 })
 
 export const serializeCreativeProviderReplay = (replay) => ({

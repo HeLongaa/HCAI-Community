@@ -405,11 +405,23 @@ Moderation-blocked and quota-exceeded requests do not reserve credits or create 
 
 ### `GET /admin/creative/generations`
 
-Requires `admin:audit:read`. Returns read-only creative generation history for operators. Supports `userHandle`/`actorHandle`, `workspace`, `mode`, `providerId`, `status`, `reviewRequired`, `mediaAssetId`, `dateFrom`, `dateTo`, `cursor`, and `limit` filters. The response uses the safe durable generation record shape: prompt hash/preview only, no raw prompt.
+Requires `admin:audit:read`. Returns creative generation history for operators. Supports `userHandle`/`actorHandle`, `workspace`, `mode`, `providerId`, `status`, `reviewRequired`, `mediaAssetId`, `dateFrom`, `dateTo`, `cursor`, and `limit` filters. The response uses the safe durable generation record shape: prompt hash/preview only, no raw prompt, plus safe replay and mutation evidence summaries.
 
 ### `GET /admin/creative/generations/:id`
 
-Requires `admin:audit:read`. Returns a single safe creative generation record with linked `outputAssetIds`, `usage`, `quota`, `credit`, `safety`, and `policy` metadata. This endpoint is read-only; retry, cancel, force-review, and refund controls remain out of scope.
+Requires `admin:audit:read`. Returns a single safe creative generation record with linked `outputAssetIds`, `usage`, `quota`, `credit`, `safety`, `policy`, retry relationship, replay evidence, and mutation evidence metadata.
+
+### `POST /admin/creative/generations/:id/cancel`
+
+Requires `admin:creative:cancel`. Cancels only queued/running generations. Provider jobs require an explicitly injected cancellation adapter; no default network client is registered. Credits and quota are released only when no Provider charge is confirmed.
+
+### `POST /admin/creative/generations/:id/retry-requests`
+
+Requires `admin:creative:retry`. Creates a one-time authorization for the owner to resubmit matching inputs. Admin operators cannot reconstruct or submit raw prompts.
+
+### `POST /admin/creative/generations/:id/manual-replay-requests`
+
+Requires `admin:creative:replay`. Accepts only allowlisted lifecycle evidence and creates an Admin review. Approval also requires `admin:queue:review`, cannot be performed by the requester, and writes through the durable replay ledger before applying side effects.
 
 ### `POST /points/redemptions`
 

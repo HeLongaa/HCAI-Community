@@ -290,6 +290,38 @@ export const parseCreateCreativeGenerationRequest = (body) => {
   }
 }
 
+const requireIdempotencyKey = (body) => {
+  const value = requireText(body, 'idempotencyKey')
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9:._-]{7,127}$/.test(value)) {
+    throw validationFailed('idempotencyKey must be 8-128 safe characters')
+  }
+  return value
+}
+
+const parseGenerationMutationReason = (body, fallback) => {
+  const reasonCode = optionalText(body, 'reasonCode', fallback)
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9:._-]{0,63}$/.test(reasonCode)) {
+    throw validationFailed('reasonCode must be 1-64 safe identifier characters')
+  }
+  return {
+    idempotencyKey: requireIdempotencyKey(body),
+    reasonCode,
+    note: optionalText(body, 'note', '').slice(0, 240),
+  }
+}
+
+export const parseCreativeGenerationCancelRequest = (body) =>
+  parseGenerationMutationReason(body, 'user_cancelled')
+
+export const parseAdminCreativeGenerationMutationRequest = (body) =>
+  parseGenerationMutationReason(body, 'admin_requested')
+
+export const parseCreativeGenerationRetryRequest = (body) => ({
+  ...parseGenerationMutationReason(body, 'user_retry'),
+  authorizationMutationId: optionalText(body, 'authorizationMutationId', null),
+  generation: parseCreateCreativeGenerationRequest(body.generation ?? {}),
+})
+
 export const parseCompleteMediaUploadRequest = (body) => ({
   checksum: optionalText(body, 'checksum', ''),
   detectedContentType: optionalText(body, 'detectedContentType', ''),

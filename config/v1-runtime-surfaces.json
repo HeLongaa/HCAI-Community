@@ -225,6 +225,15 @@
       "ownerTasks": ["V1-07"]
     },
     {
+      "id": "server-generation-mutation-boundary",
+      "area": "provider-lifecycle",
+      "classification": "production_capable",
+      "paths": ["server/src/modules/creative/routes.js", "server/src/modules/admin/routes.js", "server/src/creative/generationMutationService.js", "server/src/creative/manualReplayRequestService.js", "server/src/creative/providerReplayIntegration.js", "src/features/admin/AdminPage.tsx"],
+      "markers": ["providerMutationAdapters", "creativeGenerationMutations", "manual_provider_replay", "admin:creative:replay"],
+      "productionDisposition": "retain_internal_controls_and_keep_real_provider_mutation_clients_unregistered_until_approved",
+      "ownerTasks": ["V1-08"]
+    },
+    {
       "id": "fixture-smoke-and-simulation-profiles",
       "area": "quality-gates",
       "classification": "fixture_only",

@@ -6,6 +6,7 @@ import { readJsonBody } from '../../common/http/request.js'
 import {
   parseAdminAuditListQuery,
   parseAdminCreativeGenerationListQuery,
+  parseAdminCreativeGenerationMutationRequest,
   parseAdminOperationsMetricsQuery,
   parseAdminPointsLedgerQuery,
   parseAdminReviewActionRequest,
@@ -23,8 +24,17 @@ import { getProtectedRolePermissions } from '../../auth/permissions.js'
 import { defaultPointAdjustmentPolicy, getDirectLimitForActor } from '../../points/adjustmentPolicy.js'
 import { safeCreativeCreditMetadata, safeErrorPreview, safeProviderJobIdEvidence } from '../../creative/generationRecords.js'
 import { safeProviderLifecycleEvidenceIdentifier } from '../../repositories/providerLifecycleWiring.js'
+import {
+  cancelCreativeGeneration,
+  createAdminRetryAuthorization,
+} from '../../creative/generationMutationService.js'
+import {
+  requestManualProviderReplay,
+  resolveManualProviderReplayReview,
+} from '../../creative/manualReplayRequestService.js'
 
 const isPointAdjustmentReview = (review) => review?.queue === 'points' || review?.metadata?.kind === 'point_adjustment'
+const isManualProviderReplayReview = (review) => review?.metadata?.kind === 'manual_provider_replay'
 
 const replaySideEffectCompleted = (replay) =>
   replay?.sideEffectResult?.completed === true
@@ -283,13 +293,41 @@ const buildProviderReplayEvidence = async (generation, replayLedger) => {
   }
 }
 
-const attachProviderReplayEvidence = async (generation, replayLedger) => ({
+const summarizeGenerationMutation = (mutation) => mutation
+  ? {
+      id: safeProviderLifecycleEvidenceIdentifier(mutation.id),
+      type: safeProviderLifecycleEvidenceIdentifier(mutation.type),
+      status: safeProviderLifecycleEvidenceIdentifier(mutation.status),
+      reasonCode: safeProviderLifecycleEvidenceIdentifier(mutation.reasonCode),
+      requestedByHandle: safeProviderLifecycleEvidenceIdentifier(mutation.requestedByHandle),
+      reviewId: safeProviderLifecycleEvidenceIdentifier(mutation.reviewId),
+      targetGenerationId: safeProviderLifecycleEvidenceIdentifier(mutation.targetGenerationId),
+      completedAt: mutation.completedAt ?? null,
+      createdAt: mutation.createdAt ?? null,
+    }
+  : null
+
+const buildGenerationMutationEvidence = async (generation, mutationRepository) => {
+  if (!mutationRepository?.listForGeneration) {
+    return { available: false, count: 0, latest: null }
+  }
+  const page = await mutationRepository.listForGeneration(generation.id)
+  const mutations = page?.items ?? []
+  return {
+    available: true,
+    count: mutations.length,
+    latest: summarizeGenerationMutation(mutations.at(-1) ?? null),
+  }
+}
+
+const attachProviderReplayEvidence = async (generation, replayLedger, mutationRepository) => ({
   ...sanitizeCreativeGenerationHistory(generation),
   providerReplayEvidence: await buildProviderReplayEvidence(generation, replayLedger),
+  mutationEvidence: await buildGenerationMutationEvidence(generation, mutationRepository),
 })
 
-const attachProviderReplayEvidenceToPage = async (items, replayLedger) =>
-  Promise.all(items.map((generation) => attachProviderReplayEvidence(generation, replayLedger)))
+const attachProviderReplayEvidenceToPage = async (items, replayLedger, mutationRepository) =>
+  Promise.all(items.map((generation) => attachProviderReplayEvidence(generation, replayLedger, mutationRepository)))
 
 const csvCell = (value) => {
   const textValue = String(value ?? '')
@@ -327,7 +365,9 @@ const securityAlertExportJson = (artifact) => JSON.stringify(artifact, null, 2)
 
 const operationsMetricsExportJson = (artifact) => JSON.stringify(artifact, null, 2)
 
-export const registerAdminRoutes = (router) => {
+export const registerAdminRoutes = (router, options = {}) => {
+  const routeRepositories = options.repositories ?? repositories
+  const providerMutationAdapters = options.providerMutationAdapters ?? {}
   router.add('GET', '/api/admin/permissions', async (_request, response, context) => {
     requirePermission(context, 'admin:audit:read')
     const permissions = await repositories.authorization.listPermissions()
@@ -382,7 +422,7 @@ export const registerAdminRoutes = (router) => {
     const actor = requirePermission(context, 'admin:queue:review')
     const body = (await readJsonBody(request)) ?? {}
     const action = parseAdminReviewActionRequest(body)
-    const current = await repositories.adminReviews.find(context.params.id)
+    const current = await routeRepositories.adminReviews.find(context.params.id)
     if (!current) {
       throw notFound(`/api/admin/reviews/${context.params.id}`)
     }
@@ -392,9 +432,25 @@ export const registerAdminRoutes = (router) => {
         throw validationFailed('point adjustment reviews require a different approver')
       }
     }
-    const reviewed = await repositories.adminReviews.review(context.params.id, action, actor)
+    if (!current.decision && isManualProviderReplayReview(current)) {
+      requirePermission(context, 'admin:creative:replay')
+      if (action.decision === 'approve' && current.metadata?.requestedBy === actor.handle) {
+        throw validationFailed('manual Provider replay requires a different approver')
+      }
+    }
+    const reviewed = await routeRepositories.adminReviews.review(context.params.id, action, actor)
     if (!reviewed) {
       throw notFound(`/api/admin/reviews/${context.params.id}`)
+    }
+    if (isManualProviderReplayReview(current) && !current.decision) {
+      const mutation = await resolveManualProviderReplayReview({
+        review: current,
+        decision: action.decision,
+        actor,
+        repositories: routeRepositories,
+      })
+      ok(response, { ...reviewed, mutation })
+      return
     }
     ok(response, reviewed)
   })
@@ -428,8 +484,12 @@ export const registerAdminRoutes = (router) => {
 
   router.add('GET', '/api/admin/creative/generations', async (_request, response, context) => {
     requirePermission(context, 'admin:audit:read')
-    const page = await repositories.creativeGenerations.list(parseAdminCreativeGenerationListQuery(context.query))
-    const items = await attachProviderReplayEvidenceToPage(page.items, repositories.creativeProviderReplays)
+    const page = await routeRepositories.creativeGenerations.list(parseAdminCreativeGenerationListQuery(context.query))
+    const items = await attachProviderReplayEvidenceToPage(
+      page.items,
+      routeRepositories.creativeProviderReplays,
+      routeRepositories.creativeGenerationMutations,
+    )
     ok(response, items, {
       pagination: {
         limit: page.limit,
@@ -440,11 +500,50 @@ export const registerAdminRoutes = (router) => {
 
   router.add('GET', '/api/admin/creative/generations/:id', async (_request, response, context) => {
     requirePermission(context, 'admin:audit:read')
-    const generation = await repositories.creativeGenerations.find(context.params.id)
+    const generation = await routeRepositories.creativeGenerations.find(context.params.id)
     if (!generation) {
       throw notFound(`/api/admin/creative/generations/${context.params.id}`)
     }
-    ok(response, await attachProviderReplayEvidence(generation, repositories.creativeProviderReplays))
+    ok(response, await attachProviderReplayEvidence(
+      generation,
+      routeRepositories.creativeProviderReplays,
+      routeRepositories.creativeGenerationMutations,
+    ))
+  })
+
+  router.add('POST', '/api/admin/creative/generations/:id/cancel', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:creative:cancel')
+    const payload = parseAdminCreativeGenerationMutationRequest((await readJsonBody(request)) ?? {})
+    ok(response, await cancelCreativeGeneration({
+      generationId: context.params.id,
+      actor,
+      repositories: routeRepositories,
+      request: payload,
+      providerMutationAdapters,
+      admin: true,
+    }))
+  })
+
+  router.add('POST', '/api/admin/creative/generations/:id/retry-requests', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:creative:retry')
+    const payload = parseAdminCreativeGenerationMutationRequest((await readJsonBody(request)) ?? {})
+    ok(response, await createAdminRetryAuthorization({
+      generationId: context.params.id,
+      actor,
+      repositories: routeRepositories,
+      request: payload,
+    }))
+  })
+
+  router.add('POST', '/api/admin/creative/generations/:id/manual-replay-requests', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:creative:replay')
+    const body = (await readJsonBody(request)) ?? {}
+    ok(response, await requestManualProviderReplay({
+      generationId: context.params.id,
+      actor,
+      repositories: routeRepositories,
+      body,
+    }))
   })
 
   router.add('GET', '/api/admin/security/events', async (_request, response, context) => {

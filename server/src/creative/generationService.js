@@ -45,6 +45,7 @@ export const getCreativeProviderCatalog = (source = process.env) => {
 export const executeCreativeGeneration = async ({
   request,
   actor,
+  generationId: generationIdOverride = null,
   source = process.env,
   now = new Date(),
   quotaRepository = null,
@@ -62,7 +63,7 @@ export const executeCreativeGeneration = async ({
     throw new Error(`Unsupported creative provider adapter: ${provider.id}`)
   }
 
-  const generationId = plannedGenerationId({ request, actor, provider })
+  const generationId = generationIdOverride ?? plannedGenerationId({ request, actor, provider })
   const policyResult = await applyCreativeGenerationPolicy({
     request,
     actor,
@@ -83,6 +84,9 @@ export const executeCreativeGeneration = async ({
       await quotaRepository.release(policyResult.quota.reservationId, error?.code ?? 'provider_adapter_failed', actor)
     }
     throw error
+  }
+  if (generationIdOverride) {
+    generated = { ...generated, id: generationId }
   }
   assertCreativeProviderAdapterContract(generated, { request, provider })
 
