@@ -249,6 +249,7 @@ Known gaps:
 | --- | --- |
 | V1-05 | Implemented default-disabled Provider secret and minimum-payload HTTP boundary; external calls remain approval-gated |
 | V1-06 | Implemented default-disabled callback authentication, zero-retention payload projection, replay claim, and safe audit boundary; real webhook delivery remains approval-gated |
+| V1-07 | Implemented default-disabled status polling projection, safe retry/timeout recovery, worker isolation, and audit boundary; real status reads remain approval-gated |
 | V1-48 | OAuth scopes, identifiers, unlink, region, and sessions |
 | V1-49 | PostgreSQL backup, expiry, restore, and deletion rehearsal |
 | V1-50 | Private object storage/CDN and lifecycle deletion |

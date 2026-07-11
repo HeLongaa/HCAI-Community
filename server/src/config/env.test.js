@@ -142,9 +142,16 @@ test('buildEnv validates worker lease settings', () => {
   )
 })
 
-test('buildEnv exposes creative provider polling worker settings disabled by default', () => {
+test('buildEnv validates and exposes creative provider polling worker settings', () => {
   const env = buildEnv({
-    NODE_ENV: 'development',
+    NODE_ENV: 'production',
+    ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_PROVIDER_MODE: 'replicate_staging',
+    CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+    CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-fixture-token',
+    CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+    CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED: 'true',
     CREATIVE_PROVIDER_POLLING_ENABLED: 'true',
     CREATIVE_PROVIDER_POLLING_WORKER_ENABLED: 'true',
     CREATIVE_PROVIDER_POLLING_MAX_AGE_SECONDS: '1800',
@@ -165,6 +172,28 @@ test('buildEnv exposes creative provider polling worker settings disabled by def
   assert.throws(
     () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_POLLING_INTERVAL_SECONDS: '0' }),
     /CREATIVE_PROVIDER_POLLING_INTERVAL_SECONDS must be a positive integer/,
+  )
+
+  assert.throws(
+    () => buildEnv({ CREATIVE_PROVIDER_POLLING_WORKER_ENABLED: 'true' }),
+    /CREATIVE_PROVIDER_POLLING_WORKER_ENABLED requires CREATIVE_PROVIDER_POLLING_ENABLED=true/,
+  )
+  assert.throws(
+    () => buildEnv({
+      NODE_ENV: 'production',
+      ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+      CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+      CREATIVE_PROVIDER_MODE: 'replicate_staging',
+      CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+      CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-fixture-token',
+      CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+      CREATIVE_PROVIDER_POLLING_ENABLED: 'true',
+    }),
+    /CREATIVE_PROVIDER_POLLING_ENABLED requires CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=true/,
+  )
+  assert.throws(
+    () => buildEnv({ CREATIVE_PROVIDER_POLLING_ENABLED: 'enabled' }),
+    /CREATIVE_PROVIDER_POLLING_ENABLED must be true or false/,
   )
 })
 

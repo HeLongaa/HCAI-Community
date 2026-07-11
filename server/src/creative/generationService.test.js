@@ -67,6 +67,11 @@ test('getCreativeProviderCatalog exposes Replicate staging shell as unavailable 
   assert.equal(provider.safeMetadata.networkCallsEnabled, false)
   assert.equal(provider.safeMetadata.callbackImplemented, true)
   assert.equal(provider.safeMetadata.callbackEnabled, false)
+  assert.equal(provider.safeMetadata.pollingImplemented, true)
+  assert.equal(provider.safeMetadata.pollingEnabled, false)
+  assert.equal(provider.safeMetadata.pollingWorkerEnabled, false)
+  assert.equal(provider.safeMetadata.statusClientImplemented, true)
+  assert.equal(provider.safeMetadata.statusClientEnabled, false)
 })
 
 test('getCreativeProviderCatalog exposes callback state without exposing its signing secret', () => {
@@ -90,6 +95,27 @@ test('getCreativeProviderCatalog exposes callback state without exposing its sig
   assert.equal(provider.safeMetadata.callbackImplemented, true)
   assert.equal(provider.safeMetadata.callbackEnabled, true)
   assert.equal(JSON.stringify(catalog).includes(source.CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET), false)
+})
+
+test('getCreativeProviderCatalog exposes polling readiness without exposing Provider credentials', () => {
+  const source = {
+    ...stagingSource,
+    CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED: 'true',
+    CREATIVE_PROVIDER_POLLING_ENABLED: 'true',
+    CREATIVE_PROVIDER_POLLING_WORKER_ENABLED: 'true',
+  }
+  const catalog = getCreativeProviderCatalog(source)
+  const provider = catalog.providers.find((candidate) => candidate.id === 'replicate-staging')
+
+  assert.ok(provider)
+  assert.equal(provider.enabled, false)
+  assert.equal(provider.safeMetadata.networkCallsEnabled, true)
+  assert.equal(provider.safeMetadata.pollingImplemented, true)
+  assert.equal(provider.safeMetadata.pollingEnabled, true)
+  assert.equal(provider.safeMetadata.pollingWorkerEnabled, true)
+  assert.equal(provider.safeMetadata.statusClientImplemented, true)
+  assert.equal(provider.safeMetadata.statusClientEnabled, true)
+  assert.equal(JSON.stringify(catalog).includes(source.CREATIVE_STAGING_PROVIDER_API_TOKEN), false)
 })
 
 test('executeCreativeGeneration returns deterministic mock output descriptors', async () => {

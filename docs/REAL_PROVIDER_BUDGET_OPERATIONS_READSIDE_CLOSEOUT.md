@@ -108,9 +108,9 @@ Fixture dry-run dispatch rows are marked with `dispatchMode=fixture_dry_run` or 
 These remain intentionally unavailable:
 
 - real external Slack, webhook, or email delivery for provider budget alerts
-- real provider SDK, default provider HTTP client, or paid provider network call
-- provider callback route
-- real provider polling worker or default provider status client
+- real provider SDK, product-route dispatch client, or paid provider network call
+- real Provider callback target/delivery
+- enabled real provider polling/status reads
 - manual replay endpoint
 - Admin retry, cancel, refund, force-review, replay, recovery, or manual settlement controls
 - provider billing reconciliation, invoice matching, or payment-provider refund flow

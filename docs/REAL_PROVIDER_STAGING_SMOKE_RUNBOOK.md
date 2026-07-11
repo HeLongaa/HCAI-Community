@@ -8,8 +8,8 @@ The smoke fails before closeout if its safe summary values contain the configure
 
 ## When To Use This Runbook
 
-Use this runbook after the mocked adapter contract and route fixture path pass, and before any task registers or enables
-the default-disabled Provider HTTP client, adds a Provider SDK, webhook endpoint, polling worker, or external-call staging
+Use this runbook after the mocked adapter contract and route fixture path pass, and before any task enables the
+default-disabled Provider HTTP/status clients, adds another Provider SDK or endpoint, or starts an external-call staging
 run.
 
 Do not use this runbook as production approval. Production paid-provider enablement remains no-go until a later explicit phase.
@@ -51,15 +51,18 @@ Secrets:
 
 Variables:
 
-| Name | Preflight value | Adapter-shell value | Callback-api value | Notes |
-| --- | --- | --- | --- | --- |
-| `CREATIVE_PROVIDER_RUNTIME_ENV` | `staging` | `staging` | `staging` | Required for any staging provider boundary. |
-| `CREATIVE_PROVIDER_MODE` | `disabled` | `replicate_staging` | `disabled` | Callback intake remains independent from outbound dispatch. |
-| `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED` | `true` | `false` | `true` | Preflight proves secret wiring without provider dispatch. |
-| `CREATIVE_STAGING_IMAGE_PROVIDER` | `replicate` | `replicate` | `replicate` | First candidate only. |
-| `CREATIVE_STAGING_PROVIDER_CONFIRMATION` | `staging-only` | `staging-only` | `staging-only` | Explicit human confirmation string. |
-| `CREATIVE_PROVIDER_CALLBACK_ENABLED` | `false` | `false` | `true` | Independent V1-06 callback kill switch. |
-| `CREATIVE_STAGING_SMOKE_MODE` | `preflight` | `adapter-shell` | `callback-api` | Selects the smoke assertion set. |
+| Name | Preflight | Adapter-shell | Callback-api | Polling-worker | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `CREATIVE_PROVIDER_RUNTIME_ENV` | `staging` | `staging` | `staging` | `staging` | Required for any staging provider boundary. |
+| `CREATIVE_PROVIDER_MODE` | `disabled` | `replicate_staging` | `disabled` | `replicate_staging` | Callback intake remains independent from outbound clients. |
+| `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED` | `true` | `false` | `true` | `false` | Preflight proves secret wiring without provider dispatch. |
+| `CREATIVE_STAGING_IMAGE_PROVIDER` | `replicate` | `replicate` | `replicate` | `replicate` | First candidate only. |
+| `CREATIVE_STAGING_PROVIDER_CONFIRMATION` | `staging-only` | `staging-only` | `staging-only` | `staging-only` | Explicit human confirmation string. |
+| `CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED` | `false` | `false` | `false` | `true` | Polling fixture validates construction metadata and makes no request. |
+| `CREATIVE_PROVIDER_CALLBACK_ENABLED` | `false` | `false` | `true` | `false` | Independent V1-06 callback kill switch. |
+| `CREATIVE_PROVIDER_POLLING_ENABLED` | `false` | `false` | `false` | `true` | Independent V1-07 lifecycle polling switch. |
+| `CREATIVE_PROVIDER_POLLING_WORKER_ENABLED` | `false` | `false` | `false` | `true` | Dedicated worker switch. |
+| `CREATIVE_STAGING_SMOKE_MODE` | `preflight` | `adapter-shell` | `callback-api` | `polling-worker` | Selects the smoke assertion set. |
 
 Provider account setup:
 
@@ -81,12 +84,13 @@ Expected result:
 - `preflight` fixture passes with `CREATIVE_PROVIDER_MODE=disabled`.
 - `adapter-shell` fixture passes with `CREATIVE_PROVIDER_MODE=replicate_staging`.
 - `callback-api` fixture passes with Provider dispatch disabled and callback configuration explicitly enabled.
-- Safe summary reports `networkCallsEnabled=false`.
+- `polling-worker` fixture passes with the read-only status client and worker configuration enabled but uncalled.
+- Safe summary reports `networkCallsEnabled=false` outside polling-worker mode and `true` only for its no-request construction check.
 - Safe summary reports `adapterImplemented=false`.
 - Safe summary self-redaction check passes.
 - No token value is printed.
 
-This local fixture uses fake secret strings and does not start a callback server or call a provider.
+This local fixture uses fake secret strings and does not start a callback server, run a worker interval, or call a provider.
 
 ## Manual GitHub Smoke
 
@@ -99,7 +103,8 @@ Run the GitHub Actions workflow manually:
 5. For preflight, set `CREATIVE_STAGING_SMOKE_MODE=preflight` in the environment variables.
 6. For adapter-shell metadata smoke, set `CREATIVE_STAGING_SMOKE_MODE=adapter-shell`.
 7. For callback configuration smoke, set `CREATIVE_STAGING_SMOKE_MODE=callback-api`.
-8. Confirm the `Deployment Environment Smoke` job runs `npm run smoke:creative-staging:env`.
+8. For polling worker configuration smoke, set `CREATIVE_STAGING_SMOKE_MODE=polling-worker`.
+9. Confirm the `Deployment Environment Smoke` job runs `npm run smoke:creative-staging:env`.
 
 Expected preflight checks:
 
@@ -108,14 +113,14 @@ Expected preflight checks:
 - `preflight uses disabled provider mode` passes.
 - `staging preflight flag enabled` passes.
 - `creative generation remains globally disabled` passes.
-- `replicate staging provider network calls disabled` passes.
+- `provider HTTP client remains disabled` passes.
 
 Expected adapter-shell checks:
 
 - `adapter shell uses explicit replicate_staging mode` passes.
 - `adapter shell does not require preflight flag` passes.
 - `adapter shell remains default-disabled` passes.
-- `replicate staging provider network calls disabled` passes.
+- `provider HTTP client remains disabled` passes.
 
 Expected callback-api checks:
 
@@ -123,6 +128,14 @@ Expected callback-api checks:
 - `callback API is explicitly enabled` passes.
 - `callback signature secret is configured as presence only` passes.
 - `callback API keeps provider network dispatch disabled` passes.
+
+Expected polling-worker checks:
+
+- `polling worker uses explicit replicate_staging mode` passes.
+- `polling worker requires the guarded HTTP client` passes.
+- `polling lifecycle and worker switches are explicitly enabled` passes.
+- `polling status client is implemented and enabled` passes.
+- `polling worker keeps callback intake independently disabled` passes.
 
 ## Post-Smoke Manual API Check
 
@@ -140,7 +153,7 @@ After the metadata smoke passes in a real staging deployment, verify the user-fa
 Record the following in Notion before starting any external-call adapter task:
 
 - GitHub workflow run URL.
-- Smoke mode used: `preflight`, `adapter-shell`, or `callback-api`.
+- Smoke mode used: `preflight`, `adapter-shell`, `callback-api`, or `polling-worker`.
 - Safe summary fields for provider mode, runtime env, token configured boolean, `networkCallsEnabled`, and `adapterImplemented`.
 - Confirmation that the safe-summary self-redaction guard passed.
 - Manual API check result.
@@ -158,7 +171,7 @@ Immediate environment rollback:
 4. Remove or rotate `CREATIVE_STAGING_PROVIDER_API_TOKEN`.
 5. Set provider-side spending cap to `0`.
 6. Disable provider webhook targets.
-7. Disable any future provider polling or callback workers.
+7. Disable Provider callback intake and both polling switches.
 
 Verification:
 

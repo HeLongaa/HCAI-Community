@@ -114,6 +114,8 @@ export const buildEnv = (source = process.env) => {
   const creativeProviderCallbackReplayWindowSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_CALLBACK_REPLAY_WINDOW_SECONDS', 300)
   const creativeProviderCallbackMaxBytes = positiveInteger(source, 'CREATIVE_PROVIDER_CALLBACK_MAX_BYTES', 262_144)
   const creativeProviderCallbackSideEffectLeaseSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_CALLBACK_SIDE_EFFECT_LEASE_SECONDS', 60)
+  const creativeProviderPollingEnabled = strictBoolFlag(source, 'CREATIVE_PROVIDER_POLLING_ENABLED', false)
+  const creativeProviderPollingWorkerEnabled = strictBoolFlag(source, 'CREATIVE_PROVIDER_POLLING_WORKER_ENABLED', false)
   const mediaScanRequestAdapter = getMediaScanRequestAdapter(source)
   const rateLimitStore = getRateLimitStore(source)
   const rateLimitRedisUrl = getRedisUrl(source)
@@ -277,6 +279,32 @@ export const buildEnv = (source = process.env) => {
       throw new Error('CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET must be at least 32 characters when callbacks are enabled')
     }
   }
+  if (creativeProviderPollingWorkerEnabled && !creativeProviderPollingEnabled) {
+    throw new Error('CREATIVE_PROVIDER_POLLING_WORKER_ENABLED requires CREATIVE_PROVIDER_POLLING_ENABLED=true')
+  }
+  if (creativeProviderPollingEnabled) {
+    if (nodeEnv !== 'production') {
+      throw new Error('CREATIVE_PROVIDER_POLLING_ENABLED requires NODE_ENV=production')
+    }
+    if (creativeProviderRuntimeEnv !== 'staging') {
+      throw new Error('CREATIVE_PROVIDER_POLLING_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
+    }
+    if (creativeProviderMode !== 'replicate_staging') {
+      throw new Error('CREATIVE_PROVIDER_POLLING_ENABLED requires CREATIVE_PROVIDER_MODE=replicate_staging')
+    }
+    if (creativeStagingImageProvider !== 'replicate') {
+      throw new Error('CREATIVE_PROVIDER_POLLING_ENABLED requires CREATIVE_STAGING_IMAGE_PROVIDER=replicate')
+    }
+    if (creativeStagingProviderConfirmation !== 'staging-only') {
+      throw new Error('CREATIVE_PROVIDER_POLLING_ENABLED requires CREATIVE_STAGING_PROVIDER_CONFIRMATION=staging-only')
+    }
+    if (!creativeProviderHttpClientEnabled) {
+      throw new Error('CREATIVE_PROVIDER_POLLING_ENABLED requires CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=true')
+    }
+    if (creativeProviderPollingIntervalSeconds >= creativeProviderPollingMaxAgeSeconds) {
+      throw new Error('CREATIVE_PROVIDER_POLLING_INTERVAL_SECONDS must be less than CREATIVE_PROVIDER_POLLING_MAX_AGE_SECONDS')
+    }
+  }
   if (mediaScanProvider === 'webhook' && !String(source.MEDIA_SCAN_WEBHOOK_SECRET ?? '').trim()) {
     throw new Error('MEDIA_SCAN_WEBHOOK_SECRET is required when MEDIA_SCAN_PROVIDER=webhook')
   }
@@ -357,8 +385,8 @@ export const buildEnv = (source = process.env) => {
     taskStaleSubmissionWorkerIntervalSeconds,
     taskStaleSubmissionOlderThanHours,
     taskStaleSubmissionSweepLimit,
-    creativeProviderPollingEnabled: boolFlag(source, 'CREATIVE_PROVIDER_POLLING_ENABLED', false),
-    creativeProviderPollingWorkerEnabled: boolFlag(source, 'CREATIVE_PROVIDER_POLLING_WORKER_ENABLED', false),
+    creativeProviderPollingEnabled,
+    creativeProviderPollingWorkerEnabled,
     creativeProviderPollingMaxAgeSeconds,
     creativeProviderPollingLeaseTtlSeconds,
     creativeProviderPollingIntervalSeconds,
@@ -646,6 +674,17 @@ export const buildCreativeProviderConfig = (source = process.env) => {
       replayWindowSeconds: current.creativeProviderCallbackReplayWindowSeconds,
       maxBodyBytes: current.creativeProviderCallbackMaxBytes,
       sideEffectLeaseSeconds: current.creativeProviderCallbackSideEffectLeaseSeconds,
+      supportedProviderIds: ['replicate-staging'],
+    },
+    polling: {
+      implemented: true,
+      enabled: current.creativeProviderPollingEnabled,
+      workerEnabled: current.creativeProviderPollingWorkerEnabled,
+      statusClientImplemented: true,
+      statusClientEnabled: current.creativeProviderPollingEnabled && current.creativeProviderHttpClientEnabled,
+      maxAgeSeconds: current.creativeProviderPollingMaxAgeSeconds,
+      intervalSeconds: current.creativeProviderPollingIntervalSeconds,
+      sweepLimit: current.creativeProviderPollingSweepLimit,
       supportedProviderIds: ['replicate-staging'],
     },
     providers: [

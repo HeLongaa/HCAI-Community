@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   buildProviderPollingLeaseKey,
   buildProviderPollingPlan,
+  listProviderPollingCandidates,
   pollProviderGenerationOnce,
   providerPollingConfig,
   runProviderPollingWorkerOnce,
@@ -19,6 +20,12 @@ const pollingSource = {
   CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
   CREATIVE_PROVIDER_POLLING_MAX_AGE_SECONDS: '3600',
   CREATIVE_PROVIDER_POLLING_LEASE_TTL_SECONDS: '120',
+}
+
+const workerPollingSource = {
+  ...pollingSource,
+  CREATIVE_PROVIDER_POLLING_WORKER_ENABLED: 'true',
+  CREATIVE_PROVIDER_POLLING_SWEEP_LIMIT: '1000',
 }
 
 const generation = (overrides = {}) => ({
@@ -48,7 +55,7 @@ const createRunningProviderGeneration = async (repository, overrides = {}) => {
     windowType: 'daily',
     windowStart: '2026-07-06T00:00:00.000Z',
     windowEnd: '2026-07-06T23:59:59.999Z',
-    limit: 5,
+    limit: 500,
     costUnits: 1,
     policyVersion: 'creative-policy-v1',
   }, actor)
@@ -197,7 +204,7 @@ test('buildProviderPollingPlan stops unsupported provider mode and provider ids'
   assert.equal(wrongProvider.reasonCode, 'unsupported_provider_id')
 })
 
-test('buildProviderPollingPlan stops terminal and expired generations', () => {
+test('buildProviderPollingPlan stops terminal generations and expires stale polling', () => {
   const terminal = buildProviderPollingPlan({
     generation: generation({ status: 'completed' }),
     source: pollingSource,
@@ -214,7 +221,7 @@ test('buildProviderPollingPlan stops terminal and expired generations', () => {
     now,
   })
   assert.equal(expired.shouldPoll, false)
-  assert.equal(expired.action, 'noop')
+  assert.equal(expired.action, 'timeout')
   assert.equal(expired.reasonCode, 'polling_window_expired')
 })
 
@@ -298,6 +305,15 @@ test('runProviderPollingWorkerOnce is disabled by default', async () => {
   assert.equal(result.replayed, 0)
 })
 
+test('runProviderPollingWorkerOnce requires the independent worker kill switch', async () => {
+  const repository = createSeedRepository()
+  const result = await runProviderPollingWorkerOnce({ repositories: repository, source: pollingSource, now })
+
+  assert.equal(result.enabled, false)
+  assert.equal(result.reasonCode, 'polling_worker_disabled')
+  assert.equal(result.candidates, 0)
+})
+
 test('pollProviderGenerationOnce fails closed without an injected status client', async () => {
   const repository = createSeedRepository()
   const record = await createRunningProviderGeneration(repository, { providerJobId: 'prediction-missing-client' })
@@ -332,7 +348,7 @@ test('runProviderPollingWorkerOnce applies completed fixture status through repl
   const result = await runProviderPollingWorkerOnce({
     repositories: repository,
     providerStatusClients: { replicate: client },
-    source: pollingSource,
+    source: workerPollingSource,
     now,
   })
 
@@ -343,6 +359,9 @@ test('runProviderPollingWorkerOnce applies completed fixture status through repl
   const targetResult = result.results.find((item) => item.generationId === record.id)
   assert.ok(targetResult)
   assert.equal(targetResult.statusResult.outputDigest.length, 64)
+  assert.equal(targetResult.statusResult.generation, undefined)
+  assert.equal(JSON.stringify(targetResult.statusResult).includes('mock://polling-worker-output.png'), false)
+  assert.equal(JSON.stringify(targetResult.statusResult).includes('Polling worker fixture prompt'), false)
   assert.equal(targetResult.applied.executed, true)
   assert.equal(targetResult.applied.execution.completed, true)
 
@@ -362,7 +381,7 @@ test('runProviderPollingWorkerOnce applies completed fixture status through repl
   assert.equal(replays.items[0].sideEffectResult.completed, true)
 })
 
-test('pollProviderGenerationOnce redacts unsafe persisted provider job ids from polling replay evidence', async () => {
+test('pollProviderGenerationOnce rejects unsafe persisted provider job ids before status reads', async () => {
   const repository = createSeedRepository()
   const unsafeProviderJobId = 'https://replicate.example/predictions/pred_unsafe?token=secret-value'
   const record = await createRunningProviderGeneration(repository, { providerJobId: unsafeProviderJobId })
@@ -388,28 +407,23 @@ test('pollProviderGenerationOnce redacts unsafe persisted provider job ids from 
     now,
   })
 
-  assert.deepEqual(calls, [unsafeProviderJobId])
-  assert.equal(result.polled, true)
-  assert.equal(result.replayed, true)
-  assert.equal(result.applied.execution.completed, true)
+  assert.deepEqual(calls, [])
+  assert.equal(result.polled, false)
+  assert.equal(result.replayed, false)
+  assert.equal(result.plan.action, 'reject')
+  assert.equal(result.plan.reasonCode, 'provider_job_invalid')
+  assert.match(result.plan.providerJobId, /^redacted_[a-f0-9]{16}$/)
 
   const replays = await repository.creativeProviderReplays.listForGeneration(record.id)
-  assert.equal(replays.items.length, 1)
-  const replay = replays.items[0]
-  assert.match(replay.providerJobId, /^redacted_[a-f0-9]{16}$/)
-  assert.equal(replay.providerEventId.includes(replay.providerJobId), true)
-  assert.equal(replay.idempotencyKey.includes(replay.providerJobId), true)
-
-  const replayEvidence = JSON.stringify(replay)
-  assert.equal(replayEvidence.includes(unsafeProviderJobId), false)
-  assert.equal(replayEvidence.includes('secret-value'), false)
-  assert.equal(replayEvidence.includes('replicate.example'), false)
-  assert.equal(replayEvidence.includes('mock://unsafe-provider-job-output.png'), false)
+  assert.equal(replays.items.length, 0)
+  assert.equal(JSON.stringify(result).includes(unsafeProviderJobId), false)
+  assert.equal(JSON.stringify(result).includes('secret-value'), false)
+  assert.equal(JSON.stringify(result).includes('replicate.example'), false)
 })
 
-test('pollProviderGenerationOnce redacts unsafe provider job ids from failed status results', async () => {
+test('pollProviderGenerationOnce omits Provider error text from failed status results', async () => {
   const repository = createSeedRepository()
-  const unsafeProviderJobId = 'https://replicate.example/predictions/pred_failed?token=secret-status'
+  const providerJobId = 'prediction-failed-safe'
   const record = await repository.creativeGenerations.create({
     id: uniqueId('gen-provider-polling-status-failure'),
     actorId: actor.id,
@@ -423,7 +437,7 @@ test('pollProviderGenerationOnce redacts unsafe provider job ids from failed sta
     promptPreview: 'Polling status failure fixture prompt',
     inputAssetIds: [],
     parameterKeys: [],
-    providerJobId: unsafeProviderJobId,
+    providerJobId,
     createdAt: '2026-07-06T11:45:00.000Z',
   }, actor)
   const calls = []
@@ -442,19 +456,250 @@ test('pollProviderGenerationOnce redacts unsafe provider job ids from failed sta
     now,
   })
 
-  assert.deepEqual(calls, [unsafeProviderJobId])
+  assert.deepEqual(calls, [providerJobId])
   assert.equal(result.polled, true)
   assert.equal(result.replayed, false)
   assert.equal(result.statusResult.ok, false)
-  assert.match(result.statusResult.providerJobId, /^redacted_[a-f0-9]{16}$/)
-  assert.equal(result.statusResult.safeMetadata.errorPreview.includes('provider-secret'), false)
-  assert.equal(result.statusResult.safeMetadata.errorPreview.includes('<redacted>'), true)
+  assert.equal(result.statusResult.providerJobId, providerJobId)
+  assert.equal(result.statusResult.safeMetadata.errorPreview, undefined)
 
   const statusEvidence = JSON.stringify(result.statusResult)
-  assert.equal(statusEvidence.includes(unsafeProviderJobId), false)
-  assert.equal(statusEvidence.includes('secret-status'), false)
-  assert.equal(statusEvidence.includes('replicate.example'), false)
   assert.equal(statusEvidence.includes('provider-secret'), false)
+})
+
+test('pollProviderGenerationOnce schedules transient status retries with safe audit evidence', async () => {
+  const repository = createSeedRepository()
+  const record = await createRunningProviderGeneration(repository, { providerJobId: 'prediction-rate-limited' })
+  const result = await pollProviderGenerationOnce({
+    generation: record,
+    repositories: repository,
+    providerStatusClients: {
+      replicate: {
+        getPrediction: async () => {
+          const error = new Error('Bearer private-provider-token at https://provider.example/private')
+          error.code = 'CREATIVE_PROVIDER_RATE_LIMITED'
+          error.statusCode = 429
+          error.details = { retryable: true }
+          throw error
+        },
+      },
+    },
+    source: pollingSource,
+    now,
+  })
+
+  assert.equal(result.polled, true)
+  assert.equal(result.replayed, false)
+  assert.equal(result.retryScheduled, true)
+  assert.equal(result.failed, false)
+  assert.equal(result.statusResult.reasonCode, 'provider_status_rate_limited')
+  assert.equal(result.statusResult.safeMetadata.errorCode, 'PROVIDER_RATE_LIMITED')
+  assert.equal(JSON.stringify(result).includes('private-provider-token'), false)
+  assert.equal(JSON.stringify(result).includes('provider.example'), false)
+
+  const audits = await repository.audit.list({ action: 'creative.provider_polling.retry_scheduled', limit: 1000 })
+  const audit = audits.items.find((item) => item.resourceId === record.id)
+  assert.ok(audit)
+  assert.equal(audit.metadata.retryable, true)
+  assert.equal(audit.metadata.statusCode, 429)
+  assert.equal(JSON.stringify(audit).includes('private-provider-token'), false)
+})
+
+test('pollProviderGenerationOnce dedupes changing non-terminal Provider snapshots', async () => {
+  const repository = createSeedRepository()
+  const record = await createRunningProviderGeneration(repository, {
+    providerJobId: 'prediction-changing-running-snapshot',
+    status: 'queued',
+  })
+  let reads = 0
+  const providerStatusClients = {
+    replicate: {
+      getPrediction: async () => {
+        reads += 1
+        return {
+          id: record.providerJobId,
+          status: 'processing',
+          ...(reads > 1 ? { metrics: { predict_time: reads } } : {}),
+        }
+      },
+    },
+  }
+
+  const first = await pollProviderGenerationOnce({
+    generation: record,
+    repositories: repository,
+    providerStatusClients,
+    source: pollingSource,
+    now,
+  })
+  const runningRecord = await repository.creativeGenerations.find(record.id)
+  const secondNow = new Date(new Date(runningRecord.startedAt ?? runningRecord.createdAt).getTime() + 1000)
+  const duplicate = await pollProviderGenerationOnce({
+    generation: runningRecord,
+    repositories: repository,
+    providerStatusClients,
+    source: pollingSource,
+    now: secondNow,
+  })
+
+  assert.notEqual(first.statusResult.payloadHash, duplicate.statusResult.payloadHash)
+  assert.equal(first.applied.executed, true)
+  assert.equal(duplicate.applied.duplicate, true)
+  assert.equal(duplicate.applied.conflict, undefined)
+  assert.equal(duplicate.failed, false)
+
+  const replays = await repository.creativeProviderReplays.listForGeneration(record.id)
+  assert.equal(replays.items.length, 1)
+})
+
+test('pollProviderGenerationOnce times out stale generations once and recovers accounting', async () => {
+  const repository = createSeedRepository()
+  const record = await createRunningProviderGeneration(repository, {
+    providerJobId: 'prediction-timeout-worker',
+    createdAt: '2026-07-06T10:00:00.000Z',
+  })
+
+  const first = await pollProviderGenerationOnce({
+    generation: record,
+    repositories: repository,
+    source: pollingSource,
+    now,
+  })
+  const duplicate = await pollProviderGenerationOnce({
+    generation: record,
+    repositories: repository,
+    source: pollingSource,
+    now,
+  })
+
+  assert.equal(first.timedOut, true)
+  assert.equal(first.replayed, true)
+  assert.equal(first.applied.executed, true)
+  assert.equal(first.applied.execution.completed, true)
+  assert.equal(duplicate.applied.duplicate, true)
+  assert.equal(duplicate.applied.executed, false)
+
+  const generationRecord = await repository.creativeGenerations.find(record.id)
+  assert.equal(generationRecord.status, 'failed')
+  assert.equal(generationRecord.errorCode, 'PROVIDER_TIMEOUT')
+  assert.equal(generationRecord.credit.status, 'refunded')
+  assert.ok(generationRecord.quota.released >= 1)
+
+  const replays = await repository.creativeProviderReplays.listForGeneration(record.id)
+  assert.equal(replays.items.length, 1)
+  assert.equal(replays.items[0].sourceType, 'polling')
+  assert.equal(replays.items[0].reasonCode, 'polling_window_expired')
+
+  const audits = await repository.audit.list({ action: 'creative.provider_polling.timed_out', limit: 1000 })
+  const matchingAudits = audits.items.filter((item) => item.resourceId === record.id)
+  assert.equal(matchingAudits.length, 1)
+  assert.equal(matchingAudits[0].metadata.timedOut, true)
+  assert.equal(matchingAudits[0].metadata.errorCode, 'PROVIDER_TIMEOUT')
+})
+
+test('pollProviderGenerationOnce reports and resumes partial timeout recovery', async () => {
+  const repository = createSeedRepository()
+  const record = await createRunningProviderGeneration(repository, {
+    providerJobId: 'prediction-timeout-partial-recovery',
+    createdAt: '2026-07-06T10:00:00.000Z',
+  })
+  let failRefund = true
+  const repositories = {
+    ...repository,
+    creativeCredits: {
+      ...repository.creativeCredits,
+      refund: async (...args) => {
+        if (failRefund) {
+          failRefund = false
+          throw new Error('transient accounting failure')
+        }
+        return repository.creativeCredits.refund(...args)
+      },
+    },
+  }
+
+  const first = await pollProviderGenerationOnce({
+    generation: record,
+    repositories,
+    source: pollingSource,
+    now,
+  })
+  const pendingRecord = await repository.creativeGenerations.find(record.id)
+  const resumed = await pollProviderGenerationOnce({
+    generation: pendingRecord,
+    repositories,
+    source: pollingSource,
+    now,
+  })
+
+  assert.equal(first.failed, true)
+  assert.equal(first.applied.execution.completed, false)
+  assert.equal(pendingRecord.status, 'running')
+  assert.equal(resumed.failed, false)
+  assert.equal(resumed.applied.execution.completed, true)
+
+  const recoveredRecord = await repository.creativeGenerations.find(record.id)
+  assert.equal(recoveredRecord.status, 'failed')
+  assert.equal(recoveredRecord.credit.status, 'refunded')
+  assert.ok(recoveredRecord.quota.released >= 1)
+})
+
+test('listProviderPollingCandidates delegates oldest-first filtering to the repository', async () => {
+  let captured = null
+  const expected = generation({ id: 'gen-oldest-polling-candidate' })
+  const candidates = await listProviderPollingCandidates({
+    repositories: {
+      creativeGenerations: {
+        listPollingCandidates: async (options) => {
+          captured = options
+          return { items: [expected] }
+        },
+      },
+    },
+    source: pollingSource,
+    limit: 3,
+  })
+
+  assert.deepEqual(candidates, [expected])
+  assert.deepEqual(captured, {
+    statuses: ['queued', 'running'],
+    providerMode: 'replicate_staging',
+    providerIds: ['replicate', 'replicate-staging'],
+    limit: 3,
+  })
+})
+
+test('runProviderPollingWorkerOnce isolates one generation failure and continues the sweep', async () => {
+  const repository = createSeedRepository()
+  const first = await createRunningProviderGeneration(repository, { providerJobId: 'prediction-isolated-first' })
+  const second = await createRunningProviderGeneration(repository, { providerJobId: 'prediction-isolated-second' })
+  const repositories = {
+    ...repository,
+    creativeGenerations: {
+      ...repository.creativeGenerations,
+      listPollingCandidates: async () => ({ items: [first, second] }),
+    },
+  }
+  const result = await runProviderPollingWorkerOnce({
+    repositories,
+    providerStatusClients: {
+      replicate: {
+        getPrediction: async (id) => id === first.providerJobId
+          ? { id: 'prediction-wrong-job', status: 'processing' }
+          : { id, status: 'processing' },
+      },
+    },
+    source: workerPollingSource,
+    now,
+  })
+
+  assert.equal(result.enabled, true)
+  assert.equal(result.candidates, 2)
+  assert.equal(result.failed, 1)
+  assert.equal(result.replayed, 1)
+  assert.equal(result.results[0].reasonCode, 'provider_job_mismatch')
+  assert.equal(result.results[1].generationId, second.id)
+  assert.equal(result.results[1].replayed, true)
 })
 
 test('pollProviderGenerationOnce maps failed and cancelled fixture status to refund/release paths', async () => {

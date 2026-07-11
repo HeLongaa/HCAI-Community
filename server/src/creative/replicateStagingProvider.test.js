@@ -479,7 +479,7 @@ test('mapReplicatePredictionStatus normalizes provider lifecycle states', () => 
   assert.equal(mapReplicatePredictionStatus('unknown'), 'failed')
 })
 
-test('fetchReplicateStagingPredictionStatus requires an injected mocked client', async () => {
+test('fetchReplicateStagingPredictionStatus requires a caller-supplied status client', async () => {
   await assert.rejects(
     fetchReplicateStagingPredictionStatus({
       providerJobId: 'pred_status_1',
@@ -487,7 +487,7 @@ test('fetchReplicateStagingPredictionStatus requires an injected mocked client',
       provider,
       actor,
     }),
-    /status client must be injected/,
+    /status client must be supplied by the caller/,
   )
 })
 
@@ -667,7 +667,8 @@ test('fetchReplicateStagingPredictionStatus rejects timeout and rate-limit reads
   assert.equal(timeout.action, 'reject')
   assert.equal(timeout.reasonCode, 'provider_status_timeout')
   assert.equal(timeout.safeMetadata.retryable, true)
-  assert.equal(timeout.safeMetadata.errorPreview.includes('secret.value'), false)
+  assert.equal(timeout.safeMetadata.errorPreview, undefined)
+  assert.equal(JSON.stringify(timeout).includes('secret.value'), false)
 
   const rateLimited = await fetchReplicateStagingPredictionStatus({
     providerJobId: 'pred_status_rate_limited',
@@ -688,7 +689,8 @@ test('fetchReplicateStagingPredictionStatus rejects timeout and rate-limit reads
   assert.equal(rateLimited.ok, false)
   assert.equal(rateLimited.reasonCode, 'provider_status_rate_limited')
   assert.equal(rateLimited.safeMetadata.statusCode, 429)
-  assert.equal(rateLimited.safeMetadata.errorPreview.includes('replicate-token'), false)
+  assert.equal(rateLimited.safeMetadata.errorPreview, undefined)
+  assert.equal(JSON.stringify(rateLimited).includes('replicate-token'), false)
 })
 
 test('fetchReplicateStagingPredictionStatus rejects provider job mismatches', async () => {

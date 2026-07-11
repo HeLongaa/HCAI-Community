@@ -27,7 +27,7 @@ The goal of the staging adapter shell phase is to make the future first external
 | Provider cost metadata | Available fixture-safe | Cost estimate, daily cap, spend, threshold, budget scope, and account reference are normalized into safe low-cardinality metadata. |
 | Budget guard | Available fixture-safe | Missing estimate, missing cap, unsafe metadata, invalid threshold, or projected over-budget spend blocks before an injected client can dispatch. |
 | Generation mapping | Available fixture-safe | Replicate-like prediction statuses map to internal generation states with safe failure previews. |
-| Status polling client contract | Available injected only | Status reads require an injected `getPrediction` client; no default HTTP client exists. |
+| Status polling client contract | Implemented / default-disabled | V1-07 adds a fixed read-only `getPrediction` client for the dedicated worker; tests use injected fetch and real status reads remain approval-gated. |
 | Prediction creation contract | Available, not registered | Prediction creation still requires an injected `createPrediction` client. V1-05 supplies a fixed-endpoint implementation, but no route or worker registers it. |
 | Lifecycle replay helpers | Available fixture-safe | Replicate-like lifecycle events map into replay reducer decisions with output digests, duplicate suppression, and job mismatch rejection. |
 | Route-level fixture path | Available through injected adapters | Policy, quota, credit, generation records, and media persistence can be exercised with fixture adapters only. |
@@ -42,7 +42,7 @@ The next implementation PRs may do the following without external-call approval:
 2. Add fixture tests for safe failure mapping, timeout/rate-limit mapping, and redacted error previews.
 3. Add fixture tests for cost estimate, daily budget cap, threshold, budget scope, and provider account reference guards.
 4. Add fixture tests proving route-level policy, quota, credit reservation, generation record, and media persistence run before or around injected provider work.
-5. Add fixture tests that status reads and prediction creation fail closed unless a test explicitly injects a client.
+5. Add fixture tests that prediction creation stays injected-only and status reads fail closed unless the caller supplies the separately gated read-only client.
 6. Improve metadata-only smoke assertions while keeping the HTTP client disabled and `networkCallsEnabled=false`.
 7. Improve read-only Admin history display of provider cost, budget, and replay evidence when backed by fixture records.
 8. Update docs, OpenAPI descriptions, or runbooks when they describe the existing mock/fixture boundary.

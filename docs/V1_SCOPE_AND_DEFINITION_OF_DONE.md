@@ -66,6 +66,10 @@ and replacement triggers are frozen in `docs/V1_PROVIDER_DECISION_MATRIX.md` and
 The V1-05 default-disabled HTTP client, deployment-secret isolation, fixed destination, and minimum-payload contract are
 implemented in `server/src/creative/providerHttpClient.js` and documented in
 `docs/V1_PROVIDER_HTTP_AND_SECRETS_BOUNDARY.md`; no product route registration or external call is approved by that work.
+The V1-06 callback route and V1-07 dedicated polling worker/status client are implemented behind independent default-off
+staging gates in `docs/V1_PROVIDER_CALLBACK_API.md` and `docs/V1_PROVIDER_POLLING_AND_RECOVERY.md`. They provide
+app-side lifecycle safety, retry/timeout recovery, and test evidence without approving webhook delivery or real status
+reads.
 
 The four-modality prohibited/block/review/allow taxonomy, Provider policy mapping, pre-dispatch through appeal
 responsibility chain, user message codes, and safety audit contract are frozen in

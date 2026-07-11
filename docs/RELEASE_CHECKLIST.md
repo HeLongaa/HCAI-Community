@@ -40,6 +40,7 @@ Confirm:
 - OAuth redirect URIs match the deployed API callback URLs.
 - `CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=false`; no production release may register the staging Provider HTTP client.
 - `CREATIVE_PROVIDER_CALLBACK_ENABLED=false`; no production release may expose the staging Provider callback intake.
+- `CREATIVE_PROVIDER_POLLING_ENABLED=false` and `CREATIVE_PROVIDER_POLLING_WORKER_ENABLED=false`; no production release may perform staging Provider status reads.
 
 ## Database And Migration
 

@@ -41,9 +41,10 @@ All 14 direct frontend imports of `src/data/mockData.ts` are checked exactly. Ad
 | `server-mock-storage-driver` | Missing S3 configuration selects `mock://` upload/download/archive | Require S3-compatible storage in production | V1-39, V1-50 |
 | `server-manual-mock-scanner` | Scanner can remain manual or classify from deterministic mock signatures | Require real scanner request and signed callback | V1-39, V1-51 |
 | `server-dev-oauth-fallback` | Unconfigured OAuth providers execute a signed local callback | Require external OAuth or explicit unavailable state | V1-39, V1-48 |
-| `server-provider-fixture-injection` | Replicate execution/status/replay clients exist only through injected fixtures | Retain tests; never register as default network client | V1-05 through V1-08, V1-12, V1-14 |
+| `server-provider-fixture-injection` | Replicate product dispatch and manual replay clients remain fixture-injected; V1-07 registers only a separately gated read-only status client in the dedicated worker | Retain tests and keep product dispatch unregistered | V1-05 through V1-08, V1-12, V1-14 |
 | `server-provider-alert-fixture-delivery` | Provider budget alerts can dispatch only through approved fixture-injected clients | Replace with separately approved external delivery clients | V1-13, V1-53 |
 | `server-provider-callback-boundary` | Signed Replicate callback intake exists behind an independent staging-only, default-off kill switch | Keep disabled outside an explicitly approved staging callback delivery | V1-06 |
+| `server-provider-polling-boundary` | A fixed read-only Replicate status client, bounded worker sweep, retry audit, and timeout recovery exist behind independent staging-only default-off switches | Keep disabled outside an explicitly approved staging status read | V1-07 |
 
 ## Fixture Inventory
 

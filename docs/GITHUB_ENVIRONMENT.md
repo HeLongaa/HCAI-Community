@@ -98,9 +98,18 @@ Creative provider preflight variables:
 | `CREATIVE_PROVIDER_CALLBACK_REPLAY_WINDOW_SECONDS` | Optional callback bound | `300` |
 | `CREATIVE_PROVIDER_CALLBACK_MAX_BYTES` | Optional callback bound | `262144` |
 | `CREATIVE_PROVIDER_CALLBACK_SIDE_EFFECT_LEASE_SECONDS` | Optional callback concurrency bound | `60` |
+| `CREATIVE_PROVIDER_POLLING_ENABLED` | Guarded V1-07 lifecycle polling | `false` by default; requires the guarded HTTP client and production-parity staging |
+| `CREATIVE_PROVIDER_POLLING_WORKER_ENABLED` | Dedicated V1-07 worker startup | `false` by default; requires lifecycle polling to be enabled |
+| `CREATIVE_PROVIDER_POLLING_MAX_AGE_SECONDS` | Optional timeout bound | `3600` |
+| `CREATIVE_PROVIDER_POLLING_LEASE_TTL_SECONDS` | Optional polling lease bound | `300` |
+| `CREATIVE_PROVIDER_POLLING_INTERVAL_SECONDS` | Optional status-read cadence | `60`, and lower than maximum age |
+| `CREATIVE_PROVIDER_POLLING_SWEEP_LIMIT` | Optional oldest-first sweep cap | `10` |
+| `CREATIVE_PROVIDER_POLLING_REQUIRE_CREDIT_RESERVATION` | Optional accounting prerequisite | `false` |
 
 Production environments must not set `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true`,
-`CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=true`, `CREATIVE_PROVIDER_CALLBACK_ENABLED=true`, or `CREATIVE_STAGING_PROVIDER_API_TOKEN`.
+`CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=true`, `CREATIVE_PROVIDER_CALLBACK_ENABLED=true`,
+`CREATIVE_PROVIDER_POLLING_ENABLED=true`, `CREATIVE_PROVIDER_POLLING_WORKER_ENABLED=true`, or
+`CREATIVE_STAGING_PROVIDER_API_TOKEN`.
 
 ## Alert Channel Configuration
 
@@ -166,6 +175,11 @@ These have code defaults, but setting them explicitly makes production behavior 
 | `TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS` | `300` or deployment-specific |
 | `TASK_STALE_SUBMISSION_OLDER_THAN_HOURS` | Review SLA threshold, e.g. `72` |
 | `TASK_STALE_SUBMISSION_SWEEP_LIMIT` | Per-run cap, e.g. `25` |
+| `CREATIVE_PROVIDER_POLLING_ENABLED` | `false` unless a named staging status-read approval is active |
+| `CREATIVE_PROVIDER_POLLING_WORKER_ENABLED` | `false` unless the same approval authorizes the dedicated worker |
+| `CREATIVE_PROVIDER_POLLING_MAX_AGE_SECONDS` | Bounded staging timeout, e.g. `3600` |
+| `CREATIVE_PROVIDER_POLLING_INTERVAL_SECONDS` | Bounded cadence lower than max age, e.g. `60` |
+| `CREATIVE_PROVIDER_POLLING_SWEEP_LIMIT` | Per-run oldest-first cap, e.g. `10` |
 | `WORKER_LEASE_TTL_SECONDS` | Lease expiry window, e.g. `300` |
 | `WORKER_LEASE_RENEW_INTERVAL_SECONDS` | Renewal cadence lower than TTL, e.g. `60` |
 
@@ -190,4 +204,4 @@ Metrics exporter secret:
 5. Confirm the `Deployment Environment Smoke` job prints only safe summary metadata and all checks pass.
 6. Complete the multi-instance rehearsal in `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` before the first production rollout with more than one API or worker process.
 
-For staging-only creative provider preflight, use a dedicated staging environment and follow `docs/REAL_PROVIDER_STAGING_STRATEGY.md` and `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md`. Keep `CREATIVE_PROVIDER_MODE=disabled` so the creative staging smoke can validate secret presence without allowing paid provider calls. Use `CREATIVE_STAGING_SMOKE_MODE=preflight` for preflight, `adapter-shell` for the default-disabled adapter metadata, and `callback-api` only for V1-06 callback configuration validation. The callback-api smoke makes no callback or Provider request. Before any real integration, also review the go/no-go, rollback, and kill-switch gate in `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md`.
+For staging-only creative provider preflight, use a dedicated staging environment and follow `docs/REAL_PROVIDER_STAGING_STRATEGY.md` and `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md`. Keep `CREATIVE_PROVIDER_MODE=disabled` so the creative staging smoke can validate secret presence without allowing paid provider calls. Use `CREATIVE_STAGING_SMOKE_MODE=preflight` for preflight, `adapter-shell` for the default-disabled adapter metadata, `callback-api` for V1-06 callback configuration, and `polling-worker` for V1-07 status-client/worker configuration. These smoke modes parse safe metadata only and make no callback or Provider request. Before any real integration, also review the go/no-go, rollback, and kill-switch gate in `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md`.

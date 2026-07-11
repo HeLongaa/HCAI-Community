@@ -36,11 +36,11 @@ The repository has enough fixture-safe lifecycle foundation to continue planning
 - Read-only Admin replay evidence includes safe side-effect outcome and error-preview presence without raw provider errors, raw responses, raw payloads, or output URLs.
 - Source-keyed provider lifecycle notification/audit repository wiring.
 - Manual replay authorization/parser pure functions.
-- Fixture-safe polling worker interval skeleton.
+- Default-disabled dedicated polling worker with a fixed read-only status client, strict response projection, retry isolation, and timeout recovery.
 - Fixture-only provider budget event plan for safe threshold-crossed, dispatch-blocked, and cost-anomaly audit/alert summaries.
 - Provider budget operations read-side closeout: durable audit persistence, internal notifications, Admin operations metrics, Prometheus exporter metrics, fixture dry-run dispatch audit rows, and Admin generation cost/budget visibility are available read-only.
 
-The polling worker skeleton is disabled by default. It requires `CREATIVE_PROVIDER_POLLING_WORKER_ENABLED=true`, `CREATIVE_PROVIDER_POLLING_ENABLED=true`, and an injected mocked status client in tests. There is no default provider-status HTTP client.
+The polling worker is disabled by default. It requires `CREATIVE_PROVIDER_POLLING_WORKER_ENABLED=true`, `CREATIVE_PROVIDER_POLLING_ENABLED=true`, and the guarded HTTP client in a production-parity staging runtime. V1-07 supplies a read-only status client to the dedicated worker, while tests use injected status fixtures or injected fetch. No real status read is approved by this closeout.
 
 ## Current Usable Paths
 
@@ -105,6 +105,7 @@ Before the first staging external-call rehearsal, the approval record must expli
 | How is metadata-only staging smoke run? | `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` |
 | Can a staging adapter planning branch start? | `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` |
 | What shell fixture work is allowed before external calls? | `docs/REAL_PROVIDER_STAGING_ADAPTER_SHELL_PLAN.md` |
+| What polling, retry, and timeout boundary exists? | `docs/V1_PROVIDER_POLLING_AND_RECOVERY.md` |
 | Are Admin mutations allowed? | `docs/REAL_PROVIDER_ADMIN_MUTATION_REQUIREMENTS.md` |
 | How are provider spend and product credits separated? | `docs/REAL_PROVIDER_COST_METADATA_AND_BUDGET_ALARMS.md` |
 | How should provider budget events connect to audit, notifications, and metrics? | `docs/REAL_PROVIDER_BUDGET_EVENT_WIRING_PLAN.md` |
@@ -115,8 +116,8 @@ Before the first staging external-call rehearsal, the approval record must expli
 Allowed without real-provider approval:
 
 1. Documentation closeout and consistency updates.
-2. Fixture-only tests for lifecycle reducers, replay ledgers, side-effect plans, and mocked provider-status clients.
-3. Fixture-only hardening for callback auth/parser helpers, manual replay envelope helpers, polling leases, stop conditions, notification/audit source keys, and Admin read-only evidence.
+2. Fixture and injected-fetch tests for lifecycle reducers, replay ledgers, side-effect plans, and provider-status clients.
+3. Default-disabled hardening for callback auth/parser helpers, manual replay envelope helpers, polling leases, stop conditions, notification/audit source keys, and Admin read-only evidence.
 4. Metadata-only staging smoke improvements.
 5. Read-only Admin history refinements.
 6. Budget/cost guard implementation that does not dispatch externally.

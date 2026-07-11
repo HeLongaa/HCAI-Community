@@ -194,7 +194,7 @@
       "classification": "fixture_only",
       "paths": ["server/src/modules/creative/routes.js", "server/src/creative/generationService.js", "server/src/creative/replicateStagingProvider.js", "server/src/creative/providerPollingWorker.js", "server/src/creative/providerManualReplay.js", "server/src/creative/providerReplayIntegration.js"],
       "markers": ["fixtureAdapters", "must be injected; no default network client is available", "providerMode"],
-      "productionDisposition": "retain_for_tests_but_never_register_as_default_client",
+      "productionDisposition": "retain_for_tests_and_keep_product_dispatch_unregistered",
       "ownerTasks": ["V1-05", "V1-06", "V1-07", "V1-08", "V1-12", "V1-14"]
     },
     {
@@ -214,6 +214,15 @@
       "markers": ["CREATIVE_PROVIDER_CALLBACK_ENABLED", "x-creative-provider-signature", "x-creative-provider-nonce", "claimSideEffects"],
       "productionDisposition": "keep_disabled_outside_explicit_staging_callback_approval",
       "ownerTasks": ["V1-06"]
+    },
+    {
+      "id": "server-provider-polling-boundary",
+      "area": "provider-lifecycle",
+      "classification": "production_capable",
+      "paths": ["server/src/config/env.js", "server/src/creative/providerHttpClient.js", "server/src/creative/providerStatusClientRegistry.js", "server/src/creative/providerPollingWorker.js", "server/src/worker.js", "server/src/operations/workerJobs.js", "server/src/creative/providerReplayIntegration.js"],
+      "markers": ["CREATIVE_PROVIDER_POLLING_ENABLED", "buildReplicatePredictionStatusRequest", "createProviderPollingStatusClients", "polling_window_expired"],
+      "productionDisposition": "keep_disabled_outside_explicit_staging_status_read_approval",
+      "ownerTasks": ["V1-07"]
     },
     {
       "id": "fixture-smoke-and-simulation-profiles",

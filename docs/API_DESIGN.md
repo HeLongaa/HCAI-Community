@@ -367,6 +367,22 @@ only one request can persist outputs, settle/refund credits, or commit/release q
 safe ids, status/reason enums, hashes, counts, and header-presence booleans; raw bodies, signatures, nonces, prompts,
 errors, and output URLs are never returned or persisted. This callback route does not make any Provider network call.
 
+### Provider status polling worker (no public route)
+
+V1-07 registers a read-only Replicate status client only in `server/src/worker.js`. It uses the fixed
+`GET /v1/predictions/:providerJobId` destination and projects the response to bounded lifecycle fields before replay.
+There is no user or Admin polling endpoint. The API process does not construct this status client.
+
+`CREATIVE_PROVIDER_POLLING_ENABLED=false` and `CREATIVE_PROVIDER_POLLING_WORKER_ENABLED=false` are independent
+default-off gates. Enabling both also requires the guarded HTTP client, a production Node process in the staging
+runtime, Replicate staging mode, and `staging-only` confirmation. The worker queries the oldest queued/running
+generations first, isolates per-generation failures, schedules retryable reads for a later interval, and closes expired
+generations through an idempotent `PROVIDER_TIMEOUT` replay that refunds credits and releases quota once.
+
+Worker summaries and polling audits contain only safe ids, statuses, hashes, counts, booleans, and low-cardinality
+error codes. Raw Provider responses, inputs, prompts, errors, output URLs, authorization headers, and secrets are not
+returned or persisted. The configuration and fixture smoke paths do not perform a real Provider status request.
+
 ### `POST /creative/generations`
 
 Requires auth. Executes the mock provider path or an explicitly injected fixture adapter, applies moderation/review

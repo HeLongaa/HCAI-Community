@@ -456,7 +456,7 @@ export const fetchReplicateStagingPredictionStatus = async ({
   options = {},
 }) => {
   if (!client?.getPrediction) {
-    throw new Error('Replicate staging status client must be injected; no default network client is available')
+    throw new Error('Replicate staging status client must be supplied by the caller')
   }
   if (!providerJobId) {
     throw new HttpError(422, 'CREATIVE_PROVIDER_STATUS_JOB_MISSING', 'Provider status fetch requires a provider job id', {
@@ -472,52 +472,10 @@ export const fetchReplicateStagingPredictionStatus = async ({
     }))
   }
 
+  let prediction
   try {
-    const prediction = await client.getPrediction(providerJobId)
-    const incomingProviderJobId = prediction?.id ?? providerJobId
-    if (incomingProviderJobId !== providerJobId) {
-      throw new HttpError(409, 'CREATIVE_PROVIDER_JOB_MISMATCH', 'Provider status fetch returned a different job', providerJobMismatchDetails({
-        currentProviderJobId: providerJobId,
-        incomingProviderJobId,
-        providerId: provider?.id ?? 'replicate',
-      }))
-    }
-    const outputDigest = outputDigestForPrediction(prediction)
-    const generation = mapReplicatePredictionToCreativeGeneration({
-      request,
-      provider,
-      actor,
-      prediction: { ...prediction, id: incomingProviderJobId },
-      source,
-      now,
-      options,
-    })
-    return {
-      ok: true,
-      shouldReplay: true,
-      sourceType: 'polling',
-      providerId: provider?.id ?? 'replicate',
-      providerMode: provider?.mode ?? 'replicate_staging',
-      providerJobId,
-      providerStatus: safeProviderStatusForMetadata(prediction?.status),
-      normalizedStatus: generation.status,
-      generation,
-      receivedAt: now.toISOString(),
-      payloadHash: providerStatusPayloadHash(prediction),
-      outputDigest,
-      safeMetadata: {
-        providerStatus: safeProviderStatusForMetadata(prediction?.status),
-        normalizedStatus: generation.status,
-        outputCount: normalizeOutputs(prediction).length,
-        hasProviderError: Boolean(prediction?.error || prediction?.logs),
-        usageReported: Boolean(prediction?.metrics || prediction?.usage),
-        retryable: false,
-      },
-    }
+    prediction = await client.getPrediction(providerJobId)
   } catch (error) {
-    if (error instanceof HttpError) {
-      throw error
-    }
     const failure = safeProviderFailure(error)
     return {
       ok: false,
@@ -531,11 +489,51 @@ export const fetchReplicateStagingPredictionStatus = async ({
       reasonCode: statusFetchReasonCode(failure),
       safeMetadata: {
         errorCode: failure.code,
-        errorPreview: failure.messagePreview,
-        retryable: failure.retryable,
+        retryable: Boolean(error?.details?.retryable ?? failure.retryable),
         statusCode: failure.statusCode,
       },
     }
+  }
+
+  const incomingProviderJobId = prediction?.id ?? providerJobId
+  if (incomingProviderJobId !== providerJobId) {
+    throw new HttpError(409, 'CREATIVE_PROVIDER_JOB_MISMATCH', 'Provider status fetch returned a different job', providerJobMismatchDetails({
+      currentProviderJobId: providerJobId,
+      incomingProviderJobId,
+      providerId: provider?.id ?? 'replicate',
+    }))
+  }
+  const outputDigest = outputDigestForPrediction(prediction)
+  const generation = mapReplicatePredictionToCreativeGeneration({
+    request,
+    provider,
+    actor,
+    prediction: { ...prediction, id: incomingProviderJobId },
+    source,
+    now,
+    options,
+  })
+  return {
+    ok: true,
+    shouldReplay: true,
+    sourceType: 'polling',
+    providerId: provider?.id ?? 'replicate',
+    providerMode: provider?.mode ?? 'replicate_staging',
+    providerJobId,
+    providerStatus: safeProviderStatusForMetadata(prediction?.status),
+    normalizedStatus: generation.status,
+    generation,
+    receivedAt: now.toISOString(),
+    payloadHash: providerStatusPayloadHash(prediction),
+    outputDigest,
+    safeMetadata: {
+      providerStatus: safeProviderStatusForMetadata(prediction?.status),
+      normalizedStatus: generation.status,
+      outputCount: normalizeOutputs(prediction).length,
+      hasProviderError: Boolean(prediction?.error || prediction?.logs),
+      usageReported: Boolean(prediction?.metrics || prediction?.usage),
+      retryable: false,
+    },
   }
 }
 

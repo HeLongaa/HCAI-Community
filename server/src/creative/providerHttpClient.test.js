@@ -4,7 +4,10 @@ import test from 'node:test'
 import { buildReplicateImagePredictionPayload } from './replicateStagingProvider.js'
 import {
   buildMinimumReplicatePredictionRequest,
+  buildReplicatePredictionStatusRequest,
   createCreativeProviderHttpClient,
+  createCreativeProviderStatusClient,
+  projectReplicatePredictionResponse,
 } from './providerHttpClient.js'
 
 const enabledSource = {
@@ -45,6 +48,43 @@ test('buildMinimumReplicatePredictionRequest sends only allowlisted Provider inp
   })
   assert.equal(prediction.serializedBody.includes('metadata'), false)
   assert.equal(prediction.serializedBody.includes('replicate:image:staging'), false)
+})
+
+test('buildReplicatePredictionStatusRequest fixes the GET destination and rejects path injection', () => {
+  assert.deepEqual(buildReplicatePredictionStatusRequest('pred_status_1'), {
+    method: 'GET',
+    pathname: '/predictions/pred_status_1',
+  })
+  assert.throws(
+    () => buildReplicatePredictionStatusRequest('../private?token=secret'),
+    (error) => error.code === 'CREATIVE_PROVIDER_HTTP_REQUEST_INVALID' &&
+      JSON.stringify(error).includes('secret') === false,
+  )
+})
+
+test('projectReplicatePredictionResponse keeps only the strict lifecycle projection', () => {
+  const projected = projectReplicatePredictionResponse({
+    id: 'pred_status_2',
+    status: 'succeeded',
+    output: 'https://provider.example/output.png',
+    metrics: { predict_time: 1.25, total_time: 1.5 },
+    cost_usd: 0.04,
+    input: { prompt: 'private full prompt' },
+    urls: { get: 'https://provider.example/predictions/pred_status_2' },
+    webhook: 'https://api.example.com/private-callback',
+    version: 'private-model-version',
+  })
+
+  assert.deepEqual(projected, {
+    id: 'pred_status_2',
+    status: 'succeeded',
+    output: ['https://provider.example/output.png'],
+    metrics: { predict_time: 1.25, total_time: 1.5 },
+    costUsd: 0.04,
+  })
+  assert.equal(JSON.stringify(projected).includes('private full prompt'), false)
+  assert.equal(JSON.stringify(projected).includes('private-callback'), false)
+  assert.equal(JSON.stringify(projected).includes('private-model-version'), false)
 })
 
 test('createCreativeProviderHttpClient rejects unknown Providers before network setup', () => {
@@ -106,6 +146,74 @@ test('createCreativeProviderHttpClient uses deployment secret internally with an
   assert.deepEqual(result, { id: 'pred_http_1', status: 'starting' })
   assert.equal(JSON.stringify(client).includes('replicate-fixture-token'), false)
   assert.equal(JSON.stringify(result).includes('replicate-fixture-token'), false)
+})
+
+test('createCreativeProviderStatusClient performs a bounded GET and exposes no dispatch method', async () => {
+  const calls = []
+  const client = createCreativeProviderStatusClient({
+    providerId: 'replicate-staging',
+    source: enabledSource,
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options })
+      return new Response(JSON.stringify({
+        id: 'pred_status_3',
+        status: 'processing',
+        input: { prompt: 'private full prompt' },
+        urls: { get: 'https://provider.example/private' },
+      }), { status: 200 })
+    },
+  })
+
+  const result = await client.getPrediction('pred_status_3')
+
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].url, 'https://api.replicate.com/v1/predictions/pred_status_3')
+  assert.equal(calls[0].options.method, 'GET')
+  assert.equal(calls[0].options.body, undefined)
+  assert.equal(calls[0].options.headers.authorization, 'Bearer replicate-fixture-token')
+  assert.deepEqual(result, { id: 'pred_status_3', status: 'processing' })
+  assert.equal(client.createPrediction, undefined)
+  assert.deepEqual(Object.keys(client).sort(), ['getPrediction', 'providerId'])
+})
+
+test('createCreativeProviderStatusClient rejects invalid job ids before fetch', async () => {
+  let fetchCalls = 0
+  const client = createCreativeProviderStatusClient({
+    providerId: 'replicate-staging',
+    source: enabledSource,
+    fetchImpl: async () => {
+      fetchCalls += 1
+      throw new Error('network should not run')
+    },
+  })
+
+  await assert.rejects(
+    client.getPrediction('https://provider.example/predictions/private'),
+    (error) => error.code === 'CREATIVE_PROVIDER_HTTP_REQUEST_INVALID' &&
+      JSON.stringify(error).includes('provider.example') === false,
+  )
+  assert.equal(fetchCalls, 0)
+})
+
+test('createCreativeProviderStatusClient fails closed on unsafe Provider response fields', async () => {
+  const client = createCreativeProviderStatusClient({
+    providerId: 'replicate-staging',
+    source: enabledSource,
+    fetchImpl: async () => new Response(JSON.stringify({
+      id: 'pred_status_4',
+      status: 'succeeded',
+      output: 'http://provider.example/private-output.png',
+      input: { prompt: 'private full prompt' },
+    }), { status: 200 }),
+  })
+
+  await assert.rejects(
+    client.getPrediction('pred_status_4'),
+    (error) => error.code === 'CREATIVE_PROVIDER_HTTP_RESPONSE_INVALID' &&
+      error.details.reason === 'projection_invalid' &&
+      JSON.stringify(error).includes('private-output') === false &&
+      JSON.stringify(error).includes('private full prompt') === false,
+  )
 })
 
 test('createCreativeProviderHttpClient rejects secret-like or extra Provider input before fetch', async () => {

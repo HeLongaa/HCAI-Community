@@ -42,7 +42,7 @@ The following are intentional today and must be removed, isolated to development
 - Deterministic creative `mock` execution in production.
 - Seed repository and legacy demo access tokens outside fixture/local compatibility.
 - Development OAuth callback behavior when real Provider credentials are absent.
-- Fixture-injected Replicate adapter, polling, replay, and external-alert clients.
+- Fixture-injected Replicate product adapter, manual replay, and external-alert clients; the V1-07 read-only status client is separately gated and disabled by default.
 
 These surfaces remain valid for deterministic tests. V1-02 and V1-39 own their complete inventory and production removal gate.
 
@@ -59,6 +59,8 @@ These surfaces remain valid for deterministic tests. V1-02 and V1-39 own their c
   exact-version consent, Provider disclosures, support categories, and data-rights entry points; legal approval remains open.
 - `docs/REAL_PROVIDER_CURRENT_STATUS.md` remains authoritative for real-provider approval boundaries.
 - `docs/V1_PROVIDER_HTTP_AND_SECRETS_BOUNDARY.md` owns the V1-05 default-disabled client and secret-injection contract.
+- `docs/V1_PROVIDER_CALLBACK_API.md` owns the V1-06 callback authentication and replay boundary.
+- `docs/V1_PROVIDER_POLLING_AND_RECOVERY.md` owns the V1-07 read-only status polling, retry, and timeout boundary.
 - `docs/RELEASE_CHECKLIST.md` and `docs/QUALITY_GATES.md` remain authoritative for release execution and checks.
 - Phase 2/3 documents are historical evidence; they do not define current V1 stage or scope.
 - Notion `V1 Milestone` replaces the legacy `Phase` field for V1 planning.

@@ -114,3 +114,35 @@ test('serializeAuditEvent sanitizes legacy provider lifecycle audit rows', () =>
   }
   assert.equal(serialized.includes('provider.example'), false)
 })
+
+test('provider polling audits preserve only bounded retry and timeout evidence', () => {
+  const audit = buildProviderLifecycleAuditPayload({
+    sourceKey: 'creative-provider-polling:gen-safe:retry:abcdef',
+    generationId: 'gen-safe',
+    action: 'creative.provider_polling.retry_scheduled',
+    metadata: {
+      providerId: 'replicate',
+      providerMode: 'replicate_staging',
+      providerJobId: 'prediction-safe',
+      sourceType: 'polling',
+      errorCode: 'PROVIDER_RATE_LIMITED',
+      reasonCode: 'provider_status_rate_limited',
+      retryable: true,
+      timedOut: false,
+      statusCode: 429,
+      rawError: 'Bearer private-provider-token',
+      outputUrl: 'https://provider.example/private-output.png',
+    },
+  })
+
+  assert.equal(audit.action, 'creative.provider_polling.retry_scheduled')
+  assert.equal(audit.metadata.errorCode, 'PROVIDER_RATE_LIMITED')
+  assert.equal(audit.metadata.reasonCode, 'provider_status_rate_limited')
+  assert.equal(audit.metadata.retryable, true)
+  assert.equal(audit.metadata.timedOut, false)
+  assert.equal(audit.metadata.statusCode, 429)
+  assert.equal(audit.metadata.rawError, undefined)
+  assert.equal(audit.metadata.outputUrl, undefined)
+  assert.equal(JSON.stringify(audit).includes('private-provider-token'), false)
+  assert.equal(JSON.stringify(audit).includes('provider.example'), false)
+})

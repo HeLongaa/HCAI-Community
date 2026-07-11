@@ -4,16 +4,16 @@ This document closes the real-provider preflight package and defines the gate th
 
 Current go/no-go conclusion: **conditional go for a staging-only adapter planning branch, no-go for production enablement**.
 
-The repository remains mock-provider only for outbound generation. V1-06 now implements an app-side staging callback route behind a default-off kill switch; this closeout gate still does not approve a real provider adapter, external API call, Provider webhook target/delivery, real polling client, Admin mutation endpoint, payment refund flow, provider billing reconciliation, or production paid-provider path.
+The repository remains mock-provider only for outbound generation. V1-06 implements an app-side staging callback route and V1-07 implements a dedicated read-only status client/polling worker, each behind default-off kill switches. This closeout gate still does not approve a real provider adapter, external API call, Provider webhook target/delivery, enabled real polling, Admin mutation endpoint, payment refund flow, provider billing reconciliation, or production paid-provider path.
 
-The callback/polling prerequisite closeout and `docs/V1_PROVIDER_CALLBACK_API.md` cover app-side fixture safety only. They do not approve real Provider webhook registration/delivery, real provider polling, manual replay endpoints, or Admin lifecycle mutations.
+The callback/polling prerequisite closeout, `docs/V1_PROVIDER_CALLBACK_API.md`, and `docs/V1_PROVIDER_POLLING_AND_RECOVERY.md` cover app-side safety only. They do not approve real Provider webhook registration/delivery, real provider polling, manual replay endpoints, or Admin lifecycle mutations.
 
 ## Current Gate Interpretation
 
 After the PR #82 through PR #89 closeout sequence, this gate should be read narrowly:
 
 - **Allowed:** staging adapter planning, documentation consistency work, metadata-only smoke readiness work, and fixture-only Replicate image adapter hardening with mocked or injected clients.
-- **Still blocked:** real provider SDK installation, default network-capable provider clients, real provider job creation, provider output download, outbound external alert delivery, real Provider callback delivery, polling worker enablement with a real status client, manual replay endpoints, Admin generation mutation controls, and production paid-provider mode.
+- **Still blocked:** additional real provider SDK installation, product-route network client registration, real provider job creation, provider output download, outbound external alert delivery, real Provider callback delivery, polling worker enablement for real status reads, manual replay endpoints, Admin generation mutation controls, and production paid-provider mode.
 - **Approval required:** the first real external-call rehearsal needs the separate approval package in `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md`, a current Notion record in Chinese, explicit user approval for the exact run, a provider-side spending cap, an app-side budget cap, a maximum provider call count, approval expiry, token rotation owner, kill-switch owner, and rollback owner.
 
 Ordinary continuation language such as "continue", "next", or "ship it" is not enough to cross from fixture-only hardening into a real external-call rehearsal.
