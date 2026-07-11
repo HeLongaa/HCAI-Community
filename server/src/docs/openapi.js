@@ -1160,7 +1160,7 @@ export const openApiDocument = {
           '400': { description: 'Invalid workspace, mode, prompt, or parameter payload' },
           '401': { description: 'Authentication required' },
           '422': { description: 'Creative moderation policy blocked the request before provider execution' },
-          '429': { description: 'Creative generation quota exceeded for the user/workspace/day window' },
+          '429': { description: 'Creative generation quota or durable Provider budget cap exceeded before dispatch' },
           '503': { description: 'Creative provider unavailable' },
         },
       },
@@ -1864,7 +1864,7 @@ export const openApiDocument = {
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
         ],
         responses: {
-          '200': { description: 'Creative generation history list with sanitized provider cost, budget, replay, mutation, and output-ingestion evidence summaries when available' },
+          '200': { description: 'Creative generation history list with sanitized durable Provider cost ledger, pricing snapshot, budget, replay, mutation, and output-ingestion evidence summaries when available' },
           '403': { description: 'Requires audit read permission' },
         },
       },
@@ -1874,7 +1874,7 @@ export const openApiDocument = {
         summary: 'Read a single creative generation history record',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         responses: {
-          '200': { description: 'Creative generation history detail with sanitized provider cost, budget, replay, mutation, and output-ingestion evidence summaries when available' },
+          '200': { description: 'Creative generation history detail with sanitized durable Provider cost ledger, pricing snapshot, budget, replay, mutation, and output-ingestion evidence summaries when available' },
           '403': { description: 'Requires audit read permission' },
           '404': { description: 'Creative generation record not found' },
         },

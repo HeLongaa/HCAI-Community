@@ -2,11 +2,13 @@ import { getOutputAssetIds, safeErrorPreview, statusForPersistedGeneration } fro
 import { persistCreativeGenerationOutputs } from './generationService.js'
 import { safeProviderFailure } from './providerAdapterContract.js'
 import { emptyLifecycleReplayActions } from './providerLifecycleReplay.js'
+import { providerCostCloseout } from './providerCostContract.js'
 
 const lifecycleOperations = Object.freeze({
   markRunning: 'mark_running',
   persistOutputs: 'persist_outputs',
   linkOutputAssets: 'link_output_assets',
+  closeProviderCost: 'close_provider_cost',
   settleCredits: 'settle_credits',
   refundCredits: 'refund_credits',
   commitQuota: 'commit_quota',
@@ -142,6 +144,9 @@ export const buildProviderSideEffectPlan = ({
     push(baseOperation({ replay, type: lifecycleOperations.linkOutputAssets }))
   }
   if (actions.settleCredits) {
+    if (generation?.usage?.providerCost) {
+      push(baseOperation({ replay, type: lifecycleOperations.closeProviderCost }))
+    }
     push(baseOperation({
       replay,
       type: lifecycleOperations.settleCredits,
@@ -157,6 +162,9 @@ export const buildProviderSideEffectPlan = ({
     }))
   }
   if (actions.refundCredits) {
+    if (generation?.usage?.providerCost) {
+      push(baseOperation({ replay, type: lifecycleOperations.closeProviderCost }))
+    }
     push(baseOperation({
       replay,
       type: lifecycleOperations.refundCredits,
@@ -243,6 +251,42 @@ const executeOperation = async ({ operation, replay, repositories, actor, state,
       const outputAssetIds = state.outputAssetIds ?? getOutputAssetIds(state.generation ?? generation)
       return repositories.creativeGenerations?.linkOutputAssets?.(generationId, outputAssetIds, actor)
     }
+    case lifecycleOperations.closeProviderCost: {
+      const ledger = await repositories.creativeProviderCosts?.findForGeneration?.(generationId)
+      const closeout = providerCostCloseout(generation)
+      if (!ledger || !closeout) return ledger
+      const closed = closeout.action === 'settle'
+        ? await repositories.creativeProviderCosts.settle(ledger.sourceKey, {
+            ...closeout,
+            providerJobId: generation?.providerJobId ?? null,
+          }, actor)
+        : await repositories.creativeProviderCosts.reconcile(ledger.sourceKey, {
+            ...closeout,
+            providerJobId: generation?.providerJobId ?? null,
+          }, actor)
+      state.providerCostLedger = closed
+      state.generation = {
+        ...generation,
+        usage: {
+          ...generation?.usage,
+          providerCost: {
+            ...generation?.usage?.providerCost,
+            ledger: closed
+              ? {
+                  id: closed.id,
+                  sourceKey: closed.sourceKey,
+                  status: closed.status,
+                  estimateMicros: closed.estimateMicros,
+                  actualMicros: closed.actualMicros,
+                  currency: closed.currency,
+                  reasonCode: closed.reasonCode,
+                }
+              : null,
+          },
+        },
+      }
+      return closed
+    }
     case lifecycleOperations.settleCredits: {
       const settled = generation?.credit?.ledgerId && repositories.creativeCredits?.settle
         ? await repositories.creativeCredits.settle(generation.credit.ledgerId, {
@@ -282,7 +326,7 @@ const executeOperation = async ({ operation, replay, repositories, actor, state,
       return repositories.creativeGenerations?.complete?.(generationId, {
         status: statusForPersistedGeneration(state.generation ?? generation),
         outputAssetIds: state.outputAssetIds ?? getOutputAssetIds(state.generation ?? generation),
-        usage: generation?.usage ?? null,
+        usage: state.generation?.usage ?? generation?.usage ?? null,
         credit: state.credit ?? generation?.credit ?? null,
         quota: state.quota ?? generation?.quota ?? null,
         safety: generation?.safety ?? null,
@@ -335,6 +379,7 @@ export const executeProviderSideEffectPlan = async ({
     outputAssetIds: null,
     credit: null,
     quota: null,
+    providerCostLedger: null,
   }
   const operations = []
 
@@ -349,6 +394,9 @@ export const executeProviderSideEffectPlan = async ({
       }
       if ([lifecycleOperations.commitQuota, lifecycleOperations.releaseQuota].includes(operation.type) && previous?.result) {
         state.quota = previous.result
+      }
+      if (operation.type === lifecycleOperations.closeProviderCost && previous?.result) {
+        state.providerCostLedger = previous.result
       }
       operations.push({ key: operation.key, type: operation.type, status: 'skipped', result: previous?.result ?? null })
       continue

@@ -281,6 +281,53 @@ export const getCreativeOutputIngestionDto = (ingestion) => ({
   updatedAt: ingestion.updatedAt ? ingestion.updatedAt.toISOString() : '',
 })
 
+export const getCreativeProviderBudgetWindowDto = (window) => ({
+  id: window.id,
+  budgetScope: window.budgetScope,
+  providerId: window.providerId,
+  providerAccountRef: window.providerAccountRef,
+  workspace: window.workspace,
+  currency: window.currency,
+  windowStart: window.windowStart.toISOString(),
+  windowEnd: window.windowEnd.toISOString(),
+  capMicros: String(window.capMicros),
+  reservedMicros: String(window.reservedMicros),
+  spentMicros: String(window.spentMicros),
+  releasedMicros: String(window.releasedMicros),
+  createdAt: window.createdAt.toISOString(),
+  updatedAt: window.updatedAt.toISOString(),
+})
+
+export const getCreativeProviderCostLedgerDto = (ledger) => ({
+  id: ledger.id,
+  sourceKey: ledger.sourceKey,
+  generationId: ledger.generationId,
+  budgetWindowId: ledger.budgetWindowId,
+  providerId: ledger.providerId,
+  providerAccountRef: ledger.providerAccountRef,
+  providerModelId: ledger.providerModelId,
+  providerJobId: ledger.providerJobId ?? null,
+  workspace: ledger.workspace,
+  mode: ledger.mode,
+  currency: ledger.currency,
+  pricingSnapshot: ledger.pricingSnapshot,
+  pricingSnapshotHash: ledger.pricingSnapshotHash,
+  estimateMicros: String(ledger.estimateMicros),
+  reservedMicros: String(ledger.reservedMicros),
+  actualMicros: ledger.actualMicros == null ? null : String(ledger.actualMicros),
+  status: ledger.status,
+  usage: ledger.usage ?? null,
+  risk: ledger.risk ?? null,
+  reasonCode: ledger.reasonCode ?? null,
+  reservedAt: ledger.reservedAt.toISOString(),
+  settledAt: ledger.settledAt?.toISOString() ?? null,
+  releasedAt: ledger.releasedAt?.toISOString() ?? null,
+  reconciliationAt: ledger.reconciliationAt?.toISOString() ?? null,
+  createdAt: ledger.createdAt.toISOString(),
+  updatedAt: ledger.updatedAt.toISOString(),
+  budgetWindow: ledger.budgetWindow ? getCreativeProviderBudgetWindowDto(ledger.budgetWindow) : null,
+})
+
 export const getMediaScanJobDto = (job) => ({
   id: job.id,
   assetId: job.assetId,

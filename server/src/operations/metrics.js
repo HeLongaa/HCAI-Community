@@ -173,6 +173,7 @@ const providerBudgetSummary = ({
   dispatchBlockedEvents = [],
   anomalyEvents = [],
   alertDispatchEvents = [],
+  costLedgerEvents = [],
   alertDispatchFailureThreshold = DEFAULT_PROVIDER_ALERT_DISPATCH_FAILURE_THRESHOLD,
 } = {}) => ({
   thresholdAlerts: {
@@ -209,6 +210,18 @@ const providerBudgetSummary = ({
     byCurrency: countBy([...thresholdEvents, ...dispatchBlockedEvents, ...anomalyEvents], (event) => safeEvidenceIdentifier(asObject(event.metadata).currency)),
   },
   providerAlertDispatches: providerAlertDispatchSummary(alertDispatchEvents, alertDispatchFailureThreshold),
+  costLedger: {
+    total: costLedgerEvents.length,
+    reserved: costLedgerEvents.filter((event) => event.action === 'creative.provider_cost.reserved').length,
+    settled: costLedgerEvents.filter((event) => event.action === 'creative.provider_cost.settled').length,
+    released: costLedgerEvents.filter((event) => event.action === 'creative.provider_cost.released').length,
+    reconciliationRequired: costLedgerEvents.filter((event) => event.action === 'creative.provider_cost.reconciliation_required').length,
+    byProvider: countBy(costLedgerEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).providerId)),
+    byWorkspace: countBy(costLedgerEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).workspace)),
+    byCurrency: countBy(costLedgerEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).currency)),
+    byReason: countBy(costLedgerEvents, (event) => safeEvidenceIdentifier(asObject(event.metadata).reasonCode)),
+    latestAt: latestTimestamp(costLedgerEvents),
+  },
 })
 
 export const operationsMetricsSampleDefinitions = {
@@ -272,6 +285,12 @@ export const operationsMetricsSampleDefinitions = {
     resourceType: 'creative_provider_budget_alert',
     failedOnly: false,
   },
+  creativeProviderCostReconciliations: {
+    title: 'Creative provider cost reconciliation records',
+    action: 'creative.provider_cost.reconciliation_required',
+    resourceType: 'creative_provider_cost_ledger',
+    failedOnly: false,
+  },
 }
 
 const providerBudgetSampleKeys = new Set([
@@ -279,6 +298,7 @@ const providerBudgetSampleKeys = new Set([
   'creativeProviderBudgetDispatchBlocks',
   'creativeProviderCostAnomalies',
   'creativeProviderAlertDispatches',
+  'creativeProviderCostReconciliations',
 ])
 
 const compactObject = (value) =>
@@ -543,6 +563,9 @@ export const buildOperationsMetrics = ({
   const providerBudgetDispatchBlocks = windowAuditEvents.filter((event) => event.action === providerBudgetEventActions.dispatchBlocked)
   const providerCostAnomalies = windowAuditEvents.filter((event) => event.action === providerBudgetEventActions.anomaly)
   const providerAlertDispatches = windowAuditEvents.filter((event) => event.action === providerBudgetEventActions.alertDispatch)
+  const providerCostLedgerEvents = windowAuditEvents.filter((event) =>
+    event.resourceType === 'creative_provider_cost_ledger' && event.action.startsWith('creative.provider_cost.')
+  )
   const acknowledgements = securityDispositions.filter((event) => event.action === 'security.alert.acknowledged')
 
   return {
@@ -621,6 +644,7 @@ export const buildOperationsMetrics = ({
       dispatchBlockedEvents: providerBudgetDispatchBlocks,
       anomalyEvents: providerCostAnomalies,
       alertDispatchEvents: providerAlertDispatches,
+      costLedgerEvents: providerCostLedgerEvents,
       alertDispatchFailureThreshold: providerAlertDispatchFailureThreshold,
     }),
   }

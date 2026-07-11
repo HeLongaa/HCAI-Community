@@ -3388,6 +3388,21 @@ export function AdminPage({
                     <strong>{textFor(t, 'Provider budget', 'Provider budget')}</strong>
                     <span>{formatProviderBudgetSummary(selectedGeneration)}</span>
                   </div>
+                  <div>
+                    <strong>{textFor(t, 'Cost ledger', '成本账本')}</strong>
+                    <span>
+                      {selectedGeneration.providerCostLedgerEvidence?.status
+                        ? [
+                            selectedGeneration.providerCostLedgerEvidence.status,
+                            `${textFor(t, 'estimate', '预估')} ${formatProviderCostAmount(selectedGeneration.providerCostLedgerEvidence.estimateAmount, selectedGeneration.providerCostLedgerEvidence.currency)}`,
+                            `${textFor(t, 'actual', '实际')} ${formatProviderCostAmount(selectedGeneration.providerCostLedgerEvidence.actualAmount, selectedGeneration.providerCostLedgerEvidence.currency)}`,
+                            `${textFor(t, 'reserved', '预留')} ${formatProviderCostAmount(selectedGeneration.providerCostLedgerEvidence.budget?.reservedAmount, selectedGeneration.providerCostLedgerEvidence.currency)}`,
+                            `${textFor(t, 'spent', '已用')} ${formatProviderCostAmount(selectedGeneration.providerCostLedgerEvidence.budget?.spentAmount, selectedGeneration.providerCostLedgerEvidence.currency)}`,
+                            selectedGeneration.providerCostLedgerEvidence.reasonCode ?? null,
+                          ].filter(Boolean).join(' · ')
+                        : textFor(t, 'Cost ledger unavailable', '成本账本不可用')}
+                    </span>
+                  </div>
                   {selectedGeneration.providerReplayEvidence?.latest && (
                     <div>
                       <strong>{textFor(t, 'Latest replay', '最新 replay')}</strong>

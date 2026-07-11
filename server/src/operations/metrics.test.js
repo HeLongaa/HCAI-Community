@@ -40,6 +40,44 @@ test('buildOperationsMetrics summarizes operation lease contention and renew fai
   assert.deepEqual(metrics.operations.leases.renewFailures.byKey, [{ key: 'task-stale-submission-sweep', count: 1 }])
 })
 
+test('buildOperationsMetrics summarizes durable Provider cost ledger lifecycle safely', () => {
+  const generatedAt = new Date('2026-07-12T12:00:00.000Z')
+  const actions = [
+    ['creative.provider_cost.reserved', null],
+    ['creative.provider_cost.settled', 'provider_actual_settled'],
+    ['creative.provider_cost.released', 'dispatch_not_billed'],
+    ['creative.provider_cost.reconciliation_required', 'actual_cost_missing'],
+  ]
+  const auditEvents = actions.map(([action, reasonCode], index) => ({
+    id: `audit-provider-cost-ledger-${index}`,
+    action,
+    resourceType: 'creative_provider_cost_ledger',
+    resourceId: `provider-cost-ledger-high-cardinality-${index}`,
+    metadata: {
+      providerId: 'replicate',
+      workspace: 'image',
+      currency: 'USD',
+      reasonCode,
+      generationId: `generation-must-not-be-a-metric-label-${index}`,
+      pricingSnapshotHash: 'a'.repeat(64),
+    },
+    createdAt: `2026-07-12T11:5${index}:00.000Z`,
+  }))
+
+  const metrics = buildOperationsMetrics({ windowMinutes: 30, generatedAt, auditEvents })
+  const ledger = metrics.creativeProviderBudget.costLedger
+  assert.equal(ledger.total, 4)
+  assert.equal(ledger.reserved, 1)
+  assert.equal(ledger.settled, 1)
+  assert.equal(ledger.released, 1)
+  assert.equal(ledger.reconciliationRequired, 1)
+  assert.deepEqual(ledger.byProvider, [{ key: 'replicate', count: 4 }])
+  assert.deepEqual(ledger.byWorkspace, [{ key: 'image', count: 4 }])
+  assert.deepEqual(ledger.byCurrency, [{ key: 'USD', count: 4 }])
+  assert.equal(JSON.stringify(ledger).includes('generation-must-not-be-a-metric-label'), false)
+  assert.equal(JSON.stringify(ledger).includes('provider-cost-ledger-high-cardinality'), false)
+})
+
 test('buildOperationsMetrics summarizes creative provider budget audit events', () => {
   const generatedAt = new Date('2026-07-07T12:00:00.000Z')
   const auditEvents = [

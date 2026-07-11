@@ -142,6 +142,17 @@ const addProviderBudgetMetrics = (lines, providerBudget = {}) => {
   addGauge(lines, 'newchat_creative_provider_alert_dispatch_failure_spike_failures_total', 'Windowed provider alert dispatch failures counted by the spike policy.', dispatches.failureSpike?.failures)
   addCountBy(lines, 'newchat_creative_provider_alert_dispatch_failure_spike_by_channel_total', 'Windowed provider alert dispatch spike failures by channel.', dispatches.failureSpike?.byChannel, 'channel', ['webhook', 'slack', 'email', 'unknown'])
   addCountBy(lines, 'newchat_creative_provider_alert_dispatch_failure_spike_by_reason_total', 'Windowed provider alert dispatch spike failures by reason.', dispatches.failureSpike?.byReason, 'reason', providerBudgetReasonValues)
+
+  const ledger = providerBudget.costLedger ?? {}
+  addGauge(lines, 'newchat_creative_provider_cost_ledger_events_total', 'Windowed creative provider cost ledger lifecycle event count.', ledger.total)
+  addGauge(lines, 'newchat_creative_provider_cost_reservations_total', 'Windowed creative provider cost reservation count.', ledger.reserved)
+  addGauge(lines, 'newchat_creative_provider_cost_settlements_total', 'Windowed creative provider cost settlement count.', ledger.settled)
+  addGauge(lines, 'newchat_creative_provider_cost_releases_total', 'Windowed creative provider cost release count.', ledger.released)
+  addGauge(lines, 'newchat_creative_provider_cost_reconciliation_required_total', 'Windowed creative provider cost reconciliation-required count.', ledger.reconciliationRequired)
+  addCountBy(lines, 'newchat_creative_provider_cost_ledger_by_provider_total', 'Windowed creative provider cost ledger events by provider.', ledger.byProvider, 'provider')
+  addCountBy(lines, 'newchat_creative_provider_cost_ledger_by_workspace_total', 'Windowed creative provider cost ledger events by workspace.', ledger.byWorkspace, 'workspace', ['image', 'video', 'music', 'chat', 'unknown'])
+  addCountBy(lines, 'newchat_creative_provider_cost_ledger_by_currency_total', 'Windowed creative provider cost ledger events by currency.', ledger.byCurrency, 'currency')
+  addCountBy(lines, 'newchat_creative_provider_cost_ledger_by_reason_total', 'Windowed creative provider cost ledger events by reason.', ledger.byReason, 'reason')
 }
 
 const deliveryMetrics = (lines, prefix, summary = {}) => {

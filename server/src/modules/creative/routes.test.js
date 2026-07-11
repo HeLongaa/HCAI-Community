@@ -250,6 +250,82 @@ test('POST Replicate callback applies one signed lifecycle result and suppresses
   }
 })
 
+test('Replicate queued generation reserves Provider budget and callback settles actual cost once', async () => {
+  resetCreativePolicyState()
+  const restoreEnv = applyReplicateStagingFixtureEnv({ MEDIA_SCAN_PROVIDER: 'manual' })
+  const repository = createSeedRepository()
+  const source = callbackSource()
+  const providerJobId = `pred-cost-callback-${Date.now()}`
+  const fixtureAdapters = {
+    'replicate-staging': ({ request, provider, actor, source: adapterSource, now, generationId }) =>
+      createReplicateStagingPrediction({
+        request,
+        provider,
+        actor,
+        source: adapterSource,
+        now,
+        generationId,
+        client: {
+          createPrediction: async () => ({ id: providerJobId, status: 'starting' }),
+        },
+      }),
+  }
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+    fixtureAdapters,
+    source,
+    now: callbackNow,
+    providerOutputFetcher: fixtureProviderOutputFetcher,
+  }))
+  try {
+    const queued = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        providerId: 'replicate-staging',
+        prompt: 'Queued Provider cost callback fixture',
+      },
+      token: 'demo-access.finops',
+    })
+    assert.equal(queued.status, 200)
+    assert.equal(queued.payload.data.status, 'queued')
+    const generationId = queued.payload.data.id
+    const reserved = await repository.creativeProviderCosts.findForGeneration(generationId)
+    assert.equal(reserved.status, 'reserved')
+    assert.equal(reserved.budgetWindow.reservedMicros, '250000')
+
+    const body = {
+      id: providerJobId,
+      event_id: `event-cost-callback-${providerJobId}`,
+      status: 'succeeded',
+      output: ['https://provider.example/cost-callback.png'],
+      metrics: { predict_time: 2.5 },
+      cost_usd: 0.2,
+      completed_at: callbackNow.toISOString(),
+    }
+    const requestOptions = {
+      body,
+      headers: signedCallbackHeaders({ source, generationId, providerJobId, body }),
+    }
+    const completed = await requestJson(server.url, `/api/creative/providers/replicate/callback/${generationId}`, requestOptions)
+    const duplicate = await requestJson(server.url, `/api/creative/providers/replicate/callback/${generationId}`, requestOptions)
+    assert.equal(completed.status, 200)
+    assert.equal(completed.payload.data.outcome, 'applied')
+    assert.equal(duplicate.status, 200)
+    assert.equal(duplicate.payload.data.outcome, 'duplicate_suppressed')
+
+    const settled = await repository.creativeProviderCosts.findForGeneration(generationId)
+    assert.equal(settled.status, 'settled')
+    assert.equal(settled.actualMicros, '200000')
+    assert.equal(settled.budgetWindow.reservedMicros, '0')
+    assert.equal(settled.budgetWindow.spentMicros, '1200000')
+  } finally {
+    await server.close()
+    restoreEnv()
+    resetCreativePolicyState()
+  }
+})
+
 test('POST Replicate callback fails closed before settlement when output fetching is not injected', async () => {
   const repository = createSeedRepository()
   const source = callbackSource()
@@ -756,6 +832,11 @@ test('POST /api/creative/generations can run a Replicate staging fixture through
     assert.equal(payload.data.usage.providerCost.schemaVersion, 'provider-cost-v1')
     assert.equal(payload.data.usage.providerCost.budget.status, 'within_budget')
     assert.equal(payload.data.usage.providerCost.actual.amount, 0.2)
+    assert.equal(payload.data.usage.providerCost.pricingSnapshot.schemaVersion, 'provider-pricing-snapshot-v1')
+    assert.equal(payload.data.usage.providerCost.pricingSnapshot.snapshotHash.length, 64)
+    assert.equal(payload.data.usage.providerCost.ledger.status, 'settled')
+    assert.equal(payload.data.usage.providerCost.ledger.estimateMicros, '250000')
+    assert.equal(payload.data.usage.providerCost.ledger.actualMicros, '200000')
     assert.equal(JSON.stringify(payload.data).includes('route-fixture-1.png'), false)
     assert.equal(JSON.stringify(payload.data).includes('https://replicate.example'), false)
     assert.equal(JSON.stringify(payload.data).includes('replicate-fixture-token'), false)
@@ -770,6 +851,9 @@ test('POST /api/creative/generations can run a Replicate staging fixture through
     assert.equal(payload.data.generationRecord.providerJobId, payload.data.outputs[0].source.predictionId)
     assert.equal(payload.data.generationRecord.usage.providerCost.schemaVersion, 'provider-cost-v1')
     assert.deepEqual(payload.data.generationRecord.outputAssetIds, [payload.data.outputs[0].storage.mediaAssetId])
+    const providerCostLedger = await repositories.creativeProviderCosts.findForGeneration(payload.data.id)
+    assert.equal(providerCostLedger.status, 'settled')
+    assert.equal(providerCostLedger.budgetWindow.spentMicros.endsWith('00000'), true)
   } finally {
     await server.close()
     restoreEnv()
@@ -1018,6 +1102,9 @@ test('POST /api/creative/generations refunds credits and releases quota when Rep
     assert.equal(failedRecord.credit.status, 'refunded')
     assert.equal(failedRecord.credit.refunded, 1)
     assert.equal(failedRecord.credit.reasonCode, 'PROVIDER_TIMEOUT')
+    const providerCostLedger = await repositories.creativeProviderCosts.findForGeneration(failedRecord.id)
+    assert.equal(providerCostLedger.status, 'reconciliation_required')
+    assert.equal(providerCostLedger.reasonCode, 'actual_cost_missing')
   } finally {
     await server.close()
     restoreEnv()
@@ -1104,6 +1191,9 @@ test('POST /api/creative/generations closes out cancelled Replicate fixture gene
     assert.equal(failedRecord.credit.status, 'refunded')
     assert.equal(failedRecord.credit.refunded, 1)
     assert.equal(failedRecord.credit.reasonCode, 'PROVIDER_CANCELLED')
+    const providerCostLedger = await repositories.creativeProviderCosts.findForGeneration(failedRecord.id)
+    assert.equal(providerCostLedger.status, 'reconciliation_required')
+    assert.equal(providerCostLedger.reasonCode, 'actual_cost_missing')
 
     const completedGenerations = await repositories.creativeGenerations.list({
       actorHandle: 'opsplus',

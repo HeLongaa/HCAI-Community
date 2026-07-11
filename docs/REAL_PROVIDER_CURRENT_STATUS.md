@@ -101,6 +101,7 @@ These paths are available without real-provider approval:
 - User and Admin generation cancellation, user-confirmed child retries, and two-person manual lifecycle replay can be exercised without a default Provider mutation client.
 - Cancellation, retry authorization/outcomes, and reviewed manual replay transitions create safe in-app notifications for affected users and requesters.
 - Provider output bytes can be exercised through an injected fixture fetcher, durable ingestion ledger, deterministic media asset, and scanner without retaining the Provider URL.
+- Provider cost can be exercised through immutable fixture pricing snapshots, a durable atomic budget window/cost ledger, callback/polling closeout, and safe Admin/metrics evidence without enabling real pricing or dispatch.
 
 ## Fixture-Only Foundations
 
@@ -124,6 +125,7 @@ These pieces are implemented for tests, planning, and safe dry-runs only:
 - injected-only provider alert dispatcher boundary
 - disabled webhook, Slack, and email provider alert client shells
 - fixture-only provider alert dry-run harness
+- Provider-independent four-workspace pricing calculator contract and durable budget ledger fixtures
 
 Fixture-only means no enabled route, worker, or default client contacts a real provider or external alert channel during CI or ordinary development.
 

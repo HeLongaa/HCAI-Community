@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { HttpError } from '../common/errors/httpError.js'
 import { hasPermission, permissions, rolePermissions } from '../auth/permissions.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
@@ -18,6 +19,8 @@ import {
   serializeCreativeGeneration,
   serializeCreativeGenerationMutation,
   serializeCreativeOutputIngestion,
+  serializeCreativeProviderBudgetWindow,
+  serializeCreativeProviderCostLedger,
   serializeCreativeProviderReplay,
   serializeLedgerEntry,
   serializeLibraryItem,
@@ -80,6 +83,10 @@ const creativeProviderReplayLedgerByIdempotencyKey = new Map()
 const creativeProviderReplayLedgerByProviderEventKey = new Map()
 const creativeOutputIngestionsById = new Map()
 const creativeOutputIngestionsBySourceKey = new Map()
+const creativeProviderBudgetWindowsById = new Map()
+const creativeProviderBudgetWindowIdsByKey = new Map()
+const creativeProviderCostLedgersById = new Map()
+const creativeProviderCostLedgerIdsBySourceKey = new Map()
 const creativeCreditLedgerById = new Map()
 const creativeQuotaWindowsById = new Map()
 const creativeQuotaReservationsById = new Map()
@@ -1272,6 +1279,75 @@ const makeCreativeOutputIngestionRecord = (payload, patch = {}) => {
     ...patch,
   }
 }
+
+const providerBudgetWindowKey = ({ budgetScope, currency, windowStart, windowEnd }) =>
+  [budgetScope, currency, windowStart, windowEnd].join(':')
+
+const makeCreativeProviderBudgetWindow = (payload, patch = {}) => {
+  const now = new Date().toISOString()
+  return {
+    id: payload.id ?? `provider-budget-${randomUUID()}`,
+    budgetScope: payload.budgetScope,
+    providerId: payload.providerId,
+    providerAccountRef: payload.providerAccountRef,
+    workspace: payload.workspace,
+    currency: payload.currency,
+    windowStart: payload.windowStart,
+    windowEnd: payload.windowEnd,
+    capMicros: BigInt(payload.capMicros),
+    reservedMicros: BigInt(payload.reservedMicros ?? 0),
+    spentMicros: BigInt(payload.spentMicros ?? payload.openingSpentMicros ?? 0),
+    releasedMicros: BigInt(payload.releasedMicros ?? 0),
+    createdAt: payload.createdAt ?? now,
+    updatedAt: now,
+    ...patch,
+  }
+}
+
+const makeCreativeProviderCostLedger = (payload, patch = {}) => {
+  const now = new Date().toISOString()
+  return {
+    id: payload.id ?? `provider-cost-${randomUUID()}`,
+    sourceKey: payload.sourceKey,
+    generationId: payload.generationId,
+    budgetWindowId: payload.budgetWindowId,
+    providerId: payload.providerId,
+    providerAccountRef: payload.providerAccountRef,
+    providerModelId: payload.providerModelId,
+    providerJobId: payload.providerJobId ?? null,
+    workspace: payload.workspace,
+    mode: payload.mode,
+    currency: payload.currency,
+    pricingSnapshot: payload.pricingSnapshot,
+    pricingSnapshotHash: payload.pricingSnapshotHash,
+    estimateMicros: BigInt(payload.estimateMicros),
+    reservedMicros: BigInt(payload.reservedMicros ?? payload.estimateMicros),
+    actualMicros: payload.actualMicros == null ? null : BigInt(payload.actualMicros),
+    status: payload.status ?? 'reserved',
+    usage: payload.usage ?? null,
+    risk: payload.risk ?? null,
+    reasonCode: payload.reasonCode ?? null,
+    reservedAt: payload.reservedAt ?? now,
+    settledAt: payload.settledAt ?? null,
+    releasedAt: payload.releasedAt ?? null,
+    reconciliationAt: payload.reconciliationAt ?? null,
+    createdAt: payload.createdAt ?? now,
+    updatedAt: now,
+    ...patch,
+  }
+}
+
+const providerCostConflict = (reasonCode) => new HttpError(
+  409,
+  'CREATIVE_PROVIDER_COST_LEDGER_CONFLICT',
+  'Creative Provider cost ledger conflict',
+  { reasonCode },
+)
+
+const providerCostDto = (ledger) => serializeCreativeProviderCostLedger(
+  ledger,
+  creativeProviderBudgetWindowsById.get(ledger.budgetWindowId) ?? null,
+)
 
 const patchCreativeGeneration = (id, patch, actor, auditAction) => {
   const current = creativeGenerationsById.get(String(id))
@@ -3139,6 +3215,171 @@ export const createSeedRepository = () => ({
         mediaAssetId: updated.mediaAssetId,
       })
       return serializeCreativeOutputIngestion(updated)
+    },
+  },
+  creativeProviderCosts: {
+    reserve: (payload, actor) => {
+      const existingId = creativeProviderCostLedgerIdsBySourceKey.get(String(payload.sourceKey))
+      const existing = existingId ? creativeProviderCostLedgersById.get(existingId) : null
+      if (existing) {
+        if (existing.pricingSnapshotHash !== payload.pricingSnapshotHash || String(existing.estimateMicros) !== String(payload.estimateMicros)) {
+          throw providerCostConflict('source_key_payload_mismatch')
+        }
+        return {
+          reserved: existing.status === 'reserved',
+          duplicate: true,
+          reasonCode: existing.status === 'reserved' ? null : `already_${existing.status}`,
+          ledger: providerCostDto(existing),
+        }
+      }
+      const key = providerBudgetWindowKey(payload)
+      const windowId = creativeProviderBudgetWindowIdsByKey.get(key)
+      let window = windowId ? creativeProviderBudgetWindowsById.get(windowId) : null
+      if (!window) {
+        window = makeCreativeProviderBudgetWindow(payload)
+        creativeProviderBudgetWindowsById.set(window.id, window)
+        creativeProviderBudgetWindowIdsByKey.set(key, window.id)
+      } else if (
+        String(window.capMicros) !== String(payload.capMicros) ||
+        window.providerId !== payload.providerId ||
+        window.providerAccountRef !== payload.providerAccountRef ||
+        window.workspace !== payload.workspace
+      ) {
+        throw providerCostConflict('budget_window_policy_mismatch')
+      }
+      const estimateMicros = BigInt(payload.estimateMicros)
+      if (window.spentMicros + window.reservedMicros + estimateMicros > window.capMicros) {
+        return {
+          reserved: false,
+          duplicate: false,
+          reasonCode: 'budget_cap_exceeded',
+          ledger: null,
+          budgetWindow: serializeCreativeProviderBudgetWindow(window),
+        }
+      }
+      window = makeCreativeProviderBudgetWindow(window, {
+        reservedMicros: window.reservedMicros + estimateMicros,
+      })
+      creativeProviderBudgetWindowsById.set(window.id, window)
+      const ledger = makeCreativeProviderCostLedger({
+        ...payload,
+        budgetWindowId: window.id,
+        reservedMicros: estimateMicros,
+      })
+      creativeProviderCostLedgersById.set(ledger.id, ledger)
+      creativeProviderCostLedgerIdsBySourceKey.set(ledger.sourceKey, ledger.id)
+      recordAudit(actor, 'creative.provider_cost.reserved', 'creative_provider_cost_ledger', ledger.id, {
+        generationId: ledger.generationId,
+        providerId: ledger.providerId,
+        workspace: ledger.workspace,
+        currency: ledger.currency,
+        budgetScope: window.budgetScope,
+        estimateMicros: String(ledger.estimateMicros),
+        pricingSnapshotHash: ledger.pricingSnapshotHash,
+      })
+      return { reserved: true, duplicate: false, reasonCode: null, ledger: providerCostDto(ledger) }
+    },
+    findBySourceKey: (sourceKey) => {
+      const id = creativeProviderCostLedgerIdsBySourceKey.get(String(sourceKey))
+      const ledger = id ? creativeProviderCostLedgersById.get(id) : null
+      return ledger ? providerCostDto(ledger) : null
+    },
+    findForGeneration: (generationId) => {
+      const ledger = [...creativeProviderCostLedgersById.values()]
+        .find((item) => item.generationId === String(generationId)) ?? null
+      return ledger ? providerCostDto(ledger) : null
+    },
+    settle: (sourceKey, payload = {}, actor) => {
+      const id = creativeProviderCostLedgerIdsBySourceKey.get(String(sourceKey))
+      const current = id ? creativeProviderCostLedgersById.get(id) : null
+      if (!current) return null
+      const actualMicros = BigInt(payload.actualMicros)
+      if (payload.actualCurrency !== current.currency) throw providerCostConflict('actual_currency_mismatch')
+      if (current.status === 'settled') {
+        if (current.actualMicros !== actualMicros) throw providerCostConflict('actual_cost_mismatch')
+        return providerCostDto(current)
+      }
+      const window = creativeProviderBudgetWindowsById.get(current.budgetWindowId)
+      if (!window) return null
+      const heldMicros = ['reserved', 'reconciliation_required'].includes(current.status) ? current.reservedMicros : 0n
+      const updatedWindow = makeCreativeProviderBudgetWindow(window, {
+        reservedMicros: window.reservedMicros > heldMicros ? window.reservedMicros - heldMicros : 0n,
+        spentMicros: window.spentMicros + actualMicros,
+      })
+      const updated = makeCreativeProviderCostLedger(current, {
+        status: 'settled',
+        actualMicros,
+        providerJobId: payload.providerJobId ?? current.providerJobId,
+        usage: payload.usage ?? current.usage,
+        risk: payload.risk ?? current.risk,
+        reasonCode: payload.reasonCode ?? 'provider_actual_settled',
+        settledAt: payload.settledAt ?? new Date().toISOString(),
+      })
+      creativeProviderBudgetWindowsById.set(updatedWindow.id, updatedWindow)
+      creativeProviderCostLedgersById.set(updated.id, updated)
+      recordAudit(actor, 'creative.provider_cost.settled', 'creative_provider_cost_ledger', updated.id, {
+        generationId: updated.generationId,
+        providerId: updated.providerId,
+        workspace: updated.workspace,
+        currency: updated.currency,
+        actualMicros: String(updated.actualMicros),
+        estimateExceeded: updated.actualMicros > updated.estimateMicros,
+      })
+      return providerCostDto(updated)
+    },
+    release: (sourceKey, reasonCode = 'dispatch_not_billed', actor) => {
+      const id = creativeProviderCostLedgerIdsBySourceKey.get(String(sourceKey))
+      const current = id ? creativeProviderCostLedgersById.get(id) : null
+      if (!current) return null
+      if (current.status === 'released' || current.status === 'settled') return providerCostDto(current)
+      const window = creativeProviderBudgetWindowsById.get(current.budgetWindowId)
+      if (!window) return null
+      const updatedWindow = makeCreativeProviderBudgetWindow(window, {
+        reservedMicros: window.reservedMicros > current.reservedMicros ? window.reservedMicros - current.reservedMicros : 0n,
+        releasedMicros: window.releasedMicros + current.reservedMicros,
+      })
+      const updated = makeCreativeProviderCostLedger(current, {
+        status: 'released',
+        reasonCode,
+        releasedAt: new Date().toISOString(),
+      })
+      creativeProviderBudgetWindowsById.set(updatedWindow.id, updatedWindow)
+      creativeProviderCostLedgersById.set(updated.id, updated)
+      recordAudit(actor, 'creative.provider_cost.released', 'creative_provider_cost_ledger', updated.id, {
+        generationId: updated.generationId,
+        providerId: updated.providerId,
+        workspace: updated.workspace,
+        reasonCode,
+      })
+      return providerCostDto(updated)
+    },
+    reconcile: (sourceKey, payload = {}, actor) => {
+      const id = creativeProviderCostLedgerIdsBySourceKey.get(String(sourceKey))
+      const current = id ? creativeProviderCostLedgersById.get(id) : null
+      if (!current) return null
+      if (['settled', 'released', 'reconciliation_required'].includes(current.status)) return providerCostDto(current)
+      const updated = makeCreativeProviderCostLedger(current, {
+        status: 'reconciliation_required',
+        providerJobId: payload.providerJobId ?? current.providerJobId,
+        usage: payload.usage ?? current.usage,
+        risk: payload.risk ?? current.risk,
+        reasonCode: payload.reasonCode ?? 'actual_cost_missing',
+        reconciliationAt: payload.reconciliationAt ?? new Date().toISOString(),
+      })
+      creativeProviderCostLedgersById.set(updated.id, updated)
+      recordAudit(actor, 'creative.provider_cost.reconciliation_required', 'creative_provider_cost_ledger', updated.id, {
+        generationId: updated.generationId,
+        providerId: updated.providerId,
+        workspace: updated.workspace,
+        currency: updated.currency,
+        reasonCode: updated.reasonCode,
+      })
+      return providerCostDto(updated)
+    },
+    getBudgetWindow: (payload) => {
+      const id = creativeProviderBudgetWindowIdsByKey.get(providerBudgetWindowKey(payload))
+      const window = id ? creativeProviderBudgetWindowsById.get(id) : null
+      return window ? serializeCreativeProviderBudgetWindow(window) : null
     },
   },
   creativeCredits: {

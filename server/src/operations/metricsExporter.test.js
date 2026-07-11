@@ -119,6 +119,17 @@ test('buildPrometheusMetrics renders safe Prometheus text without unsafe labels'
           byReason: [{ key: 'missing_provider_alert_client', count: 1 }, { key: 'provider_job_mismatch', count: 1 }],
         },
       },
+      costLedger: {
+        total: 4,
+        reserved: 1,
+        settled: 1,
+        released: 1,
+        reconciliationRequired: 1,
+        byProvider: [{ key: 'replicate', count: 4 }, { key: 'user@example.com', count: 1 }],
+        byWorkspace: [{ key: 'image', count: 4 }, { key: 'prompt-hash-123', count: 1 }],
+        byCurrency: [{ key: 'USD', count: 4 }],
+        byReason: [{ key: 'actual_cost_missing', count: 1 }, { key: 'token=secret-token', count: 1 }],
+      },
     },
   })
 
@@ -176,6 +187,15 @@ test('buildPrometheusMetrics renders safe Prometheus text without unsafe labels'
   assert.match(body, /newchat_creative_provider_alert_dispatch_failure_spike_by_channel_total\{channel="other"\} 1/)
   assert.match(body, /newchat_creative_provider_alert_dispatch_failure_spike_by_reason_total\{reason="missing_provider_alert_client"\} 1/)
   assert.match(body, /newchat_creative_provider_alert_dispatch_failure_spike_by_reason_total\{reason="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_cost_ledger_events_total 4/)
+  assert.match(body, /newchat_creative_provider_cost_reservations_total 1/)
+  assert.match(body, /newchat_creative_provider_cost_settlements_total 1/)
+  assert.match(body, /newchat_creative_provider_cost_releases_total 1/)
+  assert.match(body, /newchat_creative_provider_cost_reconciliation_required_total 1/)
+  assert.match(body, /newchat_creative_provider_cost_ledger_by_provider_total\{provider="replicate"\} 4/)
+  assert.match(body, /newchat_creative_provider_cost_ledger_by_provider_total\{provider="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_cost_ledger_by_workspace_total\{workspace="image"\} 4/)
+  assert.match(body, /newchat_creative_provider_cost_ledger_by_reason_total\{reason="actual_cost_missing"\} 1/)
   assert.equal(body.includes('user@example.com'), false)
   assert.equal(body.includes('prompt-hash-123'), false)
   assert.equal(body.includes('provider_job_mismatch'), false)

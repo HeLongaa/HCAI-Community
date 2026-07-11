@@ -6,6 +6,7 @@ import { recordSecurityEvent, resetSecurityEvents } from '../../security/securit
 import { quotaWindowFor, resetCreativePolicyState } from '../../creative/policy.js'
 import { createReplicateStagingPrediction } from '../../creative/replicateStagingProvider.js'
 import { sha256 } from '../../creative/generationRecords.js'
+import { buildProviderCostReservation } from '../../creative/providerCostContract.js'
 import { repositories } from '../../repositories/index.js'
 import { createSeedRepository } from '../../repositories/seedRepository.js'
 import { registerMediaRoutes } from '../media/routes.js'
@@ -534,6 +535,81 @@ test('GET Admin generation history exposes only safe output ingestion summaries'
     })
     assert.equal(detail.status, 200)
     assert.deepEqual(detail.payload.data.outputIngestionEvidence, item.outputIngestionEvidence)
+  } finally {
+    await server.close()
+  }
+})
+
+test('GET Admin generation history exposes safe durable Provider cost ledger evidence', async () => {
+  const repository = createSeedRepository()
+  const generationId = `gen-admin-provider-cost-ledger-${Date.now()}`
+  const actor = { id: 'demo-user-creator', handle: 'promptlin' }
+  await repository.creativeGenerations.create({
+    id: generationId,
+    actorId: actor.id,
+    actorHandle: actor.handle,
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'replicate-staging',
+    providerMode: 'replicate_staging',
+    providerJobId: 'pred-admin-cost-ledger',
+    status: 'completed',
+    promptHash: 'a'.repeat(64),
+    promptPreview: 'Admin Provider cost ledger fixture',
+    inputAssetIds: [],
+    parameterKeys: [],
+    outputAssetIds: [],
+  }, actor)
+  const reservation = buildProviderCostReservation({
+    generationId,
+    workspace: 'image',
+    mode: 'text_to_image',
+    now: new Date('2026-07-12T08:00:00.000Z'),
+    providerCost: {
+      providerId: 'replicate',
+      providerAccountRef: 'staging',
+      model: {
+        providerModelId: 'black-forest-labs/flux-1.1-pro',
+        pricingSource: 'fixture_config',
+        pricingSnapshotAt: '2026-07-12T00:00:00.000Z',
+      },
+      estimate: { currency: 'USD', amount: 0.25 },
+      budget: {
+        budgetScope: `staging:replicate:image:admin-${Date.now()}`,
+        dailyCapCurrency: 'USD',
+        dailyCapAmount: 5,
+        spentAmount: 1,
+      },
+    },
+  })
+  await repository.creativeProviderCosts.reserve(reservation, actor)
+  await repository.creativeProviderCosts.settle(reservation.sourceKey, {
+    actualMicros: '200000',
+    actualCurrency: 'USD',
+    providerJobId: 'pred-admin-cost-ledger',
+  }, actor)
+
+  const server = await createInjectedAdminServer(repository)
+  try {
+    const list = await requestJson(server.url, '/api/admin/creative/generations?providerId=replicate-staging&limit=20', {
+      method: 'GET',
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(list.status, 200)
+    const item = list.payload.data.find((entry) => entry.id === generationId)
+    assert.ok(item)
+    assert.equal(item.providerCostLedgerEvidence.available, true)
+    assert.equal(item.providerCostLedgerEvidence.status, 'settled')
+    assert.equal(item.providerCostLedgerEvidence.currency, 'USD')
+    assert.equal(item.providerCostLedgerEvidence.estimateAmount, 0.25)
+    assert.equal(item.providerCostLedgerEvidence.actualAmount, 0.2)
+    assert.equal(item.providerCostLedgerEvidence.budget.capAmount, 5)
+    assert.equal(item.providerCostLedgerEvidence.budget.spentAmount, 1.2)
+    assert.equal(item.providerCostLedgerEvidence.pricingSnapshotHashPreview.length, 12)
+    const serialized = JSON.stringify(item.providerCostLedgerEvidence)
+    assert.equal(serialized.includes('sourceKey'), false)
+    assert.equal(serialized.includes('providerJobId'), false)
+    assert.equal(serialized.includes('prompt'), false)
   } finally {
     await server.close()
   }

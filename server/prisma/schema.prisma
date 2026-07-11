@@ -159,6 +159,13 @@ enum CreativeOutputIngestionStatus {
   failed
 }
 
+enum CreativeProviderCostLedgerStatus {
+  reserved
+  settled
+  released
+  reconciliation_required
+}
+
 model AuditEvent {
   id           String         @id @default(cuid())
   actorType    AuditActorType @map("actor_type")
@@ -581,11 +588,11 @@ model CreativeGeneration {
   createdAt           DateTime                 @default(now()) @map("created_at")
   updatedAt           DateTime                 @updatedAt @map("updated_at")
 
-  actor           User?                          @relation(fields: [actorId], references: [id], onDelete: SetNull)
-  retryOf         CreativeGeneration?            @relation("CreativeGenerationRetries", fields: [retryOfId], references: [id], onDelete: SetNull)
-  retryAttempts   CreativeGeneration[]           @relation("CreativeGenerationRetries")
-  mutations       CreativeGenerationMutation[]
-  providerReplays CreativeProviderReplayLedger[]
+  actor            User?                          @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  retryOf          CreativeGeneration?            @relation("CreativeGenerationRetries", fields: [retryOfId], references: [id], onDelete: SetNull)
+  retryAttempts    CreativeGeneration[]           @relation("CreativeGenerationRetries")
+  mutations        CreativeGenerationMutation[]
+  providerReplays  CreativeProviderReplayLedger[]
   outputIngestions CreativeOutputIngestion[]
 
   @@index([actorId, createdAt])
@@ -681,6 +688,65 @@ model CreativeOutputIngestion {
   @@index([status, leaseExpiresAt])
   @@index([providerId, providerJobId])
   @@map("creative_output_ingestions")
+}
+
+model CreativeProviderBudgetWindow {
+  id                 String   @id @default(cuid())
+  budgetScope        String   @map("budget_scope")
+  providerId         String   @map("provider_id")
+  providerAccountRef String   @map("provider_account_ref")
+  workspace          String
+  currency           String
+  windowStart        DateTime @map("window_start")
+  windowEnd          DateTime @map("window_end")
+  capMicros          BigInt   @map("cap_micros")
+  reservedMicros     BigInt   @default(0) @map("reserved_micros")
+  spentMicros        BigInt   @default(0) @map("spent_micros")
+  releasedMicros     BigInt   @default(0) @map("released_micros")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  costLedgers CreativeProviderCostLedger[]
+
+  @@unique([budgetScope, currency, windowStart, windowEnd])
+  @@index([providerId, workspace, windowStart])
+  @@map("creative_provider_budget_windows")
+}
+
+model CreativeProviderCostLedger {
+  id                  String                           @id @default(cuid())
+  sourceKey           String                           @unique @map("source_key")
+  generationId        String                           @map("generation_id")
+  budgetWindowId      String                           @map("budget_window_id")
+  providerId          String                           @map("provider_id")
+  providerAccountRef  String                           @map("provider_account_ref")
+  providerModelId     String                           @map("provider_model_id")
+  providerJobId       String?                          @map("provider_job_id")
+  workspace           String
+  mode                String
+  currency            String
+  pricingSnapshot     Json                             @map("pricing_snapshot")
+  pricingSnapshotHash String                           @map("pricing_snapshot_hash")
+  estimateMicros      BigInt                           @map("estimate_micros")
+  reservedMicros      BigInt                           @map("reserved_micros")
+  actualMicros        BigInt?                          @map("actual_micros")
+  status              CreativeProviderCostLedgerStatus
+  usage               Json?
+  risk                Json?
+  reasonCode          String?                          @map("reason_code")
+  reservedAt          DateTime                         @default(now()) @map("reserved_at")
+  settledAt           DateTime?                        @map("settled_at")
+  releasedAt          DateTime?                        @map("released_at")
+  reconciliationAt    DateTime?                        @map("reconciliation_at")
+  createdAt           DateTime                         @default(now()) @map("created_at")
+  updatedAt           DateTime                         @updatedAt @map("updated_at")
+
+  budgetWindow CreativeProviderBudgetWindow @relation(fields: [budgetWindowId], references: [id], onDelete: Restrict)
+
+  @@index([generationId, createdAt])
+  @@index([budgetWindowId, status])
+  @@index([providerId, workspace, status, createdAt])
+  @@map("creative_provider_cost_ledgers")
 }
 
 model CreativeCreditLedger {

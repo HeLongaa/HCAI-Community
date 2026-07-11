@@ -47,6 +47,7 @@ All 14 direct frontend imports of `src/data/mockData.ts` are checked exactly. Ad
 | `server-provider-polling-boundary` | A fixed read-only Replicate status client, bounded worker sweep, retry audit, and timeout recovery exist behind independent staging-only default-off switches | Keep disabled outside an explicitly approved staging status read | V1-07 |
 | `server-generation-mutation-boundary` | Durable cancel/retry/manual-replay mutations use dedicated permissions, idempotency, child attempts, and two-person review; Provider mutation adapters are unregistered by default | Retain the internal controls and keep real Provider mutation clients disabled until separately approved | V1-08 |
 | `server-provider-output-ingestion-boundary` | Durable source-keyed ingestion, bounded injected fetch, MIME/checksum validation, deterministic storage, scanner gating, and safe Admin summaries are implemented | Keep real Provider output fetch unregistered until explicit staging approval | V1-09 |
+| `server-provider-cost-budget-ledger` | Provider-independent pricing snapshots, six-decimal amount normalization, durable budget reservations, idempotent cost closeout, and safe Admin/metrics evidence are implemented | Retain the app-side fail-closed ledger; keep real pricing sources and Provider dispatch unregistered until approval | V1-10 |
 
 ## Fixture Inventory
 

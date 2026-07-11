@@ -285,6 +285,48 @@ test('executeCreativeGeneration releases pre-provider quota when fixture adapter
   }])
 })
 
+test('executeCreativeGeneration releases Provider cost reservation when adapter contract validation fails', async () => {
+  resetCreativePolicyState()
+  const repository = createSeedRepository()
+  const generationId = `gen-provider-contract-failure-${Date.now()}`
+
+  await assert.rejects(
+    executeCreativeGeneration({
+      request: {
+        ...request,
+        providerId: 'replicate-staging',
+      },
+      actor,
+      generationId,
+      source: {
+        ...stagingSource,
+        CREATIVE_STAGING_PROVIDER_ESTIMATE_USD: '0.25',
+        CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD: '5',
+        CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD: '0',
+        CREATIVE_STAGING_PROVIDER_BUDGET_SCOPE: `staging:replicate:image:contract-${Date.now()}`,
+      },
+      providerCostRepository: repository.creativeProviderCosts,
+      fixtureAdapters: {
+        'replicate-staging': async () => ({
+          id: generationId,
+          workspace: 'image',
+          mode: 'text_to_image',
+          status: 'completed',
+          provider: { id: 'wrong-provider' },
+          outputs: [],
+        }),
+      },
+    }),
+    { code: 'CREATIVE_PROVIDER_CONTRACT_FAILED' },
+  )
+
+  const ledger = await repository.creativeProviderCosts.findForGeneration(generationId)
+  assert.equal(ledger.status, 'released')
+  assert.equal(ledger.reasonCode, 'adapter_failed_before_result')
+  assert.equal(ledger.budgetWindow.reservedMicros, '0')
+  assert.equal(ledger.budgetWindow.releasedMicros, '250000')
+})
+
 test('executeCreativeGeneration enforces user workspace daily quota', async () => {
   resetCreativePolicyState()
   const source = {
