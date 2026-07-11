@@ -15,6 +15,8 @@ points, creative credits, quota, escrow, compensation, and generation refunds re
 
 The source of truth is `docs/V1_SCOPE_AND_DEFINITION_OF_DONE.md`, backed by the machine-readable
 `config/v1-release-scope.json`. Run `npm run test:v1-scope` to verify the scope contract and excluded-capability guard.
+The current demo/mock/fallback inventory lives in `docs/V1_RUNTIME_SURFACE_INVENTORY.md` and
+`config/v1-runtime-surfaces.json`; `npm run test:v1-surfaces` prevents new untracked runtime fallbacks.
 
 ## Features
 
@@ -104,7 +106,7 @@ npm run check:pr
 npm run check:deploy
 ```
 
-`check:quick` runs lint, the V1 scope contract, and feature/API contract checks. `check:pr` adds production build, backend tests, Prisma schema validation, and E2E. `check:deploy` adds the safe production smoke fixture. Use `check:deploy:env` in a real deployment environment to validate actual environment variables without printing secrets.
+`check:quick` runs lint, the V1 scope and runtime-surface contracts, and feature/API contract checks. `check:pr` adds production build, backend tests, Prisma schema validation, and E2E. `check:deploy` adds the safe production smoke fixture. Use `check:deploy:env` in a real deployment environment to validate actual environment variables without printing secrets.
 
 `test:sim` runs feature-contract checks for the planned modules and then verifies API contract consistency across server routes, OpenAPI paths, and the protected-route permission matrix. `test:contracts` can run that API consistency check by itself. The feature-contract checks cover navigation, Task Plaza lifecycle, publish form,
 My Tasks delivery desk, community forum flows, publish-form AI assists, creation tools, points ledger, admin review queue,
@@ -120,6 +122,7 @@ Planning docs for the API, data model, auth, and backend rollout live in `docs/`
 
 - `docs/V1_SCOPE_AND_DEFINITION_OF_DONE.md`
 - `docs/V1_CURRENT_STATE_AUDIT.md`
+- `docs/V1_RUNTIME_SURFACE_INVENTORY.md`
 - `docs/PRODUCT_BACKEND_PLAN.md`
 - `docs/API_DESIGN.md`
 - `docs/DATA_MODEL_AND_AUTH.md`

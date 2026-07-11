@@ -4,6 +4,7 @@
   "scopeStatus": "frozen",
   "scopeDocument": "docs/V1_SCOPE_AND_DEFINITION_OF_DONE.md",
   "auditDocument": "docs/V1_CURRENT_STATE_AUDIT.md",
+  "runtimeSurfaceInventory": "config/v1-runtime-surfaces.json",
   "includedDomains": [
     {
       "id": "auth-account",
@@ -106,6 +107,7 @@
   ],
   "requiredQualityGates": [
     "scope-contract",
+    "runtime-surface-inventory",
     "lint",
     "feature-simulation",
     "api-contracts",
