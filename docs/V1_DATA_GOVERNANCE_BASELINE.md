@@ -125,7 +125,7 @@ retention, and deletion propagation. Important boundaries:
 1. Browser uploads remain private and untrusted until scanning and review complete.
 2. Creative Provider dispatch requires separate real-call approval, region eligibility, content policy, retention and
    training terms, and a budget gate.
-3. Provider responses remain in memory until normalized to safe ids, hashes, status, cost, and redacted previews.
+3. Provider responses and callbacks remain in memory until normalized to safe ids, hashes, status, cost, and redacted previews; callback raw bodies are discarded after exact-body authentication and allowlisted projection.
 4. Admin, notifications, logs, metrics, and exports each use their own allowlist; a safe database row is not
    automatically safe for every secondary surface.
 5. Export packages are encrypted, single-subject, checksum-manifested, short-lived, and delivered through a private
@@ -226,6 +226,8 @@ Available foundations:
 - Provider adapter metadata rejects secret-like keys.
 - The default-disabled Provider HTTP client reads its credential only from deployment secrets, fixes the destination and
   model endpoint, and sends only an allowlisted minimum payload.
+- The default-disabled staging callback API verifies exact-body HMAC, timestamp and nonce/job binding, rejects unknown
+  payload fields, stores only normalized evidence, and claims replay side effects atomically.
 - Admin creative serializers fold unsafe identifiers, URLs, and errors.
 - Mock/S3-compatible object and archive writer boundaries exist.
 - Versioned policy consent is stored as an allowlisted immutable `AuditEvent` without IP, token, user-agent, or raw-content fields.
@@ -246,6 +248,7 @@ Known gaps:
 | Task | Data-governance ownership |
 | --- | --- |
 | V1-05 | Implemented default-disabled Provider secret and minimum-payload HTTP boundary; external calls remain approval-gated |
+| V1-06 | Implemented default-disabled callback authentication, zero-retention payload projection, replay claim, and safe audit boundary; real webhook delivery remains approval-gated |
 | V1-48 | OAuth scopes, identifiers, unlink, region, and sessions |
 | V1-49 | PostgreSQL backup, expiry, restore, and deletion rehearsal |
 | V1-50 | Private object storage/CDN and lifecycle deletion |

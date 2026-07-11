@@ -19,6 +19,11 @@ test('buildEnv allows development without managed token secrets', () => {
     creativeStagingProviderPreflightEnabled: false,
     hasCreativeStagingProviderApiToken: false,
     creativeProviderHttpClientEnabled: false,
+    creativeProviderCallbackEnabled: false,
+    hasCreativeProviderCallbackSignatureSecret: false,
+    creativeProviderCallbackReplayWindowSeconds: 300,
+    creativeProviderCallbackMaxBytes: 262_144,
+    creativeProviderCallbackSideEffectLeaseSeconds: 60,
     mediaScanRequestAdapter: 'generic-webhook',
     hasMediaScanWebhookSecret: false,
     mediaScanRetryDelaySeconds: 300,
@@ -292,6 +297,11 @@ test('buildEnv validates and exposes creative provider settings', () => {
   assert.equal(env.creativeStagingProviderPreflightEnabled, false)
   assert.equal(env.hasCreativeStagingProviderApiToken, false)
   assert.equal(env.creativeProviderHttpClientEnabled, false)
+  assert.equal(env.creativeProviderCallbackEnabled, false)
+  assert.equal(env.hasCreativeProviderCallbackSignatureSecret, false)
+  assert.equal(env.creativeProviderCallbackReplayWindowSeconds, 300)
+  assert.equal(env.creativeProviderCallbackMaxBytes, 262_144)
+  assert.equal(env.creativeProviderCallbackSideEffectLeaseSeconds, 60)
 })
 
 test('buildEnv gates the Replicate staging adapter shell to staging-only safe metadata', () => {
@@ -437,6 +447,84 @@ test('buildEnv enables the Provider HTTP client only in an explicit staging adap
   assert.equal(provider.httpClientImplemented, true)
   assert.equal(provider.networkCallsEnabled, true)
   assert.equal(JSON.stringify(config).includes('replicate-token'), false)
+})
+
+test('buildEnv enables Provider callbacks only behind the independent staging kill switch', () => {
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_CALLBACK_ENABLED: 'yes' }),
+    /CREATIVE_PROVIDER_CALLBACK_ENABLED must be true or false/,
+  )
+  assert.throws(
+    () => buildEnv({
+      NODE_ENV: 'development',
+      CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+      CREATIVE_PROVIDER_MODE: 'disabled',
+      CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+      CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+      CREATIVE_PROVIDER_CALLBACK_ENABLED: 'true',
+      CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET: 'callback-signature-secret-0123456789abcdef',
+    }),
+    /CREATIVE_PROVIDER_CALLBACK_ENABLED requires NODE_ENV=production/,
+  )
+  assert.throws(
+    () => buildEnv({
+      NODE_ENV: 'production',
+      ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+      CREATIVE_PROVIDER_RUNTIME_ENV: 'production',
+      CREATIVE_PROVIDER_MODE: 'disabled',
+      CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+      CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+      CREATIVE_PROVIDER_CALLBACK_ENABLED: 'true',
+      CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET: 'callback-signature-secret-0123456789abcdef',
+    }),
+    /CREATIVE_PROVIDER_CALLBACK_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging/,
+  )
+  assert.throws(
+    () => buildEnv({
+      NODE_ENV: 'production',
+      ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+      CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+      CREATIVE_PROVIDER_MODE: 'disabled',
+      CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+      CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+      CREATIVE_PROVIDER_CALLBACK_ENABLED: 'true',
+      CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET: 'short-secret',
+    }),
+    /CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET must be at least 32 characters/,
+  )
+
+  const source = {
+    NODE_ENV: 'production',
+    ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_PROVIDER_MODE: 'disabled',
+    CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+    CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+    CREATIVE_PROVIDER_CALLBACK_ENABLED: 'true',
+    CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET: 'callback-signature-secret-0123456789abcdef',
+    CREATIVE_PROVIDER_CALLBACK_REPLAY_WINDOW_SECONDS: '120',
+    CREATIVE_PROVIDER_CALLBACK_MAX_BYTES: '8192',
+    CREATIVE_PROVIDER_CALLBACK_SIDE_EFFECT_LEASE_SECONDS: '45',
+  }
+  const env = buildEnv(source)
+  const config = buildCreativeProviderConfig(source)
+
+  assert.equal(env.creativeProviderCallbackEnabled, true)
+  assert.equal(env.hasCreativeProviderCallbackSignatureSecret, true)
+  assert.equal(env.creativeProviderCallbackReplayWindowSeconds, 120)
+  assert.equal(env.creativeProviderCallbackMaxBytes, 8192)
+  assert.equal(env.creativeProviderCallbackSideEffectLeaseSeconds, 45)
+  assert.deepEqual(config.callback, {
+    implemented: true,
+    enabled: true,
+    signatureSecretConfigured: true,
+    replayWindowSeconds: 120,
+    maxBodyBytes: 8192,
+    sideEffectLeaseSeconds: 45,
+    supportedProviderIds: ['replicate-staging'],
+  })
+  assert.equal(config.httpClient.enabled, false)
+  assert.equal(JSON.stringify(config).includes(source.CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET), false)
 })
 
 test('buildEnv accepts staging-only creative provider preflight metadata without enabling real calls', () => {

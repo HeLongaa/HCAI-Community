@@ -65,6 +65,31 @@ test('getCreativeProviderCatalog exposes Replicate staging shell as unavailable 
   assert.equal(provider.safeMetadata.adapterImplemented, false)
   assert.equal(provider.safeMetadata.httpClientImplemented, true)
   assert.equal(provider.safeMetadata.networkCallsEnabled, false)
+  assert.equal(provider.safeMetadata.callbackImplemented, true)
+  assert.equal(provider.safeMetadata.callbackEnabled, false)
+})
+
+test('getCreativeProviderCatalog exposes callback state without exposing its signing secret', () => {
+  const source = {
+    NODE_ENV: 'production',
+    ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_PROVIDER_MODE: 'disabled',
+    CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+    CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+    CREATIVE_PROVIDER_CALLBACK_ENABLED: 'true',
+    CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET: 'callback-signature-secret-0123456789abcdef',
+  }
+  const catalog = getCreativeProviderCatalog(source)
+  const provider = catalog.providers.find((candidate) => candidate.id === 'replicate-staging')
+
+  assert.ok(provider)
+  assert.equal(provider.enabled, false)
+  assert.equal(provider.configured, false)
+  assert.equal(provider.safeMetadata.networkCallsEnabled, false)
+  assert.equal(provider.safeMetadata.callbackImplemented, true)
+  assert.equal(provider.safeMetadata.callbackEnabled, true)
+  assert.equal(JSON.stringify(catalog).includes(source.CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET), false)
 })
 
 test('executeCreativeGeneration returns deterministic mock output descriptors', async () => {

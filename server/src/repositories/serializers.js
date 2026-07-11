@@ -15,7 +15,11 @@ const providerBudgetAuditResourceTypes = new Set([
 ])
 
 const providerLifecycleAuditActions = new Set([
+  'creative.provider_callback.accepted',
+  'creative.provider_callback.rejected',
+  'creative.provider_callback.duplicate_suppressed',
   'creative.provider_lifecycle.side_effect_applied',
+  'creative.provider_lifecycle.side_effect_failed',
   'creative.provider_replay.updated',
 ])
 
@@ -86,8 +90,11 @@ const providerLifecycleIdentifierKeys = new Set([
   'generationId',
   'nextStatus',
   'notificationType',
+  'payloadHash',
   'providerId',
   'providerMode',
+  'providerStatus',
+  'reasonCode',
   'sourceKey',
   'sourceType',
 ])

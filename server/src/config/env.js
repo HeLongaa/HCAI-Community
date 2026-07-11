@@ -109,6 +109,11 @@ export const buildEnv = (source = process.env) => {
   const hasCreativeStagingProviderApiToken = Boolean(String(source.CREATIVE_STAGING_PROVIDER_API_TOKEN ?? '').trim())
   const creativeStagingProviderConfirmation = String(source.CREATIVE_STAGING_PROVIDER_CONFIRMATION ?? '').trim().toLowerCase()
   const creativeProviderHttpClientEnabled = strictBoolFlag(source, 'CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED', false)
+  const creativeProviderCallbackEnabled = strictBoolFlag(source, 'CREATIVE_PROVIDER_CALLBACK_ENABLED', false)
+  const creativeProviderCallbackSecret = String(source.CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET ?? '').trim()
+  const creativeProviderCallbackReplayWindowSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_CALLBACK_REPLAY_WINDOW_SECONDS', 300)
+  const creativeProviderCallbackMaxBytes = positiveInteger(source, 'CREATIVE_PROVIDER_CALLBACK_MAX_BYTES', 262_144)
+  const creativeProviderCallbackSideEffectLeaseSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_CALLBACK_SIDE_EFFECT_LEASE_SECONDS', 60)
   const mediaScanRequestAdapter = getMediaScanRequestAdapter(source)
   const rateLimitStore = getRateLimitStore(source)
   const rateLimitRedisUrl = getRedisUrl(source)
@@ -252,6 +257,26 @@ export const buildEnv = (source = process.env) => {
       throw new Error('CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED requires CREATIVE_PROVIDER_MODE=replicate_staging')
     }
   }
+  if (creativeProviderCallbackEnabled) {
+    if (nodeEnv !== 'production') {
+      throw new Error('CREATIVE_PROVIDER_CALLBACK_ENABLED requires NODE_ENV=production')
+    }
+    if (creativeProviderRuntimeEnv !== 'staging') {
+      throw new Error('CREATIVE_PROVIDER_CALLBACK_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
+    }
+    if (!['disabled', 'replicate_staging'].includes(creativeProviderMode)) {
+      throw new Error('CREATIVE_PROVIDER_CALLBACK_ENABLED requires CREATIVE_PROVIDER_MODE=disabled or replicate_staging')
+    }
+    if (creativeStagingImageProvider !== 'replicate') {
+      throw new Error('CREATIVE_PROVIDER_CALLBACK_ENABLED requires CREATIVE_STAGING_IMAGE_PROVIDER=replicate')
+    }
+    if (creativeStagingProviderConfirmation !== 'staging-only') {
+      throw new Error('CREATIVE_PROVIDER_CALLBACK_ENABLED requires CREATIVE_STAGING_PROVIDER_CONFIRMATION=staging-only')
+    }
+    if (creativeProviderCallbackSecret.length < 32) {
+      throw new Error('CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET must be at least 32 characters when callbacks are enabled')
+    }
+  }
   if (mediaScanProvider === 'webhook' && !String(source.MEDIA_SCAN_WEBHOOK_SECRET ?? '').trim()) {
     throw new Error('MEDIA_SCAN_WEBHOOK_SECRET is required when MEDIA_SCAN_PROVIDER=webhook')
   }
@@ -313,6 +338,11 @@ export const buildEnv = (source = process.env) => {
     creativeStagingProviderPreflightEnabled,
     hasCreativeStagingProviderApiToken,
     creativeProviderHttpClientEnabled,
+    creativeProviderCallbackEnabled,
+    hasCreativeProviderCallbackSignatureSecret: Boolean(creativeProviderCallbackSecret),
+    creativeProviderCallbackReplayWindowSeconds,
+    creativeProviderCallbackMaxBytes,
+    creativeProviderCallbackSideEffectLeaseSeconds,
     mediaScanRequestAdapter,
     hasMediaScanWebhookSecret: Boolean(String(source.MEDIA_SCAN_WEBHOOK_SECRET ?? '').trim()),
     mediaScanRetryDelaySeconds,
@@ -592,7 +622,8 @@ export const buildCreativeProviderConfig = (source = process.env) => {
   const current = buildEnv(source)
   const replicateStagingShellConfigured =
     current.creativeProviderMode === 'replicate_staging' ||
-    (current.creativeStagingProviderPreflightEnabled && current.creativeStagingImageProvider === 'replicate')
+    (current.creativeStagingProviderPreflightEnabled && current.creativeStagingImageProvider === 'replicate') ||
+    (current.creativeProviderCallbackEnabled && current.creativeStagingImageProvider === 'replicate')
   return {
     providerMode: current.creativeProviderMode,
     runtimeEnv: current.creativeProviderRuntimeEnv,
@@ -606,6 +637,15 @@ export const buildCreativeProviderConfig = (source = process.env) => {
     httpClient: {
       implemented: true,
       enabled: current.creativeProviderHttpClientEnabled,
+      supportedProviderIds: ['replicate-staging'],
+    },
+    callback: {
+      implemented: true,
+      enabled: current.creativeProviderCallbackEnabled,
+      signatureSecretConfigured: current.hasCreativeProviderCallbackSignatureSecret,
+      replayWindowSeconds: current.creativeProviderCallbackReplayWindowSeconds,
+      maxBodyBytes: current.creativeProviderCallbackMaxBytes,
+      sideEffectLeaseSeconds: current.creativeProviderCallbackSideEffectLeaseSeconds,
       supportedProviderIds: ['replicate-staging'],
     },
     providers: [

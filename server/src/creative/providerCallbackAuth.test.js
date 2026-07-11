@@ -3,7 +3,9 @@ import test from 'node:test'
 
 import {
   providerCallbackHeaderPresence,
+  signProviderCallbackNonce,
   signProviderCallbackPayload,
+  verifyProviderCallbackNonce,
   verifyProviderCallbackRequest,
 } from './providerCallbackAuth.js'
 
@@ -24,6 +26,7 @@ const signedRequest = (body = { id: 'event-1', status: 'succeeded' }, overrides 
       'content-type': overrides.contentType ?? 'application/json; charset=utf-8',
       'x-creative-provider-timestamp': timestamp,
       'x-creative-provider-signature': overrides.signature ?? signProviderCallbackPayload(source.CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET, timestamp, rawBody),
+      'x-creative-provider-nonce': overrides.nonce ?? signProviderCallbackNonce(source.CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET, 'generation-1', 'prediction-1'),
       ...overrides.headers,
     },
   }
@@ -46,6 +49,7 @@ test('verifyProviderCallbackRequest accepts valid signed JSON callbacks', () => 
     hasContentType: true,
     hasTimestamp: true,
     hasSignature: true,
+    hasNonce: true,
   })
 })
 
@@ -57,7 +61,58 @@ test('providerCallbackHeaderPresence reports only safe booleans', () => {
     hasContentType: true,
     hasTimestamp: false,
     hasSignature: true,
+    hasNonce: false,
   })
+})
+
+test('verifyProviderCallbackNonce binds callbacks to one generation and provider job', () => {
+  const request = signedRequest()
+  assert.deepEqual(verifyProviderCallbackNonce({
+    headers: request.headers,
+    generationId: 'generation-1',
+    providerJobId: 'prediction-1',
+    source,
+  }), {
+    generationId: 'generation-1',
+    providerJobId: 'prediction-1',
+    algorithm: 'sha256',
+  })
+
+  assert.throws(
+    () => verifyProviderCallbackNonce({
+      headers: request.headers,
+      generationId: 'generation-1',
+      providerJobId: 'prediction-other',
+      source,
+    }),
+    (error) => error.code === 'CREATIVE_PROVIDER_CALLBACK_NONCE_INVALID' &&
+      error.details.reasonCode === 'nonce_mismatch',
+  )
+})
+
+test('verifyProviderCallbackNonce rejects missing and malformed nonce headers', () => {
+  const missing = signedRequest()
+  delete missing.headers['x-creative-provider-nonce']
+  assert.throws(
+    () => verifyProviderCallbackNonce({
+      headers: missing.headers,
+      generationId: 'generation-1',
+      providerJobId: 'prediction-1',
+      source,
+    }),
+    (error) => error.code === 'CREATIVE_PROVIDER_CALLBACK_NONCE_MISSING',
+  )
+
+  const malformed = signedRequest(undefined, { nonce: 'not-a-nonce' })
+  assert.throws(
+    () => verifyProviderCallbackNonce({
+      headers: malformed.headers,
+      generationId: 'generation-1',
+      providerJobId: 'prediction-1',
+      source,
+    }),
+    (error) => error.code === 'CREATIVE_PROVIDER_CALLBACK_NONCE_MALFORMED',
+  )
 })
 
 test('verifyProviderCallbackRequest rejects missing or malformed signatures', () => {

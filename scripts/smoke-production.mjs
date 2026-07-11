@@ -97,6 +97,8 @@ const summarize = (env, oauthProviders) => ({
     stagingAdapterShellEnabled: env.creativeProviderMode === 'replicate_staging',
     stagingHttpClientEnabled: env.creativeProviderHttpClientEnabled,
     stagingAdapterNetworkCallsEnabled: env.creativeProviderHttpClientEnabled,
+    stagingCallbackEnabled: env.creativeProviderCallbackEnabled,
+    stagingCallbackSignatureSecretConfigured: env.hasCreativeProviderCallbackSignatureSecret,
     stagingImageProvider: env.creativeStagingImageProvider || null,
     stagingApiTokenConfigured: env.hasCreativeStagingProviderApiToken,
   },
@@ -163,6 +165,7 @@ check(checks, 'media scanner callback signature configured', env.hasMediaScanCal
 check(checks, 'creative provider mode remains safe', ['mock', 'disabled'].includes(env.creativeProviderMode), `CREATIVE_PROVIDER_MODE=${env.creativeProviderMode}; production smoke allows only mock or disabled`)
 check(checks, 'creative staging preflight disabled in production smoke', !env.creativeStagingProviderPreflightEnabled && !env.hasCreativeStagingProviderApiToken, 'Staging provider preflight must not be enabled in production smoke')
 check(checks, 'creative Provider HTTP client disabled in production smoke', !env.creativeProviderHttpClientEnabled, 'CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED must not be true in production smoke')
+check(checks, 'creative Provider callback disabled in production smoke', !env.creativeProviderCallbackEnabled, 'CREATIVE_PROVIDER_CALLBACK_ENABLED must not be true in production smoke')
 check(checks, 'media alert channel configured', hasAny(env.hasMediaScanAlertWebhookUrl, env.hasMediaScanAlertSlackWebhookUrl, env.mediaScanAlertEmailRecipientCount > 0), 'At least one media alert channel must be configured')
 check(checks, 'security alert channel configured', hasAny(env.hasSecurityAlertWebhookUrl, env.hasSecurityAlertSlackWebhookUrl, env.securityAlertEmailRecipientCount > 0), 'At least one security alert channel must be configured')
 check(

@@ -219,6 +219,100 @@ test('applyProviderReplayThroughLedger suppresses duplicate completed replay exe
   assert.equal(listed.items.length, 1)
 })
 
+test('applyProviderReplayThroughLedger atomically suppresses concurrent duplicate side effects', async () => {
+  const repository = createSeedRepository()
+  const replay = {
+    ...await completedReplay(repository),
+    providerId: 'replicate',
+    providerMode: 'replicate_staging',
+    sourceType: 'webhook',
+  }
+  const originalCreateGeneratedAsset = repository.media.createGeneratedAsset
+  let outputWrites = 0
+  repository.media.createGeneratedAsset = async (...args) => {
+    outputWrites += 1
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    return originalCreateGeneratedAsset(...args)
+  }
+
+  const results = await Promise.all([
+    applyProviderReplayThroughLedger({
+      replay,
+      repositories: repository,
+      actor,
+      providerEventId: 'event-ledger-integration-concurrent',
+      payloadHash: 'payload-hash-ledger-integration-concurrent',
+      now: new Date('2026-07-06T12:00:00.000Z'),
+    }),
+    applyProviderReplayThroughLedger({
+      replay,
+      repositories: repository,
+      actor,
+      providerEventId: 'event-ledger-integration-concurrent',
+      payloadHash: 'payload-hash-ledger-integration-concurrent',
+      now: new Date('2026-07-06T12:00:00.000Z'),
+    }),
+  ])
+
+  assert.equal(results.filter((result) => result.executed).length, 1)
+  assert.equal(results.filter((result) => result.inProgress).length, 1)
+  assert.equal(outputWrites, 1)
+  const generation = await repository.creativeGenerations.find(replay.generation.id)
+  assert.equal(generation.status, 'completed')
+  assert.equal(generation.outputAssetIds.length, 1)
+  assert.equal(generation.credit.status, 'settled')
+})
+
+test('applyProviderReplayThroughLedger rejects one provider event id reused for another lifecycle result', async () => {
+  const repository = createSeedRepository()
+  const completed = {
+    ...await completedReplay(repository),
+    providerId: 'replicate',
+    providerMode: 'replicate_staging',
+    sourceType: 'webhook',
+  }
+  const running = {
+    ...completed,
+    nextStatus: 'running',
+    idempotencyKey: `${completed.generation.providerJobId}:running:no-output`,
+    actions: {
+      markRunning: true,
+      complete: false,
+      fail: false,
+      cancel: false,
+      persistOutputs: false,
+      settleCredits: false,
+      refundCredits: false,
+      linkOutputAssets: false,
+    },
+  }
+
+  const first = await applyProviderReplayThroughLedger({
+    replay: running,
+    repositories: repository,
+    actor,
+    providerEventId: 'event-ledger-integration-conflict',
+    payloadHash: 'payload-hash-ledger-integration-running',
+  })
+  const conflict = await applyProviderReplayThroughLedger({
+    replay: completed,
+    repositories: repository,
+    actor,
+    providerEventId: 'event-ledger-integration-conflict',
+    payloadHash: 'payload-hash-ledger-integration-completed',
+  })
+
+  assert.equal(first.executed, true)
+  assert.equal(conflict.conflict, true)
+  assert.equal(conflict.executed, false)
+  assert.equal(conflict.reasonCode, 'provider_event_replay_conflict')
+  assert.equal(conflict.replayRecord.id, first.replayRecord.id)
+  const generation = await repository.creativeGenerations.find(completed.generation.id)
+  assert.equal(generation.status, 'running')
+  assert.deepEqual(generation.outputAssetIds, [])
+  assert.equal(generation.credit.status, 'reserved')
+})
+
 test('applyProviderReplayThroughLedger stores partial result and resumes missing operations', async () => {
   const repository = createSeedRepository()
   const replay = {

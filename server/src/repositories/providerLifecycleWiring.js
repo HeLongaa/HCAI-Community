@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { safeProviderJobIdEvidence } from '../creative/generationRecords.js'
 
 const safeEvidencePattern = /^[a-z0-9][a-z0-9:._-]{0,240}$/i
-const safeLifecycleActionPattern = /^creative\.provider_(?:lifecycle|replay)\.[a-z0-9._-]+$/i
+const safeLifecycleActionPattern = /^creative\.provider_(?:callback|lifecycle|replay)\.[a-z0-9._-]+$/i
 
 const compactObject = (value) =>
   Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ''))
@@ -37,8 +37,20 @@ const safeLifecycleMetadata = ({ sourceKey, generationId, metadata = {} }) => {
     providerId: safeProviderLifecycleEvidenceIdentifier(metadata.providerId),
     providerMode: safeProviderLifecycleEvidenceIdentifier(metadata.providerMode),
     providerJobId: safeProviderJobIdEvidence(metadata.providerJobId),
+    providerEventId: safeProviderJobIdEvidence(metadata.providerEventId),
+    providerStatus: safeProviderLifecycleEvidenceIdentifier(metadata.providerStatus),
     sourceType: safeProviderLifecycleEvidenceIdentifier(metadata.sourceType),
     nextStatus: safeProviderLifecycleEvidenceIdentifier(metadata.nextStatus),
+    reasonCode: safeProviderLifecycleEvidenceIdentifier(metadata.reasonCode),
+    payloadHash: safeProviderLifecycleEvidenceIdentifier(metadata.payloadHash),
+    bodyBytes: Number.isFinite(metadata.bodyBytes) ? metadata.bodyBytes : undefined,
+    signatureVerified: metadata.signatureVerified == null ? undefined : Boolean(metadata.signatureVerified),
+    duplicate: metadata.duplicate == null ? undefined : Boolean(metadata.duplicate),
+    executed: metadata.executed == null ? undefined : Boolean(metadata.executed),
+    hasContentType: metadata.hasContentType == null ? undefined : Boolean(metadata.hasContentType),
+    hasTimestamp: metadata.hasTimestamp == null ? undefined : Boolean(metadata.hasTimestamp),
+    hasSignature: metadata.hasSignature == null ? undefined : Boolean(metadata.hasSignature),
+    hasNonce: metadata.hasNonce == null ? undefined : Boolean(metadata.hasNonce),
     notificationType: safeLifecycleAction(metadata.notificationType, null),
     auditAction: safeLifecycleAction(metadata.auditAction, null),
     target: {

@@ -2,7 +2,7 @@
 
 This is the first decision page to read before starting any real-provider work. It compresses the current provider readiness state into one handoff: what is usable now, what is fixture-only, what remains deferred, and what requires explicit approval.
 
-Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, read-only Admin history, provider budget observability, and fixture-safe lifecycle foundations are available. Real paid-provider calls, external provider alert delivery, callback routes, real polling, manual replay endpoints, Admin generation mutations, and production paid-provider enablement remain no-go.
+Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, read-only Admin history, provider budget observability, and a default-disabled staging callback API are available. Real paid-provider calls, real Provider webhook target registration/delivery, external provider alert delivery, real polling, manual replay endpoints, Admin generation mutations, and production paid-provider enablement remain no-go.
 
 V1-04 now records conditional implementation-planning decisions for all four modalities in
 `docs/V1_PROVIDER_DECISION_MATRIX.md` and `config/v1-provider-matrix.json`. These selections define primary/backup
@@ -42,6 +42,7 @@ Completed evidence through PR #89:
 | Replicate staging failure/cancellation/observability | PRs #86, #87, and #88 hardened fixture-only failure mapping, cancellation boundaries, and observability evidence. |
 | Provider budget read-side chain | PR #89 added end-to-end sanitized evidence coverage from budget event planning through audit persistence, notifications, external-alert dry-run payloads, and dispatch audit rows. |
 | V1-05 Provider HTTP boundary | A fixed-endpoint, minimum-payload Replicate client factory reads only deployment secrets, rejects unknown Providers, and remains disabled/unregistered by default. |
+| V1-06 Provider callback boundary | `docs/V1_PROVIDER_CALLBACK_API.md` records the staging-only signed route, strict payload projection, nonce/job binding, atomic replay claim, safe audits, and no-real-traffic boundary. |
 
 ## V1-04 Conditional Provider Decisions
 
@@ -70,6 +71,7 @@ Sora 2 models on 2026-09-24 without a recommended replacement.
 | Provider lifecycle foundation | Fixture-only | Replay ledger, lifecycle reducer, side-effect plan, callback parser helpers, polling plan, and worker skeleton exist without real provider side effects. |
 | Provider budget operations | Usable read-only / fixture-only | Audit persistence, internal notifications, Admin operations metrics, exporter metrics, and fixture dry-run dispatch audit rows exist. |
 | Provider HTTP client boundary | Implemented / default-disabled | A fixed Replicate client factory and deployment-secret boundary exist, but no product route or worker registers the client and no external call is approved. |
+| Provider callback API | Implemented / default-disabled | The staging-only route verifies exact-body HMAC, timestamp, nonce, strict payload fields, job binding, replay dedupe, and atomic side-effect ownership. No Provider webhook target is configured. |
 | Staging adapter shell | Fixture-only | Mocked/injected-client hardening may continue. PRs #86-#89 improved the fixture-only evidence chain, but did not approve real provider calls. |
 | V1 provider decision matrix | Conditional planning evidence | Four primary/backup pairs, budgets, legal/data/SLA conditions, and replacement triggers are machine-verified; no provider is production-approved. |
 | V1 content safety matrix | Frozen implementation policy | Four modality partitions, Provider policy mappings, review/appeal, and audit contracts are machine-verified; downstream enforcement is not complete. |
@@ -91,6 +93,7 @@ These paths are available without real-provider approval:
 - Admin generation history exposes sanitized provider cost/budget summaries and safe provider replay evidence.
 - Admin operations metrics and Prometheus-compatible exporter expose low-cardinality provider budget and cost observability.
 - Internal provider budget notifications route to audit readers from persisted safe audit rows.
+- The Provider callback route can be exercised with signed fixtures behind its independent staging-only kill switch without making an outbound Provider request.
 
 ## Fixture-Only Foundations
 
@@ -100,7 +103,7 @@ These pieces are implemented for tests, planning, and safe dry-runs only:
 - Replicate staging shell metadata and fixture adapter tests
 - default-disabled Replicate HTTP client tests with fixed endpoint, minimum payload, secret isolation, and injected fetch
 - provider budget event planning and fail-closed budget guard tests
-- provider callback signature/parser helpers
+- provider callback route, signature/parser, nonce, audit, and concurrent replay-claim tests
 - provider polling lease and stop-condition helpers
 - provider lifecycle replay reducer
 - provider side-effect plan/executor helpers
@@ -113,7 +116,7 @@ These pieces are implemented for tests, planning, and safe dry-runs only:
 - disabled webhook, Slack, and email provider alert client shells
 - fixture-only provider alert dry-run harness
 
-Fixture-only means no route, worker, or default client should contact a real provider or external alert channel.
+Fixture-only means no enabled route, worker, or default client contacts a real provider or external alert channel during CI or ordinary development.
 
 ## Still Deferred
 
@@ -122,8 +125,7 @@ These are intentionally unavailable:
 - real provider SDK or package integration
 - default route or worker registration for the Provider HTTP client
 - real provider network calls
-- provider callback route
-- webhook target handling for provider lifecycle
+- real Provider webhook target registration or callback delivery
 - enabled real provider status polling
 - manual replay endpoint
 - Admin retry, cancel, refund, force-review, replay, recovery, or settlement mutations

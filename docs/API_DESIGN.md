@@ -346,8 +346,26 @@ Returns `meta.summary` with available, frozen, pending settlement, projected bal
 ### `GET /creative/providers`
 
 Requires auth-compatible public access. Returns safe creative provider capability metadata without secrets. Staging
-metadata may report `httpClientImplemented` and `networkCallsEnabled` booleans, but never returns a token, endpoint, raw
-Provider payload, or private URL. A true HTTP-client flag does not make the Provider enabled or default.
+metadata may report `httpClientImplemented`, `networkCallsEnabled`, `callbackImplemented`, and `callbackEnabled`
+booleans, but never returns a token, endpoint, raw Provider payload, or private URL. A true implementation flag does not
+make the Provider enabled or default.
+
+### `POST /creative/providers/replicate/callback/:generationId`
+
+No user session is accepted as callback authentication. The staging ingress must send `application/json` plus
+`x-creative-provider-timestamp`, `x-creative-provider-signature`, and `x-creative-provider-nonce`. The signature is HMAC
+SHA-256 over `<timestamp>.<exact raw body>`; the nonce is a domain-separated HMAC binding the internal generation id to
+its durable Provider job id. The route enforces a five-minute default timestamp window, a 256 KiB default body limit,
+the minimal Replicate callback field allowlist, Provider mode/job matching, and replay-ledger idempotency before any
+side effect runs.
+
+`CREATIVE_PROVIDER_CALLBACK_ENABLED=false` is an independent kill switch. Enabling it requires a production Node
+process in `CREATIVE_PROVIDER_RUNTIME_ENV=staging`, `CREATIVE_STAGING_IMAGE_PROVIDER=replicate`, the explicit
+`staging-only` confirmation, and a deployment-secret callback signing key. Provider dispatch may remain disabled while
+outstanding staging callbacks are drained. Concurrent duplicate callbacks use an atomic replay side-effect claim, so
+only one request can persist outputs, settle/refund credits, or commit/release quota. Responses and audits contain only
+safe ids, status/reason enums, hashes, counts, and header-presence booleans; raw bodies, signatures, nonces, prompts,
+errors, and output URLs are never returned or persisted. This callback route does not make any Provider network call.
 
 ### `POST /creative/generations`
 

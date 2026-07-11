@@ -36,6 +36,7 @@ Creative provider staging preflight secret:
 | Name | Required When | Notes |
 | --- | --- | --- |
 | `CREATIVE_STAGING_PROVIDER_API_TOKEN` | Staging preflight or guarded HTTP client | Store only in a dedicated staging environment. Presence alone never enables a Provider call. |
+| `CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET` | Staging callback API or callback-api smoke | Minimum 32 characters; shared only with the approved staging ingress. Never store it as a variable. |
 
 OAuth provider secrets. Configure at least one external provider:
 
@@ -93,9 +94,13 @@ Creative provider preflight variables:
 | `CREATIVE_STAGING_IMAGE_PROVIDER` | Staging provider preflight | `replicate` |
 | `CREATIVE_STAGING_PROVIDER_CONFIRMATION` | Staging provider preflight | `staging-only` |
 | `CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED` | Guarded V1-05 client construction | `false` by default; exact `true` is accepted only with production-parity staging and `replicate_staging` mode |
+| `CREATIVE_PROVIDER_CALLBACK_ENABLED` | Guarded V1-06 callback intake | `false` by default; exact `true` is accepted only with production-parity staging, Replicate, and `staging-only` confirmation |
+| `CREATIVE_PROVIDER_CALLBACK_REPLAY_WINDOW_SECONDS` | Optional callback bound | `300` |
+| `CREATIVE_PROVIDER_CALLBACK_MAX_BYTES` | Optional callback bound | `262144` |
+| `CREATIVE_PROVIDER_CALLBACK_SIDE_EFFECT_LEASE_SECONDS` | Optional callback concurrency bound | `60` |
 
 Production environments must not set `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true`,
-`CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=true`, or `CREATIVE_STAGING_PROVIDER_API_TOKEN`.
+`CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=true`, `CREATIVE_PROVIDER_CALLBACK_ENABLED=true`, or `CREATIVE_STAGING_PROVIDER_API_TOKEN`.
 
 ## Alert Channel Configuration
 
@@ -185,4 +190,4 @@ Metrics exporter secret:
 5. Confirm the `Deployment Environment Smoke` job prints only safe summary metadata and all checks pass.
 6. Complete the multi-instance rehearsal in `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` before the first production rollout with more than one API or worker process.
 
-For staging-only creative provider preflight, use a dedicated staging environment and follow `docs/REAL_PROVIDER_STAGING_STRATEGY.md` and `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md`. Keep `CREATIVE_PROVIDER_MODE=disabled` so the creative staging smoke can validate secret presence without allowing paid provider calls. Use `CREATIVE_STAGING_SMOKE_MODE=preflight` for preflight and `CREATIVE_STAGING_SMOKE_MODE=adapter-shell` only when validating the default-disabled adapter shell metadata. Before implementing a staging adapter, also review the go/no-go, rollback, and kill-switch gate in `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md`.
+For staging-only creative provider preflight, use a dedicated staging environment and follow `docs/REAL_PROVIDER_STAGING_STRATEGY.md` and `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md`. Keep `CREATIVE_PROVIDER_MODE=disabled` so the creative staging smoke can validate secret presence without allowing paid provider calls. Use `CREATIVE_STAGING_SMOKE_MODE=preflight` for preflight, `adapter-shell` for the default-disabled adapter metadata, and `callback-api` only for V1-06 callback configuration validation. The callback-api smoke makes no callback or Provider request. Before any real integration, also review the go/no-go, rollback, and kill-switch gate in `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md`.

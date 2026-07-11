@@ -2,13 +2,13 @@
 
 This document defines the prerequisites for enabling real-provider webhooks, callback routes, polling workers, or manual lifecycle replay for creative generation.
 
-Current decision: **fixture-safe polling worker interval wiring exists, but real provider callbacks, default provider status polling, manual replay endpoints, and real provider network calls remain no-go until a separate approved external-call task**.
+Current decision: **the staging callback API is implemented but independently disabled by default; registering a real Provider webhook target, enabling default provider status polling, exposing manual replay endpoints, or making real provider network calls remains no-go until a separate approved external-call task**.
 
 The current real-provider boundary handoff is summarized in `docs/REAL_PROVIDER_BOUNDARY_CLOSEOUT.md`. This prerequisite document controls callback, polling, and manual replay enablement; the external-call approval package controls any first real provider network call.
 
-This package does not add a provider SDK, default HTTP client, webhook endpoint, manual replay endpoint, provider network call, Admin mutation endpoint, payment refund flow, or production paid-provider path. The polling worker interval skeleton is disabled by default and only accepts injected mocked status clients.
+This package does not add a provider SDK, default status client, manual replay endpoint, provider network call, Admin mutation endpoint, payment refund flow, or production paid-provider path. V1-06 adds only the app-side signed callback endpoint behind `CREATIVE_PROVIDER_CALLBACK_ENABLED=false`; no Provider webhook target or real delivery is configured. The polling worker interval skeleton is disabled by default and only accepts injected mocked status clients.
 
-Implementation status: the repository now has a durable replay ledger schema/repository foundation, a pure lifecycle replay reducer, provider callback auth/parser pure functions, provider polling lease/stop-condition pure functions, provider lifecycle side-effect plan/executor pure functions, fixture-only replay-ledger integration helpers that record side-effect plans/results without provider credentials, mocked provider-status client contract tests that require an injected client, provider lifecycle notification/audit repository wiring behind stable source keys, manual replay authorization/parser pure functions, and fixture-safe polling worker interval wiring. Provider callback routes, default provider status HTTP clients, manual replay endpoints, and real provider network calls remain disabled and unimplemented.
+Implementation status: the repository now has a durable replay ledger, lifecycle reducer, strict Replicate callback projection, exact-body HMAC and timestamp verification, generation/job nonce binding, a staging-only callback route, atomic replay side-effect claims, lifecycle side-effect execution, safe callback audits, mocked provider-status client contracts, manual replay authorization/parser helpers, and fixture-safe polling worker interval wiring. The callback route is disabled by default and has no real Provider webhook target. Default provider status clients, manual replay endpoints, and real provider network calls remain disabled and unimplemented.
 
 ## Closeout Status And Implementation Map
 
@@ -16,8 +16,8 @@ This closeout records the current boundary for callback, polling, and manual lif
 
 | Capability | Current status | Boundary |
 | --- | --- | --- |
-| Callback authentication and parser helpers | Available as pure functions | Fixture-safe only; no route or provider webhook target exists. |
-| Provider callback route | Disabled and unimplemented | Requires separate route approval, signature tests, replay-ledger wiring, and kill-switch verification. |
+| Callback authentication and parser helpers | Implemented and route-integrated | Exact-body HMAC, timestamp window, body limit, strict field allowlist, and nonce binding are covered by fixture tests. |
+| Provider callback route | Implemented, disabled by default | Staging-only; requires `CREATIVE_PROVIDER_CALLBACK_ENABLED=true`. No real Provider webhook target or traffic is configured. |
 | Default provider status HTTP client | Disabled and unimplemented | No SDK, default HTTP client, or real provider status read is present. |
 | Polling worker interval skeleton | Available, disabled by default | Requires explicit worker flags and an injected mocked status client in tests. |
 | Polling lease and stop-condition helpers | Available as pure functions | Fixture-safe only; they do not read provider APIs. |
@@ -31,7 +31,7 @@ This closeout records the current boundary for callback, polling, and manual lif
 This document does not approve:
 
 - A provider SDK or network-capable HTTP client.
-- A webhook or callback route.
+- A real Provider webhook target or production callback enablement.
 - A manual replay endpoint or Admin replay action.
 - Enabled real provider status polling.
 - Admin retry, cancel, refund, force-review, or manual settlement controls.
@@ -46,7 +46,7 @@ Future work should proceed in this order unless a later approved closeout replac
 3. Add a staging adapter shell only with a mocked/injected client and production-denied environment checks.
 4. Complete the external-call go/no-go approval record before any provider network call.
 5. Run at most one explicitly approved staging external-call rehearsal with call count, budget cap, expiry, and rollback owners recorded in Notion.
-6. Add callback route or real polling client wiring only after a separate callback/polling enablement approval.
+6. Enable a real Provider webhook target or add real polling client wiring only after a separate callback/polling enablement approval.
 7. Add Admin mutation controls only in a separate Admin mutation phase with permissions, accounting idempotency, and audit tests.
 
 ## Scope
@@ -333,7 +333,7 @@ A future implementation task should continue from the mocked-client status contr
 
 1. Keep worker interval wiring fixture-safe and disabled by default until an external-call task explicitly approves a real status client.
 2. Keep the first staging adapter branch mocked/injected until the external-call approval package is complete.
-3. Add callback route wiring only after auth/parser tests, replay ledger, lifecycle reducer, side-effect executor, notification/audit repository wiring, and manual replay envelope tests all pass.
+3. Keep the implemented callback route default-disabled until a named staging delivery is approved; preserve its signature, nonce, replay-ledger, atomic claim, audit, and kill-switch tests.
 4. Add real polling status-client wiring only after the same approval record names the provider, environment, call count, budget cap, expiry, and rollback owners.
 5. Add smoke and quality-gate documentation only after the route or worker exists.
 6. Complete the external-call approval package before any real provider network call.

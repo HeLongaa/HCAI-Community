@@ -1,9 +1,18 @@
 import { ok } from '../../common/http/responses.js'
 import { requireUser } from '../../common/http/auth.js'
-import { readJsonBody } from '../../common/http/request.js'
+import { readJsonBody, readRawBody } from '../../common/http/request.js'
 import { HttpError } from '../../common/errors/httpError.js'
 import { parseCreateCreativeGenerationRequest } from '../../contracts/requestParsers.js'
 import { executeCreativeGeneration, getCreativeProviderCatalog, persistCreativeGenerationOutputs } from '../../creative/generationService.js'
+import { providerCallbackAuthConfig } from '../../creative/providerCallbackAuth.js'
+import {
+  processReplicateProviderCallback,
+  providerCallbackOutcome,
+  providerCallbackPayloadHash,
+  providerCallbackResponse,
+  recordProviderCallbackAudit,
+  rejectedProviderCallbackAuditMetadata,
+} from '../../creative/providerCallbackService.js'
 import {
   buildCreativeGenerationRecordPayload,
   getOutputAssetIds,
@@ -44,17 +53,120 @@ const sanitizeGenerationRecordForResponse = (generationRecord) => generationReco
 export const registerCreativeRoutes = (router, options = {}) => {
   const executeGeneration = options.executeCreativeGeneration ?? executeCreativeGeneration
   const fixtureAdapters = options.fixtureAdapters ?? {}
+  const routeRepositories = options.repositories ?? repositories
+  const callbackSource = options.source ?? process.env
+  const callbackNow = () => typeof options.now === 'function' ? options.now() : options.now ?? new Date()
 
   router.add('GET', '/api/creative/providers', async (_request, response) => {
     ok(response, getCreativeProviderCatalog())
   })
 
+  router.add('POST', '/api/creative/providers/replicate/callback/:generationId', async (request, response, context) => {
+    let rawBody = ''
+    let acceptedCallback = false
+    try {
+      try {
+        rawBody = await readRawBody(request, providerCallbackAuthConfig(callbackSource).maxBodyBytes)
+      } catch (error) {
+        if (error?.code !== 'BODY_TOO_LARGE') throw error
+        throw new HttpError(413, 'CREATIVE_PROVIDER_CALLBACK_BODY_TOO_LARGE', 'Creative provider callback body is too large', {
+          reasonCode: 'body_too_large',
+          limitBytes: error.details?.limitBytes ?? providerCallbackAuthConfig(callbackSource).maxBodyBytes,
+          receivedBytes: error.details?.receivedBytes ?? null,
+        })
+      }
+
+      const processed = await processReplicateProviderCallback({
+        generationId: context.params.generationId,
+        headers: request.headers,
+        rawBody,
+        repositories: routeRepositories,
+        source: callbackSource,
+        now: callbackNow(),
+      })
+      const outcome = providerCallbackOutcome(processed)
+      const callbackAction = ['duplicate_in_progress', 'duplicate_suppressed'].includes(outcome)
+        ? 'creative.provider_callback.duplicate_suppressed'
+        : 'creative.provider_callback.accepted'
+      acceptedCallback = true
+      try {
+        await recordProviderCallbackAudit({
+          repositories: routeRepositories,
+          action: callbackAction,
+          generationId: processed.generation.id,
+          sourceKey: `creative-provider-callback:${processed.verified.payloadHash.slice(0, 32)}:${outcome}`,
+          metadata: {
+            providerId: processed.generation.providerId,
+            providerMode: processed.generation.providerMode,
+            providerJobId: processed.generation.providerJobId,
+            providerEventId: processed.prediction.eventId,
+            providerStatus: processed.prediction.status,
+            nextStatus: processed.replay.nextStatus,
+            reasonCode: outcome,
+            payloadHash: processed.verified.payloadHash,
+            bodyBytes: processed.verified.bodyBytes,
+            signatureVerified: true,
+            duplicate: Boolean(processed.result.duplicate || processed.replay.ignored),
+            executed: processed.result.executed,
+            ...processed.verified.headers,
+          },
+        })
+      } catch {
+        // Callback observability must not change an otherwise valid provider acknowledgement.
+      }
+
+      if (outcome === 'side_effect_failed') {
+        try {
+          await recordProviderCallbackAudit({
+            repositories: routeRepositories,
+            action: 'creative.provider_lifecycle.side_effect_failed',
+            generationId: processed.generation.id,
+            sourceKey: `creative-provider-callback:${processed.result.replayRecord?.id ?? processed.verified.payloadHash.slice(0, 32)}:side-effect-failed`,
+            metadata: {
+              providerId: processed.generation.providerId,
+              providerMode: processed.generation.providerMode,
+              providerJobId: processed.generation.providerJobId,
+              providerStatus: processed.prediction.status,
+              nextStatus: processed.replay.nextStatus,
+              reasonCode: processed.result.execution?.failedOperation?.type ?? 'side_effect_failed',
+            },
+          })
+        } catch {
+          // The replay ledger remains the durable recovery source if audit persistence is unavailable.
+        }
+        throw new HttpError(503, 'CREATIVE_PROVIDER_CALLBACK_SIDE_EFFECT_FAILED', 'Creative provider callback side effects did not complete', {
+          reasonCode: 'side_effect_failed',
+          replayId: processed.result.replayRecord?.id ?? null,
+          failedOperationType: processed.result.execution?.failedOperation?.type ?? null,
+        })
+      }
+
+      ok(response, providerCallbackResponse(processed))
+    } catch (error) {
+      if (!acceptedCallback) {
+        const payloadHash = providerCallbackPayloadHash(rawBody)
+        try {
+          await recordProviderCallbackAudit({
+            repositories: routeRepositories,
+            action: 'creative.provider_callback.rejected',
+            generationId: context.params.generationId,
+            sourceKey: `creative-provider-callback:${payloadHash.slice(0, 32)}:rejected:${error?.code ?? 'internal-error'}`,
+            metadata: rejectedProviderCallbackAuditMetadata({ request, rawBody, error }),
+          })
+        } catch {
+          // Rejection audit failures must not expose callback payloads or replace the original error.
+        }
+      }
+      throw error
+    }
+  })
+
   router.add('POST', '/api/creative/generations', async (request, response, context) => {
     const actor = requireUser(context)
     const payload = parseCreateCreativeGenerationRequest((await readJsonBody(request)) ?? {})
-    const quotaRepository = repositories.creativeQuota
-    const creditRepository = repositories.creativeCredits
-    const generationRepository = repositories.creativeGenerations
+    const quotaRepository = routeRepositories.creativeQuota
+    const creditRepository = routeRepositories.creativeCredits
+    const generationRepository = routeRepositories.creativeGenerations
     let generation = null
     let generationRecord = null
     let quotaFinalized = false
@@ -111,7 +223,7 @@ export const registerCreativeRoutes = (router, options = {}) => {
       }
       const persisted = await persistCreativeGenerationOutputs(generation, {
         actor,
-        mediaRepository: repositories.media,
+        mediaRepository: routeRepositories.media,
       })
       const outputAssetIds = getOutputAssetIds(persisted)
       const settledCredit = generation.credit?.ledgerId && creditRepository?.settle

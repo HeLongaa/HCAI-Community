@@ -43,6 +43,7 @@ All 14 direct frontend imports of `src/data/mockData.ts` are checked exactly. Ad
 | `server-dev-oauth-fallback` | Unconfigured OAuth providers execute a signed local callback | Require external OAuth or explicit unavailable state | V1-39, V1-48 |
 | `server-provider-fixture-injection` | Replicate execution/status/replay clients exist only through injected fixtures | Retain tests; never register as default network client | V1-05 through V1-08, V1-12, V1-14 |
 | `server-provider-alert-fixture-delivery` | Provider budget alerts can dispatch only through approved fixture-injected clients | Replace with separately approved external delivery clients | V1-13, V1-53 |
+| `server-provider-callback-boundary` | Signed Replicate callback intake exists behind an independent staging-only, default-off kill switch | Keep disabled outside an explicitly approved staging callback delivery | V1-06 |
 
 ## Fixture Inventory
 

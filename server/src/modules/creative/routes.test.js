@@ -4,8 +4,10 @@ import test from 'node:test'
 import { HttpError } from '../../common/errors/httpError.js'
 import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
 import { quotaWindowFor, resetCreativePolicyState } from '../../creative/policy.js'
+import { signProviderCallbackNonce, signProviderCallbackPayload } from '../../creative/providerCallbackAuth.js'
 import { createReplicateStagingPrediction } from '../../creative/replicateStagingProvider.js'
 import { repositories } from '../../repositories/index.js'
+import { createSeedRepository } from '../../repositories/seedRepository.js'
 import { registerMediaRoutes } from '../media/routes.js'
 import { registerCreativeRoutes } from './routes.js'
 
@@ -50,6 +52,92 @@ const applyReplicateStagingFixtureEnv = (overrides = {}) => {
   }
 }
 
+const callbackNow = new Date('2026-07-11T02:00:00.000Z')
+const callbackSource = (overrides = {}) => ({
+  NODE_ENV: 'production',
+  ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+  CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+  CREATIVE_PROVIDER_MODE: 'disabled',
+  CREATIVE_STAGING_IMAGE_PROVIDER: 'replicate',
+  CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
+  CREATIVE_PROVIDER_CALLBACK_ENABLED: 'true',
+  CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET: 'callback-signature-secret-0123456789abcdef',
+  CREATIVE_PROVIDER_CALLBACK_REPLAY_WINDOW_SECONDS: '300',
+  CREATIVE_PROVIDER_CALLBACK_MAX_BYTES: '4096',
+  CREATIVE_PROVIDER_CALLBACK_SIDE_EFFECT_LEASE_SECONDS: '60',
+  MEDIA_SCAN_PROVIDER: 'manual',
+  ...overrides,
+})
+
+const createCallbackGeneration = async (repository, suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`) => {
+  const generationId = `gen-callback-${suffix}`
+  const providerJobId = `pred-callback-${suffix}`
+  const actor = { id: 'demo-user-finops', handle: 'finops' }
+  const quota = await repository.creativeQuota.reserve({
+    generationId,
+    actorId: actor.id,
+    actorHandle: actor.handle,
+    workspace: 'image',
+    windowType: 'daily',
+    windowStart: '2026-07-11T00:00:00.000Z',
+    windowEnd: '2026-07-11T23:59:59.999Z',
+    limit: 100,
+    costUnits: 1,
+    policyVersion: 'creative-policy-v1',
+  }, actor)
+  const credit = await repository.creativeCredits.reserve({
+    generationId,
+    quotaReservationId: quota.reservationId,
+    actorId: actor.id,
+    actorHandle: actor.handle,
+    workspace: 'image',
+    mode: 'text_to_image',
+    amount: 1,
+    reasonCode: 'generation_reserved',
+    metadata: { providerId: 'replicate-staging', providerMode: 'replicate_staging' },
+  }, actor)
+  const generation = await repository.creativeGenerations.create({
+    id: generationId,
+    actorId: actor.id,
+    actorHandle: actor.handle,
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'replicate-staging',
+    providerMode: 'replicate_staging',
+    status: 'running',
+    promptHash: 'd'.repeat(64),
+    promptPreview: 'Provider callback route fixture',
+    inputAssetIds: [],
+    parameterKeys: ['aspectRatio'],
+    quota: quota.quota,
+    credit: credit.credit,
+    usage: { estimatedCredits: 1, metered: true },
+    safety: { reviewRequired: false },
+    policy: { action: 'allow' },
+    providerRequestId: providerJobId,
+    providerJobId,
+  }, actor)
+  return { actor, generation, providerJobId }
+}
+
+const signedCallbackHeaders = ({ source, generationId, providerJobId, body, timestamp = callbackNow.getTime() }) => {
+  const rawBody = JSON.stringify(body)
+  return {
+    'content-type': 'application/json',
+    'x-creative-provider-timestamp': String(timestamp),
+    'x-creative-provider-signature': signProviderCallbackPayload(
+      source.CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET,
+      String(timestamp),
+      rawBody,
+    ),
+    'x-creative-provider-nonce': signProviderCallbackNonce(
+      source.CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET,
+      generationId,
+      providerJobId,
+    ),
+  }
+}
+
 test('GET /api/creative/providers lists safe provider capability metadata', async () => {
   const server = await createRouteTestServer(registerCreativeRoutes)
   try {
@@ -65,6 +153,340 @@ test('GET /api/creative/providers lists safe provider capability metadata', asyn
     assert.ok(payload.data.providers[0].capabilities.find((capability) => capability.workspace === 'image'))
   } finally {
     await server.close()
+  }
+})
+
+test('POST Replicate callback applies one signed lifecycle result and suppresses its duplicate', async () => {
+  const repository = createSeedRepository()
+  const source = callbackSource()
+  const { generation, providerJobId } = await createCallbackGeneration(repository)
+  const body = {
+    id: providerJobId,
+    event_id: `event-${providerJobId}`,
+    status: 'succeeded',
+    output: ['https://provider.example/private-output.png?token=provider-output-secret'],
+    metrics: { predict_time: 1.5 },
+    cost_usd: 0.2,
+    completed_at: callbackNow.toISOString(),
+  }
+  const headers = signedCallbackHeaders({
+    source,
+    generationId: generation.id,
+    providerJobId,
+    body,
+  })
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+    source,
+    now: callbackNow,
+  }))
+  try {
+    const first = await requestJson(server.url, `/api/creative/providers/replicate/callback/${generation.id}`, {
+      body,
+      headers,
+    })
+    assert.equal(first.status, 200)
+    assert.equal(first.payload.data.accepted, true)
+    assert.equal(first.payload.data.outcome, 'applied')
+    assert.equal(first.payload.data.duplicate, false)
+    assert.equal(first.payload.data.normalizedStatus, 'completed')
+    assert.equal(JSON.stringify(first.payload).includes('provider-output-secret'), false)
+    assert.equal(JSON.stringify(first.payload).includes('provider.example'), false)
+
+    const completed = await repository.creativeGenerations.find(generation.id)
+    assert.equal(completed.status, 'completed')
+    assert.equal(completed.outputAssetIds.length, 1)
+    assert.equal(completed.credit.status, 'settled')
+    assert.equal(completed.quota.used, 1)
+
+    const duplicate = await requestJson(server.url, `/api/creative/providers/replicate/callback/${generation.id}`, {
+      body,
+      headers,
+    })
+    assert.equal(duplicate.status, 200)
+    assert.equal(duplicate.payload.data.accepted, true)
+    assert.equal(duplicate.payload.data.outcome, 'duplicate_suppressed')
+    assert.equal(duplicate.payload.data.duplicate, true)
+    assert.equal(duplicate.payload.data.replayId, first.payload.data.replayId)
+
+    const afterDuplicate = await repository.creativeGenerations.find(generation.id)
+    assert.deepEqual(afterDuplicate.outputAssetIds, completed.outputAssetIds)
+    assert.equal(afterDuplicate.credit.settled, 1)
+    assert.equal(afterDuplicate.quota.used, 1)
+    const replays = await repository.creativeProviderReplays.listForGeneration(generation.id)
+    assert.equal(replays.items.length, 1)
+
+    const acceptedAudits = await repository.audit.list({
+      action: 'creative.provider_callback.accepted',
+      resourceType: 'creative_generation',
+    })
+    const acceptedAudit = acceptedAudits.items.find((item) => item.resourceId === generation.id)
+    assert.ok(acceptedAudit)
+    assert.equal(acceptedAudit.metadata.signatureVerified, true)
+    assert.equal(acceptedAudit.metadata.hasNonce, true)
+    const duplicateAudits = await repository.audit.list({
+      action: 'creative.provider_callback.duplicate_suppressed',
+      resourceType: 'creative_generation',
+    })
+    assert.ok(duplicateAudits.items.some((item) => item.resourceId === generation.id))
+    assert.equal(JSON.stringify([...acceptedAudits.items, ...duplicateAudits.items]).includes('provider-output-secret'), false)
+    assert.equal(JSON.stringify([...acceptedAudits.items, ...duplicateAudits.items]).includes('provider.example'), false)
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST Replicate callback rejects nonce and provider job mismatches without side effects', async () => {
+  const repository = createSeedRepository()
+  const source = callbackSource()
+  const { generation, providerJobId } = await createCallbackGeneration(repository)
+  const body = { id: providerJobId, status: 'processing' }
+  const validHeaders = signedCallbackHeaders({ source, generationId: generation.id, providerJobId, body })
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+    source,
+    now: callbackNow,
+  }))
+  try {
+    const invalidNonce = await requestJson(server.url, `/api/creative/providers/replicate/callback/${generation.id}`, {
+      body,
+      headers: {
+        ...validHeaders,
+        'x-creative-provider-nonce': `sha256=${'0'.repeat(64)}`,
+      },
+    })
+    assert.equal(invalidNonce.status, 403)
+    assert.equal(invalidNonce.payload.error.code, 'CREATIVE_PROVIDER_CALLBACK_NONCE_INVALID')
+
+    const mismatchedBody = { id: 'pred-callback-other', status: 'processing' }
+    const mismatchedJob = await requestJson(server.url, `/api/creative/providers/replicate/callback/${generation.id}`, {
+      body: mismatchedBody,
+      headers: signedCallbackHeaders({
+        source,
+        generationId: generation.id,
+        providerJobId,
+        body: mismatchedBody,
+      }),
+    })
+    assert.equal(mismatchedJob.status, 409)
+    assert.equal(mismatchedJob.payload.error.code, 'CREATIVE_PROVIDER_JOB_MISMATCH')
+
+    const current = await repository.creativeGenerations.find(generation.id)
+    assert.equal(current.status, 'running')
+    assert.deepEqual(current.outputAssetIds, [])
+    assert.equal(current.credit.status, 'reserved')
+    const replays = await repository.creativeProviderReplays.listForGeneration(generation.id)
+    assert.equal(replays.items.length, 0)
+
+    const rejectedAudits = await repository.audit.list({
+      action: 'creative.provider_callback.rejected',
+      resourceType: 'creative_generation',
+    })
+    assert.equal(rejectedAudits.items.filter((item) => item.resourceId === generation.id).length, 2)
+    assert.equal(rejectedAudits.items.every((item) => item.metadata.signatureVerified === true), true)
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST Replicate callback rejects a Provider event id reused for different lifecycle content', async () => {
+  const repository = createSeedRepository()
+  const source = callbackSource()
+  const { generation, providerJobId } = await createCallbackGeneration(repository)
+  const eventId = `event-conflict-${providerJobId}`
+  const runningBody = { id: providerJobId, event_id: eventId, status: 'processing' }
+  const completedBody = {
+    id: providerJobId,
+    event_id: eventId,
+    status: 'succeeded',
+    output: ['https://provider.example/conflicting-output.png'],
+  }
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+    source,
+    now: callbackNow,
+  }))
+  try {
+    const first = await requestJson(server.url, `/api/creative/providers/replicate/callback/${generation.id}`, {
+      body: runningBody,
+      headers: signedCallbackHeaders({ source, generationId: generation.id, providerJobId, body: runningBody }),
+    })
+    assert.equal(first.status, 200)
+    assert.equal(first.payload.data.outcome, 'duplicate_suppressed')
+
+    const conflict = await requestJson(server.url, `/api/creative/providers/replicate/callback/${generation.id}`, {
+      body: completedBody,
+      headers: signedCallbackHeaders({ source, generationId: generation.id, providerJobId, body: completedBody }),
+    })
+    assert.equal(conflict.status, 409)
+    assert.equal(conflict.payload.error.code, 'CREATIVE_PROVIDER_CALLBACK_REPLAY_CONFLICT')
+    assert.equal(JSON.stringify(conflict.payload).includes('conflicting-output.png'), false)
+
+    const current = await repository.creativeGenerations.find(generation.id)
+    assert.equal(current.status, 'running')
+    assert.deepEqual(current.outputAssetIds, [])
+    assert.equal(current.credit.status, 'reserved')
+    const replays = await repository.creativeProviderReplays.listForGeneration(generation.id)
+    assert.equal(replays.items.length, 1)
+    assert.equal(replays.items[0].normalizedStatus, 'running')
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST Replicate callback verifies the exact untrimmed request body', async () => {
+  const repository = createSeedRepository()
+  const source = callbackSource()
+  const { generation, providerJobId } = await createCallbackGeneration(repository)
+  const body = { id: providerJobId, status: 'processing' }
+  const rawBody = ` \n${JSON.stringify(body)}\n `
+  const timestamp = String(callbackNow.getTime())
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+    source,
+    now: callbackNow,
+  }))
+  try {
+    const response = await fetch(`${server.url}/api/creative/providers/replicate/callback/${generation.id}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-creative-provider-timestamp': timestamp,
+        'x-creative-provider-signature': signProviderCallbackPayload(
+          source.CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET,
+          timestamp,
+          rawBody,
+        ),
+        'x-creative-provider-nonce': signProviderCallbackNonce(
+          source.CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET,
+          generation.id,
+          providerJobId,
+        ),
+      },
+      body: rawBody,
+    })
+    const payload = await response.json()
+    assert.equal(response.status, 200)
+    assert.equal(payload.data.accepted, true)
+    assert.equal(payload.data.outcome, 'duplicate_suppressed')
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST Replicate callback resumes a partial side-effect failure without rewriting outputs', async () => {
+  const repository = createSeedRepository()
+  const source = callbackSource()
+  const { generation, providerJobId } = await createCallbackGeneration(repository)
+  const body = {
+    id: providerJobId,
+    event_id: `event-partial-${providerJobId}`,
+    status: 'succeeded',
+    output: ['https://provider.example/partial-output.png?token=partial-secret'],
+  }
+  const headers = signedCallbackHeaders({ source, generationId: generation.id, providerJobId, body })
+  const originalSettle = repository.creativeCredits.settle
+  let settleAttempts = 0
+  repository.creativeCredits.settle = async (...args) => {
+    settleAttempts += 1
+    if (settleAttempts === 1) {
+      throw new Error('settlement failed token=private-settlement-secret')
+    }
+    return originalSettle(...args)
+  }
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+    source,
+    now: callbackNow,
+  }))
+  try {
+    const failed = await requestJson(server.url, `/api/creative/providers/replicate/callback/${generation.id}`, {
+      body,
+      headers,
+    })
+    assert.equal(failed.status, 503)
+    assert.equal(failed.payload.error.code, 'CREATIVE_PROVIDER_CALLBACK_SIDE_EFFECT_FAILED')
+    assert.equal(JSON.stringify(failed.payload).includes('private-settlement-secret'), false)
+    assert.equal(JSON.stringify(failed.payload).includes('partial-secret'), false)
+    const afterFailure = await repository.creativeGenerations.find(generation.id)
+    assert.equal(afterFailure.status, 'running')
+    assert.equal(afterFailure.outputAssetIds.length, 1)
+    assert.equal(afterFailure.credit.status, 'reserved')
+
+    const retried = await requestJson(server.url, `/api/creative/providers/replicate/callback/${generation.id}`, {
+      body,
+      headers,
+    })
+    assert.equal(retried.status, 200)
+    assert.equal(retried.payload.data.outcome, 'resumed')
+    assert.equal(retried.payload.data.duplicate, true)
+    assert.equal(retried.payload.data.sideEffectsCompleted, true)
+    const completed = await repository.creativeGenerations.find(generation.id)
+    assert.equal(completed.status, 'completed')
+    assert.deepEqual(completed.outputAssetIds, afterFailure.outputAssetIds)
+    assert.equal(completed.credit.status, 'settled')
+    assert.equal(settleAttempts, 2)
+
+    const failureAudits = await repository.audit.list({
+      action: 'creative.provider_lifecycle.side_effect_failed',
+      resourceType: 'creative_generation',
+    })
+    const failureAudit = failureAudits.items.find((item) => item.resourceId === generation.id)
+    assert.ok(failureAudit)
+    assert.equal(JSON.stringify(failureAudit).includes('private-settlement-secret'), false)
+    assert.equal(JSON.stringify(failureAudit).includes('partial-secret'), false)
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST Replicate callback stays disabled by default and enforces its route body limit', async () => {
+  const repository = createSeedRepository()
+  const { generation, providerJobId } = await createCallbackGeneration(repository)
+  const disabledSource = callbackSource({ CREATIVE_PROVIDER_CALLBACK_ENABLED: 'false' })
+  const body = { id: providerJobId, status: 'processing' }
+  const disabledServer = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+    source: disabledSource,
+    now: callbackNow,
+  }))
+  try {
+    const disabled = await requestJson(disabledServer.url, `/api/creative/providers/replicate/callback/${generation.id}`, {
+      body,
+      headers: signedCallbackHeaders({
+        source: disabledSource,
+        generationId: generation.id,
+        providerJobId,
+        body,
+      }),
+    })
+    assert.equal(disabled.status, 503)
+    assert.equal(disabled.payload.error.code, 'CREATIVE_PROVIDER_CALLBACK_DISABLED')
+  } finally {
+    await disabledServer.close()
+  }
+
+  const limitedSource = callbackSource({ CREATIVE_PROVIDER_CALLBACK_MAX_BYTES: '64' })
+  const oversizedBody = { id: providerJobId, status: 'processing', logs: 'x'.repeat(128) }
+  const limitedServer = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+    source: limitedSource,
+    now: callbackNow,
+  }))
+  try {
+    const oversized = await requestJson(limitedServer.url, `/api/creative/providers/replicate/callback/${generation.id}`, {
+      body: oversizedBody,
+      headers: signedCallbackHeaders({
+        source: limitedSource,
+        generationId: generation.id,
+        providerJobId,
+        body: oversizedBody,
+      }),
+    })
+    assert.equal(oversized.status, 413)
+    assert.equal(oversized.payload.error.code, 'CREATIVE_PROVIDER_CALLBACK_BODY_TOO_LARGE')
+  } finally {
+    await limitedServer.close()
   }
 })
 

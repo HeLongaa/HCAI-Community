@@ -207,6 +207,15 @@
       "ownerTasks": ["V1-13", "V1-53"]
     },
     {
+      "id": "server-provider-callback-boundary",
+      "area": "provider-lifecycle",
+      "classification": "production_capable",
+      "paths": ["server/src/config/env.js", "server/src/modules/creative/routes.js", "server/src/creative/providerCallbackAuth.js", "server/src/creative/providerCallbackService.js", "server/src/creative/replicateCallbackPayload.js", "server/src/creative/providerReplayIntegration.js"],
+      "markers": ["CREATIVE_PROVIDER_CALLBACK_ENABLED", "x-creative-provider-signature", "x-creative-provider-nonce", "claimSideEffects"],
+      "productionDisposition": "keep_disabled_outside_explicit_staging_callback_approval",
+      "ownerTasks": ["V1-06"]
+    },
+    {
       "id": "fixture-smoke-and-simulation-profiles",
       "area": "quality-gates",
       "classification": "fixture_only",
