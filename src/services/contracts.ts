@@ -821,6 +821,55 @@ export type ApiCreativeGenerationRecord = {
 }
 
 export type CreativeGenerationMutationType = 'cancel' | 'retry' | 'manual_replay'
+
+export type AdminProviderControlBundle = {
+  controls: Array<{
+    id: string | null
+    scopeKey: string | null
+    scopeType: 'global' | 'provider' | 'workspace' | 'model_family'
+    providerId: string | null
+    workspace: string | null
+    modelFamily: string | null
+    enabled: boolean
+    version: number
+    reasonCode: string
+    enabledAt: string | null
+    disabledAt: string | null
+    updatedAt: string
+  }>
+  circuits: Array<{
+    id: string | null
+    scopeKey: string | null
+    providerId: string | null
+    workspace: string
+    modelFamily: string | null
+    status: 'closed' | 'open' | 'half_open'
+    version: number
+    failureCount: number
+    windowStartedAt: string | null
+    lastFailureAt: string | null
+    openedAt: string | null
+    cooldownUntil: string | null
+    probeLeaseActive: boolean
+    probeLeaseExpiresAt: string | null
+    reasonCode: string | null
+  }>
+  capEvidence: Array<{
+    id: string | null
+    providerId: string | null
+    currency: string
+    capAmount: number | null
+    remainingAmount: number | null
+    sourceType: string
+    evidenceHashPresent: boolean
+    evidenceHashPreview: string | null
+    verifiedAt: string
+    expiresAt: string
+    active: boolean
+  }>
+}
+
+export type AdminProviderControlRecoveryTarget = 'enable' | 'half_open' | 'closed'
 export type CreativeGenerationMutationStatus = 'requested' | 'pending_review' | 'approved' | 'processing' | 'succeeded' | 'failed' | 'rejected'
 
 export type ApiCreativeGenerationMutation = {
@@ -1464,6 +1513,20 @@ export type AdminOperationsMetricsDto = {
         latestAt: string | null
       }
     }
+  }
+  creativeProviderControl: {
+    total: number
+    dispatchBlocked: number
+    circuitOpened: number
+    recoveryApproved: number
+    recoveryRejected: number
+    capEvidenceRecorded: number
+    capEvidenceExpired: number
+    byProvider: AdminOperationsMetricCount[]
+    byWorkspace: AdminOperationsMetricCount[]
+    byStatus: AdminOperationsMetricCount[]
+    byReason: AdminOperationsMetricCount[]
+    latestAt: string | null
   }
 }
 

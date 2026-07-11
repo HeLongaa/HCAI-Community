@@ -17,6 +17,10 @@ import {
   parsePointAdjustmentPolicyRequest,
   parsePointAdjustmentPolicyRollbackRequest,
   parsePointAdjustmentRequest,
+  parseProviderCapEvidenceRequest,
+  parseProviderControlDisableRequest,
+  parseProviderControlListQuery,
+  parseProviderControlRecoveryRequest,
   parseUpdateRolePermissionsRequest,
 } from '../../contracts/requestParsers.js'
 import { repositories } from '../../repositories/index.js'
@@ -24,6 +28,7 @@ import { getProtectedRolePermissions } from '../../auth/permissions.js'
 import { defaultPointAdjustmentPolicy, getDirectLimitForActor } from '../../points/adjustmentPolicy.js'
 import { safeCreativeCreditMetadata, safeErrorPreview, safeProviderJobIdEvidence } from '../../creative/generationRecords.js'
 import { providerMoneyAmount } from '../../creative/providerCostContract.js'
+import { createProviderCapEvidence } from '../../creative/providerControlContract.js'
 import { safeProviderLifecycleEvidenceIdentifier } from '../../repositories/providerLifecycleWiring.js'
 import {
   cancelCreativeGeneration,
@@ -36,6 +41,54 @@ import {
 
 const isPointAdjustmentReview = (review) => review?.queue === 'points' || review?.metadata?.kind === 'point_adjustment'
 const isManualProviderReplayReview = (review) => review?.metadata?.kind === 'manual_provider_replay'
+const isProviderControlRecoveryReview = (review) => review?.metadata?.kind === 'provider_control_recovery'
+
+const safeProviderControlBundle = ({ controls, circuits, capEvidence }) => ({
+  controls: controls.map((control) => ({
+    id: control.id,
+    scopeKey: null,
+    scopeType: control.scopeType,
+    providerId: safeProviderJobIdEvidence(control.providerId),
+    workspace: control.workspace,
+    modelFamily: safeProviderJobIdEvidence(control.modelFamily),
+    enabled: control.enabled,
+    version: control.version,
+    reasonCode: control.reasonCode,
+    enabledAt: control.enabledAt,
+    disabledAt: control.disabledAt,
+    updatedAt: control.updatedAt,
+  })),
+  circuits: circuits.map((circuit) => ({
+    id: circuit.id,
+    scopeKey: null,
+    providerId: safeProviderJobIdEvidence(circuit.providerId),
+    workspace: circuit.workspace,
+    modelFamily: safeProviderJobIdEvidence(circuit.modelFamily),
+    status: circuit.status,
+    version: circuit.version,
+    failureCount: circuit.failureCount,
+    windowStartedAt: circuit.windowStartedAt,
+    lastFailureAt: circuit.lastFailureAt,
+    openedAt: circuit.openedAt,
+    cooldownUntil: circuit.cooldownUntil,
+    probeLeaseActive: circuit.probeLeaseActive,
+    probeLeaseExpiresAt: circuit.probeLeaseExpiresAt,
+    reasonCode: circuit.reasonCode,
+  })),
+  capEvidence: capEvidence.filter(Boolean).map((evidence) => ({
+    id: safeProviderJobIdEvidence(evidence.id),
+    providerId: safeProviderJobIdEvidence(evidence.providerId),
+    currency: evidence.currency,
+    capAmount: providerMoneyAmount(evidence.capMicros),
+    remainingAmount: providerMoneyAmount(evidence.remainingMicros),
+    sourceType: evidence.sourceType,
+    evidenceHashPresent: Boolean(evidence.evidenceHash),
+    evidenceHashPreview: evidence.evidenceHash ? evidence.evidenceHash.slice(0, 12) : null,
+    verifiedAt: evidence.verifiedAt,
+    expiresAt: evidence.expiresAt,
+    active: evidence.active,
+  })),
+})
 
 const replaySideEffectCompleted = (replay) =>
   replay?.sideEffectResult?.completed === true
@@ -483,6 +536,67 @@ const operationsMetricsExportJson = (artifact) => JSON.stringify(artifact, null,
 export const registerAdminRoutes = (router, options = {}) => {
   const routeRepositories = options.repositories ?? repositories
   const providerMutationAdapters = options.providerMutationAdapters ?? {}
+  router.add('GET', '/api/admin/creative/provider-controls', async (_request, response, context) => {
+    requirePermission(context, 'admin:creative:provider-control:read')
+    const query = parseProviderControlListQuery(context.query)
+    const [controlPage, circuitPage] = await Promise.all([
+      routeRepositories.creativeProviderControls.list(query),
+      routeRepositories.creativeProviderControls.listCircuits(query),
+    ])
+    const providerControls = controlPage.items.filter((control) => control.scopeType === 'provider')
+    const capEvidence = await Promise.all(providerControls.map((control) =>
+      routeRepositories.creativeProviderControls.findCapEvidence(control.scopeKey)))
+    ok(response, safeProviderControlBundle({
+      controls: controlPage.items,
+      circuits: circuitPage.items,
+      capEvidence,
+    }), {
+      pagination: {
+        limit: query.limit,
+        nextCursor: controlPage.nextCursor ?? circuitPage.nextCursor,
+      },
+    })
+  })
+
+  router.add('POST', '/api/admin/creative/provider-controls/disable', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:creative:provider-control:manage')
+    const payload = parseProviderControlDisableRequest((await readJsonBody(request)) ?? {})
+    const current = await routeRepositories.creativeProviderControls.findControlById(payload.resourceId)
+    if (!current) throw notFound('/api/admin/creative/provider-controls/disable')
+    const result = await routeRepositories.creativeProviderControls.setControl({
+      ...current,
+      enabled: false,
+      expectedVersion: payload.expectedVersion,
+      reasonCode: payload.reasonCode,
+    }, actor)
+    ok(response, {
+      changed: result.changed,
+      control: safeProviderControlBundle({ controls: [result.control], circuits: [], capEvidence: [] }).controls[0],
+    })
+  })
+
+  router.add('POST', '/api/admin/creative/provider-controls/cap-evidence', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:creative:provider-control:manage')
+    const payload = parseProviderCapEvidenceRequest((await readJsonBody(request)) ?? {})
+    const evidence = createProviderCapEvidence(payload)
+    const result = await routeRepositories.creativeProviderControls.putCapEvidence(evidence, actor)
+    ok(response, {
+      created: result.created,
+      evidence: safeProviderControlBundle({ controls: [], circuits: [], capEvidence: [result.evidence] }).capEvidence[0],
+    })
+  })
+
+  router.add('POST', '/api/admin/creative/provider-controls/recovery-requests', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:creative:provider-control:recover')
+    const payload = parseProviderControlRecoveryRequest((await readJsonBody(request)) ?? {})
+    const resource = payload.target === 'enable'
+      ? await routeRepositories.creativeProviderControls.findControlById(payload.resourceId)
+      : await routeRepositories.creativeProviderControls.findCircuitById(payload.resourceId)
+    if (!resource) throw notFound('/api/admin/creative/provider-controls/recovery-requests')
+    const result = await routeRepositories.creativeProviderControls.requestRecovery(payload, actor)
+    ok(response, result)
+  })
+
   router.add('GET', '/api/admin/permissions', async (_request, response, context) => {
     requirePermission(context, 'admin:audit:read')
     const permissions = await repositories.authorization.listPermissions()
@@ -552,6 +666,24 @@ export const registerAdminRoutes = (router, options = {}) => {
       if (action.decision === 'approve' && current.metadata?.requestedBy === actor.handle) {
         throw validationFailed('manual Provider replay requires a different approver')
       }
+    }
+    if (!current.decision && isProviderControlRecoveryReview(current)) {
+      requirePermission(context, 'admin:creative:provider-control:recover')
+      if (action.decision === 'approve' && current.metadata?.requestedBy === actor.handle) {
+        throw validationFailed('Provider control recovery requires a different approver')
+      }
+      const recovered = await routeRepositories.creativeProviderControls.reviewRecovery(current.id, action, actor)
+      if (!recovered) throw notFound(`/api/admin/reviews/${context.params.id}`)
+      ok(response, {
+        review: recovered.review,
+        result: recovered.result?.enabled !== undefined
+          ? safeProviderControlBundle({ controls: [recovered.result], circuits: [], capEvidence: [] }).controls[0]
+          : recovered.result
+            ? safeProviderControlBundle({ controls: [], circuits: [recovered.result], capEvidence: [] }).circuits[0]
+            : null,
+        probeAuthorized: Boolean(recovered.probeToken),
+      })
+      return
     }
     const reviewed = await routeRepositories.adminReviews.review(context.params.id, action, actor)
     if (!reviewed) {

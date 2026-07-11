@@ -6,6 +6,8 @@ import type {
   AdminPointAdjustmentRequest,
   AdminPointAdjustmentResponse,
   AdminPermissionDto,
+  AdminProviderControlBundle,
+  AdminProviderControlRecoveryTarget,
   AdminOperationsMetricsDto,
   AdminReviewActionRequest,
   AdminReviewDecision,
@@ -64,6 +66,26 @@ export const adminService = {
   },
   async creativeGeneration(id: string) {
     return api.get<AdminCreativeGenerationHistoryPage['items'][number]>(`/admin/creative/generations/${id}`)
+  },
+  async providerControls(providerId?: string | null) {
+    return api.get<AdminProviderControlBundle>(withQuery('/admin/creative/provider-controls', { providerId: providerId ?? null }))
+  },
+  async disableProviderControl(resourceId: string, expectedVersion: number, reasonCode: string) {
+    return api.post<{ changed: boolean; control: AdminProviderControlBundle['controls'][number] }>(
+      '/admin/creative/provider-controls/disable',
+      { resourceId, expectedVersion, reasonCode },
+    )
+  },
+  async requestProviderControlRecovery(
+    resourceId: string,
+    target: AdminProviderControlRecoveryTarget,
+    expectedVersion: number,
+    reasonCode: string,
+  ) {
+    return api.post<{ duplicate: boolean; review: AdminReviewQueueItemDto }>(
+      '/admin/creative/provider-controls/recovery-requests',
+      { resourceId, target, expectedVersion, reasonCode },
+    )
   },
   async cancelCreativeGeneration(id: string, body: CreativeGenerationMutationRequest) {
     return api.post<ApiCreativeGenerationMutationResponse>(`/admin/creative/generations/${id}/cancel`, body)

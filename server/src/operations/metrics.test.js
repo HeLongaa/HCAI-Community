@@ -40,6 +40,86 @@ test('buildOperationsMetrics summarizes operation lease contention and renew fai
   assert.deepEqual(metrics.operations.leases.renewFailures.byKey, [{ key: 'task-stale-submission-sweep', count: 1 }])
 })
 
+test('buildOperationsMetrics summarizes creative Provider control-plane events safely', () => {
+  const generatedAt = new Date('2026-07-12T12:00:00.000Z')
+  const base = {
+    resourceType: 'creative_provider_control',
+    resourceId: 'provider-control-high-cardinality',
+    createdAt: '2026-07-12T11:50:00.000Z',
+  }
+  const auditEvents = [
+    {
+      ...base,
+      id: 'control-blocked',
+      action: 'creative.provider_control.dispatch_blocked',
+      metadata: { providerId: 'replicate', workspace: 'image', status: 'blocked', reasonCode: 'provider_kill_switch_active' },
+    },
+    {
+      ...base,
+      id: 'circuit-opened',
+      action: 'creative.provider_circuit.opened',
+      resourceType: 'creative_provider_circuit',
+      metadata: { providerId: 'replicate', workspace: 'image', status: 'open', reasonCode: 'provider_circuit_open' },
+    },
+    {
+      ...base,
+      id: 'recovery-approved',
+      action: 'creative.provider_control.recovery_approved',
+      resourceType: 'admin_review',
+      metadata: { target: 'enable', reasonCode: 'operator_emergency_stop' },
+    },
+    {
+      ...base,
+      id: 'recovery-rejected',
+      action: 'creative.provider_control.recovery_rejected',
+      resourceType: 'admin_review',
+      metadata: { target: 'closed', reasonCode: 'operator_emergency_stop' },
+    },
+    {
+      ...base,
+      id: 'cap-expired',
+      action: 'creative.provider_control.cap_evidence_recorded',
+      resourceType: 'creative_provider_cap_evidence',
+      metadata: { providerId: 'replicate', currency: 'USD', sourceType: 'manual_attestation', expiresAt: '2026-07-12T11:59:00.000Z' },
+    },
+    {
+      ...base,
+      id: 'cap-active',
+      action: 'creative.provider_control.cap_evidence_recorded',
+      resourceType: 'creative_provider_cap_evidence',
+      metadata: { providerId: 'unsafe@example.com', currency: 'USD', sourceType: 'fixture_config', expiresAt: '2026-07-12T12:01:00.000Z' },
+    },
+    {
+      ...base,
+      id: 'outside-window',
+      action: 'creative.provider_control.dispatch_blocked',
+      createdAt: '2026-07-12T10:00:00.000Z',
+      metadata: { providerId: 'replicate', workspace: 'image', reasonCode: 'provider_circuit_open' },
+    },
+  ]
+
+  const metrics = buildOperationsMetrics({ windowMinutes: 30, generatedAt, auditEvents })
+  const control = metrics.creativeProviderControl
+  assert.equal(control.total, 6)
+  assert.equal(control.dispatchBlocked, 1)
+  assert.equal(control.circuitOpened, 1)
+  assert.equal(control.recoveryApproved, 1)
+  assert.equal(control.recoveryRejected, 1)
+  assert.equal(control.capEvidenceRecorded, 2)
+  assert.equal(control.capEvidenceExpired, 1)
+  assert.deepEqual(control.byStatus, [
+    { key: 'active', count: 1 },
+    { key: 'approved', count: 1 },
+    { key: 'blocked', count: 1 },
+    { key: 'expired', count: 1 },
+    { key: 'open', count: 1 },
+    { key: 'rejected', count: 1 },
+  ])
+  assert.match(control.byProvider.find((item) => item.key.startsWith('redacted_'))?.key ?? '', /^redacted_[a-f0-9]{16}$/)
+  assert.equal(JSON.stringify(control).includes('unsafe@example.com'), false)
+  assert.equal(JSON.stringify(control).includes('provider-control-high-cardinality'), false)
+})
+
 test('buildOperationsMetrics summarizes durable Provider cost ledger lifecycle safely', () => {
   const generatedAt = new Date('2026-07-12T12:00:00.000Z')
   const actions = [

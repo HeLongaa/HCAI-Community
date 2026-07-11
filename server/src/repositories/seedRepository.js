@@ -19,7 +19,11 @@ import {
   serializeCreativeGeneration,
   serializeCreativeGenerationMutation,
   serializeCreativeOutputIngestion,
+  serializeCreativeProviderCapEvidence,
   serializeCreativeProviderBudgetWindow,
+  serializeCreativeProviderCircuitEvent,
+  serializeCreativeProviderCircuitState,
+  serializeCreativeProviderControlState,
   serializeCreativeProviderCostLedger,
   serializeCreativeProviderReplay,
   serializeLedgerEntry,
@@ -87,6 +91,12 @@ const creativeProviderBudgetWindowsById = new Map()
 const creativeProviderBudgetWindowIdsByKey = new Map()
 const creativeProviderCostLedgersById = new Map()
 const creativeProviderCostLedgerIdsBySourceKey = new Map()
+const creativeProviderControlsByScopeKey = new Map()
+const creativeProviderCapEvidenceById = new Map()
+const creativeProviderCapEvidenceIdsBySourceKey = new Map()
+const creativeProviderCircuitsByScopeKey = new Map()
+const creativeProviderCircuitEventsById = new Map()
+const creativeProviderCircuitEventIdsBySourceKey = new Map()
 const creativeCreditLedgerById = new Map()
 const creativeQuotaWindowsById = new Map()
 const creativeQuotaReservationsById = new Map()
@@ -1348,6 +1358,91 @@ const providerCostDto = (ledger) => serializeCreativeProviderCostLedger(
   ledger,
   creativeProviderBudgetWindowsById.get(ledger.budgetWindowId) ?? null,
 )
+
+const providerControlConflict = (reasonCode) => new HttpError(
+  409,
+  'CREATIVE_PROVIDER_CONTROL_CONFLICT',
+  'Creative Provider control state conflict',
+  { reasonCode },
+)
+
+const makeProviderControl = (payload, patch = {}) => {
+  const now = new Date().toISOString()
+  const enabled = payload.enabled === true
+  const id = patch.id ?? payload.id ?? `provider-control-${randomUUID()}`
+  return {
+    id,
+    scopeKey: payload.scopeKey,
+    scopeType: payload.scopeType,
+    providerId: payload.providerId ?? null,
+    providerAccountRef: payload.providerAccountRef ?? null,
+    workspace: payload.workspace ?? null,
+    modelFamily: payload.modelFamily ?? null,
+    enabled,
+    version: Number(payload.version ?? 1),
+    reasonCode: payload.reasonCode,
+    changedByRef: payload.changedByRef ?? null,
+    enabledAt: payload.enabledAt ?? (enabled ? now : null),
+    disabledAt: payload.disabledAt ?? (enabled ? null : now),
+    createdAt: payload.createdAt ?? now,
+    updatedAt: now,
+    ...patch,
+    id,
+  }
+}
+
+const makeProviderCapEvidence = (payload) => ({
+  id: payload.id ?? `provider-cap-${randomUUID()}`,
+  sourceKey: payload.sourceKey,
+  scopeKey: payload.scopeKey,
+  providerId: payload.providerId,
+  providerAccountRef: payload.providerAccountRef,
+  currency: payload.currency,
+  capMicros: BigInt(payload.capMicros),
+  remainingMicros: payload.remainingMicros == null ? null : BigInt(payload.remainingMicros),
+  sourceType: payload.sourceType,
+  sourceRefHash: payload.sourceRefHash,
+  evidenceHash: payload.evidenceHash,
+  verifiedAt: payload.verifiedAt,
+  expiresAt: payload.expiresAt,
+  active: payload.active !== false,
+  createdAt: payload.createdAt ?? new Date().toISOString(),
+})
+
+const makeProviderCircuit = (payload, patch = {}) => {
+  const now = new Date().toISOString()
+  return {
+    id: payload.id ?? `provider-circuit-${randomUUID()}`,
+    scopeKey: payload.scopeKey,
+    providerId: payload.providerId,
+    providerAccountRef: payload.providerAccountRef,
+    workspace: payload.workspace,
+    modelFamily: payload.modelFamily ?? null,
+    status: payload.status ?? 'closed',
+    version: Number(payload.version ?? 1),
+    failureCount: Number(payload.failureCount ?? 0),
+    windowStartedAt: payload.windowStartedAt ?? null,
+    lastFailureAt: payload.lastFailureAt ?? null,
+    openedAt: payload.openedAt ?? null,
+    cooldownUntil: payload.cooldownUntil ?? null,
+    probeLeaseTokenHash: payload.probeLeaseTokenHash ?? null,
+    probeLeaseExpiresAt: payload.probeLeaseExpiresAt ?? null,
+    reasonCode: payload.reasonCode ?? null,
+    createdAt: payload.createdAt ?? now,
+    updatedAt: now,
+    ...patch,
+  }
+}
+
+const providerControlAuditMetadata = (state) => ({
+  scopeType: state.scopeType,
+  providerId: state.providerId,
+  workspace: state.workspace,
+  modelFamily: state.modelFamily,
+  enabled: state.enabled,
+  version: state.version,
+  reasonCode: state.reasonCode,
+})
 
 const patchCreativeGeneration = (id, patch, actor, auditAction) => {
   const current = creativeGenerationsById.get(String(id))
@@ -3215,6 +3310,332 @@ export const createSeedRepository = () => ({
         mediaAssetId: updated.mediaAssetId,
       })
       return serializeCreativeOutputIngestion(updated)
+    },
+  },
+  creativeProviderControls: {
+    list: (options = {}) => {
+      const rows = [...creativeProviderControlsByScopeKey.values()]
+        .filter((item) => !options.providerId || item.providerId === options.providerId)
+        .filter((item) => !options.workspace || item.workspace === options.workspace)
+        .sort((left, right) => left.scopeKey.localeCompare(right.scopeKey))
+        .map(serializeCreativeProviderControlState)
+      return paginateByCursor(rows, options)
+    },
+    findControl: (scopeKey) => {
+      const row = creativeProviderControlsByScopeKey.get(String(scopeKey)) ?? null
+      return row ? serializeCreativeProviderControlState(row) : null
+    },
+    findControlById: (id) => {
+      const row = [...creativeProviderControlsByScopeKey.values()].find((item) => item.id === String(id)) ?? null
+      return row ? serializeCreativeProviderControlState(row) : null
+    },
+    setControl: (payload, actor) => {
+      const current = creativeProviderControlsByScopeKey.get(String(payload.scopeKey)) ?? null
+      if (current && Number(payload.expectedVersion) !== current.version) throw providerControlConflict('control_version_mismatch')
+      if (!current && ![undefined, null, 0].includes(payload.expectedVersion)) throw providerControlConflict('control_create_version_mismatch')
+      if (current && current.enabled === payload.enabled && current.reasonCode === payload.reasonCode) {
+        return { changed: false, control: serializeCreativeProviderControlState(current) }
+      }
+      const now = new Date().toISOString()
+      const updated = makeProviderControl(current ?? payload, {
+        ...payload,
+        id: current?.id ?? payload.id,
+        version: current ? current.version + 1 : 1,
+        changedByRef: actor?.handle ?? payload.changedByRef ?? null,
+        enabledAt: payload.enabled ? now : current?.enabledAt ?? null,
+        disabledAt: payload.enabled ? current?.disabledAt ?? null : now,
+        createdAt: current?.createdAt ?? now,
+      })
+      creativeProviderControlsByScopeKey.set(updated.scopeKey, updated)
+      recordAudit(actor, `creative.provider_control.${updated.enabled ? 'enabled' : 'disabled'}`, 'creative_provider_control', updated.id, providerControlAuditMetadata(updated))
+      return { changed: true, control: serializeCreativeProviderControlState(updated) }
+    },
+    putCapEvidence: (payload, actor) => {
+      const existingId = creativeProviderCapEvidenceIdsBySourceKey.get(String(payload.sourceKey))
+      const existing = existingId ? creativeProviderCapEvidenceById.get(existingId) : null
+      if (existing) {
+        if (existing.evidenceHash !== payload.evidenceHash) throw providerControlConflict('cap_source_key_payload_mismatch')
+        return { created: false, evidence: serializeCreativeProviderCapEvidence(existing) }
+      }
+      for (const [id, item] of creativeProviderCapEvidenceById) {
+        if (item.scopeKey === payload.scopeKey && item.active) creativeProviderCapEvidenceById.set(id, { ...item, active: false })
+      }
+      const evidence = makeProviderCapEvidence(payload)
+      creativeProviderCapEvidenceById.set(evidence.id, evidence)
+      creativeProviderCapEvidenceIdsBySourceKey.set(evidence.sourceKey, evidence.id)
+      recordAudit(actor, 'creative.provider_control.cap_evidence_recorded', 'creative_provider_cap_evidence', evidence.id, {
+        providerId: evidence.providerId,
+        currency: evidence.currency,
+        sourceType: evidence.sourceType,
+        evidenceHash: evidence.evidenceHash,
+        verifiedAt: evidence.verifiedAt,
+        expiresAt: evidence.expiresAt,
+      })
+      return { created: true, evidence: serializeCreativeProviderCapEvidence(evidence) }
+    },
+    findCapEvidence: (scopeKey) => {
+      const evidence = [...creativeProviderCapEvidenceById.values()]
+        .filter((item) => item.scopeKey === String(scopeKey) && item.active)
+        .sort((left, right) => String(right.verifiedAt).localeCompare(String(left.verifiedAt)))[0] ?? null
+      return evidence ? serializeCreativeProviderCapEvidence(evidence) : null
+    },
+    ensureCircuit: (payload, actor) => {
+      const current = creativeProviderCircuitsByScopeKey.get(String(payload.scopeKey)) ?? null
+      if (current) return { created: false, circuit: serializeCreativeProviderCircuitState(current) }
+      const circuit = makeProviderCircuit(payload)
+      creativeProviderCircuitsByScopeKey.set(circuit.scopeKey, circuit)
+      recordAudit(actor, 'creative.provider_circuit.provisioned', 'creative_provider_circuit', circuit.id, {
+        providerId: circuit.providerId,
+        workspace: circuit.workspace,
+        modelFamily: circuit.modelFamily,
+        status: circuit.status,
+      })
+      return { created: true, circuit: serializeCreativeProviderCircuitState(circuit) }
+    },
+    findCircuit: (scopeKey) => {
+      const circuit = creativeProviderCircuitsByScopeKey.get(String(scopeKey)) ?? null
+      return circuit ? serializeCreativeProviderCircuitState(circuit) : null
+    },
+    findCircuitById: (id) => {
+      const circuit = [...creativeProviderCircuitsByScopeKey.values()].find((item) => item.id === String(id)) ?? null
+      return circuit ? serializeCreativeProviderCircuitState(circuit) : null
+    },
+    listCircuits: (options = {}) => {
+      const rows = [...creativeProviderCircuitsByScopeKey.values()]
+        .filter((item) => !options.providerId || item.providerId === options.providerId)
+        .filter((item) => !options.workspace || item.workspace === options.workspace)
+        .map(serializeCreativeProviderCircuitState)
+      return paginateByCursor(rows, options)
+    },
+    recordCircuitEvent: (payload, actor) => {
+      const existingId = creativeProviderCircuitEventIdsBySourceKey.get(String(payload.sourceKey))
+      const existing = existingId ? creativeProviderCircuitEventsById.get(existingId) : null
+      const current = creativeProviderCircuitsByScopeKey.get(String(payload.scopeKey)) ?? null
+      if (existing) return { duplicate: true, event: serializeCreativeProviderCircuitEvent(existing), circuit: current ? serializeCreativeProviderCircuitState(current) : null }
+      if (!current) return null
+      const occurredAt = new Date(payload.occurredAt ?? Date.now()).toISOString()
+      const retryable = payload.policy.retryableCategories.includes(payload.category)
+      const outcome = payload.category === 'success' ? 'success' : retryable ? 'retryable_failure' : 'ignored_failure'
+      let updated = current
+      if (outcome === 'retryable_failure') {
+        const windowExpired = !current.windowStartedAt || new Date(occurredAt).getTime() - new Date(current.windowStartedAt).getTime() >= payload.policy.windowSeconds * 1000
+        const failureCount = windowExpired ? 1 : current.failureCount + 1
+        const shouldOpen = payload.category === 'provider_incident' || failureCount >= payload.policy.failureThreshold
+        updated = makeProviderCircuit(current, {
+          failureCount,
+          windowStartedAt: windowExpired ? occurredAt : current.windowStartedAt,
+          lastFailureAt: occurredAt,
+          status: shouldOpen ? 'open' : current.status,
+          openedAt: shouldOpen ? occurredAt : current.openedAt,
+          cooldownUntil: shouldOpen ? new Date(new Date(occurredAt).getTime() + payload.policy.cooldownSeconds * 1000).toISOString() : current.cooldownUntil,
+          reasonCode: shouldOpen ? `circuit_${payload.category}` : `failure_${payload.category}`,
+          version: current.version + 1,
+        })
+      } else if (outcome === 'success' && current.status === 'closed') {
+        updated = makeProviderCircuit(current, {
+          failureCount: 0,
+          windowStartedAt: null,
+          reasonCode: 'dispatch_succeeded',
+          version: current.version + 1,
+        })
+      } else if (outcome === 'success' && current.status === 'half_open') {
+        updated = makeProviderCircuit(current, {
+          reasonCode: 'probe_succeeded_pending_recovery',
+          version: current.version + 1,
+        })
+      }
+      creativeProviderCircuitsByScopeKey.set(updated.scopeKey, updated)
+      const event = {
+        id: `provider-circuit-event-${randomUUID()}`,
+        sourceKey: payload.sourceKey,
+        circuitStateId: current.id,
+        category: payload.category,
+        outcome,
+        occurredAt,
+        createdAt: new Date().toISOString(),
+      }
+      creativeProviderCircuitEventsById.set(event.id, event)
+      creativeProviderCircuitEventIdsBySourceKey.set(event.sourceKey, event.id)
+      recordAudit(actor, `creative.provider_circuit.${outcome}`, 'creative_provider_circuit', current.id, {
+        providerId: current.providerId,
+        workspace: current.workspace,
+        category: payload.category,
+        outcome,
+        status: updated.status,
+        failureCount: updated.failureCount,
+      })
+      if (current.status !== 'open' && updated.status === 'open') {
+        recordAudit(actor, 'creative.provider_circuit.opened', 'creative_provider_circuit', current.id, {
+          providerId: current.providerId,
+          workspace: current.workspace,
+          category: payload.category,
+          failureCount: updated.failureCount,
+          reasonCode: updated.reasonCode,
+        })
+      }
+      return { duplicate: false, event: serializeCreativeProviderCircuitEvent(event), circuit: serializeCreativeProviderCircuitState(updated) }
+    },
+    transitionCircuit: (scopeKey, payload, actor) => {
+      const current = creativeProviderCircuitsByScopeKey.get(String(scopeKey)) ?? null
+      if (!current) return null
+      if (Number(payload.expectedVersion) !== current.version) throw providerControlConflict('circuit_version_mismatch')
+      const now = new Date(payload.now ?? Date.now())
+      let probeToken = null
+      if (payload.status === 'half_open') {
+        if (current.status !== 'open') throw providerControlConflict('circuit_not_open')
+        if (current.cooldownUntil && new Date(current.cooldownUntil) > now) throw providerControlConflict('circuit_cooldown_active')
+        probeToken = randomUUID()
+      } else if (payload.status === 'closed') {
+        if (current.status !== 'half_open') throw providerControlConflict('circuit_not_half_open')
+        const hasProbeSuccess = [...creativeProviderCircuitEventsById.values()].some((event) =>
+          event.circuitStateId === current.id && event.outcome === 'success' && new Date(event.occurredAt) >= new Date(current.updatedAt))
+        if (!hasProbeSuccess) throw providerControlConflict('probe_success_required')
+      } else if (payload.status !== 'open') {
+        throw providerControlConflict('circuit_transition_invalid')
+      }
+      const updated = makeProviderCircuit(current, {
+        status: payload.status,
+        version: current.version + 1,
+        failureCount: payload.status === 'closed' ? 0 : current.failureCount,
+        windowStartedAt: payload.status === 'closed' ? null : current.windowStartedAt,
+        probeLeaseTokenHash: probeToken ? createHash('sha256').update(probeToken).digest('hex') : null,
+        probeLeaseExpiresAt: probeToken ? new Date(now.getTime() + Number(payload.probeTtlSeconds ?? 60) * 1000).toISOString() : null,
+        reasonCode: payload.reasonCode,
+        openedAt: payload.status === 'open' ? now.toISOString() : current.openedAt,
+        cooldownUntil: payload.status === 'open' ? payload.cooldownUntil ?? current.cooldownUntil : current.cooldownUntil,
+      })
+      creativeProviderCircuitsByScopeKey.set(updated.scopeKey, updated)
+      recordAudit(actor, `creative.provider_circuit.${payload.status}`, 'creative_provider_circuit', current.id, {
+        providerId: current.providerId,
+        workspace: current.workspace,
+        status: payload.status,
+        reasonCode: payload.reasonCode,
+        version: updated.version,
+      })
+      return { circuit: serializeCreativeProviderCircuitState(updated), probeToken }
+    },
+    claimProbe: (scopeKey, probeToken, actor, now = new Date()) => {
+      const current = creativeProviderCircuitsByScopeKey.get(String(scopeKey)) ?? null
+      const tokenHash = createHash('sha256').update(String(probeToken ?? '')).digest('hex')
+      if (!current || current.status !== 'half_open' || current.probeLeaseTokenHash !== tokenHash || !current.probeLeaseExpiresAt || new Date(current.probeLeaseExpiresAt) <= new Date(now)) {
+        return { claimed: false, circuit: current ? serializeCreativeProviderCircuitState(current) : null }
+      }
+      const updated = makeProviderCircuit(current, {
+        version: current.version + 1,
+        probeLeaseTokenHash: null,
+        probeLeaseExpiresAt: null,
+        reasonCode: 'probe_claimed',
+      })
+      creativeProviderCircuitsByScopeKey.set(updated.scopeKey, updated)
+      recordAudit(actor, 'creative.provider_circuit.probe_claimed', 'creative_provider_circuit', current.id, {
+        providerId: current.providerId,
+        workspace: current.workspace,
+        status: updated.status,
+      })
+      return { claimed: true, circuit: serializeCreativeProviderCircuitState(updated) }
+    },
+    recordDispatchBlock: (payload, actor) => {
+      recordAudit(actor, 'creative.provider_control.dispatch_blocked', 'creative_provider_control', payload.resourceId ?? payload.providerId, {
+        providerId: payload.providerId,
+        workspace: payload.workspace,
+        modelFamily: payload.modelFamily ?? null,
+        reasonCode: payload.reasonCode,
+        blockedScopeType: payload.blockedScopeType ?? null,
+      })
+      return { recorded: true }
+    },
+    requestRecovery(payload, actor) {
+      const sourceKey = `provider-control-recovery:${createHash('sha256').update(JSON.stringify({
+        resourceId: payload.resourceId,
+        target: payload.target,
+        expectedVersion: payload.expectedVersion,
+        requestedBy: actor.handle,
+      })).digest('hex')}`
+      const existing = adminReviewQueue.find((review) => review.metadata?.kind === 'provider_control_recovery' && review.metadata?.sourceKey === sourceKey)
+      if (existing) return { duplicate: true, review: serializeAdminReview(existing) }
+      const now = new Date().toISOString()
+      const review = {
+        id: `provider-control-review-${randomUUID()}`,
+        queue: 'provider-controls',
+        status: 'Pending review',
+        title: `Provider control recovery: ${payload.target}`,
+        owner: actor.handle,
+        note: payload.reasonCode,
+        decision: undefined,
+        reviewedBy: null,
+        reviewedAt: null,
+        metadata: {
+          kind: 'provider_control_recovery',
+          sourceKey,
+          resourceId: payload.resourceId,
+          target: payload.target,
+          expectedVersion: payload.expectedVersion,
+          reasonCode: payload.reasonCode,
+          probeTtlSeconds: payload.probeTtlSeconds,
+          requestedBy: actor.handle,
+        },
+        createdAt: now,
+        updatedAt: now,
+      }
+      adminReviewQueue.unshift(review)
+      adminReviewById.set(review.id, review)
+      recordAudit(actor, 'creative.provider_control.recovery_requested', 'admin_review', review.id, {
+        target: payload.target,
+        reasonCode: payload.reasonCode,
+      })
+      return { duplicate: false, review: serializeAdminReview(review) }
+    },
+    reviewRecovery(reviewId, action, actor) {
+      const current = adminReviewById.get(String(reviewId)) ?? null
+      if (!current || current.metadata?.kind !== 'provider_control_recovery') return null
+      if (current.decision) return { review: serializeAdminReview(current), result: null, probeToken: null }
+      if (action.decision === 'approve' && current.metadata.requestedBy === actor.handle) {
+        throw providerControlConflict('recovery_requires_different_approver')
+      }
+      let result = null
+      let probeToken = null
+      if (action.decision === 'approve') {
+        const metadata = current.metadata
+        if (metadata.target === 'enable') {
+          const control = [...creativeProviderControlsByScopeKey.values()].find((item) => item.id === metadata.resourceId)
+          if (!control) throw providerControlConflict('control_not_found')
+          result = this.setControl({
+            ...control,
+            enabled: true,
+            reasonCode: metadata.reasonCode,
+            expectedVersion: metadata.expectedVersion,
+          }, actor).control
+        } else {
+          const circuit = [...creativeProviderCircuitsByScopeKey.values()].find((item) => item.id === metadata.resourceId)
+          if (!circuit) throw providerControlConflict('circuit_not_found')
+          const transitioned = this.transitionCircuit(circuit.scopeKey, {
+            status: metadata.target,
+            expectedVersion: metadata.expectedVersion,
+            reasonCode: metadata.reasonCode,
+            probeTtlSeconds: metadata.probeTtlSeconds,
+          }, actor)
+          result = transitioned?.circuit ?? null
+          probeToken = transitioned?.probeToken ?? null
+        }
+      }
+      const reviewed = {
+        ...current,
+        status: action.decision === 'approve' ? 'Approved' : 'Rejected',
+        note: action.note || current.note,
+        decision: action.decision,
+        reviewedBy: actor.handle,
+        reviewedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        metadata: { ...current.metadata, approvedBy: action.decision === 'approve' ? actor.handle : null },
+      }
+      adminReviewById.set(reviewed.id, reviewed)
+      const index = adminReviewQueue.findIndex((item) => item.id === reviewed.id)
+      if (index >= 0) adminReviewQueue[index] = reviewed
+      recordAudit(actor, `creative.provider_control.recovery_${action.decision}`, 'admin_review', reviewed.id, {
+        target: reviewed.metadata.target,
+        reasonCode: reviewed.metadata.reasonCode,
+      })
+      return { review: serializeAdminReview(reviewed), result, probeToken }
     },
   },
   creativeProviderCosts: {

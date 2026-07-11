@@ -1846,6 +1846,98 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/creative/provider-controls': {
+      get: {
+        summary: 'List sanitized Provider controls, circuits, and current cap evidence',
+        parameters: [
+          { name: 'providerId', in: 'query', schema: { type: 'string' } },
+          { name: 'workspace', in: 'query', schema: { type: 'string', enum: ['image', 'video', 'music', 'chat'] } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+        ],
+        responses: {
+          '200': { description: 'Sanitized Provider control-plane bundle without account references, raw evidence, full hashes, or probe tokens' },
+          '403': { description: 'Requires admin:creative:provider-control:read' },
+        },
+      },
+    },
+    '/admin/creative/provider-controls/disable': {
+      post: {
+        summary: 'Immediately disable new Provider dispatch for an existing control scope',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: {
+            type: 'object',
+            required: ['resourceId', 'expectedVersion', 'reasonCode'],
+            properties: {
+              resourceId: { type: 'string' },
+              expectedVersion: { type: 'integer', minimum: 0 },
+              reasonCode: { type: 'string' },
+            },
+          } } },
+        },
+        responses: {
+          '200': { description: 'Versioned control state disabled or idempotently unchanged' },
+          '403': { description: 'Requires admin:creative:provider-control:manage' },
+          '404': { description: 'Control scope not found' },
+          '409': { description: 'Control version conflict' },
+        },
+      },
+    },
+    '/admin/creative/provider-controls/cap-evidence': {
+      post: {
+        summary: 'Record immutable expiring Provider-side cap evidence',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: {
+            type: 'object',
+            required: ['sourceKey', 'scopeKey', 'providerId', 'providerAccountRef', 'currency', 'capAmount', 'sourceType', 'sourceRef', 'verifiedAt', 'expiresAt'],
+            properties: {
+              sourceKey: { type: 'string' },
+              scopeKey: { type: 'string' },
+              providerId: { type: 'string' },
+              providerAccountRef: { type: 'string' },
+              currency: { type: 'string', pattern: '^[A-Z]{3}$' },
+              capAmount: { type: 'string' },
+              remainingAmount: { type: ['string', 'null'] },
+              sourceType: { type: 'string', enum: ['fixture_config', 'manual_attestation', 'injected_reader'] },
+              sourceRef: { type: 'string' },
+              verifiedAt: { type: 'string', format: 'date-time' },
+              expiresAt: { type: 'string', format: 'date-time' },
+            },
+          } } },
+        },
+        responses: {
+          '200': { description: 'Sanitized cap evidence summary; raw source and complete hashes are omitted' },
+          '403': { description: 'Requires admin:creative:provider-control:manage' },
+          '409': { description: 'Source-key payload conflict' },
+        },
+      },
+    },
+    '/admin/creative/provider-controls/recovery-requests': {
+      post: {
+        summary: 'Request second-person review for control enablement or circuit recovery',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: {
+            type: 'object',
+            required: ['resourceId', 'target', 'expectedVersion', 'reasonCode'],
+            properties: {
+              resourceId: { type: 'string' },
+              target: { type: 'string', enum: ['enable', 'half_open', 'closed'] },
+              expectedVersion: { type: 'integer', minimum: 0 },
+              reasonCode: { type: 'string' },
+              probeTtlSeconds: { type: 'integer', minimum: 1, maximum: 300, default: 60 },
+            },
+          } } },
+        },
+        responses: {
+          '200': { description: 'Pending recovery review; approval must be performed by another operator' },
+          '403': { description: 'Requires admin:creative:provider-control:recover' },
+          '409': { description: 'Duplicate or stale recovery request' },
+        },
+      },
+    },
     '/admin/creative/generations': {
       get: {
         summary: 'List read-only creative generation history for Admin operations',

@@ -55,7 +55,14 @@
         "productionBehavior": "fail_closed",
         "automaticFailoverAllowed": false,
         "activation": "Backup may be enabled only after its own legal, credential, budget, and staging approvals are complete.",
-        "trigger": "Primary circuit open for 5 minutes after at least 3 retryable failures or a confirmed provider incident."
+        "trigger": "Primary circuit open for 5 minutes after at least 3 retryable failures or a confirmed provider incident.",
+        "circuitPolicy": {
+          "failureThreshold": 3,
+          "windowSeconds": 300,
+          "cooldownSeconds": 300,
+          "retryableCategories": ["timeout", "rate_limit", "provider_5xx", "provider_incident"],
+          "automaticCloseAllowed": false
+        }
       },
       "replacementTriggers": [
         "model retirement or incompatible API change",
@@ -84,7 +91,14 @@
         "productionBehavior": "fail_closed",
         "automaticFailoverAllowed": false,
         "activation": "Backup may be enabled only after prompt, tool, safety, and response-schema parity tests pass under a separate approval.",
-        "trigger": "Primary circuit open for 2 minutes after at least 5 retryable failures, sustained 429s, or a confirmed provider incident."
+        "trigger": "Primary circuit open for 2 minutes after at least 5 retryable failures, sustained 429s, or a confirmed provider incident.",
+        "circuitPolicy": {
+          "failureThreshold": 5,
+          "windowSeconds": 120,
+          "cooldownSeconds": 120,
+          "retryableCategories": ["timeout", "rate_limit", "provider_5xx", "provider_incident"],
+          "automaticCloseAllowed": false
+        }
       },
       "replacementTriggers": [
         "model retirement or material prompt/tool incompatibility",
@@ -114,7 +128,14 @@
         "productionBehavior": "fail_closed",
         "automaticFailoverAllowed": false,
         "activation": "Runway remains disabled until a no-training enterprise amendment, retention terms, and independent staging approval are recorded.",
-        "trigger": "Primary circuit open for 15 minutes after 3 terminal provider failures or a confirmed provider incident."
+        "trigger": "Primary circuit open for 15 minutes after 3 terminal provider failures or a confirmed provider incident.",
+        "circuitPolicy": {
+          "failureThreshold": 3,
+          "windowSeconds": 900,
+          "cooldownSeconds": 900,
+          "retryableCategories": ["timeout", "rate_limit", "provider_5xx", "provider_incident"],
+          "automaticCloseAllowed": false
+        }
       },
       "replacementTriggers": [
         "model retirement or preview-only regression",
@@ -143,7 +164,14 @@
         "productionBehavior": "fail_closed",
         "automaticFailoverAllowed": false,
         "activation": "Lyria 3 Pro may be enabled only after Preview risk, region, quota, retention, output-rights, and migration behavior are accepted in writing.",
-        "trigger": "Primary circuit open for 15 minutes after 3 terminal provider failures or a confirmed provider incident."
+        "trigger": "Primary circuit open for 15 minutes after 3 terminal provider failures or a confirmed provider incident.",
+        "circuitPolicy": {
+          "failureThreshold": 3,
+          "windowSeconds": 900,
+          "cooldownSeconds": 900,
+          "retryableCategories": ["timeout", "rate_limit", "provider_5xx", "provider_incident"],
+          "automaticCloseAllowed": false
+        }
       },
       "replacementTriggers": [
         "model retirement or license-table change",

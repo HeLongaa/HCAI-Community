@@ -166,6 +166,25 @@ enum CreativeProviderCostLedgerStatus {
   reconciliation_required
 }
 
+enum CreativeProviderControlScopeType {
+  global
+  provider
+  workspace
+  model_family
+}
+
+enum CreativeProviderCircuitStatus {
+  closed
+  open
+  half_open
+}
+
+enum CreativeProviderCircuitOutcome {
+  success
+  retryable_failure
+  ignored_failure
+}
+
 model AuditEvent {
   id           String         @id @default(cuid())
   actorType    AuditActorType @map("actor_type")
@@ -747,6 +766,91 @@ model CreativeProviderCostLedger {
   @@index([budgetWindowId, status])
   @@index([providerId, workspace, status, createdAt])
   @@map("creative_provider_cost_ledgers")
+}
+
+model CreativeProviderControlState {
+  id                 String                           @id @default(cuid())
+  scopeKey           String                           @unique @map("scope_key")
+  scopeType          CreativeProviderControlScopeType @map("scope_type")
+  providerId         String?                          @map("provider_id")
+  providerAccountRef String?                          @map("provider_account_ref")
+  workspace          String?
+  modelFamily        String?                          @map("model_family")
+  enabled            Boolean                          @default(false)
+  version            Int                              @default(1)
+  reasonCode         String                           @map("reason_code")
+  changedByRef       String?                          @map("changed_by_ref")
+  enabledAt          DateTime?                        @map("enabled_at")
+  disabledAt         DateTime?                        @map("disabled_at")
+  createdAt          DateTime                         @default(now()) @map("created_at")
+  updatedAt          DateTime                         @updatedAt @map("updated_at")
+
+  @@index([providerId, workspace])
+  @@map("creative_provider_control_states")
+}
+
+model CreativeProviderCapEvidence {
+  id                 String   @id @default(cuid())
+  sourceKey          String   @unique @map("source_key")
+  scopeKey           String   @map("scope_key")
+  providerId         String   @map("provider_id")
+  providerAccountRef String   @map("provider_account_ref")
+  currency           String
+  capMicros          BigInt   @map("cap_micros")
+  remainingMicros    BigInt?  @map("remaining_micros")
+  sourceType         String   @map("source_type")
+  sourceRefHash      String   @map("source_ref_hash")
+  evidenceHash       String   @map("evidence_hash")
+  verifiedAt         DateTime @map("verified_at")
+  expiresAt          DateTime @map("expires_at")
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@index([scopeKey, active, verifiedAt])
+  @@index([providerId, expiresAt])
+  @@map("creative_provider_cap_evidence")
+}
+
+model CreativeProviderCircuitState {
+  id                  String                        @id @default(cuid())
+  scopeKey            String                        @unique @map("scope_key")
+  providerId          String                        @map("provider_id")
+  providerAccountRef  String                        @map("provider_account_ref")
+  workspace           String
+  modelFamily         String?                       @map("model_family")
+  status              CreativeProviderCircuitStatus @default(closed)
+  version             Int                            @default(1)
+  failureCount        Int                            @default(0) @map("failure_count")
+  windowStartedAt     DateTime?                      @map("window_started_at")
+  lastFailureAt       DateTime?                      @map("last_failure_at")
+  openedAt            DateTime?                      @map("opened_at")
+  cooldownUntil       DateTime?                      @map("cooldown_until")
+  probeLeaseTokenHash String?                        @map("probe_lease_token_hash")
+  probeLeaseExpiresAt DateTime?                      @map("probe_lease_expires_at")
+  reasonCode          String?                        @map("reason_code")
+  createdAt           DateTime                       @default(now()) @map("created_at")
+  updatedAt           DateTime                       @updatedAt @map("updated_at")
+
+  events CreativeProviderCircuitEvent[]
+
+  @@index([providerId, workspace, status])
+  @@index([status, cooldownUntil])
+  @@map("creative_provider_circuit_states")
+}
+
+model CreativeProviderCircuitEvent {
+  id             String                         @id @default(cuid())
+  sourceKey      String                         @unique @map("source_key")
+  circuitStateId String                         @map("circuit_state_id")
+  category       String
+  outcome        CreativeProviderCircuitOutcome
+  occurredAt     DateTime                       @map("occurred_at")
+  createdAt      DateTime                       @default(now()) @map("created_at")
+
+  circuitState CreativeProviderCircuitState @relation(fields: [circuitStateId], references: [id], onDelete: Restrict)
+
+  @@index([circuitStateId, occurredAt])
+  @@map("creative_provider_circuit_events")
 }
 
 model CreativeCreditLedger {

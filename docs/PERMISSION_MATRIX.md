@@ -34,6 +34,9 @@ V1-08 uses dedicated permissions for application-side generation controls. Read 
 | `admin:creative:retry` | Create a one-time retry authorization for the owner | `POST /api/admin/creative/generations/:id/retry-requests` |
 | `admin:creative:cancel` | Stop eligible queued/running work with no-charge accounting closeout | `POST /api/admin/creative/generations/:id/cancel` |
 | `admin:creative:replay` | Request and independently approve safe manual lifecycle replay | `POST /api/admin/creative/generations/:id/manual-replay-requests`; required with `admin:queue:review` to approve its review |
+| `admin:creative:provider-control:read` | Read sanitized Provider controls, circuit state, and cap evidence summaries | `GET /api/admin/creative/provider-controls` |
+| `admin:creative:provider-control:manage` | Immediately disable dispatch and record immutable Provider cap evidence | `POST /api/admin/creative/provider-controls/disable`, `POST /api/admin/creative/provider-controls/cap-evidence` |
+| `admin:creative:provider-control:recover` | Request independently reviewed enable, half-open, or close transitions | `POST /api/admin/creative/provider-controls/recovery-requests`; required with `admin:queue:review` for approval by a different operator |
 | `admin:creative:review` | Move completed generated output into manual review without accounting changes | Force review |
 | `admin:creative:credits:adjust` | Apply internal creative-credit refunds/corrections | Refund creative credits |
 | `admin:creative:settlement:manage` | Resolve stuck provider/accounting states | Manual settlement |
@@ -143,6 +146,10 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `GET /api/admin/audit/:id` | Required | `admin:audit:read` | Yes |
 | `GET /api/admin/creative/generations` | Required | `admin:audit:read` | Yes |
 | `GET /api/admin/creative/generations/:id` | Required | `admin:audit:read` | Yes |
+| `GET /api/admin/creative/provider-controls` | Required | `admin:creative:provider-control:read` | Yes |
+| `POST /api/admin/creative/provider-controls/disable` | Required | `admin:creative:provider-control:manage` | Yes |
+| `POST /api/admin/creative/provider-controls/cap-evidence` | Required | `admin:creative:provider-control:manage` | Yes |
+| `POST /api/admin/creative/provider-controls/recovery-requests` | Required | `admin:creative:provider-control:recover` | Yes |
 | `POST /api/admin/creative/generations/:id/cancel` | Required | `admin:creative:cancel` | Yes |
 | `POST /api/admin/creative/generations/:id/retry-requests` | Required | `admin:creative:retry` | Yes |
 | `POST /api/admin/creative/generations/:id/manual-replay-requests` | Required | `admin:creative:replay` | Yes |

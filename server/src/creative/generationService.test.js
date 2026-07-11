@@ -4,6 +4,12 @@ import test from 'node:test'
 import { createSeedRepository } from '../repositories/seedRepository.js'
 import { executeCreativeGeneration, getCreativeProviderCatalog, persistCreativeGenerationOutputs } from './generationService.js'
 import { sha256 } from './generationRecords.js'
+import {
+  buildProviderControlScopes,
+  createProviderCapEvidence,
+  providerCircuitScope,
+} from './providerControlContract.js'
+import { createProviderControlPlane } from './providerControlPlane.js'
 import { resetCreativePolicyState } from './policy.js'
 
 const actor = {
@@ -325,6 +331,78 @@ test('executeCreativeGeneration releases Provider cost reservation when adapter 
   assert.equal(ledger.reasonCode, 'adapter_failed_before_result')
   assert.equal(ledger.budgetWindow.reservedMicros, '0')
   assert.equal(ledger.budgetWindow.releasedMicros, '250000')
+})
+
+test('executeCreativeGeneration applies dynamic Provider control before budget reserve and adapter dispatch', async () => {
+  resetCreativePolicyState()
+  const repository = createSeedRepository()
+  const suffix = Date.now()
+  const source = {
+    ...stagingSource,
+    CREATIVE_STAGING_PROVIDER_ESTIMATE_USD: '0.25',
+    CREATIVE_STAGING_PROVIDER_DAILY_BUDGET_USD: '5',
+    CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD: '0',
+    CREATIVE_STAGING_PROVIDER_BUDGET_SCOPE: `staging:replicate:image:control-${suffix}`,
+  }
+  const scopes = buildProviderControlScopes({
+    providerId: 'replicate',
+    providerAccountRef: 'staging',
+    workspace: 'image',
+    modelFamily: 'image',
+  })
+  const currentGlobal = await repository.creativeProviderControls.findControl('global')
+  await repository.creativeProviderControls.setControl({
+    ...scopes[0],
+    enabled: true,
+    reasonCode: 'fixture_global_enabled',
+    expectedVersion: currentGlobal?.version ?? 0,
+  }, actor)
+  await repository.creativeProviderControls.setControl({
+    ...scopes[1],
+    enabled: true,
+    reasonCode: 'fixture_provider_enabled',
+    expectedVersion: 0,
+  }, actor)
+  await repository.creativeProviderControls.setControl({
+    ...scopes[2],
+    enabled: false,
+    reasonCode: 'fixture_workspace_kill_switch',
+    expectedVersion: 0,
+  }, actor)
+  await repository.creativeProviderControls.putCapEvidence(createProviderCapEvidence({
+    sourceKey: `cap-generation-control-${suffix}`,
+    scopeKey: scopes[1].scopeKey,
+    providerId: 'replicate',
+    providerAccountRef: 'staging',
+    currency: 'USD',
+    capAmount: '5',
+    remainingAmount: '1',
+    sourceType: 'fixture_config',
+    sourceRef: `fixture:generation-control:${suffix}`,
+    verifiedAt: '2026-07-12T09:00:00.000Z',
+    expiresAt: '2026-07-12T11:00:00.000Z',
+  }), actor)
+  await repository.creativeProviderControls.ensureCircuit(providerCircuitScope(scopes), actor)
+  const providerControlPlane = createProviderControlPlane({ repository: repository.creativeProviderControls })
+  let adapterCalls = 0
+
+  await assert.rejects(executeCreativeGeneration({
+    request: { ...request, providerId: 'replicate-staging' },
+    actor,
+    generationId: `gen-provider-control-block-${suffix}`,
+    source,
+    providerCostRepository: repository.creativeProviderCosts,
+    providerControlPlane,
+    fixtureAdapters: {
+      'replicate-staging': async () => {
+        adapterCalls += 1
+        throw new Error('blocked adapter must not run')
+      },
+    },
+  }), { code: 'CREATIVE_PROVIDER_CONTROL_BLOCKED' })
+
+  assert.equal(adapterCalls, 0)
+  assert.equal(await repository.creativeProviderCosts.findForGeneration(`gen-provider-control-block-${suffix}`), null)
 })
 
 test('executeCreativeGeneration enforces user workspace daily quota', async () => {
