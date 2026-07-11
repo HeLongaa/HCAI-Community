@@ -279,16 +279,16 @@ test('parseCreateCreativeGenerationRequest normalizes provider generation payloa
       workspace: ' image ',
       mode: ' text_to_image ',
       prompt: ' Generate a bright poster. ',
-      inputAssetIds: [' asset-1 ', ''],
-      parameters: { aspectRatio: '16:9', seed: 42, safe: true, refs: ['a', 1, false] },
+      inputAssetIds: [],
+      parameters: { aspectRatio: '16:9', seed: 42, stylePreset: 'poster', quality: 'high' },
       providerId: ' mock ',
     }),
     {
       workspace: 'image',
       mode: 'text_to_image',
       prompt: 'Generate a bright poster.',
-      inputAssetIds: ['asset-1'],
-      parameters: { aspectRatio: '16:9', seed: 42, safe: true, refs: ['a', 1, false] },
+      inputAssetIds: [],
+      parameters: { aspectRatio: '16:9', seed: 42, stylePreset: 'poster', quality: 'high' },
       providerId: 'mock',
     },
   )
@@ -300,8 +300,8 @@ test('parseCreateCreativeGenerationRequest validates creative payload boundaries
     'workspace must be one of: image, video, music, chat',
   )
   assertValidationError(
-    () => parseCreateCreativeGenerationRequest({ workspace: 'image', mode: 'text_to_image', prompt: 'x'.repeat(4001) }),
-    'prompt must be 4000 characters or fewer',
+    () => parseCreateCreativeGenerationRequest({ workspace: 'image', mode: 'text_to_image', prompt: 'x'.repeat(2001) }),
+    'prompt must be 2000 characters or fewer',
   )
   assertValidationError(
     () => parseCreateCreativeGenerationRequest({ workspace: 'image', mode: 'text_to_image', prompt: 'Poster', inputAssetIds: [42] }),
@@ -310,6 +310,18 @@ test('parseCreateCreativeGenerationRequest validates creative payload boundaries
   assertValidationError(
     () => parseCreateCreativeGenerationRequest({ workspace: 'image', mode: 'text_to_image', prompt: 'Poster', parameters: { nested: { no: true } } }),
     'parameters.nested must be a string, number, boolean, array, or null',
+  )
+  assertValidationError(
+    () => parseCreateCreativeGenerationRequest({ workspace: 'image', mode: 'text_to_image', prompt: 'Poster', parameters: { controls: ['HD'] } }),
+    'parameters.controls is not supported for text_to_image',
+  )
+  assertValidationError(
+    () => parseCreateCreativeGenerationRequest({ workspace: 'image', mode: 'image_to_image', prompt: 'Restyle this image' }),
+    'inputAssetIds must include 1 image asset(s) for image_to_image',
+  )
+  assertValidationError(
+    () => parseCreateCreativeGenerationRequest({ workspace: 'image', mode: 'image_edit', prompt: 'Remove the background', inputAssetIds: ['source', 'mask'] }),
+    'mode is unavailable: image_edit. No approved edit adapter or mask-input workflow is registered for V1.',
   )
 })
 

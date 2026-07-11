@@ -322,8 +322,9 @@ addCheck(
   'Image Studio uses provider-backed creative generation path',
   includesAll(app, [
     'creativeService.createGeneration',
+    'creativeService.listProviders',
     "workspace: 'image'",
-    "mode: 'text_to_image'",
+    "'text_to_image' | 'image_to_image' | 'image_edit' | 'image_variation'",
     'storage.mediaAssetId',
     'Download is gated until media scan is clean.',
   ]),

@@ -29,7 +29,7 @@ import { notificationService } from './services/notificationService'
 import { profileService } from './services/profileService'
 import { creativeService } from './services/creativeService'
 import { isApiClientError } from './services/apiClient'
-import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiNotification, NotificationListQuery } from './services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiNotification, NotificationListQuery } from './services/contracts'
 
 function App() {
   const [locale, setLocale] = useState<Locale>('en')
@@ -79,6 +79,8 @@ function App() {
     result: null,
     error: null,
   })
+  const [imageProviderCatalog, setImageProviderCatalog] = useState<ApiCreativeProviderCatalog | null>(null)
+  const [imageProviderCatalogState, setImageProviderCatalogState] = useState<'loading' | 'ready' | 'error'>('loading')
   const accountProfile = userProfile ?? findProfile('taskops') ?? marketplaceProfiles[0]
   const [profileList, setProfileList] = useState<MarketplaceProfile[]>(marketplaceProfiles)
   const [selectedProfile, setSelectedProfile] = useState<MarketplaceProfile>(() => accountProfile)
@@ -102,6 +104,25 @@ function App() {
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [page])
+
+  useEffect(() => {
+    let active = true
+    creativeService.listProviders()
+      .then((catalog) => {
+        if (!active) return
+        setImageProviderCatalog(catalog)
+        setImageProviderCatalogState('ready')
+      })
+      .catch((error) => {
+        if (!active) return
+        console.info('[creative-provider-catalog]', error)
+        setImageProviderCatalog(null)
+        setImageProviderCatalogState('error')
+      })
+    return () => {
+      active = false
+    }
+  }, [])
 
   useEffect(() => {
     const applyHashDeepLink = () => {
@@ -150,7 +171,12 @@ function App() {
     window.setTimeout(() => setGenerationState('done'), 900)
   }
 
-  const runImageGeneration = async ({ prompt: imagePrompt, option, controls }: { prompt: string; option: string; controls: string[] }) => {
+  const runImageGeneration = async ({
+    prompt: imagePrompt,
+    mode,
+    stylePreset,
+    aspectRatio,
+  }: { prompt: string; mode: string; stylePreset: string; aspectRatio: string }) => {
     const trimmedPrompt = imagePrompt.trim()
     if (!trimmedPrompt) {
       pushToast(locale === 'zh' ? '请先填写图片提示词。' : 'Add an image prompt first.')
@@ -161,19 +187,25 @@ function App() {
       pushToast(locale === 'zh' ? '请先登录后再使用 API 生成图片。' : 'Sign in before using API-backed image generation.')
       return
     }
-    const aspectRatio = controls.find((control) => ['1:1', '16:9', '4:5', '9:16'].includes(control)) ?? '1:1'
+    const provider = imageProviderCatalog?.providers.find((candidate) => candidate.id === imageProviderCatalog.defaultProviderId)
+    const imageCapability = provider?.capabilities.find((capability) => capability.workspace === 'image')
+    const modeContract = imageCapability?.modeContracts?.find((candidate) => candidate.id === mode)
+    if (!provider?.enabled || !provider.configured || !modeContract?.available) {
+      pushToast(locale === 'zh' ? '当前图片能力不可用，请稍后重试。' : 'The selected image capability is unavailable.')
+      return
+    }
     setGenerationState('loading')
     setImageGeneration({ status: 'loading', result: null, error: null })
     try {
       const result = await creativeService.createGeneration({
         workspace: 'image',
-        mode: 'text_to_image',
+        mode,
         prompt: trimmedPrompt,
         parameters: {
           aspectRatio,
-          stylePreset: option,
-          controls,
+          stylePreset,
         },
+        providerId: provider.id,
       })
       setGenerationState('done')
       setImageGeneration({ status: 'done', result, error: null })
@@ -547,7 +579,7 @@ function App() {
       <PageRenderer
         t={t}
         navigation={{ page, navigateToPage }}
-        workspace={{ prompt, setPrompt, generationState, runGenerate, imageGeneration, runImageGeneration, playgroundWorkspace, setPlaygroundWorkspace }}
+        workspace={{ prompt, setPrompt, generationState, runGenerate, imageGeneration, imageProviderCatalog, imageProviderCatalogState, runImageGeneration, playgroundWorkspace, setPlaygroundWorkspace }}
         player={{ playTrack }}
         feedback={{ requireAuth, simulateAction }}
         tasks={{

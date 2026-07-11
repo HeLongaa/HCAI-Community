@@ -1269,10 +1269,16 @@ kbd {
 
 .primary-button:disabled,
 .ghost-button:disabled,
-.icon-button:disabled {
+.icon-button:disabled,
+.chip:disabled,
+.control-pill:disabled {
   opacity: 0.45;
   cursor: not-allowed;
   transform: none;
+}
+
+.image-mode-row .chip:disabled {
+  border-style: dashed;
 }
 
 .primary-button.large,

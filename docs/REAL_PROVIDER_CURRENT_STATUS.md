@@ -9,6 +9,10 @@ V1-04 now records conditional implementation-planning decisions for all four mod
 providers, public-list-price budgets, app concurrency caps, legal/data/SLA conditions, failover rules, and replacement
 triggers. They do not approve credentials, network clients, real jobs, or production traffic.
 
+V1-15 freezes the Image model/mode/parameter contract in `server/src/creative/imageCapabilityContract.js` and
+`docs/V1_IMAGE_CAPABILITY_CONTRACT.md`. Image Studio now consumes the safe Provider catalog and disables generation when
+the contract is unavailable. This is still deterministic mock execution, not a real Image Provider connection.
+
 V1-44 freezes the corresponding four-modality content safety baseline in
 `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. It defines 20 risk categories,
 prohibited/block/review/allow decisions, the five-stage responsibility chain, all eight Provider policy mappings,
@@ -66,7 +70,7 @@ Sora 2 models on 2026-09-24 without a recommended replacement.
 | Category | Current Status | Practical Meaning |
 | --- | --- | --- |
 | Product generation path | Usable with mock provider | Image Studio can create stored generated assets through the creative API and durable accounting path. |
-| Provider catalog | Safe metadata only | `replicate_staging` can report client implementation and guarded network-state booleans while remaining unavailable/default-disabled. |
+| Provider catalog | Safe metadata only | Image capabilities include contract version, all four declared modes, per-mode availability, parameter definitions, and guarded runtime flags; `replicate_staging` remains unavailable/default-disabled. |
 | Durable accounting | Usable | Generation records, quota windows/reservations, credit reservation/settlement/refund, and media governance are wired. |
 | Admin generation history | Usable read-only | Operators can inspect sanitized generation, cost, budget, quota, credit, safety, policy, media, audit, and replay evidence. |
 | Provider lifecycle foundation | Implemented / default-disabled | Replay ledger, lifecycle reducer, side-effect plan, callback route, polling plan, and dedicated polling worker exist without approved real Provider traffic. |

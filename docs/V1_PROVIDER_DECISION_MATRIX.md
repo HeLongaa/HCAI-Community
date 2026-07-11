@@ -45,6 +45,11 @@ operations alert is planned. Budget exhaustion does not silently route traffic t
 
 ## Image Decision
 
+V1-15 freezes the executable Image mode and parameter projection in
+`server/src/creative/imageCapabilityContract.js`, with the human-readable contract and no-real-traffic boundary in
+`docs/V1_IMAGE_CAPABILITY_CONTRACT.md`. The provider decision below remains conditional planning metadata; it does not
+register either selected real model.
+
 ### Primary: OpenAI GPT Image 2
 
 - API: synchronous `/v1/images/generations` and `/v1/images/edits`; the application copies base64 output directly to

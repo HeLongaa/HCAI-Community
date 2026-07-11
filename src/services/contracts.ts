@@ -681,6 +681,63 @@ export type ApiCreativeProvider = {
   mode: string
 }
 
+export type ApiCreativeParameterDefinition = {
+  type: 'string' | 'number' | 'integer'
+  default?: string | number
+  options?: Array<string | number>
+  minimum?: number
+  maximum?: number
+}
+
+export type ApiImageModeContract = {
+  id: 'text_to_image' | 'image_to_image' | 'image_edit' | 'image_variation'
+  label: string
+  runtimeAvailable: boolean
+  available: boolean
+  unavailableReason: string | null
+  inputAssets: {
+    minimum: number
+    maximum: number
+    purposes: string[]
+    contentTypes: string[]
+    roles?: string[]
+  }
+  parameters: string[]
+}
+
+export type ApiCreativeCapability = {
+  workspace: CreativeWorkspace
+  label: string
+  contractVersion?: string
+  modes: string[]
+  allModes?: string[]
+  modeContracts?: ApiImageModeContract[]
+  inputAssetPurposes: string[]
+  outputTypes: string[]
+  maxPromptCharacters: number
+  supportedParameters: string[]
+  parameterDefinitions?: Record<string, ApiCreativeParameterDefinition>
+  runtime?: {
+    realProviderCallsApproved: boolean
+    productionEnablementApproved: boolean
+    productionFallback: string
+    silentMockFallback: boolean
+  }
+}
+
+export type ApiCreativeProviderCatalogEntry = ApiCreativeProvider & {
+  enabled: boolean
+  configured: boolean
+  default: boolean
+  capabilities: ApiCreativeCapability[]
+  safeMetadata: Record<string, string | number | boolean | null>
+}
+
+export type ApiCreativeProviderCatalog = {
+  defaultProviderId: string
+  providers: ApiCreativeProviderCatalogEntry[]
+}
+
 export type ApiCreativeGenerationOutput = {
   id: string
   type: 'image' | 'video' | 'audio' | 'text' | string

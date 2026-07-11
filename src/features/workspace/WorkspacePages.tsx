@@ -24,7 +24,7 @@ import type { Page, PlaygroundMode, SimulateAction, Track, Work } from '../../do
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { tracks, visualWorks } from '../../data/mockData'
 import { isZhCopy, textFor } from '../../domain/utils'
-import type { ApiCreativeGeneration } from '../../services/contracts'
+import type { ApiCreativeCapability, ApiCreativeGeneration, ApiCreativeProviderCatalog } from '../../services/contracts'
 
 type ImageGenerationState = {
   status: 'idle' | 'loading' | 'done' | 'error'
@@ -39,6 +39,8 @@ export function PlaygroundPage({
   generationState,
   runGenerate,
   imageGeneration,
+  imageProviderCatalog,
+  imageProviderCatalogState,
   runImageGeneration,
   playTrack,
   requireAuth,
@@ -53,7 +55,9 @@ export function PlaygroundPage({
   generationState: 'idle' | 'loading' | 'done'
   runGenerate: () => void
   imageGeneration: ImageGenerationState
-  runImageGeneration: (input: { prompt: string; option: string; controls: string[] }) => Promise<void>
+  imageProviderCatalog: ApiCreativeProviderCatalog | null
+  imageProviderCatalogState: 'loading' | 'ready' | 'error'
+  runImageGeneration: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string }) => Promise<void>
   playTrack: (track: Track) => void
   requireAuth: () => void
   simulateAction: SimulateAction
@@ -64,6 +68,8 @@ export function PlaygroundPage({
   const isZh = isZhCopy(t)
   const [mode, setMode] = useState<'instrumental' | 'lyrics'>('instrumental')
   const [activeTool, setActiveTool] = useState('song')
+  const imageProvider = imageProviderCatalog?.providers.find((provider) => provider.id === imageProviderCatalog.defaultProviderId)
+  const imageCapability = imageProvider?.capabilities.find((capability) => capability.workspace === 'image') ?? null
   const tools = [
     {
       key: 'song',
@@ -238,13 +244,16 @@ export function PlaygroundPage({
           icon={<Image size={22} />}
           prompt={textFor(t, 'Minimal album cover, chrome flower, cinematic lighting, black background', '小红书美妆产品图，高级干净光线，真实质感，适合封面')}
           primaryAction={textFor(t, 'Generate images', '生成图片')}
-          options={isZh ? ['文生图', '图生图', '海报', '头像', '商品图', 'Logo 概念'] : ['Text to Image', 'Image to Image', 'Poster', 'Avatar', 'Product Visual', 'Logo Concept']}
-          controls={isZh ? ['1:1', '16:9', '4:5', '风格强度 70%', '4 张输出', '高清'] : ['1:1', '16:9', '4:5', 'Style strength 70%', '4 outputs', 'HD']}
+          options={['none', 'poster', 'avatar', 'product_visual', 'logo_concept']}
+          controls={['1:1', '16:9', '4:5', '9:16']}
           results={visualWorks.filter((item) => item.type === 'Image')}
           requireAuth={requireAuth}
           simulateAction={simulateAction}
           providerGeneration={{
             state: imageGeneration,
+            capability: imageCapability,
+            catalogState: imageProviderCatalogState,
+            providerAvailable: Boolean(imageProvider?.enabled && imageProvider.configured),
             onGenerate: runImageGeneration,
           }}
         />
@@ -487,7 +496,10 @@ function StudioPage({
   extraActionLabel?: string
   providerGeneration?: {
     state: ImageGenerationState
-    onGenerate: (input: { prompt: string; option: string; controls: string[] }) => Promise<void>
+    capability: ApiCreativeCapability | null
+    catalogState: 'loading' | 'ready' | 'error'
+    providerAvailable: boolean
+    onGenerate: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string }) => Promise<void>
   }
 }) {
   const isZh = isZhCopy(t)
@@ -495,8 +507,46 @@ function StudioPage({
   const [activeControls, setActiveControls] = useState<string[]>([controls[0]])
   const [renderState, setRenderState] = useState<'idle' | 'loading' | 'done'>('idle')
   const [draftPrompt, setDraftPrompt] = useState(prompt)
+  const [activeImageMode, setActiveImageMode] = useState('text_to_image')
+  const parameterDefinitions = providerGeneration?.capability?.parameterDefinitions
+  const displayedOptions = providerGeneration
+    ? (parameterDefinitions?.stylePreset?.options?.map(String) ?? options)
+    : options
+  const displayedControls = providerGeneration
+    ? (parameterDefinitions?.aspectRatio?.options?.map(String) ?? controls)
+    : controls
+  const selectableImageModes = providerGeneration?.capability?.modeContracts?.filter(
+    (modeContract) => modeContract.available && modeContract.inputAssets.minimum === 0,
+  ) ?? []
+  const selectedImageMode = selectableImageModes.some((modeContract) => modeContract.id === activeImageMode)
+    ? activeImageMode
+    : (selectableImageModes[0]?.id ?? '')
+  const selectedOption = displayedOptions.includes(activeOption) ? activeOption : (displayedOptions[0] ?? '')
+
+  const imageLabel = (value: string) => {
+    const labels: Record<string, [string, string]> = {
+      text_to_image: ['Text to Image', '文生图'],
+      image_to_image: ['Image to Image', '图生图'],
+      image_edit: ['Image Edit', '图片编辑'],
+      image_variation: ['Image Variation', '图片变体'],
+      none: ['No preset', '无预设'],
+      editorial: ['Editorial', '编辑风格'],
+      editorial_launch: ['Editorial launch', '发布视觉'],
+      poster: ['Poster', '海报'],
+      avatar: ['Avatar', '头像'],
+      product_visual: ['Product visual', '商品图'],
+      logo_concept: ['Logo concept', 'Logo 概念'],
+    }
+    const label = labels[value]
+    return label ? (isZh ? label[1] : label[0]) : value
+  }
 
   const toggleControl = (control: string) => {
+    if (providerGeneration) {
+      setActiveControls([control])
+      simulateAction(isZh ? `已选择画幅：${control}` : `Aspect ratio selected: ${control}`)
+      return
+    }
     setActiveControls((current) =>
       current.includes(control) ? current.filter((item) => item !== control) : [...current, control],
     )
@@ -507,8 +557,9 @@ function StudioPage({
     if (providerGeneration) {
       void providerGeneration.onGenerate({
         prompt: draftPrompt,
-        option: activeOption,
-        controls: activeControls,
+        mode: selectedImageMode,
+        stylePreset: selectedOption,
+        aspectRatio: activeControls.find((control) => displayedControls.includes(control)) ?? displayedControls[0] ?? '1:1',
       })
       return
     }
@@ -541,10 +592,34 @@ function StudioPage({
       </section>
       <section className="composer">
         <textarea value={draftPrompt} onChange={(event) => setDraftPrompt(event.target.value)} />
+        {providerGeneration && (
+          <div className="chip-row image-mode-row">
+            {(providerGeneration.capability?.modeContracts ?? []).map((modeContract) => {
+              const requiresInput = modeContract.inputAssets.minimum > 0
+              const disabled = !modeContract.available || requiresInput
+              const unavailableReason = modeContract.unavailableReason
+                ?? (requiresInput
+                  ? (isZh ? `需要 ${modeContract.inputAssets.minimum} 个图片素材` : `Requires ${modeContract.inputAssets.minimum} image asset(s)`)
+                  : '')
+              return (
+                <button
+                  className={selectedImageMode === modeContract.id ? 'chip active' : 'chip'}
+                  type="button"
+                  key={modeContract.id}
+                  disabled={disabled}
+                  title={unavailableReason}
+                  onClick={() => setActiveImageMode(modeContract.id)}
+                >
+                  {imageLabel(modeContract.id)}
+                </button>
+              )
+            })}
+          </div>
+        )}
         <div className="chip-row">
-          {options.map((option) => (
+          {displayedOptions.map((option) => (
             <button
-              className={activeOption === option ? 'chip active' : 'chip'}
+              className={selectedOption === option ? 'chip active' : 'chip'}
               type="button"
               key={option}
               onClick={() => {
@@ -552,12 +627,12 @@ function StudioPage({
                 simulateAction(isZh ? `已选择生成模式：${option}` : `Generation mode selected: ${option}`)
               }}
             >
-              {option}
+              {imageLabel(option)}
             </button>
           ))}
         </div>
         <div className="control-grid">
-          {controls.map((control) => (
+          {displayedControls.map((control) => (
             <button
               className={activeControls.includes(control) ? 'control-pill active' : 'control-pill'}
               type="button"
@@ -570,7 +645,18 @@ function StudioPage({
           ))}
         </div>
         <div className="button-row">
-          <button className="primary-button" type="button" onClick={runStudioGenerate}>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={runStudioGenerate}
+            disabled={providerGeneration
+              ? providerGeneration.catalogState !== 'ready'
+                || !providerGeneration.capability
+                || !providerGeneration.providerAvailable
+                || !selectedImageMode
+                || activeState === 'loading'
+              : false}
+          >
             <Sparkles size={17} />
             {activeState === 'loading' ? t.generating : activeState === 'done' ? t.generated : primaryAction}
           </button>
@@ -592,7 +678,13 @@ function StudioPage({
                     ? textFor(t, 'Mock provider result persisted', 'Mock 提供方结果已持久化')
                     : providerGeneration.state.status === 'error'
                       ? textFor(t, 'Provider generation failed', '提供方生成失败')
-                      : textFor(t, 'Provider-backed path ready', '提供方路径就绪')}
+                      : providerGeneration.catalogState === 'loading'
+                        ? textFor(t, 'Loading capability contract', '正在加载能力合同')
+                        : providerGeneration.catalogState === 'error'
+                          ? textFor(t, 'Capability contract unavailable', '能力合同不可用')
+                          : !providerGeneration.providerAvailable
+                            ? textFor(t, 'Provider unavailable', '提供方不可用')
+                            : textFor(t, 'Provider-backed path ready', '提供方路径就绪')}
               </strong>
             </div>
             <p>
@@ -604,7 +696,13 @@ function StudioPage({
                     `Asset ${generatedOutput.storage.mediaAssetId ?? 'pending'} · scan ${scanStatus ?? 'pending'} · ${providerGeneration.state.result?.provider.mode ?? generatedOutput.storage.provider}`,
                     `资产 ${generatedOutput.storage.mediaAssetId ?? '待生成'} · 扫描 ${scanStatus ?? 'pending'} · ${generatedOutput.storage.provider}`,
                   )
-                  : textFor(t, 'Image Studio will call /api/creative/generations and keep downloads gated by media scan state.', '图片工作台会调用 /api/creative/generations，下载仍受媒体扫描状态约束。')}
+                  : providerGeneration.capability
+                    ? textFor(
+                      t,
+                      `${providerGeneration.capability.contractVersion ?? 'Image contract'} · ${providerGeneration.capability.modes.join(', ')}`,
+                      `${providerGeneration.capability.contractVersion ?? 'Image 合同'} · ${providerGeneration.capability.modes.map(imageLabel).join('、')}`,
+                    )
+                    : textFor(t, 'Generation is disabled until capability metadata is available.', '能力元数据可用前，生成保持禁用。')}
             </p>
             {generatedOutput && (
               <div className="provider-meta-row">
