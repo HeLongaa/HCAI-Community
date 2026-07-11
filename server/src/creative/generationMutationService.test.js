@@ -5,6 +5,7 @@ import { createSeedRepository } from '../repositories/seedRepository.js'
 import { sha256 } from './generationRecords.js'
 import {
   cancelCreativeGeneration,
+  completeCreativeGenerationRetry,
   prepareCreativeGenerationRetry,
 } from './generationMutationService.js'
 
@@ -202,4 +203,47 @@ test('prepareCreativeGenerationRetry validates the original input hash and alloc
     }),
     { statusCode: 409, code: 'CREATIVE_RETRY_REQUEST_MISMATCH' },
   )
+})
+
+test('completeCreativeGenerationRetry notifies the owner when the child attempt fails', async () => {
+  const repository = createSeedRepository()
+  const id = `gen-retry-failure-service-${Date.now()}`
+  await createGeneration(repository, id, { status: 'failed' })
+  const prepared = await prepareCreativeGenerationRetry({
+    generationId: id,
+    actor,
+    repositories: repository,
+    request: {
+      idempotencyKey: `retry:${id}:request-1`,
+      reasonCode: 'user_retry',
+      note: '',
+      authorizationMutationId: null,
+      generation: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        prompt: 'Retry me safely',
+        inputAssetIds: [],
+        parameters: { seed: 7 },
+        providerId: 'mock',
+      },
+    },
+  })
+
+  const completed = await completeCreativeGenerationRetry({
+    repositories: repository,
+    mutation: prepared.mutation,
+    actor,
+    error: { code: 'CREATIVE_PROVIDER_FAILED' },
+  })
+
+  assert.equal(completed.status, 'failed')
+  const notifications = await repository.notifications.list(actor, {
+    readState: 'all',
+    type: 'creative.generation.retry_failed',
+    resourceType: 'creative_generation',
+  })
+  assert.equal(notifications.items.length, 1)
+  assert.equal(notifications.items[0].resourceId, prepared.targetGenerationId)
+  assert.equal(notifications.items[0].metadata.mutationId, prepared.mutation.id)
+  assert.equal(notifications.items[0].metadata.targetGenerationId, prepared.targetGenerationId)
 })

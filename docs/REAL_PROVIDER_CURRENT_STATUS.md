@@ -98,6 +98,7 @@ These paths are available without real-provider approval:
 - The Provider callback route can be exercised with signed fixtures behind its independent staging-only kill switch without making an outbound Provider request.
 - The Provider polling worker can be exercised with injected status fixtures or injected `fetch` behind independent staging-only kill switches without making an external Provider request.
 - User and Admin generation cancellation, user-confirmed child retries, and two-person manual lifecycle replay can be exercised without a default Provider mutation client.
+- Cancellation, retry authorization/outcomes, and reviewed manual replay transitions create safe in-app notifications for affected users and requesters.
 
 ## Fixture-Only Foundations
 
