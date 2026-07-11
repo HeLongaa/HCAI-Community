@@ -9,6 +9,12 @@ V1-04 now records conditional implementation-planning decisions for all four mod
 providers, public-list-price budgets, app concurrency caps, legal/data/SLA conditions, failover rules, and replacement
 triggers. They do not approve credentials, network clients, real jobs, or production traffic.
 
+V1-44 freezes the corresponding four-modality content safety baseline in
+`docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. It defines 20 risk categories,
+prohibited/block/review/allow decisions, the five-stage responsibility chain, all eight Provider policy mappings,
+review/appeal behavior, user messages, and safety-event audit fields. Enforcement remains incomplete and real traffic
+remains no-go.
+
 Ordinary continuation language such as "continue", "next", "looks good", or "ship it" is not approval for real provider calls or outbound provider alerts.
 
 ## Final Go/No-Go Position
@@ -58,6 +64,7 @@ Sora 2 models on 2026-09-24 without a recommended replacement.
 | Provider budget operations | Usable read-only / fixture-only | Audit persistence, internal notifications, Admin operations metrics, exporter metrics, and fixture dry-run dispatch audit rows exist. |
 | Staging adapter shell | Fixture-only | Mocked/injected-client hardening may continue; no default SDK or network client is available. PRs #86-#89 improved the fixture-only evidence chain, but did not approve real provider calls. |
 | V1 provider decision matrix | Conditional planning evidence | Four primary/backup pairs, budgets, legal/data/SLA conditions, and replacement triggers are machine-verified; no provider is production-approved. |
+| V1 content safety matrix | Frozen implementation policy | Four modality partitions, Provider policy mappings, review/appeal, and audit contracts are machine-verified; downstream enforcement is not complete. |
 | First real external-call rehearsal | No-go until explicit approval | Requires the go/no-go approval package, Notion evidence in Chinese, call count, budget cap, expiry, token/rollback owners, and production no-go. |
 | Production paid-provider enablement | No-go | Requires a later production phase after staging proves safety, spend caps, rollback, and operations runbooks. |
 
@@ -143,6 +150,7 @@ Without those details, the decision remains no-go.
 | What fixture-only staging shell work is allowed? | `docs/REAL_PROVIDER_STAGING_ADAPTER_SHELL_PLAN.md` |
 | What must happen before an external provider call? | `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` |
 | Which providers are selected and under what conditions? | `docs/V1_PROVIDER_DECISION_MATRIX.md` |
+| What content policy and review contract must adapters implement? | `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` |
 | Is metadata-only staging smoke ready to run? | `docs/REAL_PROVIDER_STAGING_SMOKE_READINESS.md` |
 | What smoke checks apply to staging provider metadata? | `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` |
 | Can callbacks, polling, or manual replay be enabled? | `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` |
@@ -177,9 +185,9 @@ git diff --check
 npm run check:quick
 ```
 
-`npm run check:quick` includes `npm run test:v1-providers`, which verifies all four primary/backup decisions, official
-source references, budget sums, concurrency and lifecycle fields, fail-closed behavior, and unresolved production
-conditions.
+`npm run check:quick` includes `npm run test:v1-providers` and `npm run test:v1-safety-policy`. Together they verify
+all four primary/backup decisions, official source references, budgets, lifecycle bounds, safety taxonomy, Provider
+policy mappings, review/appeal contracts, fail-closed behavior, and unresolved production conditions.
 
 If an update touches smoke scripts, runtime behavior, routes, package scripts, quality gates, README runtime text, or provider configuration, also run:
 

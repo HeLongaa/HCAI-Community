@@ -86,6 +86,15 @@
     "decisionDocument": "docs/V1_PROVIDER_DECISION_MATRIX.md",
     "verificationCommand": "npm run test:v1-providers"
   },
+  "creativeSafetyPolicy": {
+    "requiredModalities": ["image", "chat", "video", "music"],
+    "defaultDisposition": "block",
+    "providerNativeSafetyIsDefenseInDepth": true,
+    "policyMatrix": "config/v1-content-safety-policy.json",
+    "policyDocument": "docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md",
+    "verificationCommand": "npm run test:v1-safety-policy",
+    "implementationTasks": ["V1-45", "V1-59", "V1-60", "V1-61", "V1-62", "V1-63", "V1-78"]
+  },
   "excludedCapabilities": [
     {
       "id": "rmb-payment",
@@ -112,6 +121,7 @@
     "scope-contract",
     "runtime-surface-inventory",
     "provider-decision-matrix",
+    "content-safety-policy-matrix",
     "lint",
     "feature-simulation",
     "api-contracts",

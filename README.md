@@ -21,6 +21,10 @@ The conditional Image, Chat, Video, and Music primary/backup decisions, public-l
 conditions, retention constraints, and fail-closed replacement triggers live in `docs/V1_PROVIDER_DECISION_MATRIX.md`
 and `config/v1-provider-matrix.json`; `npm run test:v1-providers` verifies that decision contract. No selection in the
 matrix approves a real provider call or production enablement.
+The frozen four-modality content safety taxonomy, prohibited/block/review/allow decisions, Provider policy mappings,
+responsibility chain, review/appeal contract, and audit allowlist live in `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and
+`config/v1-content-safety-policy.json`; `npm run test:v1-safety-policy` verifies that policy baseline. Enforcement is
+not complete, and the policy does not approve real Provider traffic.
 
 ## Features
 
@@ -110,7 +114,7 @@ npm run check:pr
 npm run check:deploy
 ```
 
-`check:quick` runs lint, the V1 scope, runtime-surface, and provider-decision contracts, plus feature/API contract checks. `check:pr` adds production build, backend tests, Prisma schema validation, and E2E. `check:deploy` adds the safe production smoke fixture. Use `check:deploy:env` in a real deployment environment to validate actual environment variables without printing secrets.
+`check:quick` runs lint, the V1 scope, runtime-surface, Provider-decision, and content-safety contracts, plus feature/API contract checks. `check:pr` adds production build, backend tests, Prisma schema validation, and E2E. `check:deploy` adds the safe production smoke fixture. Use `check:deploy:env` in a real deployment environment to validate actual environment variables without printing secrets.
 
 `test:sim` runs feature-contract checks for the planned modules and then verifies API contract consistency across server routes, OpenAPI paths, and the protected-route permission matrix. `test:contracts` can run that API consistency check by itself. The feature-contract checks cover navigation, Task Plaza lifecycle, publish form,
 My Tasks delivery desk, community forum flows, publish-form AI assists, creation tools, points ledger, admin review queue,
@@ -128,6 +132,7 @@ Planning docs for the API, data model, auth, and backend rollout live in `docs/`
 - `docs/V1_CURRENT_STATE_AUDIT.md`
 - `docs/V1_RUNTIME_SURFACE_INVENTORY.md`
 - `docs/V1_PROVIDER_DECISION_MATRIX.md`
+- `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md`
 - `docs/PRODUCT_BACKEND_PLAN.md`
 - `docs/API_DESIGN.md`
 - `docs/DATA_MODEL_AND_AUTH.md`

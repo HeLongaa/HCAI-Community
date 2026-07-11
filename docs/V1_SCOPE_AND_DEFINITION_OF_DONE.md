@@ -64,6 +64,11 @@ The current conditional primary/backup choices, public-price budget envelope, co
 and replacement triggers are frozen in `docs/V1_PROVIDER_DECISION_MATRIX.md` and
 `config/v1-provider-matrix.json`. That decision record authorizes implementation planning only.
 
+The four-modality prohibited/block/review/allow taxonomy, Provider policy mapping, pre-dispatch through appeal
+responsibility chain, user message codes, and safety audit contract are frozen in
+`docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. Runtime enforcement remains
+incomplete until the downstream V1-59 through V1-63 implementation tasks pass their own release evidence.
+
 Ordinary continuation language is not approval for a paid provider call. The exact provider, environment, maximum calls, app/provider budget, expiry, token owner, kill-switch owner, and rollback owner must be approved first.
 
 ## Technical Definition Of Done
@@ -83,6 +88,7 @@ Run the local contract with:
 
 ```bash
 npm run test:v1-scope
+npm run test:v1-safety-policy
 ```
 
 Run the complete safe deployment gate with:
