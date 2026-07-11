@@ -53,6 +53,17 @@ addCheck(
   manifest.creativeProviderPolicy.approvalDocument,
 )
 addCheck(
+  'provider decision artifacts exist',
+  fs.existsSync(path.join(root, manifest.creativeProviderPolicy.decisionMatrix)) &&
+    fs.existsSync(path.join(root, manifest.creativeProviderPolicy.decisionDocument)),
+  `${manifest.creativeProviderPolicy.decisionMatrix}, ${manifest.creativeProviderPolicy.decisionDocument}`,
+)
+addCheck(
+  'provider decision verification command is frozen',
+  manifest.creativeProviderPolicy.verificationCommand === 'npm run test:v1-providers',
+  manifest.creativeProviderPolicy.verificationCommand,
+)
+addCheck(
   'runtime surface inventory exists',
   fs.existsSync(path.join(root, manifest.runtimeSurfaceInventory)),
   manifest.runtimeSurfaceInventory,
@@ -128,6 +139,12 @@ addCheck(
   'scope verification is part of the quick gate',
   packageJson.scripts['test:v1-scope'] === 'node scripts/verify-v1-scope.mjs' &&
     packageJson.scripts['check:quick']?.includes('npm run test:v1-scope'),
+  packageJson.scripts['check:quick'],
+)
+addCheck(
+  'provider decision verification is part of the quick gate',
+  packageJson.scripts['test:v1-providers'] === 'node scripts/verify-v1-provider-matrix.mjs' &&
+    packageJson.scripts['check:quick']?.includes('npm run test:v1-providers'),
   packageJson.scripts['check:quick'],
 )
 

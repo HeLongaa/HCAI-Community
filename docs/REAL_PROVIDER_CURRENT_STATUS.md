@@ -4,6 +4,11 @@ This is the first decision page to read before starting any real-provider work. 
 
 Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, read-only Admin history, provider budget observability, and fixture-safe lifecycle foundations are available. Real paid-provider calls, external provider alert delivery, callback routes, real polling, manual replay endpoints, Admin generation mutations, and production paid-provider enablement remain no-go.
 
+V1-04 now records conditional implementation-planning decisions for all four modalities in
+`docs/V1_PROVIDER_DECISION_MATRIX.md` and `config/v1-provider-matrix.json`. These selections define primary/backup
+providers, public-list-price budgets, app concurrency caps, legal/data/SLA conditions, failover rules, and replacement
+triggers. They do not approve credentials, network clients, real jobs, or production traffic.
+
 Ordinary continuation language such as "continue", "next", "looks good", or "ship it" is not approval for real provider calls or outbound provider alerts.
 
 ## Final Go/No-Go Position
@@ -25,6 +30,22 @@ Completed evidence through PR #89:
 | Replicate staging failure/cancellation/observability | PRs #86, #87, and #88 hardened fixture-only failure mapping, cancellation boundaries, and observability evidence. |
 | Provider budget read-side chain | PR #89 added end-to-end sanitized evidence coverage from budget event planning through audit persistence, notifications, external-alert dry-run payloads, and dispatch audit rows. |
 
+## V1-04 Conditional Provider Decisions
+
+| Modality | Conditional primary | Approval-gated backup | Main unresolved condition |
+| --- | --- | --- | --- |
+| Image | OpenAI GPT Image 2 | Replicate FLUX 1.1 Pro | Confirm OpenAI production geography, GPT Image 2 residency/ZDR, and contracted support posture; approve FLUX model terms separately. |
+| Chat | OpenAI GPT-5.6 Terra | Anthropic Claude Sonnet 5 | Configure retention controls, approve supported-country access, and accept or contract Anthropic US storage. |
+| Video | Google Veo 3.1 Fast | Runway Gen-4.5 | Confirm Veo model-specific SLA/indemnity; Runway is blocked until enterprise no-training and retention terms exist. |
+| Music | ElevenLabs Music v2 Enterprise | Google Lyria 3 Pro Preview | Obtain Enterprise Music platform/reseller/media rights; explicitly accept Lyria Preview no-SLA/no-indemnity risk. |
+
+The launch budget envelope is USD 63/day and USD 1,550/month across all four modalities. It is a fail-closed guardrail,
+not a spending approval. Provider credit auto-reload is disabled, backup budgets are independent, and budget exhaustion
+never causes silent backup or mock fallback.
+
+OpenAI Sora 2 is explicitly rejected as the V1 video backup because OpenAI has announced removal of the Videos API and
+Sora 2 models on 2026-09-24 without a recommended replacement.
+
 ## At A Glance
 
 | Category | Current Status | Practical Meaning |
@@ -36,6 +57,7 @@ Completed evidence through PR #89:
 | Provider lifecycle foundation | Fixture-only | Replay ledger, lifecycle reducer, side-effect plan, callback parser helpers, polling plan, and worker skeleton exist without real provider side effects. |
 | Provider budget operations | Usable read-only / fixture-only | Audit persistence, internal notifications, Admin operations metrics, exporter metrics, and fixture dry-run dispatch audit rows exist. |
 | Staging adapter shell | Fixture-only | Mocked/injected-client hardening may continue; no default SDK or network client is available. PRs #86-#89 improved the fixture-only evidence chain, but did not approve real provider calls. |
+| V1 provider decision matrix | Conditional planning evidence | Four primary/backup pairs, budgets, legal/data/SLA conditions, and replacement triggers are machine-verified; no provider is production-approved. |
 | First real external-call rehearsal | No-go until explicit approval | Requires the go/no-go approval package, Notion evidence in Chinese, call count, budget cap, expiry, token/rollback owners, and production no-go. |
 | Production paid-provider enablement | No-go | Requires a later production phase after staging proves safety, spend caps, rollback, and operations runbooks. |
 
@@ -120,6 +142,7 @@ Without those details, the decision remains no-go.
 | Can a staging adapter planning branch start? | `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` |
 | What fixture-only staging shell work is allowed? | `docs/REAL_PROVIDER_STAGING_ADAPTER_SHELL_PLAN.md` |
 | What must happen before an external provider call? | `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` |
+| Which providers are selected and under what conditions? | `docs/V1_PROVIDER_DECISION_MATRIX.md` |
 | Is metadata-only staging smoke ready to run? | `docs/REAL_PROVIDER_STAGING_SMOKE_READINESS.md` |
 | What smoke checks apply to staging provider metadata? | `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` |
 | Can callbacks, polling, or manual replay be enabled? | `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` |
@@ -153,6 +176,10 @@ Documentation-only current-status updates should pass:
 git diff --check
 npm run check:quick
 ```
+
+`npm run check:quick` includes `npm run test:v1-providers`, which verifies all four primary/backup decisions, official
+source references, budget sums, concurrency and lifecycle fields, fail-closed behavior, and unresolved production
+conditions.
 
 If an update touches smoke scripts, runtime behavior, routes, package scripts, quality gates, README runtime text, or provider configuration, also run:
 
