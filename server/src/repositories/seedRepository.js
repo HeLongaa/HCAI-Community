@@ -2790,6 +2790,22 @@ export const createSeedRepository = () => ({
       const record = creativeGenerationsById.get(String(id))
       return record ? serializeCreativeGeneration(record) : null
     },
+    listPollingCandidates: (options = {}) => {
+      const limit = Math.max(1, options.limit ?? 10)
+      const statuses = new Set((options.statuses ?? ['queued', 'running']).map(String))
+      const providerIds = new Set((options.providerIds ?? []).map(String))
+      const items = [...creativeGenerationsById.values()]
+        .filter((record) => statuses.has(record.status))
+        .filter((record) => !options.providerMode || record.providerMode === String(options.providerMode))
+        .filter((record) => providerIds.size === 0 || providerIds.has(record.providerId))
+        .sort((left, right) => {
+          const createdDifference = new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+          return createdDifference || left.id.localeCompare(right.id)
+        })
+        .slice(0, limit)
+        .map(serializeCreativeGeneration)
+      return { items, limit }
+    },
     list: (options = {}) => {
       const filtered = [...creativeGenerationsById.values()]
         .filter((record) => !options.actorHandle || record.actorHandle === options.actorHandle)

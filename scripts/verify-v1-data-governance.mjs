@@ -20,6 +20,8 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 const providerHttpClientSource = read('server/src/creative/providerHttpClient.js')
 const providerEnvSource = read('server/src/config/env.js')
 const generationServiceSource = read('server/src/creative/generationService.js')
+const providerPollingWorkerSource = read('server/src/creative/providerPollingWorker.js')
+const providerStatusClientRegistrySource = read('server/src/creative/providerStatusClientRegistry.js')
 
 const expectedClassifications = ['confidential', 'internal', 'public', 'restricted', 'secret']
 const expectedPurposes = [
@@ -116,6 +118,7 @@ const expectedServiceClasses = ['media_scanner', 'notification_delivery', 'oauth
 const expectedHandoffTasks = [
   'V1-05',
   'V1-06',
+  'V1-07',
   'V1-48',
   'V1-49',
   'V1-50',
@@ -653,6 +656,32 @@ addCheck(
     providerEnvSource.includes("CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging") &&
     !generationServiceSource.includes('createCreativeProviderHttpClient'),
   'explicit env gate with no default generation-service registration',
+)
+addCheck(
+  'runtime Provider status reads use a fixed path and strict response projection',
+  providerHttpClientSource.includes('buildReplicatePredictionStatusRequest') &&
+    providerHttpClientSource.includes("pathname: `/predictions/${normalized}`") &&
+    providerHttpClientSource.includes('replicateResponseProjectionKeys') &&
+    providerHttpClientSource.includes('projectReplicatePredictionResponse'),
+  'fixed Replicate status path and allowlisted in-memory projection',
+)
+addCheck(
+  'runtime Provider polling has independent default-off staging and worker gates',
+  providerEnvSource.includes("strictBoolFlag(source, 'CREATIVE_PROVIDER_POLLING_ENABLED', false)") &&
+    providerEnvSource.includes("strictBoolFlag(source, 'CREATIVE_PROVIDER_POLLING_WORKER_ENABLED', false)") &&
+    providerEnvSource.includes('CREATIVE_PROVIDER_POLLING_ENABLED requires CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=true') &&
+    providerStatusClientRegistrySource.includes('createCreativeProviderStatusClient') &&
+    providerStatusClientRegistrySource.includes('!config.polling.enabled || !config.polling.workerEnabled'),
+  'dedicated worker status client remains disabled without both polling switches',
+)
+addCheck(
+  'runtime Provider polling redacts worker results and closes timeouts through replay',
+  providerPollingWorkerSource.includes('const safePollingStatusResult') &&
+    providerPollingWorkerSource.includes("'creative.provider_polling.retry_scheduled'") &&
+    providerPollingWorkerSource.includes("'creative.provider_polling.timed_out'") &&
+    providerPollingWorkerSource.includes('applyProviderReplayThroughLedger') &&
+    !providerPollingWorkerSource.includes('errorPreview: failure.messagePreview'),
+  'safe polling summaries, retry audit, and idempotent timeout replay',
 )
 
 const authRoutes = read('server/src/modules/auth/routes.js')

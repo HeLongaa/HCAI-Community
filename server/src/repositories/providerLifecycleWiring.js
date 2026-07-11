@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { safeProviderJobIdEvidence } from '../creative/generationRecords.js'
 
 const safeEvidencePattern = /^[a-z0-9][a-z0-9:._-]{0,240}$/i
-const safeLifecycleActionPattern = /^creative\.provider_(?:callback|lifecycle|replay)\.[a-z0-9._-]+$/i
+const safeLifecycleActionPattern = /^creative\.provider_(?:callback|lifecycle|polling|replay)\.[a-z0-9._-]+$/i
 
 const compactObject = (value) =>
   Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ''))
@@ -41,12 +41,17 @@ const safeLifecycleMetadata = ({ sourceKey, generationId, metadata = {} }) => {
     providerStatus: safeProviderLifecycleEvidenceIdentifier(metadata.providerStatus),
     sourceType: safeProviderLifecycleEvidenceIdentifier(metadata.sourceType),
     nextStatus: safeProviderLifecycleEvidenceIdentifier(metadata.nextStatus),
+    errorCode: safeProviderLifecycleEvidenceIdentifier(metadata.errorCode),
     reasonCode: safeProviderLifecycleEvidenceIdentifier(metadata.reasonCode),
     payloadHash: safeProviderLifecycleEvidenceIdentifier(metadata.payloadHash),
     bodyBytes: Number.isFinite(metadata.bodyBytes) ? metadata.bodyBytes : undefined,
+    statusCode: Number.isInteger(metadata.statusCode) ? metadata.statusCode : undefined,
     signatureVerified: metadata.signatureVerified == null ? undefined : Boolean(metadata.signatureVerified),
     duplicate: metadata.duplicate == null ? undefined : Boolean(metadata.duplicate),
     executed: metadata.executed == null ? undefined : Boolean(metadata.executed),
+    retryable: metadata.retryable == null ? undefined : Boolean(metadata.retryable),
+    timedOut: metadata.timedOut == null ? undefined : Boolean(metadata.timedOut),
+    statusClientConfigured: metadata.statusClientConfigured == null ? undefined : Boolean(metadata.statusClientConfigured),
     hasContentType: metadata.hasContentType == null ? undefined : Boolean(metadata.hasContentType),
     hasTimestamp: metadata.hasTimestamp == null ? undefined : Boolean(metadata.hasTimestamp),
     hasSignature: metadata.hasSignature == null ? undefined : Boolean(metadata.hasSignature),

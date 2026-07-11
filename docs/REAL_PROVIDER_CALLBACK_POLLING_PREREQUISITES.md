@@ -2,13 +2,13 @@
 
 This document defines the prerequisites for enabling real-provider webhooks, callback routes, polling workers, or manual lifecycle replay for creative generation.
 
-Current decision: **the staging callback API is implemented but independently disabled by default; registering a real Provider webhook target, enabling default provider status polling, exposing manual replay endpoints, or making real provider network calls remains no-go until a separate approved external-call task**.
+Current decision: **the staging callback API and dedicated polling worker are implemented but independently disabled by default; registering a real Provider webhook target, enabling Provider status reads, exposing manual replay endpoints, or making real provider network calls remains no-go until a separate approved external-call task**.
 
 The current real-provider boundary handoff is summarized in `docs/REAL_PROVIDER_BOUNDARY_CLOSEOUT.md`. This prerequisite document controls callback, polling, and manual replay enablement; the external-call approval package controls any first real provider network call.
 
-This package does not add a provider SDK, default status client, manual replay endpoint, provider network call, Admin mutation endpoint, payment refund flow, or production paid-provider path. V1-06 adds only the app-side signed callback endpoint behind `CREATIVE_PROVIDER_CALLBACK_ENABLED=false`; no Provider webhook target or real delivery is configured. The polling worker interval skeleton is disabled by default and only accepts injected mocked status clients.
+This package does not add a provider SDK, manual replay endpoint, approved provider network call, Admin mutation endpoint, payment refund flow, or production paid-provider path. V1-06 adds the app-side signed callback endpoint behind `CREATIVE_PROVIDER_CALLBACK_ENABLED=false`; no Provider webhook target or real delivery is configured. V1-07 adds a fixed read-only status client and dedicated polling worker behind `CREATIVE_PROVIDER_POLLING_ENABLED=false` and `CREATIVE_PROVIDER_POLLING_WORKER_ENABLED=false`; no real status read is executed or approved.
 
-Implementation status: the repository now has a durable replay ledger, lifecycle reducer, strict Replicate callback projection, exact-body HMAC and timestamp verification, generation/job nonce binding, a staging-only callback route, atomic replay side-effect claims, lifecycle side-effect execution, safe callback audits, mocked provider-status client contracts, manual replay authorization/parser helpers, and fixture-safe polling worker interval wiring. The callback route is disabled by default and has no real Provider webhook target. Default provider status clients, manual replay endpoints, and real provider network calls remain disabled and unimplemented.
+Implementation status: the repository now has a durable replay ledger, lifecycle reducer, strict Replicate callback/status projections, exact-body HMAC and timestamp verification, generation/job nonce binding, a staging-only callback route, a fixed read-only status client, atomic replay side-effect claims, lifecycle side-effect execution, safe callback/polling audits, mocked provider-status contracts, manual replay authorization/parser helpers, and oldest-first polling worker wiring with retry isolation and timeout recovery. Callback and polling switches are disabled by default. Manual replay endpoints and approved real provider network calls remain unimplemented.
 
 ## Closeout Status And Implementation Map
 
@@ -19,7 +19,7 @@ This closeout records the current boundary for callback, polling, and manual lif
 | Callback authentication and parser helpers | Implemented and route-integrated | Exact-body HMAC, timestamp window, body limit, strict field allowlist, and nonce binding are covered by fixture tests. |
 | Provider callback route | Implemented, disabled by default | Staging-only; requires `CREATIVE_PROVIDER_CALLBACK_ENABLED=true`. No real Provider webhook target or traffic is configured. |
 | Default provider status HTTP client | Disabled and unimplemented | No SDK, default HTTP client, or real provider status read is present. |
-| Polling worker interval skeleton | Available, disabled by default | Requires explicit worker flags and an injected mocked status client in tests. |
+| Polling worker and status client | Available, disabled by default | Requires explicit lifecycle/worker/HTTP flags; verification uses injected status fixtures or injected fetch only. |
 | Polling lease and stop-condition helpers | Available as pure functions | Fixture-safe only; they do not read provider APIs. |
 | Manual replay authorization and parser helpers | Available as pure functions | No route, endpoint, Admin action, worker, or side-effect execution path is enabled. |
 | Durable replay ledger and lifecycle reducer | Available for fixture-safe tests | Used to prove duplicate, stale, mismatch, no-op, rejected, and applied decisions without real provider data. |
@@ -46,7 +46,7 @@ Future work should proceed in this order unless a later approved closeout replac
 3. Add a staging adapter shell only with a mocked/injected client and production-denied environment checks.
 4. Complete the external-call go/no-go approval record before any provider network call.
 5. Run at most one explicitly approved staging external-call rehearsal with call count, budget cap, expiry, and rollback owners recorded in Notion.
-6. Enable a real Provider webhook target or add real polling client wiring only after a separate callback/polling enablement approval.
+6. Enable a real Provider webhook target or real polling status reads only after a separate callback/polling enablement approval.
 7. Add Admin mutation controls only in a separate Admin mutation phase with permissions, accounting idempotency, and audit tests.
 
 ## Scope
@@ -54,7 +54,7 @@ Future work should proceed in this order unless a later approved closeout replac
 Covered event sources:
 
 - Provider webhook or callback delivery.
-- Provider polling worker status reads. Current tests cover an injected mocked provider-status client contract and disabled-by-default worker wiring only; no default HTTP client or real provider network call is enabled.
+- Provider polling worker status reads. Current tests cover both mocked status clients and the fixed read-only client through injected fetch; all runtime switches remain disabled and no real provider network call is enabled.
 - Manual replay from an operator-controlled internal tool or script.
   Current tests cover authorization/parser envelope construction only; no route, endpoint, worker, or side-effect execution path is enabled.
 
@@ -138,7 +138,7 @@ Before enabling a polling worker:
 - Use worker leases so only one worker applies a given generation lifecycle event at a time.
 - Separate provider dispatch enablement from polling enablement.
 - Rate-limit provider status reads.
-- Keep provider-status clients injected and disabled by default until the external-call approval package explicitly authorizes a concrete HTTP client.
+- Keep the fixed provider-status client and worker switches disabled until the external-call approval package explicitly authorizes a bounded staging status read.
 - Derive polling replay idempotency from safe status payload hashes and hashed output digests only; do not store raw provider output URLs in replay metadata, audit metadata, logs, or Admin read models.
 - Stop polling terminal generations.
 - Stop polling when the generation is cancelled, expired, missing, or no longer mapped to the expected provider job id.
@@ -293,8 +293,8 @@ Callback and polling code cannot be enabled until targeted tests cover:
 - Request body and content-type guards reject unsafe callback payloads.
 - Polling worker lease plan prevents duplicate side-effect application across instances.
 - Polling worker stop-condition plan stops terminal, mismatched, expired, missing, unsafe-runtime, unsupported-provider, or missing-job generations.
-- Mocked provider-status client contract maps provider status reads into safe polling envelopes without real credentials or network calls.
-- Mocked provider-status client contract rejects missing jobs, job mismatches, rate limits, timeouts, and unsafe error previews without lifecycle replay.
+- Fixed and mocked provider-status client contracts map Provider responses into safe polling envelopes without real credentials or network calls during tests.
+- Provider-status contracts reject missing/unsafe jobs, job mismatches, malformed responses, rate limits, timeouts, and unsafe errors without leaking raw Provider material.
 - Manual replay authorization/parser tests require approved operator permissions, explicit reason codes, generation/provider/job matches, safe metadata, and terminal reopen rejection without route wiring.
 - Lifecycle reducer maps queued, running, completed, failed, and cancelled provider states.
 - Duplicate terminal replay returns no-op.
@@ -331,7 +331,7 @@ No-go for provider callback, polling, or manual replay if any are true:
 
 A future implementation task should continue from the mocked-client status contract, repository-backed lifecycle notification/audit wiring, and manual replay auth/parser envelope:
 
-1. Keep worker interval wiring fixture-safe and disabled by default until an external-call task explicitly approves a real status client.
+1. Keep lifecycle polling, the dedicated worker, and the fixed read-only status client disabled until an external-call task explicitly approves bounded staging status reads.
 2. Keep the first staging adapter branch mocked/injected until the external-call approval package is complete.
 3. Keep the implemented callback route default-disabled until a named staging delivery is approved; preserve its signature, nonce, replay-ledger, atomic claim, audit, and kill-switch tests.
 4. Add real polling status-client wiring only after the same approval record names the provider, environment, call count, budget cap, expiry, and rollback owners.

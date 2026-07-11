@@ -3948,6 +3948,22 @@ const createPrismaRepository = async (fallbackRepository) => {
       const row = await client.creativeGeneration.findUnique({ where: { id: String(id) } })
       return row ? getCreativeGenerationDto(row) : null
     },
+    listPollingCandidates: async (options = {}) => {
+      const limit = Math.max(1, options.limit ?? 10)
+      const rows = await client.creativeGeneration.findMany({
+        where: {
+          status: { in: (options.statuses ?? ['queued', 'running']).map(String) },
+          ...(options.providerMode ? { providerMode: String(options.providerMode) } : {}),
+          ...(options.providerIds?.length > 0 ? { providerId: { in: options.providerIds.map(String) } } : {}),
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        take: limit,
+      })
+      return {
+        items: rows.map(getCreativeGenerationDto),
+        limit,
+      }
+    },
     list: async (options = {}) => {
       const limit = options.limit ?? 20
       const cursor = options.cursor

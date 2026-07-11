@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 
+import { safeProviderFailure } from './providerAdapterContract.js'
 import { fetchReplicateStagingPredictionStatus } from './replicateStagingProvider.js'
 import { buildProviderLifecycleReplay, terminalGenerationStatuses } from './providerLifecycleReplay.js'
 import { applyProviderReplayThroughLedger } from './providerReplayIntegration.js'
@@ -106,11 +107,11 @@ const buildDecision = ({
   action,
   reasonCode,
   sourceType: 'polling',
-  generationId: generation?.id ?? null,
+  generationId: safeEvidenceIdentifier(generation?.id),
   providerId,
   providerMode,
-  providerJobId: providerJobId ?? null,
-  expectedProviderJobId: expectedProviderJobId ?? null,
+  providerJobId: safeEvidenceIdentifier(providerJobId),
+  expectedProviderJobId: safeEvidenceIdentifier(expectedProviderJobId),
   lease: {
     key: leaseKey,
     ttlSeconds: config.leaseTtlSeconds,
@@ -160,6 +161,7 @@ export const buildProviderPollingPlan = ({
   }
   const noop = (reasonCode) => buildDecision({ ...base, shouldPoll: false, action: 'noop', reasonCode })
   const reject = (reasonCode) => buildDecision({ ...base, shouldPoll: false, action: 'reject', reasonCode })
+  const timeout = (reasonCode) => buildDecision({ ...base, shouldPoll: false, action: 'timeout', reasonCode })
 
   if (!config.enabled) return noop('polling_disabled')
   if (!supportedPollingRuntimeEnvs.includes(config.runtimeEnv)) return noop('unsupported_runtime')
@@ -168,12 +170,13 @@ export const buildProviderPollingPlan = ({
   if (!generation) return reject('generation_missing')
   if (terminalGenerationStatuses.includes(generation.status)) return noop('terminal_generation')
   if (!providerJobId) return reject('provider_job_missing')
+  if (!safeEvidenceIdentifierPattern.test(String(providerJobId))) return reject('provider_job_invalid')
   if (expectedProviderJobId && expectedProviderJobId !== providerJobId) return reject('provider_job_mismatch')
   if (!generationTimestamp) return reject('generation_timestamp_missing')
 
   const ageMs = now.getTime() - new Date(generationTimestamp).getTime()
   if (ageMs < 0) return reject('generation_timestamp_future')
-  if (ageMs > config.maxAgeSeconds * 1000) return noop('polling_window_expired')
+  if (ageMs > config.maxAgeSeconds * 1000) return timeout('polling_window_expired')
   if (config.requireCreditReservation && !generation.creditReservationId) return noop('credit_reservation_missing')
 
   return buildDecision({ ...base, shouldPoll: true, action: 'poll', reasonCode: 'ready' })
@@ -237,6 +240,11 @@ const mergeLifecycleGeneration = ({ currentRecord, providerGeneration, plan }) =
 const replayPayloadDigest = (statusResult) =>
   statusResult.outputDigest ?? statusResult.payloadHash ?? null
 
+const pollingReplayDigest = (statusResult) =>
+  terminalGenerationStatuses.includes(statusResult.normalizedStatus)
+    ? replayPayloadDigest(statusResult) ?? 'no-payload'
+    : 'non-terminal'
+
 const pollingEvidenceProviderJobId = (plan) =>
   safeEvidenceIdentifier(plan?.providerJobId) ?? 'provider-job-missing'
 
@@ -245,10 +253,10 @@ const pollingIdempotencyKey = ({ plan, generation, statusResult }) =>
     'polling',
     plan.providerId,
     plan.providerMode,
-    generation.id,
+    safeEvidenceIdentifier(generation.id) ?? 'generation-missing',
     pollingEvidenceProviderJobId(plan),
     statusResult.normalizedStatus ?? 'unknown',
-    replayPayloadDigest(statusResult) ?? 'no-payload',
+    pollingReplayDigest(statusResult),
   ].map((part) => normalizeSegment(part)).join(':')
 
 const pollingProviderEventId = ({ plan, statusResult }) =>
@@ -277,15 +285,180 @@ const safePollingStatusResult = ({ statusResult, plan }) => {
   if (!statusResult) return statusResult
   const providerJobId = pollingEvidenceProviderJobId(plan)
   return {
-    ...statusResult,
+    ok: Boolean(statusResult.ok),
+    shouldReplay: Boolean(statusResult.shouldReplay),
+    action: safeEvidenceIdentifier(statusResult.action),
+    sourceType: 'polling',
+    providerId: safeEvidenceIdentifier(statusResult.providerId) ?? plan.providerId,
+    providerMode: safeEvidenceIdentifier(statusResult.providerMode) ?? plan.providerMode,
     providerJobId,
-    generation: statusResult.generation
+    providerStatus: safeEvidenceIdentifier(statusResult.providerStatus),
+    normalizedStatus: safeEvidenceIdentifier(statusResult.normalizedStatus),
+    receivedAt: toIso(statusResult.receivedAt),
+    payloadHash: safeEvidenceIdentifier(statusResult.payloadHash),
+    outputDigest: safeEvidenceIdentifier(statusResult.outputDigest),
+    reasonCode: safeEvidenceIdentifier(statusResult.reasonCode),
+    safeMetadata: statusResult.safeMetadata
       ? {
-          ...statusResult.generation,
-          providerRequestId: providerJobId,
-          providerJobId,
+          providerStatus: safeEvidenceIdentifier(statusResult.safeMetadata.providerStatus),
+          normalizedStatus: safeEvidenceIdentifier(statusResult.safeMetadata.normalizedStatus),
+          errorCode: safeEvidenceIdentifier(statusResult.safeMetadata.errorCode),
+          outputCount: Number.isFinite(statusResult.safeMetadata.outputCount) ? statusResult.safeMetadata.outputCount : undefined,
+          statusCode: Number.isInteger(statusResult.safeMetadata.statusCode) ? statusResult.safeMetadata.statusCode : undefined,
+          hasProviderError: statusResult.safeMetadata.hasProviderError == null ? undefined : Boolean(statusResult.safeMetadata.hasProviderError),
+          usageReported: statusResult.safeMetadata.usageReported == null ? undefined : Boolean(statusResult.safeMetadata.usageReported),
+          retryable: statusResult.safeMetadata.retryable == null ? undefined : Boolean(statusResult.safeMetadata.retryable),
         }
-      : statusResult.generation,
+      : null,
+  }
+}
+
+const providerPollingAuditSourceKey = ({ generationId, action, discriminator }) => [
+  'creative-provider-polling',
+  safeEvidenceIdentifier(generationId) ?? 'unknown-generation',
+  normalizeSegment(action, 'updated'),
+  stableHash(discriminator).slice(0, 24),
+].join(':')
+
+const recordProviderPollingAudit = async ({
+  repositories,
+  action,
+  generation,
+  plan,
+  statusResult = null,
+  reasonCode,
+  discriminator,
+  metadata = {},
+} = {}) => {
+  try {
+    return await repositories.providerLifecycleAudit?.record?.({
+      sourceKey: providerPollingAuditSourceKey({
+        generationId: generation?.id,
+        action,
+        discriminator,
+      }),
+      generationId: generation?.id,
+      action,
+      metadata: {
+        sourceType: 'polling',
+        providerId: plan?.providerId ?? generation?.providerId ?? null,
+        providerMode: plan?.providerMode ?? generation?.providerMode ?? null,
+        providerJobId: plan?.providerJobId ?? generation?.providerJobId ?? null,
+        providerStatus: statusResult?.providerStatus ?? null,
+        nextStatus: statusResult?.normalizedStatus ?? null,
+        reasonCode,
+        payloadHash: statusResult?.payloadHash ?? null,
+        ...metadata,
+      },
+    }, null)
+  } catch {
+    return null
+  }
+}
+
+const timeoutReplayFor = ({ generation, plan, now }) => {
+  const timeoutGeneration = {
+    ...generation,
+    status: 'failed',
+    outputs: [],
+    errorCode: 'PROVIDER_TIMEOUT',
+    errorMessagePreview: 'Creative Provider polling deadline exceeded',
+    failedAt: now.toISOString(),
+  }
+  const idempotencyKey = [
+    'polling-timeout',
+    plan.providerId,
+    plan.providerMode,
+    safeEvidenceIdentifier(generation.id) ?? 'generation-missing',
+    pollingEvidenceProviderJobId(plan),
+    plan.safeMetadata.maxAgeSeconds,
+  ].map((part) => normalizeSegment(part)).join(':')
+  return buildProviderLifecycleReplay({
+    currentRecord: generation,
+    generation: timeoutGeneration,
+    providerId: plan.providerId,
+    providerJobId: plan.providerJobId,
+    idempotencyKey,
+    outputDigest: null,
+  })
+}
+
+const applyProviderPollingTimeout = async ({ generation, plan, repositories, actor, now }) => {
+  const payloadHash = stableHash({
+    event: 'polling_timeout',
+    generationId: safeEvidenceIdentifier(generation.id),
+    providerId: plan.providerId,
+    providerMode: plan.providerMode,
+    providerJobId: pollingEvidenceProviderJobId(plan),
+    maxAgeSeconds: plan.safeMetadata.maxAgeSeconds,
+  })
+  const replay = timeoutReplayFor({ generation, plan, now })
+  const applied = await applyProviderReplayThroughLedger({
+    replay: {
+      ...safeReplayEvidence({ replay, plan }),
+      providerId: plan.providerId,
+      providerMode: plan.providerMode,
+      sourceType: 'polling',
+      reasonCode: 'polling_window_expired',
+    },
+    repositories,
+    actor,
+    providerEventId: [
+      'polling',
+      plan.providerId,
+      pollingEvidenceProviderJobId(plan),
+      'timed-out',
+    ].map((part) => normalizeSegment(part)).join(':'),
+    payloadHash,
+    receivedAt: now.toISOString(),
+    now,
+  })
+
+  await recordProviderPollingAudit({
+    repositories,
+    action: 'creative.provider_polling.timed_out',
+    generation,
+    plan,
+    reasonCode: 'polling_window_expired',
+    discriminator: { payloadHash },
+    metadata: {
+      nextStatus: 'failed',
+      errorCode: 'PROVIDER_TIMEOUT',
+      duplicate: Boolean(applied.duplicate),
+      executed: Boolean(applied.executed),
+      timedOut: true,
+    },
+  })
+
+  return {
+    generationId: safeEvidenceIdentifier(generation.id),
+    polled: false,
+    replayed: true,
+    timedOut: true,
+    retryScheduled: false,
+    failed: Boolean(applied.conflict || (applied.execution && !applied.execution.completed)),
+    plan,
+    applied,
+  }
+}
+
+const classifyProviderPollingFailure = (error) => {
+  const failure = safeProviderFailure(error)
+  const errorCode = safeEvidenceIdentifier(error?.code) ?? failure.code
+  const reasonCode = error?.code === 'CREATIVE_PROVIDER_JOB_MISMATCH'
+    ? 'provider_job_mismatch'
+    : error?.code === 'CREATIVE_PROVIDER_JOB_NOT_FOUND'
+      ? 'provider_job_not_found'
+      : failure.code === 'PROVIDER_RATE_LIMITED'
+        ? 'provider_status_rate_limited'
+        : failure.code === 'PROVIDER_TIMEOUT'
+          ? 'provider_status_timeout'
+          : 'provider_polling_failed'
+  return {
+    errorCode,
+    reasonCode,
+    retryable: Boolean(error?.details?.retryable ?? failure.retryable),
+    statusCode: failure.statusCode,
   }
 }
 
@@ -306,16 +479,44 @@ export const pollProviderGenerationOnce = async ({
     now,
   })
 
+  if (plan.action === 'timeout') {
+    return applyProviderPollingTimeout({ generation, plan, repositories, actor, now })
+  }
+
   if (!plan.shouldPoll) {
-    return { generationId: generation?.id ?? null, polled: false, replayed: false, plan }
+    return {
+      generationId: safeEvidenceIdentifier(generation?.id),
+      polled: false,
+      replayed: false,
+      timedOut: false,
+      retryScheduled: false,
+      failed: false,
+      plan,
+    }
   }
 
   const client = statusClientForPlan(providerStatusClients, plan)
   if (!client?.getPrediction) {
+    await recordProviderPollingAudit({
+      repositories,
+      action: 'creative.provider_polling.rejected',
+      generation,
+      plan,
+      reasonCode: 'status_client_missing',
+      discriminator: { generationId: generation.id, reasonCode: 'status_client_missing' },
+      metadata: {
+        errorCode: 'PROVIDER_STATUS_CLIENT_MISSING',
+        retryable: false,
+        statusClientConfigured: false,
+      },
+    })
     return {
-      generationId: generation.id,
+      generationId: safeEvidenceIdentifier(generation.id),
       polled: false,
       replayed: false,
+      timedOut: false,
+      retryScheduled: false,
+      failed: true,
       plan: {
         ...plan,
         shouldPoll: false,
@@ -339,14 +540,40 @@ export const pollProviderGenerationOnce = async ({
     source,
     now,
   })
+  const safeStatusResult = safePollingStatusResult({ statusResult, plan })
 
   if (!statusResult.ok || !statusResult.shouldReplay) {
+    const retryScheduled = Boolean(statusResult.safeMetadata?.retryable)
+    const auditAction = retryScheduled
+      ? 'creative.provider_polling.retry_scheduled'
+      : 'creative.provider_polling.rejected'
+    await recordProviderPollingAudit({
+      repositories,
+      action: auditAction,
+      generation,
+      plan,
+      statusResult: safeStatusResult,
+      reasonCode: safeStatusResult.reasonCode ?? 'provider_status_fetch_failed',
+      discriminator: {
+        receivedAt: safeStatusResult.receivedAt,
+        reasonCode: safeStatusResult.reasonCode,
+        statusCode: safeStatusResult.safeMetadata?.statusCode,
+      },
+      metadata: {
+        errorCode: safeStatusResult.safeMetadata?.errorCode,
+        retryable: retryScheduled,
+        statusCode: safeStatusResult.safeMetadata?.statusCode,
+      },
+    })
     return {
-      generationId: generation.id,
+      generationId: safeEvidenceIdentifier(generation.id),
       polled: true,
       replayed: false,
+      timedOut: false,
+      retryScheduled,
+      failed: !retryScheduled,
       plan,
-      statusResult: safePollingStatusResult({ statusResult, plan }),
+      statusResult: safeStatusResult,
     }
   }
 
@@ -376,14 +603,36 @@ export const pollProviderGenerationOnce = async ({
     providerEventId: pollingProviderEventId({ plan, statusResult }),
     payloadHash: statusResult.payloadHash,
     receivedAt: statusResult.receivedAt,
+    now,
+  })
+
+  await recordProviderPollingAudit({
+    repositories,
+    action: 'creative.provider_polling.status_fetched',
+    generation,
+    plan,
+    statusResult: safeStatusResult,
+    reasonCode: applied.conflict ? 'provider_event_replay_conflict' : 'status_fetched',
+    discriminator: {
+      payloadHash: safeStatusResult.payloadHash,
+      outcome: applied.conflict ? 'conflict' : applied.executed ? 'executed' : 'suppressed',
+    },
+    metadata: {
+      duplicate: Boolean(applied.duplicate),
+      executed: Boolean(applied.executed),
+      retryable: false,
+    },
   })
 
   return {
-    generationId: generation.id,
+    generationId: safeEvidenceIdentifier(generation.id),
     polled: true,
     replayed: true,
+    timedOut: false,
+    retryScheduled: false,
+    failed: Boolean(applied.conflict || (applied.execution && !applied.execution.completed)),
     plan,
-    statusResult: safePollingStatusResult({ statusResult, plan }),
+    statusResult: safeStatusResult,
     applied,
   }
 }
@@ -393,22 +642,35 @@ const listPollingCandidatesForStatus = async ({ repositories, status, limit }) =
   return listed?.items ?? []
 }
 
+const pollingCandidateTimestamp = (generation) =>
+  new Date(firstGenerationTimestamp(generation) ?? 0).getTime()
+
 export const listProviderPollingCandidates = async ({
   repositories = {},
   source = process.env,
   limit,
 } = {}) => {
-  if (!repositories.creativeGenerations?.list) {
+  if (!repositories.creativeGenerations?.list && !repositories.creativeGenerations?.listPollingCandidates) {
     return []
   }
   const config = providerPollingConfig(source)
   const maxItems = Math.max(1, limit ?? config.sweepLimit)
+  if (repositories.creativeGenerations.listPollingCandidates) {
+    const listed = await repositories.creativeGenerations.listPollingCandidates({
+      statuses: pollingCandidateStatuses,
+      providerMode: config.providerMode,
+      providerIds: config.providerId === 'replicate' ? ['replicate', 'replicate-staging'] : [config.providerId],
+      limit: maxItems,
+    })
+    return (listed?.items ?? listed ?? []).slice(0, maxItems)
+  }
   const batches = await Promise.all(pollingCandidateStatuses.map((status) =>
     listPollingCandidatesForStatus({ repositories, status, limit: maxItems })))
   return batches
     .flat()
     .filter((generation) => normalizeSegment(generation.providerMode, 'mock') === config.providerMode)
     .filter((generation) => normalizeProviderId(generation.providerId, config.providerId) === config.providerId)
+    .sort((left, right) => pollingCandidateTimestamp(left) - pollingCandidateTimestamp(right))
     .slice(0, maxItems)
 }
 
@@ -428,26 +690,90 @@ export const runProviderPollingWorkerOnce = async ({
       candidates: 0,
       polled: 0,
       replayed: 0,
+      timedOut: 0,
+      retryScheduled: 0,
+      failed: 0,
+      results: [],
+    }
+  }
+  if (!config.workerEnabled) {
+    return {
+      enabled: false,
+      reasonCode: 'polling_worker_disabled',
+      candidates: 0,
+      polled: 0,
+      replayed: 0,
+      timedOut: 0,
+      retryScheduled: 0,
+      failed: 0,
       results: [],
     }
   }
   const candidates = await listProviderPollingCandidates({ repositories, source, limit })
   const results = []
   for (const generation of candidates) {
-    results.push(await pollProviderGenerationOnce({
-      generation,
-      repositories,
-      providerStatusClients,
-      source,
-      now,
-      actor: actor ?? actorForGeneration(generation),
-    }))
+    try {
+      results.push(await pollProviderGenerationOnce({
+        generation,
+        repositories,
+        providerStatusClients,
+        source,
+        now,
+        actor: actor ?? actorForGeneration(generation),
+      }))
+    } catch (error) {
+      const failure = classifyProviderPollingFailure(error)
+      const plan = buildProviderPollingPlan({
+        generation,
+        providerId: generation?.providerId,
+        providerMode: generation?.providerMode,
+        expectedProviderJobId: generation?.providerJobId ?? null,
+        source,
+        now,
+      })
+      await recordProviderPollingAudit({
+        repositories,
+        action: failure.retryable
+          ? 'creative.provider_polling.retry_scheduled'
+          : 'creative.provider_polling.rejected',
+        generation,
+        plan,
+        reasonCode: failure.reasonCode,
+        discriminator: {
+          generationId: generation.id,
+          receivedAt: now.toISOString(),
+          reasonCode: failure.reasonCode,
+        },
+        metadata: {
+          errorCode: failure.errorCode,
+          retryable: failure.retryable,
+          statusCode: failure.statusCode,
+        },
+      })
+      results.push({
+        generationId: safeEvidenceIdentifier(generation.id),
+        polled: false,
+        replayed: false,
+        timedOut: false,
+        retryScheduled: failure.retryable,
+        failed: !failure.retryable,
+        reasonCode: failure.reasonCode,
+        safeMetadata: {
+          errorCode: failure.errorCode,
+          retryable: failure.retryable,
+          statusCode: failure.statusCode,
+        },
+      })
+    }
   }
   return {
     enabled: true,
     candidates: candidates.length,
     polled: results.filter((result) => result.polled).length,
     replayed: results.filter((result) => result.replayed).length,
+    timedOut: results.filter((result) => result.timedOut).length,
+    retryScheduled: results.filter((result) => result.retryScheduled).length,
+    failed: results.filter((result) => result.failed).length,
     results,
   }
 }

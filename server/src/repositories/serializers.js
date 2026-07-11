@@ -20,6 +20,10 @@ const providerLifecycleAuditActions = new Set([
   'creative.provider_callback.duplicate_suppressed',
   'creative.provider_lifecycle.side_effect_applied',
   'creative.provider_lifecycle.side_effect_failed',
+  'creative.provider_polling.status_fetched',
+  'creative.provider_polling.retry_scheduled',
+  'creative.provider_polling.timed_out',
+  'creative.provider_polling.rejected',
   'creative.provider_replay.updated',
 ])
 
@@ -87,6 +91,7 @@ const providerBudgetIdentifierKeys = new Set([
 const providerLifecycleIdentifierKeys = new Set([
   'auditAction',
   'auditSourceKey',
+  'errorCode',
   'generationId',
   'nextStatus',
   'notificationType',

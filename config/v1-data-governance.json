@@ -988,6 +988,7 @@
       "Provider adapter contracts reject secret-like metadata keys",
       "Provider HTTP client uses a fixed endpoint, minimum payload, deployment-only secret injection, and default-disabled network gate",
       "Provider callback API uses exact-body HMAC, nonce/job binding, strict projection, zero-retention raw payload handling, and atomic replay claims",
+      "Provider polling uses a fixed read-only status endpoint, strict response projection, safe worker summaries, bounded retries, and idempotent timeout recovery",
       "Admin creative serializers redact unsafe identifiers, URLs, and error previews",
       "archive and object writers support mock/S3-compatible boundaries"
     ],
@@ -1008,6 +1009,8 @@
       "server/src/creative/providerCallbackAuth.js",
       "server/src/creative/providerCallbackService.js",
       "server/src/creative/replicateCallbackPayload.js",
+      "server/src/creative/providerPollingWorker.js",
+      "server/src/creative/providerStatusClientRegistry.js",
       "server/src/creative/providerReplayIntegration.js",
       "server/src/modules/admin/routes.js",
       "server/src/media/scanProvider.js",
@@ -1020,6 +1023,7 @@
   "implementationHandoff": [
     { "taskId": "V1-05", "scope": "Provider secrets and minimum-payload HTTP client boundary." },
     { "taskId": "V1-06", "scope": "Provider callback authentication, strict payload minimization, job binding, replay idempotency, and safe audit boundary." },
+    { "taskId": "V1-07", "scope": "Provider status polling projection, retry scheduling, timeout recovery, worker isolation, and safe audit boundary." },
     { "taskId": "V1-48", "scope": "OAuth scopes, identifiers, unlink, region, and session evidence." },
     { "taskId": "V1-49", "scope": "PostgreSQL migration, encrypted backup, expiry, restore, and deletion rehearsal." },
     { "taskId": "V1-50", "scope": "Object storage/CDN private access and lifecycle deletion." },

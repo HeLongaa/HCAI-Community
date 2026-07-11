@@ -1,9 +1,13 @@
 import { env } from './config/env.js'
+import { createProviderPollingStatusClients } from './creative/providerStatusClientRegistry.js'
 import { startWorkerJobs } from './operations/worker.js'
 import { createProductionWorkerJobDefinitions } from './operations/workerJobs.js'
 import { repositories } from './repositories/index.js'
 
-const worker = startWorkerJobs(createProductionWorkerJobDefinitions(repositories, env), {
+const providerStatusClients = createProviderPollingStatusClients()
+const worker = startWorkerJobs(createProductionWorkerJobDefinitions(repositories, env, {
+  providerStatusClients,
+}), {
   logger: console,
   leaseManager: repositories.operationLeases,
   unrefTimers: false,

@@ -67,3 +67,41 @@ test('seed creative generation repository records lifecycle and output assets', 
     }
   }
 })
+
+test('seed creative generation repository lists oldest polling candidates first', async () => {
+  const repository = createSeedRepository()
+  const prefix = `gen-polling-order-${Date.now()}`
+  const create = (suffix, status, createdAt) => repository.creativeGenerations.create({
+    id: `${prefix}-${suffix}`,
+    actorId: actor.id,
+    actorHandle: actor.handle,
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'replicate',
+    providerMode: 'replicate_staging',
+    providerJobId: `${prefix}-${suffix}-prediction`,
+    status,
+    promptHash: 'b'.repeat(64),
+    promptPreview: 'Polling order test',
+    inputAssetIds: [],
+    parameterKeys: [],
+    createdAt,
+  }, actor)
+
+  await create('newest', 'queued', '2026-07-11T10:02:00.000Z')
+  await create('oldest', 'running', '2026-07-11T10:00:00.000Z')
+  await create('terminal', 'completed', '2026-07-11T09:59:00.000Z')
+  await create('middle', 'queued', '2026-07-11T10:01:00.000Z')
+
+  const listed = await repository.creativeGenerations.listPollingCandidates({
+    statuses: ['queued', 'running'],
+    providerMode: 'replicate_staging',
+    providerIds: ['replicate'],
+    limit: 2,
+  })
+
+  assert.deepEqual(listed.items.map((item) => item.id), [
+    `${prefix}-oldest`,
+    `${prefix}-middle`,
+  ])
+})

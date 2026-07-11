@@ -1,5 +1,6 @@
 import { HttpError } from '../common/errors/httpError.js'
 import { buildCreativeProviderConfig } from '../config/env.js'
+import { parseReplicateCallbackPayload } from './replicateCallbackPayload.js'
 
 const requestBodyMaxBytes = 64 * 1024
 const responseBodyMaxBytes = 1024 * 1024
@@ -7,6 +8,19 @@ const requestTimeoutMs = 10_000
 const secretKeyPattern = /(api[_-]?key|authorization|bearer|credential|password|private[_-]?key|secret|token)/i
 const secretValuePattern = /\bBearer\s+\S+|\bsk-[A-Za-z0-9_-]{8,}|\b(api[_-]?key|token|secret|password)\s*[:=]\s*\S+/i
 const safeStylePresetPattern = /^[a-z0-9][a-z0-9_-]{0,63}$/i
+const safeProviderJobIdPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
+const replicateResponseProjectionKeys = Object.freeze([
+  'id',
+  'status',
+  'output',
+  'error',
+  'logs',
+  'metrics',
+  'created_at',
+  'started_at',
+  'completed_at',
+  'cost_usd',
+])
 
 const providerDefinitions = {
   'replicate-staging': {
@@ -106,6 +120,52 @@ export const buildMinimumReplicatePredictionRequest = (payload) => {
   }
 }
 
+export const buildReplicatePredictionStatusRequest = (providerJobId) => {
+  const normalized = String(providerJobId ?? '').trim()
+  if (!safeProviderJobIdPattern.test(normalized)) {
+    throw validationError('Replicate prediction status requires a valid provider job id', { field: 'providerJobId' })
+  }
+  return {
+    method: 'GET',
+    pathname: `/predictions/${normalized}`,
+  }
+}
+
+const responseProjectionError = (providerId) =>
+  new HttpError(502, 'CREATIVE_PROVIDER_HTTP_RESPONSE_INVALID', 'Provider HTTP response failed the safe projection', {
+    providerId,
+    reason: 'projection_invalid',
+  })
+
+export const projectReplicatePredictionResponse = (payload, providerId = 'replicate-staging') => {
+  if (!isRecord(payload)) {
+    throw responseProjectionError(providerId)
+  }
+  const projected = Object.fromEntries(replicateResponseProjectionKeys
+    .filter((key) => Object.hasOwn(payload, key))
+    .map((key) => [key, payload[key]]))
+
+  let parsed
+  try {
+    parsed = parseReplicateCallbackPayload(projected)
+  } catch {
+    throw responseProjectionError(providerId)
+  }
+
+  return {
+    id: parsed.id,
+    status: parsed.status,
+    ...(parsed.output.length > 0 ? { output: parsed.output } : {}),
+    ...(parsed.error != null ? { error: parsed.error } : {}),
+    ...(parsed.logs != null ? { logs: parsed.logs } : {}),
+    ...(parsed.metrics != null ? { metrics: parsed.metrics } : {}),
+    ...(parsed.created_at != null ? { created_at: parsed.created_at } : {}),
+    ...(parsed.started_at != null ? { started_at: parsed.started_at } : {}),
+    ...(parsed.completed_at != null ? { completed_at: parsed.completed_at } : {}),
+    ...(parsed.costUsd != null ? { costUsd: parsed.costUsd } : {}),
+  }
+}
+
 const readBoundedResponseText = async (response, providerId) => {
   const contentLength = Number.parseInt(response.headers?.get?.('content-length') ?? '', 10)
   if (Number.isFinite(contentLength) && contentLength > responseBodyMaxBytes) {
@@ -139,11 +199,26 @@ const readProviderResponse = async (response, providerId) => {
   const text = await readBoundedResponseText(response, providerId)
   if (!response.ok) {
     const rateLimited = response.status === 429
+    const missing = response.status === 404
+    const timedOut = response.status === 408 || response.status === 504
+    const retryable = rateLimited || timedOut || response.status >= 500
     throw new HttpError(
-      rateLimited ? 429 : 502,
-      rateLimited ? 'CREATIVE_PROVIDER_RATE_LIMITED' : 'CREATIVE_PROVIDER_HTTP_FAILED',
-      rateLimited ? 'Creative Provider rate limit reached' : 'Creative Provider HTTP request failed',
-      { providerId, providerStatus: response.status },
+      rateLimited ? 429 : missing ? 404 : timedOut ? 504 : 502,
+      rateLimited
+        ? 'CREATIVE_PROVIDER_RATE_LIMITED'
+        : missing
+          ? 'CREATIVE_PROVIDER_JOB_NOT_FOUND'
+          : timedOut
+            ? 'CREATIVE_PROVIDER_TIMEOUT'
+            : 'CREATIVE_PROVIDER_HTTP_FAILED',
+      rateLimited
+        ? 'Creative Provider rate limit reached'
+        : missing
+          ? 'Creative Provider job was not found'
+          : timedOut
+            ? 'Creative Provider status request timed out'
+            : 'Creative Provider HTTP request failed',
+      { providerId, providerStatus: response.status, retryable },
     )
   }
   try {
@@ -194,12 +269,14 @@ export const createCreativeProviderHttpClient = ({
         body: serializedBody,
         signal: AbortSignal.timeout(requestTimeoutMs),
       })
-      return await readProviderResponse(response, normalizedProviderId)
+      const payload = await readProviderResponse(response, normalizedProviderId)
+      return projectReplicatePredictionResponse(payload, normalizedProviderId)
     } catch (error) {
       if (error instanceof HttpError) throw error
       throw new HttpError(502, 'CREATIVE_PROVIDER_HTTP_FAILED', 'Creative Provider HTTP request failed', {
         providerId: normalizedProviderId,
         reason: 'network_error',
+        retryable: true,
       })
     }
   }
@@ -207,5 +284,14 @@ export const createCreativeProviderHttpClient = ({
   return Object.freeze({
     providerId: normalizedProviderId,
     createPrediction: async (payload) => requestJson(buildMinimumReplicatePredictionRequest(payload)),
+    getPrediction: async (providerJobId) => requestJson(buildReplicatePredictionStatusRequest(providerJobId)),
+  })
+}
+
+export const createCreativeProviderStatusClient = (options = {}) => {
+  const client = createCreativeProviderHttpClient(options)
+  return Object.freeze({
+    providerId: client.providerId,
+    getPrediction: client.getPrediction,
   })
 }

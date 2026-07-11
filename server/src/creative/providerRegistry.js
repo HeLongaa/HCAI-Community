@@ -91,6 +91,11 @@ const buildReplicateStagingProvider = (configProvider, config) => ({
     networkCallsEnabled: configProvider.networkCallsEnabled,
     callbackImplemented: config.callback.implemented,
     callbackEnabled: config.callback.enabled,
+    pollingImplemented: config.polling.implemented,
+    pollingEnabled: config.polling.enabled,
+    pollingWorkerEnabled: config.polling.workerEnabled,
+    statusClientImplemented: config.polling.statusClientImplemented,
+    statusClientEnabled: config.polling.statusClientEnabled,
   },
 })
 
