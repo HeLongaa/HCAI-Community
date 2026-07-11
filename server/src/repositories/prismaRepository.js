@@ -797,21 +797,27 @@ const createPrismaRepository = async (fallbackRepository) => {
     return createNotificationsForUsers(db, users, payload)
   }
 
-  const providerLifecycleRecipientUsers = async (db, actor, payload = {}) => {
+  const providerLifecycleRecipientUsers = async (db, actor, payload = {}, notificationPayload = null) => {
+    const audience = notificationPayload?.metadata?.audience
+    const includeOwner = audience === 'owner' || audience === 'owner_and_operations'
+    const includeOperations = audience === 'operations' || audience === 'owner_and_operations'
     const [owner, auditReaders] = await Promise.all([
-      payload.actorHandle
+      includeOwner && payload.actorHandle
         ? db.user.findFirst({ where: { profile: { handle: payload.actorHandle } }, include: { profile: true } })
         : null,
-      findUsersByPermissions(db, ['admin:audit:read'], {
-        excludeHandle: actor?.handle ?? null,
-      }),
+      includeOperations
+        ? findUsersByPermissions(db, ['admin:audit:read'], {
+          excludeHandle: actor?.handle ?? null,
+        })
+        : [],
     ])
     return [...new Map([owner, ...auditReaders].filter(Boolean).map((user) => [user.id, user])).values()]
   }
 
   const createProviderLifecycleNotifications = async (payload = {}, actor = null, db = client) => {
     const notificationPayload = buildProviderLifecycleNotificationPayload(payload)
-    const recipients = await providerLifecycleRecipientUsers(db, actor, payload)
+    if (!notificationPayload) return []
+    const recipients = await providerLifecycleRecipientUsers(db, actor, payload, notificationPayload)
     if (recipients.length === 0) {
       return []
     }
@@ -842,7 +848,16 @@ const createPrismaRepository = async (fallbackRepository) => {
       take: 25,
     })
     const existingEvent = existing.find((event) => hasProviderLifecycleSourceKey(event, auditPayload.metadata.sourceKey))
+    const ensureOperationalNotification = () => {
+      if (payload.action === 'creative.provider_lifecycle.side_effect_applied') return Promise.resolve([])
+      return createProviderLifecycleNotifications({
+        ...payload,
+        sourceKey: `${payload.sourceKey}:notification`,
+        type: payload.action,
+      }, actor, db)
+    }
     if (existingEvent) {
+      await ensureOperationalNotification()
       return serializeAuditEvent(existingEvent)
     }
     const row = await db.auditEvent.create({
@@ -855,6 +870,7 @@ const createPrismaRepository = async (fallbackRepository) => {
         metadata: auditPayload.metadata,
       }),
     })
+    await ensureOperationalNotification()
     return serializeAuditEvent(row)
   }
 
@@ -4466,6 +4482,17 @@ const createPrismaRepository = async (fallbackRepository) => {
           mediaAssetId: row.mediaAssetId,
         },
       })
+      await createProviderLifecycleNotifications({
+        sourceKey: `creative-provider-output-ingestion:${row.id}:${row.status}:${row.errorCode ?? 'none'}`,
+        generationId: row.generationId,
+        type: `creative.output_ingestion.${row.status}`,
+        metadata: {
+          providerId: row.providerId,
+          sourceType: 'output_ingestion',
+          nextStatus: row.status,
+          errorCode: row.errorCode,
+        },
+      }, actor)
       return getCreativeOutputIngestionDto(row)
     },
   }
@@ -5072,7 +5099,20 @@ const createPrismaRepository = async (fallbackRepository) => {
     },
     record: async (payload, actor) => {
       const current = await client.creativeProviderRetryState.findUnique({ where: { sourceKey: String(payload.sourceKey) } })
+      const ensureRetryNotification = (state) => createProviderLifecycleNotifications({
+        sourceKey: `creative-provider-retry:${state.id}:${state.status}:${state.version}`,
+        generationId: state.generationId,
+        type: `creative.provider_retry.${state.status}`,
+        metadata: {
+          providerId: state.providerId,
+          sourceType: 'retry',
+          nextStatus: state.status,
+          errorCode: state.lastErrorCode,
+          reasonCode: state.lastErrorCategory,
+        },
+      }, actor)
       if (current?.lastFailureKeyHash === payload.lastFailureKeyHash) {
+        await ensureRetryNotification(getCreativeProviderRetryStateDto(current))
         return { changed: false, duplicate: true, state: getCreativeProviderRetryStateDto(current) }
       }
       if (current && Number(payload.expectedVersion) !== current.version) throw providerRetryConflict('retry_version_mismatch')
@@ -5105,7 +5145,9 @@ const createPrismaRepository = async (fallbackRepository) => {
           if (error?.code !== 'P2002') throw error
           const duplicate = await client.creativeProviderRetryState.findUnique({ where: { sourceKey: String(payload.sourceKey) } })
           if (duplicate?.lastFailureKeyHash === payload.lastFailureKeyHash) {
-            return { changed: false, duplicate: true, state: getCreativeProviderRetryStateDto(duplicate) }
+            const state = getCreativeProviderRetryStateDto(duplicate)
+            await ensureRetryNotification(state)
+            return { changed: false, duplicate: true, state }
           }
           throw providerRetryConflict('retry_concurrent_create')
         }
@@ -5151,6 +5193,7 @@ const createPrismaRepository = async (fallbackRepository) => {
           version: state.version,
         },
       })
+      await ensureRetryNotification(state)
       return { changed: true, duplicate: false, state }
     },
     clear: async (sourceKey, payload = {}, actor) => {
@@ -7139,6 +7182,11 @@ const createPrismaRepository = async (fallbackRepository) => {
               metadata: {
                 path: ['status'],
                 equals: 'failed',
+              },
+            } : definition.metadataFilter ? {
+              metadata: {
+                path: [definition.metadataFilter.key],
+                equals: definition.metadataFilter.value,
               },
             } : {}),
           },

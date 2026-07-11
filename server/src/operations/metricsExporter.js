@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto'
 
 import { parseBearerToken } from '../common/http/auth.js'
+import { providerLifecycleEventCatalog } from '../creative/providerLifecycleEventCatalog.js'
 
 const allowedLabelPattern = /^[a-z][a-z0-9_.:-]{0,63}$/
 
@@ -50,6 +51,33 @@ const providerErrorCategoryValues = [
   'content_policy',
   'user_cancelled',
   'local_dependency',
+  'unknown',
+]
+
+const providerLifecycleEventValues = Object.keys(providerLifecycleEventCatalog)
+const providerLifecycleFamilyValues = [
+  'generation_lifecycle',
+  'callback',
+  'polling',
+  'retry',
+  'replay',
+  'output_ingestion',
+  'unknown',
+]
+const providerLifecycleStatusValues = [
+  'queued',
+  'running',
+  'completed',
+  'failed',
+  'cancelled',
+  'review_required',
+  'scheduled',
+  'exhausted',
+  'cleared',
+  'pending',
+  'claimed',
+  'accepted',
+  'rejected',
   'unknown',
 ]
 
@@ -211,6 +239,18 @@ const addProviderRetryMetrics = (lines, retry = {}) => {
   addCountBy(lines, 'newchat_creative_provider_retry_by_delay_source_total', 'Windowed creative provider retry events by delay source.', retry.byDelaySource, 'source', ['retry_after', 'exponential', 'unknown'])
 }
 
+const addProviderLifecycleMetrics = (lines, lifecycle = {}) => {
+  addGauge(lines, 'newchat_creative_provider_lifecycle_events_total', 'Windowed creative provider lifecycle event count.', lifecycle.total)
+  addCountBy(lines, 'newchat_creative_provider_lifecycle_by_event_total', 'Windowed creative provider lifecycle count by event.', lifecycle.byEvent, 'event', providerLifecycleEventValues)
+  addCountBy(lines, 'newchat_creative_provider_lifecycle_by_family_total', 'Windowed creative provider lifecycle count by fact family.', lifecycle.byFamily, 'family', providerLifecycleFamilyValues)
+  addCountBy(lines, 'newchat_creative_provider_lifecycle_by_status_total', 'Windowed creative provider lifecycle count by status.', lifecycle.byStatus, 'status', providerLifecycleStatusValues)
+  addCountBy(lines, 'newchat_creative_provider_lifecycle_by_source_total', 'Windowed creative provider lifecycle count by source type.', lifecycle.bySourceType, 'source', ['webhook', 'polling', 'fixture', 'worker', 'manual', 'retry', 'output_ingestion', 'unknown'])
+  addCountBy(lines, 'newchat_creative_provider_lifecycle_by_provider_total', 'Windowed creative provider lifecycle count by provider.', lifecycle.byProvider, 'provider')
+  addCountBy(lines, 'newchat_creative_provider_lifecycle_by_workspace_total', 'Windowed creative provider lifecycle count by workspace.', lifecycle.byWorkspace, 'workspace', ['image', 'video', 'music', 'chat', 'unknown'])
+  addCountBy(lines, 'newchat_creative_provider_lifecycle_by_severity_total', 'Windowed creative provider lifecycle count by severity.', lifecycle.bySeverity, 'severity', ['info', 'warning', 'error', 'critical', 'unknown'])
+  addCountBy(lines, 'newchat_creative_provider_lifecycle_by_category_total', 'Windowed creative provider lifecycle count by error category.', lifecycle.byCategory, 'category', providerErrorCategoryValues)
+}
+
 const deliveryMetrics = (lines, prefix, summary = {}) => {
   addGauge(lines, `${prefix}_total`, 'Windowed delivery failure count.', summary.total)
   addCountBy(lines, `${prefix}_by_channel_total`, 'Windowed delivery failure count by channel.', summary.byChannel, 'channel', ['webhook', 'slack', 'email', 'unknown'])
@@ -245,6 +285,7 @@ export const buildPrometheusMetrics = (metrics = {}) => {
   addProviderBudgetMetrics(lines, metrics.creativeProviderBudget)
   addProviderControlMetrics(lines, metrics.creativeProviderControl)
   addProviderRetryMetrics(lines, metrics.creativeProviderRetry)
+  addProviderLifecycleMetrics(lines, metrics.creativeProviderLifecycle)
   lines.push('')
   return lines.join('\n')
 }

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 
+import { providerLifecycleEventFor } from '../creative/providerLifecycleEventCatalog.js'
 import { securityAlertDispositionActions } from '../security/alertPolicy.js'
 
 const DEFAULT_WINDOW_MINUTES = 60
@@ -41,6 +42,12 @@ const safeEvidenceIdentifier = (value, fallback = 'unknown') => {
   return safeEvidencePattern.test(normalized)
     ? normalized
     : `redacted_${stableHash(value).slice(0, 16)}`
+}
+
+const metricDimension = (value, allowedValues = null) => {
+  const normalized = String(value ?? '').trim().toLowerCase() || 'unknown'
+  if (allowedValues && !allowedValues.includes(normalized)) return 'other'
+  return safeEvidencePattern.test(normalized) ? normalized : 'other'
 }
 
 const metricCount = (items, key) => items.find((item) => item.key === key)?.count ?? 0
@@ -183,6 +190,70 @@ const providerRetrySummary = (events) => ({
   byDelaySource: countBy(events, (event) => safeEvidenceIdentifier(asObject(event.metadata).delaySource)),
   latestAt: latestTimestamp(events),
 })
+
+const providerLifecycleMetricFamilies = new Set([
+  'generation_lifecycle',
+  'callback',
+  'polling',
+  'retry',
+  'replay',
+  'output_ingestion',
+])
+
+const providerLifecycleEventName = (event) => {
+  const metadata = asObject(event.metadata)
+  if (event.action === 'creative.provider_lifecycle.side_effect_applied') {
+    return metadata.lifecycleEvent ?? `creative.provider_lifecycle.${metadata.nextStatus ?? 'updated'}`
+  }
+  if (event.action === 'creative.output_ingestion.updated') {
+    return `creative.output_ingestion.${metadata.ingestionStatus ?? 'updated'}`
+  }
+  return event.action
+}
+
+const providerLifecycleMetricProjection = (event) => {
+  const eventName = providerLifecycleEventName(event)
+  const definition = providerLifecycleEventFor(eventName)
+  if (!definition || !providerLifecycleMetricFamilies.has(definition.family)) return null
+  const metadata = asObject(event.metadata)
+  return {
+    event: definition.event,
+    family: definition.family,
+    status: metadata.nextStatus ?? metadata.ingestionStatus ?? metadata.status ?? metadata.providerStatus ?? 'unknown',
+    sourceType: metadata.sourceType ?? 'unknown',
+    providerId: metadata.providerId ?? 'unknown',
+    workspace: metadata.workspace ?? 'unknown',
+    severity: definition.severity,
+    category: metadata.errorCategory ?? metadata.category ?? 'unknown',
+  }
+}
+
+const providerLifecycleSummary = (events) => {
+  const projected = events.map(providerLifecycleMetricProjection).filter(Boolean)
+  return {
+    total: projected.length,
+    byEvent: countBy(projected, (event) => event.event),
+    byFamily: countBy(projected, (event) => event.family),
+    byStatus: countBy(projected, (event) => metricDimension(event.status, [
+      'queued', 'running', 'completed', 'failed', 'cancelled', 'review_required',
+      'scheduled', 'exhausted', 'cleared', 'pending', 'claimed', 'accepted', 'rejected', 'unknown',
+    ])),
+    bySourceType: countBy(projected, (event) => metricDimension(event.sourceType, [
+      'webhook', 'polling', 'fixture', 'worker', 'manual', 'retry', 'output_ingestion', 'unknown',
+    ])),
+    byProvider: countBy(projected, (event) => metricDimension(event.providerId)),
+    byWorkspace: countBy(projected, (event) => metricDimension(event.workspace, [
+      'image', 'video', 'music', 'chat', 'unknown',
+    ])),
+    bySeverity: countBy(projected, (event) => event.severity),
+    byCategory: countBy(projected, (event) => metricDimension(event.category, [
+      'rate_limit', 'timeout', 'provider_5xx', 'provider_incident', 'provider_rejected',
+      'auth_configuration', 'invalid_request', 'content_policy', 'user_cancelled',
+      'local_dependency', 'unknown',
+    ])),
+    latestAt: latestTimestamp(events.filter((event) => providerLifecycleMetricProjection(event))),
+  }
+}
 
 const providerAlertDispatchBreakdown = (events = []) => ({
   total: events.length,
@@ -344,6 +415,25 @@ export const operationsMetricsSampleDefinitions = {
     resourceType: 'creative_provider_cost_ledger',
     failedOnly: false,
   },
+  creativeProviderRetryExhaustions: {
+    title: 'Creative provider retry exhaustion records',
+    action: 'creative.provider_retry.exhausted',
+    resourceType: 'creative_provider_retry_state',
+    failedOnly: false,
+  },
+  creativeProviderPollingTimeouts: {
+    title: 'Creative provider polling timeout records',
+    action: 'creative.provider_polling.timed_out',
+    resourceType: 'creative_generation',
+    failedOnly: false,
+  },
+  creativeProviderOutputIngestionFailures: {
+    title: 'Creative provider output ingestion failure records',
+    action: 'creative.output_ingestion.updated',
+    resourceType: 'creative_output_ingestion',
+    failedOnly: false,
+    metadataFilter: { key: 'ingestionStatus', value: 'failed' },
+  },
 }
 
 const providerBudgetSampleKeys = new Set([
@@ -352,6 +442,12 @@ const providerBudgetSampleKeys = new Set([
   'creativeProviderCostAnomalies',
   'creativeProviderAlertDispatches',
   'creativeProviderCostReconciliations',
+])
+
+const providerLifecycleSampleKeys = new Set([
+  'creativeProviderRetryExhaustions',
+  'creativeProviderPollingTimeouts',
+  'creativeProviderOutputIngestionFailures',
 ])
 
 const compactObject = (value) =>
@@ -391,18 +487,53 @@ const safeProviderBudgetSampleEvent = (event) => compactObject({
   createdAt: event?.createdAt ?? null,
 })
 
+const safeProviderLifecycleSampleMetadata = (metadata) => {
+  const source = asObject(metadata)
+  return compactObject({
+    generationId: safeEvidenceIdentifier(source.generationId, null),
+    providerId: safeEvidenceIdentifier(source.providerId, null),
+    workspace: safeEvidenceIdentifier(source.workspace, null),
+    sourceType: safeEvidenceIdentifier(source.sourceType, null),
+    lifecycleEvent: safeEvidenceIdentifier(source.lifecycleEvent, null),
+    nextStatus: safeEvidenceIdentifier(source.nextStatus, null),
+    providerStatus: safeEvidenceIdentifier(source.providerStatus, null),
+    ingestionStatus: safeEvidenceIdentifier(source.ingestionStatus, null),
+    operationType: safeEvidenceIdentifier(source.operationType, null),
+    errorCode: safeEvidenceIdentifier(source.errorCode, null),
+    errorCategory: safeEvidenceIdentifier(source.errorCategory, null),
+    reasonCode: safeEvidenceIdentifier(source.reasonCode, null),
+    severity: safeEvidenceIdentifier(source.severity, null),
+    audience: safeEvidenceIdentifier(source.audience, null),
+    attempt: source.attempt,
+    maxAttempts: source.maxAttempts,
+    version: source.version,
+  })
+}
+
+const safeProviderLifecycleSampleEvent = (event) => compactObject({
+  id: safeEvidenceIdentifier(event?.id, null),
+  action: providerLifecycleEventName(event),
+  resourceType: event?.resourceType,
+  resourceId: safeEvidenceIdentifier(event?.resourceId, null),
+  metadata: safeProviderLifecycleSampleMetadata(event?.metadata),
+  createdAt: event?.createdAt ?? null,
+})
+
 export const buildOperationsMetricSamples = (sampleEventsByKey = {}) => Object.fromEntries(
   Object.entries(operationsMetricsSampleDefinitions).map(([key, definition]) => {
     const events = sampleEventsByKey[key] ?? []
     const sampleEvents = providerBudgetSampleKeys.has(key)
       ? events.map((event) => safeProviderBudgetSampleEvent(event))
-      : events
+      : providerLifecycleSampleKeys.has(key)
+        ? events.map((event) => safeProviderLifecycleSampleEvent(event))
+        : events
     return [key, {
       title: definition.title,
       query: {
         action: definition.action,
         resourceType: definition.resourceType,
         failedOnly: definition.failedOnly,
+        metadataFilter: definition.metadataFilter ?? null,
       },
       count: events.length,
       events: sampleEvents,
@@ -421,6 +552,12 @@ export const buildOperationsHandoff = (metrics) => {
     .filter((item) => Number(item.key) >= 100)
     .reduce((total, item) => total + item.count, 0)
   const providerCurrencyMismatches = metricCount(metrics.creativeProviderBudget.costAnomalies.byReason, 'currency_mismatch')
+  const providerLifecycleEvents = metrics.creativeProviderLifecycle ?? {}
+  const providerLifecycleEventCounts = new Map((providerLifecycleEvents.byEvent ?? []).map((item) => [item.key, item.count]))
+  const providerRetryExhaustions = providerLifecycleEventCounts.get('creative.provider_retry.exhausted') ?? 0
+  const providerPollingTimeouts = providerLifecycleEventCounts.get('creative.provider_polling.timed_out') ?? 0
+  const providerIngestionFailures = providerLifecycleEventCounts.get('creative.output_ingestion.failed') ?? 0
+  const providerReconciliations = metrics.creativeProviderBudget.costLedger.reconciliationRequired
   const archiveCandidates = metrics.mediaScan.archiveCandidates.total
   const archiveWrites = metrics.mediaScan.archiveWrites.total
   const prunedJobs = metrics.mediaScan.historyPruned.jobs
@@ -502,6 +639,47 @@ export const buildOperationsHandoff = (metrics) => {
         'Do not settle provider cost accounting until the expected and actual currency match.',
       ],
       auditFilter: { action: providerBudgetEventActions.anomaly, resourceType: 'creative_provider_budget' },
+    }] : []),
+    ...(providerRetryExhaustions > 0 ? [{
+      id: 'provider-retry-exhausted',
+      severity: 'critical',
+      title: 'Provider retry budget exhausted',
+      reason: `${providerRetryExhaustions} provider retry exhaustion event(s) were recorded.`,
+      recommendedActions: [
+        'Review retry exhaustion samples by operation and error category.',
+        'Keep automatic Provider traffic disabled until the underlying failure is understood.',
+      ],
+      auditFilter: { action: 'creative.provider_retry.exhausted', resourceType: 'creative_provider_retry_state' },
+    }] : []),
+    ...(providerPollingTimeouts > 0 ? [{
+      id: 'provider-polling-timeout',
+      severity: 'critical',
+      title: 'Provider polling timed out',
+      reason: `${providerPollingTimeouts} provider polling timeout event(s) were recorded.`,
+      recommendedActions: [
+        'Review polling timeout samples and durable retry state before replay.',
+      ],
+      auditFilter: { action: 'creative.provider_polling.timed_out', resourceType: 'creative_generation' },
+    }] : []),
+    ...(providerIngestionFailures > 0 ? [{
+      id: 'provider-output-ingestion-failed',
+      severity: 'critical',
+      title: 'Provider output ingestion failed',
+      reason: `${providerIngestionFailures} provider output ingestion failure event(s) were recorded.`,
+      recommendedActions: [
+        'Inspect ingestion failure evidence and storage/media scan readiness before retry.',
+      ],
+      auditFilter: { action: 'creative.output_ingestion.updated', resourceType: 'creative_output_ingestion' },
+    }] : []),
+    ...(providerReconciliations > 0 ? [{
+      id: 'provider-cost-reconciliation-required',
+      severity: 'warning',
+      title: 'Provider cost reconciliation required',
+      reason: `${providerReconciliations} provider cost reconciliation record(s) need review.`,
+      recommendedActions: [
+        'Open reconciliation samples and compare bounded cost evidence before closeout.',
+      ],
+      auditFilter: { action: 'creative.provider_cost.reconciliation_required', resourceType: 'creative_provider_cost_ledger' },
     }] : []),
     ...(archiveCandidates > 0 ? [{
       id: 'scan-archive-candidates',
@@ -622,6 +800,7 @@ export const buildOperationsMetrics = ({
   const providerControlEvents = windowAuditEvents.filter(isProviderControlEvent)
   const providerRetryEvents = windowAuditEvents.filter((event) =>
     event.resourceType === 'creative_provider_retry_state' && event.action.startsWith('creative.provider_retry.'))
+  const providerLifecycleEvents = windowAuditEvents.filter((event) => providerLifecycleMetricProjection(event))
   const acknowledgements = securityDispositions.filter((event) => event.action === 'security.alert.acknowledged')
 
   return {
@@ -705,5 +884,6 @@ export const buildOperationsMetrics = ({
     }),
     creativeProviderControl: providerControlSummary(providerControlEvents, until),
     creativeProviderRetry: providerRetrySummary(providerRetryEvents),
+    creativeProviderLifecycle: providerLifecycleSummary(providerLifecycleEvents),
   }
 }

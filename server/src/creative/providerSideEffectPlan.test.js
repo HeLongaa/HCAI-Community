@@ -234,6 +234,35 @@ test('buildProviderSideEffectPlan returns no operations for duplicate no-op repl
   assert.deepEqual(plan.pendingOperations, [])
 })
 
+test('buildProviderSideEffectPlan records running lifecycle facts without notifying users', () => {
+  const replay = lifecycleReplay({
+    idempotencyKey: 'replicate:prediction-side-effects-1:running:no-output',
+    generation: { status: 'running', outputs: [] },
+    previousStatus: 'queued',
+    nextStatus: 'running',
+    ignored: false,
+    actions: {
+      markRunning: true,
+      complete: false,
+      fail: false,
+      cancel: false,
+      persistOutputs: false,
+      settleCredits: false,
+      refundCredits: false,
+      linkOutputAssets: false,
+    },
+  })
+  const plan = buildProviderSideEffectPlan({ replay })
+
+  assert.deepEqual(plan.operations.map((operation) => operation.type), [
+    'mark_running',
+    'audit_lifecycle',
+  ])
+  assert.equal(plan.operations.some((operation) => operation.type === 'notify_lifecycle'), false)
+  assert.equal(plan.operations.at(-1).metadata.audience, 'audit_only')
+  assert.equal(plan.operations.at(-1).metadata.lifecycleEvent, 'creative.provider_lifecycle.running')
+})
+
 test('executeProviderSideEffectPlan resumes after partial failure without duplicating completed operations', async () => {
   const replay = lifecycleReplay()
   const firstMocks = createMockRepositories({ failAt: 'creativeCredits.settle' })

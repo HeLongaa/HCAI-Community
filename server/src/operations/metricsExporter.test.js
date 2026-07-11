@@ -155,6 +155,20 @@ test('buildPrometheusMetrics renders safe Prometheus text without unsafe labels'
       byCategory: [{ key: 'rate_limit', count: 2 }, { key: 'secret-category', count: 1 }],
       byDelaySource: [{ key: 'retry_after', count: 1 }, { key: 'exponential', count: 1 }],
     },
+    creativeProviderLifecycle: {
+      total: 4,
+      byEvent: [
+        { key: 'creative.provider_retry.exhausted', count: 1 },
+        { key: 'token=secret-lifecycle-event', count: 1 },
+      ],
+      byFamily: [{ key: 'retry', count: 1 }, { key: 'secret-family', count: 1 }],
+      byStatus: [{ key: 'exhausted', count: 1 }, { key: 'secret-status', count: 1 }],
+      bySourceType: [{ key: 'polling', count: 2 }],
+      byProvider: [{ key: 'replicate', count: 3 }, { key: 'user@example.com', count: 1 }],
+      byWorkspace: [{ key: 'image', count: 4 }],
+      bySeverity: [{ key: 'error', count: 3 }, { key: 'secret-severity', count: 1 }],
+      byCategory: [{ key: 'timeout', count: 2 }, { key: 'secret-category', count: 1 }],
+    },
   })
 
   assert.match(body, /# TYPE newchat_security_events_window_total gauge/)
@@ -238,6 +252,15 @@ test('buildPrometheusMetrics renders safe Prometheus text without unsafe labels'
   assert.match(body, /newchat_creative_provider_retry_exhausted_total 1/)
   assert.match(body, /newchat_creative_provider_retry_by_operation_total\{operation="status_read"\} 3/)
   assert.match(body, /newchat_creative_provider_retry_by_category_total\{category="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_lifecycle_events_total 4/)
+  assert.match(body, /newchat_creative_provider_lifecycle_by_event_total\{event="creative.provider_retry.exhausted"\} 1/)
+  assert.match(body, /newchat_creative_provider_lifecycle_by_event_total\{event="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_lifecycle_by_family_total\{family="retry"\} 1/)
+  assert.match(body, /newchat_creative_provider_lifecycle_by_status_total\{status="exhausted"\} 1/)
+  assert.match(body, /newchat_creative_provider_lifecycle_by_source_total\{source="polling"\} 2/)
+  assert.match(body, /newchat_creative_provider_lifecycle_by_provider_total\{provider="replicate"\} 3/)
+  assert.match(body, /newchat_creative_provider_lifecycle_by_severity_total\{severity="error"\} 3/)
+  assert.match(body, /newchat_creative_provider_lifecycle_by_category_total\{category="timeout"\} 2/)
   assert.equal(body.includes('user@example.com'), false)
   assert.equal(body.includes('prompt-hash-123'), false)
   assert.equal(body.includes('provider_job_mismatch'), false)

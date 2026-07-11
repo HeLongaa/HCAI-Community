@@ -101,27 +101,27 @@ test('GET /api/notifications returns sanitized provider lifecycle evidence and d
 
     assert.equal(ownerInbox.status, 200)
     assert.equal(adminInbox.status, 200)
-    for (const inbox of [ownerInbox, adminInbox]) {
-      const notification = inbox.payload.data.find((item) => item.metadata.sourceKey === first[0].metadata.sourceKey)
-      assert.ok(notification)
-      assert.equal(notification.type, 'creative.provider_lifecycle.completed')
-      assert.match(notification.resourceId, /^redacted_[a-f0-9]{16}$/)
-      assert.match(notification.metadata.sourceKey, /^redacted_[a-f0-9]{16}$/)
-      assert.match(notification.metadata.generationId, /^redacted_[a-f0-9]{16}$/)
-      assert.match(notification.metadata.providerId, /^redacted_[a-f0-9]{16}$/)
-      assert.match(notification.metadata.providerMode, /^redacted_[a-f0-9]{16}$/)
-      assert.match(notification.metadata.providerJobId, /^redacted_[a-f0-9]{16}$/)
-      assert.match(notification.metadata.sourceType, /^redacted_[a-f0-9]{16}$/)
-      assert.equal(notification.metadata.nextStatus, 'completed')
-      assert.equal(notification.metadata.target.admin.generationId, notification.resourceId)
-      assert.equal(notification.metadata.target.admin.auditSourceKey, notification.metadata.sourceKey)
+    const notification = ownerInbox.payload.data.find((item) => item.metadata.sourceKey === first[0].metadata.sourceKey)
+    assert.ok(notification)
+    assert.equal(notification.type, 'creative.provider_lifecycle.completed')
+    assert.match(notification.resourceId, /^redacted_[a-f0-9]{16}$/)
+    assert.match(notification.metadata.sourceKey, /^redacted_[a-f0-9]{16}$/)
+    assert.match(notification.metadata.generationId, /^redacted_[a-f0-9]{16}$/)
+    assert.match(notification.metadata.providerId, /^redacted_[a-f0-9]{16}$/)
+    assert.match(notification.metadata.providerMode, /^redacted_[a-f0-9]{16}$/)
+    assert.match(notification.metadata.providerJobId, /^redacted_[a-f0-9]{16}$/)
+    assert.match(notification.metadata.sourceType, /^redacted_[a-f0-9]{16}$/)
+    assert.equal(notification.metadata.nextStatus, 'completed')
+    assert.equal(notification.metadata.audience, 'owner')
+    assert.equal(notification.metadata.target.admin.generationId, notification.resourceId)
+    assert.equal(notification.metadata.target.admin.auditSourceKey, notification.metadata.sourceKey)
+    assert.equal(adminInbox.payload.data.some((item) => item.metadata.sourceKey === first[0].metadata.sourceKey), false)
 
-      const serialized = JSON.stringify(notification)
-      for (const unsafe of Object.values(unsafeValues)) {
-        assert.equal(serialized.includes(unsafe), false)
-      }
-      assert.equal(serialized.includes('provider.example'), false)
+    const serialized = JSON.stringify(notification)
+    for (const unsafe of Object.values(unsafeValues)) {
+      assert.equal(serialized.includes(unsafe), false)
     }
+    assert.equal(serialized.includes('provider.example'), false)
   } finally {
     await server.close()
   }

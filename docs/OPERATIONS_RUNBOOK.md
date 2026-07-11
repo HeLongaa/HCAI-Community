@@ -246,6 +246,8 @@ Creative provider budget and spend signals:
 
 Creative provider exporter labels are derived from Admin operations metrics, not raw provider payloads. Provider job ids, generation ids, prompt hashes, media asset ids, raw URLs, raw error text, model versions, and tokens must not appear in labels.
 
+V1-13 adds `newchat_creative_provider_lifecycle_*` metrics for bounded event, family, status, source, provider, workspace, severity, and category dimensions. Admin handoff exports include safe drill-down samples and remediation hints for retry exhaustion, polling timeout, output ingestion failure, and cost reconciliation. Do not add generation ids, Provider job ids, source keys, failure hashes, policy hashes, or URLs as labels.
+
 Admin workflow:
 
 - `admin_security_alert_ack_latency_ms`

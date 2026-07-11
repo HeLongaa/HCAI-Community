@@ -154,9 +154,9 @@ test('applyProviderReplayThroughLedger records executes and marks completed side
     type: 'creative.provider_lifecycle.completed',
     resourceType: 'creative_generation',
   })
-  assert.ok(auditReaderInbox.items.some((item) =>
+  assert.equal(auditReaderInbox.items.some((item) =>
     item.resourceId === replay.generation.id &&
-    item.metadata.sourceKey === notifyOperation.key))
+    item.metadata.sourceKey === notifyOperation.key), false)
 
   const lifecycleAudit = await repository.audit.list({
     action: 'creative.provider_lifecycle.side_effect_applied',

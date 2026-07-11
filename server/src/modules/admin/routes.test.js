@@ -12,6 +12,7 @@ import {
   providerCircuitScope,
 } from '../../creative/providerControlContract.js'
 import { repositories } from '../../repositories/index.js'
+import { safeProviderLifecycleEvidenceIdentifier } from '../../repositories/providerLifecycleWiring.js'
 import { createSeedRepository } from '../../repositories/seedRepository.js'
 import { registerMediaRoutes } from '../media/routes.js'
 import { registerCreativeRoutes } from '../creative/routes.js'
@@ -2308,6 +2309,92 @@ test('GET /api/admin/audit list, export, and detail sanitize provider lifecycle 
       assert.equal(event.metadata.auditAction, 'creative.provider_lifecycle.side_effect_applied')
       assert.equal(event.metadata.target.admin.generationId, event.resourceId)
       assert.equal(event.metadata.target.admin.auditSourceKey, event.metadata.sourceKey)
+    }
+
+    const serialized = JSON.stringify([listedEvent, exportedEvent, detail.payload.data])
+    for (const unsafe of Object.values(unsafeValues)) {
+      assert.equal(serialized.includes(unsafe), false)
+    }
+    assert.equal(serialized.includes('provider.example'), false)
+  } finally {
+    await server.close()
+  }
+})
+
+test('GET /api/admin/audit list, export, and detail allowlist Provider retry evidence', async () => {
+  const server = await createTestServer()
+  try {
+    const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
+    const unsafeValues = {
+      state: `https://provider.example/retries/${suffix}?token=state-secret`,
+      source: `https://provider.example/retry-source/${suffix}?token=source-secret`,
+      generation: `https://provider.example/generations/${suffix}?token=generation-secret`,
+      provider: 'replicate?token=provider-secret',
+      failureHash: 'a'.repeat(64),
+      policyHash: 'b'.repeat(64),
+    }
+    const recorded = await repositories.creativeProviderRetries.record({
+      id: unsafeValues.state,
+      sourceKey: unsafeValues.source,
+      generationId: unsafeValues.generation,
+      providerId: unsafeValues.provider,
+      workspace: 'image',
+      operationType: 'status_read',
+      status: 'exhausted',
+      attempt: 5,
+      maxAttempts: 5,
+      firstAttemptAt: '2026-07-12T09:00:00.000Z',
+      lastAttemptAt: '2026-07-12T09:05:00.000Z',
+      nextAttemptAt: null,
+      lastFailureKeyHash: unsafeValues.failureHash,
+      lastErrorCode: 'PROVIDER_RATE_LIMITED',
+      lastErrorCategory: 'rate_limit',
+      delaySource: 'retry_after',
+      policyHash: unsafeValues.policyHash,
+      expectedVersion: 0,
+    })
+    const auditPage = await repositories.audit.list({
+      action: 'creative.provider_retry.exhausted',
+      resourceType: 'creative_provider_retry_state',
+      limit: 100,
+    })
+    const recordedEvent = auditPage.items.find((event) =>
+      event.resourceId === safeProviderLifecycleEvidenceIdentifier(recorded.state.id))
+    assert.ok(recordedEvent)
+
+    const list = await requestJson(
+      server.url,
+      '/api/admin/audit?action=creative.provider_retry.exhausted&resourceType=creative_provider_retry_state&limit=100',
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )
+    const listedEvent = list.payload.data.find((event) => event.id === recordedEvent.id)
+    const exported = await requestJson(
+      server.url,
+      '/api/admin/audit/export?action=creative.provider_retry.exhausted&resourceType=creative_provider_retry_state&limit=100',
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )
+    const exportedEvent = exported.payload.events.find((event) => event.id === recordedEvent.id)
+    const detail = await requestJson(server.url, `/api/admin/audit/${recordedEvent.id}`, {
+      method: 'GET',
+      token: 'demo-access.opsplus',
+    })
+
+    assert.equal(list.status, 200)
+    assert.equal(exported.status, 200)
+    assert.equal(detail.status, 200)
+    assert.ok(listedEvent)
+    assert.ok(exportedEvent)
+    for (const event of [listedEvent, exportedEvent, detail.payload.data]) {
+      assert.match(event.resourceId, /^redacted_[a-f0-9]{16}$/)
+      assert.match(event.metadata.generationId, /^redacted_[a-f0-9]{16}$/)
+      assert.match(event.metadata.providerId, /^redacted_[a-f0-9]{16}$/)
+      assert.equal(event.metadata.workspace, 'image')
+      assert.equal(event.metadata.operationType, 'status_read')
+      assert.equal(event.metadata.status, 'exhausted')
+      assert.equal(event.metadata.attempt, 5)
+      for (const key of ['sourceKey', 'lastFailureKeyHash', 'policyHash', 'outputUrl', 'rawError']) {
+        assert.equal(event.metadata[key], undefined)
+      }
     }
 
     const serialized = JSON.stringify([listedEvent, exportedEvent, detail.payload.data])

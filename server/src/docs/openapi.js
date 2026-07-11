@@ -2106,12 +2106,12 @@ export const openApiDocument = {
     },
     '/admin/operations/metrics': {
       get: {
-        summary: 'Return security and media operations metric aggregates',
+        summary: 'Return security, media, and Provider lifecycle operations metric aggregates',
         parameters: [
           { name: 'windowMinutes', in: 'query', schema: { type: 'integer', minimum: 5, maximum: 1440, default: 60 } },
         ],
         responses: {
-          '200': { description: 'Operations metrics summary for the requested time window' },
+          '200': { description: 'Operations metrics summary with low-cardinality Provider lifecycle, retry, budget, and control aggregates' },
           '400': { description: 'Invalid metrics window' },
           '403': { description: 'Requires audit read permission' },
         },
@@ -2124,7 +2124,7 @@ export const openApiDocument = {
           { name: 'windowMinutes', in: 'query', schema: { type: 'integer', minimum: 5, maximum: 1440, default: 60 } },
         ],
         responses: {
-          '200': { description: 'Operations metrics handoff artifact with samples and remediation hints' },
+          '200': { description: 'Operations metrics handoff artifact with safe Provider lifecycle samples, audit filters, and remediation hints' },
           '400': { description: 'Invalid metrics window' },
           '403': { description: 'Requires audit read permission' },
         },

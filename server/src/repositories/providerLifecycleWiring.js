@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import { safeProviderJobIdEvidence } from '../creative/generationRecords.js'
+import { providerLifecycleEventForPayload } from '../creative/providerLifecycleEventCatalog.js'
 
 const safeEvidencePattern = /^[a-z0-9][a-z0-9:._-]{0,240}$/i
 const safeLifecycleActionPattern = /^creative\.provider_(?:callback|lifecycle|polling|replay)\.[a-z0-9._-]+$/i
@@ -28,9 +29,10 @@ const safeLifecycleAction = (value, fallback) => {
   return normalized && safeLifecycleActionPattern.test(normalized) ? normalized : fallback
 }
 
-const safeLifecycleMetadata = ({ sourceKey, generationId, metadata = {} }) => {
+const safeLifecycleMetadata = ({ sourceKey, generationId, metadata = {}, ...payload }) => {
   const safeSourceKey = safeProviderLifecycleEvidenceIdentifier(sourceKey)
   const safeGenerationId = safeProviderLifecycleEvidenceIdentifier(generationId)
+  const lifecycleEvent = providerLifecycleEventForPayload({ ...payload, metadata })
   return compactObject({
     sourceKey: safeSourceKey,
     generationId: safeGenerationId,
@@ -56,7 +58,12 @@ const safeLifecycleMetadata = ({ sourceKey, generationId, metadata = {} }) => {
     hasTimestamp: metadata.hasTimestamp == null ? undefined : Boolean(metadata.hasTimestamp),
     hasSignature: metadata.hasSignature == null ? undefined : Boolean(metadata.hasSignature),
     hasNonce: metadata.hasNonce == null ? undefined : Boolean(metadata.hasNonce),
-    notificationType: safeLifecycleAction(metadata.notificationType, null),
+    lifecycleEvent: lifecycleEvent.event,
+    factFamily: lifecycleEvent.family,
+    audience: lifecycleEvent.audience,
+    severity: lifecycleEvent.severity,
+    handoffHint: lifecycleEvent.handoffHint,
+    notificationType: lifecycleEvent.notify ? lifecycleEvent.event : undefined,
     auditAction: safeLifecycleAction(metadata.auditAction, null),
     target: {
       page: 'admin',
@@ -70,10 +77,12 @@ const safeLifecycleMetadata = ({ sourceKey, generationId, metadata = {} }) => {
 }
 
 export const buildProviderLifecycleNotificationPayload = (payload = {}) => {
+  const lifecycleEvent = providerLifecycleEventForPayload(payload)
+  if (!lifecycleEvent.notify) return null
   const generationId = safeProviderLifecycleEvidenceIdentifier(payload.generationId, 'unknown_generation')
   const status = safeProviderLifecycleEvidenceIdentifier(payload.metadata?.nextStatus, 'updated')
   return {
-    type: safeLifecycleAction(payload.type ?? payload.metadata?.notificationType, `creative.provider_lifecycle.${status}`),
+    type: lifecycleEvent.event,
     title: `Creative generation ${statusLabel(status)}`,
     body: `Provider lifecycle replay updated generation ${generationId}.`,
     resourceType: 'creative_generation',

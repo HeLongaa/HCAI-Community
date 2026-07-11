@@ -110,6 +110,23 @@ test('buildProviderLifecycleReplay maps failure and cancellation to refund plans
   assert.equal(cancelled.actions.refundCredits, true)
 })
 
+test('buildProviderLifecycleReplay treats review required as a settled terminal result', () => {
+  const replay = buildProviderLifecycleReplay({
+    currentRecord: { id: 'gen-provider-replay', status: 'running', providerJobId: 'provider-job-1' },
+    generation: baseGeneration({ status: 'review_required', outputs: [{ url: 'mock://review-output.png' }] }),
+    providerId: 'replicate',
+    providerJobId: 'provider-job-1',
+    idempotencyKey: 'provider:job:review-required',
+  })
+
+  assert.equal(replay.terminal, true)
+  assert.equal(replay.actions.complete, true)
+  assert.equal(replay.actions.persistOutputs, true)
+  assert.equal(replay.actions.linkOutputAssets, true)
+  assert.equal(replay.actions.settleCredits, true)
+  assert.equal(replay.actions.refundCredits, false)
+})
+
 test('buildProviderLifecycleReplay rejects provider job mismatches before side effects', () => {
   assert.throws(
     () => buildProviderLifecycleReplay({

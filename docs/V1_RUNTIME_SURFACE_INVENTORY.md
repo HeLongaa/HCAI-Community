@@ -50,6 +50,7 @@ All 14 direct frontend imports of `src/data/mockData.ts` are checked exactly. Ad
 | `server-provider-cost-budget-ledger` | Provider-independent pricing snapshots, six-decimal amount normalization, durable budget reservations, idempotent cost closeout, and safe Admin/metrics evidence are implemented | Retain the app-side fail-closed ledger; keep real pricing sources and Provider dispatch unregistered until approval | V1-10 |
 | `server-provider-control-plane` | Versioned kill switches, expiring hash-only cap evidence, explicit circuits, one-claim probes, two-person recovery, and safe metrics gate fixture dispatch | Retain the fail-closed app control plane; keep real Provider clients, cap readers, probes, pricing, and dispatch unregistered until approval | V1-11 |
 | `server-provider-error-retry-policy` | Shared error taxonomy, safe envelopes, bounded Retry-After, deterministic backoff, durable CAS retry state, attempt budgets, Admin evidence, and low-cardinality metrics are implemented | Retain app-side retry controls; keep real Provider clients, callbacks, polling, probes, fallback, and dispatch unregistered until approval | V1-12 |
+| `server-provider-lifecycle-observability` | Catalog-driven internal notifications, safe audit projections, Admin lifecycle metrics, Prometheus labels, drill-down samples, and handoff hints are implemented for fixture/durable facts | Retain internal observability; keep Provider traffic and external webhook/Slack/email lifecycle delivery disabled until separately approved | V1-13 |
 
 ## Fixture Inventory
 
