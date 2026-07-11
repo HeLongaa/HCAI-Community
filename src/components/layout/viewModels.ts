@@ -20,7 +20,7 @@ import type {
 } from '../../domain/types'
 import type { TaskChildCollection } from '../../hooks/useTaskWorkflows'
 import type { OAuthLoginResult } from '../../hooks/useAccountState'
-import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiNotification, ApiPointsSummary, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, NotificationListQuery, OAuthProvider } from '../../services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiNotification, ApiPointsSummary, ApiPolicyConsentStatus, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, NotificationListQuery, OAuthProvider, RegisterRequest } from '../../services/contracts'
 
 export type AppCopyViewModel = {
   t: Record<string, string>
@@ -55,12 +55,14 @@ export type AccountViewModel = {
   currentPoints: string
   userRole: Role
   permissions: Permission[]
+  policyConsent: ApiPolicyConsentStatus | null
   hasPermission: (permission: Permission) => boolean
   setUserRole: Dispatch<SetStateAction<Role>>
   loginAs: (handle: string) => Promise<void>
   loginWithPassword: (email: string, password: string) => Promise<void>
   loginWithOAuthProvider: (provider: OAuthProvider) => Promise<OAuthLoginResult>
-  registerWithEmail: (payload: { email: string; password: string; displayName?: string; handle?: string }) => Promise<void>
+  registerWithEmail: (payload: RegisterRequest) => Promise<void>
+  acceptCurrentPolicies: (locale: 'en' | 'zh') => Promise<void>
   logout: () => Promise<void>
   openProfile: (profile: MarketplaceProfile) => void
 }

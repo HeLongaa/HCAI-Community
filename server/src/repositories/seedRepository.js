@@ -62,6 +62,10 @@ import {
   hasProviderBudgetNotificationSourceKey,
 } from './providerBudgetNotificationWiring.js'
 import { safeCreativeCreditMetadata, safeErrorPreview } from '../creative/generationRecords.js'
+import {
+  buildConsentStatus,
+  compliancePolicyManifest,
+} from '../compliance/policyManifest.js'
 
 const sessionByRefreshToken = new Map()
 const emailAccountByEmail = new Map()
@@ -186,7 +190,7 @@ const issueSession = (account, options = {}) => {
   }
 }
 
-const registerEmailAccount = async ({ email, password, displayName, handle }) => {
+const registerEmailAccount = async ({ email, password, displayName, handle }, consent = null) => {
   const normalizedEmail = normalizeEmail(email)
   if (
     emailAccountByEmail.has(normalizedEmail) ||
@@ -217,6 +221,17 @@ const registerEmailAccount = async ({ email, password, displayName, handle }) =>
   seedStore.demoAccountByRefreshToken.set(account.tokens.refreshToken, account)
   emailAccountByEmail.set(normalizedEmail, account)
   recordAudit(account, 'auth.account.registered', 'user', account.id, { provider: 'email' })
+  if (consent) {
+    const record = { ...consent, acceptedAt: new Date().toISOString() }
+    policyConsentByUserId.set(account.id, record)
+    recordAudit(
+      account,
+      compliancePolicyManifest.consentContract.recordAction,
+      compliancePolicyManifest.consentContract.recordResourceType,
+      account.id,
+      record,
+    )
+  }
   return issueSession(account)
 }
 
@@ -376,6 +391,7 @@ for (const item of seedLibraryItems) {
 }
 
 const auditEvents = []
+const policyConsentByUserId = new Map()
 const operationLeaseStore = new Map()
 const safeProviderJobIdPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
 
@@ -403,6 +419,23 @@ const recordAudit = (actor, action, resourceType, resourceId = null, metadata = 
   }
   auditEvents.unshift(event)
   return event
+}
+
+const serializeSupportRequest = (review) => {
+  const metadata = review?.metadata ?? {}
+  return {
+    id: String(review.id),
+    status: review.status,
+    category: metadata.category,
+    categoryLabel: metadata.categoryLabel,
+    subject: review.title,
+    details: review.note,
+    relatedResourceType: metadata.relatedResourceType,
+    relatedResourceId: metadata.relatedResourceId ?? null,
+    initialResponseTarget: metadata.initialResponseTarget,
+    implementationOwner: metadata.implementationOwner,
+    submittedAt: metadata.submittedAt,
+  }
 }
 
 const leaseExpiry = (ttlSeconds) => new Date(Date.now() + Math.max(1, Number(ttlSeconds ?? 300)) * 1000)
@@ -1660,6 +1693,27 @@ export const createSeedRepository = () => ({
         }
       }
       return { revoked }
+    },
+  },
+  compliance: {
+    getConsentStatus: (actor) => buildConsentStatus(policyConsentByUserId.get(actor.id) ?? null),
+    recordConsent: (actor, consent) => {
+      const current = policyConsentByUserId.get(actor.id) ?? null
+      const currentStatus = buildConsentStatus(current)
+      if (currentStatus.current) {
+        return currentStatus
+      }
+      const acceptedAt = new Date().toISOString()
+      const record = { ...consent, acceptedAt }
+      policyConsentByUserId.set(actor.id, record)
+      recordAudit(
+        actor,
+        compliancePolicyManifest.consentContract.recordAction,
+        compliancePolicyManifest.consentContract.recordResourceType,
+        actor.id,
+        record,
+      )
+      return buildConsentStatus(record)
     },
   },
   tasks: {
@@ -3742,6 +3796,51 @@ export const createSeedRepository = () => ({
         queue: reviewed.queue,
       })
       return serializeAdminReview(reviewed)
+    },
+  },
+  support: {
+    create: (payload, actor) => {
+      const submittedAt = new Date().toISOString()
+      const review = {
+        id: `support-${randomUUID()}`,
+        queue: compliancePolicyManifest.supportContract.queue,
+        status: compliancePolicyManifest.supportContract.requestStatus,
+        title: payload.subject,
+        owner: actor.handle,
+        note: payload.details,
+        metadata: {
+          kind: 'support_request',
+          category: payload.category,
+          categoryLabel: payload.categoryLabel,
+          relatedResourceType: payload.relatedResourceType,
+          relatedResourceId: payload.relatedResourceId,
+          initialResponseTarget: payload.initialResponseTarget,
+          implementationOwner: payload.implementationOwner,
+          locale: payload.locale,
+          submittedAt,
+        },
+      }
+      adminReviewQueue.unshift(review)
+      adminReviewById.set(review.id, review)
+      recordAudit(actor, compliancePolicyManifest.supportContract.requestAction, 'support_request', review.id, {
+        category: payload.category,
+        relatedResourceType: payload.relatedResourceType,
+        relatedResourceId: payload.relatedResourceId,
+        implementationOwner: payload.implementationOwner,
+      })
+      return serializeSupportRequest(review)
+    },
+    find: (id, actor) => {
+      const review = adminReviewById.get(String(id)) ?? null
+      return review?.queue === compliancePolicyManifest.supportContract.queue && review.owner === actor.handle
+        ? serializeSupportRequest(review)
+        : null
+    },
+    list: (actor, options = {}) => {
+      const rows = adminReviewQueue
+        .filter((review) => review.queue === compliancePolicyManifest.supportContract.queue && review.owner === actor.handle)
+        .map(serializeSupportRequest)
+      return paginateByCursor(rows, options)
     },
   },
   library: {

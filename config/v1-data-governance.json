@@ -11,6 +11,8 @@
     "accountDeletionImplemented": false,
     "providerDeletionAutomationImplemented": false,
     "backupDeletionRehearsed": false,
+    "policyConsentImplemented": true,
+    "supportEntryPointsImplemented": true,
     "productionApproved": false,
     "realProviderCallsApproved": false,
     "ordinaryContinuationIsApproval": false
@@ -463,12 +465,12 @@
       "locations": ["postgres"],
       "dataSubjects": ["user", "reporter", "reviewer", "depicted_third_party"],
       "purposes": ["safety_moderation", "support_operations", "legal_compliance"],
-      "exampleFields": ["queue", "status", "safe title/note", "decision", "reviewer", "policy metadata"],
+      "exampleFields": ["queue", "status", "safe title/note", "decision", "reviewer", "policy metadata", "support category", "related resource id", "response target"],
       "accessRoles": ["authorized_service", "trust_safety_reviewer", "appeal_reviewer", "auditor"],
       "retentionPolicyId": "moderation_close_plus_730d",
       "exportPolicy": "include_decision_and_user_visible_reason_exclude_internal_investigation",
       "deletionPolicy": "redact_subject_and_retain_decision_evidence_until_expiry",
-      "ownerTasks": ["V1-63", "V1-67", "V1-69"]
+      "ownerTasks": ["V1-63", "V1-67", "V1-69", "V1-78"]
     },
     {
       "id": "audit_event_records",
@@ -477,12 +479,12 @@
       "locations": ["postgres", "backup_archive"],
       "dataSubjects": ["user", "staff_role", "system"],
       "purposes": ["auth_security", "safety_moderation", "support_operations", "legal_compliance"],
-      "exampleFields": ["actor", "action", "resource id", "allowlisted metadata", "timestamp"],
+      "exampleFields": ["actor", "action", "resource id", "allowlisted metadata", "timestamp", "policy set version", "accepted policy versions", "consent source"],
       "accessRoles": ["authorized_service", "auditor", "security_operator", "trust_safety_reviewer_allowlisted"],
       "retentionPolicyId": "audit_event_plus_730d",
       "exportPolicy": "include_subject_action_summary_exclude_other_subjects_and_internal_controls",
       "deletionPolicy": "pseudonymize_subject_and_retain_allowlisted_evidence_until_expiry",
-      "ownerTasks": ["V1-67", "V1-69", "V1-73"]
+      "ownerTasks": ["V1-67", "V1-69", "V1-73", "V1-78"]
     },
     {
       "id": "security_event_records",
@@ -992,7 +994,9 @@
       "server/src/modules/admin/routes.js",
       "server/src/media/scanProvider.js",
       "server/src/storage/archiveWriter.js",
-      "server/src/modules/auth/routes.js"
+      "server/src/modules/auth/routes.js",
+      "server/src/modules/compliance/routes.js",
+      "server/src/compliance/policyManifest.js"
     ]
   },
   "implementationHandoff": [

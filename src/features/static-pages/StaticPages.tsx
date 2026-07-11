@@ -1,9 +1,34 @@
-import { useState } from 'react'
-import { BadgeDollarSign, Check, Code2, Sparkles } from 'lucide-react'
-import type { SimulateAction } from '../../domain/types'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import {
+  AlertTriangle,
+  BadgeDollarSign,
+  Check,
+  CircleHelp,
+  Code2,
+  Download,
+  FileWarning,
+  Flag,
+  LoaderCircle,
+  RefreshCcw,
+  Scale,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+} from 'lucide-react'
+import type { Page, SimulateAction } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { apiFeatures, planCards } from '../../data/mockData'
 import { isZhCopy, pointText, textFor } from '../../domain/utils'
+import { isApiClientError } from '../../services/apiClient'
+import { complianceService } from '../../services/complianceService'
+import type {
+  ApiComplianceManifest,
+  ApiSupportRequest,
+  CompliancePolicyId,
+  SupportRelatedResourceType,
+  SupportRequestCategory,
+} from '../../services/contracts'
 
 export function PricingPage({
   t,
@@ -211,18 +236,364 @@ export function AboutPage({ t }: { t: Record<string, string> }) {
   )
 }
 
-export function LegalPage({ title, t }: { title: string; t: Record<string, string> }) {
+export function LegalPage({
+  policyId,
+  t,
+  setPage,
+}: {
+  policyId: CompliancePolicyId
+  t: Record<string, string>
+  setPage: (page: Page) => void
+}) {
+  const isZh = isZhCopy(t)
+  const [manifest, setManifest] = useState<ApiComplianceManifest | null>(null)
+  const [error, setError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
+
+  useEffect(() => {
+    let active = true
+    complianceService
+      .getManifest()
+      .then((nextManifest) => {
+        if (active) setManifest(nextManifest)
+      })
+      .catch((loadError) => {
+        console.info('[legal-policy]', loadError)
+        if (active) setError(textFor(t, 'The current policy text could not be loaded.', '无法加载当前政策文本。'))
+      })
+    return () => {
+      active = false
+    }
+  }, [reloadKey, t])
+
+  const policy = manifest?.policies.find((item) => item.id === policyId) ?? null
+  const policyPage = (route: string): Page => route === 'acceptable-use'
+    ? 'aup'
+    : route === 'provider-disclosure'
+      ? 'disclosures'
+      : route as Page
+
   return (
-    <section className="panel readable">
-      <span className="eyebrow">{textFor(t, 'Legal', '法律')}</span>
-      <h1>{title}</h1>
-      <p>
-        {textFor(
-          t,
-          'This prototype includes static legal content placeholders for product terms, privacy language, usage rights, commercial licensing, task marketplace rules, and community moderation policies.',
-          '这个原型包含服务条款、隐私说明、使用权、商用授权、任务广场规则和社区治理政策的静态占位内容。',
+    <div className="legal-page">
+      <header className="legal-page-header">
+        <div>
+          <span className="eyebrow">{textFor(t, 'Policy center', '政策中心')}</span>
+          <h1>{policy ? (isZh ? policy.title.zh : policy.title.en) : textFor(t, 'Current policies', '当前政策')}</h1>
+          {policy && <p>{isZh ? policy.summary.zh : policy.summary.en}</p>}
+        </div>
+        {manifest && (
+          <div className="legal-version-block">
+            <span className="policy-draft-badge"><AlertTriangle size={15} /> {textFor(t, 'Legal review pending', '待法务审查')}</span>
+            <small>{textFor(t, 'Policy set', '政策集')} {manifest.policySetVersion}</small>
+            {policy && <small>{textFor(t, 'Version', '版本')} {policy.version}</small>}
+          </div>
         )}
-      </p>
-    </section>
+      </header>
+
+      {error && (
+        <div className="legal-error" role="alert">
+          <span>{error}</span>
+          <button className="ghost-button small" type="button" onClick={() => { setError(''); setReloadKey((value) => value + 1) }}>
+            <RefreshCcw size={15} /> {textFor(t, 'Retry', '重试')}
+          </button>
+        </div>
+      )}
+
+      {!manifest && !error && (
+        <div className="legal-loading"><LoaderCircle className="spin" size={20} /> {textFor(t, 'Loading current policy text', '正在加载当前政策文本')}</div>
+      )}
+
+      {manifest && policy && (
+        <div className="legal-document-layout">
+          <nav className="legal-policy-nav" aria-label={textFor(t, 'Policy documents', '政策文档')}>
+            {manifest.policies.map((item) => (
+              <button
+                className={item.id === policy.id ? 'active' : ''}
+                type="button"
+                key={item.id}
+                onClick={() => setPage(policyPage(item.route))}
+              >
+                <span>{isZh ? item.title.zh : item.title.en}</span>
+                <small>{item.version}</small>
+              </button>
+            ))}
+            <button type="button" onClick={() => setPage('support')}>
+              <span>{textFor(t, 'Open support center', '打开支持中心')}</span>
+              <small>{textFor(t, 'Reports, appeals, and data rights', '举报、申诉与数据权利')}</small>
+            </button>
+          </nav>
+
+          <article className="legal-document">
+            {!manifest.releaseReadiness.legalApproved && (
+              <div className="legal-review-notice">
+                <AlertTriangle size={18} />
+                <p>{textFor(
+                  t,
+                  'This is the versioned engineering draft. Production publication remains blocked until the legal entity, jurisdiction, and policy text receive qualified legal approval.',
+                  '这是已版本化的工程草案。运营实体、适用地区和政策文本获得合格法务批准前，生产发布仍处于阻断状态。',
+                )}</p>
+              </div>
+            )}
+            {policy.sections.map((section) => (
+              <section id={section.id} key={section.id}>
+                <h2>{isZh ? section.title.zh : section.title.en}</h2>
+                {(isZh ? section.paragraphs.zh : section.paragraphs.en).map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+              </section>
+            ))}
+            {policy.id === 'provider-disclosure' && (
+              <section>
+                <h2>{textFor(t, 'Candidate Provider register', '候选 Provider 登记')}</h2>
+                <div className="provider-disclosure-table">
+                  {manifest.providerDisclosures.map((provider) => (
+                    <div key={provider.providerId}>
+                      <strong>{provider.providerId}</strong>
+                      <span>{provider.modality}</span>
+                      <span>{provider.role}</span>
+                      <span>{textFor(t, 'Production not approved', '生产未批准')}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </article>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const supportCategoryIcons = {
+  general_support: CircleHelp,
+  content_report: Flag,
+  moderation_appeal: Scale,
+  privacy_request: ShieldCheck,
+  data_export: Download,
+  account_deletion: Trash2,
+} satisfies Record<SupportRequestCategory, typeof CircleHelp>
+
+const relatedResourceLabels: Record<SupportRelatedResourceType, [string, string]> = {
+  none: ['No related resource', '无关联资源'],
+  account: ['Account', '账号'],
+  task: ['Task', '任务'],
+  post: ['Post', '帖子'],
+  comment: ['Comment', '评论'],
+  media_asset: ['Media asset', '媒体资产'],
+  creative_generation: ['Creative generation', '创作生成'],
+  moderation_decision: ['Moderation decision', '审核决定'],
+}
+
+export function SupportPage({
+  t,
+  signedIn,
+  requireAuth,
+  simulateAction,
+}: {
+  t: Record<string, string>
+  signedIn: boolean
+  requireAuth: () => void
+  simulateAction: SimulateAction
+}) {
+  const isZh = isZhCopy(t)
+  const [manifest, setManifest] = useState<ApiComplianceManifest | null>(null)
+  const [requests, setRequests] = useState<ApiSupportRequest[]>([])
+  const [category, setCategory] = useState<SupportRequestCategory>('general_support')
+  const [subject, setSubject] = useState('')
+  const [details, setDetails] = useState('')
+  const [relatedResourceType, setRelatedResourceType] = useState<SupportRelatedResourceType>('none')
+  const [relatedResourceId, setRelatedResourceId] = useState('')
+  const [loadingHistory, setLoadingHistory] = useState(signedIn)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+    complianceService.getManifest().then((nextManifest) => {
+      if (active) setManifest(nextManifest)
+    }).catch((loadError) => {
+      console.info('[support-manifest]', loadError)
+      if (active) setError(textFor(t, 'Could not load support options.', '无法加载支持选项。'))
+    })
+    return () => {
+      active = false
+    }
+  }, [t])
+
+  useEffect(() => {
+    if (!signedIn) return
+    let active = true
+    complianceService.listSupportRequests({ limit: 10 }).then((page) => {
+      if (active) setRequests(page.items)
+    }).catch((loadError) => {
+      console.info('[support-history]', loadError)
+    }).finally(() => {
+      if (active) setLoadingHistory(false)
+    })
+    return () => {
+      active = false
+    }
+  }, [signedIn])
+
+  const selectedCategory = useMemo(
+    () => manifest?.supportContract.categories.find((item) => item.id === category) ?? null,
+    [category, manifest],
+  )
+
+  const submitRequest = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!signedIn) {
+      requireAuth()
+      return
+    }
+    setSubmitting(true)
+    setError('')
+    complianceService.createSupportRequest({
+      category,
+      subject,
+      details,
+      relatedResourceType,
+      relatedResourceId: relatedResourceType === 'none' ? undefined : relatedResourceId,
+      locale: isZh ? 'zh' : 'en',
+    }).then((request) => {
+      setRequests((current) => [request, ...current])
+      setSubject('')
+      setDetails('')
+      setRelatedResourceType('none')
+      setRelatedResourceId('')
+      simulateAction(isZh ? `支持请求已提交：${request.id}` : `Support request submitted: ${request.id}`)
+    }).catch((submitError) => {
+      console.info('[support-request]', submitError)
+      setError(isApiClientError(submitError)
+        ? submitError.message
+        : textFor(t, 'Could not submit this request.', '无法提交此请求。'))
+    }).finally(() => setSubmitting(false))
+  }
+
+  return (
+    <div className="support-page">
+      <header className="support-header">
+        <div>
+          <span className="eyebrow">{textFor(t, 'Help and rights', '帮助与权利')}</span>
+          <h1>{textFor(t, 'Support center', '支持中心')}</h1>
+          <p>{textFor(t, 'Get help, report content, appeal a decision, or start a privacy, export, or deletion request.', '获取帮助、举报内容、申诉决定，或发起隐私、导出和删除请求。')}</p>
+        </div>
+        <button className="ghost-button" type="button" onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })}>
+          <FileWarning size={17} /> {textFor(t, 'View my requests', '查看我的请求')}
+        </button>
+      </header>
+
+      <div className="support-category-grid" role="list" aria-label={textFor(t, 'Request category', '请求类别')}>
+        {manifest?.supportContract.categories.map((item) => {
+          const Icon = supportCategoryIcons[item.id]
+          return (
+            <button className={category === item.id ? 'active' : ''} type="button" key={item.id} onClick={() => setCategory(item.id)}>
+              <Icon size={19} />
+              <span>{isZh ? item.label.zh : item.label.en}</span>
+              <small>{item.initialResponseTarget.replaceAll('_', ' ')}</small>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="support-workspace">
+        <form className="support-request-form" onSubmit={submitRequest}>
+          <div className="support-form-heading">
+            <div>
+              <span className="eyebrow">{selectedCategory ? (isZh ? selectedCategory.label.zh : selectedCategory.label.en) : textFor(t, 'Request', '请求')}</span>
+              <h2>{textFor(t, 'Tell us what happened', '请说明发生了什么')}</h2>
+            </div>
+            {selectedCategory && <span>{selectedCategory.initialResponseTarget.replaceAll('_', ' ')}</span>}
+          </div>
+          <label>
+            <span>{textFor(t, 'Subject', '主题')}</span>
+            <input required minLength={5} maxLength={120} value={subject} onChange={(event) => setSubject(event.target.value)} />
+          </label>
+          <label>
+            <span>{textFor(t, 'Details', '详情')}</span>
+            <textarea required minLength={10} maxLength={4000} rows={7} value={details} onChange={(event) => setDetails(event.target.value)} />
+            <small>{details.length}/4000</small>
+          </label>
+          <div className="support-resource-fields">
+            <label>
+              <span>{textFor(t, 'Related resource', '关联资源')}</span>
+              <select value={relatedResourceType} onChange={(event) => setRelatedResourceType(event.target.value as SupportRelatedResourceType)}>
+                {(Object.entries(relatedResourceLabels) as Array<[SupportRelatedResourceType, [string, string]]>).map(([value, label]) => (
+                  <option value={value} key={value}>{textFor(t, label[0], label[1])}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>{textFor(t, 'Resource ID', '资源 ID')}</span>
+              <input
+                disabled={relatedResourceType === 'none'}
+                required={relatedResourceType !== 'none'}
+                maxLength={128}
+                value={relatedResourceId}
+                onChange={(event) => setRelatedResourceId(event.target.value)}
+              />
+            </label>
+          </div>
+          <div className="support-safety-note">
+            <ShieldCheck size={18} />
+            <p>{textFor(t, 'Do not include passwords, tokens, API keys, payment data, government IDs, private signed URLs, or raw Provider payloads.', '请勿提交密码、token、API key、支付数据、政府证件号、私有签名 URL 或原始 Provider payload。')}</p>
+          </div>
+          {error && <div className="auth-error" role="alert">{error}</div>}
+          <button
+            className="primary-button"
+            type="submit"
+            disabled={submitting || !manifest}
+            onClick={(event) => {
+              if (!signedIn) {
+                event.preventDefault()
+                requireAuth()
+              }
+            }}
+          >
+            <Send size={17} />
+            {!signedIn
+              ? textFor(t, 'Sign in to submit', '登录后提交')
+              : submitting
+                ? textFor(t, 'Submitting...', '正在提交...')
+                : textFor(t, 'Submit request', '提交请求')}
+          </button>
+        </form>
+
+        <aside className="support-policy-aside">
+          <h2>{textFor(t, 'What happens next', '接下来会发生什么')}</h2>
+          <ol>
+            <li>{textFor(t, 'A stable tracking ID is created.', '系统创建稳定的跟踪 ID。')}</li>
+            <li>{textFor(t, 'The request is routed to its owning queue.', '请求被路由到对应负责队列。')}</li>
+            <li>{textFor(t, 'Identity or rights evidence may be requested.', '可能需要补充身份或权利证据。')}</li>
+            <li>{textFor(t, 'Submission does not mean the requested action is complete.', '提交成功不代表所请求操作已经完成。')}</li>
+          </ol>
+          <div className="legal-review-notice">
+            <AlertTriangle size={18} />
+            <p>{manifest?.operator.emergencyNotice ? (isZh ? manifest.operator.emergencyNotice.zh : manifest.operator.emergencyNotice.en) : ''}</p>
+          </div>
+        </aside>
+      </div>
+
+      <section className="support-history" id="support-history">
+        <div className="support-history-heading">
+          <div>
+            <span className="eyebrow">{textFor(t, 'Tracking', '跟踪')}</span>
+            <h2>{textFor(t, 'My recent requests', '我的最近请求')}</h2>
+          </div>
+          {loadingHistory && <LoaderCircle className="spin" size={18} />}
+        </div>
+        {!signedIn && <p>{textFor(t, 'Sign in to view requests tied to your account.', '登录后可查看与你账号关联的请求。')}</p>}
+        {signedIn && !loadingHistory && requests.length === 0 && <p>{textFor(t, 'No support requests yet.', '暂无支持请求。')}</p>}
+        {requests.map((request) => (
+          <article key={request.id}>
+            <div>
+              <strong>{request.subject}</strong>
+              <span>{isZh ? request.categoryLabel.zh : request.categoryLabel.en}</span>
+            </div>
+            <code>{request.id}</code>
+            <span className="status-badge">{request.status}</span>
+            <time>{new Date(request.submittedAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}</time>
+          </article>
+        ))}
+      </section>
+    </div>
   )
 }

@@ -226,6 +226,8 @@ Available foundations:
 - Provider adapter metadata rejects secret-like keys.
 - Admin creative serializers fold unsafe identifiers, URLs, and errors.
 - Mock/S3-compatible object and archive writer boundaries exist.
+- Versioned policy consent is stored as an allowlisted immutable `AuditEvent` without IP, token, user-agent, or raw-content fields.
+- Support/report/appeal/privacy/export/deletion entry requests use owner-scoped `AdminReview` rows; audit metadata excludes free-form details.
 
 Known gaps:
 

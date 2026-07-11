@@ -25,6 +25,7 @@ Production classification must fail closed: a production surface is either backe
 | Chat Studio | Demo/local workspace | Streaming API, durable history, attachments, moderation, load gate |
 | Video Studio | Demo/local workspace | Async provider lifecycle, governed outputs, production UX, staging gate |
 | Music Studio | Demo/local workspace | Async provider lifecycle, license policy, player, production UX, staging gate |
+| Legal, consent, and support | Versioned engineering baseline with API/UI/E2E | Qualified legal approval; V1-63 appeal decisions; V1-67 export/deletion execution |
 | Real infrastructure | Fixture smoke and configuration parsers | Managed environment execution and evidence |
 
 ## Runtime Demo And Mock Inventory
@@ -50,6 +51,8 @@ These surfaces remain valid for deterministic tests. V1-02 and V1-39 own their c
   policy, Provider mapping, review/appeal, and audit implementation contract.
 - `config/v1-data-governance.json` and `docs/V1_DATA_GOVERNANCE_BASELINE.md` own the complete data inventory,
   retention, flow, export/delete, processor, and redaction implementation contract.
+- `config/v1-compliance-policy.json` and `docs/V1_COMPLIANCE_AND_SUPPORT_BASELINE.md` own versioned policy text,
+  exact-version consent, Provider disclosures, support categories, and data-rights entry points; legal approval remains open.
 - `docs/REAL_PROVIDER_CURRENT_STATUS.md` remains authoritative for real-provider approval boundaries.
 - `docs/RELEASE_CHECKLIST.md` and `docs/QUALITY_GATES.md` remain authoritative for release execution and checks.
 - Phase 2/3 documents are historical evidence; they do not define current V1 stage or scope.

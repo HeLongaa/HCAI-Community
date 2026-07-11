@@ -18,6 +18,7 @@ Includes:
 - `npm run test:v1-providers`
 - `npm run test:v1-safety-policy`
 - `npm run test:v1-data-governance`
+- `npm run test:v1-compliance`
 - `npm run test:sim`
 - API contract drift check through `scripts/verify-api-contracts.mjs`
 
@@ -41,6 +42,11 @@ It deliberately records that runtime enforcement is incomplete and rejects any d
 The V1 data-governance contract checks every Prisma model and non-Prisma data asset, classification, purpose, retention
 limit, allowed/forbidden flow, export/delete target, legal-hold rule, external processor, secondary-surface redaction,
 and downstream implementation owner. It records that export/deletion automation and backup rehearsal are incomplete.
+
+The V1 compliance contract checks five bilingual versioned policies, exact-version affirmative consent, registration
+and first-use capture, all eight Provider disclosures, six support/data-rights categories, owner-scoped APIs, OpenAPI,
+frontend entry points, audit allowlists, and downstream owners. It deliberately fails if the engineering draft claims
+legal approval or production publication readiness.
 
 Use this before handing off small frontend, contract, or documentation changes.
 
@@ -96,6 +102,8 @@ Includes:
   defense in depth, and unknown content, safety responses, or regions cannot dispatch or release output
 - data governance validation: every data model remains classified with bounded retention, unknown flows/processors are
   denied, secrets/raw Provider payloads cannot enter persistence, and export/deletion targets stay explicit
+- compliance validation: exact policy versions, consent capture, support routing, and user-rights entry points remain
+  synchronized while legal approval and production publication remain fail-closed
 
 The environment profile does not print secrets. It reports booleans, counts, provider modes, and safe operational metadata only.
 
@@ -108,6 +116,8 @@ Use `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` before changing moderation categor
 review/reject/release behavior, appeals, user safety messages, or safety-event audit fields.
 Use `docs/V1_DATA_GOVERNANCE_BASELINE.md` before adding a Prisma model, persistent payload, processor, log field,
 retention job, export/delete path, backup, Admin view, notification field, or secret boundary.
+Use `docs/V1_COMPLIANCE_AND_SUPPORT_BASELINE.md` before changing policy text or versions, consent capture, Provider
+disclosures, support categories, rights entry points, or legal-publication status.
 
 ## GitHub Actions
 

@@ -6,9 +6,18 @@ import { createServer } from '../../common/http/server.js'
 import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
 import { createMemoryAuthFailureMonitor } from '../../auth/loginMonitor.js'
 import { listSecurityEvents, resetSecurityEvents } from '../../security/securityEvents.js'
+import { currentRequiredPolicyVersions } from '../../compliance/policyManifest.js'
 import { registerAuthRoutes } from './routes.js'
 
 const createTestServer = () => createRouteTestServer(registerAuthRoutes)
+const registrationBody = (payload) => ({
+  ...payload,
+  policyConsent: {
+    accepted: true,
+    locale: 'en',
+    policyVersions: currentRequiredPolicyVersions(),
+  },
+})
 
 const createAuthTestServerWithContext = async (context = {}) => {
   const router = createRouter()
@@ -291,12 +300,12 @@ test('POST /api/auth/register creates an email account session', async () => {
   try {
     const email = `product-${Date.now()}@example.com`
     const { status, payload } = await requestJson(server.url, '/api/auth/register', {
-      body: {
+      body: registrationBody({
         email,
         password: 'correct-horse-42',
         displayName: 'Product Maker',
         handle: `maker${Date.now()}`,
-      },
+      }),
     })
 
     assert.equal(status, 201)
@@ -306,6 +315,51 @@ test('POST /api/auth/register creates an email account session', async () => {
     assert.equal(payload.data.user.displayName, 'Product Maker')
     assert.equal(payload.data.user.role, 'member')
     assert.equal(payload.error, undefined)
+
+    const me = await requestJson(server.url, '/api/me', {
+      method: 'GET',
+      token: payload.data.accessToken,
+    })
+    assert.equal(me.status, 200)
+    assert.equal(me.payload.data.policyConsent.current, true)
+    assert.deepEqual(me.payload.data.policyConsent.acceptedPolicyVersions, currentRequiredPolicyVersions())
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST /api/auth/register requires affirmative consent to exact current policy versions', async () => {
+  const server = await createTestServer()
+  try {
+    const suffix = Date.now()
+    const missing = await requestJson(server.url, '/api/auth/register', {
+      body: {
+        email: `missing-consent-${suffix}@example.com`,
+        password: 'correct-horse-42',
+        displayName: 'Missing Consent',
+        handle: `missingconsent${suffix}`,
+      },
+    })
+    assert.equal(missing.status, 400)
+    assert.equal(missing.payload.error.code, 'POLICY_CONSENT_REQUIRED')
+
+    const stale = await requestJson(server.url, '/api/auth/register', {
+      body: {
+        ...registrationBody({
+          email: `stale-consent-${suffix}@example.com`,
+          password: 'correct-horse-42',
+          displayName: 'Stale Consent',
+          handle: `staleconsent${suffix}`,
+        }),
+        policyConsent: {
+          accepted: true,
+          locale: 'en',
+          policyVersions: { ...currentRequiredPolicyVersions(), privacy: '0.9.0' },
+        },
+      },
+    })
+    assert.equal(stale.status, 409)
+    assert.equal(stale.payload.error.code, 'POLICY_VERSION_MISMATCH')
   } finally {
     await server.close()
   }
@@ -318,17 +372,17 @@ test('POST /api/auth/register rejects duplicate email or handle', async () => {
     const email = `duplicate-${suffix}@example.com`
     const handle = `dupe${suffix}`
     await requestJson(server.url, '/api/auth/register', {
-      body: { email, password: 'correct-horse-42', displayName: 'First User', handle },
+      body: registrationBody({ email, password: 'correct-horse-42', displayName: 'First User', handle }),
     })
 
     const duplicateEmail = await requestJson(server.url, '/api/auth/register', {
-      body: { email, password: 'correct-horse-42', displayName: 'Second User', handle: `dupeb${suffix}` },
+      body: registrationBody({ email, password: 'correct-horse-42', displayName: 'Second User', handle: `dupeb${suffix}` }),
     })
     assert.equal(duplicateEmail.status, 409)
     assert.equal(duplicateEmail.payload.error.code, 'ACCOUNT_EXISTS')
 
     const duplicateHandle = await requestJson(server.url, '/api/auth/register', {
-      body: { email: `other-${suffix}@example.com`, password: 'correct-horse-42', displayName: 'Third User', handle },
+      body: registrationBody({ email: `other-${suffix}@example.com`, password: 'correct-horse-42', displayName: 'Third User', handle }),
     })
     assert.equal(duplicateHandle.status, 409)
     assert.equal(duplicateHandle.payload.error.code, 'ACCOUNT_EXISTS')
@@ -344,7 +398,7 @@ test('POST /api/auth/login supports email password credentials', async () => {
     const email = `login-${suffix}@example.com`
     const password = 'correct-horse-42'
     await requestJson(server.url, '/api/auth/register', {
-      body: { email, password, displayName: 'Login User', handle: `login${suffix}` },
+      body: registrationBody({ email, password, displayName: 'Login User', handle: `login${suffix}` }),
     })
 
     const login = await requestJson(server.url, '/api/auth/login', {
@@ -404,12 +458,12 @@ test('OAuth account linking lists and unlinks provider accounts', async () => {
   try {
     const suffix = Date.now()
     const register = await requestJson(server.url, '/api/auth/register', {
-      body: {
+      body: registrationBody({
         email: `link-${suffix}@example.com`,
         password: 'correct-horse-42',
         displayName: 'Link User',
         handle: `link${suffix}`,
-      },
+      }),
     })
     const before = await requestJson(server.url, '/api/auth/oauth/accounts', {
       method: 'GET',
@@ -684,7 +738,7 @@ test('POST /api/auth/refresh revokes a token family when an old refresh token is
   try {
     const suffix = `${Date.now()}${Math.floor(Math.random() * 10000)}`
     const login = await requestJson(server.url, '/api/auth/register', {
-      body: { email: `family-${suffix}@example.com`, password: 'correct-horse-42', displayName: 'Family User', handle: `family${suffix}` },
+      body: registrationBody({ email: `family-${suffix}@example.com`, password: 'correct-horse-42', displayName: 'Family User', handle: `family${suffix}` }),
     })
     const rotated = await requestJson(server.url, '/api/auth/refresh', {
       body: { refreshToken: login.payload.data.refreshToken },
@@ -712,7 +766,7 @@ test('GET and DELETE /api/auth/sessions manage current user sessions', async () 
   try {
     const suffix = `${Date.now()}${Math.floor(Math.random() * 10000)}`
     const login = await requestJson(server.url, '/api/auth/register', {
-      body: { email: `session-${suffix}@example.com`, password: 'correct-horse-42', displayName: 'Session User', handle: `session${suffix}` },
+      body: registrationBody({ email: `session-${suffix}@example.com`, password: 'correct-horse-42', displayName: 'Session User', handle: `session${suffix}` }),
     })
     const sessions = await requestJson(server.url, '/api/auth/sessions', {
       method: 'GET',
@@ -746,7 +800,7 @@ test('DELETE /api/auth/sessions revokes all current user sessions', async () => 
     const email = `sessions-${suffix}@example.com`
     const password = 'correct-horse-42'
     const first = await requestJson(server.url, '/api/auth/register', {
-      body: { email, password, displayName: 'Sessions User', handle: `sessions${suffix}` },
+      body: registrationBody({ email, password, displayName: 'Sessions User', handle: `sessions${suffix}` }),
     })
     const second = await requestJson(server.url, '/api/auth/login', {
       body: { email, password },

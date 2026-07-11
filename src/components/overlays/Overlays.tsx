@@ -38,8 +38,9 @@ import type { Locale, MarketplaceProfile, Page, SimulateAction, Track } from '..
 import { marketplaceProfiles, tracks } from '../../data/mockData'
 import { findProfile, isZhCopy, localizeText, textFor } from '../../domain/utils'
 import { authService } from '../../services/authService'
+import { complianceService, policyConsentRequest } from '../../services/complianceService'
 import { isApiClientError } from '../../services/apiClient'
-import type { ApiSession, OAuthAccountLink, OAuthProvider, OAuthProviderMetadata } from '../../services/contracts'
+import type { ApiComplianceManifest, ApiPolicyConsentStatus, ApiSession, OAuthAccountLink, OAuthProvider, OAuthProviderMetadata, RegisterRequest } from '../../services/contracts'
 import { showLocalTestAccounts } from '../../services/runtimeConfig'
 import type { OAuthLoginResult } from '../../hooks/useAccountState'
 
@@ -646,12 +647,14 @@ const emailAuthErrorCopy = (error: unknown, mode: 'login' | 'register', t: Recor
     VALIDATION_FAILED: ['Check the form fields and try again.', '请检查表单内容后重试。'],
     RATE_LIMITED: ['Too many attempts. Please wait a moment and try again.', '尝试次数过多，请稍后再试。'],
     AUTH_REQUIRED: ['Session verification failed. Please sign in again.', '会话校验失败，请重新登录。'],
+    POLICY_CONSENT_REQUIRED: ['Review and accept the required policies.', '请阅读并同意必需政策。'],
+    POLICY_VERSION_MISMATCH: ['Policy versions changed. Review the current policies and try again.', '政策版本已更新，请重新阅读后再试。'],
   }
   const copy = messages[error.code]
   return copy ? textFor(t, copy[0], copy[1]) : textFor(t, error.message, error.message)
 }
 
-type AuthFieldErrors = Partial<Record<'email' | 'password' | 'handle', string>>
+type AuthFieldErrors = Partial<Record<'email' | 'password' | 'handle' | 'consent', string>>
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const handlePattern = /^[a-zA-Z0-9_-]{3,32}$/
@@ -697,7 +700,7 @@ export function LoginModal({
   loginAs: (handle: string) => Promise<void>
   loginWithPassword: (email: string, password: string) => Promise<void>
   loginWithOAuthProvider: (provider: OAuthProvider) => Promise<OAuthLoginResult>
-  registerWithEmail: (payload: { email: string; password: string; displayName?: string; handle?: string }) => Promise<void>
+  registerWithEmail: (payload: RegisterRequest) => Promise<void>
   setPage: (page: Page) => void
 }) {
   const isZh = isZhCopy(t)
@@ -709,6 +712,8 @@ export function LoginModal({
   const [displayName, setDisplayName] = useState('')
   const [handle, setHandle] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [policyManifest, setPolicyManifest] = useState<ApiComplianceManifest | null>(null)
+  const [policyAccepted, setPolicyAccepted] = useState(false)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors>({})
   const hasDevOAuthProviders = providers.some((provider) => provider.mode === 'dev' && !provider.configured)
@@ -730,6 +735,22 @@ export function LoginModal({
     }
   }, [])
 
+  useEffect(() => {
+    let active = true
+    complianceService
+      .getManifest()
+      .then((manifest) => {
+        if (active) setPolicyManifest(manifest)
+      })
+      .catch((manifestError) => {
+        console.info('[compliance-manifest]', manifestError)
+        if (active) setError(textFor(t, 'Could not load the current policies.', '无法加载当前政策。'))
+      })
+    return () => {
+      active = false
+    }
+  }, [t])
+
   const getFieldErrors = (): AuthFieldErrors => {
     const next: AuthFieldErrors = {}
     const normalizedEmail = email.trim().toLowerCase()
@@ -743,6 +764,9 @@ export function LoginModal({
     }
     if (mode === 'register' && handle.trim() && !handlePattern.test(handle.trim())) {
       next.handle = textFor(t, 'Use 3-32 letters, numbers, underscores, or hyphens.', '请使用 3-32 位字母、数字、下划线或连字符。')
+    }
+    if (mode === 'register' && (!policyAccepted || !policyManifest)) {
+      next.consent = textFor(t, 'Review and accept the current required policies.', '请阅读并同意当前必需政策。')
     }
     return next
   }
@@ -771,6 +795,7 @@ export function LoginModal({
           password,
           displayName: displayName || undefined,
           handle: handle || undefined,
+          policyConsent: policyConsentRequest(policyManifest as ApiComplianceManifest, isZh ? 'zh' : 'en'),
         })
       : loginWithPassword(email, password)
     void action
@@ -878,6 +903,41 @@ export function LoginModal({
             />
             {fieldErrors.password && <small id="auth-password-error">{fieldErrors.password}</small>}
           </label>
+          {mode === 'register' && (
+            <div className={fieldErrors.consent ? 'auth-consent invalid' : 'auth-consent'}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={policyAccepted}
+                  onChange={(event) => {
+                    setPolicyAccepted(event.target.checked)
+                    clearFieldError('consent')
+                  }}
+                />
+                <span>{textFor(t, 'I have reviewed and accept the current required policy versions.', '我已阅读并同意当前必需政策版本。')}</span>
+              </label>
+              <div className="auth-policy-links">
+                {([
+                  ['terms', t.terms],
+                  ['privacy', t.privacy],
+                  ['aup', textFor(t, 'Acceptable Use', '可接受使用政策')],
+                  ['disclosures', textFor(t, 'AI disclosures', 'AI 生成说明')],
+                ] as Array<[Page, string]>).map(([policyPage, label]) => (
+                  <button
+                    type="button"
+                    key={policyPage}
+                    onClick={() => {
+                      setPage(policyPage)
+                      close()
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {fieldErrors.consent && <small>{fieldErrors.consent}</small>}
+            </div>
+          )}
           {error && <div className="auth-error">{error}</div>}
           <button className="primary-button auth-submit" type="submit" disabled={submitting} onClick={() => undefined}>
             <UserRound size={17} />
@@ -948,9 +1008,139 @@ export function LoginModal({
             {textFor(t, 'Local admin test login', '本地测试管理员登录')}
           </button>
         )}
-        <p>
-          {textFor(t, 'By continuing, you agree to our', '继续即表示你同意')} {t.terms} {textFor(t, 'and', '和')} {t.privacy}.
-        </p>
+        <div className="auth-legal-note">
+          <span>{textFor(t, 'Review our current policies before using the service.', '使用服务前请阅读当前政策。')}</span>
+          <button type="button" onClick={() => { setPage('terms'); close() }}>{t.terms}</button>
+          <button type="button" onClick={() => { setPage('privacy'); close() }}>{t.privacy}</button>
+          <button type="button" onClick={() => { setPage('support'); close() }}>{textFor(t, 'Support', '支持')}</button>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+export function PolicyConsentModal({
+  t,
+  status,
+  acceptCurrentPolicies,
+  logout,
+  openPage,
+  simulateAction,
+}: {
+  t: Record<string, string>
+  status: ApiPolicyConsentStatus
+  acceptCurrentPolicies: (locale: 'en' | 'zh') => Promise<void>
+  logout: () => Promise<void>
+  openPage: (page: Page) => void
+  simulateAction: SimulateAction
+}) {
+  const isZh = isZhCopy(t)
+  const [manifest, setManifest] = useState<ApiComplianceManifest | null>(null)
+  const [selectedPolicyId, setSelectedPolicyId] = useState(status.requiredPolicies[0]?.id ?? 'terms')
+  const [accepted, setAccepted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+    complianceService
+      .getManifest()
+      .then((nextManifest) => {
+        if (active) setManifest(nextManifest)
+      })
+      .catch((loadError) => {
+        console.info('[policy-consent]', loadError)
+        if (active) setError(textFor(t, 'Could not load the current policies.', '无法加载当前政策。'))
+      })
+    return () => {
+      active = false
+    }
+  }, [t])
+
+  const selectedPolicy = manifest?.policies.find((policy) => policy.id === selectedPolicyId) ?? null
+  const submitConsent = () => {
+    if (!accepted || !manifest) return
+    setSubmitting(true)
+    setError('')
+    void acceptCurrentPolicies(isZh ? 'zh' : 'en')
+      .then(() => {
+        simulateAction(textFor(t, 'Current policy consent recorded', '已记录当前政策版本同意'))
+      })
+      .catch((submitError) => {
+        console.info('[policy-consent]', submitError)
+        setError(emailAuthErrorCopy(submitError, 'register', t))
+        setAccepted(false)
+      })
+      .finally(() => setSubmitting(false))
+  }
+
+  return (
+    <div className="modal-backdrop policy-consent-backdrop">
+      <section className="policy-consent-modal" role="dialog" aria-modal="true" aria-labelledby="policy-consent-title">
+        <header className="policy-consent-header">
+          <div>
+            <span className="eyebrow">{textFor(t, 'Policy update', '政策确认')}</span>
+            <h2 id="policy-consent-title">{textFor(t, 'Review the policies required for this account', '请确认账号适用的必需政策')}</h2>
+            <p>{textFor(t, 'Your consent record stores the exact versions shown here.', '同意记录会保存此处显示的精确版本。')}</p>
+          </div>
+          <span className="policy-draft-badge">
+            <AlertTriangle size={15} />
+            {textFor(t, 'Legal review pending', '待法务审查')}
+          </span>
+        </header>
+
+        <div className="policy-consent-layout">
+          <nav className="policy-consent-tabs" aria-label={textFor(t, 'Required policies', '必需政策')}>
+            {status.requiredPolicies.map((policy) => (
+              <button
+                className={selectedPolicyId === policy.id ? 'active' : ''}
+                type="button"
+                key={policy.id}
+                onClick={() => setSelectedPolicyId(policy.id)}
+              >
+                <span>{localizeText(policy.title, t)}</span>
+                <small>{policy.version}</small>
+              </button>
+            ))}
+          </nav>
+          <article className="policy-consent-document">
+            {!manifest && !error && (
+              <div className="legal-loading"><LoaderCircle className="spin" size={20} /> {textFor(t, 'Loading current policy text', '正在加载当前政策文本')}</div>
+            )}
+            {selectedPolicy && (
+              <>
+                <h3>{localizeText(selectedPolicy.title, t)}</h3>
+                <p className="legal-summary">{localizeText(selectedPolicy.summary, t)}</p>
+                {selectedPolicy.sections.map((section) => (
+                  <section key={section.id}>
+                    <h4>{localizeText(section.title, t)}</h4>
+                    {(isZh ? section.paragraphs.zh : section.paragraphs.en).map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+                  </section>
+                ))}
+              </>
+            )}
+          </article>
+        </div>
+
+        {error && <div className="auth-error">{error}</div>}
+        <footer className="policy-consent-footer">
+          <label>
+            <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
+            <span>{textFor(t, 'I reviewed and accept all required policy versions listed above.', '我已阅读并同意上方列出的全部必需政策版本。')}</span>
+          </label>
+          <div className="button-row">
+            <button className="ghost-button" type="button" onClick={() => openPage('support')}>
+              {textFor(t, 'Privacy and support', '隐私与支持')}
+            </button>
+            <button className="ghost-button" type="button" onClick={() => void logout()}>
+              {textFor(t, 'Sign out', '退出登录')}
+            </button>
+            <button className="primary-button" type="button" disabled={!accepted || !manifest || submitting} onClick={submitConsent}>
+              <ShieldCheck size={17} />
+              {submitting ? textFor(t, 'Recording...', '正在记录...') : textFor(t, 'Accept current versions', '同意当前版本')}
+            </button>
+          </div>
+        </footer>
       </section>
     </div>
   )

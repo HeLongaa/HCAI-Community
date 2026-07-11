@@ -21,6 +21,7 @@ Confirm:
 
 - `npm run test:v1-scope` passes and the scope manifest matches `docs/V1_SCOPE_AND_DEFINITION_OF_DONE.md`.
 - `npm run test:v1-surfaces` passes, every inventoried release blocker is closed, and `productionReady` can be set only by the V1-39 gate.
+- `npm run test:v1-compliance` passes, the final legal entity/jurisdiction are recorded, qualified legal review is approved, and the published versions match the consent gate. The current engineering draft intentionally does not satisfy this release condition.
 - No RMB payment, withdrawal/payout, KYC, invoice, tax-settlement, or merchant-settlement route or schema is present.
 - Internal points, creative credits, quota, escrow, compensation, and refunds are not represented as withdrawable money.
 - GitHub Actions `Quality Gates` workflow is passing for the target commit.
@@ -66,6 +67,9 @@ Critical API smoke checks:
 - `POST /api/auth/login`
 - `POST /api/auth/refresh` with CSRF header and cookie credentials
 - `GET /api/me`
+- `GET /api/compliance/policies`
+- `GET /api/compliance/consent` with an authenticated account
+- `POST /api/support/requests` with a non-production rehearsal account, followed by owner-scoped retrieval
 - `GET /api/tasks`
 - `GET /api/posts`
 - `GET /api/notifications`

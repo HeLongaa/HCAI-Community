@@ -125,6 +125,28 @@ addCheck(
   manifest.dataGovernancePolicy.implementationTasks.join(', '),
 )
 addCheck(
+  'compliance policy artifacts exist',
+  fs.existsSync(path.join(root, manifest.compliancePolicy.policyManifest)) &&
+    fs.existsSync(path.join(root, manifest.compliancePolicy.policyDocument)),
+  `${manifest.compliancePolicy.policyManifest}, ${manifest.compliancePolicy.policyDocument}`,
+)
+addCheck(
+  'compliance policy verification command is frozen',
+  manifest.compliancePolicy.verificationCommand === 'npm run test:v1-compliance',
+  manifest.compliancePolicy.verificationCommand,
+)
+addCheck(
+  'compliance publication remains externally gated',
+  manifest.compliancePolicy.legalReviewApproved === false &&
+    manifest.compliancePolicy.productionPublicationApproved === false,
+  JSON.stringify(manifest.compliancePolicy),
+)
+addCheck(
+  'compliance downstream implementation owners are frozen',
+  sameMembers(manifest.compliancePolicy.implementationTasks, ['V1-48', 'V1-63', 'V1-67', 'V1-73', 'V1-78']),
+  manifest.compliancePolicy.implementationTasks.join(', '),
+)
+addCheck(
   'runtime surface inventory exists',
   fs.existsSync(path.join(root, manifest.runtimeSurfaceInventory)),
   manifest.runtimeSurfaceInventory,
@@ -218,6 +240,12 @@ addCheck(
   'data governance verification is part of the quick gate',
   packageJson.scripts['test:v1-data-governance'] === 'node scripts/verify-v1-data-governance.mjs' &&
     packageJson.scripts['check:quick']?.includes('npm run test:v1-data-governance'),
+  packageJson.scripts['check:quick'],
+)
+addCheck(
+  'compliance policy verification is part of the quick gate',
+  packageJson.scripts['test:v1-compliance'] === 'node scripts/verify-v1-compliance-policy.mjs' &&
+    packageJson.scripts['check:quick']?.includes('npm run test:v1-compliance'),
   packageJson.scripts['check:quick'],
 )
 
