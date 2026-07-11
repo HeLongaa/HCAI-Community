@@ -145,6 +145,18 @@ for (const modality of matrix.modalities) {
       Boolean(modality.failover.trigger),
     modality.failover.activation,
   )
+  const circuitPolicy = modality.failover.circuitPolicy
+  addCheck(
+    `${modality.id} has a machine-readable fail-closed circuit policy`,
+    Number.isInteger(circuitPolicy?.failureThreshold) && circuitPolicy.failureThreshold > 0 &&
+      Number.isInteger(circuitPolicy?.windowSeconds) && circuitPolicy.windowSeconds > 0 &&
+      Number.isInteger(circuitPolicy?.cooldownSeconds) && circuitPolicy.cooldownSeconds > 0 &&
+      circuitPolicy.automaticCloseAllowed === false &&
+      Array.isArray(circuitPolicy.retryableCategories) &&
+      circuitPolicy.retryableCategories.length === 4 &&
+      ['timeout', 'rate_limit', 'provider_5xx', 'provider_incident'].every((category) => circuitPolicy.retryableCategories.includes(category)),
+    circuitPolicy ? `${circuitPolicy.failureThreshold}/${circuitPolicy.windowSeconds}/${circuitPolicy.cooldownSeconds}` : 'missing',
+  )
   addCheck(
     `${modality.id} has replacement triggers`,
     modality.replacementTriggers.length >= 4,

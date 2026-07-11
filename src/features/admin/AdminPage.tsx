@@ -14,6 +14,8 @@ import type {
   AdminPermissionDto,
   AdminCreativeGenerationHistoryQuery,
   AdminOperationsMetricsDto,
+  AdminProviderControlBundle,
+  AdminProviderControlRecoveryTarget,
   AdminReviewDecision,
   AdminReviewQueueItemDto,
   AdminRolePermissionDto,
@@ -442,6 +444,9 @@ export function AdminPage({
   const [ledgerRows, setLedgerRows] = useState<ApiLedgerEntry[]>([])
   const [ledgerSummary, setLedgerSummary] = useState<ApiPointsSummary | null>(null)
   const [generationRows, setGenerationRows] = useState<ApiCreativeGenerationRecord[]>([])
+  const [providerControls, setProviderControls] = useState<AdminProviderControlBundle>({ controls: [], circuits: [], capEvidence: [] })
+  const [providerControlReason, setProviderControlReason] = useState('operator_requested')
+  const [runningProviderControlAction, setRunningProviderControlAction] = useState<string | null>(null)
   const [generationNextCursor, setGenerationNextCursor] = useState<string | null>(null)
   const [loadingMoreGenerations, setLoadingMoreGenerations] = useState(false)
   const [selectedGenerationId, setSelectedGenerationId] = useState<string | null>(null)
@@ -534,6 +539,9 @@ export function AdminPage({
   const canCancelGenerations = account.hasPermission('admin:creative:cancel')
   const canRequestGenerationRetries = account.hasPermission('admin:creative:retry')
   const canRequestManualReplay = account.hasPermission('admin:creative:replay')
+  const canReadProviderControls = account.hasPermission('admin:creative:provider-control:read')
+  const canManageProviderControls = account.hasPermission('admin:creative:provider-control:manage')
+  const canRecoverProviderControls = account.hasPermission('admin:creative:provider-control:recover')
   const canManageSecurityAlerts = account.hasPermission('security:alerts:manage')
   const securityQuery: AdminSecurityEventListQuery = {
     source: securitySourceFilter,
@@ -669,6 +677,15 @@ export function AdminPage({
     },
     getErrorMessage: () => (isZh ? '无法读取生成历史，请确认账号具备审计读取权限。' : 'Could not load generation history. Confirm audit read access.'),
     deps: [canReadAudit, isZh, generationUserHandle, generationWorkspace, generationProviderId, generationStatusFilter, generationReviewFilter, generationMediaAssetId, generationDateFrom, generationDateTo],
+    logLabel: 'admin-service',
+  })
+  const providerControlStatus = useAsyncResource<AdminProviderControlBundle>({
+    load: () => canReadProviderControls
+      ? adminService.providerControls()
+      : Promise.resolve({ controls: [], circuits: [], capEvidence: [] }),
+    onSuccess: setProviderControls,
+    getErrorMessage: () => (isZh ? '无法读取 Provider 控制状态。' : 'Could not load Provider controls.'),
+    deps: [canReadProviderControls, isZh],
     logLabel: 'admin-service',
   })
   const pointPolicyStatus = useAsyncResource<PointAdjustmentPolicy | null>({
@@ -1442,6 +1459,32 @@ export function AdminPage({
         : textFor(t, 'Generation action failed.', '生成任务操作失败。'))
     } finally {
       setRunningGenerationAction(null)
+    }
+  }
+
+  const runProviderControlAction = async (
+    resourceId: string,
+    version: number,
+    action: 'disable' | AdminProviderControlRecoveryTarget,
+  ) => {
+    const actionKey = `${resourceId}:${action}`
+    if (runningProviderControlAction) return
+    setRunningProviderControlAction(actionKey)
+    try {
+      if (action === 'disable') {
+        await adminService.disableProviderControl(resourceId, version, providerControlReason || 'operator_emergency_stop')
+        simulateAction(textFor(t, 'Provider dispatch disabled.', 'Provider 调用已停用。'))
+      } else {
+        await adminService.requestProviderControlRecovery(resourceId, action, version, providerControlReason || 'operator_recovery_requested')
+        await queueStatus.refresh()
+        simulateAction(textFor(t, 'Provider recovery sent to review.', 'Provider 恢复已提交复核。'))
+      }
+      await providerControlStatus.refresh()
+    } catch (error) {
+      console.info('[admin-service]', error)
+      simulateAction(error instanceof Error ? error.message : textFor(t, 'Provider control action failed.', 'Provider 控制操作失败。'))
+    } finally {
+      setRunningProviderControlAction(null)
     }
   }
 
@@ -3055,6 +3098,103 @@ export function AdminPage({
           ))}
         </div>
       </section>
+      <section className="panel" data-testid="admin-provider-controls">
+        <SectionHeader
+          eyebrow={textFor(t, 'Creative operations', '创作运营')}
+          title={textFor(t, 'Provider controls', 'Provider 控制')}
+          action={
+            <button className="ghost-button" type="button" onClick={() => void providerControlStatus.refresh()} disabled={!canReadProviderControls || providerControlStatus.loading}>
+              {providerControlStatus.loading ? textFor(t, 'Loading', '加载中') : textFor(t, 'Refresh', '刷新')}
+            </button>
+          }
+        />
+        <div className="permission-summary">
+          <label>
+            <span>{textFor(t, 'Reason code', '原因代码')}</span>
+            <input
+              aria-label={textFor(t, 'Provider control reason code', 'Provider 控制原因代码')}
+              value={providerControlReason}
+              onChange={(event) => setProviderControlReason(event.target.value)}
+              placeholder="operator_requested"
+            />
+          </label>
+        </div>
+        {providerControlStatus.error && (
+          <div className="empty-state">
+            <strong>{textFor(t, 'Provider controls unavailable', 'Provider 控制不可用')}</strong>
+            <span>{providerControlStatus.error}</span>
+          </div>
+        )}
+        {!providerControlStatus.error && (
+          <div className="admin-table">
+            {providerControls.controls.map((control) => {
+              const resourceId = control.id ?? ''
+              const actionKey = `${resourceId}:${control.enabled ? 'disable' : 'enable'}`
+              return (
+                <div className="admin-row" key={resourceId}>
+                  <StatusBadge status={control.enabled ? 'Enabled' : 'Disabled'} t={t} />
+                  <strong>{control.providerId ?? control.scopeType}</strong>
+                  <span>{control.workspace ?? control.scopeType}{control.modelFamily ? ` / ${control.modelFamily}` : ''}</span>
+                  <small>{control.reasonCode} · v{control.version}</small>
+                  <button
+                    className={control.enabled ? 'danger-button' : 'ghost-button'}
+                    type="button"
+                    onClick={() => void runProviderControlAction(resourceId, control.version, control.enabled ? 'disable' : 'enable')}
+                    disabled={!resourceId || (control.enabled ? !canManageProviderControls : !canRecoverProviderControls) || Boolean(runningProviderControlAction)}
+                  >
+                    {runningProviderControlAction === actionKey
+                      ? textFor(t, 'Working', '处理中')
+                      : control.enabled
+                        ? textFor(t, 'Disable', '停用')
+                        : textFor(t, 'Request enable', '申请启用')}
+                  </button>
+                </div>
+              )
+            })}
+            {providerControls.circuits.map((circuit) => {
+              const resourceId = circuit.id ?? ''
+              const target: AdminProviderControlRecoveryTarget | null = circuit.status === 'open'
+                ? 'half_open'
+                : circuit.status === 'half_open'
+                  ? 'closed'
+                  : null
+              return (
+                <div className="admin-row" key={`circuit-${resourceId}`}>
+                  <StatusBadge status={circuit.status} t={t} />
+                  <strong>{circuit.providerId ?? '-'}</strong>
+                  <span>{circuit.workspace}{circuit.modelFamily ? ` / ${circuit.modelFamily}` : ''}</span>
+                  <small>{circuit.failureCount} {textFor(t, 'failures', '次故障')} · {circuit.reasonCode ?? '-'}</small>
+                  {target && (
+                    <button
+                      className="ghost-button"
+                      type="button"
+                      onClick={() => void runProviderControlAction(resourceId, circuit.version, target)}
+                      disabled={!resourceId || !canRecoverProviderControls || Boolean(runningProviderControlAction)}
+                    >
+                      {target === 'half_open' ? textFor(t, 'Request probe', '申请探测') : textFor(t, 'Request close', '申请关闭熔断')}
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+            {providerControls.capEvidence.map((evidence) => (
+              <div className="admin-row" key={`cap-${evidence.id}`}>
+                <StatusBadge status={evidence.active ? 'Active' : 'Inactive'} t={t} />
+                <strong>{evidence.providerId ?? '-'}</strong>
+                <span>{formatProviderCostAmount(evidence.capAmount, evidence.currency)}</span>
+                <small>{textFor(t, 'remaining', '剩余')} {formatProviderCostAmount(evidence.remainingAmount, evidence.currency)} · {evidence.sourceType} · {formatAuditTime(evidence.expiresAt)}</small>
+                <span>SHA-256 {evidence.evidenceHashPreview ?? '-'}</span>
+              </div>
+            ))}
+            {!providerControlStatus.loading && providerControls.controls.length === 0 && providerControls.circuits.length === 0 && (
+              <div className="empty-state">
+                <strong>{textFor(t, 'No Provider controls', '暂无 Provider 控制')}</strong>
+                <span>{textFor(t, 'No durable control state is available.', '暂无可用的持久化控制状态。')}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
       <section className="panel" data-testid="admin-generation-history">
         <SectionHeader
           eyebrow={textFor(t, 'Creative operations', '创作运营')}
@@ -3717,6 +3857,12 @@ export function AdminPage({
                   <strong>{formatMetricAmount(operationsMetrics.creativeProviderBudget.spend.projectedSpendAmount)}</strong>
                   <small>{`${textFor(t, 'estimated', '预估')} ${formatMetricAmount(operationsMetrics.creativeProviderBudget.spend.estimatedAmount)} · ${textFor(t, 'actual', '实际')} ${formatMetricAmount(operationsMetrics.creativeProviderBudget.spend.actualAmount)}`}</small>
                 </article>
+                <article className="operations-metric-card">
+                  <ShieldAlert size={18} />
+                  <span>{textFor(t, 'Provider control plane', 'Provider 控制面')}</span>
+                  <strong>{formatMetricNumber(operationsMetrics.creativeProviderControl.dispatchBlocked)}</strong>
+                  <small>{`${formatMetricNumber(operationsMetrics.creativeProviderControl.circuitOpened)} ${textFor(t, 'circuits opened', '次熔断')} · ${formatMetricNumber(operationsMetrics.creativeProviderControl.capEvidenceExpired)} ${textFor(t, 'cap records expired', '条额度证据过期')}`}</small>
+                </article>
               </div>
               <div className="operations-breakdown-grid">
                 <div>
@@ -3777,6 +3923,22 @@ export function AdminPage({
                   <button className="ghost-button small" type="button" onClick={() => void toggleOperationSamples('creativeProviderBudgetDispatchBlocks')} disabled={!canReadAudit || loadingOperationsSamples}>
                     <ShieldAlert size={15} />
                     {textFor(t, 'Recent blocks', '近期阻断')}
+                  </button>
+                </div>
+                <div>
+                  <strong>{textFor(t, 'Provider recovery reviews', 'Provider 恢复审批')}</strong>
+                  <span>{`${formatMetricNumber(operationsMetrics.creativeProviderControl.recoveryApproved)} ${textFor(t, 'approved', '已批准')} · ${formatMetricNumber(operationsMetrics.creativeProviderControl.recoveryRejected)} ${textFor(t, 'rejected', '已拒绝')} · ${metricCountSummary(operationsMetrics.creativeProviderControl.byStatus)}`}</span>
+                  <button
+                    className="ghost-button small"
+                    type="button"
+                    onClick={() => focusAuditFilter('creative.provider_control.recovery_approved', 'admin_review', {
+                      en: 'Filtered audit log to provider control recovery approvals.',
+                      zh: '已筛选 Provider 控制恢复审批审计事件。',
+                    })}
+                    disabled={!canReadAudit}
+                  >
+                    <Clipboard size={15} />
+                    {textFor(t, 'Recovery audit', '恢复审计')}
                   </button>
                 </div>
                 <div>

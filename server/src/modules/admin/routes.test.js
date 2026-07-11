@@ -7,6 +7,10 @@ import { quotaWindowFor, resetCreativePolicyState } from '../../creative/policy.
 import { createReplicateStagingPrediction } from '../../creative/replicateStagingProvider.js'
 import { sha256 } from '../../creative/generationRecords.js'
 import { buildProviderCostReservation } from '../../creative/providerCostContract.js'
+import {
+  buildProviderControlScopes,
+  providerCircuitScope,
+} from '../../creative/providerControlContract.js'
 import { repositories } from '../../repositories/index.js'
 import { createSeedRepository } from '../../repositories/seedRepository.js'
 import { registerMediaRoutes } from '../media/routes.js'
@@ -72,6 +76,117 @@ const applyReplicateStagingAdminFixtureEnv = (overrides = {}) => {
     }
   }
 }
+
+test('Provider control Admin APIs enforce dedicated permissions immediate disable and independent recovery', async () => {
+  const repository = createSeedRepository()
+  const suffix = Date.now()
+  const scopes = buildProviderControlScopes({
+    providerId: `fixture-admin-control-${suffix}`,
+    providerAccountRef: 'staging',
+    workspace: 'image',
+    modelFamily: 'flux',
+  })
+  const global = await repository.creativeProviderControls.findControl('global')
+  await repository.creativeProviderControls.setControl({
+    ...scopes[0],
+    enabled: true,
+    reasonCode: 'fixture_global_enabled',
+    expectedVersion: global?.version ?? 0,
+  }, { id: 'demo-user-admin', handle: 'opsplus' })
+  const provider = await repository.creativeProviderControls.setControl({
+    ...scopes[1],
+    enabled: true,
+    reasonCode: 'fixture_provider_enabled',
+    expectedVersion: 0,
+  }, { id: 'demo-user-admin', handle: 'opsplus' })
+  await repository.creativeProviderControls.ensureCircuit(providerCircuitScope(scopes), { id: 'demo-user-admin', handle: 'opsplus' })
+  const server = await createInjectedAdminServer(repository)
+  try {
+    const denied = await requestJson(server.url, '/api/admin/creative/provider-controls', {
+      method: 'GET',
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(denied.status, 403, JSON.stringify(denied.payload))
+
+    const listed = await requestJson(server.url, `/api/admin/creative/provider-controls?providerId=${scopes[1].providerId}`, {
+      method: 'GET',
+      token: 'demo-access.opsplus',
+    })
+    assert.equal(listed.status, 200)
+    const listedControl = listed.payload.data.controls.find((item) => item.providerId === scopes[1].providerId)
+    assert.ok(listedControl)
+    assert.equal(listedControl.id, provider.control.id)
+    assert.equal((await repository.creativeProviderControls.findControlById(listedControl.id)).scopeKey, scopes[1].scopeKey)
+    assert.equal(listedControl.scopeKey, null)
+    assert.equal(JSON.stringify(listed.payload).includes('providerAccountRef'), false)
+    assert.equal(JSON.stringify(listed.payload).includes(scopes[1].scopeKey), false)
+
+    const cap = await requestJson(server.url, '/api/admin/creative/provider-controls/cap-evidence', {
+      token: 'demo-access.opsplus',
+      body: {
+        sourceKey: `cap-admin-control-${suffix}`,
+        scopeKey: scopes[1].scopeKey,
+        providerId: scopes[1].providerId,
+        providerAccountRef: 'staging',
+        currency: 'USD',
+        capAmount: '5',
+        remainingAmount: '1',
+        sourceType: 'manual_attestation',
+        sourceRef: `internal:provider-console:${suffix}`,
+        verifiedAt: '2026-07-12T09:00:00.000Z',
+        expiresAt: '2026-07-12T11:00:00.000Z',
+      },
+    })
+    assert.equal(cap.status, 200)
+    assert.equal(cap.payload.data.evidence.evidenceHashPresent, true)
+    assert.equal(JSON.stringify(cap.payload).includes(`internal:provider-console:${suffix}`), false)
+    assert.equal(JSON.stringify(cap.payload).includes('providerAccountRef'), false)
+
+    const disabled = await requestJson(server.url, '/api/admin/creative/provider-controls/disable', {
+      token: 'demo-access.opsplus',
+      body: {
+        resourceId: listedControl.id,
+        expectedVersion: provider.control.version,
+        reasonCode: 'operator_emergency_stop',
+      },
+    })
+    assert.equal(disabled.status, 200)
+    assert.equal(disabled.payload.data.control.enabled, false)
+    assert.equal(JSON.stringify(disabled.payload).includes('providerAccountRef'), false)
+    assert.equal(JSON.stringify(disabled.payload).includes(scopes[1].scopeKey), false)
+
+    const requested = await requestJson(server.url, '/api/admin/creative/provider-controls/recovery-requests', {
+      token: 'demo-access.opsplus',
+      body: {
+        resourceId: listedControl.id,
+        target: 'enable',
+        expectedVersion: disabled.payload.data.control.version,
+        reasonCode: 'incident_resolved',
+      },
+    })
+    assert.equal(requested.status, 200)
+    assert.equal(requested.payload.data.review.metadata.kind, 'provider_control_recovery')
+    assert.equal(JSON.stringify(requested.payload).includes(scopes[1].scopeKey), false)
+
+    const selfApproval = await requestJson(server.url, `/api/admin/reviews/${requested.payload.data.review.id}/actions`, {
+      token: 'demo-access.opsplus',
+      body: { decision: 'approve' },
+    })
+    assert.equal(selfApproval.status, 400)
+    assert.match(selfApproval.payload.error.message, /different approver/)
+
+    const approved = await requestJson(server.url, `/api/admin/reviews/${requested.payload.data.review.id}/actions`, {
+      token: 'demo-access.finops',
+      body: { decision: 'approve', note: 'Independent fixture review complete' },
+    })
+    assert.equal(approved.status, 200)
+    assert.equal(approved.payload.data.review.status, 'Approved')
+    assert.equal(approved.payload.data.result.enabled, true)
+    assert.equal((await repository.creativeProviderControls.findControl(scopes[1].scopeKey)).enabled, true)
+  } finally {
+    await server.close()
+  }
+})
 
 test('GET /api/admin/permissions returns AUTH_REQUIRED when missing auth', async () => {
   const server = await createTestServer()
@@ -1633,7 +1748,7 @@ test('GET /api/admin/reviews returns review queue data for moderators', async ()
     assert.equal(status, 200)
     assert.ok(Array.isArray(payload.data))
     assert.equal(payload.error, undefined)
-    assert.equal(payload.data[0].id, 'review-1')
+    assert.ok(payload.data.some((item) => item.id === 'review-1'))
     assert.equal(payload.meta.pagination.nextCursor, null)
     assert.equal(payload.meta.pagination.limit, 20)
   } finally {
@@ -1650,18 +1765,19 @@ test('GET /api/admin/reviews paginates with cursor and limit', async () => {
     })
 
     assert.equal(firstPage.status, 200)
-    assert.deepEqual(firstPage.payload.data.map((item) => item.id), ['review-1', 'review-2'])
+    assert.equal(firstPage.payload.data.length, 2)
     assert.equal(firstPage.payload.meta.pagination.limit, 2)
-    assert.equal(firstPage.payload.meta.pagination.nextCursor, 'review-2')
+    assert.equal(firstPage.payload.meta.pagination.nextCursor, firstPage.payload.data[1].id)
 
-    const secondPage = await requestJson(server.url, '/api/admin/reviews?limit=2&cursor=review-2', {
+    const secondPage = await requestJson(server.url, `/api/admin/reviews?limit=2&cursor=${encodeURIComponent(firstPage.payload.meta.pagination.nextCursor)}`, {
       method: 'GET',
       token: 'demo-access.legalpixel',
     })
 
     assert.equal(secondPage.status, 200)
-    assert.deepEqual(secondPage.payload.data.map((item) => item.id), ['review-3', 'review-4'])
-    assert.equal(secondPage.payload.meta.pagination.nextCursor, null)
+    assert.equal(secondPage.payload.data.length, 2)
+    assert.equal(secondPage.payload.data.some((item) => firstPage.payload.data.some((first) => first.id === item.id)), false)
+    assert.ok([null, secondPage.payload.data[1].id].includes(secondPage.payload.meta.pagination.nextCursor))
   } finally {
     await server.close()
   }

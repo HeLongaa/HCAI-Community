@@ -328,6 +328,74 @@ export const getCreativeProviderCostLedgerDto = (ledger) => ({
   budgetWindow: ledger.budgetWindow ? getCreativeProviderBudgetWindowDto(ledger.budgetWindow) : null,
 })
 
+export const getCreativeProviderControlStateDto = (control) => ({
+  id: control.id,
+  scopeKey: control.scopeKey,
+  scopeType: control.scopeType,
+  providerId: control.providerId ?? null,
+  providerAccountRef: control.providerAccountRef ?? null,
+  workspace: control.workspace ?? null,
+  modelFamily: control.modelFamily ?? null,
+  enabled: control.enabled,
+  version: control.version,
+  reasonCode: control.reasonCode,
+  changedByRef: control.changedByRef ?? null,
+  enabledAt: control.enabledAt?.toISOString() ?? null,
+  disabledAt: control.disabledAt?.toISOString() ?? null,
+  createdAt: control.createdAt.toISOString(),
+  updatedAt: control.updatedAt.toISOString(),
+})
+
+export const getCreativeProviderCapEvidenceDto = (evidence) => ({
+  schemaVersion: 'provider-cap-evidence-v1',
+  id: evidence.id,
+  sourceKey: evidence.sourceKey,
+  scopeKey: evidence.scopeKey,
+  providerId: evidence.providerId,
+  providerAccountRef: evidence.providerAccountRef,
+  currency: evidence.currency,
+  capMicros: String(evidence.capMicros),
+  remainingMicros: evidence.remainingMicros == null ? null : String(evidence.remainingMicros),
+  sourceType: evidence.sourceType,
+  sourceRefHash: evidence.sourceRefHash,
+  evidenceHash: evidence.evidenceHash,
+  verifiedAt: evidence.verifiedAt.toISOString(),
+  expiresAt: evidence.expiresAt.toISOString(),
+  active: evidence.active,
+  createdAt: evidence.createdAt.toISOString(),
+})
+
+export const getCreativeProviderCircuitStateDto = (circuit) => ({
+  id: circuit.id,
+  scopeKey: circuit.scopeKey,
+  providerId: circuit.providerId,
+  providerAccountRef: circuit.providerAccountRef,
+  workspace: circuit.workspace,
+  modelFamily: circuit.modelFamily ?? null,
+  status: circuit.status,
+  version: circuit.version,
+  failureCount: circuit.failureCount,
+  windowStartedAt: circuit.windowStartedAt?.toISOString() ?? null,
+  lastFailureAt: circuit.lastFailureAt?.toISOString() ?? null,
+  openedAt: circuit.openedAt?.toISOString() ?? null,
+  cooldownUntil: circuit.cooldownUntil?.toISOString() ?? null,
+  probeLeaseActive: Boolean(circuit.probeLeaseTokenHash && circuit.probeLeaseExpiresAt),
+  probeLeaseExpiresAt: circuit.probeLeaseExpiresAt?.toISOString() ?? null,
+  reasonCode: circuit.reasonCode ?? null,
+  createdAt: circuit.createdAt.toISOString(),
+  updatedAt: circuit.updatedAt.toISOString(),
+})
+
+export const getCreativeProviderCircuitEventDto = (event) => ({
+  id: event.id,
+  sourceKey: event.sourceKey,
+  circuitStateId: event.circuitStateId,
+  category: event.category,
+  outcome: event.outcome,
+  occurredAt: event.occurredAt.toISOString(),
+  createdAt: event.createdAt.toISOString(),
+})
+
 export const getMediaScanJobDto = (job) => ({
   id: job.id,
   assetId: job.assetId,

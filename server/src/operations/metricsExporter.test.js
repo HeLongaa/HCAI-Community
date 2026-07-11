@@ -131,6 +131,19 @@ test('buildPrometheusMetrics renders safe Prometheus text without unsafe labels'
         byReason: [{ key: 'actual_cost_missing', count: 1 }, { key: 'token=secret-token', count: 1 }],
       },
     },
+    creativeProviderControl: {
+      total: 6,
+      dispatchBlocked: 1,
+      circuitOpened: 1,
+      recoveryApproved: 1,
+      recoveryRejected: 1,
+      capEvidenceRecorded: 2,
+      capEvidenceExpired: 1,
+      byProvider: [{ key: 'replicate', count: 5 }, { key: 'user@example.com', count: 1 }],
+      byWorkspace: [{ key: 'image', count: 5 }, { key: 'prompt-hash-123', count: 1 }],
+      byStatus: [{ key: 'open', count: 1 }, { key: 'secret-status', count: 1 }],
+      byReason: [{ key: 'provider_circuit_open', count: 1 }, { key: 'token=secret-token', count: 1 }],
+    },
   })
 
   assert.match(body, /# TYPE newchat_security_events_window_total gauge/)
@@ -196,6 +209,20 @@ test('buildPrometheusMetrics renders safe Prometheus text without unsafe labels'
   assert.match(body, /newchat_creative_provider_cost_ledger_by_provider_total\{provider="other"\} 1/)
   assert.match(body, /newchat_creative_provider_cost_ledger_by_workspace_total\{workspace="image"\} 4/)
   assert.match(body, /newchat_creative_provider_cost_ledger_by_reason_total\{reason="actual_cost_missing"\} 1/)
+  assert.match(body, /newchat_creative_provider_control_events_total 6/)
+  assert.match(body, /newchat_creative_provider_control_dispatch_blocked_total 1/)
+  assert.match(body, /newchat_creative_provider_circuit_opened_total 1/)
+  assert.match(body, /newchat_creative_provider_control_recovery_approved_total 1/)
+  assert.match(body, /newchat_creative_provider_control_recovery_rejected_total 1/)
+  assert.match(body, /newchat_creative_provider_cap_evidence_recorded_total 2/)
+  assert.match(body, /newchat_creative_provider_cap_evidence_expired_total 1/)
+  assert.match(body, /newchat_creative_provider_control_events_by_provider_total\{provider="replicate"\} 5/)
+  assert.match(body, /newchat_creative_provider_control_events_by_provider_total\{provider="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_control_events_by_workspace_total\{workspace="image"\} 5/)
+  assert.match(body, /newchat_creative_provider_control_events_by_status_total\{status="open"\} 1/)
+  assert.match(body, /newchat_creative_provider_control_events_by_status_total\{status="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_control_events_by_reason_total\{reason="provider_circuit_open"\} 1/)
+  assert.match(body, /newchat_creative_provider_control_events_by_reason_total\{reason="other"\} 1/)
   assert.equal(body.includes('user@example.com'), false)
   assert.equal(body.includes('prompt-hash-123'), false)
   assert.equal(body.includes('provider_job_mismatch'), false)

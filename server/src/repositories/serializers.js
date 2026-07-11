@@ -19,6 +19,33 @@ const providerBudgetAuditResourceTypes = new Set([
   'creative_provider_cost_ledger',
 ])
 
+const providerControlAuditResourceTypes = new Set([
+  'creative_provider_control',
+  'creative_provider_cap_evidence',
+  'creative_provider_circuit',
+  'admin_review',
+])
+
+const providerControlAuditMetadataKeys = new Set([
+  'blockedScopeType',
+  'category',
+  'currency',
+  'enabled',
+  'expiresAt',
+  'failureCount',
+  'modelFamily',
+  'outcome',
+  'providerId',
+  'reasonCode',
+  'scopeType',
+  'sourceType',
+  'status',
+  'target',
+  'verifiedAt',
+  'version',
+  'workspace',
+])
+
 const providerLifecycleAuditActions = new Set([
   'creative.provider_callback.accepted',
   'creative.provider_callback.rejected',
@@ -161,6 +188,22 @@ const mediaAssetLifecycleIdentifierKeys = new Set([
 
 const isProviderBudgetAuditEvent = (event) =>
   providerBudgetAuditActions.has(event?.action) && providerBudgetAuditResourceTypes.has(event?.resourceType)
+
+const isProviderControlAuditEvent = (event) =>
+  providerControlAuditResourceTypes.has(event?.resourceType) &&
+  (event?.action?.startsWith('creative.provider_control.') || event?.action?.startsWith('creative.provider_circuit.'))
+
+const safeProviderControlAuditMetadata = (metadata) => {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
+  return Object.fromEntries(Object.entries(metadata)
+    .filter(([key]) => providerControlAuditMetadataKeys.has(key))
+    .map(([key, value]) => [
+      key,
+      typeof value === 'string' && !['expiresAt', 'verifiedAt'].includes(key)
+        ? safeProviderBudgetEvidenceIdentifier(value)
+        : value,
+    ]))
+}
 
 const safeProviderBudgetAuditMetadataValue = (value, key = '') => {
   if (typeof value === 'string') {
@@ -546,6 +589,74 @@ export const serializeCreativeProviderCostLedger = (ledger, budgetWindow = null)
   budgetWindow: budgetWindow ? serializeCreativeProviderBudgetWindow(budgetWindow) : null,
 })
 
+export const serializeCreativeProviderControlState = (control) => ({
+  id: String(control.id),
+  scopeKey: control.scopeKey,
+  scopeType: control.scopeType,
+  providerId: control.providerId ?? null,
+  providerAccountRef: control.providerAccountRef ?? null,
+  workspace: control.workspace ?? null,
+  modelFamily: control.modelFamily ?? null,
+  enabled: Boolean(control.enabled),
+  version: Number(control.version),
+  reasonCode: control.reasonCode,
+  changedByRef: control.changedByRef ?? null,
+  enabledAt: control.enabledAt ?? null,
+  disabledAt: control.disabledAt ?? null,
+  createdAt: control.createdAt ?? '',
+  updatedAt: control.updatedAt ?? '',
+})
+
+export const serializeCreativeProviderCapEvidence = (evidence) => ({
+  schemaVersion: 'provider-cap-evidence-v1',
+  id: String(evidence.id),
+  sourceKey: evidence.sourceKey,
+  scopeKey: evidence.scopeKey,
+  providerId: evidence.providerId,
+  providerAccountRef: evidence.providerAccountRef,
+  currency: evidence.currency,
+  capMicros: String(evidence.capMicros),
+  remainingMicros: evidence.remainingMicros == null ? null : String(evidence.remainingMicros),
+  sourceType: evidence.sourceType,
+  sourceRefHash: evidence.sourceRefHash,
+  evidenceHash: evidence.evidenceHash,
+  verifiedAt: evidence.verifiedAt ?? '',
+  expiresAt: evidence.expiresAt ?? '',
+  active: Boolean(evidence.active),
+  createdAt: evidence.createdAt ?? '',
+})
+
+export const serializeCreativeProviderCircuitState = (circuit) => ({
+  id: String(circuit.id),
+  scopeKey: circuit.scopeKey,
+  providerId: circuit.providerId,
+  providerAccountRef: circuit.providerAccountRef,
+  workspace: circuit.workspace,
+  modelFamily: circuit.modelFamily ?? null,
+  status: circuit.status,
+  version: Number(circuit.version),
+  failureCount: Number(circuit.failureCount),
+  windowStartedAt: circuit.windowStartedAt ?? null,
+  lastFailureAt: circuit.lastFailureAt ?? null,
+  openedAt: circuit.openedAt ?? null,
+  cooldownUntil: circuit.cooldownUntil ?? null,
+  probeLeaseActive: Boolean(circuit.probeLeaseTokenHash && circuit.probeLeaseExpiresAt),
+  probeLeaseExpiresAt: circuit.probeLeaseExpiresAt ?? null,
+  reasonCode: circuit.reasonCode ?? null,
+  createdAt: circuit.createdAt ?? '',
+  updatedAt: circuit.updatedAt ?? '',
+})
+
+export const serializeCreativeProviderCircuitEvent = (event) => ({
+  id: String(event.id),
+  sourceKey: event.sourceKey,
+  circuitStateId: event.circuitStateId,
+  category: event.category,
+  outcome: event.outcome,
+  occurredAt: event.occurredAt ?? '',
+  createdAt: event.createdAt ?? '',
+})
+
 export const serializeNotification = (notification) => ({
   id: String(notification.id),
   type: notification.type,
@@ -560,6 +671,7 @@ export const serializeNotification = (notification) => ({
 
 export const serializeAuditEvent = (event) => {
   const providerBudgetEvent = isProviderBudgetAuditEvent(event)
+  const providerControlEvent = isProviderControlAuditEvent(event)
   const providerLifecycleEvent = isProviderLifecycleAuditEvent(event)
   const providerReplayLedgerEvent = isProviderReplayLedgerAuditEvent(event)
   const creativeGenerationEvent = isCreativeGenerationAuditEvent(event)
@@ -571,7 +683,7 @@ export const serializeAuditEvent = (event) => {
     actorId: event.actorId ?? null,
     action: event.action,
     resourceType: event.resourceType,
-    resourceId: providerBudgetEvent
+    resourceId: providerBudgetEvent || providerControlEvent
       ? safeProviderBudgetEvidenceIdentifier(event.resourceId)
       : providerLifecycleEvent
         ? safeProviderLifecycleEvidenceIdentifier(event.resourceId)
@@ -584,7 +696,9 @@ export const serializeAuditEvent = (event) => {
               : mediaAssetLifecycleEvent
                 ? safeProviderLifecycleEvidenceIdentifier(event.resourceId)
                 : event.resourceId ?? null,
-    metadata: providerBudgetEvent
+    metadata: providerControlEvent
+      ? safeProviderControlAuditMetadata(event.metadata)
+      : providerBudgetEvent
       ? safeProviderBudgetAuditMetadata(event.metadata)
       : providerLifecycleEvent
         ? safeProviderLifecycleAuditMetadata(event.metadata)

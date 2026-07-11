@@ -19,7 +19,11 @@ import {
   getCreativeGenerationDto,
   getCreativeGenerationMutationDto,
   getCreativeOutputIngestionDto,
+  getCreativeProviderCapEvidenceDto,
   getCreativeProviderBudgetWindowDto,
+  getCreativeProviderCircuitEventDto,
+  getCreativeProviderCircuitStateDto,
+  getCreativeProviderControlStateDto,
   getCreativeProviderCostLedgerDto,
   getCreativeProviderReplayDto,
   getMediaAssetDto,
@@ -4472,6 +4476,557 @@ const createPrismaRepository = async (fallbackRepository) => {
     { reasonCode },
   )
 
+  const providerControlConflict = (reasonCode) => new HttpError(
+    409,
+    'CREATIVE_PROVIDER_CONTROL_CONFLICT',
+    'Creative Provider control state conflict',
+    { reasonCode },
+  )
+
+  const creativeProviderControls = {
+    list: async (options = {}) => {
+      const limit = options.limit ?? 50
+      const rows = await client.creativeProviderControlState.findMany({
+        where: {
+          ...(options.providerId ? { providerId: options.providerId } : {}),
+          ...(options.workspace ? { workspace: options.workspace } : {}),
+        },
+        orderBy: { scopeKey: 'asc' },
+        take: limit + 1,
+        ...(options.cursor ? { cursor: { scopeKey: String(options.cursor) }, skip: 1 } : {}),
+      })
+      const pageRows = rows.slice(0, limit)
+      return {
+        items: pageRows.map(getCreativeProviderControlStateDto),
+        nextCursor: rows.length > limit && pageRows.length ? pageRows[pageRows.length - 1].scopeKey : null,
+        limit,
+      }
+    },
+    findControl: async (scopeKey) => {
+      const row = await client.creativeProviderControlState.findUnique({ where: { scopeKey: String(scopeKey) } })
+      return row ? getCreativeProviderControlStateDto(row) : null
+    },
+    findControlById: async (id) => {
+      const row = await client.creativeProviderControlState.findUnique({ where: { id: String(id) } })
+      return row ? getCreativeProviderControlStateDto(row) : null
+    },
+    setControl: async (payload, actor) => {
+      const current = await client.creativeProviderControlState.findUnique({ where: { scopeKey: payload.scopeKey } })
+      if (current && Number(payload.expectedVersion) !== current.version) throw providerControlConflict('control_version_mismatch')
+      if (!current && ![undefined, null, 0].includes(payload.expectedVersion)) throw providerControlConflict('control_create_version_mismatch')
+      if (current && current.enabled === payload.enabled && current.reasonCode === payload.reasonCode) {
+        return { changed: false, control: getCreativeProviderControlStateDto(current) }
+      }
+      const now = new Date()
+      let row
+      if (!current) {
+        row = await client.creativeProviderControlState.create({
+          data: {
+            id: payload.id ?? `provider-control-${randomUUID()}`,
+            scopeKey: payload.scopeKey,
+            scopeType: payload.scopeType,
+            providerId: payload.providerId ?? null,
+            providerAccountRef: payload.providerAccountRef ?? null,
+            workspace: payload.workspace ?? null,
+            modelFamily: payload.modelFamily ?? null,
+            enabled: payload.enabled === true,
+            reasonCode: payload.reasonCode,
+            changedByRef: actor?.handle ?? payload.changedByRef ?? null,
+            enabledAt: payload.enabled ? now : null,
+            disabledAt: payload.enabled ? null : now,
+          },
+        })
+      } else {
+        const changed = await client.creativeProviderControlState.updateMany({
+          where: { id: current.id, version: current.version },
+          data: {
+            enabled: payload.enabled === true,
+            version: { increment: 1 },
+            reasonCode: payload.reasonCode,
+            changedByRef: actor?.handle ?? payload.changedByRef ?? null,
+            ...(payload.enabled ? { enabledAt: now } : { disabledAt: now }),
+          },
+        })
+        if (changed.count !== 1) throw providerControlConflict('control_concurrent_change')
+        row = await client.creativeProviderControlState.findUnique({ where: { id: current.id } })
+      }
+      const dto = getCreativeProviderControlStateDto(row)
+      await recordAudit({
+        actor,
+        action: `creative.provider_control.${dto.enabled ? 'enabled' : 'disabled'}`,
+        resourceType: 'creative_provider_control',
+        resourceId: dto.id,
+        metadata: {
+          scopeType: dto.scopeType,
+          providerId: dto.providerId,
+          workspace: dto.workspace,
+          modelFamily: dto.modelFamily,
+          enabled: dto.enabled,
+          version: dto.version,
+          reasonCode: dto.reasonCode,
+        },
+      })
+      return { changed: true, control: dto }
+    },
+    putCapEvidence: async (payload, actor) => {
+      const existing = await client.creativeProviderCapEvidence.findUnique({ where: { sourceKey: payload.sourceKey } })
+      if (existing) {
+        if (existing.evidenceHash !== payload.evidenceHash) throw providerControlConflict('cap_source_key_payload_mismatch')
+        return { created: false, evidence: getCreativeProviderCapEvidenceDto(existing) }
+      }
+      const row = await client.$transaction(async (tx) => {
+        await tx.creativeProviderCapEvidence.updateMany({
+          where: { scopeKey: payload.scopeKey, active: true },
+          data: { active: false },
+        })
+        return tx.creativeProviderCapEvidence.create({
+          data: {
+            id: payload.id ?? `provider-cap-${randomUUID()}`,
+            sourceKey: payload.sourceKey,
+            scopeKey: payload.scopeKey,
+            providerId: payload.providerId,
+            providerAccountRef: payload.providerAccountRef,
+            currency: payload.currency,
+            capMicros: BigInt(payload.capMicros),
+            remainingMicros: payload.remainingMicros == null ? null : BigInt(payload.remainingMicros),
+            sourceType: payload.sourceType,
+            sourceRefHash: payload.sourceRefHash,
+            evidenceHash: payload.evidenceHash,
+            verifiedAt: new Date(payload.verifiedAt),
+            expiresAt: new Date(payload.expiresAt),
+            active: payload.active !== false,
+          },
+        })
+      })
+      const dto = getCreativeProviderCapEvidenceDto(row)
+      await recordAudit({
+        actor,
+        action: 'creative.provider_control.cap_evidence_recorded',
+        resourceType: 'creative_provider_cap_evidence',
+        resourceId: dto.id,
+        metadata: {
+          providerId: dto.providerId,
+          currency: dto.currency,
+          sourceType: dto.sourceType,
+          evidenceHash: dto.evidenceHash,
+          verifiedAt: dto.verifiedAt,
+          expiresAt: dto.expiresAt,
+        },
+      })
+      return { created: true, evidence: dto }
+    },
+    findCapEvidence: async (scopeKey) => {
+      const row = await client.creativeProviderCapEvidence.findFirst({
+        where: { scopeKey: String(scopeKey), active: true },
+        orderBy: { verifiedAt: 'desc' },
+      })
+      return row ? getCreativeProviderCapEvidenceDto(row) : null
+    },
+    ensureCircuit: async (payload, actor) => {
+      const existing = await client.creativeProviderCircuitState.findUnique({ where: { scopeKey: payload.scopeKey } })
+      if (existing) return { created: false, circuit: getCreativeProviderCircuitStateDto(existing) }
+      const row = await client.creativeProviderCircuitState.create({
+        data: {
+          id: payload.id ?? `provider-circuit-${randomUUID()}`,
+          scopeKey: payload.scopeKey,
+          providerId: payload.providerId,
+          providerAccountRef: payload.providerAccountRef,
+          workspace: payload.workspace,
+          modelFamily: payload.modelFamily ?? null,
+        },
+      })
+      const dto = getCreativeProviderCircuitStateDto(row)
+      await recordAudit({
+        actor,
+        action: 'creative.provider_circuit.provisioned',
+        resourceType: 'creative_provider_circuit',
+        resourceId: dto.id,
+        metadata: { providerId: dto.providerId, workspace: dto.workspace, modelFamily: dto.modelFamily, status: dto.status },
+      })
+      return { created: true, circuit: dto }
+    },
+    findCircuit: async (scopeKey) => {
+      const row = await client.creativeProviderCircuitState.findUnique({ where: { scopeKey: String(scopeKey) } })
+      return row ? getCreativeProviderCircuitStateDto(row) : null
+    },
+    findCircuitById: async (id) => {
+      const row = await client.creativeProviderCircuitState.findUnique({ where: { id: String(id) } })
+      return row ? getCreativeProviderCircuitStateDto(row) : null
+    },
+    listCircuits: async (options = {}) => {
+      const limit = options.limit ?? 50
+      const rows = await client.creativeProviderCircuitState.findMany({
+        where: {
+          ...(options.providerId ? { providerId: options.providerId } : {}),
+          ...(options.workspace ? { workspace: options.workspace } : {}),
+        },
+        orderBy: { scopeKey: 'asc' },
+        take: limit + 1,
+        ...(options.cursor ? { cursor: { scopeKey: String(options.cursor) }, skip: 1 } : {}),
+      })
+      const pageRows = rows.slice(0, limit)
+      return {
+        items: pageRows.map(getCreativeProviderCircuitStateDto),
+        nextCursor: rows.length > limit && pageRows.length ? pageRows[pageRows.length - 1].scopeKey : null,
+        limit,
+      }
+    },
+    recordCircuitEvent: async (payload, actor) => {
+      let outcome = null
+      for (let attempt = 0; attempt < 5 && !outcome; attempt += 1) {
+        try {
+          outcome = await client.$transaction(async (tx) => {
+            const duplicate = await tx.creativeProviderCircuitEvent.findUnique({ where: { sourceKey: String(payload.sourceKey) } })
+            const current = await tx.creativeProviderCircuitState.findUnique({ where: { scopeKey: String(payload.scopeKey) } })
+            if (duplicate) return { duplicate: true, event: duplicate, current, row: current, opened: false }
+            if (!current) return null
+            const occurredAt = new Date(payload.occurredAt ?? Date.now())
+            const retryable = payload.policy.retryableCategories.includes(payload.category)
+            const eventOutcome = payload.category === 'success' ? 'success' : retryable ? 'retryable_failure' : 'ignored_failure'
+            const event = await tx.creativeProviderCircuitEvent.create({
+              data: {
+                id: `provider-circuit-event-${randomUUID()}`,
+                sourceKey: payload.sourceKey,
+                circuitStateId: current.id,
+                category: payload.category,
+                outcome: eventOutcome,
+                occurredAt,
+              },
+            })
+            let data = null
+            let opened = false
+            if (eventOutcome === 'retryable_failure') {
+              const windowExpired = !current.windowStartedAt || occurredAt.getTime() - current.windowStartedAt.getTime() >= payload.policy.windowSeconds * 1000
+              const failureCount = windowExpired ? 1 : current.failureCount + 1
+              opened = current.status !== 'open' && (payload.category === 'provider_incident' || failureCount >= payload.policy.failureThreshold)
+              const shouldOpen = current.status === 'open' || opened
+              data = {
+                failureCount,
+                windowStartedAt: windowExpired ? occurredAt : current.windowStartedAt,
+                lastFailureAt: occurredAt,
+                status: shouldOpen ? 'open' : current.status,
+                openedAt: opened ? occurredAt : current.openedAt,
+                cooldownUntil: opened ? new Date(occurredAt.getTime() + payload.policy.cooldownSeconds * 1000) : current.cooldownUntil,
+                reasonCode: shouldOpen ? `circuit_${payload.category}` : `failure_${payload.category}`,
+                version: { increment: 1 },
+              }
+            } else if (eventOutcome === 'success' && current.status === 'closed') {
+              data = { failureCount: 0, windowStartedAt: null, reasonCode: 'dispatch_succeeded', version: { increment: 1 } }
+            } else if (eventOutcome === 'success' && current.status === 'half_open') {
+              data = { reasonCode: 'probe_succeeded_pending_recovery', version: { increment: 1 } }
+            }
+            if (data) {
+              const changed = await tx.creativeProviderCircuitState.updateMany({ where: { id: current.id, version: current.version }, data })
+              if (changed.count !== 1) {
+                const retry = new Error('Provider circuit changed concurrently')
+                retry.code = 'PROVIDER_CIRCUIT_CONCURRENT_RETRY'
+                throw retry
+              }
+            }
+            const row = await tx.creativeProviderCircuitState.findUnique({ where: { id: current.id } })
+            return { duplicate: false, event, current, row, opened }
+          })
+        } catch (error) {
+          if (error?.code === 'PROVIDER_CIRCUIT_CONCURRENT_RETRY' || error?.code === 'P2002') continue
+          throw error
+        }
+      }
+      if (!outcome) throw new HttpError(503, 'CREATIVE_PROVIDER_CIRCUIT_BUSY', 'Creative Provider circuit update retry exhausted')
+      if (!outcome.row) return null
+      const result = {
+        duplicate: outcome.duplicate,
+        event: getCreativeProviderCircuitEventDto(outcome.event),
+        circuit: getCreativeProviderCircuitStateDto(outcome.row),
+      }
+      if (!outcome.duplicate) {
+        await recordAudit({
+          actor,
+          action: `creative.provider_circuit.${result.event.outcome}`,
+          resourceType: 'creative_provider_circuit',
+          resourceId: result.circuit.id,
+          metadata: {
+            providerId: result.circuit.providerId,
+            workspace: result.circuit.workspace,
+            category: result.event.category,
+            outcome: result.event.outcome,
+            status: result.circuit.status,
+            failureCount: result.circuit.failureCount,
+          },
+        })
+        if (outcome.opened) await recordAudit({
+          actor,
+          action: 'creative.provider_circuit.opened',
+          resourceType: 'creative_provider_circuit',
+          resourceId: result.circuit.id,
+          metadata: {
+            providerId: result.circuit.providerId,
+            workspace: result.circuit.workspace,
+            category: result.event.category,
+            failureCount: result.circuit.failureCount,
+            reasonCode: result.circuit.reasonCode,
+          },
+        })
+      }
+      return result
+    },
+    transitionCircuit: async (scopeKey, payload, actor) => {
+      const outcome = await client.$transaction(async (tx) => {
+        const current = await tx.creativeProviderCircuitState.findUnique({ where: { scopeKey: String(scopeKey) } })
+        if (!current) return null
+        if (Number(payload.expectedVersion) !== current.version) throw providerControlConflict('circuit_version_mismatch')
+        const now = new Date(payload.now ?? Date.now())
+        let probeToken = null
+        if (payload.status === 'half_open') {
+          if (current.status !== 'open') throw providerControlConflict('circuit_not_open')
+          if (current.cooldownUntil && current.cooldownUntil > now) throw providerControlConflict('circuit_cooldown_active')
+          probeToken = randomUUID()
+        } else if (payload.status === 'closed') {
+          if (current.status !== 'half_open') throw providerControlConflict('circuit_not_half_open')
+          const probeSuccess = await tx.creativeProviderCircuitEvent.findFirst({
+            where: { circuitStateId: current.id, outcome: 'success', occurredAt: { gte: current.updatedAt } },
+          })
+          if (!probeSuccess) throw providerControlConflict('probe_success_required')
+        } else if (payload.status !== 'open') throw providerControlConflict('circuit_transition_invalid')
+        const changed = await tx.creativeProviderCircuitState.updateMany({
+          where: { id: current.id, version: current.version },
+          data: {
+            status: payload.status,
+            version: { increment: 1 },
+            ...(payload.status === 'closed' ? { failureCount: 0, windowStartedAt: null } : {}),
+            probeLeaseTokenHash: probeToken ? createHash('sha256').update(probeToken).digest('hex') : null,
+            probeLeaseExpiresAt: probeToken ? new Date(now.getTime() + Number(payload.probeTtlSeconds ?? 60) * 1000) : null,
+            reasonCode: payload.reasonCode,
+            ...(payload.status === 'open' ? { openedAt: now, cooldownUntil: payload.cooldownUntil ? new Date(payload.cooldownUntil) : current.cooldownUntil } : {}),
+          },
+        })
+        if (changed.count !== 1) throw providerControlConflict('circuit_concurrent_change')
+        const row = await tx.creativeProviderCircuitState.findUnique({ where: { id: current.id } })
+        return { row, probeToken }
+      })
+      if (!outcome) return null
+      const dto = getCreativeProviderCircuitStateDto(outcome.row)
+      await recordAudit({
+        actor,
+        action: `creative.provider_circuit.${payload.status}`,
+        resourceType: 'creative_provider_circuit',
+        resourceId: dto.id,
+        metadata: { providerId: dto.providerId, workspace: dto.workspace, status: dto.status, reasonCode: payload.reasonCode, version: dto.version },
+      })
+      return { circuit: dto, probeToken: outcome.probeToken }
+    },
+    claimProbe: async (scopeKey, probeToken, actor, now = new Date()) => {
+      const tokenHash = createHash('sha256').update(String(probeToken ?? '')).digest('hex')
+      const current = await client.creativeProviderCircuitState.findUnique({ where: { scopeKey: String(scopeKey) } })
+      if (!current) return { claimed: false, circuit: null }
+      const changed = await client.creativeProviderCircuitState.updateMany({
+        where: {
+          id: current.id,
+          status: 'half_open',
+          probeLeaseTokenHash: tokenHash,
+          probeLeaseExpiresAt: { gt: new Date(now) },
+        },
+        data: {
+          version: { increment: 1 },
+          probeLeaseTokenHash: null,
+          probeLeaseExpiresAt: null,
+          reasonCode: 'probe_claimed',
+        },
+      })
+      const row = await client.creativeProviderCircuitState.findUnique({ where: { id: current.id } })
+      if (changed.count === 1) await recordAudit({
+        actor,
+        action: 'creative.provider_circuit.probe_claimed',
+        resourceType: 'creative_provider_circuit',
+        resourceId: row.id,
+        metadata: { providerId: row.providerId, workspace: row.workspace, status: row.status },
+      })
+      return { claimed: changed.count === 1, circuit: getCreativeProviderCircuitStateDto(row) }
+    },
+    recordDispatchBlock: async (payload, actor) => {
+      await recordAudit({
+        actor,
+        action: 'creative.provider_control.dispatch_blocked',
+        resourceType: 'creative_provider_control',
+        resourceId: payload.resourceId ?? payload.providerId,
+        metadata: {
+          providerId: payload.providerId,
+          workspace: payload.workspace,
+          modelFamily: payload.modelFamily ?? null,
+          reasonCode: payload.reasonCode,
+          blockedScopeType: payload.blockedScopeType ?? null,
+        },
+      })
+      return { recorded: true }
+    },
+    requestRecovery: async (payload, actor) => {
+      const sourceKey = `provider-control-recovery:${createHash('sha256').update(JSON.stringify({
+        resourceId: payload.resourceId,
+        target: payload.target,
+        expectedVersion: payload.expectedVersion,
+        requestedBy: actor.handle,
+      })).digest('hex')}`
+      const existing = await client.adminReview.findFirst({
+        where: {
+          queue: 'provider-controls',
+          metadata: { path: ['sourceKey'], equals: sourceKey },
+        },
+        include: { reviewedBy: { include: { profile: true } } },
+      })
+      if (existing) return { duplicate: true, review: getAdminReviewDto(existing) }
+      const row = await client.$transaction(async (tx) => {
+        const review = await tx.adminReview.create({
+          data: {
+            id: `provider-control-review-${randomUUID()}`,
+            queue: 'provider-controls',
+            status: 'Pending review',
+            title: `Provider control recovery: ${payload.target}`,
+            owner: actor.handle,
+            note: payload.reasonCode,
+            metadata: {
+              kind: 'provider_control_recovery',
+              sourceKey,
+              resourceId: payload.resourceId,
+              target: payload.target,
+              expectedVersion: payload.expectedVersion,
+              reasonCode: payload.reasonCode,
+              probeTtlSeconds: payload.probeTtlSeconds,
+              requestedBy: actor.handle,
+            },
+          },
+          include: { reviewedBy: { include: { profile: true } } },
+        })
+        await tx.auditEvent.create({
+          data: buildAuditRecord({
+            actorType: actor ? 'user' : 'system',
+            actorId: actor?.id ?? null,
+            action: 'creative.provider_control.recovery_requested',
+            resourceType: 'admin_review',
+            resourceId: review.id,
+            metadata: { target: payload.target, reasonCode: payload.reasonCode },
+          }),
+        })
+        return review
+      })
+      return { duplicate: false, review: getAdminReviewDto(row) }
+    },
+    reviewRecovery: async (reviewId, action, actor) => {
+      const current = await client.adminReview.findUnique({
+        where: { id: String(reviewId) },
+        include: { reviewedBy: { include: { profile: true } } },
+      })
+      const metadata = asObject(current?.metadata)
+      if (!current || metadata?.kind !== 'provider_control_recovery') return null
+      if (current.decision) return { review: getAdminReviewDto(current), result: null, probeToken: null }
+      if (action.decision === 'approve' && metadata.requestedBy === actor.handle) {
+        throw providerControlConflict('recovery_requires_different_approver')
+      }
+      const reviewer = await client.user.findFirst({ where: { profile: { handle: actor.handle } } })
+      if (!reviewer) return null
+      const outcome = await client.$transaction(async (tx) => {
+        let resultRow = null
+        let resultType = null
+        let probeToken = null
+        if (action.decision === 'approve' && metadata.target === 'enable') {
+          const control = await tx.creativeProviderControlState.findUnique({ where: { id: String(metadata.resourceId) } })
+          if (!control) throw providerControlConflict('control_not_found')
+          if (control.version !== Number(metadata.expectedVersion)) throw providerControlConflict('control_version_mismatch')
+          const changed = await tx.creativeProviderControlState.updateMany({
+            where: { id: control.id, version: control.version },
+            data: {
+              enabled: true,
+              version: { increment: 1 },
+              reasonCode: String(metadata.reasonCode),
+              changedByRef: actor.handle,
+              enabledAt: new Date(),
+            },
+          })
+          if (changed.count !== 1) throw providerControlConflict('control_concurrent_change')
+          resultRow = await tx.creativeProviderControlState.findUnique({ where: { id: control.id } })
+          resultType = 'control'
+        } else if (action.decision === 'approve') {
+          const circuit = await tx.creativeProviderCircuitState.findUnique({ where: { id: String(metadata.resourceId) } })
+          if (!circuit) throw providerControlConflict('circuit_not_found')
+          if (circuit.version !== Number(metadata.expectedVersion)) throw providerControlConflict('circuit_version_mismatch')
+          const now = new Date()
+          if (metadata.target === 'half_open') {
+            if (circuit.status !== 'open') throw providerControlConflict('circuit_not_open')
+            if (circuit.cooldownUntil && circuit.cooldownUntil > now) throw providerControlConflict('circuit_cooldown_active')
+            probeToken = randomUUID()
+          } else if (metadata.target === 'closed') {
+            if (circuit.status !== 'half_open') throw providerControlConflict('circuit_not_half_open')
+            const probeSuccess = await tx.creativeProviderCircuitEvent.findFirst({
+              where: { circuitStateId: circuit.id, outcome: 'success', occurredAt: { gte: circuit.updatedAt } },
+            })
+            if (!probeSuccess) throw providerControlConflict('probe_success_required')
+          } else throw providerControlConflict('circuit_transition_invalid')
+          const changed = await tx.creativeProviderCircuitState.updateMany({
+            where: { id: circuit.id, version: circuit.version },
+            data: {
+              status: metadata.target,
+              version: { increment: 1 },
+              ...(metadata.target === 'closed' ? { failureCount: 0, windowStartedAt: null } : {}),
+              probeLeaseTokenHash: probeToken ? createHash('sha256').update(probeToken).digest('hex') : null,
+              probeLeaseExpiresAt: probeToken ? new Date(now.getTime() + Number(metadata.probeTtlSeconds ?? 60) * 1000) : null,
+              reasonCode: String(metadata.reasonCode),
+            },
+          })
+          if (changed.count !== 1) throw providerControlConflict('circuit_concurrent_change')
+          resultRow = await tx.creativeProviderCircuitState.findUnique({ where: { id: circuit.id } })
+          resultType = 'circuit'
+        }
+        const review = await tx.adminReview.update({
+          where: { id: current.id },
+          data: {
+            status: action.decision === 'approve' ? 'Approved' : 'Rejected',
+            note: action.note || current.note,
+            decision: action.decision,
+            reviewedById: reviewer.id,
+            reviewedAt: new Date(),
+            metadata: { ...metadata, approvedBy: action.decision === 'approve' ? actor.handle : null },
+          },
+          include: { reviewedBy: { include: { profile: true } } },
+        })
+        if (resultRow) await tx.auditEvent.create({
+          data: buildAuditRecord({
+            actorType: 'user',
+            actorId: actor.id,
+            action: resultType === 'control' ? 'creative.provider_control.enabled' : `creative.provider_circuit.${metadata.target}`,
+            resourceType: resultType === 'control' ? 'creative_provider_control' : 'creative_provider_circuit',
+            resourceId: resultRow.id,
+            metadata: {
+              providerId: resultRow.providerId ?? null,
+              workspace: resultRow.workspace ?? null,
+              status: resultRow.status ?? null,
+              enabled: resultRow.enabled ?? null,
+              reasonCode: metadata.reasonCode,
+              version: resultRow.version,
+            },
+          }),
+        })
+        await tx.auditEvent.create({
+          data: buildAuditRecord({
+            actorType: 'user',
+            actorId: actor.id,
+            action: `creative.provider_control.recovery_${action.decision}`,
+            resourceType: 'admin_review',
+            resourceId: review.id,
+            metadata: { target: metadata.target, reasonCode: metadata.reasonCode },
+          }),
+        })
+        return { review, resultRow, resultType, probeToken }
+      })
+      return {
+        review: getAdminReviewDto(outcome.review),
+        result: outcome.resultType === 'control'
+          ? getCreativeProviderControlStateDto(outcome.resultRow)
+          : outcome.resultType === 'circuit'
+            ? getCreativeProviderCircuitStateDto(outcome.resultRow)
+            : null,
+        probeToken: outcome.probeToken,
+      }
+    },
+  }
+
   const creativeProviderCosts = {
     reserve: async (payload, actor) => {
       const existing = await client.creativeProviderCostLedger.findUnique({
@@ -6787,6 +7342,7 @@ const createPrismaRepository = async (fallbackRepository) => {
     creativeGenerationMutations,
     creativeProviderReplays,
     creativeOutputIngestions,
+    creativeProviderControls,
     creativeProviderCosts,
     creativeCredits,
     creativeQuota,

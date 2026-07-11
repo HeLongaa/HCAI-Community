@@ -60,6 +60,8 @@ export const executeCreativeGeneration = async ({
   now = new Date(),
   quotaRepository = null,
   providerCostRepository = null,
+  providerControlPlane = null,
+  providerProbeToken = null,
   fixtureAdapters = {},
 }) => {
   const registry = createCreativeProviderRegistry(source)
@@ -88,6 +90,8 @@ export const executeCreativeGeneration = async ({
   let generated
   let providerCostReservation = null
   let providerCostReservationPayload = null
+  let providerControlDispatch = null
+  let adapterAttempted = false
   try {
     if (fixtureAdapter && provider.id === 'replicate-staging' && providerCostRepository?.reserve) {
       const providerCost = buildReplicateProviderCostMetadata({ request, source, now })
@@ -99,6 +103,23 @@ export const executeCreativeGeneration = async ({
         mode: request.mode,
         now,
       })
+      providerControlDispatch = {
+        sourceKey: `provider-control-result:${generationId}`,
+        providerId: providerCost.providerId,
+        providerAccountRef: providerCost.providerAccountRef,
+        workspace: request.workspace,
+        modelFamily: providerCost.model?.family ?? request.workspace,
+      }
+      if (providerControlPlane?.assertDispatchAllowed) {
+        await providerControlPlane.assertDispatchAllowed({
+          ...providerControlDispatch,
+          estimateMicros: providerCostReservationPayload.estimateMicros,
+          currency: providerCostReservationPayload.currency,
+          probeToken: providerProbeToken,
+          actor,
+          now,
+        })
+      }
       providerCostReservation = await providerCostRepository.reserve(providerCostReservationPayload, actor)
       if (!providerCostReservation?.reserved) {
         throw new HttpError(429, 'CREATIVE_PROVIDER_BUDGET_EXCEEDED', 'Provider budget cap exceeded', {
@@ -108,6 +129,7 @@ export const executeCreativeGeneration = async ({
         })
       }
     }
+    adapterAttempted = Boolean(fixtureAdapter)
     generated = fixtureAdapter
       ? await fixtureAdapter({ request, provider, actor, source, now, generationId })
       : executeMockCreativeGeneration({ request, provider, actor, now })
@@ -116,6 +138,9 @@ export const executeCreativeGeneration = async ({
     }
     assertCreativeProviderAdapterContract(generated, { request, provider })
   } catch (error) {
+    if (providerControlDispatch && adapterAttempted && providerControlPlane?.recordResult) {
+      await providerControlPlane.recordResult({ ...providerControlDispatch, error, actor, now })
+    }
     if (providerCostReservation?.ledger?.sourceKey && providerCostRepository?.release) {
       await providerCostRepository.release(providerCostReservation.ledger.sourceKey, 'adapter_failed_before_result', actor)
     }
@@ -123,6 +148,17 @@ export const executeCreativeGeneration = async ({
       await quotaRepository.release(policyResult.quota.reservationId, error?.code ?? 'provider_adapter_failed', actor)
     }
     throw error
+  }
+
+  if (providerControlDispatch && adapterAttempted && providerControlPlane?.recordResult) {
+    const providerFailure = generated.status === 'failed'
+      ? {
+          code: generated.errorCode ?? 'PROVIDER_FAILED',
+          message: generated.errorMessagePreview ?? 'Provider generation failed',
+          statusCode: generated.providerStatusCode ?? null,
+        }
+      : null
+    await providerControlPlane.recordResult({ ...providerControlDispatch, error: providerFailure, actor, now })
   }
 
   if (providerCostReservation?.ledger && providerCostReservationPayload) {

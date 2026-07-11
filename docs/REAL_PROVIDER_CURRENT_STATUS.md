@@ -2,7 +2,7 @@
 
 This is the first decision page to read before starting any real-provider work. It compresses the current provider readiness state into one handoff: what is usable now, what is fixture-only, what remains deferred, and what requires explicit approval.
 
-Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, Admin generation history and V1-08 internal mutation controls, provider budget observability, a default-disabled staging callback API, and a default-disabled dedicated polling worker are available. Real paid-provider calls, real Provider webhook target registration/delivery, external provider alert delivery, enabled real polling, real Provider mutation clients, and production paid-provider enablement remain no-go. V1-08 manual replay is an internal, two-person-reviewed lifecycle replay and performs no Provider network request.
+Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, Admin generation history, internal mutation controls, Provider budget observability, and the V1-11 fail-closed Provider control plane are available. The callback API and dedicated polling worker remain default-disabled. Real paid-provider calls, real Provider webhook delivery, external Provider alert delivery, enabled real polling, real Provider mutation clients, real cap readers/probes, and production paid-provider enablement remain no-go.
 
 V1-04 now records conditional implementation-planning decisions for all four modalities in
 `docs/V1_PROVIDER_DECISION_MATRIX.md` and `config/v1-provider-matrix.json`. These selections define primary/backup
@@ -75,6 +75,7 @@ Sora 2 models on 2026-09-24 without a recommended replacement.
 | Provider callback API | Implemented / default-disabled | The staging-only route verifies exact-body HMAC, timestamp, nonce, strict payload fields, job binding, replay dedupe, and atomic side-effect ownership. No Provider webhook target is configured. |
 | Provider polling worker | Implemented / default-disabled | The dedicated worker uses strict status projection, oldest-first candidates, retry isolation, timeout recovery, safe audits, and replay-ledger side effects. Both polling switches remain off. |
 | Provider output ingestion | Implemented / default-unregistered | Source-keyed ingestion, claim leases, URL/DNS/redirect/size/MIME/SHA-256 validation, deterministic object storage, scanner gating, and safe Admin summaries exist. No product runtime registers a real output fetch client. |
+| Provider control plane | Implemented / fixture dispatch only | Versioned global/provider/workspace/model controls, expiring cap evidence, explicit circuits, one-claim probes, emergency disable, two-person recovery, Admin views, and safe metrics exist. Real Provider dispatch, cap readers, and probes remain unregistered. |
 | Staging adapter shell | Fixture-only | Mocked/injected-client hardening may continue. PRs #86-#89 improved the fixture-only evidence chain, but did not approve real provider calls. |
 | V1 provider decision matrix | Conditional planning evidence | Four primary/backup pairs, budgets, legal/data/SLA conditions, and replacement triggers are machine-verified; no provider is production-approved. |
 | V1 content safety matrix | Frozen implementation policy | Four modality partitions, Provider policy mappings, review/appeal, and audit contracts are machine-verified; downstream enforcement is not complete. |
@@ -102,6 +103,7 @@ These paths are available without real-provider approval:
 - Cancellation, retry authorization/outcomes, and reviewed manual replay transitions create safe in-app notifications for affected users and requesters.
 - Provider output bytes can be exercised through an injected fixture fetcher, durable ingestion ledger, deterministic media asset, and scanner without retaining the Provider URL.
 - Provider cost can be exercised through immutable fixture pricing snapshots, a durable atomic budget window/cost ledger, callback/polling closeout, and safe Admin/metrics evidence without enabling real pricing or dispatch.
+- Provider controls can block new fixture dispatch before budget reservation while callbacks, polling, replay, and output ingestion continue draining existing jobs; recovery requires a second operator.
 
 ## Fixture-Only Foundations
 
@@ -126,6 +128,7 @@ These pieces are implemented for tests, planning, and safe dry-runs only:
 - disabled webhook, Slack, and email provider alert client shells
 - fixture-only provider alert dry-run harness
 - Provider-independent four-workspace pricing calculator contract and durable budget ledger fixtures
+- fail-closed Provider control-plane contracts and fixture-dispatch integration
 
 Fixture-only means no enabled route, worker, or default client contacts a real provider or external alert channel during CI or ordinary development.
 
@@ -139,7 +142,7 @@ These are intentionally unavailable:
 - real Provider webhook target registration or callback delivery
 - enabled real provider status polling
 - real Provider cancel/retry client registration
-- Admin refund, force-review, recovery, or manual settlement mutations
+- Admin refund, force-review, or manual settlement mutations
 - real external Slack, webhook, or email delivery for provider budget alerts
 - provider billing reconciliation, invoice matching, checkout, subscription, or payment-provider refund flow
 - production paid-provider mode

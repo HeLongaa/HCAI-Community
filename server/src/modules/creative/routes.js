@@ -88,6 +88,7 @@ export const registerCreativeRoutes = (router, options = {}) => {
         generationId,
         quotaRepository,
         providerCostRepository: routeRepositories.creativeProviderCosts,
+        providerControlPlane: options.providerControlPlane ?? null,
         fixtureAdapters,
       })
       if (creditRepository?.reserve) {

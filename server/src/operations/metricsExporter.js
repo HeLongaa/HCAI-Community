@@ -23,6 +23,22 @@ const providerBudgetReasonValues = [
   'unknown',
 ]
 
+const providerControlReasonValues = [
+  'provider_control_state_unknown',
+  'provider_kill_switch_active',
+  'provider_cap_evidence_missing',
+  'provider_cap_evidence_expired',
+  'provider_cap_evidence_inactive',
+  'provider_cap_evidence_hash_mismatch',
+  'provider_cap_currency_mismatch',
+  'provider_cap_insufficient',
+  'provider_circuit_state_unknown',
+  'provider_circuit_open',
+  'provider_circuit_probe_required',
+  'operator_emergency_stop',
+  'unknown',
+]
+
 const numeric = (value) => {
   const number = Number(value ?? 0)
   return Number.isFinite(number) ? number : 0
@@ -155,6 +171,20 @@ const addProviderBudgetMetrics = (lines, providerBudget = {}) => {
   addCountBy(lines, 'newchat_creative_provider_cost_ledger_by_reason_total', 'Windowed creative provider cost ledger events by reason.', ledger.byReason, 'reason')
 }
 
+const addProviderControlMetrics = (lines, control = {}) => {
+  addGauge(lines, 'newchat_creative_provider_control_events_total', 'Windowed creative provider control-plane audit event count.', control.total)
+  addGauge(lines, 'newchat_creative_provider_control_dispatch_blocked_total', 'Windowed creative provider control-plane dispatch block count.', control.dispatchBlocked)
+  addGauge(lines, 'newchat_creative_provider_circuit_opened_total', 'Windowed creative provider circuit-open count.', control.circuitOpened)
+  addGauge(lines, 'newchat_creative_provider_control_recovery_approved_total', 'Windowed creative provider control recovery approval count.', control.recoveryApproved)
+  addGauge(lines, 'newchat_creative_provider_control_recovery_rejected_total', 'Windowed creative provider control recovery rejection count.', control.recoveryRejected)
+  addGauge(lines, 'newchat_creative_provider_cap_evidence_recorded_total', 'Windowed creative provider cap evidence record count.', control.capEvidenceRecorded)
+  addGauge(lines, 'newchat_creative_provider_cap_evidence_expired_total', 'Windowed creative provider cap evidence records expired by the end of the metrics window.', control.capEvidenceExpired)
+  addCountBy(lines, 'newchat_creative_provider_control_events_by_provider_total', 'Windowed creative provider control-plane event count by provider.', control.byProvider, 'provider')
+  addCountBy(lines, 'newchat_creative_provider_control_events_by_workspace_total', 'Windowed creative provider control-plane event count by workspace.', control.byWorkspace, 'workspace', ['image', 'video', 'music', 'chat', 'unknown'])
+  addCountBy(lines, 'newchat_creative_provider_control_events_by_status_total', 'Windowed creative provider control-plane event count by status.', control.byStatus, 'status', ['active', 'expired', 'approved', 'rejected', 'blocked', 'enabled', 'disabled', 'closed', 'open', 'half_open', 'unknown'])
+  addCountBy(lines, 'newchat_creative_provider_control_events_by_reason_total', 'Windowed creative provider control-plane event count by reason.', control.byReason, 'reason', providerControlReasonValues)
+}
+
 const deliveryMetrics = (lines, prefix, summary = {}) => {
   addGauge(lines, `${prefix}_total`, 'Windowed delivery failure count.', summary.total)
   addCountBy(lines, `${prefix}_by_channel_total`, 'Windowed delivery failure count by channel.', summary.byChannel, 'channel', ['webhook', 'slack', 'email', 'unknown'])
@@ -187,6 +217,7 @@ export const buildPrometheusMetrics = (metrics = {}) => {
   addGauge(lines, 'newchat_operation_lease_renew_failures_total', 'Windowed worker lease renewal failure count.', metrics.operations?.leases?.renewFailures?.total)
   addCountBy(lines, 'newchat_operation_lease_renew_failures_by_key_total', 'Windowed worker lease renewal failures by lease key.', metrics.operations?.leases?.renewFailures?.byKey, 'key', ['media-scan-sweep', 'task-stale-submission-sweep'])
   addProviderBudgetMetrics(lines, metrics.creativeProviderBudget)
+  addProviderControlMetrics(lines, metrics.creativeProviderControl)
   lines.push('')
   return lines.join('\n')
 }

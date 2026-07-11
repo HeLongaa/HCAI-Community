@@ -448,6 +448,58 @@ export const parseAdminReviewActionRequest = (body) => ({
   note: optionalText(body, 'note', ''),
 })
 
+const providerControlScopePattern = /^[a-z0-9][a-z0-9:._/-]{0,255}$/i
+
+const requireProviderControlScope = (body, field = 'scopeKey') => {
+  const value = requireText(body, field)
+  if (!providerControlScopePattern.test(value) || /token|secret|password|api[_-]?key/i.test(value)) {
+    throw validationFailed(`${field} must be a safe Provider control scope`)
+  }
+  return value
+}
+
+const requireExpectedVersion = (body) => {
+  const value = optionalNonNegativeInteger(body, 'expectedVersion')
+  if (value == null) throw validationFailed('expectedVersion is required')
+  return value
+}
+
+const requireAmountText = (body, field) => {
+  const value = body?.[field]
+  if ((typeof value !== 'string' && typeof value !== 'number') || String(value).trim() === '') {
+    throw validationFailed(`${field} is required`)
+  }
+  return String(value).trim()
+}
+
+export const parseProviderControlDisableRequest = (body) => ({
+  resourceId: requireProviderControlScope(body, 'resourceId'),
+  expectedVersion: requireExpectedVersion(body),
+  reasonCode: requireText(body, 'reasonCode'),
+})
+
+export const parseProviderControlRecoveryRequest = (body) => ({
+  resourceId: requireProviderControlScope(body, 'resourceId'),
+  target: requireOneOf(body, 'target', ['enable', 'half_open', 'closed']),
+  expectedVersion: requireExpectedVersion(body),
+  reasonCode: requireText(body, 'reasonCode'),
+  probeTtlSeconds: Math.min(optionalPositiveInteger(body, 'probeTtlSeconds') ?? 60, 300),
+})
+
+export const parseProviderCapEvidenceRequest = (body) => ({
+  sourceKey: requireProviderControlScope(body, 'sourceKey'),
+  scopeKey: requireProviderControlScope(body),
+  providerId: requireText(body, 'providerId'),
+  providerAccountRef: requireText(body, 'providerAccountRef'),
+  currency: requireText(body, 'currency'),
+  capAmount: requireAmountText(body, 'capAmount'),
+  remainingAmount: body.remainingAmount == null ? null : requireAmountText(body, 'remainingAmount'),
+  sourceType: requireOneOf(body, 'sourceType', ['fixture_config', 'manual_attestation', 'injected_reader']),
+  sourceRef: requireProviderControlScope(body, 'sourceRef'),
+  verifiedAt: requireText(body, 'verifiedAt'),
+  expiresAt: requireText(body, 'expiresAt'),
+})
+
 const parseLimit = (query, fallback = 20, maximum = 100) => {
   if (query.limit == null || query.limit === '') {
     return fallback
@@ -468,6 +520,12 @@ export const parseAdminReviewListQuery = (query) => ({
   ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 }),
   queue: optionalText(query, 'queue', null),
   status: optionalText(query, 'status', null),
+})
+
+export const parseProviderControlListQuery = (query) => ({
+  ...parsePaginationQuery(query, { defaultLimit: 50, maxLimit: 100 }),
+  providerId: optionalText(query, 'providerId', null),
+  workspace: optionalText(query, 'workspace', null),
 })
 
 export const parseAdminAuditListQuery = (query) => ({

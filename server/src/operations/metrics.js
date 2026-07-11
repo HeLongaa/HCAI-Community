@@ -131,6 +131,46 @@ const providerBudgetEventActions = Object.freeze({
   alertDispatch: 'creative.provider_alert.dispatch',
 })
 
+const isProviderControlEvent = (event) =>
+  event.action?.startsWith('creative.provider_control.') || event.action?.startsWith('creative.provider_circuit.')
+
+const providerControlEventStatus = (event, until) => {
+  const metadata = asObject(event.metadata)
+  if (metadata.status) return safeEvidenceIdentifier(metadata.status)
+  if (event.action === 'creative.provider_control.cap_evidence_recorded') {
+    const expiresAt = toDate(metadata.expiresAt)
+    return expiresAt && expiresAt <= until ? 'expired' : 'active'
+  }
+  if (event.action.endsWith('.recovery_approved')) return 'approved'
+  if (event.action.endsWith('.recovery_rejected')) return 'rejected'
+  if (event.action.endsWith('.dispatch_blocked')) return 'blocked'
+  if (event.action.endsWith('.enabled')) return 'enabled'
+  if (event.action.endsWith('.disabled')) return 'disabled'
+  if (event.action.endsWith('.opened') || event.action.endsWith('.open')) return 'open'
+  return 'unknown'
+}
+
+const providerControlSummary = (events, until) => {
+  const capEvidenceEvents = events.filter((event) => event.action === 'creative.provider_control.cap_evidence_recorded')
+  return {
+    total: events.length,
+    dispatchBlocked: events.filter((event) => event.action === 'creative.provider_control.dispatch_blocked').length,
+    circuitOpened: events.filter((event) => event.action === 'creative.provider_circuit.opened').length,
+    recoveryApproved: events.filter((event) => event.action === 'creative.provider_control.recovery_approved').length,
+    recoveryRejected: events.filter((event) => event.action === 'creative.provider_control.recovery_rejected').length,
+    capEvidenceRecorded: capEvidenceEvents.length,
+    capEvidenceExpired: capEvidenceEvents.filter((event) => {
+      const expiresAt = toDate(asObject(event.metadata).expiresAt)
+      return Boolean(expiresAt && expiresAt <= until)
+    }).length,
+    byProvider: countBy(events, (event) => safeEvidenceIdentifier(asObject(event.metadata).providerId)),
+    byWorkspace: countBy(events, (event) => safeEvidenceIdentifier(asObject(event.metadata).workspace)),
+    byStatus: countBy(events, (event) => providerControlEventStatus(event, until)),
+    byReason: countBy(events, (event) => safeEvidenceIdentifier(asObject(event.metadata).reasonCode)),
+    latestAt: latestTimestamp(events),
+  }
+}
+
 const providerAlertDispatchBreakdown = (events = []) => ({
   total: events.length,
   succeeded: events.filter((event) => asObject(event.metadata).status === 'succeeded').length,
@@ -566,6 +606,7 @@ export const buildOperationsMetrics = ({
   const providerCostLedgerEvents = windowAuditEvents.filter((event) =>
     event.resourceType === 'creative_provider_cost_ledger' && event.action.startsWith('creative.provider_cost.')
   )
+  const providerControlEvents = windowAuditEvents.filter(isProviderControlEvent)
   const acknowledgements = securityDispositions.filter((event) => event.action === 'security.alert.acknowledged')
 
   return {
@@ -647,5 +688,6 @@ export const buildOperationsMetrics = ({
       costLedgerEvents: providerCostLedgerEvents,
       alertDispatchFailureThreshold: providerAlertDispatchFailureThreshold,
     }),
+    creativeProviderControl: providerControlSummary(providerControlEvents, until),
   }
 }

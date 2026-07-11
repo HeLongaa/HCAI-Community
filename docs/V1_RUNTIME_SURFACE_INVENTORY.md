@@ -48,6 +48,7 @@ All 14 direct frontend imports of `src/data/mockData.ts` are checked exactly. Ad
 | `server-generation-mutation-boundary` | Durable cancel/retry/manual-replay mutations use dedicated permissions, idempotency, child attempts, and two-person review; Provider mutation adapters are unregistered by default | Retain the internal controls and keep real Provider mutation clients disabled until separately approved | V1-08 |
 | `server-provider-output-ingestion-boundary` | Durable source-keyed ingestion, bounded injected fetch, MIME/checksum validation, deterministic storage, scanner gating, and safe Admin summaries are implemented | Keep real Provider output fetch unregistered until explicit staging approval | V1-09 |
 | `server-provider-cost-budget-ledger` | Provider-independent pricing snapshots, six-decimal amount normalization, durable budget reservations, idempotent cost closeout, and safe Admin/metrics evidence are implemented | Retain the app-side fail-closed ledger; keep real pricing sources and Provider dispatch unregistered until approval | V1-10 |
+| `server-provider-control-plane` | Versioned kill switches, expiring hash-only cap evidence, explicit circuits, one-claim probes, two-person recovery, and safe metrics gate fixture dispatch | Retain the fail-closed app control plane; keep real Provider clients, cap readers, probes, pricing, and dispatch unregistered until approval | V1-11 |
 
 ## Fixture Inventory
 

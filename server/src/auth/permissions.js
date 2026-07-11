@@ -18,6 +18,9 @@ export const permissions = Object.freeze([
   'admin:creative:cancel',
   'admin:creative:retry',
   'admin:creative:replay',
+  'admin:creative:provider-control:read',
+  'admin:creative:provider-control:manage',
+  'admin:creative:provider-control:recover',
   'security:alerts:manage',
 ])
 
