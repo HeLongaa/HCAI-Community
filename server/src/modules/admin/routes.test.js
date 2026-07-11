@@ -100,6 +100,25 @@ test('Provider control Admin APIs enforce dedicated permissions immediate disabl
     expectedVersion: 0,
   }, { id: 'demo-user-admin', handle: 'opsplus' })
   await repository.creativeProviderControls.ensureCircuit(providerCircuitScope(scopes), { id: 'demo-user-admin', handle: 'opsplus' })
+  await repository.creativeProviderRetries.record({
+    sourceKey: `retry-source-private-${suffix}`,
+    generationId: `gen-provider-retry-admin-${suffix}`,
+    providerId: scopes[1].providerId,
+    workspace: 'image',
+    operationType: 'status_read',
+    status: 'scheduled',
+    attempt: 2,
+    maxAttempts: 5,
+    firstAttemptAt: '2026-07-12T09:00:00.000Z',
+    lastAttemptAt: '2026-07-12T09:01:00.000Z',
+    nextAttemptAt: '2026-07-12T09:01:30.000Z',
+    lastFailureKeyHash: 'a'.repeat(64),
+    lastErrorCode: 'PROVIDER_RATE_LIMITED',
+    lastErrorCategory: 'rate_limit',
+    delaySource: 'retry_after',
+    policyHash: 'b'.repeat(64),
+    expectedVersion: 0,
+  }, { id: 'demo-user-admin', handle: 'opsplus' })
   const server = await createInjectedAdminServer(repository)
   try {
     const denied = await requestJson(server.url, '/api/admin/creative/provider-controls', {
@@ -120,6 +139,13 @@ test('Provider control Admin APIs enforce dedicated permissions immediate disabl
     assert.equal(listedControl.scopeKey, null)
     assert.equal(JSON.stringify(listed.payload).includes('providerAccountRef'), false)
     assert.equal(JSON.stringify(listed.payload).includes(scopes[1].scopeKey), false)
+    assert.equal(listed.payload.data.retries.length, 1)
+    assert.equal(listed.payload.data.retries[0].status, 'scheduled')
+    assert.equal(listed.payload.data.retries[0].attempt, 2)
+    assert.equal(listed.payload.data.retries[0].errorCategory, 'rate_limit')
+    assert.equal(JSON.stringify(listed.payload).includes(`retry-source-private-${suffix}`), false)
+    assert.equal(JSON.stringify(listed.payload).includes('a'.repeat(64)), false)
+    assert.equal(JSON.stringify(listed.payload).includes('b'.repeat(64)), false)
 
     const cap = await requestJson(server.url, '/api/admin/creative/provider-controls/cap-evidence', {
       token: 'demo-access.opsplus',

@@ -171,6 +171,19 @@ const providerControlSummary = (events, until) => {
   }
 }
 
+const providerRetrySummary = (events) => ({
+  total: events.length,
+  scheduled: events.filter((event) => event.action === 'creative.provider_retry.scheduled').length,
+  exhausted: events.filter((event) => event.action === 'creative.provider_retry.exhausted').length,
+  cleared: events.filter((event) => event.action === 'creative.provider_retry.cleared').length,
+  byProvider: countBy(events, (event) => safeEvidenceIdentifier(asObject(event.metadata).providerId)),
+  byWorkspace: countBy(events, (event) => safeEvidenceIdentifier(asObject(event.metadata).workspace)),
+  byOperation: countBy(events, (event) => safeEvidenceIdentifier(asObject(event.metadata).operationType)),
+  byCategory: countBy(events, (event) => safeEvidenceIdentifier(asObject(event.metadata).errorCategory)),
+  byDelaySource: countBy(events, (event) => safeEvidenceIdentifier(asObject(event.metadata).delaySource)),
+  latestAt: latestTimestamp(events),
+})
+
 const providerAlertDispatchBreakdown = (events = []) => ({
   total: events.length,
   succeeded: events.filter((event) => asObject(event.metadata).status === 'succeeded').length,
@@ -607,6 +620,8 @@ export const buildOperationsMetrics = ({
     event.resourceType === 'creative_provider_cost_ledger' && event.action.startsWith('creative.provider_cost.')
   )
   const providerControlEvents = windowAuditEvents.filter(isProviderControlEvent)
+  const providerRetryEvents = windowAuditEvents.filter((event) =>
+    event.resourceType === 'creative_provider_retry_state' && event.action.startsWith('creative.provider_retry.'))
   const acknowledgements = securityDispositions.filter((event) => event.action === 'security.alert.acknowledged')
 
   return {
@@ -689,5 +704,6 @@ export const buildOperationsMetrics = ({
       alertDispatchFailureThreshold: providerAlertDispatchFailureThreshold,
     }),
     creativeProviderControl: providerControlSummary(providerControlEvents, until),
+    creativeProviderRetry: providerRetrySummary(providerRetryEvents),
   }
 }

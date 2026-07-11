@@ -1,5 +1,6 @@
 import { HttpError } from '../common/errors/httpError.js'
 import { creativeGenerationStatuses, safeErrorPreview } from './generationRecords.js'
+import { buildSafeProviderError } from './providerErrorPolicy.js'
 
 const secretKeyPattern = /(api[_-]?key|authorization|bearer|credential|password|private[_-]?key|secret|token)/i
 const redactSensitiveText = (value) => String(value ?? '')
@@ -83,29 +84,11 @@ export const assertCreativeProviderAdapterContract = (generation, { request, pro
 }
 
 export const safeProviderFailure = (error) => {
-  const statusCode = Number(error?.statusCode ?? error?.status ?? 500)
-  const code = String(error?.code ?? '').toUpperCase()
-  const message = redactSensitiveText(safeErrorPreview(error))
-  if (statusCode === 429 || code.includes('RATE_LIMIT')) {
-    return {
-      code: 'PROVIDER_RATE_LIMITED',
-      messagePreview: message,
-      retryable: true,
-      statusCode: 429,
-    }
-  }
-  if (code.includes('TIMEOUT') || /timeout|timed out/i.test(String(error?.message ?? ''))) {
-    return {
-      code: 'PROVIDER_TIMEOUT',
-      messagePreview: message,
-      retryable: true,
-      statusCode: 504,
-    }
-  }
+  const safe = buildSafeProviderError(error)
   return {
-    code: 'PROVIDER_EXECUTION_FAILED',
-    messagePreview: message,
-    retryable: false,
-    statusCode: Number.isInteger(statusCode) && statusCode >= 400 ? statusCode : 500,
+    code: safe.code,
+    messagePreview: redactSensitiveText(safe.messagePreview),
+    retryable: safe.retryable,
+    statusCode: safe.statusCode,
   }
 }

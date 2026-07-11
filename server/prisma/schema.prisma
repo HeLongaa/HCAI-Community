@@ -185,6 +185,12 @@ enum CreativeProviderCircuitOutcome {
   ignored_failure
 }
 
+enum CreativeProviderRetryStatus {
+  scheduled
+  exhausted
+  cleared
+}
+
 model AuditEvent {
   id           String         @id @default(cuid())
   actorType    AuditActorType @map("actor_type")
@@ -612,6 +618,7 @@ model CreativeGeneration {
   retryAttempts    CreativeGeneration[]           @relation("CreativeGenerationRetries")
   mutations        CreativeGenerationMutation[]
   providerReplays  CreativeProviderReplayLedger[]
+  providerRetries  CreativeProviderRetryState[]
   outputIngestions CreativeOutputIngestion[]
 
   @@index([actorId, createdAt])
@@ -851,6 +858,36 @@ model CreativeProviderCircuitEvent {
 
   @@index([circuitStateId, occurredAt])
   @@map("creative_provider_circuit_events")
+}
+
+model CreativeProviderRetryState {
+  id                 String                      @id @default(cuid())
+  sourceKey          String                      @unique @map("source_key")
+  generationId       String                      @map("generation_id")
+  providerId         String                      @map("provider_id")
+  workspace          String
+  operationType      String                      @map("operation_type")
+  status             CreativeProviderRetryStatus
+  attempt            Int
+  maxAttempts        Int                         @map("max_attempts")
+  firstAttemptAt     DateTime                    @map("first_attempt_at")
+  lastAttemptAt      DateTime                    @map("last_attempt_at")
+  nextAttemptAt      DateTime?                   @map("next_attempt_at")
+  lastFailureKeyHash String                      @map("last_failure_key_hash")
+  lastErrorCode      String                      @map("last_error_code")
+  lastErrorCategory  String                      @map("last_error_category")
+  delaySource        String?                     @map("delay_source")
+  policyHash         String                      @map("policy_hash")
+  version            Int                         @default(1)
+  createdAt          DateTime                    @default(now()) @map("created_at")
+  updatedAt          DateTime                    @updatedAt @map("updated_at")
+
+  generation CreativeGeneration @relation(fields: [generationId], references: [id], onDelete: Cascade)
+
+  @@unique([generationId, operationType])
+  @@index([status, nextAttemptAt])
+  @@index([providerId, workspace, status])
+  @@map("creative_provider_retry_states")
 }
 
 model CreativeCreditLedger {

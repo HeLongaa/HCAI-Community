@@ -396,6 +396,30 @@ export const getCreativeProviderCircuitEventDto = (event) => ({
   createdAt: event.createdAt.toISOString(),
 })
 
+export const getCreativeProviderRetryStateDto = (state) => ({
+  schemaVersion: 'provider-retry-state-v1',
+  id: state.id,
+  sourceKey: state.sourceKey,
+  generationId: state.generationId,
+  providerId: state.providerId,
+  workspace: state.workspace,
+  operationType: state.operationType,
+  status: state.status,
+  attempt: state.attempt,
+  maxAttempts: state.maxAttempts,
+  firstAttemptAt: state.firstAttemptAt.toISOString(),
+  lastAttemptAt: state.lastAttemptAt.toISOString(),
+  nextAttemptAt: state.nextAttemptAt?.toISOString() ?? null,
+  lastFailureKeyHash: state.lastFailureKeyHash,
+  lastErrorCode: state.lastErrorCode,
+  lastErrorCategory: state.lastErrorCategory,
+  delaySource: state.delaySource ?? null,
+  policyHash: state.policyHash,
+  version: state.version,
+  createdAt: state.createdAt.toISOString(),
+  updatedAt: state.updatedAt.toISOString(),
+})
+
 export const getMediaScanJobDto = (job) => ({
   id: job.id,
   assetId: job.assetId,

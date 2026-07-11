@@ -657,6 +657,30 @@ export const serializeCreativeProviderCircuitEvent = (event) => ({
   createdAt: event.createdAt ?? '',
 })
 
+export const serializeCreativeProviderRetryState = (state) => ({
+  schemaVersion: 'provider-retry-state-v1',
+  id: String(state.id),
+  sourceKey: state.sourceKey,
+  generationId: String(state.generationId),
+  providerId: state.providerId,
+  workspace: state.workspace,
+  operationType: state.operationType,
+  status: state.status,
+  attempt: Number(state.attempt),
+  maxAttempts: Number(state.maxAttempts),
+  firstAttemptAt: state.firstAttemptAt ?? '',
+  lastAttemptAt: state.lastAttemptAt ?? '',
+  nextAttemptAt: state.nextAttemptAt ?? null,
+  lastFailureKeyHash: state.lastFailureKeyHash,
+  lastErrorCode: state.lastErrorCode,
+  lastErrorCategory: state.lastErrorCategory,
+  delaySource: state.delaySource ?? null,
+  policyHash: state.policyHash,
+  version: Number(state.version),
+  createdAt: state.createdAt ?? '',
+  updatedAt: state.updatedAt ?? '',
+})
+
 export const serializeNotification = (notification) => ({
   id: String(notification.id),
   type: notification.type,

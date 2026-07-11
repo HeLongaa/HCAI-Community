@@ -67,9 +67,15 @@ stable lifecycle idempotency key even when safe Provider metadata changes betwee
 
 ## Retry And Timeout Contract
 
-Rate limits, request timeouts, and retryable upstream failures produce a safe `retry_scheduled` outcome. The current
-sweep continues with the next generation, and the normal worker interval performs the next bounded attempt. A single
-job mismatch or unexpected failure cannot abort the full sweep.
+Rate limits, request timeouts, and retryable upstream failures produce a safe `retry_scheduled` outcome backed by
+`CreativeProviderRetryState`. The worker skips the generation until `nextAttemptAt`, deduplicates repeated failure
+evidence by hash, and consumes a versioned attempt budget. Exhaustion stops further status reads but leaves the
+generation non-terminal so the existing polling max-age policy remains the single timeout closeout. A single job
+mismatch or unexpected failure cannot abort the full sweep.
+
+Any successful status read clears the durable retry state before lifecycle replay. The HTTP client projects a bounded
+`Retry-After` value but never performs an internal retry. V1-12 details the shared taxonomy and operational procedure
+in `docs/V1_PROVIDER_ERROR_AND_RETRY_POLICY.md`.
 
 Once a non-terminal generation exceeds `CREATIVE_PROVIDER_POLLING_MAX_AGE_SECONDS`, the worker does not make another
 status request. It writes a stable polling-timeout replay, transitions the generation to `failed` with
@@ -94,7 +100,9 @@ V1-07 adds these source-keyed audit actions:
 - `creative.provider_polling.timed_out`
 - `creative.provider_polling.rejected`
 
-Audit metadata is restricted to safe ids, status/reason/error codes, payload hashes, HTTP status codes, and booleans.
+V1-12 also records `creative.provider_retry.scheduled`, `creative.provider_retry.exhausted`, and
+`creative.provider_retry.cleared`. Audit metadata is restricted to safe ids, status/reason/error codes and categories,
+attempt counts, due times, delay source, payload hashes, HTTP status codes, and booleans.
 Raw Provider errors, prompts, response bodies, output URLs, and secrets are ignored even if a caller supplies them.
 
 ## Verification And External Boundary

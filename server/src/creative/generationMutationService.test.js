@@ -4,6 +4,7 @@ import test from 'node:test'
 import { createSeedRepository } from '../repositories/seedRepository.js'
 import { sha256 } from './generationRecords.js'
 import {
+  buildCreativeGenerationRetryEligibility,
   cancelCreativeGeneration,
   completeCreativeGenerationRetry,
   prepareCreativeGenerationRetry,
@@ -246,4 +247,21 @@ test('completeCreativeGenerationRetry notifies the owner when the child attempt 
   assert.equal(notifications.items[0].resourceId, prepared.targetGenerationId)
   assert.equal(notifications.items[0].metadata.mutationId, prepared.mutation.id)
   assert.equal(notifications.items[0].metadata.targetGenerationId, prepared.targetGenerationId)
+})
+
+test('manual generation retry eligibility reuses Provider taxonomy and always requires confirmation', () => {
+  assert.deepEqual(buildCreativeGenerationRetryEligibility({ status: 'failed', errorCode: 'CREATIVE_PROVIDER_RATE_LIMITED' }), {
+    eligible: true,
+    reasonCode: 'user_confirmed_retry_allowed',
+    category: 'rate_limit',
+    userConfirmationRequired: true,
+  })
+  assert.deepEqual(buildCreativeGenerationRetryEligibility({ status: 'failed', errorCode: 'CONTENT_POLICY_REJECTED' }), {
+    eligible: false,
+    reasonCode: 'provider_error_not_retryable',
+    category: 'content_policy',
+    userConfirmationRequired: true,
+  })
+  assert.equal(buildCreativeGenerationRetryEligibility({ status: 'cancelled' }).eligible, true)
+  assert.equal(buildCreativeGenerationRetryEligibility({ status: 'completed' }).eligible, false)
 })

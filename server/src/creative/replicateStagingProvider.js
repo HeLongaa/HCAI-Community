@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { HttpError } from '../common/errors/httpError.js'
 import { buildProviderLifecycleReplay } from './providerLifecycleReplay.js'
 import { safeProviderFailure } from './providerAdapterContract.js'
+import { buildSafeProviderError } from './providerErrorPolicy.js'
 
 const defaultModel = 'replicate:image:staging'
 const defaultProviderAccountRef = 'staging'
@@ -476,7 +477,7 @@ export const fetchReplicateStagingPredictionStatus = async ({
   try {
     prediction = await client.getPrediction(providerJobId)
   } catch (error) {
-    const failure = safeProviderFailure(error)
+    const failure = buildSafeProviderError(error, { operationType: 'status_read', now })
     return {
       ok: false,
       shouldReplay: false,
@@ -487,10 +488,13 @@ export const fetchReplicateStagingPredictionStatus = async ({
       providerJobId,
       receivedAt: now.toISOString(),
       reasonCode: statusFetchReasonCode(failure),
+      error: failure,
       safeMetadata: {
         errorCode: failure.code,
-        retryable: Boolean(error?.details?.retryable ?? failure.retryable),
+        errorCategory: failure.category,
+        retryable: failure.retryable,
         statusCode: failure.statusCode,
+        retryAfterSeconds: failure.retryAfterSeconds,
       },
     }
   }

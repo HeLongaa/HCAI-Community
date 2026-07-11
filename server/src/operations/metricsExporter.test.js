@@ -144,6 +144,17 @@ test('buildPrometheusMetrics renders safe Prometheus text without unsafe labels'
       byStatus: [{ key: 'open', count: 1 }, { key: 'secret-status', count: 1 }],
       byReason: [{ key: 'provider_circuit_open', count: 1 }, { key: 'token=secret-token', count: 1 }],
     },
+    creativeProviderRetry: {
+      total: 3,
+      scheduled: 1,
+      exhausted: 1,
+      cleared: 1,
+      byProvider: [{ key: 'replicate', count: 3 }],
+      byWorkspace: [{ key: 'image', count: 3 }],
+      byOperation: [{ key: 'status_read', count: 3 }],
+      byCategory: [{ key: 'rate_limit', count: 2 }, { key: 'secret-category', count: 1 }],
+      byDelaySource: [{ key: 'retry_after', count: 1 }, { key: 'exponential', count: 1 }],
+    },
   })
 
   assert.match(body, /# TYPE newchat_security_events_window_total gauge/)
@@ -223,6 +234,10 @@ test('buildPrometheusMetrics renders safe Prometheus text without unsafe labels'
   assert.match(body, /newchat_creative_provider_control_events_by_status_total\{status="other"\} 1/)
   assert.match(body, /newchat_creative_provider_control_events_by_reason_total\{reason="provider_circuit_open"\} 1/)
   assert.match(body, /newchat_creative_provider_control_events_by_reason_total\{reason="other"\} 1/)
+  assert.match(body, /newchat_creative_provider_retry_events_total 3/)
+  assert.match(body, /newchat_creative_provider_retry_exhausted_total 1/)
+  assert.match(body, /newchat_creative_provider_retry_by_operation_total\{operation="status_read"\} 3/)
+  assert.match(body, /newchat_creative_provider_retry_by_category_total\{category="other"\} 1/)
   assert.equal(body.includes('user@example.com'), false)
   assert.equal(body.includes('prompt-hash-123'), false)
   assert.equal(body.includes('provider_job_mismatch'), false)

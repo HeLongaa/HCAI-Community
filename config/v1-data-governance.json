@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "taskId": "V1-45",
-  "asOf": "2026-07-11",
-  "policyVersion": "v1-data-governance-2026-07-11",
+  "asOf": "2026-07-12",
+  "policyVersion": "v1-data-governance-2026-07-12",
   "policyStatus": "frozen_for_implementation",
   "runtimeStatus": {
     "inventoryComplete": true,
@@ -419,16 +419,16 @@
     {
       "id": "provider_lifecycle_records",
       "classification": "restricted",
-      "prismaModels": ["CreativeProviderReplayLedger", "CreativeGenerationMutation", "CreativeOutputIngestion"],
+      "prismaModels": ["CreativeProviderReplayLedger", "CreativeGenerationMutation", "CreativeOutputIngestion", "CreativeProviderRetryState"],
       "locations": ["postgres"],
       "dataSubjects": ["user"],
       "purposes": ["creative_generation", "support_operations", "safety_moderation"],
-      "exampleFields": ["provider job/event id", "idempotency/source key", "payload/output hash", "normalized status", "mutation/ingestion status", "media asset id", "detected MIME", "byte count", "SHA-256", "safe error code"],
+      "exampleFields": ["provider job/event id", "idempotency/source key", "payload/output/failure hash", "normalized status", "mutation/ingestion/retry status", "attempt budget", "next attempt time", "media asset id", "detected MIME", "byte count", "SHA-256", "safe error code/category"],
       "accessRoles": ["authorized_service", "creative_operator_allowlisted", "auditor"],
       "retentionPolicyId": "provider_lifecycle_terminal_180d",
       "exportPolicy": "include_user_visible_status_summary_only",
       "deletionPolicy": "unlink_subject_then_prune_safe_replay_evidence",
-      "ownerTasks": ["V1-08", "V1-09", "V1-13", "V1-67"]
+      "ownerTasks": ["V1-08", "V1-09", "V1-12", "V1-13", "V1-67"]
     },
     {
       "id": "creative_accounting_records",
@@ -1007,7 +1007,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 35,
+    "modelCount": 36,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",
@@ -1016,7 +1016,8 @@
       "Provider adapter contracts reject secret-like metadata keys",
       "Provider HTTP client uses a fixed endpoint, minimum payload, deployment-only secret injection, and default-disabled network gate",
       "Provider callback API uses exact-body HMAC, nonce/job binding, strict projection, zero-retention raw payload handling, and atomic replay claims",
-      "Provider polling uses a fixed read-only status endpoint, strict response projection, safe worker summaries, bounded retries, and idempotent timeout recovery",
+      "Provider polling uses a fixed read-only status endpoint, strict response projection, safe worker summaries, durable due-time and attempt-budget retry state, and idempotent timeout recovery",
+      "Provider failures use a shared safe taxonomy, bounded Retry-After, deterministic backoff, hash-only failure dedupe, and CAS retry state",
       "Provider output ingestion uses a durable source key, claim lease, allowlisted injected fetch, bounded byte reads, magic-byte MIME validation, SHA-256, deterministic storage, and scan-gated media assets",
       "Provider dispatch uses versioned fail-closed controls, expiring hashed cap evidence, explicit circuit recovery, one-claim probes, two-person review, and low-cardinality operations evidence",
       "Admin creative serializers redact unsafe identifiers, URLs, and error previews",
@@ -1035,6 +1036,8 @@
     "evidenceFiles": [
       "server/src/creative/generationRecords.js",
       "server/src/creative/providerAdapterContract.js",
+      "server/src/creative/providerErrorPolicy.js",
+      "server/src/creative/providerRetryScheduler.js",
       "server/src/creative/providerHttpClient.js",
       "server/src/creative/providerCallbackAuth.js",
       "server/src/creative/providerCallbackService.js",

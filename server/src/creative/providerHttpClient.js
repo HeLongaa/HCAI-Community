@@ -1,6 +1,7 @@
 import { HttpError } from '../common/errors/httpError.js'
 import { buildCreativeProviderConfig } from '../config/env.js'
 import { parseReplicateCallbackPayload } from './replicateCallbackPayload.js'
+import { parseProviderRetryAfter } from './providerErrorPolicy.js'
 
 const requestBodyMaxBytes = 64 * 1024
 const responseBodyMaxBytes = 1024 * 1024
@@ -202,6 +203,7 @@ const readProviderResponse = async (response, providerId) => {
     const missing = response.status === 404
     const timedOut = response.status === 408 || response.status === 504
     const retryable = rateLimited || timedOut || response.status >= 500
+    const retryAfterSeconds = parseProviderRetryAfter(response.headers?.get?.('retry-after'))
     throw new HttpError(
       rateLimited ? 429 : missing ? 404 : timedOut ? 504 : 502,
       rateLimited
@@ -218,7 +220,12 @@ const readProviderResponse = async (response, providerId) => {
           : timedOut
             ? 'Creative Provider status request timed out'
             : 'Creative Provider HTTP request failed',
-      { providerId, providerStatus: response.status, retryable },
+      {
+        providerId,
+        providerStatus: response.status,
+        retryable,
+        ...(retryAfterSeconds == null ? {} : { retryAfterSeconds }),
+      },
     )
   }
   try {
@@ -273,6 +280,13 @@ export const createCreativeProviderHttpClient = ({
       return projectReplicatePredictionResponse(payload, normalizedProviderId)
     } catch (error) {
       if (error instanceof HttpError) throw error
+      if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+        throw new HttpError(504, 'CREATIVE_PROVIDER_TIMEOUT', 'Creative Provider HTTP request timed out', {
+          providerId: normalizedProviderId,
+          reason: 'request_timeout',
+          retryable: true,
+        })
+      }
       throw new HttpError(502, 'CREATIVE_PROVIDER_HTTP_FAILED', 'Creative Provider HTTP request failed', {
         providerId: normalizedProviderId,
         reason: 'network_error',

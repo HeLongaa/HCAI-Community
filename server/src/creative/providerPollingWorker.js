@@ -1,9 +1,15 @@
 import { createHash } from 'node:crypto'
 
 import { safeProviderFailure } from './providerAdapterContract.js'
+import { buildSafeProviderError } from './providerErrorPolicy.js'
 import { fetchReplicateStagingPredictionStatus } from './replicateStagingProvider.js'
 import { buildProviderLifecycleReplay, terminalGenerationStatuses } from './providerLifecycleReplay.js'
 import { applyProviderReplayThroughLedger } from './providerReplayIntegration.js'
+import {
+  clearProviderRetryState,
+  evaluateProviderRetryState,
+  scheduleProviderRetry,
+} from './providerRetryScheduler.js'
 
 const defaultPollingMaxAgeSeconds = 60 * 60
 const defaultPollingLeaseTtlSeconds = 300
@@ -298,16 +304,35 @@ const safePollingStatusResult = ({ statusResult, plan }) => {
     payloadHash: safeEvidenceIdentifier(statusResult.payloadHash),
     outputDigest: safeEvidenceIdentifier(statusResult.outputDigest),
     reasonCode: safeEvidenceIdentifier(statusResult.reasonCode),
+    error: statusResult.error
+      ? {
+          schemaVersion: 'provider-error-v1',
+          code: safeEvidenceIdentifier(statusResult.error.code),
+          category: safeEvidenceIdentifier(statusResult.error.category),
+          messagePreview: statusResult.error.messagePreview ?? null,
+          retryable: Boolean(statusResult.error.retryable),
+          circuitEligible: Boolean(statusResult.error.circuitEligible),
+          terminal: Boolean(statusResult.error.terminal),
+          statusCode: Number.isInteger(statusResult.error.statusCode) ? statusResult.error.statusCode : 500,
+          retryAfterSeconds: Number.isInteger(statusResult.error.retryAfterSeconds) ? statusResult.error.retryAfterSeconds : null,
+          retryAfterSource: statusResult.error.retryAfterSource ?? null,
+          operationType: 'status_read',
+          accountingDisposition: 'preserve',
+          publicMessageKey: safeEvidenceIdentifier(statusResult.error.publicMessageKey),
+        }
+      : null,
     safeMetadata: statusResult.safeMetadata
       ? {
           providerStatus: safeEvidenceIdentifier(statusResult.safeMetadata.providerStatus),
           normalizedStatus: safeEvidenceIdentifier(statusResult.safeMetadata.normalizedStatus),
           errorCode: safeEvidenceIdentifier(statusResult.safeMetadata.errorCode),
+          errorCategory: safeEvidenceIdentifier(statusResult.safeMetadata.errorCategory),
           outputCount: Number.isFinite(statusResult.safeMetadata.outputCount) ? statusResult.safeMetadata.outputCount : undefined,
           statusCode: Number.isInteger(statusResult.safeMetadata.statusCode) ? statusResult.safeMetadata.statusCode : undefined,
           hasProviderError: statusResult.safeMetadata.hasProviderError == null ? undefined : Boolean(statusResult.safeMetadata.hasProviderError),
           usageReported: statusResult.safeMetadata.usageReported == null ? undefined : Boolean(statusResult.safeMetadata.usageReported),
           retryable: statusResult.safeMetadata.retryable == null ? undefined : Boolean(statusResult.safeMetadata.retryable),
+          retryAfterSeconds: Number.isInteger(statusResult.safeMetadata.retryAfterSeconds) ? statusResult.safeMetadata.retryAfterSeconds : undefined,
         }
       : null,
   }
@@ -436,6 +461,7 @@ const applyProviderPollingTimeout = async ({ generation, plan, repositories, act
     replayed: true,
     timedOut: true,
     retryScheduled: false,
+    retryExhausted: false,
     failed: Boolean(applied.conflict || (applied.execution && !applied.execution.completed)),
     plan,
     applied,
@@ -443,6 +469,7 @@ const applyProviderPollingTimeout = async ({ generation, plan, repositories, act
 }
 
 const classifyProviderPollingFailure = (error) => {
+  const envelope = buildSafeProviderError(error, { operationType: 'status_read' })
   const failure = safeProviderFailure(error)
   const errorCode = safeEvidenceIdentifier(error?.code) ?? failure.code
   const reasonCode = error?.code === 'CREATIVE_PROVIDER_JOB_MISMATCH'
@@ -459,7 +486,36 @@ const classifyProviderPollingFailure = (error) => {
     reasonCode,
     retryable: Boolean(error?.details?.retryable ?? failure.retryable),
     statusCode: failure.statusCode,
+    envelope,
   }
+}
+
+const retryEnvelopeForStatusResult = (statusResult, now) => statusResult.error ?? buildSafeProviderError({
+  code: statusResult.safeMetadata?.errorCode,
+  statusCode: statusResult.safeMetadata?.statusCode,
+  details: {
+    providerCategory: statusResult.safeMetadata?.errorCategory,
+    retryAfterSeconds: statusResult.safeMetadata?.retryAfterSeconds,
+  },
+}, { operationType: 'status_read', now })
+
+const schedulePollingRetry = async ({ generation, repositories, statusResult, envelope, now, actor }) => {
+  if (!repositories.creativeProviderRetries?.record) return null
+  return scheduleProviderRetry({
+    generation,
+    repositories,
+    operationType: 'status_read',
+    envelope,
+    failureKey: {
+      generationId: generation.id,
+      providerJobId: safeEvidenceIdentifier(generation.providerJobId),
+      receivedAt: statusResult?.receivedAt ?? new Date(now).toISOString(),
+      reasonCode: statusResult?.reasonCode ?? envelope.code,
+      statusCode: envelope.statusCode,
+    },
+    now,
+    actor,
+  })
 }
 
 export const pollProviderGenerationOnce = async ({
@@ -491,8 +547,37 @@ export const pollProviderGenerationOnce = async ({
       replayed: false,
       timedOut: false,
       retryScheduled: false,
+      retryExhausted: false,
       failed: false,
       plan,
+    }
+  }
+
+  const retryState = await repositories.creativeProviderRetries?.findForGeneration?.(generation.id, 'status_read')
+  const retryGate = evaluateProviderRetryState(retryState, now)
+  if (retryGate.action === 'wait') {
+    return {
+      generationId: safeEvidenceIdentifier(generation.id),
+      polled: false,
+      replayed: false,
+      timedOut: false,
+      retryScheduled: retryState?.status === 'scheduled',
+      retryExhausted: retryState?.status === 'exhausted',
+      failed: false,
+      plan: {
+        ...plan,
+        shouldPoll: false,
+        action: 'noop',
+        reasonCode: retryGate.reasonCode,
+        safeMetadata: {
+          ...plan.safeMetadata,
+          retryStatus: retryState?.status ?? null,
+          retryAttempt: retryState?.attempt ?? null,
+          retryMaxAttempts: retryState?.maxAttempts ?? null,
+          nextAttemptAt: retryGate.nextAttemptAt ?? null,
+        },
+      },
+      retryState,
     }
   }
 
@@ -517,6 +602,7 @@ export const pollProviderGenerationOnce = async ({
       replayed: false,
       timedOut: false,
       retryScheduled: false,
+      retryExhausted: false,
       failed: true,
       plan: {
         ...plan,
@@ -544,7 +630,16 @@ export const pollProviderGenerationOnce = async ({
   const safeStatusResult = safePollingStatusResult({ statusResult, plan })
 
   if (!statusResult.ok || !statusResult.shouldReplay) {
-    const retryScheduled = Boolean(statusResult.safeMetadata?.retryable)
+    const retryOutcome = await schedulePollingRetry({
+      generation,
+      repositories,
+      statusResult,
+      envelope: retryEnvelopeForStatusResult(statusResult, now),
+      now,
+      actor,
+    })
+    const retryScheduled = retryOutcome ? retryOutcome.scheduled : Boolean(statusResult.safeMetadata?.retryable)
+    const retryExhausted = Boolean(retryOutcome?.exhausted)
     const auditAction = retryScheduled
       ? 'creative.provider_polling.retry_scheduled'
       : 'creative.provider_polling.rejected'
@@ -559,11 +654,21 @@ export const pollProviderGenerationOnce = async ({
         receivedAt: safeStatusResult.receivedAt,
         reasonCode: safeStatusResult.reasonCode,
         statusCode: safeStatusResult.safeMetadata?.statusCode,
+        errorCategory: safeStatusResult.safeMetadata?.errorCategory,
+        retryAttempt: retryOutcome?.state?.attempt ?? null,
+        retryMaxAttempts: retryOutcome?.state?.maxAttempts ?? null,
+        nextAttemptAt: retryOutcome?.state?.nextAttemptAt ?? null,
+        retryExhausted,
       },
       metadata: {
         errorCode: safeStatusResult.safeMetadata?.errorCode,
         retryable: retryScheduled,
         statusCode: safeStatusResult.safeMetadata?.statusCode,
+        errorCategory: safeStatusResult.safeMetadata?.errorCategory,
+        retryAttempt: retryOutcome?.state?.attempt ?? null,
+        retryMaxAttempts: retryOutcome?.state?.maxAttempts ?? null,
+        nextAttemptAt: retryOutcome?.state?.nextAttemptAt ?? null,
+        retryExhausted,
       },
     })
     return {
@@ -572,11 +677,21 @@ export const pollProviderGenerationOnce = async ({
       replayed: false,
       timedOut: false,
       retryScheduled,
+      retryExhausted,
       failed: !retryScheduled,
       plan,
       statusResult: safeStatusResult,
+      retryState: retryOutcome?.state ?? null,
     }
   }
+
+  await clearProviderRetryState({
+    generationId: generation.id,
+    repositories,
+    operationType: 'status_read',
+    reasonCode: 'provider_status_read_succeeded',
+    actor,
+  })
 
   const replayGeneration = mergeLifecycleGeneration({
     currentRecord: generation,
@@ -632,6 +747,7 @@ export const pollProviderGenerationOnce = async ({
     replayed: true,
     timedOut: false,
     retryScheduled: false,
+    retryExhausted: false,
     failed: Boolean(applied.conflict || (applied.execution && !applied.execution.completed)),
     plan,
     statusResult: safeStatusResult,
@@ -695,6 +811,7 @@ export const runProviderPollingWorkerOnce = async ({
       replayed: 0,
       timedOut: 0,
       retryScheduled: 0,
+      retryExhausted: 0,
       failed: 0,
       results: [],
     }
@@ -708,6 +825,7 @@ export const runProviderPollingWorkerOnce = async ({
       replayed: 0,
       timedOut: 0,
       retryScheduled: 0,
+      retryExhausted: 0,
       failed: 0,
       results: [],
     }
@@ -735,9 +853,19 @@ export const runProviderPollingWorkerOnce = async ({
         source,
         now,
       })
+      const retryOutcome = await schedulePollingRetry({
+        generation,
+        repositories,
+        statusResult: { receivedAt: now.toISOString(), reasonCode: failure.reasonCode },
+        envelope: failure.envelope,
+        now,
+        actor: actor ?? actorForGeneration(generation),
+      })
+      const retryScheduled = retryOutcome ? retryOutcome.scheduled : failure.retryable
+      const retryExhausted = Boolean(retryOutcome?.exhausted)
       await recordProviderPollingAudit({
         repositories,
-        action: failure.retryable
+        action: retryScheduled
           ? 'creative.provider_polling.retry_scheduled'
           : 'creative.provider_polling.rejected',
         generation,
@@ -752,6 +880,11 @@ export const runProviderPollingWorkerOnce = async ({
           errorCode: failure.errorCode,
           retryable: failure.retryable,
           statusCode: failure.statusCode,
+          errorCategory: failure.envelope.category,
+          retryAttempt: retryOutcome?.state?.attempt ?? null,
+          retryMaxAttempts: retryOutcome?.state?.maxAttempts ?? null,
+          nextAttemptAt: retryOutcome?.state?.nextAttemptAt ?? null,
+          retryExhausted,
         },
       })
       results.push({
@@ -759,14 +892,17 @@ export const runProviderPollingWorkerOnce = async ({
         polled: false,
         replayed: false,
         timedOut: false,
-        retryScheduled: failure.retryable,
-        failed: !failure.retryable,
+        retryScheduled,
+        retryExhausted,
+        failed: !retryScheduled,
         reasonCode: failure.reasonCode,
         safeMetadata: {
           errorCode: failure.errorCode,
           retryable: failure.retryable,
           statusCode: failure.statusCode,
+          errorCategory: failure.envelope.category,
         },
+        retryState: retryOutcome?.state ?? null,
       })
     }
   }
@@ -777,6 +913,7 @@ export const runProviderPollingWorkerOnce = async ({
     replayed: results.filter((result) => result.replayed).length,
     timedOut: results.filter((result) => result.timedOut).length,
     retryScheduled: results.filter((result) => result.retryScheduled).length,
+    retryExhausted: results.filter((result) => result.retryExhausted).length,
     failed: results.filter((result) => result.failed).length,
     results,
   }

@@ -1848,7 +1848,7 @@ export const openApiDocument = {
     },
     '/admin/creative/provider-controls': {
       get: {
-        summary: 'List sanitized Provider controls, circuits, and current cap evidence',
+        summary: 'List sanitized Provider controls, circuits, cap evidence, and retry state',
         parameters: [
           { name: 'providerId', in: 'query', schema: { type: 'string' } },
           { name: 'workspace', in: 'query', schema: { type: 'string', enum: ['image', 'video', 'music', 'chat'] } },
@@ -1856,7 +1856,7 @@ export const openApiDocument = {
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
         ],
         responses: {
-          '200': { description: 'Sanitized Provider control-plane bundle without account references, raw evidence, full hashes, or probe tokens' },
+          '200': { description: 'Sanitized Provider operations bundle without account references, raw errors, failure keys, full hashes, secrets, or probe tokens' },
           '403': { description: 'Requires admin:creative:provider-control:read' },
         },
       },

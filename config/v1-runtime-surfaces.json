@@ -222,7 +222,7 @@
       "paths": ["server/src/config/env.js", "server/src/creative/providerHttpClient.js", "server/src/creative/providerStatusClientRegistry.js", "server/src/creative/providerPollingWorker.js", "server/src/worker.js", "server/src/operations/workerJobs.js", "server/src/creative/providerReplayIntegration.js"],
       "markers": ["CREATIVE_PROVIDER_POLLING_ENABLED", "buildReplicatePredictionStatusRequest", "createProviderPollingStatusClients", "polling_window_expired"],
       "productionDisposition": "keep_disabled_outside_explicit_staging_status_read_approval",
-      "ownerTasks": ["V1-07"]
+      "ownerTasks": ["V1-07", "V1-12"]
     },
     {
       "id": "server-generation-mutation-boundary",
@@ -259,6 +259,15 @@
       "markers": ["createProviderControlPlane", "creativeProviderControls", "provider_control_recovery", "admin:creative:provider-control:recover"],
       "productionDisposition": "retain_fail_closed_app_control_plane_and_keep_real_provider_clients_pricing_cap_readers_probes_and_dispatch_unregistered_until_approved",
       "ownerTasks": ["V1-11"]
+    },
+    {
+      "id": "server-provider-error-retry-policy",
+      "area": "provider-operations",
+      "classification": "production_capable",
+      "paths": ["server/src/creative/providerErrorPolicy.js", "server/src/creative/providerRetryScheduler.js", "server/src/creative/providerHttpClient.js", "server/src/creative/providerPollingWorker.js", "server/src/repositories/seedRepository.js", "server/src/repositories/prismaRepository.js", "server/src/modules/admin/routes.js", "server/src/operations/metrics.js", "server/src/operations/metricsExporter.js"],
+      "markers": ["provider-error-v1", "CreativeProviderRetryState", "creativeProviderRetries", "newchat_creative_provider_retry_events_total"],
+      "productionDisposition": "retain_bounded_app_side_retry_state_and_keep_real_provider_clients_callbacks_polling_probes_fallback_and_dispatch_unregistered_until_approved",
+      "ownerTasks": ["V1-12"]
     },
     {
       "id": "fixture-smoke-and-simulation-profiles",

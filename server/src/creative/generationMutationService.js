@@ -2,9 +2,26 @@ import { randomUUID } from 'node:crypto'
 
 import { HttpError } from '../common/errors/httpError.js'
 import { safeErrorPreview, sha256 } from './generationRecords.js'
+import { classifyProviderError, providerErrorPolicies } from './providerErrorPolicy.js'
 
 const cancellableStatuses = new Set(['queued', 'running'])
 const retryableStatuses = new Set(['failed', 'cancelled'])
+
+export const buildCreativeGenerationRetryEligibility = (generation) => {
+  if (!retryableStatuses.has(generation?.status)) {
+    return Object.freeze({ eligible: false, reasonCode: 'generation_status_not_retryable', category: null, userConfirmationRequired: true })
+  }
+  const category = generation.status === 'cancelled'
+    ? 'user_cancelled'
+    : classifyProviderError({ code: generation.errorCode, statusCode: generation.errorCode ? undefined : 500 })
+  const eligible = generation.status === 'cancelled' || providerErrorPolicies[category].retryable
+  return Object.freeze({
+    eligible,
+    reasonCode: eligible ? 'user_confirmed_retry_allowed' : 'provider_error_not_retryable',
+    category,
+    userConfirmationRequired: true,
+  })
+}
 
 const conflict = (code, message, details = undefined) =>
   new HttpError(409, code, message, details)
@@ -274,11 +291,12 @@ export const prepareCreativeGenerationRetry = async ({
 
   const generation = await repositories.creativeGenerations.find(generationId)
   assertOwnedGeneration(generation, actor, false)
-  if (!retryableStatuses.has(generation.status)) {
+  const retryEligibility = buildCreativeGenerationRetryEligibility(generation)
+  if (!retryEligibility.eligible) {
     throw conflict(
       'CREATIVE_GENERATION_NOT_RETRYABLE',
       `Creative generation cannot be retried from status ${generation.status}`,
-      { status: generation.status },
+      { status: generation.status, category: retryEligibility.category, reasonCode: retryEligibility.reasonCode },
     )
   }
   assertRetryRequestMatches(generation, request.generation)
@@ -314,6 +332,8 @@ export const prepareCreativeGenerationRetry = async ({
       attemptNumber,
       authorizationMutationId: request.authorizationMutationId ?? null,
       workspace: generation.workspace,
+      providerErrorCategory: retryEligibility.category,
+      userConfirmationRequired: retryEligibility.userConfirmationRequired,
     },
   }, actor)
   if (request.authorizationMutationId) {
@@ -393,11 +413,12 @@ export const createAdminRetryAuthorization = async ({
   if (existing) return { duplicate: true, mutation: existing }
   const generation = await repositories.creativeGenerations.find(generationId)
   assertOwnedGeneration(generation, actor, true)
-  if (!retryableStatuses.has(generation.status)) {
+  const retryEligibility = buildCreativeGenerationRetryEligibility(generation)
+  if (!retryEligibility.eligible) {
     throw conflict(
       'CREATIVE_GENERATION_NOT_RETRYABLE',
       `Creative generation cannot be retried from status ${generation.status}`,
-      { status: generation.status },
+      { status: generation.status, category: retryEligibility.category, reasonCode: retryEligibility.reasonCode },
     )
   }
   const recorded = await repositories.creativeGenerationMutations.record({
@@ -413,6 +434,7 @@ export const createAdminRetryAuthorization = async ({
       requiresUserConfirmation: true,
       userHandle: generation.actorHandle,
       workspace: generation.workspace,
+      providerErrorCategory: retryEligibility.category,
     },
   }, actor)
   await notifyGenerationOwner({

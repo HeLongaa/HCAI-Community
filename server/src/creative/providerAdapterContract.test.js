@@ -137,10 +137,10 @@ test('safeProviderFailure maps rate limits, timeouts, and redacts secrets', () =
     statusCode: 504,
   })
   assert.deepEqual(safeProviderFailure({ statusCode: 502, message: 'upstream bad gateway sk-secret123456' }), {
-    code: 'PROVIDER_EXECUTION_FAILED',
+    code: 'PROVIDER_UNAVAILABLE',
     messagePreview: 'upstream bad gateway <redacted>',
-    retryable: false,
-    statusCode: 502,
+    retryable: true,
+    statusCode: 503,
   })
 })
 

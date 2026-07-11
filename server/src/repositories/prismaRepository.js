@@ -26,6 +26,7 @@ import {
   getCreativeProviderControlStateDto,
   getCreativeProviderCostLedgerDto,
   getCreativeProviderReplayDto,
+  getCreativeProviderRetryStateDto,
   getMediaAssetDto,
   getMediaScanJobDto,
   getNotificationDto,
@@ -4483,6 +4484,13 @@ const createPrismaRepository = async (fallbackRepository) => {
     { reasonCode },
   )
 
+  const providerRetryConflict = (reasonCode) => new HttpError(
+    409,
+    'CREATIVE_PROVIDER_RETRY_STATE_CONFLICT',
+    'Creative Provider retry state conflict',
+    { reasonCode },
+  )
+
   const creativeProviderControls = {
     list: async (options = {}) => {
       const limit = options.limit ?? 50
@@ -5024,6 +5032,155 @@ const createPrismaRepository = async (fallbackRepository) => {
             : null,
         probeToken: outcome.probeToken,
       }
+    },
+  }
+
+  const creativeProviderRetries = {
+    find: async (sourceKey) => {
+      const row = await client.creativeProviderRetryState.findUnique({ where: { sourceKey: String(sourceKey) } })
+      return row ? getCreativeProviderRetryStateDto(row) : null
+    },
+    findForGeneration: async (generationId, operationType = null) => {
+      const row = await client.creativeProviderRetryState.findFirst({
+        where: {
+          generationId: String(generationId),
+          ...(operationType ? { operationType: String(operationType) } : {}),
+        },
+        orderBy: { updatedAt: 'desc' },
+      })
+      return row ? getCreativeProviderRetryStateDto(row) : null
+    },
+    list: async (options = {}) => {
+      const limit = options.limit ?? 50
+      const rows = await client.creativeProviderRetryState.findMany({
+        where: {
+          ...(options.status ? { status: options.status } : {}),
+          ...(options.providerId ? { providerId: options.providerId } : {}),
+          ...(options.workspace ? { workspace: options.workspace } : {}),
+          ...(options.dueBefore ? { nextAttemptAt: { lte: new Date(options.dueBefore) } } : {}),
+        },
+        orderBy: { id: 'asc' },
+        take: limit + 1,
+        ...(options.cursor ? { cursor: { id: String(options.cursor) }, skip: 1 } : {}),
+      })
+      const pageRows = rows.slice(0, limit)
+      return {
+        items: pageRows.map(getCreativeProviderRetryStateDto),
+        nextCursor: rows.length > limit && pageRows.length ? pageRows[pageRows.length - 1].id : null,
+        limit,
+      }
+    },
+    record: async (payload, actor) => {
+      const current = await client.creativeProviderRetryState.findUnique({ where: { sourceKey: String(payload.sourceKey) } })
+      if (current?.lastFailureKeyHash === payload.lastFailureKeyHash) {
+        return { changed: false, duplicate: true, state: getCreativeProviderRetryStateDto(current) }
+      }
+      if (current && Number(payload.expectedVersion) !== current.version) throw providerRetryConflict('retry_version_mismatch')
+      if (!current && ![undefined, null, 0].includes(payload.expectedVersion)) throw providerRetryConflict('retry_create_version_mismatch')
+      let row
+      if (!current) {
+        try {
+          row = await client.creativeProviderRetryState.create({
+            data: {
+              id: payload.id ?? `provider-retry-${randomUUID()}`,
+              sourceKey: String(payload.sourceKey),
+              generationId: String(payload.generationId),
+              providerId: payload.providerId,
+              workspace: payload.workspace,
+              operationType: payload.operationType,
+              status: payload.status,
+              attempt: Number(payload.attempt),
+              maxAttempts: Number(payload.maxAttempts),
+              firstAttemptAt: new Date(payload.firstAttemptAt),
+              lastAttemptAt: new Date(payload.lastAttemptAt),
+              nextAttemptAt: asDateOrNull(payload.nextAttemptAt),
+              lastFailureKeyHash: payload.lastFailureKeyHash,
+              lastErrorCode: payload.lastErrorCode,
+              lastErrorCategory: payload.lastErrorCategory,
+              delaySource: payload.delaySource ?? null,
+              policyHash: payload.policyHash,
+            },
+          })
+        } catch (error) {
+          if (error?.code !== 'P2002') throw error
+          const duplicate = await client.creativeProviderRetryState.findUnique({ where: { sourceKey: String(payload.sourceKey) } })
+          if (duplicate?.lastFailureKeyHash === payload.lastFailureKeyHash) {
+            return { changed: false, duplicate: true, state: getCreativeProviderRetryStateDto(duplicate) }
+          }
+          throw providerRetryConflict('retry_concurrent_create')
+        }
+      } else {
+        const changed = await client.creativeProviderRetryState.updateMany({
+          where: { id: current.id, version: current.version },
+          data: {
+            status: payload.status,
+            attempt: Number(payload.attempt),
+            maxAttempts: Number(payload.maxAttempts),
+            firstAttemptAt: new Date(payload.firstAttemptAt),
+            lastAttemptAt: new Date(payload.lastAttemptAt),
+            nextAttemptAt: asDateOrNull(payload.nextAttemptAt),
+            lastFailureKeyHash: payload.lastFailureKeyHash,
+            lastErrorCode: payload.lastErrorCode,
+            lastErrorCategory: payload.lastErrorCategory,
+            delaySource: payload.delaySource ?? null,
+            policyHash: payload.policyHash,
+            version: { increment: 1 },
+          },
+        })
+        if (changed.count !== 1) throw providerRetryConflict('retry_concurrent_change')
+        row = await client.creativeProviderRetryState.findUnique({ where: { id: current.id } })
+      }
+      const state = getCreativeProviderRetryStateDto(row)
+      await recordAudit({
+        actor,
+        action: `creative.provider_retry.${state.status}`,
+        resourceType: 'creative_provider_retry_state',
+        resourceId: state.id,
+        metadata: {
+          generationId: state.generationId,
+          providerId: state.providerId,
+          workspace: state.workspace,
+          operationType: state.operationType,
+          status: state.status,
+          attempt: state.attempt,
+          maxAttempts: state.maxAttempts,
+          nextAttemptAt: state.nextAttemptAt,
+          errorCode: state.lastErrorCode,
+          errorCategory: state.lastErrorCategory,
+          delaySource: state.delaySource,
+          version: state.version,
+        },
+      })
+      return { changed: true, duplicate: false, state }
+    },
+    clear: async (sourceKey, payload = {}, actor) => {
+      const current = await client.creativeProviderRetryState.findUnique({ where: { sourceKey: String(sourceKey) } })
+      if (!current) return { changed: false, state: null }
+      if (current.status === 'cleared') return { changed: false, state: getCreativeProviderRetryStateDto(current) }
+      if (payload.expectedVersion != null && Number(payload.expectedVersion) !== current.version) throw providerRetryConflict('retry_version_mismatch')
+      const changed = await client.creativeProviderRetryState.updateMany({
+        where: { id: current.id, version: current.version },
+        data: { status: 'cleared', nextAttemptAt: null, delaySource: null, version: { increment: 1 } },
+      })
+      if (changed.count !== 1) throw providerRetryConflict('retry_concurrent_change')
+      const row = await client.creativeProviderRetryState.findUnique({ where: { id: current.id } })
+      const state = getCreativeProviderRetryStateDto(row)
+      await recordAudit({
+        actor,
+        action: 'creative.provider_retry.cleared',
+        resourceType: 'creative_provider_retry_state',
+        resourceId: state.id,
+        metadata: {
+          generationId: state.generationId,
+          providerId: state.providerId,
+          workspace: state.workspace,
+          operationType: state.operationType,
+          attempt: state.attempt,
+          version: state.version,
+          reasonCode: payload.reasonCode ?? 'provider_operation_succeeded',
+        },
+      })
+      return { changed: true, state }
     },
   }
 
@@ -7343,6 +7500,7 @@ const createPrismaRepository = async (fallbackRepository) => {
     creativeProviderReplays,
     creativeOutputIngestions,
     creativeProviderControls,
+    creativeProviderRetries,
     creativeProviderCosts,
     creativeCredits,
     creativeQuota,
