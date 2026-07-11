@@ -928,7 +928,7 @@ export const openApiDocument = {
           '409': { description: 'Provider, generation, or provider job binding mismatch' },
           '413': { description: 'Callback body exceeds the dedicated body limit' },
           '415': { description: 'Callback content type is not application/json' },
-          '503': { description: 'Callback kill switch is disabled or lifecycle side effects require retry' },
+          '503': { description: 'Callback or Provider output fetch is disabled, or lifecycle side effects require retry' },
         },
       },
     },
@@ -1864,7 +1864,7 @@ export const openApiDocument = {
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
         ],
         responses: {
-          '200': { description: 'Creative generation history list with sanitized provider cost, budget, and replay evidence summaries when available' },
+          '200': { description: 'Creative generation history list with sanitized provider cost, budget, replay, mutation, and output-ingestion evidence summaries when available' },
           '403': { description: 'Requires audit read permission' },
         },
       },
@@ -1874,7 +1874,7 @@ export const openApiDocument = {
         summary: 'Read a single creative generation history record',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         responses: {
-          '200': { description: 'Creative generation history detail with sanitized provider cost, budget, and replay evidence summaries when available' },
+          '200': { description: 'Creative generation history detail with sanitized provider cost, budget, replay, mutation, and output-ingestion evidence summaries when available' },
           '403': { description: 'Requires audit read permission' },
           '404': { description: 'Creative generation record not found' },
         },

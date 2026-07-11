@@ -10,6 +10,19 @@ import {
   runProviderPollingWorkerOnce,
 } from './providerPollingWorker.js'
 import { createSeedRepository } from '../repositories/seedRepository.js'
+import { sha256 } from './generationRecords.js'
+
+const providerOutputPng = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+)
+const fixtureProviderOutputFetcher = async () => ({
+  body: providerOutputPng,
+  contentType: 'image/png',
+  extension: 'png',
+  sizeBytes: providerOutputPng.length,
+  sha256: sha256(providerOutputPng),
+})
 
 const now = new Date('2026-07-06T12:00:00.000Z')
 
@@ -350,6 +363,7 @@ test('runProviderPollingWorkerOnce applies completed fixture status through repl
     providerStatusClients: { replicate: client },
     source: workerPollingSource,
     now,
+    fetchOutput: fixtureProviderOutputFetcher,
   })
 
   assert.equal(result.enabled, true)

@@ -46,6 +46,7 @@ export const createProductionWorkerJobDefinitions = (repositories, env, options 
         providerStatusClients: options.providerStatusClients ?? {},
         source: env,
         limit: env.creativeProviderPollingSweepLimit,
+        fetchOutput: options.providerOutputFetcher ?? null,
       }),
     })
   }

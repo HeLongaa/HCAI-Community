@@ -469,6 +469,7 @@ export const pollProviderGenerationOnce = async ({
   source = process.env,
   now = new Date(),
   actor = actorForGeneration(generation),
+  fetchOutput = null,
 } = {}) => {
   const plan = buildProviderPollingPlan({
     generation,
@@ -604,6 +605,7 @@ export const pollProviderGenerationOnce = async ({
     payloadHash: statusResult.payloadHash,
     receivedAt: statusResult.receivedAt,
     now,
+    fetchOutput,
   })
 
   await recordProviderPollingAudit({
@@ -681,6 +683,7 @@ export const runProviderPollingWorkerOnce = async ({
   now = new Date(),
   limit,
   actor = null,
+  fetchOutput = null,
 } = {}) => {
   const config = providerPollingConfig(source)
   if (!config.enabled) {
@@ -720,6 +723,7 @@ export const runProviderPollingWorkerOnce = async ({
         source,
         now,
         actor: actor ?? actorForGeneration(generation),
+        fetchOutput,
       }))
     } catch (error) {
       const failure = classifyProviderPollingFailure(error)

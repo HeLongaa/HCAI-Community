@@ -469,6 +469,29 @@ export const serializeCreativeProviderReplay = (replay) => ({
   updatedAt: replay.updatedAt ?? '',
 })
 
+export const serializeCreativeOutputIngestion = (ingestion) => ({
+  id: String(ingestion.id),
+  sourceKey: ingestion.sourceKey,
+  generationId: String(ingestion.generationId),
+  providerId: ingestion.providerId,
+  providerJobId: ingestion.providerJobId ?? null,
+  outputDigest: ingestion.outputDigest,
+  outputIndex: Number(ingestion.outputIndex),
+  status: ingestion.status,
+  mediaAssetId: ingestion.mediaAssetId ?? null,
+  storageKey: ingestion.storageKey ?? null,
+  detectedContentType: ingestion.detectedContentType ?? null,
+  sizeBytes: ingestion.sizeBytes == null ? null : Number(ingestion.sizeBytes),
+  sha256: ingestion.sha256 ?? null,
+  errorCode: ingestion.errorCode ?? null,
+  claimToken: ingestion.claimToken ?? null,
+  claimedAt: ingestion.claimedAt ?? null,
+  leaseExpiresAt: ingestion.leaseExpiresAt ?? null,
+  completedAt: ingestion.completedAt ?? null,
+  createdAt: ingestion.createdAt ?? '',
+  updatedAt: ingestion.updatedAt ?? '',
+})
+
 export const serializeNotification = (notification) => ({
   id: String(notification.id),
   type: notification.type,

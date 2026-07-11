@@ -3,8 +3,9 @@ import test from 'node:test'
 
 import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
 import { recordSecurityEvent, resetSecurityEvents } from '../../security/securityEvents.js'
-import { resetCreativePolicyState } from '../../creative/policy.js'
+import { quotaWindowFor, resetCreativePolicyState } from '../../creative/policy.js'
 import { createReplicateStagingPrediction } from '../../creative/replicateStagingProvider.js'
+import { sha256 } from '../../creative/generationRecords.js'
 import { repositories } from '../../repositories/index.js'
 import { createSeedRepository } from '../../repositories/seedRepository.js'
 import { registerMediaRoutes } from '../media/routes.js'
@@ -17,6 +18,18 @@ const createCreativeAdminServer = () => createRouteTestServer(registerCreativeRo
 const createInjectedAdminServer = (repository, options = {}) => createRouteTestServer(
   (router) => registerAdminRoutes(router, { repositories: repository, ...options }),
 )
+
+const providerOutputPng = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+)
+const fixtureProviderOutputFetcher = async () => ({
+  body: providerOutputPng,
+  contentType: 'image/png',
+  extension: 'png',
+  sizeBytes: providerOutputPng.length,
+  sha256: sha256(providerOutputPng),
+})
 
 const replicateStagingEnvKeys = [
   'NODE_ENV',
@@ -455,6 +468,77 @@ test('GET /api/admin/creative/generations folds unsafe provider replay summary e
   }
 })
 
+test('GET Admin generation history exposes only safe output ingestion summaries', async () => {
+  const repository = createSeedRepository()
+  const generationId = `gen-admin-output-ingestion-${Date.now()}`
+  const actor = { id: 'demo-user-creator', handle: 'promptlin' }
+  await repository.creativeGenerations.create({
+    id: generationId,
+    actorId: actor.id,
+    actorHandle: actor.handle,
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'replicate',
+    providerMode: 'replicate_staging',
+    providerJobId: `prediction-${generationId}`,
+    status: 'completed',
+    promptHash: 'e'.repeat(64),
+    promptPreview: 'Admin ingestion summary fixture',
+    inputAssetIds: [],
+    parameterKeys: [],
+    outputAssetIds: ['media-admin-ingestion-1'],
+  }, actor)
+  const recorded = await repository.creativeOutputIngestions.record({
+    sourceKey: `creative-output:${'a'.repeat(64)}`,
+    generationId,
+    providerId: 'replicate',
+    providerJobId: `prediction-${generationId}`,
+    outputDigest: 'b'.repeat(64),
+    outputIndex: 0,
+    rawUrl: 'https://provider.example/output.png?token=admin-ingestion-secret',
+  }, actor)
+  await repository.creativeOutputIngestions.update(recorded.ingestion.id, {
+    status: 'completed',
+    mediaAssetId: 'media-admin-ingestion-1',
+    storageKey: 'promptlin/generated/image/media-admin-ingestion-1.png',
+    detectedContentType: 'image/png',
+    sizeBytes: 68,
+    sha256: 'c'.repeat(64),
+    completedAt: '2026-07-11T13:30:00.000Z',
+  }, actor)
+
+  const server = await createInjectedAdminServer(repository)
+  try {
+    const list = await requestJson(server.url, '/api/admin/creative/generations?providerId=replicate&limit=20', {
+      method: 'GET',
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(list.status, 200)
+    const item = list.payload.data.find((entry) => entry.id === generationId)
+    assert.ok(item)
+    assert.equal(item.outputIngestionEvidence.available, true)
+    assert.equal(item.outputIngestionEvidence.count, 1)
+    assert.equal(item.outputIngestionEvidence.completedCount, 1)
+    assert.equal(item.outputIngestionEvidence.failedCount, 0)
+    assert.equal(item.outputIngestionEvidence.latest.status, 'completed')
+    assert.equal(item.outputIngestionEvidence.latest.detectedContentType, 'image/png')
+    assert.equal(item.outputIngestionEvidence.latest.sizeBytes, 68)
+    assert.equal(item.outputIngestionEvidence.latest.sha256Present, true)
+    assert.equal(item.outputIngestionEvidence.latest.sha256Preview, 'cccccccccccc')
+    assert.equal(JSON.stringify(item.outputIngestionEvidence).includes('admin-ingestion-secret'), false)
+    assert.equal(JSON.stringify(item.outputIngestionEvidence).includes('provider.example'), false)
+
+    const detail = await requestJson(server.url, `/api/admin/creative/generations/${generationId}`, {
+      method: 'GET',
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(detail.status, 200)
+    assert.deepEqual(detail.payload.data.outputIngestionEvidence, item.outputIngestionEvidence)
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/admin/creative/generations reads Replicate fixture evidence without raw provider data', async () => {
   resetCreativePolicyState()
   const restoreEnv = applyReplicateStagingAdminFixtureEnv()
@@ -485,7 +569,10 @@ test('GET /api/admin/creative/generations reads Replicate fixture evidence witho
       }),
   }
   const server = await createRouteTestServer(
-    (router) => registerCreativeRoutes(router, { fixtureAdapters }),
+    (router) => registerCreativeRoutes(router, {
+      fixtureAdapters,
+      providerOutputFetcher: fixtureProviderOutputFetcher,
+    }),
     registerMediaRoutes,
     registerAdminRoutes,
   )
@@ -950,6 +1037,13 @@ test('GET /api/admin/creative/generations redacts durable failed generation evid
 test('GET /api/admin/creative/generations exposes sanitized Replicate failed closeout observability', async () => {
   resetCreativePolicyState()
   const restoreEnv = applyReplicateStagingAdminFixtureEnv()
+  const quotaWindow = quotaWindowFor(new Date())
+  const releasedQuotaBaseline = repositories.creativeQuota.getQuotaWindow({
+    actorHandle: 'promptlin',
+    workspace: 'image',
+    windowType: quotaWindow.type,
+    windowStart: quotaWindow.start,
+  })?.released ?? 0
   const fixtureCalls = []
   const mockedClient = {
     createPrediction: async (payload) => {
@@ -1037,7 +1131,7 @@ test('GET /api/admin/creative/generations exposes sanitized Replicate failed clo
     assert.equal(timeoutItem.credit.status, 'refunded')
     assert.equal(timeoutItem.credit.reasonCode, 'PROVIDER_TIMEOUT')
     assert.equal(timeoutItem.quota.reserved, 0)
-    assert.equal(timeoutItem.quota.released, 1)
+    assert.equal(timeoutItem.quota.released, releasedQuotaBaseline + 1)
     assert.ok(timeoutItem.quota.remaining > 0)
     assert.deepEqual(timeoutItem.outputAssetIds, [])
 
@@ -1050,7 +1144,7 @@ test('GET /api/admin/creative/generations exposes sanitized Replicate failed clo
     assert.equal(cancelledItem.credit.status, 'refunded')
     assert.equal(cancelledItem.credit.reasonCode, 'PROVIDER_CANCELLED')
     assert.equal(cancelledItem.quota.reserved, 0)
-    assert.equal(cancelledItem.quota.released, 2)
+    assert.equal(cancelledItem.quota.released, releasedQuotaBaseline + 2)
     assert.ok(cancelledItem.quota.remaining > 0)
     assert.deepEqual(cancelledItem.outputAssetIds, [])
 

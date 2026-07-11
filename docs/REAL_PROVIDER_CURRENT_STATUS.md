@@ -74,6 +74,7 @@ Sora 2 models on 2026-09-24 without a recommended replacement.
 | Provider HTTP client boundary | Implemented / default-disabled | A fixed Replicate client factory and deployment-secret boundary exist. No product route registers it; V1-07 supplies only a read-only status wrapper to the separately gated worker. No external call is approved. |
 | Provider callback API | Implemented / default-disabled | The staging-only route verifies exact-body HMAC, timestamp, nonce, strict payload fields, job binding, replay dedupe, and atomic side-effect ownership. No Provider webhook target is configured. |
 | Provider polling worker | Implemented / default-disabled | The dedicated worker uses strict status projection, oldest-first candidates, retry isolation, timeout recovery, safe audits, and replay-ledger side effects. Both polling switches remain off. |
+| Provider output ingestion | Implemented / default-unregistered | Source-keyed ingestion, claim leases, URL/DNS/redirect/size/MIME/SHA-256 validation, deterministic object storage, scanner gating, and safe Admin summaries exist. No product runtime registers a real output fetch client. |
 | Staging adapter shell | Fixture-only | Mocked/injected-client hardening may continue. PRs #86-#89 improved the fixture-only evidence chain, but did not approve real provider calls. |
 | V1 provider decision matrix | Conditional planning evidence | Four primary/backup pairs, budgets, legal/data/SLA conditions, and replacement triggers are machine-verified; no provider is production-approved. |
 | V1 content safety matrix | Frozen implementation policy | Four modality partitions, Provider policy mappings, review/appeal, and audit contracts are machine-verified; downstream enforcement is not complete. |
@@ -99,6 +100,7 @@ These paths are available without real-provider approval:
 - The Provider polling worker can be exercised with injected status fixtures or injected `fetch` behind independent staging-only kill switches without making an external Provider request.
 - User and Admin generation cancellation, user-confirmed child retries, and two-person manual lifecycle replay can be exercised without a default Provider mutation client.
 - Cancellation, retry authorization/outcomes, and reviewed manual replay transitions create safe in-app notifications for affected users and requesters.
+- Provider output bytes can be exercised through an injected fixture fetcher, durable ingestion ledger, deterministic media asset, and scanner without retaining the Provider URL.
 
 ## Fixture-Only Foundations
 
@@ -117,6 +119,7 @@ These pieces are implemented for tests, planning, and safe dry-runs only:
 - mocked/injected provider-status client contract
 - source-keyed lifecycle notification/audit repository wiring
 - disabled-by-default polling worker with oldest-first sweeps, retry isolation, and timeout recovery
+- default-unregistered Provider output fetcher with SSRF, redirect, timeout, byte-limit, magic-MIME, checksum, idempotency, and recovery tests
 - provider budget external alert payload builder
 - injected-only provider alert dispatcher boundary
 - disabled webhook, Slack, and email provider alert client shells

@@ -258,6 +258,29 @@ export const getCreativeProviderReplayDto = (replay) => ({
   updatedAt: replay.updatedAt ? replay.updatedAt.toISOString() : '',
 })
 
+export const getCreativeOutputIngestionDto = (ingestion) => ({
+  id: String(ingestion.id),
+  sourceKey: ingestion.sourceKey,
+  generationId: ingestion.generationId,
+  providerId: ingestion.providerId,
+  providerJobId: ingestion.providerJobId ?? null,
+  outputDigest: ingestion.outputDigest,
+  outputIndex: Number(ingestion.outputIndex),
+  status: ingestion.status,
+  mediaAssetId: ingestion.mediaAssetId ?? null,
+  storageKey: ingestion.storageKey ?? null,
+  detectedContentType: ingestion.detectedContentType ?? null,
+  sizeBytes: ingestion.sizeBytes == null ? null : Number(ingestion.sizeBytes),
+  sha256: ingestion.sha256 ?? null,
+  errorCode: ingestion.errorCode ?? null,
+  claimToken: ingestion.claimToken ?? null,
+  claimedAt: ingestion.claimedAt ? ingestion.claimedAt.toISOString() : null,
+  leaseExpiresAt: ingestion.leaseExpiresAt ? ingestion.leaseExpiresAt.toISOString() : null,
+  completedAt: ingestion.completedAt ? ingestion.completedAt.toISOString() : null,
+  createdAt: ingestion.createdAt ? ingestion.createdAt.toISOString() : '',
+  updatedAt: ingestion.updatedAt ? ingestion.updatedAt.toISOString() : '',
+})
+
 export const getMediaScanJobDto = (job) => ({
   id: job.id,
   assetId: job.assetId,

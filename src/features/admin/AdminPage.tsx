@@ -3357,6 +3357,30 @@ export function AdminPage({
                     </span>
                   </div>
                   <div>
+                    <strong>{textFor(t, 'Output ingestion', '输出摄取')}</strong>
+                    <span>
+                      {selectedGeneration.outputIngestionEvidence?.available
+                        ? `${selectedGeneration.outputIngestionEvidence.completedCount}/${selectedGeneration.outputIngestionEvidence.count} ${textFor(t, 'completed', '已完成')}${selectedGeneration.outputIngestionEvidence.failedCount ? ` · ${selectedGeneration.outputIngestionEvidence.failedCount} ${textFor(t, 'failed', '失败')}` : ''}`
+                        : textFor(t, 'Ingestion ledger unavailable', '摄取账本不可用')}
+                    </span>
+                  </div>
+                  {selectedGeneration.outputIngestionEvidence?.latest && (
+                    <div>
+                      <strong>{textFor(t, 'Latest ingestion', '最新摄取')}</strong>
+                      <span>
+                        #{selectedGeneration.outputIngestionEvidence.latest.outputIndex ?? '-'} · {selectedGeneration.outputIngestionEvidence.latest.status ?? '-'}
+                        {' · '}{selectedGeneration.outputIngestionEvidence.latest.detectedContentType ?? '-'}
+                        {' · '}{selectedGeneration.outputIngestionEvidence.latest.sizeBytes ?? 0} B
+                        {selectedGeneration.outputIngestionEvidence.latest.sha256Present
+                          ? ` · SHA-256 ${selectedGeneration.outputIngestionEvidence.latest.sha256Preview ?? textFor(t, 'present', '存在')}`
+                          : ''}
+                        {selectedGeneration.outputIngestionEvidence.latest.errorCode
+                          ? ` · ${selectedGeneration.outputIngestionEvidence.latest.errorCode}`
+                          : ''}
+                      </span>
+                    </div>
+                  )}
+                  <div>
                     <strong>{textFor(t, 'Provider cost', 'Provider cost')}</strong>
                     <span>{formatProviderCostSummary(selectedGeneration)}</span>
                   </div>

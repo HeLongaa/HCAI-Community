@@ -75,6 +75,7 @@ export const processReplicateProviderCallback = async ({
   repositories,
   source = process.env,
   now = new Date(),
+  fetchOutput = null,
 } = {}) => {
   const env = assertCallbackRuntime(source)
   const verified = verifyProviderCallbackRequest({ headers, rawBody, source, now })
@@ -114,6 +115,7 @@ export const processReplicateProviderCallback = async ({
     receivedAt: verified.receivedAt,
     now,
     sideEffectLeaseSeconds: env.creativeProviderCallbackSideEffectLeaseSeconds,
+    fetchOutput,
   })
   if (result.conflict) {
     throw callbackError(409, 'CREATIVE_PROVIDER_CALLBACK_REPLAY_CONFLICT', 'Creative provider callback event conflicts with an existing replay', result.reasonCode, {

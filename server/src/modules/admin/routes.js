@@ -320,14 +320,55 @@ const buildGenerationMutationEvidence = async (generation, mutationRepository) =
   }
 }
 
-const attachProviderReplayEvidence = async (generation, replayLedger, mutationRepository) => ({
+const summarizeOutputIngestion = (ingestion) => ingestion
+  ? {
+      id: safeProviderLifecycleEvidenceIdentifier(ingestion.id),
+      status: safeProviderLifecycleEvidenceIdentifier(ingestion.status),
+      outputIndex: safeNumber(ingestion.outputIndex),
+      mediaAssetId: safeProviderLifecycleEvidenceIdentifier(ingestion.mediaAssetId),
+      detectedContentType: safeString(ingestion.detectedContentType),
+      sizeBytes: safeNumber(ingestion.sizeBytes),
+      sha256Present: Boolean(ingestion.sha256),
+      sha256Preview: ingestion.sha256
+        ? safeProviderLifecycleEvidenceIdentifier(String(ingestion.sha256).slice(0, 12))
+        : null,
+      errorCode: safeProviderLifecycleEvidenceIdentifier(ingestion.errorCode),
+      claimedAt: ingestion.claimedAt ?? null,
+      completedAt: ingestion.completedAt ?? null,
+    }
+  : null
+
+const buildOutputIngestionEvidence = async (generation, ingestionRepository) => {
+  if (!ingestionRepository?.listForGeneration) {
+    return { available: false, count: 0, completedCount: 0, failedCount: 0, latest: null }
+  }
+  const page = await ingestionRepository.listForGeneration(generation.id)
+  const ingestions = page?.items ?? []
+  const latest = [...ingestions].sort((left, right) =>
+    String(right.updatedAt ?? '').localeCompare(String(left.updatedAt ?? '')))[0] ?? null
+  return {
+    available: true,
+    count: ingestions.length,
+    completedCount: ingestions.filter((ingestion) => ingestion.status === 'completed').length,
+    failedCount: ingestions.filter((ingestion) => ingestion.status === 'failed').length,
+    latest: summarizeOutputIngestion(latest),
+  }
+}
+
+const attachProviderReplayEvidence = async (generation, replayLedger, mutationRepository, ingestionRepository) => ({
   ...sanitizeCreativeGenerationHistory(generation),
   providerReplayEvidence: await buildProviderReplayEvidence(generation, replayLedger),
   mutationEvidence: await buildGenerationMutationEvidence(generation, mutationRepository),
+  outputIngestionEvidence: await buildOutputIngestionEvidence(generation, ingestionRepository),
 })
 
-const attachProviderReplayEvidenceToPage = async (items, replayLedger, mutationRepository) =>
-  Promise.all(items.map((generation) => attachProviderReplayEvidence(generation, replayLedger, mutationRepository)))
+const attachProviderReplayEvidenceToPage = async (items, replayLedger, mutationRepository, ingestionRepository) =>
+  Promise.all(items.map((generation) => attachProviderReplayEvidence(
+    generation,
+    replayLedger,
+    mutationRepository,
+    ingestionRepository,
+  )))
 
 const csvCell = (value) => {
   const textValue = String(value ?? '')
@@ -489,6 +530,7 @@ export const registerAdminRoutes = (router, options = {}) => {
       page.items,
       routeRepositories.creativeProviderReplays,
       routeRepositories.creativeGenerationMutations,
+      routeRepositories.creativeOutputIngestions,
     )
     ok(response, items, {
       pagination: {
@@ -508,6 +550,7 @@ export const registerAdminRoutes = (router, options = {}) => {
       generation,
       routeRepositories.creativeProviderReplays,
       routeRepositories.creativeGenerationMutations,
+      routeRepositories.creativeOutputIngestions,
     ))
   })
 

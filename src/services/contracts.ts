@@ -777,6 +777,25 @@ export type ApiCreativeGenerationRecord = {
       createdAt: string | null
     }
   }
+  outputIngestionEvidence?: {
+    available: boolean
+    count: number
+    completedCount: number
+    failedCount: number
+    latest: null | {
+      id: string | null
+      status: string | null
+      outputIndex: number | null
+      mediaAssetId: string | null
+      detectedContentType: string | null
+      sizeBytes: number | null
+      sha256Present: boolean
+      sha256Preview: string | null
+      errorCode: string | null
+      claimedAt: string | null
+      completedAt: string | null
+    }
+  }
 }
 
 export type CreativeGenerationMutationType = 'cancel' | 'retry' | 'manual_replay'
