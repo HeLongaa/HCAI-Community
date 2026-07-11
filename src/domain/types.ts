@@ -17,6 +17,9 @@ export type Permission =
   | 'admin:queue:read'
   | 'admin:queue:review'
   | 'admin:permissions:manage'
+  | 'admin:creative:cancel'
+  | 'admin:creative:retry'
+  | 'admin:creative:replay'
   | 'security:alerts:manage'
 export type Page =
   | 'home'

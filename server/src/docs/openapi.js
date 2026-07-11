@@ -1139,6 +1139,8 @@ export const openApiDocument = {
                             policy: { type: ['object', 'null'], additionalProperties: true },
                             providerRequestId: { type: ['string', 'null'] },
                             providerJobId: { type: ['string', 'null'] },
+                            retryOfId: { type: ['string', 'null'] },
+                            attemptNumber: { type: 'integer', minimum: 1 },
                             errorCode: { type: ['string', 'null'] },
                             errorMessagePreview: { type: ['string', 'null'] },
                             startedAt: { type: ['string', 'null'], format: 'date-time' },
@@ -1160,6 +1162,68 @@ export const openApiDocument = {
           '422': { description: 'Creative moderation policy blocked the request before provider execution' },
           '429': { description: 'Creative generation quota exceeded for the user/workspace/day window' },
           '503': { description: 'Creative provider unavailable' },
+        },
+      },
+    },
+    '/creative/generations/{id}/cancel': {
+      post: {
+        summary: 'Cancel an owned queued or running generation with idempotent accounting closeout',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['idempotencyKey'],
+                properties: {
+                  idempotencyKey: { type: 'string', minLength: 8, maxLength: 128 },
+                  reasonCode: { type: 'string' },
+                  note: { type: 'string', maxLength: 240 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Cancellation mutation and safe generation record' },
+          '403': { description: 'Generation belongs to another user' },
+          '409': { description: 'Generation state is not cancellable or Provider did not confirm cancellation' },
+          '503': { description: 'Provider cancellation adapter is not configured; no Provider call is attempted' },
+        },
+      },
+    },
+    '/creative/generations/{id}/retry': {
+      post: {
+        summary: 'Retry an owned failed or cancelled generation as a new child attempt',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['idempotencyKey', 'generation'],
+                properties: {
+                  idempotencyKey: { type: 'string', minLength: 8, maxLength: 128 },
+                  reasonCode: { type: 'string' },
+                  note: { type: 'string', maxLength: 240 },
+                  authorizationMutationId: { type: ['string', 'null'] },
+                  generation: {
+                    type: 'object',
+                    description: 'Full resubmitted generation request. Prompt hash and immutable inputs must match the original record.',
+                    required: ['workspace', 'mode', 'prompt'],
+                    additionalProperties: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Retry mutation and new child generation, or the prior idempotent result' },
+          '403': { description: 'Generation belongs to another user' },
+          '409': { description: 'Generation is not retryable, inputs differ, or authorization is invalid' },
         },
       },
     },
@@ -1813,6 +1877,62 @@ export const openApiDocument = {
           '200': { description: 'Creative generation history detail with sanitized provider cost, budget, and replay evidence summaries when available' },
           '403': { description: 'Requires audit read permission' },
           '404': { description: 'Creative generation record not found' },
+        },
+      },
+    },
+    '/admin/creative/generations/{id}/cancel': {
+      post: {
+        summary: 'Cancel an eligible generation as an authorized operator',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Idempotent cancellation mutation and safe generation record' },
+          '403': { description: 'Requires admin:creative:cancel' },
+          '409': { description: 'Generation is not cancellable' },
+          '503': { description: 'Provider cancellation adapter is not configured' },
+        },
+      },
+    },
+    '/admin/creative/generations/{id}/retry-requests': {
+      post: {
+        summary: 'Create a retry authorization for the generation owner to confirm',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'One-time retry authorization mutation; no prompt is reconstructed or stored' },
+          '403': { description: 'Requires admin:creative:retry' },
+          '409': { description: 'Generation is not retryable' },
+        },
+      },
+    },
+    '/admin/creative/generations/{id}/manual-replay-requests': {
+      post: {
+        summary: 'Submit a safe manual Provider lifecycle replay for second-person review',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['providerId', 'providerMode', 'providerJobId', 'normalizedStatus', 'reasonCode'],
+                properties: {
+                  providerId: { type: 'string' },
+                  providerMode: { type: 'string' },
+                  providerJobId: { type: 'string' },
+                  normalizedStatus: { type: 'string', enum: ['queued', 'running', 'completed', 'failed', 'cancelled'] },
+                  reasonCode: { type: 'string' },
+                  note: { type: 'string', maxLength: 500 },
+                  idempotencyKey: { type: 'string', maxLength: 220 },
+                  providerEventId: { type: ['string', 'null'] },
+                  occurredAt: { type: ['string', 'null'], format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Pending manual replay mutation and review queue item' },
+          '403': { description: 'Requires admin:creative:replay' },
+          '409': { description: 'Provider binding, terminal state, or persisted output prerequisite failed' },
         },
       },
     },

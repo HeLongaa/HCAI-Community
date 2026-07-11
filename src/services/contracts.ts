@@ -728,6 +728,8 @@ export type ApiCreativeGenerationRecord = {
   policy?: unknown
   providerRequestId: string | null
   providerJobId: string | null
+  retryOfId: string | null
+  attemptNumber: number
   errorCode: string | null
   errorMessagePreview: string | null
   startedAt: string | null
@@ -760,6 +762,65 @@ export type ApiCreativeGenerationRecord = {
       appliedAt: string | null
     }
   }
+  mutationEvidence?: {
+    available: boolean
+    count: number
+    latest: null | {
+      id: string | null
+      type: string | null
+      status: string | null
+      reasonCode: string | null
+      requestedByHandle: string | null
+      reviewId: string | null
+      targetGenerationId: string | null
+      completedAt: string | null
+      createdAt: string | null
+    }
+  }
+}
+
+export type CreativeGenerationMutationType = 'cancel' | 'retry' | 'manual_replay'
+export type CreativeGenerationMutationStatus = 'requested' | 'pending_review' | 'approved' | 'processing' | 'succeeded' | 'failed' | 'rejected'
+
+export type ApiCreativeGenerationMutation = {
+  id: string
+  generationId: string
+  type: CreativeGenerationMutationType
+  status: CreativeGenerationMutationStatus
+  idempotencyKey: string
+  requestedById: string | null
+  requestedByHandle: string | null
+  reasonCode: string
+  notePreview: string | null
+  reviewId: string | null
+  targetGenerationId: string | null
+  safeMetadata: Record<string, unknown> | null
+  result: Record<string, unknown> | null
+  completedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type CreativeGenerationMutationRequest = {
+  idempotencyKey: string
+  reasonCode?: string
+  note?: string
+}
+
+export type AdminManualReplayRequest = CreativeGenerationMutationRequest & {
+  providerId: string
+  providerMode: string
+  providerJobId: string
+  normalizedStatus: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  providerEventId?: string | null
+  occurredAt?: string | null
+}
+
+export type ApiCreativeGenerationMutationResponse = {
+  duplicate: boolean
+  mutation: ApiCreativeGenerationMutation
+  generation?: ApiCreativeGenerationRecord
+  review?: AdminReviewQueueItemDto | null
 }
 
 export type ApiCreativeProviderCost = {
@@ -927,6 +988,11 @@ export type ApiCreativeGeneration = {
   }
   createdAt: string
   generationRecord?: ApiCreativeGenerationRecord | null
+}
+
+export type RetryCreativeGenerationRequest = CreativeGenerationMutationRequest & {
+  authorizationMutationId?: string | null
+  generation: CreateCreativeGenerationRequest
 }
 
 export type ApiPost = {

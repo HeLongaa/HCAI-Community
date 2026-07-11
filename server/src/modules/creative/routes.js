@@ -2,7 +2,11 @@ import { ok } from '../../common/http/responses.js'
 import { requireUser } from '../../common/http/auth.js'
 import { readJsonBody, readRawBody } from '../../common/http/request.js'
 import { HttpError } from '../../common/errors/httpError.js'
-import { parseCreateCreativeGenerationRequest } from '../../contracts/requestParsers.js'
+import {
+  parseCreateCreativeGenerationRequest,
+  parseCreativeGenerationCancelRequest,
+  parseCreativeGenerationRetryRequest,
+} from '../../contracts/requestParsers.js'
 import { executeCreativeGeneration, getCreativeProviderCatalog, persistCreativeGenerationOutputs } from '../../creative/generationService.js'
 import { providerCallbackAuthConfig } from '../../creative/providerCallbackAuth.js'
 import {
@@ -21,6 +25,11 @@ import {
   statusForPersistedGeneration,
 } from '../../creative/generationRecords.js'
 import { repositories } from '../../repositories/index.js'
+import {
+  cancelCreativeGeneration,
+  completeCreativeGenerationRetry,
+  prepareCreativeGenerationRetry,
+} from '../../creative/generationMutationService.js'
 
 const terminalProviderFailureStatuses = new Set(['failed', 'cancelled'])
 
@@ -53,9 +62,157 @@ const sanitizeGenerationRecordForResponse = (generationRecord) => generationReco
 export const registerCreativeRoutes = (router, options = {}) => {
   const executeGeneration = options.executeCreativeGeneration ?? executeCreativeGeneration
   const fixtureAdapters = options.fixtureAdapters ?? {}
+  const providerMutationAdapters = options.providerMutationAdapters ?? {}
   const routeRepositories = options.repositories ?? repositories
   const callbackSource = options.source ?? process.env
   const callbackNow = () => typeof options.now === 'function' ? options.now() : options.now ?? new Date()
+
+  const runGenerationRequest = async ({
+    payload,
+    actor,
+    generationId = null,
+    recordOverrides = {},
+  }) => {
+    const quotaRepository = routeRepositories.creativeQuota
+    const creditRepository = routeRepositories.creativeCredits
+    const generationRepository = routeRepositories.creativeGenerations
+    let generation = null
+    let generationRecord = null
+    let quotaFinalized = false
+    let creditFinalized = false
+    try {
+      generation = await executeGeneration({
+        request: payload,
+        actor,
+        generationId,
+        quotaRepository,
+        fixtureAdapters,
+      })
+      if (creditRepository?.reserve) {
+        const reservedCredit = await creditRepository.reserve({
+          generationId: generation.id,
+          quotaReservationId: generation.quota?.reservationId ?? null,
+          actorId: actor.id,
+          actorHandle: actor.handle,
+          workspace: generation.workspace,
+          mode: generation.mode,
+          amount: generation.usage?.estimatedCredits ?? 0,
+          reasonCode: 'generation_reserved',
+          metadata: {
+            providerId: generation.provider?.id ?? null,
+            providerMode: generation.provider?.mode ?? null,
+            costModel: generation.usage?.costModel ?? null,
+            metered: generation.usage?.metered ?? false,
+          },
+        }, actor)
+        generation = {
+          ...generation,
+          credit: reservedCredit?.credit ?? null,
+        }
+      }
+      const generationRecordPayload = buildCreativeGenerationRecordPayload(
+        generation,
+        actor,
+        recordOverrides,
+      )
+      generationRecord = generationRepository
+        ? await generationRepository.create(generationRecordPayload, actor)
+        : null
+      if (generationRepository?.markRunning) {
+        generationRecord = await generationRepository.markRunning(generation.id, {}, actor)
+      }
+      if (terminalProviderFailureStatuses.has(generation.status)) {
+        throw new HttpError(
+          statusCodeForProviderFailure(generation),
+          errorCodeForProviderFailure(generation),
+          errorMessageForProviderFailure(generation),
+          {
+            providerId: generation.provider?.id ?? null,
+            providerMode: generation.provider?.mode ?? null,
+            providerRequestId: generation.providerRequestId ?? null,
+            providerJobId: safeProviderJobIdEvidence(generation.providerJobId),
+            generationStatus: generation.status,
+          },
+        )
+      }
+      const persisted = await persistCreativeGenerationOutputs(generation, {
+        actor,
+        mediaRepository: routeRepositories.media,
+      })
+      const outputAssetIds = getOutputAssetIds(persisted)
+      const settledCredit = generation.credit?.ledgerId && creditRepository?.settle
+        ? await creditRepository.settle(generation.credit.ledgerId, {
+          settledAmount: generation.credit.reserved,
+          reasonCode: statusForPersistedGeneration(persisted) === 'review_required'
+            ? 'generation_review_required'
+            : 'generation_completed',
+          metadata: {
+            outputAssetIds,
+            reviewRequired: statusForPersistedGeneration(persisted) === 'review_required',
+          },
+        }, actor)
+        : null
+      creditFinalized = Boolean(settledCredit)
+      const committedQuota = generation.quota?.reservationId && quotaRepository?.commit
+        ? await quotaRepository.commit(generation.quota.reservationId, actor)
+        : null
+      quotaFinalized = Boolean(committedQuota)
+      const finalized = {
+        ...persisted,
+        quota: committedQuota ?? persisted.quota,
+        credit: settledCredit ?? persisted.credit ?? generation.credit ?? null,
+      }
+      if (generationRepository?.linkOutputAssets) {
+        generationRecord = await generationRepository.linkOutputAssets(generation.id, outputAssetIds, actor)
+      }
+      if (generationRepository?.complete) {
+        generationRecord = await generationRepository.complete(generation.id, {
+          status: statusForPersistedGeneration(persisted),
+          outputAssetIds,
+          usage: finalized.usage,
+          credit: finalized.credit,
+          quota: finalized.quota,
+          safety: finalized.safety,
+          policy: finalized.policy,
+        }, actor)
+      }
+      return {
+        ...finalized,
+        generationRecord: sanitizeGenerationRecordForResponse(generationRecord),
+      }
+    } catch (error) {
+      if (generation?.credit?.ledgerId && !creditFinalized && creditRepository?.refund) {
+        const refundedCredit = await creditRepository.refund(generation.credit.ledgerId, {
+          refundedAmount: generation.credit.reserved,
+          reasonCode: error?.code ?? 'generation_failed',
+        }, actor)
+        generation = {
+          ...generation,
+          credit: refundedCredit ?? generation.credit,
+        }
+      }
+      if (generation?.quota?.reservationId && !quotaFinalized && quotaRepository?.release) {
+        const releasedQuota = await quotaRepository.release(
+          generation.quota.reservationId,
+          error?.code ?? 'generation_failed',
+          actor,
+        )
+        generation = {
+          ...generation,
+          quota: releasedQuota ?? generation.quota,
+        }
+      }
+      if (generation?.id && generationRepository?.fail) {
+        await generationRepository.fail(generation.id, {
+          errorCode: error?.code ?? 'CREATIVE_GENERATION_FAILED',
+          errorMessagePreview: safeErrorPreview(error),
+          credit: generation.credit ?? null,
+          quota: generation.quota ?? null,
+        }, actor)
+      }
+      throw error
+    }
+  }
 
   router.add('GET', '/api/creative/providers', async (_request, response) => {
     ok(response, getCreativeProviderCatalog())
@@ -164,134 +321,62 @@ export const registerCreativeRoutes = (router, options = {}) => {
   router.add('POST', '/api/creative/generations', async (request, response, context) => {
     const actor = requireUser(context)
     const payload = parseCreateCreativeGenerationRequest((await readJsonBody(request)) ?? {})
-    const quotaRepository = routeRepositories.creativeQuota
-    const creditRepository = routeRepositories.creativeCredits
-    const generationRepository = routeRepositories.creativeGenerations
-    let generation = null
-    let generationRecord = null
-    let quotaFinalized = false
-    let creditFinalized = false
+    ok(response, await runGenerationRequest({ payload, actor }))
+  })
+
+  router.add('POST', '/api/creative/generations/:id/cancel', async (request, response, context) => {
+    const actor = requireUser(context)
+    const payload = parseCreativeGenerationCancelRequest((await readJsonBody(request)) ?? {})
+    ok(response, await cancelCreativeGeneration({
+      generationId: context.params.id,
+      actor,
+      repositories: routeRepositories,
+      request: payload,
+      providerMutationAdapters,
+    }))
+  })
+
+  router.add('POST', '/api/creative/generations/:id/retry', async (request, response, context) => {
+    const actor = requireUser(context)
+    const payload = parseCreativeGenerationRetryRequest((await readJsonBody(request)) ?? {})
+    const prepared = await prepareCreativeGenerationRetry({
+      generationId: context.params.id,
+      actor,
+      repositories: routeRepositories,
+      request: payload,
+    })
+    if (prepared.duplicate) {
+      ok(response, prepared)
+      return
+    }
     try {
-      generation = await executeGeneration({
-        request: payload,
+      const generation = await runGenerationRequest({
+        payload: payload.generation,
         actor,
-        quotaRepository,
-        fixtureAdapters,
+        generationId: prepared.targetGenerationId,
+        recordOverrides: {
+          retryOfId: prepared.originalGeneration.id,
+          attemptNumber: prepared.attemptNumber,
+        },
       })
-      if (creditRepository?.reserve) {
-        const reservedCredit = await creditRepository.reserve({
-          generationId: generation.id,
-          quotaReservationId: generation.quota?.reservationId ?? null,
-          actorId: actor.id,
-          actorHandle: actor.handle,
-          workspace: generation.workspace,
-          mode: generation.mode,
-          amount: generation.usage?.estimatedCredits ?? 0,
-          reasonCode: 'generation_reserved',
-          metadata: {
-            providerId: generation.provider?.id ?? null,
-            providerMode: generation.provider?.mode ?? null,
-            costModel: generation.usage?.costModel ?? null,
-            metered: generation.usage?.metered ?? false,
-          },
-        }, actor)
-        generation = {
-          ...generation,
-          credit: reservedCredit?.credit ?? null,
-        }
-      }
-      const generationRecordPayload = buildCreativeGenerationRecordPayload(generation, actor)
-      generationRecord = generationRepository
-        ? await generationRepository.create(generationRecordPayload, actor)
-        : null
-      if (generationRepository?.markRunning) {
-        generationRecord = await generationRepository.markRunning(generation.id, {}, actor)
-      }
-      if (terminalProviderFailureStatuses.has(generation.status)) {
-        throw new HttpError(
-          statusCodeForProviderFailure(generation),
-          errorCodeForProviderFailure(generation),
-          errorMessageForProviderFailure(generation),
-          {
-            providerId: generation.provider?.id ?? null,
-            providerMode: generation.provider?.mode ?? null,
-            providerRequestId: generation.providerRequestId ?? null,
-            providerJobId: safeProviderJobIdEvidence(generation.providerJobId),
-            generationStatus: generation.status,
-          },
-        )
-      }
-      const persisted = await persistCreativeGenerationOutputs(generation, {
+      const mutation = await completeCreativeGenerationRetry({
+        repositories: routeRepositories,
+        mutation: prepared.mutation,
         actor,
-        mediaRepository: routeRepositories.media,
+        generationRecord: generation.generationRecord,
       })
-      const outputAssetIds = getOutputAssetIds(persisted)
-      const settledCredit = generation.credit?.ledgerId && creditRepository?.settle
-        ? await creditRepository.settle(generation.credit.ledgerId, {
-          settledAmount: generation.credit.reserved,
-          reasonCode: statusForPersistedGeneration(persisted) === 'review_required'
-            ? 'generation_review_required'
-            : 'generation_completed',
-          metadata: {
-            outputAssetIds,
-            reviewRequired: statusForPersistedGeneration(persisted) === 'review_required',
-          },
-        }, actor)
-        : null
-      creditFinalized = Boolean(settledCredit)
-      const committedQuota = generation.quota?.reservationId && quotaRepository?.commit
-        ? await quotaRepository.commit(generation.quota.reservationId, actor)
-        : null
-      quotaFinalized = Boolean(committedQuota)
-      const finalized = {
-        ...persisted,
-        quota: committedQuota ?? persisted.quota,
-        credit: settledCredit ?? persisted.credit ?? generation.credit ?? null,
-      }
-      if (generationRepository?.linkOutputAssets) {
-        generationRecord = await generationRepository.linkOutputAssets(generation.id, outputAssetIds, actor)
-      }
-      if (generationRepository?.complete) {
-        generationRecord = await generationRepository.complete(generation.id, {
-          status: statusForPersistedGeneration(persisted),
-          outputAssetIds,
-          usage: finalized.usage,
-          credit: finalized.credit,
-          quota: finalized.quota,
-          safety: finalized.safety,
-          policy: finalized.policy,
-        }, actor)
-      }
       ok(response, {
-        ...finalized,
-        generationRecord: sanitizeGenerationRecordForResponse(generationRecord),
+        duplicate: false,
+        mutation,
+        generation,
       })
     } catch (error) {
-      if (generation?.credit?.ledgerId && !creditFinalized && creditRepository?.refund) {
-        const refundedCredit = await creditRepository.refund(generation.credit.ledgerId, {
-          refundedAmount: generation.credit.reserved,
-          reasonCode: error?.code ?? 'generation_failed',
-        }, actor)
-        generation = {
-          ...generation,
-          credit: refundedCredit ?? generation.credit,
-        }
-      }
-      if (generation?.quota?.reservationId && !quotaFinalized && quotaRepository?.release) {
-        const releasedQuota = await quotaRepository.release(generation.quota.reservationId, error?.code ?? 'generation_failed', actor)
-        generation = {
-          ...generation,
-          quota: releasedQuota ?? generation.quota,
-        }
-      }
-      if (generation?.id && generationRepository?.fail) {
-        await generationRepository.fail(generation.id, {
-          errorCode: error?.code ?? 'CREATIVE_GENERATION_FAILED',
-          errorMessagePreview: safeErrorPreview(error),
-          credit: generation.credit ?? null,
-          quota: generation.quota ?? null,
-        }, actor)
-      }
+      await completeCreativeGenerationRetry({
+        repositories: routeRepositories,
+        mutation: prepared.mutation,
+        actor,
+        error,
+      })
       throw error
     }
   })

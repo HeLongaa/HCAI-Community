@@ -6,12 +6,17 @@ import { recordSecurityEvent, resetSecurityEvents } from '../../security/securit
 import { resetCreativePolicyState } from '../../creative/policy.js'
 import { createReplicateStagingPrediction } from '../../creative/replicateStagingProvider.js'
 import { repositories } from '../../repositories/index.js'
+import { createSeedRepository } from '../../repositories/seedRepository.js'
 import { registerMediaRoutes } from '../media/routes.js'
 import { registerCreativeRoutes } from '../creative/routes.js'
 import { registerAdminRoutes } from './routes.js'
 
 const createTestServer = () => createRouteTestServer(registerAdminRoutes)
 const createCreativeAdminServer = () => createRouteTestServer(registerCreativeRoutes, registerAdminRoutes)
+
+const createInjectedAdminServer = (repository, options = {}) => createRouteTestServer(
+  (router) => registerAdminRoutes(router, { repositories: repository, ...options }),
+)
 
 const replicateStagingEnvKeys = [
   'NODE_ENV',
@@ -3169,6 +3174,120 @@ test('GET /api/admin/points/ledger.csv exports ledger rows as CSV', async () => 
     assert.match(response.headers.get('content-type'), /^text\/csv/)
     assert.match(body, /^id,userHandle,occurredAt,description,delta,balanceAfter,status,sourceType,sourceId/)
     assert.match(body, /promptlin/)
+  } finally {
+    await server.close()
+  }
+})
+
+test('admin generation cancellation and retry authorization use dedicated mutation routes', async () => {
+  const repository = createSeedRepository()
+  const actor = { id: 'demo-user-creator', handle: 'promptlin' }
+  const cancelId = `gen-admin-cancel-${Date.now()}`
+  const retryId = `gen-admin-retry-${Date.now()}`
+  const base = {
+    actorId: actor.id,
+    actorHandle: actor.handle,
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'mock',
+    providerMode: 'mock',
+    promptHash: 'a'.repeat(64),
+    promptPreview: 'Admin mutation fixture',
+    inputAssetIds: [],
+    parameterKeys: [],
+  }
+  await repository.creativeGenerations.create({ ...base, id: cancelId, status: 'queued' }, actor)
+  await repository.creativeGenerations.create({ ...base, id: retryId, status: 'failed' }, actor)
+  const server = await createInjectedAdminServer(repository)
+  try {
+    const denied = await requestJson(server.url, `/api/admin/creative/generations/${cancelId}/cancel`, {
+      body: { idempotencyKey: `admin-cancel:${cancelId}:moderator` },
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(denied.status, 403)
+    assert.equal(denied.payload.error.message, 'Missing permission: admin:creative:cancel')
+
+    const cancelled = await requestJson(server.url, `/api/admin/creative/generations/${cancelId}/cancel`, {
+      body: { idempotencyKey: `admin-cancel:${cancelId}:request-1` },
+      token: 'demo-access.opsplus',
+    })
+    assert.equal(cancelled.status, 200)
+    assert.equal(cancelled.payload.data.generation.status, 'cancelled')
+
+    const authorization = await requestJson(server.url, `/api/admin/creative/generations/${retryId}/retry-requests`, {
+      body: { idempotencyKey: `admin-retry:${retryId}:request-1`, note: 'Ask owner to retry' },
+      token: 'demo-access.opsplus',
+    })
+    assert.equal(authorization.status, 200)
+    assert.equal(authorization.payload.data.mutation.status, 'approved')
+    assert.equal(authorization.payload.data.mutation.safeMetadata.requiresUserConfirmation, true)
+    assert.equal(authorization.payload.data.mutation.targetGenerationId, null)
+  } finally {
+    await server.close()
+  }
+})
+
+test('manual Provider replay requires a different approver and executes only after approval', async () => {
+  const repository = createSeedRepository()
+  const generationId = `gen-admin-manual-replay-${Date.now()}`
+  await repository.creativeGenerations.create({
+    id: generationId,
+    actorId: 'demo-user-creator',
+    actorHandle: 'promptlin',
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'replicate-staging',
+    providerMode: 'replicate_staging',
+    providerJobId: 'pred-admin-manual-replay-1',
+    status: 'running',
+    promptHash: 'b'.repeat(64),
+    promptPreview: 'Manual replay fixture',
+    inputAssetIds: [],
+    parameterKeys: [],
+  }, { id: 'demo-user-creator', handle: 'promptlin' })
+  const server = await createInjectedAdminServer(repository)
+  const requestBody = {
+    providerId: 'replicate-staging',
+    providerMode: 'replicate_staging',
+    providerJobId: 'pred-admin-manual-replay-1',
+    normalizedStatus: 'failed',
+    reasonCode: 'provider_failure_confirmed',
+    idempotencyKey: `manual-replay:${generationId}:failed`,
+    note: 'Safe operator evidence only',
+  }
+  try {
+    const requested = await requestJson(
+      server.url,
+      `/api/admin/creative/generations/${generationId}/manual-replay-requests`,
+      { body: requestBody, token: 'demo-access.opsplus' },
+    )
+    assert.equal(requested.status, 200)
+    assert.equal(requested.payload.data.mutation.status, 'pending_review')
+    assert.equal(requested.payload.data.review.metadata.kind, 'manual_provider_replay')
+    assert.equal(JSON.stringify(requested.payload.data).includes('rawPayload'), false)
+
+    const selfApproval = await requestJson(
+      server.url,
+      `/api/admin/reviews/${requested.payload.data.review.id}/actions`,
+      { body: { decision: 'approve' }, token: 'demo-access.opsplus' },
+    )
+    assert.equal(selfApproval.status, 400)
+    assert.match(selfApproval.payload.error.message, /different approver/)
+    assert.equal((await repository.creativeGenerations.find(generationId)).status, 'running')
+
+    const approved = await requestJson(
+      server.url,
+      `/api/admin/reviews/${requested.payload.data.review.id}/actions`,
+      { body: { decision: 'approve', note: 'Evidence independently checked' }, token: 'demo-access.finops' },
+    )
+    assert.equal(approved.status, 200)
+    assert.equal(approved.payload.data.status, 'Approved')
+    assert.equal(approved.payload.data.mutation.status, 'succeeded')
+    assert.equal((await repository.creativeGenerations.find(generationId)).status, 'failed')
+
+    const replays = await repository.creativeProviderReplays.listForGeneration(generationId)
+    assert.equal(replays.items.length, 1)
+    assert.equal(replays.items[0].sourceType, 'manual_replay')
   } finally {
     await server.close()
   }

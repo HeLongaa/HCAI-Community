@@ -45,6 +45,7 @@ All 14 direct frontend imports of `src/data/mockData.ts` are checked exactly. Ad
 | `server-provider-alert-fixture-delivery` | Provider budget alerts can dispatch only through approved fixture-injected clients | Replace with separately approved external delivery clients | V1-13, V1-53 |
 | `server-provider-callback-boundary` | Signed Replicate callback intake exists behind an independent staging-only, default-off kill switch | Keep disabled outside an explicitly approved staging callback delivery | V1-06 |
 | `server-provider-polling-boundary` | A fixed read-only Replicate status client, bounded worker sweep, retry audit, and timeout recovery exist behind independent staging-only default-off switches | Keep disabled outside an explicitly approved staging status read | V1-07 |
+| `server-generation-mutation-boundary` | Durable cancel/retry/manual-replay mutations use dedicated permissions, idempotency, child attempts, and two-person review; Provider mutation adapters are unregistered by default | Retain the internal controls and keep real Provider mutation clients disabled until separately approved | V1-08 |
 
 ## Fixture Inventory
 

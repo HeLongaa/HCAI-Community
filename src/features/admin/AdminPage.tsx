@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, Archive, BarChart3, Bell, Clipboard, Download, ShieldAlert, Trophy } from 'lucide-react'
+import { Activity, Archive, BarChart3, Bell, Clipboard, Download, PlayCircle, RotateCcw, ShieldAlert, Trophy, XCircle } from 'lucide-react'
 import type { AdminDeepLink, AuditEvent, Page, Permission, Role, SimulateAction } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { NotificationList } from '../../components/ui/NotificationList'
@@ -456,6 +456,10 @@ export function AdminPage({
   const [generationMediaAssetId, setGenerationMediaAssetId] = useState('')
   const [generationDateFrom, setGenerationDateFrom] = useState('')
   const [generationDateTo, setGenerationDateTo] = useState('')
+  const [generationMutationReason, setGenerationMutationReason] = useState('operator_requested')
+  const [generationMutationNote, setGenerationMutationNote] = useState('')
+  const [generationReplayStatus, setGenerationReplayStatus] = useState<'queued' | 'running' | 'completed' | 'failed' | 'cancelled'>('failed')
+  const [runningGenerationAction, setRunningGenerationAction] = useState<'cancel' | 'retry' | 'manual_replay' | null>(null)
   const [adjustDelta, setAdjustDelta] = useState('100')
   const [adjustReason, setAdjustReason] = useState('')
   const [adjustReasonCode, setAdjustReasonCode] = useState('')
@@ -527,6 +531,9 @@ export function AdminPage({
   const canReadQueues = account.hasPermission('admin:queue:read')
   const canReviewQueues = account.hasPermission('admin:queue:review')
   const canReadAudit = account.hasPermission('admin:audit:read')
+  const canCancelGenerations = account.hasPermission('admin:creative:cancel')
+  const canRequestGenerationRetries = account.hasPermission('admin:creative:retry')
+  const canRequestManualReplay = account.hasPermission('admin:creative:replay')
   const canManageSecurityAlerts = account.hasPermission('security:alerts:manage')
   const securityQuery: AdminSecurityEventListQuery = {
     source: securitySourceFilter,
@@ -1390,6 +1397,51 @@ export function AdminPage({
       setGenerationDetailError(isZh ? '无法读取生成历史详情。' : 'Could not load generation detail.')
     } finally {
       setLoadingGenerationDetail(false)
+    }
+  }
+
+  const runGenerationMutation = async (action: 'cancel' | 'retry' | 'manual_replay') => {
+    if (!selectedGeneration || runningGenerationAction) return
+    setRunningGenerationAction(action)
+    setGenerationDetailError(null)
+    const request = {
+      idempotencyKey: `${action}:${selectedGeneration.id}:${Date.now()}`,
+      reasonCode: generationMutationReason || 'operator_requested',
+      note: generationMutationNote,
+    }
+    try {
+      if (action === 'cancel') {
+        await adminService.cancelCreativeGeneration(selectedGeneration.id, request)
+      } else if (action === 'retry') {
+        await adminService.requestCreativeGenerationRetry(selectedGeneration.id, request)
+      } else {
+        if (!selectedGeneration.providerId || !selectedGeneration.providerMode || !selectedGeneration.providerJobId) {
+          throw new Error('Provider replay identifiers are incomplete')
+        }
+        await adminService.requestCreativeGenerationManualReplay(selectedGeneration.id, {
+          ...request,
+          providerId: selectedGeneration.providerId,
+          providerMode: selectedGeneration.providerMode,
+          providerJobId: selectedGeneration.providerJobId,
+          normalizedStatus: generationReplayStatus,
+        })
+        await queueStatus.refresh()
+      }
+      const detail = await adminService.creativeGeneration(selectedGeneration.id)
+      setSelectedGeneration(detail)
+      setGenerationRows((rows) => rows.map((row) => row.id === detail.id ? detail : row))
+      simulateAction(action === 'cancel'
+        ? textFor(t, 'Generation cancelled.', '生成任务已取消。')
+        : action === 'retry'
+          ? textFor(t, 'Retry authorization created.', '已创建重试授权。')
+          : textFor(t, 'Manual replay sent to review.', '人工重放已提交复核。'))
+    } catch (error) {
+      console.info('[admin-service]', error)
+      setGenerationDetailError(error instanceof Error
+        ? error.message
+        : textFor(t, 'Generation action failed.', '生成任务操作失败。'))
+    } finally {
+      setRunningGenerationAction(null)
     }
   }
 
@@ -3116,7 +3168,7 @@ export function AdminPage({
         </div>
         <div className="market-dashboard">
           {[
-            [textFor(t, 'Visible rows', '当前记录'), generationRows.length, textFor(t, 'Read-only generation records', '只读生成记录')],
+            [textFor(t, 'Visible rows', '当前记录'), generationRows.length, textFor(t, 'Durable generation records', '持久化生成记录')],
             [textFor(t, 'Needs review', '需要复核'), generationRows.filter(generationReviewRequired).length, textFor(t, 'Safety or media gate active', '安全或媒体门禁生效')],
             [textFor(t, 'Settled credits', '已结算 Credits'), generationRows.reduce((sum, row) => sum + generationCreditAmount(row, 'settled'), 0), textFor(t, 'From durable credit metadata', '来自持久化 credit 元数据')],
             [textFor(t, 'Output assets', '输出资产'), generationRows.reduce((sum, row) => sum + row.outputAssetIds.length, 0), textFor(t, 'Linked media asset ids', '已关联媒体资产 ID')],
@@ -3159,7 +3211,7 @@ export function AdminPage({
             const providerCost = generationProviderCost(generation)
             const isSelected = selectedGenerationId === generation.id
             return (
-              <div className={isSelected ? 'admin-row deep-linked' : 'admin-row'} key={generation.id}>
+              <div className={isSelected ? 'admin-row generation-row deep-linked' : 'admin-row generation-row'} key={generation.id}>
                 <StatusBadge status={formatGenerationStatus(generation.status)} t={t} />
                 <strong>{title}</strong>
                 <span>
@@ -3214,6 +3266,71 @@ export function AdminPage({
             )}
             {selectedGeneration && (
               <>
+                <div className="permission-summary generation-mutation-controls">
+                  <label>
+                    <span>{textFor(t, 'Reason code', '原因代码')}</span>
+                    <input
+                      aria-label={textFor(t, 'Generation action reason code', '生成操作原因代码')}
+                      value={generationMutationReason}
+                      onChange={(event) => setGenerationMutationReason(event.target.value)}
+                      disabled={Boolean(runningGenerationAction)}
+                    />
+                  </label>
+                  <label>
+                    <span>{textFor(t, 'Operator note', '操作说明')}</span>
+                    <input
+                      aria-label={textFor(t, 'Generation action note', '生成操作说明')}
+                      value={generationMutationNote}
+                      onChange={(event) => setGenerationMutationNote(event.target.value)}
+                      disabled={Boolean(runningGenerationAction)}
+                    />
+                  </label>
+                  <label>
+                    <span>{textFor(t, 'Replay status', '重放状态')}</span>
+                    <select
+                      aria-label={textFor(t, 'Manual replay status', '人工重放状态')}
+                      value={generationReplayStatus}
+                      onChange={(event) => setGenerationReplayStatus(event.target.value as typeof generationReplayStatus)}
+                      disabled={Boolean(runningGenerationAction)}
+                    >
+                      {(['queued', 'running', 'completed', 'failed', 'cancelled'] as const).map((status) => (
+                        <option value={status} key={status}>{formatGenerationStatus(status)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="button-row">
+                    <button
+                      className="ghost-button"
+                      type="button"
+                      onClick={() => void runGenerationMutation('cancel')}
+                      disabled={!canCancelGenerations || !['queued', 'running'].includes(selectedGeneration.status) || Boolean(runningGenerationAction)}
+                      title={textFor(t, 'Cancel generation', '取消生成任务')}
+                    >
+                      <XCircle size={16} aria-hidden="true" />
+                      {textFor(t, 'Cancel', '取消')}
+                    </button>
+                    <button
+                      className="ghost-button"
+                      type="button"
+                      onClick={() => void runGenerationMutation('retry')}
+                      disabled={!canRequestGenerationRetries || !['failed', 'cancelled'].includes(selectedGeneration.status) || Boolean(runningGenerationAction)}
+                      title={textFor(t, 'Authorize user retry', '授权用户重试')}
+                    >
+                      <RotateCcw size={16} aria-hidden="true" />
+                      {textFor(t, 'Authorize retry', '授权重试')}
+                    </button>
+                    <button
+                      className="ghost-button"
+                      type="button"
+                      onClick={() => void runGenerationMutation('manual_replay')}
+                      disabled={!canRequestManualReplay || !selectedGeneration.providerJobId || Boolean(runningGenerationAction) || (generationReplayStatus === 'completed' && selectedGeneration.outputAssetIds.length === 0)}
+                      title={textFor(t, 'Request manual Provider replay', '申请人工 Provider 重放')}
+                    >
+                      <PlayCircle size={16} aria-hidden="true" />
+                      {textFor(t, 'Request replay', '申请重放')}
+                    </button>
+                  </div>
+                </div>
                 <div className="audit-metadata-grid">
                   <div>
                     <strong>{textFor(t, 'Prompt', '提示词')}</strong>
@@ -3224,8 +3341,20 @@ export function AdminPage({
                     <span>{selectedGeneration.providerRequestId ?? '-'} / {selectedGeneration.providerJobId ?? '-'}</span>
                   </div>
                   <div>
+                    <strong>{textFor(t, 'Attempt', '尝试次数')}</strong>
+                    <span>#{selectedGeneration.attemptNumber}{selectedGeneration.retryOfId ? ` · ${textFor(t, 'retry of', '重试来源')} ${selectedGeneration.retryOfId}` : ''}</span>
+                  </div>
+                  <div>
                     <strong>{textFor(t, 'Provider replay', 'Provider replay')}</strong>
                     <span>{providerReplayEvidenceSummary(selectedGeneration, t)}</span>
+                  </div>
+                  <div>
+                    <strong>{textFor(t, 'Latest operation', '最新操作')}</strong>
+                    <span>
+                      {selectedGeneration.mutationEvidence?.latest
+                        ? `${selectedGeneration.mutationEvidence.latest.type ?? '-'} · ${selectedGeneration.mutationEvidence.latest.status ?? '-'} · ${selectedGeneration.mutationEvidence.latest.reasonCode ?? '-'}`
+                        : textFor(t, 'No generation operations', '暂无生成操作')}
+                    </span>
                   </div>
                   <div>
                     <strong>{textFor(t, 'Provider cost', 'Provider cost')}</strong>

@@ -2,13 +2,13 @@
 
 This document defines the prerequisites for enabling real-provider webhooks, callback routes, polling workers, or manual lifecycle replay for creative generation.
 
-Current decision: **the staging callback API and dedicated polling worker are implemented but independently disabled by default; registering a real Provider webhook target, enabling Provider status reads, exposing manual replay endpoints, or making real provider network calls remains no-go until a separate approved external-call task**.
+Current decision: **the staging callback API and dedicated polling worker are implemented but independently disabled by default; V1-08 adds an internal reviewed manual replay endpoint, while registering a real Provider webhook target, enabling Provider status reads, replaying live Provider traffic, or making real provider network calls remains no-go until a separate approved external-call task**.
 
 The current real-provider boundary handoff is summarized in `docs/REAL_PROVIDER_BOUNDARY_CLOSEOUT.md`. This prerequisite document controls callback, polling, and manual replay enablement; the external-call approval package controls any first real provider network call.
 
-This package does not add a provider SDK, manual replay endpoint, approved provider network call, Admin mutation endpoint, payment refund flow, or production paid-provider path. V1-06 adds the app-side signed callback endpoint behind `CREATIVE_PROVIDER_CALLBACK_ENABLED=false`; no Provider webhook target or real delivery is configured. V1-07 adds a fixed read-only status client and dedicated polling worker behind `CREATIVE_PROVIDER_POLLING_ENABLED=false` and `CREATIVE_PROVIDER_POLLING_WORKER_ENABLED=false`; no real status read is executed or approved.
+This prerequisite package did not originally add a provider SDK, manual replay endpoint, approved provider network call, Admin mutation endpoint, payment refund flow, or production paid-provider path. V1-08 now supplies the internal mutation/replay route under the constraints in `docs/V1_PROVIDER_GENERATION_MUTATIONS.md`; it still registers no real Provider mutation client.
 
-Implementation status: the repository now has a durable replay ledger, lifecycle reducer, strict Replicate callback/status projections, exact-body HMAC and timestamp verification, generation/job nonce binding, a staging-only callback route, a fixed read-only status client, atomic replay side-effect claims, lifecycle side-effect execution, safe callback/polling audits, mocked provider-status contracts, manual replay authorization/parser helpers, and oldest-first polling worker wiring with retry isolation and timeout recovery. Callback and polling switches are disabled by default. Manual replay endpoints and approved real provider network calls remain unimplemented.
+Implementation status: the repository now has a durable replay ledger and mutation ledger, lifecycle reducer, strict Replicate callback/status projections, exact-body HMAC and timestamp verification, generation/job nonce binding, a staging-only callback route, a fixed read-only status client, atomic replay side-effect claims, lifecycle side-effect execution, safe callback/polling audits, mocked provider-status contracts, a two-person manual replay route, and oldest-first polling worker wiring with retry isolation and timeout recovery. Callback and polling switches are disabled by default. Approved real provider network calls remain unimplemented.
 
 ## Closeout Status And Implementation Map
 
@@ -21,20 +21,20 @@ This closeout records the current boundary for callback, polling, and manual lif
 | Default provider status HTTP client | Disabled and unimplemented | No SDK, default HTTP client, or real provider status read is present. |
 | Polling worker and status client | Available, disabled by default | Requires explicit lifecycle/worker/HTTP flags; verification uses injected status fixtures or injected fetch only. |
 | Polling lease and stop-condition helpers | Available as pure functions | Fixture-safe only; they do not read provider APIs. |
-| Manual replay authorization and parser helpers | Available as pure functions | No route, endpoint, Admin action, worker, or side-effect execution path is enabled. |
+| Manual replay authorization, parser, and reviewed route | Implemented internally | Dedicated permission, strict allowlist, second approver, mutation ledger, and replay ledger; no Provider network request. |
 | Durable replay ledger and lifecycle reducer | Available for fixture-safe tests | Used to prove duplicate, stale, mismatch, no-op, rejected, and applied decisions without real provider data. |
 | Lifecycle side-effect plan and executor helpers | Available for fixture-safe tests | Records safe plan/result summaries; does not persist raw provider payloads or output URLs. |
 | Notification and audit source-key wiring | Available in repository-backed tests | Uses stable source keys and safe metadata only. |
-| Admin provider replay evidence | Available read-only | Shows safe replay counts, latest summaries, side-effect outcome, and error-preview presence; no mutation controls. |
+| Admin provider replay evidence | Available with dedicated controls | Shows safe replay and mutation summaries; controls require separate cancel/retry/replay permissions. |
 | Provider network calls | No-go | Requires the external-call approval package and explicit user approval for a named staging rehearsal. |
 
 This document does not approve:
 
 - A provider SDK or network-capable HTTP client.
 - A real Provider webhook target or production callback enablement.
-- A manual replay endpoint or Admin replay action.
+- A manual replay sourced from live Provider traffic without separate external-call approval.
 - Enabled real provider status polling.
-- Admin retry, cancel, refund, force-review, or manual settlement controls.
+- Real Provider retry/cancel clients, Admin refund, force-review, or manual settlement controls.
 - Production paid-provider enablement.
 
 ## Next Work Ordering

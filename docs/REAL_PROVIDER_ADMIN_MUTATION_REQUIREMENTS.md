@@ -1,27 +1,28 @@
 # Admin Generation Mutation Requirements
 
-This document closes the third real-provider preflight task: define the requirements, permissions, audit events, notifications, idempotency rules, and rollback semantics for future Admin creative generation mutations.
+This document records the original real-provider preflight requirements for Admin creative generation mutations. V1-08 implements the limited cancel, retry-authorization, and reviewed manual replay subset; the implementation contract and evidence are in `docs/V1_PROVIDER_GENERATION_MUTATIONS.md`.
 
-The current Admin generation history surface remains read-only. This document does not add mutation endpoints, Admin UI controls, provider API calls, payment-provider refunds, retry workers, polling routes, or webhook handlers. Provider spend metadata and budget alarm requirements are defined separately in `docs/REAL_PROVIDER_COST_METADATA_AND_BUDGET_ALARMS.md`.
+The Admin generation history surface is no longer read-only. Dedicated V1-08 controls are application-side and do not register a real Provider mutation client, payment-provider refund, retry worker, or production paid-provider path. Provider spend metadata and budget alarm requirements are defined separately in `docs/REAL_PROVIDER_COST_METADATA_AND_BUDGET_ALARMS.md`.
 
 ## Current Boundary
 
-Available today:
+Available after V1-08:
 
 - `GET /api/admin/creative/generations`
 - `GET /api/admin/creative/generations/:id`
-- read-only Admin Center generation history
+- Admin Center generation history with dedicated cancel, retry-authorization, and manual replay request controls
+- user-owned cancel and retry endpoints
+- two-person manual Provider lifecycle replay approval
+- durable idempotent generation mutation ledger
 - prompt hash and short preview only
 - quota, credit, safety, policy, provider, media, and audit drill-down metadata
 
 Still deferred:
 
-- Admin retry
-- Admin cancel
 - Admin force-review
 - Admin refund
 - Admin manual settlement
-- provider-specific retry/cancel API calls
+- real provider-specific retry/cancel API calls
 - payment-provider refunds or subscription balance reconciliation
 
 ## Proposed Permission Model
