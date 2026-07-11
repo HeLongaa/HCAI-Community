@@ -270,6 +270,28 @@ test('createCreativeProviderHttpClient does not expose Provider error bodies or 
   )
 })
 
+test('createCreativeProviderStatusClient projects bounded Retry-After without retrying', async () => {
+  let fetchCalls = 0
+  const client = createCreativeProviderStatusClient({
+    providerId: 'replicate-staging',
+    source: enabledSource,
+    fetchImpl: async () => {
+      fetchCalls += 1
+      return new Response('{"error":"private"}', {
+        status: 429,
+        headers: { 'retry-after': '9999' },
+      })
+    },
+  })
+
+  await assert.rejects(
+    client.getPrediction('pred_rate_limited'),
+    (error) => error.code === 'CREATIVE_PROVIDER_RATE_LIMITED' &&
+      error.details.retryAfterSeconds === 900,
+  )
+  assert.equal(fetchCalls, 1)
+})
+
 test('createCreativeProviderHttpClient cancels oversized Provider responses', async () => {
   const client = createCreativeProviderHttpClient({
     providerId: 'replicate-staging',

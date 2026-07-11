@@ -43,7 +43,7 @@ const isPointAdjustmentReview = (review) => review?.queue === 'points' || review
 const isManualProviderReplayReview = (review) => review?.metadata?.kind === 'manual_provider_replay'
 const isProviderControlRecoveryReview = (review) => review?.metadata?.kind === 'provider_control_recovery'
 
-const safeProviderControlBundle = ({ controls, circuits, capEvidence }) => ({
+const safeProviderControlBundle = ({ controls, circuits, capEvidence, retries = [] }) => ({
   controls: controls.map((control) => ({
     id: control.id,
     scopeKey: null,
@@ -87,6 +87,24 @@ const safeProviderControlBundle = ({ controls, circuits, capEvidence }) => ({
     verifiedAt: evidence.verifiedAt,
     expiresAt: evidence.expiresAt,
     active: evidence.active,
+  })),
+  retries: retries.map((state) => ({
+    id: safeProviderJobIdEvidence(state.id),
+    generationId: safeProviderJobIdEvidence(state.generationId),
+    providerId: safeProviderJobIdEvidence(state.providerId),
+    workspace: state.workspace,
+    operationType: state.operationType,
+    status: state.status,
+    attempt: state.attempt,
+    maxAttempts: state.maxAttempts,
+    firstAttemptAt: state.firstAttemptAt,
+    lastAttemptAt: state.lastAttemptAt,
+    nextAttemptAt: state.nextAttemptAt,
+    errorCode: safeProviderJobIdEvidence(state.lastErrorCode),
+    errorCategory: state.lastErrorCategory,
+    delaySource: state.delaySource,
+    version: state.version,
+    updatedAt: state.updatedAt,
   })),
 })
 
@@ -539,9 +557,10 @@ export const registerAdminRoutes = (router, options = {}) => {
   router.add('GET', '/api/admin/creative/provider-controls', async (_request, response, context) => {
     requirePermission(context, 'admin:creative:provider-control:read')
     const query = parseProviderControlListQuery(context.query)
-    const [controlPage, circuitPage] = await Promise.all([
+    const [controlPage, circuitPage, retryPage] = await Promise.all([
       routeRepositories.creativeProviderControls.list(query),
       routeRepositories.creativeProviderControls.listCircuits(query),
+      routeRepositories.creativeProviderRetries?.list?.(query) ?? { items: [], nextCursor: null },
     ])
     const providerControls = controlPage.items.filter((control) => control.scopeType === 'provider')
     const capEvidence = await Promise.all(providerControls.map((control) =>
@@ -550,10 +569,11 @@ export const registerAdminRoutes = (router, options = {}) => {
       controls: controlPage.items,
       circuits: circuitPage.items,
       capEvidence,
+      retries: retryPage.items,
     }), {
       pagination: {
         limit: query.limit,
-        nextCursor: controlPage.nextCursor ?? circuitPage.nextCursor,
+        nextCursor: controlPage.nextCursor ?? circuitPage.nextCursor ?? retryPage.nextCursor,
       },
     })
   })
@@ -571,7 +591,7 @@ export const registerAdminRoutes = (router, options = {}) => {
     }, actor)
     ok(response, {
       changed: result.changed,
-      control: safeProviderControlBundle({ controls: [result.control], circuits: [], capEvidence: [] }).controls[0],
+      control: safeProviderControlBundle({ controls: [result.control], circuits: [], capEvidence: [], retries: [] }).controls[0],
     })
   })
 
@@ -582,7 +602,7 @@ export const registerAdminRoutes = (router, options = {}) => {
     const result = await routeRepositories.creativeProviderControls.putCapEvidence(evidence, actor)
     ok(response, {
       created: result.created,
-      evidence: safeProviderControlBundle({ controls: [], circuits: [], capEvidence: [result.evidence] }).capEvidence[0],
+      evidence: safeProviderControlBundle({ controls: [], circuits: [], capEvidence: [result.evidence], retries: [] }).capEvidence[0],
     })
   })
 
@@ -677,9 +697,9 @@ export const registerAdminRoutes = (router, options = {}) => {
       ok(response, {
         review: recovered.review,
         result: recovered.result?.enabled !== undefined
-          ? safeProviderControlBundle({ controls: [recovered.result], circuits: [], capEvidence: [] }).controls[0]
+          ? safeProviderControlBundle({ controls: [recovered.result], circuits: [], capEvidence: [], retries: [] }).controls[0]
           : recovered.result
-            ? safeProviderControlBundle({ controls: [], circuits: [recovered.result], capEvidence: [] }).circuits[0]
+            ? safeProviderControlBundle({ controls: [], circuits: [recovered.result], capEvidence: [], retries: [] }).circuits[0]
             : null,
         probeAuthorized: Boolean(recovered.probeToken),
       })

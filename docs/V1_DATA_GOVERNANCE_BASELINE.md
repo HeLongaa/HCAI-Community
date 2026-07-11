@@ -12,7 +12,7 @@ production.
 
 The data inventory and implementation contract are frozen. The complete runtime is not implemented.
 
-- All 27 Prisma models are assigned exactly once to a governed data asset.
+- All 36 Prisma models are assigned exactly once to a governed data asset.
 - Six non-Prisma asset classes cover raw generation inputs, raw Provider payloads, observability, backups, export
   packages, and deployment secrets.
 - Unknown data is `restricted`; unknown flows and processors are denied.
@@ -52,7 +52,7 @@ not become public because the post is public.
 | `media_object_bytes` | Restricted | Object storage | Uploads, attachments, generated assets | Revoke now, object delete within 24 hours |
 | `media_scan_safety_records` | Restricted | PostgreSQL/archive | `MediaScanJob` | Terminal scan + 180 days, maximum 50/asset |
 | `creative_generation_records` | Restricted | PostgreSQL | `CreativeGeneration` | Terminal generation + 365 days; preview 30 days |
-| `provider_lifecycle_records` | Restricted | PostgreSQL | `CreativeProviderReplayLedger`, `CreativeGenerationMutation`, `CreativeOutputIngestion` | Terminal Provider lifecycle + 180 days |
+| `provider_lifecycle_records` | Restricted | PostgreSQL | `CreativeProviderReplayLedger`, `CreativeGenerationMutation`, `CreativeOutputIngestion`, `CreativeProviderRetryState` | Terminal Provider lifecycle + 180 days; failure evidence is hash-only |
 | `creative_accounting_records` | Confidential | PostgreSQL | `CreativeCreditLedger`, `CreativeQuotaWindow`, `CreativeQuotaReservation` | Terminal/account close + 730 days |
 | `provider_cost_budget_records` | Confidential | PostgreSQL | `CreativeProviderBudgetWindow`, `CreativeProviderCostLedger` | Provider cost close/reconciliation + 730 days; amounts stored as integer micros |
 | `provider_control_records` | Confidential | PostgreSQL | `CreativeProviderControlState`, `CreativeProviderCapEvidence`, `CreativeProviderCircuitState`, `CreativeProviderCircuitEvent` | Control/circuit reconciliation + 730 days; evidence and probe tokens are hash-only |
@@ -256,6 +256,7 @@ Known gaps:
 | V1-09 | Implemented source-keyed output ingestion, injected-fetch SSRF/size/MIME/checksum boundaries, deterministic storage, scanner gating, and zero-retention Provider URLs; real output fetch remains approval-gated |
 | V1-10 | Implemented Provider-independent immutable pricing snapshots, six-decimal amount normalization, durable atomic budget reservation, idempotent settlement/release/reconciliation, and low-cardinality operations evidence; real pricing and dispatch remain approval-gated |
 | V1-11 | Implemented versioned kill switches, expiring hash-only Provider cap evidence, explicit circuits, one-claim probes, two-person recovery review, and safe operations evidence; real cap readers, probes, and dispatch remain unregistered |
+| V1-12 | Implemented a shared safe error taxonomy, bounded Retry-After, deterministic backoff, durable hash-only retry evidence, CAS attempt budgets, polling integration, and safe Admin/metrics views; real Provider clients and traffic remain unregistered |
 | V1-48 | OAuth scopes, identifiers, unlink, region, and sessions |
 | V1-49 | PostgreSQL backup, expiry, restore, and deletion rehearsal |
 | V1-50 | Private object storage/CDN and lifecycle deletion |

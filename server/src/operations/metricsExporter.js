@@ -39,6 +39,20 @@ const providerControlReasonValues = [
   'unknown',
 ]
 
+const providerErrorCategoryValues = [
+  'rate_limit',
+  'timeout',
+  'provider_5xx',
+  'provider_incident',
+  'provider_rejected',
+  'auth_configuration',
+  'invalid_request',
+  'content_policy',
+  'user_cancelled',
+  'local_dependency',
+  'unknown',
+]
+
 const numeric = (value) => {
   const number = Number(value ?? 0)
   return Number.isFinite(number) ? number : 0
@@ -185,6 +199,18 @@ const addProviderControlMetrics = (lines, control = {}) => {
   addCountBy(lines, 'newchat_creative_provider_control_events_by_reason_total', 'Windowed creative provider control-plane event count by reason.', control.byReason, 'reason', providerControlReasonValues)
 }
 
+const addProviderRetryMetrics = (lines, retry = {}) => {
+  addGauge(lines, 'newchat_creative_provider_retry_events_total', 'Windowed creative provider retry-state event count.', retry.total)
+  addGauge(lines, 'newchat_creative_provider_retry_scheduled_total', 'Windowed creative provider retry schedules.', retry.scheduled)
+  addGauge(lines, 'newchat_creative_provider_retry_exhausted_total', 'Windowed creative provider retry budget exhaustions.', retry.exhausted)
+  addGauge(lines, 'newchat_creative_provider_retry_cleared_total', 'Windowed creative provider retry states cleared after success.', retry.cleared)
+  addCountBy(lines, 'newchat_creative_provider_retry_by_provider_total', 'Windowed creative provider retry events by provider.', retry.byProvider, 'provider')
+  addCountBy(lines, 'newchat_creative_provider_retry_by_workspace_total', 'Windowed creative provider retry events by workspace.', retry.byWorkspace, 'workspace', ['image', 'video', 'music', 'chat', 'unknown'])
+  addCountBy(lines, 'newchat_creative_provider_retry_by_operation_total', 'Windowed creative provider retry events by operation.', retry.byOperation, 'operation', ['status_read', 'output_fetch', 'dispatch_create', 'mutation', 'callback', 'unknown'])
+  addCountBy(lines, 'newchat_creative_provider_retry_by_category_total', 'Windowed creative provider retry events by error category.', retry.byCategory, 'category', providerErrorCategoryValues)
+  addCountBy(lines, 'newchat_creative_provider_retry_by_delay_source_total', 'Windowed creative provider retry events by delay source.', retry.byDelaySource, 'source', ['retry_after', 'exponential', 'unknown'])
+}
+
 const deliveryMetrics = (lines, prefix, summary = {}) => {
   addGauge(lines, `${prefix}_total`, 'Windowed delivery failure count.', summary.total)
   addCountBy(lines, `${prefix}_by_channel_total`, 'Windowed delivery failure count by channel.', summary.byChannel, 'channel', ['webhook', 'slack', 'email', 'unknown'])
@@ -218,6 +244,7 @@ export const buildPrometheusMetrics = (metrics = {}) => {
   addCountBy(lines, 'newchat_operation_lease_renew_failures_by_key_total', 'Windowed worker lease renewal failures by lease key.', metrics.operations?.leases?.renewFailures?.byKey, 'key', ['media-scan-sweep', 'task-stale-submission-sweep'])
   addProviderBudgetMetrics(lines, metrics.creativeProviderBudget)
   addProviderControlMetrics(lines, metrics.creativeProviderControl)
+  addProviderRetryMetrics(lines, metrics.creativeProviderRetry)
   lines.push('')
   return lines.join('\n')
 }

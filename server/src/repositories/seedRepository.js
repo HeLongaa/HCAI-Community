@@ -26,6 +26,7 @@ import {
   serializeCreativeProviderControlState,
   serializeCreativeProviderCostLedger,
   serializeCreativeProviderReplay,
+  serializeCreativeProviderRetryState,
   serializeLedgerEntry,
   serializeLibraryItem,
   serializeMediaAsset,
@@ -97,6 +98,7 @@ const creativeProviderCapEvidenceIdsBySourceKey = new Map()
 const creativeProviderCircuitsByScopeKey = new Map()
 const creativeProviderCircuitEventsById = new Map()
 const creativeProviderCircuitEventIdsBySourceKey = new Map()
+const creativeProviderRetryStatesBySourceKey = new Map()
 const creativeCreditLedgerById = new Map()
 const creativeQuotaWindowsById = new Map()
 const creativeQuotaReservationsById = new Map()
@@ -1365,6 +1367,40 @@ const providerControlConflict = (reasonCode) => new HttpError(
   'Creative Provider control state conflict',
   { reasonCode },
 )
+
+const providerRetryConflict = (reasonCode) => new HttpError(
+  409,
+  'CREATIVE_PROVIDER_RETRY_STATE_CONFLICT',
+  'Creative Provider retry state conflict',
+  { reasonCode },
+)
+
+const makeProviderRetryState = (payload, patch = {}) => {
+  const now = new Date().toISOString()
+  return {
+    id: payload.id ?? `provider-retry-${randomUUID()}`,
+    sourceKey: String(payload.sourceKey),
+    generationId: String(payload.generationId),
+    providerId: payload.providerId,
+    workspace: payload.workspace,
+    operationType: payload.operationType,
+    status: payload.status,
+    attempt: Number(payload.attempt),
+    maxAttempts: Number(payload.maxAttempts),
+    firstAttemptAt: payload.firstAttemptAt,
+    lastAttemptAt: payload.lastAttemptAt,
+    nextAttemptAt: payload.nextAttemptAt ?? null,
+    lastFailureKeyHash: payload.lastFailureKeyHash,
+    lastErrorCode: payload.lastErrorCode,
+    lastErrorCategory: payload.lastErrorCategory,
+    delaySource: payload.delaySource ?? null,
+    policyHash: payload.policyHash,
+    version: Number(payload.version ?? 1),
+    createdAt: payload.createdAt ?? now,
+    updatedAt: now,
+    ...patch,
+  }
+}
 
 const makeProviderControl = (payload, patch = {}) => {
   const now = new Date().toISOString()
@@ -3636,6 +3672,88 @@ export const createSeedRepository = () => ({
         reasonCode: reviewed.metadata.reasonCode,
       })
       return { review: serializeAdminReview(reviewed), result, probeToken }
+    },
+  },
+  creativeProviderRetries: {
+    find: (sourceKey) => {
+      const state = creativeProviderRetryStatesBySourceKey.get(String(sourceKey)) ?? null
+      return state ? serializeCreativeProviderRetryState(state) : null
+    },
+    findForGeneration: (generationId, operationType = null) => {
+      const state = [...creativeProviderRetryStatesBySourceKey.values()]
+        .filter((item) => item.generationId === String(generationId))
+        .filter((item) => !operationType || item.operationType === String(operationType))
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null
+      return state ? serializeCreativeProviderRetryState(state) : null
+    },
+    list: (options = {}) => {
+      const dueBefore = options.dueBefore ? new Date(options.dueBefore).getTime() : null
+      const rows = [...creativeProviderRetryStatesBySourceKey.values()]
+        .filter((item) => !options.status || item.status === options.status)
+        .filter((item) => !options.providerId || item.providerId === options.providerId)
+        .filter((item) => !options.workspace || item.workspace === options.workspace)
+        .filter((item) => !Number.isFinite(dueBefore) || (item.nextAttemptAt && new Date(item.nextAttemptAt).getTime() <= dueBefore))
+        .sort((left, right) => String(left.nextAttemptAt ?? left.updatedAt).localeCompare(String(right.nextAttemptAt ?? right.updatedAt)))
+        .map(serializeCreativeProviderRetryState)
+      return paginateByCursor(rows, options)
+    },
+    record: (payload, actor) => {
+      const current = creativeProviderRetryStatesBySourceKey.get(String(payload.sourceKey)) ?? null
+      if (current?.lastFailureKeyHash === payload.lastFailureKeyHash) {
+        return { changed: false, duplicate: true, state: serializeCreativeProviderRetryState(current) }
+      }
+      if (current && Number(payload.expectedVersion) !== current.version) throw providerRetryConflict('retry_version_mismatch')
+      if (!current && ![undefined, null, 0].includes(payload.expectedVersion)) throw providerRetryConflict('retry_create_version_mismatch')
+      const generationConflict = [...creativeProviderRetryStatesBySourceKey.values()].find((item) =>
+        item.generationId === String(payload.generationId) &&
+        item.operationType === String(payload.operationType) &&
+        item.sourceKey !== String(payload.sourceKey))
+      if (generationConflict) throw providerRetryConflict('retry_generation_operation_conflict')
+      const state = makeProviderRetryState(current ?? payload, {
+        ...payload,
+        id: current?.id ?? payload.id,
+        version: current ? current.version + 1 : 1,
+        createdAt: current?.createdAt ?? payload.createdAt,
+      })
+      creativeProviderRetryStatesBySourceKey.set(state.sourceKey, state)
+      recordAudit(actor, `creative.provider_retry.${state.status}`, 'creative_provider_retry_state', state.id, {
+        generationId: state.generationId,
+        providerId: state.providerId,
+        workspace: state.workspace,
+        operationType: state.operationType,
+        status: state.status,
+        attempt: state.attempt,
+        maxAttempts: state.maxAttempts,
+        nextAttemptAt: state.nextAttemptAt,
+        errorCode: state.lastErrorCode,
+        errorCategory: state.lastErrorCategory,
+        delaySource: state.delaySource,
+        version: state.version,
+      })
+      return { changed: true, duplicate: false, state: serializeCreativeProviderRetryState(state) }
+    },
+    clear: (sourceKey, payload = {}, actor) => {
+      const current = creativeProviderRetryStatesBySourceKey.get(String(sourceKey)) ?? null
+      if (!current) return { changed: false, state: null }
+      if (current.status === 'cleared') return { changed: false, state: serializeCreativeProviderRetryState(current) }
+      if (payload.expectedVersion != null && Number(payload.expectedVersion) !== current.version) throw providerRetryConflict('retry_version_mismatch')
+      const state = makeProviderRetryState(current, {
+        status: 'cleared',
+        nextAttemptAt: null,
+        delaySource: null,
+        version: current.version + 1,
+      })
+      creativeProviderRetryStatesBySourceKey.set(state.sourceKey, state)
+      recordAudit(actor, 'creative.provider_retry.cleared', 'creative_provider_retry_state', state.id, {
+        generationId: state.generationId,
+        providerId: state.providerId,
+        workspace: state.workspace,
+        operationType: state.operationType,
+        attempt: state.attempt,
+        version: state.version,
+        reasonCode: payload.reasonCode ?? 'provider_operation_succeeded',
+      })
+      return { changed: true, state: serializeCreativeProviderRetryState(state) }
     },
   },
   creativeProviderCosts: {

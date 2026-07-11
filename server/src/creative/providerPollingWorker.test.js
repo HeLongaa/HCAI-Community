@@ -11,6 +11,8 @@ import {
 } from './providerPollingWorker.js'
 import { createSeedRepository } from '../repositories/seedRepository.js'
 import { sha256 } from './generationRecords.js'
+import { buildSafeProviderError } from './providerErrorPolicy.js'
+import { scheduleProviderRetry } from './providerRetryScheduler.js'
 
 const providerOutputPng = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
@@ -517,6 +519,82 @@ test('pollProviderGenerationOnce schedules transient status retries with safe au
   assert.equal(audit.metadata.retryable, true)
   assert.equal(audit.metadata.statusCode, 429)
   assert.equal(JSON.stringify(audit).includes('private-provider-token'), false)
+})
+
+test('pollProviderGenerationOnce waits for durable due time and clears retry state after a successful read', async () => {
+  const repository = createSeedRepository()
+  const record = await createRunningProviderGeneration(repository, { providerJobId: 'prediction-durable-retry' })
+  let reads = 0
+  const providerStatusClients = {
+    replicate: {
+      getPrediction: async (id) => {
+        reads += 1
+        if (reads === 1) {
+          const error = new Error('private Provider rate limit body')
+          error.statusCode = 429
+          error.details = { retryAfterSeconds: 30 }
+          throw error
+        }
+        return { id, status: 'processing' }
+      },
+    },
+  }
+
+  const first = await pollProviderGenerationOnce({ generation: record, repositories: repository, providerStatusClients, source: pollingSource, now })
+  const early = await pollProviderGenerationOnce({
+    generation: record,
+    repositories: repository,
+    providerStatusClients,
+    source: pollingSource,
+    now: new Date(now.getTime() + 10_000),
+  })
+  const due = await pollProviderGenerationOnce({
+    generation: record,
+    repositories: repository,
+    providerStatusClients,
+    source: pollingSource,
+    now: new Date(first.retryState.nextAttemptAt),
+  })
+
+  assert.equal(first.retryScheduled, true)
+  assert.equal(first.retryState.nextAttemptAt, '2026-07-06T12:00:30.000Z')
+  assert.equal(early.polled, false)
+  assert.equal(early.plan.reasonCode, 'retry_not_due')
+  assert.equal(due.polled, true)
+  assert.equal(reads, 2)
+  const state = await repository.creativeProviderRetries.findForGeneration(record.id, 'status_read')
+  assert.equal(state.status, 'cleared')
+  assert.equal(JSON.stringify(state).includes('private Provider'), false)
+})
+
+test('pollProviderGenerationOnce suppresses exhausted reads until the polling window times out', async () => {
+  const repository = createSeedRepository()
+  const record = await createRunningProviderGeneration(repository, { providerJobId: 'prediction-exhausted-retry' })
+  await scheduleProviderRetry({
+    generation: record,
+    repositories: repository,
+    envelope: buildSafeProviderError({ statusCode: 503 }, { operationType: 'status_read', now }),
+    failureKey: 'exhausted-read-1',
+    policy: { maxAttempts: 1 },
+    now,
+  })
+  let reads = 0
+  const providerStatusClients = { replicate: { getPrediction: async () => { reads += 1 } } }
+
+  const waiting = await pollProviderGenerationOnce({ generation: record, repositories: repository, providerStatusClients, source: pollingSource, now })
+  const timedOut = await pollProviderGenerationOnce({
+    generation: record,
+    repositories: repository,
+    providerStatusClients,
+    source: pollingSource,
+    now: new Date('2026-07-06T13:00:00.000Z'),
+  })
+
+  assert.equal(waiting.retryExhausted, true)
+  assert.equal(waiting.plan.reasonCode, 'retry_budget_exhausted')
+  assert.equal(reads, 0)
+  assert.equal(timedOut.timedOut, true)
+  assert.equal((await repository.creativeGenerations.find(record.id)).status, 'failed')
 })
 
 test('pollProviderGenerationOnce dedupes changing non-terminal Provider snapshots', async () => {

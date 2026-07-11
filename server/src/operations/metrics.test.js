@@ -120,6 +120,40 @@ test('buildOperationsMetrics summarizes creative Provider control-plane events s
   assert.equal(JSON.stringify(control).includes('provider-control-high-cardinality'), false)
 })
 
+test('buildOperationsMetrics summarizes Provider retry lifecycle with low-cardinality evidence', () => {
+  const generatedAt = new Date('2026-07-12T12:00:00.000Z')
+  const auditEvents = [
+    ['scheduled', 'rate_limit', 'retry_after'],
+    ['exhausted', 'provider_5xx', null],
+    ['cleared', 'provider_5xx', null],
+  ].map(([status, errorCategory, delaySource], index) => ({
+    id: `provider-retry-audit-${index}`,
+    action: `creative.provider_retry.${status}`,
+    resourceType: 'creative_provider_retry_state',
+    resourceId: `high-cardinality-retry-state-${index}`,
+    metadata: {
+      generationId: `high-cardinality-generation-${index}`,
+      providerId: 'replicate',
+      workspace: 'image',
+      operationType: 'status_read',
+      errorCategory,
+      delaySource,
+      lastFailureKeyHash: 'a'.repeat(64),
+    },
+    createdAt: `2026-07-12T11:5${index}:00.000Z`,
+  }))
+
+  const retry = buildOperationsMetrics({ windowMinutes: 30, generatedAt, auditEvents }).creativeProviderRetry
+  assert.equal(retry.total, 3)
+  assert.equal(retry.scheduled, 1)
+  assert.equal(retry.exhausted, 1)
+  assert.equal(retry.cleared, 1)
+  assert.deepEqual(retry.byOperation, [{ key: 'status_read', count: 3 }])
+  assert.deepEqual(retry.byCategory, [{ key: 'provider_5xx', count: 2 }, { key: 'rate_limit', count: 1 }])
+  assert.equal(JSON.stringify(retry).includes('high-cardinality'), false)
+  assert.equal(JSON.stringify(retry).includes('a'.repeat(64)), false)
+})
+
 test('buildOperationsMetrics summarizes durable Provider cost ledger lifecycle safely', () => {
   const generatedAt = new Date('2026-07-12T12:00:00.000Z')
   const actions = [

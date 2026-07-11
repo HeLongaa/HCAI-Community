@@ -3,6 +3,7 @@ import {
   stableProviderCostHash,
   toProviderMoneyMicros,
 } from './providerCostContract.js'
+import { classifyProviderError } from './providerErrorPolicy.js'
 
 const identifierPattern = /^[a-z0-9][a-z0-9:._/-]{0,127}$/i
 const currencyPattern = /^[A-Z]{3}$/
@@ -147,14 +148,8 @@ export const providerCircuitPolicyFor = ({ matrix, workspace }) => {
 }
 
 export const classifyProviderFailure = (error) => {
-  const status = Number(error?.statusCode ?? error?.status ?? 0)
-  const code = String(error?.code ?? '').toUpperCase()
-  const message = String(error?.message ?? '')
-  if (status === 429 || code.includes('RATE_LIMIT')) return 'rate_limit'
-  if (code.includes('TIMEOUT') || /timeout|timed out/i.test(message)) return 'timeout'
-  if (status >= 500 && status <= 599) return 'provider_5xx'
-  if (code === 'PROVIDER_INCIDENT') return 'provider_incident'
-  return 'ignored_failure'
+  const category = classifyProviderError(error)
+  return retryableCategories.has(category) ? category : 'ignored_failure'
 }
 
 export const evaluateProviderControlSnapshot = ({
