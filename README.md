@@ -6,6 +6,16 @@ This project is being productized from a front-end prototype into a typed app pl
 community, admin, point settlement, and media upload flows now have service/API coverage while some creative outputs
 and catalog content remain simulated for product exploration.
 
+## V1 Release Scope
+
+V1 includes the complete marketplace, community, account, internal-points, notification, media-governance, Admin,
+Image, Chat, Video, and Music product. Image, Chat, Video, and Music require approved real Providers before release.
+Real RMB payment, withdrawal, KYC, invoice, tax, and merchant-settlement capabilities are explicitly excluded; internal
+points, creative credits, quota, escrow, compensation, and generation refunds remain product ledger semantics.
+
+The source of truth is `docs/V1_SCOPE_AND_DEFINITION_OF_DONE.md`, backed by the machine-readable
+`config/v1-release-scope.json`. Run `npm run test:v1-scope` to verify the scope contract and excluded-capability guard.
+
 ## Features
 
 - Task Plaza-first landing experience for posting AI requirements and taking paid work
@@ -94,7 +104,7 @@ npm run check:pr
 npm run check:deploy
 ```
 
-`check:quick` runs lint plus feature/API contract checks. `check:pr` adds production build, backend tests, Prisma schema validation, and E2E. `check:deploy` adds the safe production smoke fixture. Use `check:deploy:env` in a real deployment environment to validate actual environment variables without printing secrets.
+`check:quick` runs lint, the V1 scope contract, and feature/API contract checks. `check:pr` adds production build, backend tests, Prisma schema validation, and E2E. `check:deploy` adds the safe production smoke fixture. Use `check:deploy:env` in a real deployment environment to validate actual environment variables without printing secrets.
 
 `test:sim` runs feature-contract checks for the planned modules and then verifies API contract consistency across server routes, OpenAPI paths, and the protected-route permission matrix. `test:contracts` can run that API consistency check by itself. The feature-contract checks cover navigation, Task Plaza lifecycle, publish form,
 My Tasks delivery desk, community forum flows, publish-form AI assists, creation tools, points ledger, admin review queue,
@@ -108,6 +118,8 @@ GitHub Actions configuration lives in `.github/workflows/quality-gates.yml`: PRs
 
 Planning docs for the API, data model, auth, and backend rollout live in `docs/`:
 
+- `docs/V1_SCOPE_AND_DEFINITION_OF_DONE.md`
+- `docs/V1_CURRENT_STATE_AUDIT.md`
 - `docs/PRODUCT_BACKEND_PLAN.md`
 - `docs/API_DESIGN.md`
 - `docs/DATA_MODEL_AND_AUTH.md`
