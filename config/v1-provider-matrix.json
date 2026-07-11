@@ -1,0 +1,744 @@
+{
+  "schemaVersion": 1,
+  "taskId": "V1-04",
+  "asOf": "2026-07-11",
+  "decisionStatus": "conditionally_approved_for_implementation_planning",
+  "runtimeStatus": {
+    "realProviderCallsApproved": false,
+    "productionEnablementApproved": false,
+    "networkClientsImplemented": false,
+    "allowedWork": ["documentation", "fixture_only_tests", "metadata_only_preflight"],
+    "ordinaryContinuationIsApproval": false
+  },
+  "guardrails": {
+    "productionFallback": "fail_closed",
+    "silentMockFallback": "forbidden",
+    "providerSpendIsSeparateFromProductCredits": true,
+    "externalCallApprovalDocument": "docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md",
+    "decisionDocument": "docs/V1_PROVIDER_DECISION_MATRIX.md",
+    "realCallApprovalRequiredPerProviderAndEnvironment": true,
+    "excludedCapabilities": [
+      "rmb-payment",
+      "withdrawal-payout",
+      "kyc",
+      "invoice-tax-settlement",
+      "merchant-settlement"
+    ]
+  },
+  "budgetPolicy": {
+    "currency": "USD",
+    "priceBasis": "Public list prices accessed on 2026-07-11; taxes, negotiated discounts, data-residency uplifts, storage, network egress, moderation, and support are excluded unless stated.",
+    "globalDailyUsdCap": 63,
+    "globalMonthlyUsdCap": 1550,
+    "budgetBreachBehavior": "reject_new_jobs_and_alert",
+    "backupHasIndependentBudget": true,
+    "autoReloadProviderCredits": false,
+    "reviewCadenceDays": 30
+  },
+  "modalities": [
+    {
+      "id": "image",
+      "primaryProviderId": "openai-gpt-image-2",
+      "backupProviderId": "replicate-flux-1-1-pro",
+      "decisionState": "conditional",
+      "appPolicy": {
+        "maxConcurrentJobs": 4,
+        "timeoutSeconds": 180,
+        "maxAttempts": 2,
+        "maxJobsPerDay": 100,
+        "perJobUsdCap": 0.25,
+        "dailyUsdCap": 8,
+        "monthlyUsdCap": 200
+      },
+      "budgetExample": "100 medium 1024x1024 GPT Image 2 outputs are about USD 5.30 before input-token and tax costs.",
+      "failover": {
+        "productionBehavior": "fail_closed",
+        "automaticFailoverAllowed": false,
+        "activation": "Backup may be enabled only after its own legal, credential, budget, and staging approvals are complete.",
+        "trigger": "Primary circuit open for 5 minutes after at least 3 retryable failures or a confirmed provider incident."
+      },
+      "replacementTriggers": [
+        "model retirement or incompatible API change",
+        "30-day p95 latency above 120 seconds",
+        "7-day successful-generation rate below 97 percent",
+        "effective cost above USD 0.25 per accepted output",
+        "loss of commercial-use, retention, or supported-region eligibility"
+      ]
+    },
+    {
+      "id": "chat",
+      "primaryProviderId": "openai-gpt-5-6-terra",
+      "backupProviderId": "anthropic-claude-sonnet-5",
+      "decisionState": "conditional",
+      "appPolicy": {
+        "maxConcurrentJobs": 8,
+        "timeoutSeconds": 120,
+        "maxAttempts": 2,
+        "maxJobsPerDay": 1000,
+        "perJobUsdCap": 0.1,
+        "dailyUsdCap": 25,
+        "monthlyUsdCap": 600
+      },
+      "budgetExample": "A 2,000-input-token and 1,000-output-token GPT-5.6 Terra turn is about USD 0.020 at short-context standard rates; 1,000 such turns are about USD 20.",
+      "failover": {
+        "productionBehavior": "fail_closed",
+        "automaticFailoverAllowed": false,
+        "activation": "Backup may be enabled only after prompt, tool, safety, and response-schema parity tests pass under a separate approval.",
+        "trigger": "Primary circuit open for 2 minutes after at least 5 retryable failures, sustained 429s, or a confirmed provider incident."
+      },
+      "replacementTriggers": [
+        "model retirement or material prompt/tool incompatibility",
+        "30-day p95 time-to-first-token above 5 seconds",
+        "7-day successful-turn rate below 99 percent",
+        "evaluated task quality drops below the accepted regression threshold",
+        "effective cost above USD 0.10 per accepted turn",
+        "loss of commercial-use, retention, or supported-region eligibility"
+      ]
+    },
+    {
+      "id": "video",
+      "primaryProviderId": "google-veo-3-1-fast",
+      "backupProviderId": "runway-gen-4-5",
+      "decisionState": "conditional",
+      "appPolicy": {
+        "maxConcurrentJobs": 2,
+        "timeoutSeconds": 900,
+        "maxAttempts": 1,
+        "maxJobsPerDay": 20,
+        "perJobUsdCap": 1.2,
+        "dailyUsdCap": 20,
+        "monthlyUsdCap": 500
+      },
+      "budgetExample": "An 8-second Veo 3.1 Fast output is about USD 0.80; 20 outputs are about USD 16 before storage, egress, tax, and support costs.",
+      "failover": {
+        "productionBehavior": "fail_closed",
+        "automaticFailoverAllowed": false,
+        "activation": "Runway remains disabled until a no-training enterprise amendment, retention terms, and independent staging approval are recorded.",
+        "trigger": "Primary circuit open for 15 minutes after 3 terminal provider failures or a confirmed provider incident."
+      },
+      "replacementTriggers": [
+        "model retirement or preview-only regression",
+        "30-day p95 completion time above 10 minutes",
+        "7-day successful-generation rate below 95 percent",
+        "effective cost above USD 1.20 per accepted 8-second output",
+        "loss of C2PA, commercial-use, retention, or supported-region eligibility"
+      ]
+    },
+    {
+      "id": "music",
+      "primaryProviderId": "elevenlabs-music-v2-enterprise",
+      "backupProviderId": "google-lyria-3-pro-preview",
+      "decisionState": "conditional",
+      "appPolicy": {
+        "maxConcurrentJobs": 2,
+        "timeoutSeconds": 900,
+        "maxAttempts": 1,
+        "maxJobsPerDay": 20,
+        "perJobUsdCap": 0.6,
+        "dailyUsdCap": 10,
+        "monthlyUsdCap": 250
+      },
+      "budgetExample": "A 3-minute Eleven Music output is about USD 0.45; 20 outputs are about USD 9 before tax, storage, egress, and enterprise-contract adjustments.",
+      "failover": {
+        "productionBehavior": "fail_closed",
+        "automaticFailoverAllowed": false,
+        "activation": "Lyria 3 Pro may be enabled only after Preview risk, region, quota, retention, output-rights, and migration behavior are accepted in writing.",
+        "trigger": "Primary circuit open for 15 minutes after 3 terminal provider failures or a confirmed provider incident."
+      },
+      "replacementTriggers": [
+        "model retirement or license-table change",
+        "30-day p95 completion time above 10 minutes",
+        "7-day successful-generation rate below 95 percent",
+        "effective cost above USD 0.60 per accepted 3-minute output",
+        "loss of reseller, streaming, media, commercial-use, retention, or supported-region eligibility"
+      ]
+    }
+  ],
+  "providers": [
+    {
+      "id": "openai-gpt-image-2",
+      "modality": "image",
+      "role": "primary",
+      "company": "OpenAI",
+      "model": "gpt-image-2",
+      "decisionState": "conditional_primary",
+      "availabilityStage": "general_availability",
+      "api": {
+        "family": "Images API /v1/images/generations and /v1/images/edits",
+        "requestMode": "synchronous",
+        "callback": "none",
+        "polling": "none",
+        "cancellation": "abort the client request; no durable provider job cancellation is documented",
+        "artifactHandling": "base64 output must be copied immediately into governed application storage"
+      },
+      "pricing": {
+        "unit": "1024x1024 medium output image",
+        "rateUsd": 0.053,
+        "notes": "Text input is USD 5.00 per 1M tokens and image input is USD 8.00 per 1M tokens; higher quality can cost materially more.",
+        "exampleUsd": 5.3,
+        "exampleVolume": "100 outputs"
+      },
+      "rights": {
+        "status": "documented_subject_to_services_agreement",
+        "commercialUse": true,
+        "outputOwnership": "Customer owns Output as between Customer and OpenAI, to the extent permitted by law.",
+        "trainingUse": "API Customer Content is not used to train or improve models unless the customer explicitly opts in.",
+        "restrictions": ["customer must own input rights", "usage policies and safety filters apply", "outputs may not be unique"]
+      },
+      "data": {
+        "defaultRetention": "Up to 30 days in abuse-monitoring logs; no application-state retention for image generation and edits.",
+        "zeroRetention": "Eligible after OpenAI approval for GPT Image models, subject to image safety-review exceptions.",
+        "residency": "Image endpoints support regional storage/processing in listed regions, but gpt-image-2 was not listed in the reviewed model-specific residency row; production residency requires written confirmation.",
+        "trainingDefault": false
+      },
+      "regions": {
+        "documented": ["OpenAI-supported countries and territories"],
+        "mainlandChina": "not_listed_as_supported",
+        "productionCondition": "Run only from an explicitly supported deployment and user-access footprint."
+      },
+      "limits": {
+        "published": "Tier 1: 100,000 TPM and 5 images per minute; higher tiers scale to 250 images per minute.",
+        "appConcurrencyCap": 4,
+        "accountCheckRequired": true
+      },
+      "sla": {
+        "status": "requires_contract_review",
+        "publicCommitment": "No pay-as-you-go image-model uptime SLA was established from the reviewed public documentation.",
+        "productionCondition": "Record contracted support/SLA or formally accept best-effort service with the backup path tested."
+      },
+      "safety": {
+        "providerControls": ["prompt and output filtering", "moderation error details", "organization verification may be required"],
+        "appControls": ["pre-dispatch policy gate", "post-generation media scan", "human review for reportable or ambiguous content"]
+      },
+      "goLiveConditions": [
+        "legal approves Services Agreement, DPA, output rights, and supported-country footprint",
+        "gpt-image-2 residency and ZDR eligibility are confirmed for the production project",
+        "organization verification, account tier, spend limits, and project limits are recorded",
+        "staging quality, safety, latency, budget, and governed-storage evidence passes",
+        "the exact real-call approval package is completed"
+      ],
+      "sourceIds": ["openai-image-guide", "openai-image-model", "openai-pricing", "openai-data", "openai-services-agreement", "openai-supported-countries"]
+    },
+    {
+      "id": "replicate-flux-1-1-pro",
+      "modality": "image",
+      "role": "backup",
+      "company": "Replicate",
+      "model": "black-forest-labs/flux-1.1-pro",
+      "decisionState": "conditional_backup",
+      "availabilityStage": "public_model",
+      "api": {
+        "family": "Predictions API",
+        "requestMode": "asynchronous",
+        "callback": "webhook supported",
+        "polling": "prediction status polling supported",
+        "cancellation": "prediction cancellation/deadline supported after start with usage billed through cancellation",
+        "artifactHandling": "copy output before the one-hour API retention window expires"
+      },
+      "pricing": {
+        "unit": "output image",
+        "rateUsd": 0.04,
+        "notes": "Public model list price; failed or partial runs may still incur compute charges depending on failure point.",
+        "exampleUsd": 4,
+        "exampleVolume": "100 outputs"
+      },
+      "rights": {
+        "status": "requires_model_and_contract_review",
+        "commercialUse": true,
+        "outputOwnership": "Replicate assigns its rights in Output to the customer, subject to all model-specific third-party terms.",
+        "trainingUse": "No sufficiently explicit no-training commitment was established from the reviewed public pages.",
+        "restrictions": ["FLUX API terms and end-user flow-down apply", "model-specific terms can change", "human copyright review may be required"]
+      },
+      "data": {
+        "defaultRetention": "API prediction inputs, outputs, files, values, and logs are removed after one hour by default; web predictions are retained indefinitely.",
+        "zeroRetention": "No public zero-retention commitment was established.",
+        "residency": "No customer-selectable data-residency commitment was established from the reviewed public pages.",
+        "trainingDefault": "requires_contract_confirmation"
+      },
+      "regions": {
+        "documented": ["subject to US export controls and provider account eligibility"],
+        "mainlandChina": "not_confirmed",
+        "productionCondition": "Legal must approve the customer and end-user geography before traffic."
+      },
+      "limits": {
+        "published": "600 prediction-creation requests per minute and 3,000 requests per minute for other endpoints; actual model throughput can queue.",
+        "appConcurrencyCap": 2,
+        "accountCheckRequired": true
+      },
+      "sla": {
+        "status": "requires_enterprise_contract",
+        "publicCommitment": "Public terms disclaim uninterrupted service; enterprise pricing advertises optional performance SLAs.",
+        "productionCondition": "Obtain an enterprise SLA or explicitly accept best-effort backup operation."
+      },
+      "safety": {
+        "providerControls": ["model-specific safety behavior", "prediction safety-checking guidance"],
+        "appControls": ["mandatory prompt moderation", "mandatory output media scan", "model-license allowlist"]
+      },
+      "goLiveConditions": [
+        "Black Forest Labs and Replicate terms are approved with required end-user disclosures",
+        "DPA, no-training position, regions, and SLA/support are confirmed",
+        "the existing fixture-only shell is replaced only in an approved adapter task",
+        "webhook signatures, polling leases, deadlines, and one-hour artifact capture pass staging",
+        "an independent budget and exact real-call approval are recorded"
+      ],
+      "sourceIds": ["replicate-pricing", "replicate-model", "replicate-retention", "replicate-rate-limits", "replicate-lifecycle", "replicate-terms"]
+    },
+    {
+      "id": "openai-gpt-5-6-terra",
+      "modality": "chat",
+      "role": "primary",
+      "company": "OpenAI",
+      "model": "gpt-5.6-terra",
+      "decisionState": "conditional_primary",
+      "availabilityStage": "general_availability",
+      "api": {
+        "family": "Responses API",
+        "requestMode": "synchronous_streaming",
+        "callback": "none",
+        "polling": "not required when background mode is disabled",
+        "cancellation": "abort stream/request and mark the application turn canceled",
+        "artifactHandling": "store only governed application conversation state; send store=false"
+      },
+      "pricing": {
+        "unit": "1M short-context tokens",
+        "rateUsd": {"input": 2.5, "cachedInput": 0.25, "cacheWrite": 3.125, "output": 15},
+        "notes": "Prompts above 272K input tokens use higher long-context rates.",
+        "exampleUsd": 0.02,
+        "exampleVolume": "2,000 input plus 1,000 output tokens"
+      },
+      "rights": {
+        "status": "documented_subject_to_services_agreement",
+        "commercialUse": true,
+        "outputOwnership": "Customer owns Output as between Customer and OpenAI, to the extent permitted by law.",
+        "trainingUse": "API Customer Content is not used to train or improve models unless the customer explicitly opts in.",
+        "restrictions": ["customer must own input rights", "usage policies apply", "outputs require accuracy review where material"]
+      },
+      "data": {
+        "defaultRetention": "Up to 30 days in abuse-monitoring logs. Responses application state is avoided with store=false; background mode is disabled for V1.",
+        "zeroRetention": "Responses is eligible after approval, with store forced false under ZDR.",
+        "residency": "Regional storage is available in listed regions; regional processing for gpt-5.6-terra is documented for the US and Europe.",
+        "trainingDefault": false
+      },
+      "regions": {
+        "documented": ["United States", "Europe", "other listed storage regions"],
+        "mainlandChina": "not_listed_as_supported",
+        "productionCondition": "Run only from an explicitly supported deployment and user-access footprint."
+      },
+      "limits": {
+        "published": "Tier 1: 500 RPM, 500,000 TPM, and a 1,500,000-token batch queue.",
+        "appConcurrencyCap": 8,
+        "accountCheckRequired": true
+      },
+      "sla": {
+        "status": "requires_contract_review",
+        "publicCommitment": "No default pay-as-you-go model SLA was established from the reviewed public documentation.",
+        "productionCondition": "Record Scale/Priority or enterprise terms if an uptime commitment is required."
+      },
+      "safety": {
+        "providerControls": ["usage-policy safeguards", "safety_identifier support", "moderation endpoint"],
+        "appControls": ["stable privacy-preserving safety identifier", "input/output policy gates", "tool allowlist", "human escalation"]
+      },
+      "goLiveConditions": [
+        "legal approves Services Agreement, DPA, retention controls, and supported-country footprint",
+        "ZDR or Modified Abuse Monitoring and store=false are configured as required",
+        "prompt, tool, streaming, safety, and evaluation baselines pass",
+        "account tier, spend limits, rate limits, and kill switch are recorded",
+        "the exact real-call approval package is completed"
+      ],
+      "sourceIds": ["openai-latest-model", "openai-terra-model", "openai-pricing", "openai-data", "openai-services-agreement", "openai-supported-countries"]
+    },
+    {
+      "id": "anthropic-claude-sonnet-5",
+      "modality": "chat",
+      "role": "backup",
+      "company": "Anthropic",
+      "model": "claude-sonnet-5",
+      "decisionState": "conditional_backup",
+      "availabilityStage": "general_availability",
+      "api": {
+        "family": "Messages API",
+        "requestMode": "synchronous_streaming",
+        "callback": "none",
+        "polling": "none",
+        "cancellation": "abort stream/request and mark the application turn canceled",
+        "artifactHandling": "application owns durable conversation state"
+      },
+      "pricing": {
+        "unit": "1M tokens",
+        "rateUsd": {"input": 3, "output": 15},
+        "notes": "The matrix uses regular rates, not the temporary USD 2/USD 10 introductory rate ending 2026-08-31.",
+        "exampleUsd": 0.021,
+        "exampleVolume": "2,000 input plus 1,000 output tokens"
+      },
+      "rights": {
+        "status": "documented_subject_to_commercial_terms",
+        "commercialUse": true,
+        "outputOwnership": "Customer retains Inputs and owns Outputs, to the extent permitted by law.",
+        "trainingUse": "Commercial Customer Content is not used for model training by default.",
+        "restrictions": ["customer must own input rights", "usage policy applies", "indemnity has stated exclusions"]
+      },
+      "data": {
+        "defaultRetention": "API inputs and outputs are deleted within 30 days, except policy, legal, longer-service, or agreed-retention cases.",
+        "zeroRetention": "Available by agreement for eligible products.",
+        "residency": "Traffic may route through the US, Europe, Asia, or Australia; data is stored in the US by default.",
+        "trainingDefault": false,
+        "exceptions": "Flagged content may be retained up to 2 years, safety scores up to 7 years, and feedback up to 5 years."
+      },
+      "regions": {
+        "documented": ["supported-country access", "US storage by default"],
+        "mainlandChina": "requires_supported_country_review",
+        "productionCondition": "Legal must approve supported-country access and US storage."
+      },
+      "limits": {
+        "published": "Start tier Sonnet 5: 1,000 RPM, 2,000,000 input TPM, and 400,000 output TPM.",
+        "appConcurrencyCap": 8,
+        "accountCheckRequired": true
+      },
+      "sla": {
+        "status": "requires_contract_review",
+        "publicCommitment": "Commercial terms provide the service as-is and do not warrant uninterrupted operation.",
+        "productionCondition": "Record Priority/custom terms or formally accept best-effort backup service."
+      },
+      "safety": {
+        "providerControls": ["Usage Policy", "provider safeguards"],
+        "appControls": ["input/output policy gates", "tool allowlist", "model-specific regression suite", "human escalation"]
+      },
+      "goLiveConditions": [
+        "commercial terms, DPA, retention exceptions, US storage, and supported countries are approved",
+        "zero-retention eligibility is decided before sensitive content is allowed",
+        "prompt, tool, streaming, safety, and response-schema parity tests pass",
+        "account limits, spend cap, and kill switch are recorded",
+        "an independent staging and real-call approval is completed"
+      ],
+      "sourceIds": ["anthropic-models", "anthropic-rate-limits", "anthropic-retention", "anthropic-training", "anthropic-regions", "anthropic-commercial-terms"]
+    },
+    {
+      "id": "google-veo-3-1-fast",
+      "modality": "video",
+      "role": "primary",
+      "company": "Google Cloud",
+      "model": "veo-3.1-fast-generate-001",
+      "decisionState": "conditional_primary",
+      "availabilityStage": "general_availability",
+      "api": {
+        "family": "Gemini Enterprise Agent Platform publisher-model video API, formerly Vertex AI",
+        "requestMode": "asynchronous_provider_operation",
+        "callback": "no provider callback commitment was established",
+        "polling": "poll the provider operation with a durable lease and bounded stop conditions",
+        "cancellation": "must be confirmed against the current operation endpoint before enablement",
+        "artifactHandling": "copy final MP4 into governed storage before exposing it"
+      },
+      "pricing": {
+        "unit": "second of generated video with audio",
+        "rateUsd": 0.1,
+        "notes": "Veo 3.1 Fast public list price for 720p output.",
+        "exampleUsd": 0.8,
+        "exampleVolume": "one 8-second output"
+      },
+      "rights": {
+        "status": "requires_service_coverage_confirmation",
+        "commercialUse": true,
+        "outputOwnership": "Generated Output is Customer Data and Google does not assert ownership in new IP created in it.",
+        "trainingUse": "Google does not train or fine-tune models on Customer Data without prior permission or instruction.",
+        "restrictions": ["Generative AI prohibited-use rules apply", "customer must retain safety filters", "confirm Veo is covered by generated-output indemnity"]
+      },
+      "data": {
+        "defaultRetention": "Request/response logging is off by default; abuse-monitoring prompt logging may apply. In-memory caching can last up to 24 hours and can be disabled.",
+        "zeroRetention": "Possible only after all documented abuse-monitoring, advanced-safety, logging, and cache conditions are satisfied.",
+        "residency": "The GA Veo 3.1 model card documents data residency and us-central1 availability.",
+        "trainingDefault": false
+      },
+      "regions": {
+        "documented": ["us-central1"],
+        "mainlandChina": "not_a_documented_model_region",
+        "productionCondition": "Use the documented US region and complete cross-border/data-location review."
+      },
+      "limits": {
+        "published": "The GA Veo 3.1 model card lists 50 regional online prediction requests per minute per base model.",
+        "appConcurrencyCap": 2,
+        "accountCheckRequired": true
+      },
+      "sla": {
+        "status": "requires_written_coverage_confirmation",
+        "publicCommitment": "The reviewed Vertex AI SLA did not clearly list the Google publisher generative-video model as a covered service; Preview features are excluded.",
+        "productionCondition": "Confirm model-specific SLA/support and whether Provisioned Throughput is required."
+      },
+      "safety": {
+        "providerControls": ["safety filters", "C2PA Content Credentials", "prompt rewriting"],
+        "appControls": ["input rights check", "prompt moderation", "output media scan", "human review", "C2PA metadata preservation"]
+      },
+      "goLiveConditions": [
+        "Google Cloud agreement, DPA, generated-output indemnity coverage, region, and SLA are approved",
+        "abuse logging, zero-retention exception, request logging, and cache settings are recorded",
+        "operation polling, cancellation behavior, timeouts, C2PA preservation, and artifact copy pass staging",
+        "quota, Provisioned Throughput decision, budget cap, and kill switch are recorded",
+        "the exact real-call approval package is completed"
+      ],
+      "sourceIds": ["google-veo-model", "google-pricing", "google-zero-retention", "google-service-terms", "google-vertex-sla"]
+    },
+    {
+      "id": "runway-gen-4-5",
+      "modality": "video",
+      "role": "backup",
+      "company": "Runway",
+      "model": "gen4.5",
+      "decisionState": "blocked_pending_enterprise_terms",
+      "availabilityStage": "public_api",
+      "api": {
+        "family": "Runway task API",
+        "requestMode": "asynchronous",
+        "callback": "no webhook commitment was established from the reviewed public guide",
+        "polling": "GET /v1/tasks/:id until a terminal status",
+        "cancellation": "verify the current task cancellation endpoint before enablement",
+        "artifactHandling": "download ephemeral output URLs into governed storage within 24-48 hours"
+      },
+      "pricing": {
+        "unit": "second of generated video",
+        "rateUsd": 0.12,
+        "notes": "Gen-4.5 costs 12 credits per second and API credits cost USD 0.01 each.",
+        "exampleUsd": 0.96,
+        "exampleVolume": "one 8-second output"
+      },
+      "rights": {
+        "status": "blocked_pending_no_training_enterprise_amendment",
+        "commercialUse": true,
+        "outputOwnership": "Runway does not claim ownership and does not restrict commercial Output use under the public terms.",
+        "trainingUse": "Public terms grant Runway a perpetual license and allow Inputs and Outputs to train and improve models.",
+        "restrictions": ["Powered by Runway attribution applies to API applications", "end-user terms must flow down", "public training terms are unacceptable for sensitive production content"]
+      },
+      "data": {
+        "defaultRetention": "Ephemeral uploads expire after 24 hours and output URLs expire within 24-48 hours; broader task/content retention is not clearly stated in the reviewed public docs.",
+        "zeroRetention": "No public zero-retention control was established.",
+        "residency": "No customer-selectable residency commitment was established; public terms describe US-controlled service.",
+        "trainingDefault": true
+      },
+      "regions": {
+        "documented": ["international access subject to local law and provider eligibility"],
+        "mainlandChina": "not_confirmed",
+        "productionCondition": "Legal must approve access geography and data transfers."
+      },
+      "limits": {
+        "published": "Tier 1: 1 concurrent video task, 50 generations per rolling day, and USD 100 monthly spend; higher tiers increase automatically with purchases.",
+        "appConcurrencyCap": 1,
+        "accountCheckRequired": true
+      },
+      "sla": {
+        "status": "requires_enterprise_contract",
+        "publicCommitment": "Public terms do not warrant uninterrupted service; guaranteed minimum concurrency requires an enterprise exception.",
+        "productionCondition": "Obtain written SLA/support, guaranteed concurrency, retention, and no-training terms."
+      },
+      "safety": {
+        "providerControls": ["content moderation API behavior", "provider task states"],
+        "appControls": ["input rights check", "prompt moderation", "output media scan", "human review"]
+      },
+      "goLiveConditions": [
+        "enterprise terms remove or adequately limit training use and define retention/deletion",
+        "Powered by Runway attribution and end-user flow-down are accepted by product/legal",
+        "region, DPA, SLA, guaranteed concurrency, and support are recorded",
+        "task polling, cancellation, throttled state, and ephemeral artifact capture pass staging",
+        "an independent budget and exact real-call approval are recorded"
+      ],
+      "sourceIds": ["runway-models", "runway-pricing", "runway-tiers", "runway-using-api", "runway-outputs", "runway-uploads", "runway-terms"]
+    },
+    {
+      "id": "elevenlabs-music-v2-enterprise",
+      "modality": "music",
+      "role": "primary",
+      "company": "ElevenLabs",
+      "model": "music_v2",
+      "decisionState": "blocked_pending_enterprise_music_contract",
+      "availabilityStage": "paid_api",
+      "api": {
+        "family": "Music compose API",
+        "requestMode": "synchronous_or_streaming_wrapped_by_internal_job",
+        "callback": "none",
+        "polling": "none",
+        "cancellation": "abort the request/stream; application job cancellation remains authoritative",
+        "artifactHandling": "stream or copy the MP3 response into governed storage"
+      },
+      "pricing": {
+        "unit": "minute of generated music",
+        "rateUsd": 0.15,
+        "notes": "Public API list price; enterprise contract pricing can differ. V1 caps tracks at 3 minutes even though the API parameter permits longer values.",
+        "exampleUsd": 0.45,
+        "exampleVolume": "one 3-minute output"
+      },
+      "rights": {
+        "status": "blocked_pending_enterprise_music_contract",
+        "commercialUse": true,
+        "outputOwnership": "Customer retains Output rights as between the parties, subject to Music and model-specific terms.",
+        "trainingUse": "Public terms permit model-improvement use unless the account opts out; prior uses are unaffected.",
+        "restrictions": ["self-serve plans prohibit reseller and music-library rights", "full film, TV, radio, and Studio Games rights require Enterprise Music", "plan eligibility depends on organization size", "streaming and media rights vary by plan"]
+      },
+      "data": {
+        "defaultRetention": "Standard customer data is hosted in the US; the reviewed public page did not state a default Music-content deletion period.",
+        "zeroRetention": "Optional for eligible enterprise configurations; Music availability under ZRM must be confirmed.",
+        "residency": "Enterprise isolated environments are offered in the EU, India, and Singapore; processing can still leave the region unless stricter conditions apply.",
+        "trainingDefault": "opt_out_required_before_any_approved_call"
+      },
+      "regions": {
+        "documented": ["United States default", "European Union enterprise", "India enterprise", "Singapore enterprise"],
+        "mainlandChina": "not_a_documented_residency_region",
+        "productionCondition": "Select and contract an eligible region before integration."
+      },
+      "limits": {
+        "published": "Music concurrency is 2 on Starter/Creator/Pro, 5 on Scale/Business/Enterprise Music Lite, and 10+ on Enterprise Music.",
+        "appConcurrencyCap": 2,
+        "accountCheckRequired": true
+      },
+      "sla": {
+        "status": "requires_enterprise_contract",
+        "publicCommitment": "Music terms provide the service as-is; enterprise pricing advertises custom DPA/SLA terms.",
+        "productionCondition": "Enterprise Music must include the agreed SLA, support, deletion, and region terms."
+      },
+      "safety": {
+        "providerControls": ["copyrighted artist/lyric prompt detection", "bad_prompt suggestions", "music-specific prohibited uses"],
+        "appControls": ["rights attestation", "artist-name and lyric checks", "output review", "license metadata persistence", "report/takedown path"]
+      },
+      "goLiveConditions": [
+        "Enterprise Music contract grants reseller, streaming, media, library/repository, and required API rights",
+        "DPA, retention/deletion, no-training opt-out, region, and ZRM model eligibility are recorded",
+        "SLA, support, price, concurrency, and organization eligibility are confirmed",
+        "copyright filters, license metadata, streaming, abort, artifact storage, and download controls pass staging",
+        "the exact real-call approval package is completed"
+      ],
+      "sourceIds": ["eleven-music-overview", "eleven-music-api", "eleven-compose-reference", "eleven-pricing", "eleven-music-terms", "eleven-model-terms", "eleven-terms", "eleven-data-residency"]
+    },
+    {
+      "id": "google-lyria-3-pro-preview",
+      "modality": "music",
+      "role": "backup",
+      "company": "Google Cloud",
+      "model": "lyria-3-pro-preview",
+      "decisionState": "conditional_preview_backup",
+      "availabilityStage": "preview",
+      "api": {
+        "family": "Gemini Enterprise Agent Platform Interactions API",
+        "requestMode": "interaction_request_with_status_and_inline_audio",
+        "callback": "none documented",
+        "polling": "adapter must confirm whether nonterminal interaction states require polling",
+        "cancellation": "not established for the Preview interaction flow",
+        "artifactHandling": "decode returned audio and persist immediately in governed storage"
+      },
+      "pricing": {
+        "unit": "complete song up to 3 minutes",
+        "rateUsd": 0.08,
+        "notes": "Public Preview list price; price and model behavior can change without GA notice.",
+        "exampleUsd": 1.6,
+        "exampleVolume": "20 complete songs"
+      },
+      "rights": {
+        "status": "conditional_preview_terms",
+        "commercialUse": true,
+        "outputOwnership": "Preview documentation expressly allows production/commercial use and third-party disclosure; Generated Output is Customer Data and Google asserts no ownership in new IP.",
+        "trainingUse": "Google does not train or fine-tune models on Customer Data without prior permission or instruction.",
+        "restrictions": ["Pre-GA terms apply", "no Google indemnity for Preview", "commercial/product behavior can change or be discontinued"]
+      },
+      "data": {
+        "defaultRetention": "General Agent Platform abuse-monitoring and cache rules apply; Preview-specific Lyria retention was not separately established.",
+        "zeroRetention": "Requires model-specific confirmation; some advanced AI features cannot achieve ZDR.",
+        "residency": "The Interactions example uses a global location; Preview data-location guarantees require written confirmation.",
+        "trainingDefault": false
+      },
+      "regions": {
+        "documented": ["global API location in the reviewed interaction example"],
+        "mainlandChina": "not_a_documented_model_region",
+        "productionCondition": "Accept cross-border processing only after legal and contract review."
+      },
+      "limits": {
+        "published": "No stable public Lyria 3 Pro quota was established from the reviewed model page.",
+        "appConcurrencyCap": 1,
+        "accountCheckRequired": true
+      },
+      "sla": {
+        "status": "no_sla_preview",
+        "publicCommitment": "Google Pre-GA terms expressly exclude SLA and indemnity.",
+        "productionCondition": "Backup use requires a signed acceptance of Preview risk and a migration/disable plan."
+      },
+      "safety": {
+        "providerControls": ["Google generative AI safety policies", "provider music-generation filters"],
+        "appControls": ["rights attestation", "artist/lyrics policy gate", "output review", "license metadata persistence", "report/takedown path"]
+      },
+      "goLiveConditions": [
+        "product/legal explicitly accept Pre-GA no-SLA and no-indemnity risk",
+        "region, quota, retention, ZDR eligibility, model lifecycle, and interaction polling are confirmed",
+        "commercial output rights and user-facing disclosures are approved",
+        "quality, safety, latency, budget, and migration tests pass",
+        "an independent exact real-call approval is completed"
+      ],
+      "sourceIds": ["google-lyria-model", "google-lyria-api", "google-pricing", "google-zero-retention", "google-service-terms"]
+    }
+  ],
+  "rejectedCandidates": [
+    {
+      "id": "openai-sora-2-video-backup",
+      "reason": "OpenAI announced removal of the Videos API, sora-2, and sora-2-pro on 2026-09-24 with no recommended replacement.",
+      "sourceIds": ["openai-sora-deprecation"]
+    },
+    {
+      "id": "google-lyria-3-primary",
+      "reason": "Lyria 3 remains Preview and has no SLA or Google indemnity; it is retained only as a conditional backup.",
+      "sourceIds": ["google-lyria-model", "google-service-terms"]
+    },
+    {
+      "id": "replicate-flux-primary",
+      "reason": "Replicate aligns with the existing fixture shell but has an extra model-license layer and no public SLA; it remains the image backup while the clearer OpenAI rights/data path is primary.",
+      "sourceIds": ["replicate-terms", "replicate-pricing"]
+    }
+  ],
+  "blockingConditions": [
+    "No provider is production-approved by this decision record.",
+    "Every provider requires an exact staging real-call approval before the first external request.",
+    "ElevenLabs Music requires an Enterprise Music contract that grants platform/reseller and complete required media rights.",
+    "Runway requires enterprise no-training, retention/deletion, residency, SLA, and support terms before backup enablement.",
+    "Google must confirm Veo model-specific SLA/indemnity coverage and Lyria Preview region/quota/retention behavior.",
+    "OpenAI must confirm production-project supported geography, gpt-image-2 residency, and selected retention controls.",
+    "Anthropic must be accepted with US storage or replaced by a contracted regional deployment.",
+    "Provider price, model availability, account quota, legal terms, and supported regions must be rechecked within 30 days of production launch."
+  ],
+  "sources": [
+    {"id": "openai-latest-model", "official": true, "accessed": "2026-07-11", "url": "https://developers.openai.com/api/docs/guides/latest-model.md", "dimensions": ["model", "api", "safety"]},
+    {"id": "openai-terra-model", "official": true, "accessed": "2026-07-11", "url": "https://developers.openai.com/api/docs/models/gpt-5.6-terra", "dimensions": ["model", "capability", "limits"]},
+    {"id": "openai-image-guide", "official": true, "accessed": "2026-07-11", "url": "https://developers.openai.com/api/docs/guides/image-generation", "dimensions": ["api", "price", "latency", "safety"]},
+    {"id": "openai-image-model", "official": true, "accessed": "2026-07-11", "url": "https://developers.openai.com/api/docs/models/gpt-image-2", "dimensions": ["model", "capability", "limits"]},
+    {"id": "openai-pricing", "official": true, "accessed": "2026-07-11", "url": "https://developers.openai.com/api/docs/pricing", "dimensions": ["price"]},
+    {"id": "openai-data", "official": true, "accessed": "2026-07-11", "url": "https://developers.openai.com/api/docs/guides/your-data", "dimensions": ["training", "retention", "residency"]},
+    {"id": "openai-services-agreement", "official": true, "accessed": "2026-07-11", "url": "https://openai.com/policies/services-agreement/", "dimensions": ["rights", "commercial_use", "training", "regions"]},
+    {"id": "openai-supported-countries", "official": true, "accessed": "2026-07-11", "url": "https://developers.openai.com/api/docs/supported-countries", "dimensions": ["regions"]},
+    {"id": "openai-sora-deprecation", "official": true, "accessed": "2026-07-11", "url": "https://developers.openai.com/api/docs/deprecations#2026-03-24-sora-2-video-generation-models-and-videos-api", "dimensions": ["lifecycle", "deprecation"]},
+    {"id": "replicate-pricing", "official": true, "accessed": "2026-07-11", "url": "https://replicate.com/pricing", "dimensions": ["price", "sla"]},
+    {"id": "replicate-model", "official": true, "accessed": "2026-07-11", "url": "https://replicate.com/black-forest-labs/flux-1.1-pro", "dimensions": ["model", "capability", "price"]},
+    {"id": "replicate-retention", "official": true, "accessed": "2026-07-11", "url": "https://replicate.com/docs/topics/predictions/data-retention", "dimensions": ["retention"]},
+    {"id": "replicate-rate-limits", "official": true, "accessed": "2026-07-11", "url": "https://replicate.com/docs/topics/predictions/rate-limits", "dimensions": ["limits"]},
+    {"id": "replicate-lifecycle", "official": true, "accessed": "2026-07-11", "url": "https://replicate.com/docs/topics/predictions/lifecycle", "dimensions": ["lifecycle", "polling", "cancellation"]},
+    {"id": "replicate-terms", "official": true, "accessed": "2026-07-11", "url": "https://replicate.com/terms", "dimensions": ["rights", "commercial_use", "model_license", "sla", "regions"]},
+    {"id": "anthropic-models", "official": true, "accessed": "2026-07-11", "url": "https://platform.claude.com/docs/en/about-claude/models/overview", "dimensions": ["model", "price", "latency"]},
+    {"id": "anthropic-rate-limits", "official": true, "accessed": "2026-07-11", "url": "https://platform.claude.com/docs/en/api/rate-limits", "dimensions": ["limits", "budget"]},
+    {"id": "anthropic-retention", "official": true, "accessed": "2026-07-11", "url": "https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data", "dimensions": ["retention", "deletion"]},
+    {"id": "anthropic-training", "official": true, "accessed": "2026-07-11", "url": "https://privacy.claude.com/en/articles/7996868-is-my-data-used-for-model-training", "dimensions": ["training"]},
+    {"id": "anthropic-regions", "official": true, "accessed": "2026-07-11", "url": "https://privacy.claude.com/en/articles/7996890-where-are-your-servers-located-do-you-host-your-models-on-eu-servers", "dimensions": ["regions", "residency"]},
+    {"id": "anthropic-commercial-terms", "official": true, "accessed": "2026-07-11", "url": "https://www.anthropic.com/legal/commercial-terms", "dimensions": ["rights", "commercial_use", "training", "sla"]},
+    {"id": "google-veo-model", "official": true, "accessed": "2026-07-11", "url": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/veo/3-1-generate", "dimensions": ["model", "capability", "regions", "limits", "safety"]},
+    {"id": "google-lyria-model", "official": true, "accessed": "2026-07-11", "url": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/lyria/lyria-3", "dimensions": ["model", "preview", "commercial_use"]},
+    {"id": "google-lyria-api", "official": true, "accessed": "2026-07-11", "url": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/music/generate-music", "dimensions": ["api", "lifecycle", "artifact"]},
+    {"id": "google-pricing", "official": true, "accessed": "2026-07-11", "url": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing", "dimensions": ["price"]},
+    {"id": "google-zero-retention", "official": true, "accessed": "2026-07-11", "url": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/resources/zero-data-retention", "dimensions": ["training", "retention", "residency"]},
+    {"id": "google-service-terms", "official": true, "accessed": "2026-07-11", "url": "https://cloud.google.com/terms/service-terms", "dimensions": ["rights", "commercial_use", "training", "retention", "sla", "preview"]},
+    {"id": "google-vertex-sla", "official": true, "accessed": "2026-07-11", "url": "https://cloud.google.com/vertex-ai/sla", "dimensions": ["sla"]},
+    {"id": "runway-models", "official": true, "accessed": "2026-07-11", "url": "https://docs.dev.runwayml.com/guides/models/", "dimensions": ["model", "capability"]},
+    {"id": "runway-pricing", "official": true, "accessed": "2026-07-11", "url": "https://docs.dev.runwayml.com/guides/pricing/", "dimensions": ["price"]},
+    {"id": "runway-tiers", "official": true, "accessed": "2026-07-11", "url": "https://docs.dev.runwayml.com/usage/tiers/", "dimensions": ["limits", "budget"]},
+    {"id": "runway-using-api", "official": true, "accessed": "2026-07-11", "url": "https://docs.dev.runwayml.com/guides/using-the-api/", "dimensions": ["api", "lifecycle"]},
+    {"id": "runway-outputs", "official": true, "accessed": "2026-07-11", "url": "https://docs.dev.runwayml.com/assets/outputs/", "dimensions": ["retention", "artifact"]},
+    {"id": "runway-uploads", "official": true, "accessed": "2026-07-11", "url": "https://docs.dev.runwayml.com/assets/uploads/", "dimensions": ["retention", "artifact"]},
+    {"id": "runway-terms", "official": true, "accessed": "2026-07-11", "url": "https://runwayml.com/terms-of-use", "dimensions": ["rights", "commercial_use", "training", "regions", "sla"]},
+    {"id": "eleven-music-overview", "official": true, "accessed": "2026-07-11", "url": "https://elevenlabs.io/docs/overview/capabilities/music", "dimensions": ["model", "capability", "commercial_use"]},
+    {"id": "eleven-music-api", "official": true, "accessed": "2026-07-11", "url": "https://elevenlabs.io/docs/eleven-api/guides/cookbooks/music", "dimensions": ["api", "safety"]},
+    {"id": "eleven-compose-reference", "official": true, "accessed": "2026-07-11", "url": "https://elevenlabs.io/docs/api-reference/music/compose", "dimensions": ["api", "duration", "artifact"]},
+    {"id": "eleven-pricing", "official": true, "accessed": "2026-07-11", "url": "https://elevenlabs.io/pricing/api", "dimensions": ["price", "sla"]},
+    {"id": "eleven-music-terms", "official": true, "accessed": "2026-07-11", "url": "https://elevenlabs.io/music-terms", "dimensions": ["rights", "commercial_use", "safety"]},
+    {"id": "eleven-model-terms", "official": true, "accessed": "2026-07-11", "url": "https://elevenlabs.io/eleven-music-model-specific-terms", "dimensions": ["rights", "commercial_use", "limits", "reseller"]},
+    {"id": "eleven-terms", "official": true, "accessed": "2026-07-11", "url": "https://elevenlabs.io/terms-of-use", "dimensions": ["rights", "training", "commercial_use"]},
+    {"id": "eleven-data-residency", "official": true, "accessed": "2026-07-11", "url": "https://elevenlabs.io/docs/overview/administration/data-residency", "dimensions": ["retention", "residency", "regions"]}
+  ]
+}
