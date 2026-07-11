@@ -7,11 +7,16 @@ const providerBudgetAuditActions = new Set([
   'creative.provider_budget.dispatch_blocked',
   'creative.provider_cost.anomaly_detected',
   'creative.provider_alert.dispatch',
+  'creative.provider_cost.reserved',
+  'creative.provider_cost.settled',
+  'creative.provider_cost.released',
+  'creative.provider_cost.reconciliation_required',
 ])
 
 const providerBudgetAuditResourceTypes = new Set([
   'creative_provider_budget',
   'creative_provider_budget_alert',
+  'creative_provider_cost_ledger',
 ])
 
 const providerLifecycleAuditActions = new Set([
@@ -75,12 +80,14 @@ const providerBudgetIdentifierKeys = new Set([
   'dispatchMode',
   'estimateConfidence',
   'idempotencyKey',
+  'generationId',
   'mode',
   'persistedFrom',
   'providerAccountRef',
   'providerId',
   'providerModelId',
   'providerUsageUnit',
+  'pricingSnapshotHash',
   'reasonCode',
   'severity',
   'sourceKey',
@@ -490,6 +497,53 @@ export const serializeCreativeOutputIngestion = (ingestion) => ({
   completedAt: ingestion.completedAt ?? null,
   createdAt: ingestion.createdAt ?? '',
   updatedAt: ingestion.updatedAt ?? '',
+})
+
+export const serializeCreativeProviderBudgetWindow = (window) => ({
+  id: String(window.id),
+  budgetScope: window.budgetScope,
+  providerId: window.providerId,
+  providerAccountRef: window.providerAccountRef,
+  workspace: window.workspace,
+  currency: window.currency,
+  windowStart: window.windowStart ?? '',
+  windowEnd: window.windowEnd ?? '',
+  capMicros: String(window.capMicros),
+  reservedMicros: String(window.reservedMicros),
+  spentMicros: String(window.spentMicros),
+  releasedMicros: String(window.releasedMicros),
+  createdAt: window.createdAt ?? '',
+  updatedAt: window.updatedAt ?? '',
+})
+
+export const serializeCreativeProviderCostLedger = (ledger, budgetWindow = null) => ({
+  id: String(ledger.id),
+  sourceKey: ledger.sourceKey,
+  generationId: ledger.generationId,
+  budgetWindowId: ledger.budgetWindowId,
+  providerId: ledger.providerId,
+  providerAccountRef: ledger.providerAccountRef,
+  providerModelId: ledger.providerModelId,
+  providerJobId: ledger.providerJobId ?? null,
+  workspace: ledger.workspace,
+  mode: ledger.mode,
+  currency: ledger.currency,
+  pricingSnapshot: ledger.pricingSnapshot,
+  pricingSnapshotHash: ledger.pricingSnapshotHash,
+  estimateMicros: String(ledger.estimateMicros),
+  reservedMicros: String(ledger.reservedMicros),
+  actualMicros: ledger.actualMicros == null ? null : String(ledger.actualMicros),
+  status: ledger.status,
+  usage: ledger.usage ?? null,
+  risk: ledger.risk ?? null,
+  reasonCode: ledger.reasonCode ?? null,
+  reservedAt: ledger.reservedAt ?? '',
+  settledAt: ledger.settledAt ?? null,
+  releasedAt: ledger.releasedAt ?? null,
+  reconciliationAt: ledger.reconciliationAt ?? null,
+  createdAt: ledger.createdAt ?? '',
+  updatedAt: ledger.updatedAt ?? '',
+  budgetWindow: budgetWindow ? serializeCreativeProviderBudgetWindow(budgetWindow) : null,
 })
 
 export const serializeNotification = (notification) => ({

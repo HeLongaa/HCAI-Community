@@ -445,6 +445,20 @@
       "ownerTasks": ["V1-40", "V1-65", "V1-67"]
     },
     {
+      "id": "provider_cost_budget_records",
+      "classification": "confidential",
+      "prismaModels": ["CreativeProviderBudgetWindow", "CreativeProviderCostLedger"],
+      "locations": ["postgres"],
+      "dataSubjects": ["user"],
+      "purposes": ["creative_generation", "internal_accounting", "support_operations"],
+      "exampleFields": ["safe provider/model references", "pricing snapshot hash and terms", "estimate/actual micros", "budget cap/reserved/spent micros", "ledger status", "normalized usage", "safe reconciliation reason"],
+      "accessRoles": ["authorized_service", "creative_accounting_operator", "auditor"],
+      "retentionPolicyId": "internal_ledger_plus_730d",
+      "exportPolicy": "include_user_attributable_cost_status_summary_without_provider_account_or_budget_scope_secrets",
+      "deletionPolicy": "anonymize_subject_and_generation_reference_retain_immutable_financial_reconciliation_evidence",
+      "ownerTasks": ["V1-10", "V1-46", "V1-65", "V1-67"]
+    },
+    {
       "id": "notification_records",
       "classification": "confidential",
       "prismaModels": ["Notification"],
@@ -526,7 +540,7 @@
       "retentionPolicyId": "transient_request_zero",
       "exportPolicy": "exclude_raw_payload_include_normalized_user_result",
       "deletionPolicy": "discard_after_allowlisted_normalization_and_hashing",
-      "ownerTasks": ["V1-05", "V1-06", "V1-07", "V1-08", "V1-09"]
+      "ownerTasks": ["V1-05", "V1-06", "V1-07", "V1-08", "V1-09", "V1-10"]
     },
     {
       "id": "observability_logs_traces_metrics",
@@ -710,7 +724,7 @@
       "id": "runtime_to_postgres_normalized_provider_evidence",
       "from": "worker_memory",
       "to": "postgres",
-      "dataAssetIds": ["creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "audit_event_records"],
+      "dataAssetIds": ["creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "provider_cost_budget_records", "audit_event_records"],
       "requiredControls": ["field allowlist", "safe ids and hashes", "redacted previews", "no raw request/response", "idempotency"],
       "destinationPersistence": "retention_policy_applies"
     },
@@ -718,7 +732,7 @@
       "id": "api_to_admin_console",
       "from": "api_memory",
       "to": "admin_console",
-      "dataAssetIds": ["marketplace_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "moderation_review_records", "audit_event_records", "security_event_records"],
+      "dataAssetIds": ["marketplace_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "provider_cost_budget_records", "moderation_review_records", "audit_event_records", "security_event_records"],
       "requiredControls": ["RBAC", "purpose-specific allowlist", "redaction", "pagination", "elevated access audit", "no private URL or raw prompt"],
       "destinationPersistence": "none"
     },
@@ -979,7 +993,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 29,
+    "modelCount": 31,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",
@@ -1017,6 +1031,7 @@
       "server/src/creative/manualReplayRequestService.js",
       "server/src/creative/providerOutputFetcher.js",
       "server/src/creative/providerOutputIngestion.js",
+      "server/src/creative/providerCostContract.js",
       "server/src/modules/admin/routes.js",
       "server/src/media/scanProvider.js",
       "server/src/storage/archiveWriter.js",
@@ -1031,6 +1046,7 @@
     { "taskId": "V1-07", "scope": "Provider status polling projection, retry scheduling, timeout recovery, worker isolation, and safe audit boundary." },
     { "taskId": "V1-08", "scope": "Idempotent generation cancel/retry mutations, child-attempt linkage, reviewed manual replay, and raw-prompt/provider-payload exclusion." },
     { "taskId": "V1-09", "scope": "Source-keyed Provider output ingestion, SSRF and byte boundaries, MIME/checksum validation, deterministic storage, scanner gating, and raw-URL exclusion." },
+    { "taskId": "V1-10", "scope": "Provider-independent pricing snapshots, six-decimal cost normalization, durable atomic budget reservation, idempotent settlement/release/reconciliation, and low-cardinality operations evidence." },
     { "taskId": "V1-48", "scope": "OAuth scopes, identifiers, unlink, region, and session evidence." },
     { "taskId": "V1-49", "scope": "PostgreSQL migration, encrypted backup, expiry, restore, and deletion rehearsal." },
     { "taskId": "V1-50", "scope": "Object storage/CDN private access and lifecycle deletion." },

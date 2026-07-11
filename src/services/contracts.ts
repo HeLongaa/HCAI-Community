@@ -796,6 +796,28 @@ export type ApiCreativeGenerationRecord = {
       completedAt: string | null
     }
   }
+  providerCostLedgerEvidence?: {
+    available: boolean
+    status: string | null
+    providerId?: string | null
+    workspace?: string | null
+    currency?: string | null
+    estimateAmount?: number | null
+    actualAmount?: number | null
+    reservedAmount?: number | null
+    reasonCode?: string | null
+    pricingSnapshotHashPresent?: boolean
+    pricingSnapshotHashPreview?: string | null
+    budget?: {
+      scope: string | null
+      capAmount: number | null
+      reservedAmount: number | null
+      spentAmount: number | null
+      releasedAmount: number | null
+      windowStart: string | null
+      windowEnd: string | null
+    }
+  }
 }
 
 export type CreativeGenerationMutationType = 'cancel' | 'retry' | 'manual_replay'
@@ -899,6 +921,26 @@ export type ApiCreativeProviderCost = {
     costExceededEstimate: boolean | null
     providerUsageMissing: boolean | null
     billingReconciliationRequired: boolean | null
+  }
+  pricingSnapshot: null | {
+    schemaVersion: string | null
+    snapshotHash: string | null
+    currency: string | null
+    billingUnit: string | null
+    unitPriceMicros: string | null
+    sourceType: string | null
+    calculatorVersion: string | null
+    effectiveAt: string | null
+    capturedAt: string | null
+    expiresAt: string | null
+  }
+  ledger: null | {
+    id: string | null
+    status: string | null
+    estimateMicros: string | null
+    actualMicros: string | null
+    currency: string | null
+    reasonCode: string | null
   }
 }
 

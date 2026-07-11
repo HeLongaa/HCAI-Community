@@ -23,6 +23,7 @@ import { repositories } from '../../repositories/index.js'
 import { getProtectedRolePermissions } from '../../auth/permissions.js'
 import { defaultPointAdjustmentPolicy, getDirectLimitForActor } from '../../points/adjustmentPolicy.js'
 import { safeCreativeCreditMetadata, safeErrorPreview, safeProviderJobIdEvidence } from '../../creative/generationRecords.js'
+import { providerMoneyAmount } from '../../creative/providerCostContract.js'
 import { safeProviderLifecycleEvidenceIdentifier } from '../../repositories/providerLifecycleWiring.js'
 import {
   cancelCreativeGeneration,
@@ -82,6 +83,8 @@ const safeProviderCost = (providerCost) => {
   const actual = asRecord(source.actual)
   const budget = asRecord(source.budget)
   const risk = asRecord(source.risk)
+  const pricingSnapshot = asRecord(source.pricingSnapshot)
+  const ledger = asRecord(source.ledger)
 
   return {
     schemaVersion: safeString(source.schemaVersion),
@@ -141,6 +144,30 @@ const safeProviderCost = (providerCost) => {
       providerUsageMissing: safeBoolean(risk.providerUsageMissing),
       billingReconciliationRequired: safeBoolean(risk.billingReconciliationRequired),
     },
+    pricingSnapshot: Object.keys(pricingSnapshot).length > 0
+      ? {
+          schemaVersion: safeString(pricingSnapshot.schemaVersion),
+          snapshotHash: safeString(pricingSnapshot.snapshotHash),
+          currency: safeString(pricingSnapshot.currency),
+          billingUnit: safeString(pricingSnapshot.billingUnit),
+          unitPriceMicros: safeString(pricingSnapshot.unitPriceMicros),
+          sourceType: safeString(pricingSnapshot.sourceType),
+          calculatorVersion: safeString(pricingSnapshot.calculatorVersion),
+          effectiveAt: safeString(pricingSnapshot.effectiveAt),
+          capturedAt: safeString(pricingSnapshot.capturedAt),
+          expiresAt: safeString(pricingSnapshot.expiresAt),
+        }
+      : null,
+    ledger: Object.keys(ledger).length > 0
+      ? {
+          id: safeProviderCostEvidence(ledger.id),
+          status: safeString(ledger.status),
+          estimateMicros: safeString(ledger.estimateMicros),
+          actualMicros: safeString(ledger.actualMicros),
+          currency: safeString(ledger.currency),
+          reasonCode: safeString(ledger.reasonCode),
+        }
+      : null,
   }
 }
 
@@ -355,19 +382,66 @@ const buildOutputIngestionEvidence = async (generation, ingestionRepository) => 
   }
 }
 
-const attachProviderReplayEvidence = async (generation, replayLedger, mutationRepository, ingestionRepository) => ({
+const buildProviderCostLedgerEvidence = async (generation, costRepository) => {
+  if (!costRepository?.findForGeneration) {
+    return { available: false, status: null }
+  }
+  const ledger = await costRepository.findForGeneration(generation.id)
+  if (!ledger) return { available: true, status: null }
+  const budget = ledger.budgetWindow ?? {}
+  return {
+    available: true,
+    status: safeString(ledger.status),
+    providerId: safeProviderCostEvidence(ledger.providerId),
+    workspace: safeString(ledger.workspace),
+    currency: safeString(ledger.currency),
+    estimateAmount: providerMoneyAmount(ledger.estimateMicros),
+    actualAmount: providerMoneyAmount(ledger.actualMicros),
+    reservedAmount: providerMoneyAmount(ledger.reservedMicros),
+    reasonCode: safeString(ledger.reasonCode),
+    pricingSnapshotHashPresent: Boolean(ledger.pricingSnapshotHash),
+    pricingSnapshotHashPreview: ledger.pricingSnapshotHash
+      ? safeString(String(ledger.pricingSnapshotHash).slice(0, 12))
+      : null,
+    budget: {
+      scope: safeProviderCostEvidence(budget.budgetScope),
+      capAmount: providerMoneyAmount(budget.capMicros),
+      reservedAmount: providerMoneyAmount(budget.reservedMicros),
+      spentAmount: providerMoneyAmount(budget.spentMicros),
+      releasedAmount: providerMoneyAmount(budget.releasedMicros),
+      windowStart: safeString(budget.windowStart),
+      windowEnd: safeString(budget.windowEnd),
+    },
+  }
+}
+
+const attachProviderReplayEvidence = async (
+  generation,
+  replayLedger,
+  mutationRepository,
+  ingestionRepository,
+  costRepository,
+) => ({
   ...sanitizeCreativeGenerationHistory(generation),
   providerReplayEvidence: await buildProviderReplayEvidence(generation, replayLedger),
   mutationEvidence: await buildGenerationMutationEvidence(generation, mutationRepository),
   outputIngestionEvidence: await buildOutputIngestionEvidence(generation, ingestionRepository),
+  providerCostLedgerEvidence: await buildProviderCostLedgerEvidence(generation, costRepository),
 })
 
-const attachProviderReplayEvidenceToPage = async (items, replayLedger, mutationRepository, ingestionRepository) =>
+const attachProviderReplayEvidenceToPage = async (
+  items,
+  replayLedger,
+  mutationRepository,
+  ingestionRepository,
+  costRepository,
+) =>
   Promise.all(items.map((generation) => attachProviderReplayEvidence(
     generation,
     replayLedger,
     mutationRepository,
     ingestionRepository,
+    costRepository,
   )))
 
 const csvCell = (value) => {
@@ -531,6 +605,7 @@ export const registerAdminRoutes = (router, options = {}) => {
       routeRepositories.creativeProviderReplays,
       routeRepositories.creativeGenerationMutations,
       routeRepositories.creativeOutputIngestions,
+      routeRepositories.creativeProviderCosts,
     )
     ok(response, items, {
       pagination: {
@@ -551,6 +626,7 @@ export const registerAdminRoutes = (router, options = {}) => {
       routeRepositories.creativeProviderReplays,
       routeRepositories.creativeGenerationMutations,
       routeRepositories.creativeOutputIngestions,
+      routeRepositories.creativeProviderCosts,
     ))
   })
 

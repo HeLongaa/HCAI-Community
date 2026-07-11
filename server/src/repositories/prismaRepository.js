@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { HttpError } from '../common/errors/httpError.js'
 import prismaClientPkg from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
@@ -18,6 +19,8 @@ import {
   getCreativeGenerationDto,
   getCreativeGenerationMutationDto,
   getCreativeOutputIngestionDto,
+  getCreativeProviderBudgetWindowDto,
+  getCreativeProviderCostLedgerDto,
   getCreativeProviderReplayDto,
   getMediaAssetDto,
   getMediaScanJobDto,
@@ -4462,6 +4465,360 @@ const createPrismaRepository = async (fallbackRepository) => {
     },
   }
 
+  const providerCostConflict = (reasonCode) => new HttpError(
+    409,
+    'CREATIVE_PROVIDER_COST_LEDGER_CONFLICT',
+    'Creative Provider cost ledger conflict',
+    { reasonCode },
+  )
+
+  const creativeProviderCosts = {
+    reserve: async (payload, actor) => {
+      const existing = await client.creativeProviderCostLedger.findUnique({
+        where: { sourceKey: String(payload.sourceKey) },
+        include: { budgetWindow: true },
+      })
+      if (existing) {
+        if (existing.pricingSnapshotHash !== payload.pricingSnapshotHash || String(existing.estimateMicros) !== String(payload.estimateMicros)) {
+          throw providerCostConflict('source_key_payload_mismatch')
+        }
+        return {
+          reserved: existing.status === 'reserved',
+          duplicate: true,
+          reasonCode: existing.status === 'reserved' ? null : `already_${existing.status}`,
+          ledger: getCreativeProviderCostLedgerDto(existing),
+        }
+      }
+
+      const windowIdentity = {
+        budgetScope: payload.budgetScope,
+        currency: payload.currency,
+        windowStart: new Date(payload.windowStart),
+        windowEnd: new Date(payload.windowEnd),
+      }
+      let outcome = null
+      for (let attempt = 0; attempt < 5 && outcome == null; attempt += 1) {
+        try {
+          outcome = await client.$transaction(async (tx) => {
+            const duplicate = await tx.creativeProviderCostLedger.findUnique({
+              where: { sourceKey: String(payload.sourceKey) },
+              include: { budgetWindow: true },
+            })
+            if (duplicate) {
+              if (duplicate.pricingSnapshotHash !== payload.pricingSnapshotHash || String(duplicate.estimateMicros) !== String(payload.estimateMicros)) {
+                throw providerCostConflict('source_key_payload_mismatch')
+              }
+              return {
+                reserved: duplicate.status === 'reserved',
+                duplicate: true,
+                reasonCode: duplicate.status === 'reserved' ? null : `already_${duplicate.status}`,
+                ledger: getCreativeProviderCostLedgerDto(duplicate),
+              }
+            }
+            const window = await tx.creativeProviderBudgetWindow.upsert({
+              where: { budgetScope_currency_windowStart_windowEnd: windowIdentity },
+              create: {
+                ...windowIdentity,
+                id: `provider-budget-${randomUUID()}`,
+                providerId: payload.providerId,
+                providerAccountRef: payload.providerAccountRef,
+                workspace: payload.workspace,
+                capMicros: BigInt(payload.capMicros),
+                spentMicros: BigInt(payload.openingSpentMicros ?? 0),
+              },
+              update: {},
+            })
+            if (
+              String(window.capMicros) !== String(payload.capMicros) ||
+              window.providerId !== payload.providerId ||
+              window.providerAccountRef !== payload.providerAccountRef ||
+              window.workspace !== payload.workspace
+            ) {
+              throw providerCostConflict('budget_window_policy_mismatch')
+            }
+            const estimateMicros = BigInt(payload.estimateMicros)
+            if (window.spentMicros + window.reservedMicros + estimateMicros > window.capMicros) {
+              return {
+                reserved: false,
+                duplicate: false,
+                reasonCode: 'budget_cap_exceeded',
+                ledger: null,
+                budgetWindow: getCreativeProviderBudgetWindowDto(window),
+              }
+            }
+            const updatedWindow = await tx.creativeProviderBudgetWindow.updateMany({
+              where: { id: window.id, updatedAt: window.updatedAt },
+              data: { reservedMicros: { increment: estimateMicros } },
+            })
+            if (updatedWindow.count !== 1) {
+              const retry = new Error('Provider budget window changed concurrently')
+              retry.code = 'PROVIDER_BUDGET_CONCURRENT_RETRY'
+              throw retry
+            }
+            const ledger = await tx.creativeProviderCostLedger.create({
+              data: {
+                id: `provider-cost-${randomUUID()}`,
+                sourceKey: payload.sourceKey,
+                generationId: payload.generationId,
+                budgetWindowId: window.id,
+                providerId: payload.providerId,
+                providerAccountRef: payload.providerAccountRef,
+                providerModelId: payload.providerModelId,
+                providerJobId: payload.providerJobId ?? null,
+                workspace: payload.workspace,
+                mode: payload.mode,
+                currency: payload.currency,
+                pricingSnapshot: payload.pricingSnapshot,
+                pricingSnapshotHash: payload.pricingSnapshotHash,
+                estimateMicros,
+                reservedMicros: estimateMicros,
+                status: 'reserved',
+              },
+              include: { budgetWindow: true },
+            })
+            return { reserved: true, duplicate: false, reasonCode: null, ledger: getCreativeProviderCostLedgerDto(ledger) }
+          })
+        } catch (error) {
+          if (error?.code === 'PROVIDER_BUDGET_CONCURRENT_RETRY') continue
+          if (error?.code === 'P2002') {
+            const duplicate = await client.creativeProviderCostLedger.findUnique({
+              where: { sourceKey: String(payload.sourceKey) },
+              include: { budgetWindow: true },
+            })
+            if (duplicate) {
+              outcome = {
+                reserved: duplicate.status === 'reserved',
+                duplicate: true,
+                reasonCode: duplicate.status === 'reserved' ? null : `already_${duplicate.status}`,
+                ledger: getCreativeProviderCostLedgerDto(duplicate),
+              }
+              break
+            }
+          }
+          throw error
+        }
+      }
+      if (!outcome) {
+        throw new HttpError(503, 'CREATIVE_PROVIDER_BUDGET_BUSY', 'Creative Provider budget could not be reserved', {
+          reasonCode: 'concurrent_reservation_retry_exhausted',
+        })
+      }
+      if (outcome.reserved && !outcome.duplicate) {
+        await recordAudit({
+          actor,
+          action: 'creative.provider_cost.reserved',
+          resourceType: 'creative_provider_cost_ledger',
+          resourceId: outcome.ledger.id,
+          metadata: {
+            generationId: outcome.ledger.generationId,
+            providerId: outcome.ledger.providerId,
+            workspace: outcome.ledger.workspace,
+            currency: outcome.ledger.currency,
+            budgetScope: outcome.ledger.budgetWindow?.budgetScope,
+            estimateMicros: outcome.ledger.estimateMicros,
+            pricingSnapshotHash: outcome.ledger.pricingSnapshotHash,
+          },
+        })
+      }
+      return outcome
+    },
+    findBySourceKey: async (sourceKey) => {
+      const row = await client.creativeProviderCostLedger.findUnique({
+        where: { sourceKey: String(sourceKey) },
+        include: { budgetWindow: true },
+      })
+      return row ? getCreativeProviderCostLedgerDto(row) : null
+    },
+    findForGeneration: async (generationId) => {
+      const row = await client.creativeProviderCostLedger.findFirst({
+        where: { generationId: String(generationId) },
+        orderBy: { createdAt: 'desc' },
+        include: { budgetWindow: true },
+      })
+      return row ? getCreativeProviderCostLedgerDto(row) : null
+    },
+    settle: async (sourceKey, payload = {}, actor) => {
+      const actualMicros = BigInt(payload.actualMicros)
+      const outcome = await client.$transaction(async (tx) => {
+        const current = await tx.creativeProviderCostLedger.findUnique({
+          where: { sourceKey: String(sourceKey) },
+          include: { budgetWindow: true },
+        })
+        if (!current) return null
+        if (payload.actualCurrency !== current.currency) throw providerCostConflict('actual_currency_mismatch')
+        if (current.status === 'settled') {
+          if (current.actualMicros !== actualMicros) throw providerCostConflict('actual_cost_mismatch')
+          return { changed: false, row: current }
+        }
+        const heldMicros = ['reserved', 'reconciliation_required'].includes(current.status) ? current.reservedMicros : 0n
+        const settled = await tx.creativeProviderCostLedger.updateMany({
+          where: { id: current.id, status: current.status },
+          data: {
+            status: 'settled',
+            actualMicros,
+            providerJobId: payload.providerJobId ?? current.providerJobId,
+            usage: payload.usage ?? current.usage ?? undefined,
+            risk: payload.risk ?? current.risk ?? undefined,
+            reasonCode: payload.reasonCode ?? 'provider_actual_settled',
+            settledAt: payload.settledAt ? new Date(payload.settledAt) : new Date(),
+          },
+        })
+        if (settled.count !== 1) {
+          const duplicate = await tx.creativeProviderCostLedger.findUnique({
+            where: { id: current.id },
+            include: { budgetWindow: true },
+          })
+          if (duplicate?.status === 'settled' && duplicate.actualMicros === actualMicros) {
+            return { changed: false, row: duplicate }
+          }
+          throw providerCostConflict('concurrent_lifecycle_change')
+        }
+        await tx.creativeProviderBudgetWindow.update({
+          where: { id: current.budgetWindowId },
+          data: {
+            ...(heldMicros > 0n ? { reservedMicros: { decrement: heldMicros } } : {}),
+            spentMicros: { increment: actualMicros },
+          },
+        })
+        const row = await tx.creativeProviderCostLedger.findUnique({
+          where: { id: current.id },
+          include: { budgetWindow: true },
+        })
+        return { changed: true, row }
+      })
+      if (!outcome) return null
+      const dto = getCreativeProviderCostLedgerDto(outcome.row)
+      if (outcome.changed) await recordAudit({
+        actor,
+        action: 'creative.provider_cost.settled',
+        resourceType: 'creative_provider_cost_ledger',
+        resourceId: dto.id,
+        metadata: {
+          generationId: dto.generationId,
+          providerId: dto.providerId,
+          workspace: dto.workspace,
+          currency: dto.currency,
+          actualMicros: dto.actualMicros,
+          estimateExceeded: BigInt(dto.actualMicros) > BigInt(dto.estimateMicros),
+        },
+      })
+      return dto
+    },
+    release: async (sourceKey, reasonCode = 'dispatch_not_billed', actor) => {
+      const outcome = await client.$transaction(async (tx) => {
+        const current = await tx.creativeProviderCostLedger.findUnique({
+          where: { sourceKey: String(sourceKey) },
+          include: { budgetWindow: true },
+        })
+        if (!current) return null
+        if (current.status === 'released' || current.status === 'settled') return { changed: false, row: current }
+        const released = await tx.creativeProviderCostLedger.updateMany({
+          where: { id: current.id, status: current.status },
+          data: { status: 'released', reasonCode, releasedAt: new Date() },
+        })
+        if (released.count !== 1) {
+          const duplicate = await tx.creativeProviderCostLedger.findUnique({
+            where: { id: current.id },
+            include: { budgetWindow: true },
+          })
+          if (duplicate?.status === 'released' || duplicate?.status === 'settled') {
+            return { changed: false, row: duplicate }
+          }
+          throw providerCostConflict('concurrent_lifecycle_change')
+        }
+        await tx.creativeProviderBudgetWindow.update({
+          where: { id: current.budgetWindowId },
+          data: {
+            reservedMicros: { decrement: current.reservedMicros },
+            releasedMicros: { increment: current.reservedMicros },
+          },
+        })
+        const row = await tx.creativeProviderCostLedger.findUnique({
+          where: { id: current.id },
+          include: { budgetWindow: true },
+        })
+        return { changed: true, row }
+      })
+      if (!outcome) return null
+      const dto = getCreativeProviderCostLedgerDto(outcome.row)
+      if (outcome.changed) await recordAudit({
+        actor,
+        action: 'creative.provider_cost.released',
+        resourceType: 'creative_provider_cost_ledger',
+        resourceId: dto.id,
+        metadata: { generationId: dto.generationId, providerId: dto.providerId, workspace: dto.workspace, reasonCode },
+      })
+      return dto
+    },
+    reconcile: async (sourceKey, payload = {}, actor) => {
+      const outcome = await client.$transaction(async (tx) => {
+        const current = await tx.creativeProviderCostLedger.findUnique({
+          where: { sourceKey: String(sourceKey) },
+          include: { budgetWindow: true },
+        })
+        if (!current) return null
+        if (['settled', 'released', 'reconciliation_required'].includes(current.status)) {
+          return { changed: false, row: current }
+        }
+        const reconciled = await tx.creativeProviderCostLedger.updateMany({
+          where: { id: current.id, status: current.status },
+          data: {
+            status: 'reconciliation_required',
+            providerJobId: payload.providerJobId ?? current.providerJobId,
+            usage: payload.usage ?? current.usage ?? undefined,
+            risk: payload.risk ?? current.risk ?? undefined,
+            reasonCode: payload.reasonCode ?? 'actual_cost_missing',
+            reconciliationAt: payload.reconciliationAt ? new Date(payload.reconciliationAt) : new Date(),
+          },
+        })
+        if (reconciled.count !== 1) {
+          const duplicate = await tx.creativeProviderCostLedger.findUnique({
+            where: { id: current.id },
+            include: { budgetWindow: true },
+          })
+          if (['settled', 'released', 'reconciliation_required'].includes(duplicate?.status)) {
+            return { changed: false, row: duplicate }
+          }
+          throw providerCostConflict('concurrent_lifecycle_change')
+        }
+        const row = await tx.creativeProviderCostLedger.findUnique({
+          where: { id: current.id },
+          include: { budgetWindow: true },
+        })
+        return { changed: true, row }
+      })
+      if (!outcome) return null
+      const dto = getCreativeProviderCostLedgerDto(outcome.row)
+      if (outcome.changed) await recordAudit({
+        actor,
+        action: 'creative.provider_cost.reconciliation_required',
+        resourceType: 'creative_provider_cost_ledger',
+        resourceId: dto.id,
+        metadata: {
+          generationId: dto.generationId,
+          providerId: dto.providerId,
+          workspace: dto.workspace,
+          currency: dto.currency,
+          reasonCode: dto.reasonCode,
+        },
+      })
+      return dto
+    },
+    getBudgetWindow: async (payload) => {
+      const row = await client.creativeProviderBudgetWindow.findUnique({
+        where: {
+          budgetScope_currency_windowStart_windowEnd: {
+            budgetScope: payload.budgetScope,
+            currency: payload.currency,
+            windowStart: new Date(payload.windowStart),
+            windowEnd: new Date(payload.windowEnd),
+          },
+        },
+      })
+      return row ? getCreativeProviderBudgetWindowDto(row) : null
+    },
+  }
+
   const creativeCredits = {
     reserve: async (payload, actor) => {
       const actorUser = payload.actorHandle || actor?.handle ? await findUserByHandle(payload.actorHandle ?? actor.handle) : null
@@ -6430,6 +6787,7 @@ const createPrismaRepository = async (fallbackRepository) => {
     creativeGenerationMutations,
     creativeProviderReplays,
     creativeOutputIngestions,
+    creativeProviderCosts,
     creativeCredits,
     creativeQuota,
     media,

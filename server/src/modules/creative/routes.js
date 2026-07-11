@@ -87,6 +87,7 @@ export const registerCreativeRoutes = (router, options = {}) => {
         actor,
         generationId,
         quotaRepository,
+        providerCostRepository: routeRepositories.creativeProviderCosts,
         fixtureAdapters,
       })
       if (creditRepository?.reserve) {
@@ -135,6 +136,12 @@ export const registerCreativeRoutes = (router, options = {}) => {
             generationStatus: generation.status,
           },
         )
+      }
+      if (generation.status === 'queued' || generation.status === 'running') {
+        return {
+          ...generation,
+          generationRecord: sanitizeGenerationRecordForResponse(generationRecord),
+        }
       }
       const persisted = await persistCreativeGenerationOutputs(generation, {
         actor,

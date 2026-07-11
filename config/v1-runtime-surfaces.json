@@ -243,6 +243,15 @@
       "ownerTasks": ["V1-09"]
     },
     {
+      "id": "server-provider-cost-budget-ledger",
+      "area": "provider-accounting",
+      "classification": "production_capable",
+      "paths": ["server/src/creative/providerCostContract.js", "server/src/creative/generationService.js", "server/src/creative/providerSideEffectPlan.js", "server/src/repositories/seedRepository.js", "server/src/repositories/prismaRepository.js", "server/src/modules/admin/routes.js", "server/src/operations/metrics.js"],
+      "markers": ["createProviderPricingSnapshot", "creativeProviderCosts", "close_provider_cost", "providerCostLedgerEvidence"],
+      "productionDisposition": "retain_app_side_fail_closed_budget_ledger_and_keep_real_pricing_and_provider_dispatch_unregistered_until_approved",
+      "ownerTasks": ["V1-10"]
+    },
+    {
       "id": "fixture-smoke-and-simulation-profiles",
       "area": "quality-gates",
       "classification": "fixture_only",

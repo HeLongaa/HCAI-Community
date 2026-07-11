@@ -11,6 +11,15 @@ import { applyCreativeGenerationPolicy } from './policy.js'
 import { sha256, statusForPersistedGeneration } from './generationRecords.js'
 import { assertCreativeProviderAdapterContract } from './providerAdapterContract.js'
 import { ingestCreativeProviderOutput } from './providerOutputIngestion.js'
+import { HttpError } from '../common/errors/httpError.js'
+import {
+  buildProviderCostReservation,
+  providerCostCloseout,
+} from './providerCostContract.js'
+import {
+  assertReplicateProviderBudgetAllowsDispatch,
+  buildReplicateProviderCostMetadata,
+} from './replicateStagingProvider.js'
 
 const getFixtureProvider = (providerId, registry) => {
   const provider = registry.providers.find((candidate) => candidate.id === providerId)
@@ -50,6 +59,7 @@ export const executeCreativeGeneration = async ({
   source = process.env,
   now = new Date(),
   quotaRepository = null,
+  providerCostRepository = null,
   fixtureAdapters = {},
 }) => {
   const registry = createCreativeProviderRegistry(source)
@@ -76,20 +86,83 @@ export const executeCreativeGeneration = async ({
   })
 
   let generated
+  let providerCostReservation = null
+  let providerCostReservationPayload = null
   try {
+    if (fixtureAdapter && provider.id === 'replicate-staging' && providerCostRepository?.reserve) {
+      const providerCost = buildReplicateProviderCostMetadata({ request, source, now })
+      assertReplicateProviderBudgetAllowsDispatch(providerCost)
+      providerCostReservationPayload = buildProviderCostReservation({
+        generationId,
+        providerCost,
+        workspace: request.workspace,
+        mode: request.mode,
+        now,
+      })
+      providerCostReservation = await providerCostRepository.reserve(providerCostReservationPayload, actor)
+      if (!providerCostReservation?.reserved) {
+        throw new HttpError(429, 'CREATIVE_PROVIDER_BUDGET_EXCEEDED', 'Provider budget cap exceeded', {
+          providerId: providerCost.providerId,
+          budgetScope: providerCost.budget.budgetScope,
+          reasonCode: providerCostReservation?.reasonCode ?? 'budget_cap_exceeded',
+        })
+      }
+    }
     generated = fixtureAdapter
       ? await fixtureAdapter({ request, provider, actor, source, now, generationId })
       : executeMockCreativeGeneration({ request, provider, actor, now })
+    if (generationIdOverride) {
+      generated = { ...generated, id: generationId }
+    }
+    assertCreativeProviderAdapterContract(generated, { request, provider })
   } catch (error) {
+    if (providerCostReservation?.ledger?.sourceKey && providerCostRepository?.release) {
+      await providerCostRepository.release(providerCostReservation.ledger.sourceKey, 'adapter_failed_before_result', actor)
+    }
     if (policyResult.quota?.reservationId && quotaRepository?.release) {
       await quotaRepository.release(policyResult.quota.reservationId, error?.code ?? 'provider_adapter_failed', actor)
     }
     throw error
   }
-  if (generationIdOverride) {
-    generated = { ...generated, id: generationId }
+
+  if (providerCostReservation?.ledger && providerCostReservationPayload) {
+    const closeout = providerCostCloseout(generated)
+    let costLedger = providerCostReservation.ledger
+    if (closeout?.action === 'settle' && providerCostRepository?.settle) {
+      costLedger = await providerCostRepository.settle(providerCostReservationPayload.sourceKey, {
+        ...closeout,
+        providerJobId: generated.providerJobId ?? generated.providerRequestId ?? null,
+        settledAt: now.toISOString(),
+      }, actor)
+    } else if (closeout?.action === 'reconcile' && providerCostRepository?.reconcile) {
+      costLedger = await providerCostRepository.reconcile(providerCostReservationPayload.sourceKey, {
+        ...closeout,
+        providerJobId: generated.providerJobId ?? generated.providerRequestId ?? null,
+        reconciliationAt: now.toISOString(),
+      }, actor)
+    }
+    generated = {
+      ...generated,
+      usage: {
+        ...generated.usage,
+        providerCost: {
+          ...generated.usage?.providerCost,
+          pricingSnapshot: providerCostReservationPayload.pricingSnapshot,
+          ledger: costLedger
+            ? {
+                id: costLedger.id,
+                sourceKey: costLedger.sourceKey,
+                status: costLedger.status,
+                estimateMicros: costLedger.estimateMicros,
+                actualMicros: costLedger.actualMicros,
+                currency: costLedger.currency,
+                reasonCode: costLedger.reasonCode,
+              }
+            : null,
+        },
+      },
+    }
   }
-  assertCreativeProviderAdapterContract(generated, { request, provider })
 
   const attachPolicy = (generation) => ({
     ...generation,
