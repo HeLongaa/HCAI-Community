@@ -14,12 +14,17 @@ Includes:
 
 - `npm run lint`
 - `npm run test:v1-scope`
+- `npm run test:v1-surfaces`
 - `npm run test:sim`
 - API contract drift check through `scripts/verify-api-contracts.mjs`
 
 The V1 scope contract checks the frozen included domains, all four required real-provider modalities, explicit
 real-money exclusions, evidence paths, fail-closed Provider policy, and the absence of payment/withdrawal/KYC/invoice
 runtime routes or Prisma models.
+
+The V1 runtime-surface contract checks the exact frontend `mockData` import set, visible fallback labels, server
+seed/mock/fixture boundaries, production dispositions, and downstream V1 owners. It deliberately reports the current
+release blockers without claiming that V1 is production-ready.
 
 Use this before handing off small frontend, contract, or documentation changes.
 

@@ -45,6 +45,7 @@ These surfaces remain valid for deterministic tests. V1-02 and V1-39 own their c
 
 - `docs/V1_SCOPE_AND_DEFINITION_OF_DONE.md` is now the release-level human contract.
 - `config/v1-release-scope.json` is the machine-readable scope contract.
+- `config/v1-runtime-surfaces.json` and `docs/V1_RUNTIME_SURFACE_INVENTORY.md` own the complete demo/mock/fallback inventory.
 - `docs/REAL_PROVIDER_CURRENT_STATUS.md` remains authoritative for real-provider approval boundaries.
 - `docs/RELEASE_CHECKLIST.md` and `docs/QUALITY_GATES.md` remain authoritative for release execution and checks.
 - Phase 2/3 documents are historical evidence; they do not define current V1 stage or scope.

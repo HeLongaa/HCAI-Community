@@ -1,0 +1,219 @@
+{
+  "schemaVersion": 1,
+  "auditDate": "2026-07-11",
+  "productionPolicy": {
+    "silentFallback": "forbidden",
+    "productionReady": false,
+    "releaseGateTask": "V1-39",
+    "allowedResolvedClassifications": ["fixture_only", "development_only", "production_capable", "explicit_unavailable"]
+  },
+  "surfaces": [
+    {
+      "id": "frontend-marketplace-demo-state",
+      "area": "tasks-home",
+      "classification": "release_blocker",
+      "paths": ["src/hooks/useTaskWorkflows.ts", "src/components/prototype/PrototypeComponents.tsx"],
+      "markers": ["useState<Task[]>(tasks)", "Showing local demo data", "featuredTask"],
+      "productionDisposition": "replace_with_api_or_explicit_unavailable",
+      "ownerTasks": ["V1-39", "V1-64"]
+    },
+    {
+      "id": "frontend-community-library-demo-state",
+      "area": "community-library",
+      "classification": "release_blocker",
+      "paths": ["src/hooks/useCommunityWorkflows.ts", "src/features/community/CommunityPage.tsx"],
+      "markers": ["Showing local demo data", "visualWorks", "Reply simulated"],
+      "productionDisposition": "replace_with_api_or_explicit_unavailable",
+      "ownerTasks": ["V1-39", "V1-66"]
+    },
+    {
+      "id": "frontend-account-profile-demo-catalog",
+      "area": "account-profile-portfolio",
+      "classification": "release_blocker",
+      "paths": ["src/App.tsx", "src/domain/utils.ts", "src/hooks/useAccountState.ts", "src/features/profile/ProfilePages.tsx"],
+      "markers": ["marketplaceProfiles", "fallbackProfile", "accountSource === 'fallback'"],
+      "productionDisposition": "replace_with_account_profile_api",
+      "ownerTasks": ["V1-36", "V1-37", "V1-39", "V1-66", "V1-67"]
+    },
+    {
+      "id": "frontend-player-search-demo-catalog",
+      "area": "player-search",
+      "classification": "release_blocker",
+      "paths": ["src/hooks/usePlayerState.ts", "src/components/overlays/Overlays.tsx"],
+      "markers": ["useState<Track>(tracks[0])", "tracks.filter", "marketplaceProfiles"],
+      "productionDisposition": "replace_with_asset_catalog_api",
+      "ownerTasks": ["V1-32", "V1-33", "V1-35", "V1-36", "V1-39"]
+    },
+    {
+      "id": "frontend-explore-demo-catalog",
+      "area": "explore-catalog",
+      "classification": "release_blocker",
+      "paths": ["src/features/explore/ExplorePages.tsx"],
+      "markers": ["radioStations", "visualWorks", "tracks.map"],
+      "productionDisposition": "replace_with_real_catalog_or_explicit_unavailable",
+      "ownerTasks": ["V1-35", "V1-36", "V1-39"]
+    },
+    {
+      "id": "frontend-music-workspace-simulation",
+      "area": "music",
+      "classification": "release_blocker",
+      "paths": ["src/features/workspace/WorkspacePages.tsx"],
+      "markers": ["Music Studio", "music and voice concept is rendering", "demo-reference.wav"],
+      "productionDisposition": "replace_with_real_provider_job",
+      "ownerTasks": ["V1-30", "V1-31", "V1-32", "V1-33", "V1-34", "V1-39"]
+    },
+    {
+      "id": "frontend-chat-workspace-simulation",
+      "area": "chat",
+      "classification": "release_blocker",
+      "paths": ["src/features/workspace/WorkspacePages.tsx"],
+      "markers": ["export function ChatPage", "Quick prompts", "Drafted. You can send this"],
+      "productionDisposition": "replace_with_streaming_chat_api",
+      "ownerTasks": ["V1-20", "V1-21", "V1-22", "V1-23", "V1-24", "V1-39"]
+    },
+    {
+      "id": "frontend-video-workspace-simulation",
+      "area": "video",
+      "classification": "release_blocker",
+      "paths": ["src/features/workspace/WorkspacePages.tsx"],
+      "markers": ["Text to Video", "Image to Video", "Generation started"],
+      "productionDisposition": "replace_with_real_provider_job",
+      "ownerTasks": ["V1-25", "V1-26", "V1-27", "V1-28", "V1-29", "V1-39"]
+    },
+    {
+      "id": "creative-image-mock-execution",
+      "area": "image",
+      "classification": "release_blocker",
+      "paths": ["src/features/workspace/WorkspacePages.tsx", "server/src/config/env.js", "server/src/creative/generationService.js", "server/src/creative/mockProvider.js", "server/src/creative/providerRegistry.js", "server/src/creative/artifactBuilder.js", "server/src/creative/policy.js", "server/src/docs/openapi.js"],
+      "markers": ["workspace === 'image'", "creativeProviderDefaultId: 'mock'", "executeMockCreativeGeneration"],
+      "productionDisposition": "replace_with_approved_real_provider",
+      "ownerTasks": ["V1-15", "V1-16", "V1-17", "V1-18", "V1-19", "V1-39"]
+    },
+    {
+      "id": "frontend-admin-demo-queue",
+      "area": "admin",
+      "classification": "release_blocker",
+      "paths": ["src/features/admin/AdminPage.tsx"],
+      "markers": ["adminQueues", "Showing local demo data"],
+      "productionDisposition": "replace_with_admin_api_or_explicit_error",
+      "ownerTasks": ["V1-39", "V1-42", "V1-43", "V1-69"]
+    },
+    {
+      "id": "frontend-static-plan-api-catalog",
+      "area": "pricing-api-static-pages",
+      "classification": "release_blocker",
+      "paths": ["src/features/static-pages/StaticPages.tsx"],
+      "markers": ["planCards", "apiFeatures"],
+      "productionDisposition": "replace_with_approved_internal_credit_and_api_content",
+      "ownerTasks": ["V1-39", "V1-40", "V1-70", "V1-78"]
+    },
+    {
+      "id": "frontend-points-demo-ledger",
+      "area": "points",
+      "classification": "release_blocker",
+      "paths": ["src/hooks/useAppFeedback.ts"],
+      "markers": ["pointsLedger", "Showing local demo data"],
+      "productionDisposition": "replace_with_points_api_or_explicit_error",
+      "ownerTasks": ["V1-39", "V1-40", "V1-65"]
+    },
+    {
+      "id": "frontend-runtime-source-labels",
+      "area": "shell-observability",
+      "classification": "production_capable",
+      "paths": ["src/App.tsx", "src/components/layout/AppShell.tsx", "src/components/prototype/PrototypeComponents.tsx"],
+      "markers": ["Demo fallback", "Mock workspace", "Current data sources"],
+      "productionDisposition": "retain_until_all_release_blockers_are_closed",
+      "ownerTasks": ["V1-02", "V1-39"]
+    },
+    {
+      "id": "frontend-mockdata-root",
+      "area": "shared-demo-catalog",
+      "classification": "release_blocker",
+      "paths": ["src/data/mockData.ts"],
+      "markers": ["export const tasks", "export const tracks", "export const marketplaceProfiles"],
+      "productionDisposition": "restrict_to_tests_development_or_seed_migration",
+      "ownerTasks": ["V1-39"]
+    },
+    {
+      "id": "server-seed-repository-fallback",
+      "area": "persistence",
+      "classification": "release_blocker",
+      "paths": ["server/src/repositories/index.js", "server/src/repositories/seedRepository.js", "server/src/data/seed.js"],
+      "markers": ["return prismaRepository ?? seedRepository", "createSeedRepository", "demoAccounts"],
+      "productionDisposition": "require_postgresql_and_fail_closed",
+      "ownerTasks": ["V1-39", "V1-49"]
+    },
+    {
+      "id": "server-prisma-demo-autoseed",
+      "area": "persistence-bootstrap",
+      "classification": "release_blocker",
+      "paths": ["server/src/repositories/prismaRepository.js", "server/src/repositories/prismaSeed.js", "server/src/data/seed.js"],
+      "markers": ["seedPrismaDatabase(client)", "seedStore.demoAccounts", "provider: 'demo'"],
+      "productionDisposition": "replace_with_explicit_environment_bootstrap",
+      "ownerTasks": ["V1-39", "V1-49"]
+    },
+    {
+      "id": "server-demo-auth-compatibility",
+      "area": "auth",
+      "classification": "development_only",
+      "paths": ["server/src/data/seed.js", "server/src/modules/auth/routes.js", "server/src/index.js"],
+      "markers": ["demo-access.", "findDemoAccountByHandle", "findDemoAccountByAccessToken"],
+      "productionDisposition": "restrict_to_development_and_tests",
+      "ownerTasks": ["V1-39", "V1-48", "V1-67"]
+    },
+    {
+      "id": "server-mock-storage-driver",
+      "area": "media-storage",
+      "classification": "development_only",
+      "paths": ["server/src/config/env.js", "server/src/storage/uploadSigner.js", "server/src/storage/objectWriter.js", "server/src/storage/archiveWriter.js"],
+      "markers": ["driver: 'mock'", "mock://media/", "upload.provider === 'mock'"],
+      "productionDisposition": "require_s3_in_production",
+      "ownerTasks": ["V1-39", "V1-50"]
+    },
+    {
+      "id": "server-manual-mock-scanner",
+      "area": "media-scanner",
+      "classification": "development_only",
+      "paths": ["server/src/config/env.js", "server/src/media/scanProvider.js"],
+      "markers": ["manual', 'mock', 'webhook", "Mock scanner passed the asset", "Awaiting manual review"],
+      "productionDisposition": "require_real_scanner_and_signed_callback",
+      "ownerTasks": ["V1-39", "V1-51"]
+    },
+    {
+      "id": "server-dev-oauth-fallback",
+      "area": "oauth",
+      "classification": "development_only",
+      "paths": ["server/src/auth/oauth.js", "server/src/modules/auth/routes.js"],
+      "markers": ["mode: 'dev'", "createDevOAuthCode", "Unknown demo account"],
+      "productionDisposition": "require_external_oauth_or_explicit_unavailable",
+      "ownerTasks": ["V1-39", "V1-48"]
+    },
+    {
+      "id": "server-provider-fixture-injection",
+      "area": "provider-lifecycle",
+      "classification": "fixture_only",
+      "paths": ["server/src/modules/creative/routes.js", "server/src/creative/generationService.js", "server/src/creative/replicateStagingProvider.js", "server/src/creative/providerPollingWorker.js", "server/src/creative/providerManualReplay.js", "server/src/creative/providerReplayIntegration.js"],
+      "markers": ["fixtureAdapters", "must be injected; no default network client is available", "providerMode"],
+      "productionDisposition": "retain_for_tests_but_never_register_as_default_client",
+      "ownerTasks": ["V1-05", "V1-06", "V1-07", "V1-08", "V1-12", "V1-14"]
+    },
+    {
+      "id": "server-provider-alert-fixture-delivery",
+      "area": "provider-alerts",
+      "classification": "fixture_only",
+      "paths": ["server/src/config/env.js", "server/src/creative/providerBudgetExternalAlerts.js", "server/src/operations/metrics.js", "server/src/operations/metricsExporter.js"],
+      "markers": ["fixtureClients", "provider_alert_client_disabled", "CREATIVE_PROVIDER_ALERTS_ENABLED"],
+      "productionDisposition": "replace_with_approved_external_delivery_clients",
+      "ownerTasks": ["V1-13", "V1-53"]
+    },
+    {
+      "id": "fixture-smoke-and-simulation-profiles",
+      "area": "quality-gates",
+      "classification": "fixture_only",
+      "paths": ["scripts/simulate-features.mjs", "scripts/smoke-production.mjs", "scripts/smoke-creative-staging.mjs", "server/src/common/testing/httpTestClient.js"],
+      "markers": ["Production smoke profile", "stagingPreflightFixture", "Simulation checks"],
+      "productionDisposition": "retain_as_deterministic_ci_only",
+      "ownerTasks": ["V1-71", "V1-75"]
+    }
+  ]
+}

@@ -53,6 +53,11 @@ addCheck(
   manifest.creativeProviderPolicy.approvalDocument,
 )
 addCheck(
+  'runtime surface inventory exists',
+  fs.existsSync(path.join(root, manifest.runtimeSurfaceInventory)),
+  manifest.runtimeSurfaceInventory,
+)
+addCheck(
   'all excluded real-money capabilities are enumerated',
   sameMembers(manifest.excludedCapabilities.map((item) => item.id), expectedExclusions),
   manifest.excludedCapabilities.map((item) => item.id).join(', '),
