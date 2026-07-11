@@ -2,6 +2,7 @@ import { getOutputAssetIds, safeErrorPreview, statusForPersistedGeneration } fro
 import { persistCreativeGenerationOutputs } from './generationService.js'
 import { safeProviderFailure } from './providerAdapterContract.js'
 import { emptyLifecycleReplayActions } from './providerLifecycleReplay.js'
+import { providerLifecycleEventForGenerationStatus } from './providerLifecycleEventCatalog.js'
 import { providerCostCloseout } from './providerCostContract.js'
 
 const lifecycleOperations = Object.freeze({
@@ -105,6 +106,7 @@ export const buildProviderSideEffectPlan = ({
 } = {}) => {
   const actions = normalizeActions(replay?.actions ?? replay?.sideEffectPlan)
   const generation = replay?.generation ?? null
+  const lifecycleEvent = providerLifecycleEventForGenerationStatus(statusForReplay(replay))
   const completed = completedSet(sideEffectResult)
   const operations = []
   const push = (operation) => {
@@ -199,18 +201,32 @@ export const buildProviderSideEffectPlan = ({
     }))
   }
   if (operations.length > 0) {
-    push(baseOperation({
-      replay,
-      type: lifecycleOperations.notify,
-      required: false,
-      metadata: { notificationType: `creative.provider_lifecycle.${statusForReplay(replay) ?? 'updated'}` },
-    }))
-    push(baseOperation({
-      replay,
-      type: lifecycleOperations.audit,
-      required: false,
-      metadata: { auditAction: 'creative.provider_lifecycle.side_effect_applied' },
-    }))
+    if (lifecycleEvent.notify) {
+      push(baseOperation({
+        replay,
+        type: lifecycleOperations.notify,
+        required: false,
+        metadata: {
+          lifecycleEvent: lifecycleEvent.event,
+          notificationType: lifecycleEvent.event,
+          audience: lifecycleEvent.audience,
+          severity: lifecycleEvent.severity,
+        },
+      }))
+    }
+    if (lifecycleEvent.audit) {
+      push(baseOperation({
+        replay,
+        type: lifecycleOperations.audit,
+        required: false,
+        metadata: {
+          lifecycleEvent: lifecycleEvent.event,
+          auditAction: 'creative.provider_lifecycle.side_effect_applied',
+          audience: lifecycleEvent.audience,
+          severity: lifecycleEvent.severity,
+        },
+      }))
+    }
   }
 
   const pendingOperations = operations.filter((operation) => !operation.alreadyCompleted)

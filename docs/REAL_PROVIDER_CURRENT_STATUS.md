@@ -77,6 +77,7 @@ Sora 2 models on 2026-09-24 without a recommended replacement.
 | Provider output ingestion | Implemented / default-unregistered | Source-keyed ingestion, claim leases, URL/DNS/redirect/size/MIME/SHA-256 validation, deterministic object storage, scanner gating, and safe Admin summaries exist. No product runtime registers a real output fetch client. |
 | Provider control plane | Implemented / fixture dispatch only | Versioned global/provider/workspace/model controls, expiring cap evidence, explicit circuits, one-claim probes, emergency disable, two-person recovery, Admin views, and safe metrics exist. Real Provider dispatch, cap readers, and probes remain unregistered. |
 | Provider error and retry policy | Implemented / real traffic disabled | Shared categories, safe envelopes, bounded `Retry-After`, deterministic backoff, CAS attempt budgets, hash-only failure dedupe, user-confirmed retry eligibility, Admin evidence, and low-cardinality metrics exist. Real clients and traffic remain unregistered. |
+| Provider lifecycle observability | Usable internally / fixture-only | Catalog-driven owner/operations notifications, audit allowlists, Admin list/export/detail parity, lifecycle metrics, safe samples, and handoff hints exist. External lifecycle delivery remains disabled. |
 | Staging adapter shell | Fixture-only | Mocked/injected-client hardening may continue. PRs #86-#89 improved the fixture-only evidence chain, but did not approve real provider calls. |
 | V1 provider decision matrix | Conditional planning evidence | Four primary/backup pairs, budgets, legal/data/SLA conditions, and replacement triggers are machine-verified; no provider is production-approved. |
 | V1 content safety matrix | Frozen implementation policy | Four modality partitions, Provider policy mappings, review/appeal, and audit contracts are machine-verified; downstream enforcement is not complete. |
@@ -96,7 +97,7 @@ These paths are available without real-provider approval:
 - Media scan governance gates generated asset downloads.
 - Admin generation history provides filters, details, dedicated cancel/retry/replay permissions, and safe mutation evidence.
 - Admin generation history exposes sanitized provider cost/budget summaries and safe provider replay evidence.
-- Admin operations metrics and Prometheus-compatible exporter expose low-cardinality provider budget and cost observability.
+- Admin operations metrics and Prometheus-compatible exporter expose low-cardinality provider budget, cost, retry, and lifecycle observability.
 - Internal provider budget notifications route to audit readers from persisted safe audit rows.
 - The Provider callback route can be exercised with signed fixtures behind its independent staging-only kill switch without making an outbound Provider request.
 - The Provider polling worker can be exercised with injected status fixtures or injected `fetch` behind independent staging-only kill switches without making an external Provider request.

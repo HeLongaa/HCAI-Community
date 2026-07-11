@@ -154,6 +154,102 @@ test('buildOperationsMetrics summarizes Provider retry lifecycle with low-cardin
   assert.equal(JSON.stringify(retry).includes('a'.repeat(64)), false)
 })
 
+test('buildOperationsMetrics unifies Provider lifecycle facts and creates operator handoff hints', () => {
+  const generatedAt = new Date('2026-07-12T12:00:00.000Z')
+  const auditEvents = [
+    {
+      action: 'creative.provider_lifecycle.side_effect_applied',
+      resourceType: 'creative_generation',
+      resourceId: 'generation-high-cardinality-1',
+      metadata: {
+        lifecycleEvent: 'creative.provider_lifecycle.failed',
+        nextStatus: 'failed',
+        sourceType: 'polling',
+        providerId: 'replicate',
+        workspace: 'image',
+      },
+    },
+    {
+      action: 'creative.provider_polling.timed_out',
+      resourceType: 'creative_generation',
+      resourceId: 'generation-high-cardinality-2',
+      metadata: { sourceType: 'polling', providerId: 'replicate', workspace: 'image', errorCategory: 'timeout' },
+    },
+    {
+      action: 'creative.provider_retry.exhausted',
+      resourceType: 'creative_provider_retry_state',
+      resourceId: 'retry-high-cardinality-1',
+      metadata: { status: 'exhausted', providerId: 'replicate', workspace: 'image', errorCategory: 'provider_5xx' },
+    },
+    {
+      action: 'creative.output_ingestion.updated',
+      resourceType: 'creative_output_ingestion',
+      resourceId: 'ingestion-high-cardinality-1',
+      metadata: { ingestionStatus: 'failed', providerId: 'replicate', workspace: 'image', errorCode: 'OUTPUT_FETCH_FAILED' },
+    },
+    {
+      action: 'creative.provider_cost.reconciliation_required',
+      resourceType: 'creative_provider_cost_ledger',
+      resourceId: 'cost-high-cardinality-1',
+      metadata: { providerId: 'replicate', workspace: 'image', reasonCode: 'actual_cost_missing' },
+    },
+  ].map((event, index) => ({
+    id: `provider-lifecycle-audit-${index}`,
+    createdAt: `2026-07-12T11:5${index}:00.000Z`,
+    ...event,
+  }))
+
+  const metrics = buildOperationsMetrics({ windowMinutes: 30, generatedAt, auditEvents })
+  const lifecycle = metrics.creativeProviderLifecycle
+  assert.equal(lifecycle.total, 4)
+  assert.equal(lifecycle.byEvent.find((item) => item.key === 'creative.provider_retry.exhausted')?.count, 1)
+  assert.equal(lifecycle.byEvent.find((item) => item.key === 'creative.provider_polling.timed_out')?.count, 1)
+  assert.equal(lifecycle.byEvent.find((item) => item.key === 'creative.output_ingestion.failed')?.count, 1)
+  assert.deepEqual(lifecycle.byProvider, [{ key: 'replicate', count: 4 }])
+  assert.deepEqual(lifecycle.byWorkspace, [{ key: 'image', count: 4 }])
+  assert.equal(JSON.stringify(lifecycle).includes('high-cardinality'), false)
+
+  const hintIds = buildOperationsHandoff(metrics).remediationHints.map((hint) => hint.id)
+  for (const hintId of [
+    'provider-retry-exhausted',
+    'provider-polling-timeout',
+    'provider-output-ingestion-failed',
+    'provider-cost-reconciliation-required',
+  ]) {
+    assert.ok(hintIds.includes(hintId))
+  }
+})
+
+test('buildOperationsMetrics folds unsafe Provider lifecycle dimensions without hashed labels', () => {
+  const metrics = buildOperationsMetrics({
+    windowMinutes: 30,
+    generatedAt: new Date('2026-07-12T12:00:00.000Z'),
+    auditEvents: [{
+      id: 'audit-provider-lifecycle-unsafe-dimensions',
+      action: 'creative.provider_callback.rejected',
+      resourceType: 'creative_generation',
+      resourceId: 'generation-must-not-be-label',
+      metadata: {
+        sourceType: 'webhook?token=source-secret',
+        providerId: 'provider@example.com',
+        workspace: 'workspace-user-supplied-value',
+        errorCategory: 'category?token=category-secret',
+      },
+      createdAt: '2026-07-12T11:59:00.000Z',
+    }],
+  }).creativeProviderLifecycle
+
+  assert.deepEqual(metrics.bySourceType, [{ key: 'other', count: 1 }])
+  assert.deepEqual(metrics.byProvider, [{ key: 'other', count: 1 }])
+  assert.deepEqual(metrics.byWorkspace, [{ key: 'other', count: 1 }])
+  assert.deepEqual(metrics.byCategory, [{ key: 'other', count: 1 }])
+  const serialized = JSON.stringify(metrics)
+  assert.equal(serialized.includes('redacted_'), false)
+  assert.equal(serialized.includes('source-secret'), false)
+  assert.equal(serialized.includes('provider@example.com'), false)
+  assert.equal(serialized.includes('category-secret'), false)
+})
+
 test('buildOperationsMetrics summarizes durable Provider cost ledger lifecycle safely', () => {
   const generatedAt = new Date('2026-07-12T12:00:00.000Z')
   const actions = [
@@ -624,4 +720,51 @@ test('buildOperationsMetricSamples includes creative provider budget sample buck
   assert.equal(samples.creativeProviderAlertDispatches.count, 1)
   assert.equal(samples.creativeProviderAlertDispatches.query.action, 'creative.provider_alert.dispatch')
   assert.equal(samples.creativeProviderAlertDispatches.query.resourceType, 'creative_provider_budget_alert')
+})
+
+test('buildOperationsMetricSamples sanitizes Provider lifecycle drill-down evidence', () => {
+  const samples = buildOperationsMetricSamples({
+    creativeProviderRetryExhaustions: [{
+      id: 'https://provider.example/audit?token=audit-secret',
+      action: 'creative.provider_retry.exhausted',
+      resourceType: 'creative_provider_retry_state',
+      resourceId: 'https://provider.example/retry?token=retry-secret',
+      metadata: {
+        generationId: 'https://provider.example/generation?token=generation-secret',
+        providerId: 'replicate',
+        workspace: 'image',
+        operationType: 'status_read',
+        status: 'exhausted',
+        attempt: 5,
+        maxAttempts: 5,
+        sourceKey: 'https://provider.example/source?token=source-secret',
+        lastFailureKeyHash: 'a'.repeat(64),
+        policyHash: 'b'.repeat(64),
+        rawError: 'Bearer private-provider-token',
+      },
+      createdAt: '2026-07-12T11:59:00.000Z',
+    }],
+    creativeProviderOutputIngestionFailures: [{
+      id: 'ingestion-audit-safe',
+      action: 'creative.output_ingestion.updated',
+      resourceType: 'creative_output_ingestion',
+      resourceId: 'ingestion-safe',
+      metadata: { ingestionStatus: 'failed', providerId: 'replicate', workspace: 'image' },
+      createdAt: '2026-07-12T11:58:00.000Z',
+    }],
+  })
+
+  const retry = samples.creativeProviderRetryExhaustions
+  assert.equal(retry.count, 1)
+  assert.match(retry.events[0].resourceId, /^redacted_[a-f0-9]{16}$/)
+  assert.match(retry.events[0].metadata.generationId, /^redacted_[a-f0-9]{16}$/)
+  assert.equal(retry.events[0].metadata.attempt, 5)
+  assert.deepEqual(samples.creativeProviderOutputIngestionFailures.query.metadataFilter, {
+    key: 'ingestionStatus',
+    value: 'failed',
+  })
+  const serialized = JSON.stringify(samples)
+  for (const unsafe of ['provider.example', 'audit-secret', 'retry-secret', 'generation-secret', 'source-secret', 'private-provider-token', 'a'.repeat(64), 'b'.repeat(64)]) {
+    assert.equal(serialized.includes(unsafe), false)
+  }
 })

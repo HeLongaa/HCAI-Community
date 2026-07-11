@@ -270,6 +270,15 @@
       "ownerTasks": ["V1-12"]
     },
     {
+      "id": "server-provider-lifecycle-observability",
+      "area": "provider-operations",
+      "classification": "production_capable",
+      "paths": ["server/src/creative/providerLifecycleEventCatalog.js", "server/src/creative/providerSideEffectPlan.js", "server/src/repositories/providerLifecycleWiring.js", "server/src/repositories/serializers.js", "server/src/operations/metrics.js", "server/src/operations/metricsExporter.js"],
+      "markers": ["providerLifecycleEventCatalog", "owner_and_operations", "newchat_creative_provider_lifecycle_events_total"],
+      "productionDisposition": "retain_internal_lifecycle_observability_and_keep_real_provider_traffic_and_external_lifecycle_delivery_disabled_until_separately_approved",
+      "ownerTasks": ["V1-13"]
+    },
+    {
       "id": "fixture-smoke-and-simulation-profiles",
       "area": "quality-gates",
       "classification": "fixture_only",

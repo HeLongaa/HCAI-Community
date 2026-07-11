@@ -31,16 +31,19 @@ const safeProviderJobIdEvidence = (value) => {
     : `redacted_${stableHash(value).slice(0, 16)}`
 }
 
-const sideEffectActionsFor = (generation) => ({
-  markRunning: generation.status === 'running',
-  complete: generation.status === 'completed',
-  fail: generation.status === 'failed',
-  cancel: generation.status === 'cancelled',
-  persistOutputs: generation.status === 'completed' && hasOutputs(generation),
-  settleCredits: generation.status === 'completed' && hasOutputs(generation),
-  refundCredits: generation.status === 'failed' || generation.status === 'cancelled',
-  linkOutputAssets: generation.status === 'completed' && hasOutputs(generation),
-})
+const sideEffectActionsFor = (generation) => {
+  const completedWithOutputs = ['completed', 'review_required'].includes(generation.status) && hasOutputs(generation)
+  return {
+    markRunning: generation.status === 'running',
+    complete: ['completed', 'review_required'].includes(generation.status),
+    fail: generation.status === 'failed',
+    cancel: generation.status === 'cancelled',
+    persistOutputs: completedWithOutputs,
+    settleCredits: completedWithOutputs,
+    refundCredits: generation.status === 'failed' || generation.status === 'cancelled',
+    linkOutputAssets: completedWithOutputs,
+  }
+}
 
 const isDuplicateNonTerminal = (previousStatus, nextStatus) =>
   (previousStatus === 'queued' && nextStatus === 'queued') ||

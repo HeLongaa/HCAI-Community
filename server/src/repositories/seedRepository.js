@@ -550,7 +550,9 @@ const getSeedOperationsMetricSamples = (options = {}, generatedAt = new Date()) 
           event.action === definition.action &&
           event.resourceType === definition.resourceType &&
           inAuditWindow(event, since, until) &&
-          (!definition.failedOnly || auditMetadata(event).status === 'failed')
+          (!definition.failedOnly || auditMetadata(event).status === 'failed') &&
+          (!definition.metadataFilter ||
+            auditMetadata(event)[definition.metadataFilter.key] === definition.metadataFilter.value)
         )
         .slice(0, 5)
         .map(serializeAuditEvent),
@@ -864,18 +866,24 @@ function notifyAuditReaders(actor, payload) {
   )
 }
 
-function providerLifecycleRecipientHandles(actor, payload = {}) {
+function providerLifecycleRecipientHandles(actor, payload = {}, notificationPayload = null) {
+  const audience = notificationPayload?.metadata?.audience
+  const includeOwner = audience === 'owner' || audience === 'owner_and_operations'
+  const includeOperations = audience === 'operations' || audience === 'owner_and_operations'
   return uniqueHandles([
-    payload.actorHandle,
-    ...seedStore.demoAccounts
-      .filter((account) => account.handle !== actor?.handle && hasPermission(account, 'admin:audit:read'))
-      .map((account) => account.handle),
+    includeOwner ? payload.actorHandle : null,
+    ...(includeOperations
+      ? seedStore.demoAccounts
+        .filter((account) => account.handle !== actor?.handle && hasPermission(account, 'admin:audit:read'))
+        .map((account) => account.handle)
+      : []),
   ])
 }
 
 function createProviderLifecycleNotifications(payload = {}, actor = null) {
   const notificationPayload = buildProviderLifecycleNotificationPayload(payload)
-  const handles = providerLifecycleRecipientHandles(actor, payload)
+  if (!notificationPayload) return []
+  const handles = providerLifecycleRecipientHandles(actor, payload, notificationPayload)
     .filter((handle) => !notifications.some((notification) =>
       notification.recipientHandle === handle &&
       notification.type === notificationPayload.type &&
@@ -920,16 +928,27 @@ function recordProviderLifecycleAudit(payload = {}, actor = null) {
     event.resourceId === auditPayload.resourceId &&
     hasProviderLifecycleSourceKey(event, auditPayload.metadata.sourceKey),
   )
+  const ensureOperationalNotification = () => {
+    if (payload.action === 'creative.provider_lifecycle.side_effect_applied') return
+    createProviderLifecycleNotifications({
+      ...payload,
+      sourceKey: `${payload.sourceKey}:notification`,
+      type: payload.action,
+    }, actor)
+  }
   if (existing) {
+    ensureOperationalNotification()
     return serializeAuditEvent(existing)
   }
-  return serializeAuditEvent(recordAudit(
+  const event = serializeAuditEvent(recordAudit(
     auditPayload.actor,
     auditPayload.action,
     auditPayload.resourceType,
     auditPayload.resourceId,
     auditPayload.metadata,
   ))
+  ensureOperationalNotification()
+  return event
 }
 
 function recordProviderBudgetAuditEvents(payloads = [], actor = null) {
@@ -3345,6 +3364,17 @@ export const createSeedRepository = () => ({
         errorCode: updated.errorCode,
         mediaAssetId: updated.mediaAssetId,
       })
+      createProviderLifecycleNotifications({
+        sourceKey: `creative-provider-output-ingestion:${updated.id}:${updated.status}:${updated.errorCode ?? 'none'}`,
+        generationId: updated.generationId,
+        type: `creative.output_ingestion.${updated.status}`,
+        metadata: {
+          providerId: updated.providerId,
+          sourceType: 'output_ingestion',
+          nextStatus: updated.status,
+          errorCode: updated.errorCode,
+        },
+      }, actor)
       return serializeCreativeOutputIngestion(updated)
     },
   },
@@ -3699,7 +3729,20 @@ export const createSeedRepository = () => ({
     },
     record: (payload, actor) => {
       const current = creativeProviderRetryStatesBySourceKey.get(String(payload.sourceKey)) ?? null
+      const ensureRetryNotification = (state) => createProviderLifecycleNotifications({
+        sourceKey: `creative-provider-retry:${state.id}:${state.status}:${state.version}`,
+        generationId: state.generationId,
+        type: `creative.provider_retry.${state.status}`,
+        metadata: {
+          providerId: state.providerId,
+          sourceType: 'retry',
+          nextStatus: state.status,
+          errorCode: state.lastErrorCode,
+          reasonCode: state.lastErrorCategory,
+        },
+      }, actor)
       if (current?.lastFailureKeyHash === payload.lastFailureKeyHash) {
+        ensureRetryNotification(current)
         return { changed: false, duplicate: true, state: serializeCreativeProviderRetryState(current) }
       }
       if (current && Number(payload.expectedVersion) !== current.version) throw providerRetryConflict('retry_version_mismatch')
@@ -3716,7 +3759,8 @@ export const createSeedRepository = () => ({
         createdAt: current?.createdAt ?? payload.createdAt,
       })
       creativeProviderRetryStatesBySourceKey.set(state.sourceKey, state)
-      recordAudit(actor, `creative.provider_retry.${state.status}`, 'creative_provider_retry_state', state.id, {
+      const retryAction = `creative.provider_retry.${state.status}`
+      recordAudit(actor, retryAction, 'creative_provider_retry_state', state.id, {
         generationId: state.generationId,
         providerId: state.providerId,
         workspace: state.workspace,
@@ -3730,6 +3774,7 @@ export const createSeedRepository = () => ({
         delaySource: state.delaySource,
         version: state.version,
       })
+      ensureRetryNotification(state)
       return { changed: true, duplicate: false, state: serializeCreativeProviderRetryState(state) }
     },
     clear: (sourceKey, payload = {}, actor) => {

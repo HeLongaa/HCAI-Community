@@ -59,6 +59,40 @@ const providerLifecycleAuditActions = new Set([
   'creative.provider_replay.updated',
 ])
 
+const providerRetryAuditActions = new Set([
+  'creative.provider_retry.scheduled',
+  'creative.provider_retry.exhausted',
+  'creative.provider_retry.cleared',
+])
+
+const providerRetryAuditMetadataKeys = new Set([
+  'generationId',
+  'providerId',
+  'workspace',
+  'operationType',
+  'status',
+  'attempt',
+  'maxAttempts',
+  'nextAttemptAt',
+  'errorCode',
+  'errorCategory',
+  'delaySource',
+  'version',
+  'reasonCode',
+])
+
+const providerRetryIdentifierKeys = new Set([
+  'generationId',
+  'providerId',
+  'workspace',
+  'operationType',
+  'status',
+  'errorCode',
+  'errorCategory',
+  'delaySource',
+  'reasonCode',
+])
+
 const providerReplayLedgerAuditActions = new Set([
   'creative.provider_replay.recorded',
   'creative.provider_replay.applied',
@@ -254,6 +288,23 @@ const safeProviderLifecycleAuditMetadata = (metadata) =>
   metadata && typeof metadata === 'object' && !Array.isArray(metadata)
     ? safeProviderLifecycleAuditMetadataValue(metadata)
     : null
+
+const isProviderRetryAuditEvent = (event) =>
+  providerRetryAuditActions.has(event?.action) && event?.resourceType === 'creative_provider_retry_state'
+
+const safeProviderRetryAuditMetadata = (metadata) => {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
+  return Object.fromEntries(Object.entries(metadata)
+    .filter(([key]) => providerRetryAuditMetadataKeys.has(key))
+    .map(([key, value]) => [
+      key,
+      typeof value === 'string'
+        ? providerRetryIdentifierKeys.has(key)
+          ? safeProviderLifecycleEvidenceIdentifier(value)
+          : safeErrorPreview(value)
+        : value,
+    ]))
+}
 
 const isProviderReplayLedgerAuditEvent = (event) =>
   providerReplayLedgerAuditActions.has(event?.action) && event?.resourceType === 'creative_provider_replay_ledger'
@@ -697,6 +748,7 @@ export const serializeAuditEvent = (event) => {
   const providerBudgetEvent = isProviderBudgetAuditEvent(event)
   const providerControlEvent = isProviderControlAuditEvent(event)
   const providerLifecycleEvent = isProviderLifecycleAuditEvent(event)
+  const providerRetryEvent = isProviderRetryAuditEvent(event)
   const providerReplayLedgerEvent = isProviderReplayLedgerAuditEvent(event)
   const creativeGenerationEvent = isCreativeGenerationAuditEvent(event)
   const creativeAccountingEvent = isCreativeAccountingAuditEvent(event)
@@ -709,7 +761,7 @@ export const serializeAuditEvent = (event) => {
     resourceType: event.resourceType,
     resourceId: providerBudgetEvent || providerControlEvent
       ? safeProviderBudgetEvidenceIdentifier(event.resourceId)
-      : providerLifecycleEvent
+      : providerLifecycleEvent || providerRetryEvent
         ? safeProviderLifecycleEvidenceIdentifier(event.resourceId)
         : providerReplayLedgerEvent
           ? safeProviderLifecycleEvidenceIdentifier(event.resourceId)
@@ -726,6 +778,8 @@ export const serializeAuditEvent = (event) => {
       ? safeProviderBudgetAuditMetadata(event.metadata)
       : providerLifecycleEvent
         ? safeProviderLifecycleAuditMetadata(event.metadata)
+        : providerRetryEvent
+          ? safeProviderRetryAuditMetadata(event.metadata)
         : providerReplayLedgerEvent
           ? safeProviderReplayLedgerAuditMetadata(event.metadata)
           : creativeGenerationEvent

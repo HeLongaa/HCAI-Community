@@ -257,6 +257,7 @@ Known gaps:
 | V1-10 | Implemented Provider-independent immutable pricing snapshots, six-decimal amount normalization, durable atomic budget reservation, idempotent settlement/release/reconciliation, and low-cardinality operations evidence; real pricing and dispatch remain approval-gated |
 | V1-11 | Implemented versioned kill switches, expiring hash-only Provider cap evidence, explicit circuits, one-claim probes, two-person recovery review, and safe operations evidence; real cap readers, probes, and dispatch remain unregistered |
 | V1-12 | Implemented a shared safe error taxonomy, bounded Retry-After, deterministic backoff, durable hash-only retry evidence, CAS attempt budgets, polling integration, and safe Admin/metrics views; real Provider clients and traffic remain unregistered |
+| V1-13 | Implemented catalog-driven internal lifecycle notifications, retry AuditEvent allowlisting, Admin list/export/detail parity, low-cardinality lifecycle metrics, safe samples, and handoff hints; real Provider traffic and external lifecycle delivery remain disabled |
 | V1-48 | OAuth scopes, identifiers, unlink, region, and sessions |
 | V1-49 | PostgreSQL backup, expiry, restore, and deletion rehearsal |
 | V1-50 | Private object storage/CDN and lifecycle deletion |
