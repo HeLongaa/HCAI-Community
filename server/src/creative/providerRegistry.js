@@ -1,18 +1,11 @@
 import { HttpError } from '../common/errors/httpError.js'
 import { buildCreativeProviderConfig } from '../config/env.js'
+import { imageCapabilityForProvider } from './imageCapabilityContract.js'
 
 export const creativeWorkspaces = ['image', 'video', 'music', 'chat']
 
 export const creativeCapabilities = {
-  image: {
-    workspace: 'image',
-    label: 'Image Studio',
-    modes: ['text_to_image', 'image_to_image'],
-    inputAssetPurposes: ['submission_asset', 'profile_portfolio', 'library_asset'],
-    outputTypes: ['image'],
-    maxPromptCharacters: 2000,
-    supportedParameters: ['aspectRatio', 'stylePreset', 'seed', 'strength'],
-  },
+  image: imageCapabilityForProvider('mock'),
   video: {
     workspace: 'video',
     label: 'Video Studio',
@@ -42,15 +35,7 @@ export const creativeCapabilities = {
   },
 }
 
-const cloneCapability = (capability) => ({
-  workspace: capability.workspace,
-  label: capability.label,
-  modes: [...capability.modes],
-  inputAssetPurposes: [...capability.inputAssetPurposes],
-  outputTypes: [...capability.outputTypes],
-  maxPromptCharacters: capability.maxPromptCharacters,
-  supportedParameters: [...capability.supportedParameters],
-})
+const cloneCapability = (capability) => structuredClone(capability)
 
 const buildMockProvider = (config) => ({
   id: 'mock',
@@ -75,10 +60,8 @@ const buildReplicateStagingProvider = (configProvider, config) => ({
   configured: configProvider.configured,
   default: false,
   capabilities: [{
-    ...cloneCapability(creativeCapabilities.image),
-    modes: ['text_to_image'],
+    ...imageCapabilityForProvider('replicate-staging'),
     inputAssetPurposes: [],
-    supportedParameters: ['aspectRatio', 'stylePreset', 'seed'],
   }],
   safeMetadata: {
     externalCredentialsConfigured: configProvider.externalCredentialsConfigured,
@@ -145,5 +128,14 @@ export const getCreativeCapability = (provider, workspace) => {
 export const assertCreativeModeSupported = (capability, mode) => {
   if (!capability.modes.includes(mode)) {
     throw new HttpError(400, 'VALIDATION_FAILED', `mode must be one of: ${capability.modes.join(', ')}`)
+  }
+}
+
+export const assertCreativeParametersSupported = (capability, mode, parameters = {}) => {
+  const modeContract = capability.modeContracts?.find((candidate) => candidate.id === mode && candidate.available)
+  const supportedParameters = modeContract?.parameters ?? capability.supportedParameters
+  const unsupported = Object.keys(parameters).find((key) => !supportedParameters.includes(key))
+  if (unsupported) {
+    throw new HttpError(400, 'VALIDATION_FAILED', `parameters.${unsupported} is not supported by provider for ${mode}`)
   }
 }

@@ -2,12 +2,16 @@ import { api } from './apiClient'
 import type {
   ApiCreativeGeneration,
   ApiCreativeGenerationMutationResponse,
+  ApiCreativeProviderCatalog,
   CreateCreativeGenerationRequest,
   CreativeGenerationMutationRequest,
   RetryCreativeGenerationRequest,
 } from './contracts'
 
 export const creativeService = {
+  listProviders() {
+    return api.get<ApiCreativeProviderCatalog>('/creative/providers')
+  },
   createGeneration(body: CreateCreativeGenerationRequest) {
     return api.post<ApiCreativeGeneration>('/creative/generations', body)
   },

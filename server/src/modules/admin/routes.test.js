@@ -804,8 +804,6 @@ test('GET /api/admin/creative/generations reads Replicate fixture evidence witho
         parameters: {
           aspectRatio: '1:1',
           seed: 11,
-          apiKey: 'replicate-admin-fixture-token',
-          rawProviderPayload: ['raw-admin-provider-payload'],
         },
       },
       token: 'demo-access.promptlin',

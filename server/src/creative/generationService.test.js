@@ -482,6 +482,26 @@ test('executeCreativeGeneration refuses the Replicate staging shell before adapt
   )
 })
 
+test('executeCreativeGeneration rejects parameters outside the selected provider contract', async () => {
+  await assert.rejects(
+    executeCreativeGeneration({
+      request: {
+        ...request,
+        providerId: 'replicate-staging',
+        parameters: { ...request.parameters, quality: 'high' },
+      },
+      actor,
+      source: stagingSource,
+      fixtureAdapters: {
+        'replicate-staging': async () => {
+          throw new Error('fixture adapter must not run')
+        },
+      },
+    }),
+    /parameters.quality is not supported by provider for text_to_image/,
+  )
+})
+
 test('persistCreativeGenerationOutputs attaches media asset storage metadata', async () => {
   resetCreativePolicyState()
   const generation = await executeCreativeGeneration({ request, actor, source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' } })

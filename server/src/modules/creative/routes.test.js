@@ -163,7 +163,13 @@ test('GET /api/creative/providers lists safe provider capability metadata', asyn
     assert.equal(payload.data.providers[0].id, 'mock')
     assert.equal(payload.data.providers[0].enabled, true)
     assert.equal(payload.data.providers[0].safeMetadata.externalCredentialsConfigured, false)
-    assert.ok(payload.data.providers[0].capabilities.find((capability) => capability.workspace === 'image'))
+    const imageCapability = payload.data.providers[0].capabilities.find((capability) => capability.workspace === 'image')
+    assert.equal(imageCapability.contractVersion, 'image-capability-v1')
+    assert.deepEqual(imageCapability.modes, ['text_to_image', 'image_to_image'])
+    assert.deepEqual(imageCapability.allModes, ['text_to_image', 'image_to_image', 'image_edit', 'image_variation'])
+    assert.equal(imageCapability.modeContracts.find((mode) => mode.id === 'image_edit').available, false)
+    assert.equal(imageCapability.parameterDefinitions.outputCount.maximum, 1)
+    assert.equal(imageCapability.runtime.realProviderCallsApproved, false)
   } finally {
     await server.close()
   }
@@ -656,7 +662,7 @@ test('POST /api/creative/generations validates request payloads', async () => {
     assert.equal(status, 400)
     assert.equal(payload.data, null)
     assert.equal(payload.error.code, 'VALIDATION_FAILED')
-    assert.equal(payload.error.message, 'mode must be one of: text_to_image, image_to_image')
+    assert.equal(payload.error.message, 'mode must be one of: text_to_image, image_to_image, image_edit, image_variation')
   } finally {
     await server.close()
   }
@@ -673,7 +679,6 @@ test('POST /api/creative/generations persists mock provider output through media
         workspace: 'image',
         mode: 'text_to_image',
         prompt: ' A neon marketplace poster ',
-        inputAssetIds: [' asset-1 '],
         parameters: { aspectRatio: '16:9', seed: 7 },
       },
       token: 'demo-access.promptlin',
@@ -684,7 +689,7 @@ test('POST /api/creative/generations persists mock provider output through media
     assert.ok(payload.data.id.startsWith('gen_mock_'))
     assert.equal(payload.data.workspace, 'image')
     assert.equal(payload.data.prompt, 'A neon marketplace poster')
-    assert.deepEqual(payload.data.inputAssetIds, ['asset-1'])
+    assert.deepEqual(payload.data.inputAssetIds, [])
     assert.equal(payload.data.provider.id, 'mock')
     assert.equal(payload.data.outputs[0].type, 'image')
     assert.equal(payload.data.outputs[0].contentType, 'image/svg+xml')
@@ -796,10 +801,6 @@ test('POST /api/creative/generations can run a Replicate staging fixture through
           aspectRatio: '1:1',
           seed: 9,
           stylePreset: 'editorial_launch',
-          apiKey: 'replicate-fixture-token',
-          Authorization: 'Bearer secret.value',
-          callbackUrl: 'https://internal.example/callback',
-          rawProviderPayload: ['replicate-fixture-token', 'raw-response-body'],
         },
       },
       token: 'demo-access.promptlin',

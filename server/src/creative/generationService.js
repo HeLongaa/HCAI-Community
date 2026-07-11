@@ -1,5 +1,6 @@
 import {
   assertCreativeModeSupported,
+  assertCreativeParametersSupported,
   createCreativeProviderRegistry,
   getCreativeCapability,
   getCreativeProvider,
@@ -20,6 +21,7 @@ import {
   assertReplicateProviderBudgetAllowsDispatch,
   buildReplicateProviderCostMetadata,
 } from './replicateStagingProvider.js'
+import { assertImageGenerationRequest } from './imageCapabilityContract.js'
 
 const getFixtureProvider = (providerId, registry) => {
   const provider = registry.providers.find((candidate) => candidate.id === providerId)
@@ -64,6 +66,7 @@ export const executeCreativeGeneration = async ({
   providerProbeToken = null,
   fixtureAdapters = {},
 }) => {
+  assertImageGenerationRequest(request)
   const registry = createCreativeProviderRegistry(source)
   const fixtureAdapter = request.providerId ? fixtureAdapters[request.providerId] : null
   const provider = fixtureAdapter
@@ -71,6 +74,7 @@ export const executeCreativeGeneration = async ({
     : getCreativeProvider(request.providerId, registry)
   const capability = getCreativeCapability(provider, request.workspace)
   assertCreativeModeSupported(capability, request.mode)
+  assertCreativeParametersSupported(capability, request.mode, request.parameters)
 
   if (provider.id !== 'mock' && !fixtureAdapter) {
     throw new Error(`Unsupported creative provider adapter: ${provider.id}`)

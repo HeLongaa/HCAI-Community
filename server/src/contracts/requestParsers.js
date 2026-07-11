@@ -10,6 +10,7 @@ import {
   validationFailed,
 } from '../common/http/validation.js'
 import { permissions } from '../auth/permissions.js'
+import { assertImageGenerationRequest } from '../creative/imageCapabilityContract.js'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const handlePattern = /^[a-zA-Z0-9_-]{3,32}$/
@@ -280,7 +281,7 @@ export const parseCreateCreativeGenerationRequest = (body) => {
   if (prompt.length > 4000) {
     throw validationFailed('prompt must be 4000 characters or fewer')
   }
-  return {
+  const request = {
     workspace: requireOneOf(body, 'workspace', creativeWorkspaces),
     mode: requireText(body, 'mode'),
     prompt,
@@ -288,6 +289,7 @@ export const parseCreateCreativeGenerationRequest = (body) => {
     parameters: optionalCreativeParameters(body),
     providerId: optionalText(body, 'providerId', null),
   }
+  return assertImageGenerationRequest(request)
 }
 
 const requireIdempotencyKey = (body) => {
