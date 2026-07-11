@@ -16,6 +16,7 @@ Includes:
 - `npm run test:v1-scope`
 - `npm run test:v1-surfaces`
 - `npm run test:v1-providers`
+- `npm run test:v1-safety-policy`
 - `npm run test:sim`
 - API contract drift check through `scripts/verify-api-contracts.mjs`
 
@@ -30,6 +31,11 @@ release blockers without claiming that V1 is production-ready.
 The V1 provider-decision contract checks the four primary/backup pairs, official-source register, pricing examples,
 budget sums, app concurrency and lifecycle bounds, rights/training/retention/region/SLA dispositions, replacement
 triggers, and fail-closed approval rules. It rejects any drift that would imply real-call or production approval.
+
+The V1 content-safety contract checks the prohibited/block/review/allow partition for all four modalities, 20 risk
+categories, the five-stage responsibility chain, all eight Provider policy mappings, official policy sources, region
+behavior, user messages, review/appeal rules, audit allowlists, sensitive-field exclusions, and downstream task owners.
+It deliberately records that runtime enforcement is incomplete and rejects any drift that implies production approval.
 
 Use this before handing off small frontend, contract, or documentation changes.
 
@@ -81,6 +87,8 @@ Includes:
 - creative provider safety validation: production smoke must keep staging provider preflight disabled and must not expose real provider tokens
 - provider decision validation: all four modalities retain a conditional primary and backup with explicit legal, data,
   SLA, budget, and replacement conditions
+- content safety validation: all four modalities retain a fail-closed policy partition, Provider-native safety remains
+  defense in depth, and unknown content, safety responses, or regions cannot dispatch or release output
 
 The environment profile does not print secrets. It reports booleans, counts, provider modes, and safe operational metadata only.
 
@@ -89,6 +97,8 @@ Use `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` before scaling beyond one A
 Use `docs/REAL_PROVIDER_CURRENT_STATUS.md` as the first decision entry point before starting provider work. Use `docs/REAL_PROVIDER_BOUNDARY_CLOSEOUT.md` as the detailed handoff document. Use `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` before starting or merging any staging-only real provider adapter PR. Use `docs/REAL_PROVIDER_STAGING_SMOKE_READINESS.md` for the metadata-only smoke readiness closeout, then use `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` for the manual creative staging smoke execution and adapter closeout evidence. Use `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` before any PR or operator runs a real provider external-call rehearsal. Use `docs/REAL_PROVIDER_CALLBACK_POLLING_PREREQUISITES.md` before enabling provider callbacks, polling workers, or manual lifecycle replay.
 Use `docs/V1_PROVIDER_DECISION_MATRIX.md` before choosing a provider/model, changing modality budgets, negotiating
 provider terms, or implementing a primary/backup adapter.
+Use `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` before changing moderation categories, Provider safety mappings,
+review/reject/release behavior, appeals, user safety messages, or safety-event audit fields.
 
 ## GitHub Actions
 

@@ -64,6 +64,36 @@ addCheck(
   manifest.creativeProviderPolicy.verificationCommand,
 )
 addCheck(
+  'all four modalities have a frozen content safety policy',
+  sameMembers(manifest.creativeSafetyPolicy.requiredModalities, expectedModalities),
+  manifest.creativeSafetyPolicy.requiredModalities.join(', '),
+)
+addCheck(
+  'content safety defaults fail closed',
+  manifest.creativeSafetyPolicy.defaultDisposition === 'block' &&
+    manifest.creativeSafetyPolicy.providerNativeSafetyIsDefenseInDepth === true,
+  JSON.stringify(manifest.creativeSafetyPolicy),
+)
+addCheck(
+  'content safety policy artifacts exist',
+  fs.existsSync(path.join(root, manifest.creativeSafetyPolicy.policyMatrix)) &&
+    fs.existsSync(path.join(root, manifest.creativeSafetyPolicy.policyDocument)),
+  `${manifest.creativeSafetyPolicy.policyMatrix}, ${manifest.creativeSafetyPolicy.policyDocument}`,
+)
+addCheck(
+  'content safety verification command is frozen',
+  manifest.creativeSafetyPolicy.verificationCommand === 'npm run test:v1-safety-policy',
+  manifest.creativeSafetyPolicy.verificationCommand,
+)
+addCheck(
+  'content safety downstream implementation owners are frozen',
+  sameMembers(
+    manifest.creativeSafetyPolicy.implementationTasks,
+    ['V1-45', 'V1-59', 'V1-60', 'V1-61', 'V1-62', 'V1-63', 'V1-78'],
+  ),
+  manifest.creativeSafetyPolicy.implementationTasks.join(', '),
+)
+addCheck(
   'runtime surface inventory exists',
   fs.existsSync(path.join(root, manifest.runtimeSurfaceInventory)),
   manifest.runtimeSurfaceInventory,
@@ -145,6 +175,12 @@ addCheck(
   'provider decision verification is part of the quick gate',
   packageJson.scripts['test:v1-providers'] === 'node scripts/verify-v1-provider-matrix.mjs' &&
     packageJson.scripts['check:quick']?.includes('npm run test:v1-providers'),
+  packageJson.scripts['check:quick'],
+)
+addCheck(
+  'content safety verification is part of the quick gate',
+  packageJson.scripts['test:v1-safety-policy'] === 'node scripts/verify-v1-content-safety-policy.mjs' &&
+    packageJson.scripts['check:quick']?.includes('npm run test:v1-safety-policy'),
   packageJson.scripts['check:quick'],
 )
 

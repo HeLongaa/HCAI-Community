@@ -1,0 +1,878 @@
+{
+  "schemaVersion": 1,
+  "taskId": "V1-44",
+  "asOf": "2026-07-11",
+  "policyVersion": "v1-content-safety-2026-07-11",
+  "policyStatus": "frozen_for_implementation",
+  "runtimeStatus": {
+    "enforcementComplete": false,
+    "currentPromptGate": "limited_keyword_fixture_baseline",
+    "providerNativeSafety": "not_integrated",
+    "postOutputSafety": "media_scan_only",
+    "humanReview": "partial_media_governance_only",
+    "appealWorkflow": "not_implemented",
+    "productionApproved": false,
+    "realProviderCallsApproved": false,
+    "ordinaryContinuationIsApproval": false
+  },
+  "guardrails": {
+    "defaultDisposition": "block",
+    "unclassifiedContentDisposition": "block",
+    "unknownProviderSafetyResponse": "block",
+    "unsupportedRegionDisposition": "block",
+    "providerRefusalDisposition": "reject",
+    "providerNativeSafetyIsDefenseInDepth": true,
+    "providerSafetyWeakeningAllowed": false,
+    "silentMockFallback": "forbidden",
+    "rawSensitivePromptPersistence": "forbidden",
+    "rawProviderPayloadPersistence": "forbidden",
+    "policyDocument": "docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md",
+    "providerDecisionMatrix": "config/v1-provider-matrix.json",
+    "externalCallApprovalDocument": "docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md"
+  },
+  "dispositions": [
+    {
+      "id": "prohibited",
+      "meaning": "The requested purpose or content is never eligible for generation or release in V1.",
+      "providerDispatchAllowed": false,
+      "providerDispatchAfterReviewAllowed": false,
+      "outputReleaseAllowed": false,
+      "requestAction": "reject",
+      "outputAction": "quarantine_and_reject",
+      "terminal": true,
+      "appealEligible": true
+    },
+    {
+      "id": "block",
+      "meaning": "The request is disallowed as submitted, lacks required rights or context, or cannot be safely classified.",
+      "providerDispatchAllowed": false,
+      "providerDispatchAfterReviewAllowed": false,
+      "outputReleaseAllowed": false,
+      "requestAction": "block_before_dispatch",
+      "outputAction": "quarantine",
+      "terminal": false,
+      "appealEligible": true
+    },
+    {
+      "id": "review",
+      "meaning": "A trained reviewer must decide using the recorded context before provider dispatch or output release.",
+      "providerDispatchAllowed": false,
+      "providerDispatchAfterReviewAllowed": true,
+      "outputReleaseAllowed": false,
+      "requestAction": "hold_for_review",
+      "outputAction": "quarantine_for_review",
+      "terminal": false,
+      "appealEligible": true
+    },
+    {
+      "id": "allow",
+      "meaning": "The request may proceed only after all mandatory automated, rights, region, provider, and output checks pass.",
+      "providerDispatchAllowed": true,
+      "providerDispatchAfterReviewAllowed": true,
+      "outputReleaseAllowed": true,
+      "requestAction": "continue",
+      "outputAction": "release_after_checks",
+      "terminal": false,
+      "appealEligible": false
+    }
+  ],
+  "riskCategories": [
+    {
+      "id": "child_sexual_exploitation",
+      "severity": "critical",
+      "appliesTo": ["image", "chat", "video", "music"],
+      "definition": "Sexual content, grooming, exploitation, or sexualized depiction involving a person known or reasonably suspected to be under 18.",
+      "reasonCode": "SAFETY_CHILD_SEXUAL",
+      "escalation": "preserve_minimal_evidence_and_follow_legal_reporting_runbook"
+    },
+    {
+      "id": "non_consensual_intimate_content",
+      "severity": "critical",
+      "appliesTo": ["image", "chat", "video", "music"],
+      "definition": "Creation, alteration, description, or distribution of intimate content without the depicted person's consent.",
+      "reasonCode": "SAFETY_NON_CONSENSUAL_INTIMATE",
+      "escalation": "trust_and_safety_priority"
+    },
+    {
+      "id": "hate_extremist_praise_or_recruitment",
+      "severity": "critical",
+      "appliesTo": ["image", "chat", "video", "music"],
+      "definition": "Praise, recruitment, operational support, or targeted dehumanization for hateful or extremist activity.",
+      "reasonCode": "SAFETY_HATE_EXTREMISM",
+      "escalation": "trust_and_safety_priority"
+    },
+    {
+      "id": "violent_wrongdoing_instructions",
+      "severity": "critical",
+      "appliesTo": ["image", "chat", "video", "music"],
+      "definition": "Actionable instructions, optimization, or encouragement for violent wrongdoing or serious physical harm.",
+      "reasonCode": "SAFETY_VIOLENT_WRONGDOING",
+      "escalation": "trust_and_safety_priority"
+    },
+    {
+      "id": "credential_theft_malware_or_cyber_abuse",
+      "severity": "critical",
+      "appliesTo": ["image", "chat"],
+      "definition": "Credential harvesting, phishing interfaces, malware, unauthorized access, evasion, or destructive cyber abuse.",
+      "reasonCode": "SAFETY_CYBER_ABUSE",
+      "escalation": "security_and_trust_safety"
+    },
+    {
+      "id": "self_harm_instructions_or_encouragement",
+      "severity": "critical",
+      "appliesTo": ["image", "chat", "video", "music"],
+      "definition": "Instructions, encouragement, romanticization, or personalized optimization of suicide or self-harm; supportive prevention content is excluded.",
+      "reasonCode": "SAFETY_SELF_HARM",
+      "escalation": "crisis_safe_response_path"
+    },
+    {
+      "id": "adult_explicit_sexual_content",
+      "severity": "high",
+      "appliesTo": ["image", "chat", "video", "music"],
+      "definition": "Pornographic or explicit sexual generation involving adults, excluding neutral health, safety, or educational context.",
+      "reasonCode": "SAFETY_EXPLICIT_SEXUAL",
+      "escalation": "standard"
+    },
+    {
+      "id": "graphic_violence_or_gore",
+      "severity": "high",
+      "appliesTo": ["image", "chat", "video", "music"],
+      "definition": "Graphic gore, torture, dismemberment, or realistic severe injury outside a legitimate contextual exception.",
+      "reasonCode": "SAFETY_GRAPHIC_VIOLENCE",
+      "escalation": "standard"
+    },
+    {
+      "id": "targeted_harassment_threats_or_doxxing",
+      "severity": "high",
+      "appliesTo": ["image", "chat", "video", "music"],
+      "definition": "Targeted abuse, credible threats, humiliation, stalking assistance, or exposure of private identifying information.",
+      "reasonCode": "SAFETY_TARGETED_ABUSE",
+      "escalation": "trust_and_safety"
+    },
+    {
+      "id": "fraud_impersonation_or_deceptive_media",
+      "severity": "high",
+      "appliesTo": ["image", "chat", "video", "music"],
+      "definition": "Fraud, scams, deceptive impersonation, fabricated evidence, or media intended to mislead people about authenticity.",
+      "reasonCode": "SAFETY_FRAUD_DECEPTION",
+      "escalation": "trust_and_safety"
+    },
+    {
+      "id": "election_or_political_persuasion",
+      "severity": "high",
+      "appliesTo": ["image", "chat", "video", "music"],
+      "definition": "Targeted political persuasion, election interference, false voting information, or deceptive synthetic campaign media.",
+      "reasonCode": "SAFETY_POLITICAL_PERSUASION",
+      "escalation": "policy_and_legal"
+    },
+    {
+      "id": "real_person_likeness_voice_or_biometrics",
+      "severity": "high",
+      "appliesTo": ["image", "chat", "video", "music"],
+      "definition": "Use of a real person's face, voice, identity, or biometric traits where consent, authority, purpose, or disclosure is uncertain.",
+      "reasonCode": "SAFETY_REAL_PERSON_IDENTITY",
+      "escalation": "rights_and_safety_review"
+    },
+    {
+      "id": "public_figure_sensitive_context",
+      "severity": "high",
+      "appliesTo": ["image", "chat", "video", "music"],
+      "definition": "A public figure in sexual, violent, medical, criminal, endorsement, election, or other materially misleading context.",
+      "reasonCode": "SAFETY_PUBLIC_FIGURE",
+      "escalation": "rights_and_safety_review"
+    },
+    {
+      "id": "personal_data_or_sensitive_attribute_inference",
+      "severity": "high",
+      "appliesTo": ["image", "chat", "video", "music"],
+      "definition": "Exposure of personal data or inference of sensitive traits, identity, health, finances, location, or protected attributes.",
+      "reasonCode": "SAFETY_PRIVACY_INFERENCE",
+      "escalation": "privacy_review"
+    },
+    {
+      "id": "regulated_advice_or_high_impact_decision",
+      "severity": "high",
+      "appliesTo": ["chat"],
+      "definition": "Personalized legal, medical, financial, employment, housing, education, insurance, or other high-impact advice or decisions.",
+      "reasonCode": "SAFETY_REGULATED_ADVICE",
+      "escalation": "qualified_domain_review"
+    },
+    {
+      "id": "weapons_drugs_or_regulated_goods",
+      "severity": "high",
+      "appliesTo": ["image", "chat", "video", "music"],
+      "definition": "Operational weapons use, illicit drug production, evasion, or promotion and sale of regulated goods.",
+      "reasonCode": "SAFETY_REGULATED_GOODS",
+      "escalation": "policy_review"
+    },
+    {
+      "id": "copyright_trademark_artist_style_or_lyrics",
+      "severity": "high",
+      "appliesTo": ["image", "chat", "video", "music"],
+      "definition": "Potentially unauthorized copyrighted material, trademarks, living-artist style imitation, lyrics, samples, characters, or model-license conflicts.",
+      "reasonCode": "RIGHTS_IP_OR_LICENSE",
+      "escalation": "rights_review"
+    },
+    {
+      "id": "minor_nonsexual_sensitive_depiction",
+      "severity": "high",
+      "appliesTo": ["image", "chat", "video", "music"],
+      "definition": "Nonsexual depiction of a minor in exploitative, dangerous, identity-sensitive, commercial, or otherwise high-risk context.",
+      "reasonCode": "SAFETY_MINOR_SENSITIVE",
+      "escalation": "child_safety_review"
+    },
+    {
+      "id": "medical_legal_newsworthy_or_educational_sensitive_context",
+      "severity": "medium",
+      "appliesTo": ["image", "chat", "video", "music"],
+      "definition": "Sensitive material with a plausible medical, legal, journalistic, documentary, historical, educational, or safety purpose requiring context review.",
+      "reasonCode": "SAFETY_CONTEXT_REQUIRED",
+      "escalation": "standard_review"
+    },
+    {
+      "id": "benign_original_or_authorized_creation",
+      "severity": "low",
+      "appliesTo": ["image", "chat", "video", "music"],
+      "definition": "Benign original creation, authorized transformation, neutral assistance, or clearly safe educational and fictional content.",
+      "reasonCode": "SAFETY_ALLOWED_BASELINE",
+      "escalation": "none"
+    }
+  ],
+  "modalities": [
+    {
+      "id": "image",
+      "implementationTaskId": "V1-59",
+      "decisions": {
+        "prohibited": [
+          "child_sexual_exploitation",
+          "non_consensual_intimate_content",
+          "hate_extremist_praise_or_recruitment",
+          "violent_wrongdoing_instructions",
+          "credential_theft_malware_or_cyber_abuse",
+          "self_harm_instructions_or_encouragement"
+        ],
+        "block": [
+          "adult_explicit_sexual_content",
+          "graphic_violence_or_gore",
+          "targeted_harassment_threats_or_doxxing",
+          "fraud_impersonation_or_deceptive_media",
+          "election_or_political_persuasion"
+        ],
+        "review": [
+          "real_person_likeness_voice_or_biometrics",
+          "public_figure_sensitive_context",
+          "personal_data_or_sensitive_attribute_inference",
+          "weapons_drugs_or_regulated_goods",
+          "copyright_trademark_artist_style_or_lyrics",
+          "minor_nonsexual_sensitive_depiction",
+          "medical_legal_newsworthy_or_educational_sensitive_context"
+        ],
+        "allow": ["benign_original_or_authorized_creation"]
+      },
+      "preDispatchControls": [
+        "prompt and negative-prompt classification",
+        "input image scan and ownership/consent attestation",
+        "real-person and public-figure review trigger",
+        "region and provider eligibility"
+      ],
+      "providerNativeControls": ["provider prompt/output safety filters", "safe refusal-code mapping"],
+      "postOutputControls": [
+        "image safety classifier",
+        "malware/media scan",
+        "provenance metadata preservation",
+        "private quarantine before download"
+      ],
+      "specialRules": [
+        "No face or identity transformation is released without consent-purpose evidence.",
+        "Provider success never bypasses application output review or governed storage."
+      ]
+    },
+    {
+      "id": "chat",
+      "implementationTaskId": "V1-60",
+      "decisions": {
+        "prohibited": [
+          "child_sexual_exploitation",
+          "non_consensual_intimate_content",
+          "hate_extremist_praise_or_recruitment",
+          "violent_wrongdoing_instructions",
+          "credential_theft_malware_or_cyber_abuse",
+          "self_harm_instructions_or_encouragement"
+        ],
+        "block": [
+          "adult_explicit_sexual_content",
+          "targeted_harassment_threats_or_doxxing",
+          "fraud_impersonation_or_deceptive_media",
+          "election_or_political_persuasion"
+        ],
+        "review": [
+          "graphic_violence_or_gore",
+          "real_person_likeness_voice_or_biometrics",
+          "public_figure_sensitive_context",
+          "personal_data_or_sensitive_attribute_inference",
+          "regulated_advice_or_high_impact_decision",
+          "weapons_drugs_or_regulated_goods",
+          "copyright_trademark_artist_style_or_lyrics",
+          "minor_nonsexual_sensitive_depiction",
+          "medical_legal_newsworthy_or_educational_sensitive_context"
+        ],
+        "allow": ["benign_original_or_authorized_creation"]
+      },
+      "preDispatchControls": [
+        "message and attachment classification",
+        "conversation-context risk escalation",
+        "tool allowlist and argument policy",
+        "privacy-preserving stable safety identifier",
+        "region and provider eligibility"
+      ],
+      "providerNativeControls": ["provider input safeguards", "stream refusal and stop-signal mapping"],
+      "postOutputControls": [
+        "streaming output classifier",
+        "unsafe stream termination",
+        "tool result re-evaluation",
+        "safe partial-output handling"
+      ],
+      "specialRules": [
+        "Supportive self-harm prevention and neutral education are classified separately from instructions or encouragement.",
+        "High-impact advice requires context, limitations, and escalation; the model never makes the final decision."
+      ]
+    },
+    {
+      "id": "video",
+      "implementationTaskId": "V1-61",
+      "decisions": {
+        "prohibited": [
+          "child_sexual_exploitation",
+          "non_consensual_intimate_content",
+          "hate_extremist_praise_or_recruitment",
+          "violent_wrongdoing_instructions",
+          "self_harm_instructions_or_encouragement"
+        ],
+        "block": [
+          "adult_explicit_sexual_content",
+          "graphic_violence_or_gore",
+          "targeted_harassment_threats_or_doxxing",
+          "fraud_impersonation_or_deceptive_media",
+          "election_or_political_persuasion"
+        ],
+        "review": [
+          "real_person_likeness_voice_or_biometrics",
+          "public_figure_sensitive_context",
+          "personal_data_or_sensitive_attribute_inference",
+          "weapons_drugs_or_regulated_goods",
+          "copyright_trademark_artist_style_or_lyrics",
+          "minor_nonsexual_sensitive_depiction",
+          "medical_legal_newsworthy_or_educational_sensitive_context"
+        ],
+        "allow": ["benign_original_or_authorized_creation"]
+      },
+      "preDispatchControls": [
+        "prompt, storyboard, reference-frame, and audio classification",
+        "identity, consent, and rights attestation",
+        "region and provider eligibility"
+      ],
+      "providerNativeControls": ["provider safety filters", "provider task refusal-state mapping"],
+      "postOutputControls": [
+        "representative-frame and audio safety classification",
+        "full asset malware/media scan",
+        "C2PA/provenance preservation when supplied",
+        "private quarantine before preview or download"
+      ],
+      "specialRules": [
+        "Every long-running lifecycle transition can move the job to review or rejection before release.",
+        "Real-person synthetic media requires consent, purpose, and disclosure evidence."
+      ]
+    },
+    {
+      "id": "music",
+      "implementationTaskId": "V1-62",
+      "decisions": {
+        "prohibited": [
+          "child_sexual_exploitation",
+          "non_consensual_intimate_content",
+          "hate_extremist_praise_or_recruitment",
+          "violent_wrongdoing_instructions",
+          "self_harm_instructions_or_encouragement"
+        ],
+        "block": [
+          "adult_explicit_sexual_content",
+          "targeted_harassment_threats_or_doxxing",
+          "fraud_impersonation_or_deceptive_media",
+          "election_or_political_persuasion"
+        ],
+        "review": [
+          "graphic_violence_or_gore",
+          "real_person_likeness_voice_or_biometrics",
+          "public_figure_sensitive_context",
+          "personal_data_or_sensitive_attribute_inference",
+          "weapons_drugs_or_regulated_goods",
+          "copyright_trademark_artist_style_or_lyrics",
+          "minor_nonsexual_sensitive_depiction",
+          "medical_legal_newsworthy_or_educational_sensitive_context"
+        ],
+        "allow": ["benign_original_or_authorized_creation"]
+      },
+      "preDispatchControls": [
+        "prompt, lyrics, reference audio, and composition-plan classification",
+        "voice, sample, lyrics, artist, and distribution-rights attestation",
+        "region and enterprise-license eligibility"
+      ],
+      "providerNativeControls": ["provider copyrighted-material filters", "safe bad-prompt/refusal mapping"],
+      "postOutputControls": [
+        "lyrics and audio safety review",
+        "media scan",
+        "license/provenance metadata persistence",
+        "private quarantine before playback or download"
+      ],
+      "specialRules": [
+        "Living-artist, voice-clone, recognizable lyric, and unlicensed sample requests require review or rejection.",
+        "Provider generation success does not prove platform distribution or reseller rights."
+      ]
+    }
+  ],
+  "responsibilityStages": [
+    {
+      "id": "pre_dispatch",
+      "order": 1,
+      "owner": "application",
+      "mustCompleteBefore": "provider_request_or_provider_cost",
+      "requiredInputs": ["prompt hash", "safe redacted preview", "modality", "mode", "input asset ids", "rights attestation", "region"],
+      "allowedOutcomes": ["prohibited", "block", "review", "allow"],
+      "failureDisposition": "block"
+    },
+    {
+      "id": "provider_native",
+      "order": 2,
+      "owner": "provider_and_adapter",
+      "mustCompleteBefore": "provider_output_acceptance",
+      "requiredInputs": ["provider policy version when available", "safe request correlation", "provider safety options"],
+      "allowedOutcomes": ["provider_refused", "provider_flagged", "provider_allowed", "provider_unknown"],
+      "failureDisposition": "block"
+    },
+    {
+      "id": "post_output",
+      "order": 3,
+      "owner": "application",
+      "mustCompleteBefore": "preview_playback_download_or_sharing",
+      "requiredInputs": ["output asset ids", "provider safety result", "media scan result", "provenance metadata"],
+      "allowedOutcomes": ["reject", "quarantine", "review", "release_candidate"],
+      "failureDisposition": "quarantine"
+    },
+    {
+      "id": "human_review",
+      "order": 4,
+      "owner": "authorized_moderator",
+      "mustCompleteBefore": "release_of_reviewed_content",
+      "requiredInputs": ["safe evidence bundle", "policy version", "category ids", "reason codes", "prior decisions"],
+      "allowedOutcomes": ["released", "rejected", "needs_more_context"],
+      "failureDisposition": "remain_quarantined"
+    },
+    {
+      "id": "appeal",
+      "order": 5,
+      "owner": "independent_authorized_reviewer",
+      "mustCompleteBefore": "appeal_closeout",
+      "requiredInputs": ["appeal id", "original decision", "user statement", "safe evidence bundle", "review history"],
+      "allowedOutcomes": ["upheld", "overturned", "partially_overturned", "needs_more_information"],
+      "failureDisposition": "original_decision_remains"
+    }
+  ],
+  "providerMappings": [
+    {
+      "providerId": "openai-gpt-image-2",
+      "modality": "image",
+      "role": "primary",
+      "policySourceIds": ["openai-usage-policies"],
+      "providerMatrixSourceIds": ["openai-image-guide", "openai-data", "openai-services-agreement", "openai-supported-countries"],
+      "nativeControls": ["prompt and output filtering", "moderation error details"],
+      "mandatoryAppControls": ["pre-dispatch policy gate", "input rights and consent", "post-output classifier and media scan", "human review"],
+      "providerRefusalBehavior": "reject_and_record_safe_reason",
+      "unknownSafetyResponse": "block",
+      "regionBehavior": "block_without_bypass"
+    },
+    {
+      "providerId": "replicate-flux-1-1-pro",
+      "modality": "image",
+      "role": "backup",
+      "policySourceIds": ["replicate-terms-policy"],
+      "providerMatrixSourceIds": ["replicate-model", "replicate-retention", "replicate-terms"],
+      "nativeControls": ["model-specific safety behavior", "prediction failure state"],
+      "mandatoryAppControls": ["pre-dispatch policy gate", "input rights and model-license allowlist", "post-output classifier and media scan", "human review"],
+      "providerRefusalBehavior": "reject_and_record_safe_reason",
+      "unknownSafetyResponse": "block",
+      "regionBehavior": "block_without_bypass"
+    },
+    {
+      "providerId": "openai-gpt-5-6-terra",
+      "modality": "chat",
+      "role": "primary",
+      "policySourceIds": ["openai-usage-policies"],
+      "providerMatrixSourceIds": ["openai-latest-model", "openai-data", "openai-services-agreement", "openai-supported-countries"],
+      "nativeControls": ["usage-policy safeguards", "safety identifier", "moderation endpoint and refusal behavior"],
+      "mandatoryAppControls": ["input and streaming output policy gates", "tool allowlist", "privacy-preserving safety identifier", "human escalation"],
+      "providerRefusalBehavior": "stop_stream_reject_and_record_safe_reason",
+      "unknownSafetyResponse": "block",
+      "regionBehavior": "block_without_bypass"
+    },
+    {
+      "providerId": "anthropic-claude-sonnet-5",
+      "modality": "chat",
+      "role": "backup",
+      "policySourceIds": ["anthropic-usage-policy"],
+      "providerMatrixSourceIds": ["anthropic-models", "anthropic-retention", "anthropic-commercial-terms"],
+      "nativeControls": ["provider safeguards", "usage-policy refusal behavior"],
+      "mandatoryAppControls": ["input and streaming output policy gates", "tool allowlist", "model-specific safety regression suite", "human escalation"],
+      "providerRefusalBehavior": "stop_stream_reject_and_record_safe_reason",
+      "unknownSafetyResponse": "block",
+      "regionBehavior": "block_without_bypass"
+    },
+    {
+      "providerId": "google-veo-3-1-fast",
+      "modality": "video",
+      "role": "primary",
+      "policySourceIds": ["google-generative-ai-prohibited-use", "google-cloud-aup"],
+      "providerMatrixSourceIds": ["google-veo-model", "google-zero-retention", "google-service-terms"],
+      "nativeControls": ["safety filters", "prompt rewriting", "C2PA Content Credentials"],
+      "mandatoryAppControls": ["prompt/reference/rights gate", "provider lifecycle safety mapping", "frame/audio/media scan", "C2PA preservation", "human review"],
+      "providerRefusalBehavior": "reject_job_and_record_safe_reason",
+      "unknownSafetyResponse": "block",
+      "regionBehavior": "block_without_bypass"
+    },
+    {
+      "providerId": "runway-gen-4-5",
+      "modality": "video",
+      "role": "backup",
+      "policySourceIds": ["runway-safety", "runway-terms-policy"],
+      "providerMatrixSourceIds": ["runway-models", "runway-using-api", "runway-terms"],
+      "nativeControls": ["content moderation behavior", "provider task failure states"],
+      "mandatoryAppControls": ["prompt/reference/rights gate", "provider lifecycle safety mapping", "frame/audio/media scan", "human review"],
+      "providerRefusalBehavior": "reject_job_and_record_safe_reason",
+      "unknownSafetyResponse": "block",
+      "regionBehavior": "block_without_bypass"
+    },
+    {
+      "providerId": "elevenlabs-music-v2-enterprise",
+      "modality": "music",
+      "role": "primary",
+      "policySourceIds": ["elevenlabs-prohibited-use", "eleven-music-terms-policy"],
+      "providerMatrixSourceIds": ["eleven-music-api", "eleven-music-terms", "eleven-model-terms", "eleven-terms"],
+      "nativeControls": ["copyrighted-material prompt checks", "bad-prompt suggestions", "music-specific prohibited-use filters"],
+      "mandatoryAppControls": ["lyrics/artist/voice/sample rights gate", "audio and lyrics output review", "license metadata", "report and takedown path"],
+      "providerRefusalBehavior": "reject_job_and_record_safe_reason",
+      "unknownSafetyResponse": "block",
+      "regionBehavior": "block_without_bypass"
+    },
+    {
+      "providerId": "google-lyria-3-pro-preview",
+      "modality": "music",
+      "role": "backup",
+      "policySourceIds": ["google-generative-ai-prohibited-use", "google-cloud-aup"],
+      "providerMatrixSourceIds": ["google-lyria-model", "google-lyria-api", "google-zero-retention", "google-service-terms"],
+      "nativeControls": ["Google generative AI safeguards", "music-generation filters"],
+      "mandatoryAppControls": ["lyrics/artist/voice/sample rights gate", "audio and lyrics output review", "license metadata", "report and takedown path"],
+      "providerRefusalBehavior": "reject_job_and_record_safe_reason",
+      "unknownSafetyResponse": "block",
+      "regionBehavior": "block_without_bypass"
+    }
+  ],
+  "reviewPolicy": {
+    "implementationTaskId": "V1-63",
+    "queueStates": ["review_required", "in_review", "released", "rejected"],
+    "entryReasons": ["pre_dispatch_context", "provider_flag", "post_output_flag", "user_report", "admin_force_review", "appeal_reopen"],
+    "releaseRequirements": [
+      "authorized reviewer",
+      "policy version and category decision recorded",
+      "all linked assets pass media security checks",
+      "rights and consent evidence is sufficient",
+      "region and provider restrictions remain satisfied"
+    ],
+    "rejectRequirements": ["authorized reviewer", "stable reason code", "safe user message", "immutable audit event", "appeal eligibility recorded"],
+    "separationOfDuties": "An appeal reviewer must not be the sole reviewer who made the original decision.",
+    "criticalTargetHours": 4,
+    "standardTargetHours": 48,
+    "timeoutBehavior": "remain_quarantined_and_alert"
+  },
+  "appealPolicy": {
+    "implementationTaskId": "V1-63",
+    "requiredForV1": true,
+    "implementationStatus": "not_implemented",
+    "eligibleDecisions": ["prohibited", "block", "review", "reject"],
+    "entryPointRequired": true,
+    "submissionWindowDays": 30,
+    "targetBusinessDays": 5,
+    "automaticReleaseAllowed": false,
+    "requiredFields": [
+      "appealId",
+      "generationId",
+      "requesterId",
+      "originalDecision",
+      "originalReasonCodes",
+      "userStatement",
+      "policyVersion",
+      "submittedAt"
+    ],
+    "outcomes": ["upheld", "overturned", "partially_overturned", "needs_more_information"],
+    "closeoutFields": ["reviewerId", "outcome", "reasonCodes", "decidedAt", "userMessageCode", "followUpAction"]
+  },
+  "auditContract": {
+    "retentionScheduleStatus": "owned_by_V1-45_not_yet_frozen",
+    "requiredFields": [
+      "eventId",
+      "eventType",
+      "idempotencyKey",
+      "correlationId",
+      "generationId",
+      "workspaceId",
+      "actorId",
+      "modality",
+      "mode",
+      "providerId",
+      "providerRole",
+      "policyVersion",
+      "stage",
+      "categoryIds",
+      "decision",
+      "reasonCodes",
+      "promptHash",
+      "safePromptPreview",
+      "inputAssetIds",
+      "outputAssetIds",
+      "rightsAttestationVersion",
+      "region",
+      "providerSafetyCode",
+      "previousStatus",
+      "nextStatus",
+      "reviewerId",
+      "appealId",
+      "createdAt"
+    ],
+    "forbiddenFields": [
+      "rawPrompt",
+      "rawConversation",
+      "rawProviderRequest",
+      "rawProviderResponse",
+      "providerCredential",
+      "authorizationHeader",
+      "privateDownloadUrl",
+      "unredactedPersonalData"
+    ],
+    "redactionRules": [
+      "Hash prompts and conversations; store only an allowlisted, redacted preview when operationally necessary.",
+      "Store asset identifiers instead of private URLs or file bytes.",
+      "Store allowlisted provider safety codes, never complete provider payloads.",
+      "Critical child-safety evidence follows the legal reporting runbook and is never copied into ordinary audit metadata."
+    ],
+    "requiredEventTypes": [
+      "creative_safety.precheck_blocked",
+      "creative_safety.precheck_review_required",
+      "creative_safety.provider_refused",
+      "creative_safety.output_quarantined",
+      "creative_safety.review_released",
+      "creative_safety.review_rejected",
+      "creative_safety.appeal_submitted",
+      "creative_safety.appeal_decided"
+    ]
+  },
+  "userMessageContract": [
+    {
+      "code": "CONTENT_NOT_ALLOWED",
+      "publicText": "This request cannot be processed under the content policy.",
+      "appealEligible": true
+    },
+    {
+      "code": "REQUEST_NEEDS_REVIEW",
+      "publicText": "This request needs review before generation can begin.",
+      "appealEligible": false
+    },
+    {
+      "code": "OUTPUT_NEEDS_REVIEW",
+      "publicText": "The result is being reviewed and is not available yet.",
+      "appealEligible": false
+    },
+    {
+      "code": "PROVIDER_SAFETY_REFUSAL",
+      "publicText": "The generation provider could not process this request safely.",
+      "appealEligible": true
+    },
+    {
+      "code": "RIGHTS_ATTESTATION_REQUIRED",
+      "publicText": "Additional rights or consent information is required.",
+      "appealEligible": false
+    },
+    {
+      "code": "REGION_UNAVAILABLE",
+      "publicText": "This capability is not available in the current region.",
+      "appealEligible": false
+    },
+    {
+      "code": "APPEAL_RECEIVED",
+      "publicText": "The appeal was received and will be reviewed.",
+      "appealEligible": false
+    },
+    {
+      "code": "APPEAL_DECIDED",
+      "publicText": "The appeal review is complete.",
+      "appealEligible": false
+    }
+  ],
+  "regionalPolicy": {
+    "highestRestrictionWins": true,
+    "rules": [
+      {
+        "id": "provider_supported_region_required",
+        "behavior": "block_without_bypass",
+        "evidence": "provider decision matrix supported-country and region fields"
+      },
+      {
+        "id": "deployment_and_processing_region_must_be_approved",
+        "behavior": "block_until_approved",
+        "evidence": "deployment configuration and V1-45 data-flow record"
+      },
+      {
+        "id": "local_law_or_contract_may_be_stricter",
+        "behavior": "apply_stricter_rule",
+        "evidence": "legal approval record"
+      },
+      {
+        "id": "geography_controls_must_not_be_bypassed",
+        "behavior": "reject_and_audit",
+        "evidence": "provider and application region checks"
+      }
+    ]
+  },
+  "currentRuntimeBaseline": {
+    "policyFile": "server/src/creative/policy.js",
+    "generationRecordFile": "server/src/creative/generationRecords.js",
+    "policyVersion": "creative-policy-v1",
+    "blockedRuleIds": ["sexual_minor_content", "graphic_violence", "credential_abuse"],
+    "reviewRuleIds": ["public_figure_or_celebrity", "regulated_advice", "brand_or_weapon_sensitive"],
+    "mappedRiskCategoryIds": [
+      "child_sexual_exploitation",
+      "graphic_violence_or_gore",
+      "credential_theft_malware_or_cyber_abuse",
+      "public_figure_sensitive_context",
+      "regulated_advice_or_high_impact_decision",
+      "weapons_drugs_or_regulated_goods",
+      "copyright_trademark_artist_style_or_lyrics"
+    ],
+    "strengths": [
+      "prompt moderation runs before quota reservation and provider execution",
+      "review_required is a durable generation status",
+      "generated media remains scan-gated before private download",
+      "generation records store prompt hash and bounded preview instead of the full prompt",
+      "provider adapter metadata rejects secret-like keys"
+    ],
+    "knownGaps": [
+      "limited keyword rules are not the frozen policy implementation",
+      "no modality-specific classifier contracts",
+      "no real provider-native safety integration",
+      "no post-output semantic classifier for generated media or streams",
+      "no complete human review and appeal workflow",
+      "no finalized retention schedule until V1-45"
+    ]
+  },
+  "implementationHandoff": [
+    {
+      "taskId": "V1-45",
+      "scope": "Freeze safety-event data classification, retention, deletion, export, and redaction rules."
+    },
+    {
+      "taskId": "V1-59",
+      "scope": "Implement Image input/output policy enforcement and review transitions."
+    },
+    {
+      "taskId": "V1-60",
+      "scope": "Implement Chat input, streaming output, tool, and stop enforcement."
+    },
+    {
+      "taskId": "V1-61",
+      "scope": "Implement Video lifecycle, frame/audio, quarantine, and provenance enforcement."
+    },
+    {
+      "taskId": "V1-62",
+      "scope": "Implement Music rights, lyrics/audio, license, quarantine, and takedown enforcement."
+    },
+    {
+      "taskId": "V1-63",
+      "scope": "Implement human review, release/reject, appeal, notification, and audit closure."
+    },
+    {
+      "taskId": "V1-78",
+      "scope": "Publish the user-facing acceptable-use policy, disclosures, and support entry points."
+    }
+  ],
+  "sources": [
+    {
+      "id": "openai-usage-policies",
+      "official": true,
+      "accessed": "2026-07-11",
+      "url": "https://openai.com/policies/usage-policies/",
+      "providerIds": ["openai-gpt-image-2", "openai-gpt-5-6-terra"],
+      "dimensions": ["prohibited_use", "high_impact", "privacy", "safety"]
+    },
+    {
+      "id": "anthropic-usage-policy",
+      "official": true,
+      "accessed": "2026-07-11",
+      "url": "https://www.anthropic.com/legal/aup",
+      "providerIds": ["anthropic-claude-sonnet-5"],
+      "dimensions": ["prohibited_use", "high_impact", "privacy", "safety"]
+    },
+    {
+      "id": "google-generative-ai-prohibited-use",
+      "official": true,
+      "accessed": "2026-07-11",
+      "url": "https://policies.google.com/terms/generative-ai/use-policy",
+      "providerIds": ["google-veo-3-1-fast", "google-lyria-3-pro-preview"],
+      "dimensions": ["prohibited_use", "harm", "privacy", "misrepresentation"]
+    },
+    {
+      "id": "google-cloud-aup",
+      "official": true,
+      "accessed": "2026-07-11",
+      "url": "https://cloud.google.com/terms/aup",
+      "providerIds": ["google-veo-3-1-fast", "google-lyria-3-pro-preview"],
+      "dimensions": ["acceptable_use", "abuse", "security"]
+    },
+    {
+      "id": "runway-safety",
+      "official": true,
+      "accessed": "2026-07-11",
+      "url": "https://runwayml.com/safety",
+      "providerIds": ["runway-gen-4-5"],
+      "dimensions": ["safety", "moderation", "provenance"]
+    },
+    {
+      "id": "runway-terms-policy",
+      "official": true,
+      "accessed": "2026-07-11",
+      "url": "https://runwayml.com/terms-of-use",
+      "providerIds": ["runway-gen-4-5"],
+      "dimensions": ["acceptable_use", "rights", "restrictions"]
+    },
+    {
+      "id": "replicate-terms-policy",
+      "official": true,
+      "accessed": "2026-07-11",
+      "url": "https://replicate.com/terms",
+      "providerIds": ["replicate-flux-1-1-pro"],
+      "dimensions": ["acceptable_use", "model_terms", "rights", "restrictions"]
+    },
+    {
+      "id": "elevenlabs-prohibited-use",
+      "official": true,
+      "accessed": "2026-07-11",
+      "url": "https://elevenlabs.io/use-policy",
+      "providerIds": ["elevenlabs-music-v2-enterprise"],
+      "dimensions": ["prohibited_use", "voice", "impersonation", "safety"]
+    },
+    {
+      "id": "eleven-music-terms-policy",
+      "official": true,
+      "accessed": "2026-07-11",
+      "url": "https://elevenlabs.io/music-terms",
+      "providerIds": ["elevenlabs-music-v2-enterprise"],
+      "dimensions": ["music_rights", "lyrics", "artist", "commercial_use"]
+    }
+  ]
+}
