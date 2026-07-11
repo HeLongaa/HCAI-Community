@@ -1,0 +1,434 @@
+{
+  "schemaVersion": 1,
+  "taskId": "V1-78",
+  "release": "V1",
+  "asOf": "2026-07-11",
+  "policySetVersion": "v1-legal-support-2026-07-11",
+  "policyStatus": "engineering_draft_pending_legal_review",
+  "defaultLocale": "en",
+  "supportedLocales": ["en", "zh"],
+  "releaseReadiness": {
+    "legalApproved": false,
+    "policyPublicationApproved": false,
+    "productionLaunchAllowed": false,
+    "ordinaryContinuationIsLegalApproval": false,
+    "requiredApproval": "qualified_legal_counsel_and_product_owner"
+  },
+  "operator": {
+    "productName": "HCAI / MuseFlow AI Studio",
+    "legalEntity": "TO_BE_CONFIRMED_BEFORE_PUBLICATION",
+    "jurisdiction": "TO_BE_CONFIRMED_BEFORE_PUBLICATION",
+    "supportChannel": "/support",
+    "privacyChannel": "/support?category=privacy_request",
+    "emergencyNotice": {
+      "en": "The service is not an emergency service. Contact local emergency services when anyone faces immediate danger.",
+      "zh": "本服务不是紧急救援服务。如任何人面临即时危险，请联系当地紧急服务机构。"
+    }
+  },
+  "consentContract": {
+    "requiredPolicyIds": ["terms", "privacy", "acceptable-use", "provider-disclosure"],
+    "capturePoints": ["email_registration", "oauth_first_authenticated_use", "existing_account_first_authenticated_use", "material_policy_update"],
+    "exactVersionMatchRequired": true,
+    "affirmativeActionRequired": true,
+    "bundledPrecheckedConsentForbidden": true,
+    "recordResourceType": "policy_consent",
+    "recordAction": "compliance.policy_consent.recorded",
+    "recordFields": ["userId", "policySetVersion", "policyVersions", "acceptedAt", "source", "locale"],
+    "allowedSources": ["email_registration", "first_authenticated_use", "material_policy_update"],
+    "withdrawalEffect": "Withdrawal does not erase the historical consent record and may require account closure where processing is necessary to provide the service.",
+    "reconsentRule": "Require a new affirmative record when any required policy version changes materially."
+  },
+  "policies": [
+    {
+      "id": "terms",
+      "route": "terms",
+      "version": "1.0.0-draft.1",
+      "status": "draft_pending_legal_review",
+      "requiredConsent": true,
+      "title": { "en": "Terms of Service", "zh": "服务条款" },
+      "summary": {
+        "en": "Rules for accounts, creative tools, the task marketplace, community participation, internal credits, and service enforcement.",
+        "zh": "适用于账号、创作工具、任务市场、社区参与、内部积分和服务治理的规则。"
+      },
+      "sections": [
+        {
+          "id": "account-eligibility",
+          "title": { "en": "1. Accounts and eligibility", "zh": "1. 账号与使用资格" },
+          "paragraphs": {
+            "en": [
+              "You must provide accurate account information, protect your credentials, and use the service only where access is lawful. You are responsible for activity performed through your account unless you promptly report unauthorized access.",
+              "Age, authority, consumer, and regional eligibility requirements must be confirmed by legal review before publication. Team or business users represent that they are authorized to bind the organization they identify."
+            ],
+            "zh": [
+              "你必须提供准确的账号信息、妥善保护凭据，并仅在法律允许访问的地区使用本服务。除非你及时报告未经授权的访问，否则你应对通过账号进行的活动负责。",
+              "年龄、授权、消费者和地区资格要求须在发布前经法务确认。代表团队或企业使用服务的用户声明其有权约束所代表的组织。"
+            ]
+          }
+        },
+        {
+          "id": "service-scope",
+          "title": { "en": "2. Service scope", "zh": "2. 服务范围" },
+          "paragraphs": {
+            "en": [
+              "The service combines AI image, chat, video, and music workspaces with a task marketplace, community, media library, notifications, internal points, quotas, creative credits, and administrative review.",
+              "V1 does not offer real-money payment, withdrawal, KYC, invoicing, banking, or merchant settlement. Internal points and creative credits are closed-loop service units, are not legal tender, and have no cash redemption value."
+            ],
+            "zh": [
+              "本服务将 AI 图片、对话、视频和音乐工作台与任务市场、社区、媒体库、通知、内部积分、额度、创作 Credits 和管理审核组合在一起。",
+              "V1 不提供人民币或其他真实货币支付、提现、KYC、发票、银行或商户结算。内部积分和创作 Credits 仅为封闭式服务单位，不是法定货币，也不具有现金兑付价值。"
+            ]
+          }
+        },
+        {
+          "id": "content-rights",
+          "title": { "en": "3. User content and rights", "zh": "3. 用户内容与权利" },
+          "paragraphs": {
+            "en": [
+              "You retain rights you hold in prompts, uploads, task materials, posts, and other user content. You grant the service the limited rights needed to host, process, moderate, transmit, back up, and display that content for the service purposes you select.",
+              "You must have the rights, permissions, releases, and consent needed for every input, reference, depicted person, voice, likeness, trademark, dataset, sample, and deliverable you submit. Do not submit secrets or third-party personal data that is unnecessary for the requested service."
+            ],
+            "zh": [
+              "你保留对提示词、上传文件、任务材料、帖子和其他用户内容所拥有的权利。你授予本服务为实现你选择的服务目的而托管、处理、审核、传输、备份和展示该内容所必需的有限权利。",
+              "你必须拥有提交的每项输入、参考资料、被描绘人物、声音、肖像、商标、数据集、样本和交付成果所需的权利、许可、授权和同意。请勿提交与服务目的无关的秘密或第三方个人数据。"
+            ]
+          }
+        },
+        {
+          "id": "generated-content",
+          "title": { "en": "4. Generated content and Providers", "zh": "4. 生成内容与 Provider" },
+          "paragraphs": {
+            "en": [
+              "AI output may be inaccurate, unsafe, non-unique, incomplete, or similar to content generated for others. You must review output before relying on, publishing, licensing, or delivering it.",
+              "Generation may be processed by approved third-party Providers under model-specific terms, geographic limits, retention controls, safety rules, and commercial-use conditions. Provider availability does not guarantee that a particular output is lawful or suitable for your use."
+            ],
+            "zh": [
+              "AI 输出可能不准确、不安全、并非唯一、不完整，或与为其他用户生成的内容相似。你必须在依赖、发布、许可或交付输出前自行审核。",
+              "生成请求可能由获批的第三方 Provider 按模型专属条款、地域限制、保留控制、安全规则和商用条件处理。Provider 可用并不保证特定输出适合你的用途或符合法律要求。"
+            ]
+          }
+        },
+        {
+          "id": "marketplace-community",
+          "title": { "en": "5. Task marketplace and community", "zh": "5. 任务市场与社区" },
+          "paragraphs": {
+            "en": [
+              "Task publishers and contributors must state requirements, acceptance rules, rights, deadlines, and internal point rewards accurately. Submissions, revisions, disputes, and moderation decisions are recorded for marketplace integrity.",
+              "Community participation must follow the Acceptable Use Policy. Reports and appeals must be made in good faith and may not be used to harass, retaliate, expose private information, or manipulate review systems."
+            ],
+            "zh": [
+              "任务发布方和贡献者必须准确说明要求、验收规则、权利、期限和内部积分奖励。提交、返工、争议和审核决定会为维护市场完整性而被记录。",
+              "社区参与必须遵守可接受使用政策。举报和申诉必须基于善意，不得用于骚扰、报复、披露隐私或操纵审核系统。"
+            ]
+          }
+        },
+        {
+          "id": "credits-enforcement",
+          "title": { "en": "6. Credits, enforcement, and termination", "zh": "6. Credits、治理与终止" },
+          "paragraphs": {
+            "en": [
+              "The service may reserve, settle, refund, cancel, or correct internal points, quotas, escrow, and creative credits to enforce published rules, resolve failures, or correct ledger errors. Material administrative changes are audited.",
+              "We may block a request, hold an output for review, restrict features, suspend an account, remove content, or terminate access when needed for safety, legal compliance, security, or policy enforcement. Eligible decisions provide a report or appeal path."
+            ],
+            "zh": [
+              "本服务可为执行已发布规则、处理故障或修正账本错误而预留、结算、退回、取消或纠正内部积分、额度、托管和创作 Credits。重大管理变更会被审计。",
+              "出于安全、法律合规、信息安全或政策执行需要，我们可以阻止请求、将输出转入审核、限制功能、暂停账号、移除内容或终止访问。符合条件的决定会提供举报或申诉路径。"
+            ]
+          }
+        },
+        {
+          "id": "disclaimers-changes",
+          "title": { "en": "7. Service changes and legal terms", "zh": "7. 服务变更与法律条款" },
+          "paragraphs": {
+            "en": [
+              "Service availability, warranty disclaimers, liability limits, indemnity, governing law, dispute resolution, consumer rights, and notice mechanics remain subject to qualified legal review and must be finalized before production publication.",
+              "We will identify the applicable policy version and request renewed consent for material changes. Continued use alone is not treated as consent where affirmative consent is required."
+            ],
+            "zh": [
+              "服务可用性、免责声明、责任限制、赔偿、适用法律、争议解决、消费者权利和通知机制仍须由合格法务审查，并在生产发布前最终确认。",
+              "我们会标明适用的政策版本，并在重大变更时请求重新同意。在需要明确同意的情况下，仅继续使用服务不视为已经同意。"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "privacy",
+      "route": "privacy",
+      "version": "1.0.0-draft.1",
+      "status": "draft_pending_legal_review",
+      "requiredConsent": true,
+      "title": { "en": "Privacy Policy", "zh": "隐私政策" },
+      "summary": {
+        "en": "How account, content, generation, marketplace, security, support, and audit data is used, shared, retained, exported, and deleted.",
+        "zh": "说明账号、内容、生成、市场、安全、支持和审计数据如何被使用、共享、保留、导出与删除。"
+      },
+      "sections": [
+        {
+          "id": "scope-controller",
+          "title": { "en": "1. Scope and responsible entity", "zh": "1. 适用范围与责任主体" },
+          "paragraphs": {
+            "en": ["This policy covers the HCAI / MuseFlow AI Studio V1 product. The legal entity, address, representative, governing privacy regimes, and data-protection contact must be confirmed before publication."],
+            "zh": ["本政策适用于 HCAI / MuseFlow AI Studio V1 产品。运营法律实体、地址、代表、适用隐私制度和数据保护联系方式必须在发布前确认。"]
+          }
+        },
+        {
+          "id": "data-collected",
+          "title": { "en": "2. Data we process", "zh": "2. 我们处理的数据" },
+          "paragraphs": {
+            "en": [
+              "We process account and profile details, authentication sessions, OAuth identifiers, task and community records, internal point and credit ledgers, notifications, media metadata and objects, prompts and generated outputs, safety reviews, support requests, consent records, audit events, and security telemetry.",
+              "Restricted inputs such as prompts, private attachments, identity references, and support details are minimized. Passwords are hashed; refresh credentials and deployment secrets are handled separately and are never included in user-facing exports."
+            ],
+            "zh": [
+              "我们处理账号与主页信息、认证会话、OAuth 标识、任务与社区记录、内部积分与 Credit 账本、通知、媒体元数据与对象、提示词与生成结果、安全审核、支持请求、同意记录、审计事件和安全遥测。",
+              "提示词、私有附件、身份参考和支持详情等受限输入会被最小化处理。密码采用哈希存储；刷新凭据和部署 secret 被单独管理，绝不会进入面向用户的数据导出。"
+            ]
+          }
+        },
+        {
+          "id": "purposes-bases",
+          "title": { "en": "3. Purposes and legal bases", "zh": "3. 处理目的与法律依据" },
+          "paragraphs": {
+            "en": [
+              "Data is used to provide accounts and creative tools, deliver marketplace and community features, operate internal accounting, moderate safety risks, secure the service, provide support, meet legal obligations, and maintain audited operations.",
+              "Contract necessity, legitimate interests, consent, and legal obligation must be mapped to the final operating jurisdiction before publication. We do not use data for an incompatible purpose without an additional basis and notice."
+            ],
+            "zh": [
+              "数据用于提供账号和创作工具、交付市场与社区功能、运行内部记账、治理安全风险、保护服务安全、提供支持、履行法律义务和维持可审计运营。",
+              "合同必要性、合法利益、同意和法律义务须在发布前结合最终运营地区完成映射。未经额外法律依据和通知，我们不会将数据用于不相容的目的。"
+            ]
+          }
+        },
+        {
+          "id": "sharing-processors",
+          "title": { "en": "4. Providers and other processors", "zh": "4. Provider 与其他处理方" },
+          "paragraphs": {
+            "en": [
+              "Approved creative Providers may receive the minimum prompt, reference, safety, and account-abuse context needed to perform a generation. OAuth providers, private object storage/CDN, media scanners, and notification delivery services process only their approved data classes.",
+              "No real Provider traffic is approved until contracts, supported countries, retention, deletion, training, regional transfer, security, and incident terms are recorded. We do not sell personal data in this engineering baseline."
+            ],
+            "zh": [
+              "获批的创作 Provider 可能接收完成生成所需的最少提示词、参考资料、安全信息和账号滥用上下文。OAuth 提供方、私有对象存储/CDN、媒体扫描器和通知投递服务仅处理各自获批的数据类别。",
+              "在合同、支持地区、保留、删除、训练、跨境传输、安全和事件条款完成记录前，不批准任何真实 Provider 流量。本工程基线不出售个人数据。"
+            ]
+          }
+        },
+        {
+          "id": "retention-security",
+          "title": { "en": "5. Retention and security", "zh": "5. 保留与安全" },
+          "paragraphs": {
+            "en": [
+              "Retention follows the V1 data-governance inventory: transient raw payloads are discarded after approved normalization, export packages expire after 7 days, notifications default to 180 days, security events to 365 days, and audit or moderation evidence generally to 730 days unless a shorter rule or lawful hold applies.",
+              "Controls include encrypted transport, managed secrets, hashed credentials, private object access, least privilege, allowlisted logs and secondary surfaces, redaction, audit trails, and deletion propagation contracts. No system can guarantee absolute security."
+            ],
+            "zh": [
+              "保留期限遵循 V1 数据治理清单：原始临时 payload 在获批规范化后丢弃，导出包 7 天后过期，通知默认保留 180 天，安全事件 365 天，审计或审核证据通常为 730 天；更短规则或合法保留要求优先。",
+              "控制措施包括传输加密、托管 secret、凭据哈希、私有对象访问、最小权限、日志与二级表面 allowlist、脱敏、审计轨迹和删除传播合同。任何系统都无法保证绝对安全。"
+            ]
+          }
+        },
+        {
+          "id": "rights",
+          "title": { "en": "6. Your choices and data rights", "zh": "6. 你的选择与数据权利" },
+          "paragraphs": {
+            "en": [
+              "The support center provides entry points to access privacy support, request an export, request account deletion, correct account data, report content, and appeal eligible moderation decisions. We may verify identity, protect other people, preserve ledger or safety evidence, and explain lawful exclusions.",
+              "The complete export package builder and deletion propagation orchestrator are owned by V1-67. Until those controls pass release validation, the entry point records and routes the request but does not claim that deletion or export has completed."
+            ],
+            "zh": [
+              "支持中心提供隐私咨询、数据导出、账号删除、账号信息更正、内容举报和符合条件的审核申诉入口。我们可能核验身份、保护他人、保留账本或安全证据，并说明合法排除项。",
+              "完整导出包构建器和删除传播编排器由 V1-67 负责。在这些控制通过发布验证前，入口只负责记录和路由请求，不会声称导出或删除已经完成。"
+            ]
+          }
+        },
+        {
+          "id": "children-changes",
+          "title": { "en": "7. Children, changes, and contact", "zh": "7. 未成年人、变更与联系" },
+          "paragraphs": {
+            "en": ["Minimum-age rules, parental consent, international rights contacts, complaint authorities, and policy-change notice periods require jurisdiction-specific legal approval before publication. Material policy versions require renewed affirmative consent."],
+            "zh": ["最低年龄、监护人同意、国际权利联系人、投诉监管机构和政策变更通知期限须在发布前获得适用于具体地区的法律批准。重大政策版本变更需要重新明确同意。"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "acceptable-use",
+      "route": "aup",
+      "version": "1.0.0-draft.1",
+      "status": "draft_pending_legal_review",
+      "requiredConsent": true,
+      "title": { "en": "Acceptable Use Policy", "zh": "可接受使用政策" },
+      "summary": {
+        "en": "Safety, rights, integrity, and community rules for prompts, uploads, outputs, tasks, posts, and automated use.",
+        "zh": "适用于提示词、上传、输出、任务、帖子和自动化使用的安全、权利、完整性与社区规则。"
+      },
+      "sections": [
+        {
+          "id": "rights-honesty",
+          "title": { "en": "1. Rights, consent, and honesty", "zh": "1. 权利、同意与诚实" },
+          "paragraphs": {
+            "en": ["Do not upload or generate content without required rights or consent; impersonate people deceptively; hide synthetic media where disclosure is required; infringe intellectual property; expose private data; or misrepresent ownership, identity, qualifications, provenance, or task completion."],
+            "zh": ["不得在缺少必要权利或同意时上传或生成内容；不得欺骗性冒充他人；不得在需要披露时隐瞒合成媒体；不得侵犯知识产权、泄露隐私，或虚假陈述所有权、身份、资质、来源与任务完成情况。"]
+          }
+        },
+        {
+          "id": "prohibited-harm",
+          "title": { "en": "2. Prohibited harmful content", "zh": "2. 禁止的有害内容" },
+          "paragraphs": {
+            "en": ["Prohibited uses include child sexual exploitation, non-consensual intimate content, sexual exploitation, hateful or extremist support, targeted harassment, credible threats, graphic abuse, self-harm encouragement, dangerous weapon or violence enablement, malicious cyber activity, fraud, scams, illegal transactions, and attempts to evade safety controls."],
+            "zh": ["禁止用途包括儿童性剥削、未经同意的私密内容、性剥削、仇恨或极端主义支持、定向骚扰、可信威胁、血腥虐待、自伤鼓励、危险武器或暴力实施、恶意网络活动、欺诈、骗局、非法交易，以及规避安全控制。"]
+          }
+        },
+        {
+          "id": "high-impact",
+          "title": { "en": "3. High-impact and regulated use", "zh": "3. 高影响与受监管用途" },
+          "paragraphs": {
+            "en": ["Do not use the service to make unreviewed high-impact decisions about employment, housing, credit, insurance, education, healthcare, legal services, elections, public benefits, policing, biometric identification, or other regulated rights. Qualified human review and applicable authorization are required where such assistance is allowed."],
+            "zh": ["不得使用本服务对就业、住房、信贷、保险、教育、医疗、法律服务、选举、公共福利、执法、生物识别或其他受监管权利作出未经人工复核的高影响决定。在允许辅助使用的情况下，仍需具备合格人工复核和适用授权。"]
+          }
+        },
+        {
+          "id": "platform-integrity",
+          "title": { "en": "4. Platform and marketplace integrity", "zh": "4. 平台与市场完整性" },
+          "paragraphs": {
+            "en": ["Do not scrape, probe, overload, reverse engineer, bypass rate or quota controls, steal credentials, introduce malware, manipulate ledgers or reviews, coordinate fake engagement, spam, submit false reports, retaliate against reporters, or use automation outside documented interfaces and limits."],
+            "zh": ["不得抓取、探测、过载、逆向工程、绕过速率或额度控制、窃取凭据、植入恶意软件、操纵账本或评价、组织虚假互动、发送垃圾信息、提交虚假举报、报复举报人，或在文档接口和限制之外使用自动化。"]
+          }
+        },
+        {
+          "id": "enforcement-appeal",
+          "title": { "en": "5. Enforcement and appeals", "zh": "5. 执行与申诉" },
+          "paragraphs": {
+            "en": ["Requests may be allowed, blocked, held for human review, or rejected. We may preserve minimum evidence, notify affected users, restrict accounts, remove content, and escalate legal or safety matters. Eligible decisions may be appealed within 30 days; the target decision window is five business days and the appeal reviewer must be independent from the sole original reviewer."],
+            "zh": ["请求可能被允许、阻止、转入人工审核或拒绝。我们可以保留最少证据、通知受影响用户、限制账号、移除内容，并升级法律或安全事项。符合条件的决定可在 30 天内申诉；目标处理期为 5 个工作日，申诉审核人不得是唯一作出原决定的审核人。"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "provider-disclosure",
+      "route": "disclosures",
+      "version": "1.0.0-draft.1",
+      "status": "draft_pending_legal_review",
+      "requiredConsent": true,
+      "title": { "en": "AI Provider and Generated Content Disclosure", "zh": "AI Provider 与生成内容说明" },
+      "summary": {
+        "en": "Which external model Providers may process creative requests and what users must understand before relying on generated content.",
+        "zh": "说明哪些外部模型 Provider 可能处理创作请求，以及用户在依赖生成内容前必须了解的事项。"
+      },
+      "sections": [
+        {
+          "id": "provider-selection",
+          "title": { "en": "1. Provider selection", "zh": "1. Provider 选择" },
+          "paragraphs": {
+            "en": ["The service selects an approved primary or backup Provider by modality, region, model capability, safety posture, retention controls, contract status, quota, and operational availability. A backup Provider is never an unrestricted fallback; unsupported or unapproved conditions fail closed."],
+            "zh": ["本服务会按模态、地区、模型能力、安全状态、保留控制、合同状态、额度和运营可用性选择获批的主 Provider 或备用 Provider。备用 Provider 不是无限制降级方案；不支持或未获批的条件会故障关闭。"]
+          }
+        },
+        {
+          "id": "data-sent",
+          "title": { "en": "2. Data sent for generation", "zh": "2. 为生成而发送的数据" },
+          "paragraphs": {
+            "en": ["Depending on the request, a Provider may receive prompts, negative prompts, reference images or audio, generation settings, safety classification, a privacy-preserving abuse identifier, and the minimum callback or job metadata needed to complete the request. Passwords, deployment secrets, unrelated profile data, and raw internal audit records are forbidden."],
+            "zh": ["根据请求，Provider 可能接收提示词、负面提示词、参考图片或音频、生成参数、安全分类、隐私保护的滥用标识，以及完成请求所需的最少 callback 或 job 元数据。禁止发送密码、部署 secret、无关主页数据和原始内部审计记录。"]
+          }
+        },
+        {
+          "id": "output-limitations",
+          "title": { "en": "3. Output limitations", "zh": "3. 输出限制" },
+          "paragraphs": {
+            "en": ["Generated content is probabilistic and may contain errors, unsafe material, artifacts, bias, or third-party similarities. Safety checks reduce risk but do not prove accuracy, originality, ownership, non-infringement, professional suitability, or commercial clearance. Users remain responsible for review and required disclosure."],
+            "zh": ["生成内容具有概率性，可能包含错误、不安全内容、瑕疵、偏差或与第三方内容相似。安全检查只能降低风险，不能证明准确性、原创性、所有权、不侵权、专业适用性或商用授权。用户仍须负责审核和必要披露。"]
+          }
+        },
+        {
+          "id": "provider-status",
+          "title": { "en": "4. Current approval status", "zh": "4. 当前批准状态" },
+          "paragraphs": {
+            "en": ["The V1 Provider decision matrix names candidate primary and backup services, but real production traffic remains unapproved until region, contract, privacy, retention, deletion, training, safety, pricing, SLA, and incident-response evidence is complete. The product must never represent fixture or mock execution as a real Provider result."],
+            "zh": ["V1 Provider 决策矩阵列出了候选主服务和备用服务，但在地区、合同、隐私、保留、删除、训练、安全、价格、SLA 和事件响应证据完整前，真实生产流量仍未获批准。产品绝不能把 fixture 或 mock 执行表示为真实 Provider 结果。"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "support",
+      "route": "support",
+      "version": "1.0.0-draft.1",
+      "status": "draft_pending_legal_review",
+      "requiredConsent": false,
+      "title": { "en": "Support and User Rights Policy", "zh": "支持与用户权利政策" },
+      "summary": {
+        "en": "How to request help, report content, appeal a decision, or start a privacy, export, or deletion request.",
+        "zh": "说明如何寻求帮助、举报内容、申诉决定，或发起隐私、导出和删除请求。"
+      },
+      "sections": [
+        {
+          "id": "entry-points",
+          "title": { "en": "1. Available entry points", "zh": "1. 可用入口" },
+          "paragraphs": {
+            "en": ["Signed-in users can submit general support, content reports, moderation appeals, privacy questions, data-export requests, and account-deletion requests through the support center. Each accepted request receives a tracking identifier and an initial status."],
+            "zh": ["已登录用户可通过支持中心提交一般支持、内容举报、审核申诉、隐私咨询、数据导出和账号删除请求。每个成功受理的请求都会获得跟踪编号和初始状态。"]
+          }
+        },
+        {
+          "id": "targets",
+          "title": { "en": "2. Targets and escalation", "zh": "2. 处理目标与升级" },
+          "paragraphs": {
+            "en": ["Targets are operational goals rather than guaranteed resolution times: urgent safety reports are triaged within one business day, general support within two, eligible moderation appeals within five, and privacy/export/deletion requests within 30 calendar days subject to identity verification and lawful extensions."],
+            "zh": ["以下为运营目标而非保证完成时间：紧急安全举报在 1 个工作日内分流，一般支持在 2 个工作日内响应，符合条件的审核申诉目标为 5 个工作日，隐私、导出和删除请求在完成身份核验后目标为 30 个自然日；法律允许时可以延期。"]
+          }
+        },
+        {
+          "id": "request-safety",
+          "title": { "en": "3. Request safety and evidence", "zh": "3. 请求安全与证据" },
+          "paragraphs": {
+            "en": ["Submit only the minimum facts and stable resource identifiers needed to investigate. Do not paste passwords, API keys, payment data, government identifiers, private signed URLs, raw Provider payloads, or unnecessary sensitive media into a request. Critical child-safety evidence follows a separate legal reporting runbook."],
+            "zh": ["请仅提交调查所需的最少事实和稳定资源标识。不得在请求中粘贴密码、API key、支付数据、政府证件号、私有签名 URL、原始 Provider payload 或不必要的敏感媒体。严重儿童安全证据须遵循单独的法律报告流程。"]
+          }
+        },
+        {
+          "id": "handoff-boundaries",
+          "title": { "en": "4. Current implementation boundaries", "zh": "4. 当前实现边界" },
+          "paragraphs": {
+            "en": ["This V1-78 entry surface creates an auditable support record and routes it to the correct queue. V1-63 owns final human-review and appeal decisions; V1-67 owns complete export packages, account deletion, anonymization, and per-store deletion evidence. A submitted request is not a claim that the requested action has completed."],
+            "zh": ["V1-78 入口会创建可审计的支持记录并路由到正确队列。V1-63 负责最终人工审核和申诉决定；V1-67 负责完整导出包、账号删除、匿名化和各存储删除证据。请求已提交不代表所请求操作已经完成。"]
+          }
+        }
+      ]
+    }
+  ],
+  "providerDisclosures": [
+    { "providerId": "openai-gpt-image-2", "modality": "image", "role": "primary_candidate", "dataCategories": ["prompt", "reference_image", "generation_settings", "safety_identifier"], "productionApproved": false },
+    { "providerId": "replicate-flux-1-1-pro", "modality": "image", "role": "backup_candidate", "dataCategories": ["prompt", "reference_image", "generation_settings"], "productionApproved": false },
+    { "providerId": "openai-gpt-5-6-terra", "modality": "chat", "role": "primary_candidate", "dataCategories": ["messages", "approved_context", "tool_schema", "safety_identifier"], "productionApproved": false },
+    { "providerId": "anthropic-claude-sonnet-5", "modality": "chat", "role": "backup_candidate", "dataCategories": ["messages", "approved_context", "tool_schema"], "productionApproved": false },
+    { "providerId": "google-veo-3-1-fast", "modality": "video", "role": "primary_candidate", "dataCategories": ["prompt", "storyboard", "reference_media", "generation_settings"], "productionApproved": false },
+    { "providerId": "runway-gen-4-5", "modality": "video", "role": "backup_candidate_blocked", "dataCategories": ["prompt", "storyboard", "reference_media", "generation_settings"], "productionApproved": false },
+    { "providerId": "elevenlabs-music-v2-enterprise", "modality": "music", "role": "primary_candidate", "dataCategories": ["prompt", "lyrics", "reference_audio", "generation_settings"], "productionApproved": false },
+    { "providerId": "google-lyria-3-pro-preview", "modality": "music", "role": "backup_candidate_preview", "dataCategories": ["prompt", "lyrics", "reference_audio", "generation_settings"], "productionApproved": false }
+  ],
+  "supportContract": {
+    "recordModel": "AdminReview",
+    "queue": "support",
+    "requestStatus": "Submitted",
+    "requestAction": "support.request.submitted",
+    "authenticationRequired": true,
+    "allowedRelatedResourceTypes": ["none", "account", "task", "post", "comment", "media_asset", "creative_generation", "moderation_decision"],
+    "forbiddenFields": ["password", "access token", "refresh token", "API key", "Authorization header", "payment data", "government identifier", "private signed URL", "raw Provider payload", "raw secret"],
+    "categories": [
+      { "id": "general_support", "label": { "en": "General support", "zh": "一般支持" }, "initialResponseTarget": "2_business_days", "implementationOwner": "V1-78" },
+      { "id": "content_report", "label": { "en": "Report content", "zh": "举报内容" }, "initialResponseTarget": "1_business_day", "implementationOwner": "V1-63" },
+      { "id": "moderation_appeal", "label": { "en": "Appeal a decision", "zh": "申诉决定" }, "initialResponseTarget": "5_business_days", "implementationOwner": "V1-63" },
+      { "id": "privacy_request", "label": { "en": "Privacy request", "zh": "隐私请求" }, "initialResponseTarget": "30_calendar_days", "implementationOwner": "V1-67" },
+      { "id": "data_export", "label": { "en": "Export my data", "zh": "导出我的数据" }, "initialResponseTarget": "30_calendar_days", "implementationOwner": "V1-67" },
+      { "id": "account_deletion", "label": { "en": "Delete my account", "zh": "删除我的账号" }, "initialResponseTarget": "30_calendar_days", "implementationOwner": "V1-67" }
+    ]
+  },
+  "implementationHandoff": [
+    { "taskId": "V1-48", "scope": "Production OAuth consent return flow and real-provider identity review." },
+    { "taskId": "V1-63", "scope": "Human moderation decision, appeal adjudication, notifications, and audit closure." },
+    { "taskId": "V1-67", "scope": "Identity verification, complete export package, deletion orchestration, anonymization, and evidence." },
+    { "taskId": "V1-73", "scope": "Final application security, privacy, legal-policy, and supply-chain release review." }
+  ]
+}

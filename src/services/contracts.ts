@@ -1,4 +1,4 @@
-import type { AuditEvent, MarketplaceProfile, Permission, Role } from '../domain/types'
+import type { AuditEvent, LocalizedText, MarketplaceProfile, Permission, Role } from '../domain/types'
 
 export type ApiErrorBody = {
   code: string
@@ -35,6 +35,7 @@ export type ApiAccount = {
   role: Role
   permissions: Permission[]
   profile?: ApiProfileSummary | null
+  policyConsent?: ApiPolicyConsentStatus
 }
 
 export type LoginRequest = {
@@ -48,6 +49,156 @@ export type RegisterRequest = {
   password: string
   displayName?: string
   handle?: string
+  policyConsent: PolicyConsentRequest
+}
+
+export type CompliancePolicyId = 'terms' | 'privacy' | 'acceptable-use' | 'provider-disclosure' | 'support'
+
+export type ApiCompliancePolicySection = {
+  id: string
+  title: LocalizedText
+  paragraphs: {
+    en: string[]
+    zh: string[]
+  }
+}
+
+export type ApiCompliancePolicy = {
+  id: CompliancePolicyId
+  route: 'terms' | 'privacy' | 'aup' | 'disclosures' | 'support'
+  version: string
+  status: 'draft_pending_legal_review'
+  requiredConsent: boolean
+  title: LocalizedText
+  summary: LocalizedText
+  sections: ApiCompliancePolicySection[]
+}
+
+export type ApiSupportCategory = {
+  id: SupportRequestCategory
+  label: LocalizedText
+  initialResponseTarget: string
+  implementationOwner: string
+}
+
+export type ApiComplianceManifest = {
+  schemaVersion: number
+  release: string
+  asOf: string
+  policySetVersion: string
+  policyStatus: string
+  defaultLocale: 'en' | 'zh'
+  supportedLocales: Array<'en' | 'zh'>
+  releaseReadiness: {
+    legalApproved: boolean
+    policyPublicationApproved: boolean
+    productionLaunchAllowed: boolean
+    ordinaryContinuationIsLegalApproval: boolean
+    requiredApproval: string
+  }
+  operator: {
+    productName: string
+    legalEntity: string
+    jurisdiction: string
+    supportChannel: string
+    privacyChannel: string
+    emergencyNotice: LocalizedText
+  }
+  consentContract: {
+    requiredPolicyIds: CompliancePolicyId[]
+    exactVersionMatchRequired: boolean
+    affirmativeActionRequired: boolean
+    bundledPrecheckedConsentForbidden: boolean
+    allowedSources: string[]
+  }
+  policies: ApiCompliancePolicy[]
+  providerDisclosures: Array<{
+    providerId: string
+    modality: 'image' | 'chat' | 'video' | 'music'
+    role: string
+    dataCategories: string[]
+    productionApproved: boolean
+  }>
+  supportContract: {
+    authenticationRequired: boolean
+    forbiddenFields: string[]
+    allowedRelatedResourceTypes: SupportRelatedResourceType[]
+    categories: ApiSupportCategory[]
+  }
+}
+
+export type ApiPolicyConsentSummary = {
+  id: CompliancePolicyId
+  route: ApiCompliancePolicy['route']
+  version: string
+  title: LocalizedText
+  summary: LocalizedText
+}
+
+export type ApiPolicyConsentStatus = {
+  required: boolean
+  current: boolean
+  policySetVersion: string
+  requiredPolicyVersions: Record<string, string>
+  requiredPolicies: ApiPolicyConsentSummary[]
+  acceptedAt: string | null
+  acceptedSource: string | null
+  acceptedPolicyVersions: Record<string, string>
+  missingPolicyIds: string[]
+  outdatedPolicyIds: string[]
+}
+
+export type PolicyConsentRequest = {
+  accepted: true
+  locale: 'en' | 'zh'
+  policyVersions: Record<string, string>
+}
+
+export type SupportRequestCategory =
+  | 'general_support'
+  | 'content_report'
+  | 'moderation_appeal'
+  | 'privacy_request'
+  | 'data_export'
+  | 'account_deletion'
+
+export type SupportRelatedResourceType =
+  | 'none'
+  | 'account'
+  | 'task'
+  | 'post'
+  | 'comment'
+  | 'media_asset'
+  | 'creative_generation'
+  | 'moderation_decision'
+
+export type CreateSupportRequest = {
+  category: SupportRequestCategory
+  subject: string
+  details: string
+  relatedResourceType: SupportRelatedResourceType
+  relatedResourceId?: string
+  locale: 'en' | 'zh'
+}
+
+export type ApiSupportRequest = {
+  id: string
+  status: string
+  category: SupportRequestCategory
+  categoryLabel: LocalizedText
+  subject: string
+  details: string
+  relatedResourceType: SupportRelatedResourceType
+  relatedResourceId: string | null
+  initialResponseTarget: string
+  implementationOwner: string
+  submittedAt: string
+}
+
+export type ApiSupportRequestList = {
+  items: ApiSupportRequest[]
+  nextCursor: string | null
+  limit: number
 }
 
 export type RefreshSessionRequest = {

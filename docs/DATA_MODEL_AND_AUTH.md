@@ -7,6 +7,19 @@ classification, purpose, retention, flow, export, deletion, legal holds, externa
 Prisma model in this document must remain assigned to exactly one governed data asset. Schema changes must pass
 `npm run test:v1-data-governance` and name the retention/deletion owner before merge.
 
+## Policy Consent And Support Records
+
+V1-78 deliberately reuses two governed append/review models instead of adding a twenty-eighth Prisma model:
+
+- Exact policy consent is an immutable `AuditEvent` with action `compliance.policy_consent.recorded`, resource type
+  `policy_consent`, and allowlisted policy-set version, policy versions, acceptance time, source, and locale metadata.
+- Support, report, appeal, privacy, export, and deletion requests are owner-scoped `AdminReview` rows in the `support`
+  queue. Free-form request details remain in the governed review row and are excluded from audit metadata.
+
+Email registration writes the account and consent audit in one Prisma transaction. OAuth and existing accounts read
+their status through `/api/me` and record first-use acceptance through `/api/compliance/consent`. A material required
+policy version change makes the previous record non-current. Full export/deletion orchestration remains owned by V1-67.
+
 ## Core Entities
 
 ### `users`

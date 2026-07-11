@@ -62,7 +62,29 @@ Requires auth. Revokes refresh token.
 
 ### `GET /me`
 
-Requires auth. Returns current user, role, permissions, and profile summary.
+Requires auth. Returns current user, role, permissions, profile summary, and exact-version policy consent status.
+
+## Compliance And Support
+
+### `GET /compliance/policies`
+
+Public. Returns the versioned Terms, Privacy, AUP, Provider disclosure, Support policy, Provider register, support categories, and explicit legal/publication gate state.
+
+### `GET /compliance/consent`
+
+Requires auth. Returns current required versions, accepted versions, missing/outdated policy ids, acceptance source, and timestamp.
+
+### `POST /compliance/consent`
+
+Requires auth and affirmative acceptance of the exact current required versions. Returns `POLICY_VERSION_MISMATCH` with the new versions when the client is stale.
+
+### `GET|POST /support/requests`
+
+Requires auth. Lists owner-scoped requests or creates a validated general-support, report, appeal, privacy, export, or deletion request. Credential-like content and private signed URLs are rejected.
+
+### `GET /support/requests/:id`
+
+Requires auth and request ownership. Returns one tracked request or `404` without revealing another user's record.
 
 ## Users And Profiles
 

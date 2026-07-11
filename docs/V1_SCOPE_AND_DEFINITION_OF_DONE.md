@@ -74,6 +74,12 @@ external-processor mapping, export/deletion targets, legal-hold rules, and secon
 frozen in `docs/V1_DATA_GOVERNANCE_BASELINE.md` and `config/v1-data-governance.json`. Account rights automation,
 Provider deletion receipts, and backup expiry/restore deletion evidence remain downstream release work.
 
+The versioned Terms, Privacy Policy, AUP, Provider/generated-content disclosure, affirmative consent contract, and
+support/data-rights entry points are implemented in `config/v1-compliance-policy.json` and
+`docs/V1_COMPLIANCE_AND_SUPPORT_BASELINE.md`. This engineering baseline does not satisfy the release-level policy
+review gate: qualified legal approval is still required, while V1-63 owns appeal adjudication and V1-67 owns complete
+export/deletion execution and evidence.
+
 Ordinary continuation language is not approval for a paid provider call. The exact provider, environment, maximum calls, app/provider budget, expiry, token owner, kill-switch owner, and rollback owner must be approved first.
 
 ## Technical Definition Of Done
@@ -95,6 +101,7 @@ Run the local contract with:
 npm run test:v1-scope
 npm run test:v1-safety-policy
 npm run test:v1-data-governance
+npm run test:v1-compliance
 ```
 
 Run the complete safe deployment gate with:

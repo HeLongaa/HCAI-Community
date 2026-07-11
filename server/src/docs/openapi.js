@@ -39,12 +39,24 @@ export const openApiDocument = {
             'application/json': {
               schema: {
                 type: 'object',
-                required: ['email', 'password'],
+                required: ['email', 'password', 'policyConsent'],
                 properties: {
                   email: { type: 'string', format: 'email' },
                   password: { type: 'string', format: 'password', minLength: 8, maxLength: 128 },
                   displayName: { type: 'string' },
                   handle: { type: 'string', minLength: 3, maxLength: 32 },
+                  policyConsent: {
+                    type: 'object',
+                    required: ['accepted', 'locale', 'policyVersions'],
+                    properties: {
+                      accepted: { type: 'boolean', const: true },
+                      locale: { type: 'string', enum: ['en', 'zh'] },
+                      policyVersions: {
+                        type: 'object',
+                        additionalProperties: { type: 'string' },
+                      },
+                    },
+                  },
                 },
               },
             },
@@ -53,6 +65,105 @@ export const openApiDocument = {
         responses: {
           '201': { description: 'Session tokens and registered user' },
           '409': { description: 'Email or handle already exists' },
+        },
+      },
+    },
+    '/compliance/policies': {
+      get: {
+        summary: 'Read the versioned V1 legal, privacy, acceptable-use, Provider disclosure, and support policies',
+        responses: {
+          '200': { description: 'Public policy manifest, release gate, Provider disclosures, and support categories' },
+        },
+      },
+    },
+    '/compliance/consent': {
+      get: {
+        summary: 'Read the current user policy-consent status',
+        responses: {
+          '200': { description: 'Required and accepted policy versions for the current user' },
+          '401': { description: 'Authentication required' },
+        },
+      },
+      post: {
+        summary: 'Record affirmative consent to the exact current required policy versions',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['accepted', 'locale', 'policyVersions'],
+                properties: {
+                  accepted: { type: 'boolean', const: true },
+                  locale: { type: 'string', enum: ['en', 'zh'] },
+                  policyVersions: { type: 'object', additionalProperties: { type: 'string' } },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Immutable current-version consent record created' },
+          '400': { description: 'Affirmative consent or versions missing' },
+          '401': { description: 'Authentication required' },
+          '409': { description: 'Submitted policy versions are no longer current' },
+        },
+      },
+    },
+    '/support/requests': {
+      get: {
+        summary: 'List support requests owned by the current user',
+        parameters: [
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50 } },
+        ],
+        responses: {
+          '200': { description: 'Owner-scoped support request page' },
+          '401': { description: 'Authentication required' },
+        },
+      },
+      post: {
+        summary: 'Create an auditable support, report, appeal, privacy, export, or deletion request',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['category', 'subject', 'details', 'relatedResourceType', 'locale'],
+                properties: {
+                  category: {
+                    type: 'string',
+                    enum: ['general_support', 'content_report', 'moderation_appeal', 'privacy_request', 'data_export', 'account_deletion'],
+                  },
+                  subject: { type: 'string', minLength: 5, maxLength: 120 },
+                  details: { type: 'string', minLength: 10, maxLength: 4000 },
+                  relatedResourceType: {
+                    type: 'string',
+                    enum: ['none', 'account', 'task', 'post', 'comment', 'media_asset', 'creative_generation', 'moderation_decision'],
+                  },
+                  relatedResourceId: { type: 'string', maxLength: 128 },
+                  locale: { type: 'string', enum: ['en', 'zh'] },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Support request accepted with a stable tracking id' },
+          '400': { description: 'Invalid request or sensitive credential-like content detected' },
+          '401': { description: 'Authentication required' },
+        },
+      },
+    },
+    '/support/requests/{id}': {
+      get: {
+        summary: 'Read one support request owned by the current user',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Owner-scoped support request' },
+          '401': { description: 'Authentication required' },
+          '404': { description: 'Support request not found for this user' },
         },
       },
     },

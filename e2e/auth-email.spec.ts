@@ -14,6 +14,7 @@ test('email registration and password login work from the login modal', async ({
   await page.getByPlaceholder('Handle').fill(handle)
   await page.getByPlaceholder('Email').fill(email)
   await page.getByPlaceholder('Password').fill(password)
+  await page.getByLabel('I have reviewed and accept the current required policy versions.').check()
 
   const registerResponse = page.waitForResponse((response) =>
     response.url().endsWith('/api/auth/register') && response.request().method() === 'POST',
@@ -92,4 +93,12 @@ test('dev OAuth provider login works from the login modal', async ({ page }) => 
   expect((await startResponse).ok()).toBeTruthy()
   expect((await callbackResponse).ok()).toBeTruthy()
   await expect(page.locator('.sidebar-profile-name', { hasText: 'Google User' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Review the policies required for this account' })).toBeVisible()
+  await page.getByLabel('I reviewed and accept all required policy versions listed above.').check()
+  const consentResponse = page.waitForResponse((response) =>
+    response.url().endsWith('/api/compliance/consent') && response.request().method() === 'POST',
+  )
+  await page.getByRole('button', { name: 'Accept current versions' }).click()
+  expect((await consentResponse).ok()).toBeTruthy()
+  await expect(page.getByRole('heading', { name: 'Review the policies required for this account' })).toBeHidden()
 })

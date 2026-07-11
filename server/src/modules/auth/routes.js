@@ -31,6 +31,7 @@ import { recordAuthFailure } from '../../auth/loginMonitor.js'
 import { repositories } from '../../repositories/index.js'
 import { serializeAccount } from '../../repositories/serializers.js'
 import { recordSecurityEvent } from '../../security/securityEvents.js'
+import { validatePolicyConsent } from '../../compliance/policyManifest.js'
 
 const oauthAccountProviders = ['google', 'apple', 'discord']
 
@@ -166,7 +167,11 @@ export const registerAuthRoutes = (router) => {
   }
 
   router.add('GET', '/api/me', async (_request, response, context) => {
-    ok(response, serializeAccount(requireUser(context)))
+    const actor = requireUser(context)
+    ok(response, {
+      ...serializeAccount(actor),
+      policyConsent: await repositories.compliance.getConsentStatus(actor),
+    })
   })
 
   router.add('POST', '/api/auth/login', async (request, response, context) => {
@@ -209,8 +214,10 @@ export const registerAuthRoutes = (router) => {
   })
 
   router.add('POST', '/api/auth/register', async (request, response) => {
-    const payload = parseRegisterRequest((await readJsonBody(request)) ?? {})
-    const session = await repositories.auth.registerEmailAccount?.(payload)
+    const body = (await readJsonBody(request)) ?? {}
+    const consent = validatePolicyConsent(body.policyConsent, 'email_registration')
+    const payload = parseRegisterRequest(body)
+    const session = await repositories.auth.registerEmailAccount?.(payload, consent)
     if (!session) {
       throw new HttpError(409, 'ACCOUNT_EXISTS', 'Email or handle is already registered')
     }

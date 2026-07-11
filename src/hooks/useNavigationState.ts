@@ -22,6 +22,9 @@ const routablePages = new Set<Page>([
   'profile',
   'terms',
   'privacy',
+  'aup',
+  'disclosures',
+  'support',
 ])
 
 const parentPages = {
@@ -43,6 +46,9 @@ const parentPages = {
   profile: 'community',
   terms: 'about',
   privacy: 'about',
+  aup: 'about',
+  disclosures: 'about',
+  support: 'home',
 } satisfies Record<Exclude<Page, 'home'>, Page>
 
 const consumeOAuthRedirectPage = (): Page | null => {

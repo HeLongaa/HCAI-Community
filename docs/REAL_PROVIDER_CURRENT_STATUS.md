@@ -192,10 +192,10 @@ git diff --check
 npm run check:quick
 ```
 
-`npm run check:quick` includes `npm run test:v1-providers`, `npm run test:v1-safety-policy`, and
-`npm run test:v1-data-governance`. Together they verify all four primary/backup decisions, official source references,
+`npm run check:quick` includes `npm run test:v1-providers`, `npm run test:v1-safety-policy`,
+`npm run test:v1-data-governance`, and `npm run test:v1-compliance`. Together they verify all four primary/backup decisions, official source references,
 budgets, lifecycle bounds, safety taxonomy, Provider policy/data mappings, review/appeal, retention, flows,
-export/deletion, redaction, fail-closed behavior, and unresolved production conditions.
+export/deletion, redaction, user disclosures, exact-version consent, support entry points, fail-closed behavior, and unresolved production conditions.
 
 If an update touches smoke scripts, runtime behavior, routes, package scripts, quality gates, README runtime text, or provider configuration, also run:
 

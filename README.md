@@ -29,6 +29,10 @@ The frozen data inventory, classifications, retention limits, allowed and forbid
 external-processor boundaries, and redaction rules live in `docs/V1_DATA_GOVERNANCE_BASELINE.md` and
 `config/v1-data-governance.json`; `npm run test:v1-data-governance` verifies all 27 Prisma models and six non-Prisma
 asset classes. Export/deletion automation and production approval remain incomplete.
+The versioned Terms, Privacy Policy, Acceptable Use Policy, AI Provider/generated-content disclosure, consent contract,
+and support/data-rights entry points live in `docs/V1_COMPLIANCE_AND_SUPPORT_BASELINE.md` and
+`config/v1-compliance-policy.json`; `npm run test:v1-compliance` verifies the policy, API, UI, OpenAPI, support, and
+audit contracts. The text remains an engineering draft: legal approval and production publication are explicitly blocked.
 
 ## Features
 
@@ -52,8 +56,9 @@ asset classes. Export/deletion automation and production approval remain incompl
 - Task Plaza for browsing, filtering, claiming, submitting, reviewing, accepting, and tracking AI-related tasks
 - Community forum with post templates, categories, tags, sorting, votes, solved state, embedded works, task conversion, library saving, likes, saves, and replies
 - Profile and playlist detail pages
-- Pricing, API, Earn, About, Terms, and Privacy pages
-- Login, registration, OAuth dev callback, logout, and auth-gated actions backed by the API
+- Pricing, API, Earn, About, versioned Terms/Privacy/AUP/Provider disclosure, and Support pages
+- Login, registration, OAuth dev callback, logout, and auth-gated actions backed by the API, with explicit versioned registration and OAuth first-use consent
+- Owner-scoped support, content-report, moderation-appeal, privacy, data-export, and account-deletion request tracking
 
 ## Development
 
@@ -118,7 +123,7 @@ npm run check:pr
 npm run check:deploy
 ```
 
-`check:quick` runs lint, the V1 scope, runtime-surface, Provider-decision, content-safety, and data-governance contracts, plus feature/API contract checks. `check:pr` adds production build, backend tests, Prisma schema validation, and E2E. `check:deploy` adds the safe production smoke fixture. Use `check:deploy:env` in a real deployment environment to validate actual environment variables without printing secrets.
+`check:quick` runs lint, the V1 scope, runtime-surface, Provider-decision, content-safety, data-governance, and compliance-policy contracts, plus feature/API contract checks. `check:pr` adds production build, backend tests, Prisma schema validation, and E2E. `check:deploy` adds the safe production smoke fixture. Use `check:deploy:env` in a real deployment environment to validate actual environment variables without printing secrets.
 
 `test:sim` runs feature-contract checks for the planned modules and then verifies API contract consistency across server routes, OpenAPI paths, and the protected-route permission matrix. `test:contracts` can run that API consistency check by itself. The feature-contract checks cover navigation, Task Plaza lifecycle, publish form,
 My Tasks delivery desk, community forum flows, publish-form AI assists, creation tools, points ledger, admin review queue,

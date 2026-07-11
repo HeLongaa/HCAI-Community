@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import type { MarketplaceProfile, Permission, Role } from '../domain/types'
 import { findProfile } from '../domain/utils'
 import { authService, type SessionUser } from '../services/authService'
-import type { OAuthProvider } from '../services/contracts'
+import { complianceService, policyConsentRequest } from '../services/complianceService'
+import type { ApiPolicyConsentStatus, OAuthProvider, RegisterRequest } from '../services/contracts'
 import { getStoredAccessToken, setStoredAccessToken } from '../services/apiClient'
 
 export type OAuthLoginResult = 'authenticated' | 'redirecting'
@@ -13,6 +14,7 @@ type AccountState = {
   handle: string
   profile: MarketplaceProfile | null
   permissions: Permission[]
+  policyConsent: ApiPolicyConsentStatus | null
   source: 'api' | 'stored' | 'fallback'
 }
 
@@ -24,6 +26,7 @@ const guestState = (): AccountState => ({
   handle: '',
   profile: null,
   permissions: [],
+  policyConsent: null,
   source: 'fallback',
 })
 
@@ -84,6 +87,7 @@ const stateFromUser = (user: SessionUser): AccountState => ({
   handle: user.handle,
   profile: profileFromUser(user),
   permissions: user.permissions,
+  policyConsent: user.policyConsent ?? null,
   source: 'api',
 })
 
@@ -103,6 +107,7 @@ const loadInitialState = (): AccountState => {
       handle: parsed.handle ?? 'taskops',
       profile: parsed.profile ?? fallbackProfile,
       permissions: parsed.permissions ?? ['task:create', 'post:create', 'comment:create', 'points:read'],
+      policyConsent: parsed.policyConsent ?? null,
       source: 'stored',
     }
   } catch {
@@ -158,9 +163,19 @@ export function useAccountState() {
     applySession(await authService.me())
   }
 
-  const registerWithEmail = async (payload: { email: string; password: string; displayName?: string; handle?: string }): Promise<void> => {
+  const registerWithEmail = async (payload: RegisterRequest): Promise<void> => {
     await authService.register(payload)
     applySession(await authService.me())
+  }
+
+  const acceptCurrentPolicies = async (locale: 'en' | 'zh'): Promise<void> => {
+    const manifest = await complianceService.getManifest()
+    const policyConsent = await complianceService.acceptPolicies(policyConsentRequest(manifest, locale))
+    setAccount((current) => {
+      const next = { ...current, policyConsent }
+      localStorage.setItem('hcaiUser', JSON.stringify(next))
+      return next
+    })
   }
 
   const loginWithOAuthProvider = async (provider: OAuthProvider): Promise<OAuthLoginResult> => {
@@ -207,12 +222,14 @@ export function useAccountState() {
     accountReady: bootstrapped,
     userRole: account.role,
     permissions: account.permissions,
+    policyConsent: account.policyConsent,
     hasPermission,
     setUserRole,
     loginAs,
     loginWithPassword,
     loginWithOAuthProvider,
     registerWithEmail,
+    acceptCurrentPolicies,
     logout,
   }
 }

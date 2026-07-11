@@ -4,6 +4,8 @@ import {
   ArrowLeft,
   Bell,
   BriefcaseBusiness,
+  CircleHelp,
+  FileText,
   Languages,
   LayoutDashboard,
   LogIn,
@@ -37,7 +39,7 @@ import type {
 import { themeModes } from '../../domain/theme'
 import { isZhCopy, localizeText, roleTier, textFor } from '../../domain/utils'
 import { showLocalTestAccounts } from '../../services/runtimeConfig'
-import { DynamicIsland, LoginModal, SearchPanel, SecurityModal } from '../overlays'
+import { DynamicIsland, LoginModal, PolicyConsentModal, SearchPanel, SecurityModal } from '../overlays'
 import { CompassIcon } from '../prototype/PrototypeComponents'
 import { NotificationList } from '../ui/NotificationList'
 
@@ -74,7 +76,7 @@ export function AppShell({
 }: AppShellProps) {
   const { t, locale, switchLocale } = app
   const { page, parentPage, navigatePrimary, navigateToPage, navigateBackToParent } = navigation
-  const { accountProfile, accountName, accountSource, accountReady, currentPoints, userRole, hasPermission, openProfile } = account
+  const { accountProfile, accountName, accountSource, accountReady, currentPoints, userRole, hasPermission, openProfile, policyConsent } = account
   const { themeMode, setThemeMode } = theme
   const { sidebarCollapsed, setSidebarCollapsed, searchOpen, setSearchOpen, loginOpen, setLoginOpen } = chrome
   const { activeTrack, playing, setPlaying, playTrack } = player
@@ -93,6 +95,7 @@ export function AppShell({
   const [securityOpen, setSecurityOpen] = useState(false)
   const [notificationOpen, setNotificationOpen] = useState(false)
   const isSignedIn = accountReady && accountSource !== 'fallback'
+  const consentGateExempt = page === 'terms' || page === 'privacy' || page === 'aup' || page === 'disclosures' || page === 'support'
   const currentTier = roleTier(userRole)
   const currentTierMark = currentTier.charAt(0)
   const accountSourceLabel = !accountReady
@@ -131,6 +134,9 @@ export function AppShell({
     profile: t.profile,
     terms: t.terms,
     privacy: t.privacy,
+    aup: textFor(t, 'Acceptable Use', '可接受使用政策'),
+    disclosures: textFor(t, 'AI disclosures', 'AI 生成说明'),
+    support: textFor(t, 'Support', '支持'),
   } satisfies Record<Page, string>
   const unreadNotificationCount = notificationItems.filter((item) => !item.readAt).length
   const notificationTriggerClass = unreadNotificationCount
@@ -146,6 +152,11 @@ export function AppShell({
     all: textFor(t, 'All', '全部'),
     read: textFor(t, 'Read', '已读'),
   }
+  const closeMobileSidebar = () => {
+    if (window.matchMedia('(max-width: 820px)').matches) {
+      setSidebarCollapsed(false)
+    }
+  }
   const formatNotificationTime = (value: string) => {
     const date = new Date(value)
     return Number.isNaN(date.getTime()) ? value : date.toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US')
@@ -154,7 +165,7 @@ export function AppShell({
   return (
     <div className={sidebarCollapsed ? 'app-shell sidebar-collapsed' : 'app-shell'} data-theme={themeMode}>
       <aside className={sidebarCollapsed ? 'sidebar mobile-expanded collapsed' : 'sidebar'}>
-        <button className="brand" type="button" onClick={() => navigatePrimary('home')}>
+        <button className="brand" type="button" onClick={() => { navigatePrimary('home'); closeMobileSidebar() }}>
           <span className="brand-mark">
             <Sparkles size={22} />
           </span>
@@ -177,7 +188,10 @@ export function AppShell({
                   data-testid={`nav-${item.key}`}
                   key={item.key}
                   type="button"
-                  onClick={() => navigatePrimary(item.key)}
+                  onClick={() => {
+                    navigatePrimary(item.key)
+                    closeMobileSidebar()
+                  }}
                 >
                   <Icon size={18} />
                   <span>{item.label}</span>
@@ -238,6 +252,21 @@ export function AppShell({
             </div>
           </div>
 
+          <nav className="sidebar-legal-links" aria-label={textFor(t, 'Policy and support', '政策与支持')}>
+            <button aria-label={textFor(t, 'Policies', '政策')} data-testid="policy-center-link" type="button" onClick={() => { navigatePrimary('terms'); closeMobileSidebar() }}>
+              <FileText size={15} />
+              <span>{textFor(t, 'Policies', '政策')}</span>
+            </button>
+            <button aria-label={t.privacy} data-testid="privacy-center-link" type="button" onClick={() => { navigatePrimary('privacy'); closeMobileSidebar() }}>
+              <ShieldCheck size={15} />
+              <span>{t.privacy}</span>
+            </button>
+            <button aria-label={textFor(t, 'Support', '支持')} data-testid="support-center-link" type="button" onClick={() => { navigatePrimary('support'); closeMobileSidebar() }}>
+              <CircleHelp size={15} />
+              <span>{textFor(t, 'Support', '支持')}</span>
+            </button>
+          </nav>
+
           <button
             className="ghost-button security-session-button"
             data-testid="security-open-button"
@@ -273,19 +302,20 @@ export function AppShell({
             className="icon-button mobile-menu"
             type="button"
             onClick={() => {
-              setSidebarCollapsed((open) => !open)
+              const nextOpen = !sidebarCollapsed
+              setSidebarCollapsed(nextOpen)
+              const mobileMenu = window.matchMedia('(max-width: 820px)').matches
               pushToast(
                 locale === 'zh'
-                  ? sidebarCollapsed
-                    ? '已展开侧边栏'
-                    : '已收起侧边栏'
-                  : sidebarCollapsed
-                    ? 'Sidebar expanded'
-                    : 'Sidebar collapsed',
+                  ? mobileMenu
+                    ? nextOpen ? '已打开导航菜单' : '已关闭导航菜单'
+                    : nextOpen ? '已收起侧边栏' : '已展开侧边栏'
+                  : mobileMenu
+                    ? nextOpen ? 'Navigation menu opened' : 'Navigation menu closed'
+                    : nextOpen ? 'Sidebar collapsed' : 'Sidebar expanded',
               )
             }}
-            aria-label={sidebarCollapsed ? textFor(t, 'Expand sidebar', '展开侧边栏') : textFor(t, 'Collapse sidebar', '收起侧边栏')}
-            aria-expanded={!sidebarCollapsed}
+            aria-label={textFor(t, 'Toggle navigation', '切换导航')}
           >
             <Menu size={20} />
           </button>
@@ -385,9 +415,9 @@ export function AppShell({
                 {t.login}
               </button>
             )}
-            <button className="primary-button" type="button" onClick={() => navigatePrimary('inspiration')}>
+            <button aria-label={t.getStarted} className="primary-button" type="button" onClick={() => navigatePrimary('inspiration')}>
               <Sparkles size={17} />
-              {t.getStarted}
+              <span>{t.getStarted}</span>
             </button>
           </div>
         </header>
@@ -439,18 +469,30 @@ export function AppShell({
           simulateAction={simulateAction}
         />
       )}
-      <DynamicIsland
-        t={t}
-        locale={locale}
-        page={page}
-        setPage={navigatePrimary}
-        track={activeTrack}
-        playTrack={playTrack}
-        playing={playing}
-        setPlaying={setPlaying}
-        requireAuth={requireAuth}
-        simulateAction={simulateAction}
-      />
+      {isSignedIn && policyConsent?.required && !consentGateExempt && (
+        <PolicyConsentModal
+          t={t}
+          status={policyConsent}
+          acceptCurrentPolicies={account.acceptCurrentPolicies}
+          logout={account.logout}
+          openPage={navigatePrimary}
+          simulateAction={simulateAction}
+        />
+      )}
+      {!consentGateExempt && (
+        <DynamicIsland
+          t={t}
+          locale={locale}
+          page={page}
+          setPage={navigatePrimary}
+          track={activeTrack}
+          playTrack={playTrack}
+          playing={playing}
+          setPlaying={setPlaying}
+          requireAuth={requireAuth}
+          simulateAction={simulateAction}
+        />
+      )}
     </div>
   )
 }

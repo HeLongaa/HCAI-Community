@@ -20,6 +20,11 @@ type SessionResponse = {
   user: SessionUser
 }
 
+type ComplianceManifest = {
+  consentContract: { requiredPolicyIds: string[] }
+  policies: Array<{ id: string; version: string }>
+}
+
 export async function apiData<T>(requestPromise: Promise<{ ok: () => boolean; status: () => number; json: () => Promise<unknown> }>) {
   const response = await requestPromise
   expect(response.ok(), `API request failed with ${response.status()}`).toBeTruthy()
@@ -35,8 +40,26 @@ export async function login(request: APIRequestContext, handle: string) {
   )
 }
 
+export async function acceptCurrentPolicies(request: APIRequestContext, accessToken: string) {
+  const manifest = await apiData<ComplianceManifest>(
+    request.get(`${apiBaseUrl}/api/compliance/policies`),
+  )
+  const policyVersions = Object.fromEntries(
+    manifest.policies
+      .filter((policy) => manifest.consentContract.requiredPolicyIds.includes(policy.id))
+      .map((policy) => [policy.id, policy.version]),
+  )
+  return apiData(
+    request.post(`${apiBaseUrl}/api/compliance/consent`, {
+      headers: authHeaders(accessToken),
+      data: { accepted: true, locale: 'en', policyVersions },
+    }),
+  )
+}
+
 export async function signInPage(page: Page, request: APIRequestContext, handle: string) {
   const session = await login(request, handle)
+  await acceptCurrentPolicies(request, session.accessToken)
   await page.addInitScript(({ token, user }) => {
     localStorage.setItem('hcaiAccessToken', token)
     localStorage.setItem(

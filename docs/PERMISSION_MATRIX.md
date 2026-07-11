@@ -66,6 +66,8 @@ The frontend currently checks permissions in `src/App.tsx` before triggering hig
 | Edit role permissions | `admin:permissions:manage` | Shows edit/save controls in permission matrix |
 | Search/export/admin-adjust point ledgers | `points:adjust` | Shows Admin Finance tab, adjustment/export controls, policy view, and point approval filter |
 | Edit point adjustment policy | `admin:permissions:manage` | Enables point policy save |
+| Record current policy consent | Authenticated account | First-use consent gate blocks normal UI until exact current versions are accepted |
+| Submit or track a support request | Authenticated account | Support center opens login and backend enforces request ownership |
 
 Frontend guards are UX helpers only. Backend route guards remain the source of truth.
 
@@ -90,6 +92,11 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `POST /api/library/items/:id/convert-to-task` | Required | `task:create` | Yes |
 | `POST /api/library/items/:id/send-to-workspace` | Required | Any authenticated user | Yes |
 | `POST /api/creative/generations` | Required | Any authenticated user | Yes |
+| `GET /api/compliance/consent` | Required | Any authenticated user; consent record scoped to actor | Yes |
+| `POST /api/compliance/consent` | Required | Any authenticated user; exact current policy versions required | Yes |
+| `GET /api/support/requests` | Required | Any authenticated user; owner-scoped | Yes |
+| `POST /api/support/requests` | Required | Any authenticated user; safe-field validation | Yes |
+| `GET /api/support/requests/:id` | Required | Any authenticated user; owner-scoped | Yes |
 | `GET /api/points/ledger` | Required | `points:read` | Yes |
 | `GET /api/admin/points/ledger` | Required | `points:adjust` | Yes |
 | `GET /api/admin/points/ledger.csv` | Required | `points:adjust` | Yes |

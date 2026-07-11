@@ -19,7 +19,7 @@ import { ExplorePage } from '../../features/explore'
 import { InspirationPage } from '../../features/inspiration'
 import { PlaylistPage, ProfilePage } from '../../features/profile'
 import { PointsPage } from '../../features/rewards'
-import { AboutPage, ApiPage, EarnPage, LegalPage, PricingPage } from '../../features/static-pages'
+import { AboutPage, ApiPage, EarnPage, LegalPage, PricingPage, SupportPage } from '../../features/static-pages'
 import { MyTasksPage, PublishPage, TasksPage } from '../../features/tasks'
 import { ChatPage, PlaygroundPage } from '../../features/workspace'
 
@@ -217,8 +217,19 @@ export function PageRenderer({
           simulateAction={simulateAction}
         />
       )}
-      {page === 'terms' && <LegalPage title={t.terms} t={t} />}
-      {page === 'privacy' && <LegalPage title={t.privacy} t={t} />}
+      {page === 'terms' && <LegalPage policyId="terms" t={t} setPage={navigateToPage} />}
+      {page === 'privacy' && <LegalPage policyId="privacy" t={t} setPage={navigateToPage} />}
+      {page === 'aup' && <LegalPage policyId="acceptable-use" t={t} setPage={navigateToPage} />}
+      {page === 'disclosures' && <LegalPage policyId="provider-disclosure" t={t} setPage={navigateToPage} />}
+      {page === 'support' && (
+        <SupportPage
+          key={account.accountHandle || 'guest'}
+          t={t}
+          signedIn={Boolean(account.accountHandle)}
+          requireAuth={requireAuth}
+          simulateAction={simulateAction}
+        />
+      )}
     </>
   )
 }
