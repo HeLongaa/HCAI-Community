@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "release": "V1",
+  "scopeStatus": "frozen",
+  "scopeDocument": "docs/V1_SCOPE_AND_DEFINITION_OF_DONE.md",
+  "auditDocument": "docs/V1_CURRENT_STATE_AUDIT.md",
+  "includedDomains": [
+    {
+      "id": "auth-account",
+      "evidence": ["server/src/modules/auth/routes.js", "server/src/modules/users/routes.js", "src/services/authService.ts"],
+      "completionGates": ["real OAuth and session security", "account settings and active sessions", "data export and deletion"]
+    },
+    {
+      "id": "task-marketplace",
+      "evidence": ["server/src/modules/tasks/routes.js", "src/services/taskService.ts", "e2e/task-proposals.spec.ts"],
+      "completionGates": ["publish through dispute lifecycle", "role and ownership enforcement", "idempotent delivery and review"]
+    },
+    {
+      "id": "community-profile",
+      "evidence": ["server/src/modules/posts/routes.js", "server/src/modules/profiles/routes.js", "src/services/communityService.ts"],
+      "completionGates": ["community and profile ownership", "portfolio visibility and privacy", "report and moderation lifecycle"]
+    },
+    {
+      "id": "internal-points",
+      "evidence": ["server/src/modules/points/routes.js", "server/src/repositories/creativeCredits.test.js", "src/services/pointsService.ts"],
+      "completionGates": ["ledger invariants", "quota and escrow lifecycle", "idempotent compensation and refund semantics"]
+    },
+    {
+      "id": "notifications",
+      "evidence": ["server/src/modules/notifications/routes.js", "src/services/notificationService.ts", "src/components/ui/NotificationList.tsx"],
+      "completionGates": ["deduplicated event delivery", "read state and deep links", "failed-delivery recovery"]
+    },
+    {
+      "id": "media-governance",
+      "evidence": ["server/src/modules/media/routes.js", "server/src/media/scanWorker.js", "src/services/mediaService.ts"],
+      "completionGates": ["private object storage", "scanner request and callback", "review-gated download and lifecycle cleanup"]
+    },
+    {
+      "id": "admin-operations",
+      "evidence": ["server/src/modules/admin/routes.js", "src/services/adminService.ts", "e2e/admin-permissions.spec.ts"],
+      "completionGates": ["RBAC and redaction", "auditable high-risk actions", "generation and provider operations"]
+    },
+    {
+      "id": "image-studio",
+      "evidence": ["server/src/modules/creative/routes.js", "server/src/creative/replicateStagingProvider.js", "src/services/creativeService.ts"],
+      "completionGates": ["approved real provider", "text and image input workflows", "persisted governed outputs"]
+    },
+    {
+      "id": "chat-studio",
+      "evidence": ["src/features/workspace/WorkspacePages.tsx", "src/services/creativeService.ts", "server/src/creative/policy.js"],
+      "completionGates": ["approved streaming provider", "durable conversations and attachments", "input and output moderation"]
+    },
+    {
+      "id": "video-studio",
+      "evidence": ["src/features/workspace/WorkspacePages.tsx", "server/src/creative/providerPollingWorker.js", "server/src/creative/generationRecords.js"],
+      "completionGates": ["approved asynchronous provider", "progress cancel and retry", "governed preview and final output"]
+    },
+    {
+      "id": "music-studio",
+      "evidence": ["src/features/workspace/WorkspacePages.tsx", "server/src/creative/providerPollingWorker.js", "server/src/creative/artifactBuilder.js"],
+      "completionGates": ["approved asynchronous provider", "license and metadata policy", "governed playback and download"]
+    },
+    {
+      "id": "unified-generation-assets",
+      "evidence": ["server/src/creative/generationService.js", "server/src/creative/generationRecords.js", "server/prisma/migrations/0019_creative_generations/migration.sql"],
+      "completionGates": ["cross-workspace generation history", "asset lineage and reuse", "task delivery and portfolio connection"]
+    },
+    {
+      "id": "legal-support",
+      "evidence": ["src/features/static-pages/StaticPages.tsx", "docs/REAL_PROVIDER_CURRENT_STATUS.md", "docs/PERMISSION_MATRIX.md"],
+      "completionGates": ["terms privacy and acceptable use policy", "provider and generated-content disclosures", "support report and appeal entry points"]
+    },
+    {
+      "id": "release-operations",
+      "evidence": ["docs/RELEASE_CHECKLIST.md", "docs/QUALITY_GATES.md", "scripts/smoke-production.mjs"],
+      "completionGates": ["real-environment rehearsal", "security load and UAT evidence", "canary rollback and hypercare"]
+    }
+  ],
+  "creativeProviderPolicy": {
+    "requiredModalities": ["image", "chat", "video", "music"],
+    "productionFallback": "fail_closed",
+    "realCallApprovalRequired": true,
+    "approvalDocument": "docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md"
+  },
+  "excludedCapabilities": [
+    {
+      "id": "rmb-payment",
+      "runtimeTokens": ["/api/payments", "/api/payment-intents", "alipay", "wechat_pay", "wechatpay"],
+      "schemaTokens": ["model Payment", "model PaymentIntent"]
+    },
+    {
+      "id": "withdrawal-payout",
+      "runtimeTokens": ["/api/withdrawals", "/api/payouts"],
+      "schemaTokens": ["model Withdrawal", "model Payout"]
+    },
+    {
+      "id": "kyc",
+      "runtimeTokens": ["/api/kyc", "kyc_verification"],
+      "schemaTokens": ["model Kyc", "model KYC"]
+    },
+    {
+      "id": "invoice-tax-settlement",
+      "runtimeTokens": ["/api/invoices", "/api/tax-settlements"],
+      "schemaTokens": ["model Invoice", "model TaxSettlement"]
+    }
+  ],
+  "requiredQualityGates": [
+    "scope-contract",
+    "lint",
+    "feature-simulation",
+    "api-contracts",
+    "production-build",
+    "backend-tests",
+    "prisma-validation",
+    "browser-e2e",
+    "fixture-production-smoke",
+    "real-environment-smoke"
+  ]
+}

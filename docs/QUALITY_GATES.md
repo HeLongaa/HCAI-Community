@@ -13,8 +13,13 @@ npm run check:quick
 Includes:
 
 - `npm run lint`
+- `npm run test:v1-scope`
 - `npm run test:sim`
 - API contract drift check through `scripts/verify-api-contracts.mjs`
+
+The V1 scope contract checks the frozen included domains, all four required real-provider modalities, explicit
+real-money exclusions, evidence paths, fail-closed Provider policy, and the absence of payment/withdrawal/KYC/invoice
+runtime routes or Prisma models.
 
 Use this before handing off small frontend, contract, or documentation changes.
 

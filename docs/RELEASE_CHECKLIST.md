@@ -19,6 +19,9 @@ npm run check:deploy:env
 
 Confirm:
 
+- `npm run test:v1-scope` passes and the scope manifest matches `docs/V1_SCOPE_AND_DEFINITION_OF_DONE.md`.
+- No RMB payment, withdrawal/payout, KYC, invoice, tax-settlement, or merchant-settlement route or schema is present.
+- Internal points, creative credits, quota, escrow, compensation, and refunds are not represented as withdrawable money.
 - GitHub Actions `Quality Gates` workflow is passing for the target commit.
 - The multi-instance deployment profile in `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` has been reviewed for the target environment.
 - `docs/GITHUB_ENVIRONMENT.md` required secrets and variables are configured for the selected GitHub Environment.
