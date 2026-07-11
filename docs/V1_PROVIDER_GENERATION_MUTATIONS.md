@@ -44,6 +44,14 @@ Every mutation requires an idempotency key and writes `creative_generation_mutat
 - A `completed` replay is accepted only when output assets are already durably persisted.
 - Terminal generations are not reopened.
 
+## Notifications
+
+- Successful cancellation notifies the generation owner once; an idempotent duplicate does not create another unread notification.
+- Retry completion or failure notifies the owner of the child attempt.
+- Admin retry authorization notifies the original generation owner that user confirmation is still required.
+- Manual replay request and review outcomes notify the generation owner; approval, rejection, and execution results also notify the operator who requested the review.
+- Notification metadata contains only generation, mutation, review, workspace, and safe navigation identifiers. It never includes raw prompts or Provider payloads.
+
 ## Runtime Boundary
 
 Tests inject fixture adapters where Provider behavior must be simulated. Production defaults register no Provider cancellation client and make no new outbound Provider request. Existing callback and polling gates remain independently default-off.
@@ -51,7 +59,7 @@ Tests inject fixture adapters where Provider behavior must be simulated. Product
 ## Verification
 
 - Repository tests cover mutation idempotency and retry relations.
-- Service tests cover ownership, accounting release, default-disabled Provider cancellation, input matching, and child attempt allocation.
-- Creative route tests cover user cancel/retry and duplicate suppression.
-- Admin route tests cover dedicated permissions, retry authorization, manual replay self-approval denial, and approved replay execution.
+- Service tests cover ownership, accounting release, default-disabled Provider cancellation, input matching, child attempt allocation, and failed retry notification.
+- Creative route tests cover user cancel/retry, duplicate suppression, and owner notifications.
+- Admin route tests cover dedicated permissions, retry authorization, owner notification, manual replay self-approval denial, approved/rejected replay execution, and owner/requester notifications.
 - OpenAPI, frontend contracts, Admin controls, runtime inventory, Prisma schema, and migration are checked by the standard PR gate.

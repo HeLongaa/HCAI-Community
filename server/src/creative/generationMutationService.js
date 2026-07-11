@@ -45,6 +45,36 @@ const safeCancellationResult = (result) => ({
   providerStatus: result?.providerStatus ? safeErrorPreview(result.providerStatus) : null,
 })
 
+const notifyGenerationOwner = async ({
+  repositories,
+  generation,
+  mutation,
+  type,
+  title,
+  body,
+}) => {
+  if (!generation?.actorHandle || !repositories.notifications?.createForHandles) return []
+  return repositories.notifications.createForHandles([generation.actorHandle], {
+    type,
+    title,
+    body,
+    resourceType: 'creative_generation',
+    resourceId: generation.id,
+    dedupeUnread: true,
+    metadata: {
+      mutationId: mutation.id,
+      mutationType: mutation.type,
+      mutationStatus: mutation.status,
+      generationId: generation.id,
+      targetGenerationId: mutation.targetGenerationId ?? null,
+      workspace: generation.workspace,
+      target: {
+        page: 'playground',
+      },
+    },
+  })
+}
+
 export const cancelCreativeGeneration = async ({
   generationId,
   actor,
@@ -173,6 +203,14 @@ export const cancelCreativeGeneration = async ({
       },
       completedAt: new Date().toISOString(),
     }, actor)
+    await notifyGenerationOwner({
+      repositories,
+      generation: cancelled,
+      mutation: completed,
+      type: 'creative.generation.cancelled',
+      title: 'Generation cancelled',
+      body: `Your ${cancelled.workspace} generation was cancelled.`,
+    })
     return { duplicate: false, mutation: completed, generation: cancelled }
   } catch (error) {
     await mutationRepository.update(mutation.id, {
@@ -275,6 +313,7 @@ export const prepareCreativeGenerationRetry = async ({
     safeMetadata: {
       attemptNumber,
       authorizationMutationId: request.authorizationMutationId ?? null,
+      workspace: generation.workspace,
     },
   }, actor)
   if (request.authorizationMutationId) {
@@ -321,6 +360,21 @@ export const completeCreativeGenerationRetry = async ({
       completedAt,
     }, actor)
   }
+  const notificationGeneration = generationRecord ?? {
+    id: mutation.targetGenerationId ?? mutation.generationId,
+    actorHandle: mutation.requestedByHandle,
+    workspace: mutation.safeMetadata?.workspace ?? 'image',
+  }
+  await notifyGenerationOwner({
+    repositories,
+    generation: notificationGeneration,
+    mutation: completed,
+    type: error ? 'creative.generation.retry_failed' : 'creative.generation.retry_completed',
+    title: error ? 'Generation retry failed' : 'Generation retry completed',
+    body: error
+      ? 'Your generation retry could not be completed.'
+      : `Your ${notificationGeneration.workspace} generation retry completed.`,
+  })
   return completed
 }
 
@@ -358,7 +412,16 @@ export const createAdminRetryAuthorization = async ({
     safeMetadata: {
       requiresUserConfirmation: true,
       userHandle: generation.actorHandle,
+      workspace: generation.workspace,
     },
   }, actor)
+  await notifyGenerationOwner({
+    repositories,
+    generation,
+    mutation: recorded.mutation,
+    type: 'creative.generation.retry_authorized',
+    title: 'Generation retry authorized',
+    body: `An operator authorized a retry for your failed ${generation.workspace} generation.`,
+  })
   return { duplicate: false, mutation: recorded.mutation }
 }

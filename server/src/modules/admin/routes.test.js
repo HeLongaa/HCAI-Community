@@ -3222,6 +3222,19 @@ test('admin generation cancellation and retry authorization use dedicated mutati
     assert.equal(authorization.payload.data.mutation.status, 'approved')
     assert.equal(authorization.payload.data.mutation.safeMetadata.requiresUserConfirmation, true)
     assert.equal(authorization.payload.data.mutation.targetGenerationId, null)
+
+    const ownerNotifications = await repository.notifications.list(
+      { handle: 'promptlin' },
+      { readState: 'all', resourceType: 'creative_generation', limit: 100 },
+    )
+    assert.ok(ownerNotifications.items.some((item) =>
+      item.type === 'creative.generation.cancelled' && item.resourceId === cancelId,
+    ))
+    assert.ok(ownerNotifications.items.some((item) =>
+      item.type === 'creative.generation.retry_authorized' &&
+      item.resourceId === retryId &&
+      item.metadata.mutationId === authorization.payload.data.mutation.id,
+    ))
   } finally {
     await server.close()
   }
@@ -3266,6 +3279,19 @@ test('manual Provider replay requires a different approver and executes only aft
     assert.equal(requested.payload.data.review.metadata.kind, 'manual_provider_replay')
     assert.equal(JSON.stringify(requested.payload.data).includes('rawPayload'), false)
 
+    const requestNotifications = await repository.notifications.list(
+      { handle: 'promptlin' },
+      {
+        readState: 'all',
+        type: 'creative.generation.manual_replay_requested',
+        resourceType: 'creative_generation',
+      },
+    )
+    assert.equal(requestNotifications.items.length, 1)
+    assert.equal(requestNotifications.items[0].metadata.reviewId, requested.payload.data.review.id)
+    assert.equal(requestNotifications.items[0].metadata.target.page, 'playground')
+    assert.equal(JSON.stringify(requestNotifications.items[0]).includes('rawPayload'), false)
+
     const selfApproval = await requestJson(
       server.url,
       `/api/admin/reviews/${requested.payload.data.review.id}/actions`,
@@ -3285,9 +3311,93 @@ test('manual Provider replay requires a different approver and executes only aft
     assert.equal(approved.payload.data.mutation.status, 'succeeded')
     assert.equal((await repository.creativeGenerations.find(generationId)).status, 'failed')
 
+    const ownerDecisionNotifications = await repository.notifications.list(
+      { handle: 'promptlin' },
+      {
+        readState: 'all',
+        type: 'creative.generation.manual_replay_completed',
+        resourceType: 'creative_generation',
+      },
+    )
+    const requesterDecisionNotifications = await repository.notifications.list(
+      { handle: 'opsplus' },
+      {
+        readState: 'all',
+        type: 'creative.generation.manual_replay_completed',
+        resourceType: 'creative_generation',
+      },
+    )
+    assert.equal(ownerDecisionNotifications.items.length, 1)
+    assert.equal(requesterDecisionNotifications.items.length, 1)
+    assert.equal(ownerDecisionNotifications.items[0].metadata.reviewId, requested.payload.data.review.id)
+    assert.equal(requesterDecisionNotifications.items[0].metadata.reviewId, requested.payload.data.review.id)
+
     const replays = await repository.creativeProviderReplays.listForGeneration(generationId)
     assert.equal(replays.items.length, 1)
     assert.equal(replays.items[0].sourceType, 'manual_replay')
+  } finally {
+    await server.close()
+  }
+})
+
+test('manual Provider replay rejection notifies the generation owner and requester', async () => {
+  const repository = createSeedRepository()
+  const generationId = `gen-admin-manual-replay-reject-${Date.now()}`
+  await repository.creativeGenerations.create({
+    id: generationId,
+    actorId: 'demo-user-creator',
+    actorHandle: 'promptlin',
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'replicate-staging',
+    providerMode: 'replicate_staging',
+    providerJobId: 'pred-admin-manual-replay-reject-1',
+    status: 'running',
+    promptHash: 'c'.repeat(64),
+    promptPreview: 'Manual replay rejection fixture',
+    inputAssetIds: [],
+    parameterKeys: [],
+  }, { id: 'demo-user-creator', handle: 'promptlin' })
+  const server = await createInjectedAdminServer(repository)
+  try {
+    const requested = await requestJson(
+      server.url,
+      `/api/admin/creative/generations/${generationId}/manual-replay-requests`,
+      {
+        token: 'demo-access.opsplus',
+        body: {
+          providerId: 'replicate-staging',
+          providerMode: 'replicate_staging',
+          providerJobId: 'pred-admin-manual-replay-reject-1',
+          normalizedStatus: 'failed',
+          reasonCode: 'provider_failure_unconfirmed',
+          idempotencyKey: `manual-replay:${generationId}:reject`,
+        },
+      },
+    )
+    assert.equal(requested.status, 200)
+
+    const rejected = await requestJson(
+      server.url,
+      `/api/admin/reviews/${requested.payload.data.review.id}/actions`,
+      { body: { decision: 'reject', note: 'Evidence was insufficient' }, token: 'demo-access.finops' },
+    )
+    assert.equal(rejected.status, 200)
+    assert.equal(rejected.payload.data.mutation.status, 'rejected')
+    assert.equal((await repository.creativeGenerations.find(generationId)).status, 'running')
+
+    for (const handle of ['promptlin', 'opsplus']) {
+      const notifications = await repository.notifications.list(
+        { handle },
+        {
+          readState: 'all',
+          type: 'creative.generation.manual_replay_rejected',
+          resourceType: 'creative_generation',
+        },
+      )
+      assert.equal(notifications.items.length, 1)
+      assert.equal(notifications.items[0].metadata.reviewId, requested.payload.data.review.id)
+    }
   } finally {
     await server.close()
   }

@@ -1298,6 +1298,16 @@ test('POST generation cancel is owner-scoped and idempotent', async () => {
     assert.equal(duplicate.status, 200)
     assert.equal(duplicate.payload.data.duplicate, true)
     assert.equal(duplicate.payload.data.mutation.id, cancelled.payload.data.mutation.id)
+
+    const notifications = await repository.notifications.list(
+      { handle: 'promptlin' },
+      { readState: 'all', type: 'creative.generation.cancelled', resourceType: 'creative_generation' },
+    )
+    assert.equal(notifications.items.length, 1)
+    assert.equal(notifications.items[0].resourceId, generationId)
+    assert.equal(notifications.items[0].metadata.mutationId, cancelled.payload.data.mutation.id)
+    assert.equal(notifications.items[0].metadata.workspace, 'image')
+    assert.equal(notifications.items[0].metadata.target.page, 'playground')
   } finally {
     await server.close()
   }
@@ -1353,6 +1363,16 @@ test('POST generation retry creates a child attempt without storing a raw prompt
     assert.equal(child.attemptNumber, 2)
     assert.equal(Object.hasOwn(child, 'prompt'), false)
 
+    const notifications = await repository.notifications.list(
+      { handle: 'promptlin' },
+      { readState: 'all', type: 'creative.generation.retry_completed', resourceType: 'creative_generation' },
+    )
+    assert.equal(notifications.items.length, 1)
+    assert.equal(notifications.items[0].resourceId, child.id)
+    assert.equal(notifications.items[0].metadata.mutationId, retried.payload.data.mutation.id)
+    assert.equal(notifications.items[0].metadata.targetGenerationId, child.id)
+    assert.equal(notifications.items[0].metadata.target.page, 'playground')
+
     const duplicate = await requestJson(server.url, `/api/creative/generations/${generationId}/retry`, {
       body,
       token: 'demo-access.promptlin',
@@ -1360,6 +1380,12 @@ test('POST generation retry creates a child attempt without storing a raw prompt
     assert.equal(duplicate.status, 200)
     assert.equal(duplicate.payload.data.duplicate, true)
     assert.equal(duplicate.payload.data.targetGeneration.id, child.id)
+
+    const notificationsAfterDuplicate = await repository.notifications.list(
+      { handle: 'promptlin' },
+      { readState: 'all', type: 'creative.generation.retry_completed', resourceType: 'creative_generation' },
+    )
+    assert.equal(notificationsAfterDuplicate.items.length, 1)
   } finally {
     await server.close()
   }

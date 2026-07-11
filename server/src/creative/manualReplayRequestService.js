@@ -9,6 +9,35 @@ import { applyProviderReplayThroughLedger } from './providerReplayIntegration.js
 const asRecord = (value) =>
   value && typeof value === 'object' && !Array.isArray(value) ? value : {}
 
+const notifyManualReplay = async ({
+  repositories,
+  handles,
+  generation,
+  mutation,
+  reviewId,
+  type,
+  title,
+  body,
+}) => {
+  if (!repositories.notifications?.createForHandles) return []
+  return repositories.notifications.createForHandles(handles.filter(Boolean), {
+    type,
+    title,
+    body,
+    resourceType: 'creative_generation',
+    resourceId: generation.id,
+    dedupeUnread: true,
+    metadata: {
+      generationId: generation.id,
+      mutationId: mutation.id,
+      mutationStatus: mutation.status,
+      reviewId,
+      workspace: generation.workspace,
+      target: { page: 'playground' },
+    },
+  })
+}
+
 const assertCompletedOutputsPersisted = (generation, normalizedStatus) => {
   if (normalizedStatus === 'completed' && (generation.outputAssetIds ?? []).length === 0) {
     throw new HttpError(
@@ -85,6 +114,16 @@ export const requestManualProviderReplay = async ({
   const mutation = await repositories.creativeGenerationMutations.update(recorded.mutation.id, {
     reviewId: review.id,
   }, actor)
+  await notifyManualReplay({
+    repositories,
+    handles: [generation.actorHandle],
+    generation,
+    mutation,
+    reviewId: review.id,
+    type: 'creative.generation.manual_replay_requested',
+    title: 'Generation recovery review requested',
+    body: `An operator requested a reviewed recovery action for your ${generation.workspace} generation.`,
+  })
   return { duplicate: false, mutation, review }
 }
 
@@ -144,11 +183,25 @@ export const resolveManualProviderReplayReview = async ({
     throw new HttpError(404, 'CREATIVE_GENERATION_MUTATION_NOT_FOUND', 'Manual replay mutation was not found')
   }
   if (decision === 'reject') {
-    return repositories.creativeGenerationMutations.update(mutation.id, {
+    const rejected = await repositories.creativeGenerationMutations.update(mutation.id, {
       status: 'rejected',
       result: { reasonCode: 'manual_replay_rejected' },
       completedAt: now.toISOString(),
     }, actor)
+    const generation = await repositories.creativeGenerations.find(metadata.generationId)
+    if (generation) {
+      await notifyManualReplay({
+        repositories,
+        handles: [generation.actorHandle, metadata.requestedBy],
+        generation,
+        mutation: rejected,
+        reviewId: review.id,
+        type: 'creative.generation.manual_replay_rejected',
+        title: 'Generation recovery rejected',
+        body: `The reviewed recovery action for generation ${generation.id} was rejected.`,
+      })
+    }
+    return rejected
   }
 
   const envelope = asRecord(metadata.replayEnvelope)
@@ -171,7 +224,7 @@ export const resolveManualProviderReplayReview = async ({
       receivedAt: envelope.receivedAt,
       now,
     })
-    return repositories.creativeGenerationMutations.update(mutation.id, {
+    const completed = await repositories.creativeGenerationMutations.update(mutation.id, {
       status: result.execution?.completed === false ? 'failed' : 'succeeded',
       result: {
         replayId: result.replayRecord?.id ?? null,
@@ -181,12 +234,39 @@ export const resolveManualProviderReplayReview = async ({
       },
       completedAt: now.toISOString(),
     }, actor)
+    await notifyManualReplay({
+      repositories,
+      handles: [generation.actorHandle, metadata.requestedBy],
+      generation,
+      mutation: completed,
+      reviewId: review.id,
+      type: completed.status === 'succeeded'
+        ? 'creative.generation.manual_replay_completed'
+        : 'creative.generation.manual_replay_failed',
+      title: completed.status === 'succeeded'
+        ? 'Generation recovery completed'
+        : 'Generation recovery failed',
+      body: completed.status === 'succeeded'
+        ? `The reviewed recovery action for generation ${generation.id} completed.`
+        : `The reviewed recovery action for generation ${generation.id} did not complete.`,
+    })
+    return completed
   } catch (error) {
-    await repositories.creativeGenerationMutations.update(mutation.id, {
+    const failed = await repositories.creativeGenerationMutations.update(mutation.id, {
       status: 'failed',
       result: { errorCode: error?.code ?? 'CREATIVE_MANUAL_REPLAY_FAILED' },
       completedAt: now.toISOString(),
     }, actor)
+    await notifyManualReplay({
+      repositories,
+      handles: [generation.actorHandle, metadata.requestedBy],
+      generation,
+      mutation: failed,
+      reviewId: review.id,
+      type: 'creative.generation.manual_replay_failed',
+      title: 'Generation recovery failed',
+      body: `The reviewed recovery action for generation ${generation.id} failed.`,
+    })
     throw error
   }
 }
