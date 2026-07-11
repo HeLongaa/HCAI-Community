@@ -47,23 +47,25 @@ Secrets:
 | --- | --- | --- |
 | `ACCESS_TOKEN_SECRET` | Yes | Minimum 32 characters because `NODE_ENV=production` is used for parity. |
 | `CREATIVE_STAGING_PROVIDER_API_TOKEN` | Yes | Dedicated staging provider token only. Do not reuse future production credentials. |
+| `CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET` | Callback-api mode only | Dedicated staging ingress HMAC secret, minimum 32 characters. |
 
 Variables:
 
-| Name | Preflight value | Adapter-shell value | Notes |
-| --- | --- | --- | --- |
-| `CREATIVE_PROVIDER_RUNTIME_ENV` | `staging` | `staging` | Required for any staging provider token. |
-| `CREATIVE_PROVIDER_MODE` | `disabled` | `replicate_staging` | Adapter shell remains unavailable on the default route path. |
-| `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED` | `true` | `false` | Preflight proves secret wiring without provider dispatch. |
-| `CREATIVE_STAGING_IMAGE_PROVIDER` | `replicate` | `replicate` | First candidate only. |
-| `CREATIVE_STAGING_PROVIDER_CONFIRMATION` | `staging-only` | `staging-only` | Explicit human confirmation string. |
-| `CREATIVE_STAGING_SMOKE_MODE` | `preflight` | `adapter-shell` | Selects the smoke assertion set. |
+| Name | Preflight value | Adapter-shell value | Callback-api value | Notes |
+| --- | --- | --- | --- | --- |
+| `CREATIVE_PROVIDER_RUNTIME_ENV` | `staging` | `staging` | `staging` | Required for any staging provider boundary. |
+| `CREATIVE_PROVIDER_MODE` | `disabled` | `replicate_staging` | `disabled` | Callback intake remains independent from outbound dispatch. |
+| `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED` | `true` | `false` | `true` | Preflight proves secret wiring without provider dispatch. |
+| `CREATIVE_STAGING_IMAGE_PROVIDER` | `replicate` | `replicate` | `replicate` | First candidate only. |
+| `CREATIVE_STAGING_PROVIDER_CONFIRMATION` | `staging-only` | `staging-only` | `staging-only` | Explicit human confirmation string. |
+| `CREATIVE_PROVIDER_CALLBACK_ENABLED` | `false` | `false` | `true` | Independent V1-06 callback kill switch. |
+| `CREATIVE_STAGING_SMOKE_MODE` | `preflight` | `adapter-shell` | `callback-api` | Selects the smoke assertion set. |
 
 Provider account setup:
 
 - Use a dedicated staging provider account or token.
 - Set a low provider-side spending cap before any later external-call test.
-- Keep provider webhook targets disabled until webhook idempotency tests exist.
+- Keep Provider webhook targets disabled until a named staging delivery is explicitly approved; V1-06 app-side idempotency tests alone are not traffic approval.
 - Rotate the token before moving from metadata smoke to any external-call staging adapter.
 
 ## Local Fixture Smoke
@@ -78,12 +80,13 @@ Expected result:
 
 - `preflight` fixture passes with `CREATIVE_PROVIDER_MODE=disabled`.
 - `adapter-shell` fixture passes with `CREATIVE_PROVIDER_MODE=replicate_staging`.
+- `callback-api` fixture passes with Provider dispatch disabled and callback configuration explicitly enabled.
 - Safe summary reports `networkCallsEnabled=false`.
 - Safe summary reports `adapterImplemented=false`.
 - Safe summary self-redaction check passes.
 - No token value is printed.
 
-This local fixture uses a fake token string and does not call a provider.
+This local fixture uses fake secret strings and does not start a callback server or call a provider.
 
 ## Manual GitHub Smoke
 
@@ -95,7 +98,8 @@ Run the GitHub Actions workflow manually:
 4. Set `environment=creative-staging` or the approved staging environment name.
 5. For preflight, set `CREATIVE_STAGING_SMOKE_MODE=preflight` in the environment variables.
 6. For adapter-shell metadata smoke, set `CREATIVE_STAGING_SMOKE_MODE=adapter-shell`.
-7. Confirm the `Deployment Environment Smoke` job runs `npm run smoke:creative-staging:env`.
+7. For callback configuration smoke, set `CREATIVE_STAGING_SMOKE_MODE=callback-api`.
+8. Confirm the `Deployment Environment Smoke` job runs `npm run smoke:creative-staging:env`.
 
 Expected preflight checks:
 
@@ -113,6 +117,13 @@ Expected adapter-shell checks:
 - `adapter shell remains default-disabled` passes.
 - `replicate staging provider network calls disabled` passes.
 
+Expected callback-api checks:
+
+- `callback API uses disabled provider dispatch mode` passes.
+- `callback API is explicitly enabled` passes.
+- `callback signature secret is configured as presence only` passes.
+- `callback API keeps provider network dispatch disabled` passes.
+
 ## Post-Smoke Manual API Check
 
 After the metadata smoke passes in a real staging deployment, verify the user-facing generation path is still blocked from paid dispatch.
@@ -129,7 +140,7 @@ After the metadata smoke passes in a real staging deployment, verify the user-fa
 Record the following in Notion before starting any external-call adapter task:
 
 - GitHub workflow run URL.
-- Smoke mode used: `preflight` or `adapter-shell`.
+- Smoke mode used: `preflight`, `adapter-shell`, or `callback-api`.
 - Safe summary fields for provider mode, runtime env, token configured boolean, `networkCallsEnabled`, and `adapterImplemented`.
 - Confirmation that the safe-summary self-redaction guard passed.
 - Manual API check result.
@@ -143,10 +154,11 @@ Immediate environment rollback:
 
 1. Set `CREATIVE_PROVIDER_MODE=disabled`.
 2. Set `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=false`.
-3. Remove or rotate `CREATIVE_STAGING_PROVIDER_API_TOKEN`.
-4. Set provider-side spending cap to `0`.
-5. Disable provider webhook targets.
-6. Disable any future provider polling or callback workers.
+3. Set `CREATIVE_PROVIDER_CALLBACK_ENABLED=false`.
+4. Remove or rotate `CREATIVE_STAGING_PROVIDER_API_TOKEN`.
+5. Set provider-side spending cap to `0`.
+6. Disable provider webhook targets.
+7. Disable any future provider polling or callback workers.
 
 Verification:
 

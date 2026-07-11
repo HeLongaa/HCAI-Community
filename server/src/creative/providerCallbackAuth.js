@@ -39,10 +39,50 @@ export const providerCallbackHeaderPresence = (headers = {}) => ({
   hasContentType: Boolean(headerValue(headers, 'content-type')),
   hasTimestamp: Boolean(headerValue(headers, 'x-creative-provider-timestamp')),
   hasSignature: Boolean(headerValue(headers, 'x-creative-provider-signature')),
+  hasNonce: Boolean(headerValue(headers, 'x-creative-provider-nonce')),
 })
 
 export const signProviderCallbackPayload = (secret, timestamp, rawBody) =>
   `sha256=${createHmac('sha256', String(secret ?? '')).update(`${timestamp}.${rawBody}`).digest('hex')}`
+
+export const signProviderCallbackNonce = (secret, generationId, providerJobId) =>
+  `sha256=${createHmac('sha256', String(secret ?? ''))
+    .update(`creative-provider-callback-nonce.v1.${generationId}.${providerJobId}`)
+    .digest('hex')}`
+
+export const verifyProviderCallbackNonce = ({
+  headers = {},
+  generationId,
+  providerJobId,
+  source = process.env,
+} = {}) => {
+  const config = providerCallbackAuthConfig(source)
+  if (!config.secret) {
+    throw callbackError(403, 'CREATIVE_PROVIDER_CALLBACK_SECRET_MISSING', 'Creative provider callback signature secret is not configured', 'secret_missing')
+  }
+  if (!generationId || !providerJobId) {
+    throw callbackError(409, 'CREATIVE_PROVIDER_CALLBACK_JOB_BINDING_MISSING', 'Creative provider callback job binding is incomplete', 'job_binding_missing')
+  }
+
+  const nonce = String(headerValue(headers, 'x-creative-provider-nonce') ?? '').trim()
+  if (!nonce) {
+    throw callbackError(403, 'CREATIVE_PROVIDER_CALLBACK_NONCE_MISSING', 'Missing creative provider callback nonce', 'nonce_missing')
+  }
+  if (!/^sha256=[a-f0-9]{64}$/i.test(nonce)) {
+    throw callbackError(403, 'CREATIVE_PROVIDER_CALLBACK_NONCE_MALFORMED', 'Malformed creative provider callback nonce', 'nonce_malformed')
+  }
+
+  const expectedNonce = signProviderCallbackNonce(config.secret, generationId, providerJobId)
+  if (!safeEqual(nonce.toLowerCase(), expectedNonce)) {
+    throw callbackError(403, 'CREATIVE_PROVIDER_CALLBACK_NONCE_INVALID', 'Invalid creative provider callback nonce', 'nonce_mismatch')
+  }
+
+  return {
+    generationId,
+    providerJobId,
+    algorithm: 'sha256',
+  }
+}
 
 export const verifyProviderCallbackRequest = ({
   headers = {},

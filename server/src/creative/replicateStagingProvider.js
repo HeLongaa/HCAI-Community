@@ -549,7 +549,7 @@ export const buildReplicateLifecycleReplay = ({
   now = new Date(),
   options = {},
 }) => {
-  const generation = mapReplicatePredictionToCreativeGeneration({
+  const mappedGeneration = mapReplicatePredictionToCreativeGeneration({
     request,
     provider,
     actor,
@@ -558,6 +558,46 @@ export const buildReplicateLifecycleReplay = ({
     now,
     options,
   })
+  const currentProviderCost = currentRecord?.usage?.providerCost ?? null
+  const mappedProviderCost = mappedGeneration.usage?.providerCost ?? null
+  const generation = currentRecord
+    ? {
+        ...mappedGeneration,
+        id: currentRecord.id,
+        actorId: currentRecord.actorId ?? null,
+        actorHandle: currentRecord.actorHandle ?? actor?.handle ?? null,
+        promptHash: currentRecord.promptHash ?? null,
+        promptPreview: currentRecord.promptPreview ?? null,
+        quota: currentRecord.quota ?? null,
+        credit: currentRecord.credit ?? null,
+        safety: currentRecord.safety ?? mappedGeneration.safety,
+        policy: currentRecord.policy ?? null,
+        usage: {
+          ...mappedGeneration.usage,
+          ...currentRecord.usage,
+          estimatedCredits: currentRecord.usage?.estimatedCredits ?? mappedGeneration.usage?.estimatedCredits ?? 0,
+          ...(mappedProviderCost
+            ? {
+                providerCost: {
+                  ...currentProviderCost,
+                  ...mappedProviderCost,
+                  estimate: currentProviderCost?.estimate ?? mappedProviderCost.estimate,
+                  budget: currentProviderCost?.budget ?? mappedProviderCost.budget,
+                  actual: mappedProviderCost.actual,
+                  usage: mappedProviderCost.usage,
+                  risk: {
+                    ...currentProviderCost?.risk,
+                    ...mappedProviderCost.risk,
+                  },
+                },
+              }
+            : {}),
+        },
+        providerRequestId: currentRecord.providerRequestId ?? mappedGeneration.providerRequestId,
+        providerJobId: currentRecord.providerJobId ?? mappedGeneration.providerJobId,
+        createdAt: currentRecord.createdAt ?? mappedGeneration.createdAt,
+      }
+    : mappedGeneration
   const providerJobId = safeProviderJobId(prediction?.id) ?? generation.providerJobId ?? null
   const outputDigest = outputDigestForPrediction(prediction)
   const idempotencyKey = `replicate:${providerJobId ?? generation.id}:${generation.status}:${outputDigest ?? 'no-output'}`

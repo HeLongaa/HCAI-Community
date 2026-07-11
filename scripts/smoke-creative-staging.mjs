@@ -21,11 +21,18 @@ const stagingAdapterShellFixture = {
   CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED: 'false',
 }
 
+const stagingCallbackApiFixture = {
+  ...stagingPreflightFixture,
+  CREATIVE_PROVIDER_CALLBACK_ENABLED: 'true',
+  CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET: 'callback-signature-secret-0123456789abcdef',
+}
+
 const selectSource = () => {
   if (profile === 'env') return process.env
   if (profile === 'fixture' && mode === 'preflight') return stagingPreflightFixture
   if (profile === 'fixture' && mode === 'adapter-shell') return stagingAdapterShellFixture
-  throw new Error('Unsupported creative staging smoke options. Use --profile=env|fixture and --mode=preflight|adapter-shell')
+  if (profile === 'fixture' && mode === 'callback-api') return stagingCallbackApiFixture
+  throw new Error('Unsupported creative staging smoke options. Use --profile=env|fixture and --mode=preflight|adapter-shell|callback-api')
 }
 
 const check = (checks, name, pass, detail = '') => {
@@ -41,6 +48,9 @@ const summarize = (env, config, provider) => ({
     defaultProviderId: config.defaultProviderId,
     httpClientImplemented: config.httpClient.implemented,
     httpClientEnabled: config.httpClient.enabled,
+    callbackImplemented: config.callback.implemented,
+    callbackEnabled: config.callback.enabled,
+    callbackSignatureSecretConfigured: config.callback.signatureSecretConfigured,
   },
   stagingPreflight: {
     enabled: config.stagingPreflight.enabled,
@@ -111,6 +121,7 @@ check(checks, 'replicate staging provider safe metadata exists', Boolean(provide
 check(checks, 'replicate staging provider is never enabled by smoke', provider?.enabled === false, 'provider.enabled must stay false')
 check(checks, 'replicate staging provider remains staging-only', provider?.stagingOnly === true && provider?.productionDenied === true, 'stagingOnly=true productionDenied=true')
 check(checks, 'provider HTTP client boundary is implemented but disabled', config.httpClient.implemented === true && config.httpClient.enabled === false && provider?.httpClientImplemented === true, 'httpClientImplemented=true httpClientEnabled=false')
+check(checks, 'provider callback boundary is implemented', config.callback.implemented === true, 'callbackImplemented=true')
 check(checks, 'replicate staging provider network calls disabled', provider?.networkCallsEnabled === false, 'networkCallsEnabled=false')
 check(checks, 'replicate staging adapter not production-wired', provider?.adapterImplemented === false, 'adapterImplemented=false')
 check(checks, 'safe summary contains no raw provider or secret material', !summaryContainsUnsafeMaterial(safeSummary, source), 'summary values are low-cardinality metadata only')
@@ -119,12 +130,19 @@ if (mode === 'preflight') {
   check(checks, 'preflight uses disabled provider mode', env.creativeProviderMode === 'disabled', `CREATIVE_PROVIDER_MODE=${env.creativeProviderMode}`)
   check(checks, 'staging preflight flag enabled', env.creativeStagingProviderPreflightEnabled, 'CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true')
   check(checks, 'creative generation remains globally disabled', config.enabled === false, 'config.enabled=false')
+  check(checks, 'provider callback remains disabled', config.callback.enabled === false, 'callback.enabled=false')
 } else if (mode === 'adapter-shell') {
   check(checks, 'adapter shell uses explicit replicate_staging mode', env.creativeProviderMode === 'replicate_staging', `CREATIVE_PROVIDER_MODE=${env.creativeProviderMode}`)
   check(checks, 'adapter shell does not require preflight flag', env.creativeStagingProviderPreflightEnabled === false, 'CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=false')
   check(checks, 'adapter shell remains default-disabled', config.enabled === false, 'config.enabled=false')
+  check(checks, 'provider callback remains independently disabled', config.callback.enabled === false, 'callback.enabled=false')
+} else if (mode === 'callback-api') {
+  check(checks, 'callback API uses disabled provider dispatch mode', env.creativeProviderMode === 'disabled', `CREATIVE_PROVIDER_MODE=${env.creativeProviderMode}`)
+  check(checks, 'callback API is explicitly enabled', config.callback.enabled === true, 'callback.enabled=true')
+  check(checks, 'callback signature secret is configured as presence only', config.callback.signatureSecretConfigured === true, 'signature secret value is not printed')
+  check(checks, 'callback API keeps provider network dispatch disabled', config.httpClient.enabled === false && provider?.networkCallsEnabled === false, 'no outbound Provider calls')
 } else {
-  throw new Error('Unsupported creative staging smoke mode. Use preflight or adapter-shell')
+  throw new Error('Unsupported creative staging smoke mode. Use preflight, adapter-shell, or callback-api')
 }
 
 const failed = checks.filter((item) => !item.pass)

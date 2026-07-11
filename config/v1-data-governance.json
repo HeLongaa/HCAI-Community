@@ -582,7 +582,7 @@
       "retentionPolicyId": "retired_secret_30d",
       "exportPolicy": "never_export",
       "deletionPolicy": "rotate_disable_and_delete_secret_version",
-      "ownerTasks": ["V1-05", "V1-54", "V1-73"]
+      "ownerTasks": ["V1-05", "V1-06", "V1-54", "V1-73"]
     }
   ],
   "flowNodes": [
@@ -689,6 +689,14 @@
       "dataAssetIds": ["raw_provider_payloads", "media_object_bytes"],
       "requiredControls": ["authenticated response/callback", "size/type limits", "allowlisted normalization", "payload hash", "raw payload discard"],
       "destinationPersistence": "memory_only_until_normalized"
+    },
+    {
+      "id": "creative_provider_callback_to_api",
+      "from": "creative_provider",
+      "to": "api_memory",
+      "dataAssetIds": ["raw_provider_payloads", "deployment_secrets"],
+      "requiredControls": ["staging-only callback kill switch", "exact-body timestamped HMAC", "generation/job nonce binding", "dedicated body limit", "strict field allowlist", "durable replay claim before side effects", "raw payload discard"],
+      "destinationPersistence": "payload_hash_and_allowlisted_lifecycle_evidence_only"
     },
     {
       "id": "runtime_to_object_storage",
@@ -959,6 +967,9 @@
       "rawConversation",
       "rawProviderRequest",
       "rawProviderResponse",
+      "rawBody",
+      "signature",
+      "nonce",
       "privateDownloadUrl"
     ],
     "observabilityAllowlist": ["requestId", "routeTemplate", "method", "statusFamily", "durationBucket", "errorCode", "jobType", "safeProviderId", "safeWorkspace", "aggregateCount"],
@@ -976,6 +987,7 @@
       "creative generation records store prompt hash and bounded preview instead of a raw prompt field",
       "Provider adapter contracts reject secret-like metadata keys",
       "Provider HTTP client uses a fixed endpoint, minimum payload, deployment-only secret injection, and default-disabled network gate",
+      "Provider callback API uses exact-body HMAC, nonce/job binding, strict projection, zero-retention raw payload handling, and atomic replay claims",
       "Admin creative serializers redact unsafe identifiers, URLs, and error previews",
       "archive and object writers support mock/S3-compatible boundaries"
     ],
@@ -993,6 +1005,10 @@
       "server/src/creative/generationRecords.js",
       "server/src/creative/providerAdapterContract.js",
       "server/src/creative/providerHttpClient.js",
+      "server/src/creative/providerCallbackAuth.js",
+      "server/src/creative/providerCallbackService.js",
+      "server/src/creative/replicateCallbackPayload.js",
+      "server/src/creative/providerReplayIntegration.js",
       "server/src/modules/admin/routes.js",
       "server/src/media/scanProvider.js",
       "server/src/storage/archiveWriter.js",
@@ -1003,6 +1019,7 @@
   },
   "implementationHandoff": [
     { "taskId": "V1-05", "scope": "Provider secrets and minimum-payload HTTP client boundary." },
+    { "taskId": "V1-06", "scope": "Provider callback authentication, strict payload minimization, job binding, replay idempotency, and safe audit boundary." },
     { "taskId": "V1-48", "scope": "OAuth scopes, identifiers, unlink, region, and session evidence." },
     { "taskId": "V1-49", "scope": "PostgreSQL migration, encrypted backup, expiry, restore, and deletion rehearsal." },
     { "taskId": "V1-50", "scope": "Object storage/CDN private access and lifecycle deletion." },

@@ -48,7 +48,7 @@ import { dispatchMediaScanAlert } from '../media/alertDispatcher.js'
 import { writeStorageObject } from '../storage/objectWriter.js'
 import { writeJsonArchive } from '../storage/archiveWriter.js'
 
-const { PrismaClient } = prismaClientPkg
+const { Prisma, PrismaClient } = prismaClientPkg
 const safeProviderJobIdPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
 
 const stableHash = (value) =>
@@ -3995,28 +3995,49 @@ const createPrismaRepository = async (fallbackRepository) => {
         }
       }
 
-      const row = await client.creativeProviderReplayLedger.create({
-        data: {
-          id: payload.id ?? `provider-replay-${randomUUID()}`,
-          generationId: String(payload.generationId ?? ''),
-          providerId: payload.providerId,
-          providerMode: payload.providerMode ?? null,
-          providerJobId: payload.providerJobId ?? null,
-          providerEventId: payload.providerEventId ?? null,
-          sourceType: payload.sourceType,
-          idempotencyKey,
-          payloadHash: payload.payloadHash ?? null,
-          previousStatus: payload.previousStatus ?? null,
-          normalizedStatus: payload.normalizedStatus ?? null,
-          action: payload.action ?? 'noop',
-          reasonCode: payload.reasonCode ?? null,
-          sideEffectPlan: payload.sideEffectPlan ?? undefined,
-          sideEffectResult: payload.sideEffectResult ?? undefined,
-          errorPreview: payload.errorPreview ?? null,
-          receivedAt: payload.receivedAt ? new Date(payload.receivedAt) : undefined,
-          appliedAt: payload.appliedAt ? new Date(payload.appliedAt) : null,
-        },
-      })
+      let row
+      try {
+        row = await client.creativeProviderReplayLedger.create({
+          data: {
+            id: payload.id ?? `provider-replay-${randomUUID()}`,
+            generationId: String(payload.generationId ?? ''),
+            providerId: payload.providerId,
+            providerMode: payload.providerMode ?? null,
+            providerJobId: payload.providerJobId ?? null,
+            providerEventId: payload.providerEventId ?? null,
+            sourceType: payload.sourceType,
+            idempotencyKey,
+            payloadHash: payload.payloadHash ?? null,
+            previousStatus: payload.previousStatus ?? null,
+            normalizedStatus: payload.normalizedStatus ?? null,
+            action: payload.action ?? 'noop',
+            reasonCode: payload.reasonCode ?? null,
+            sideEffectPlan: payload.sideEffectPlan ?? undefined,
+            sideEffectResult: payload.sideEffectResult ?? undefined,
+            errorPreview: payload.errorPreview ?? null,
+            receivedAt: payload.receivedAt ? new Date(payload.receivedAt) : undefined,
+            appliedAt: payload.appliedAt ? new Date(payload.appliedAt) : null,
+          },
+        })
+      } catch (error) {
+        if (error?.code !== 'P2002') throw error
+        const duplicate = await client.creativeProviderReplayLedger.findUnique({ where: { idempotencyKey } }) ??
+          (payload.providerEventId
+            ? await client.creativeProviderReplayLedger.findUnique({
+              where: {
+                providerId_providerEventId: {
+                  providerId: payload.providerId,
+                  providerEventId: payload.providerEventId,
+                },
+              },
+            })
+            : null)
+        if (!duplicate) throw error
+        return {
+          created: false,
+          replay: getCreativeProviderReplayDto(duplicate),
+        }
+      }
       await recordAudit({
         actor,
         action: 'creative.provider_replay.recorded',
@@ -4034,6 +4055,44 @@ const createPrismaRepository = async (fallbackRepository) => {
       return {
         created: true,
         replay: getCreativeProviderReplayDto(row),
+      }
+    },
+    claimSideEffects: async (id, payload = {}) => {
+      const current = await client.creativeProviderReplayLedger.findUnique({ where: { id: String(id) } })
+      if (!current) return { claimed: false, replay: null }
+      const currentResult = current.sideEffectResult ?? null
+      const expectedResult = payload.expectedSideEffectResult ?? null
+      const activeLeaseExpiresAt = Date.parse(currentResult?.claim?.leaseExpiresAt ?? '')
+      const claimedAt = Date.parse(payload.claimedAt ?? '')
+      const hasActiveClaim = currentResult?.claim?.token &&
+        Number.isFinite(activeLeaseExpiresAt) &&
+        Number.isFinite(claimedAt) &&
+        activeLeaseExpiresAt > claimedAt
+      if (JSON.stringify(currentResult) !== JSON.stringify(expectedResult) || hasActiveClaim) {
+        return { claimed: false, replay: getCreativeProviderReplayDto(current) }
+      }
+      const sideEffectResult = {
+        ...(currentResult ?? {}),
+        completed: false,
+        claim: {
+          token: String(payload.claimToken ?? ''),
+          claimedAt: payload.claimedAt,
+          leaseExpiresAt: payload.leaseExpiresAt,
+        },
+      }
+      const claimed = await client.creativeProviderReplayLedger.updateMany({
+        where: {
+          id: current.id,
+          sideEffectResult: {
+            equals: expectedResult == null ? Prisma.DbNull : expectedResult,
+          },
+        },
+        data: { sideEffectResult },
+      })
+      const replay = await client.creativeProviderReplayLedger.findUnique({ where: { id: current.id } })
+      return {
+        claimed: claimed.count === 1,
+        replay: replay ? getCreativeProviderReplayDto(replay) : null,
       }
     },
     markApplied: async (id, sideEffectResult = {}, actor) => {
@@ -4059,18 +4118,43 @@ const createPrismaRepository = async (fallbackRepository) => {
       })
       return getCreativeProviderReplayDto(row)
     },
-    markSideEffectResult: async (id, sideEffectResult = {}, actor) => {
+    markSideEffectResult: async (id, sideEffectResult = {}, actor, options = {}) => {
       const completed = Boolean(sideEffectResult.completed)
       const failed = sideEffectResult.operations?.find?.((operation) => operation.status === 'failed') ?? null
-      const row = await client.creativeProviderReplayLedger.update({
-        where: { id: String(id) },
-        data: {
-          action: completed ? 'applied' : 'rejected',
-          sideEffectResult,
-          errorPreview: completed ? null : failed?.errorPreview ?? null,
-          appliedAt: completed ? new Date() : undefined,
-        },
-      })
+      let row
+      if (options.claimToken) {
+        const current = await client.creativeProviderReplayLedger.findUnique({ where: { id: String(id) } })
+        if (!current) return null
+        if (current.sideEffectResult?.claim?.token !== options.claimToken) {
+          return getCreativeProviderReplayDto(current)
+        }
+        const updated = await client.creativeProviderReplayLedger.updateMany({
+          where: {
+            id: current.id,
+            sideEffectResult: { equals: current.sideEffectResult },
+          },
+          data: {
+            action: completed ? 'applied' : 'rejected',
+            sideEffectResult,
+            errorPreview: completed ? null : failed?.errorPreview ?? null,
+            appliedAt: completed ? new Date() : undefined,
+          },
+        })
+        row = await client.creativeProviderReplayLedger.findUnique({ where: { id: current.id } })
+        if (updated.count !== 1 || !row) {
+          return row ? getCreativeProviderReplayDto(row) : null
+        }
+      } else {
+        row = await client.creativeProviderReplayLedger.update({
+          where: { id: String(id) },
+          data: {
+            action: completed ? 'applied' : 'rejected',
+            sideEffectResult,
+            errorPreview: completed ? null : failed?.errorPreview ?? null,
+            appliedAt: completed ? new Date() : undefined,
+          },
+        })
+      }
       await recordAudit({
         actor,
         action: 'creative.provider_replay.side_effect_result_recorded',

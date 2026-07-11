@@ -5,7 +5,7 @@ const defaultMaxBytes = () => {
   return config.enabled ? config.maxBytes : Number.POSITIVE_INFINITY
 }
 
-const readRawBody = async (request, maxBytes = defaultMaxBytes()) => {
+export const readRawBody = async (request, maxBytes = defaultMaxBytes()) => {
   const chunks = []
   let totalBytes = 0
 
@@ -22,11 +22,11 @@ const readRawBody = async (request, maxBytes = defaultMaxBytes()) => {
     chunks.push(buffer)
   }
 
-  return Buffer.concat(chunks).toString('utf8').trim()
+  return Buffer.concat(chunks).toString('utf8')
 }
 
 export const readJsonBodyWithRaw = async (request, maxBytes = defaultMaxBytes()) => {
-  const raw = await readRawBody(request, maxBytes)
+  const raw = (await readRawBody(request, maxBytes)).trim()
 
   if (!raw) {
     return { body: null, raw: '' }
@@ -41,7 +41,7 @@ export const readJsonBody = async (request, maxBytes = defaultMaxBytes()) => {
 }
 
 export const readFormBody = async (request, maxBytes = defaultMaxBytes()) => {
-  const raw = await readRawBody(request, maxBytes)
+  const raw = (await readRawBody(request, maxBytes)).trim()
   if (!raw) {
     return {}
   }

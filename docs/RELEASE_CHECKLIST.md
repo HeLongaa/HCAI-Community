@@ -39,6 +39,7 @@ Confirm:
 - At least one media alert channel and one security alert channel are configured.
 - OAuth redirect URIs match the deployed API callback URLs.
 - `CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=false`; no production release may register the staging Provider HTTP client.
+- `CREATIVE_PROVIDER_CALLBACK_ENABLED=false`; no production release may expose the staging Provider callback intake.
 
 ## Database And Migration
 

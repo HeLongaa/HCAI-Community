@@ -49,7 +49,7 @@ export const createServer = (router, context = {}) => {
         if (error.statusCode === 429 && error.details?.retryAfterSeconds) {
           response.setHeader('Retry-After', String(error.details.retryAfterSeconds))
         }
-        if (error.statusCode === 413 && error.code === 'BODY_TOO_LARGE') {
+        if (error.statusCode === 413) {
           const event = requestBodyRejectedEvent(request, error)
           recordSecurityEvent({
             ...event,

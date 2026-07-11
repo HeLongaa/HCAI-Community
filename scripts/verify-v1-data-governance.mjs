@@ -83,6 +83,7 @@ const expectedFlows = [
   'api_to_postgres',
   'browser_to_api',
   'browser_to_object_storage',
+  'creative_provider_callback_to_api',
   'creative_provider_to_runtime',
   'export_storage_to_browser',
   'object_storage_to_scanner',
@@ -114,6 +115,7 @@ const expectedForbiddenFlows = [
 const expectedServiceClasses = ['media_scanner', 'notification_delivery', 'oauth_provider', 'object_storage_cdn']
 const expectedHandoffTasks = [
   'V1-05',
+  'V1-06',
   'V1-48',
   'V1-49',
   'V1-50',

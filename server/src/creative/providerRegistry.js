@@ -67,7 +67,7 @@ const buildMockProvider = (config) => ({
   },
 })
 
-const buildReplicateStagingProvider = (configProvider) => ({
+const buildReplicateStagingProvider = (configProvider, config) => ({
   id: configProvider.id,
   label: configProvider.label,
   mode: configProvider.mode,
@@ -89,6 +89,8 @@ const buildReplicateStagingProvider = (configProvider) => ({
     adapterImplemented: false,
     httpClientImplemented: configProvider.httpClientImplemented,
     networkCallsEnabled: configProvider.networkCallsEnabled,
+    callbackImplemented: config.callback.implemented,
+    callbackEnabled: config.callback.enabled,
   },
 })
 
@@ -96,7 +98,7 @@ export const createCreativeProviderRegistry = (source = process.env) => {
   const config = buildCreativeProviderConfig(source)
   const providerShells = config.providers
     .filter((provider) => provider.id === 'replicate-staging')
-    .map(buildReplicateStagingProvider)
+    .map((provider) => buildReplicateStagingProvider(provider, config))
   return {
     config,
     providers: [buildMockProvider(config), ...providerShells],

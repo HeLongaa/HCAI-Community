@@ -73,6 +73,7 @@ const oauthAccountByProviderKey = new Map()
 const creativeGenerationsById = new Map()
 const creativeProviderReplayLedgerById = new Map()
 const creativeProviderReplayLedgerByIdempotencyKey = new Map()
+const creativeProviderReplayLedgerByProviderEventKey = new Map()
 const creativeCreditLedgerById = new Map()
 const creativeQuotaWindowsById = new Map()
 const creativeQuotaReservationsById = new Map()
@@ -2808,7 +2809,11 @@ export const createSeedRepository = () => ({
   creativeProviderReplays: {
     record: (payload, actor) => {
       const idempotencyKey = String(payload.idempotencyKey ?? '')
-      const existingId = creativeProviderReplayLedgerByIdempotencyKey.get(idempotencyKey)
+      const providerEventKey = payload.providerEventId
+        ? `${payload.providerId}:${payload.providerEventId}`
+        : null
+      const existingId = creativeProviderReplayLedgerByIdempotencyKey.get(idempotencyKey) ??
+        (providerEventKey ? creativeProviderReplayLedgerByProviderEventKey.get(providerEventKey) : null)
       const existing = existingId ? creativeProviderReplayLedgerById.get(existingId) : null
       if (existing) {
         return {
@@ -2820,6 +2825,9 @@ export const createSeedRepository = () => ({
       const record = makeCreativeProviderReplayRecord({ ...payload, idempotencyKey })
       creativeProviderReplayLedgerById.set(record.id, record)
       creativeProviderReplayLedgerByIdempotencyKey.set(record.idempotencyKey, record.id)
+      if (providerEventKey) {
+        creativeProviderReplayLedgerByProviderEventKey.set(providerEventKey, record.id)
+      }
       recordAudit(actor, 'creative.provider_replay.recorded', 'creative_provider_replay_ledger', record.id, {
         generationId: record.generationId,
         providerId: record.providerId,
@@ -2831,6 +2839,44 @@ export const createSeedRepository = () => ({
       return {
         created: true,
         replay: serializeCreativeProviderReplay(record),
+      }
+    },
+    claimSideEffects: (id, payload = {}) => {
+      const current = creativeProviderReplayLedgerById.get(String(id))
+      if (!current) {
+        return { claimed: false, replay: null }
+      }
+      const currentResult = current.sideEffectResult ?? null
+      const expectedResult = payload.expectedSideEffectResult ?? null
+      const activeLeaseExpiresAt = Date.parse(currentResult?.claim?.leaseExpiresAt ?? '')
+      const claimedAt = Date.parse(payload.claimedAt ?? '')
+      const hasActiveClaim = currentResult?.claim?.token &&
+        Number.isFinite(activeLeaseExpiresAt) &&
+        Number.isFinite(claimedAt) &&
+        activeLeaseExpiresAt > claimedAt
+      if (JSON.stringify(currentResult) !== JSON.stringify(expectedResult) || hasActiveClaim) {
+        return {
+          claimed: false,
+          replay: serializeCreativeProviderReplay(current),
+        }
+      }
+      const updated = {
+        ...current,
+        sideEffectResult: {
+          ...(currentResult ?? {}),
+          completed: false,
+          claim: {
+            token: String(payload.claimToken ?? ''),
+            claimedAt: payload.claimedAt,
+            leaseExpiresAt: payload.leaseExpiresAt,
+          },
+        },
+        updatedAt: new Date().toISOString(),
+      }
+      creativeProviderReplayLedgerById.set(updated.id, updated)
+      return {
+        claimed: true,
+        replay: serializeCreativeProviderReplay(updated),
       }
     },
     markApplied: (id, sideEffectResult = {}, actor) => {
@@ -2854,10 +2900,13 @@ export const createSeedRepository = () => ({
       })
       return serializeCreativeProviderReplay(updated)
     },
-    markSideEffectResult: (id, sideEffectResult = {}, actor) => {
+    markSideEffectResult: (id, sideEffectResult = {}, actor, options = {}) => {
       const current = creativeProviderReplayLedgerById.get(String(id))
       if (!current) {
         return null
+      }
+      if (options.claimToken && current.sideEffectResult?.claim?.token !== options.claimToken) {
+        return serializeCreativeProviderReplay(current)
       }
       const completed = Boolean(sideEffectResult.completed)
       const failed = sideEffectResult.operations?.find?.((operation) => operation.status === 'failed') ?? null

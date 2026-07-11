@@ -92,6 +92,7 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `POST /api/library/items/:id/convert-to-task` | Required | `task:create` | Yes |
 | `POST /api/library/items/:id/send-to-workspace` | Required | Any authenticated user | Yes |
 | `POST /api/creative/generations` | Required | Any authenticated user | Yes |
+| `POST /api/creative/providers/replicate/callback/:generationId` | Provider callback | Timestamped HMAC, generation/job nonce, staging kill switch | Yes |
 | `GET /api/compliance/consent` | Required | Any authenticated user; consent record scoped to actor | Yes |
 | `POST /api/compliance/consent` | Required | Any authenticated user; exact current policy versions required | Yes |
 | `GET /api/support/requests` | Required | Any authenticated user; owner-scoped | Yes |

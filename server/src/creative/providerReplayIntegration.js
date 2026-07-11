@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import {
   buildProviderSideEffectPlan,
   executeProviderSideEffectPlan,
@@ -39,14 +41,14 @@ const replayActionFor = (replay, plan) => {
   return 'applied'
 }
 
-const persistSideEffectResult = async ({ replayLedger, replayRecord, execution, actor }) => {
+const persistSideEffectResult = async ({ replayLedger, replayRecord, execution, actor, claimToken = null }) => {
   if (replayLedger?.markSideEffectResult) {
     return replayLedger.markSideEffectResult(replayRecord.id, {
       completed: execution.completed,
       failedOperationType: execution.failedOperation?.type ?? null,
       completedOperationKeys: execution.sideEffectResult.completedOperationKeys,
       operations: execution.sideEffectResult.operations,
-    }, actor)
+    }, actor, { claimToken })
   }
   if (execution.completed && replayLedger?.markApplied) {
     return replayLedger.markApplied(replayRecord.id, {
@@ -66,6 +68,8 @@ export const applyProviderReplayThroughLedger = async ({
   providerEventId = null,
   payloadHash = null,
   receivedAt = undefined,
+  now = new Date(),
+  sideEffectLeaseSeconds = 60,
 } = {}) => {
   const replayLedger = repositories.creativeProviderReplays
   if (!replayLedger?.record) {
@@ -93,6 +97,23 @@ export const applyProviderReplayThroughLedger = async ({
       : undefined,
     receivedAt,
   }), actor)
+
+  if (!recorded.created && recorded.replay?.idempotencyKey !== replay?.idempotencyKey) {
+    return {
+      recorded,
+      replayRecord: recorded.replay,
+      duplicate: true,
+      conflict: true,
+      reasonCode: 'provider_event_replay_conflict',
+      executed: false,
+      inProgress: false,
+      execution: null,
+      sideEffectPlan: buildProviderSideEffectPlan({
+        replay,
+        sideEffectResult: recorded.replay?.sideEffectResult ?? {},
+      }),
+    }
+  }
 
   const existingResult = recorded.created ? null : recorded.replay?.sideEffectResult ?? null
   if (!recorded.created && existingResult?.completed) {
@@ -122,17 +143,44 @@ export const applyProviderReplayThroughLedger = async ({
     }
   }
 
+  const claimToken = `provider-side-effect-${randomUUID()}`
+  const claimNow = now instanceof Date ? now : new Date(now)
+  const claim = replayLedger.claimSideEffects
+    ? await replayLedger.claimSideEffects(recorded.replay.id, {
+      expectedSideEffectResult: existingResult,
+      claimToken,
+      claimedAt: claimNow.toISOString(),
+      leaseExpiresAt: new Date(claimNow.getTime() + sideEffectLeaseSeconds * 1000).toISOString(),
+    })
+    : { claimed: true, replay: recorded.replay }
+
+  if (!claim.claimed) {
+    const claimedResult = claim.replay?.sideEffectResult ?? existingResult ?? {}
+    return {
+      recorded,
+      replayRecord: claim.replay ?? recorded.replay,
+      duplicate: true,
+      executed: false,
+      inProgress: Boolean(claimedResult?.claim),
+      execution: null,
+      sideEffectPlan: buildProviderSideEffectPlan({ replay, sideEffectResult: claimedResult }),
+    }
+  }
+
+  const claimedSideEffectResult = claim.replay?.sideEffectResult ?? existingResult ?? {}
+
   const execution = await executeProviderSideEffectPlan({
     replay,
     repositories: sideEffectRepositories,
     actor,
-    sideEffectResult: existingResult ?? {},
+    sideEffectResult: claimedSideEffectResult,
   })
   const replayRecord = await persistSideEffectResult({
     replayLedger,
-    replayRecord: recorded.replay,
+    replayRecord: claim.replay ?? recorded.replay,
     execution,
     actor,
+    claimToken,
   })
 
   return {
@@ -140,6 +188,7 @@ export const applyProviderReplayThroughLedger = async ({
     replayRecord,
     duplicate: !recorded.created,
     executed: true,
+    inProgress: false,
     execution,
     sideEffectPlan,
   }

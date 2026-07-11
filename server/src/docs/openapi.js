@@ -825,6 +825,8 @@ export const openApiDocument = {
                                   adapterImplemented: { type: 'boolean' },
                                   httpClientImplemented: { type: 'boolean' },
                                   networkCallsEnabled: { type: 'boolean' },
+                                  callbackImplemented: { type: 'boolean' },
+                                  callbackEnabled: { type: 'boolean' },
                                 },
                               },
                             },
@@ -837,6 +839,91 @@ export const openApiDocument = {
               },
             },
           },
+        },
+      },
+    },
+    '/creative/providers/replicate/callback/{generationId}': {
+      post: {
+        summary: 'Accept a signed Replicate staging lifecycle callback',
+        description: 'Staging-only and independently disabled by default. Requires app-managed timestamp, HMAC signature, and generation/job nonce headers. This endpoint never dispatches Provider traffic.',
+        parameters: [
+          { name: 'generationId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'x-creative-provider-timestamp', in: 'header', required: true, schema: { type: 'string', pattern: '^\\d+$' } },
+          { name: 'x-creative-provider-signature', in: 'header', required: true, schema: { type: 'string', pattern: '^sha256=[a-fA-F0-9]{64}$' } },
+          { name: 'x-creative-provider-nonce', in: 'header', required: true, schema: { type: 'string', pattern: '^sha256=[a-fA-F0-9]{64}$' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['id', 'status'],
+                properties: {
+                  id: { type: 'string', pattern: '^[a-zA-Z0-9][a-zA-Z0-9:_-]{0,127}$' },
+                  event_id: { type: ['string', 'null'], pattern: '^[a-zA-Z0-9][a-zA-Z0-9:_-]{0,127}$' },
+                  status: { type: 'string', enum: ['starting', 'processing', 'succeeded', 'failed', 'canceled', 'cancelled'] },
+                  output: {
+                    oneOf: [
+                      { type: 'string', format: 'uri' },
+                      { type: 'array', maxItems: 8, items: { type: 'string', format: 'uri' } },
+                      { type: 'null' },
+                    ],
+                  },
+                  error: { type: ['string', 'null'], maxLength: 4096 },
+                  logs: { type: ['string', 'null'], maxLength: 4096 },
+                  metrics: {
+                    type: ['object', 'null'],
+                    additionalProperties: false,
+                    properties: {
+                      predict_time: { type: 'number', minimum: 0 },
+                      total_time: { type: 'number', minimum: 0 },
+                    },
+                  },
+                  cost_usd: { type: ['number', 'null'], minimum: 0 },
+                  created_at: { type: ['string', 'null'], format: 'date-time' },
+                  started_at: { type: ['string', 'null'], format: 'date-time' },
+                  completed_at: { type: ['string', 'null'], format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Callback accepted, applied, no-op, or duplicate-suppressed without exposing raw Provider payloads',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: {
+                      type: 'object',
+                      properties: {
+                        accepted: { type: 'boolean' },
+                        generationId: { type: 'string' },
+                        providerId: { type: 'string' },
+                        providerJobId: { type: ['string', 'null'] },
+                        normalizedStatus: { type: 'string' },
+                        outcome: { type: 'string', enum: ['applied', 'resumed', 'noop', 'duplicate_suppressed', 'duplicate_in_progress'] },
+                        duplicate: { type: 'boolean' },
+                        replayId: { type: ['string', 'null'] },
+                        sideEffectsCompleted: { type: 'boolean' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '400': { description: 'Malformed JSON or callback payload outside the strict allowlist' },
+          '403': { description: 'Missing or invalid callback signature, timestamp, or nonce' },
+          '404': { description: 'Bound generation not found' },
+          '409': { description: 'Provider, generation, or provider job binding mismatch' },
+          '413': { description: 'Callback body exceeds the dedicated body limit' },
+          '415': { description: 'Callback content type is not application/json' },
+          '503': { description: 'Callback kill switch is disabled or lifecycle side effects require retry' },
         },
       },
     },
