@@ -8,8 +8,9 @@ import {
 import { buildMockCreativeGenerationId, executeMockCreativeGeneration } from './mockProvider.js'
 import { buildCreativeArtifactObject } from './artifactBuilder.js'
 import { applyCreativeGenerationPolicy } from './policy.js'
-import { statusForPersistedGeneration } from './generationRecords.js'
+import { sha256, statusForPersistedGeneration } from './generationRecords.js'
 import { assertCreativeProviderAdapterContract } from './providerAdapterContract.js'
+import { ingestCreativeProviderOutput } from './providerOutputIngestion.js'
 
 const getFixtureProvider = (providerId, registry) => {
   const provider = registry.providers.find((candidate) => candidate.id === providerId)
@@ -105,11 +106,28 @@ export const executeCreativeGeneration = async ({
   return attachPolicy(generated)
 }
 
-export const persistCreativeGenerationOutputs = async (generation, { actor, mediaRepository }) => {
+export const persistCreativeGenerationOutputs = async (generation, {
+  actor,
+  mediaRepository,
+  repositories = null,
+  outputDigest = null,
+  fetchOutput = null,
+}) => {
   if (!mediaRepository?.createGeneratedAsset) {
     return generation
   }
-  const outputs = await Promise.all(generation.outputs.map(async (output) => {
+  const outputs = await Promise.all(generation.outputs.map(async (output, outputIndex) => {
+    if (output.storage?.provider === 'replicate') {
+      return ingestCreativeProviderOutput({
+        generation,
+        output,
+        outputDigest: outputDigest ?? sha256(output.id),
+        outputIndex,
+        actor,
+        repositories: repositories ?? { media: mediaRepository },
+        fetchOutput,
+      })
+    }
     const artifact = buildCreativeArtifactObject({ generation, output })
     const asset = await mediaRepository.createGeneratedAsset({
       generation,

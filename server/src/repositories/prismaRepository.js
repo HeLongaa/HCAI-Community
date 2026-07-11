@@ -17,6 +17,7 @@ import {
   getCommentDto,
   getCreativeGenerationDto,
   getCreativeGenerationMutationDto,
+  getCreativeOutputIngestionDto,
   getCreativeProviderReplayDto,
   getMediaAssetDto,
   getMediaScanJobDto,
@@ -4325,6 +4326,142 @@ const createPrismaRepository = async (fallbackRepository) => {
     },
   }
 
+  const creativeOutputIngestions = {
+    record: async (payload, actor) => {
+      const sourceKey = String(payload.sourceKey ?? '')
+      const existing = await client.creativeOutputIngestion.findUnique({ where: { sourceKey } })
+      if (existing) {
+        return { created: false, ingestion: getCreativeOutputIngestionDto(existing) }
+      }
+      let row
+      try {
+        row = await client.creativeOutputIngestion.create({
+          data: {
+            id: payload.id ?? `output-ingestion-${randomUUID()}`,
+            sourceKey,
+            generationId: String(payload.generationId),
+            providerId: payload.providerId,
+            providerJobId: payload.providerJobId ?? null,
+            outputDigest: payload.outputDigest,
+            outputIndex: Number(payload.outputIndex),
+            status: payload.status ?? 'pending',
+            mediaAssetId: payload.mediaAssetId ?? null,
+            storageKey: payload.storageKey ?? null,
+            detectedContentType: payload.detectedContentType ?? null,
+            sizeBytes: payload.sizeBytes ?? null,
+            sha256: payload.sha256 ?? null,
+            errorCode: payload.errorCode ?? null,
+            completedAt: asDateOrNull(payload.completedAt),
+          },
+        })
+      } catch (error) {
+        if (error?.code !== 'P2002') throw error
+        const duplicate = await client.creativeOutputIngestion.findUnique({ where: { sourceKey } })
+        if (!duplicate) throw error
+        return { created: false, ingestion: getCreativeOutputIngestionDto(duplicate) }
+      }
+      await recordAudit({
+        actor,
+        action: 'creative.output_ingestion.recorded',
+        resourceType: 'creative_output_ingestion',
+        resourceId: row.id,
+        metadata: {
+          generationId: row.generationId,
+          providerId: row.providerId,
+          providerJobId: safeProviderJobIdEvidence(row.providerJobId),
+          outputDigest: row.outputDigest,
+          outputIndex: row.outputIndex,
+          ingestionStatus: row.status,
+        },
+      })
+      return { created: true, ingestion: getCreativeOutputIngestionDto(row) }
+    },
+    find: async (id) => {
+      const row = await client.creativeOutputIngestion.findUnique({ where: { id: String(id) } })
+      return row ? getCreativeOutputIngestionDto(row) : null
+    },
+    findBySourceKey: async (sourceKey) => {
+      const row = await client.creativeOutputIngestion.findUnique({ where: { sourceKey: String(sourceKey) } })
+      return row ? getCreativeOutputIngestionDto(row) : null
+    },
+    listForGeneration: async (generationId) => {
+      const rows = await client.creativeOutputIngestion.findMany({
+        where: { generationId: String(generationId) },
+        orderBy: [{ outputIndex: 'asc' }, { createdAt: 'asc' }],
+      })
+      return { items: rows.map(getCreativeOutputIngestionDto) }
+    },
+    claim: async (sourceKey, payload = {}) => {
+      const current = await client.creativeOutputIngestion.findUnique({ where: { sourceKey: String(sourceKey) } })
+      if (!current) return { claimed: false, ingestion: null }
+      const claimedAt = new Date(payload.claimedAt)
+      const hasActiveClaim = current.claimToken && current.leaseExpiresAt && current.leaseExpiresAt > claimedAt
+      if (current.status === 'completed' || hasActiveClaim) {
+        return { claimed: false, ingestion: getCreativeOutputIngestionDto(current) }
+      }
+      const updated = await client.creativeOutputIngestion.updateMany({
+        where: {
+          id: current.id,
+          updatedAt: current.updatedAt,
+          status: { not: 'completed' },
+        },
+        data: {
+          status: 'claimed',
+          claimToken: String(payload.claimToken ?? ''),
+          claimedAt,
+          leaseExpiresAt: new Date(payload.leaseExpiresAt),
+          errorCode: null,
+        },
+      })
+      const row = await client.creativeOutputIngestion.findUnique({ where: { id: current.id } })
+      return { claimed: updated.count === 1, ingestion: row ? getCreativeOutputIngestionDto(row) : null }
+    },
+    update: async (id, patch = {}, actor, options = {}) => {
+      const data = {
+        ...compactObject({
+          status: patch.status,
+          sizeBytes: patch.sizeBytes,
+        }),
+        ...(patch.mediaAssetId === undefined ? {} : { mediaAssetId: patch.mediaAssetId }),
+        ...(patch.storageKey === undefined ? {} : { storageKey: patch.storageKey }),
+        ...(patch.detectedContentType === undefined ? {} : { detectedContentType: patch.detectedContentType }),
+        ...(patch.sha256 === undefined ? {} : { sha256: patch.sha256 }),
+        ...(patch.errorCode === undefined ? {} : { errorCode: patch.errorCode }),
+        ...(patch.claimToken === undefined ? {} : { claimToken: patch.claimToken }),
+        ...(patch.claimedAt === undefined ? {} : { claimedAt: asDateOrNull(patch.claimedAt) }),
+        ...(patch.leaseExpiresAt === undefined ? {} : { leaseExpiresAt: asDateOrNull(patch.leaseExpiresAt) }),
+        ...(patch.completedAt === undefined ? {} : { completedAt: asDateOrNull(patch.completedAt) }),
+      }
+      let row
+      if (options.claimToken) {
+        const updated = await client.creativeOutputIngestion.updateMany({
+          where: { id: String(id), claimToken: String(options.claimToken) },
+          data,
+        })
+        row = await client.creativeOutputIngestion.findUnique({ where: { id: String(id) } })
+        if (updated.count !== 1 || !row) return row ? getCreativeOutputIngestionDto(row) : null
+      } else {
+        row = await client.creativeOutputIngestion.update({ where: { id: String(id) }, data })
+      }
+      await recordAudit({
+        actor,
+        action: 'creative.output_ingestion.updated',
+        resourceType: 'creative_output_ingestion',
+        resourceId: row.id,
+        metadata: {
+          generationId: row.generationId,
+          providerId: row.providerId,
+          outputDigest: row.outputDigest,
+          outputIndex: row.outputIndex,
+          ingestionStatus: row.status,
+          errorCode: row.errorCode,
+          mediaAssetId: row.mediaAssetId,
+        },
+      })
+      return getCreativeOutputIngestionDto(row)
+    },
+  }
+
   const creativeCredits = {
     reserve: async (payload, actor) => {
       const actorUser = payload.actorHandle || actor?.handle ? await findUserByHandle(payload.actorHandle ?? actor.handle) : null
@@ -4672,6 +4809,10 @@ const createPrismaRepository = async (fallbackRepository) => {
   }
 
   const media = {
+    find: async (id) => {
+      const asset = await client.mediaAsset.findUnique({ where: { id: String(id) } })
+      return asset ? getMediaAssetDto(asset) : null
+    },
     getGovernancePolicy: async () => getMediaGovernancePolicy(),
     updateGovernancePolicy: async (patch, actor) => updateMediaGovernancePolicy(patch, actor),
     listGovernancePolicyHistory: async (options = {}) => listMediaGovernancePolicyHistory(options),
@@ -4882,6 +5023,101 @@ const createPrismaRepository = async (fallbackRepository) => {
           },
         })
       }
+      return getMediaAssetDto(updatedWithJob)
+    },
+    createIngestedAsset: async (payload, actor) => {
+      const existing = await client.mediaAsset.findUnique({ where: { storageKey: payload.storageKey } })
+      if (existing) return getMediaAssetDto(existing)
+      const owner = await findUserByHandle(actor.handle)
+      if (!owner) return null
+      const storage = await writeStorageObject({
+        body: payload.body,
+        contentType: payload.contentType,
+        storageKey: payload.storageKey,
+      })
+      let asset
+      try {
+        asset = await client.mediaAsset.create({
+          data: {
+            id: payload.assetId,
+            ownerId: owner.id,
+            fileName: payload.fileName,
+            storageKey: payload.storageKey,
+            contentType: payload.contentType,
+            sizeBytes: storage.bytes,
+            purpose: 'library_asset',
+            status: 'pending',
+            metadata: {
+              creative: payload.metadata,
+              ingestion: {
+                sourceKey: payload.sourceKey,
+                sha256: payload.sha256,
+                sizeBytes: payload.sizeBytes,
+                detectedContentType: payload.contentType,
+              },
+              storage: {
+                provider: storage.provider,
+                writtenAt: storage.writtenAt,
+              },
+            },
+          },
+        })
+      } catch (error) {
+        if (error?.code !== 'P2002') throw error
+        const duplicate = await client.mediaAsset.findUnique({ where: { storageKey: payload.storageKey } })
+        if (!duplicate) throw error
+        return getMediaAssetDto(duplicate)
+      }
+      const scanResult = await scanMediaAsset(asset)
+      const scanJob = await createMediaScanJob(asset, scanResult)
+      const policyReviewRequired = Boolean(payload.generation.safety?.reviewRequired)
+      const effectiveScanStatus = policyReviewRequired ? 'review' : scanResult?.status ?? 'pending'
+      const updated = await client.mediaAsset.update({
+        where: { id: asset.id },
+        data: {
+          status: effectiveScanStatus === 'rejected' ? 'rejected' : 'uploaded',
+          metadata: mediaSecurityMetadata(asset, {
+            checksum: `sha256:${payload.sha256}`,
+            declaredContentType: payload.contentType,
+            detectedContentType: payload.contentType,
+            scanProvider: scanResult?.provider ?? 'manual',
+            scanStatus: effectiveScanStatus,
+            scanNote: policyReviewRequired ? 'Creative policy requires manual review.' : scanResult?.note,
+            scanRequestedAt: scanResult?.requestedAt,
+            externalScanId: scanResult?.externalScanId,
+            scanJobStatus: scanResult?.scanJobStatus,
+            scanAttempts: scanResult?.scanAttempts,
+            scanTimeoutAt: scanResult?.scanTimeoutAt,
+            nextRetryAt: scanResult?.nextRetryAt,
+            scanRequestAdapter: scanResult?.requestAdapter,
+            scanDispatchStatus: scanResult?.dispatchStatus,
+            scanDispatchStatusCode: scanResult?.dispatchStatusCode,
+            scanDispatchError: scanResult?.dispatchError,
+            scanDispatchRequestedAt: scanResult?.dispatchRequestedAt,
+            rejectionReason: scanResult?.reason ?? undefined,
+            creativeReviewRequired: policyReviewRequired,
+            creativeReviewReasons: payload.generation.safety?.reasons ?? [],
+            completedAt: new Date().toISOString(),
+          }),
+        },
+      })
+      const updatedWithJob = mediaAssetWithScanJob(updated, scanJob)
+      await recordAudit({
+        actor,
+        action: 'media.provider_output_ingested',
+        resourceType: 'media_asset',
+        resourceId: updated.id,
+        metadata: {
+          generationId: payload.generation.id,
+          outputId: payload.output.id,
+          providerId: payload.generation.provider?.id ?? payload.generation.providerId,
+          sourceKey: payload.sourceKey,
+          contentType: payload.contentType,
+          sizeBytes: payload.sizeBytes,
+          sha256: payload.sha256,
+          scanStatus: effectiveScanStatus,
+        },
+      })
       return getMediaAssetDto(updatedWithJob)
     },
     listReviewQueue: async (options = {}) => {
@@ -6193,6 +6429,7 @@ const createPrismaRepository = async (fallbackRepository) => {
     creativeGenerations,
     creativeGenerationMutations,
     creativeProviderReplays,
+    creativeOutputIngestions,
     creativeCredits,
     creativeQuota,
     media,

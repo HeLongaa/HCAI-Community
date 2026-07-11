@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { createSeedRepository } from '../repositories/seedRepository.js'
 import { executeCreativeGeneration, getCreativeProviderCatalog, persistCreativeGenerationOutputs } from './generationService.js'
+import { sha256 } from './generationRecords.js'
 import { resetCreativePolicyState } from './policy.js'
 
 const actor = {
@@ -400,6 +402,11 @@ test('persistCreativeGenerationOutputs attaches media asset storage metadata', a
 })
 
 test('persistCreativeGenerationOutputs hides persisted Replicate provider output urls', async () => {
+  const repository = createSeedRepository()
+  const providerOutputPng = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+  )
   const generation = {
     id: 'gen_replicate_persisted_url_fixture',
     workspace: 'image',
@@ -432,32 +439,29 @@ test('persistCreativeGenerationOutputs hides persisted Replicate provider output
     safety: { moderationRequired: false, reviewRequired: false },
     policy: { version: 'creative-policy-v1' },
   }
-  const createdAssets = []
 
   const persisted = await persistCreativeGenerationOutputs(generation, {
     actor,
-    mediaRepository: {
-      createGeneratedAsset: async (payload) => {
-        createdAssets.push(payload)
-        return {
-          id: 'media-replicate-persisted-url',
-          status: 'uploaded',
-          purpose: 'library_asset',
-          contentType: payload.artifact.contentType,
-          metadata: {
-            security: {
-              scanStatus: 'pending',
-            },
-          },
-        }
-      },
-    },
+    mediaRepository: repository.media,
+    repositories: repository,
+    fetchOutput: async () => ({
+      body: providerOutputPng,
+      contentType: 'image/png',
+      extension: 'png',
+      sizeBytes: providerOutputPng.length,
+      sha256: sha256(providerOutputPng),
+    }),
   })
 
-  assert.equal(createdAssets.length, 1)
-  assert.equal(createdAssets[0].artifact.metadata.sourceUrl, null)
-  assert.equal(JSON.stringify(createdAssets[0].artifact.metadata).includes('provider-output-should-not-leak'), false)
-  assert.equal(persisted.outputs[0].url, '/api/media/assets/media-replicate-persisted-url/download')
-  assert.equal(persisted.outputs[0].storage.downloadPath, '/api/media/assets/media-replicate-persisted-url/download')
+  const mediaAssetId = persisted.outputs[0].storage.mediaAssetId
+  const asset = await repository.media.find(mediaAssetId)
+  const ingestions = await repository.creativeOutputIngestions.listForGeneration(generation.id)
+  assert.ok(asset)
+  assert.equal(asset.metadata.creative.sourceUrl, null)
+  assert.equal(ingestions.items.length, 1)
+  assert.equal(ingestions.items[0].status, 'completed')
+  assert.equal(persisted.outputs[0].url, `/api/media/assets/${mediaAssetId}/download`)
+  assert.equal(persisted.outputs[0].storage.downloadPath, `/api/media/assets/${mediaAssetId}/download`)
+  assert.equal(JSON.stringify({ asset, ingestions }).includes('provider-output-should-not-leak'), false)
   assert.equal(JSON.stringify(persisted).includes('provider-output-should-not-leak'), false)
 })

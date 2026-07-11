@@ -12,6 +12,18 @@ import { sha256 } from '../../creative/generationRecords.js'
 import { registerMediaRoutes } from '../media/routes.js'
 import { registerCreativeRoutes } from './routes.js'
 
+const providerOutputPng = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+)
+const fixtureProviderOutputFetcher = async () => ({
+  body: providerOutputPng,
+  contentType: 'image/png',
+  extension: 'png',
+  sizeBytes: providerOutputPng.length,
+  sha256: sha256(providerOutputPng),
+})
+
 const replicateStagingEnvKeys = [
   'NODE_ENV',
   'ACCESS_TOKEN_SECRET',
@@ -180,6 +192,7 @@ test('POST Replicate callback applies one signed lifecycle result and suppresses
     repositories: repository,
     source,
     now: callbackNow,
+    providerOutputFetcher: fixtureProviderOutputFetcher,
   }))
   try {
     const first = await requestJson(server.url, `/api/creative/providers/replicate/callback/${generation.id}`, {
@@ -237,6 +250,44 @@ test('POST Replicate callback applies one signed lifecycle result and suppresses
   }
 })
 
+test('POST Replicate callback fails closed before settlement when output fetching is not injected', async () => {
+  const repository = createSeedRepository()
+  const source = callbackSource()
+  const { generation, providerJobId } = await createCallbackGeneration(repository)
+  const body = {
+    id: providerJobId,
+    event_id: `event-output-fetch-disabled-${providerJobId}`,
+    status: 'succeeded',
+    output: ['https://provider.example/output.png?token=must-not-persist'],
+  }
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+    source,
+    now: callbackNow,
+  }))
+  try {
+    const response = await requestJson(server.url, `/api/creative/providers/replicate/callback/${generation.id}`, {
+      body,
+      headers: signedCallbackHeaders({ source, generationId: generation.id, providerJobId, body }),
+    })
+    assert.equal(response.status, 503)
+    assert.equal(response.payload.error.code, 'CREATIVE_PROVIDER_CALLBACK_SIDE_EFFECT_FAILED')
+    assert.equal(JSON.stringify(response.payload).includes('must-not-persist'), false)
+
+    const current = await repository.creativeGenerations.find(generation.id)
+    assert.equal(current.status, 'running')
+    assert.equal(current.credit.status, 'reserved')
+    assert.equal(current.outputAssetIds.length, 0)
+    const ingestions = await repository.creativeOutputIngestions.listForGeneration(generation.id)
+    assert.equal(ingestions.items.length, 1)
+    assert.equal(ingestions.items[0].status, 'failed')
+    assert.equal(ingestions.items[0].errorCode, 'CREATIVE_PROVIDER_OUTPUT_FETCH_DISABLED')
+    assert.equal(JSON.stringify(ingestions.items[0]).includes('must-not-persist'), false)
+  } finally {
+    await server.close()
+  }
+})
+
 test('POST Replicate callback rejects nonce and provider job mismatches without side effects', async () => {
   const repository = createSeedRepository()
   const source = callbackSource()
@@ -247,6 +298,7 @@ test('POST Replicate callback rejects nonce and provider job mismatches without 
     repositories: repository,
     source,
     now: callbackNow,
+    providerOutputFetcher: fixtureProviderOutputFetcher,
   }))
   try {
     const invalidNonce = await requestJson(server.url, `/api/creative/providers/replicate/callback/${generation.id}`, {
@@ -306,6 +358,7 @@ test('POST Replicate callback rejects a Provider event id reused for different l
     repositories: repository,
     source,
     now: callbackNow,
+    providerOutputFetcher: fixtureProviderOutputFetcher,
   }))
   try {
     const first = await requestJson(server.url, `/api/creative/providers/replicate/callback/${generation.id}`, {
@@ -399,6 +452,7 @@ test('POST Replicate callback resumes a partial side-effect failure without rewr
     repositories: repository,
     source,
     now: callbackNow,
+    providerOutputFetcher: fixtureProviderOutputFetcher,
   }))
   try {
     const failed = await requestJson(server.url, `/api/creative/providers/replicate/callback/${generation.id}`, {
@@ -649,7 +703,10 @@ test('POST /api/creative/generations can run a Replicate staging fixture through
       }),
   }
   const server = await createRouteTestServer(
-    (router) => registerCreativeRoutes(router, { fixtureAdapters }),
+    (router) => registerCreativeRoutes(router, {
+      fixtureAdapters,
+      providerOutputFetcher: fixtureProviderOutputFetcher,
+    }),
     registerMediaRoutes,
   )
   try {

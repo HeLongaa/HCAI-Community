@@ -63,6 +63,7 @@ export const registerCreativeRoutes = (router, options = {}) => {
   const executeGeneration = options.executeCreativeGeneration ?? executeCreativeGeneration
   const fixtureAdapters = options.fixtureAdapters ?? {}
   const providerMutationAdapters = options.providerMutationAdapters ?? {}
+  const providerOutputFetcher = options.providerOutputFetcher ?? null
   const routeRepositories = options.repositories ?? repositories
   const callbackSource = options.source ?? process.env
   const callbackNow = () => typeof options.now === 'function' ? options.now() : options.now ?? new Date()
@@ -138,6 +139,9 @@ export const registerCreativeRoutes = (router, options = {}) => {
       const persisted = await persistCreativeGenerationOutputs(generation, {
         actor,
         mediaRepository: routeRepositories.media,
+        repositories: routeRepositories,
+        providerOutputFetcher,
+        fetchOutput: providerOutputFetcher,
       })
       const outputAssetIds = getOutputAssetIds(persisted)
       const settledCredit = generation.credit?.ledgerId && creditRepository?.settle
@@ -240,6 +244,7 @@ export const registerCreativeRoutes = (router, options = {}) => {
         repositories: routeRepositories,
         source: callbackSource,
         now: callbackNow(),
+        fetchOutput: providerOutputFetcher,
       })
       const outcome = providerCallbackOutcome(processed)
       const callbackAction = ['duplicate_in_progress', 'duplicate_suppressed'].includes(outcome)

@@ -372,7 +372,7 @@
       "retentionPolicyId": "media_asset_delete_plus_30d",
       "exportPolicy": "include_metadata_and_owned_asset_reference",
       "deletionPolicy": "revoke_access_delete_object_then_delete_metadata",
-      "ownerTasks": ["V1-50", "V1-67"]
+      "ownerTasks": ["V1-09", "V1-50", "V1-67"]
     },
     {
       "id": "media_object_bytes",
@@ -386,7 +386,7 @@
       "retentionPolicyId": "media_asset_delete_plus_30d",
       "exportPolicy": "include_owned_clean_assets_only",
       "deletionPolicy": "revoke_download_immediately_and_delete_object_within_24h",
-      "ownerTasks": ["V1-50", "V1-67"]
+      "ownerTasks": ["V1-09", "V1-50", "V1-67"]
     },
     {
       "id": "media_scan_safety_records",
@@ -419,16 +419,16 @@
     {
       "id": "provider_lifecycle_records",
       "classification": "restricted",
-      "prismaModels": ["CreativeProviderReplayLedger", "CreativeGenerationMutation"],
+      "prismaModels": ["CreativeProviderReplayLedger", "CreativeGenerationMutation", "CreativeOutputIngestion"],
       "locations": ["postgres"],
       "dataSubjects": ["user"],
       "purposes": ["creative_generation", "support_operations", "safety_moderation"],
-      "exampleFields": ["provider job/event id", "idempotency key", "payload hash", "normalized status", "mutation type/status", "retry relation", "review id", "safe plan/result", "safe error preview"],
+      "exampleFields": ["provider job/event id", "idempotency/source key", "payload/output hash", "normalized status", "mutation/ingestion status", "media asset id", "detected MIME", "byte count", "SHA-256", "safe error code"],
       "accessRoles": ["authorized_service", "creative_operator_allowlisted", "auditor"],
       "retentionPolicyId": "provider_lifecycle_terminal_180d",
       "exportPolicy": "include_user_visible_status_summary_only",
       "deletionPolicy": "unlink_subject_then_prune_safe_replay_evidence",
-      "ownerTasks": ["V1-08", "V1-13", "V1-67"]
+      "ownerTasks": ["V1-08", "V1-09", "V1-13", "V1-67"]
     },
     {
       "id": "creative_accounting_records",
@@ -526,7 +526,7 @@
       "retentionPolicyId": "transient_request_zero",
       "exportPolicy": "exclude_raw_payload_include_normalized_user_result",
       "deletionPolicy": "discard_after_allowlisted_normalization_and_hashing",
-      "ownerTasks": ["V1-05", "V1-06", "V1-07", "V1-08"]
+      "ownerTasks": ["V1-05", "V1-06", "V1-07", "V1-08", "V1-09"]
     },
     {
       "id": "observability_logs_traces_metrics",
@@ -979,7 +979,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 28,
+    "modelCount": 29,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",
@@ -989,6 +989,7 @@
       "Provider HTTP client uses a fixed endpoint, minimum payload, deployment-only secret injection, and default-disabled network gate",
       "Provider callback API uses exact-body HMAC, nonce/job binding, strict projection, zero-retention raw payload handling, and atomic replay claims",
       "Provider polling uses a fixed read-only status endpoint, strict response projection, safe worker summaries, bounded retries, and idempotent timeout recovery",
+      "Provider output ingestion uses a durable source key, claim lease, allowlisted injected fetch, bounded byte reads, magic-byte MIME validation, SHA-256, deterministic storage, and scan-gated media assets",
       "Admin creative serializers redact unsafe identifiers, URLs, and error previews",
       "archive and object writers support mock/S3-compatible boundaries"
     ],
@@ -1014,6 +1015,8 @@
       "server/src/creative/providerReplayIntegration.js",
       "server/src/creative/generationMutationService.js",
       "server/src/creative/manualReplayRequestService.js",
+      "server/src/creative/providerOutputFetcher.js",
+      "server/src/creative/providerOutputIngestion.js",
       "server/src/modules/admin/routes.js",
       "server/src/media/scanProvider.js",
       "server/src/storage/archiveWriter.js",
@@ -1027,6 +1030,7 @@
     { "taskId": "V1-06", "scope": "Provider callback authentication, strict payload minimization, job binding, replay idempotency, and safe audit boundary." },
     { "taskId": "V1-07", "scope": "Provider status polling projection, retry scheduling, timeout recovery, worker isolation, and safe audit boundary." },
     { "taskId": "V1-08", "scope": "Idempotent generation cancel/retry mutations, child-attempt linkage, reviewed manual replay, and raw-prompt/provider-payload exclusion." },
+    { "taskId": "V1-09", "scope": "Source-keyed Provider output ingestion, SSRF and byte boundaries, MIME/checksum validation, deterministic storage, scanner gating, and raw-URL exclusion." },
     { "taskId": "V1-48", "scope": "OAuth scopes, identifiers, unlink, region, and session evidence." },
     { "taskId": "V1-49", "scope": "PostgreSQL migration, encrypted backup, expiry, restore, and deletion rehearsal." },
     { "taskId": "V1-50", "scope": "Object storage/CDN private access and lifecycle deletion." },

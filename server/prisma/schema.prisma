@@ -150,6 +150,15 @@ enum CreativeGenerationMutationStatus {
   rejected
 }
 
+enum CreativeOutputIngestionStatus {
+  pending
+  claimed
+  stored
+  scanning
+  completed
+  failed
+}
+
 model AuditEvent {
   id           String         @id @default(cuid())
   actorType    AuditActorType @map("actor_type")
@@ -577,6 +586,7 @@ model CreativeGeneration {
   retryAttempts   CreativeGeneration[]           @relation("CreativeGenerationRetries")
   mutations       CreativeGenerationMutation[]
   providerReplays CreativeProviderReplayLedger[]
+  outputIngestions CreativeOutputIngestion[]
 
   @@index([actorId, createdAt])
   @@index([actorHandle, createdAt])
@@ -641,6 +651,36 @@ model CreativeProviderReplayLedger {
   @@index([providerId, providerJobId, normalizedStatus])
   @@index([sourceType, action, receivedAt])
   @@map("creative_provider_replay_ledger")
+}
+
+model CreativeOutputIngestion {
+  id                  String                        @id @default(cuid())
+  sourceKey           String                        @unique @map("source_key")
+  generationId        String                        @map("generation_id")
+  providerId          String                        @map("provider_id")
+  providerJobId       String?                       @map("provider_job_id")
+  outputDigest        String                        @map("output_digest")
+  outputIndex         Int                           @map("output_index")
+  status              CreativeOutputIngestionStatus @default(pending)
+  mediaAssetId        String?                       @map("media_asset_id")
+  storageKey          String?                       @map("storage_key")
+  detectedContentType String?                       @map("detected_content_type")
+  sizeBytes           Int?                          @map("size_bytes")
+  sha256              String?
+  errorCode           String?                       @map("error_code")
+  claimToken          String?                       @map("claim_token")
+  claimedAt           DateTime?                     @map("claimed_at")
+  leaseExpiresAt      DateTime?                     @map("lease_expires_at")
+  completedAt         DateTime?                     @map("completed_at")
+  createdAt           DateTime                      @default(now()) @map("created_at")
+  updatedAt           DateTime                      @updatedAt @map("updated_at")
+
+  generation CreativeGeneration @relation(fields: [generationId], references: [id], onDelete: Cascade)
+
+  @@index([generationId, outputIndex])
+  @@index([status, leaseExpiresAt])
+  @@index([providerId, providerJobId])
+  @@map("creative_output_ingestions")
 }
 
 model CreativeCreditLedger {

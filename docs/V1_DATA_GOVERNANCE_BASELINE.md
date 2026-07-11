@@ -48,11 +48,11 @@ not become public because the post is public.
 | `community_content_interactions` | Public | PostgreSQL | `Post`, `Comment`, `PostLike` | Delete request + 30 days |
 | `private_library_items` | Confidential | PostgreSQL | `LibraryItem` | Delete request + 30 days |
 | `internal_points_ledger` | Confidential | PostgreSQL | `PointLedger` | Terminal entry/account close + 730 days |
-| `media_asset_metadata` | Confidential | PostgreSQL | `MediaAsset` | Delete/reject/abandon + 30 days |
+| `media_asset_metadata` | Confidential | PostgreSQL | `MediaAsset` | Delete/reject/abandon + 30 days; V1-09 output metadata excludes Provider URLs |
 | `media_object_bytes` | Restricted | Object storage | Uploads, attachments, generated assets | Revoke now, object delete within 24 hours |
 | `media_scan_safety_records` | Restricted | PostgreSQL/archive | `MediaScanJob` | Terminal scan + 180 days, maximum 50/asset |
 | `creative_generation_records` | Restricted | PostgreSQL | `CreativeGeneration` | Terminal generation + 365 days; preview 30 days |
-| `provider_lifecycle_records` | Restricted | PostgreSQL | `CreativeProviderReplayLedger` | Terminal Provider lifecycle + 180 days |
+| `provider_lifecycle_records` | Restricted | PostgreSQL | `CreativeProviderReplayLedger`, `CreativeGenerationMutation`, `CreativeOutputIngestion` | Terminal Provider lifecycle + 180 days |
 | `creative_accounting_records` | Confidential | PostgreSQL | `CreativeCreditLedger`, `CreativeQuotaWindow`, `CreativeQuotaReservation` | Terminal/account close + 730 days |
 | `notification_records` | Confidential | PostgreSQL | `Notification` | Created + 180 days |
 | `moderation_review_records` | Restricted | PostgreSQL | `AdminReview` | Review/appeal close + 730 days |
@@ -250,6 +250,8 @@ Known gaps:
 | V1-05 | Implemented default-disabled Provider secret and minimum-payload HTTP boundary; external calls remain approval-gated |
 | V1-06 | Implemented default-disabled callback authentication, zero-retention payload projection, replay claim, and safe audit boundary; real webhook delivery remains approval-gated |
 | V1-07 | Implemented default-disabled status polling projection, safe retry/timeout recovery, worker isolation, and audit boundary; real status reads remain approval-gated |
+| V1-08 | Implemented idempotent cancel/retry/manual replay with dedicated permissions, child attempts, two-person review, and raw-prompt exclusion |
+| V1-09 | Implemented source-keyed output ingestion, injected-fetch SSRF/size/MIME/checksum boundaries, deterministic storage, scanner gating, and zero-retention Provider URLs; real output fetch remains approval-gated |
 | V1-48 | OAuth scopes, identifiers, unlink, region, and sessions |
 | V1-49 | PostgreSQL backup, expiry, restore, and deletion rehearsal |
 | V1-50 | Private object storage/CDN and lifecycle deletion |

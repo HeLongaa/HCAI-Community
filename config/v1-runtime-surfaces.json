@@ -234,6 +234,15 @@
       "ownerTasks": ["V1-08"]
     },
     {
+      "id": "server-provider-output-ingestion-boundary",
+      "area": "provider-lifecycle",
+      "classification": "production_capable",
+      "paths": ["server/src/creative/providerOutputFetcher.js", "server/src/creative/providerOutputIngestion.js", "server/src/creative/generationService.js", "server/src/creative/providerSideEffectPlan.js", "server/src/modules/creative/routes.js", "server/src/repositories/seedRepository.js", "server/src/repositories/prismaRepository.js", "server/src/modules/admin/routes.js"],
+      "markers": ["createProviderOutputFetcher", "creativeOutputIngestions", "createIngestedAsset", "providerOutputFetcher"],
+      "productionDisposition": "keep_real_provider_output_fetch_unregistered_until_explicit_staging_approval",
+      "ownerTasks": ["V1-09"]
+    },
+    {
       "id": "fixture-smoke-and-simulation-profiles",
       "area": "quality-gates",
       "classification": "fixture_only",

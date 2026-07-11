@@ -33,6 +33,35 @@ export const buildCreativeArtifactMetadata = ({ generation, output }) => ({
   policy: generation.policy,
 })
 
+export const buildCreativeIngestedArtifactMetadata = ({ generation, output, ingestion }) => ({
+  generated: true,
+  generationId: generation.id,
+  outputId: output.id,
+  workspace: generation.workspace,
+  mode: generation.mode,
+  provider: {
+    id: generation.provider?.id ?? generation.providerId,
+    mode: generation.provider?.mode ?? generation.providerMode,
+  },
+  promptHash: generation.promptHash ?? sha256(generation.prompt),
+  promptPreview: generation.promptPreview ?? promptPreview(generation.prompt),
+  inputAssetIds: generation.inputAssetIds ?? [],
+  parameterKeys: generation.parameterKeys ?? Object.keys(generation.parameters ?? {}).sort(),
+  outputType: output.type,
+  sourceUrl: null,
+  ingestion: {
+    sourceKey: ingestion.sourceKey,
+    contentType: ingestion.contentType,
+    sizeBytes: ingestion.sizeBytes,
+    sha256: ingestion.sha256,
+  },
+  usage: generation.usage,
+  credit: generation.credit,
+  quota: generation.quota,
+  safety: generation.safety,
+  policy: generation.policy,
+})
+
 export const buildCreativeArtifactObject = ({ generation, output }) => {
   const metadata = buildCreativeArtifactMetadata({ generation, output })
   if (output.type === 'image') {

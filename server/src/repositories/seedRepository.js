@@ -17,6 +17,7 @@ import {
   serializeAuditEvent,
   serializeCreativeGeneration,
   serializeCreativeGenerationMutation,
+  serializeCreativeOutputIngestion,
   serializeCreativeProviderReplay,
   serializeLedgerEntry,
   serializeLibraryItem,
@@ -77,6 +78,8 @@ const creativeGenerationMutationsByIdempotencyKey = new Map()
 const creativeProviderReplayLedgerById = new Map()
 const creativeProviderReplayLedgerByIdempotencyKey = new Map()
 const creativeProviderReplayLedgerByProviderEventKey = new Map()
+const creativeOutputIngestionsById = new Map()
+const creativeOutputIngestionsBySourceKey = new Map()
 const creativeCreditLedgerById = new Map()
 const creativeQuotaWindowsById = new Map()
 const creativeQuotaReservationsById = new Map()
@@ -1237,6 +1240,33 @@ const makeCreativeProviderReplayRecord = (payload, patch = {}) => {
     errorPreview: payload.errorPreview ?? null,
     receivedAt: payload.receivedAt ?? now,
     appliedAt: payload.appliedAt ?? null,
+    createdAt: payload.createdAt ?? now,
+    updatedAt: now,
+    ...patch,
+  }
+}
+
+const makeCreativeOutputIngestionRecord = (payload, patch = {}) => {
+  const now = new Date().toISOString()
+  return {
+    id: payload.id ?? `output-ingestion-${randomUUID()}`,
+    sourceKey: String(payload.sourceKey),
+    generationId: String(payload.generationId),
+    providerId: payload.providerId,
+    providerJobId: safeProviderJobIdEvidence(payload.providerJobId),
+    outputDigest: payload.outputDigest,
+    outputIndex: Number(payload.outputIndex),
+    status: payload.status ?? 'pending',
+    mediaAssetId: payload.mediaAssetId ?? null,
+    storageKey: payload.storageKey ?? null,
+    detectedContentType: payload.detectedContentType ?? null,
+    sizeBytes: payload.sizeBytes ?? null,
+    sha256: payload.sha256 ?? null,
+    errorCode: payload.errorCode ?? null,
+    claimToken: payload.claimToken ?? null,
+    claimedAt: payload.claimedAt ?? null,
+    leaseExpiresAt: payload.leaseExpiresAt ?? null,
+    completedAt: payload.completedAt ?? null,
     createdAt: payload.createdAt ?? now,
     updatedAt: now,
     ...patch,
@@ -3035,6 +3065,82 @@ export const createSeedRepository = () => ({
       return paginateByCursor(items, options)
     },
   },
+  creativeOutputIngestions: {
+    record: (payload, actor) => {
+      const sourceKey = String(payload.sourceKey ?? '')
+      const existing = creativeOutputIngestionsBySourceKey.get(sourceKey) ?? null
+      if (existing) {
+        return { created: false, ingestion: serializeCreativeOutputIngestion(existing) }
+      }
+      const ingestion = makeCreativeOutputIngestionRecord({ ...payload, sourceKey })
+      creativeOutputIngestionsById.set(ingestion.id, ingestion)
+      creativeOutputIngestionsBySourceKey.set(sourceKey, ingestion)
+      recordAudit(actor, 'creative.output_ingestion.recorded', 'creative_output_ingestion', ingestion.id, {
+        generationId: ingestion.generationId,
+        providerId: ingestion.providerId,
+        providerJobId: ingestion.providerJobId,
+        outputDigest: ingestion.outputDigest,
+        outputIndex: ingestion.outputIndex,
+        ingestionStatus: ingestion.status,
+      })
+      return { created: true, ingestion: serializeCreativeOutputIngestion(ingestion) }
+    },
+    find: (id) => {
+      const ingestion = creativeOutputIngestionsById.get(String(id)) ?? null
+      return ingestion ? serializeCreativeOutputIngestion(ingestion) : null
+    },
+    findBySourceKey: (sourceKey) => {
+      const ingestion = creativeOutputIngestionsBySourceKey.get(String(sourceKey)) ?? null
+      return ingestion ? serializeCreativeOutputIngestion(ingestion) : null
+    },
+    listForGeneration: (generationId) => ({
+      items: [...creativeOutputIngestionsById.values()]
+        .filter((ingestion) => ingestion.generationId === String(generationId))
+        .sort((left, right) => left.outputIndex - right.outputIndex || left.createdAt.localeCompare(right.createdAt))
+        .map(serializeCreativeOutputIngestion),
+    }),
+    claim: (sourceKey, payload = {}) => {
+      const current = creativeOutputIngestionsBySourceKey.get(String(sourceKey)) ?? null
+      if (!current) return { claimed: false, ingestion: null }
+      const claimedAt = Date.parse(payload.claimedAt ?? '')
+      const leaseExpiresAt = Date.parse(current.leaseExpiresAt ?? '')
+      const hasActiveClaim = current.claimToken && Number.isFinite(claimedAt) &&
+        Number.isFinite(leaseExpiresAt) && leaseExpiresAt > claimedAt
+      if (current.status === 'completed' || hasActiveClaim) {
+        return { claimed: false, ingestion: serializeCreativeOutputIngestion(current) }
+      }
+      const updated = makeCreativeOutputIngestionRecord(current, {
+        status: 'claimed',
+        claimToken: String(payload.claimToken ?? ''),
+        claimedAt: payload.claimedAt,
+        leaseExpiresAt: payload.leaseExpiresAt,
+        errorCode: null,
+      })
+      creativeOutputIngestionsById.set(updated.id, updated)
+      creativeOutputIngestionsBySourceKey.set(updated.sourceKey, updated)
+      return { claimed: true, ingestion: serializeCreativeOutputIngestion(updated) }
+    },
+    update: (id, patch = {}, actor, options = {}) => {
+      const current = creativeOutputIngestionsById.get(String(id)) ?? null
+      if (!current) return null
+      if (options.claimToken && current.claimToken !== options.claimToken) {
+        return serializeCreativeOutputIngestion(current)
+      }
+      const updated = makeCreativeOutputIngestionRecord(current, patch)
+      creativeOutputIngestionsById.set(updated.id, updated)
+      creativeOutputIngestionsBySourceKey.set(updated.sourceKey, updated)
+      recordAudit(actor, 'creative.output_ingestion.updated', 'creative_output_ingestion', updated.id, {
+        generationId: updated.generationId,
+        providerId: updated.providerId,
+        outputDigest: updated.outputDigest,
+        outputIndex: updated.outputIndex,
+        ingestionStatus: updated.status,
+        errorCode: updated.errorCode,
+        mediaAssetId: updated.mediaAssetId,
+      })
+      return serializeCreativeOutputIngestion(updated)
+    },
+  },
   creativeCredits: {
     reserve: (payload, actor) => {
       const existing = payload.quotaReservationId
@@ -3297,6 +3403,10 @@ export const createSeedRepository = () => ({
     },
   },
   media: {
+    find: (id) => {
+      const asset = mediaAssetsById.get(String(id)) ?? null
+      return asset ? serializeMediaAsset(asset) : null
+    },
     createUpload: (payload, actor) => {
       const now = new Date().toISOString()
       const id = `media-${randomUUID()}`
@@ -3461,6 +3571,85 @@ export const createSeedRepository = () => ({
           },
         })
       }
+      return serializeMediaAsset(updated)
+    },
+    createIngestedAsset: async (payload, actor) => {
+      const existing = [...mediaAssetsById.values()].find((asset) => asset.storageKey === payload.storageKey) ?? null
+      if (existing) return serializeMediaAsset(existing)
+      const now = new Date().toISOString()
+      const storage = await writeStorageObject({
+        body: payload.body,
+        contentType: payload.contentType,
+        storageKey: payload.storageKey,
+      })
+      const asset = {
+        id: payload.assetId,
+        ownerHandle: actor.handle,
+        fileName: payload.fileName,
+        storageKey: payload.storageKey,
+        contentType: payload.contentType,
+        sizeBytes: storage.bytes,
+        purpose: 'library_asset',
+        status: 'pending',
+        metadata: {
+          creative: payload.metadata,
+          ingestion: {
+            sourceKey: payload.sourceKey,
+            sha256: payload.sha256,
+            sizeBytes: payload.sizeBytes,
+            detectedContentType: payload.contentType,
+          },
+          storage: {
+            provider: storage.provider,
+            writtenAt: storage.writtenAt,
+          },
+        },
+        createdAt: now,
+        updatedAt: now,
+      }
+      mediaAssetsById.set(asset.id, asset)
+      const scanResult = await scanMediaAsset(asset)
+      const policyReviewRequired = Boolean(payload.generation.safety?.reviewRequired)
+      const effectiveScanStatus = policyReviewRequired ? 'review' : scanResult?.status ?? 'pending'
+      const updated = {
+        ...asset,
+        status: effectiveScanStatus === 'rejected' ? 'rejected' : 'uploaded',
+        metadata: mediaSecurityMetadata(asset, {
+          checksum: `sha256:${payload.sha256}`,
+          declaredContentType: payload.contentType,
+          detectedContentType: payload.contentType,
+          scanProvider: scanResult?.provider ?? 'manual',
+          scanStatus: effectiveScanStatus,
+          scanNote: policyReviewRequired ? 'Creative policy requires manual review.' : scanResult?.note,
+          scanRequestedAt: scanResult?.requestedAt,
+          externalScanId: scanResult?.externalScanId,
+          scanJobStatus: scanResult?.scanJobStatus,
+          scanAttempts: scanResult?.scanAttempts,
+          scanTimeoutAt: scanResult?.scanTimeoutAt,
+          nextRetryAt: scanResult?.nextRetryAt,
+          scanRequestAdapter: scanResult?.requestAdapter,
+          scanDispatchStatus: scanResult?.dispatchStatus,
+          scanDispatchStatusCode: scanResult?.dispatchStatusCode,
+          scanDispatchError: scanResult?.dispatchError,
+          scanDispatchRequestedAt: scanResult?.dispatchRequestedAt,
+          rejectionReason: scanResult?.reason ?? undefined,
+          creativeReviewRequired: policyReviewRequired,
+          creativeReviewReasons: payload.generation.safety?.reasons ?? [],
+          completedAt: now,
+        }),
+        updatedAt: now,
+      }
+      mediaAssetsById.set(updated.id, updated)
+      recordAudit(actor, 'media.provider_output_ingested', 'media_asset', updated.id, {
+        generationId: payload.generation.id,
+        outputId: payload.output.id,
+        providerId: payload.generation.provider?.id ?? payload.generation.providerId,
+        sourceKey: payload.sourceKey,
+        contentType: payload.contentType,
+        sizeBytes: payload.sizeBytes,
+        sha256: payload.sha256,
+        scanStatus: effectiveScanStatus,
+      })
       return serializeMediaAsset(updated)
     },
     listReviewQueue: (options = {}) => {
