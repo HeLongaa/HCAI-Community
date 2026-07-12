@@ -2,7 +2,7 @@
 
 This is the first decision page to read before starting any real-provider work. It compresses the current provider readiness state into one handoff: what is usable now, what is fixture-only, what remains deferred, and what requires explicit approval.
 
-Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, owner-scoped Image lifecycle history, Admin generation history, internal mutation controls, Provider budget observability, the V1-11 fail-closed Provider control plane, the V1-12 shared error/durable retry policy, a fixture-only OpenAI GPT Image 2 adapter, a default-disabled OpenAI Chat staging boundary, the V1-25 executable Video contract, the V1-26 governed Veo boundary, and the V1-27 registered-but-disabled fixture Video lifecycle are available. All unapproved Provider HTTP clients, callback APIs, and workers remain off by default. Real paid-provider calls, real Provider webhook delivery, external Provider alert delivery, enabled real polling, real Provider mutation clients, real cap readers/probes, and production paid-provider enablement remain no-go.
+Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, owner-scoped Image lifecycle history, Admin generation history, internal mutation controls, Provider budget observability, the V1-11 fail-closed Provider control plane, the V1-12 shared error/durable retry policy, a fixture-only OpenAI GPT Image 2 adapter, a default-disabled OpenAI Chat staging boundary, the executable Video contract/lifecycle package, and the V1-30 fail-closed Music capability contract are available. All unapproved Provider HTTP clients, callback APIs, and workers remain off by default. Real paid-provider calls, real Provider webhook delivery, external Provider alert delivery, enabled real polling, real Provider mutation clients, real cap readers/probes, and production paid-provider enablement remain no-go.
 
 V1-04 now records conditional implementation-planning decisions for all four modalities in
 `docs/V1_PROVIDER_DECISION_MATRIX.md` and `config/v1-provider-matrix.json`. These selections define primary/backup
@@ -79,6 +79,13 @@ V1-29 adds `config/v1-video-staging-gate.json`, `scripts/verify-v1-video-staging
 input, lifecycle, accounting, private-release, failure, worker, and operations tests. It also proves the Veo boundary
 still requires injected clients and defines no fetch path. This completes fixture acceptance only; no real staging call,
 credential, paid traffic, callback, default status client, automatic Runway routing, or production approval exists.
+
+V1-30 adds `server/src/creative/musicCapabilityContract.js`. It freezes instrumental and lyrics-to-song modes,
+closed duration/genre/mood/tempo/language/MP3 parameters, a three-minute maximum, application-owned asynchronous state,
+private scanner-gated output, license metadata, rights/safety/data requirements, and the USD 0.60/10/250 budget envelope.
+ElevenLabs Music v2 Enterprise and Google Lyria 3 Pro Preview are catalog-only disabled shells. Reference audio, remix,
+voice cloning, and TTS are explicitly unavailable. No Music adapter, HTTP client, credential, lifecycle, output
+ingestion, real call, automatic backup, or production enablement exists.
 
 V1-44 freezes the corresponding four-modality content safety baseline in
 `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. It defines 20 risk categories,

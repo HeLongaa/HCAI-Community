@@ -398,6 +398,64 @@ test('parseCreateCreativeGenerationRequest applies the frozen Video request boun
   )
 })
 
+test('parseCreateCreativeGenerationRequest applies the frozen Music request boundary', () => {
+  assert.deepEqual(parseCreateCreativeGenerationRequest({
+    workspace: 'music',
+    mode: 'lyrics_to_song',
+    prompt: 'Create an uplifting bilingual chorus.',
+    parameters: {
+      durationSeconds: 120,
+      genre: 'pop',
+      mood: 'uplifting',
+      tempoBpm: 118,
+      lyrics: 'Build the light together',
+      language: 'en',
+      outputFormat: 'mp3',
+    },
+  }), {
+    workspace: 'music',
+    mode: 'lyrics_to_song',
+    prompt: 'Create an uplifting bilingual chorus.',
+    inputAssetIds: [],
+    parameters: {
+      durationSeconds: 120,
+      genre: 'pop',
+      mood: 'uplifting',
+      tempoBpm: 118,
+      lyrics: 'Build the light together',
+      language: 'en',
+      outputFormat: 'mp3',
+    },
+    providerId: null,
+  })
+  assertValidationError(
+    () => parseCreateCreativeGenerationRequest({
+      workspace: 'music',
+      mode: 'lyrics_to_song',
+      prompt: 'Missing lyrics.',
+      parameters: { language: 'en' },
+    }),
+    'parameters.lyrics is required for lyrics_to_song',
+  )
+  assertValidationError(
+    () => parseCreateCreativeGenerationRequest({
+      workspace: 'music',
+      mode: 'instrumental',
+      prompt: 'Remix this reference.',
+      inputAssetIds: ['reference-audio'],
+    }),
+    'inputAssetIds must include 0 governed assets for instrumental',
+  )
+  assertValidationError(
+    () => parseCreateCreativeGenerationRequest({
+      workspace: 'music',
+      mode: 'text_to_speech',
+      prompt: 'Read this script.',
+    }),
+    'mode must be one of: instrumental, lyrics_to_song',
+  )
+})
+
 test('Chat conversation and streaming turn parsers enforce closed modes and idempotency', () => {
   assert.deepEqual(parseCreateChatConversationRequest({ mode: 'storyboard' }), { mode: 'storyboard' })
   assert.deepEqual(parseCreateChatTurnRequest({
