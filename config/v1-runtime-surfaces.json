@@ -291,10 +291,10 @@
       "id": "fixture-smoke-and-simulation-profiles",
       "area": "quality-gates",
       "classification": "fixture_only",
-      "paths": ["scripts/simulate-features.mjs", "scripts/smoke-production.mjs", "scripts/smoke-creative-staging.mjs", "scripts/verify-v1-image-staging-gate.mjs", "config/v1-image-staging-gate.json", "server/src/common/testing/httpTestClient.js"],
-      "markers": ["Production smoke profile", "stagingPreflightFixture", "openAIImageClientFixture", "V1 Image staging gate checks", "Simulation checks"],
+      "paths": ["scripts/simulate-features.mjs", "scripts/smoke-production.mjs", "scripts/smoke-creative-staging.mjs", "scripts/verify-v1-image-staging-gate.mjs", "scripts/verify-v1-video-staging-gate.mjs", "config/v1-image-staging-gate.json", "config/v1-video-staging-gate.json", "server/src/common/testing/httpTestClient.js"],
+      "markers": ["Production smoke profile", "stagingPreflightFixture", "openAIImageClientFixture", "V1 Image staging gate checks", "V1 Video staging gate checks", "Simulation checks"],
       "productionDisposition": "retain_as_deterministic_ci_only",
-      "ownerTasks": ["V1-19", "V1-71", "V1-75"]
+      "ownerTasks": ["V1-19", "V1-29", "V1-71", "V1-75"]
     }
   ]
 }

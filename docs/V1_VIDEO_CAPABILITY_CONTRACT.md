@@ -59,14 +59,16 @@ voiceover, and music synchronization are application composition stages, not unv
 - Provider spend is separate from product credits: USD 1.20 per job, USD 20 daily, USD 500 monthly, 20 jobs per day.
 - A current estimate, Provider cap evidence, control-plane approval, and durable reservation are required before dispatch.
 
-## Handoff
+## Closeout
 
 V1-26 implements governed input bytes/lineage, a fixed fixture-only Veo request descriptor, strict async result
 projection/replay construction, and generated-second cost reservation. V1-27 adds safe Provider operation state,
 registered-but-disabled fixture lifecycle behavior, output ingestion, scanner isolation, timeout/cancellation, and
-terminal accounting. V1-28 and V1-29 still own the production Video UI and staging acceptance. Those tasks must preserve
-this contract or update it explicitly with matching tests and docs.
+terminal accounting. V1-28 and V1-29 deliver the production Video UI and fixture staging acceptance while preserving
+this contract with matching tests and docs.
 V1-28 implements the application-API Video workspace with capability-driven controls, governed input selection,
 owner-scoped history, application polling/mutations, scanner-aware private preview, refresh-safe retry guidance, and
-explicit Mock/fixture/unavailable labels. V1-29 still owns staging acceptance. Ordinary continuation language is never
-approval for a real Video Provider request.
+explicit Mock/fixture/unavailable labels. V1-29 freezes and executes the 13-scenario fixture acceptance matrix in
+`config/v1-video-staging-gate.json`, including request mapping, ordered inputs, lifecycle, accounting, private release,
+failure handling, operational evidence, and rollback. Real staging evidence remains pending. Ordinary continuation
+language is never approval for a real Video Provider request.

@@ -1,0 +1,229 @@
+{
+  "schemaVersion": 1,
+  "taskId": "V1-29",
+  "title": "Video fixture-only staging acceptance gate",
+  "primaryProviderId": "google-veo-3-1-fast",
+  "backupProviderId": "runway-gen-4-5",
+  "decision": {
+    "fixtureAcceptance": "ready",
+    "externalCall": "no_go_pending_explicit_approval",
+    "productionEnablement": "no_go",
+    "fixtureOnly": true,
+    "ordinaryContinuationIsApproval": false
+  },
+  "limits": {
+    "maximumCallsPerApproval": 1,
+    "maximumApprovalHours": 24,
+    "maximumGeneratedSecondsPerCall": 8,
+    "perJobUsdCap": 1.2,
+    "dailyUsdCap": 20,
+    "monthlyUsdCap": 500,
+    "lifecycleTimeoutSeconds": 900,
+    "fixtureStatusAttempts": 3
+  },
+  "runtimeBoundary": {
+    "injectedClientsOnly": true,
+    "providerHttpClientImplemented": false,
+    "providerCredentialsConfigured": false,
+    "providerNetworkCallsEnabled": false,
+    "providerLifecycleEnabledByDefault": false,
+    "providerLifecycleWorkerEnabledByDefault": false,
+    "automaticBackupRoutingEnabled": false
+  },
+  "requiredScenarios": [
+    {
+      "id": "request_mapping",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "not_run_approval_required",
+      "evidence": [
+        {
+          "path": "server/src/creative/googleVeoProvider.test.js",
+          "markers": ["buildGoogleVeoGenerationRequest freezes one 720p MP4 request shape", "createGoogleVeoGeneration requires an injected fixture client"]
+        }
+      ]
+    },
+    {
+      "id": "ordered_inputs",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "not_run_approval_required",
+      "evidence": [
+        {
+          "path": "server/src/creative/videoInputAssets.test.js",
+          "markers": ["assigns governed image and music roles", "validates exact bytes and magic MIME"]
+        },
+        {
+          "path": "e2e/video-capability.spec.ts",
+          "markers": ["preserves input roles", "inputAssetIds: ['audio-clean', 'image-clean']"]
+        }
+      ]
+    },
+    {
+      "id": "queued_running",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "not_run_approval_required",
+      "evidence": [
+        {
+          "path": "server/src/creative/videoProviderLifecycle.test.js",
+          "markers": ["maps queued to running without losing safe operation state"]
+        }
+      ]
+    },
+    {
+      "id": "success_accounting",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "not_run_approval_required",
+      "evidence": [
+        {
+          "path": "server/src/creative/videoProviderLifecycle.test.js",
+          "markers": ["completion ingests MP4 and settles cost, credits, and quota once"]
+        }
+      ]
+    },
+    {
+      "id": "provider_failure",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "not_run_approval_required",
+      "evidence": [
+        {
+          "path": "server/src/creative/videoProviderLifecycle.test.js",
+          "markers": ["Provider failure retains safe evidence and closes accounting"]
+        }
+      ]
+    },
+    {
+      "id": "timeout",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "not_run_approval_required",
+      "evidence": [
+        {
+          "path": "server/src/creative/videoProviderLifecycle.test.js",
+          "markers": ["timeout reconciles Provider cost and refunds credits and quota"]
+        }
+      ]
+    },
+    {
+      "id": "retry_exhaustion",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "not_run_approval_required",
+      "evidence": [
+        {
+          "path": "server/src/creative/videoProviderLifecycle.test.js",
+          "markers": ["exhausts bounded status attempts without retaining raw errors"]
+        }
+      ]
+    },
+    {
+      "id": "cancellation",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "not_run_approval_required",
+      "evidence": [
+        {
+          "path": "server/src/creative/videoProviderLifecycle.test.js",
+          "markers": ["fixture cancellation is idempotent and closes accounting"]
+        },
+        {
+          "path": "e2e/video-capability.spec.ts",
+          "markers": ["handles lifecycle, private preview, and mobile layout"]
+        }
+      ]
+    },
+    {
+      "id": "partial_replay",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "not_run_approval_required",
+      "evidence": [
+        {
+          "path": "server/src/creative/videoProviderLifecycle.test.js",
+          "markers": ["replay resumes a partial output-ingestion failure idempotently"]
+        }
+      ]
+    },
+    {
+      "id": "scan_review_private_release",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "not_run_approval_required",
+      "evidence": [
+        {
+          "path": "server/src/creative/userGenerationHistory.test.js",
+          "markers": ["Video output stays private until its scan is clean"]
+        },
+        {
+          "path": "e2e/video-capability.spec.ts",
+          "markers": ["Private preview", "video-clean-asset"]
+        }
+      ]
+    },
+    {
+      "id": "user_visible_failure",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "not_run_approval_required",
+      "evidence": [
+        {
+          "path": "server/src/creative/userGenerationHistory.test.js",
+          "markers": ["exposes active and retry action eligibility without raw inputs"]
+        },
+        {
+          "path": "e2e/video-capability.spec.ts",
+          "markers": ["Exact retry is unavailable after refresh"]
+        }
+      ]
+    },
+    {
+      "id": "operational_evidence",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "not_run_approval_required",
+      "evidence": [
+        {
+          "path": "server/src/repositories/providerLifecycleWiring.test.js",
+          "markers": ["provider lifecycle payload builders fold unsafe evidence identifiers", "route failed facts to owner and operations"]
+        },
+        {
+          "path": "server/src/operations/metrics.test.js",
+          "markers": ["unifies Provider lifecycle facts and creates operator handoff hints"]
+        }
+      ]
+    },
+    {
+      "id": "kill_switch_and_rollback",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "not_run_approval_required",
+      "evidence": [
+        {
+          "path": "server/src/config/env.test.js",
+          "markers": ["keeps the fixture-only Veo lifecycle behind independent staging switches"]
+        },
+        {
+          "path": "scripts/smoke-production.mjs",
+          "markers": ["Video capability contract remains Provider-disabled", "providerHttpClientImplemented"]
+        }
+      ]
+    }
+  ],
+  "requiredApprovalFields": [
+    "approver",
+    "approvalTimestamp",
+    "approvalExpiry",
+    "provider",
+    "environment",
+    "branchOrPr",
+    "maximumProviderCalls",
+    "maximumGeneratedSeconds",
+    "providerSideSpendingCap",
+    "appSideBudgetCap",
+    "tokenRotationOwner",
+    "killSwitchOwner",
+    "rollbackOwner",
+    "productionNoGo"
+  ],
+  "commands": {
+    "contractAndFixtures": "npm run test:v1-video-staging",
+    "productionSmoke": "npm run smoke:production",
+    "pullRequestGate": "CI=1 npm run check:pr"
+  },
+  "documents": [
+    "docs/V1_VIDEO_STAGING_ACCEPTANCE.md",
+    "docs/V1_VIDEO_CAPABILITY_CONTRACT.md",
+    "docs/V1_VIDEO_LIFECYCLE_PERSISTENCE.md",
+    "docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md"
+  ]
+}

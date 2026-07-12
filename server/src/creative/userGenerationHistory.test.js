@@ -90,6 +90,38 @@ test('user generation history exposes active and retry action eligibility withou
   assert.equal(failed.error.message.includes('sk-private'), false)
 })
 
+test('Video output stays private until its scan is clean', async () => {
+  for (const scanStatus of ['pending', 'review', 'clean']) {
+    const value = await serializeUserCreativeGeneration(generation({
+      workspace: 'video',
+      mode: 'text_to_video',
+      outputAssetIds: ['video-output'],
+    }), {
+      actor,
+      mediaRepository: {
+        findAccessibleCreativeInput: async () => ({
+          id: 'video-output',
+          fileName: 'private-video.mp4',
+          storageKey: 'private/video-output.mp4',
+          contentType: 'video/mp4',
+          status: 'uploaded',
+          metadata: {
+            privateDownloadUrl: 'https://private.example/video.mp4?token=secret',
+            security: { scanStatus, scannerSecret: 'must-not-leak' },
+          },
+          createdAt: '2026-07-12T00:00:30.000Z',
+        }),
+      },
+    })
+
+    assert.equal(value.outputs[0].scanStatus, scanStatus)
+    assert.equal(value.actions.download.available, scanStatus === 'clean')
+    assert.equal(value.actions.reuse.available, false)
+    assert.equal(JSON.stringify(value).includes('privateDownloadUrl'), false)
+    assert.equal(JSON.stringify(value).includes('scannerSecret'), false)
+  }
+})
+
 test('user generation history does not advertise unsupported SVG output reuse', async () => {
   const value = await serializeUserCreativeGeneration(generation(), {
     actor,

@@ -35,8 +35,9 @@ not enable any Video Provider HTTP client, lifecycle worker, real traffic, produ
 - `npm run build`
 - `CI=1 npm run check:pr`
 
-## V1-29 Handoff
+## V1-29 Closeout
 
-V1-29 should define and execute a fixture-only staging acceptance matrix for request mapping, long-job lifecycle,
-ordered inputs, accounting, scan/review release, user-visible failure handling, and operational evidence. Real Veo HTTP,
-credentials, paid traffic, and production enablement still require separate explicit approval.
+V1-29 defines and executes the fixture-only staging acceptance matrix for request mapping, long-job lifecycle, ordered
+inputs, accounting, scan/review release, user-visible failure handling, operational evidence, and rollback. The source
+of truth is `config/v1-video-staging-gate.json`; run it with `npm run test:v1-video-staging`. Real Veo HTTP, credentials,
+paid traffic, and production enablement still require separate explicit approval.

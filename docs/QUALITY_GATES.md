@@ -19,6 +19,8 @@ Includes:
 - `npm run test:v1-safety-policy`
 - `npm run test:v1-data-governance`
 - `npm run test:v1-compliance`
+- `npm run test:v1-image-staging`
+- `npm run test:v1-video-staging`
 - `npm run test:sim`
 - API contract drift check through `scripts/verify-api-contracts.mjs`
 
@@ -47,6 +49,10 @@ The V1 compliance contract checks five bilingual versioned policies, exact-versi
 and first-use capture, all eight Provider disclosures, six support/data-rights categories, owner-scoped APIs, OpenAPI,
 frontend entry points, audit allowlists, and downstream owners. It deliberately fails if the engineering draft claims
 legal approval or production publication readiness.
+
+The V1 Video staging contract validates 13 fixture-only scenarios with concrete evidence markers, executes the selected
+request/input/lifecycle/accounting/release/operations tests, and fails if a default network client, Provider credential,
+real-call approval, automatic failover, or production enablement is implied.
 
 Use this before handing off small frontend, contract, or documentation changes.
 
@@ -101,7 +107,8 @@ Includes:
   safe operation persistence, generated-second pricing, strict fixture lifecycle/replay, bounded MP4 ingestion,
   scanner isolation and terminal accounting; the Video UI consumes application capability/history/mutation/media APIs,
   preserves ordered image/audio roles, polls only application generation detail, gates private preview on clean MP4, and
-  labels Mock/fixture/unavailable runtimes, while adapter product registration, HTTP, lifecycle runtime, real calls,
+  labels Mock/fixture/unavailable runtimes; the V1-29 matrix executes 13 request, lifecycle, accounting, release, failure,
+  operations, and rollback scenarios, while adapter product registration, HTTP, lifecycle runtime, real calls,
   production, and failover remain disabled
 - external OAuth provider metadata validation
 - creative provider safety validation: production smoke must keep staging provider preflight and the Provider HTTP

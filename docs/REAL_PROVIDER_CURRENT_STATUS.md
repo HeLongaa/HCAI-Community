@@ -74,6 +74,12 @@ Mock execution is labeled as Mock; Veo is labeled fixture-only and Runway unavai
 generation. No browser code calls a Provider URL, and no Provider runtime, credential, HTTP client, real status read, or
 production switch is enabled by this UI work.
 
+V1-29 adds `config/v1-video-staging-gate.json`, `scripts/verify-v1-video-staging-gate.mjs`, and
+`docs/V1_VIDEO_STAGING_ACCEPTANCE.md`. The gate validates 13 concrete fixture scenarios and executes selected request,
+input, lifecycle, accounting, private-release, failure, worker, and operations tests. It also proves the Veo boundary
+still requires injected clients and defines no fetch path. This completes fixture acceptance only; no real staging call,
+credential, paid traffic, callback, default status client, automatic Runway routing, or production approval exists.
+
 V1-44 freezes the corresponding four-modality content safety baseline in
 `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. It defines 20 risk categories,
 prohibited/block/review/allow decisions, the five-stage responsibility chain, all eight Provider policy mappings,
