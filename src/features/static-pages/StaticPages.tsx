@@ -387,20 +387,24 @@ export function SupportPage({
   signedIn,
   requireAuth,
   simulateAction,
+  initialAppeal,
+  onInitialAppealConsumed,
 }: {
   t: Record<string, string>
   signedIn: boolean
   requireAuth: () => void
   simulateAction: SimulateAction
+  initialAppeal?: { moderationDecisionId: string } | null
+  onInitialAppealConsumed?: () => void
 }) {
   const isZh = isZhCopy(t)
   const [manifest, setManifest] = useState<ApiComplianceManifest | null>(null)
   const [requests, setRequests] = useState<ApiSupportRequest[]>([])
-  const [category, setCategory] = useState<SupportRequestCategory>('general_support')
-  const [subject, setSubject] = useState('')
-  const [details, setDetails] = useState('')
-  const [relatedResourceType, setRelatedResourceType] = useState<SupportRelatedResourceType>('none')
-  const [relatedResourceId, setRelatedResourceId] = useState('')
+  const [category, setCategory] = useState<SupportRequestCategory>(initialAppeal ? 'moderation_appeal' : 'general_support')
+  const [subject, setSubject] = useState(initialAppeal ? textFor(t, 'Appeal a Chat safety decision', '申诉对话安全审核决定') : '')
+  const [details, setDetails] = useState(initialAppeal ? textFor(t, 'Please review the Chat safety decision linked below and provide the reason for the final outcome.', '请复核下方关联的对话安全审核决定，并说明最终处理结果。') : '')
+  const [relatedResourceType, setRelatedResourceType] = useState<SupportRelatedResourceType>(initialAppeal ? 'moderation_decision' : 'none')
+  const [relatedResourceId, setRelatedResourceId] = useState(initialAppeal?.moderationDecisionId ?? '')
   const [loadingHistory, setLoadingHistory] = useState(signedIn)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -459,6 +463,7 @@ export function SupportPage({
       setDetails('')
       setRelatedResourceType('none')
       setRelatedResourceId('')
+      if (initialAppeal) onInitialAppealConsumed?.()
       simulateAction(isZh ? `支持请求已提交：${request.id}` : `Support request submitted: ${request.id}`)
     }).catch((submitError) => {
       console.info('[support-request]', submitError)

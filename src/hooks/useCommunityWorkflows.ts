@@ -111,6 +111,7 @@ export function useCommunityWorkflows({ locale, publishTask, pushLedger, pushToa
     try {
       const item = await communityService.savePostToLibrary(post)
       const nextItem: InspirationItem = {
+        id: item.id,
         title: item.title,
         type: item.type,
         source: item.source,

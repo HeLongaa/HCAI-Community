@@ -41,5 +41,5 @@ message content.
 - Only the Mock stream adapter is registered.
 - No Provider credential, SDK, HTTP client, conversation id, automatic failover, or paid traffic is enabled.
 - V1-22 authorizes selected attachment metadata and product-context references, but does not read attachment bytes.
-- The current local Chat page remains a simulation until V1-23 consumes the typed `chatService` client.
+- V1-23 consumes the typed `chatService` client in the production Chat UI; no local success reply remains.
 - Real Provider staging acceptance remains V1-24 and requires separate explicit approval.

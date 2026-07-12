@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   Bot,
-  BriefcaseBusiness,
   ChevronDown,
   Clapperboard,
   Download,
@@ -22,11 +21,12 @@ import {
   Video,
   Zap,
 } from 'lucide-react'
-import type { Page, PlaygroundMode, SimulateAction, Track, Work } from '../../domain/types'
+import type { InspirationItem, Page, PlaygroundMode, SimulateAction, Task, Track, Work } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { tracks, visualWorks } from '../../data/mockData'
 import { isZhCopy, textFor } from '../../domain/utils'
 import type { ApiCreativeCapability, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiUserCreativeGeneration } from '../../services/contracts'
+import { ChatPage } from './ChatPage'
 
 type ImageGenerationState = {
   status: 'idle' | 'loading' | 'done' | 'error'
@@ -64,6 +64,10 @@ export function PlaygroundPage({
   imageInputAssets,
   uploadImageInput,
   runImageGeneration,
+  signedIn,
+  tasks,
+  libraryItems,
+  openModerationAppeal,
   playTrack,
   requireAuth,
   simulateAction,
@@ -95,6 +99,10 @@ export function PlaygroundPage({
   imageInputAssets: ApiMediaAsset[]
   uploadImageInput: (file: File) => Promise<void>
   runImageGeneration: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; strength: number; inputAssetIds: string[] }) => Promise<void>
+  signedIn: boolean
+  tasks: Task[]
+  libraryItems: InspirationItem[]
+  openModerationAppeal: (moderationDecisionId: string) => void
   playTrack: (track: Track) => void
   requireAuth: () => void
   simulateAction: SimulateAction
@@ -329,6 +337,11 @@ export function PlaygroundPage({
           t={t}
           setPage={setPage}
           openWorkspace={setWorkspace}
+          signedIn={signedIn}
+          requireAuth={requireAuth}
+          tasks={tasks}
+          libraryItems={libraryItems}
+          openModerationAppeal={openModerationAppeal}
           simulateAction={simulateAction}
         />
       )}
@@ -350,163 +363,6 @@ function QueueItem({ t, state, title }: { t: Record<string, string>; state: 'idl
               : textFor(t, 'Waiting', '等待中')}
         </p>
       </div>
-    </div>
-  )
-}
-
-function workspaceLabel(workspace: PlaygroundMode, t: Record<string, string>) {
-  const labels = {
-    music: textFor(t, 'Music', '音乐'),
-    image: textFor(t, 'Image', '图片'),
-    video: textFor(t, 'Video', '视频'),
-    chat: t.chat,
-  } satisfies Record<PlaygroundMode, string>
-  return labels[workspace]
-}
-
-export function ChatPage({
-  t,
-  setPage,
-  openWorkspace,
-  simulateAction,
-}: {
-  t: Record<string, string>
-  setPage: (page: Page) => void
-  openWorkspace?: (workspace: PlaygroundMode) => void
-  simulateAction: SimulateAction
-}) {
-  const isZh = isZhCopy(t)
-  const quickPrompts = isZh
-    ? [
-        ['写歌词', '根据情绪生成一段主歌和副歌。'],
-        ['优化提示词', '把提示词改得更具体、更可直接使用。'],
-        ['视频脚本', '把歌曲拆成逐镜头画面。'],
-        ['任务需求', '写一份清晰的任务广场买家需求。'],
-      ]
-    : [
-        ['Write lyrics', 'Generate a verse and chorus from a mood.'],
-        ['Improve prompt', 'Make a prompt more specific and usable.'],
-        ['Video script', 'Turn a song into scene-by-scene shots.'],
-        ['Task brief', 'Write a clear buyer request for Task Plaza.'],
-      ]
-  const [messages, setMessages] = useState(
-    isZh
-      ? [
-          { role: 'assistant', text: '我可以帮你写歌词、提示词、视频脚本、任务需求和社区帖子。' },
-          { role: 'user', text: '把这个国风 Lo-fi 想法改成副歌提示词。' },
-          { role: 'assistant', text: '可以这样写：轻松国风 Lo-fi 副歌，温暖人声，古筝点缀，雨夜城市氛围，旋律适合循环。' },
-        ]
-      : [
-          { role: 'assistant', text: 'I can help write lyrics, prompts, video scripts, task briefs, and community posts.' },
-          { role: 'user', text: 'Turn this lofi idea into a chorus prompt.' },
-          { role: 'assistant', text: 'Try: mellow city-pop chorus, intimate vocal, warm Rhodes, rain texture, hook about staying awake until sunrise.' },
-        ],
-  )
-  const [draft, setDraft] = useState('')
-  const latestMessageRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    latestMessageRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages])
-
-  const sendMessage = () => {
-    if (!draft.trim()) return
-    setMessages((current) => [
-      ...current,
-      { role: 'user', text: draft },
-      {
-        role: 'assistant',
-        text: isZh ? '已生成草稿。你可以继续改写，或发送到音乐、图片、视频、任务广场。' : 'Drafted. You can send this to Music, Image, Video, or Task Plaza.',
-      },
-    ])
-    setDraft('')
-  }
-
-  const applyPrompt = (title: string, text: string) => {
-    const promptText = isZh
-      ? `${title}: ${text} 请给我一个可直接用于任务广场或创作工具的中文版本。`
-      : `${title}: ${text} Give me a production-ready version for the task plaza or creation tools.`
-    setDraft(promptText)
-    setMessages((current) => [
-      ...current,
-      { role: 'user', text: promptText },
-      {
-        role: 'assistant',
-        text: isZh
-          ? `已按「${title}」生成一版草稿，你可以继续修改或发送到对应工具。`
-          : `I drafted a version for "${title}". You can refine it or send it to the matching tool.`,
-      },
-    ])
-    simulateAction(isZh ? `已应用快捷提示：${title}` : `Quick prompt applied: ${title}`)
-  }
-
-  const goWorkspace = (target: PlaygroundMode) => {
-    if (openWorkspace) {
-      openWorkspace(target)
-    } else {
-      setPage(target === 'chat' ? 'chat' : 'playground')
-    }
-    simulateAction(isZh ? `已切换到 AI 工作区：${workspaceLabel(target, t)}` : `Opened AI Workspace: ${workspaceLabel(target, t)}`)
-  }
-
-  return (
-    <div className="studio-layout">
-      <section className="panel chat-panel">
-        <SectionHeader eyebrow={textFor(t, 'Assistant', '助手')} title={t.chatTitle} />
-        <p className="muted">{t.chatSubtitle}</p>
-        <div className="chat-messages">
-          {messages.map((message, index) => (
-            <div className={`chat-bubble ${message.role}`} key={`${message.role}-${index}`}>
-              {message.text}
-            </div>
-          ))}
-          <div aria-hidden="true" ref={latestMessageRef} />
-        </div>
-        <div className="chat-input">
-          <textarea
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault()
-                sendMessage()
-              }
-            }}
-            placeholder={textFor(t, 'Ask for lyrics, prompts, scripts...', '输入歌词、提示词、脚本或任务需求...')}
-            rows={1}
-          />
-          <button className="primary-button" type="button" onClick={sendMessage}>
-            <Send size={17} />
-          </button>
-        </div>
-      </section>
-      <aside className="panel side-panel chat-quick-panel">
-        <SectionHeader title={textFor(t, 'Quick prompts', '快捷提示')} />
-        {quickPrompts.map(([title, text]) => (
-          <button className="prompt-card" type="button" key={title} onClick={() => applyPrompt(title, text)}>
-            <strong>{title}</strong>
-            <span>{text}</span>
-          </button>
-        ))}
-        <div className="button-row vertical">
-          <button className="ghost-button" type="button" onClick={() => goWorkspace('music')}>
-            <Music2 size={17} />
-            {textFor(t, 'Music workspace', '音乐工作区')}
-          </button>
-          <button className="ghost-button" type="button" onClick={() => goWorkspace('image')}>
-            <Image size={17} />
-            {textFor(t, 'Image workspace', '图片工作区')}
-          </button>
-          <button className="ghost-button" type="button" onClick={() => goWorkspace('video')}>
-            <Clapperboard size={17} />
-            {textFor(t, 'Video workspace', '视频工作区')}
-          </button>
-          <button className="ghost-button" type="button" onClick={() => setPage('tasks')}>
-            <BriefcaseBusiness size={17} />
-            {textFor(t, 'Task Plaza', '任务广场')}
-          </button>
-        </div>
-      </aside>
     </div>
   )
 }

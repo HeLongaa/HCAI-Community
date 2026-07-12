@@ -107,7 +107,8 @@ and restore-deletion tombstones. Its stream adapter is Mock-only and all emitted
 classification.
 
 V1-22 implements attachment metadata authorization, selected product context, input classification, bounded streaming
-classification, safe partial output, and minimal Admin review evidence. V1-23 owns the production Chat UI, and V1-24
-owns attachment-byte reading, real Provider clients, and staging acceptance.
+classification, safe partial output, and minimal Admin review evidence. V1-23 implements the production Chat UI with
+history recovery, SSE rendering, stop, governed inputs, deletion, and appeal entry. V1-24 owns attachment-byte reading,
+real Provider clients, and staging acceptance.
 
 No V1-20 through V1-22 validation command requires a Provider credential or network call.
