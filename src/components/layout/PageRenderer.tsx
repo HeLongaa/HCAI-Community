@@ -63,6 +63,8 @@ export function PageRenderer({
     imageGeneration,
     imageProviderCatalog,
     imageProviderCatalogState,
+    imageInputAssets,
+    uploadImageInput,
     runImageGeneration,
     playgroundWorkspace,
     setPlaygroundWorkspace,
@@ -122,6 +124,8 @@ export function PageRenderer({
           imageGeneration={imageGeneration}
           imageProviderCatalog={imageProviderCatalog}
           imageProviderCatalogState={imageProviderCatalogState}
+          imageInputAssets={imageInputAssets}
+          uploadImageInput={uploadImageInput}
           runImageGeneration={runImageGeneration}
           playTrack={playTrack}
           requireAuth={requireAuth}

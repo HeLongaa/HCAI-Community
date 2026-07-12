@@ -123,6 +123,10 @@ persistence through non-serializable in-process bytes. The OpenAI catalog shell 
 both `CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED` and `CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED` remain false by
 default, and no real Provider request is approved by this implementation.
 
+V1-17 adds owner-scoped clean image inputs, source/PNG-mask roles, strength controls, image-to-image/edit/variation
+workflows, and durable `image-lineage-v1` relationships. OpenAI edit requests remain fixture-only behind the same
+default-off gates; the product route continues to use explicit mock execution until separately approved.
+
 ## Verification
 
 ```bash

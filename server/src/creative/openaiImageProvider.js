@@ -11,9 +11,12 @@ const providerCostId = 'openai'
 const modelId = 'gpt-image-2'
 const baseUrl = 'https://api.openai.com/v1'
 const pathname = '/images/generations'
+const editPathname = '/images/edits'
 const requestBodyMaxBytes = 16 * 1024
 const responseBodyMaxBytes = 36 * 1024 * 1024
 const outputMaxBytes = 25 * 1024 * 1024
+const inputMaxBytes = 20 * 1024 * 1024
+const inputTotalMaxBytes = 40 * 1024 * 1024
 const requestTimeoutMs = 180_000
 const imageBytesByOutput = new WeakMap()
 
@@ -121,6 +124,112 @@ export const buildOpenAIImageGenerationRequest = (request) => {
     })
   }
   return Object.freeze({ method: 'POST', pathname, body: Object.freeze(body), serializedBody })
+}
+
+const assertOpenAIEditParameters = (request) => {
+  const parameters = request.parameters ?? {}
+  const allowedByMode = {
+    image_to_image: ['aspectRatio', 'stylePreset', 'strength', 'quality', 'outputCount', 'outputFormat'],
+    image_edit: ['stylePreset', 'strength', 'quality', 'outputCount', 'outputFormat'],
+    image_variation: ['strength', 'quality', 'outputCount', 'outputFormat'],
+  }
+  const allowed = allowedByMode[request.mode]
+  if (!allowed) throw providerRequestError('OpenAI Image edit mode is unsupported', 'mode_unsupported')
+  if (Object.keys(parameters).some((key) => !allowed.includes(key))) {
+    throw providerRequestError('OpenAI Image edit request contains an unsupported parameter', 'parameter_unsupported')
+  }
+  const strength = parameters.strength ?? 0.7
+  if (typeof strength !== 'number' || !Number.isFinite(strength) || strength < 0 || strength > 1) {
+    throw providerRequestError('OpenAI Image edit strength is invalid', 'strength_invalid')
+  }
+  return { parameters, strength }
+}
+
+export const compileOpenAIImageEditPrompt = (request) => {
+  const { parameters, strength } = assertOpenAIEditParameters(request)
+  const basePrompt = compileOpenAIImagePrompt(request.prompt, parameters.stylePreset ?? 'none')
+  const intensity = Math.round(strength * 100)
+  const instruction = request.mode === 'image_edit'
+    ? 'Edit the source only where indicated by the mask and preserve unmasked content.'
+    : request.mode === 'image_variation'
+      ? 'Create a distinct visual variation of the source while preserving its core subject.'
+      : 'Transform the source while preserving recognizable composition and subject identity.'
+  return `${instruction} Change intensity: ${intensity}%.\n\n${basePrompt}`
+}
+
+const extensionForContentType = (contentType) => ({
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+})[contentType]
+
+export const readOpenAIImageInputFiles = async (resolvedInputAssets, inputAssetReader) => {
+  if (typeof inputAssetReader !== 'function') {
+    throw new HttpError(503, 'CREATIVE_INPUT_ASSET_READER_UNAVAILABLE', 'Creative input asset reader is unavailable')
+  }
+  let totalBytes = 0
+  const files = []
+  for (const asset of resolvedInputAssets) {
+    const input = await inputAssetReader(asset)
+    const body = Buffer.isBuffer(input?.body) ? input.body : Buffer.from(input?.body ?? [])
+    if (body.length === 0 || body.length > inputMaxBytes) throw providerRequestError('OpenAI Image input size is invalid', 'input_size_invalid')
+    totalBytes += body.length
+    if (totalBytes > inputTotalMaxBytes) throw providerRequestError('OpenAI Image total input size is invalid', 'input_total_size_invalid')
+    const detected = await fileTypeFromBuffer(body)
+    if (detected?.mime !== asset.contentType || !extensionForContentType(asset.contentType)) {
+      throw providerRequestError('OpenAI Image input MIME does not match bytes', 'input_magic_type_invalid')
+    }
+    if (asset.role === 'mask' && asset.contentType !== 'image/png') {
+      throw providerRequestError('OpenAI Image mask must be PNG', 'mask_type_invalid')
+    }
+    files.push(Object.freeze({
+      assetId: asset.id,
+      role: asset.role,
+      body,
+      contentType: asset.contentType,
+      extension: extensionForContentType(asset.contentType),
+      sizeBytes: body.length,
+    }))
+  }
+  return Object.freeze(files)
+}
+
+export const buildOpenAIImageEditRequest = (request, inputFiles) => {
+  const { parameters } = assertOpenAIEditParameters(request)
+  const source = inputFiles.find((file) => file.role === 'source')
+  const mask = inputFiles.find((file) => file.role === 'mask')
+  if (!source || (request.mode === 'image_edit' && !mask) || (request.mode !== 'image_edit' && mask)) {
+    throw providerRequestError('OpenAI Image edit input roles are invalid', 'input_roles_invalid')
+  }
+  const aspectRatio = parameters.aspectRatio ?? '1:1'
+  const quality = parameters.quality ?? 'medium'
+  if (!aspectRatioSizes[aspectRatio]) throw providerRequestError('OpenAI Image aspect ratio is unsupported', 'aspect_ratio_unsupported')
+  if (!Object.hasOwn(qualityPricesUsd, quality)) throw providerRequestError('OpenAI Image quality is unsupported', 'quality_unsupported')
+  if ((parameters.outputCount ?? 1) !== 1 || (parameters.outputFormat ?? 'png') !== 'png') {
+    throw providerRequestError('OpenAI Image output contract is unsupported', 'output_contract_unsupported')
+  }
+  const formData = new FormData()
+  formData.append('model', modelId)
+  formData.append('prompt', compileOpenAIImageEditPrompt(request))
+  formData.append('image', new Blob([source.body], { type: source.contentType }), `source.${source.extension}`)
+  if (mask) formData.append('mask', new Blob([mask.body], { type: mask.contentType }), 'mask.png')
+  formData.append('size', aspectRatioSizes[aspectRatio])
+  formData.append('quality', quality)
+  formData.append('n', '1')
+  formData.append('output_format', 'png')
+  return Object.freeze({
+    method: 'POST',
+    pathname: editPathname,
+    formData,
+    safeFields: Object.freeze({
+      model: modelId,
+      mode: request.mode,
+      size: aspectRatioSizes[aspectRatio],
+      quality,
+      inputRoles: inputFiles.map((file) => file.role),
+      inputBytes: inputFiles.reduce((total, file) => total + file.sizeBytes, 0),
+    }),
+  })
 }
 
 const decodeCanonicalBase64 = (value) => {
@@ -268,19 +377,16 @@ export const createOpenAIImageHttpClient = ({
     throw new HttpError(500, 'CREATIVE_PROVIDER_HTTP_CLIENT_INVALID', 'Creative Provider HTTP client requires a fetch implementation')
   }
 
-  return Object.freeze({
-    providerId,
-    generateImage: async (request) => {
-      const providerRequest = buildOpenAIImageGenerationRequest(request)
+  const execute = async (providerRequest) => {
       try {
         const response = await fetchImpl(`${baseUrl}${providerRequest.pathname}`, {
           method: providerRequest.method,
           headers: {
             accept: 'application/json',
             authorization: `Bearer ${apiToken}`,
-            'content-type': 'application/json',
+            ...(providerRequest.serializedBody ? { 'content-type': 'application/json' } : {}),
           },
-          body: providerRequest.serializedBody,
+          body: providerRequest.serializedBody ?? providerRequest.formData,
           signal: AbortSignal.timeout(requestTimeoutMs),
         })
         const text = await readBoundedResponseText(response)
@@ -307,7 +413,11 @@ export const createOpenAIImageHttpClient = ({
           retryable: true,
         })
       }
-    },
+  }
+  return Object.freeze({
+    providerId,
+    generateImage: async (request) => execute(buildOpenAIImageGenerationRequest(request)),
+    editImage: async (request, inputFiles) => execute(buildOpenAIImageEditRequest(request, inputFiles)),
   })
 }
 
@@ -413,7 +523,7 @@ export const assertOpenAIImageBudgetAllowsDispatch = (providerCost) => {
 }
 
 const safeParameters = (request) => Object.fromEntries(
-  ['aspectRatio', 'stylePreset', 'quality', 'outputCount', 'outputFormat']
+  ['aspectRatio', 'stylePreset', 'strength', 'quality', 'outputCount', 'outputFormat']
     .filter((key) => request.parameters?.[key] != null)
     .map((key) => [key, request.parameters[key]]),
 )
@@ -453,17 +563,21 @@ export const createOpenAIImageGeneration = async ({
   provider,
   actor,
   client,
+  resolvedInputAssets = [],
+  inputAssetReader = null,
   source = process.env,
   now = new Date(),
   generationId,
 }) => {
-  if (!client?.generateImage) {
+  if (request.mode === 'text_to_image' ? !client?.generateImage : !client?.editImage) {
     throw new Error('OpenAI Image client must be injected; no default network client is registered')
   }
   const providerCost = buildOpenAIImageProviderCostMetadata({ request, source, now })
   assertOpenAIImageBudgetAllowsDispatch(providerCost)
   try {
-    const result = await client.generateImage(request)
+    const result = request.mode === 'text_to_image'
+      ? await client.generateImage(request)
+      : await client.editImage(request, await readOpenAIImageInputFiles(resolvedInputAssets, inputAssetReader))
     const digest = result.output.sha256.slice(0, 16)
     const output = {
       id: `out_openai_${digest}`,
@@ -516,9 +630,12 @@ export const openAIImageProviderContract = Object.freeze({
   modelId,
   baseUrl,
   pathname,
+  editPathname,
   requestBodyMaxBytes,
   responseBodyMaxBytes,
   outputMaxBytes,
+  inputMaxBytes,
+  inputTotalMaxBytes,
   requestTimeoutMs,
   aspectRatioSizes,
   qualityPricesUsd,

@@ -17,6 +17,8 @@ const creditCosts = {
   image: {
     text_to_image: 1,
     image_to_image: 2,
+    image_edit: 2,
+    image_variation: 2,
   },
   video: {
     text_to_video: 8,

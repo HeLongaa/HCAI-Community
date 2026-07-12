@@ -163,6 +163,7 @@ test('seed Provider circuit dedupes failures opens atomically and requires an ex
     occurredAt: '2026-07-12T10:10:40.000Z',
     policy,
   }, actor)
+  assert.equal(probeSuccess.circuit.reasonCode, 'probe_succeeded_pending_recovery')
   const closed = await repository.creativeProviderControls.transitionCircuit(scope.scopeKey, {
     status: 'closed',
     expectedVersion: probeSuccess.circuit.version,

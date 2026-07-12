@@ -167,9 +167,9 @@ test('GET /api/creative/providers lists safe provider capability metadata', asyn
     assert.equal(payload.data.providers[0].safeMetadata.externalCredentialsConfigured, false)
     const imageCapability = payload.data.providers[0].capabilities.find((capability) => capability.workspace === 'image')
     assert.equal(imageCapability.contractVersion, 'image-capability-v1')
-    assert.deepEqual(imageCapability.modes, ['text_to_image', 'image_to_image'])
+    assert.deepEqual(imageCapability.modes, ['text_to_image', 'image_to_image', 'image_edit', 'image_variation'])
     assert.deepEqual(imageCapability.allModes, ['text_to_image', 'image_to_image', 'image_edit', 'image_variation'])
-    assert.equal(imageCapability.modeContracts.find((mode) => mode.id === 'image_edit').available, false)
+    assert.equal(imageCapability.modeContracts.find((mode) => mode.id === 'image_edit').available, true)
     assert.equal(imageCapability.parameterDefinitions.outputCount.maximum, 1)
     assert.equal(imageCapability.runtime.realProviderCallsApproved, false)
     const openai = payload.data.providers.find((provider) => provider.id === 'openai-gpt-image-2')
@@ -177,7 +177,88 @@ test('GET /api/creative/providers lists safe provider capability metadata', asyn
     assert.equal(openai.configured, false)
     assert.equal(openai.safeMetadata.adapterImplemented, true)
     assert.equal(openai.safeMetadata.networkCallsEnabled, false)
-    assert.deepEqual(openai.capabilities[0].supportedParameters, ['aspectRatio', 'stylePreset', 'quality', 'outputCount', 'outputFormat'])
+    assert.deepEqual(openai.capabilities[0].supportedParameters, ['aspectRatio', 'stylePreset', 'quality', 'outputCount', 'outputFormat', 'strength'])
+  } finally {
+    await server.close()
+  }
+})
+
+test('GET /api/creative/input-assets is authenticated and owner-scoped by the repository', async () => {
+  const calls = []
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: {
+      media: {
+        listCreativeInputs: async (actor, query) => {
+          calls.push({ handle: actor.handle, query })
+          return {
+            items: [{
+              id: 'asset-clean-1',
+              fileName: 'source.png',
+              contentType: 'image/png',
+              sizeBytes: 128,
+              purpose: 'library_asset',
+              status: 'uploaded',
+              metadata: { security: { scanStatus: 'clean' } },
+            }],
+            limit: query.limit,
+            nextCursor: null,
+          }
+        },
+      },
+    },
+  }))
+  try {
+    const denied = await requestJson(server.url, '/api/creative/input-assets', { method: 'GET' })
+    assert.equal(denied.status, 401)
+    const allowed = await requestJson(server.url, '/api/creative/input-assets?limit=12', { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(allowed.status, 200)
+    assert.equal(allowed.payload.data[0].id, 'asset-clean-1')
+    assert.deepEqual(calls, [{ handle: 'promptlin', query: { cursor: null, limit: 12 } }])
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST image-to-image persists governed parent lineage in output and media metadata', async () => {
+  resetCreativePolicyState()
+  const repository = createSeedRepository()
+  repository.media.findAccessibleCreativeInput = async (id) => ({
+    id,
+    fileName: 'source.png',
+    contentType: 'image/png',
+    sizeBytes: providerOutputPng.length,
+    purpose: 'library_asset',
+    status: 'uploaded',
+    metadata: { security: { scanStatus: 'clean' } },
+  })
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+    executeCreativeGeneration: (options) => executeCreativeGeneration({
+      ...options,
+      now: new Date('2031-07-12T00:00:00.000Z'),
+    }),
+  }))
+  try {
+    const { status, payload } = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'image',
+        mode: 'image_to_image',
+        prompt: 'Restyle this governed source',
+        inputAssetIds: ['asset-parent-1'],
+        parameters: { aspectRatio: '1:1', stylePreset: 'editorial', strength: 0.6 },
+      },
+      token: 'demo-access.taskops',
+    })
+
+    assert.equal(status, 200)
+    assert.deepEqual(payload.data.outputs[0].source.lineage, {
+      schemaVersion: 'image-lineage-v1',
+      generationId: payload.data.id,
+      relation: 'derived_from',
+      parents: [{ assetId: 'asset-parent-1', role: 'source' }],
+    })
+    const asset = await repository.media.find(payload.data.outputs[0].storage.mediaAssetId)
+    assert.deepEqual(asset.metadata.creative.lineage, payload.data.outputs[0].source.lineage)
   } finally {
     await server.close()
   }

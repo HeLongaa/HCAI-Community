@@ -52,7 +52,7 @@ test('getCreativeProviderCatalog exposes safe mock provider capabilities', () =>
   assert.equal(openai.configured, false)
   assert.equal(openai.safeMetadata.adapterImplemented, true)
   assert.equal(openai.safeMetadata.networkCallsEnabled, false)
-  assert.deepEqual(openai.capabilities[0].modes, ['text_to_image'])
+  assert.deepEqual(openai.capabilities[0].modes, ['text_to_image', 'image_to_image', 'image_edit', 'image_variation'])
   assert.deepEqual(openai.capabilities[0].parameterDefinitions.aspectRatio.options, ['1:1', '3:2', '2:3'])
 
 })
@@ -250,6 +250,87 @@ test('executeCreativeGeneration returns deterministic mock output descriptors', 
   assert.equal(first.safety.reviewRequired, false)
   assert.equal(first.policy.gates.quota, true)
   assert.equal(first.createdBy.handle, 'promptlin')
+})
+
+test('executeCreativeGeneration validates governed image input before policy and attaches lineage', async () => {
+  resetCreativePolicyState()
+  let inputReads = 0
+  const generated = await executeCreativeGeneration({
+    request: {
+      ...request,
+      mode: 'image_to_image',
+      inputAssetIds: ['asset-clean-source'],
+      parameters: { aspectRatio: '1:1', strength: 0.6 },
+    },
+    actor,
+    source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' },
+    inputAssetRepository: {
+      findAccessibleCreativeInput: async (id) => {
+        inputReads += 1
+        return {
+          id,
+          purpose: 'library_asset',
+          contentType: 'image/png',
+          sizeBytes: 128,
+          status: 'uploaded',
+          metadata: { security: { scanStatus: 'clean' } },
+        }
+      },
+    },
+  })
+
+  assert.equal(inputReads, 1)
+  assert.deepEqual(generated.outputs[0].source.lineage, {
+    schemaVersion: 'image-lineage-v1',
+    generationId: generated.id,
+    relation: 'derived_from',
+    parents: [{ assetId: 'asset-clean-source', role: 'source' }],
+  })
+})
+
+test('executeCreativeGeneration runs an injected OpenAI image edit through governed input bytes', async () => {
+  resetCreativePolicyState()
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
+  let editCalls = 0
+  const generated = await executeCreativeGeneration({
+    request: {
+      ...request,
+      providerId: 'openai-gpt-image-2',
+      mode: 'image_to_image',
+      inputAssetIds: ['asset-openai-source'],
+      parameters: { aspectRatio: '1:1', stylePreset: 'none', strength: 0.6, quality: 'medium' },
+    },
+    actor,
+    source: { CREATIVE_OPENAI_IMAGE_DAILY_BUDGET_USD: '8' },
+    inputAssetRepository: {
+      findAccessibleCreativeInput: async (id) => ({
+        id,
+        purpose: 'library_asset',
+        contentType: 'image/png',
+        sizeBytes: png.length,
+        status: 'uploaded',
+        metadata: { security: { scanStatus: 'clean' } },
+      }),
+    },
+    inputAssetReader: async () => ({ body: png }),
+    fixtureAdapters: {
+      'openai-gpt-image-2': (context) => createOpenAIImageGeneration({
+        ...context,
+        client: {
+          editImage: async (_editRequest, files) => {
+            editCalls += 1
+            assert.deepEqual(files.map((file) => file.role), ['source'])
+            return projectOpenAIImageGenerationResponse({ data: [{ b64_json: png.toString('base64') }] })
+          },
+        },
+      }),
+    },
+  })
+
+  assert.equal(editCalls, 1)
+  assert.equal(generated.status, 'completed')
+  assert.equal(generated.outputs[0].source.lineage.relation, 'derived_from')
+  assert.equal(JSON.stringify(generated).includes(png.toString('base64')), false)
 })
 
 test('executeCreativeGeneration blocks prompts that fail moderation policy', async () => {

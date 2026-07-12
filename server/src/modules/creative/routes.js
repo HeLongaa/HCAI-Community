@@ -6,6 +6,7 @@ import {
   parseCreateCreativeGenerationRequest,
   parseCreativeGenerationCancelRequest,
   parseCreativeGenerationRetryRequest,
+  parsePaginationQuery,
 } from '../../contracts/requestParsers.js'
 import { executeCreativeGeneration, getCreativeProviderCatalog, persistCreativeGenerationOutputs } from '../../creative/generationService.js'
 import { providerCallbackAuthConfig } from '../../creative/providerCallbackAuth.js'
@@ -68,6 +69,17 @@ export const registerCreativeRoutes = (router, options = {}) => {
   const callbackSource = options.source ?? process.env
   const callbackNow = () => typeof options.now === 'function' ? options.now() : options.now ?? new Date()
 
+  router.add('GET', '/api/creative/input-assets', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const page = await routeRepositories.media.listCreativeInputs?.(actor, parsePaginationQuery(context.query))
+    ok(response, page?.items ?? [], {
+      pagination: {
+        limit: page?.limit ?? 24,
+        nextCursor: page?.nextCursor ?? null,
+      },
+    })
+  })
+
   const runGenerationRequest = async ({
     payload,
     actor,
@@ -87,6 +99,8 @@ export const registerCreativeRoutes = (router, options = {}) => {
         actor,
         generationId,
         quotaRepository,
+        inputAssetRepository: routeRepositories.media,
+        inputAssetReader: options.inputAssetReader ?? null,
         providerCostRepository: routeRepositories.creativeProviderCosts,
         providerControlPlane: options.providerControlPlane ?? null,
         fixtureAdapters,

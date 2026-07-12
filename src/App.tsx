@@ -28,8 +28,9 @@ import { copy } from './i18n/copy'
 import { notificationService } from './services/notificationService'
 import { profileService } from './services/profileService'
 import { creativeService } from './services/creativeService'
+import { mediaService } from './services/mediaService'
 import { isApiClientError } from './services/apiClient'
-import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiNotification, NotificationListQuery } from './services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiNotification, NotificationListQuery } from './services/contracts'
 
 function App() {
   const [locale, setLocale] = useState<Locale>('en')
@@ -81,6 +82,7 @@ function App() {
   })
   const [imageProviderCatalog, setImageProviderCatalog] = useState<ApiCreativeProviderCatalog | null>(null)
   const [imageProviderCatalogState, setImageProviderCatalogState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [imageInputAssets, setImageInputAssets] = useState<ApiMediaAsset[]>([])
   const accountProfile = userProfile ?? findProfile('taskops') ?? marketplaceProfiles[0]
   const [profileList, setProfileList] = useState<MarketplaceProfile[]>(marketplaceProfiles)
   const [selectedProfile, setSelectedProfile] = useState<MarketplaceProfile>(() => accountProfile)
@@ -123,6 +125,20 @@ function App() {
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    if (accountSource === 'fallback') {
+      return
+    }
+    let active = true
+    creativeService.listInputAssets()
+      .then((assets) => { if (active) setImageInputAssets(assets) })
+      .catch((error) => {
+        console.info('[creative-input-assets]', error)
+        if (active) setImageInputAssets([])
+      })
+    return () => { active = false }
+  }, [accountHandle, accountSource, imageGeneration.result])
 
   useEffect(() => {
     const applyHashDeepLink = () => {
@@ -176,7 +192,9 @@ function App() {
     mode,
     stylePreset,
     aspectRatio,
-  }: { prompt: string; mode: string; stylePreset: string; aspectRatio: string }) => {
+    strength,
+    inputAssetIds,
+  }: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; strength: number; inputAssetIds: string[] }) => {
     const trimmedPrompt = imagePrompt.trim()
     if (!trimmedPrompt) {
       pushToast(locale === 'zh' ? '请先填写图片提示词。' : 'Add an image prompt first.')
@@ -201,10 +219,12 @@ function App() {
         workspace: 'image',
         mode,
         prompt: trimmedPrompt,
-        parameters: {
-          aspectRatio,
-          stylePreset,
-        },
+        inputAssetIds,
+        parameters: Object.fromEntries([
+          ['aspectRatio', aspectRatio],
+          ['stylePreset', stylePreset],
+          ['strength', strength],
+        ].filter(([key]) => modeContract.parameters.includes(String(key)))),
         providerId: provider.id,
       })
       setGenerationState('done')
@@ -225,6 +245,23 @@ function App() {
       setImageGeneration({ status: 'error', result: null, error: message })
       pushToast(message)
     }
+  }
+
+  const uploadImageInput = async (file: File) => {
+    const contract = await mediaService.createUpload({
+      fileName: file.name,
+      contentType: file.type || 'application/octet-stream',
+      sizeBytes: file.size,
+      purpose: 'library_asset',
+      metadata: { source: 'image-studio-input' },
+    })
+    if (!contract.upload.url.startsWith('mock://')) {
+      await fetch(contract.upload.url, { method: contract.upload.method, headers: contract.upload.headers, body: file })
+    }
+    await mediaService.completeUpload(contract.asset.id)
+    const assets = await creativeService.listInputAssets()
+    setImageInputAssets(assets)
+    pushToast(locale === 'zh' ? '图片已上传；扫描通过后可用于创作。' : 'Image uploaded. It becomes selectable after a clean scan.')
   }
 
   const requireAuth = () => setLoginOpen(true)
@@ -579,7 +616,7 @@ function App() {
       <PageRenderer
         t={t}
         navigation={{ page, navigateToPage }}
-        workspace={{ prompt, setPrompt, generationState, runGenerate, imageGeneration, imageProviderCatalog, imageProviderCatalogState, runImageGeneration, playgroundWorkspace, setPlaygroundWorkspace }}
+        workspace={{ prompt, setPrompt, generationState, runGenerate, imageGeneration, imageProviderCatalog, imageProviderCatalogState, imageInputAssets: accountSource === 'fallback' ? [] : imageInputAssets, uploadImageInput, runImageGeneration, playgroundWorkspace, setPlaygroundWorkspace }}
         player={{ playTrack }}
         feedback={{ requireAuth, simulateAction }}
         tasks={{

@@ -19,9 +19,9 @@ This document closes V1-15. The executable source of truth is
 | Mode | V1 contract | Mock fixture | OpenAI shell | Replicate staging shell | Input contract |
 | --- | --- | --- | --- | --- | --- |
 | `text_to_image` | Available | Available | Fixture-only | Declared by the disabled shell | No input image |
-| `image_to_image` | Available | Available | Unavailable | Unavailable | Exactly one governed image |
-| `image_edit` | Declared, unavailable | Unavailable | Unavailable | Unavailable | Source plus mask after a later approved adapter task |
-| `image_variation` | Declared, unavailable | Unavailable | Unavailable | Unavailable | Exactly one source after a later approved runtime decision |
+| `image_to_image` | Available | Available | Fixture-only | Unavailable | Exactly one governed source image |
+| `image_edit` | Available | Available | Fixture-only | Unavailable | Governed source plus PNG mask |
+| `image_variation` | Available | Available | Fixture-only through edit semantics | Unavailable | Exactly one governed source image |
 
 Unknown modes are rejected. Declared but unavailable modes return an explicit validation error and never fall back to
 another mode. Image Studio shows all four modes, disables unsupported modes, and also disables input-dependent modes
@@ -48,9 +48,19 @@ are rejected. Product presets such as poster, avatar, product visual, and logo c
 generation modes. The former arbitrary frontend `controls` array is not part of the contract.
 
 The OpenAI projection supports only `aspectRatio`, `stylePreset`, `quality`, `outputCount`, and `outputFormat` for
-`text_to_image`. Its aspect ratios are narrowed to `1:1`, `3:2`, and `2:3`; `seed` and every input-asset mode are
-rejected before adapter dispatch. Product style presets compile into deterministic prompt instructions rather than
+`text_to_image`. Its aspect ratios are narrowed to `1:1`, `3:2`, and `2:3`; `seed` is rejected before adapter
+dispatch. Product style presets compile into deterministic prompt instructions rather than
 being sent as unsupported Provider fields.
+
+V1-17 extends the OpenAI fixture projection to `image_to_image`, `image_edit`, and `image_variation` through the fixed
+`/images/edits` boundary. `strength` is compiled into a deterministic prompt instruction and is never sent as an
+unsupported Provider field. Variation is a product semantic implemented through an edit request, not a claim that
+OpenAI exposes a separate GPT Image 2 variation endpoint.
+
+Input assets are resolved server-side before moderation, quota, credit, Provider cost, or adapter dispatch. They must
+be accessible to the actor, uploaded, in an allowed purpose/MIME partition, and scan-clean. Edit masks must be PNG.
+Outputs carry `image-lineage-v1` with the generation id, relationship (`derived_from`, `edited_from`, or
+`variation_of`), parent asset ids, and source/mask roles; private URLs and raw bytes are excluded.
 
 ## Output, Cost, And Safety
 
@@ -64,6 +74,8 @@ being sent as unsupported Provider fields.
   a 25 MiB decoded output cap, a 36 MiB response cap, and safe usage fields before governance ingestion.
 - Decoded bytes stay in a non-serializable in-process map only long enough to enter source-keyed media ingestion;
   missing bytes fail closed and never fall back to a Provider URL.
+- Input bytes use a separately injected reader, are checked against declared MIME and 20 MiB per-file / 40 MiB total
+  limits, and exist only long enough to construct the fixture-gated multipart request.
 
 ## API And UI Projection
 
@@ -82,6 +94,8 @@ prevents route bypasses from accepting a mode or parameter combination that the 
 - OpenAPI contains the four declared modes and the Image parameter allowlist.
 - OpenAI adapter tests cover fixed request mapping, staging-only double network gates, response and error projection,
   budget pricing, non-serializable output bytes, Provider-specific parameter rejection, and idempotent cost accounting.
+- Input resolver, route, repository, media metadata, Image Studio, and Playwright tests cover ownership, scan state,
+  source/mask roles, strength, mode-specific controls, and durable lineage.
 - `config/v1-runtime-surfaces.json` continues to classify Image execution as a release blocker until an approved real
   Provider replaces deterministic mock execution.
 
