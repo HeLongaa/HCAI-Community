@@ -811,6 +811,7 @@ export type ApiCreativeProviderCatalogEntry = ApiCreativeProvider & {
   enabled: boolean
   configured: boolean
   default: boolean
+  fixtureInjectable?: boolean
   capabilities: ApiCreativeCapability[]
   safeMetadata: Record<string, string | number | boolean | null>
 }

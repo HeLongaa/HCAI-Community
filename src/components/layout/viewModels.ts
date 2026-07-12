@@ -20,6 +20,7 @@ import type {
 } from '../../domain/types'
 import type { TaskChildCollection } from '../../hooks/useTaskWorkflows'
 import type { OAuthLoginResult } from '../../hooks/useAccountState'
+import type { VideoGenerationWorkflow } from '../../hooks/useVideoGenerationWorkflow'
 import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiNotification, ApiPointsSummary, ApiPolicyConsentStatus, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, ApiUserCreativeGeneration, NotificationListQuery, OAuthProvider, RegisterRequest } from '../../services/contracts'
 
 export type AppCopyViewModel = {
@@ -155,6 +156,7 @@ export type WorkspaceViewModel = {
   imageInputAssets: ApiMediaAsset[]
   uploadImageInput: (file: File) => Promise<void>
   runImageGeneration: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; strength: number; inputAssetIds: string[] }) => Promise<void>
+  videoWorkflow: VideoGenerationWorkflow
   playgroundWorkspace: PlaygroundMode
   setPlaygroundWorkspace: Dispatch<SetStateAction<PlaygroundMode>>
 }

@@ -99,7 +99,9 @@ Includes:
   implemented but every Chat network/runtime switch remains off in production smoke, and tools remain unavailable
 - Video capability version, Veo/Runway model decision, closed modes/parameters, governed input bytes/lineage,
   safe operation persistence, generated-second pricing, strict fixture lifecycle/replay, bounded MP4 ingestion,
-  scanner isolation and terminal accounting, while adapter product registration, HTTP, lifecycle runtime, real calls,
+  scanner isolation and terminal accounting; the Video UI consumes application capability/history/mutation/media APIs,
+  preserves ordered image/audio roles, polls only application generation detail, gates private preview on clean MP4, and
+  labels Mock/fixture/unavailable runtimes, while adapter product registration, HTTP, lifecycle runtime, real calls,
   production, and failover remain disabled
 - external OAuth provider metadata validation
 - creative provider safety validation: production smoke must keep staging provider preflight and the Provider HTTP

@@ -59,6 +59,7 @@ const expectedMockDataImports = [
   'src/features/explore/ExplorePages.tsx',
   'src/features/profile/ProfilePages.tsx',
   'src/features/static-pages/StaticPages.tsx',
+  'src/features/workspace/VideoStudioPage.tsx',
   'src/features/workspace/WorkspacePages.tsx',
   'src/hooks/useAppFeedback.ts',
   'src/hooks/useCommunityWorkflows.ts',

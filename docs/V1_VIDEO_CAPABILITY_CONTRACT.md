@@ -66,4 +66,7 @@ projection/replay construction, and generated-second cost reservation. V1-27 add
 registered-but-disabled fixture lifecycle behavior, output ingestion, scanner isolation, timeout/cancellation, and
 terminal accounting. V1-28 and V1-29 still own the production Video UI and staging acceptance. Those tasks must preserve
 this contract or update it explicitly with matching tests and docs.
-Ordinary continuation language is never approval for a real Video Provider request.
+V1-28 implements the application-API Video workspace with capability-driven controls, governed input selection,
+owner-scoped history, application polling/mutations, scanner-aware private preview, refresh-safe retry guidance, and
+explicit Mock/fixture/unavailable labels. V1-29 still owns staging acceptance. Ordinary continuation language is never
+approval for a real Video Provider request.

@@ -41,6 +41,15 @@ import { recordVideoProviderOperationDispatch } from '../../creative/videoProvid
 
 const terminalProviderFailureStatuses = new Set(['failed', 'cancelled'])
 
+const safeCreativeInputAsset = (asset) => ({
+  ...asset,
+  metadata: {
+    security: {
+      scanStatus: asset?.metadata?.security?.scanStatus ?? null,
+    },
+  },
+})
+
 const errorCodeForProviderFailure = (generation) => {
   if (generation?.errorCode) return generation.errorCode
   if (generation?.status === 'cancelled') return 'PROVIDER_CANCELLED'
@@ -79,7 +88,7 @@ export const registerCreativeRoutes = (router, options = {}) => {
   router.add('GET', '/api/creative/input-assets', async (_request, response, context) => {
     const actor = requireUser(context)
     const page = await routeRepositories.media.listCreativeInputs?.(actor, parsePaginationQuery(context.query))
-    ok(response, page?.items ?? [], {
+    ok(response, (page?.items ?? []).map(safeCreativeInputAsset), {
       pagination: {
         limit: page?.limit ?? 24,
         nextCursor: page?.nextCursor ?? null,

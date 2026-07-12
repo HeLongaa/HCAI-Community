@@ -24,6 +24,7 @@ import { useNavigationState } from './hooks/useNavigationState'
 import { usePlayerState } from './hooks/usePlayerState'
 import { useTaskWorkflows } from './hooks/useTaskWorkflows'
 import { useThemeState } from './hooks/useThemeState'
+import { useVideoGenerationWorkflow } from './hooks/useVideoGenerationWorkflow'
 import { copy } from './i18n/copy'
 import { notificationService } from './services/notificationService'
 import { profileService } from './services/profileService'
@@ -114,6 +115,14 @@ function App() {
   const [adminDeepLink, setAdminDeepLink] = useState<AdminDeepLink | null>(null)
   const t = copy[locale]
   const { ledgerItems, pointsSummary, pointsStatus, pushToast, pushLedger, simulateAction } = useAppFeedback(locale, `${accountSource}:${accountHandle}`)
+  const requireAuth = useCallback(() => setLoginOpen(true), [])
+  const videoWorkflow = useVideoGenerationWorkflow({
+    enabled: accountSource !== 'fallback',
+    accountKey: `${accountSource}:${accountHandle}`,
+    locale,
+    requireAuth,
+    pushToast,
+  })
   const currentPoints = accountSource === 'fallback'
     ? (locale === 'zh' ? '未登录' : 'Not signed in')
     : pointText(String(pointsSummary?.available ?? ledgerItems[0]?.[3] ?? '18,420'))
@@ -535,8 +544,6 @@ function App() {
 
   const hasImageGenerationRetryRequest = (id: string) => imageGenerationRequests.current.has(id)
 
-  const requireAuth = () => setLoginOpen(true)
-
   const refreshNotifications = useCallback(async () => {
     setNotificationsLoading(true)
     setNotificationsError(null)
@@ -887,7 +894,7 @@ function App() {
       <PageRenderer
         t={t}
         navigation={{ page, navigateToPage }}
-        workspace={{ prompt, setPrompt, generationState, runGenerate, imageGeneration, imageGenerationHistory, imageGenerationAction, refreshImageGenerationHistory, selectImageGeneration, cancelImageGeneration, retryImageGeneration, downloadImageGenerationAsset, prepareImageAssetForReuse, hasImageGenerationRetryRequest, imageProviderCatalog, imageProviderCatalogState, imageInputAssets: accountSource === 'fallback' ? [] : imageInputAssets, uploadImageInput, runImageGeneration, playgroundWorkspace, setPlaygroundWorkspace }}
+        workspace={{ prompt, setPrompt, generationState, runGenerate, imageGeneration, imageGenerationHistory, imageGenerationAction, refreshImageGenerationHistory, selectImageGeneration, cancelImageGeneration, retryImageGeneration, downloadImageGenerationAsset, prepareImageAssetForReuse, hasImageGenerationRetryRequest, imageProviderCatalog, imageProviderCatalogState, imageInputAssets: accountSource === 'fallback' ? [] : imageInputAssets, uploadImageInput, runImageGeneration, videoWorkflow, playgroundWorkspace, setPlaygroundWorkspace }}
         player={{ playTrack }}
         feedback={{ requireAuth, simulateAction }}
         tasks={{

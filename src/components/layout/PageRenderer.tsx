@@ -77,6 +77,7 @@ export function PageRenderer({
     imageInputAssets,
     uploadImageInput,
     runImageGeneration,
+    videoWorkflow,
     playgroundWorkspace,
     setPlaygroundWorkspace,
   } = workspace
@@ -151,6 +152,7 @@ export function PageRenderer({
           imageInputAssets={imageInputAssets}
           uploadImageInput={uploadImageInput}
           runImageGeneration={runImageGeneration}
+          videoWorkflow={videoWorkflow}
           signedIn={Boolean(account.accountHandle)}
           tasks={taskList}
           libraryItems={libraryItems}

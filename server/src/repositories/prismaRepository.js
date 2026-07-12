@@ -6140,7 +6140,7 @@ const createPrismaRepository = async (fallbackRepository) => {
           ownerId: owner.id,
           status: 'uploaded',
           purpose: { in: ['submission_asset', 'profile_portfolio', 'library_asset'] },
-          contentType: { in: ['image/png', 'image/jpeg', 'image/webp'] },
+          contentType: { in: ['image/png', 'image/jpeg', 'image/webp', 'audio/mpeg', 'audio/wav', 'audio/mp4'] },
           metadata: { path: ['security', 'scanStatus'], equals: 'clean' },
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],

@@ -305,15 +305,15 @@ addCheck(
 
 addCheck(
   'creation tools',
-  'simulated music and video studio controls remain explicit',
+  'simulated music and API-backed video runtime boundaries remain explicit',
   includesAll(app, [
     'Selected tool: ${tool.label}',
     '已加入生成队列',
-    'const runStudioGenerate = ()',
-    '已重新混合',
-    '已选择生成模式',
+    "workspace: 'video'",
+    'Private preview',
+    'Fixture only',
   ]),
-  'tool selection, studio generate, remix feedback',
+  'music simulation plus application Video APIs and runtime labels',
 )
 
 addCheck(
@@ -474,7 +474,7 @@ addCheck(
 addCheck(
   'auth simulation',
   'auth-gated actions open the login modal',
-  includesAll(app, ['const requireAuth = () => setLoginOpen(true)', 'LoginModal', "'google'", "'discord'", 'Continue with ${provider.label}']),
+  includesAll(app, ['const requireAuth = useCallback(() => setLoginOpen(true), [])', 'LoginModal', "'google'", "'discord'", 'Continue with ${provider.label}']),
   'simulated login gate',
 )
 

@@ -234,7 +234,13 @@ test('GET /api/creative/input-assets is authenticated and owner-scoped by the re
               sizeBytes: 128,
               purpose: 'library_asset',
               status: 'uploaded',
-              metadata: { security: { scanStatus: 'clean' } },
+              metadata: {
+                security: {
+                  scanStatus: 'clean',
+                  scanNote: 'internal scanner note',
+                  externalScanId: 'scanner-private-id',
+                },
+              },
             }],
             limit: query.limit,
             nextCursor: null,
@@ -249,6 +255,9 @@ test('GET /api/creative/input-assets is authenticated and owner-scoped by the re
     const allowed = await requestJson(server.url, '/api/creative/input-assets?limit=12', { method: 'GET', token: 'demo-access.promptlin' })
     assert.equal(allowed.status, 200)
     assert.equal(allowed.payload.data[0].id, 'asset-clean-1')
+    assert.deepEqual(allowed.payload.data[0].metadata, { security: { scanStatus: 'clean' } })
+    assert.equal(JSON.stringify(allowed.payload).includes('internal scanner note'), false)
+    assert.equal(JSON.stringify(allowed.payload).includes('scanner-private-id'), false)
     assert.deepEqual(calls, [{ handle: 'promptlin', query: { cursor: null, limit: 12 } }])
   } finally {
     await server.close()
