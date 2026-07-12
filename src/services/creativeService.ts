@@ -1,5 +1,6 @@
-import { api } from './apiClient'
+import { api, withQuery } from './apiClient'
 import type {
+  ApiPaginationMeta,
   ApiCreativeGeneration,
   ApiCreativeGenerationMutationResponse,
   ApiCreativeProviderCatalog,
@@ -7,6 +8,9 @@ import type {
   CreateCreativeGenerationRequest,
   CreativeGenerationMutationRequest,
   RetryCreativeGenerationRequest,
+  ApiUserCreativeGeneration,
+  UserCreativeGenerationHistoryPage,
+  UserCreativeGenerationHistoryQuery,
 } from './contracts'
 
 export const creativeService = {
@@ -18,6 +22,16 @@ export const creativeService = {
   },
   createGeneration(body: CreateCreativeGenerationRequest) {
     return api.post<ApiCreativeGeneration>('/creative/generations', body)
+  },
+  async listGenerations(query: UserCreativeGenerationHistoryQuery = {}): Promise<UserCreativeGenerationHistoryPage> {
+    const envelope = await api.getEnvelope<ApiUserCreativeGeneration[]>(withQuery('/creative/generations', query))
+    return {
+      items: envelope.data,
+      nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null,
+    }
+  },
+  generation(id: string) {
+    return api.get<ApiUserCreativeGeneration>(`/creative/generations/${id}`)
   },
   cancelGeneration(id: string, body: CreativeGenerationMutationRequest) {
     return api.post<ApiCreativeGenerationMutationResponse>(`/creative/generations/${id}/cancel`, body)

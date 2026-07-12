@@ -323,12 +323,15 @@ addCheck(
   includesAll(app, [
     'creativeService.createGeneration',
     'creativeService.listProviders',
+    'creativeService.listGenerations',
+    'creativeService.generation',
+    'mediaService.createDownload',
     "workspace: 'image'",
     "'text_to_image' | 'image_to_image' | 'image_edit' | 'image_variation'",
-    'storage.mediaAssetId',
-    'Download is gated until media scan is clean.',
+    'image-generation-history',
+    '!providerGeneration && results.map',
   ]),
-  'typed creative service, Image Studio provider request, persisted media asset and scan-gated download state',
+  'typed generation/history services, lifecycle UI, governed download contract, and no Image demo result fallback',
 )
 
 addCheck(

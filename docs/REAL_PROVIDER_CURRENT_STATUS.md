@@ -2,7 +2,7 @@
 
 This is the first decision page to read before starting any real-provider work. It compresses the current provider readiness state into one handoff: what is usable now, what is fixture-only, what remains deferred, and what requires explicit approval.
 
-Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, Admin generation history, internal mutation controls, Provider budget observability, the V1-11 fail-closed Provider control plane, the V1-12 shared error/durable retry policy, and a fixture-only OpenAI GPT Image 2 adapter are available. The OpenAI HTTP client, callback API, and dedicated polling worker remain default-disabled and unregistered from product dispatch. Real paid-provider calls, real Provider webhook delivery, external Provider alert delivery, enabled real polling, real Provider mutation clients, real cap readers/probes, and production paid-provider enablement remain no-go.
+Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, owner-scoped Image lifecycle history, Admin generation history, internal mutation controls, Provider budget observability, the V1-11 fail-closed Provider control plane, the V1-12 shared error/durable retry policy, and a fixture-only OpenAI GPT Image 2 adapter are available. The OpenAI HTTP client, callback API, and dedicated polling worker remain default-disabled and unregistered from product dispatch. Real paid-provider calls, real Provider webhook delivery, external Provider alert delivery, enabled real polling, real Provider mutation clients, real cap readers/probes, and production paid-provider enablement remain no-go.
 
 V1-04 now records conditional implementation-planning decisions for all four modalities in
 `docs/V1_PROVIDER_DECISION_MATRIX.md` and `config/v1-provider-matrix.json`. These selections define primary/backup
@@ -22,6 +22,11 @@ V1-17 adds governed source/mask selection, image-to-image, edit and variation pr
 OpenAI `/images/edits` multipart boundary, and durable `image-lineage-v1` output relationships. Inputs fail closed on
 ownership, purpose, MIME, upload or scan violations before accounting. Product generation still uses mock execution;
 the OpenAI shell and both network gates remain disabled.
+
+V1-18 adds owner-scoped user generation history/detail APIs, safe output hydration, six-state Image lifecycle recovery,
+bounded platform polling, cancellation, same-session exact retry, governed download contracts, and compatible output
+reuse. Raw prompts are not persisted for retry, and the browser never contacts Provider endpoints. This productizes
+the Image job experience without approving or enabling real Provider traffic.
 
 V1-44 freezes the corresponding four-modality content safety baseline in
 `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. It defines 20 risk categories,
@@ -83,6 +88,7 @@ Sora 2 models on 2026-09-24 without a recommended replacement.
 | Provider catalog | Safe metadata only | Image capabilities include contract version, all four declared modes, per-mode availability, parameter definitions, and guarded runtime flags; OpenAI and `replicate_staging` remain unavailable/default-disabled. |
 | Durable accounting | Usable | Generation records, quota windows/reservations, credit reservation/settlement/refund, and media governance are wired. |
 | Admin generation history | Usable read-only | Operators can inspect sanitized generation, cost, budget, quota, credit, safety, policy, media, audit, and replay evidence. |
+| User Image generation history | Usable | Owners can restore safe job history/details, inspect lifecycle and governed outputs, cancel active jobs, retry with current-memory inputs, download clean assets, and reuse compatible outputs. |
 | Provider lifecycle foundation | Implemented / default-disabled | Replay ledger, lifecycle reducer, side-effect plan, callback route, polling plan, and dedicated polling worker exist without approved real Provider traffic. |
 | Provider budget operations | Usable read-only / fixture-only | Audit persistence, internal notifications, Admin operations metrics, exporter metrics, and fixture dry-run dispatch audit rows exist. |
 | Provider HTTP client boundary | Implemented / default-disabled | Fixed OpenAI Image and Replicate client factories use deployment-secret boundaries. No product route registers either one; OpenAI additionally requires independent client and network switches. V1-07 supplies only a Replicate read-only status wrapper to the separately gated worker. No external call is approved. |
@@ -105,7 +111,8 @@ These paths are available without real-provider approval:
 
 - `GET /api/creative/providers` returns safe provider capability metadata.
 - `POST /api/creative/generations` runs the deterministic mock provider only.
-- Image Studio uses the creative API path for stored image outputs.
+- Image Studio uses the creative API path for stored image outputs and owner-scoped history/detail reads.
+- Image Studio restores six lifecycle states, polls active platform records only, and uses existing mutation/download APIs.
 - Durable generation history records prompt hash/preview, provider ids, usage, quota, credit, safety, policy, lifecycle timestamps, and linked output media assets.
 - Durable quota and credit ledgers reserve, commit, release, settle, refund, and dedupe accounting decisions.
 - Media scan governance gates generated asset downloads.

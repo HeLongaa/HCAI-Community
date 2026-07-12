@@ -20,7 +20,7 @@ import type {
 } from '../../domain/types'
 import type { TaskChildCollection } from '../../hooks/useTaskWorkflows'
 import type { OAuthLoginResult } from '../../hooks/useAccountState'
-import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiNotification, ApiPointsSummary, ApiPolicyConsentStatus, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, NotificationListQuery, OAuthProvider, RegisterRequest } from '../../services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiNotification, ApiPointsSummary, ApiPolicyConsentStatus, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, ApiUserCreativeGeneration, NotificationListQuery, OAuthProvider, RegisterRequest } from '../../services/contracts'
 
 export type AppCopyViewModel = {
   t: Record<string, string>
@@ -130,6 +130,26 @@ export type WorkspaceViewModel = {
     result: ApiCreativeGeneration | null
     error: string | null
   }
+  imageGenerationHistory: {
+    status: 'idle' | 'loading' | 'ready' | 'error'
+    items: ApiUserCreativeGeneration[]
+    selected: ApiUserCreativeGeneration | null
+    nextCursor: string | null
+    error: string | null
+    polling: boolean
+  }
+  imageGenerationAction: {
+    type: 'cancel' | 'retry' | 'download' | null
+    targetId: string | null
+    error: string | null
+  }
+  refreshImageGenerationHistory: (cursor?: string | null) => Promise<void>
+  selectImageGeneration: (id: string) => void
+  cancelImageGeneration: (id: string) => Promise<void>
+  retryImageGeneration: (id: string) => Promise<void>
+  downloadImageGenerationAsset: (assetId: string) => Promise<void>
+  prepareImageAssetForReuse: (assetId: string) => Promise<boolean>
+  hasImageGenerationRetryRequest: (id: string) => boolean
   imageProviderCatalog: ApiCreativeProviderCatalog | null
   imageProviderCatalogState: 'loading' | 'ready' | 'error'
   imageInputAssets: ApiMediaAsset[]

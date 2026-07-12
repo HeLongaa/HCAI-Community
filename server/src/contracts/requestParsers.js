@@ -518,6 +518,22 @@ export const parsePaginationQuery = (query, options = {}) => ({
   limit: parseLimit(query, options.defaultLimit ?? 20, options.maxLimit ?? 100),
 })
 
+export const parseCreativeGenerationHistoryQuery = (query) => {
+  const workspace = optionalText(query, 'workspace', 'image')
+  const status = optionalText(query, 'status', null)
+  if (!creativeWorkspaces.includes(workspace)) {
+    throw validationFailed(`workspace must be one of: ${creativeWorkspaces.join(', ')}`)
+  }
+  if (status && !creativeGenerationStatuses.includes(status)) {
+    throw validationFailed(`status must be one of: ${creativeGenerationStatuses.join(', ')}`)
+  }
+  return {
+    ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 50 }),
+    workspace,
+    status,
+  }
+}
+
 export const parseAdminReviewListQuery = (query) => ({
   ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 }),
   queue: optionalText(query, 'queue', null),

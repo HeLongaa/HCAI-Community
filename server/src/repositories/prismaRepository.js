@@ -3999,7 +3999,12 @@ const createPrismaRepository = async (fallbackRepository) => {
         : null
       const rows = await client.creativeGeneration.findMany({
         where: {
-          ...(options.actorHandle ? { actorHandle: String(options.actorHandle) } : {}),
+          ...((options.actorHandle || options.actorId) ? {
+            OR: [
+              ...(options.actorHandle ? [{ actorHandle: String(options.actorHandle) }] : []),
+              ...(options.actorId ? [{ actorId: String(options.actorId) }] : []),
+            ],
+          } : {}),
           ...(options.workspace ? { workspace: String(options.workspace) } : {}),
           ...(options.mode ? { mode: String(options.mode) } : {}),
           ...(options.providerId ? { providerId: String(options.providerId) } : {}),

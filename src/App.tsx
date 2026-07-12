@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import './index.css'
 
 import type {
@@ -30,7 +30,7 @@ import { profileService } from './services/profileService'
 import { creativeService } from './services/creativeService'
 import { mediaService } from './services/mediaService'
 import { isApiClientError } from './services/apiClient'
-import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiNotification, NotificationListQuery } from './services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiNotification, ApiUserCreativeGeneration, CreateCreativeGenerationRequest, NotificationListQuery } from './services/contracts'
 
 function App() {
   const [locale, setLocale] = useState<Locale>('en')
@@ -83,6 +83,27 @@ function App() {
   const [imageProviderCatalog, setImageProviderCatalog] = useState<ApiCreativeProviderCatalog | null>(null)
   const [imageProviderCatalogState, setImageProviderCatalogState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [imageInputAssets, setImageInputAssets] = useState<ApiMediaAsset[]>([])
+  const [imageGenerationHistory, setImageGenerationHistory] = useState<{
+    status: 'idle' | 'loading' | 'ready' | 'error'
+    items: ApiUserCreativeGeneration[]
+    selected: ApiUserCreativeGeneration | null
+    nextCursor: string | null
+    error: string | null
+    polling: boolean
+  }>({
+    status: 'idle',
+    items: [],
+    selected: null,
+    nextCursor: null,
+    error: null,
+    polling: false,
+  })
+  const imageGenerationRequests = useRef(new Map<string, CreateCreativeGenerationRequest>())
+  const [imageGenerationAction, setImageGenerationAction] = useState<{
+    type: 'cancel' | 'retry' | 'download' | null
+    targetId: string | null
+    error: string | null
+  }>({ type: null, targetId: null, error: null })
   const accountProfile = userProfile ?? findProfile('taskops') ?? marketplaceProfiles[0]
   const [profileList, setProfileList] = useState<MarketplaceProfile[]>(marketplaceProfiles)
   const [selectedProfile, setSelectedProfile] = useState<MarketplaceProfile>(() => accountProfile)
@@ -139,6 +160,128 @@ function App() {
       })
     return () => { active = false }
   }, [accountHandle, accountSource, imageGeneration.result])
+
+  const mergeImageGeneration = useCallback((generation: ApiUserCreativeGeneration) => {
+    setImageGenerationHistory((current) => ({
+      ...current,
+      status: 'ready',
+      items: [generation, ...current.items.filter((item) => item.id !== generation.id)]
+        .sort((left, right) => String(right.createdAt ?? '').localeCompare(String(left.createdAt ?? ''))),
+      selected: current.selected?.id === generation.id || !current.selected ? generation : current.selected,
+      error: null,
+    }))
+  }, [])
+
+  const refreshImageGenerationHistory = useCallback(async (cursor: string | null = null) => {
+    if (accountSource === 'fallback') return
+    setImageGenerationHistory((current) => ({
+      ...current,
+      status: cursor ? current.status : 'loading',
+      error: null,
+    }))
+    try {
+      const pageResult = await creativeService.listGenerations({ workspace: 'image', cursor, limit: 20 })
+      setImageGenerationHistory((current) => {
+        const items = cursor
+          ? [...current.items, ...pageResult.items.filter((item) => !current.items.some((existing) => existing.id === item.id))]
+          : pageResult.items
+        return {
+          status: 'ready',
+          items,
+          selected: current.selected
+            ? items.find((item) => item.id === current.selected?.id) ?? items[0] ?? null
+            : items[0] ?? null,
+          nextCursor: pageResult.nextCursor,
+          error: null,
+          polling: current.polling,
+        }
+      })
+    } catch (error) {
+      console.info('[creative-generation-history]', error)
+      setImageGenerationHistory((current) => ({
+        ...current,
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Could not load image generation history.',
+      }))
+    }
+  }, [accountSource])
+
+  const selectImageGeneration = useCallback((id: string) => {
+    setImageGenerationHistory((current) => ({
+      ...current,
+      selected: current.items.find((item) => item.id === id) ?? current.selected,
+    }))
+  }, [])
+
+  useEffect(() => {
+    imageGenerationRequests.current.clear()
+    if (accountSource === 'fallback') {
+      setImageGenerationHistory({
+        status: 'idle',
+        items: [],
+        selected: null,
+        nextCursor: null,
+        error: null,
+        polling: false,
+      })
+      return
+    }
+    void refreshImageGenerationHistory()
+  }, [accountHandle, accountSource, refreshImageGenerationHistory])
+
+  useEffect(() => {
+    const generationId = imageGenerationHistory.selected?.id
+    if (!generationId || !imageGenerationHistory.selected?.actions.poll.available || accountSource === 'fallback') {
+      setImageGenerationHistory((current) => current.polling ? { ...current, polling: false } : current)
+      return
+    }
+    let cancelled = false
+    let timeoutId: number | null = null
+    let delayMs = 2_000
+
+    const schedule = (delay: number) => {
+      if (!cancelled) timeoutId = window.setTimeout(poll, delay)
+    }
+    const poll = async () => {
+      if (cancelled) return
+      if (document.hidden || !navigator.onLine) {
+        setImageGenerationHistory((current) => ({ ...current, polling: false }))
+        schedule(5_000)
+        return
+      }
+      setImageGenerationHistory((current) => ({ ...current, polling: true }))
+      try {
+        const generation = await creativeService.generation(generationId)
+        if (cancelled) return
+        mergeImageGeneration(generation)
+        setImageGenerationHistory((current) => ({
+          ...current,
+          selected: generation,
+          polling: generation.actions.poll.available,
+        }))
+        if (generation.actions.poll.available) {
+          delayMs = Math.min(Math.round(delayMs * 1.5), 10_000)
+          schedule(delayMs)
+        }
+      } catch (error) {
+        if (cancelled) return
+        console.info('[creative-generation-poll]', error)
+        setImageGenerationHistory((current) => ({
+          ...current,
+          polling: false,
+          error: error instanceof Error ? error.message : 'Could not refresh generation status.',
+        }))
+        delayMs = Math.min(delayMs * 2, 10_000)
+        schedule(delayMs)
+      }
+    }
+
+    schedule(delayMs)
+    return () => {
+      cancelled = true
+      if (timeoutId != null) window.clearTimeout(timeoutId)
+    }
+  }, [accountSource, imageGenerationHistory.selected?.actions.poll.available, imageGenerationHistory.selected?.id, mergeImageGeneration])
 
   useEffect(() => {
     const applyHashDeepLink = () => {
@@ -215,7 +358,7 @@ function App() {
     setGenerationState('loading')
     setImageGeneration({ status: 'loading', result: null, error: null })
     try {
-      const result = await creativeService.createGeneration({
+      const request: CreateCreativeGenerationRequest = {
         workspace: 'image',
         mode,
         prompt: trimmedPrompt,
@@ -226,13 +369,24 @@ function App() {
           ['strength', strength],
         ].filter(([key]) => modeContract.parameters.includes(String(key)))),
         providerId: provider.id,
-      })
+      }
+      const result = await creativeService.createGeneration(request)
+      imageGenerationRequests.current.set(result.id, request)
       setGenerationState('done')
       setImageGeneration({ status: 'done', result, error: null })
+      try {
+        const detail = await creativeService.generation(result.id)
+        mergeImageGeneration(detail)
+        setImageGenerationHistory((current) => ({ ...current, selected: detail }))
+      } catch (historyError) {
+        console.info('[creative-generation-detail]', historyError)
+        void refreshImageGenerationHistory()
+      }
       const output = result.outputs[0]
+      const completed = result.status === 'completed' || result.status === 'review_required'
       pushToast(locale === 'zh'
-        ? `图片生成完成：${output?.storage.mediaAssetId ?? result.id}`
-        : `Image generation complete: ${output?.storage.mediaAssetId ?? result.id}`)
+        ? `${completed ? '图片生成完成' : '图片任务已创建'}：${output?.storage.mediaAssetId ?? result.id}`
+        : `${completed ? 'Image generation complete' : 'Image job created'}: ${output?.storage.mediaAssetId ?? result.id}`)
     } catch (error) {
       console.info('[creative-service]', error)
       const message = isApiClientError(error) && error.code === 'AUTH_REQUIRED'
@@ -263,6 +417,123 @@ function App() {
     setImageInputAssets(assets)
     pushToast(locale === 'zh' ? '图片已上传；扫描通过后可用于创作。' : 'Image uploaded. It becomes selectable after a clean scan.')
   }
+
+  const refreshImageInputAssets = async () => {
+    const assets = await creativeService.listInputAssets()
+    setImageInputAssets(assets)
+    return assets
+  }
+
+  const cancelImageGeneration = async (id: string) => {
+    setImageGenerationAction({ type: 'cancel', targetId: id, error: null })
+    try {
+      await creativeService.cancelGeneration(id, {
+        idempotencyKey: `ui-${crypto.randomUUID()}`,
+        reasonCode: 'user_cancelled',
+      })
+      const detail = await creativeService.generation(id)
+      mergeImageGeneration(detail)
+      setImageGenerationHistory((current) => ({ ...current, selected: detail }))
+      pushToast(locale === 'zh' ? '图片任务已取消。' : 'Image job cancelled.')
+    } catch (error) {
+      console.info('[creative-generation-cancel]', error)
+      const message = error instanceof Error ? error.message : (locale === 'zh' ? '取消失败。' : 'Cancellation failed.')
+      setImageGenerationAction({ type: null, targetId: null, error: message })
+      void refreshImageGenerationHistory()
+      pushToast(message)
+      return
+    }
+    setImageGenerationAction({ type: null, targetId: null, error: null })
+  }
+
+  const retryImageGeneration = async (id: string) => {
+    const request = imageGenerationRequests.current.get(id)
+    if (!request) {
+      const message = locale === 'zh'
+        ? '刷新后不会保留原始提示词；请根据安全预览重新填写后生成。'
+        : 'Raw prompts are not retained after refresh. Recreate the request from its safe preview.'
+      setImageGenerationAction({ type: null, targetId: null, error: message })
+      pushToast(message)
+      return
+    }
+    const confirmed = window.confirm(locale === 'zh' ? '确认使用完全相同的输入重试此任务？' : 'Retry this job with the exact same inputs?')
+    if (!confirmed) return
+    setImageGenerationAction({ type: 'retry', targetId: id, error: null })
+    try {
+      const result = await creativeService.retryGeneration(id, {
+        idempotencyKey: `ui-${crypto.randomUUID()}`,
+        reasonCode: 'user_confirmed_retry',
+        generation: request,
+      })
+      const targetId = result.generation?.id ?? result.targetGeneration?.id
+      if (!targetId) {
+        await refreshImageGenerationHistory()
+        throw new Error(locale === 'zh' ? '重试已接受，但暂时无法读取新任务。' : 'Retry was accepted but the new job is not available yet.')
+      }
+      imageGenerationRequests.current.set(targetId, request)
+      const detail = await creativeService.generation(targetId)
+      mergeImageGeneration(detail)
+      setImageGenerationHistory((current) => ({ ...current, selected: detail }))
+      pushToast(locale === 'zh' ? '已创建新的重试任务。' : 'A new retry attempt was created.')
+    } catch (error) {
+      console.info('[creative-generation-retry]', error)
+      const message = error instanceof Error ? error.message : (locale === 'zh' ? '重试失败。' : 'Retry failed.')
+      setImageGenerationAction({ type: null, targetId: null, error: message })
+      pushToast(message)
+      return
+    }
+    setImageGenerationAction({ type: null, targetId: null, error: null })
+  }
+
+  const downloadImageGenerationAsset = async (assetId: string) => {
+    setImageGenerationAction({ type: 'download', targetId: assetId, error: null })
+    try {
+      const contract = await mediaService.createDownload(assetId)
+      if (contract.download.url.startsWith('mock://')) {
+        pushToast(locale === 'zh' ? `下载合约已就绪：${contract.asset.fileName}` : `Download contract ready: ${contract.asset.fileName}`)
+      } else if (Object.keys(contract.download.headers).length > 0) {
+        const response = await fetch(contract.download.url, { headers: contract.download.headers })
+        if (!response.ok) throw new Error(`Download failed with status ${response.status}`)
+        const objectUrl = URL.createObjectURL(await response.blob())
+        const link = document.createElement('a')
+        link.href = objectUrl
+        link.download = contract.asset.fileName
+        link.click()
+        URL.revokeObjectURL(objectUrl)
+      } else {
+        const link = document.createElement('a')
+        link.href = contract.download.url
+        link.download = contract.asset.fileName
+        link.rel = 'noopener'
+        link.target = '_blank'
+        link.click()
+      }
+    } catch (error) {
+      console.info('[creative-generation-download]', error)
+      const message = error instanceof Error ? error.message : (locale === 'zh' ? '下载失败。' : 'Download failed.')
+      setImageGenerationAction({ type: null, targetId: null, error: message })
+      pushToast(message)
+      return
+    }
+    setImageGenerationAction({ type: null, targetId: null, error: null })
+  }
+
+  const prepareImageAssetForReuse = async (assetId: string) => {
+    try {
+      const assets = await refreshImageInputAssets()
+      const available = assets.some((asset) => asset.id === assetId)
+      if (!available) {
+        pushToast(locale === 'zh' ? '该输出尚未进入可复用资产列表。' : 'This output is not yet available for reuse.')
+      }
+      return available
+    } catch (error) {
+      console.info('[creative-generation-reuse]', error)
+      pushToast(locale === 'zh' ? '无法刷新可复用资产。' : 'Could not refresh reusable assets.')
+      return false
+    }
+  }
+
+  const hasImageGenerationRetryRequest = (id: string) => imageGenerationRequests.current.has(id)
 
   const requireAuth = () => setLoginOpen(true)
 
@@ -616,7 +887,7 @@ function App() {
       <PageRenderer
         t={t}
         navigation={{ page, navigateToPage }}
-        workspace={{ prompt, setPrompt, generationState, runGenerate, imageGeneration, imageProviderCatalog, imageProviderCatalogState, imageInputAssets: accountSource === 'fallback' ? [] : imageInputAssets, uploadImageInput, runImageGeneration, playgroundWorkspace, setPlaygroundWorkspace }}
+        workspace={{ prompt, setPrompt, generationState, runGenerate, imageGeneration, imageGenerationHistory, imageGenerationAction, refreshImageGenerationHistory, selectImageGeneration, cancelImageGeneration, retryImageGeneration, downloadImageGenerationAsset, prepareImageAssetForReuse, hasImageGenerationRetryRequest, imageProviderCatalog, imageProviderCatalogState, imageInputAssets: accountSource === 'fallback' ? [] : imageInputAssets, uploadImageInput, runImageGeneration, playgroundWorkspace, setPlaygroundWorkspace }}
         player={{ playTrack }}
         feedback={{ requireAuth, simulateAction }}
         tasks={{

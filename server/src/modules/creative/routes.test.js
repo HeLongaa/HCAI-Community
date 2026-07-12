@@ -219,6 +219,131 @@ test('GET /api/creative/input-assets is authenticated and owner-scoped by the re
   }
 })
 
+test('GET creative generation history is authenticated owner-scoped and safely hydrated', async () => {
+  const repository = createSeedRepository()
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
+  const ownedId = `generation-user-history-owned-${suffix}`
+  const legacyOwnedId = `generation-user-history-legacy-owned-${suffix}`
+  const otherId = `generation-user-history-other-${suffix}`
+  const outputAssetId = `media-user-history-${suffix}`
+  await repository.creativeGenerations.create({
+    id: ownedId,
+    actorId: 'demo-user-promptlin',
+    actorHandle: 'promptlin',
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'mock',
+    providerMode: 'mock',
+    status: 'completed',
+    promptHash: 'a'.repeat(64),
+    promptPreview: 'Owned image history preview',
+    inputAssetIds: [],
+    parameterKeys: ['aspectRatio'],
+    outputAssetIds: [outputAssetId],
+    usage: { estimatedCredits: 2, metered: false, privateCost: 'must-not-leak' },
+    providerRequestId: 'provider-request-must-not-leak',
+    providerJobId: 'provider-job-must-not-leak',
+    attemptNumber: 1,
+    createdAt: '2032-07-12T00:00:00.000Z',
+  }, { id: 'demo-user-promptlin', handle: 'promptlin' })
+  await repository.creativeGenerations.create({
+    id: legacyOwnedId,
+    actorId: 'demo-user-creator',
+    actorHandle: null,
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'mock',
+    providerMode: 'mock',
+    status: 'completed',
+    promptHash: 'c'.repeat(64),
+    promptPreview: 'Legacy owner id history preview',
+    inputAssetIds: [],
+    parameterKeys: [],
+    outputAssetIds: [],
+    attemptNumber: 1,
+    createdAt: '2032-07-12T00:00:30.000Z',
+  }, { id: 'demo-user-creator', handle: 'promptlin' })
+  await repository.creativeGenerations.create({
+    id: otherId,
+    actorId: 'demo-user-taskops',
+    actorHandle: 'taskops',
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'mock',
+    providerMode: 'mock',
+    status: 'completed',
+    promptHash: 'b'.repeat(64),
+    promptPreview: 'Other user preview',
+    inputAssetIds: [],
+    parameterKeys: [],
+    outputAssetIds: [],
+    attemptNumber: 1,
+    createdAt: '2032-07-12T00:01:00.000Z',
+  }, { id: 'demo-user-taskops', handle: 'taskops' })
+  const originalFindAccessible = repository.media.findAccessibleCreativeInput
+  repository.media.findAccessibleCreativeInput = async (id, actor) => {
+    if (id !== outputAssetId || actor.handle !== 'promptlin') {
+      return originalFindAccessible(id, actor)
+    }
+    return {
+      id,
+      fileName: 'owned-result.png',
+      storageKey: 'private/history/result.png',
+      contentType: 'image/png',
+      status: 'uploaded',
+      metadata: {
+        privateDownloadUrl: 'https://private.example/result.png',
+        security: { scanStatus: 'clean' },
+      },
+      createdAt: '2032-07-12T00:00:30.000Z',
+    }
+  }
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, { repositories: repository }))
+  try {
+    const denied = await requestJson(server.url, '/api/creative/generations', { method: 'GET' })
+    assert.equal(denied.status, 401)
+
+    const list = await requestJson(server.url, '/api/creative/generations?workspace=image&status=completed&limit=10', {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(list.status, 200)
+    const owned = list.payload.data.find((item) => item.id === ownedId)
+    assert.ok(owned)
+    assert.equal(list.payload.data.some((item) => item.id === legacyOwnedId), true)
+    assert.equal(list.payload.data.some((item) => item.id === otherId), false)
+    assert.equal(owned.outputs[0].assetId, outputAssetId)
+    assert.equal(owned.actions.download.available, true)
+    assert.equal(list.payload.meta.pagination.limit, 10)
+    const serialized = JSON.stringify(owned)
+    assert.equal(serialized.includes('storageKey'), false)
+    assert.equal(serialized.includes('privateDownloadUrl'), false)
+    assert.equal(serialized.includes('promptHash'), false)
+    assert.equal(serialized.includes('providerJobId'), false)
+
+    const detail = await requestJson(server.url, `/api/creative/generations/${ownedId}`, {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(detail.status, 200)
+    assert.equal(detail.payload.data.id, ownedId)
+
+    const hidden = await requestJson(server.url, `/api/creative/generations/${otherId}`, {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(hidden.status, 404)
+
+    const invalid = await requestJson(server.url, '/api/creative/generations?status=unknown', {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(invalid.status, 400)
+  } finally {
+    await server.close()
+  }
+})
+
 test('POST image-to-image persists governed parent lineage in output and media metadata', async () => {
   resetCreativePolicyState()
   const repository = createSeedRepository()

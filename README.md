@@ -48,7 +48,7 @@ audit contracts. The text remains an engineering draft: legal approval and produ
 - English by default, Chinese language toggle
 - Music creation workbench with prompt, modes, tools, queue, and recent results
 - AI chat workspace with quick prompts and cross-module actions
-- Image Studio with text-to-image, image-to-image, presets, controls, and result actions
+- Image Studio with text/image generation modes, persisted lifecycle history, refresh recovery, cancellation, same-session retry, governed downloads, and compatible output reuse
 - Video Studio with text-to-video, image-to-video, music video, storyboard, captions, and preview flow
 - Explore page with radio cards, trending songs, images, and videos
 - Global search panel for songs, playlists, SFX, users, tasks, and posts
@@ -126,6 +126,12 @@ default, and no real Provider request is approved by this implementation.
 V1-17 adds owner-scoped clean image inputs, source/PNG-mask roles, strength controls, image-to-image/edit/variation
 workflows, and durable `image-lineage-v1` relationships. OpenAI edit requests remain fixture-only behind the same
 default-off gates; the product route continues to use explicit mock execution until separately approved.
+
+V1-18 adds owner-scoped `GET /api/creative/generations` history and detail reads, a user-specific safe serializer,
+governed output summaries, lifecycle action eligibility, refresh recovery, bounded active-job polling, cancellation,
+same-session exact retry, private download contracts, and compatible PNG/JPEG/WebP output reuse. Raw prompts remain
+in memory only for retry and are not written to browser storage or generation history. Refresh preserves job state but
+intentionally removes exact-retry input. No browser path contacts a Provider directly.
 
 ## Verification
 

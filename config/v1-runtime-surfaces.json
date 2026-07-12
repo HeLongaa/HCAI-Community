@@ -84,8 +84,8 @@
       "id": "creative-image-mock-execution",
       "area": "image",
       "classification": "release_blocker",
-      "paths": ["src/App.tsx", "src/features/workspace/WorkspacePages.tsx", "src/services/creativeService.ts", "server/src/config/env.js", "server/src/creative/generationService.js", "server/src/creative/imageCapabilityContract.js", "server/src/creative/imageInputAssets.js", "server/src/creative/mockProvider.js", "server/src/creative/openaiImageProvider.js", "server/src/creative/providerRegistry.js", "server/src/creative/artifactBuilder.js", "server/src/creative/policy.js", "server/src/docs/openapi.js"],
-      "markers": ["workspace === 'image'", "creativeProviderDefaultId: 'mock'", "executeMockCreativeGeneration", "createOpenAIImageGeneration", "image-capability-v1", "image-lineage-v1"],
+      "paths": ["src/App.tsx", "src/features/workspace/WorkspacePages.tsx", "src/services/creativeService.ts", "server/src/config/env.js", "server/src/creative/generationService.js", "server/src/creative/imageCapabilityContract.js", "server/src/creative/imageInputAssets.js", "server/src/creative/userGenerationHistory.js", "server/src/creative/mockProvider.js", "server/src/creative/openaiImageProvider.js", "server/src/creative/providerRegistry.js", "server/src/creative/artifactBuilder.js", "server/src/creative/policy.js", "server/src/docs/openapi.js"],
+      "markers": ["workspace === 'image'", "creativeProviderDefaultId: 'mock'", "executeMockCreativeGeneration", "createOpenAIImageGeneration", "image-capability-v1", "image-lineage-v1", "image-generation-history"],
       "productionDisposition": "replace_with_approved_real_provider",
       "ownerTasks": ["V1-15", "V1-16", "V1-17", "V1-18", "V1-19", "V1-39"]
     },

@@ -982,6 +982,21 @@ export const openApiDocument = {
       },
     },
     '/creative/generations': {
+      get: {
+        summary: 'List the current user creative generation history with safe lifecycle and governed output summaries',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'workspace', in: 'query', schema: { type: 'string', enum: ['image', 'video', 'music', 'chat'], default: 'image' } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['queued', 'running', 'completed', 'failed', 'cancelled', 'review_required'] } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 } },
+        ],
+        responses: {
+          '200': { description: 'Owner-scoped history page. Responses exclude raw prompts, Provider job/request ids, private URLs, storage keys, and internal audit evidence.' },
+          '400': { description: 'Invalid workspace, status, cursor, or limit' },
+          '401': { description: 'Authentication required' },
+        },
+      },
       post: {
         summary: 'Execute a creative generation through the configured provider boundary',
         requestBody: {
@@ -1233,6 +1248,18 @@ export const openApiDocument = {
           '422': { description: 'Creative moderation policy blocked the request before provider execution' },
           '429': { description: 'Creative generation quota or durable Provider budget cap exceeded before dispatch' },
           '503': { description: 'Creative provider unavailable' },
+        },
+      },
+    },
+    '/creative/generations/{id}': {
+      get: {
+        summary: 'Read one owned creative generation with safe action eligibility and governed output summaries',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Safe user generation detail suitable for lifecycle polling' },
+          '401': { description: 'Authentication required' },
+          '404': { description: 'Generation not found or belongs to another user' },
         },
       },
     },

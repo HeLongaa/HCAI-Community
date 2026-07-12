@@ -12,10 +12,12 @@ import {
   PenLine,
   Play,
   RefreshCcw,
+  RotateCcw,
   Send,
   Share2,
   Shuffle,
   Sparkles,
+  Square,
   Upload,
   Video,
   Zap,
@@ -24,12 +26,21 @@ import type { Page, PlaygroundMode, SimulateAction, Track, Work } from '../../do
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { tracks, visualWorks } from '../../data/mockData'
 import { isZhCopy, textFor } from '../../domain/utils'
-import type { ApiCreativeCapability, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset } from '../../services/contracts'
+import type { ApiCreativeCapability, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiUserCreativeGeneration } from '../../services/contracts'
 
 type ImageGenerationState = {
   status: 'idle' | 'loading' | 'done' | 'error'
   result: ApiCreativeGeneration | null
   error: string | null
+}
+
+type ImageGenerationHistoryState = {
+  status: 'idle' | 'loading' | 'ready' | 'error'
+  items: ApiUserCreativeGeneration[]
+  selected: ApiUserCreativeGeneration | null
+  nextCursor: string | null
+  error: string | null
+  polling: boolean
 }
 
 export function PlaygroundPage({
@@ -39,6 +50,15 @@ export function PlaygroundPage({
   generationState,
   runGenerate,
   imageGeneration,
+  imageGenerationHistory,
+  imageGenerationAction,
+  refreshImageGenerationHistory,
+  selectImageGeneration,
+  cancelImageGeneration,
+  retryImageGeneration,
+  downloadImageGenerationAsset,
+  prepareImageAssetForReuse,
+  hasImageGenerationRetryRequest,
   imageProviderCatalog,
   imageProviderCatalogState,
   imageInputAssets,
@@ -57,6 +77,19 @@ export function PlaygroundPage({
   generationState: 'idle' | 'loading' | 'done'
   runGenerate: () => void
   imageGeneration: ImageGenerationState
+  imageGenerationHistory: ImageGenerationHistoryState
+  imageGenerationAction: {
+    type: 'cancel' | 'retry' | 'download' | null
+    targetId: string | null
+    error: string | null
+  }
+  refreshImageGenerationHistory: (cursor?: string | null) => Promise<void>
+  selectImageGeneration: (id: string) => void
+  cancelImageGeneration: (id: string) => Promise<void>
+  retryImageGeneration: (id: string) => Promise<void>
+  downloadImageGenerationAsset: (assetId: string) => Promise<void>
+  prepareImageAssetForReuse: (assetId: string) => Promise<boolean>
+  hasImageGenerationRetryRequest: (id: string) => boolean
   imageProviderCatalog: ApiCreativeProviderCatalog | null
   imageProviderCatalogState: 'loading' | 'ready' | 'error'
   imageInputAssets: ApiMediaAsset[]
@@ -255,6 +288,15 @@ export function PlaygroundPage({
           simulateAction={simulateAction}
           providerGeneration={{
             state: imageGeneration,
+            history: imageGenerationHistory,
+            action: imageGenerationAction,
+            refreshHistory: refreshImageGenerationHistory,
+            selectGeneration: selectImageGeneration,
+            cancelGeneration: cancelImageGeneration,
+            retryGeneration: retryImageGeneration,
+            downloadAsset: downloadImageGenerationAsset,
+            prepareAssetForReuse: prepareImageAssetForReuse,
+            hasOriginalRequest: hasImageGenerationRetryRequest,
             capability: imageCapability,
             catalogState: imageProviderCatalogState,
             inputAssets: imageInputAssets,
@@ -502,6 +544,19 @@ function StudioPage({
   extraActionLabel?: string
   providerGeneration?: {
     state: ImageGenerationState
+    history: ImageGenerationHistoryState
+    action: {
+      type: 'cancel' | 'retry' | 'download' | null
+      targetId: string | null
+      error: string | null
+    }
+    refreshHistory: (cursor?: string | null) => Promise<void>
+    selectGeneration: (id: string) => void
+    cancelGeneration: (id: string) => Promise<void>
+    retryGeneration: (id: string) => Promise<void>
+    downloadAsset: (assetId: string) => Promise<void>
+    prepareAssetForReuse: (assetId: string) => Promise<boolean>
+    hasOriginalRequest: (id: string) => boolean
     capability: ApiCreativeCapability | null
     catalogState: 'loading' | 'ready' | 'error'
     providerAvailable: boolean
@@ -586,17 +641,51 @@ function StudioPage({
     }, 800)
   }
 
-  const activeState = providerGeneration?.state.status === 'loading'
+  const selectedGeneration = providerGeneration?.history.selected ?? null
+  const selectedStatus = selectedGeneration?.status ?? null
+  const lifecycleActive = selectedStatus === 'queued' || selectedStatus === 'running'
+  const actionBusy = providerGeneration?.action.type != null
+  const exactRetryAvailable = selectedGeneration ? providerGeneration?.hasOriginalRequest(selectedGeneration.id) === true : false
+  const activeState = providerGeneration?.state.status === 'loading' || lifecycleActive
     ? 'loading'
-    : providerGeneration?.state.status === 'done'
+    : selectedStatus === 'completed' || selectedStatus === 'review_required' || providerGeneration?.state.status === 'done'
       ? 'done'
       : renderState
-  const generatedOutput = providerGeneration?.state.result?.outputs[0] ?? null
+  const immediateResult = providerGeneration?.state.result ?? null
+  const generatedOutput = immediateResult && immediateResult.id === selectedGeneration?.id
+    ? immediateResult.outputs[0] ?? null
+    : null
+  const historyOutput = selectedGeneration?.outputs[0] ?? null
   const mediaAsset = generatedOutput?.mediaAsset
-  const scanStatus = generatedOutput?.storage.scanStatus ?? mediaAsset?.scanStatus ?? null
+  const generatedAssetId = historyOutput?.assetId ?? generatedOutput?.storage.mediaAssetId ?? null
+  const generatedContentType = historyOutput?.contentType ?? generatedOutput?.contentType ?? null
+  const scanStatus = historyOutput?.scanStatus ?? generatedOutput?.storage.scanStatus ?? mediaAsset?.scanStatus ?? null
   const activeModeContract = selectableImageModes.find((modeContract) => modeContract.id === selectedImageMode)
   const requiredInputsReady = !activeModeContract || activeModeContract.inputAssets.minimum === 0
     || (Boolean(sourceAssetId) && (selectedImageMode !== 'image_edit' || Boolean(maskAssetId)))
+  const lifecycleLabel = (status: string | null) => {
+    const labels: Record<string, [string, string]> = {
+      queued: ['Queued', '排队中'],
+      running: ['Running', '生成中'],
+      review_required: ['Review required', '等待审核'],
+      completed: ['Completed', '已完成'],
+      failed: ['Failed', '失败'],
+      cancelled: ['Cancelled', '已取消'],
+    }
+    const label = status ? labels[status] : null
+    return label ? (isZh ? label[1] : label[0]) : textFor(t, 'Ready', '就绪')
+  }
+  const formatGenerationTime = (value: string | null) => {
+    if (!value) return '—'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return '—'
+    return new Intl.DateTimeFormat(isZh ? 'zh-CN' : 'en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date)
+  }
 
   return (
     <div className="stack">
@@ -720,10 +809,31 @@ function StudioPage({
             <Sparkles size={17} />
             {activeState === 'loading' ? t.generating : activeState === 'done' ? t.generated : primaryAction}
           </button>
-          {providerGeneration && generatedOutput?.storage.mediaAssetId && scanStatus === 'clean' && (
-            <button className="ghost-button" type="button" onClick={() => {
-              setSourceAssetId(generatedOutput.storage.mediaAssetId ?? '')
-              setActiveImageMode('image_to_image')
+          {providerGeneration && selectedGeneration?.actions.cancel.available && (
+            <button className="ghost-button" type="button" disabled={actionBusy} onClick={() => void providerGeneration.cancelGeneration(selectedGeneration.id)}>
+              <Square size={16} />
+              {providerGeneration.action.type === 'cancel' ? textFor(t, 'Cancelling', '正在取消') : textFor(t, 'Cancel', '取消')}
+            </button>
+          )}
+          {providerGeneration && selectedGeneration?.actions.retry.available && (
+            <button
+              className="ghost-button"
+              type="button"
+              disabled={actionBusy || !exactRetryAvailable}
+              title={!exactRetryAvailable ? textFor(t, 'Exact retry is unavailable after refresh because raw prompts are not retained.', '刷新后不会保留原始提示词，因此无法精确重试。') : textFor(t, 'Retry with the same inputs', '使用相同输入重试')}
+              onClick={() => void providerGeneration.retryGeneration(selectedGeneration.id)}
+            >
+              <RotateCcw size={16} />
+              {providerGeneration.action.type === 'retry' ? textFor(t, 'Retrying', '正在重试') : textFor(t, 'Retry', '重试')}
+            </button>
+          )}
+          {providerGeneration && selectedGeneration?.actions.reuse.available && generatedAssetId && scanStatus === 'clean' && (
+            <button className="ghost-button" type="button" disabled={actionBusy} onClick={() => {
+              void providerGeneration.prepareAssetForReuse(generatedAssetId).then((available) => {
+                if (!available) return
+                setSourceAssetId(generatedAssetId)
+                setActiveImageMode('image_to_image')
+              })
             }}>
               <RefreshCcw size={17} />
               {textFor(t, 'Use result as source', '使用结果继续创作')}
@@ -739,12 +849,12 @@ function StudioPage({
         {providerGeneration && (
           <div className="provider-status-panel">
             <div>
-              <span className={`status-dot ${providerGeneration.state.status === 'loading' ? 'loading' : providerGeneration.state.status === 'done' ? 'done' : ''}`} />
+              <span className={`status-dot ${lifecycleActive || providerGeneration.state.status === 'loading' ? 'loading' : selectedStatus === 'completed' ? 'done' : selectedStatus === 'failed' || selectedStatus === 'cancelled' ? 'error' : ''}`} />
               <strong>
-                {providerGeneration.state.status === 'loading'
-                  ? textFor(t, 'Provider generation running', '正在通过提供方生成')
-                  : providerGeneration.state.status === 'done'
-                    ? textFor(t, 'Mock provider result persisted', 'Mock 提供方结果已持久化')
+                {selectedGeneration
+                  ? lifecycleLabel(selectedGeneration.status)
+                  : providerGeneration.state.status === 'loading'
+                    ? textFor(t, 'Submitting generation', '正在提交生成任务')
                     : providerGeneration.state.status === 'error'
                       ? textFor(t, 'Provider generation failed', '提供方生成失败')
                       : providerGeneration.catalogState === 'loading'
@@ -759,11 +869,11 @@ function StudioPage({
             <p>
               {providerGeneration.state.error
                 ? providerGeneration.state.error
-                : generatedOutput
+                : selectedGeneration
                   ? textFor(
                     t,
-                    `Asset ${generatedOutput.storage.mediaAssetId ?? 'pending'} · scan ${scanStatus ?? 'pending'} · ${providerGeneration.state.result?.provider.mode ?? generatedOutput.storage.provider}`,
-                    `资产 ${generatedOutput.storage.mediaAssetId ?? '待生成'} · 扫描 ${scanStatus ?? 'pending'} · ${generatedOutput.storage.provider}`,
+                    `${selectedGeneration.promptPreview ?? selectedGeneration.id} · ${providerGeneration.history.polling ? 'refreshing' : selectedGeneration.provider.mode ?? selectedGeneration.provider.id}`,
+                    `${selectedGeneration.promptPreview ?? selectedGeneration.id} · ${providerGeneration.history.polling ? '正在刷新' : selectedGeneration.provider.mode ?? selectedGeneration.provider.id}`,
                   )
                   : providerGeneration.capability
                     ? textFor(
@@ -773,56 +883,126 @@ function StudioPage({
                     )
                     : textFor(t, 'Generation is disabled until capability metadata is available.', '能力元数据可用前，生成保持禁用。')}
             </p>
-            {generatedOutput && (
+            {selectedGeneration && (
               <div className="provider-meta-row">
-                <span>{providerGeneration.state.result?.provider.label}</span>
-                <span>{textFor(t, `${providerGeneration.state.result?.usage.estimatedCredits ?? 0} credits`, `${providerGeneration.state.result?.usage.estimatedCredits ?? 0} 点额度`)}</span>
-                {providerGeneration.state.result?.quota && (
-                  <span>{textFor(t, `${providerGeneration.state.result.quota.remaining} quota left`, `剩余额度 ${providerGeneration.state.result.quota.remaining}`)}</span>
-                )}
-                <span>{generatedOutput.contentType}</span>
-                {providerGeneration.state.result?.safety.reviewRequired && (
+                <span>{selectedGeneration.provider.id}</span>
+                <span>{textFor(t, `${selectedGeneration.usage.estimatedCredits} credits`, `${selectedGeneration.usage.estimatedCredits} 点额度`)}</span>
+                <span>{textFor(t, `Attempt ${selectedGeneration.attempt.number}`, `第 ${selectedGeneration.attempt.number} 次尝试`)}</span>
+                {generatedContentType && <span>{generatedContentType}</span>}
+                {selectedGeneration.safety.reviewRequired && (
                   <span>{textFor(t, 'Policy review', '策略复核')}</span>
                 )}
-                <span>{scanStatus === 'clean' ? textFor(t, 'Download ready', '可下载') : textFor(t, 'Download gated', '下载受限')}</span>
+                {generatedAssetId && <span>{scanStatus === 'clean' ? textFor(t, 'Download ready', '可下载') : textFor(t, 'Download gated', '下载受限')}</span>}
               </div>
+            )}
+            {providerGeneration.action.error && <p className="image-history-error">{providerGeneration.action.error}</p>}
+            {selectedGeneration?.actions.retry.available && !exactRetryAvailable && (
+              <p>{textFor(t, 'Exact retry is unavailable after refresh; recreate the request from its safe preview.', '刷新后无法恢复原始提示词；请根据安全预览重新填写。')}</p>
             )}
           </div>
         )}
       </section>
 
+      {providerGeneration && (
+        <section className="image-generation-history">
+          <div className="image-history-header">
+            <div>
+              <span className="eyebrow">{textFor(t, 'Generation history', '生成历史')}</span>
+              <h2>{textFor(t, 'Image jobs', '图片任务')}</h2>
+            </div>
+            <button
+              className="icon-button"
+              type="button"
+              title={textFor(t, 'Refresh history', '刷新历史')}
+              onClick={() => void providerGeneration.refreshHistory()}
+              disabled={providerGeneration.history.status === 'loading'}
+            >
+              <RefreshCcw size={17} />
+            </button>
+          </div>
+          {providerGeneration.history.error && (
+            <p className="image-history-error">{providerGeneration.history.error}</p>
+          )}
+          {providerGeneration.history.status === 'loading' && providerGeneration.history.items.length === 0 ? (
+            <p className="image-history-empty">{textFor(t, 'Loading image jobs', '正在加载图片任务')}</p>
+          ) : providerGeneration.history.items.length === 0 ? (
+            <p className="image-history-empty">{textFor(t, 'No image jobs yet', '暂无图片任务')}</p>
+          ) : (
+            <div className="image-history-table">
+              <div className="image-history-row image-history-columns" aria-hidden="true">
+                <span>{textFor(t, 'Status', '状态')}</span>
+                <span>{textFor(t, 'Request', '请求')}</span>
+                <span>{textFor(t, 'Mode', '模式')}</span>
+                <span>{textFor(t, 'Created', '创建时间')}</span>
+                <span>{textFor(t, 'Output', '输出')}</span>
+              </div>
+              {providerGeneration.history.items.map((generation) => {
+                const output = generation.outputs[0]
+                return (
+                  <button
+                    className={`image-history-row ${providerGeneration.history.selected?.id === generation.id ? 'active' : ''}`}
+                    type="button"
+                    key={generation.id}
+                    onClick={() => providerGeneration.selectGeneration(generation.id)}
+                  >
+                    <span className="image-history-status">
+                      <span className={`status-dot ${generation.status === 'queued' || generation.status === 'running' ? 'loading' : generation.status === 'completed' ? 'done' : generation.status === 'failed' || generation.status === 'cancelled' ? 'error' : ''}`} />
+                      {lifecycleLabel(generation.status)}
+                    </span>
+                    <span className="image-history-prompt">{generation.promptPreview ?? generation.id}</span>
+                    <span>{imageLabel(generation.mode)}</span>
+                    <span>{formatGenerationTime(generation.createdAt)}</span>
+                    <span>{output ? output.scanStatus : '—'}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          {providerGeneration.history.nextCursor && (
+            <button
+              className="ghost-button image-history-more"
+              type="button"
+              onClick={() => void providerGeneration.refreshHistory(providerGeneration.history.nextCursor)}
+            >
+              <ChevronDown size={16} />
+              {textFor(t, 'Load more', '加载更多')}
+            </button>
+          )}
+        </section>
+      )}
+
       <section className="visual-grid">
-        {generatedOutput && (
+        {generatedAssetId && (
           <article className="visual-card generated-result-card">
             <div className="generated-preview">
               <Sparkles size={26} />
-              <span>{generatedOutput.mediaAsset?.scanStatus ?? generatedOutput.storage.scanStatus ?? 'pending'}</span>
+              <span>{scanStatus ?? 'pending'}</span>
             </div>
             <div>
               <strong>{textFor(t, 'Generated provider image', '提供方生成图片')}</strong>
               <span>
-                {generatedOutput.storage.mediaAssetId ?? generatedOutput.id} · {providerGeneration?.state.result?.provider.mode ?? 'mock'}
+                {generatedAssetId} · {selectedGeneration?.provider.mode ?? selectedGeneration?.provider.id ?? 'mock'}
               </span>
             </div>
             <div className="card-actions">
-              <button type="button" onClick={() => simulateAction(isZh ? `已读取资产：${generatedOutput.storage.mediaAssetId}` : `Opened asset: ${generatedOutput.storage.mediaAssetId}`)}>
+              <button type="button" title={textFor(t, 'Open asset details', '打开资产详情')} onClick={() => simulateAction(isZh ? `已读取资产：${generatedAssetId}` : `Opened asset: ${generatedAssetId}`)}>
                 <FileText size={16} />
               </button>
               <button
                 type="button"
-                onClick={() => simulateAction(scanStatus === 'clean'
-                  ? textFor(t, `Download contract: ${generatedOutput.storage.downloadPath ?? ''}`, `下载合约：${generatedOutput.storage.downloadPath ?? ''}`)
-                  : textFor(t, 'Download is gated until media scan is clean.', '媒体扫描 clean 前不可下载。'))}
+                title={textFor(t, 'Download output', '下载输出')}
+                disabled={scanStatus !== 'clean' || actionBusy}
+                onClick={() => void providerGeneration?.downloadAsset(generatedAssetId)}
               >
                 <Download size={16} />
               </button>
-              <button type="button" onClick={requireAuth}>
+              <button type="button" title={textFor(t, 'Share output', '分享输出')} onClick={requireAuth}>
                 <Share2 size={16} />
               </button>
             </div>
           </article>
         )}
-        {results.map((work) => (
+        {!providerGeneration && results.map((work) => (
           <article className="visual-card" key={work.title}>
             <img src={work.image} alt="" />
             <div>

@@ -1,11 +1,12 @@
 import { ok } from '../../common/http/responses.js'
 import { requireUser } from '../../common/http/auth.js'
 import { readJsonBody, readRawBody } from '../../common/http/request.js'
-import { HttpError } from '../../common/errors/httpError.js'
+import { HttpError, notFound } from '../../common/errors/httpError.js'
 import {
   parseCreateCreativeGenerationRequest,
   parseCreativeGenerationCancelRequest,
   parseCreativeGenerationRetryRequest,
+  parseCreativeGenerationHistoryQuery,
   parsePaginationQuery,
 } from '../../contracts/requestParsers.js'
 import { executeCreativeGeneration, getCreativeProviderCatalog, persistCreativeGenerationOutputs } from '../../creative/generationService.js'
@@ -31,6 +32,11 @@ import {
   completeCreativeGenerationRetry,
   prepareCreativeGenerationRetry,
 } from '../../creative/generationMutationService.js'
+import {
+  generationBelongsToActor,
+  serializeUserCreativeGeneration,
+  serializeUserCreativeGenerationPage,
+} from '../../creative/userGenerationHistory.js'
 
 const terminalProviderFailureStatuses = new Set(['failed', 'cancelled'])
 
@@ -78,6 +84,38 @@ export const registerCreativeRoutes = (router, options = {}) => {
         nextCursor: page?.nextCursor ?? null,
       },
     })
+  })
+
+  router.add('GET', '/api/creative/generations', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const query = parseCreativeGenerationHistoryQuery(context.query)
+    const page = await routeRepositories.creativeGenerations.list({
+      ...query,
+      actorId: actor.id,
+      actorHandle: actor.handle,
+    })
+    const items = await serializeUserCreativeGenerationPage(page.items, {
+      mediaRepository: routeRepositories.media,
+      actor,
+    })
+    ok(response, items, {
+      pagination: {
+        limit: page.limit,
+        nextCursor: page.nextCursor,
+      },
+    })
+  })
+
+  router.add('GET', '/api/creative/generations/:id', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const generation = await routeRepositories.creativeGenerations.find(context.params.id)
+    if (!generationBelongsToActor(generation, actor)) {
+      throw notFound(`/api/creative/generations/${context.params.id}`)
+    }
+    ok(response, await serializeUserCreativeGeneration(generation, {
+      mediaRepository: routeRepositories.media,
+      actor,
+    }))
   })
 
   const runGenerationRequest = async ({

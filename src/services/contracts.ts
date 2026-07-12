@@ -877,6 +877,74 @@ export type ApiCreativeGenerationRecord = {
   }
 }
 
+export type ApiUserCreativeGenerationAction = {
+  available: boolean
+  reasonCode: string | null
+  userConfirmationRequired?: boolean
+  requiresOriginalRequest?: boolean
+}
+
+export type ApiUserCreativeGeneration = {
+  id: string
+  workspace: CreativeWorkspace
+  mode: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'review_required' | string
+  promptPreview: string | null
+  inputAssetIds: string[]
+  parameterKeys: string[]
+  provider: {
+    id: string
+    mode: string | null
+  }
+  attempt: {
+    number: number
+    retryOfId: string | null
+  }
+  usage: {
+    estimatedCredits: number
+    metered: boolean
+  }
+  safety: {
+    reviewRequired: boolean
+  }
+  error: {
+    code: string
+    message: string | null
+  } | null
+  outputs: Array<{
+    assetId: string
+    fileName: string
+    contentType: string
+    status: string
+    scanStatus: string
+    createdAt: string | null
+  }>
+  actions: {
+    poll: ApiUserCreativeGenerationAction
+    cancel: ApiUserCreativeGenerationAction
+    retry: ApiUserCreativeGenerationAction
+    download: ApiUserCreativeGenerationAction
+    reuse: ApiUserCreativeGenerationAction
+  }
+  startedAt: string | null
+  completedAt: string | null
+  failedAt: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export type UserCreativeGenerationHistoryQuery = {
+  cursor?: string | null
+  limit?: number
+  workspace?: CreativeWorkspace
+  status?: string | null
+}
+
+export type UserCreativeGenerationHistoryPage = {
+  items: ApiUserCreativeGeneration[]
+  nextCursor: string | null
+}
+
 export type CreativeGenerationMutationType = 'cancel' | 'retry' | 'manual_replay'
 
 export type AdminProviderControlBundle = {
