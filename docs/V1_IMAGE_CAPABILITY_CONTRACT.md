@@ -8,19 +8,20 @@ This document closes V1-15. The executable source of truth is
 
 - Conditional primary: OpenAI GPT Image 2, model `gpt-image-2`.
 - Approval-gated backup: Replicate FLUX 1.1 Pro, model `black-forest-labs/flux-1.1-pro`.
-- Both real model entries are metadata only, unregistered, and disabled.
+- The OpenAI primary has a fixture-injectable adapter and fixed HTTP client boundary; it remains unregistered and disabled.
+- The Replicate backup remains a disabled staging shell.
 - Real Provider calls and production enablement remain unapproved.
 - Production fails closed; silent mock or backup fallback is forbidden.
 - Provider spend remains separate from creative credits, points, quota, escrow, and refunds.
 
 ## Mode Matrix
 
-| Mode | V1 contract | Mock fixture | Replicate staging shell | Input contract |
-| --- | --- | --- | --- | --- |
-| `text_to_image` | Available | Available | Declared by the disabled shell | No input image |
-| `image_to_image` | Available | Available | Unavailable | Exactly one governed image |
-| `image_edit` | Declared, unavailable | Unavailable | Unavailable | Source plus mask after a later approved adapter task |
-| `image_variation` | Declared, unavailable | Unavailable | Unavailable | Exactly one source after a later approved runtime decision |
+| Mode | V1 contract | Mock fixture | OpenAI shell | Replicate staging shell | Input contract |
+| --- | --- | --- | --- | --- | --- |
+| `text_to_image` | Available | Available | Fixture-only | Declared by the disabled shell | No input image |
+| `image_to_image` | Available | Available | Unavailable | Unavailable | Exactly one governed image |
+| `image_edit` | Declared, unavailable | Unavailable | Unavailable | Unavailable | Source plus mask after a later approved adapter task |
+| `image_variation` | Declared, unavailable | Unavailable | Unavailable | Unavailable | Exactly one source after a later approved runtime decision |
 
 Unknown modes are rejected. Declared but unavailable modes return an explicit validation error and never fall back to
 another mode. Image Studio shows all four modes, disables unsupported modes, and also disables input-dependent modes
@@ -46,6 +47,11 @@ Unknown parameters, invalid types, invalid ranges, unsupported mode/parameter co
 are rejected. Product presets such as poster, avatar, product visual, and logo concept are `stylePreset` values, not
 generation modes. The former arbitrary frontend `controls` array is not part of the contract.
 
+The OpenAI projection supports only `aspectRatio`, `stylePreset`, `quality`, `outputCount`, and `outputFormat` for
+`text_to_image`. Its aspect ratios are narrowed to `1:1`, `3:2`, and `2:3`; `seed` and every input-asset mode are
+rejected before adapter dispatch. Product style presets compile into deterministic prompt instructions rather than
+being sent as unsupported Provider fields.
+
 ## Output, Cost, And Safety
 
 - Output type is `image`, output format is PNG, and V1 returns one output per request.
@@ -54,6 +60,10 @@ generation modes. The former arbitrary frontend `controls` array is not part of 
   pricing and budget ledger.
 - Prompt moderation, input governance, output persistence, and output scanning are mandatory.
 - Raw Provider payload retention is forbidden. Provider URLs, tokens, and raw prompts are not added to catalog data.
+- OpenAI returns one synchronous base64 PNG. The adapter validates canonical base64, PNG magic, one-output cardinality,
+  a 25 MiB decoded output cap, a 36 MiB response cap, and safe usage fields before governance ingestion.
+- Decoded bytes stay in a non-serializable in-process map only long enough to enter source-keyed media ingestion;
+  missing bytes fail closed and never fall back to a Provider URL.
 
 ## API And UI Projection
 
@@ -70,8 +80,12 @@ prevents route bypasses from accepting a mode or parameter combination that the 
   fail-closed boundaries.
 - Request parser and creative route tests cover API behavior and safe catalog projection.
 - OpenAPI contains the four declared modes and the Image parameter allowlist.
+- OpenAI adapter tests cover fixed request mapping, staging-only double network gates, response and error projection,
+  budget pricing, non-serializable output bytes, Provider-specific parameter rejection, and idempotent cost accounting.
 - `config/v1-runtime-surfaces.json` continues to classify Image execution as a release blocker until an approved real
   Provider replaces deterministic mock execution.
 
-This task registers no Provider HTTP, callback, polling, probe, fallback, dispatch, mutation, output-fetch, or external
-notification client and sends no external traffic.
+The OpenAI HTTP client factory is implemented but requires both `CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED=true` and
+`CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED=true`, a staging runtime, `staging-only` confirmation, and a deployment
+secret. No product route registers it. Callback, polling, probe, fallback, mutation, output-fetch, and external
+notification clients remain unregistered, and this task sends no external traffic.

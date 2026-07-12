@@ -82,6 +82,46 @@ const buildReplicateStagingProvider = (configProvider, config) => ({
   },
 })
 
+const enabledFlag = (source, key) => String(source[key] ?? '').trim().toLowerCase() === 'true'
+
+const buildOpenAIImageProvider = (source) => {
+  const clientRequested = enabledFlag(source, 'CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED')
+  const networkRequested = enabledFlag(source, 'CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED')
+  const stagingConfirmed = String(source.CREATIVE_OPENAI_IMAGE_CONFIRMATION ?? '').trim().toLowerCase() === 'staging-only'
+  const credentialConfigured = Boolean(String(source.CREATIVE_OPENAI_IMAGE_API_TOKEN ?? '').trim())
+  const stagingRuntime = source.NODE_ENV === 'production' &&
+    String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? '').trim().toLowerCase() === 'staging'
+  return {
+    id: 'openai-gpt-image-2',
+    label: 'OpenAI GPT Image 2',
+    mode: 'openai_image',
+    enabled: false,
+    configured: false,
+    default: false,
+    fixtureInjectable: true,
+    capabilities: [imageCapabilityForProvider('openai-gpt-image-2')],
+    safeMetadata: {
+      externalCredentialsConfigured: credentialConfigured,
+      persistsOutputs: true,
+      costMetered: true,
+      stagingOnly: true,
+      productionDenied: true,
+      approvalRequired: true,
+      adapterImplemented: true,
+      httpClientImplemented: true,
+      httpClientEnabled: stagingRuntime && stagingConfirmed && credentialConfigured && clientRequested,
+      networkCallsEnabled: stagingRuntime && stagingConfirmed && credentialConfigured && clientRequested && networkRequested,
+      synchronousOutput: true,
+      callbackImplemented: false,
+      callbackEnabled: false,
+      pollingImplemented: false,
+      pollingEnabled: false,
+      mutationClientImplemented: false,
+      outputFetchClientImplemented: false,
+    },
+  }
+}
+
 export const createCreativeProviderRegistry = (source = process.env) => {
   const config = buildCreativeProviderConfig(source)
   const providerShells = config.providers
@@ -89,7 +129,7 @@ export const createCreativeProviderRegistry = (source = process.env) => {
     .map((provider) => buildReplicateStagingProvider(provider, config))
   return {
     config,
-    providers: [buildMockProvider(config), ...providerShells],
+    providers: [buildMockProvider(config), buildOpenAIImageProvider(source), ...providerShells],
   }
 }
 

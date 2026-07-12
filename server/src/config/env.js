@@ -109,6 +109,10 @@ export const buildEnv = (source = process.env) => {
   const hasCreativeStagingProviderApiToken = Boolean(String(source.CREATIVE_STAGING_PROVIDER_API_TOKEN ?? '').trim())
   const creativeStagingProviderConfirmation = String(source.CREATIVE_STAGING_PROVIDER_CONFIRMATION ?? '').trim().toLowerCase()
   const creativeProviderHttpClientEnabled = strictBoolFlag(source, 'CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED', false)
+  const creativeOpenAIImageHttpClientEnabled = strictBoolFlag(source, 'CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED', false)
+  const creativeOpenAIImageNetworkCallsEnabled = strictBoolFlag(source, 'CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED', false)
+  const creativeOpenAIImageConfirmation = String(source.CREATIVE_OPENAI_IMAGE_CONFIRMATION ?? '').trim().toLowerCase()
+  const hasCreativeOpenAIImageApiToken = Boolean(String(source.CREATIVE_OPENAI_IMAGE_API_TOKEN ?? '').trim())
   const creativeProviderCallbackEnabled = strictBoolFlag(source, 'CREATIVE_PROVIDER_CALLBACK_ENABLED', false)
   const creativeProviderCallbackSecret = String(source.CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET ?? '').trim()
   const creativeProviderCallbackReplayWindowSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_CALLBACK_REPLAY_WINDOW_SECONDS', 300)
@@ -259,6 +263,23 @@ export const buildEnv = (source = process.env) => {
       throw new Error('CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED requires CREATIVE_PROVIDER_MODE=replicate_staging')
     }
   }
+  if (creativeOpenAIImageNetworkCallsEnabled && !creativeOpenAIImageHttpClientEnabled) {
+    throw new Error('CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED requires CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED=true')
+  }
+  if (creativeOpenAIImageHttpClientEnabled) {
+    if (nodeEnv !== 'production') {
+      throw new Error('CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED requires NODE_ENV=production')
+    }
+    if (creativeProviderRuntimeEnv !== 'staging') {
+      throw new Error('CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
+    }
+    if (creativeOpenAIImageConfirmation !== 'staging-only') {
+      throw new Error('CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED requires CREATIVE_OPENAI_IMAGE_CONFIRMATION=staging-only')
+    }
+    if (!hasCreativeOpenAIImageApiToken) {
+      throw new Error('CREATIVE_OPENAI_IMAGE_API_TOKEN is required when CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED=true')
+    }
+  }
   if (creativeProviderCallbackEnabled) {
     if (nodeEnv !== 'production') {
       throw new Error('CREATIVE_PROVIDER_CALLBACK_ENABLED requires NODE_ENV=production')
@@ -366,6 +387,9 @@ export const buildEnv = (source = process.env) => {
     creativeStagingProviderPreflightEnabled,
     hasCreativeStagingProviderApiToken,
     creativeProviderHttpClientEnabled,
+    creativeOpenAIImageHttpClientEnabled,
+    creativeOpenAIImageNetworkCallsEnabled,
+    hasCreativeOpenAIImageApiToken,
     creativeProviderCallbackEnabled,
     hasCreativeProviderCallbackSignatureSecret: Boolean(creativeProviderCallbackSecret),
     creativeProviderCallbackReplayWindowSeconds,

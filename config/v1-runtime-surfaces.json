@@ -84,8 +84,8 @@
       "id": "creative-image-mock-execution",
       "area": "image",
       "classification": "release_blocker",
-      "paths": ["src/App.tsx", "src/features/workspace/WorkspacePages.tsx", "src/services/creativeService.ts", "server/src/config/env.js", "server/src/creative/generationService.js", "server/src/creative/imageCapabilityContract.js", "server/src/creative/mockProvider.js", "server/src/creative/providerRegistry.js", "server/src/creative/artifactBuilder.js", "server/src/creative/policy.js", "server/src/docs/openapi.js"],
-      "markers": ["workspace === 'image'", "creativeProviderDefaultId: 'mock'", "executeMockCreativeGeneration", "image-capability-v1"],
+      "paths": ["src/App.tsx", "src/features/workspace/WorkspacePages.tsx", "src/services/creativeService.ts", "server/src/config/env.js", "server/src/creative/generationService.js", "server/src/creative/imageCapabilityContract.js", "server/src/creative/mockProvider.js", "server/src/creative/openaiImageProvider.js", "server/src/creative/providerRegistry.js", "server/src/creative/artifactBuilder.js", "server/src/creative/policy.js", "server/src/docs/openapi.js"],
+      "markers": ["workspace === 'image'", "creativeProviderDefaultId: 'mock'", "executeMockCreativeGeneration", "createOpenAIImageGeneration", "image-capability-v1"],
       "productionDisposition": "replace_with_approved_real_provider",
       "ownerTasks": ["V1-15", "V1-16", "V1-17", "V1-18", "V1-19", "V1-39"]
     },
@@ -192,10 +192,10 @@
       "id": "server-provider-fixture-injection",
       "area": "provider-lifecycle",
       "classification": "fixture_only",
-      "paths": ["server/src/modules/creative/routes.js", "server/src/creative/generationService.js", "server/src/creative/replicateStagingProvider.js", "server/src/creative/providerPollingWorker.js", "server/src/creative/providerManualReplay.js", "server/src/creative/providerReplayIntegration.js"],
+      "paths": ["server/src/modules/creative/routes.js", "server/src/creative/generationService.js", "server/src/creative/openaiImageProvider.js", "server/src/creative/replicateStagingProvider.js", "server/src/creative/providerPollingWorker.js", "server/src/creative/providerManualReplay.js", "server/src/creative/providerReplayIntegration.js"],
       "markers": ["fixtureAdapters", "must be injected; no default network client is available", "providerMode"],
       "productionDisposition": "retain_for_tests_and_keep_product_dispatch_unregistered",
-      "ownerTasks": ["V1-05", "V1-06", "V1-07", "V1-08", "V1-12", "V1-14"]
+      "ownerTasks": ["V1-05", "V1-06", "V1-07", "V1-08", "V1-12", "V1-14", "V1-16"]
     },
     {
       "id": "server-provider-alert-fixture-delivery",
