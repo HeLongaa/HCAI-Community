@@ -26,8 +26,8 @@ const creditCosts = {
     music_video: 12,
   },
   music: {
-    text_to_music: 4,
-    remix: 5,
+    instrumental: 4,
+    lyrics_to_song: 5,
   },
   chat: {
     assistant: 1,

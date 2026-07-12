@@ -757,12 +757,15 @@ export type ApiCreativeParameterDefinition = {
   options?: Array<string | number>
   minimum?: number
   maximum?: number
+  minimumLength?: number
+  maximumLength?: number
 }
 
 export type ApiCreativeModeContract = {
   id: 'text_to_image' | 'image_to_image' | 'image_edit' | 'image_variation'
     | 'assistant' | 'prompt_assist' | 'storyboard'
     | 'text_to_video' | 'image_to_video' | 'music_video'
+    | 'instrumental' | 'lyrics_to_song'
   label: string
   runtimeAvailable: boolean
   available: boolean
@@ -775,6 +778,7 @@ export type ApiCreativeModeContract = {
     roles?: string[]
   }
   parameters: string[]
+  requiredParameters?: string[]
 }
 
 export type ApiCreativeCapability = {
@@ -805,6 +809,9 @@ export type ApiCreativeCapability = {
   tools?: Record<string, unknown>
   lifecycle?: Record<string, unknown>
   composition?: Record<string, unknown>
+  productBoundary?: Record<string, unknown>
+  rights?: Record<string, unknown>
+  data?: Record<string, unknown>
 }
 
 export type ApiCreativeProviderCatalogEntry = ApiCreativeProvider & {

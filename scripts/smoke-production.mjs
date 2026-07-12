@@ -3,6 +3,7 @@ import { listOAuthProviderMetadata } from '../server/src/auth/oauth.js'
 import { buildChatMessageEncryptionConfig } from '../server/src/chat/messageCrypto.js'
 import { buildOpenAIChatRuntimeConfig } from '../server/src/chat/openaiChatProvider.js'
 import { chatCapabilityContract } from '../server/src/creative/chatCapabilityContract.js'
+import { musicCapabilityContract } from '../server/src/creative/musicCapabilityContract.js'
 import { videoCapabilityContract } from '../server/src/creative/videoCapabilityContract.js'
 
 const args = new Set(process.argv.slice(2))
@@ -155,6 +156,20 @@ const summarize = (env, oauthProviders, chatRuntime) => ({
     realProviderCallsApproved: videoCapabilityContract.runtime.realProviderCallsApproved,
     productionEnablementApproved: videoCapabilityContract.runtime.productionEnablementApproved,
   },
+  music: {
+    contractVersion: musicCapabilityContract.schemaVersion,
+    primaryProviderId: musicCapabilityContract.models.primary.providerId,
+    backupProviderId: musicCapabilityContract.models.backup.providerId,
+    providerAdapterImplemented: musicCapabilityContract.runtime.providerAdapterImplemented,
+    providerAdapterRegistered: musicCapabilityContract.runtime.providerAdapterRegistered,
+    providerHttpClientImplemented: musicCapabilityContract.runtime.providerHttpClientImplemented,
+    providerLifecycleImplemented: musicCapabilityContract.runtime.providerLifecycleImplemented,
+    providerLifecycleEnabled: musicCapabilityContract.runtime.providerLifecycleEnabled,
+    outputIngestionImplemented: musicCapabilityContract.runtime.outputIngestionImplemented,
+    providerCostCloseoutImplemented: musicCapabilityContract.runtime.providerCostCloseoutImplemented,
+    realProviderCallsApproved: musicCapabilityContract.runtime.realProviderCallsApproved,
+    productionEnablementApproved: musicCapabilityContract.runtime.productionEnablementApproved,
+  },
   authCookieSameSite: env.authCookieSameSite,
   authCookieSecure: env.authCookieSecure,
   authTrustedOriginCount: env.authTrustedOrigins.length,
@@ -286,6 +301,31 @@ check(
     videoCapabilityContract.runtime.realProviderCallsApproved === false &&
     videoCapabilityContract.runtime.productionEnablementApproved === false,
   'V1-27 registers a disabled fixture lifecycle without enabling Provider traffic',
+)
+check(
+  checks,
+  'Music capability contract remains Provider-disabled',
+  musicCapabilityContract.schemaVersion === 'music-capability-v1' &&
+    musicCapabilityContract.models.primary.providerId === 'elevenlabs-music-v2-enterprise' &&
+    musicCapabilityContract.models.primary.enabled === false &&
+    musicCapabilityContract.models.primary.enterpriseMusicContractRequired === true &&
+    musicCapabilityContract.models.backup.providerId === 'google-lyria-3-pro-preview' &&
+    musicCapabilityContract.models.backup.enabled === false &&
+    musicCapabilityContract.models.backup.suppliedLyricsSupportConfirmed === false &&
+    musicCapabilityContract.runtime.providerAdapterImplemented === false &&
+    musicCapabilityContract.runtime.providerAdapterRegistered === false &&
+    musicCapabilityContract.runtime.providerHttpClientImplemented === false &&
+    musicCapabilityContract.runtime.providerLifecycleImplemented === false &&
+    musicCapabilityContract.runtime.providerLifecycleEnabled === false &&
+    musicCapabilityContract.runtime.outputIngestionImplemented === false &&
+    musicCapabilityContract.runtime.providerCostCloseoutImplemented === false &&
+    musicCapabilityContract.runtime.automaticFailoverAllowed === false &&
+    musicCapabilityContract.runtime.realProviderCallsApproved === false &&
+    musicCapabilityContract.runtime.productionEnablementApproved === false &&
+    musicCapabilityContract.productBoundary.referenceAudioSupported === false &&
+    musicCapabilityContract.productBoundary.voiceCloningSupported === false &&
+    musicCapabilityContract.productBoundary.textToSpeechSupported === false,
+  'V1-30 freezes the Music contract without enabling Provider traffic or adjacent voice products',
 )
 check(checks, 'media alert channel configured', hasAny(env.hasMediaScanAlertWebhookUrl, env.hasMediaScanAlertSlackWebhookUrl, env.mediaScanAlertEmailRecipientCount > 0), 'At least one media alert channel must be configured')
 check(checks, 'security alert channel configured', hasAny(env.hasSecurityAlertWebhookUrl, env.hasSecurityAlertSlackWebhookUrl, env.securityAlertEmailRecipientCount > 0), 'At least one security alert channel must be configured')

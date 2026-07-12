@@ -2,6 +2,7 @@ import { HttpError } from '../common/errors/httpError.js'
 import { buildCreativeProviderConfig } from '../config/env.js'
 import { chatCapabilityForProvider } from './chatCapabilityContract.js'
 import { imageCapabilityForProvider } from './imageCapabilityContract.js'
+import { musicCapabilityForProvider } from './musicCapabilityContract.js'
 import { videoCapabilityForProvider } from './videoCapabilityContract.js'
 
 export const creativeWorkspaces = ['image', 'video', 'music', 'chat']
@@ -9,15 +10,7 @@ export const creativeWorkspaces = ['image', 'video', 'music', 'chat']
 export const creativeCapabilities = {
   image: imageCapabilityForProvider('mock'),
   video: videoCapabilityForProvider('mock'),
-  music: {
-    workspace: 'music',
-    label: 'Music Studio',
-    modes: ['text_to_music', 'remix'],
-    inputAssetPurposes: ['submission_asset', 'library_asset'],
-    outputTypes: ['audio'],
-    maxPromptCharacters: 2000,
-    supportedParameters: ['genre', 'durationSeconds', 'tempo', 'mood'],
-  },
+  music: musicCapabilityForProvider('mock'),
   chat: chatCapabilityForProvider('mock'),
 }
 
@@ -177,6 +170,38 @@ const buildVideoProvider = ({ id, label, mode, role }) => ({
   },
 })
 
+const buildMusicProvider = ({ id, label, mode, role }) => ({
+  id,
+  label,
+  mode,
+  enabled: false,
+  configured: false,
+  default: false,
+  fixtureInjectable: false,
+  capabilities: [musicCapabilityForProvider(id)],
+  safeMetadata: {
+    externalCredentialsConfigured: false,
+    persistsOutputs: true,
+    costMetered: true,
+    asynchronousApplicationJob: true,
+    stagingOnly: true,
+    productionDenied: true,
+    approvalRequired: true,
+    role,
+    adapterImplemented: false,
+    adapterRegistered: false,
+    httpClientImplemented: false,
+    networkCallsEnabled: false,
+    lifecycleImplemented: false,
+    lifecycleEnabled: false,
+    outputIngestionImplemented: false,
+    providerCostCloseoutImplemented: false,
+    automaticFailoverAllowed: false,
+    enterpriseMusicContractRequired: role === 'primary',
+    previewRiskAcceptanceRequired: role === 'backup',
+  },
+})
+
 export const createCreativeProviderRegistry = (source = process.env) => {
   const config = buildCreativeProviderConfig(source)
   const providerShells = config.providers
@@ -209,6 +234,18 @@ export const createCreativeProviderRegistry = (source = process.env) => {
         id: 'runway-gen-4-5',
         label: 'Runway Gen-4.5',
         mode: 'runway_video',
+        role: 'backup',
+      }),
+      buildMusicProvider({
+        id: 'elevenlabs-music-v2-enterprise',
+        label: 'ElevenLabs Music v2 Enterprise',
+        mode: 'elevenlabs_music',
+        role: 'primary',
+      }),
+      buildMusicProvider({
+        id: 'google-lyria-3-pro-preview',
+        label: 'Google Lyria 3 Pro Preview',
+        mode: 'google_music',
         role: 'backup',
       }),
       ...providerShells,

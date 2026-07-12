@@ -42,7 +42,7 @@ test('getCreativeProviderCatalog exposes safe mock provider capabilities', () =>
   const catalog = getCreativeProviderCatalog({ NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' })
 
   assert.equal(catalog.defaultProviderId, 'mock')
-  assert.equal(catalog.providers.length, 6)
+  assert.equal(catalog.providers.length, 8)
   assert.equal(catalog.providers[0].id, 'mock')
   assert.equal(catalog.providers[0].enabled, true)
   assert.equal(catalog.providers[0].safeMetadata.externalCredentialsConfigured, false)
@@ -80,6 +80,59 @@ test('getCreativeProviderCatalog exposes safe mock provider capabilities', () =>
   assert.equal(veo.safeMetadata.c2paExpected, true)
   assert.deepEqual(veo.capabilities[0].modes, ['text_to_video', 'image_to_video'])
   assert.equal(runway.safeMetadata.automaticFailoverAllowed, false)
+  const musicCapability = catalog.providers[0].capabilities.find((capability) => capability.workspace === 'music')
+  assert.equal(musicCapability.contractVersion, 'music-capability-v1')
+  assert.deepEqual(musicCapability.modes, ['instrumental', 'lyrics_to_song'])
+  assert.equal(musicCapability.productBoundary.voiceCloningSupported, false)
+  assert.equal(musicCapability.productBoundary.textToSpeechSupported, false)
+  const eleven = catalog.providers.find((provider) => provider.id === 'elevenlabs-music-v2-enterprise')
+  const lyria = catalog.providers.find((provider) => provider.id === 'google-lyria-3-pro-preview')
+  assert.equal(eleven.enabled, false)
+  assert.equal(eleven.configured, false)
+  assert.equal(eleven.safeMetadata.adapterImplemented, false)
+  assert.equal(eleven.safeMetadata.httpClientImplemented, false)
+  assert.equal(eleven.safeMetadata.enterpriseMusicContractRequired, true)
+  assert.deepEqual(eleven.capabilities[0].modes, ['instrumental', 'lyrics_to_song'])
+  assert.equal(lyria.safeMetadata.previewRiskAcceptanceRequired, true)
+  assert.equal(lyria.safeMetadata.automaticFailoverAllowed, false)
+  assert.deepEqual(lyria.capabilities[0].modes, ['instrumental'])
+})
+
+test('executeCreativeGeneration applies the Music contract before mock execution', async () => {
+  resetCreativePolicyState()
+  const musicRequest = {
+    workspace: 'music',
+    mode: 'instrumental',
+    prompt: 'A restrained cinematic theme with warm piano and clean percussion.',
+    inputAssetIds: [],
+    parameters: { durationSeconds: 60, genre: 'cinematic', mood: 'calm', tempoBpm: 96, outputFormat: 'mp3' },
+    providerId: null,
+  }
+  const generated = await executeCreativeGeneration({
+    request: musicRequest,
+    actor,
+    source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' },
+  })
+  assert.equal(generated.workspace, 'music')
+  assert.equal(generated.mode, 'instrumental')
+  assert.equal(generated.outputs[0].type, 'audio')
+  assert.equal(generated.usage.estimatedCredits, 4)
+  await assert.rejects(
+    executeCreativeGeneration({
+      request: { ...musicRequest, mode: 'text_to_speech' },
+      actor,
+      source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' },
+    }),
+    /mode must be one of: instrumental, lyrics_to_song/,
+  )
+  await assert.rejects(
+    executeCreativeGeneration({
+      request: { ...musicRequest, inputAssetIds: ['reference-audio'] },
+      actor,
+      source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' },
+    }),
+    /must include 0 governed assets/,
+  )
 })
 
 test('executeCreativeGeneration applies the Video contract before mock execution', async () => {

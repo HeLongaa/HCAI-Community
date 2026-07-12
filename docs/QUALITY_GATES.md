@@ -54,6 +54,10 @@ The V1 Video staging contract validates 13 fixture-only scenarios with concrete 
 request/input/lifecycle/accounting/release/operations tests, and fails if a default network client, Provider credential,
 real-call approval, automatic failover, or production enablement is implied.
 
+The Music capability contract freezes instrumental and lyrics-to-song request shapes, Provider mode projections,
+three-minute MP3 output, rights/license gates, application lifecycle, and budget limits. It rejects reference audio,
+remix, voice cloning, and TTS until later contracts implement them explicitly.
+
 Use this before handing off small frontend, contract, or documentation changes.
 
 ## Pull Request Check
@@ -110,6 +114,10 @@ Includes:
   labels Mock/fixture/unavailable runtimes; the V1-29 matrix executes 13 request, lifecycle, accounting, release, failure,
   operations, and rollback scenarios, while adapter product registration, HTTP, lifecycle runtime, real calls,
   production, and failover remain disabled
+- Music capability version, disabled ElevenLabs Enterprise/Lyria Preview decisions, instrumental and lyrics-to-song
+  modes, three-minute private MP3 output, rights/license metadata, application lifecycle, and USD budget limits; Music
+  adapters, HTTP clients, credentials, output ingestion, real calls, voice/TTS adjacency, production, and failover remain
+  unimplemented or disabled
 - external OAuth provider metadata validation
 - creative provider safety validation: production smoke must keep staging provider preflight and the Provider HTTP
   client disabled, while client tests use injected fetch implementations and never expose real Provider tokens
