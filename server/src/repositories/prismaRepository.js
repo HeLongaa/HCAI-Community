@@ -19,6 +19,7 @@ import {
   getCreativeGenerationDto,
   getCreativeGenerationMutationDto,
   getCreativeOutputIngestionDto,
+  getCreativeProviderOperationDto,
   getCreativeProviderCapEvidenceDto,
   getCreativeProviderBudgetWindowDto,
   getCreativeProviderCircuitEventDto,
@@ -58,6 +59,7 @@ import { dispatchMediaScanAlert } from '../media/alertDispatcher.js'
 import { writeStorageObject } from '../storage/objectWriter.js'
 import { writeJsonArchive } from '../storage/archiveWriter.js'
 import { createPrismaChatRepository } from '../chat/prismaChatRepository.js'
+import { safeProviderOperationMetadata } from '../creative/generationRecords.js'
 
 const { Prisma, PrismaClient } = prismaClientPkg
 const safeProviderJobIdPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
@@ -4052,6 +4054,150 @@ const createPrismaRepository = async (fallbackRepository) => {
     },
   }
 
+  const creativeProviderOperations = {
+    record: async (payload, actor) => {
+      const generationId = String(payload.generationId)
+      const providerJobId = safeProviderJobIdEvidence(payload.providerJobId)
+      const existing = await client.creativeProviderOperation.findUnique({ where: { generationId } })
+      if (existing) {
+        if (existing.providerId !== payload.providerId || existing.providerJobId !== providerJobId) {
+          throw new HttpError(409, 'CREATIVE_PROVIDER_OPERATION_CONFLICT', 'Creative Provider operation state conflict', {
+            reasonCode: 'operation_identity_mismatch',
+          })
+        }
+        return { created: false, operation: getCreativeProviderOperationDto(existing) }
+      }
+      let row
+      try {
+        row = await client.creativeProviderOperation.create({
+          data: {
+            id: payload.id ?? `provider-operation-${randomUUID()}`,
+            generationId,
+            providerId: payload.providerId,
+            providerMode: payload.providerMode,
+            providerJobId,
+            status: payload.status ?? 'queued',
+            pollAttempts: Number(payload.pollAttempts ?? 0),
+            nextPollAt: asDateOrNull(payload.nextPollAt),
+            timeoutAt: new Date(payload.timeoutAt),
+            lastPayloadHash: payload.lastPayloadHash ?? null,
+            outputDigest: payload.outputDigest ?? null,
+            lastErrorCode: payload.lastErrorCode ?? null,
+            sideEffectsComplete: Boolean(payload.sideEffectsComplete),
+            safeMetadata: safeProviderOperationMetadata(payload.safeMetadata) ?? undefined,
+            terminalAt: asDateOrNull(payload.terminalAt),
+          },
+        })
+      } catch (error) {
+        if (error?.code !== 'P2002') throw error
+        const duplicate = await client.creativeProviderOperation.findUnique({ where: { generationId } })
+        if (duplicate?.providerId === payload.providerId && duplicate.providerJobId === providerJobId) {
+          return { created: false, operation: getCreativeProviderOperationDto(duplicate) }
+        }
+        throw new HttpError(409, 'CREATIVE_PROVIDER_OPERATION_CONFLICT', 'Creative Provider operation state conflict', {
+          reasonCode: 'provider_job_already_recorded',
+        })
+      }
+      await recordAudit({
+        actor,
+        action: 'creative.provider_operation.recorded',
+        resourceType: 'creative_provider_operation',
+        resourceId: row.id,
+        metadata: {
+          generationId: row.generationId,
+          providerId: row.providerId,
+          providerJobId: safeProviderJobIdEvidence(row.providerJobId),
+          status: row.status,
+        },
+      })
+      return { created: true, operation: getCreativeProviderOperationDto(row) }
+    },
+    findForGeneration: async (generationId) => {
+      const row = await client.creativeProviderOperation.findUnique({ where: { generationId: String(generationId) } })
+      return row ? getCreativeProviderOperationDto(row) : null
+    },
+    listDue: async (options = {}) => {
+      const limit = Math.max(1, options.limit ?? 10)
+      const rows = await client.creativeProviderOperation.findMany({
+        where: {
+          ...(options.providerId ? { providerId: String(options.providerId) } : {}),
+          AND: [
+            {
+              OR: [
+                { status: { in: (options.statuses ?? ['queued', 'running']).map(String) } },
+                { sideEffectsComplete: false },
+              ],
+            },
+            {
+              OR: [
+                { nextPollAt: null },
+                { nextPollAt: { lte: new Date(options.dueBefore ?? new Date()) } },
+              ],
+            },
+          ],
+        },
+        orderBy: [{ nextPollAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+        take: limit,
+      })
+      return { items: rows.map(getCreativeProviderOperationDto), limit }
+    },
+    update: async (generationId, patch = {}, actor, options = {}) => {
+      const current = await client.creativeProviderOperation.findUnique({ where: { generationId: String(generationId) } })
+      if (!current) return null
+      if (options.expectedVersion != null && Number(options.expectedVersion) !== current.version) {
+        throw new HttpError(409, 'CREATIVE_PROVIDER_OPERATION_CONFLICT', 'Creative Provider operation state conflict', {
+          reasonCode: 'operation_version_mismatch',
+        })
+      }
+      if (patch.providerJobId && safeProviderJobIdEvidence(patch.providerJobId) !== current.providerJobId) {
+        throw new HttpError(409, 'CREATIVE_PROVIDER_OPERATION_CONFLICT', 'Creative Provider operation state conflict', {
+          reasonCode: 'provider_job_mismatch',
+        })
+      }
+      const changed = await client.creativeProviderOperation.updateMany({
+        where: { id: current.id, version: current.version },
+        data: {
+          ...compactObject({
+            status: patch.status,
+            pollAttempts: patch.pollAttempts == null ? undefined : Number(patch.pollAttempts),
+            nextPollAt: patch.nextPollAt === undefined ? undefined : asDateOrNull(patch.nextPollAt),
+            timeoutAt: patch.timeoutAt == null ? undefined : new Date(patch.timeoutAt),
+            lastPayloadHash: patch.lastPayloadHash,
+            outputDigest: patch.outputDigest,
+            lastErrorCode: patch.lastErrorCode,
+            sideEffectsComplete: patch.sideEffectsComplete,
+            safeMetadata: patch.safeMetadata === undefined
+              ? undefined
+              : safeProviderOperationMetadata(patch.safeMetadata) ?? undefined,
+            terminalAt: patch.terminalAt === undefined ? undefined : asDateOrNull(patch.terminalAt),
+          }),
+          version: { increment: 1 },
+        },
+      })
+      if (changed.count !== 1) {
+        throw new HttpError(409, 'CREATIVE_PROVIDER_OPERATION_CONFLICT', 'Creative Provider operation state conflict', {
+          reasonCode: 'operation_version_mismatch',
+        })
+      }
+      const row = await client.creativeProviderOperation.findUnique({ where: { id: current.id } })
+      await recordAudit({
+        actor,
+        action: 'creative.provider_operation.updated',
+        resourceType: 'creative_provider_operation',
+        resourceId: row.id,
+        metadata: {
+          generationId: row.generationId,
+          providerId: row.providerId,
+          providerJobId: safeProviderJobIdEvidence(row.providerJobId),
+          status: row.status,
+          version: row.version,
+          sideEffectsComplete: row.sideEffectsComplete,
+        },
+      })
+      return getCreativeProviderOperationDto(row)
+    },
+  }
+
   const creativeGenerationMutations = {
     record: async (payload, actor) => {
       const idempotencyKey = String(payload.idempotencyKey ?? '')
@@ -7635,6 +7781,7 @@ const createPrismaRepository = async (fallbackRepository) => {
     providerBudgetAudit,
     chat,
     creativeGenerations,
+    creativeProviderOperations,
     creativeGenerationMutations,
     creativeProviderReplays,
     creativeOutputIngestions,

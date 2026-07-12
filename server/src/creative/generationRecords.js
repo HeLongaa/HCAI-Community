@@ -48,6 +48,23 @@ export const safeCreativeCreditMetadata = (metadata) => {
   return Object.keys(safe).length > 0 ? safe : null
 }
 
+export const safeProviderOperationMetadata = (metadata) => {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
+  const safe = {}
+  for (const key of ['schemaVersion', 'modelId', 'workspace', 'mode', 'providerState', 'normalizedStatus', 'lastErrorCategory']) {
+    if (metadata[key] != null) safe[key] = safeMetadataText(metadata[key])
+  }
+  for (const key of ['inputAssetCount', 'outputCount']) {
+    if (Number.isInteger(metadata[key]) && metadata[key] >= 0 && metadata[key] <= 100) safe[key] = metadata[key]
+  }
+  for (const key of ['usageReported', 'retryable']) {
+    if (metadata[key] != null) safe[key] = Boolean(metadata[key])
+  }
+  const parameterKeys = safeMetadataStringArray(metadata.parameterKeys)
+  if (parameterKeys.length > 0) safe.parameterKeys = parameterKeys
+  return Object.keys(safe).length > 0 ? safe : null
+}
+
 export const buildCreativeGenerationRecordPayload = (generation, actor, overrides = {}) => ({
   id: generation.id,
   actorId: actor?.id ?? generation.createdBy?.id ?? null,

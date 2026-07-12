@@ -143,8 +143,15 @@ const summarize = (env, oauthProviders, chatRuntime) => ({
     governedInputResolverImplemented: videoCapabilityContract.runtime.governedInputResolverImplemented,
     inputBytesReaderImplemented: videoCapabilityContract.runtime.inputBytesReaderImplemented,
     lifecycleProjectionImplemented: videoCapabilityContract.runtime.lifecycleProjectionImplemented,
+    providerOperationPersistenceImplemented: videoCapabilityContract.runtime.providerOperationPersistenceImplemented,
     providerHttpClientImplemented: videoCapabilityContract.runtime.providerHttpClientImplemented,
     providerLifecycleRegistered: videoCapabilityContract.runtime.providerLifecycleRegistered,
+    providerLifecycleEnabled: videoCapabilityContract.runtime.providerLifecycleEnabled,
+    lifecycleRuntimeEnabled: env.creativeGoogleVeoLifecycleEnabled,
+    lifecycleWorkerEnabled: env.creativeGoogleVeoLifecycleWorkerEnabled,
+    fixtureStatusReaderOnly: videoCapabilityContract.runtime.fixtureStatusReaderOnly,
+    outputIngestionImplemented: videoCapabilityContract.runtime.outputIngestionImplemented,
+    providerCostCloseoutImplemented: videoCapabilityContract.runtime.providerCostCloseoutImplemented,
     realProviderCallsApproved: videoCapabilityContract.runtime.realProviderCallsApproved,
     productionEnablementApproved: videoCapabilityContract.runtime.productionEnablementApproved,
   },
@@ -266,12 +273,19 @@ check(
     videoCapabilityContract.runtime.governedInputResolverImplemented === true &&
     videoCapabilityContract.runtime.inputBytesReaderImplemented === true &&
     videoCapabilityContract.runtime.lifecycleProjectionImplemented === true &&
+    videoCapabilityContract.runtime.providerOperationPersistenceImplemented === true &&
     videoCapabilityContract.runtime.providerHttpClientImplemented === false &&
-    videoCapabilityContract.runtime.providerLifecycleRegistered === false &&
+    videoCapabilityContract.runtime.providerLifecycleRegistered === true &&
+    videoCapabilityContract.runtime.providerLifecycleEnabled === false &&
+    env.creativeGoogleVeoLifecycleEnabled === false &&
+    env.creativeGoogleVeoLifecycleWorkerEnabled === false &&
+    videoCapabilityContract.runtime.fixtureStatusReaderOnly === true &&
+    videoCapabilityContract.runtime.outputIngestionImplemented === true &&
+    videoCapabilityContract.runtime.providerCostCloseoutImplemented === true &&
     videoCapabilityContract.runtime.automaticFailoverAllowed === false &&
     videoCapabilityContract.runtime.realProviderCallsApproved === false &&
     videoCapabilityContract.runtime.productionEnablementApproved === false,
-  'V1-26 adds a fixture-only governed Video boundary without registering Provider traffic',
+  'V1-27 registers a disabled fixture lifecycle without enabling Provider traffic',
 )
 check(checks, 'media alert channel configured', hasAny(env.hasMediaScanAlertWebhookUrl, env.hasMediaScanAlertSlackWebhookUrl, env.mediaScanAlertEmailRecipientCount > 0), 'At least one media alert channel must be configured')
 check(checks, 'security alert channel configured', hasAny(env.hasSecurityAlertWebhookUrl, env.hasSecurityAlertSlackWebhookUrl, env.securityAlertEmailRecipientCount > 0), 'At least one security alert channel must be configured')

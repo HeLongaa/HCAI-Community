@@ -10,6 +10,7 @@ const png = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
   'base64',
 )
+const mp4 = Buffer.from('00000018667479706d703432000000006d70343269736f6d0000000866726565', 'hex')
 const publicDns = async () => [{ address: '8.8.8.8', family: 4 }]
 const allowedHosts = ['cdn.example.test']
 
@@ -50,6 +51,26 @@ test('provider output fetcher validates PNG bytes and computes a platform checks
   assert.match(result.sha256, /^[a-f0-9]{64}$/)
   assert.equal(requestOptions.redirect, 'manual')
   assert.equal(JSON.stringify(result).includes('signature'), false)
+})
+
+test('provider output fetcher validates bounded Video MP4 fixture bytes', async () => {
+  const fetchOutput = createProviderOutputFetcher({
+    fetchImpl: async () => new Response(mp4, {
+      headers: { 'content-type': 'video/mp4', 'content-length': String(mp4.length) },
+    }),
+    allowedHosts,
+    dnsLookup: publicDns,
+    maxBytesByWorkspace: { video: 1024 },
+  })
+  const result = await fetchOutput({
+    url: 'https://cdn.example.test/output.mp4?signature=ephemeral-video',
+    workspace: 'video',
+    declaredContentType: 'video/mp4',
+  })
+  assert.equal(result.contentType, 'video/mp4')
+  assert.equal(result.extension, 'mp4')
+  assert.equal(result.sizeBytes, mp4.length)
+  assert.equal(JSON.stringify(result).includes('ephemeral-video'), false)
 })
 
 test('provider output URL policy rejects unsafe schemes, hosts, ports, credentials, and addresses', async () => {

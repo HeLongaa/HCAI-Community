@@ -62,7 +62,8 @@ voiceover, and music synchronization are application composition stages, not unv
 ## Handoff
 
 V1-26 implements governed input bytes/lineage, a fixed fixture-only Veo request descriptor, strict async result
-projection/replay construction, and generated-second cost reservation. V1-27 through V1-29 still own Provider operation
-state, registered lifecycle behavior, output ingestion, production Video UI, and staging acceptance. Those tasks must
-preserve this contract or update it explicitly with matching tests and docs.
+projection/replay construction, and generated-second cost reservation. V1-27 adds safe Provider operation state,
+registered-but-disabled fixture lifecycle behavior, output ingestion, scanner isolation, timeout/cancellation, and
+terminal accounting. V1-28 and V1-29 still own the production Video UI and staging acceptance. Those tasks must preserve
+this contract or update it explicitly with matching tests and docs.
 Ordinary continuation language is never approval for a real Video Provider request.
