@@ -6,6 +6,7 @@ import {
   parseConvertToTaskRequest,
   parseCompleteMediaUploadRequest,
   parseCreateCreativeGenerationRequest,
+  parseCreativeGenerationHistoryQuery,
   parseAdminAuditListQuery,
   parseAdminCreativeGenerationListQuery,
   parseAdminReviewListQuery,
@@ -326,6 +327,34 @@ test('parseCreateCreativeGenerationRequest validates creative payload boundaries
     inputAssetIds: ['source', 'mask'],
     parameters: { strength: 0.5 },
   }).mode, 'image_edit')
+})
+
+test('parseCreativeGenerationHistoryQuery defaults to image and validates lifecycle filters', () => {
+  assert.deepEqual(parseCreativeGenerationHistoryQuery({}), {
+    cursor: null,
+    limit: 20,
+    workspace: 'image',
+    status: null,
+  })
+  assert.deepEqual(parseCreativeGenerationHistoryQuery({
+    cursor: 'generation-1',
+    limit: '12',
+    workspace: 'image',
+    status: 'running',
+  }), {
+    cursor: 'generation-1',
+    limit: 12,
+    workspace: 'image',
+    status: 'running',
+  })
+  assertValidationError(
+    () => parseCreativeGenerationHistoryQuery({ status: 'unknown' }),
+    'status must be one of: queued, running, completed, failed, cancelled, review_required',
+  )
+  assertValidationError(
+    () => parseCreativeGenerationHistoryQuery({ limit: '51' }),
+    'limit must be an integer between 1 and 50',
+  )
 })
 
 test('parseCreateMediaUploadRequest validates upload signing payloads', () => {

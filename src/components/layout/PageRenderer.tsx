@@ -61,6 +61,15 @@ export function PageRenderer({
     generationState,
     runGenerate,
     imageGeneration,
+    imageGenerationHistory,
+    imageGenerationAction,
+    refreshImageGenerationHistory,
+    selectImageGeneration,
+    cancelImageGeneration,
+    retryImageGeneration,
+    downloadImageGenerationAsset,
+    prepareImageAssetForReuse,
+    hasImageGenerationRetryRequest,
     imageProviderCatalog,
     imageProviderCatalogState,
     imageInputAssets,
@@ -122,6 +131,15 @@ export function PageRenderer({
           generationState={generationState}
           runGenerate={runGenerate}
           imageGeneration={imageGeneration}
+          imageGenerationHistory={imageGenerationHistory}
+          imageGenerationAction={imageGenerationAction}
+          refreshImageGenerationHistory={refreshImageGenerationHistory}
+          selectImageGeneration={selectImageGeneration}
+          cancelImageGeneration={cancelImageGeneration}
+          retryImageGeneration={retryImageGeneration}
+          downloadImageGenerationAsset={downloadImageGenerationAsset}
+          prepareImageAssetForReuse={prepareImageAssetForReuse}
+          hasImageGenerationRetryRequest={hasImageGenerationRetryRequest}
           imageProviderCatalog={imageProviderCatalog}
           imageProviderCatalogState={imageProviderCatalogState}
           imageInputAssets={imageInputAssets}

@@ -3092,7 +3092,8 @@ export const createSeedRepository = () => ({
     },
     list: (options = {}) => {
       const filtered = [...creativeGenerationsById.values()]
-        .filter((record) => !options.actorHandle || record.actorHandle === options.actorHandle)
+        .filter((record) => (!options.actorHandle && !options.actorId) ||
+          record.actorHandle === options.actorHandle || record.actorId === options.actorId)
         .filter((record) => !options.workspace || record.workspace === options.workspace)
         .filter((record) => !options.mode || record.mode === options.mode)
         .filter((record) => !options.providerId || record.providerId === options.providerId)

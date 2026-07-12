@@ -86,6 +86,28 @@ rules. Image Studio loads that catalog before enabling generation. A missing or 
 `POST /api/creative/generations` and internal generation execution both call the same Image request validator. This
 prevents route bypasses from accepting a mode or parameter combination that the public parser would reject.
 
+## User Lifecycle And History
+
+V1-18 adds owner-scoped `GET /api/creative/generations` and `GET /api/creative/generations/{id}` reads. The user
+projection includes lifecycle status, bounded/redacted prompt preview, mode, Provider product identifier, attempt
+relationship, safe error preview, governed output asset summaries, and server-derived action eligibility. It excludes
+raw prompts, prompt hashes, Provider job/request identifiers, private URLs, storage keys, raw metadata, and Admin audit
+evidence.
+
+Image Studio restores persisted `queued`, `running`, `review_required`, `completed`, `failed`, and `cancelled` jobs.
+Only active jobs are polled; polling pauses while the page is hidden or offline, backs off to a bounded interval, and
+stops at a terminal status. The UI does not invent a numeric progress percentage when the Provider has not supplied
+one.
+
+Cancellation and retry reuse the V1-08 idempotent mutation boundary. Exact retry requires the original request, which
+is retained only in current React process memory. A browser refresh restores safe history but intentionally removes
+exact-retry input; the UI then requires the user to recreate the request from the safe preview. This preserves the
+zero-persistence raw-prompt contract.
+
+Downloads continue through the owner-scoped media download API and require an uploaded, scan-clean asset. Output reuse
+requires the same governed input MIME contract as V1-17: PNG, JPEG, or WebP. Other downloadable image formats such as
+the deterministic mock SVG remain ineligible as Image inputs.
+
 ## Verification
 
 - `server/src/creative/imageCapabilityContract.test.js` covers frozen decisions, projections, valid combinations, and
@@ -96,6 +118,8 @@ prevents route bypasses from accepting a mode or parameter combination that the 
   budget pricing, non-serializable output bytes, Provider-specific parameter rejection, and idempotent cost accounting.
 - Input resolver, route, repository, media metadata, Image Studio, and Playwright tests cover ownership, scan state,
   source/mask roles, strength, mode-specific controls, and durable lineage.
+- User history serializer, route, and Playwright tests cover owner scope, field minimization, refresh recovery, active
+  lifecycle controls, retry degradation, download gating, compatible reuse, and removal of demo results from Image.
 - `config/v1-runtime-surfaces.json` continues to classify Image execution as a release blocker until an approved real
   Provider replaces deterministic mock execution.
 
