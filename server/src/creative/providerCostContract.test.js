@@ -135,6 +135,53 @@ test('provider cost reservation requires estimate currency cap scope and immutab
   )
 })
 
+test('provider cost reservation verifies generated-second estimates against their pricing snapshot', () => {
+  const reservation = buildProviderCostReservation({
+    generationId: 'gen-provider-cost-video',
+    providerCost: {
+      providerId: 'google-veo-3-1-fast',
+      providerAccountRef: 'staging',
+      model: {
+        providerModelId: 'veo-3.1-fast',
+        pricingSource: 'v1_public_list_price',
+        pricingSnapshotAt: '2026-07-13T00:00:00.000Z',
+      },
+      estimate: {
+        currency: 'USD',
+        amount: 0.8,
+        billingUnit: 'generated_seconds',
+        quantity: 8,
+        unitPrice: 0.1,
+      },
+      budget: {
+        budgetScope: 'staging:google:video',
+        dailyCapCurrency: 'USD',
+        dailyCapAmount: 20,
+        spentAmount: 0,
+      },
+    },
+    workspace: 'video',
+    mode: 'text_to_video',
+    now: new Date('2026-07-13T00:00:00.000Z'),
+  })
+  assert.equal(reservation.estimateMicros, '800000')
+  assert.equal(reservation.pricingSnapshot.billingUnit, 'generated_seconds')
+  assert.equal(reservation.pricingSnapshot.unitPriceMicros, '100000')
+
+  assert.throws(() => buildProviderCostReservation({
+    generationId: 'gen-provider-cost-video-mismatch',
+    providerCost: {
+      providerId: 'google-veo-3-1-fast',
+      providerAccountRef: 'staging',
+      model: { providerModelId: 'veo-3.1-fast' },
+      estimate: { currency: 'USD', amount: 0.9, billingUnit: 'generated_seconds', quantity: 8, unitPrice: 0.1 },
+      budget: { budgetScope: 'staging:google:video', dailyCapCurrency: 'USD', dailyCapAmount: 20, spentAmount: 0 },
+    },
+    workspace: 'video',
+    mode: 'text_to_video',
+  }), (error) => error.code === 'CREATIVE_PROVIDER_COST_CONTRACT_INVALID' && error.details.reasonCode === 'estimate_calculation_mismatch')
+})
+
 test('provider closeout settles known actuals and reconciles missing or mismatched actuals', () => {
   const generation = {
     status: 'completed',
