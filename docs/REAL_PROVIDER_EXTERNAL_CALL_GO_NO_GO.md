@@ -27,15 +27,18 @@ Ordinary continuation language such as "continue", "next", "looks good", or "shi
 
 ## Scope
 
-The first external-call rehearsal may be considered only for:
+The first V1-19 external-call rehearsal may be considered only for:
 
-- Replicate image generation candidate.
+- OpenAI GPT Image 2, the approved planning primary for Image.
 - Dedicated staging environment only.
 - One controlled internal test request.
 - Low provider-side spending cap.
 - App-side budget fail-closed guard.
 - Safe provider request/response redaction.
 - Read-only Admin generation history.
+
+Replicate FLUX 1.1 Pro remains a backup candidate. It requires a separate approval record and must never be selected as
+an automatic fallback from an OpenAI failure.
 
 Still out of scope:
 
@@ -76,20 +79,19 @@ The same rule applies to CLI, chat, PR, and Notion notes. If the approval text d
 
 - Dedicated staging GitHub Environment exists.
 - `CREATIVE_PROVIDER_RUNTIME_ENV=staging`.
-- `CREATIVE_PROVIDER_MODE=disabled` for preflight smoke.
-- `CREATIVE_PROVIDER_MODE=replicate_staging` only for adapter-shell metadata smoke.
-- `CREATIVE_STAGING_IMAGE_PROVIDER=replicate`.
-- `CREATIVE_STAGING_PROVIDER_CONFIRMATION=staging-only`.
-- `CREATIVE_STAGING_PROVIDER_API_TOKEN` is stored only as a GitHub Environment secret or deployment secret.
-- Production does not contain `CREATIVE_STAGING_PROVIDER_API_TOKEN`.
+- `CREATIVE_PROVIDER_MODE=disabled` throughout the OpenAI metadata preflight.
+- `CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED=true` only in the dedicated staging Environment.
+- `CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED=false` throughout metadata preflight.
+- `CREATIVE_OPENAI_IMAGE_CONFIRMATION=staging-only`.
+- `CREATIVE_OPENAI_IMAGE_API_TOKEN` is stored only as a GitHub Environment secret or deployment secret.
+- Production does not contain `CREATIVE_OPENAI_IMAGE_API_TOKEN` or enabled OpenAI Image client/network switches.
 - Local `.env` files do not contain the provider token.
 
 ### Smoke Evidence
 
 Required GitHub workflow runs:
 
-- `smoke_profile=creative-staging`, `CREATIVE_STAGING_SMOKE_MODE=preflight`.
-- `smoke_profile=creative-staging`, `CREATIVE_STAGING_SMOKE_MODE=adapter-shell`.
+- `smoke_profile=creative-staging`, `CREATIVE_STAGING_SMOKE_MODE=openai-image-client`.
 
 Required local commands:
 
@@ -104,7 +106,7 @@ Required result notes:
 
 - Smoke output prints only booleans, provider modes, provider ids, and counts.
 - `networkCallsEnabled=false` in metadata-only smoke.
-- `adapterImplemented=false` until the adapter PR intentionally changes that value.
+- OpenAI reports `adapterImplemented=true`, `httpClientEnabled=true`, `networkCallsEnabled=false`, and `productionNoGo=true`.
 - No token value appears in smoke output, logs, PR body, screenshots, or Notion.
 
 ### Spending Evidence
@@ -118,7 +120,7 @@ Provider-side:
 
 App-side:
 
-- Budget scope is low-cardinality, for example `staging:replicate:image`.
+- Budget scope is low-cardinality, for example `staging:openai:image`.
 - Daily cap is configured before dispatch.
 - Estimate and cap metadata are required before dispatch.
 - Missing estimate, missing cap, currency mismatch, or projected cap exceedance blocks dispatch.
@@ -128,8 +130,8 @@ App-side:
 
 Before a PR can make a real external call, it must prove:
 
-- The default route remains mock-only unless the staging adapter mode is explicitly selected.
-- Production env validation rejects `replicate_staging`.
+- The default route remains mock-only; the OpenAI adapter is fixture-injected and unavailable on the product route.
+- Production env validation rejects OpenAI Image client or network enablement.
 - Provider request payloads exclude secrets and raw internal-only data.
 - Provider response mapping stores safe provider job ids and redacted failure previews only.
 - Provider adapter contract tests pass.
@@ -144,8 +146,7 @@ Go for one external-call staging rehearsal only when all are true:
 - Notion approval record is complete in Chinese.
 - User explicitly approves the first external-call staging run.
 - The approved scope is image-only and staging-only.
-- GitHub creative-staging preflight smoke passed.
-- GitHub creative-staging adapter-shell smoke passed.
+- GitHub creative-staging `openai-image-client` smoke passed with network disabled.
 - Local fixture smoke passed.
 - Provider-side spending cap exists and is recorded.
 - App-side budget guard blocks missing or over-budget dispatch.
@@ -181,7 +182,7 @@ Decision: No-go / Conditional go / Go for one staging external-call rehearsal
 Approver:
 Approval timestamp:
 Approval expiry:
-Provider: Replicate
+Provider: OpenAI GPT Image 2
 Workspace/mode: image / text_to_image
 Environment:
 Branch or PR:
@@ -189,8 +190,7 @@ Maximum provider calls:
 Provider-side spending cap:
 App-side budget scope:
 App-side daily cap:
-Creative-staging preflight smoke URL:
-Creative-staging adapter-shell smoke URL:
+Creative-staging OpenAI Image client smoke URL:
 Production smoke result:
 Token rotation owner:
 Token rotation deadline:

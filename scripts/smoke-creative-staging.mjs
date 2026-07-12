@@ -1,4 +1,5 @@
 import { buildCreativeProviderConfig, buildEnv } from '../server/src/config/env.js'
+import { createCreativeProviderRegistry } from '../server/src/creative/providerRegistry.js'
 
 const args = new Set(process.argv.slice(2))
 const profile = [...args].find((arg) => arg.startsWith('--profile='))?.split('=')[1] ?? 'env'
@@ -34,20 +35,37 @@ const stagingPollingWorkerFixture = {
   CREATIVE_PROVIDER_POLLING_WORKER_ENABLED: 'true',
 }
 
+const openAIImageClientFixture = {
+  NODE_ENV: 'production',
+  ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+  CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+  CREATIVE_PROVIDER_MODE: 'disabled',
+  CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED: 'true',
+  CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED: 'false',
+  CREATIVE_OPENAI_IMAGE_CONFIRMATION: 'staging-only',
+  CREATIVE_OPENAI_IMAGE_API_TOKEN: 'openai-image-fixture-token',
+  CREATIVE_OPENAI_IMAGE_DAILY_BUDGET_USD: '0.25',
+  CREATIVE_OPENAI_IMAGE_DAILY_SPEND_USD: '0',
+  CREATIVE_OPENAI_IMAGE_PROVIDER_CAP_CONFIRMED: 'true',
+  CREATIVE_OPENAI_IMAGE_PROVIDER_CAP_USD: '1',
+  CREATIVE_OPENAI_IMAGE_PRODUCTION_NO_GO: 'true',
+}
+
 const selectSource = () => {
   if (profile === 'env') return process.env
   if (profile === 'fixture' && mode === 'preflight') return stagingPreflightFixture
   if (profile === 'fixture' && mode === 'adapter-shell') return stagingAdapterShellFixture
   if (profile === 'fixture' && mode === 'callback-api') return stagingCallbackApiFixture
   if (profile === 'fixture' && mode === 'polling-worker') return stagingPollingWorkerFixture
-  throw new Error('Unsupported creative staging smoke options. Use --profile=env|fixture and --mode=preflight|adapter-shell|callback-api|polling-worker')
+  if (profile === 'fixture' && mode === 'openai-image-client') return openAIImageClientFixture
+  throw new Error('Unsupported creative staging smoke options. Use --profile=env|fixture and --mode=preflight|adapter-shell|callback-api|polling-worker|openai-image-client')
 }
 
 const check = (checks, name, pass, detail = '') => {
   checks.push({ name, pass: Boolean(pass), detail })
 }
 
-const summarize = (env, config, provider) => ({
+const summarize = (env, config, provider, openAIImageProvider, source) => ({
   nodeEnv: env.nodeEnv,
   creativeProvider: {
     mode: config.providerMode,
@@ -87,6 +105,26 @@ const summarize = (env, config, provider) => ({
         statusClientEnabled: config.polling.statusClientEnabled,
       }
     : null,
+  openAIImageProvider: openAIImageProvider
+    ? {
+        configured: openAIImageProvider.configured,
+        enabled: openAIImageProvider.enabled,
+        externalCredentialsConfigured: openAIImageProvider.safeMetadata.externalCredentialsConfigured,
+        stagingOnly: openAIImageProvider.safeMetadata.stagingOnly,
+        productionDenied: openAIImageProvider.safeMetadata.productionDenied,
+        approvalRequired: openAIImageProvider.safeMetadata.approvalRequired,
+        adapterImplemented: openAIImageProvider.safeMetadata.adapterImplemented,
+        httpClientImplemented: openAIImageProvider.safeMetadata.httpClientImplemented,
+        httpClientEnabled: openAIImageProvider.safeMetadata.httpClientEnabled,
+        networkCallsEnabled: openAIImageProvider.safeMetadata.networkCallsEnabled,
+        synchronousOutput: openAIImageProvider.safeMetadata.synchronousOutput,
+        providerCapConfirmed: String(source.CREATIVE_OPENAI_IMAGE_PROVIDER_CAP_CONFIRMED ?? '').trim().toLowerCase() === 'true',
+        providerCapUsd: Number(source.CREATIVE_OPENAI_IMAGE_PROVIDER_CAP_USD ?? 0),
+        appDailyBudgetUsd: Number(source.CREATIVE_OPENAI_IMAGE_DAILY_BUDGET_USD ?? 0),
+        appDailySpendUsd: Number(source.CREATIVE_OPENAI_IMAGE_DAILY_SPEND_USD ?? 0),
+        productionNoGo: String(source.CREATIVE_OPENAI_IMAGE_PRODUCTION_NO_GO ?? '').trim().toLowerCase() === 'true',
+      }
+    : null,
 })
 
 const collectStringValues = (value) => {
@@ -101,6 +139,7 @@ const summaryContainsUnsafeMaterial = (summary, source) => {
   const secretCandidates = [
     source.CREATIVE_STAGING_PROVIDER_API_TOKEN,
     source.CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET,
+    source.CREATIVE_OPENAI_IMAGE_API_TOKEN,
   ].filter((value) => typeof value === 'string' && value.trim().length >= 8)
   if (secretCandidates.some((secret) => serialized.includes(secret))) {
     return true
@@ -120,30 +159,36 @@ const summaryContainsUnsafeMaterial = (summary, source) => {
 const source = selectSource()
 let env
 let config
+let registry
 try {
   env = buildEnv(source)
   config = buildCreativeProviderConfig(source)
+  registry = createCreativeProviderRegistry(source)
 } catch (error) {
   console.error(`Creative staging smoke failed during environment parsing: ${error.message}`)
   process.exit(1)
 }
 
 const provider = config.providers.find((candidate) => candidate.id === 'replicate-staging') ?? null
+const openAIImageProvider = registry.providers.find((candidate) => candidate.id === 'openai-gpt-image-2') ?? null
 const checks = []
-const safeSummary = summarize(env, config, provider)
+const safeSummary = summarize(env, config, provider, openAIImageProvider, source)
 
 check(checks, 'production runtime parity', env.nodeEnv === 'production', `NODE_ENV=${env.nodeEnv}`)
 check(checks, 'creative runtime is staging', env.creativeProviderRuntimeEnv === 'staging', `CREATIVE_PROVIDER_RUNTIME_ENV=${env.creativeProviderRuntimeEnv}`)
-check(checks, 'staging provider candidate is Replicate', env.creativeStagingImageProvider === 'replicate', `CREATIVE_STAGING_IMAGE_PROVIDER=${env.creativeStagingImageProvider || '<unset>'}`)
-check(checks, 'staging provider token configured as secret presence only', env.hasCreativeStagingProviderApiToken, 'token value is not printed')
-check(checks, 'replicate staging provider safe metadata exists', Boolean(provider), 'provider id replicate-staging')
-check(checks, 'replicate staging provider is never enabled by smoke', provider?.enabled === false, 'provider.enabled must stay false')
-check(checks, 'replicate staging provider remains staging-only', provider?.stagingOnly === true && provider?.productionDenied === true, 'stagingOnly=true productionDenied=true')
-check(checks, 'provider HTTP client boundary is implemented', config.httpClient.implemented === true && provider?.httpClientImplemented === true, 'httpClientImplemented=true')
-check(checks, 'provider callback boundary is implemented', config.callback.implemented === true, 'callbackImplemented=true')
-check(checks, 'provider polling boundary is implemented', config.polling.implemented === true && config.polling.statusClientImplemented === true, 'pollingImplemented=true statusClientImplemented=true')
-check(checks, 'replicate staging adapter not production-wired', provider?.adapterImplemented === false, 'adapterImplemented=false')
 check(checks, 'safe summary contains no raw provider or secret material', !summaryContainsUnsafeMaterial(safeSummary, source), 'summary values are low-cardinality metadata only')
+
+if (mode !== 'openai-image-client') {
+  check(checks, 'staging provider candidate is Replicate', env.creativeStagingImageProvider === 'replicate', `CREATIVE_STAGING_IMAGE_PROVIDER=${env.creativeStagingImageProvider || '<unset>'}`)
+  check(checks, 'staging provider token configured as secret presence only', env.hasCreativeStagingProviderApiToken, 'token value is not printed')
+  check(checks, 'replicate staging provider safe metadata exists', Boolean(provider), 'provider id replicate-staging')
+  check(checks, 'replicate staging provider is never enabled by smoke', provider?.enabled === false, 'provider.enabled must stay false')
+  check(checks, 'replicate staging provider remains staging-only', provider?.stagingOnly === true && provider?.productionDenied === true, 'stagingOnly=true productionDenied=true')
+  check(checks, 'provider HTTP client boundary is implemented', config.httpClient.implemented === true && provider?.httpClientImplemented === true, 'httpClientImplemented=true')
+  check(checks, 'provider callback boundary is implemented', config.callback.implemented === true, 'callbackImplemented=true')
+  check(checks, 'provider polling boundary is implemented', config.polling.implemented === true && config.polling.statusClientImplemented === true, 'pollingImplemented=true statusClientImplemented=true')
+  check(checks, 'replicate staging adapter not production-wired', provider?.adapterImplemented === false, 'adapterImplemented=false')
+}
 
 if (mode === 'preflight') {
   check(checks, 'preflight uses disabled provider mode', env.creativeProviderMode === 'disabled', `CREATIVE_PROVIDER_MODE=${env.creativeProviderMode}`)
@@ -171,8 +216,24 @@ if (mode === 'preflight') {
   check(checks, 'polling lifecycle and worker switches are explicitly enabled', config.polling.enabled === true && config.polling.workerEnabled === true, 'polling enabled for fixture metadata')
   check(checks, 'polling status client is implemented and enabled', config.polling.statusClientImplemented === true && config.polling.statusClientEnabled === true, 'status client ready')
   check(checks, 'polling worker keeps callback intake independently disabled', config.callback.enabled === false, 'callback.enabled=false')
+} else if (mode === 'openai-image-client') {
+  const providerCapUsd = Number(source.CREATIVE_OPENAI_IMAGE_PROVIDER_CAP_USD ?? 0)
+  const appDailyBudgetUsd = Number(source.CREATIVE_OPENAI_IMAGE_DAILY_BUDGET_USD ?? 0)
+  const appDailySpendUsd = Number(source.CREATIVE_OPENAI_IMAGE_DAILY_SPEND_USD ?? 0)
+  check(checks, 'OpenAI Image uses disabled product dispatch mode', env.creativeProviderMode === 'disabled' && config.enabled === false, `CREATIVE_PROVIDER_MODE=${env.creativeProviderMode}`)
+  check(checks, 'OpenAI Image safe provider metadata exists', Boolean(openAIImageProvider), 'provider id openai-gpt-image-2')
+  check(checks, 'OpenAI Image adapter and HTTP boundary are implemented', openAIImageProvider?.safeMetadata.adapterImplemented === true && openAIImageProvider?.safeMetadata.httpClientImplemented === true, 'adapterImplemented=true httpClientImplemented=true')
+  check(checks, 'OpenAI Image remains unavailable on the product route', openAIImageProvider?.enabled === false && openAIImageProvider?.configured === false, 'enabled=false configured=false')
+  check(checks, 'OpenAI Image credential is exposed as presence only', env.hasCreativeOpenAIImageApiToken === true && openAIImageProvider?.safeMetadata.externalCredentialsConfigured === true, 'token value is not printed')
+  check(checks, 'OpenAI Image client construction gate is enabled', env.creativeOpenAIImageHttpClientEnabled === true && openAIImageProvider?.safeMetadata.httpClientEnabled === true, 'client enabled for metadata preflight')
+  check(checks, 'OpenAI Image network calls remain disabled', env.creativeOpenAIImageNetworkCallsEnabled === false && openAIImageProvider?.safeMetadata.networkCallsEnabled === false, 'no outbound Provider calls')
+  check(checks, 'OpenAI Image provider-side cap is confirmed and bounded', String(source.CREATIVE_OPENAI_IMAGE_PROVIDER_CAP_CONFIRMED ?? '').trim().toLowerCase() === 'true' && Number.isFinite(providerCapUsd) && providerCapUsd > 0 && providerCapUsd <= 8, `providerCapUsd=${providerCapUsd}`)
+  check(checks, 'OpenAI Image app budget is positive and within the V1 daily cap', Number.isFinite(appDailyBudgetUsd) && appDailyBudgetUsd > 0 && appDailyBudgetUsd <= 8, `appDailyBudgetUsd=${appDailyBudgetUsd}`)
+  check(checks, 'OpenAI Image recorded spend does not exceed the app budget', Number.isFinite(appDailySpendUsd) && appDailySpendUsd >= 0 && appDailySpendUsd <= appDailyBudgetUsd, `appDailySpendUsd=${appDailySpendUsd}`)
+  check(checks, 'OpenAI Image production enablement remains no-go', String(source.CREATIVE_OPENAI_IMAGE_PRODUCTION_NO_GO ?? '').trim().toLowerCase() === 'true' && openAIImageProvider?.safeMetadata.productionDenied === true, 'production no-go')
+  check(checks, 'OpenAI Image synchronous path needs no callback or polling', openAIImageProvider?.safeMetadata.callbackEnabled === false && openAIImageProvider?.safeMetadata.pollingEnabled === false, 'callback=false polling=false')
 } else {
-  throw new Error('Unsupported creative staging smoke mode. Use preflight, adapter-shell, callback-api, or polling-worker')
+  throw new Error('Unsupported creative staging smoke mode. Use preflight, adapter-shell, callback-api, polling-worker, or openai-image-client')
 }
 
 const failed = checks.filter((item) => !item.pass)
