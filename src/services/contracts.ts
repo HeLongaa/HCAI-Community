@@ -677,7 +677,7 @@ export type ChatSafetyEvidence = {
   disposition: 'allow' | 'block' | 'review' | 'pending'
   classified: boolean
   reasonCodes: string[]
-  source: 'mock_fixture' | 'injected_fixture' | 'unavailable'
+  source: 'mock_fixture' | 'injected_fixture' | 'production_classifier' | 'unavailable'
   characterCount: number
   classifiedAt: string
 }

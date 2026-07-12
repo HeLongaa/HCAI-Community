@@ -45,11 +45,13 @@ export const buildChatContext = ({
     contentType: item.contentType,
     sizeBytes: item.sizeBytes,
     purpose: item.purpose,
+    providerInput: item.providerInput ?? null,
   }))
   const estimatedInputTokens = conservativeTokenEstimate(systemInstruction) +
     selected.reduce((total, message) => total + conservativeTokenEstimate(message.content), 0) +
     selectedProductContext.reduce((total, item) => total + conservativeTokenEstimate(item.title) + conservativeTokenEstimate(item.content), 0) +
-    selectedAttachments.reduce((total, item) => total + conservativeTokenEstimate(item.fileName) + conservativeTokenEstimate(item.contentType), 0)
+    selectedAttachments.reduce((total, item) => total + conservativeTokenEstimate(item.fileName) + conservativeTokenEstimate(item.contentType) +
+      (item.providerInput?.kind === 'text' ? conservativeTokenEstimate(item.providerInput.text) : item.providerInput ? 1024 : 0), 0)
   if (estimatedInputTokens > chatCapabilityContract.context.maxInputTokens) {
     throw new HttpError(422, 'CHAT_CONTEXT_TOKEN_LIMIT', 'Chat context exceeds the maximum input size')
   }

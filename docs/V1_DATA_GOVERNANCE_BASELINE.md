@@ -252,7 +252,9 @@ Available foundations:
 - V1-21 encrypts message bodies with versioned AES-256-GCM keys, owner-scopes history, persists explicit stream terminal
   states, sweeps expired conversations, and reapplies deletion tombstones after restore.
 - V1-22 persists only selected attachment ids, selected product-context references, and identity-free safety evidence.
-  Context bodies remain in request memory, attachment bytes are not read, and review metadata excludes raw content.
+  Context bodies remain in request memory and review metadata excludes raw content.
+- V1-24 adds a default-disabled staging reader and Provider client. Attachment bytes, resolved context bodies, and raw
+  Provider payloads remain request-memory-only and are excluded from Chat rows, generation records, reviews, and audits.
 
 Known gaps:
 
@@ -281,6 +283,7 @@ Known gaps:
 | V1-20 | Freeze the Chat persistence, retention, export, deletion, backup, and Provider-state contract |
 | V1-21 | Implemented encrypted owner-scoped conversations/messages, Mock SSE, stop/disconnect closeout, inactivity expiry, owner deletion, and restore-deletion replay; account-wide orchestration remains V1-67 |
 | V1-22 | Implemented strict Chat attachment metadata authorization, selected product-context read authorization, input/output safety buffering, safe partial output, and minimal review evidence; attachment bytes and real classifiers remain V1-24 |
+| V1-24 | Implemented default-disabled Chat Provider/classifier clients, exact-size attachment reads, pre-dispatch Provider controls, and metered cost closeout; real traffic and production enablement remain separately approval-gated |
 | V1-48 | OAuth scopes, identifiers, unlink, region, and sessions |
 | V1-49 | PostgreSQL backup, expiry, restore, and deletion rehearsal |
 | V1-50 | Private object storage/CDN and lifecycle deletion |

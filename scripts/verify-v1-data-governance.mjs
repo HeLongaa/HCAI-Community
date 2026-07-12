@@ -131,6 +131,7 @@ const expectedHandoffTasks = [
   'V1-20',
   'V1-21',
   'V1-22',
+  'V1-24',
   'V1-48',
   'V1-49',
   'V1-50',

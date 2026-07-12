@@ -8,20 +8,29 @@ import {
   parsePaginationQuery,
 } from '../../contracts/requestParsers.js'
 import { createChatService } from '../../chat/chatService.js'
+import { createChatRuntime } from '../../chat/chatRuntime.js'
 import { requireChatMessageCodec } from '../../chat/messageCrypto.js'
+import { createProviderControlPlane } from '../../creative/providerControlPlane.js'
 import { repositories } from '../../repositories/index.js'
 
 export const registerChatRoutes = (router, options = {}) => {
   const routeRepositories = options.repositories ?? repositories
   const source = options.source ?? process.env
+  const runtime = options.runtime ?? createChatRuntime({ source, fetchImpl: options.fetchImpl })
   const getService = () => createChatService({
     repository: routeRepositories.chat,
     creativeRepositories: routeRepositories,
     codec: options.codec ?? requireChatMessageCodec(source),
     executeGeneration: options.executeGeneration,
-    streamAdapter: options.streamAdapter,
-    inputSafetyClassifier: options.inputSafetyClassifier,
-    outputSafetyClassifier: options.outputSafetyClassifier,
+    streamAdapter: options.streamAdapter ?? runtime.streamAdapter,
+    inputSafetyClassifier: options.inputSafetyClassifier ?? runtime.inputSafetyClassifier,
+    outputSafetyClassifier: options.outputSafetyClassifier ?? runtime.outputSafetyClassifier,
+    attachmentObjectReader: options.attachmentObjectReader ?? runtime.attachmentObjectReader,
+    generationProvider: options.generationProvider ?? runtime.generationProvider,
+    providerCostPlanner: options.providerCostPlanner ?? runtime.providerCostPlanner,
+    providerControlPlane: options.providerControlPlane ?? (runtime.generationProvider
+      ? createProviderControlPlane({ repository: routeRepositories.creativeProviderControls })
+      : null),
     coordinator: options.coordinator,
     source,
     now: options.now,

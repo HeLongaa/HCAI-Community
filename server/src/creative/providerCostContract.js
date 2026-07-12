@@ -9,7 +9,7 @@ const currencyPattern = /^[A-Z]{3}$/
 
 export const providerBillingUnits = Object.freeze({
   image: Object.freeze(['request', 'image']),
-  chat: Object.freeze(['input_tokens', 'output_tokens', 'total_tokens']),
+  chat: Object.freeze(['request', 'input_tokens', 'output_tokens', 'total_tokens']),
   video: Object.freeze(['generated_seconds']),
   music: Object.freeze(['generated_seconds', 'generated_minutes']),
 })

@@ -1,6 +1,7 @@
 import { buildEnv } from '../server/src/config/env.js'
 import { listOAuthProviderMetadata } from '../server/src/auth/oauth.js'
 import { buildChatMessageEncryptionConfig } from '../server/src/chat/messageCrypto.js'
+import { buildOpenAIChatRuntimeConfig } from '../server/src/chat/openaiChatProvider.js'
 import { chatCapabilityContract } from '../server/src/creative/chatCapabilityContract.js'
 
 const args = new Set(process.argv.slice(2))
@@ -92,7 +93,7 @@ const check = (checks, name, pass, detail = '') => {
   checks.push({ name, pass: Boolean(pass), detail })
 }
 
-const summarize = (env, oauthProviders) => ({
+const summarize = (env, oauthProviders, chatRuntime) => ({
   nodeEnv: env.nodeEnv,
   storageDriver: env.storageDriver,
   mediaScanProvider: env.mediaScanProvider,
@@ -125,6 +126,11 @@ const summarize = (env, oauthProviders) => ({
     productionSafetyClassifierImplemented: chatCapabilityContract.runtime.productionSafetyClassifierImplemented,
     maximumUnclassifiedBufferCharacters: chatCapabilityContract.safety.maximumUnclassifiedBufferCharacters,
     realProviderCallsApproved: chatCapabilityContract.runtime.realProviderCallsApproved,
+    providerMode: chatRuntime.mode,
+    httpClientEnabled: chatRuntime.clientEnabled,
+    networkCallsEnabled: chatRuntime.networkCallsEnabled,
+    safetyClassifierEnabled: chatRuntime.safetyClassifierEnabled,
+    attachmentBytesEnabled: chatRuntime.attachmentBytesEnabled,
   },
   authCookieSameSite: env.authCookieSameSite,
   authCookieSecure: env.authCookieSecure,
@@ -177,8 +183,10 @@ try {
 }
 const oauthProviders = listOAuthProviderMetadata(source)
 let chatEncryption
+let chatRuntime
 try {
   chatEncryption = buildChatMessageEncryptionConfig(source)
+  chatRuntime = buildOpenAIChatRuntimeConfig(source)
 } catch (error) {
   console.error(`Production smoke failed during Chat encryption parsing: ${error.message}`)
   process.exit(1)
@@ -216,10 +224,17 @@ check(
   'Chat Provider and tool boundaries remain disabled',
   !chatCapabilityContract.runtime.realProviderCallsApproved &&
     !chatCapabilityContract.runtime.productionEnablementApproved &&
-    !chatCapabilityContract.runtime.attachmentBytesImplemented &&
-    !chatCapabilityContract.runtime.productionSafetyClassifierImplemented &&
+    chatCapabilityContract.runtime.providerClientImplemented &&
+    chatCapabilityContract.runtime.attachmentBytesImplemented &&
+    chatCapabilityContract.runtime.productionSafetyClassifierImplemented &&
+    chatRuntime.mode === 'mock' &&
+    !chatRuntime.clientEnabled &&
+    !chatRuntime.networkCallsEnabled &&
+    !chatRuntime.safetyClassifierEnabled &&
+    !chatRuntime.attachmentBytesEnabled &&
+    !chatRuntime.token &&
     !chatCapabilityContract.tools.runtimeAvailable,
-  'V1-22 must not enable attachment-byte reads, production classifiers, real Chat Provider calls, production Chat, or tools',
+  'V1-24 code boundaries must remain runtime-disabled in production until separate approval',
 )
 check(checks, 'media alert channel configured', hasAny(env.hasMediaScanAlertWebhookUrl, env.hasMediaScanAlertSlackWebhookUrl, env.mediaScanAlertEmailRecipientCount > 0), 'At least one media alert channel must be configured')
 check(checks, 'security alert channel configured', hasAny(env.hasSecurityAlertWebhookUrl, env.hasSecurityAlertSlackWebhookUrl, env.securityAlertEmailRecipientCount > 0), 'At least one security alert channel must be configured')
@@ -252,7 +267,7 @@ for (const item of checks) {
   console.log(`${item.pass ? 'PASS' : 'FAIL'} ${item.name}${item.detail ? ` (${item.detail})` : ''}`)
 }
 console.log('Safe summary:')
-console.log(JSON.stringify(summarize(env, oauthProviders), null, 2))
+console.log(JSON.stringify(summarize(env, oauthProviders, chatRuntime), null, 2))
 
 if (failed.length > 0) {
   console.error(`Production smoke failed: ${failed.length} check(s) failed`)

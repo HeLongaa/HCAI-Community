@@ -54,7 +54,7 @@ export const normalizeChatSafetyDecision = (decision) => {
     reasonCodes: normalizeReasons(decision?.reasonCodes).length > 0
       ? normalizeReasons(decision.reasonCodes)
       : ['CHAT_SAFETY_UNCLASSIFIED'],
-    source: decision?.source === 'mock_fixture' || decision?.source === 'injected_fixture'
+    source: decision?.source === 'mock_fixture' || decision?.source === 'injected_fixture' || decision?.source === 'production_classifier'
       ? decision.source
       : 'unavailable',
   })
@@ -82,8 +82,16 @@ export const buildChatSafetyEvidence = (decision, { stage, text, classifiedAt = 
 
 export const classifyChatSafety = async (classifier, payload) => {
   try {
-    return normalizeChatSafetyDecision(await classifier(payload))
+    const raw = await classifier(payload)
+    const normalized = normalizeChatSafetyDecision(raw)
+    const usage = raw?.usage
+    return Object.freeze({
+      ...normalized,
+      providerUsage: usage?.metered === true && Number.isInteger(usage.inputTokens) && usage.inputTokens >= 0 && Number.isInteger(usage.outputTokens) && usage.outputTokens >= 0
+        ? Object.freeze({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, metered: true })
+        : null,
+    })
   } catch {
-    return normalizeChatSafetyDecision(null)
+    return Object.freeze({ ...normalizeChatSafetyDecision(null), providerUsage: null })
   }
 }

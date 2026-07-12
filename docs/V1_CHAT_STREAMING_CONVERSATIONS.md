@@ -38,8 +38,10 @@ message content.
 
 ## Deliberate Limits
 
-- Only the Mock stream adapter is registered.
-- No Provider credential, SDK, HTTP client, conversation id, automatic failover, or paid traffic is enabled.
-- V1-22 authorizes selected attachment metadata and product-context references, but does not read attachment bytes.
+- The default product and production-smoke stream adapter remains Mock.
+- V1-24 implements a staging-only HTTP client and attachment reader, but no Provider credential, automatic failover,
+  production enablement, or paid traffic is enabled by default.
+- V1-22 authorizes selected attachment metadata and product-context references; V1-24 reads bytes only behind its
+  independent staging switch and never persists those bytes.
 - V1-23 consumes the typed `chatService` client in the production Chat UI; no local success reply remains.
-- Real Provider staging acceptance remains V1-24 and requires separate explicit approval.
+- Real Provider staging acceptance requires a separate explicit Chat approval package.

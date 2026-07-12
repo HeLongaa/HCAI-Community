@@ -32,10 +32,13 @@ test('chat capability freezes models, retention, context, and fail-closed runtim
   assert.equal(chatCapabilityContract.persistence.backupExpiryDaysAfterPrimaryPurge, 35)
   assert.equal(chatCapabilityContract.persistence.rawProviderPayloadRetentionAllowed, false)
   assert.equal(chatCapabilityContract.runtime.realProviderCallsApproved, false)
+  assert.equal(chatCapabilityContract.runtime.productionEnablementApproved, false)
   assert.equal(chatCapabilityContract.runtime.streamingImplemented, true)
+  assert.equal(chatCapabilityContract.runtime.providerClientImplemented, true)
+  assert.equal(chatCapabilityContract.runtime.stagingRuntimeImplemented, true)
   assert.equal(chatCapabilityContract.runtime.durableConversationsImplemented, true)
-  assert.equal(chatCapabilityContract.runtime.attachmentBytesImplemented, false)
-  assert.equal(chatCapabilityContract.runtime.productionSafetyClassifierImplemented, false)
+  assert.equal(chatCapabilityContract.runtime.attachmentBytesImplemented, true)
+  assert.equal(chatCapabilityContract.runtime.productionSafetyClassifierImplemented, true)
 })
 
 test('chat capability records attachment, safety, tool, and budget boundaries', () => {

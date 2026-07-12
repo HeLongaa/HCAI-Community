@@ -5,13 +5,15 @@ This document closes the implementation-planning portion of V1-20. The executabl
 
 Current decision: **the Chat contract is frozen; encrypted application-owned conversations, governed attachment
 metadata, explicit product context, application-classified Mock SSE streaming, and the production Chat UI are
-implemented. Attachment-byte reads, real Provider calls, and production Provider enablement remain unavailable**.
+implemented. V1-24 implements a default-disabled staging Provider client, attachment-byte reader, production-classifier
+boundary, and Provider cost/control integration. Real Provider calls and production Provider enablement remain
+unapproved and disabled**.
 
 ## Provider Decision
 
 | Role | Provider | Model | Runtime state |
 | --- | --- | --- | --- |
-| Primary | OpenAI | GPT-5.6 Terra (`gpt-5.6-terra`) | Catalog metadata only; adapter and client not implemented |
+| Primary | OpenAI | GPT-5.6 Terra (`gpt-5.6-terra`) | Staging client implemented; all network switches default off; production disabled |
 | Backup | Anthropic | Claude Sonnet 5 (`claude-sonnet-5`) | Catalog metadata only; separately approved backup |
 
 The primary uses the Responses API with streaming, `store=false`, and background mode disabled. The application owns
@@ -49,9 +51,9 @@ V1 until a later contract changes both the token and budget policies.
 V1-22 accepts at most five
 owner-accessible, scan-clean `task_attachment` or `library_asset` items, with 20 MiB per item and 40 MiB total. Allowed
 types are plain text, Markdown, PDF, PNG, JPEG, and WebP. No attachment bytes may be sent before ownership, purpose,
-MIME, size, scanner, region, and content-policy checks pass. The Mock-only V1-22 path resolves and persists safe
-attachment references and metadata but deliberately does not read or transmit object bytes; byte extraction and
-Provider transfer remain part of the separately approved V1-24 boundary.
+MIME, size, scanner, region, and content-policy checks pass. V1-24 can read exact-size objects through bounded signed
+S3 downloads only when the staging attachment-byte switch is enabled. Text is strict UTF-8; image and PDF MIME is
+checked against magic bytes. The bytes and in-memory Provider inputs are never persisted.
 
 ## Persistence And Privacy
 
@@ -108,7 +110,9 @@ classification.
 
 V1-22 implements attachment metadata authorization, selected product context, input classification, bounded streaming
 classification, safe partial output, and minimal Admin review evidence. V1-23 implements the production Chat UI with
-history recovery, SSE rendering, stop, governed inputs, deletion, and appeal entry. V1-24 owns attachment-byte reading,
-real Provider clients, and staging acceptance.
+history recovery, SSE rendering, stop, governed inputs, deletion, and appeal entry. V1-24 implements the attachment-byte
+reader, Responses streaming client, structured safety classifier, fixed Provider mapping, atomic Provider-cost reserve
+and token-usage settlement, and Provider control-plane preflight. Staging acceptance and every real external call still
+require a separate approval package.
 
-No V1-20 through V1-22 validation command requires a Provider credential or network call.
+No V1-20 through V1-24 validation command requires a Provider credential or network call.

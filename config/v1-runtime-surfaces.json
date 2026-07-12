@@ -189,6 +189,15 @@
       "ownerTasks": ["V1-05", "V1-06", "V1-07", "V1-08", "V1-12", "V1-14", "V1-16", "V1-21", "V1-22", "V1-24"]
     },
     {
+      "id": "server-chat-staging-provider-boundary",
+      "area": "chat-provider",
+      "classification": "production_capable",
+      "paths": ["server/src/chat/openaiChatProvider.js", "server/src/chat/chatAttachmentReader.js", "server/src/chat/chatRuntime.js", "server/src/chat/chatService.js", "server/src/modules/chat/routes.js"],
+      "markers": ["CHAT_PROVIDER_MODE", "CHAT_OPENAI_NETWORK_CALLS_ENABLED", "CHAT_OPENAI_SAFETY_CLASSIFIER_ENABLED", "CHAT_ATTACHMENT_BYTES_ENABLED", "openai_staging"],
+      "productionDisposition": "keep_all_network_classifier_and_attachment_switches_disabled_until_separate_chat_staging_and_production_approval",
+      "ownerTasks": ["V1-24", "V1-39"]
+    },
+    {
       "id": "server-provider-alert-fixture-delivery",
       "area": "provider-alerts",
       "classification": "fixture_only",
