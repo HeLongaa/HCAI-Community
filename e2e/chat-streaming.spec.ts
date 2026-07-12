@@ -5,6 +5,9 @@ import { apiBaseUrl, apiData, authHeaders, login } from './helpers'
 
 test('owner can stream, recover, and delete an encrypted Chat conversation', async ({ request }) => {
   const owner = await login(request, 'promptlin')
+  const tasks = await apiData<Array<{ id: string }>>(
+    request.get(`${apiBaseUrl}/api/tasks?limit=1`, { headers: authHeaders(owner.accessToken) }),
+  )
   const conversation = await apiData<{ id: string }>(
     request.post(`${apiBaseUrl}/api/chat/conversations`, {
       headers: authHeaders(owner.accessToken),
@@ -22,6 +25,7 @@ test('owner can stream, recover, and delete an encrypted Chat conversation', asy
       message: 'Create a concise launch checklist.',
       mode: 'assistant',
       parameters: { maxOutputTokens: 512, responseFormat: 'text' },
+      productContext: [{ type: 'task', id: tasks[0].id }],
     },
   })
   expect(stream.ok()).toBeTruthy()
@@ -30,6 +34,8 @@ test('owner can stream, recover, and delete an encrypted Chat conversation', asy
   expect(eventBody).toContain('event: turn.accepted')
   expect(eventBody).toContain('event: content.delta')
   expect(eventBody).toContain('event: turn.completed')
+  expect(eventBody).toContain('"productContext":[{"type":"task"')
+  expect(eventBody).toContain('"disposition":"allow"')
 
   const messages = await apiData<ApiChatMessage[]>(
     request.get(`${apiBaseUrl}/api/chat/conversations/${conversation.id}/messages`, {

@@ -1,11 +1,13 @@
 import { ApiClientError, api, apiStream, withQuery } from './apiClient'
 import type {
   ApiChatConversation,
+  ApiChatInputAsset,
   ApiChatMessage,
   ApiChatTurn,
   ApiEnvelope,
   ApiPaginationMeta,
   ChatMode,
+  ChatProductContextReference,
   ChatStreamEvent,
 } from './contracts'
 
@@ -50,6 +52,13 @@ export const chatService = {
       nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null,
     }
   },
+  async listInputAssets(cursor?: string | null) {
+    const envelope = await api.getEnvelope<ApiChatInputAsset[]>(withQuery('/chat/input-assets', { cursor, limit: 24 }))
+    return {
+      items: envelope.data,
+      nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null,
+    }
+  },
   stopTurn(turnId: string) {
     return api.post<{ changed: boolean; turn: ApiChatTurn }>(`/chat/turns/${turnId}/stop`)
   },
@@ -63,6 +72,8 @@ export const chatService = {
       message: string
       mode: ChatMode
       parameters?: { maxOutputTokens?: number; responseFormat?: 'text' }
+      inputAssetIds?: string[]
+      productContext?: ChatProductContextReference[]
     },
     onEvent: (event: ChatStreamEvent) => void,
     signal?: AbortSignal,

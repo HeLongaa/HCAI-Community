@@ -5,6 +5,13 @@ import { buildCreativeGenerationRecordPayload } from '../creative/generationReco
 import { executeCreativeGeneration } from '../creative/generationService.js'
 import { chatCapabilityContract } from '../creative/chatCapabilityContract.js'
 import { buildChatContext, serializeChatMessage } from './context.js'
+import { resolveChatAttachments } from './attachmentContext.js'
+import { resolveChatProductContext, safeProductContextReferences } from './productContext.js'
+import {
+  buildChatSafetyEvidence,
+  classifyChatSafety,
+  classifyMockChatSafety,
+} from './chatSafety.js'
 import { streamMockChatResponse } from './mockStreamAdapter.js'
 import { chatStreamCoordinator } from './streamCoordinator.js'
 
@@ -34,6 +41,9 @@ const turnResponse = (turn, codec) => ({
   status: turn.status,
   errorCode: turn.errorCode,
   usage: turn.usage,
+  inputAssetIds: turn.inputAssetIds ?? [],
+  productContext: turn.productContext ?? [],
+  safety: turn.safety ?? null,
   stopRequestedAt: turn.stopRequestedAt,
   disconnectedAt: turn.disconnectedAt,
   completedAt: turn.completedAt,
@@ -47,6 +57,8 @@ export const createChatService = ({
   creativeRepositories,
   executeGeneration = executeCreativeGeneration,
   streamAdapter = streamMockChatResponse,
+  inputSafetyClassifier = classifyMockChatSafety,
+  outputSafetyClassifier = classifyMockChatSafety,
   coordinator = chatStreamCoordinator,
   source = process.env,
   now = () => new Date(),
@@ -55,6 +67,35 @@ export const createChatService = ({
     const conversation = await repository.findConversation(conversationId, actor.id)
     if (!conversation) throw notFound(`/api/chat/conversations/${conversationId}`)
     return conversation
+  }
+
+  const createSafetyReview = async ({ turn, actor, evidence, attachments, productContext }) => {
+    if (!creativeRepositories.adminReviews?.create) return { review: null, available: false }
+    try {
+      const review = await creativeRepositories.adminReviews.create({
+        id: `chat-review-${randomUUID()}`,
+        queue: 'chat_safety',
+        status: 'Pending review',
+        title: 'Chat safety review',
+        owner: actor.handle,
+        note: 'Review the policy reason codes and minimal Chat turn evidence.',
+        metadata: {
+          kind: 'chat_safety_review',
+          chatTurnId: turn.id,
+          conversationId: turn.conversationId,
+          safetyId: evidence.safetyId,
+          policyVersion: evidence.policyVersion,
+          stage: evidence.stage,
+          disposition: evidence.disposition,
+          reasonCodes: evidence.reasonCodes,
+          inputAssetCount: attachments.length,
+          productContextTypes: [...new Set(productContext.map((item) => item.type))],
+        },
+      }, actor)
+      return { review, available: true }
+    } catch {
+      return { review: null, available: false }
+    }
   }
 
   const closeGeneration = async (state, status, usage, actor) => {
@@ -188,6 +229,20 @@ export const createChatService = ({
       const page = await repository.listMessages({ ...query, conversationId, ownerId: actor.id })
       return { ...page, items: page.items.map((message) => serializeChatMessage(message, codec)) }
     },
+    async listInputAssets(query, actor) {
+      const page = await creativeRepositories.media?.listChatInputs?.(actor, query)
+      if (!page) throw new HttpError(503, 'CHAT_ATTACHMENT_VALIDATION_UNAVAILABLE', 'Chat attachment validation is unavailable')
+      return {
+        ...page,
+        items: page.items.map((asset) => ({
+          id: asset.id,
+          fileName: asset.fileName,
+          contentType: asset.contentType,
+          sizeBytes: asset.sizeBytes,
+          purpose: asset.purpose,
+        })),
+      }
+    },
     async prepareTurn(conversationId, input, actor) {
       await requireConversation(conversationId, actor)
       const duplicate = await repository.findTurnByClientId(conversationId, input.clientTurnId, actor.id)
@@ -198,12 +253,16 @@ export const createChatService = ({
       if (existingMessages.nextCursor || existingMessages.items.length > chatCapabilityContract.context.maxMessages - 2) {
         throw new HttpError(422, 'CHAT_CONTEXT_MESSAGE_LIMIT', 'Chat conversation reached the maximum message count')
       }
+      const attachments = await resolveChatAttachments(input.inputAssetIds ?? [], actor, creativeRepositories.media)
+      const productContext = await resolveChatProductContext(input.productContext ?? [], actor, creativeRepositories)
       const turnResult = await repository.createTurn({
         id: id('chatt'),
         conversationId,
         ownerId: actor.id,
         clientTurnId: input.clientTurnId,
         mode: input.mode,
+        inputAssetIds: attachments.map((asset) => asset.id),
+        productContext: safeProductContextReferences(productContext),
         userMessage: { id: id('chatm'), content: input.message },
         assistantMessage: { id: id('chatm'), content: '' },
         encrypt: (content, identity) => codec.encrypt(content, identity),
@@ -214,11 +273,52 @@ export const createChatService = ({
         return { duplicate: true, turn: turnResponse(turnResult.turn, codec), dispatch: null }
       }
       const turn = turnResult.turn
+      const inputSafetyText = [
+        input.message,
+        ...attachments.flatMap((asset) => [asset.fileName, asset.contentType]),
+        ...productContext.flatMap((item) => [item.title, item.content]),
+      ].join('\n')
+      const inputDecision = await classifyChatSafety(inputSafetyClassifier, {
+        stage: 'input',
+        text: inputSafetyText,
+        attachments,
+        productContext,
+        final: true,
+      })
+      const inputEvidence = buildChatSafetyEvidence(inputDecision, { stage: 'input', text: inputSafetyText, classifiedAt: now() })
+      let safety = { input: inputEvidence, output: null, reviewId: null }
+      if (!inputDecision.classified || inputDecision.disposition !== 'allow') {
+        const reviewResult = inputDecision.classified && inputDecision.disposition === 'review'
+          ? await createSafetyReview({ turn, actor, evidence: inputEvidence, attachments, productContext })
+          : { review: null, available: true }
+        const review = reviewResult.review
+        safety = { ...safety, reviewId: review?.id ?? null }
+        await repository.updateTurnSafety(turn.id, actor.id, safety)
+        const errorCode = review
+          ? 'CHAT_INPUT_REVIEW_REQUIRED'
+          : (inputDecision.disposition === 'review' && !reviewResult.available
+              ? 'CHAT_SAFETY_REVIEW_UNAVAILABLE'
+              : 'CHAT_INPUT_SAFETY_BLOCKED')
+        await repository.markTurn(turn.id, actor.id, { status: 'blocked', errorCode, at: now() }, actor)
+        throw new HttpError(422, errorCode, review ? 'Chat turn requires safety review' : 'Chat turn was blocked by safety policy', {
+          safetyId: inputEvidence.safetyId,
+          reasonCodes: inputEvidence.reasonCodes,
+          moderationDecisionId: review?.id ?? null,
+        })
+      }
+      await repository.updateTurnSafety(turn.id, actor.id, safety)
       const assistant = turn.messages.find((message) => message.role === 'assistant')
       const contextPage = await repository.listMessages({ conversationId, ownerId: actor.id, limit: 100 })
       let context
       try {
-        context = buildChatContext({ messages: contextPage.items, codec, mode: input.mode, currentAssistantMessageId: assistant.id })
+        context = buildChatContext({
+          messages: contextPage.items,
+          codec,
+          mode: input.mode,
+          attachments,
+          productContext,
+          currentAssistantMessageId: assistant.id,
+        })
       } catch (error) {
         await repository.markTurn(turn.id, actor.id, {
           status: 'failed',
@@ -231,7 +331,7 @@ export const createChatService = ({
         workspace: 'chat',
         mode: input.mode,
         prompt: input.message,
-        inputAssetIds: [],
+        inputAssetIds: attachments.map((asset) => asset.id),
         parameters: input.parameters,
         providerId: null,
       }
@@ -239,7 +339,7 @@ export const createChatService = ({
       return {
         duplicate: false,
         turn: turnResponse(await repository.findTurn(turn.id, actor.id), codec),
-        dispatch: { request, context, generation },
+        dispatch: { request, context, generation, safety, attachments, productContext },
       }
     },
     async streamPreparedTurn(prepared, actor, emit, signal) {
@@ -247,8 +347,68 @@ export const createChatService = ({
       const { turn, dispatch } = prepared
       const assistant = turn.messages.find((message) => message.role === 'assistant')
       let content = assistant?.content ?? ''
+      let pendingContent = ''
       let terminalStatus = 'completed'
       let errorCode = null
+      let outputEvidence = null
+      let reviewId = dispatch.safety?.reviewId ?? null
+      const maximumBuffer = chatCapabilityContract.safety.maximumUnclassifiedBufferCharacters
+      const persistAndEmit = async (text) => {
+        if (!text) return
+        const nextContent = content + text
+        const requestedOutputLimit = dispatch.request.parameters.maxOutputTokens ?? 2048
+        if (Buffer.byteLength(nextContent, 'utf8') > requestedOutputLimit) {
+          terminalStatus = 'failed'
+          errorCode = 'CHAT_OUTPUT_LIMIT'
+          return
+        }
+        content = nextContent
+        const identity = {
+          conversationId: turn.conversationId,
+          messageId: assistant.id,
+          role: 'assistant',
+          sequence: assistant.sequence,
+        }
+        await repository.updateAssistantMessage(turn.id, actor.id, codec.encrypt(content, identity))
+        emit('content.delta', { turnId: turn.id, messageId: assistant.id, text })
+      }
+      const classifyPending = async (final = false) => {
+        const candidate = content + pendingContent
+        const decision = await classifyChatSafety(outputSafetyClassifier, {
+          stage: 'output',
+          text: candidate,
+          attachments: dispatch.attachments,
+          productContext: dispatch.productContext,
+          final,
+        })
+        outputEvidence = buildChatSafetyEvidence(decision, { stage: 'output', text: candidate, classifiedAt: now() })
+        if (decision.classified && decision.disposition === 'allow') {
+          const release = pendingContent
+          pendingContent = ''
+          await persistAndEmit(release)
+          return true
+        }
+        if (decision.disposition === 'pending' && !final && [...pendingContent].length < maximumBuffer) return true
+        terminalStatus = 'blocked'
+        if (decision.classified && decision.disposition === 'review') {
+          const reviewResult = await createSafetyReview({
+            turn,
+            actor,
+            evidence: outputEvidence,
+            attachments: dispatch.attachments,
+            productContext: dispatch.productContext,
+          })
+          const review = reviewResult.review
+          reviewId = review?.id ?? null
+          errorCode = reviewResult.available ? 'CHAT_STREAM_REVIEW_REQUIRED' : 'CHAT_SAFETY_REVIEW_UNAVAILABLE'
+        } else if (decision.disposition === 'pending') {
+          errorCode = 'CHAT_STREAM_SAFETY_BUFFER_LIMIT'
+        } else {
+          errorCode = 'CHAT_STREAM_SAFETY_BLOCKED'
+        }
+        pendingContent = ''
+        return false
+      }
       try {
         for await (const event of streamAdapter({
           request: dispatch.request,
@@ -261,28 +421,21 @@ export const createChatService = ({
             terminalStatus = 'stopped'
             break
           }
-          if (event.type !== 'content.delta' || !event.safety?.classified || !event.safety?.allowed) {
+          if (event.type !== 'content.delta' || (event.safety && (!event.safety.classified || !event.safety.allowed))) {
             terminalStatus = 'blocked'
             errorCode = 'CHAT_STREAM_SAFETY_BLOCKED'
             break
           }
-          content += String(event.text ?? '')
-          const requestedOutputLimit = dispatch.request.parameters.maxOutputTokens ?? 2048
-          if (Buffer.byteLength(content, 'utf8') > requestedOutputLimit) {
-            terminalStatus = 'failed'
-            errorCode = 'CHAT_OUTPUT_LIMIT'
-            break
+          const characters = [...String(event.text ?? '')]
+          while (characters.length > 0 && terminalStatus === 'completed') {
+            const capacity = maximumBuffer - [...pendingContent].length
+            pendingContent += characters.splice(0, capacity).join('')
+            if (!await classifyPending(false)) break
           }
-          const identity = {
-            conversationId: turn.conversationId,
-            messageId: assistant.id,
-            role: 'assistant',
-            sequence: assistant.sequence,
-          }
-          await repository.updateAssistantMessage(turn.id, actor.id, codec.encrypt(content, identity))
-          emit('content.delta', { turnId: turn.id, messageId: assistant.id, text: event.text })
+          if (terminalStatus !== 'completed') break
         }
         if (signal.aborted) terminalStatus = signal.reason === 'stop' ? 'stopped' : 'interrupted'
+        if (terminalStatus === 'completed' && pendingContent) await classifyPending(true)
       } catch (error) {
         terminalStatus = signal.aborted ? (signal.reason === 'stop' ? 'stopped' : 'interrupted') : 'failed'
         errorCode = signal.aborted ? null : (error?.code ?? 'CHAT_STREAM_FAILED')
@@ -292,6 +445,19 @@ export const createChatService = ({
         outputTokens: Buffer.byteLength(content, 'utf8'),
         metered: false,
       }
+      const safety = {
+        ...(dispatch.safety ?? {}),
+        output: outputEvidence ?? (terminalStatus === 'blocked'
+          ? buildChatSafetyEvidence({
+              classified: false,
+              disposition: 'block',
+              reasonCodes: [errorCode ?? 'CHAT_STREAM_SAFETY_BLOCKED'],
+              source: 'unavailable',
+            }, { stage: 'output', text: content, classifiedAt: now() })
+          : null),
+        reviewId,
+      }
+      await repository.updateTurnSafety(turn.id, actor.id, safety)
       await closeGeneration(dispatch.generation, terminalStatus, usage, actor)
       const finalized = await repository.markTurn(turn.id, actor.id, {
         status: terminalStatus,
@@ -300,7 +466,13 @@ export const createChatService = ({
         at: now(),
       }, actor)
       emit('usage', { turnId: turn.id, usage })
-      emit(`turn.${terminalStatus}`, { turnId: turn.id, status: terminalStatus, errorCode })
+      emit(`turn.${terminalStatus}`, {
+        turnId: turn.id,
+        status: terminalStatus,
+        errorCode,
+        safetyId: safety.output?.safetyId ?? null,
+        moderationDecisionId: safety.reviewId ?? null,
+      })
       return turnResponse(finalized, codec)
     },
     async stopTurn(turnId, actor) {

@@ -115,6 +115,9 @@ export const createSeedChatRepository = ({ recordAudit = () => {} } = {}) => {
         status: 'queued',
         errorCode: null,
         usage: null,
+        inputAssetIds: clone(payload.inputAssetIds ?? []),
+        productContext: clone(payload.productContext ?? []),
+        safety: null,
         stopRequestedAt: null,
         disconnectedAt: null,
         completedAt: null,
@@ -173,6 +176,13 @@ export const createSeedChatRepository = ({ recordAudit = () => {} } = {}) => {
       turns.set(updated.id, updated)
       return serializeTurn(updated)
     },
+    updateTurnSafety(turnId, ownerId, safety) {
+      const turn = turns.get(String(turnId))
+      if (!turn || !findConversation(turn.conversationId, ownerId)) return null
+      const updated = { ...turn, safety: clone(safety), updatedAt: iso() }
+      turns.set(updated.id, updated)
+      return serializeTurn(updated)
+    },
     updateAssistantMessage(turnId, ownerId, encrypted, status = 'streaming') {
       const turn = turns.get(String(turnId))
       if (!turn || !findConversation(turn.conversationId, ownerId)) return null
@@ -191,6 +201,7 @@ export const createSeedChatRepository = ({ recordAudit = () => {} } = {}) => {
         status: patch.status,
         errorCode: patch.errorCode ?? null,
         usage: clone(patch.usage ?? turn.usage),
+        safety: clone(patch.safety ?? turn.safety),
         disconnectedAt: patch.status === 'interrupted' ? now : turn.disconnectedAt,
         completedAt: ['completed', 'stopped'].includes(patch.status) ? now : turn.completedAt,
         failedAt: ['failed', 'blocked'].includes(patch.status) ? now : turn.failedAt,

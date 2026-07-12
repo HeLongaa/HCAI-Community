@@ -44,6 +44,9 @@ const turnDto = (turn) => turn ? {
   status: turn.status,
   errorCode: turn.errorCode,
   usage: turn.usage ?? null,
+  inputAssetIds: turn.inputAssetIds ?? [],
+  productContext: turn.productContext ?? [],
+  safety: turn.safety ?? null,
   stopRequestedAt: toIso(turn.stopRequestedAt),
   disconnectedAt: toIso(turn.disconnectedAt),
   completedAt: toIso(turn.completedAt),
@@ -183,6 +186,8 @@ export const createPrismaChatRepository = (client, { recordAudit = async () => {
             conversationId: conversation.id,
             clientTurnId: String(payload.clientTurnId),
             mode: String(payload.mode),
+            inputAssetIds: payload.inputAssetIds ?? [],
+            productContext: payload.productContext ?? [],
             createdAt: now,
             messages: {
               create: [
@@ -236,6 +241,15 @@ export const createPrismaChatRepository = (client, { recordAudit = async () => {
       include: { messages: { orderBy: { sequence: 'asc' } } },
     }))
   },
+  async updateTurnSafety(turnId, ownerId, safety) {
+    const owned = await client.chatTurn.findFirst({ where: { id: String(turnId), conversation: { ownerId: String(ownerId) } }, select: { id: true } })
+    if (!owned) return null
+    return turnDto(await client.chatTurn.update({
+      where: { id: owned.id },
+      data: { safety },
+      include: { messages: { orderBy: { sequence: 'asc' } } },
+    }))
+  },
   async updateAssistantMessage(turnId, ownerId, encrypted, status = 'streaming') {
     const turn = await client.chatTurn.findFirst({
       where: { id: String(turnId), conversation: { ownerId: String(ownerId) } },
@@ -261,6 +275,7 @@ export const createPrismaChatRepository = (client, { recordAudit = async () => {
           status: patch.status,
           errorCode: patch.errorCode ?? null,
           usage: patch.usage ?? undefined,
+          safety: patch.safety ?? undefined,
           ...(patch.status === 'interrupted' ? { disconnectedAt: now } : {}),
           ...(['completed', 'stopped'].includes(patch.status) ? { completedAt: now } : {}),
           ...(['failed', 'blocked'].includes(patch.status) ? { failedAt: now } : {}),

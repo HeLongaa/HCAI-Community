@@ -66,8 +66,8 @@
       "id": "frontend-chat-workspace-simulation",
       "area": "chat",
       "classification": "release_blocker",
-      "paths": ["src/features/workspace/WorkspacePages.tsx", "src/services/chatService.ts", "server/src/modules/chat/routes.js", "server/src/creative/chatCapabilityContract.js", "server/src/creative/providerRegistry.js", "server/src/docs/openapi.js"],
-      "markers": ["export function ChatPage", "Quick prompts", "Drafted. You can send this", "chat-capability-v1", "streamTurn(", "turn.accepted", "openai-gpt-5-6-terra"],
+      "paths": ["src/features/workspace/WorkspacePages.tsx", "src/services/chatService.ts", "server/src/modules/chat/routes.js", "server/src/chat/attachmentContext.js", "server/src/chat/productContext.js", "server/src/chat/chatSafety.js", "server/src/creative/chatCapabilityContract.js", "server/src/creative/providerRegistry.js", "server/src/docs/openapi.js"],
+      "markers": ["export function ChatPage", "Quick prompts", "Drafted. You can send this", "chat-capability-v1", "streamTurn(", "turn.accepted", "maximumUnclassifiedBufferCharacters", "openai-gpt-5-6-terra"],
       "productionDisposition": "replace_local_replies_with_typed_chat_service_in_v1_23",
       "ownerTasks": ["V1-22", "V1-23", "V1-24", "V1-39"]
     },
@@ -192,10 +192,10 @@
       "id": "server-provider-fixture-injection",
       "area": "provider-lifecycle",
       "classification": "fixture_only",
-      "paths": ["server/src/modules/creative/routes.js", "server/src/creative/generationService.js", "server/src/creative/openaiImageProvider.js", "server/src/creative/replicateStagingProvider.js", "server/src/creative/providerPollingWorker.js", "server/src/creative/providerManualReplay.js", "server/src/creative/providerReplayIntegration.js", "server/src/chat/chatService.js", "server/src/chat/mockStreamAdapter.js"],
-      "markers": ["fixtureAdapters", "must be injected; no default network client is available", "providerMode", "streamMockChatResponse"],
+      "paths": ["server/src/modules/creative/routes.js", "server/src/creative/generationService.js", "server/src/creative/openaiImageProvider.js", "server/src/creative/replicateStagingProvider.js", "server/src/creative/providerPollingWorker.js", "server/src/creative/providerManualReplay.js", "server/src/creative/providerReplayIntegration.js", "server/src/chat/chatService.js", "server/src/chat/mockStreamAdapter.js", "server/src/chat/chatSafety.js"],
+      "markers": ["fixtureAdapters", "must be injected; no default network client is available", "providerMode", "streamMockChatResponse", "mock_fixture"],
       "productionDisposition": "retain_for_tests_and_keep_product_dispatch_unregistered",
-      "ownerTasks": ["V1-05", "V1-06", "V1-07", "V1-08", "V1-12", "V1-14", "V1-16", "V1-21"]
+      "ownerTasks": ["V1-05", "V1-06", "V1-07", "V1-08", "V1-12", "V1-14", "V1-16", "V1-21", "V1-22"]
     },
     {
       "id": "server-provider-alert-fixture-delivery",

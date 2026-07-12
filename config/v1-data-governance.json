@@ -431,12 +431,12 @@
       "locations": ["postgres", "backup_archive"],
       "dataSubjects": ["user", "depicted_third_party"],
       "purposes": ["creative_generation", "safety_moderation"],
-      "exampleFields": ["application conversation id", "encrypted user message", "encrypted assistant message", "mode", "message order", "created and updated timestamps", "safe safety disposition"],
+      "exampleFields": ["application conversation id", "encrypted user message", "encrypted assistant message", "mode", "message order", "selected attachment ids", "selected product-context references", "identity-free safety id", "safe safety disposition and reason codes", "created and updated timestamps"],
       "accessRoles": ["user_self", "authorized_chat_service", "trust_safety_reviewer_with_scoped_case"],
       "retentionPolicyId": "chat_inactive_plus_365d",
       "exportPolicy": "include_subject_owned_conversations_and_messages_with_other_subject_and_internal_safety_redaction",
       "deletionPolicy": "revoke_owner_access_immediately_delete_primary_within_30d_replay_deletion_on_restore_and_expire_backup_within_35d",
-      "ownerTasks": ["V1-20", "V1-21", "V1-60", "V1-67"]
+      "ownerTasks": ["V1-20", "V1-21", "V1-22", "V1-60", "V1-67"]
     },
     {
       "id": "provider_lifecycle_records",
@@ -1042,7 +1042,7 @@
       "Provider failures use a shared safe taxonomy, bounded Retry-After, deterministic backoff, hash-only failure dedupe, and CAS retry state",
       "Provider output ingestion uses a durable source key, claim lease, allowlisted injected fetch, bounded byte reads, magic-byte MIME validation, SHA-256, deterministic storage, and scan-gated media assets",
       "Provider dispatch uses versioned fail-closed controls, expiring hashed cap evidence, explicit circuit recovery, one-claim probes, two-person review, and low-cardinality operations evidence",
-      "Chat has encrypted owner-scoped conversations and messages, idempotent Mock SSE turns, explicit stop/disconnect closeout, retention sweeps, and restore-deletion tombstones while real Provider clients remain absent",
+      "Chat has encrypted owner-scoped conversations and messages, idempotent Mock SSE turns, strict owner attachment checks, explicitly selected read-time-authorized product context, identity-free input/output safety evidence, a 512-character unclassified output buffer, explicit stop/disconnect closeout, retention sweeps, and restore-deletion tombstones while attachment bytes and real Provider clients remain absent",
       "Admin creative serializers redact unsafe identifiers, URLs, and error previews",
       "archive and object writers support mock/S3-compatible boundaries"
     ],
@@ -1079,6 +1079,9 @@
       "server/src/creative/chatCapabilityContract.js",
       "server/src/chat/messageCrypto.js",
       "server/src/chat/chatService.js",
+      "server/src/chat/attachmentContext.js",
+      "server/src/chat/productContext.js",
+      "server/src/chat/chatSafety.js",
       "server/src/chat/prismaChatRepository.js",
       "server/src/modules/chat/routes.js",
       "server/src/modules/admin/routes.js",
@@ -1099,6 +1102,7 @@
     { "taskId": "V1-11", "scope": "Versioned Provider kill switches, expiring Provider-side cap evidence, explicit circuit breaking and one-claim probes, two-person recovery review, and safe operations evidence." },
     { "taskId": "V1-20", "scope": "Freeze the Chat persistence, retention, export, deletion, backup, and Provider-state contract." },
     { "taskId": "V1-21", "scope": "Implement encrypted owner-scoped conversations and messages, inactivity expiry, export/delete hooks, and restore-deletion replay." },
+    { "taskId": "V1-22", "scope": "Authorize Chat attachment metadata and selected product context, enforce input and buffered streaming safety, and persist identity-free review evidence without attachment bytes or raw context copies." },
     { "taskId": "V1-48", "scope": "OAuth scopes, identifiers, unlink, region, and session evidence." },
     { "taskId": "V1-49", "scope": "PostgreSQL migration, encrypted backup, expiry, restore, and deletion rehearsal." },
     { "taskId": "V1-50", "scope": "Object storage/CDN private access and lifecycle deletion." },

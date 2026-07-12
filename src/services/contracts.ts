@@ -669,6 +669,18 @@ export type CreativeWorkspace = 'image' | 'video' | 'music' | 'chat'
 export type ChatMode = 'assistant' | 'prompt_assist' | 'storyboard'
 export type ChatTurnStatus = 'queued' | 'streaming' | 'completed' | 'stopped' | 'interrupted' | 'failed' | 'blocked'
 export type ChatMessageStatus = 'complete' | 'streaming' | 'stopped' | 'interrupted' | 'failed' | 'blocked'
+export type ChatProductContextReference = { type: 'task' | 'library_item'; id: string }
+export type ChatSafetyEvidence = {
+  safetyId: string
+  policyVersion: string
+  stage: 'input' | 'output'
+  disposition: 'allow' | 'block' | 'review' | 'pending'
+  classified: boolean
+  reasonCodes: string[]
+  source: 'mock_fixture' | 'injected_fixture' | 'unavailable'
+  characterCount: number
+  classifiedAt: string
+}
 
 export type ApiChatConversation = {
   id: string
@@ -690,6 +702,14 @@ export type ApiChatMessage = {
   updatedAt: string
 }
 
+export type ApiChatInputAsset = {
+  id: string
+  fileName: string
+  contentType: 'text/plain' | 'text/markdown' | 'application/pdf' | 'image/png' | 'image/jpeg' | 'image/webp'
+  sizeBytes: number
+  purpose: 'task_attachment' | 'library_asset'
+}
+
 export type ApiChatTurn = {
   id: string
   conversationId: string
@@ -699,6 +719,9 @@ export type ApiChatTurn = {
   status: ChatTurnStatus
   errorCode: string | null
   usage: { inputTokens?: number; outputTokens?: number; metered?: boolean } | null
+  inputAssetIds: string[]
+  productContext: ChatProductContextReference[]
+  safety: { input: ChatSafetyEvidence; output: ChatSafetyEvidence | null; reviewId: string | null } | null
   stopRequestedAt: string | null
   disconnectedAt: string | null
   completedAt: string | null
@@ -711,7 +734,7 @@ export type ChatStreamEvent =
   | { event: 'turn.snapshot'; data: { turn: ApiChatTurn } }
   | { event: 'content.delta'; data: { turnId: string; messageId: string; text: string } }
   | { event: 'usage'; data: { turnId: string; usage: ApiChatTurn['usage'] } }
-  | { event: `turn.${ChatTurnStatus}`; data: { turnId: string; status: ChatTurnStatus; errorCode: string | null } }
+  | { event: `turn.${ChatTurnStatus}`; data: { turnId: string; status: ChatTurnStatus; errorCode: string | null; safetyId?: string | null; moderationDecisionId?: string | null } }
 
 export type CreateCreativeGenerationRequest = {
   workspace: CreativeWorkspace

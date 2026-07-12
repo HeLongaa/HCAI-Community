@@ -22,6 +22,8 @@ const input = (overrides = {}) => ({
   message: overrides.message ?? 'Draft a clear task brief.',
   mode: overrides.mode ?? 'assistant',
   parameters: overrides.parameters ?? { maxOutputTokens: 512, responseFormat: 'text' },
+  inputAssetIds: overrides.inputAssetIds ?? [],
+  productContext: overrides.productContext ?? [],
 })
 
 const setup = (overrides = {}) => {
@@ -159,4 +161,136 @@ test('Chat service compensates quota and credits when generation persistence fai
   assert.equal(refunded[0][1].reasonCode, 'chat_turn_preparation_failed')
   assert.equal(released.length, 1)
   assert.equal(released[0][1], 'chat_turn_preparation_failed')
+})
+
+test('Chat service authorizes attachments and product context without persisting context bodies', async () => {
+  const repositories = createSeedRepository()
+  const creativeRepositories = {
+    ...repositories,
+    media: {
+      ...repositories.media,
+      findOwnedChatInput: async () => ({
+        id: 'asset-1',
+        fileName: 'brief.md',
+        contentType: 'text/markdown',
+        sizeBytes: 1024,
+        purpose: 'library_asset',
+        status: 'uploaded',
+        metadata: { security: { scanStatus: 'clean' } },
+      }),
+    },
+    tasks: {
+      ...repositories.tasks,
+      findAccessibleChatContext: async () => ({ title: 'Task brief', content: 'Private resolved context' }),
+    },
+  }
+  const service = createChatService({
+    repository: repositories.chat,
+    creativeRepositories,
+    codec,
+    coordinator: createChatStreamCoordinator(),
+    source: { NODE_ENV: 'test', CREATIVE_PROVIDER_MODE: 'mock' },
+  })
+  const conversation = await service.createConversation({ mode: 'assistant' }, actor)
+  const prepared = await service.prepareTurn(conversation.id, input({
+    inputAssetIds: ['asset-1'],
+    productContext: [{ type: 'task', id: 'task-1' }],
+  }), actor)
+  assert.deepEqual(prepared.turn.inputAssetIds, ['asset-1'])
+  assert.deepEqual(prepared.turn.productContext, [{ type: 'task', id: 'task-1' }])
+  assert.equal(prepared.dispatch.context.productContext[0].content, 'Private resolved context')
+  assert.equal(JSON.stringify(prepared.turn).includes('Private resolved context'), false)
+  assert.equal(prepared.turn.safety.input.disposition, 'allow')
+})
+
+test('Chat service routes input review evidence without generation dispatch', async () => {
+  const { repositories, service } = setup({
+    inputSafetyClassifier: async () => ({
+      classified: true,
+      disposition: 'review',
+      reasonCodes: ['SAFETY_REGULATED_ADVICE'],
+      source: 'injected_fixture',
+    }),
+  })
+  const conversation = await service.createConversation({ mode: 'assistant' }, actor)
+  await assert.rejects(
+    service.prepareTurn(conversation.id, input(), actor),
+    (error) => error.code === 'CHAT_INPUT_REVIEW_REQUIRED',
+  )
+  const turn = await repositories.chat.findTurnByClientId(conversation.id, 'client-turn-0001', actor.id)
+  assert.equal(turn.status, 'blocked')
+  assert.match(turn.safety.reviewId, /^chat-review-/)
+  const reviews = repositories.adminReviews.list({ queue: 'chat_safety' })
+  assert.equal(reviews.items.length, 1)
+  assert.equal(JSON.stringify(reviews.items[0]).includes('Draft a clear task brief'), false)
+})
+
+test('Chat service fails closed when safety review persistence is unavailable', async () => {
+  const { repositories, service } = setup({
+    inputSafetyClassifier: async () => ({
+      classified: true,
+      disposition: 'review',
+      reasonCodes: ['SAFETY_REGULATED_ADVICE'],
+      source: 'injected_fixture',
+    }),
+  })
+  repositories.adminReviews.create = async () => { throw new Error('review store unavailable') }
+  const conversation = await service.createConversation({ mode: 'assistant' }, actor)
+  await assert.rejects(
+    service.prepareTurn(conversation.id, input(), actor),
+    (error) => error.code === 'CHAT_SAFETY_REVIEW_UNAVAILABLE',
+  )
+  const turn = await repositories.chat.findTurnByClientId(conversation.id, 'client-turn-0001', actor.id)
+  assert.equal(turn.status, 'blocked')
+  assert.equal(turn.errorCode, 'CHAT_SAFETY_REVIEW_UNAVAILABLE')
+})
+
+test('Chat service blocks a full unclassified output buffer without releasing content', async () => {
+  async function* bufferedStream() {
+    yield { type: 'content.delta', text: 'x'.repeat(600), safety: { classified: true, allowed: true } }
+  }
+  const { service } = setup({
+    streamAdapter: bufferedStream,
+    outputSafetyClassifier: async () => ({
+      classified: false,
+      disposition: 'pending',
+      reasonCodes: ['CHAT_SAFETY_PENDING'],
+      source: 'injected_fixture',
+    }),
+  })
+  const conversation = await service.createConversation({ mode: 'assistant' }, actor)
+  const prepared = await service.prepareTurn(conversation.id, input({ parameters: { maxOutputTokens: 1024, responseFormat: 'text' } }), actor)
+  const events = []
+  const blocked = await service.streamPreparedTurn(prepared, actor, (event) => events.push(event), new AbortController().signal)
+  assert.equal(blocked.status, 'blocked')
+  assert.equal(blocked.errorCode, 'CHAT_STREAM_SAFETY_BUFFER_LIMIT')
+  assert.equal(blocked.messages[1].content, '')
+  assert.equal(events.includes('content.delta'), false)
+})
+
+test('Chat service preserves only classified partial output when a later segment needs review', async () => {
+  async function* reviewStream() {
+    yield { type: 'content.delta', text: 'safe', safety: { classified: true, allowed: true } }
+    yield { type: 'content.delta', text: ' review', safety: { classified: true, allowed: true } }
+  }
+  const { repositories, service } = setup({
+    streamAdapter: reviewStream,
+    outputSafetyClassifier: async ({ text }) => ({
+      classified: true,
+      disposition: text.includes('review') ? 'review' : 'allow',
+      reasonCodes: [text.includes('review') ? 'SAFETY_CONTEXT_REQUIRED' : 'SAFETY_ALLOWED_BASELINE'],
+      source: 'injected_fixture',
+    }),
+  })
+  const conversation = await service.createConversation({ mode: 'assistant' }, actor)
+  const prepared = await service.prepareTurn(conversation.id, input(), actor)
+  const events = []
+  const blocked = await service.streamPreparedTurn(prepared, actor, (event, data) => events.push({ event, data }), new AbortController().signal)
+  assert.equal(blocked.status, 'blocked')
+  assert.equal(blocked.errorCode, 'CHAT_STREAM_REVIEW_REQUIRED')
+  assert.equal(blocked.messages[1].content, 'safe')
+  const review = repositories.adminReviews.find(blocked.safety.reviewId)
+  assert.equal(review.metadata.chatTurnId, blocked.id)
+  assert.equal(events.at(-1).data.moderationDecisionId, blocked.safety.reviewId)
+  assert.equal(events.at(-1).data.safetyId, blocked.safety.output.safetyId)
 })
