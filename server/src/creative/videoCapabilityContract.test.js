@@ -31,6 +31,11 @@ test('Video capability freezes provider, lifecycle, output, budget, and safety b
   assert.equal(videoCapabilityContract.cost.dailyUsdCap, 20)
   assert.equal(videoCapabilityContract.safety.unknownSafetyResponse, 'block')
   assert.equal(videoCapabilityContract.persistence.rawProviderPayloadRetentionAllowed, false)
+  assert.equal(videoCapabilityContract.runtime.providerAdapterImplemented, true)
+  assert.equal(videoCapabilityContract.runtime.providerAdapterRegistered, false)
+  assert.equal(videoCapabilityContract.runtime.fixtureAdapterOnly, true)
+  assert.equal(videoCapabilityContract.runtime.providerHttpClientImplemented, false)
+  assert.equal(videoCapabilityContract.runtime.providerLifecycleRegistered, false)
 })
 
 test('Video Provider projections expose provider-supported modes without claiming enablement', () => {

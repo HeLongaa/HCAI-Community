@@ -30,6 +30,11 @@ import {
   readOpenAIImageOutputBytes,
 } from './openaiImageProvider.js'
 import { attachImageOutputLineage, resolveImageGenerationInputs } from './imageInputAssets.js'
+import { attachVideoOutputLineage, resolveVideoGenerationInputs } from './videoInputAssets.js'
+import {
+  assertGoogleVeoBudgetAllowsDispatch,
+  buildGoogleVeoProviderCostMetadata,
+} from './googleVeoProvider.js'
 
 const getFixtureProvider = (providerId, registry) => {
   const provider = registry.providers.find((candidate) => candidate.id === providerId)
@@ -54,6 +59,11 @@ const buildProviderCostForRequest = ({ provider, request, source, now }) => {
   if (provider.id === 'openai-gpt-image-2') {
     const providerCost = buildOpenAIImageProviderCostMetadata({ request, source, now })
     assertOpenAIImageBudgetAllowsDispatch(providerCost)
+    return providerCost
+  }
+  if (provider.id === 'google-veo-3-1-fast') {
+    const providerCost = buildGoogleVeoProviderCostMetadata({ request, source, now })
+    assertGoogleVeoBudgetAllowsDispatch(providerCost)
     return providerCost
   }
   return null
@@ -105,10 +115,15 @@ export const executeCreativeGeneration = async ({
   assertCreativeModeSupported(capability, request.mode)
   assertCreativeParametersSupported(capability, request.mode, request.parameters)
 
-  const resolvedInputAssets = await resolveImageGenerationInputs(request, {
+  const resolvedImageInputs = await resolveImageGenerationInputs(request, {
     actor,
     mediaRepository: inputAssetRepository,
   })
+  const resolvedVideoInputs = await resolveVideoGenerationInputs(request, {
+    actor,
+    mediaRepository: inputAssetRepository,
+  })
+  const resolvedInputAssets = resolvedImageInputs.length > 0 ? resolvedImageInputs : resolvedVideoInputs
 
   if (provider.id !== 'mock' && !fixtureAdapter) {
     throw new Error(`Unsupported creative provider adapter: ${provider.id}`)
@@ -177,6 +192,7 @@ export const executeCreativeGeneration = async ({
       generated = { ...generated, id: generationId }
     }
     generated = attachImageOutputLineage(generated, resolvedInputAssets)
+    generated = attachVideoOutputLineage(generated, resolvedInputAssets)
     assertCreativeProviderAdapterContract(generated, { request, provider })
   } catch (error) {
     if (providerControlDispatch && adapterAttempted && providerControlPlane?.recordResult) {

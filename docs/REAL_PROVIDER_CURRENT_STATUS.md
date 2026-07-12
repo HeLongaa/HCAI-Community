@@ -2,7 +2,7 @@
 
 This is the first decision page to read before starting any real-provider work. It compresses the current provider readiness state into one handoff: what is usable now, what is fixture-only, what remains deferred, and what requires explicit approval.
 
-Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, owner-scoped Image lifecycle history, Admin generation history, internal mutation controls, Provider budget observability, the V1-11 fail-closed Provider control plane, the V1-12 shared error/durable retry policy, a fixture-only OpenAI GPT Image 2 adapter, a default-disabled OpenAI Chat staging boundary, and the V1-25 executable Video capability contract are available. All unapproved Provider HTTP clients, callback APIs, and workers remain off by default. Real paid-provider calls, real Provider webhook delivery, external Provider alert delivery, enabled real polling, real Provider mutation clients, real cap readers/probes, and production paid-provider enablement remain no-go.
+Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, owner-scoped Image lifecycle history, Admin generation history, internal mutation controls, Provider budget observability, the V1-11 fail-closed Provider control plane, the V1-12 shared error/durable retry policy, a fixture-only OpenAI GPT Image 2 adapter, a default-disabled OpenAI Chat staging boundary, the V1-25 executable Video capability contract, and the V1-26 fixture-only governed Veo boundary are available. All unapproved Provider HTTP clients, callback APIs, and workers remain off by default. Real paid-provider calls, real Provider webhook delivery, external Provider alert delivery, enabled real polling, real Provider mutation clients, real cap readers/probes, and production paid-provider enablement remain no-go.
 
 V1-04 now records conditional implementation-planning decisions for all four modalities in
 `docs/V1_PROVIDER_DECISION_MATRIX.md` and `config/v1-provider-matrix.json`. These selections define primary/backup
@@ -49,6 +49,14 @@ V1-25 freezes the Video contract in `server/src/creative/videoCapabilityContract
 720p MP4 parameters; governed input roles; asynchronous lifecycle; application-owned composition; safety, persistence,
 and USD budget boundaries; and disabled Veo/Runway catalog projections. It adds no Provider adapter, credential, HTTP
 client, lifecycle registration, automatic failover, real call, or production enablement.
+
+V1-26 adds `server/src/creative/videoInputAssets.js` and `server/src/creative/googleVeoProvider.js`. It resolves
+owner-visible Video assets into fixed image/audio roles; rejects invalid purpose, upload, scan, size, and magic MIME;
+attaches safe output lineage; maps a closed 720p Veo fixture request; strictly projects queued/running/terminal fixture
+operations; constructs idempotent lifecycle replay; and reserves the USD estimate as generated seconds through the
+shared Provider control and cost ledger. The Veo shell remains unconfigured and product-unavailable. Its adapter is
+fixture-injectable only; HTTP, credentials, Provider operation state, lifecycle registration, output fetch, real calls,
+and production enablement remain absent or false.
 
 V1-44 freezes the corresponding four-modality content safety baseline in
 `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. It defines 20 risk categories,

@@ -157,19 +157,26 @@ export const buildProviderCostReservation = ({
   if (normalizedCurrency(budget.dailyCapCurrency) !== currency) {
     fail('CREATIVE_PROVIDER_BUDGET_BLOCKED', 'budget_currency_mismatch')
   }
+  const billingUnit = estimate.billingUnit ?? 'request'
+  const quantity = estimate.quantity ?? 1
+  const unitPrice = estimate.unitPrice ?? estimate.amount
   const snapshot = createProviderPricingSnapshot({
     providerId: providerCost.providerId,
     providerAccountRef: providerCost.providerAccountRef,
     providerModelId: model.providerModelId,
     workspace,
     currency,
-    billingUnit: 'request',
-    unitPrice: estimate.amount,
+    billingUnit,
+    unitPrice,
     sourceType: model.pricingSource ?? 'fixture_config',
     sourceRef: `${providerCost.providerId}:${workspace}:configured-estimate`,
     effectiveAt: model.pricingSnapshotAt ?? now,
     capturedAt: model.pricingSnapshotAt ?? now,
   })
+  const calculatedEstimate = calculateProviderEstimate({ snapshot, quantity, now })
+  if (calculatedEstimate.estimateMicros !== estimateMicros.toString()) {
+    fail('CREATIVE_PROVIDER_COST_CONTRACT_INVALID', 'estimate_calculation_mismatch')
+  }
   const window = providerBudgetWindowFor(now)
   return {
     sourceKey: `provider-cost:${stableProviderCostHash({ generationId, providerId: providerCost.providerId })}`,

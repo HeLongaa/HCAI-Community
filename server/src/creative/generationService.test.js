@@ -12,6 +12,7 @@ import {
 import { createProviderControlPlane } from './providerControlPlane.js'
 import { resetCreativePolicyState } from './policy.js'
 import { createOpenAIImageGeneration, projectOpenAIImageGenerationResponse } from './openaiImageProvider.js'
+import { createGoogleVeoGeneration } from './googleVeoProvider.js'
 
 const actor = {
   id: 'demo-user-creator',
@@ -66,7 +67,15 @@ test('getCreativeProviderCatalog exposes safe mock provider capabilities', () =>
   const veo = catalog.providers.find((provider) => provider.id === 'google-veo-3-1-fast')
   const runway = catalog.providers.find((provider) => provider.id === 'runway-gen-4-5')
   assert.equal(veo.enabled, false)
-  assert.equal(veo.safeMetadata.adapterImplemented, false)
+  assert.equal(veo.safeMetadata.adapterImplemented, true)
+  assert.equal(veo.safeMetadata.adapterRegistered, false)
+  assert.equal(veo.safeMetadata.fixtureAdapterOnly, true)
+  assert.equal(veo.safeMetadata.inputResolverImplemented, true)
+  assert.equal(veo.safeMetadata.inputBytesReaderImplemented, true)
+  assert.equal(veo.safeMetadata.lifecycleProjectionImplemented, true)
+  assert.equal(veo.safeMetadata.lifecycleRegistered, false)
+  assert.equal(veo.safeMetadata.httpClientImplemented, false)
+  assert.equal(veo.safeMetadata.networkCallsEnabled, false)
   assert.equal(veo.safeMetadata.c2paExpected, true)
   assert.deepEqual(veo.capabilities[0].modes, ['text_to_video', 'image_to_video'])
   assert.equal(runway.safeMetadata.automaticFailoverAllowed, false)
@@ -97,6 +106,88 @@ test('executeCreativeGeneration applies the Video contract before mock execution
       source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' },
     }),
     /parameters.durationSeconds must be one of: 4, 6, 8/,
+  )
+})
+
+test('executeCreativeGeneration runs the governed Veo fixture boundary and reserves generated-second cost', async () => {
+  resetCreativePolicyState()
+  const repository = createSeedRepository()
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+  )
+  const fixtureRequest = {
+    workspace: 'video',
+    mode: 'image_to_video',
+    prompt: 'Animate the source with restrained camera motion.',
+    inputAssetIds: ['video-source'],
+    parameters: { aspectRatio: '16:9', durationSeconds: 8, motionPreset: 'subtle', outputFormat: 'mp4' },
+    providerId: 'google-veo-3-1-fast',
+  }
+  let mappedRequest
+  const controlCalls = []
+  const generated = await executeCreativeGeneration({
+    request: fixtureRequest,
+    actor,
+    generationId: 'gen-google-veo-governed-fixture',
+    inputAssetRepository: {
+      findAccessibleCreativeInput: async (id) => id === 'video-source'
+        ? {
+            id,
+            purpose: 'submission_asset',
+            contentType: 'image/png',
+            sizeBytes: png.length,
+            status: 'uploaded',
+            metadata: { security: { scanStatus: 'clean' } },
+          }
+        : null,
+    },
+    inputAssetReader: async () => ({ body: png }),
+    providerCostRepository: repository.creativeProviderCosts,
+    providerControlPlane: {
+      assertDispatchAllowed: async (payload) => controlCalls.push(['assert', payload]),
+      recordResult: async (payload) => controlCalls.push(['result', payload]),
+    },
+    fixtureAdapters: {
+      'google-veo-3-1-fast': (context) => createGoogleVeoGeneration({
+        ...context,
+        client: {
+          createVideo: async (providerRequest) => {
+            mappedRequest = providerRequest
+            return { id: 'veo-job-governed-fixture', state: 'queued' }
+          },
+        },
+      }),
+    },
+  })
+
+  assert.equal(generated.status, 'queued')
+  assert.equal(generated.providerJobId, 'veo-job-governed-fixture')
+  assert.deepEqual(mappedRequest.safeFields.inputRoles, ['source_image'])
+  assert.equal(mappedRequest.safeFields.inputBytes, png.length)
+  assert.equal(generated.usage.providerCost.ledger.status, 'reserved')
+  assert.equal(generated.usage.providerCost.pricingSnapshot.billingUnit, 'generated_seconds')
+  assert.deepEqual(controlCalls.map(([type]) => type), ['assert', 'result'])
+  assert.equal(controlCalls[0][1].providerId, 'google-veo-3-1-fast')
+  assert.equal(controlCalls[0][1].workspace, 'video')
+  assert.equal(controlCalls[0][1].estimateMicros, '800000')
+  assert.equal(JSON.stringify(generated).includes(png.toString('base64')), false)
+})
+
+test('executeCreativeGeneration keeps the Veo product path unavailable without fixture injection', async () => {
+  await assert.rejects(
+    executeCreativeGeneration({
+      request: {
+        workspace: 'video',
+        mode: 'text_to_video',
+        prompt: 'A product path must not dispatch.',
+        inputAssetIds: [],
+        parameters: { aspectRatio: '16:9', durationSeconds: 8, motionPreset: 'subtle', outputFormat: 'mp4' },
+        providerId: 'google-veo-3-1-fast',
+      },
+      actor,
+    }),
+    (error) => error.code === 'CREATIVE_PROVIDER_UNAVAILABLE' && /google-veo-3-1-fast/.test(error.message),
   )
 })
 

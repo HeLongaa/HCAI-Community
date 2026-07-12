@@ -138,6 +138,11 @@ const summarize = (env, oauthProviders, chatRuntime) => ({
     primaryProviderId: videoCapabilityContract.models.primary.providerId,
     backupProviderId: videoCapabilityContract.models.backup.providerId,
     providerAdapterImplemented: videoCapabilityContract.runtime.providerAdapterImplemented,
+    providerAdapterRegistered: videoCapabilityContract.runtime.providerAdapterRegistered,
+    fixtureAdapterOnly: videoCapabilityContract.runtime.fixtureAdapterOnly,
+    governedInputResolverImplemented: videoCapabilityContract.runtime.governedInputResolverImplemented,
+    inputBytesReaderImplemented: videoCapabilityContract.runtime.inputBytesReaderImplemented,
+    lifecycleProjectionImplemented: videoCapabilityContract.runtime.lifecycleProjectionImplemented,
     providerHttpClientImplemented: videoCapabilityContract.runtime.providerHttpClientImplemented,
     providerLifecycleRegistered: videoCapabilityContract.runtime.providerLifecycleRegistered,
     realProviderCallsApproved: videoCapabilityContract.runtime.realProviderCallsApproved,
@@ -255,13 +260,18 @@ check(
     videoCapabilityContract.models.primary.enabled === false &&
     videoCapabilityContract.models.backup.providerId === 'runway-gen-4-5' &&
     videoCapabilityContract.models.backup.enabled === false &&
-    videoCapabilityContract.runtime.providerAdapterImplemented === false &&
+    videoCapabilityContract.runtime.providerAdapterImplemented === true &&
+    videoCapabilityContract.runtime.providerAdapterRegistered === false &&
+    videoCapabilityContract.runtime.fixtureAdapterOnly === true &&
+    videoCapabilityContract.runtime.governedInputResolverImplemented === true &&
+    videoCapabilityContract.runtime.inputBytesReaderImplemented === true &&
+    videoCapabilityContract.runtime.lifecycleProjectionImplemented === true &&
     videoCapabilityContract.runtime.providerHttpClientImplemented === false &&
     videoCapabilityContract.runtime.providerLifecycleRegistered === false &&
     videoCapabilityContract.runtime.automaticFailoverAllowed === false &&
     videoCapabilityContract.runtime.realProviderCallsApproved === false &&
     videoCapabilityContract.runtime.productionEnablementApproved === false,
-  'V1-25 freezes Video semantics without registering Provider traffic',
+  'V1-26 adds a fixture-only governed Video boundary without registering Provider traffic',
 )
 check(checks, 'media alert channel configured', hasAny(env.hasMediaScanAlertWebhookUrl, env.hasMediaScanAlertSlackWebhookUrl, env.mediaScanAlertEmailRecipientCount > 0), 'At least one media alert channel must be configured')
 check(checks, 'security alert channel configured', hasAny(env.hasSecurityAlertWebhookUrl, env.hasSecurityAlertSlackWebhookUrl, env.securityAlertEmailRecipientCount > 0), 'At least one security alert channel must be configured')

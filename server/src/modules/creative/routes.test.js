@@ -7,6 +7,7 @@ import { quotaWindowFor, resetCreativePolicyState } from '../../creative/policy.
 import { signProviderCallbackNonce, signProviderCallbackPayload } from '../../creative/providerCallbackAuth.js'
 import { createReplicateStagingPrediction } from '../../creative/replicateStagingProvider.js'
 import { createOpenAIImageGeneration, projectOpenAIImageGenerationResponse } from '../../creative/openaiImageProvider.js'
+import { createGoogleVeoGeneration } from '../../creative/googleVeoProvider.js'
 import { executeCreativeGeneration } from '../../creative/generationService.js'
 import { repositories } from '../../repositories/index.js'
 import { createSeedRepository } from '../../repositories/seedRepository.js'
@@ -203,7 +204,14 @@ test('GET /api/creative/providers lists safe provider capability metadata', asyn
     assert.equal(videoCapability.lifecycle.timeoutSeconds, 900)
     const veo = payload.data.providers.find((provider) => provider.id === 'google-veo-3-1-fast')
     assert.equal(veo.enabled, false)
+    assert.equal(veo.configured, false)
     assert.equal(veo.safeMetadata.c2paExpected, true)
+    assert.equal(veo.safeMetadata.adapterImplemented, true)
+    assert.equal(veo.safeMetadata.adapterRegistered, false)
+    assert.equal(veo.safeMetadata.fixtureAdapterOnly, true)
+    assert.equal(veo.safeMetadata.httpClientImplemented, false)
+    assert.equal(veo.safeMetadata.networkCallsEnabled, false)
+    assert.equal(veo.safeMetadata.lifecycleRegistered, false)
     assert.deepEqual(veo.capabilities[0].modes, ['text_to_video', 'image_to_video'])
   } finally {
     await server.close()
@@ -505,6 +513,61 @@ test('POST /api/creative/generations cannot select the default-disabled OpenAI I
     })
     assert.equal(status, 503)
     assert.equal(payload.error.code, 'CREATIVE_PROVIDER_UNAVAILABLE')
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST /api/creative/generations persists only a queued record for the injected Veo fixture boundary', async () => {
+  resetCreativePolicyState()
+  const repository = createSeedRepository()
+  let fixtureCalls = 0
+  const server = await createRouteTestServer(
+    (router) => registerCreativeRoutes(router, {
+      repositories: repository,
+      fixtureAdapters: {
+        'google-veo-3-1-fast': (context) => createGoogleVeoGeneration({
+          ...context,
+          client: {
+            createVideo: async () => {
+              fixtureCalls += 1
+              return { id: 'veo-route-fixture-job', state: 'queued' }
+            },
+          },
+        }),
+      },
+      executeCreativeGeneration: (options) => executeCreativeGeneration({
+        ...options,
+        now: new Date('2030-07-13T00:00:00.000Z'),
+      }),
+    }),
+  )
+  try {
+    const { status, payload } = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'video',
+        mode: 'text_to_video',
+        providerId: 'google-veo-3-1-fast',
+        prompt: 'A fixture-only governed Video request.',
+        parameters: {
+          aspectRatio: '16:9',
+          durationSeconds: 8,
+          motionPreset: 'cinematic',
+          outputFormat: 'mp4',
+        },
+      },
+      token: 'demo-access.promptlin',
+    })
+
+    assert.equal(status, 200)
+    assert.equal(fixtureCalls, 1)
+    assert.equal(payload.data.status, 'queued')
+    assert.equal(payload.data.providerJobId, 'veo-route-fixture-job')
+    assert.deepEqual(payload.data.outputs, [])
+    assert.equal(payload.data.usage.providerCost.ledger.status, 'reserved')
+    assert.equal(payload.data.credit.status, 'reserved')
+    assert.equal(payload.data.generationRecord.status, 'running')
+    assert.equal(JSON.stringify(payload.data).includes('predict_long_running'), false)
   } finally {
     await server.close()
   }

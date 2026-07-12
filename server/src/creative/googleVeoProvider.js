@@ -1,0 +1,490 @@
+import { createHash } from 'node:crypto'
+
+import { HttpError } from '../common/errors/httpError.js'
+import { buildProviderLifecycleReplay } from './providerLifecycleReplay.js'
+import { safeProviderFailure } from './providerAdapterContract.js'
+import {
+  attachVideoOutputLineage,
+  readVideoGenerationInputFiles,
+  videoLineageInputsForRequest,
+} from './videoInputAssets.js'
+
+const providerId = 'google-veo-3-1-fast'
+const modelId = 'veo-3.1-fast'
+const providerMode = 'google_video'
+const providerAccountRef = 'staging'
+const budgetScope = 'staging:google:video'
+const unitPriceUsd = 0.1
+const perJobCapUsd = 1.2
+const dailyCapUsd = 20
+const monthlyCapUsd = 500
+const thresholdPercentDefault = 80
+const safeIdentifierPattern = /^[a-z0-9][a-z0-9:._-]{0,96}$/i
+const operationStates = new Set(['queued', 'running', 'succeeded', 'failed', 'cancelled'])
+const operationKeys = new Set(['id', 'state', 'output', 'error', 'usage'])
+const outputKeys = new Set(['uri', 'contentType'])
+const errorKeys = new Set(['code', 'message'])
+const usageKeys = new Set(['generatedSeconds', 'actualCostUsd'])
+
+const stableHash = (value) => createHash('sha256').update(JSON.stringify(value ?? null)).digest('hex')
+const numberOrNull = (value) => {
+  if (value == null || value === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+}
+const boundedPercent = (value) => {
+  const parsed = numberOrNull(value)
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 100 ? parsed : null
+}
+const exactKeys = (value, allowed, reasonCode) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw operationError(reasonCode)
+  if (Object.keys(value).some((key) => !allowed.has(key))) throw operationError(reasonCode)
+}
+const operationError = (reasonCode) => new HttpError(
+  502,
+  'CREATIVE_VIDEO_PROVIDER_RESPONSE_INVALID',
+  'Video Provider response failed validation',
+  { providerId, reasonCode },
+)
+const requestError = (reasonCode) => new HttpError(
+  422,
+  'CREATIVE_VIDEO_PROVIDER_REQUEST_INVALID',
+  'Video Provider request failed validation',
+  { providerId, reasonCode },
+)
+const safeErrorText = (value) => String(value ?? '')
+  .replace(/https?:\/\/[^\s)]+/gi, '<redacted-url>')
+  .replace(/\b(api[_-]?key|token|secret|password)=([^&\s]+)/gi, '$1=<redacted>')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .slice(0, 240)
+
+const safeParameters = (request) => Object.fromEntries(
+  ['aspectRatio', 'durationSeconds', 'motionPreset', 'outputFormat']
+    .filter((key) => request.parameters?.[key] != null)
+    .map((key) => [key, request.parameters[key]]),
+)
+
+export const buildGoogleVeoGenerationRequest = (request, inputFiles = []) => {
+  if (request?.workspace !== 'video' || !['text_to_video', 'image_to_video'].includes(request?.mode)) {
+    throw requestError('mode_unsupported')
+  }
+  const sourceImage = inputFiles.find((file) => file.role === 'source_image')
+  if (request.mode === 'text_to_video' && inputFiles.length !== 0) throw requestError('input_assets_unsupported')
+  if (request.mode === 'image_to_video' && (inputFiles.length !== 1 || !sourceImage)) {
+    throw requestError('source_image_required')
+  }
+  const parameters = safeParameters(request)
+  const durationSeconds = parameters.durationSeconds ?? 8
+  const aspectRatio = parameters.aspectRatio ?? '16:9'
+  const motionPreset = parameters.motionPreset ?? 'cinematic'
+  const outputFormat = parameters.outputFormat ?? 'mp4'
+  if (![4, 6, 8].includes(durationSeconds)) throw requestError('duration_unsupported')
+  if (!['16:9', '9:16'].includes(aspectRatio)) throw requestError('aspect_ratio_unsupported')
+  if (!['subtle', 'cinematic', 'dynamic', 'fast_cuts'].includes(motionPreset)) throw requestError('motion_preset_unsupported')
+  if (outputFormat !== 'mp4') throw requestError('output_format_unsupported')
+
+  return Object.freeze({
+    model: modelId,
+    operation: 'predict_long_running',
+    instance: Object.freeze({
+      prompt: request.prompt,
+      ...(sourceImage
+        ? {
+            image: Object.freeze({
+              bytesBase64: sourceImage.body.toString('base64'),
+              mimeType: sourceImage.contentType,
+            }),
+          }
+        : {}),
+    }),
+    parameters: Object.freeze({
+      aspectRatio,
+      durationSeconds,
+      motionPreset,
+      resolution: '720p',
+      outputFormat: 'mp4',
+      sampleCount: 1,
+      generateAudio: false,
+    }),
+    safeFields: Object.freeze({
+      model: modelId,
+      mode: request.mode,
+      aspectRatio,
+      durationSeconds,
+      motionPreset,
+      resolution: '720p',
+      outputFormat: 'mp4',
+      inputRoles: inputFiles.map((file) => file.role),
+      inputBytes: inputFiles.reduce((total, file) => total + file.sizeBytes, 0),
+    }),
+  })
+}
+
+const normalizeOutput = (value, state) => {
+  if (state !== 'succeeded') {
+    if (value != null) throw operationError('output_before_success')
+    return null
+  }
+  exactKeys(value, outputKeys, 'output_invalid')
+  const uri = String(value.uri ?? '').trim()
+  if (uri.length < 1 || uri.length > 2048 || !/^(https:\/\/|gs:\/\/)/.test(uri)) throw operationError('output_uri_invalid')
+  if (value.contentType !== 'video/mp4') throw operationError('output_content_type_invalid')
+  return Object.freeze({ uri, contentType: 'video/mp4' })
+}
+
+const normalizeError = (value, state) => {
+  if (!['failed', 'cancelled'].includes(state)) {
+    if (value != null) throw operationError('error_before_terminal_failure')
+    return null
+  }
+  if (value == null && state === 'cancelled') return null
+  exactKeys(value, errorKeys, 'error_invalid')
+  const code = String(value.code ?? '').trim()
+  const message = safeErrorText(value.message)
+  if (!safeIdentifierPattern.test(code) || !message) throw operationError('error_invalid')
+  return Object.freeze({ code, message })
+}
+
+const normalizeUsage = (value) => {
+  if (value == null) return null
+  exactKeys(value, usageKeys, 'usage_invalid')
+  const generatedSeconds = numberOrNull(value.generatedSeconds)
+  const actualCostUsd = numberOrNull(value.actualCostUsd)
+  if (generatedSeconds != null && ![4, 6, 8].includes(generatedSeconds)) throw operationError('usage_duration_invalid')
+  return Object.freeze({ generatedSeconds, actualCostUsd })
+}
+
+export const projectGoogleVeoOperation = (payload) => {
+  exactKeys(payload, operationKeys, 'operation_invalid')
+  const id = String(payload.id ?? '').trim()
+  const state = String(payload.state ?? '').trim().toLowerCase()
+  if (!safeIdentifierPattern.test(id)) throw operationError('operation_id_invalid')
+  if (!operationStates.has(state)) throw operationError('operation_state_invalid')
+  return Object.freeze({
+    id,
+    state,
+    output: normalizeOutput(payload.output, state),
+    error: normalizeError(payload.error, state),
+    usage: normalizeUsage(payload.usage),
+  })
+}
+
+const generationStatusFor = (state) => ({
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'completed',
+  failed: 'failed',
+  cancelled: 'cancelled',
+})[state]
+
+const budgetStatus = ({ estimateAmount, dailyCapAmount, spentAmount, thresholdPercent }) => {
+  if (dailyCapAmount == null) return 'missing_cap'
+  const projectedSpend = spentAmount + estimateAmount
+  if (projectedSpend > dailyCapAmount) return 'over_budget'
+  return projectedSpend >= dailyCapAmount * (thresholdPercent / 100) ? 'threshold_exceeded' : 'within_budget'
+}
+
+export const buildGoogleVeoProviderCostMetadata = ({
+  request,
+  operation = null,
+  source = process.env,
+  now = new Date(),
+} = {}) => {
+  const durationSeconds = request.parameters?.durationSeconds ?? 8
+  const estimateAmount = Number((durationSeconds * unitPriceUsd).toFixed(6))
+  const configuredDailyCap = numberOrNull(source.CREATIVE_GOOGLE_VEO_DAILY_BUDGET_USD)
+  const dailyCapAmount = configuredDailyCap == null ? dailyCapUsd : Math.min(configuredDailyCap, dailyCapUsd)
+  const spentAmount = numberOrNull(source.CREATIVE_GOOGLE_VEO_DAILY_SPEND_USD) ?? 0
+  const configuredThreshold = source.CREATIVE_GOOGLE_VEO_BUDGET_THRESHOLD_PERCENT
+  const thresholdPercent = configuredThreshold == null || configuredThreshold === ''
+    ? thresholdPercentDefault
+    : boundedPercent(configuredThreshold)
+  const actualAmount = operation?.usage?.actualCostUsd ?? null
+  const nowIso = now.toISOString()
+  return {
+    schemaVersion: 'provider-cost-v1',
+    providerId,
+    providerAccountRef,
+    model: {
+      providerModelId: modelId,
+      providerModelVersion: null,
+      displayName: 'Google Veo 3.1 Fast',
+      family: 'video',
+      pricingSource: 'v1_public_list_price',
+      pricingSnapshotAt: nowIso,
+    },
+    job: {
+      providerRequestId: operation?.id ?? null,
+      providerJobId: operation?.id ?? null,
+      region: 'us',
+      startedAt: null,
+      completedAt: operation && ['succeeded', 'failed', 'cancelled'].includes(operation.state) ? nowIso : null,
+    },
+    usage: {
+      unit: 'generated_seconds',
+      quantity: operation?.usage?.generatedSeconds ?? null,
+      outputCount: operation?.output ? 1 : null,
+      rawProviderUsageHash: operation?.usage ? stableHash(operation.usage) : null,
+    },
+    estimate: {
+      currency: 'USD',
+      amount: estimateAmount,
+      billingUnit: 'generated_seconds',
+      quantity: durationSeconds,
+      unitPrice: unitPriceUsd,
+      source: 'duration_price_table',
+      confidence: 'estimated',
+      calculatedAt: nowIso,
+    },
+    actual: {
+      currency: 'USD',
+      amount: actualAmount,
+      source: actualAmount == null ? 'not_reported' : 'provider_result_metadata',
+      confidence: actualAmount == null ? 'unknown' : 'provider_reported',
+      settledAt: actualAmount == null ? null : nowIso,
+    },
+    budget: {
+      budgetScope,
+      dailyCapCurrency: 'USD',
+      dailyCapAmount,
+      monthlyCapCurrency: 'USD',
+      monthlyCapAmount: monthlyCapUsd,
+      perJobCapAmount: perJobCapUsd,
+      spentAmount,
+      thresholdPercent,
+      projectedSpendAmount: spentAmount + estimateAmount,
+      status: thresholdPercent == null
+        ? 'invalid_threshold'
+        : budgetStatus({ estimateAmount, dailyCapAmount, spentAmount, thresholdPercent }),
+    },
+    risk: {
+      reconciliationRequired: actualAmount == null && Boolean(operation && ['succeeded', 'failed', 'cancelled'].includes(operation.state)),
+      reasonCodes: actualAmount == null ? ['actual_cost_pending'] : [],
+    },
+  }
+}
+
+export const assertGoogleVeoBudgetAllowsDispatch = (providerCost) => {
+  const estimateAmount = providerCost?.estimate?.amount
+  const budget = providerCost?.budget
+  let reason = null
+  if (estimateAmount == null) reason = 'missing_cost_estimate'
+  else if (estimateAmount > perJobCapUsd) reason = 'per_job_cap_exceeded'
+  else if (budget?.dailyCapAmount == null) reason = 'missing_daily_cap'
+  else if (budget?.monthlyCapAmount == null) reason = 'missing_monthly_cap'
+  else if (budget?.thresholdPercent == null) reason = 'invalid_budget_threshold'
+  if (reason) {
+    throw new HttpError(503, 'CREATIVE_PROVIDER_BUDGET_BLOCKED', 'Provider budget guard blocked dispatch', {
+      providerId,
+      budgetScope,
+      reason,
+    })
+  }
+  if (budget.status === 'over_budget') {
+    throw new HttpError(429, 'CREATIVE_PROVIDER_BUDGET_EXCEEDED', 'Provider budget cap exceeded', {
+      providerId,
+      budgetScope,
+    })
+  }
+}
+
+export const mapGoogleVeoOperationToCreativeGeneration = ({
+  request,
+  provider,
+  actor,
+  operation,
+  source = process.env,
+  now = new Date(),
+  generationId,
+  resolvedInputAssets = null,
+}) => {
+  const projected = projectGoogleVeoOperation(operation)
+  const status = generationStatusFor(projected.state)
+  const outputDigest = projected.output ? stableHash(projected.output) : null
+  const outputs = projected.output
+    ? [{
+        id: `out_google_veo_${outputDigest.slice(0, 16)}`,
+        type: 'video',
+        label: 'Google Veo video output',
+        contentType: 'video/mp4',
+        url: projected.output.uri,
+        storage: { persisted: false, provider: 'google-veo' },
+        source: {
+          kind: 'google_veo_operation',
+          modelId,
+          providerJobId: projected.id,
+          outputIndex: 0,
+          workspace: 'video',
+        },
+      }]
+    : []
+  const cost = buildGoogleVeoProviderCostMetadata({ request, operation: projected, source, now })
+  const generation = {
+    id: generationId,
+    workspace: 'video',
+    mode: request.mode,
+    status,
+    provider: { id: provider.id, mode: provider.mode, label: provider.label },
+    providerRequestId: projected.id,
+    providerJobId: projected.id,
+    prompt: request.prompt,
+    inputAssetIds: request.inputAssetIds,
+    parameters: safeParameters(request),
+    outputs,
+    usage: {
+      estimatedCredits: request.parameters?.durationSeconds ?? 8,
+      providerCostCents: Math.ceil(cost.estimate.amount * 100),
+      metered: true,
+      providerUsageUnit: 'generated_seconds',
+      providerCost: cost,
+    },
+    safety: { moderationRequired: true, reviewRequired: false },
+    createdBy: { id: actor.id, handle: actor.handle },
+    createdAt: now.toISOString(),
+    ...(status === 'failed'
+      ? {
+          errorCode: projected.error?.code ?? 'PROVIDER_FAILED',
+          errorMessagePreview: projected.error?.message ?? 'Video Provider generation failed',
+          failedAt: now.toISOString(),
+        }
+      : {}),
+  }
+  const lineageInputs = resolvedInputAssets ?? videoLineageInputsForRequest(request)
+  return attachVideoOutputLineage(generation, lineageInputs)
+}
+
+export const buildGoogleVeoLifecycleReplay = ({
+  currentRecord = null,
+  request,
+  provider,
+  actor,
+  operation,
+  source = process.env,
+  now = new Date(),
+}) => {
+  const mapped = mapGoogleVeoOperationToCreativeGeneration({
+    request,
+    provider,
+    actor,
+    operation,
+    source,
+    now,
+    generationId: currentRecord?.id ?? `gen_google_veo_${stableHash(operation.id).slice(0, 16)}`,
+  })
+  const generation = currentRecord
+    ? {
+        ...mapped,
+        id: currentRecord.id,
+        actorId: currentRecord.actorId ?? null,
+        actorHandle: currentRecord.actorHandle ?? actor?.handle ?? null,
+        promptHash: currentRecord.promptHash ?? null,
+        promptPreview: currentRecord.promptPreview ?? null,
+        quota: currentRecord.quota ?? null,
+        credit: currentRecord.credit ?? null,
+        safety: currentRecord.safety ?? mapped.safety,
+        policy: currentRecord.policy ?? null,
+        usage: {
+          ...mapped.usage,
+          ...currentRecord.usage,
+          providerCost: {
+            ...currentRecord.usage?.providerCost,
+            ...mapped.usage.providerCost,
+            estimate: currentRecord.usage?.providerCost?.estimate ?? mapped.usage.providerCost.estimate,
+            budget: currentRecord.usage?.providerCost?.budget ?? mapped.usage.providerCost.budget,
+          },
+        },
+        createdAt: currentRecord.createdAt ?? mapped.createdAt,
+      }
+    : mapped
+  const outputDigest = operation.output ? stableHash(operation.output) : null
+  return buildProviderLifecycleReplay({
+    currentRecord,
+    generation,
+    providerId: provider.id,
+    providerJobId: operation.id,
+    idempotencyKey: `google-veo:${operation.id}:${generation.status}:${outputDigest ?? 'no-output'}`,
+    outputDigest,
+  })
+}
+
+const failedGeneration = ({ request, provider, actor, error, source, now, generationId }) => {
+  const failure = safeProviderFailure(error)
+  const cost = buildGoogleVeoProviderCostMetadata({ request, source, now })
+  return {
+    id: generationId,
+    workspace: 'video',
+    mode: request.mode,
+    status: 'failed',
+    provider: { id: provider.id, mode: provider.mode, label: provider.label },
+    providerRequestId: null,
+    providerJobId: null,
+    prompt: request.prompt,
+    inputAssetIds: request.inputAssetIds,
+    parameters: safeParameters(request),
+    outputs: [],
+    usage: {
+      estimatedCredits: request.parameters?.durationSeconds ?? 8,
+      providerCostCents: Math.ceil(cost.estimate.amount * 100),
+      metered: true,
+      providerUsageUnit: 'generated_seconds',
+      providerCost: cost,
+    },
+    safety: { moderationRequired: true, reviewRequired: false },
+    createdBy: { id: actor.id, handle: actor.handle },
+    createdAt: now.toISOString(),
+    errorCode: failure.code,
+    errorMessagePreview: failure.messagePreview,
+    failedAt: now.toISOString(),
+  }
+}
+
+export const createGoogleVeoGeneration = async ({
+  request,
+  provider,
+  actor,
+  client,
+  resolvedInputAssets = [],
+  inputAssetReader = null,
+  source = process.env,
+  now = new Date(),
+  generationId,
+}) => {
+  if (!client?.createVideo) {
+    throw new Error('Google Veo client must be injected; no default network client is registered')
+  }
+  const providerCost = buildGoogleVeoProviderCostMetadata({ request, source, now })
+  assertGoogleVeoBudgetAllowsDispatch(providerCost)
+  const inputFiles = await readVideoGenerationInputFiles(resolvedInputAssets, inputAssetReader)
+  const providerRequest = buildGoogleVeoGenerationRequest(request, inputFiles)
+  try {
+    const operation = projectGoogleVeoOperation(await client.createVideo(providerRequest))
+    if (!['queued', 'running'].includes(operation.state)) throw operationError('dispatch_result_must_be_non_terminal')
+    return mapGoogleVeoOperationToCreativeGeneration({
+      request,
+      provider,
+      actor,
+      operation,
+      source,
+      now,
+      generationId,
+      resolvedInputAssets,
+    })
+  } catch (error) {
+    return failedGeneration({ request, provider, actor, error, source, now, generationId })
+  }
+}
+
+export const googleVeoProviderContract = Object.freeze({
+  schemaVersion: 'google-veo-fixture-boundary-v1',
+  providerId,
+  providerMode,
+  modelId,
+  unitPriceUsd,
+  perJobCapUsd,
+  dailyCapUsd,
+  monthlyCapUsd,
+  httpClientImplemented: false,
+  networkCallsEnabled: false,
+  lifecycleRegistered: false,
+})

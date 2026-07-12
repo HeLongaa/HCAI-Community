@@ -3,18 +3,19 @@
 V1-25 freezes the Video product and Provider contract. The executable source of truth is
 `server/src/creative/videoCapabilityContract.js`.
 
-Current decision: **the contract and deterministic Mock projection are implemented; Google Veo 3.1 Fast and Runway
-Gen-4.5 remain disabled catalog shells. No Video Provider adapter, HTTP client, credential, lifecycle registration,
-automatic failover, real call, or production enablement is approved**.
+Current decision: **the contract, governed input resolver, deterministic Mock projection, and fixture-only Google Veo
+request/lifecycle boundary are implemented. Google Veo 3.1 Fast and Runway Gen-4.5 remain disabled catalog shells.
+No Video adapter is registered on the product path, and no HTTP client, credential, Provider state store, lifecycle
+worker, automatic failover, real call, or production enablement is approved**.
 
 The Mock path produces a deterministic governed placeholder artifact for testing and accounting. It is not a real MP4
 render and must remain visibly classified as Mock until the later Video product workflow is implemented.
 
 ## Provider Decision
 
-| Role | Provider | Model | V1-25 state |
+| Role | Provider | Model | Current state |
 | --- | --- | --- | --- |
-| Primary | Google | Veo 3.1 Fast (`veo-3.1-fast`) | Disabled metadata shell; adapter/client absent |
+| Primary | Google | Veo 3.1 Fast (`veo-3.1-fast`) | Disabled shell; fixture mapper/projection present, HTTP client absent |
 | Backup | Runway | Gen-4.5 (`gen-4.5`) | Disabled; no-training and retention terms required |
 
 Both Provider projections declare only text-to-video and image-to-video support. Music video is an application-owned
@@ -26,7 +27,8 @@ composition workflow and must not be represented as a native Provider capability
 - `image_to_video`: exactly one governed source image (PNG, JPEG, or WebP).
 - `music_video`: one governed audio track and an optional governed reference image.
 - Duplicate asset ids are rejected.
-- Ownership, purpose, upload, scanner, byte, MIME, and lineage validation must complete before a later real dispatch.
+- Ownership, purpose, upload, scanner, exact byte size, magic MIME, and lineage validation are implemented before the
+  fixture adapter boundary. Real dispatch remains unavailable.
 
 ## Parameters And Output
 
@@ -59,6 +61,8 @@ voiceover, and music synchronization are application composition stages, not unv
 
 ## Handoff
 
-V1-26 through V1-29 own governed input bytes/lineage, async Provider adapter and lifecycle behavior, production Video UI,
-and staging acceptance. Those tasks must preserve this contract or update it explicitly with matching tests and docs.
+V1-26 implements governed input bytes/lineage, a fixed fixture-only Veo request descriptor, strict async result
+projection/replay construction, and generated-second cost reservation. V1-27 through V1-29 still own Provider operation
+state, registered lifecycle behavior, output ingestion, production Video UI, and staging acceptance. Those tasks must
+preserve this contract or update it explicitly with matching tests and docs.
 Ordinary continuation language is never approval for a real Video Provider request.

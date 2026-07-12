@@ -201,9 +201,9 @@
       "id": "server-video-capability-contract",
       "area": "video-provider",
       "classification": "production_capable",
-      "paths": ["server/src/creative/videoCapabilityContract.js", "server/src/creative/providerRegistry.js", "server/src/creative/generationService.js", "server/src/contracts/requestParsers.js"],
-      "markers": ["video-capability-v1", "google-veo-3-1-fast", "runway-gen-4-5", "assertVideoGenerationRequest"],
-      "productionDisposition": "retain_contract_and_keep_video_provider_adapters_clients_lifecycle_and_production_enablement_disabled_until_owned_follow_up_tasks_close",
+      "paths": ["server/src/creative/videoCapabilityContract.js", "server/src/creative/videoInputAssets.js", "server/src/creative/googleVeoProvider.js", "server/src/creative/providerRegistry.js", "server/src/creative/generationService.js", "server/src/contracts/requestParsers.js"],
+      "markers": ["video-capability-v1", "video-input-assets-v1", "google-veo-fixture-boundary-v1", "providerAdapterRegistered", "providerLifecycleRegistered"],
+      "productionDisposition": "retain_the_fixture_only_governed_video_boundary_and_keep_adapter_registration_http_clients_provider_state_lifecycle_registration_output_fetch_and_production_enablement_disabled_until_owned_follow_up_tasks_close",
       "ownerTasks": ["V1-25", "V1-26", "V1-27", "V1-28", "V1-29", "V1-39"]
     },
     {
