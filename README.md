@@ -138,6 +138,11 @@ The preflight checks the selected primary adapter/client boundary, credential pr
 disabled product dispatch, and production no-go while forcing real network calls off. Real staging evidence remains
 pending explicit approval and is not produced by local or CI fixture commands.
 
+V1-20 freezes the Chat contract for OpenAI GPT-5.6 Terra with Anthropic Claude Sonnet 5 as a separately approved backup.
+It defines bounded context and output, `store=false`, disabled background mode, app-owned retention, future governed
+attachments, streaming safety, disabled tools, and fail-closed cost limits. Both Chat Provider shells remain disabled;
+the Chat UI is still simulated until V1-21 through V1-23.
+
 ## Verification
 
 ```bash
@@ -166,6 +171,7 @@ Planning docs for the API, data model, auth, and backend rollout live in `docs/`
 - `docs/V1_PROVIDER_DECISION_MATRIX.md`
 - `docs/V1_IMAGE_CAPABILITY_CONTRACT.md`
 - `docs/V1_IMAGE_STAGING_RELEASE_GATE.md`
+- `docs/V1_CHAT_CAPABILITY_CONTRACT.md`
 - `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md`
 - `docs/V1_DATA_GOVERNANCE_BASELINE.md`
 - `docs/PRODUCT_BACKEND_PLAN.md`

@@ -66,8 +66,8 @@
       "id": "frontend-chat-workspace-simulation",
       "area": "chat",
       "classification": "release_blocker",
-      "paths": ["src/features/workspace/WorkspacePages.tsx"],
-      "markers": ["export function ChatPage", "Quick prompts", "Drafted. You can send this"],
+      "paths": ["src/features/workspace/WorkspacePages.tsx", "server/src/creative/chatCapabilityContract.js", "server/src/creative/providerRegistry.js", "server/src/docs/openapi.js"],
+      "markers": ["export function ChatPage", "Quick prompts", "Drafted. You can send this", "chat-capability-v1", "openai-gpt-5-6-terra"],
       "productionDisposition": "replace_with_streaming_chat_api",
       "ownerTasks": ["V1-20", "V1-21", "V1-22", "V1-23", "V1-24", "V1-39"]
     },

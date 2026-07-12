@@ -689,8 +689,9 @@ export type ApiCreativeParameterDefinition = {
   maximum?: number
 }
 
-export type ApiImageModeContract = {
+export type ApiCreativeModeContract = {
   id: 'text_to_image' | 'image_to_image' | 'image_edit' | 'image_variation'
+    | 'assistant' | 'prompt_assist' | 'storyboard'
   label: string
   runtimeAvailable: boolean
   available: boolean
@@ -711,18 +712,26 @@ export type ApiCreativeCapability = {
   contractVersion?: string
   modes: string[]
   allModes?: string[]
-  modeContracts?: ApiImageModeContract[]
+  modeContracts?: ApiCreativeModeContract[]
   inputAssetPurposes: string[]
   outputTypes: string[]
   maxPromptCharacters: number
   supportedParameters: string[]
   parameterDefinitions?: Record<string, ApiCreativeParameterDefinition>
+  output?: Record<string, unknown>
+  modelDecision?: Record<string, unknown>
   runtime?: {
     realProviderCallsApproved: boolean
     productionEnablementApproved: boolean
     productionFallback: string
     silentMockFallback: boolean
+    [key: string]: unknown
   }
+  cost?: Record<string, unknown>
+  safety?: Record<string, unknown>
+  context?: Record<string, unknown>
+  persistence?: Record<string, unknown>
+  tools?: Record<string, unknown>
 }
 
 export type ApiCreativeProviderCatalogEntry = ApiCreativeProvider & {

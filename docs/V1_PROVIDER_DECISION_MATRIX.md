@@ -83,6 +83,11 @@ register either selected real model.
 
 ## Chat Decision
 
+V1-20 freezes the executable Chat model, mode, context, attachment, retention, safety, tool, and cost projection in
+`server/src/creative/chatCapabilityContract.js`, with the human-readable contract in
+`docs/V1_CHAT_CAPABILITY_CONTRACT.md`. Both Provider shells remain disabled and unregistered; this contract does not
+approve credentials, a streaming client, or a real call.
+
 ### Primary: OpenAI GPT-5.6 Terra
 
 - API: Responses API with streaming, `store=false`, no background mode, and app-owned durable conversation state.

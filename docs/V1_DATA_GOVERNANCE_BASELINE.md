@@ -4,7 +4,7 @@ This is the human-readable decision record for V1-45. The machine-readable sourc
 `config/v1-data-governance.json`, and `npm run test:v1-data-governance` prevents the inventory, retention, flow,
 export, deletion, redaction, and external-processor contracts from drifting silently.
 
-This engineering baseline was frozen on **2026-07-11**. It is not legal advice. V1-78 and an authorized legal review
+This engineering baseline was frozen on **2026-07-13**. It is not legal advice. V1-78 and an authorized legal review
 must confirm notices, lawful bases, jurisdiction-specific rights, legal retention, and processor disclosures before
 production.
 
@@ -13,8 +13,8 @@ production.
 The data inventory and implementation contract are frozen. The complete runtime is not implemented.
 
 - All 36 Prisma models are assigned exactly once to a governed data asset.
-- Six non-Prisma asset classes cover raw generation inputs, raw Provider payloads, observability, backups, export
-  packages, and deployment secrets.
+- Seven non-Prisma asset classes cover planned Chat conversation persistence, raw generation inputs, raw Provider
+  payloads, observability, backups, export packages, and deployment secrets.
 - Unknown data is `restricted`; unknown flows and processors are denied.
 - Production data in fixtures, mocks, demo seeds, Notion, or source control is forbidden.
 - Raw Provider payload persistence and secret persistence outside a managed secret store are forbidden.
@@ -52,6 +52,7 @@ not become public because the post is public.
 | `media_object_bytes` | Restricted | Object storage | Uploads, attachments, generated assets | Revoke now, object delete within 24 hours |
 | `media_scan_safety_records` | Restricted | PostgreSQL/archive | `MediaScanJob` | Terminal scan + 180 days, maximum 50/asset |
 | `creative_generation_records` | Restricted | PostgreSQL | `CreativeGeneration` | Terminal generation + 365 days; preview 30 days |
+| `chat_conversation_messages` | Restricted | PostgreSQL/encrypted backup | Planned application-owned conversations and messages | Inactive + 365 days; access revoked immediately and primary data deleted within 30 days after an accepted deletion request |
 | `provider_lifecycle_records` | Restricted | PostgreSQL | `CreativeProviderReplayLedger`, `CreativeGenerationMutation`, `CreativeOutputIngestion`, `CreativeProviderRetryState` | Terminal Provider lifecycle + 180 days; failure evidence is hash-only |
 | `creative_accounting_records` | Confidential | PostgreSQL | `CreativeCreditLedger`, `CreativeQuotaWindow`, `CreativeQuotaReservation` | Terminal/account close + 730 days |
 | `provider_cost_budget_records` | Confidential | PostgreSQL | `CreativeProviderBudgetWindow`, `CreativeProviderCostLedger` | Provider cost close/reconciliation + 730 days; amounts stored as integer micros |
@@ -85,6 +86,9 @@ Deletion uses the action appropriate to the record, not a single database cascad
   remove metadata after review/hold checks.
 - Generation: delete prompt preview and owned outputs, anonymize actor references, retain only bounded safe evidence,
   then prune the record at expiry.
+- Chat: keep encrypted, owner-scoped application messages for at most 365 days after inactivity; revoke access
+  immediately after an accepted deletion request, delete primary rows within 30 days, and replay that deletion after
+  restore until rolling backups expire within 35 days.
 - Audit/security/moderation: pseudonymize the subject and retain allowlisted decision/incident evidence only until its
   policy expires.
 - Backups: do not mutate every immutable backup. Mark the subject deletion in restore procedures, expire backups within
@@ -134,6 +138,9 @@ retention, and deletion propagation. Important boundaries:
    one-day link.
 6. A Provider credential may leave runtime memory only as a TLS Authorization header for the approved Provider. It is
    never placed in a URL/body/log and the Provider must not retain it as application data.
+7. A transient Chat turn remains `raw_generation_inputs` in memory. Only validated application-owned conversation and
+   message fields may be normalized into `chat_conversation_messages`; Provider state and raw Provider payloads never
+   enter that asset.
 
 ## Forbidden Flows
 
@@ -158,6 +165,9 @@ V1-67 owns implementation. The baseline requires:
 6. A 30-day fulfillment target, seven-day package retention, and 24-hour private download link.
 7. Created, downloaded, expired, and deleted evidence.
 
+Subject-owned Chat conversations and messages are included in the export with ordering and timestamps. Other-subject
+content and internal safety evidence are redacted according to the per-asset policy.
+
 Passwords/hashes, tokens, Provider credentials, raw Provider payloads, private operational notes, security detection
 logic, other users' data, and backup containers are never exported. A safe user-facing status or decision summary may
 replace excluded internal evidence.
@@ -178,6 +188,9 @@ After recent authentication and explicit confirmation:
 
 Deletion failure is visible and retryable; the system must never report completion merely because the user row changed
 to `deleted`.
+
+For Chat, accepting deletion immediately removes owner access, queues conversation/message hard deletion within the
+same 30-day primary-store target, and writes restore-replay evidence so an older backup cannot resurrect access.
 
 ## Legal Holds
 
@@ -234,6 +247,8 @@ Available foundations:
 - Mock/S3-compatible object and archive writer boundaries exist.
 - Versioned policy consent is stored as an allowlisted immutable `AuditEvent` without IP, token, user-agent, or raw-content fields.
 - Support/report/appeal/privacy/export/deletion entry requests use owner-scoped `AdminReview` rows; audit metadata excludes free-form details.
+- The V1-20 Chat contract names the governed conversation asset, 365-day inactivity limit, immediate access revocation,
+  30-day primary deletion target, and 35-day backup-expiry boundary.
 
 Known gaps:
 
@@ -243,6 +258,7 @@ Known gaps:
 - No backup expiry/restore deletion rehearsal evidence.
 - No global structured-log allowlist enforcement.
 - No legal-hold registry and expiry workflow.
+- No durable Chat conversation/message models, inactivity sweeper, export/delete hooks, or restore-deletion replay.
 - Current foreign keys do not implement the frozen anonymization plan by themselves.
 
 ## Implementation Handoff
@@ -258,6 +274,8 @@ Known gaps:
 | V1-11 | Implemented versioned kill switches, expiring hash-only Provider cap evidence, explicit circuits, one-claim probes, two-person recovery review, and safe operations evidence; real cap readers, probes, and dispatch remain unregistered |
 | V1-12 | Implemented a shared safe error taxonomy, bounded Retry-After, deterministic backoff, durable hash-only retry evidence, CAS attempt budgets, polling integration, and safe Admin/metrics views; real Provider clients and traffic remain unregistered |
 | V1-13 | Implemented catalog-driven internal lifecycle notifications, retry AuditEvent allowlisting, Admin list/export/detail parity, low-cardinality lifecycle metrics, safe samples, and handoff hints; real Provider traffic and external lifecycle delivery remain disabled |
+| V1-20 | Freeze the Chat persistence, retention, export, deletion, backup, and Provider-state contract |
+| V1-21 | Implement encrypted owner-scoped conversations/messages, inactivity expiry, export/delete hooks, and restore-deletion replay |
 | V1-48 | OAuth scopes, identifiers, unlink, region, and sessions |
 | V1-49 | PostgreSQL backup, expiry, restore, and deletion rehearsal |
 | V1-50 | Private object storage/CDN and lifecycle deletion |
