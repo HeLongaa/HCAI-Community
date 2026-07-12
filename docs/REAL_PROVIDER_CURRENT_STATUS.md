@@ -66,6 +66,14 @@ cost, settle/refund credits, commit/release quota, recover partial side effects,
 lifecycle and worker switches default false; no Veo HTTP/status/mutation client, credential, callback, real call, or
 production enablement exists.
 
+V1-28 replaces the local Video workspace simulation with `src/features/workspace/VideoStudioPage.tsx` and
+`src/hooks/useVideoGenerationWorkflow.ts`. The UI derives modes and parameters from the application capability catalog,
+selects ordered governed image/audio roles, creates and lists Video jobs through application APIs, polls application
+generation detail, performs owner mutations, and uses private media download contracts for clean MP4 preview/download.
+Mock execution is labeled as Mock; Veo is labeled fixture-only and Runway unavailable. Catalog failure disables
+generation. No browser code calls a Provider URL, and no Provider runtime, credential, HTTP client, real status read, or
+production switch is enabled by this UI work.
+
 V1-44 freezes the corresponding four-modality content safety baseline in
 `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. It defines 20 risk categories,
 prohibited/block/review/allow decisions, the five-stage responsibility chain, all eight Provider policy mappings,

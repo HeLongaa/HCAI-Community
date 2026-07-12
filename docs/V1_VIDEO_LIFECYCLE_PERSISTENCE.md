@@ -41,9 +41,9 @@ The existing replay side-effect ledger then closes Provider cost, credits, quota
 audit evidence exactly once. Failed, cancelled, timed-out, and usage-missing outcomes reconcile Provider cost rather
 than guessing. A partial output or accounting failure remains replayable until all required side effects complete.
 
-## V1-28 Handoff
+## V1-28 Closeout
 
-V1-28 should replace the simulated Video workspace with the production Video UI: capability-driven mode controls,
+V1-28 replaces the simulated Video workspace with the application-API Video UI: capability-driven mode controls,
 governed asset selection, queued/running history, polling of application APIs only, cancellation, private preview,
 scanner/review states, retry guidance, and clear Mock/fixture/unavailable labeling. Provider HTTP and production
-enablement remain separate approval-gated work.
+enablement remain separate approval-gated work owned by later acceptance and release tasks.

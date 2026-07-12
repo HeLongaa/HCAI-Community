@@ -63,12 +63,12 @@
       "ownerTasks": ["V1-30", "V1-31", "V1-32", "V1-33", "V1-34", "V1-39"]
     },
     {
-      "id": "frontend-video-workspace-simulation",
+      "id": "frontend-video-workspace-mock-runtime",
       "area": "video",
       "classification": "release_blocker",
-      "paths": ["src/features/workspace/WorkspacePages.tsx"],
-      "markers": ["Text to Video", "Image to Video", "Generation started"],
-      "productionDisposition": "replace_with_real_provider_job",
+      "paths": ["src/features/workspace/VideoStudioPage.tsx", "src/hooks/useVideoGenerationWorkflow.ts", "src/services/creativeService.ts"],
+      "markers": ["video-studio", "workspace: 'video'", "Fixture only", "Private preview"],
+      "productionDisposition": "replace_mock_runtime_with_approved_provider_without_bypassing_application_apis",
       "ownerTasks": ["V1-25", "V1-26", "V1-27", "V1-28", "V1-29", "V1-39"]
     },
     {

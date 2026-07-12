@@ -4379,7 +4379,7 @@ export const createSeedRepository = () => ({
         .filter((asset) => asset.ownerHandle === actor.handle)
         .filter((asset) => asset.status === 'uploaded' && asset.metadata?.security?.scanStatus === 'clean')
         .filter((asset) => ['submission_asset', 'profile_portfolio', 'library_asset'].includes(asset.purpose))
-        .filter((asset) => ['image/png', 'image/jpeg', 'image/webp'].includes(asset.contentType))
+        .filter((asset) => ['image/png', 'image/jpeg', 'image/webp', 'audio/mpeg', 'audio/wav', 'audio/mp4'].includes(asset.contentType))
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id))
       return paginateByCursor(filtered.map(serializeMediaAsset), options)
     },

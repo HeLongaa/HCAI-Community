@@ -148,6 +148,17 @@ test('Image Studio renders active lifecycle controls and refresh-safe retry degr
           metadata: { security: { scanStatus: 'clean' } },
           createdAt: '2026-07-12T09:58:00.000Z',
           updatedAt: '2026-07-12T10:00:00.000Z',
+        }, {
+          id: 'asset-ui-audio',
+          fileName: 'soundtrack.mp3',
+          storageKey: 'hidden-from-history/soundtrack.mp3',
+          contentType: 'audio/mpeg',
+          sizeBytes: 256,
+          purpose: 'submission_asset',
+          status: 'uploaded',
+          metadata: { security: { scanStatus: 'clean' } },
+          createdAt: '2026-07-12T09:57:00.000Z',
+          updatedAt: '2026-07-12T10:00:00.000Z',
         }],
         meta: { pagination: { limit: 24, nextCursor: null } },
       },
@@ -183,6 +194,7 @@ test('Image Studio renders active lifecycle controls and refresh-safe retry degr
   await page.getByRole('button', { name: 'Use result as source' }).click()
   await expect(page.getByRole('button', { name: 'Image to Image' })).toHaveClass(/active/)
   await expect(page.getByLabel('Source image')).toHaveValue('asset-ui-reusable')
+  await expect(page.getByLabel('Source image').locator('option[value="asset-ui-audio"]')).toHaveCount(0)
 
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.locator('.image-generation-history')).toBeVisible()

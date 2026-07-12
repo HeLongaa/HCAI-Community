@@ -25,8 +25,10 @@ import type { InspirationItem, Page, PlaygroundMode, SimulateAction, Task, Track
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { tracks, visualWorks } from '../../data/mockData'
 import { isZhCopy, textFor } from '../../domain/utils'
+import type { VideoGenerationWorkflow } from '../../hooks/useVideoGenerationWorkflow'
 import type { ApiCreativeCapability, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiUserCreativeGeneration } from '../../services/contracts'
 import { ChatPage } from './ChatPage'
+import { VideoStudioPage } from './VideoStudioPage'
 
 type ImageGenerationState = {
   status: 'idle' | 'loading' | 'done' | 'error'
@@ -64,6 +66,7 @@ export function PlaygroundPage({
   imageInputAssets,
   uploadImageInput,
   runImageGeneration,
+  videoWorkflow,
   signedIn,
   tasks,
   libraryItems,
@@ -99,6 +102,7 @@ export function PlaygroundPage({
   imageInputAssets: ApiMediaAsset[]
   uploadImageInput: (file: File) => Promise<void>
   runImageGeneration: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; strength: number; inputAssetIds: string[] }) => Promise<void>
+  videoWorkflow: VideoGenerationWorkflow
   signedIn: boolean
   tasks: Task[]
   libraryItems: InspirationItem[]
@@ -316,19 +320,11 @@ export function PlaygroundPage({
       )}
 
       {workspace === 'video' && (
-        <StudioPage
+        <VideoStudioPage
           t={t}
-          eyebrow={textFor(t, 'Motion AI', '视频 AI')}
-          title={t.videoTitle}
-          subtitle={t.videoSubtitle}
-          icon={<Clapperboard size={22} />}
-          prompt={textFor(t, 'A neon runner crosses a rainy city street while lyrics animate in sync', '中文课程宣传短视频，讲师照片转场，字幕同步，专业克制')}
-          primaryAction={textFor(t, 'Generate video', '生成视频')}
-          options={isZh ? ['文生视频', '图生视频', '音乐视频', '分镜', '字幕', '配音'] : ['Text to Video', 'Image to Video', 'Music Video', 'Storyboard', 'Subtitles', 'Voiceover']}
-          controls={isZh ? ['9:16', '8 秒', '电影感', '快切', '开启字幕', 'MP4'] : ['9:16', '8 sec', 'Cinematic', 'Fast cuts', 'Captions on', 'MP4']}
-          results={visualWorks.filter((item) => item.type === 'Video')}
-          requireAuth={requireAuth}
-          simulateAction={simulateAction}
+          providerCatalog={imageProviderCatalog}
+          providerCatalogState={imageProviderCatalogState}
+          workflow={videoWorkflow}
         />
       )}
 
@@ -517,6 +513,9 @@ function StudioPage({
   const generatedContentType = historyOutput?.contentType ?? generatedOutput?.contentType ?? null
   const scanStatus = historyOutput?.scanStatus ?? generatedOutput?.storage.scanStatus ?? mediaAsset?.scanStatus ?? null
   const activeModeContract = selectableImageModes.find((modeContract) => modeContract.id === selectedImageMode)
+  const governedImageInputAssets = providerGeneration?.inputAssets.filter((asset) =>
+    (!activeModeContract || activeModeContract.inputAssets.contentTypes.includes(asset.contentType)) &&
+    (!activeModeContract || activeModeContract.inputAssets.purposes.includes(asset.purpose))) ?? []
   const requiredInputsReady = !activeModeContract || activeModeContract.inputAssets.minimum === 0
     || (Boolean(sourceAssetId) && (selectedImageMode !== 'image_edit' || Boolean(maskAssetId)))
   const lifecycleLabel = (status: string | null) => {
@@ -594,7 +593,7 @@ function StudioPage({
               <span>{textFor(t, 'Source image', '源图片')}</span>
               <select value={sourceAssetId} onChange={(event) => setSourceAssetId(event.target.value)}>
                 <option value="">{textFor(t, 'Select a clean image', '选择已通过扫描的图片')}</option>
-                {providerGeneration.inputAssets.map((asset) => (
+                {governedImageInputAssets.map((asset) => (
                   <option value={asset.id} key={asset.id}>{asset.fileName}</option>
                 ))}
               </select>
@@ -604,7 +603,7 @@ function StudioPage({
                 <span>{textFor(t, 'PNG mask', 'PNG 蒙版')}</span>
                 <select value={maskAssetId} onChange={(event) => setMaskAssetId(event.target.value)}>
                   <option value="">{textFor(t, 'Select a clean PNG mask', '选择已通过扫描的 PNG 蒙版')}</option>
-                  {providerGeneration.inputAssets
+                  {governedImageInputAssets
                     .filter((asset) => asset.contentType === 'image/png' && asset.id !== sourceAssetId)
                     .map((asset) => <option value={asset.id} key={asset.id}>{asset.fileName}</option>)}
                 </select>
