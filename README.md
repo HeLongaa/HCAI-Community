@@ -117,6 +117,12 @@ The V1-06 callback contract lives in `docs/V1_PROVIDER_CALLBACK_API.md`; the V1-
 
 Provider readiness is closed out in `docs/PROVIDER_READINESS_CLOSEOUT.md`, with planning history in `docs/PROVIDER_READINESS_PLAN.md`. Start with `docs/REAL_PROVIDER_CURRENT_STATUS.md` before any provider work; it summarizes what is usable now, what is fixture-only, what is deferred, and what requires explicit approval. The V1-05 client and secret contract lives in `docs/V1_PROVIDER_HTTP_AND_SECRETS_BOUNDARY.md`. No real paid provider is connected to a product route yet. The current real-provider boundary handoff lives in `docs/REAL_PROVIDER_BOUNDARY_CLOSEOUT.md`; it remains the detailed boundary document after the current-status page. Admin mutation requirements originated in `docs/REAL_PROVIDER_ADMIN_MUTATION_REQUIREMENTS.md`; V1-08 implements the limited cancel, retry-authorization, and reviewed manual replay scope described in `docs/V1_PROVIDER_GENERATION_MUTATIONS.md`. Provider cost metadata and budget alarms are planned in `docs/REAL_PROVIDER_COST_METADATA_AND_BUDGET_ALARMS.md`; they keep provider spend separate from product creative credits and external billing. The final real-provider preflight gate lives in `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md` and gives a conditional go only for a guarded staging-only image adapter, not production enablement. The staging adapter shell task boundary lives in `docs/REAL_PROVIDER_STAGING_ADAPTER_SHELL_PLAN.md`; its fixture and budget constraints still apply to product-route integration. The first external-call staging rehearsal still requires the explicit approval package in `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md`. V1-08 manual replay operates only on durable internal lifecycle evidence and never contacts a Provider; real webhook delivery, real status reads, real Provider cancellation, and paid generation remain separately approval-gated. Ordinary continuation language is not approval for a real paid provider call.
 
+V1-16 adds a fixture-only OpenAI GPT Image 2 `text_to_image` adapter with a fixed endpoint and payload, strict
+synchronous base64 PNG validation, safe Provider error projection, quality-based cost accounting, and governed media
+persistence through non-serializable in-process bytes. The OpenAI catalog shell is always disabled and unregistered;
+both `CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED` and `CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED` remain false by
+default, and no real Provider request is approved by this implementation.
+
 ## Verification
 
 ```bash

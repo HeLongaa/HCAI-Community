@@ -6,6 +6,8 @@ import { createRouteTestServer, requestJson } from '../../common/testing/httpTes
 import { quotaWindowFor, resetCreativePolicyState } from '../../creative/policy.js'
 import { signProviderCallbackNonce, signProviderCallbackPayload } from '../../creative/providerCallbackAuth.js'
 import { createReplicateStagingPrediction } from '../../creative/replicateStagingProvider.js'
+import { createOpenAIImageGeneration, projectOpenAIImageGenerationResponse } from '../../creative/openaiImageProvider.js'
+import { executeCreativeGeneration } from '../../creative/generationService.js'
 import { repositories } from '../../repositories/index.js'
 import { createSeedRepository } from '../../repositories/seedRepository.js'
 import { sha256 } from '../../creative/generationRecords.js'
@@ -170,6 +172,106 @@ test('GET /api/creative/providers lists safe provider capability metadata', asyn
     assert.equal(imageCapability.modeContracts.find((mode) => mode.id === 'image_edit').available, false)
     assert.equal(imageCapability.parameterDefinitions.outputCount.maximum, 1)
     assert.equal(imageCapability.runtime.realProviderCallsApproved, false)
+    const openai = payload.data.providers.find((provider) => provider.id === 'openai-gpt-image-2')
+    assert.equal(openai.enabled, false)
+    assert.equal(openai.configured, false)
+    assert.equal(openai.safeMetadata.adapterImplemented, true)
+    assert.equal(openai.safeMetadata.networkCallsEnabled, false)
+    assert.deepEqual(openai.capabilities[0].supportedParameters, ['aspectRatio', 'stylePreset', 'quality', 'outputCount', 'outputFormat'])
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST /api/creative/generations persists an injected OpenAI Image fixture without Provider URLs', async () => {
+  resetCreativePolicyState()
+  const fixtureNow = new Date('2030-07-12T00:00:00.000Z')
+  const fixtureSource = { CREATIVE_OPENAI_IMAGE_DAILY_BUDGET_USD: '8' }
+  const calls = []
+  const fixtureAdapters = {
+    'openai-gpt-image-2': (context) => createOpenAIImageGeneration({
+      ...context,
+      client: {
+        generateImage: async (request) => {
+          calls.push(request)
+          return projectOpenAIImageGenerationResponse({
+            created: 1_725_000_000,
+            data: [{ b64_json: providerOutputPng.toString('base64') }],
+            usage: { input_tokens: 20, output_tokens: 100, total_tokens: 120 },
+          })
+        },
+      },
+    }),
+  }
+  const repository = createSeedRepository()
+  const server = await createRouteTestServer(
+    (router) => registerCreativeRoutes(router, {
+      fixtureAdapters,
+      repositories: repository,
+      executeCreativeGeneration: (options) => executeCreativeGeneration({
+        ...options,
+        source: fixtureSource,
+        now: fixtureNow,
+      }),
+    }),
+  )
+  try {
+    const { status, payload } = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        providerId: 'openai-gpt-image-2',
+        prompt: 'A governed OpenAI Image fixture output',
+        parameters: {
+          aspectRatio: '1:1',
+          stylePreset: 'poster',
+          quality: 'medium',
+          outputCount: 1,
+          outputFormat: 'png',
+        },
+      },
+      token: 'demo-access.promptlin',
+    })
+
+    assert.equal(status, 200)
+    assert.equal(calls.length, 1)
+    assert.equal(payload.data.provider.id, 'openai-gpt-image-2')
+    assert.equal(payload.data.status, 'completed')
+    assert.equal(payload.data.outputs[0].contentType, 'image/png')
+    assert.equal(payload.data.outputs[0].storage.persisted, true)
+    assert.equal(payload.data.outputs[0].storage.provider, 'media_asset')
+    assert.match(payload.data.outputs[0].url, /^\/api\/media\/assets\/.+\/download$/)
+    assert.equal(payload.data.outputs[0].source.kind, 'openai_image_generation')
+    assert.equal(payload.data.outputs[0].source.persistedMediaAssetId, payload.data.outputs[0].storage.mediaAssetId)
+    assert.equal(payload.data.usage.providerCost.ledger.status, 'settled')
+    assert.equal(payload.data.usage.providerCost.estimate.amount, 0.053)
+    assert.equal(payload.data.usage.providerCost.actual.amount, 0.053)
+    assert.equal(payload.data.credit.status, 'settled')
+    assert.equal(payload.data.quota.used, 1)
+    const serialized = JSON.stringify(payload.data)
+    assert.equal(serialized.includes('iVBOR'), false)
+    assert.equal(serialized.includes('api.openai.com'), false)
+    assert.equal(serialized.includes('openai-fixture-token'), false)
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST /api/creative/generations cannot select the default-disabled OpenAI Image shell', async () => {
+  resetCreativePolicyState()
+  const server = await createRouteTestServer(registerCreativeRoutes)
+  try {
+    const { status, payload } = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        providerId: 'openai-gpt-image-2',
+        prompt: 'This request must fail before any Provider work',
+      },
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(status, 503)
+    assert.equal(payload.error.code, 'CREATIVE_PROVIDER_UNAVAILABLE')
   } finally {
     await server.close()
   }

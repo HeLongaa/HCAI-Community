@@ -32,6 +32,7 @@ test('image capability contract freezes model decisions and fail-closed runtime 
 test('image provider projection distinguishes supported and unavailable modes', () => {
   const mock = imageCapabilityForProvider('mock')
   const replicate = imageCapabilityForProvider('replicate-staging')
+  const openai = imageCapabilityForProvider('openai-gpt-image-2')
 
   assert.deepEqual(mock.modes, ['text_to_image', 'image_to_image'])
   assert.deepEqual(replicate.modes, ['text_to_image'])
@@ -41,6 +42,9 @@ test('image provider projection distinguishes supported and unavailable modes', 
   assert.match(mock.modeContracts.find((mode) => mode.id === 'image_edit').unavailableReason, /No approved edit adapter/)
   assert.equal(replicate.modeContracts.find((mode) => mode.id === 'image_to_image').available, false)
   assert.equal(mock.parameterDefinitions.outputCount.maximum, 1)
+  assert.deepEqual(openai.modes, ['text_to_image'])
+  assert.deepEqual(openai.supportedParameters, ['aspectRatio', 'stylePreset', 'quality', 'outputCount', 'outputFormat'])
+  assert.deepEqual(openai.parameterDefinitions.aspectRatio.options, ['1:1', '3:2', '2:3'])
 })
 
 test('image generation validation accepts the frozen text and image input contracts', () => {

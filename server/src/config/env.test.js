@@ -19,6 +19,9 @@ test('buildEnv allows development without managed token secrets', () => {
     creativeStagingProviderPreflightEnabled: false,
     hasCreativeStagingProviderApiToken: false,
     creativeProviderHttpClientEnabled: false,
+    creativeOpenAIImageHttpClientEnabled: false,
+    creativeOpenAIImageNetworkCallsEnabled: false,
+    hasCreativeOpenAIImageApiToken: false,
     creativeProviderCallbackEnabled: false,
     hasCreativeProviderCallbackSignatureSecret: false,
     creativeProviderCallbackReplayWindowSeconds: 300,
@@ -476,6 +479,38 @@ test('buildEnv enables the Provider HTTP client only in an explicit staging adap
   assert.equal(provider.httpClientImplemented, true)
   assert.equal(provider.networkCallsEnabled, true)
   assert.equal(JSON.stringify(config).includes('replicate-token'), false)
+})
+
+test('buildEnv keeps OpenAI Image client and network gates independent and staging-only', () => {
+  const env = buildEnv({
+    NODE_ENV: 'production',
+    ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_PROVIDER_MODE: 'disabled',
+    CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED: 'true',
+    CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED: 'true',
+    CREATIVE_OPENAI_IMAGE_CONFIRMATION: 'staging-only',
+    CREATIVE_OPENAI_IMAGE_API_TOKEN: 'openai-fixture-token',
+  })
+
+  assert.equal(env.creativeOpenAIImageHttpClientEnabled, true)
+  assert.equal(env.creativeOpenAIImageNetworkCallsEnabled, true)
+  assert.equal(env.hasCreativeOpenAIImageApiToken, true)
+  assert.throws(
+    () => buildEnv({ CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED: 'true' }),
+    /CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED requires CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED=true/,
+  )
+  assert.throws(
+    () => buildEnv({
+      NODE_ENV: 'production',
+      ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+      CREATIVE_PROVIDER_RUNTIME_ENV: 'production',
+      CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED: 'true',
+      CREATIVE_OPENAI_IMAGE_CONFIRMATION: 'staging-only',
+      CREATIVE_OPENAI_IMAGE_API_TOKEN: 'openai-fixture-token',
+    }),
+    /CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging/,
+  )
 })
 
 test('buildEnv enables Provider callbacks only behind the independent staging kill switch', () => {

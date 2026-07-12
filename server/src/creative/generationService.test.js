@@ -11,6 +11,7 @@ import {
 } from './providerControlContract.js'
 import { createProviderControlPlane } from './providerControlPlane.js'
 import { resetCreativePolicyState } from './policy.js'
+import { createOpenAIImageGeneration, projectOpenAIImageGenerationResponse } from './openaiImageProvider.js'
 
 const actor = {
   id: 'demo-user-creator',
@@ -40,12 +41,114 @@ test('getCreativeProviderCatalog exposes safe mock provider capabilities', () =>
   const catalog = getCreativeProviderCatalog({ NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' })
 
   assert.equal(catalog.defaultProviderId, 'mock')
-  assert.equal(catalog.providers.length, 1)
+  assert.equal(catalog.providers.length, 2)
   assert.equal(catalog.providers[0].id, 'mock')
   assert.equal(catalog.providers[0].enabled, true)
   assert.equal(catalog.providers[0].safeMetadata.externalCredentialsConfigured, false)
   assert.equal(catalog.providers[0].safeMetadata.persistsOutputs, true)
   assert.ok(catalog.providers[0].capabilities.find((capability) => capability.workspace === 'image'))
+  const openai = catalog.providers.find((provider) => provider.id === 'openai-gpt-image-2')
+  assert.equal(openai.enabled, false)
+  assert.equal(openai.configured, false)
+  assert.equal(openai.safeMetadata.adapterImplemented, true)
+  assert.equal(openai.safeMetadata.networkCallsEnabled, false)
+  assert.deepEqual(openai.capabilities[0].modes, ['text_to_image'])
+  assert.deepEqual(openai.capabilities[0].parameterDefinitions.aspectRatio.options, ['1:1', '3:2', '2:3'])
+
+})
+
+test('executeCreativeGeneration runs an injected OpenAI Image fixture without registering a product client', async () => {
+  const fixtureRequest = {
+    ...request,
+    providerId: 'openai-gpt-image-2',
+    parameters: { aspectRatio: '1:1', stylePreset: 'none', quality: 'medium' },
+  }
+  const generated = await executeCreativeGeneration({
+    request: fixtureRequest,
+    actor,
+    source: { CREATIVE_OPENAI_IMAGE_DAILY_BUDGET_USD: '8' },
+    fixtureAdapters: {
+      'openai-gpt-image-2': (context) => createOpenAIImageGeneration({
+        ...context,
+        client: {
+          generateImage: async () => projectOpenAIImageGenerationResponse({
+            data: [{ b64_json: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }],
+          }),
+        },
+      }),
+    },
+  })
+
+  assert.equal(generated.status, 'completed')
+  assert.equal(generated.provider.id, 'openai-gpt-image-2')
+  assert.equal(generated.outputs[0].storage.provider, 'openai')
+  assert.equal(JSON.stringify(generated).includes('iVBOR'), false)
+})
+
+test('executeCreativeGeneration rejects OpenAI-unsupported seed before adapter dispatch', async () => {
+  let fixtureCalls = 0
+  await assert.rejects(
+    executeCreativeGeneration({
+      request: {
+        ...request,
+        providerId: 'openai-gpt-image-2',
+        parameters: { aspectRatio: '1:1', seed: 42 },
+      },
+      actor,
+      source: { CREATIVE_OPENAI_IMAGE_DAILY_BUDGET_USD: '8' },
+      fixtureAdapters: {
+        'openai-gpt-image-2': async () => {
+          fixtureCalls += 1
+          throw new Error('fixture adapter must not run')
+        },
+      },
+    }),
+    /parameters.seed is not supported by provider for text_to_image/,
+  )
+  assert.equal(fixtureCalls, 0)
+})
+
+test('OpenAI Provider cost reservation and settlement execute once for a repeated generation id', async () => {
+  resetCreativePolicyState()
+  const repository = createSeedRepository()
+  const generationId = `gen_openai_cost_once_${Date.now()}`
+  const fixtureRequest = {
+    ...request,
+    providerId: 'openai-gpt-image-2',
+    parameters: { aspectRatio: '1:1', stylePreset: 'none', quality: 'medium' },
+  }
+  let fixtureCalls = 0
+  const options = {
+    request: fixtureRequest,
+    actor,
+    generationId,
+    now: new Date('2026-07-12T00:00:00.000Z'),
+    source: { CREATIVE_OPENAI_IMAGE_DAILY_BUDGET_USD: '8' },
+    providerCostRepository: repository.creativeProviderCosts,
+    fixtureAdapters: {
+      'openai-gpt-image-2': (context) => {
+        fixtureCalls += 1
+        return createOpenAIImageGeneration({
+          ...context,
+          client: {
+            generateImage: async () => projectOpenAIImageGenerationResponse({
+              data: [{ b64_json: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }],
+            }),
+          },
+        })
+      },
+    },
+  }
+
+  const first = await executeCreativeGeneration(options)
+  await assert.rejects(executeCreativeGeneration(options), { code: 'CREATIVE_PROVIDER_BUDGET_EXCEEDED' })
+
+  const ledger = await repository.creativeProviderCosts.findForGeneration(generationId)
+  assert.equal(first.usage.providerCost.ledger.status, 'settled')
+  assert.equal(fixtureCalls, 1)
+  assert.equal(ledger.status, 'settled')
+  assert.equal(ledger.estimateMicros, '53000')
+  assert.equal(ledger.actualMicros, '53000')
 })
 
 test('getCreativeProviderCatalog exposes Replicate staging shell as unavailable safe metadata', () => {
@@ -604,4 +707,39 @@ test('persistCreativeGenerationOutputs hides persisted Replicate provider output
   assert.equal(persisted.outputs[0].storage.downloadPath, `/api/media/assets/${mediaAssetId}/download`)
   assert.equal(JSON.stringify({ asset, ingestions }).includes('provider-output-should-not-leak'), false)
   assert.equal(JSON.stringify(persisted).includes('provider-output-should-not-leak'), false)
+})
+
+test('persistCreativeGenerationOutputs fails closed when OpenAI inline bytes leave process memory', async () => {
+  resetCreativePolicyState()
+  const repository = createSeedRepository()
+  const generated = await executeCreativeGeneration({
+    request: {
+      ...request,
+      providerId: 'openai-gpt-image-2',
+      parameters: { aspectRatio: '1:1', stylePreset: 'none', quality: 'medium' },
+    },
+    actor,
+    source: { CREATIVE_OPENAI_IMAGE_DAILY_BUDGET_USD: '8' },
+    fixtureAdapters: {
+      'openai-gpt-image-2': (context) => createOpenAIImageGeneration({
+        ...context,
+        client: {
+          generateImage: async () => projectOpenAIImageGenerationResponse({
+            data: [{ b64_json: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }],
+          }),
+        },
+      }),
+    },
+  })
+
+  await assert.rejects(
+    persistCreativeGenerationOutputs(structuredClone(generated), {
+      actor,
+      mediaRepository: repository.media,
+      repositories: repository,
+    }),
+    { code: 'CREATIVE_PROVIDER_OUTPUT_BYTES_MISSING' },
+  )
+  const ingestions = await repository.creativeOutputIngestions.listForGeneration(generated.id)
+  assert.equal(ingestions.items.length, 0)
 })

@@ -2,7 +2,7 @@
 
 This is the first decision page to read before starting any real-provider work. It compresses the current provider readiness state into one handoff: what is usable now, what is fixture-only, what remains deferred, and what requires explicit approval.
 
-Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, Admin generation history, internal mutation controls, Provider budget observability, the V1-11 fail-closed Provider control plane, and the V1-12 shared error/durable retry policy are available. The callback API and dedicated polling worker remain default-disabled. Real paid-provider calls, real Provider webhook delivery, external Provider alert delivery, enabled real polling, real Provider mutation clients, real cap readers/probes, and production paid-provider enablement remain no-go.
+Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, Admin generation history, internal mutation controls, Provider budget observability, the V1-11 fail-closed Provider control plane, the V1-12 shared error/durable retry policy, and a fixture-only OpenAI GPT Image 2 adapter are available. The OpenAI HTTP client, callback API, and dedicated polling worker remain default-disabled and unregistered from product dispatch. Real paid-provider calls, real Provider webhook delivery, external Provider alert delivery, enabled real polling, real Provider mutation clients, real cap readers/probes, and production paid-provider enablement remain no-go.
 
 V1-04 now records conditional implementation-planning decisions for all four modalities in
 `docs/V1_PROVIDER_DECISION_MATRIX.md` and `config/v1-provider-matrix.json`. These selections define primary/backup
@@ -12,6 +12,11 @@ triggers. They do not approve credentials, network clients, real jobs, or produc
 V1-15 freezes the Image model/mode/parameter contract in `server/src/creative/imageCapabilityContract.js` and
 `docs/V1_IMAGE_CAPABILITY_CONTRACT.md`. Image Studio now consumes the safe Provider catalog and disables generation when
 the contract is unavailable. This is still deterministic mock execution, not a real Image Provider connection.
+
+V1-16 implements the OpenAI GPT Image 2 `text_to_image` adapter boundary: fixed request mapping, strict synchronous
+base64 PNG projection, shared safe errors, quality-based cost metadata, and in-memory bytes flowing into existing media
+governance. It is exposed only as a disabled catalog shell and through injected fixtures. Two independent network flags
+remain false by default, and no real Provider request was made.
 
 V1-44 freezes the corresponding four-modality content safety baseline in
 `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. It defines 20 risk categories,
@@ -70,19 +75,19 @@ Sora 2 models on 2026-09-24 without a recommended replacement.
 | Category | Current Status | Practical Meaning |
 | --- | --- | --- |
 | Product generation path | Usable with mock provider | Image Studio can create stored generated assets through the creative API and durable accounting path. |
-| Provider catalog | Safe metadata only | Image capabilities include contract version, all four declared modes, per-mode availability, parameter definitions, and guarded runtime flags; `replicate_staging` remains unavailable/default-disabled. |
+| Provider catalog | Safe metadata only | Image capabilities include contract version, all four declared modes, per-mode availability, parameter definitions, and guarded runtime flags; OpenAI and `replicate_staging` remain unavailable/default-disabled. |
 | Durable accounting | Usable | Generation records, quota windows/reservations, credit reservation/settlement/refund, and media governance are wired. |
 | Admin generation history | Usable read-only | Operators can inspect sanitized generation, cost, budget, quota, credit, safety, policy, media, audit, and replay evidence. |
 | Provider lifecycle foundation | Implemented / default-disabled | Replay ledger, lifecycle reducer, side-effect plan, callback route, polling plan, and dedicated polling worker exist without approved real Provider traffic. |
 | Provider budget operations | Usable read-only / fixture-only | Audit persistence, internal notifications, Admin operations metrics, exporter metrics, and fixture dry-run dispatch audit rows exist. |
-| Provider HTTP client boundary | Implemented / default-disabled | A fixed Replicate client factory and deployment-secret boundary exist. No product route registers it; V1-07 supplies only a read-only status wrapper to the separately gated worker. No external call is approved. |
+| Provider HTTP client boundary | Implemented / default-disabled | Fixed OpenAI Image and Replicate client factories use deployment-secret boundaries. No product route registers either one; OpenAI additionally requires independent client and network switches. V1-07 supplies only a Replicate read-only status wrapper to the separately gated worker. No external call is approved. |
 | Provider callback API | Implemented / default-disabled | The staging-only route verifies exact-body HMAC, timestamp, nonce, strict payload fields, job binding, replay dedupe, and atomic side-effect ownership. No Provider webhook target is configured. |
 | Provider polling worker | Implemented / default-disabled | The dedicated worker uses strict status projection, oldest-first candidates, durable due-time/attempt-budget retry state, timeout recovery, safe audits, and replay-ledger side effects. Both polling switches remain off. |
 | Provider output ingestion | Implemented / default-unregistered | Source-keyed ingestion, claim leases, URL/DNS/redirect/size/MIME/SHA-256 validation, deterministic object storage, scanner gating, and safe Admin summaries exist. No product runtime registers a real output fetch client. |
 | Provider control plane | Implemented / fixture dispatch only | Versioned global/provider/workspace/model controls, expiring cap evidence, explicit circuits, one-claim probes, emergency disable, two-person recovery, Admin views, and safe metrics exist. Real Provider dispatch, cap readers, and probes remain unregistered. |
 | Provider error and retry policy | Implemented / real traffic disabled | Shared categories, safe envelopes, bounded `Retry-After`, deterministic backoff, CAS attempt budgets, hash-only failure dedupe, user-confirmed retry eligibility, Admin evidence, and low-cardinality metrics exist. Real clients and traffic remain unregistered. |
 | Provider lifecycle observability | Usable internally / fixture-only | Catalog-driven owner/operations notifications, audit allowlists, Admin list/export/detail parity, lifecycle metrics, safe samples, and handoff hints exist. External lifecycle delivery remains disabled. |
-| Staging adapter shell | Fixture-only | Mocked/injected-client hardening may continue. PRs #86-#89 improved the fixture-only evidence chain, but did not approve real provider calls. |
+| Staging adapter shell | Fixture-only | OpenAI GPT Image 2 request/response, output-ingestion, cost, and route behavior can run only with injected clients. Replicate fixture hardening may continue. Neither path approves real provider calls. |
 | V1 provider decision matrix | Conditional planning evidence | Four primary/backup pairs, budgets, legal/data/SLA conditions, and replacement triggers are machine-verified; no provider is production-approved. |
 | V1 content safety matrix | Frozen implementation policy | Four modality partitions, Provider policy mappings, review/appeal, and audit contracts are machine-verified; downstream enforcement is not complete. |
 | V1 data governance baseline | Frozen implementation policy | Data inventory, retention, flows, processors, export/deletion, holds, and redaction are machine-verified; runtime automation is not complete. |
@@ -117,6 +122,8 @@ These pieces are implemented for tests, planning, and safe dry-runs only:
 
 - provider adapter contract tests
 - Replicate staging shell metadata and fixture adapter tests
+- OpenAI GPT Image 2 fixed request, strict base64 PNG, shared error, cost, media-ingestion, and route fixture tests
+- default-disabled OpenAI Image HTTP client with independent client/network switches and injected fetch
 - default-disabled Replicate HTTP client tests with fixed endpoint, minimum payload, secret isolation, and injected fetch
 - provider budget event planning and fail-closed budget guard tests
 - provider callback route, signature/parser, nonce, audit, and concurrent replay-claim tests

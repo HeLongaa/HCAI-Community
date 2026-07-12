@@ -149,6 +149,15 @@ const providerModeParameters = {
   'replicate-staging': {
     text_to_image: ['aspectRatio', 'stylePreset', 'seed'],
   },
+  'openai-gpt-image-2': {
+    text_to_image: ['aspectRatio', 'stylePreset', 'quality', 'outputCount', 'outputFormat'],
+  },
+}
+
+const providerParameterOverrides = {
+  'openai-gpt-image-2': {
+    aspectRatio: { options: ['1:1', '3:2', '2:3'] },
+  },
 }
 
 const clone = (value) => structuredClone(value)
@@ -170,6 +179,10 @@ export const imageCapabilityForProvider = (providerId) => {
   const supportedParameters = [...new Set(modeContracts
     .filter((mode) => mode.available)
     .flatMap((mode) => mode.parameters))]
+  const providerParameterDefinitions = clone(imageCapabilityContract.parameterDefinitions)
+  for (const [key, override] of Object.entries(providerParameterOverrides[providerId] ?? {})) {
+    providerParameterDefinitions[key] = { ...providerParameterDefinitions[key], ...clone(override) }
+  }
 
   return {
     workspace: 'image',
@@ -182,7 +195,7 @@ export const imageCapabilityForProvider = (providerId) => {
     outputTypes: [...imageCapabilityContract.output.types],
     maxPromptCharacters: imageCapabilityContract.maxPromptCharacters,
     supportedParameters,
-    parameterDefinitions: clone(imageCapabilityContract.parameterDefinitions),
+    parameterDefinitions: providerParameterDefinitions,
     output: clone(imageCapabilityContract.output),
     modelDecision: clone(imageCapabilityContract.models),
     runtime: clone(imageCapabilityContract.runtime),

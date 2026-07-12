@@ -22,16 +22,38 @@ import {
   buildReplicateProviderCostMetadata,
 } from './replicateStagingProvider.js'
 import { assertImageGenerationRequest } from './imageCapabilityContract.js'
+import {
+  assertOpenAIImageBudgetAllowsDispatch,
+  buildOpenAIImageProviderCostMetadata,
+  readOpenAIImageOutputBytes,
+} from './openaiImageProvider.js'
 
 const getFixtureProvider = (providerId, registry) => {
   const provider = registry.providers.find((candidate) => candidate.id === providerId)
   if (!provider) {
     return getCreativeProvider(providerId, registry)
   }
+  if (provider.fixtureInjectable) {
+    return provider
+  }
   if (!provider.configured) {
     return getCreativeProvider(providerId, registry)
   }
   return provider
+}
+
+const buildProviderCostForRequest = ({ provider, request, source, now }) => {
+  if (provider.id === 'replicate-staging') {
+    const providerCost = buildReplicateProviderCostMetadata({ request, source, now })
+    assertReplicateProviderBudgetAllowsDispatch(providerCost)
+    return providerCost
+  }
+  if (provider.id === 'openai-gpt-image-2') {
+    const providerCost = buildOpenAIImageProviderCostMetadata({ request, source, now })
+    assertOpenAIImageBudgetAllowsDispatch(providerCost)
+    return providerCost
+  }
+  return null
 }
 
 const plannedGenerationId = ({ request, actor, provider }) => {
@@ -97,9 +119,11 @@ export const executeCreativeGeneration = async ({
   let providerControlDispatch = null
   let adapterAttempted = false
   try {
-    if (fixtureAdapter && provider.id === 'replicate-staging' && providerCostRepository?.reserve) {
-      const providerCost = buildReplicateProviderCostMetadata({ request, source, now })
-      assertReplicateProviderBudgetAllowsDispatch(providerCost)
+    if (fixtureAdapter && providerCostRepository?.reserve) {
+      const providerCost = buildProviderCostForRequest({ provider, request, source, now })
+      if (!providerCost) {
+        throw new HttpError(503, 'CREATIVE_PROVIDER_COST_CONTRACT_MISSING', 'Provider cost contract is not available')
+      }
       providerCostReservationPayload = buildProviderCostReservation({
         generationId,
         providerCost,
@@ -239,6 +263,23 @@ export const persistCreativeGenerationOutputs = async (generation, {
         actor,
         repositories: repositories ?? { media: mediaRepository },
         fetchOutput,
+      })
+    }
+    if (output.storage?.provider === 'openai') {
+      const inlineOutput = readOpenAIImageOutputBytes(output)
+      if (!inlineOutput) {
+        throw new HttpError(503, 'CREATIVE_PROVIDER_OUTPUT_BYTES_MISSING', 'Creative Provider inline output is unavailable', {
+          reasonCode: 'inline_output_missing',
+        })
+      }
+      return ingestCreativeProviderOutput({
+        generation,
+        output,
+        outputDigest: inlineOutput.sha256,
+        outputIndex,
+        actor,
+        repositories: repositories ?? { media: mediaRepository },
+        fetchOutput: async () => inlineOutput,
       })
     }
     const artifact = buildCreativeArtifactObject({ generation, output })
