@@ -235,6 +235,27 @@ export const getCreativeGenerationMutationDto = (mutation) => ({
   updatedAt: mutation.updatedAt ? mutation.updatedAt.toISOString() : '',
 })
 
+export const getCreativeProviderOperationDto = (operation) => ({
+  id: String(operation.id),
+  generationId: operation.generationId,
+  providerId: operation.providerId,
+  providerMode: operation.providerMode,
+  providerJobId: operation.providerJobId,
+  status: operation.status,
+  version: Number(operation.version),
+  pollAttempts: Number(operation.pollAttempts),
+  nextPollAt: operation.nextPollAt?.toISOString() ?? null,
+  timeoutAt: operation.timeoutAt.toISOString(),
+  lastPayloadHash: operation.lastPayloadHash ?? null,
+  outputDigest: operation.outputDigest ?? null,
+  lastErrorCode: operation.lastErrorCode ?? null,
+  sideEffectsComplete: Boolean(operation.sideEffectsComplete),
+  safeMetadata: operation.safeMetadata ?? null,
+  terminalAt: operation.terminalAt?.toISOString() ?? null,
+  createdAt: operation.createdAt.toISOString(),
+  updatedAt: operation.updatedAt.toISOString(),
+})
+
 export const getCreativeProviderReplayDto = (replay) => ({
   id: String(replay.id),
   generationId: replay.generationId,

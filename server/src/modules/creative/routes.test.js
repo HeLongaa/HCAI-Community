@@ -211,7 +211,8 @@ test('GET /api/creative/providers lists safe provider capability metadata', asyn
     assert.equal(veo.safeMetadata.fixtureAdapterOnly, true)
     assert.equal(veo.safeMetadata.httpClientImplemented, false)
     assert.equal(veo.safeMetadata.networkCallsEnabled, false)
-    assert.equal(veo.safeMetadata.lifecycleRegistered, false)
+    assert.equal(veo.safeMetadata.lifecycleRegistered, true)
+    assert.equal(veo.safeMetadata.lifecycleEnabled, false)
     assert.deepEqual(veo.capabilities[0].modes, ['text_to_video', 'image_to_video'])
   } finally {
     await server.close()
@@ -566,7 +567,12 @@ test('POST /api/creative/generations persists only a queued record for the injec
     assert.deepEqual(payload.data.outputs, [])
     assert.equal(payload.data.usage.providerCost.ledger.status, 'reserved')
     assert.equal(payload.data.credit.status, 'reserved')
-    assert.equal(payload.data.generationRecord.status, 'running')
+    assert.equal(payload.data.generationRecord.status, 'queued')
+    const operation = await repository.creativeProviderOperations.findForGeneration(payload.data.id)
+    assert.equal(operation.status, 'queued')
+    assert.equal(operation.providerJobId, 'veo-route-fixture-job')
+    assert.equal(operation.safeMetadata.schemaVersion, 'video-provider-operation-v1')
+    assert.equal(JSON.stringify(operation).includes('fixture-only governed Video request'), false)
     assert.equal(JSON.stringify(payload.data).includes('predict_long_running'), false)
   } finally {
     await server.close()

@@ -441,16 +441,16 @@
     {
       "id": "provider_lifecycle_records",
       "classification": "restricted",
-      "prismaModels": ["CreativeProviderReplayLedger", "CreativeGenerationMutation", "CreativeOutputIngestion", "CreativeProviderRetryState"],
+      "prismaModels": ["CreativeProviderReplayLedger", "CreativeGenerationMutation", "CreativeOutputIngestion", "CreativeProviderRetryState", "CreativeProviderOperation"],
       "locations": ["postgres"],
       "dataSubjects": ["user"],
       "purposes": ["creative_generation", "support_operations", "safety_moderation"],
-      "exampleFields": ["provider job/event id", "idempotency/source key", "payload/output/failure hash", "normalized status", "mutation/ingestion/retry status", "attempt budget", "next attempt time", "media asset id", "detected MIME", "byte count", "SHA-256", "safe error code/category"],
+      "exampleFields": ["provider job/event id", "idempotency/source key", "payload/output/failure hash", "normalized operation/mutation/ingestion/retry status", "operation version", "attempt budget", "next attempt and timeout time", "side-effect completion flag", "media asset id", "detected MIME", "byte count", "SHA-256", "safe error code/category"],
       "accessRoles": ["authorized_service", "creative_operator_allowlisted", "auditor"],
       "retentionPolicyId": "provider_lifecycle_terminal_180d",
       "exportPolicy": "include_user_visible_status_summary_only",
       "deletionPolicy": "unlink_subject_then_prune_safe_replay_evidence",
-      "ownerTasks": ["V1-08", "V1-09", "V1-12", "V1-13", "V1-67"]
+      "ownerTasks": ["V1-08", "V1-09", "V1-12", "V1-13", "V1-27", "V1-67"]
     },
     {
       "id": "creative_accounting_records",
@@ -1029,7 +1029,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 40,
+    "modelCount": 41,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",

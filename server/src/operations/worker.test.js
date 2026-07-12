@@ -214,6 +214,34 @@ test('createProductionWorkerJobDefinitions wires creative provider polling disab
   })
 })
 
+test('createProductionWorkerJobDefinitions registers Video lifecycle disabled without an injected client', async () => {
+  const repositories = {
+    creativeProviderOperations: {
+      listDue: async () => ({ items: [] }),
+    },
+    creativeProviderReplays: {
+      record: async () => ({ created: true, replay: {} }),
+    },
+  }
+  const env = {
+    workerLeaseTtlSeconds: 120,
+    workerLeaseRenewIntervalSeconds: 30,
+    creativeGoogleVeoLifecycleEnabled: false,
+    creativeGoogleVeoLifecycleWorkerEnabled: false,
+    creativeGoogleVeoPollIntervalSeconds: 15,
+    creativeGoogleVeoSweepLimit: 4,
+  }
+  const definitions = createProductionWorkerJobDefinitions(repositories, env)
+  assert.deepEqual(definitions.map((definition) => definition.id), ['creative-video-lifecycle'])
+  assert.equal(definitions[0].enabled, false)
+  assert.equal(definitions[0].intervalSeconds, 15)
+  assert.deepEqual(definitions[0].lease, {
+    key: 'creative-video-lifecycle',
+    ttlSeconds: 120,
+    renewIntervalSeconds: 30,
+  })
+})
+
 test('createProductionWorkerJobDefinitions wires bounded Chat retention and restore replay', async () => {
   const calls = []
   const repositories = {

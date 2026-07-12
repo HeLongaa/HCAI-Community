@@ -1,4 +1,5 @@
 import { buildProviderPollingLeaseKey, runProviderPollingWorkerOnce } from '../creative/providerPollingWorker.js'
+import { runVideoProviderLifecycleWorkerOnce } from '../creative/videoProviderLifecycle.js'
 
 export const createProductionWorkerJobDefinitions = (repositories, env, options = {}) => {
   const jobs = []
@@ -46,6 +47,21 @@ export const createProductionWorkerJobDefinitions = (repositories, env, options 
         providerStatusClients: options.providerStatusClients ?? {},
         source: env,
         limit: env.creativeProviderPollingSweepLimit,
+        fetchOutput: options.providerOutputFetcher ?? null,
+      }),
+    })
+  }
+  if (repositories.creativeProviderOperations?.listDue && repositories.creativeProviderReplays?.record) {
+    jobs.push({
+      id: 'creative-video-lifecycle',
+      enabled: Boolean(env.creativeGoogleVeoLifecycleWorkerEnabled),
+      intervalSeconds: env.creativeGoogleVeoPollIntervalSeconds ?? 15,
+      lease: lease('creative-video-lifecycle'),
+      run: () => runVideoProviderLifecycleWorkerOnce({
+        repositories,
+        statusClient: options.videoProviderStatusClient ?? null,
+        source: env,
+        limit: env.creativeGoogleVeoSweepLimit,
         fetchOutput: options.providerOutputFetcher ?? null,
       }),
     })

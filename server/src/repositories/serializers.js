@@ -547,6 +547,27 @@ export const serializeCreativeGenerationMutation = (mutation) => ({
   updatedAt: mutation.updatedAt ?? '',
 })
 
+export const serializeCreativeProviderOperation = (operation) => ({
+  id: String(operation.id),
+  generationId: String(operation.generationId),
+  providerId: operation.providerId,
+  providerMode: operation.providerMode,
+  providerJobId: operation.providerJobId,
+  status: operation.status,
+  version: Number(operation.version ?? 1),
+  pollAttempts: Number(operation.pollAttempts ?? 0),
+  nextPollAt: operation.nextPollAt ?? null,
+  timeoutAt: operation.timeoutAt,
+  lastPayloadHash: operation.lastPayloadHash ?? null,
+  outputDigest: operation.outputDigest ?? null,
+  lastErrorCode: operation.lastErrorCode ?? null,
+  sideEffectsComplete: Boolean(operation.sideEffectsComplete),
+  safeMetadata: operation.safeMetadata ?? null,
+  terminalAt: operation.terminalAt ?? null,
+  createdAt: operation.createdAt ?? '',
+  updatedAt: operation.updatedAt ?? '',
+})
+
 export const serializeCreativeProviderReplay = (replay) => ({
   id: String(replay.id),
   generationId: replay.generationId,

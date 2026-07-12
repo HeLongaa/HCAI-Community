@@ -37,6 +37,7 @@ import {
   serializeUserCreativeGeneration,
   serializeUserCreativeGenerationPage,
 } from '../../creative/userGenerationHistory.js'
+import { recordVideoProviderOperationDispatch } from '../../creative/videoProviderLifecycle.js'
 
 const terminalProviderFailureStatuses = new Set(['failed', 'cancelled'])
 
@@ -173,7 +174,19 @@ export const registerCreativeRoutes = (router, options = {}) => {
       generationRecord = generationRepository
         ? await generationRepository.create(generationRecordPayload, actor)
         : null
-      if (generationRepository?.markRunning) {
+      if (
+        ['queued', 'running'].includes(generation.status) &&
+        generation.provider?.id === 'google-veo-3-1-fast'
+      ) {
+        await recordVideoProviderOperationDispatch({
+          generation,
+          repositories: routeRepositories,
+          actor,
+          source: callbackSource,
+          now: callbackNow(),
+        })
+      }
+      if (generationRepository?.markRunning && generation.status !== 'queued') {
         generationRecord = await generationRepository.markRunning(generation.id, {}, actor)
       }
       if (terminalProviderFailureStatuses.has(generation.status)) {

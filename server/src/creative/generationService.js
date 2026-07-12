@@ -283,7 +283,7 @@ export const persistCreativeGenerationOutputs = async (generation, {
     return generation
   }
   const outputs = await Promise.all(generation.outputs.map(async (output, outputIndex) => {
-    if (output.storage?.provider === 'replicate') {
+    if (['replicate', 'google-veo'].includes(output.storage?.provider)) {
       return ingestCreativeProviderOutput({
         generation,
         output,

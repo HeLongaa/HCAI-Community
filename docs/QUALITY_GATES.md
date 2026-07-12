@@ -98,8 +98,9 @@ Includes:
 - Chat selected-context and 512-character output safety buffering; Provider, classifier, and attachment-byte code is
   implemented but every Chat network/runtime switch remains off in production smoke, and tools remain unavailable
 - Video capability version, Veo/Runway model decision, closed modes/parameters, governed input bytes/lineage,
-  generated-second pricing, strict fixture lifecycle projection, and disabled adapter registration, HTTP client,
-  Provider lifecycle, real-call, production, and failover state
+  safe operation persistence, generated-second pricing, strict fixture lifecycle/replay, bounded MP4 ingestion,
+  scanner isolation and terminal accounting, while adapter product registration, HTTP, lifecycle runtime, real calls,
+  production, and failover remain disabled
 - external OAuth provider metadata validation
 - creative provider safety validation: production smoke must keep staging provider preflight and the Provider HTTP
   client disabled, while client tests use injected fetch implementations and never expose real Provider tokens

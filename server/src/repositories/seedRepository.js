@@ -19,6 +19,7 @@ import {
   serializeCreativeGeneration,
   serializeCreativeGenerationMutation,
   serializeCreativeOutputIngestion,
+  serializeCreativeProviderOperation,
   serializeCreativeProviderCapEvidence,
   serializeCreativeProviderBudgetWindow,
   serializeCreativeProviderCircuitEvent,
@@ -72,7 +73,7 @@ import {
   buildProviderBudgetNotificationPayload,
   hasProviderBudgetNotificationSourceKey,
 } from './providerBudgetNotificationWiring.js'
-import { safeCreativeCreditMetadata, safeErrorPreview } from '../creative/generationRecords.js'
+import { safeCreativeCreditMetadata, safeErrorPreview, safeProviderOperationMetadata } from '../creative/generationRecords.js'
 import {
   buildConsentStatus,
   compliancePolicyManifest,
@@ -87,6 +88,8 @@ const creativeGenerationMutationsByIdempotencyKey = new Map()
 const creativeProviderReplayLedgerById = new Map()
 const creativeProviderReplayLedgerByIdempotencyKey = new Map()
 const creativeProviderReplayLedgerByProviderEventKey = new Map()
+const creativeProviderOperationsByGenerationId = new Map()
+const creativeProviderOperationGenerationIdByJobKey = new Map()
 const creativeOutputIngestionsById = new Map()
 const creativeOutputIngestionsBySourceKey = new Map()
 const creativeProviderBudgetWindowsById = new Map()
@@ -1257,6 +1260,38 @@ const makeCreativeGenerationMutationRecord = (payload, patch = {}) => {
     ...patch,
   }
 }
+
+const makeCreativeProviderOperationRecord = (payload, patch = {}) => {
+  const now = new Date().toISOString()
+  return {
+    id: payload.id ?? `provider-operation-${randomUUID()}`,
+    generationId: String(payload.generationId),
+    providerId: payload.providerId,
+    providerMode: payload.providerMode,
+    providerJobId: safeProviderJobIdEvidence(payload.providerJobId),
+    status: payload.status ?? 'queued',
+    version: Number(payload.version ?? 1),
+    pollAttempts: Number(payload.pollAttempts ?? 0),
+    nextPollAt: payload.nextPollAt ?? null,
+    timeoutAt: payload.timeoutAt,
+    lastPayloadHash: payload.lastPayloadHash ?? null,
+    outputDigest: payload.outputDigest ?? null,
+    lastErrorCode: payload.lastErrorCode ?? null,
+    sideEffectsComplete: Boolean(payload.sideEffectsComplete),
+    safeMetadata: safeProviderOperationMetadata(payload.safeMetadata),
+    terminalAt: payload.terminalAt ?? null,
+    createdAt: payload.createdAt ?? now,
+    updatedAt: now,
+    ...patch,
+  }
+}
+
+const providerOperationConflict = (reasonCode) => new HttpError(
+  409,
+  'CREATIVE_PROVIDER_OPERATION_CONFLICT',
+  'Creative Provider operation state conflict',
+  { reasonCode },
+)
 
 const makeCreativeProviderReplayRecord = (payload, patch = {}) => {
   const now = new Date().toISOString()
@@ -3121,6 +3156,78 @@ export const createSeedRepository = () => ({
         .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
         .map(serializeCreativeGeneration)
       return paginateByCursor(filtered, options)
+    },
+  },
+  creativeProviderOperations: {
+    record: (payload, actor) => {
+      const generationId = String(payload.generationId)
+      const existing = creativeProviderOperationsByGenerationId.get(generationId) ?? null
+      if (existing) {
+        if (existing.providerId !== payload.providerId || existing.providerJobId !== safeProviderJobIdEvidence(payload.providerJobId)) {
+          throw providerOperationConflict('operation_identity_mismatch')
+        }
+        return { created: false, operation: serializeCreativeProviderOperation(existing) }
+      }
+      if (!creativeGenerationsById.has(generationId)) throw providerOperationConflict('generation_missing')
+      const jobKey = `${payload.providerId}:${safeProviderJobIdEvidence(payload.providerJobId)}`
+      if (creativeProviderOperationGenerationIdByJobKey.has(jobKey)) throw providerOperationConflict('provider_job_already_recorded')
+      const operation = makeCreativeProviderOperationRecord(payload)
+      creativeProviderOperationsByGenerationId.set(generationId, operation)
+      creativeProviderOperationGenerationIdByJobKey.set(jobKey, generationId)
+      recordAudit(actor, 'creative.provider_operation.recorded', 'creative_provider_operation', operation.id, {
+        generationId,
+        providerId: operation.providerId,
+        providerJobId: operation.providerJobId,
+        status: operation.status,
+      })
+      return { created: true, operation: serializeCreativeProviderOperation(operation) }
+    },
+    findForGeneration: (generationId) => {
+      const operation = creativeProviderOperationsByGenerationId.get(String(generationId)) ?? null
+      return operation ? serializeCreativeProviderOperation(operation) : null
+    },
+    listDue: (options = {}) => {
+      const dueBefore = new Date(options.dueBefore ?? new Date()).getTime()
+      const limit = Math.max(1, options.limit ?? 10)
+      const statuses = new Set((options.statuses ?? ['queued', 'running']).map(String))
+      const items = [...creativeProviderOperationsByGenerationId.values()]
+        .filter((operation) => !options.providerId || operation.providerId === options.providerId)
+        .filter((operation) => statuses.has(operation.status) || !operation.sideEffectsComplete)
+        .filter((operation) => operation.nextPollAt == null || new Date(operation.nextPollAt).getTime() <= dueBefore)
+        .sort((left, right) => {
+          const dueDifference = new Date(left.nextPollAt ?? left.createdAt).getTime() - new Date(right.nextPollAt ?? right.createdAt).getTime()
+          return dueDifference || left.id.localeCompare(right.id)
+        })
+        .slice(0, limit)
+        .map(serializeCreativeProviderOperation)
+      return { items, limit }
+    },
+    update: (generationId, patch = {}, actor, options = {}) => {
+      const current = creativeProviderOperationsByGenerationId.get(String(generationId)) ?? null
+      if (!current) return null
+      if (options.expectedVersion != null && Number(options.expectedVersion) !== current.version) {
+        throw providerOperationConflict('operation_version_mismatch')
+      }
+      if (patch.providerJobId && safeProviderJobIdEvidence(patch.providerJobId) !== current.providerJobId) {
+        throw providerOperationConflict('provider_job_mismatch')
+      }
+      const updated = makeCreativeProviderOperationRecord(current, {
+        ...patch,
+        providerJobId: current.providerJobId,
+        safeMetadata: safeProviderOperationMetadata(patch.safeMetadata ?? current.safeMetadata),
+        version: current.version + 1,
+        updatedAt: new Date().toISOString(),
+      })
+      creativeProviderOperationsByGenerationId.set(updated.generationId, updated)
+      recordAudit(actor, 'creative.provider_operation.updated', 'creative_provider_operation', updated.id, {
+        generationId: updated.generationId,
+        providerId: updated.providerId,
+        providerJobId: updated.providerJobId,
+        status: updated.status,
+        version: updated.version,
+        sideEffectsComplete: updated.sideEffectsComplete,
+      })
+      return serializeCreativeProviderOperation(updated)
     },
   },
   creativeGenerationMutations: {

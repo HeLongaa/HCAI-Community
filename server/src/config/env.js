@@ -120,6 +120,9 @@ export const buildEnv = (source = process.env) => {
   const creativeProviderCallbackSideEffectLeaseSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_CALLBACK_SIDE_EFFECT_LEASE_SECONDS', 60)
   const creativeProviderPollingEnabled = strictBoolFlag(source, 'CREATIVE_PROVIDER_POLLING_ENABLED', false)
   const creativeProviderPollingWorkerEnabled = strictBoolFlag(source, 'CREATIVE_PROVIDER_POLLING_WORKER_ENABLED', false)
+  const creativeGoogleVeoLifecycleEnabled = strictBoolFlag(source, 'CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED', false)
+  const creativeGoogleVeoLifecycleWorkerEnabled = strictBoolFlag(source, 'CREATIVE_GOOGLE_VEO_LIFECYCLE_WORKER_ENABLED', false)
+  const creativeGoogleVeoConfirmation = String(source.CREATIVE_GOOGLE_VEO_CONFIRMATION ?? '').trim().toLowerCase()
   const mediaScanRequestAdapter = getMediaScanRequestAdapter(source)
   const rateLimitStore = getRateLimitStore(source)
   const rateLimitRedisUrl = getRedisUrl(source)
@@ -172,6 +175,10 @@ export const buildEnv = (source = process.env) => {
   const creativeProviderPollingLeaseTtlSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_LEASE_TTL_SECONDS', 300)
   const creativeProviderPollingIntervalSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_INTERVAL_SECONDS', 60)
   const creativeProviderPollingSweepLimit = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_SWEEP_LIMIT', 10)
+  const creativeGoogleVeoPollIntervalSeconds = positiveInteger(source, 'CREATIVE_GOOGLE_VEO_POLL_INTERVAL_SECONDS', 15)
+  const creativeGoogleVeoTimeoutSeconds = positiveInteger(source, 'CREATIVE_GOOGLE_VEO_TIMEOUT_SECONDS', 900)
+  const creativeGoogleVeoMaxStatusAttempts = positiveInteger(source, 'CREATIVE_GOOGLE_VEO_MAX_STATUS_ATTEMPTS', 20)
+  const creativeGoogleVeoSweepLimit = positiveInteger(source, 'CREATIVE_GOOGLE_VEO_SWEEP_LIMIT', 10)
   const hasChatMessageEncryptionKey = Boolean(String(source.CHAT_MESSAGE_ENCRYPTION_KEY ?? source.CHAT_MESSAGE_ENCRYPTION_KEYS ?? '').trim())
   const chatRetentionWorkerIntervalSeconds = positiveInteger(source, 'CHAT_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
   const chatRetentionSweepLimit = positiveInteger(source, 'CHAT_RETENTION_SWEEP_LIMIT', 100)
@@ -329,6 +336,23 @@ export const buildEnv = (source = process.env) => {
       throw new Error('CREATIVE_PROVIDER_POLLING_INTERVAL_SECONDS must be less than CREATIVE_PROVIDER_POLLING_MAX_AGE_SECONDS')
     }
   }
+  if (creativeGoogleVeoLifecycleWorkerEnabled && !creativeGoogleVeoLifecycleEnabled) {
+    throw new Error('CREATIVE_GOOGLE_VEO_LIFECYCLE_WORKER_ENABLED requires CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED=true')
+  }
+  if (creativeGoogleVeoLifecycleEnabled) {
+    if (nodeEnv !== 'production') {
+      throw new Error('CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED requires NODE_ENV=production')
+    }
+    if (creativeProviderRuntimeEnv !== 'staging') {
+      throw new Error('CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
+    }
+    if (creativeGoogleVeoConfirmation !== 'fixture-only') {
+      throw new Error('CREATIVE_GOOGLE_VEO_CONFIRMATION must be fixture-only when lifecycle is enabled')
+    }
+    if (creativeGoogleVeoPollIntervalSeconds >= creativeGoogleVeoTimeoutSeconds) {
+      throw new Error('CREATIVE_GOOGLE_VEO_POLL_INTERVAL_SECONDS must be less than CREATIVE_GOOGLE_VEO_TIMEOUT_SECONDS')
+    }
+  }
   if (mediaScanProvider === 'webhook' && !String(source.MEDIA_SCAN_WEBHOOK_SECRET ?? '').trim()) {
     throw new Error('MEDIA_SCAN_WEBHOOK_SECRET is required when MEDIA_SCAN_PROVIDER=webhook')
   }
@@ -419,6 +443,12 @@ export const buildEnv = (source = process.env) => {
     creativeProviderPollingIntervalSeconds,
     creativeProviderPollingSweepLimit,
     creativeProviderPollingRequireCreditReservation: boolFlag(source, 'CREATIVE_PROVIDER_POLLING_REQUIRE_CREDIT_RESERVATION', false),
+    creativeGoogleVeoLifecycleEnabled,
+    creativeGoogleVeoLifecycleWorkerEnabled,
+    creativeGoogleVeoPollIntervalSeconds,
+    creativeGoogleVeoTimeoutSeconds,
+    creativeGoogleVeoMaxStatusAttempts,
+    creativeGoogleVeoSweepLimit,
     chatRetentionWorkerEnabled: boolFlag(source, 'CHAT_RETENTION_WORKER_ENABLED', false),
     chatRetentionWorkerIntervalSeconds,
     chatRetentionSweepLimit,

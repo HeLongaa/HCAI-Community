@@ -53,7 +53,7 @@ not become public because the post is public.
 | `media_scan_safety_records` | Restricted | PostgreSQL/archive | `MediaScanJob` | Terminal scan + 180 days, maximum 50/asset |
 | `creative_generation_records` | Restricted | PostgreSQL | `CreativeGeneration` | Terminal generation + 365 days; preview 30 days |
 | `chat_conversation_messages` | Restricted | PostgreSQL/encrypted backup | `ChatConversation`, `ChatTurn`, `ChatMessage`, `ChatDeletionTombstone` | Inactive + 365 days; owner deletion is immediate with 35-day restore-replay evidence |
-| `provider_lifecycle_records` | Restricted | PostgreSQL | `CreativeProviderReplayLedger`, `CreativeGenerationMutation`, `CreativeOutputIngestion`, `CreativeProviderRetryState` | Terminal Provider lifecycle + 180 days; failure evidence is hash-only |
+| `provider_lifecycle_records` | Restricted | PostgreSQL | `CreativeProviderReplayLedger`, `CreativeGenerationMutation`, `CreativeOutputIngestion`, `CreativeProviderRetryState`, `CreativeProviderOperation` | Terminal Provider lifecycle + 180 days; operation and failure evidence is allowlisted/hash-only |
 | `creative_accounting_records` | Confidential | PostgreSQL | `CreativeCreditLedger`, `CreativeQuotaWindow`, `CreativeQuotaReservation` | Terminal/account close + 730 days |
 | `provider_cost_budget_records` | Confidential | PostgreSQL | `CreativeProviderBudgetWindow`, `CreativeProviderCostLedger` | Provider cost close/reconciliation + 730 days; amounts stored as integer micros |
 | `provider_control_records` | Confidential | PostgreSQL | `CreativeProviderControlState`, `CreativeProviderCapEvidence`, `CreativeProviderCircuitState`, `CreativeProviderCircuitEvent` | Control/circuit reconciliation + 730 days; evidence and probe tokens are hash-only |

@@ -43,8 +43,9 @@ are rejected before side effects. No lifecycle route or worker consumes this pro
   one reason production dispatch remains unavailable.
 - Provider output references are ephemeral projection data and are not written into generation records or logs.
 
-## V1-27 Handoff
+## V1-27 Closeout
 
-V1-27 should add safe Provider operation state, default-disabled lifecycle registration, bounded fixture status reads,
-terminal output ingestion, scanner gating, cost closeout/reconciliation, and cancellation semantics. It must keep all
-network and production switches false unless a separate explicit approval names the exact external request.
+V1-27 adds safe Provider operation state, default-disabled lifecycle registration, bounded fixture status reads,
+terminal output ingestion, scanner gating, cost closeout/reconciliation, timeout recovery, partial replay recovery, and
+cancellation semantics. All network and production switches remain false. See
+`docs/V1_VIDEO_LIFECYCLE_PERSISTENCE.md` for the executable-state boundary and V1-28 handoff.

@@ -220,6 +220,15 @@ enum CreativeProviderRetryStatus {
   cleared
 }
 
+enum CreativeProviderOperationStatus {
+  queued
+  running
+  completed
+  failed
+  cancelled
+  timed_out
+}
+
 model AuditEvent {
   id           String         @id @default(cuid())
   actorType    AuditActorType @map("actor_type")
@@ -650,6 +659,7 @@ model CreativeGeneration {
   mutations        CreativeGenerationMutation[]
   providerReplays  CreativeProviderReplayLedger[]
   providerRetries  CreativeProviderRetryState[]
+  providerOperation CreativeProviderOperation?
   outputIngestions CreativeOutputIngestion[]
   chatTurn         ChatTurn?
 
@@ -660,6 +670,34 @@ model CreativeGeneration {
   @@index([retryOfId, attemptNumber])
   @@index([status, createdAt])
   @@map("creative_generations")
+}
+
+model CreativeProviderOperation {
+  id                  String                          @id @default(cuid())
+  generationId        String                          @unique @map("generation_id")
+  providerId          String                          @map("provider_id")
+  providerMode        String                          @map("provider_mode")
+  providerJobId       String                          @map("provider_job_id")
+  status              CreativeProviderOperationStatus
+  version             Int                             @default(1)
+  pollAttempts        Int                             @default(0) @map("poll_attempts")
+  nextPollAt          DateTime?                       @map("next_poll_at")
+  timeoutAt           DateTime                        @map("timeout_at")
+  lastPayloadHash     String?                         @map("last_payload_hash")
+  outputDigest        String?                         @map("output_digest")
+  lastErrorCode       String?                         @map("last_error_code")
+  sideEffectsComplete Boolean                         @default(false) @map("side_effects_complete")
+  safeMetadata        Json?                           @map("safe_metadata")
+  terminalAt          DateTime?                       @map("terminal_at")
+  createdAt           DateTime                        @default(now()) @map("created_at")
+  updatedAt           DateTime                        @updatedAt @map("updated_at")
+
+  generation CreativeGeneration @relation(fields: [generationId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, providerJobId])
+  @@index([status, nextPollAt])
+  @@index([sideEffectsComplete, updatedAt])
+  @@map("creative_provider_operations")
 }
 
 model ChatConversation {

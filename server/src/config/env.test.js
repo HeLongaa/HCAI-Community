@@ -48,6 +48,12 @@ test('buildEnv allows development without managed token secrets', () => {
     creativeProviderPollingIntervalSeconds: 60,
     creativeProviderPollingSweepLimit: 10,
     creativeProviderPollingRequireCreditReservation: false,
+    creativeGoogleVeoLifecycleEnabled: false,
+    creativeGoogleVeoLifecycleWorkerEnabled: false,
+    creativeGoogleVeoPollIntervalSeconds: 15,
+    creativeGoogleVeoTimeoutSeconds: 900,
+    creativeGoogleVeoMaxStatusAttempts: 20,
+    creativeGoogleVeoSweepLimit: 10,
     chatRetentionWorkerEnabled: false,
     chatRetentionWorkerIntervalSeconds: 3600,
     chatRetentionSweepLimit: 100,
@@ -219,6 +225,41 @@ test('buildEnv validates and exposes creative provider polling worker settings',
   assert.throws(
     () => buildEnv({ CREATIVE_PROVIDER_POLLING_ENABLED: 'enabled' }),
     /CREATIVE_PROVIDER_POLLING_ENABLED must be true or false/,
+  )
+})
+
+test('buildEnv keeps the fixture-only Veo lifecycle behind independent staging switches', () => {
+  const env = buildEnv({
+    NODE_ENV: 'production',
+    ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED: 'true',
+    CREATIVE_GOOGLE_VEO_LIFECYCLE_WORKER_ENABLED: 'true',
+    CREATIVE_GOOGLE_VEO_CONFIRMATION: 'fixture-only',
+    CREATIVE_GOOGLE_VEO_POLL_INTERVAL_SECONDS: '10',
+    CREATIVE_GOOGLE_VEO_TIMEOUT_SECONDS: '900',
+    CREATIVE_GOOGLE_VEO_MAX_STATUS_ATTEMPTS: '12',
+    CREATIVE_GOOGLE_VEO_SWEEP_LIMIT: '4',
+  })
+  assert.equal(env.creativeGoogleVeoLifecycleEnabled, true)
+  assert.equal(env.creativeGoogleVeoLifecycleWorkerEnabled, true)
+  assert.equal(env.creativeGoogleVeoPollIntervalSeconds, 10)
+  assert.equal(env.creativeGoogleVeoTimeoutSeconds, 900)
+  assert.equal(env.creativeGoogleVeoMaxStatusAttempts, 12)
+  assert.equal(env.creativeGoogleVeoSweepLimit, 4)
+
+  assert.throws(
+    () => buildEnv({ CREATIVE_GOOGLE_VEO_LIFECYCLE_WORKER_ENABLED: 'true' }),
+    /requires CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED=true/,
+  )
+  assert.throws(
+    () => buildEnv({
+      NODE_ENV: 'production',
+      ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+      CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+      CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED: 'true',
+    }),
+    /CREATIVE_GOOGLE_VEO_CONFIRMATION must be fixture-only/,
   )
 })
 
