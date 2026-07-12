@@ -329,6 +329,40 @@ test('parseCreateCreativeGenerationRequest validates creative payload boundaries
   }).mode, 'image_edit')
 })
 
+test('parseCreateCreativeGenerationRequest applies the frozen Chat request boundary', () => {
+  assert.deepEqual(parseCreateCreativeGenerationRequest({
+    workspace: 'chat',
+    mode: 'assistant',
+    prompt: 'Draft a concise task brief.',
+    parameters: { maxOutputTokens: 1024, responseFormat: 'text' },
+  }), {
+    workspace: 'chat',
+    mode: 'assistant',
+    prompt: 'Draft a concise task brief.',
+    inputAssetIds: [],
+    parameters: { maxOutputTokens: 1024, responseFormat: 'text' },
+    providerId: null,
+  })
+  assertValidationError(
+    () => parseCreateCreativeGenerationRequest({
+      workspace: 'chat',
+      mode: 'assistant',
+      prompt: 'Use this attachment.',
+      inputAssetIds: ['asset-1'],
+    }),
+    'Chat attachments are unavailable until V1-22',
+  )
+  assertValidationError(
+    () => parseCreateCreativeGenerationRequest({
+      workspace: 'chat',
+      mode: 'assistant',
+      prompt: 'Persist this at the Provider.',
+      parameters: { store: true },
+    }),
+    'parameters.store is not supported for assistant',
+  )
+})
+
 test('parseCreativeGenerationHistoryQuery defaults to image and validates lifecycle filters', () => {
   assert.deepEqual(parseCreativeGenerationHistoryQuery({}), {
     cursor: null,

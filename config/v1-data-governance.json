@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "taskId": "V1-45",
-  "asOf": "2026-07-12",
-  "policyVersion": "v1-data-governance-2026-07-12",
+  "asOf": "2026-07-13",
+  "policyVersion": "v1-data-governance-2026-07-13",
   "policyStatus": "frozen_for_implementation",
   "runtimeStatus": {
     "inventoryComplete": true,
@@ -165,6 +165,14 @@
       "action": "delete_or_anonymize_generation_metadata",
       "fieldOverrides": { "safe_prompt_preview": 30, "raw_prompt": 0, "private_output_url": 0 },
       "exceptions": ["active_review_appeal_or_legal_hold"]
+    },
+    {
+      "id": "chat_inactive_plus_365d",
+      "trigger": "conversation_became_inactive",
+      "maximumDaysAfterTrigger": 365,
+      "action": "hard_delete_conversation_messages_and_metadata",
+      "fieldOverrides": { "accepted_deletion_request": 30, "access_after_deletion_request": 0, "backup_expiry_after_primary_purge": 35 },
+      "exceptions": ["active_conversation", "scoped_legal_or_safety_hold"]
     },
     {
       "id": "provider_lifecycle_terminal_180d",
@@ -417,6 +425,20 @@
       "ownerTasks": ["V1-35", "V1-67"]
     },
     {
+      "id": "chat_conversation_messages",
+      "classification": "restricted",
+      "prismaModels": [],
+      "locations": ["postgres", "backup_archive"],
+      "dataSubjects": ["user", "depicted_third_party"],
+      "purposes": ["creative_generation", "safety_moderation"],
+      "exampleFields": ["application conversation id", "encrypted user message", "encrypted assistant message", "mode", "message order", "created and updated timestamps", "safe safety disposition"],
+      "accessRoles": ["user_self", "authorized_chat_service", "trust_safety_reviewer_with_scoped_case"],
+      "retentionPolicyId": "chat_inactive_plus_365d",
+      "exportPolicy": "include_subject_owned_conversations_and_messages_with_other_subject_and_internal_safety_redaction",
+      "deletionPolicy": "revoke_owner_access_immediately_delete_primary_within_30d_replay_deletion_on_restore_and_expire_backup_within_35d",
+      "ownerTasks": ["V1-20", "V1-21", "V1-60", "V1-67"]
+    },
+    {
       "id": "provider_lifecycle_records",
       "classification": "restricted",
       "prismaModels": ["CreativeProviderReplayLedger", "CreativeGenerationMutation", "CreativeOutputIngestion", "CreativeProviderRetryState"],
@@ -642,7 +664,7 @@
       "id": "api_to_postgres",
       "from": "api_memory",
       "to": "postgres",
-      "dataAssetIds": ["governance_configuration", "identity_account_profile", "authentication_credentials_sessions", "marketplace_records", "community_content_interactions", "private_library_items", "internal_points_ledger", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "notification_records", "moderation_review_records", "audit_event_records", "security_event_records"],
+      "dataAssetIds": ["governance_configuration", "identity_account_profile", "authentication_credentials_sessions", "marketplace_records", "community_content_interactions", "private_library_items", "internal_points_ledger", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "chat_conversation_messages", "provider_lifecycle_records", "creative_accounting_records", "notification_records", "moderation_review_records", "audit_event_records", "security_event_records"],
       "requiredControls": ["validated DTO", "field allowlist", "transaction and ownership checks", "encrypted connection", "no secret or raw Provider payload"],
       "destinationPersistence": "retention_policy_applies"
     },
@@ -1020,6 +1042,7 @@
       "Provider failures use a shared safe taxonomy, bounded Retry-After, deterministic backoff, hash-only failure dedupe, and CAS retry state",
       "Provider output ingestion uses a durable source key, claim lease, allowlisted injected fetch, bounded byte reads, magic-byte MIME validation, SHA-256, deterministic storage, and scan-gated media assets",
       "Provider dispatch uses versioned fail-closed controls, expiring hashed cap evidence, explicit circuit recovery, one-claim probes, two-person review, and low-cardinality operations evidence",
+      "Chat has a frozen fail-closed capability, persistence, retention, export, deletion, backup, safety, and budget contract while real Provider clients remain absent",
       "Admin creative serializers redact unsafe identifiers, URLs, and error previews",
       "archive and object writers support mock/S3-compatible boundaries"
     ],
@@ -1031,7 +1054,8 @@
       "no backup expiry and restore deletion rehearsal evidence",
       "no global structured log allowlist enforcement",
       "current foreign-key behavior can cascade or restrict deletion without the frozen anonymization plan",
-      "no legal-hold registry or expiry workflow"
+      "no legal-hold registry or expiry workflow",
+      "no durable Chat conversation/message models, inactivity sweeper, export/delete hooks, or restore-deletion replay"
     ],
     "evidenceFiles": [
       "server/src/creative/generationRecords.js",
@@ -1052,6 +1076,7 @@
       "server/src/creative/providerCostContract.js",
       "server/src/creative/providerControlContract.js",
       "server/src/creative/providerControlPlane.js",
+      "server/src/creative/chatCapabilityContract.js",
       "server/src/modules/admin/routes.js",
       "server/src/media/scanProvider.js",
       "server/src/storage/archiveWriter.js",
@@ -1068,6 +1093,8 @@
     { "taskId": "V1-09", "scope": "Source-keyed Provider output ingestion, SSRF and byte boundaries, MIME/checksum validation, deterministic storage, scanner gating, and raw-URL exclusion." },
     { "taskId": "V1-10", "scope": "Provider-independent pricing snapshots, six-decimal cost normalization, durable atomic budget reservation, idempotent settlement/release/reconciliation, and low-cardinality operations evidence." },
     { "taskId": "V1-11", "scope": "Versioned Provider kill switches, expiring Provider-side cap evidence, explicit circuit breaking and one-claim probes, two-person recovery review, and safe operations evidence." },
+    { "taskId": "V1-20", "scope": "Freeze the Chat persistence, retention, export, deletion, backup, and Provider-state contract." },
+    { "taskId": "V1-21", "scope": "Implement encrypted owner-scoped conversations and messages, inactivity expiry, export/delete hooks, and restore-deletion replay." },
     { "taskId": "V1-48", "scope": "OAuth scopes, identifiers, unlink, region, and session evidence." },
     { "taskId": "V1-49", "scope": "PostgreSQL migration, encrypted backup, expiry, restore, and deletion rehearsal." },
     { "taskId": "V1-50", "scope": "Object storage/CDN private access and lifecycle deletion." },

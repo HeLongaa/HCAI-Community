@@ -21,6 +21,7 @@ import {
   assertReplicateProviderBudgetAllowsDispatch,
   buildReplicateProviderCostMetadata,
 } from './replicateStagingProvider.js'
+import { assertChatGenerationRequest } from './chatCapabilityContract.js'
 import { assertImageGenerationRequest } from './imageCapabilityContract.js'
 import {
   assertOpenAIImageBudgetAllowsDispatch,
@@ -92,6 +93,7 @@ export const executeCreativeGeneration = async ({
   fixtureAdapters = {},
 }) => {
   assertImageGenerationRequest(request)
+  assertChatGenerationRequest(request)
   const registry = createCreativeProviderRegistry(source)
   const fixtureAdapter = request.providerId ? fixtureAdapters[request.providerId] : null
   const provider = fixtureAdapter

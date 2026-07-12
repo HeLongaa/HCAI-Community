@@ -809,7 +809,7 @@ export const openApiDocument = {
                             properties: {
                               id: { type: 'string' },
                               label: { type: 'string' },
-                              mode: { type: 'string', enum: ['mock', 'openai_image', 'replicate_staging'] },
+                              mode: { type: 'string', enum: ['mock', 'openai_image', 'openai_chat', 'anthropic_chat', 'replicate_staging'] },
                               enabled: { type: 'boolean' },
                               configured: { type: 'boolean' },
                               default: { type: 'boolean' },
@@ -822,14 +822,15 @@ export const openApiDocument = {
                                     label: { type: 'string' },
                                     modes: { type: 'array', items: { type: 'string' } },
                                     allModes: { type: 'array', items: { type: 'string' } },
-                                    contractVersion: { type: 'string', enum: ['image-capability-v1'] },
+                                    contractVersion: { type: 'string', enum: ['image-capability-v1', 'chat-capability-v1'] },
                                     modeContracts: {
                                       type: 'array',
                                       items: {
                                         type: 'object',
                                         properties: {
-                                          id: { type: 'string', enum: ['text_to_image', 'image_to_image', 'image_edit', 'image_variation'] },
+                                          id: { type: 'string', enum: ['text_to_image', 'image_to_image', 'image_edit', 'image_variation', 'assistant', 'prompt_assist', 'storyboard'] },
                                           label: { type: 'string' },
+                                          runtimeAvailable: { type: 'boolean' },
                                           available: { type: 'boolean' },
                                           unavailableReason: { type: ['string', 'null'] },
                                           inputAssets: {
@@ -855,6 +856,9 @@ export const openApiDocument = {
                                     runtime: { type: 'object' },
                                     cost: { type: 'object' },
                                     safety: { type: 'object' },
+                                    context: { type: 'object' },
+                                    persistence: { type: 'object' },
+                                    tools: { type: 'object' },
                                   },
                                 },
                               },
@@ -872,6 +876,9 @@ export const openApiDocument = {
                                   httpClientEnabled: { type: 'boolean' },
                                   networkCallsEnabled: { type: 'boolean' },
                                   synchronousOutput: { type: 'boolean' },
+                                  streamingImplemented: { type: 'boolean' },
+                                  providerStateStored: { type: 'boolean' },
+                                  automaticFailoverAllowed: { type: 'boolean' },
                                   callbackImplemented: { type: 'boolean' },
                                   callbackEnabled: { type: 'boolean' },
                                   pollingImplemented: { type: 'boolean' },

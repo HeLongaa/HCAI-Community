@@ -34,6 +34,10 @@ and production no-go while requiring Provider network calls to remain off. Real 
 kill-switch rehearsal, rollback rehearsal, and the production decision remain pending explicit approval and environment
 evidence.
 
+V1-20 freezes the Chat model, mode, parameter, context, attachment, persistence, safety, tool, and budget contract.
+OpenAI GPT-5.6 Terra and Anthropic Claude Sonnet 5 appear only as disabled safe catalog shells. Streaming, durable
+conversations, Provider clients, credentials, automatic failover, and real Chat traffic remain unimplemented and no-go.
+
 V1-44 freezes the corresponding four-modality content safety baseline in
 `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. It defines 20 risk categories,
 prohibited/block/review/allow decisions, the five-stage responsibility chain, all eight Provider policy mappings,

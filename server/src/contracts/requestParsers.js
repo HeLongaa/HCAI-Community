@@ -10,6 +10,7 @@ import {
   validationFailed,
 } from '../common/http/validation.js'
 import { permissions } from '../auth/permissions.js'
+import { assertChatGenerationRequest } from '../creative/chatCapabilityContract.js'
 import { assertImageGenerationRequest } from '../creative/imageCapabilityContract.js'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -289,7 +290,7 @@ export const parseCreateCreativeGenerationRequest = (body) => {
     parameters: optionalCreativeParameters(body),
     providerId: optionalText(body, 'providerId', null),
   }
-  return assertImageGenerationRequest(request)
+  return assertChatGenerationRequest(assertImageGenerationRequest(request))
 }
 
 const requireIdempotencyKey = (body) => {

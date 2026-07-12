@@ -1,5 +1,6 @@
 import { HttpError } from '../common/errors/httpError.js'
 import { buildCreativeProviderConfig } from '../config/env.js'
+import { chatCapabilityForProvider } from './chatCapabilityContract.js'
 import { imageCapabilityForProvider } from './imageCapabilityContract.js'
 
 export const creativeWorkspaces = ['image', 'video', 'music', 'chat']
@@ -24,15 +25,7 @@ export const creativeCapabilities = {
     maxPromptCharacters: 2000,
     supportedParameters: ['genre', 'durationSeconds', 'tempo', 'mood'],
   },
-  chat: {
-    workspace: 'chat',
-    label: 'AI Chat Workspace',
-    modes: ['prompt_assist', 'storyboard'],
-    inputAssetPurposes: ['library_asset'],
-    outputTypes: ['text'],
-    maxPromptCharacters: 4000,
-    supportedParameters: ['tone', 'format', 'temperature'],
-  },
+  chat: chatCapabilityForProvider('mock'),
 }
 
 const cloneCapability = (capability) => structuredClone(capability)
@@ -122,6 +115,33 @@ const buildOpenAIImageProvider = (source) => {
   }
 }
 
+const buildChatProvider = ({ id, label, mode, role }) => ({
+  id,
+  label,
+  mode,
+  enabled: false,
+  configured: false,
+  default: false,
+  fixtureInjectable: false,
+  capabilities: [chatCapabilityForProvider(id)],
+  safeMetadata: {
+    externalCredentialsConfigured: false,
+    persistsOutputs: true,
+    costMetered: true,
+    stagingOnly: true,
+    productionDenied: true,
+    approvalRequired: true,
+    role,
+    adapterImplemented: false,
+    httpClientImplemented: false,
+    httpClientEnabled: false,
+    networkCallsEnabled: false,
+    streamingImplemented: false,
+    providerStateStored: false,
+    automaticFailoverAllowed: false,
+  },
+})
+
 export const createCreativeProviderRegistry = (source = process.env) => {
   const config = buildCreativeProviderConfig(source)
   const providerShells = config.providers
@@ -129,7 +149,23 @@ export const createCreativeProviderRegistry = (source = process.env) => {
     .map((provider) => buildReplicateStagingProvider(provider, config))
   return {
     config,
-    providers: [buildMockProvider(config), buildOpenAIImageProvider(source), ...providerShells],
+    providers: [
+      buildMockProvider(config),
+      buildOpenAIImageProvider(source),
+      buildChatProvider({
+        id: 'openai-gpt-5-6-terra',
+        label: 'OpenAI GPT-5.6 Terra',
+        mode: 'openai_chat',
+        role: 'primary',
+      }),
+      buildChatProvider({
+        id: 'anthropic-claude-sonnet-5',
+        label: 'Anthropic Claude Sonnet 5',
+        mode: 'anthropic_chat',
+        role: 'backup',
+      }),
+      ...providerShells,
+    ],
   }
 }
 

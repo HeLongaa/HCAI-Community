@@ -41,7 +41,7 @@ test('getCreativeProviderCatalog exposes safe mock provider capabilities', () =>
   const catalog = getCreativeProviderCatalog({ NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' })
 
   assert.equal(catalog.defaultProviderId, 'mock')
-  assert.equal(catalog.providers.length, 2)
+  assert.equal(catalog.providers.length, 4)
   assert.equal(catalog.providers[0].id, 'mock')
   assert.equal(catalog.providers[0].enabled, true)
   assert.equal(catalog.providers[0].safeMetadata.externalCredentialsConfigured, false)
@@ -54,7 +54,42 @@ test('getCreativeProviderCatalog exposes safe mock provider capabilities', () =>
   assert.equal(openai.safeMetadata.networkCallsEnabled, false)
   assert.deepEqual(openai.capabilities[0].modes, ['text_to_image', 'image_to_image', 'image_edit', 'image_variation'])
   assert.deepEqual(openai.capabilities[0].parameterDefinitions.aspectRatio.options, ['1:1', '3:2', '2:3'])
+  const terra = catalog.providers.find((provider) => provider.id === 'openai-gpt-5-6-terra')
+  const sonnet = catalog.providers.find((provider) => provider.id === 'anthropic-claude-sonnet-5')
+  assert.equal(terra.enabled, false)
+  assert.equal(terra.safeMetadata.adapterImplemented, false)
+  assert.equal(terra.safeMetadata.providerStateStored, false)
+  assert.equal(terra.capabilities[0].contractVersion, 'chat-capability-v1')
+  assert.equal(terra.capabilities[0].persistence.primaryProvider.store, false)
+  assert.equal(sonnet.safeMetadata.automaticFailoverAllowed, false)
+})
 
+test('executeCreativeGeneration applies the Chat contract before mock execution', async () => {
+  resetCreativePolicyState()
+  const chatRequest = {
+    workspace: 'chat',
+    mode: 'assistant',
+    prompt: 'Draft a concise launch plan.',
+    inputAssetIds: [],
+    parameters: { maxOutputTokens: 1024, responseFormat: 'text' },
+    providerId: null,
+  }
+  const generated = await executeCreativeGeneration({
+    request: chatRequest,
+    actor,
+    source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' },
+  })
+  assert.equal(generated.workspace, 'chat')
+  assert.equal(generated.mode, 'assistant')
+  assert.equal(generated.outputs[0].type, 'text')
+  await assert.rejects(
+    executeCreativeGeneration({
+      request: { ...chatRequest, parameters: { store: true } },
+      actor,
+      source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' },
+    }),
+    /parameters.store is not supported/,
+  )
 })
 
 test('executeCreativeGeneration runs an injected OpenAI Image fixture without registering a product client', async () => {

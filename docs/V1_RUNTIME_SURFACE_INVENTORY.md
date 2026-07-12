@@ -20,7 +20,7 @@ This document records every known demo, mock, catalog, seed, fixture, and fallba
 | `frontend-player-search-demo-catalog` | Player queue and global search use local tracks/profiles | Unified asset/catalog API | V1-32, V1-33, V1-35, V1-36, V1-39 |
 | `frontend-explore-demo-catalog` | Explore radio, tracks, images, and videos are local catalog content | Real catalog or explicit unavailable state | V1-35, V1-36, V1-39 |
 | `frontend-music-workspace-simulation` | Music controls and queue are simulated | Real Music Provider job and persisted assets | V1-30 through V1-34, V1-39 |
-| `frontend-chat-workspace-simulation` | Chat replies and cross-workspace actions are local | Streaming Chat API and durable conversations | V1-20 through V1-24, V1-39 |
+| `frontend-chat-workspace-simulation` | Chat replies remain local; V1-20 now freezes model, context, retention, safety, cost, and disabled Provider catalog contracts | Streaming Chat API and durable conversations | V1-20 through V1-24, V1-39 |
 | `frontend-video-workspace-simulation` | Video generation/progress/results are local | Real async Video Provider job | V1-25 through V1-29, V1-39 |
 | `creative-image-mock-execution` | Image uses a contract-driven API/UI, governed input assets, lineage, owner-scoped lifecycle history, active-job polling, mutations and downloads; OpenAI generation/edit adapters exist only behind fixture injection, while the product route still executes deterministic mock output | Approved real Image Provider | V1-15 through V1-19, V1-39 |
 | `frontend-admin-demo-queue` | Admin review queue retains local rows when API load fails | Admin API data or explicit error | V1-39, V1-42, V1-43, V1-69 |

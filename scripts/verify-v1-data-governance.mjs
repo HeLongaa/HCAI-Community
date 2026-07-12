@@ -1,6 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+import { chatCapabilityContract } from '../server/src/creative/chatCapabilityContract.js'
+
 const root = process.cwd()
 const governancePath = path.join(root, 'config/v1-data-governance.json')
 const governance = JSON.parse(fs.readFileSync(governancePath, 'utf8'))
@@ -40,6 +42,7 @@ const expectedAssets = [
   'audit_event_records',
   'authentication_credentials_sessions',
   'backup_archive_copies',
+  'chat_conversation_messages',
   'community_content_interactions',
   'creative_accounting_records',
   'creative_generation_records',
@@ -125,6 +128,8 @@ const expectedHandoffTasks = [
   'V1-09',
   'V1-10',
   'V1-11',
+  'V1-20',
+  'V1-21',
   'V1-48',
   'V1-49',
   'V1-50',
@@ -285,6 +290,17 @@ addCheck(
   JSON.stringify(retentionById.get('generation_terminal_365d')),
 )
 addCheck(
+  'chat retention matches the frozen capability contract',
+  retentionById.get(chatCapabilityContract.persistence.retentionPolicyId)?.maximumDaysAfterTrigger ===
+      chatCapabilityContract.persistence.inactiveConversationMaximumDays &&
+    retentionById.get(chatCapabilityContract.persistence.retentionPolicyId)?.fieldOverrides.accepted_deletion_request ===
+      chatCapabilityContract.persistence.deletionMaximumDays &&
+    retentionById.get(chatCapabilityContract.persistence.retentionPolicyId)?.fieldOverrides.access_after_deletion_request === 0 &&
+    retentionById.get(chatCapabilityContract.persistence.retentionPolicyId)?.fieldOverrides.backup_expiry_after_primary_purge ===
+      chatCapabilityContract.persistence.backupExpiryDaysAfterPrimaryPurge,
+  JSON.stringify(retentionById.get(chatCapabilityContract.persistence.retentionPolicyId)),
+)
+addCheck(
   'observability retention is split by logs traces and aggregates',
   retentionById.get('observability_bounded').maximumDaysAfterTrigger === 30 &&
     retentionById.get('observability_bounded').fieldOverrides.trace === 7 &&
@@ -308,6 +324,18 @@ const assetIds = governance.dataAssets.map((asset) => asset.id)
 const assetsById = new Map(governance.dataAssets.map((asset) => [asset.id, asset]))
 addCheck('the complete V1 data asset inventory is frozen', sameMembers(assetIds, expectedAssets), `${assetIds.length} assets`)
 addCheck('data asset ids are unique', unique(assetIds), `${assetIds.length} assets`)
+addCheck(
+  'chat messages are a distinct encrypted owner-scoped governed asset',
+  assetsById.get(chatCapabilityContract.persistence.governanceAssetId)?.classification === 'restricted' &&
+    assetsById.get(chatCapabilityContract.persistence.governanceAssetId)?.retentionPolicyId ===
+      chatCapabilityContract.persistence.retentionPolicyId &&
+    assetsById.get(chatCapabilityContract.persistence.governanceAssetId)?.locations.includes('postgres') &&
+    assetsById.get(chatCapabilityContract.persistence.governanceAssetId)?.locations.includes('backup_archive') &&
+    assetsById.get(chatCapabilityContract.persistence.governanceAssetId)?.exampleFields.includes('encrypted user message') &&
+    assetsById.get(chatCapabilityContract.persistence.governanceAssetId)?.ownerTasks.includes('V1-21') &&
+    assetsById.get(chatCapabilityContract.persistence.governanceAssetId)?.ownerTasks.includes('V1-67'),
+  chatCapabilityContract.persistence.governanceAssetId,
+)
 
 const schemaSource = read(governance.currentRuntimeBaseline.schemaFile)
 const schemaModels = [...schemaSource.matchAll(/^model\s+(\w+)\s*\{/gm)].map((match) => match[1])
@@ -455,6 +483,14 @@ addCheck(
   flowsById.get('primary_data_to_export_storage').requiredControls.includes('verified subject request') &&
     flowsById.get('export_storage_to_browser').requiredControls.includes('one-day private signed link'),
   'export build and delivery controls',
+)
+addCheck(
+  'chat persistence is covered by the PostgreSQL flow and per-asset export and deletion contracts',
+  flowsById.get('api_to_postgres').dataAssetIds.includes(chatCapabilityContract.persistence.governanceAssetId) &&
+    assetsById.get(chatCapabilityContract.persistence.governanceAssetId).exportPolicy.includes('conversations_and_messages') &&
+    assetsById.get(chatCapabilityContract.persistence.governanceAssetId).deletionPolicy.includes('delete_primary_within_30d') &&
+    assetsById.get(chatCapabilityContract.persistence.governanceAssetId).deletionPolicy.includes('expire_backup_within_35d'),
+  chatCapabilityContract.persistence.governanceAssetId,
 )
 
 const forbiddenFlowIds = governance.forbiddenFlows.map((flow) => flow.id)
