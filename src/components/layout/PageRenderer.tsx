@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type {
   BillingViewModel,
   AdminPageViewModel,
@@ -54,6 +55,7 @@ export function PageRenderer({
   profile,
   admin,
 }: PageRendererProps) {
+  const [supportAppeal, setSupportAppeal] = useState<{ moderationDecisionId: string } | null>(null)
   const { page, navigateToPage } = navigation
   const {
     prompt,
@@ -119,6 +121,10 @@ export function PageRenderer({
   const { ledgerItems, pointsSummary, pointsStatus } = rewards
   const { billing, setBilling } = billingState
   const { selectedProfile, accountProfile, openProfile } = profile
+  const openModerationAppeal = (moderationDecisionId: string) => {
+    setSupportAppeal({ moderationDecisionId })
+    navigateToPage('support')
+  }
 
   return (
     <>
@@ -145,6 +151,10 @@ export function PageRenderer({
           imageInputAssets={imageInputAssets}
           uploadImageInput={uploadImageInput}
           runImageGeneration={runImageGeneration}
+          signedIn={Boolean(account.accountHandle)}
+          tasks={taskList}
+          libraryItems={libraryItems}
+          openModerationAppeal={openModerationAppeal}
           playTrack={playTrack}
           requireAuth={requireAuth}
           simulateAction={simulateAction}
@@ -153,7 +163,18 @@ export function PageRenderer({
           setPage={navigateToPage}
         />
       )}
-      {page === 'chat' && <ChatPage t={t} setPage={navigateToPage} simulateAction={simulateAction} />}
+      {page === 'chat' && (
+        <ChatPage
+          t={t}
+          setPage={navigateToPage}
+          signedIn={Boolean(account.accountHandle)}
+          requireAuth={requireAuth}
+          tasks={taskList}
+          libraryItems={libraryItems}
+          openModerationAppeal={openModerationAppeal}
+          simulateAction={simulateAction}
+        />
+      )}
       {page === 'explore' && (
         <ExplorePage t={t} playTrack={playTrack} setPage={navigateToPage} requireAuth={requireAuth} />
       )}
@@ -263,6 +284,8 @@ export function PageRenderer({
           signedIn={Boolean(account.accountHandle)}
           requireAuth={requireAuth}
           simulateAction={simulateAction}
+          initialAppeal={supportAppeal}
+          onInitialAppealConsumed={() => setSupportAppeal(null)}
         />
       )}
     </>

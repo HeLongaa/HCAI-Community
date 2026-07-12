@@ -134,6 +134,7 @@ export type Post = {
 }
 
 export type InspirationItem = {
+  id?: string | number
   title: string
   type: string
   source: string

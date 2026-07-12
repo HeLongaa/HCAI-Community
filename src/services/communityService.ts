@@ -26,6 +26,7 @@ const toPost = (post: ApiPost): Post => ({
 })
 
 const toLibraryItem = (item: ApiLibraryItem): InspirationItem => ({
+  id: item.id,
   title: item.title,
   type: item.type,
   source: item.source,

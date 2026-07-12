@@ -299,22 +299,36 @@ addCheck(
 addCheck(
   'creation tools',
   'music, chat, image, and video workspaces exist',
-  includesAll(app, ['Create AI songs and voice assets', 'Quick prompts', 'Image Studio', 'Video Studio', 'Text to Video', 'Image to Video']),
+  includesAll(app, ['Create AI songs and voice assets', 'Chat workspace', 'Image Studio', 'Video Studio', 'Text to Video', 'Image to Video']),
   'create/chat/image/video modules',
 )
 
 addCheck(
   'creation tools',
-  'studio and chat controls expose local simulated reactions',
+  'simulated music and video studio controls remain explicit',
   includesAll(app, [
     'Selected tool: ${tool.label}',
     '已加入生成队列',
-    'const applyPrompt = (title: string, text: string)',
     'const runStudioGenerate = ()',
     '已重新混合',
     '已选择生成模式',
   ]),
-  'tool selection, prompt cards, studio generate, remix feedback',
+  'tool selection, studio generate, remix feedback',
+)
+
+addCheck(
+  'creation tools',
+  'Chat workspace uses the typed streaming API and recoverable server history',
+  includesAll(app, [
+    'chatService.listConversations',
+    'chatService.listMessages',
+    'chatService.listInputAssets',
+    'chatService.streamTurn',
+    'chatService.stopTurn',
+    'chatService.deleteConversation',
+    'openModerationAppeal',
+  ]) && !app.includes('Drafted. You can send this'),
+  'conversation history, SSE, stop, deletion, governed inputs, and safety appeal',
 )
 
 addCheck(

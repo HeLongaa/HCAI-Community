@@ -48,7 +48,7 @@
     },
     {
       "id": "chat-studio",
-      "evidence": ["src/features/workspace/WorkspacePages.tsx", "src/services/creativeService.ts", "server/src/creative/policy.js"],
+      "evidence": ["src/features/workspace/ChatPage.tsx", "src/services/chatService.ts", "server/src/modules/chat/routes.js"],
       "completionGates": ["approved streaming provider", "durable conversations and attachments", "input and output moderation"]
     },
     {
