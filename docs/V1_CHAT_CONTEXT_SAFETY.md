@@ -1,7 +1,8 @@
 # V1 Chat Context And Runtime Safety
 
 V1-22 extends the Mock-only Chat data plane with governed attachment metadata, explicit product context, and an
-application-owned safety boundary. It does not enable a real classifier, attachment-byte reader, or Chat Provider.
+application-owned safety boundary. V1-24 adds default-disabled staging implementations for attachment bytes and a
+structured production classifier; this document does not approve or enable real traffic.
 
 ## Attachment And Context Boundary
 
@@ -13,7 +14,9 @@ application-owned safety boundary. It does not enable a real classifier, attachm
   time; clients cannot submit context bodies or permission claims.
 - PostgreSQL stores only attachment ids and `{type, id}` product-context references. Resolved context bodies remain in
   request memory and are never copied into Chat safety evidence, audit metadata, or review metadata.
-- Attachment object bytes are not read or transmitted in V1-22. That boundary remains V1-24.
+- Attachment object bytes are not read on the default Mock path. The V1-24 staging reader requires the independent
+  attachment-byte switch, bounded signed S3 download, exact registered size, strict UTF-8 or magic-MIME validation,
+  and keeps the resulting Provider input in request memory only.
 
 ## Safety Boundary
 
@@ -23,8 +26,8 @@ application-owned safety boundary. It does not enable a real classifier, attachm
   encrypted, persisted, or emitted over SSE before an application classification allows it.
 - A later blocked or review-required segment preserves only previously classified output. The pending segment is
   discarded and the turn closes as blocked with a stable reason code.
-- The default classifier is a deterministic Mock fixture. Production classifiers and Provider-native safety remain
-  absent and require later approval.
+- The default classifier remains a deterministic Mock fixture. V1-24 implements a structured production classifier,
+  but it is available only with all staging Provider, network, classifier, budget, and control-plane gates enabled.
 
 ## Evidence And Review
 

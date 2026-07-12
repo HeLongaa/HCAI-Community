@@ -1042,7 +1042,7 @@
       "Provider failures use a shared safe taxonomy, bounded Retry-After, deterministic backoff, hash-only failure dedupe, and CAS retry state",
       "Provider output ingestion uses a durable source key, claim lease, allowlisted injected fetch, bounded byte reads, magic-byte MIME validation, SHA-256, deterministic storage, and scan-gated media assets",
       "Provider dispatch uses versioned fail-closed controls, expiring hashed cap evidence, explicit circuit recovery, one-claim probes, two-person review, and low-cardinality operations evidence",
-      "Chat has encrypted owner-scoped conversations and messages, idempotent Mock SSE turns, strict owner attachment checks, explicitly selected read-time-authorized product context, identity-free input/output safety evidence, a 512-character unclassified output buffer, explicit stop/disconnect closeout, retention sweeps, and restore-deletion tombstones while attachment bytes and real Provider clients remain absent",
+      "Chat has encrypted owner-scoped conversations and messages, idempotent Mock SSE turns, strict owner attachment checks, explicitly selected read-time-authorized product context, identity-free input/output safety evidence, a 512-character unclassified output buffer, explicit stop/disconnect closeout, retention sweeps, restore-deletion tombstones, and a default-disabled staging Provider boundary whose attachment bytes and Provider payloads remain in request memory only",
       "Admin creative serializers redact unsafe identifiers, URLs, and error previews",
       "archive and object writers support mock/S3-compatible boundaries"
     ],
@@ -1103,6 +1103,7 @@
     { "taskId": "V1-20", "scope": "Freeze the Chat persistence, retention, export, deletion, backup, and Provider-state contract." },
     { "taskId": "V1-21", "scope": "Implement encrypted owner-scoped conversations and messages, inactivity expiry, export/delete hooks, and restore-deletion replay." },
     { "taskId": "V1-22", "scope": "Authorize Chat attachment metadata and selected product context, enforce input and buffered streaming safety, and persist identity-free review evidence without attachment bytes or raw context copies." },
+    { "taskId": "V1-24", "scope": "Implement default-disabled Chat Provider, classifier, exact-size attachment-byte, Provider-control, and cost-ledger boundaries while retaining no raw Provider payloads, attachment bytes, or resolved context bodies." },
     { "taskId": "V1-48", "scope": "OAuth scopes, identifiers, unlink, region, and session evidence." },
     { "taskId": "V1-49", "scope": "PostgreSQL migration, encrypted backup, expiry, restore, and deletion rehearsal." },
     { "taskId": "V1-50", "scope": "Object storage/CDN private access and lifecycle deletion." },

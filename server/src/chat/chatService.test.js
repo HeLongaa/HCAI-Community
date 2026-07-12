@@ -4,6 +4,7 @@ import test from 'node:test'
 import { createChatService } from './chatService.js'
 import { buildChatMessageEncryptionConfig, createChatMessageCodec } from './messageCrypto.js'
 import { createChatStreamCoordinator } from './streamCoordinator.js'
+import { assertOpenAIChatBudgetAllowsDispatch, buildOpenAIChatProviderCostMetadata } from './openaiChatProvider.js'
 import { createSeedRepository } from '../repositories/seedRepository.js'
 import { resetCreativePolicyState } from '../creative/policy.js'
 
@@ -201,6 +202,96 @@ test('Chat service authorizes attachments and product context without persisting
   assert.equal(prepared.dispatch.context.productContext[0].content, 'Private resolved context')
   assert.equal(JSON.stringify(prepared.turn).includes('Private resolved context'), false)
   assert.equal(prepared.turn.safety.input.disposition, 'allow')
+})
+
+test('Chat service reads attachment bytes into policy and Provider memory without persisting them', async () => {
+  const body = Buffer.from('# Private attachment body')
+  const repositories = createSeedRepository()
+  repositories.media.findOwnedChatInput = async () => ({
+    id: 'asset-bytes-1',
+    fileName: 'private.md',
+    storageKey: 'private/chat/private.md',
+    contentType: 'text/markdown',
+    sizeBytes: body.length,
+    purpose: 'library_asset',
+    status: 'uploaded',
+    metadata: { security: { scanStatus: 'clean' } },
+  })
+  let classifiedPayload
+  const service = createChatService({
+    repository: repositories.chat,
+    creativeRepositories: repositories,
+    codec,
+    coordinator: createChatStreamCoordinator(),
+    source: { NODE_ENV: 'test', CREATIVE_PROVIDER_MODE: 'mock' },
+    attachmentObjectReader: async () => body,
+    inputSafetyClassifier: async (payload) => {
+      classifiedPayload = payload
+      return { classified: true, disposition: 'allow', reasonCodes: ['SAFETY_ALLOWED_BASELINE'], source: 'injected_fixture' }
+    },
+  })
+  const conversation = await service.createConversation({ mode: 'assistant' }, actor)
+  const prepared = await service.prepareTurn(conversation.id, input({ inputAssetIds: ['asset-bytes-1'] }), actor)
+  assert.equal(classifiedPayload.text.includes('# Private attachment body'), true)
+  assert.equal(prepared.dispatch.context.attachments[0].providerInput.text, '# Private attachment body')
+  assert.equal(JSON.stringify(prepared.turn).includes('# Private attachment body'), false)
+  const generation = await repositories.creativeGenerations.find(prepared.turn.generationId)
+  assert.equal(JSON.stringify(generation).includes('# Private attachment body'), false)
+})
+
+test('Chat service checks Provider controls before classification and settles combined metered usage', async () => {
+  const planner = (payload) => assertOpenAIChatBudgetAllowsDispatch(buildOpenAIChatProviderCostMetadata(payload))
+  let classifierCalls = 0
+  const denied = setup({
+    generationProvider: { id: 'openai-gpt-5-6-terra', mode: 'openai_chat', label: 'OpenAI GPT-5.6 Terra' },
+    providerCostPlanner: planner,
+    providerControlPlane: { assertDispatchAllowed: async () => { throw Object.assign(new Error('disabled'), { code: 'CREATIVE_PROVIDER_CONTROL_BLOCKED' }) } },
+    inputSafetyClassifier: async () => { classifierCalls += 1 },
+  })
+  const deniedConversation = await denied.service.createConversation({ mode: 'assistant' }, actor)
+  await assert.rejects(denied.service.prepareTurn(deniedConversation.id, input(), actor), { code: 'CREATIVE_PROVIDER_CONTROL_BLOCKED' })
+  assert.equal(classifierCalls, 0)
+
+  async function* meteredStream() {
+    yield { type: 'content.delta', text: 'Safe answer', safety: { classified: true, allowed: true } }
+    yield { type: 'usage', usage: { inputTokens: 20, outputTokens: 4, metered: true } }
+  }
+  const controlResults = []
+  const allowed = setup({
+    generationProvider: { id: 'openai-gpt-5-6-terra', mode: 'openai_chat', label: 'OpenAI GPT-5.6 Terra' },
+    providerCostPlanner: planner,
+    providerControlPlane: {
+      assertDispatchAllowed: async () => ({ allowed: true }),
+      recordResult: async (payload) => { controlResults.push(payload) },
+    },
+    streamAdapter: meteredStream,
+    inputSafetyClassifier: async () => ({
+      classified: true,
+      disposition: 'allow',
+      reasonCodes: ['SAFETY_ALLOWED_BASELINE'],
+      source: 'production_classifier',
+      usage: { inputTokens: 10, outputTokens: 1, metered: true },
+    }),
+    outputSafetyClassifier: async () => ({
+      classified: true,
+      disposition: 'allow',
+      reasonCodes: ['SAFETY_ALLOWED_BASELINE'],
+      source: 'production_classifier',
+      usage: { inputTokens: 5, outputTokens: 1, metered: true },
+    }),
+  })
+  const conversation = await allowed.service.createConversation({ mode: 'assistant' }, actor)
+  const prepared = await allowed.service.prepareTurn(conversation.id, input(), actor)
+  const reserved = await allowed.repositories.creativeProviderCosts.findForGeneration(prepared.turn.generationId)
+  assert.equal(reserved.status, 'reserved')
+  assert.equal((await allowed.repositories.creativeGenerations.find(prepared.turn.generationId)).providerId, 'openai-gpt-5-6-terra')
+  const completed = await allowed.service.streamPreparedTurn(prepared, actor, () => {}, new AbortController().signal)
+  assert.deepEqual(completed.usage, { inputTokens: 35, outputTokens: 6, metered: true })
+  const settled = await allowed.repositories.creativeProviderCosts.findForGeneration(prepared.turn.generationId)
+  assert.equal(settled.status, 'settled')
+  assert.equal(settled.actualMicros, '178')
+  assert.equal(controlResults.length, 1)
+  assert.equal(controlResults[0].error, null)
 })
 
 test('Chat service routes input review evidence without generation dispatch', async () => {

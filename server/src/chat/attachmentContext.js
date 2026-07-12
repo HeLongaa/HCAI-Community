@@ -32,6 +32,7 @@ export const resolveChatAttachments = async (inputAssetIds, actor, mediaReposito
       sizeBytes: asset.sizeBytes,
       purpose: asset.purpose,
       scanStatus: 'clean',
+      ...(asset.storageKey ? { storageKey: asset.storageKey } : {}),
     })
   })
   return Object.freeze(resolved)

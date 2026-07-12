@@ -2,7 +2,7 @@
 
 This is the first decision page to read before starting any real-provider work. It compresses the current provider readiness state into one handoff: what is usable now, what is fixture-only, what remains deferred, and what requires explicit approval.
 
-Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, owner-scoped Image lifecycle history, Admin generation history, internal mutation controls, Provider budget observability, the V1-11 fail-closed Provider control plane, the V1-12 shared error/durable retry policy, and a fixture-only OpenAI GPT Image 2 adapter are available. The OpenAI HTTP client, callback API, and dedicated polling worker remain default-disabled and unregistered from product dispatch. Real paid-provider calls, real Provider webhook delivery, external Provider alert delivery, enabled real polling, real Provider mutation clients, real cap readers/probes, and production paid-provider enablement remain no-go.
+Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, owner-scoped Image lifecycle history, Admin generation history, internal mutation controls, Provider budget observability, the V1-11 fail-closed Provider control plane, the V1-12 shared error/durable retry policy, a fixture-only OpenAI GPT Image 2 adapter, and a default-disabled OpenAI Chat staging boundary are available. All Provider HTTP clients, callback APIs, and workers remain off by default. Real paid-provider calls, real Provider webhook delivery, external Provider alert delivery, enabled real polling, real Provider mutation clients, real cap readers/probes, and production paid-provider enablement remain no-go.
 
 V1-04 now records conditional implementation-planning decisions for all four modalities in
 `docs/V1_PROVIDER_DECISION_MATRIX.md` and `config/v1-provider-matrix.json`. These selections define primary/backup
@@ -35,14 +35,14 @@ kill-switch rehearsal, rollback rehearsal, and the production decision remain pe
 evidence.
 
 V1-20 freezes the Chat model, mode, parameter, context, attachment, persistence, safety, tool, and budget contract.
-OpenAI GPT-5.6 Terra and Anthropic Claude Sonnet 5 appear only as disabled safe catalog shells. Streaming, durable
-conversations, stop/disconnect closeout, and retention are now implemented behind a Mock-only SSE boundary. Real
-Provider clients, credentials, automatic failover, and real Chat traffic remain unimplemented and no-go. V1-23 ships
-the production Chat UI against that explicit Mock-only boundary.
+V1-24 implements the fixed OpenAI Responses streaming client, structured classifier, governed attachment-byte reader,
+token cost settlement, and Provider control-plane preflight behind staging-only switches. The default product path and
+production smoke remain Mock-only. Credentials, automatic failover, real Chat traffic, and production Chat Provider
+enablement remain unapproved and no-go. V1-23 ships the production Chat UI against the default Mock boundary.
 
 V1-22 adds application-side attachment metadata authorization, explicit Task/Library context authorization, fail-closed
 input classification, bounded streaming output classification, safe partial output, and minimal review evidence.
-Attachment bytes and production classifiers remain unread and unregistered until V1-24.
+V1-24 completes the code boundary for bytes and production classification without granting external-call approval.
 
 V1-44 freezes the corresponding four-modality content safety baseline in
 `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. It defines 20 risk categories,
@@ -171,6 +171,8 @@ These pieces are implemented for tests, planning, and safe dry-runs only:
 - fixture-only provider alert dry-run harness
 - Provider-independent four-workspace pricing calculator contract and durable budget ledger fixtures
 - fail-closed Provider control-plane contracts and fixture-dispatch integration
+- OpenAI Chat fixed `/responses` request/SSE projection, structured classifier, exact-size attachment reader, conservative
+  token cost reservation/settlement, and injected-fetch staging runtime tests
 
 Fixture-only means no enabled route, worker, or default client contacts a real provider or external alert channel during CI or ordinary development.
 

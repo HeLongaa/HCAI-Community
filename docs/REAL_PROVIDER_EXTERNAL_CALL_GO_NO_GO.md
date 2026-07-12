@@ -4,6 +4,10 @@ This package defines the approval evidence required before the first real provid
 
 Current decision: **no-go until the approval record is completed in Notion and the user explicitly approves the first external-call staging run**.
 
+V1-24's Chat client and runtime boundary do not expand this package's approved scope. Chat remains explicitly out of
+scope for the existing Image rehearsal and requires its own Provider, model, environment, call-count, spend-cap,
+control-plane, retention, rollback, and expiry approval record.
+
 The current real-provider boundary handoff is summarized in `docs/REAL_PROVIDER_BOUNDARY_CLOSEOUT.md`. If that document and this approval package disagree, treat the safer no-go interpretation as authoritative until both documents and the Notion task are updated.
 
 This document does not add a real provider SDK, provider HTTP client, webhook endpoint, polling worker, provider job creation, production paid-provider path, or Admin generation mutation control.
