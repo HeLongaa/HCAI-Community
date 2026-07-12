@@ -2,7 +2,7 @@
 
 This is the first decision page to read before starting any real-provider work. It compresses the current provider readiness state into one handoff: what is usable now, what is fixture-only, what remains deferred, and what requires explicit approval.
 
-Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, owner-scoped Image lifecycle history, Admin generation history, internal mutation controls, Provider budget observability, the V1-11 fail-closed Provider control plane, the V1-12 shared error/durable retry policy, a fixture-only OpenAI GPT Image 2 adapter, and a default-disabled OpenAI Chat staging boundary are available. All Provider HTTP clients, callback APIs, and workers remain off by default. Real paid-provider calls, real Provider webhook delivery, external Provider alert delivery, enabled real polling, real Provider mutation clients, real cap readers/probes, and production paid-provider enablement remain no-go.
+Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, owner-scoped Image lifecycle history, Admin generation history, internal mutation controls, Provider budget observability, the V1-11 fail-closed Provider control plane, the V1-12 shared error/durable retry policy, a fixture-only OpenAI GPT Image 2 adapter, a default-disabled OpenAI Chat staging boundary, and the V1-25 executable Video capability contract are available. All unapproved Provider HTTP clients, callback APIs, and workers remain off by default. Real paid-provider calls, real Provider webhook delivery, external Provider alert delivery, enabled real polling, real Provider mutation clients, real cap readers/probes, and production paid-provider enablement remain no-go.
 
 V1-04 now records conditional implementation-planning decisions for all four modalities in
 `docs/V1_PROVIDER_DECISION_MATRIX.md` and `config/v1-provider-matrix.json`. These selections define primary/backup
@@ -43,6 +43,12 @@ enablement remain unapproved and no-go. V1-23 ships the production Chat UI again
 V1-22 adds application-side attachment metadata authorization, explicit Task/Library context authorization, fail-closed
 input classification, bounded streaming output classification, safe partial output, and minimal review evidence.
 V1-24 completes the code boundary for bytes and production classification without granting external-call approval.
+
+V1-25 freezes the Video contract in `server/src/creative/videoCapabilityContract.js` and
+`docs/V1_VIDEO_CAPABILITY_CONTRACT.md`. It defines text-to-video, image-to-video, and music-video product modes; closed
+720p MP4 parameters; governed input roles; asynchronous lifecycle; application-owned composition; safety, persistence,
+and USD budget boundaries; and disabled Veo/Runway catalog projections. It adds no Provider adapter, credential, HTTP
+client, lifecycle registration, automatic failover, real call, or production enablement.
 
 V1-44 freezes the corresponding four-modality content safety baseline in
 `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. It defines 20 risk categories,

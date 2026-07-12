@@ -365,6 +365,39 @@ test('parseCreateCreativeGenerationRequest applies the frozen Chat request bound
   )
 })
 
+test('parseCreateCreativeGenerationRequest applies the frozen Video request boundary', () => {
+  assert.deepEqual(parseCreateCreativeGenerationRequest({
+    workspace: 'video',
+    mode: 'text_to_video',
+    prompt: 'Create a launch film.',
+    parameters: { aspectRatio: '16:9', durationSeconds: 8, motionPreset: 'subtle', outputFormat: 'mp4' },
+  }), {
+    workspace: 'video',
+    mode: 'text_to_video',
+    prompt: 'Create a launch film.',
+    inputAssetIds: [],
+    parameters: { aspectRatio: '16:9', durationSeconds: 8, motionPreset: 'subtle', outputFormat: 'mp4' },
+    providerId: null,
+  })
+  assertValidationError(
+    () => parseCreateCreativeGenerationRequest({
+      workspace: 'video',
+      mode: 'image_to_video',
+      prompt: 'Animate this image.',
+    }),
+    'inputAssetIds must include 1 governed asset(s) for image_to_video',
+  )
+  assertValidationError(
+    () => parseCreateCreativeGenerationRequest({
+      workspace: 'video',
+      mode: 'text_to_video',
+      prompt: 'Render too long.',
+      parameters: { durationSeconds: 10 },
+    }),
+    'parameters.durationSeconds must be one of: 4, 6, 8',
+  )
+})
+
 test('Chat conversation and streaming turn parsers enforce closed modes and idempotency', () => {
   assert.deepEqual(parseCreateChatConversationRequest({ mode: 'storyboard' }), { mode: 'storyboard' })
   assert.deepEqual(parseCreateChatTurnRequest({
