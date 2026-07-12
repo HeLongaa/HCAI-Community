@@ -42,7 +42,7 @@ All 14 direct frontend imports of `src/data/mockData.ts` are checked exactly. Ad
 | `server-dev-oauth-fallback` | Unconfigured OAuth providers execute a signed local callback | Require external OAuth or explicit unavailable state | V1-39, V1-48 |
 | `server-provider-fixture-injection` | OpenAI Image and Replicate product dispatch plus manual replay clients remain fixture-injected; the production Chat UI uses a deterministic Mock stream and application safety classifier | Retain tests and keep real product dispatch unregistered | V1-05 through V1-08, V1-12, V1-14, V1-16, V1-21, V1-22, V1-24 |
 | `server-chat-staging-provider-boundary` | A fixed OpenAI Responses stream/classifier client, exact-size attachment reader, Provider controls, and cost closeout exist behind independent staging-only switches | Keep every network, classifier, and attachment-byte switch off until separate Chat staging and production approvals | V1-24, V1-39 |
-| `server-video-capability-contract` | The Video contract, governed inputs, safe Provider operation persistence, fixture-only status/cancel lifecycle, idempotent replay, bounded MP4 ingestion, scanner isolation, and terminal accounting are implemented while Veo and Runway remain disabled catalog shells | Retain the registered but disabled fixture lifecycle; keep HTTP clients, real status reads/callbacks, credentials, adapter product registration, and production enablement disabled | V1-25 through V1-29, V1-39 |
+| `server-video-capability-contract` | The Video contract, governed inputs, safe Provider operation persistence, fixture-only status/cancel lifecycle, idempotent replay, bounded MP4 ingestion, scanner isolation, terminal accounting, and the V1-29 fixture acceptance matrix are implemented while Veo and Runway remain disabled catalog shells | Retain the registered but disabled fixture lifecycle; keep HTTP clients, real status reads/callbacks, credentials, adapter product registration, and production enablement disabled | V1-25 through V1-29, V1-39 |
 | `server-provider-alert-fixture-delivery` | Provider budget alerts can dispatch only through approved fixture-injected clients | Replace with separately approved external delivery clients | V1-13, V1-53 |
 | `server-provider-callback-boundary` | Signed Replicate callback intake exists behind an independent staging-only, default-off kill switch | Keep disabled outside an explicitly approved staging callback delivery | V1-06 |
 | `server-provider-polling-boundary` | A fixed read-only Replicate status client, bounded worker sweep, durable due-time/attempt-budget retry state, and timeout recovery exist behind independent staging-only default-off switches | Keep disabled outside an explicitly approved staging status read | V1-07, V1-12 |
@@ -57,7 +57,7 @@ All 14 direct frontend imports of `src/data/mockData.ts` are checked exactly. Ad
 
 | Surface id | Current behavior | Production disposition | Owners |
 | --- | --- | --- | --- |
-| `fixture-smoke-and-simulation-profiles` | Deterministic production/staging fixtures, the V1-19 OpenAI Image metadata gate, and UI simulations exercise safe gates without Provider calls | Retain as CI-only evidence | V1-19, V1-71, V1-75 |
+| `fixture-smoke-and-simulation-profiles` | Deterministic production/staging fixtures, the V1-19 Image metadata gate, the V1-29 13-scenario Video acceptance matrix, and UI simulations exercise safe gates without Provider calls | Retain as CI-only evidence | V1-19, V1-29, V1-71, V1-75 |
 
 ## Production Classification Rules
 

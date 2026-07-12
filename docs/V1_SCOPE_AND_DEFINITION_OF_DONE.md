@@ -60,6 +60,9 @@ Image, Chat, Video, and Music each require:
 5. Usage, price snapshot, quota/credit handling, budget caps, kill switch, metrics, alerts, and Admin visibility.
 6. Real staging evidence followed by a separate production go/no-go decision.
 
+The V1-29 Video fixture matrix proves application and injected-client behavior before any external call. It does not
+satisfy item 6: real Video staging evidence and the production go/no-go decision remain separately approval-gated.
+
 The current conditional primary/backup choices, public-price budget envelope, contract blockers, data/SLA dispositions,
 and replacement triggers are frozen in `docs/V1_PROVIDER_DECISION_MATRIX.md` and
 `config/v1-provider-matrix.json`. That decision record authorizes implementation planning only.

@@ -13,7 +13,6 @@ import {
   runVideoProviderLifecycleWorkerOnce,
 } from './videoProviderLifecycle.js'
 
-const actor = { id: 'video-lifecycle-user', handle: 'director' }
 const providerId = 'google-veo-3-1-fast'
 const mp4 = Buffer.from('00000018667479706d703432000000006d70343269736f6d0000000866726565', 'hex')
 const lifecycleSource = {
@@ -36,6 +35,7 @@ const fixtureOutputFetcher = async () => ({
 const createQueuedVideo = async (suffix, now = new Date('2030-07-13T03:00:00.000Z')) => {
   resetCreativePolicyState()
   const repository = createSeedRepository()
+  const actor = { id: `video-lifecycle-user-${suffix}`, handle: `director-${suffix}` }
   const generationId = `gen-video-lifecycle-${suffix}`
   const providerJobId = `veo-job-${suffix}`
   const request = {
@@ -82,6 +82,7 @@ const createQueuedVideo = async (suffix, now = new Date('2030-07-13T03:00:00.000
     now,
   })
   return {
+    actor,
     repository,
     generationId,
     providerJobId,
@@ -193,6 +194,43 @@ test('Video lifecycle replay resumes a partial output-ingestion failure idempote
   assert.equal((await fixture.repository.creativeGenerations.find(fixture.generationId)).status, 'completed')
 })
 
+test('Video lifecycle Provider failure retains safe evidence and closes accounting', async () => {
+  const fixture = await createQueuedVideo('provider-failed')
+  const result = await pollVideoProviderOperationOnce({
+    operation: fixture.operation,
+    repositories: fixture.repository,
+    statusClient: {
+      getOperation: async () => ({
+        id: fixture.providerJobId,
+        state: 'failed',
+        output: null,
+        error: {
+          code: 'PROVIDER_RENDER_FAILED',
+          message: 'Render failed at https://provider.example/private?token=provider-secret',
+        },
+        usage: { generatedSeconds: 8, actualCostUsd: 0.35 },
+      }),
+    },
+    source: lifecycleSource,
+    now: new Date('2030-07-13T03:00:01.000Z'),
+  })
+
+  assert.equal(result.failed, false)
+  const operation = await fixture.repository.creativeProviderOperations.findForGeneration(fixture.generationId)
+  const generation = await fixture.repository.creativeGenerations.find(fixture.generationId)
+  const cost = await fixture.repository.creativeProviderCosts.findForGeneration(fixture.generationId)
+  assert.equal(operation.status, 'failed')
+  assert.equal(operation.lastErrorCode, 'PROVIDER_RENDER_FAILED')
+  assert.equal(operation.sideEffectsComplete, true)
+  assert.equal(generation.status, 'failed')
+  assert.equal(generation.credit.status, 'refunded')
+  assert.equal(generation.quota.released, 8)
+  assert.equal(cost.status, 'settled')
+  assert.equal(cost.actualMicros, '350000')
+  assert.equal(JSON.stringify([operation, generation, cost]).includes('provider.example'), false)
+  assert.equal(JSON.stringify([operation, generation, cost]).includes('provider-secret'), false)
+})
+
 test('Video lifecycle timeout reconciles Provider cost and refunds credits and quota', async () => {
   const fixture = await createQueuedVideo('timeout')
   const result = await pollVideoProviderOperationOnce({
@@ -220,7 +258,7 @@ test('Video lifecycle exhausts bounded status attempts without retaining raw err
   const fixture = await createQueuedVideo('retry-exhausted')
   const before = await fixture.repository.creativeProviderOperations.update(fixture.generationId, {
     pollAttempts: 2,
-  }, actor, { expectedVersion: fixture.operation.version })
+  }, fixture.actor, { expectedVersion: fixture.operation.version })
   const result = await pollVideoProviderOperationOnce({
     operation: before,
     repositories: fixture.repository,

@@ -47,3 +47,11 @@ V1-28 replaces the simulated Video workspace with the application-API Video UI: 
 governed asset selection, queued/running history, polling of application APIs only, cancellation, private preview,
 scanner/review states, retry guidance, and clear Mock/fixture/unavailable labeling. Provider HTTP and production
 enablement remain separate approval-gated work owned by later acceptance and release tasks.
+
+## V1-29 Closeout
+
+V1-29 records and executes the fixture-only staging matrix in `config/v1-video-staging-gate.json`. It covers direct
+Provider failure with reported cost, timeout, bounded status exhaustion, cancellation, partial replay, ordered inputs,
+scan/review private release, safe owner errors, internal operations evidence, and shutdown/rollback boundaries. The gate
+uses injected clients only and verifies that no default Video network client is registered. Real staging and production
+remain separately approval-gated.
