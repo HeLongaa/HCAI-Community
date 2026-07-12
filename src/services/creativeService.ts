@@ -3,6 +3,7 @@ import type {
   ApiCreativeGeneration,
   ApiCreativeGenerationMutationResponse,
   ApiCreativeProviderCatalog,
+  ApiMediaAsset,
   CreateCreativeGenerationRequest,
   CreativeGenerationMutationRequest,
   RetryCreativeGenerationRequest,
@@ -11,6 +12,9 @@ import type {
 export const creativeService = {
   listProviders() {
     return api.get<ApiCreativeProviderCatalog>('/creative/providers')
+  },
+  listInputAssets() {
+    return api.get<ApiMediaAsset[]>('/creative/input-assets?limit=24')
   },
   createGeneration(body: CreateCreativeGenerationRequest) {
     return api.post<ApiCreativeGeneration>('/creative/generations', body)

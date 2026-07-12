@@ -25,6 +25,7 @@ export const buildCreativeArtifactMetadata = ({ generation, output }) => ({
   inputAssetIds: generation.inputAssetIds,
   parameterKeys: Object.keys(generation.parameters ?? {}).sort(),
   outputType: output.type,
+  lineage: output.source?.lineage ?? null,
   sourceUrl: publicSourceUrl(output),
   usage: generation.usage,
   credit: generation.credit,
@@ -48,6 +49,7 @@ export const buildCreativeIngestedArtifactMetadata = ({ generation, output, inge
   inputAssetIds: generation.inputAssetIds ?? [],
   parameterKeys: generation.parameterKeys ?? Object.keys(generation.parameters ?? {}).sort(),
   outputType: output.type,
+  lineage: output.source?.lineage ?? null,
   sourceUrl: null,
   ingestion: {
     sourceKey: ingestion.sourceKey,

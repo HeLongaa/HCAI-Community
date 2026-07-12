@@ -4817,10 +4817,7 @@ const createPrismaRepository = async (fallbackRepository) => {
           probeToken = randomUUID()
         } else if (payload.status === 'closed') {
           if (current.status !== 'half_open') throw providerControlConflict('circuit_not_half_open')
-          const probeSuccess = await tx.creativeProviderCircuitEvent.findFirst({
-            where: { circuitStateId: current.id, outcome: 'success', occurredAt: { gte: current.updatedAt } },
-          })
-          if (!probeSuccess) throw providerControlConflict('probe_success_required')
+          if (current.reasonCode !== 'probe_succeeded_pending_recovery') throw providerControlConflict('probe_success_required')
         } else if (payload.status !== 'open') throw providerControlConflict('circuit_transition_invalid')
         const changed = await tx.creativeProviderCircuitState.updateMany({
           where: { id: current.id, version: current.version },
@@ -4989,10 +4986,7 @@ const createPrismaRepository = async (fallbackRepository) => {
             probeToken = randomUUID()
           } else if (metadata.target === 'closed') {
             if (circuit.status !== 'half_open') throw providerControlConflict('circuit_not_half_open')
-            const probeSuccess = await tx.creativeProviderCircuitEvent.findFirst({
-              where: { circuitStateId: circuit.id, outcome: 'success', occurredAt: { gte: circuit.updatedAt } },
-            })
-            if (!probeSuccess) throw providerControlConflict('probe_success_required')
+            if (circuit.reasonCode !== 'probe_succeeded_pending_recovery') throw providerControlConflict('probe_success_required')
           } else throw providerControlConflict('circuit_transition_invalid')
           const changed = await tx.creativeProviderCircuitState.updateMany({
             where: { id: circuit.id, version: circuit.version },
@@ -5924,6 +5918,39 @@ const createPrismaRepository = async (fallbackRepository) => {
     find: async (id) => {
       const asset = await client.mediaAsset.findUnique({ where: { id: String(id) } })
       return asset ? getMediaAssetDto(asset) : null
+    },
+    findAccessibleCreativeInput: async (id, actor) => {
+      const asset = await client.mediaAsset.findUnique({
+        where: { id: String(id) },
+        include: { owner: { include: { profile: true } } },
+      })
+      if (!asset) return null
+      const ownerHandle = asset.owner?.profile?.handle ?? asset.owner?.id ?? null
+      if (ownerHandle !== actor.handle && !hasPermission(actor, 'admin:access')) return null
+      return getMediaAssetDto(asset)
+    },
+    listCreativeInputs: async (actor, options = {}) => {
+      const owner = await findUserByHandle(actor.handle)
+      if (!owner) return { items: [], limit: options.limit ?? 24, nextCursor: null }
+      const limit = Math.min(Math.max(Number(options.limit ?? 24), 1), 100)
+      const assets = await client.mediaAsset.findMany({
+        where: {
+          ownerId: owner.id,
+          status: 'uploaded',
+          purpose: { in: ['submission_asset', 'profile_portfolio', 'library_asset'] },
+          contentType: { in: ['image/png', 'image/jpeg', 'image/webp'] },
+          metadata: { path: ['security', 'scanStatus'], equals: 'clean' },
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: limit + 1,
+        ...(options.cursor ? { cursor: { id: String(options.cursor) }, skip: 1 } : {}),
+      })
+      const page = assets.slice(0, limit)
+      return {
+        items: page.map(getMediaAssetDto),
+        limit,
+        nextCursor: assets.length > limit ? page.at(-1)?.id ?? null : null,
+      }
     },
     getGovernancePolicy: async () => getMediaGovernancePolicy(),
     updateGovernancePolicy: async (patch, actor) => updateMediaGovernancePolicy(patch, actor),

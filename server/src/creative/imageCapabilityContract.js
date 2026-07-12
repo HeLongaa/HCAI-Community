@@ -67,16 +67,16 @@ const modes = [
   {
     id: 'image_edit',
     label: 'Image Edit',
-    runtimeAvailable: false,
-    unavailableReason: 'No approved edit adapter or mask-input workflow is registered for V1.',
+    runtimeAvailable: true,
+    unavailableReason: null,
     inputAssets: { ...imageAssetContract, minimum: 2, maximum: 2, roles: ['source', 'mask'] },
     parameters: ['stylePreset', 'seed', 'strength', 'quality', 'outputCount', 'outputFormat'],
   },
   {
     id: 'image_variation',
     label: 'Image Variation',
-    runtimeAvailable: false,
-    unavailableReason: 'The selected V1 primary model has no approved variation runtime.',
+    runtimeAvailable: true,
+    unavailableReason: null,
     inputAssets: { ...imageAssetContract, minimum: 1, maximum: 1, roles: ['source'] },
     parameters: ['seed', 'strength', 'quality', 'outputCount', 'outputFormat'],
   },
@@ -145,12 +145,17 @@ const providerModeParameters = {
   mock: {
     text_to_image: modes.find((mode) => mode.id === 'text_to_image').parameters,
     image_to_image: modes.find((mode) => mode.id === 'image_to_image').parameters,
+    image_edit: modes.find((mode) => mode.id === 'image_edit').parameters,
+    image_variation: modes.find((mode) => mode.id === 'image_variation').parameters,
   },
   'replicate-staging': {
     text_to_image: ['aspectRatio', 'stylePreset', 'seed'],
   },
   'openai-gpt-image-2': {
     text_to_image: ['aspectRatio', 'stylePreset', 'quality', 'outputCount', 'outputFormat'],
+    image_to_image: ['aspectRatio', 'stylePreset', 'strength', 'quality', 'outputCount', 'outputFormat'],
+    image_edit: ['stylePreset', 'strength', 'quality', 'outputCount', 'outputFormat'],
+    image_variation: ['strength', 'quality', 'outputCount', 'outputFormat'],
   },
 }
 

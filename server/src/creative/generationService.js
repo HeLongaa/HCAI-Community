@@ -27,6 +27,7 @@ import {
   buildOpenAIImageProviderCostMetadata,
   readOpenAIImageOutputBytes,
 } from './openaiImageProvider.js'
+import { attachImageOutputLineage, resolveImageGenerationInputs } from './imageInputAssets.js'
 
 const getFixtureProvider = (providerId, registry) => {
   const provider = registry.providers.find((candidate) => candidate.id === providerId)
@@ -84,6 +85,8 @@ export const executeCreativeGeneration = async ({
   now = new Date(),
   quotaRepository = null,
   providerCostRepository = null,
+  inputAssetRepository = null,
+  inputAssetReader = null,
   providerControlPlane = null,
   providerProbeToken = null,
   fixtureAdapters = {},
@@ -97,6 +100,11 @@ export const executeCreativeGeneration = async ({
   const capability = getCreativeCapability(provider, request.workspace)
   assertCreativeModeSupported(capability, request.mode)
   assertCreativeParametersSupported(capability, request.mode, request.parameters)
+
+  const resolvedInputAssets = await resolveImageGenerationInputs(request, {
+    actor,
+    mediaRepository: inputAssetRepository,
+  })
 
   if (provider.id !== 'mock' && !fixtureAdapter) {
     throw new Error(`Unsupported creative provider adapter: ${provider.id}`)
@@ -159,11 +167,12 @@ export const executeCreativeGeneration = async ({
     }
     adapterAttempted = Boolean(fixtureAdapter)
     generated = fixtureAdapter
-      ? await fixtureAdapter({ request, provider, actor, source, now, generationId })
+      ? await fixtureAdapter({ request, provider, actor, source, now, generationId, resolvedInputAssets, inputAssetReader })
       : executeMockCreativeGeneration({ request, provider, actor, now })
     if (generationIdOverride) {
       generated = { ...generated, id: generationId }
     }
+    generated = attachImageOutputLineage(generated, resolvedInputAssets)
     assertCreativeProviderAdapterContract(generated, { request, provider })
   } catch (error) {
     if (providerControlDispatch && adapterAttempted && providerControlPlane?.recordResult) {

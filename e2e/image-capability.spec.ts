@@ -10,10 +10,15 @@ test('Image Studio consumes the capability contract and sends only allowed param
 
   await expect(page.getByRole('heading', { name: 'Image Studio' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Text to Image' })).toBeEnabled()
-  await expect(page.getByRole('button', { name: 'Image to Image' })).toBeDisabled()
-  await expect(page.getByRole('button', { name: 'Image Edit' })).toBeDisabled()
-  await expect(page.getByRole('button', { name: 'Image Variation' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Image to Image' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Image Edit' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Image Variation' })).toBeEnabled()
   await expect(page.getByText(/image-capability-v1/)).toBeVisible()
+
+  await page.getByRole('button', { name: 'Image to Image' }).click()
+  await expect(page.getByText('Source image')).toBeVisible()
+  await expect(page.getByText(/Change strength 70%/)).toBeVisible()
+  await page.getByRole('button', { name: 'Text to Image' }).click()
 
   const generationResponse = page.waitForResponse((response) =>
     response.url().endsWith('/api/creative/generations') && response.request().method() === 'POST',

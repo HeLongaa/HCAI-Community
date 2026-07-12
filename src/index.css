@@ -2181,6 +2181,27 @@ kbd {
   border-radius: var(--radius);
 }
 
+.image-input-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.image-input-controls label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.image-input-controls select,
+.image-input-controls input[type='range'] {
+  width: 100%;
+  min-width: 0;
+}
+
 .visual-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

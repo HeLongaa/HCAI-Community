@@ -24,7 +24,7 @@ import type { Page, PlaygroundMode, SimulateAction, Track, Work } from '../../do
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { tracks, visualWorks } from '../../data/mockData'
 import { isZhCopy, textFor } from '../../domain/utils'
-import type { ApiCreativeCapability, ApiCreativeGeneration, ApiCreativeProviderCatalog } from '../../services/contracts'
+import type { ApiCreativeCapability, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset } from '../../services/contracts'
 
 type ImageGenerationState = {
   status: 'idle' | 'loading' | 'done' | 'error'
@@ -41,6 +41,8 @@ export function PlaygroundPage({
   imageGeneration,
   imageProviderCatalog,
   imageProviderCatalogState,
+  imageInputAssets,
+  uploadImageInput,
   runImageGeneration,
   playTrack,
   requireAuth,
@@ -57,7 +59,9 @@ export function PlaygroundPage({
   imageGeneration: ImageGenerationState
   imageProviderCatalog: ApiCreativeProviderCatalog | null
   imageProviderCatalogState: 'loading' | 'ready' | 'error'
-  runImageGeneration: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string }) => Promise<void>
+  imageInputAssets: ApiMediaAsset[]
+  uploadImageInput: (file: File) => Promise<void>
+  runImageGeneration: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; strength: number; inputAssetIds: string[] }) => Promise<void>
   playTrack: (track: Track) => void
   requireAuth: () => void
   simulateAction: SimulateAction
@@ -253,6 +257,8 @@ export function PlaygroundPage({
             state: imageGeneration,
             capability: imageCapability,
             catalogState: imageProviderCatalogState,
+            inputAssets: imageInputAssets,
+            uploadInput: uploadImageInput,
             providerAvailable: Boolean(imageProvider?.enabled && imageProvider.configured),
             onGenerate: runImageGeneration,
           }}
@@ -499,7 +505,9 @@ function StudioPage({
     capability: ApiCreativeCapability | null
     catalogState: 'loading' | 'ready' | 'error'
     providerAvailable: boolean
-    onGenerate: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string }) => Promise<void>
+    inputAssets: ApiMediaAsset[]
+    uploadInput: (file: File) => Promise<void>
+    onGenerate: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; strength: number; inputAssetIds: string[] }) => Promise<void>
   }
 }) {
   const isZh = isZhCopy(t)
@@ -508,6 +516,10 @@ function StudioPage({
   const [renderState, setRenderState] = useState<'idle' | 'loading' | 'done'>('idle')
   const [draftPrompt, setDraftPrompt] = useState(prompt)
   const [activeImageMode, setActiveImageMode] = useState('text_to_image')
+  const [sourceAssetId, setSourceAssetId] = useState('')
+  const [maskAssetId, setMaskAssetId] = useState('')
+  const [strength, setStrength] = useState(0.7)
+  const [uploadingInput, setUploadingInput] = useState(false)
   const parameterDefinitions = providerGeneration?.capability?.parameterDefinitions
   const displayedOptions = providerGeneration
     ? (parameterDefinitions?.stylePreset?.options?.map(String) ?? options)
@@ -515,9 +527,7 @@ function StudioPage({
   const displayedControls = providerGeneration
     ? (parameterDefinitions?.aspectRatio?.options?.map(String) ?? controls)
     : controls
-  const selectableImageModes = providerGeneration?.capability?.modeContracts?.filter(
-    (modeContract) => modeContract.available && modeContract.inputAssets.minimum === 0,
-  ) ?? []
+  const selectableImageModes = providerGeneration?.capability?.modeContracts?.filter((modeContract) => modeContract.available) ?? []
   const selectedImageMode = selectableImageModes.some((modeContract) => modeContract.id === activeImageMode)
     ? activeImageMode
     : (selectableImageModes[0]?.id ?? '')
@@ -555,11 +565,16 @@ function StudioPage({
 
   const runStudioGenerate = () => {
     if (providerGeneration) {
+      const inputAssetIds = selectedImageMode === 'image_edit'
+        ? [sourceAssetId, maskAssetId].filter(Boolean)
+        : selectedImageMode === 'text_to_image' ? [] : [sourceAssetId].filter(Boolean)
       void providerGeneration.onGenerate({
         prompt: draftPrompt,
         mode: selectedImageMode,
         stylePreset: selectedOption,
         aspectRatio: activeControls.find((control) => displayedControls.includes(control)) ?? displayedControls[0] ?? '1:1',
+        strength,
+        inputAssetIds,
       })
       return
     }
@@ -579,6 +594,9 @@ function StudioPage({
   const generatedOutput = providerGeneration?.state.result?.outputs[0] ?? null
   const mediaAsset = generatedOutput?.mediaAsset
   const scanStatus = generatedOutput?.storage.scanStatus ?? mediaAsset?.scanStatus ?? null
+  const activeModeContract = selectableImageModes.find((modeContract) => modeContract.id === selectedImageMode)
+  const requiredInputsReady = !activeModeContract || activeModeContract.inputAssets.minimum === 0
+    || (Boolean(sourceAssetId) && (selectedImageMode !== 'image_edit' || Boolean(maskAssetId)))
 
   return (
     <div className="stack">
@@ -595,12 +613,8 @@ function StudioPage({
         {providerGeneration && (
           <div className="chip-row image-mode-row">
             {(providerGeneration.capability?.modeContracts ?? []).map((modeContract) => {
-              const requiresInput = modeContract.inputAssets.minimum > 0
-              const disabled = !modeContract.available || requiresInput
-              const unavailableReason = modeContract.unavailableReason
-                ?? (requiresInput
-                  ? (isZh ? `需要 ${modeContract.inputAssets.minimum} 个图片素材` : `Requires ${modeContract.inputAssets.minimum} image asset(s)`)
-                  : '')
+              const disabled = !modeContract.available
+              const unavailableReason = modeContract.unavailableReason ?? ''
               return (
                 <button
                   className={selectedImageMode === modeContract.id ? 'chip active' : 'chip'}
@@ -616,7 +630,49 @@ function StudioPage({
             })}
           </div>
         )}
-        <div className="chip-row">
+        {providerGeneration && activeModeContract && activeModeContract.inputAssets.minimum > 0 && (
+          <div className="image-input-controls">
+            <label className="media-file-picker">
+              <Upload size={16} />
+              <span>{uploadingInput ? textFor(t, 'Uploading', '上传中') : textFor(t, 'Upload image', '上传图片')}</span>
+              <input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploadingInput} onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.currentTarget.value = ''
+                if (!file) return
+                setUploadingInput(true)
+                void providerGeneration.uploadInput(file)
+                  .catch(() => simulateAction(textFor(t, 'Image upload failed', '图片上传失败')))
+                  .finally(() => setUploadingInput(false))
+              }} />
+            </label>
+            <label>
+              <span>{textFor(t, 'Source image', '源图片')}</span>
+              <select value={sourceAssetId} onChange={(event) => setSourceAssetId(event.target.value)}>
+                <option value="">{textFor(t, 'Select a clean image', '选择已通过扫描的图片')}</option>
+                {providerGeneration.inputAssets.map((asset) => (
+                  <option value={asset.id} key={asset.id}>{asset.fileName}</option>
+                ))}
+              </select>
+            </label>
+            {selectedImageMode === 'image_edit' && (
+              <label>
+                <span>{textFor(t, 'PNG mask', 'PNG 蒙版')}</span>
+                <select value={maskAssetId} onChange={(event) => setMaskAssetId(event.target.value)}>
+                  <option value="">{textFor(t, 'Select a clean PNG mask', '选择已通过扫描的 PNG 蒙版')}</option>
+                  {providerGeneration.inputAssets
+                    .filter((asset) => asset.contentType === 'image/png' && asset.id !== sourceAssetId)
+                    .map((asset) => <option value={asset.id} key={asset.id}>{asset.fileName}</option>)}
+                </select>
+              </label>
+            )}
+            <label>
+              <span>{textFor(t, 'Change strength', '改动强度')} {Math.round(strength * 100)}%</span>
+              <input type="range" min="0" max="1" step="0.05" value={strength} onChange={(event) => setStrength(Number(event.target.value))} />
+            </label>
+          </div>
+        )}
+        {(!providerGeneration || activeModeContract?.parameters.includes('stylePreset')) && (
+          <div className="chip-row">
           {displayedOptions.map((option) => (
             <button
               className={selectedOption === option ? 'chip active' : 'chip'}
@@ -630,8 +686,10 @@ function StudioPage({
               {imageLabel(option)}
             </button>
           ))}
-        </div>
-        <div className="control-grid">
+          </div>
+        )}
+        {(!providerGeneration || activeModeContract?.parameters.includes('aspectRatio')) && (
+          <div className="control-grid">
           {displayedControls.map((control) => (
             <button
               className={activeControls.includes(control) ? 'control-pill active' : 'control-pill'}
@@ -643,7 +701,8 @@ function StudioPage({
               <ChevronDown size={14} />
             </button>
           ))}
-        </div>
+          </div>
+        )}
         <div className="button-row">
           <button
             className="primary-button"
@@ -654,12 +713,22 @@ function StudioPage({
                 || !providerGeneration.capability
                 || !providerGeneration.providerAvailable
                 || !selectedImageMode
+                || !requiredInputsReady
                 || activeState === 'loading'
               : false}
           >
             <Sparkles size={17} />
             {activeState === 'loading' ? t.generating : activeState === 'done' ? t.generated : primaryAction}
           </button>
+          {providerGeneration && generatedOutput?.storage.mediaAssetId && scanStatus === 'clean' && (
+            <button className="ghost-button" type="button" onClick={() => {
+              setSourceAssetId(generatedOutput.storage.mediaAssetId ?? '')
+              setActiveImageMode('image_to_image')
+            }}>
+              <RefreshCcw size={17} />
+              {textFor(t, 'Use result as source', '使用结果继续创作')}
+            </button>
+          )}
           {extraAction && (
             <button className="ghost-button" type="button" onClick={extraAction}>
               <Clapperboard size={17} />

@@ -319,10 +319,13 @@ test('parseCreateCreativeGenerationRequest validates creative payload boundaries
     () => parseCreateCreativeGenerationRequest({ workspace: 'image', mode: 'image_to_image', prompt: 'Restyle this image' }),
     'inputAssetIds must include 1 image asset(s) for image_to_image',
   )
-  assertValidationError(
-    () => parseCreateCreativeGenerationRequest({ workspace: 'image', mode: 'image_edit', prompt: 'Remove the background', inputAssetIds: ['source', 'mask'] }),
-    'mode is unavailable: image_edit. No approved edit adapter or mask-input workflow is registered for V1.',
-  )
+  assert.equal(parseCreateCreativeGenerationRequest({
+    workspace: 'image',
+    mode: 'image_edit',
+    prompt: 'Remove the background',
+    inputAssetIds: ['source', 'mask'],
+    parameters: { strength: 0.5 },
+  }).mode, 'image_edit')
 })
 
 test('parseCreateMediaUploadRequest validates upload signing payloads', () => {

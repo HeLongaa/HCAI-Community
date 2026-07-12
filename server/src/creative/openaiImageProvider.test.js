@@ -3,11 +3,14 @@ import test from 'node:test'
 
 import {
   assertOpenAIImageBudgetAllowsDispatch,
+  buildOpenAIImageEditRequest,
   buildOpenAIImageGenerationRequest,
   buildOpenAIImageProviderCostMetadata,
   createOpenAIImageGeneration,
   createOpenAIImageHttpClient,
+  compileOpenAIImageEditPrompt,
   projectOpenAIImageGenerationResponse,
+  readOpenAIImageInputFiles,
   readOpenAIImageOutputBytes,
 } from './openaiImageProvider.js'
 
@@ -57,6 +60,28 @@ test('OpenAI Image request rejects provider-unsupported parameters and sizes', (
     () => buildOpenAIImageGenerationRequest({ ...request, parameters: { ...request.parameters, aspectRatio: '16:9' } }),
     (error) => error.details.reasonCode === 'aspect_ratio_unsupported',
   )
+})
+
+test('OpenAI Image edit request uses fixed multipart fields and compiled strength semantics', async () => {
+  const editRequest = {
+    ...request,
+    mode: 'image_edit',
+    inputAssetIds: ['source', 'mask'],
+    parameters: { stylePreset: 'poster', strength: 0.6, quality: 'high', outputCount: 1, outputFormat: 'png' },
+  }
+  const assets = [
+    { id: 'source', role: 'source', contentType: 'image/png' },
+    { id: 'mask', role: 'mask', contentType: 'image/png' },
+  ]
+  const files = await readOpenAIImageInputFiles(assets, async () => ({ body: Buffer.from(pngBase64, 'base64') }))
+  const mapped = buildOpenAIImageEditRequest(editRequest, files)
+
+  assert.equal(mapped.pathname, '/images/edits')
+  assert.deepEqual([...mapped.formData.keys()], ['model', 'prompt', 'image', 'mask', 'size', 'quality', 'n', 'output_format'])
+  assert.match(String(mapped.formData.get('prompt')), /Change intensity: 60%/)
+  assert.equal(String(mapped.formData.get('prompt')).includes('strength'), false)
+  assert.deepEqual(mapped.safeFields.inputRoles, ['source', 'mask'])
+  assert.match(compileOpenAIImageEditPrompt(editRequest), /Edit the source only where indicated by the mask/)
 })
 
 test('OpenAI Image response strictly validates one canonical PNG and safe usage', async () => {

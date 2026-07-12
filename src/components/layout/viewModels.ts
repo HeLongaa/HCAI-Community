@@ -20,7 +20,7 @@ import type {
 } from '../../domain/types'
 import type { TaskChildCollection } from '../../hooks/useTaskWorkflows'
 import type { OAuthLoginResult } from '../../hooks/useAccountState'
-import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiNotification, ApiPointsSummary, ApiPolicyConsentStatus, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, NotificationListQuery, OAuthProvider, RegisterRequest } from '../../services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiNotification, ApiPointsSummary, ApiPolicyConsentStatus, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, NotificationListQuery, OAuthProvider, RegisterRequest } from '../../services/contracts'
 
 export type AppCopyViewModel = {
   t: Record<string, string>
@@ -132,7 +132,9 @@ export type WorkspaceViewModel = {
   }
   imageProviderCatalog: ApiCreativeProviderCatalog | null
   imageProviderCatalogState: 'loading' | 'ready' | 'error'
-  runImageGeneration: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string }) => Promise<void>
+  imageInputAssets: ApiMediaAsset[]
+  uploadImageInput: (file: File) => Promise<void>
+  runImageGeneration: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; strength: number; inputAssetIds: string[] }) => Promise<void>
   playgroundWorkspace: PlaygroundMode
   setPlaygroundWorkspace: Dispatch<SetStateAction<PlaygroundMode>>
 }

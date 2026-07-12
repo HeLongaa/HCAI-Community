@@ -18,6 +18,11 @@ base64 PNG projection, shared safe errors, quality-based cost metadata, and in-m
 governance. It is exposed only as a disabled catalog shell and through injected fixtures. Two independent network flags
 remain false by default, and no real Provider request was made.
 
+V1-17 adds governed source/mask selection, image-to-image, edit and variation product semantics, a fixed fixture-only
+OpenAI `/images/edits` multipart boundary, and durable `image-lineage-v1` output relationships. Inputs fail closed on
+ownership, purpose, MIME, upload or scan violations before accounting. Product generation still uses mock execution;
+the OpenAI shell and both network gates remain disabled.
+
 V1-44 freezes the corresponding four-modality content safety baseline in
 `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. It defines 20 risk categories,
 prohibited/block/review/allow decisions, the five-stage responsibility chain, all eight Provider policy mappings,
@@ -123,6 +128,7 @@ These pieces are implemented for tests, planning, and safe dry-runs only:
 - provider adapter contract tests
 - Replicate staging shell metadata and fixture adapter tests
 - OpenAI GPT Image 2 fixed request, strict base64 PNG, shared error, cost, media-ingestion, and route fixture tests
+- governed image input resolver, fixed edit multipart descriptor, source/mask byte checks, and lineage fixtures
 - default-disabled OpenAI Image HTTP client with independent client/network switches and injected fetch
 - default-disabled Replicate HTTP client tests with fixed endpoint, minimum payload, secret isolation, and injected fetch
 - provider budget event planning and fail-closed budget guard tests

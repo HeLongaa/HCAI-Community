@@ -3553,9 +3553,7 @@ export const createSeedRepository = () => ({
         probeToken = randomUUID()
       } else if (payload.status === 'closed') {
         if (current.status !== 'half_open') throw providerControlConflict('circuit_not_half_open')
-        const hasProbeSuccess = [...creativeProviderCircuitEventsById.values()].some((event) =>
-          event.circuitStateId === current.id && event.outcome === 'success' && new Date(event.occurredAt) >= new Date(current.updatedAt))
-        if (!hasProbeSuccess) throw providerControlConflict('probe_success_required')
+        if (current.reasonCode !== 'probe_succeeded_pending_recovery') throw providerControlConflict('probe_success_required')
       } else if (payload.status !== 'open') {
         throw providerControlConflict('circuit_transition_invalid')
       }
@@ -4231,6 +4229,20 @@ export const createSeedRepository = () => ({
     find: (id) => {
       const asset = mediaAssetsById.get(String(id)) ?? null
       return asset ? serializeMediaAsset(asset) : null
+    },
+    findAccessibleCreativeInput: (id, actor) => {
+      const asset = mediaAssetsById.get(String(id)) ?? null
+      if (!asset || !canAccessOwnedResource(asset.ownerHandle, actor)) return null
+      return serializeMediaAsset(asset)
+    },
+    listCreativeInputs: (actor, options = {}) => {
+      const filtered = [...mediaAssetsById.values()]
+        .filter((asset) => asset.ownerHandle === actor.handle)
+        .filter((asset) => asset.status === 'uploaded' && asset.metadata?.security?.scanStatus === 'clean')
+        .filter((asset) => ['submission_asset', 'profile_portfolio', 'library_asset'].includes(asset.purpose))
+        .filter((asset) => ['image/png', 'image/jpeg', 'image/webp'].includes(asset.contentType))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id))
+      return paginateByCursor(filtered.map(serializeMediaAsset), options)
     },
     createUpload: (payload, actor) => {
       const now = new Date().toISOString()

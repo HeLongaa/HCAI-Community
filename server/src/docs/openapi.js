@@ -773,6 +773,20 @@ export const openApiDocument = {
         },
       },
     },
+    '/creative/input-assets': {
+      get: {
+        summary: 'List current user clean image assets available as creative inputs',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 24 } },
+        ],
+        responses: {
+          '200': { description: 'Owner-scoped governed image assets with pagination metadata' },
+          '401': { description: 'Authentication required' },
+        },
+      },
+    },
     '/creative/providers': {
       get: {
         summary: 'List safe creative provider capabilities',
