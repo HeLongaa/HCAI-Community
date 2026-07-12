@@ -37,7 +37,8 @@ evidence.
 V1-20 freezes the Chat model, mode, parameter, context, attachment, persistence, safety, tool, and budget contract.
 OpenAI GPT-5.6 Terra and Anthropic Claude Sonnet 5 appear only as disabled safe catalog shells. Streaming, durable
 conversations, stop/disconnect closeout, and retention are now implemented behind a Mock-only SSE boundary. Real
-Provider clients, credentials, automatic failover, production UI, and real Chat traffic remain unimplemented and no-go.
+Provider clients, credentials, automatic failover, and real Chat traffic remain unimplemented and no-go. V1-23 ships
+the production Chat UI against that explicit Mock-only boundary.
 
 V1-22 adds application-side attachment metadata authorization, explicit Task/Library context authorization, fail-closed
 input classification, bounded streaming output classification, safe partial output, and minimal review evidence.
