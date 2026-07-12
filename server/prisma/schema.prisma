@@ -114,6 +114,35 @@ enum CreativeGenerationStatus {
   review_required
 }
 
+enum ChatConversationStatus {
+  active
+  archived
+}
+
+enum ChatTurnStatus {
+  queued
+  streaming
+  completed
+  stopped
+  interrupted
+  failed
+  blocked
+}
+
+enum ChatMessageRole {
+  user
+  assistant
+}
+
+enum ChatMessageStatus {
+  complete
+  streaming
+  stopped
+  interrupted
+  failed
+  blocked
+}
+
 enum CreativeQuotaReservationStatus {
   reserved
   committed
@@ -325,6 +354,8 @@ model User {
   creativeQuotaWindows      CreativeQuotaWindow[]
   creativeQuotaReservations CreativeQuotaReservation[]
   creativeCreditLedger      CreativeCreditLedger[]
+  chatConversations         ChatConversation[]
+  chatDeletionTombstones    ChatDeletionTombstone[]
 
   @@map("users")
 }
@@ -620,6 +651,7 @@ model CreativeGeneration {
   providerReplays  CreativeProviderReplayLedger[]
   providerRetries  CreativeProviderRetryState[]
   outputIngestions CreativeOutputIngestion[]
+  chatTurn         ChatTurn?
 
   @@index([actorId, createdAt])
   @@index([actorHandle, createdAt])
@@ -628,6 +660,94 @@ model CreativeGeneration {
   @@index([retryOfId, attemptNumber])
   @@index([status, createdAt])
   @@map("creative_generations")
+}
+
+model ChatConversation {
+  id                  String                 @id @default(cuid())
+  ownerId             String                 @map("owner_id")
+  mode                String
+  status              ChatConversationStatus @default(active)
+  nextMessageSequence Int                    @default(1) @map("next_message_sequence")
+  lastMessageAt       DateTime               @default(now()) @map("last_message_at")
+  retentionExpiresAt  DateTime               @map("retention_expires_at")
+  retentionHoldUntil  DateTime?              @map("retention_hold_until")
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+
+  owner    User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  turns    ChatTurn[]
+  messages ChatMessage[]
+
+  @@index([ownerId, lastMessageAt])
+  @@index([status, retentionExpiresAt])
+  @@map("chat_conversations")
+}
+
+model ChatTurn {
+  id              String         @id
+  conversationId  String         @map("conversation_id")
+  generationId    String?        @unique @map("generation_id")
+  clientTurnId    String         @map("client_turn_id")
+  mode            String
+  status          ChatTurnStatus @default(queued)
+  errorCode       String?        @map("error_code")
+  usage           Json?
+  stopRequestedAt DateTime?      @map("stop_requested_at")
+  disconnectedAt  DateTime?      @map("disconnected_at")
+  completedAt     DateTime?      @map("completed_at")
+  failedAt        DateTime?      @map("failed_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  conversation ChatConversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  generation   CreativeGeneration? @relation(fields: [generationId], references: [id], onDelete: SetNull)
+  messages     ChatMessage[]
+
+  @@unique([conversationId, clientTurnId])
+  @@index([conversationId, createdAt])
+  @@index([status, updatedAt])
+  @@map("chat_turns")
+}
+
+model ChatMessage {
+  id                String            @id
+  conversationId    String            @map("conversation_id")
+  turnId            String            @map("turn_id")
+  role              ChatMessageRole
+  status            ChatMessageStatus
+  sequence          Int
+  ciphertext        String
+  encryptionKeyId   String            @map("encryption_key_id")
+  encryptionIv      String            @map("encryption_iv")
+  authenticationTag String            @map("authentication_tag")
+  contentHash       String            @map("content_hash")
+  characterCount    Int               @map("character_count")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  turn         ChatTurn         @relation(fields: [turnId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, sequence])
+  @@index([turnId, role])
+  @@map("chat_messages")
+}
+
+model ChatDeletionTombstone {
+  id             String    @id @default(cuid())
+  conversationId String    @unique @map("conversation_id")
+  ownerId        String?   @map("owner_id")
+  reasonCode     String    @map("reason_code")
+  requestedAt    DateTime  @default(now()) @map("requested_at")
+  replayUntil    DateTime  @map("replay_until")
+  lastReplayedAt DateTime? @map("last_replayed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  owner User? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId, requestedAt])
+  @@index([replayUntil])
+  @@map("chat_deletion_tombstones")
 }
 
 model CreativeGenerationMutation {

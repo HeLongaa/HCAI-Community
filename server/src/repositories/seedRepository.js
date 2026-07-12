@@ -55,6 +55,7 @@ import {
 } from '../media/scanProvider.js'
 import { dispatchMediaScanAlert } from '../media/alertDispatcher.js'
 import { writeJsonArchive } from '../storage/archiveWriter.js'
+import { createSeedChatRepository } from '../chat/seedChatRepository.js'
 import { writeStorageObject } from '../storage/objectWriter.js'
 import {
   buildOperationsMetricSamples,
@@ -1899,6 +1900,10 @@ const getSeedMediaScanJobArchiveManifest = (options = {}) => {
 }
 
 export const createSeedRepository = () => ({
+  chat: createSeedChatRepository({
+    recordAudit: ({ actor, action, resourceType, resourceId, metadata }) =>
+      recordAudit(actor, action, resourceType, resourceId, metadata),
+  }),
   auth: {
     getCurrentUser: () => seedStore.me,
     findDemoAccountByAccessToken: (token) => {

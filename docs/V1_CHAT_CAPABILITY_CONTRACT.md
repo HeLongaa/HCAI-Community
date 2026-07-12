@@ -3,8 +3,8 @@
 This document closes the implementation-planning portion of V1-20. The executable source of truth is
 `server/src/creative/chatCapabilityContract.js`.
 
-Current decision: **the Chat contract is frozen; streaming, durable conversations, attachments, real Provider calls,
-and production enablement remain unavailable**.
+Current decision: **the Chat contract is frozen; encrypted application-owned conversations and Mock SSE streaming are
+implemented, while attachments, real Provider calls, the production Chat UI, and production enablement remain unavailable**.
 
 ## Provider Decision
 
@@ -66,6 +66,11 @@ MIME, size, scanner, region, and content-policy checks pass.
   implications require explicit approval before backup use.
 - Neither Provider may train on customer content by default under the accepted contract configuration.
 
+V1-21 implements `ChatConversation`, `ChatTurn`, `ChatMessage`, and `ChatDeletionTombstone`. Message bodies use
+versioned AES-256-GCM application encryption with conversation/message identity as authenticated additional data.
+History is owner-scoped, turn submission is idempotent, and readable content is produced only after authenticated
+decryption. The configured key ring supports key rotation without storing key material in PostgreSQL.
+
 ## Safety And Tools
 
 Input messages and selected context are classified before dispatch. Unknown safety results block. Streaming output may
@@ -89,8 +94,12 @@ results before returning them to the model or user.
 
 ## Handoff
 
-V1-21 owns the streaming API, application conversation/message persistence, stop behavior, disconnect recovery, usage
-closeout, and owner-scoped history. V1-22 owns attachments, selected context, and runtime safety enforcement. V1-23 owns
-the production Chat UI, and V1-24 owns real staging acceptance.
+V1-21 implements the authenticated SSE API, application conversation/message persistence, idempotent turn creation,
+stop behavior, disconnect recovery, CreativeGeneration quota/credit closeout, owner-scoped history, inactivity cleanup,
+and restore-deletion tombstones. Its stream adapter is Mock-only and all emitted chunks carry explicit fixture safety
+classification.
 
-No V1-20 validation command requires a Provider credential or network call.
+V1-22 owns attachments, selected product context, and full runtime safety enforcement. V1-23 owns the production Chat
+UI, and V1-24 owns real Provider clients and staging acceptance.
+
+No V1-20 or V1-21 validation command requires a Provider credential or network call.

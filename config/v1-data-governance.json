@@ -427,7 +427,7 @@
     {
       "id": "chat_conversation_messages",
       "classification": "restricted",
-      "prismaModels": [],
+      "prismaModels": ["ChatConversation", "ChatTurn", "ChatMessage", "ChatDeletionTombstone"],
       "locations": ["postgres", "backup_archive"],
       "dataSubjects": ["user", "depicted_third_party"],
       "purposes": ["creative_generation", "safety_moderation"],
@@ -1029,7 +1029,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 36,
+    "modelCount": 40,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",
@@ -1042,7 +1042,7 @@
       "Provider failures use a shared safe taxonomy, bounded Retry-After, deterministic backoff, hash-only failure dedupe, and CAS retry state",
       "Provider output ingestion uses a durable source key, claim lease, allowlisted injected fetch, bounded byte reads, magic-byte MIME validation, SHA-256, deterministic storage, and scan-gated media assets",
       "Provider dispatch uses versioned fail-closed controls, expiring hashed cap evidence, explicit circuit recovery, one-claim probes, two-person review, and low-cardinality operations evidence",
-      "Chat has a frozen fail-closed capability, persistence, retention, export, deletion, backup, safety, and budget contract while real Provider clients remain absent",
+      "Chat has encrypted owner-scoped conversations and messages, idempotent Mock SSE turns, explicit stop/disconnect closeout, retention sweeps, and restore-deletion tombstones while real Provider clients remain absent",
       "Admin creative serializers redact unsafe identifiers, URLs, and error previews",
       "archive and object writers support mock/S3-compatible boundaries"
     ],
@@ -1055,7 +1055,7 @@
       "no global structured log allowlist enforcement",
       "current foreign-key behavior can cascade or restrict deletion without the frozen anonymization plan",
       "no legal-hold registry or expiry workflow",
-      "no durable Chat conversation/message models, inactivity sweeper, export/delete hooks, or restore-deletion replay"
+      "no account-level Chat export/deletion orchestration beyond owner conversation deletion and restore tombstones"
     ],
     "evidenceFiles": [
       "server/src/creative/generationRecords.js",
@@ -1077,6 +1077,10 @@
       "server/src/creative/providerControlContract.js",
       "server/src/creative/providerControlPlane.js",
       "server/src/creative/chatCapabilityContract.js",
+      "server/src/chat/messageCrypto.js",
+      "server/src/chat/chatService.js",
+      "server/src/chat/prismaChatRepository.js",
+      "server/src/modules/chat/routes.js",
       "server/src/modules/admin/routes.js",
       "server/src/media/scanProvider.js",
       "server/src/storage/archiveWriter.js",

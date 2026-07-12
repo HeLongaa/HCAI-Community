@@ -110,6 +110,8 @@ async function request(path: string, options: RequestOptions = {}) {
   })
 }
 
+export const apiStream = (path: string, options: RequestOptions = {}) => request(path, options)
+
 async function parseEnvelope<T>(response: Response): Promise<ApiEnvelope<T>> {
   const payload = (await response.json()) as ApiEnvelope<T>
   if (!response.ok) {

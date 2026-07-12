@@ -48,6 +48,10 @@ test('buildEnv allows development without managed token secrets', () => {
     creativeProviderPollingIntervalSeconds: 60,
     creativeProviderPollingSweepLimit: 10,
     creativeProviderPollingRequireCreditReservation: false,
+    chatRetentionWorkerEnabled: false,
+    chatRetentionWorkerIntervalSeconds: 3600,
+    chatRetentionSweepLimit: 100,
+    hasChatMessageEncryptionKey: false,
     mediaScanHistoryRetentionDays: 180,
     mediaScanHistoryRetentionMaxPerAsset: 50,
     mediaScanAlertWindowMinutes: 60,
@@ -142,6 +146,24 @@ test('buildEnv validates worker lease settings', () => {
       WORKER_LEASE_RENEW_INTERVAL_SECONDS: '60',
     }),
     /WORKER_LEASE_RENEW_INTERVAL_SECONDS must be less than WORKER_LEASE_TTL_SECONDS/,
+  )
+})
+
+test('buildEnv validates and exposes Chat retention worker settings', () => {
+  const env = buildEnv({
+    NODE_ENV: 'development',
+    CHAT_RETENTION_WORKER_ENABLED: 'true',
+    CHAT_RETENTION_WORKER_INTERVAL_SECONDS: '1800',
+    CHAT_RETENTION_SWEEP_LIMIT: '50',
+    CHAT_MESSAGE_ENCRYPTION_KEY: Buffer.alloc(32, 3).toString('base64'),
+  })
+  assert.equal(env.chatRetentionWorkerEnabled, true)
+  assert.equal(env.chatRetentionWorkerIntervalSeconds, 1800)
+  assert.equal(env.chatRetentionSweepLimit, 50)
+  assert.equal(env.hasChatMessageEncryptionKey, true)
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', CHAT_RETENTION_WORKER_INTERVAL_SECONDS: '0' }),
+    /CHAT_RETENTION_WORKER_INTERVAL_SECONDS must be a positive integer/,
   )
 })
 

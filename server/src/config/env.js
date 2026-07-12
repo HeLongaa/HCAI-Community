@@ -172,6 +172,9 @@ export const buildEnv = (source = process.env) => {
   const creativeProviderPollingLeaseTtlSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_LEASE_TTL_SECONDS', 300)
   const creativeProviderPollingIntervalSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_INTERVAL_SECONDS', 60)
   const creativeProviderPollingSweepLimit = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_SWEEP_LIMIT', 10)
+  const hasChatMessageEncryptionKey = Boolean(String(source.CHAT_MESSAGE_ENCRYPTION_KEY ?? source.CHAT_MESSAGE_ENCRYPTION_KEYS ?? '').trim())
+  const chatRetentionWorkerIntervalSeconds = positiveInteger(source, 'CHAT_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
+  const chatRetentionSweepLimit = positiveInteger(source, 'CHAT_RETENTION_SWEEP_LIMIT', 100)
   const mediaScanHistoryRetentionDays = positiveInteger(source, 'MEDIA_SCAN_HISTORY_RETENTION_DAYS', 180)
   const mediaScanHistoryRetentionMaxPerAsset = positiveInteger(source, 'MEDIA_SCAN_HISTORY_RETENTION_MAX_PER_ASSET', 50)
   const mediaScanAlertWindowMinutes = positiveInteger(source, 'MEDIA_SCAN_ALERT_WINDOW_MINUTES', 60)
@@ -416,6 +419,10 @@ export const buildEnv = (source = process.env) => {
     creativeProviderPollingIntervalSeconds,
     creativeProviderPollingSweepLimit,
     creativeProviderPollingRequireCreditReservation: boolFlag(source, 'CREATIVE_PROVIDER_POLLING_REQUIRE_CREDIT_RESERVATION', false),
+    chatRetentionWorkerEnabled: boolFlag(source, 'CHAT_RETENTION_WORKER_ENABLED', false),
+    chatRetentionWorkerIntervalSeconds,
+    chatRetentionSweepLimit,
+    hasChatMessageEncryptionKey,
     mediaScanHistoryRetentionDays,
     mediaScanHistoryRetentionMaxPerAsset,
     mediaScanAlertWindowMinutes,

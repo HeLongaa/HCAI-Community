@@ -35,6 +35,7 @@ const mediaPurposePolicies = {
 }
 const creativeWorkspaces = ['image', 'video', 'music', 'chat']
 const creativeGenerationStatuses = ['queued', 'running', 'completed', 'failed', 'cancelled', 'review_required']
+const chatModes = ['assistant', 'prompt_assist', 'storyboard']
 
 const normalizeEmail = (email) => email.trim().toLowerCase()
 const defaultHandleForEmail = (email) => {
@@ -291,6 +292,28 @@ export const parseCreateCreativeGenerationRequest = (body) => {
     providerId: optionalText(body, 'providerId', null),
   }
   return assertChatGenerationRequest(assertImageGenerationRequest(request))
+}
+
+export const parseCreateChatConversationRequest = (body) => ({
+  mode: requireOneOf(body ?? {}, 'mode', chatModes),
+})
+
+export const parseCreateChatTurnRequest = (body) => {
+  const clientTurnId = requireText(body, 'clientTurnId')
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9:._-]{7,127}$/.test(clientTurnId)) {
+    throw validationFailed('clientTurnId must be 8-128 safe characters')
+  }
+  const message = requireText(body, 'message')
+  const mode = requireOneOf(body, 'mode', chatModes)
+  const parameters = optionalCreativeParameters(body)
+  assertChatGenerationRequest({
+    workspace: 'chat',
+    mode,
+    prompt: message,
+    inputAssetIds: [],
+    parameters,
+  })
+  return { clientTurnId, message, mode, parameters }
 }
 
 const requireIdempotencyKey = (body) => {

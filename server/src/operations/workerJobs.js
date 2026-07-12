@@ -50,5 +50,18 @@ export const createProductionWorkerJobDefinitions = (repositories, env, options 
       }),
     })
   }
+  if (repositories.chat?.sweepExpired && repositories.chat?.replayDeletionTombstones) {
+    jobs.push({
+      id: 'chat-retention-sweep',
+      enabled: env.chatRetentionWorkerEnabled,
+      intervalSeconds: env.chatRetentionWorkerIntervalSeconds,
+      lease: lease('chat-retention-sweep'),
+      run: async () => {
+        const expired = await repositories.chat.sweepExpired({ limit: env.chatRetentionSweepLimit })
+        const replayed = await repositories.chat.replayDeletionTombstones({ limit: env.chatRetentionSweepLimit })
+        return { expired: expired.length, replayed: replayed.length }
+      },
+    })
+  }
   return jobs
 }
