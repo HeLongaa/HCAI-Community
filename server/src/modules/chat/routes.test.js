@@ -113,6 +113,115 @@ test('Chat stream idempotency replays the persisted terminal snapshot', async ()
   }
 })
 
+test('Chat stream authorizes attachment and explicit product context references', async () => {
+  const repository = createSeedRepository()
+  repository.media.findOwnedChatInput = async (_id, actor) => actor.handle === 'promptlin' ? {
+    id: 'asset-route-1',
+    fileName: 'brief.md',
+    contentType: 'text/markdown',
+    sizeBytes: 2048,
+    purpose: 'library_asset',
+    status: 'uploaded',
+    metadata: { security: { scanStatus: 'clean' } },
+  } : null
+  repository.tasks.findAccessibleChatContext = async () => ({ title: 'Selected task', content: 'Server-resolved task context' })
+  const server = await createRouteTestServer((router) => registerChatRoutes(router, { repositories: repository, source }))
+  try {
+    const created = await requestJson(server.url, '/api/chat/conversations', {
+      token: ownerToken,
+      body: { mode: 'assistant' },
+    })
+    const streamed = await streamTurn(server, created.payload.data.id, {
+      clientTurnId: 'client-turn-context-0001',
+      message: 'Use the selected context.',
+      mode: 'assistant',
+      inputAssetIds: ['asset-route-1'],
+      productContext: [{ type: 'task', id: 'task-route-1' }],
+      parameters: {},
+    })
+    assert.equal(streamed.status, 200)
+    assert.deepEqual(streamed.events[0].data.turn.inputAssetIds, ['asset-route-1'])
+    assert.deepEqual(streamed.events[0].data.turn.productContext, [{ type: 'task', id: 'task-route-1' }])
+    assert.equal(streamed.events[0].data.turn.safety.input.disposition, 'allow')
+    assert.equal(JSON.stringify(streamed.events).includes('Server-resolved task context'), false)
+  } finally {
+    await server.close()
+  }
+})
+
+test('Chat input asset list returns only safe attachment metadata', async () => {
+  const repository = createSeedRepository()
+  repository.media.listChatInputs = async () => ({
+    items: [{
+      id: 'asset-list-1',
+      fileName: 'brief.pdf',
+      storageKey: 'private/chat/brief.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 2048,
+      purpose: 'task_attachment',
+      status: 'uploaded',
+      metadata: { security: { scanStatus: 'clean' } },
+    }],
+    limit: 24,
+    nextCursor: null,
+  })
+  const server = await createRouteTestServer((router) => registerChatRoutes(router, { repositories: repository, source }))
+  try {
+    const response = await requestJson(server.url, '/api/chat/input-assets', {
+      method: 'GET',
+      token: ownerToken,
+    })
+    assert.equal(response.status, 200)
+    assert.deepEqual(response.payload.data, [{
+      id: 'asset-list-1',
+      fileName: 'brief.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 2048,
+      purpose: 'task_attachment',
+    }])
+    assert.equal(JSON.stringify(response.payload).includes('storageKey'), false)
+  } finally {
+    await server.close()
+  }
+})
+
+test('Chat input safety review fails before SSE and creates minimal review evidence', async () => {
+  const repository = createSeedRepository()
+  const server = await createRouteTestServer((router) => registerChatRoutes(router, {
+    repositories: repository,
+    source,
+    inputSafetyClassifier: async () => ({
+      classified: true,
+      disposition: 'review',
+      reasonCodes: ['SAFETY_REGULATED_ADVICE'],
+      source: 'injected_fixture',
+    }),
+  }))
+  try {
+    const created = await requestJson(server.url, '/api/chat/conversations', {
+      token: ownerToken,
+      body: { mode: 'assistant' },
+    })
+    const response = await requestJson(server.url, `/api/chat/conversations/${created.payload.data.id}/turns/stream`, {
+      token: ownerToken,
+      body: {
+        clientTurnId: 'client-turn-review-0001',
+        message: 'Review this request.',
+        mode: 'assistant',
+      },
+    })
+    assert.equal(response.status, 422)
+    assert.equal(response.payload.error.code, 'CHAT_INPUT_REVIEW_REQUIRED')
+    assert.match(response.payload.error.details.safetyId, /^chat-safe-/)
+    assert.match(response.payload.error.details.moderationDecisionId, /^chat-review-/)
+    const reviews = repository.adminReviews.list({ queue: 'chat_safety' })
+    assert.equal(reviews.items.some((review) => review.metadata.safetyId === response.payload.error.details.safetyId), true)
+    assert.equal(JSON.stringify(reviews.items).includes('Review this request'), false)
+  } finally {
+    await server.close()
+  }
+})
+
 test('Chat routes fail closed when the encryption key is unavailable', async () => {
   const server = await createRouteTestServer((router) => registerChatRoutes(router, {
     repositories: createSeedRepository(),

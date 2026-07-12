@@ -9,7 +9,14 @@ const modeInstructions = {
 
 const conservativeTokenEstimate = (value) => Buffer.byteLength(String(value ?? ''), 'utf8')
 
-export const buildChatContext = ({ messages, codec, mode, currentAssistantMessageId = null }) => {
+export const buildChatContext = ({
+  messages,
+  codec,
+  mode,
+  attachments = [],
+  productContext = [],
+  currentAssistantMessageId = null,
+}) => {
   const selected = messages
     .filter((message) => message.id !== currentAssistantMessageId)
     .map((message) => ({
@@ -26,12 +33,33 @@ export const buildChatContext = ({ messages, codec, mode, currentAssistantMessag
     throw new HttpError(422, 'CHAT_CONTEXT_MESSAGE_TOO_LARGE', 'A Chat message exceeds the context character limit')
   }
   const systemInstruction = modeInstructions[mode]
+  const selectedProductContext = productContext.map((item) => ({
+    type: item.type,
+    id: item.id,
+    title: item.title,
+    content: item.content,
+  }))
+  const selectedAttachments = attachments.map((item) => ({
+    id: item.id,
+    fileName: item.fileName,
+    contentType: item.contentType,
+    sizeBytes: item.sizeBytes,
+    purpose: item.purpose,
+  }))
   const estimatedInputTokens = conservativeTokenEstimate(systemInstruction) +
-    selected.reduce((total, message) => total + conservativeTokenEstimate(message.content), 0)
+    selected.reduce((total, message) => total + conservativeTokenEstimate(message.content), 0) +
+    selectedProductContext.reduce((total, item) => total + conservativeTokenEstimate(item.title) + conservativeTokenEstimate(item.content), 0) +
+    selectedAttachments.reduce((total, item) => total + conservativeTokenEstimate(item.fileName) + conservativeTokenEstimate(item.contentType), 0)
   if (estimatedInputTokens > chatCapabilityContract.context.maxInputTokens) {
     throw new HttpError(422, 'CHAT_CONTEXT_TOKEN_LIMIT', 'Chat context exceeds the maximum input size')
   }
-  return { systemInstruction, messages: selected, estimatedInputTokens }
+  return {
+    systemInstruction,
+    messages: selected,
+    attachments: selectedAttachments,
+    productContext: selectedProductContext,
+    estimatedInputTokens,
+  }
 }
 
 export const serializeChatMessage = (message, codec) => ({

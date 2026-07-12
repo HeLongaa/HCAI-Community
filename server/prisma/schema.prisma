@@ -692,6 +692,9 @@ model ChatTurn {
   status          ChatTurnStatus @default(queued)
   errorCode       String?        @map("error_code")
   usage           Json?
+  inputAssetIds   String[]       @default([]) @map("input_asset_ids")
+  productContext  Json?          @map("product_context")
+  safety          Json?
   stopRequestedAt DateTime?      @map("stop_requested_at")
   disconnectedAt  DateTime?      @map("disconnected_at")
   completedAt     DateTime?      @map("completed_at")

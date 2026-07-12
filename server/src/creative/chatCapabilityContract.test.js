@@ -34,10 +34,12 @@ test('chat capability freezes models, retention, context, and fail-closed runtim
   assert.equal(chatCapabilityContract.runtime.realProviderCallsApproved, false)
   assert.equal(chatCapabilityContract.runtime.streamingImplemented, true)
   assert.equal(chatCapabilityContract.runtime.durableConversationsImplemented, true)
+  assert.equal(chatCapabilityContract.runtime.attachmentBytesImplemented, false)
+  assert.equal(chatCapabilityContract.runtime.productionSafetyClassifierImplemented, false)
 })
 
 test('chat capability records attachment, safety, tool, and budget boundaries', () => {
-  assert.equal(chatCapabilityContract.context.attachments.runtimeAvailable, false)
+  assert.equal(chatCapabilityContract.context.attachments.runtimeAvailable, true)
   assert.equal(chatCapabilityContract.context.attachments.maximumCount, 5)
   assert.equal(chatCapabilityContract.context.attachments.cleanScanRequired, true)
   assert.equal(chatCapabilityContract.safety.unknownSafetyResponse, 'block')
@@ -65,9 +67,14 @@ test('chat request validation accepts bounded requests and rejects unsafe combin
     () => assertChatGenerationRequest({ ...request, mode: 'unknown' }),
     /mode must be one of/,
   )
+  assert.equal(assertChatGenerationRequest({ ...request, inputAssetIds: ['asset-1'] }).inputAssetIds.length, 1)
   assert.throws(
-    () => assertChatGenerationRequest({ ...request, inputAssetIds: ['asset-1'] }),
-    /attachments are unavailable until V1-22/,
+    () => assertChatGenerationRequest({ ...request, inputAssetIds: ['asset-1', 'asset-1'] }),
+    /must not contain duplicate assets/,
+  )
+  assert.throws(
+    () => assertChatGenerationRequest({ ...request, inputAssetIds: ['1', '2', '3', '4', '5', '6'] }),
+    /must include 5 or fewer assets/,
   )
   assert.throws(
     () => assertChatGenerationRequest({ ...request, parameters: { store: true } }),

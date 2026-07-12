@@ -846,21 +846,56 @@ export const openApiDocument = {
             'application/json': {
               schema: {
                 type: 'object',
+                additionalProperties: false,
                 required: ['clientTurnId', 'message', 'mode'],
                 properties: {
                   clientTurnId: { type: 'string', minLength: 8, maxLength: 128 },
                   message: { type: 'string', maxLength: 4000 },
                   mode: { type: 'string', enum: ['assistant', 'prompt_assist', 'storyboard'] },
                   parameters: { type: 'object', additionalProperties: true },
+                  inputAssetIds: {
+                    type: 'array',
+                    maxItems: 5,
+                    uniqueItems: true,
+                    items: { type: 'string', minLength: 1, maxLength: 128 },
+                  },
+                  productContext: {
+                    type: 'array',
+                    maxItems: 5,
+                    uniqueItems: true,
+                    items: {
+                      type: 'object',
+                      additionalProperties: false,
+                      required: ['type', 'id'],
+                      properties: {
+                        type: { type: 'string', enum: ['task', 'library_item'] },
+                        id: { type: 'string', minLength: 1, maxLength: 128 },
+                      },
+                    },
+                  },
                 },
               },
             },
           },
         },
         responses: {
-          '200': { description: 'SSE stream containing accepted, delta, usage, and terminal events' },
+          '200': { description: 'SSE stream containing authorized context metadata, classified deltas, usage, and terminal events' },
           '404': { description: 'Conversation not found for current owner' },
           '422': { description: 'Context, safety, or request contract rejected before dispatch' },
+        },
+      },
+    },
+    '/chat/input-assets': {
+      get: {
+        summary: 'List current user scan-clean assets eligible for Chat attachment metadata',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 24 } },
+        ],
+        responses: {
+          '200': { description: 'Owner-scoped Chat attachment metadata without storage keys or object bytes' },
+          '401': { description: 'Authentication required' },
         },
       },
     },

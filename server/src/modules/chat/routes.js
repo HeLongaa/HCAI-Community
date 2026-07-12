@@ -20,6 +20,8 @@ export const registerChatRoutes = (router, options = {}) => {
     codec: options.codec ?? requireChatMessageCodec(source),
     executeGeneration: options.executeGeneration,
     streamAdapter: options.streamAdapter,
+    inputSafetyClassifier: options.inputSafetyClassifier,
+    outputSafetyClassifier: options.outputSafetyClassifier,
     coordinator: options.coordinator,
     source,
     now: options.now,
@@ -50,6 +52,15 @@ export const registerChatRoutes = (router, options = {}) => {
     ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
   })
 
+  router.add('GET', '/api/chat/input-assets', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const page = await getService().listInputAssets(
+      parsePaginationQuery(context.query, { defaultLimit: 24, maxLimit: 100 }),
+      actor,
+    )
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
   router.add('POST', '/api/chat/conversations/:id/turns/stream', async (request, response, context) => {
     const actor = requireUser(context)
     const service = getService()
@@ -67,6 +78,8 @@ export const registerChatRoutes = (router, options = {}) => {
           turnId: prepared.turn.id,
           status: prepared.turn.status,
           errorCode: prepared.turn.errorCode,
+          safetyId: prepared.turn.safety?.output?.safetyId ?? prepared.turn.safety?.input?.safetyId ?? null,
+          moderationDecisionId: prepared.turn.safety?.reviewId ?? null,
         })
       }
       closeEventStream(response)

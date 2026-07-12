@@ -352,7 +352,7 @@ test('parseCreateCreativeGenerationRequest applies the frozen Chat request bound
       prompt: 'Use this attachment.',
       inputAssetIds: ['asset-1'],
     }),
-    'Chat attachments are unavailable until V1-22',
+    'Chat attachments require the streaming turn API',
   )
   assertValidationError(
     () => parseCreateCreativeGenerationRequest({
@@ -372,11 +372,15 @@ test('Chat conversation and streaming turn parsers enforce closed modes and idem
     message: 'Build a three-shot storyboard.',
     mode: 'storyboard',
     parameters: { maxOutputTokens: 256, responseFormat: 'text' },
+    inputAssetIds: ['asset-1'],
+    productContext: [{ type: 'task', id: 'task-1' }],
   }), {
     clientTurnId: 'client-turn-parser-1',
     message: 'Build a three-shot storyboard.',
     mode: 'storyboard',
     parameters: { maxOutputTokens: 256, responseFormat: 'text' },
+    inputAssetIds: ['asset-1'],
+    productContext: [{ type: 'task', id: 'task-1' }],
   })
   assertValidationError(
     () => parseCreateChatTurnRequest({ clientTurnId: 'short', message: 'Hello', mode: 'assistant' }),
@@ -385,6 +389,24 @@ test('Chat conversation and streaming turn parsers enforce closed modes and idem
   assertValidationError(
     () => parseCreateChatTurnRequest({ clientTurnId: 'client-turn-parser-2', message: 'Hello', mode: 'unknown' }),
     'mode must be one of: assistant, prompt_assist, storyboard',
+  )
+  assertValidationError(
+    () => parseCreateChatTurnRequest({
+      clientTurnId: 'client-turn-parser-3',
+      message: 'Hello',
+      mode: 'assistant',
+      inputAssetIds: ['asset-1', 'asset-1'],
+    }),
+    'inputAssetIds must not contain duplicate assets',
+  )
+  assertValidationError(
+    () => parseCreateChatTurnRequest({
+      clientTurnId: 'client-turn-parser-4',
+      message: 'Hello',
+      mode: 'assistant',
+      productContext: [{ type: 'task', id: 'task-1', content: 'untrusted' }],
+    }),
+    'productContext[0] contains unsupported fields',
   )
 })
 
@@ -434,6 +456,12 @@ test('parseCreateMediaUploadRequest validates upload signing payloads', () => {
       metadata,
     },
   )
+  assert.equal(parseCreateMediaUploadRequest({
+    fileName: 'brief.md',
+    contentType: 'text/markdown',
+    sizeBytes: 1024,
+    purpose: 'task_attachment',
+  }).contentType, 'text/markdown')
   assertValidationError(
     () => parseCreateMediaUploadRequest({ fileName: 'x', contentType: 'text/plain', sizeBytes: 0, purpose: 'task_attachment' }),
     'sizeBytes must be an integer between 1 and 52428800',

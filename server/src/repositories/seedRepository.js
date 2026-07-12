@@ -2024,6 +2024,17 @@ export const createSeedRepository = () => ({
       const task = getTaskById(id)
       return task ? serializeTask(task) : null
     },
+    findAccessibleChatContext: (id, actor) => {
+      const task = getTaskById(id)
+      if (!task) return null
+      const privateTask = task.visibility === 'private'
+      const participant = [getHandle(task.publisher), getHandle(task.assignee)].includes(actor.handle)
+      if (privateTask && !participant) return null
+      return {
+        title: task.title,
+        content: [task.description, ...(task.requirements ?? [])].filter(Boolean).join('\n'),
+      }
+    },
     create: (payload, actor) => {
       const id = String(seedStore.tasks.length + 1)
       const task = buildTaskViewModel({
@@ -4241,6 +4252,21 @@ export const createSeedRepository = () => ({
       if (!asset || !canAccessOwnedResource(asset.ownerHandle, actor)) return null
       return serializeMediaAsset(asset)
     },
+    findOwnedChatInput: (id, actor) => {
+      const asset = mediaAssetsById.get(String(id)) ?? null
+      return asset?.ownerHandle === actor.handle ? serializeMediaAsset(asset) : null
+    },
+    listChatInputs: (actor, options = {}) => {
+      const allowedPurposes = new Set(['task_attachment', 'library_asset'])
+      const allowedTypes = new Set(['text/plain', 'text/markdown', 'application/pdf', 'image/png', 'image/jpeg', 'image/webp'])
+      const filtered = [...mediaAssetsById.values()]
+        .filter((asset) => asset.ownerHandle === actor.handle)
+        .filter((asset) => asset.status === 'uploaded' && asset.metadata?.security?.scanStatus === 'clean')
+        .filter((asset) => allowedPurposes.has(asset.purpose) && allowedTypes.has(asset.contentType))
+        .filter((asset) => asset.sizeBytes <= 20 * 1024 * 1024)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id))
+      return paginateByCursor(filtered.map(serializeMediaAsset), options)
+    },
     listCreativeInputs: (actor, options = {}) => {
       const filtered = [...mediaAssetsById.values()]
         .filter((asset) => asset.ownerHandle === actor.handle)
@@ -5077,6 +5103,11 @@ export const createSeedRepository = () => ({
     findById: (id) => {
       const item = libraryItemsById.get(String(id)) ?? null
       return item ? serializeLibraryItem(item) : null
+    },
+    findAccessibleChatContext: (id, actor) => {
+      const item = libraryItemsById.get(String(id)) ?? null
+      if (!item || item.ownerHandle !== actor.handle) return null
+      return { title: item.title, content: item.text }
     },
     convertToTask: (id, payload, actor) => {
       const item = libraryItemsById.get(String(id)) ?? null

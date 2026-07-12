@@ -95,6 +95,8 @@ Includes:
 - Prometheus-compatible metrics exporter configuration validation
 - worker topology and lease renewal sanity checks
 - Chat message encryption configuration and the inactivity-retention worker required to enforce the 365-day lifecycle
+- Chat selected-context and 512-character output safety buffering while real Provider calls, attachment-byte reads,
+  and tools remain unavailable
 - external OAuth provider metadata validation
 - creative provider safety validation: production smoke must keep staging provider preflight and the Provider HTTP
   client disabled, while client tests use injected fetch implementations and never expose real Provider tokens

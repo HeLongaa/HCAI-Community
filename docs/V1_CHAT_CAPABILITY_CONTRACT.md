@@ -3,8 +3,9 @@
 This document closes the implementation-planning portion of V1-20. The executable source of truth is
 `server/src/creative/chatCapabilityContract.js`.
 
-Current decision: **the Chat contract is frozen; encrypted application-owned conversations and Mock SSE streaming are
-implemented, while attachments, real Provider calls, the production Chat UI, and production enablement remain unavailable**.
+Current decision: **the Chat contract is frozen; encrypted application-owned conversations, governed attachment
+metadata, explicit product context, and application-classified Mock SSE streaming are implemented. Attachment-byte
+reads, real Provider calls, the production Chat UI, and production enablement remain unavailable**.
 
 ## Provider Decision
 
@@ -45,10 +46,12 @@ V1 until a later contract changes both the token and budget policies.
 
 ## Attachments
 
-Attachment implementation belongs to V1-22 and is currently disabled. The frozen future boundary permits at most five
+V1-22 accepts at most five
 owner-accessible, scan-clean `task_attachment` or `library_asset` items, with 20 MiB per item and 40 MiB total. Allowed
 types are plain text, Markdown, PDF, PNG, JPEG, and WebP. No attachment bytes may be sent before ownership, purpose,
-MIME, size, scanner, region, and content-policy checks pass.
+MIME, size, scanner, region, and content-policy checks pass. The Mock-only V1-22 path resolves and persists safe
+attachment references and metadata but deliberately does not read or transmit object bytes; byte extraction and
+Provider transfer remain part of the separately approved V1-24 boundary.
 
 ## Persistence And Privacy
 
@@ -70,6 +73,10 @@ V1-21 implements `ChatConversation`, `ChatTurn`, `ChatMessage`, and `ChatDeletio
 versioned AES-256-GCM application encryption with conversation/message identity as authenticated additional data.
 History is owner-scoped, turn submission is idempotent, and readable content is produced only after authenticated
 decryption. The configured key ring supports key rotation without storing key material in PostgreSQL.
+
+V1-22 adds only selected attachment ids, selected product-context references, and identity-free safety evidence to
+`ChatTurn`. Product-context bodies are re-authorized and read from their owning Task or Library record for each new
+turn; they are not copied into the Chat row, safety record, audit event, or Admin review.
 
 ## Safety And Tools
 
@@ -99,7 +106,8 @@ stop behavior, disconnect recovery, CreativeGeneration quota/credit closeout, ow
 and restore-deletion tombstones. Its stream adapter is Mock-only and all emitted chunks carry explicit fixture safety
 classification.
 
-V1-22 owns attachments, selected product context, and full runtime safety enforcement. V1-23 owns the production Chat
-UI, and V1-24 owns real Provider clients and staging acceptance.
+V1-22 implements attachment metadata authorization, selected product context, input classification, bounded streaming
+classification, safe partial output, and minimal Admin review evidence. V1-23 owns the production Chat UI, and V1-24
+owns attachment-byte reading, real Provider clients, and staging acceptance.
 
-No V1-20 or V1-21 validation command requires a Provider credential or network call.
+No V1-20 through V1-22 validation command requires a Provider credential or network call.

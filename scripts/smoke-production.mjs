@@ -1,6 +1,7 @@
 import { buildEnv } from '../server/src/config/env.js'
 import { listOAuthProviderMetadata } from '../server/src/auth/oauth.js'
 import { buildChatMessageEncryptionConfig } from '../server/src/chat/messageCrypto.js'
+import { chatCapabilityContract } from '../server/src/creative/chatCapabilityContract.js'
 
 const args = new Set(process.argv.slice(2))
 const profile = [...args].find((arg) => arg.startsWith('--profile='))?.split('=')[1] ?? 'fixture'
@@ -117,6 +118,13 @@ const summarize = (env, oauthProviders) => ({
     encryptionConfigured: env.hasChatMessageEncryptionKey,
     retentionWorkerEnabled: env.chatRetentionWorkerEnabled,
     retentionSweepLimit: env.chatRetentionSweepLimit,
+    attachmentsImplemented: chatCapabilityContract.runtime.attachmentsImplemented,
+    attachmentBytesImplemented: chatCapabilityContract.runtime.attachmentBytesImplemented,
+    productContextImplemented: chatCapabilityContract.runtime.productContextImplemented,
+    runtimeSafetyImplemented: chatCapabilityContract.runtime.runtimeSafetyImplemented,
+    productionSafetyClassifierImplemented: chatCapabilityContract.runtime.productionSafetyClassifierImplemented,
+    maximumUnclassifiedBufferCharacters: chatCapabilityContract.safety.maximumUnclassifiedBufferCharacters,
+    realProviderCallsApproved: chatCapabilityContract.runtime.realProviderCallsApproved,
   },
   authCookieSameSite: env.authCookieSameSite,
   authCookieSecure: env.authCookieSecure,
@@ -194,6 +202,25 @@ check(checks, 'creative Provider callback disabled in production smoke', !env.cr
 check(checks, 'creative Provider polling disabled in production smoke', !env.creativeProviderPollingEnabled && !env.creativeProviderPollingWorkerEnabled, 'Provider polling switches must not be true in production smoke')
 check(checks, 'Chat message encryption configured', chatEncryption.configured && env.hasChatMessageEncryptionKey, 'A valid 32-byte Chat encryption key is required')
 check(checks, 'Chat retention worker configured', env.chatRetentionWorkerEnabled, 'CHAT_RETENTION_WORKER_ENABLED should be true for the worker process')
+check(
+  checks,
+  'Chat context and runtime safety boundary implemented',
+  chatCapabilityContract.runtime.attachmentsImplemented &&
+    chatCapabilityContract.runtime.productContextImplemented &&
+    chatCapabilityContract.runtime.runtimeSafetyImplemented &&
+    chatCapabilityContract.safety.maximumUnclassifiedBufferCharacters === 512,
+  'V1-22 attachment metadata, selected context, and 512-character safety buffering must remain enabled',
+)
+check(
+  checks,
+  'Chat Provider and tool boundaries remain disabled',
+  !chatCapabilityContract.runtime.realProviderCallsApproved &&
+    !chatCapabilityContract.runtime.productionEnablementApproved &&
+    !chatCapabilityContract.runtime.attachmentBytesImplemented &&
+    !chatCapabilityContract.runtime.productionSafetyClassifierImplemented &&
+    !chatCapabilityContract.tools.runtimeAvailable,
+  'V1-22 must not enable attachment-byte reads, production classifiers, real Chat Provider calls, production Chat, or tools',
+)
 check(checks, 'media alert channel configured', hasAny(env.hasMediaScanAlertWebhookUrl, env.hasMediaScanAlertSlackWebhookUrl, env.mediaScanAlertEmailRecipientCount > 0), 'At least one media alert channel must be configured')
 check(checks, 'security alert channel configured', hasAny(env.hasSecurityAlertWebhookUrl, env.hasSecurityAlertSlackWebhookUrl, env.securityAlertEmailRecipientCount > 0), 'At least one security alert channel must be configured')
 check(

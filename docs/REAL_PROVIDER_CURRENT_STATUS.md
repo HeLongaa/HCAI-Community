@@ -39,6 +39,10 @@ OpenAI GPT-5.6 Terra and Anthropic Claude Sonnet 5 appear only as disabled safe 
 conversations, stop/disconnect closeout, and retention are now implemented behind a Mock-only SSE boundary. Real
 Provider clients, credentials, automatic failover, production UI, and real Chat traffic remain unimplemented and no-go.
 
+V1-22 adds application-side attachment metadata authorization, explicit Task/Library context authorization, fail-closed
+input classification, bounded streaming output classification, safe partial output, and minimal review evidence.
+Attachment bytes and production classifiers remain unread and unregistered until V1-24.
+
 V1-44 freezes the corresponding four-modality content safety baseline in
 `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. It defines 20 risk categories,
 prohibited/block/review/allow decisions, the five-stage responsibility chain, all eight Provider policy mappings,

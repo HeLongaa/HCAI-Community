@@ -130,6 +130,7 @@ const expectedHandoffTasks = [
   'V1-11',
   'V1-20',
   'V1-21',
+  'V1-22',
   'V1-48',
   'V1-49',
   'V1-50',
@@ -339,6 +340,7 @@ addCheck(
       'ChatDeletionTombstone',
     ]) &&
     assetsById.get(chatCapabilityContract.persistence.governanceAssetId)?.ownerTasks.includes('V1-21') &&
+    assetsById.get(chatCapabilityContract.persistence.governanceAssetId)?.ownerTasks.includes('V1-22') &&
     assetsById.get(chatCapabilityContract.persistence.governanceAssetId)?.ownerTasks.includes('V1-67'),
   chatCapabilityContract.persistence.governanceAssetId,
 )

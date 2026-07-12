@@ -147,6 +147,11 @@ V1-21 implements encrypted owner-scoped conversations, idempotent Mock SSE turns
 frontend clients, inactivity cleanup, and restore-deletion tombstones. The visible Chat page remains simulated until
 V1-23, and both real Chat Provider clients remain absent and disabled.
 
+V1-22 adds strict owner/scanner/type/size checks for selected Chat attachment metadata, read-time authorization for
+explicit Task and Library context, fail-closed input classification, a 512-character streaming safety buffer, safe
+partial output, and identity-free Admin review evidence. Attachment bytes, production classifiers, and real Chat
+Provider traffic remain unavailable.
+
 ## Verification
 
 ```bash

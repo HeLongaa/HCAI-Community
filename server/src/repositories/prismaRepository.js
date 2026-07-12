@@ -2070,6 +2070,24 @@ const createPrismaRepository = async (fallbackRepository) => {
       })
       return row ? getTaskDto(row) : null
     },
+    findAccessibleChatContext: async (id, actor) => {
+      const user = await findUserByHandle(actor.handle)
+      if (!user) return null
+      const row = await client.task.findFirst({
+        where: {
+          id: String(id),
+          OR: [
+            { visibility: 'public' },
+            { publisherId: user.id },
+            { assigneeId: user.id },
+            { proposals: { some: { proposerId: user.id } } },
+            { submissions: { some: { submitterId: user.id } } },
+          ],
+        },
+        select: { title: true, description: true, acceptanceRules: true },
+      })
+      return row ? { title: row.title, content: [row.description, row.acceptanceRules].filter(Boolean).join('\n') } : null
+    },
     create: async (payload, actor) => {
       const publisher = await client.user.findFirst({
         where: { profile: { handle: actor.handle } },
@@ -5937,6 +5955,36 @@ const createPrismaRepository = async (fallbackRepository) => {
       if (ownerHandle !== actor.handle && !hasPermission(actor, 'admin:access')) return null
       return getMediaAssetDto(asset)
     },
+    findOwnedChatInput: async (id, actor) => {
+      const asset = await client.mediaAsset.findFirst({
+        where: { id: String(id), ownerId: String(actor.id) },
+      })
+      return asset ? getMediaAssetDto(asset) : null
+    },
+    listChatInputs: async (actor, options = {}) => {
+      const owner = await findUserByHandle(actor.handle)
+      if (!owner) return { items: [], limit: options.limit ?? 24, nextCursor: null }
+      const limit = Math.min(Math.max(Number(options.limit ?? 24), 1), 100)
+      const assets = await client.mediaAsset.findMany({
+        where: {
+          ownerId: owner.id,
+          status: 'uploaded',
+          purpose: { in: ['task_attachment', 'library_asset'] },
+          contentType: { in: ['text/plain', 'text/markdown', 'application/pdf', 'image/png', 'image/jpeg', 'image/webp'] },
+          sizeBytes: { lte: 20 * 1024 * 1024 },
+          metadata: { path: ['security', 'scanStatus'], equals: 'clean' },
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: limit + 1,
+        ...(options.cursor ? { cursor: { id: String(options.cursor) }, skip: 1 } : {}),
+      })
+      const page = assets.slice(0, limit)
+      return {
+        items: page.map(getMediaAssetDto),
+        limit,
+        nextCursor: assets.length > limit ? page.at(-1)?.id ?? null : null,
+      }
+    },
     listCreativeInputs: async (actor, options = {}) => {
       const owner = await findUserByHandle(actor.handle)
       if (!owner) return { items: [], limit: options.limit ?? 24, nextCursor: null }
@@ -6825,6 +6873,13 @@ const createPrismaRepository = async (fallbackRepository) => {
         sourceId: row.sourceId ?? null,
         metadata: row.metadata ?? null,
       }
+    },
+    findAccessibleChatContext: async (id, actor) => {
+      const row = await client.libraryItem.findFirst({
+        where: { id: String(id), userId: String(actor.id) },
+        select: { title: true, content: true },
+      })
+      return row ? { title: row.title, content: row.content } : null
     },
     convertToTask: async (id, payload, actor) => {
       const item = await client.libraryItem.findUnique({

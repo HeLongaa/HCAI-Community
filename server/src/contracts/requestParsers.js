@@ -18,7 +18,7 @@ const handlePattern = /^[a-zA-Z0-9_-]{3,32}$/
 const mediaPurposePolicies = {
   task_attachment: {
     maxSizeBytes: 50 * 1024 * 1024,
-    contentTypes: [/^application\/pdf$/i, /^text\/plain$/i, /^image\/(png|jpe?g|webp|gif)$/i, /^application\/zip$/i],
+    contentTypes: [/^application\/pdf$/i, /^text\/(plain|markdown)$/i, /^image\/(png|jpe?g|webp|gif)$/i, /^application\/zip$/i],
   },
   submission_asset: {
     maxSizeBytes: 100 * 1024 * 1024,
@@ -36,6 +36,8 @@ const mediaPurposePolicies = {
 const creativeWorkspaces = ['image', 'video', 'music', 'chat']
 const creativeGenerationStatuses = ['queued', 'running', 'completed', 'failed', 'cancelled', 'review_required']
 const chatModes = ['assistant', 'prompt_assist', 'storyboard']
+const chatProductContextTypes = ['task', 'library_item']
+const safeResourceIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9:._-]{0,127}$/
 
 const normalizeEmail = (email) => email.trim().toLowerCase()
 const defaultHandleForEmail = (email) => {
@@ -291,6 +293,9 @@ export const parseCreateCreativeGenerationRequest = (body) => {
     parameters: optionalCreativeParameters(body),
     providerId: optionalText(body, 'providerId', null),
   }
+  if (request.workspace === 'chat' && request.inputAssetIds.length > 0) {
+    throw validationFailed('Chat attachments require the streaming turn API')
+  }
   return assertChatGenerationRequest(assertImageGenerationRequest(request))
 }
 
@@ -306,14 +311,40 @@ export const parseCreateChatTurnRequest = (body) => {
   const message = requireText(body, 'message')
   const mode = requireOneOf(body, 'mode', chatModes)
   const parameters = optionalCreativeParameters(body)
+  const inputAssetIds = optionalStringArray(body, 'inputAssetIds').map((value) => value.trim())
+  if (inputAssetIds.some((value) => !safeResourceIdPattern.test(value))) {
+    throw validationFailed('inputAssetIds must contain 1-128 safe character ids')
+  }
+  const rawProductContext = body?.productContext ?? []
+  if (!Array.isArray(rawProductContext) || rawProductContext.length > 5) {
+    throw validationFailed('productContext must be an array with 5 or fewer references')
+  }
+  const productContext = rawProductContext.map((reference, index) => {
+    if (!reference || typeof reference !== 'object' || Array.isArray(reference)) {
+      throw validationFailed(`productContext[${index}] must be an object`)
+    }
+    const keys = Object.keys(reference)
+    if (keys.some((key) => !['type', 'id'].includes(key))) {
+      throw validationFailed(`productContext[${index}] contains unsupported fields`)
+    }
+    const type = requireOneOf(reference, 'type', chatProductContextTypes)
+    const id = requireText(reference, 'id')
+    if (!safeResourceIdPattern.test(id)) {
+      throw validationFailed(`productContext[${index}].id must be 1-128 safe characters`)
+    }
+    return { type, id }
+  })
+  if (new Set(productContext.map((reference) => `${reference.type}:${reference.id}`)).size !== productContext.length) {
+    throw validationFailed('productContext must not contain duplicate references')
+  }
   assertChatGenerationRequest({
     workspace: 'chat',
     mode,
     prompt: message,
-    inputAssetIds: [],
+    inputAssetIds,
     parameters,
   })
-  return { clientTurnId, message, mode, parameters }
+  return { clientTurnId, message, mode, parameters, inputAssetIds, productContext }
 }
 
 const requireIdempotencyKey = (body) => {

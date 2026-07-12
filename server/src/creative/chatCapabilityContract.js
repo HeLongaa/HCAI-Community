@@ -22,7 +22,7 @@ const modes = [
     label: 'Assistant',
     runtimeAvailable: true,
     unavailableReason: null,
-    inputAssets: { minimum: 0, maximum: 0, purposes: [], contentTypes: [] },
+    inputAssets: { minimum: 0, maximum: 5, purposes: ['task_attachment', 'library_asset'], contentTypes: ['text/plain', 'text/markdown', 'application/pdf', 'image/png', 'image/jpeg', 'image/webp'] },
     parameters: ['maxOutputTokens', 'responseFormat'],
   },
   {
@@ -30,7 +30,7 @@ const modes = [
     label: 'Prompt Assist',
     runtimeAvailable: true,
     unavailableReason: null,
-    inputAssets: { minimum: 0, maximum: 0, purposes: [], contentTypes: [] },
+    inputAssets: { minimum: 0, maximum: 5, purposes: ['task_attachment', 'library_asset'], contentTypes: ['text/plain', 'text/markdown', 'application/pdf', 'image/png', 'image/jpeg', 'image/webp'] },
     parameters: ['maxOutputTokens', 'responseFormat'],
   },
   {
@@ -38,7 +38,7 @@ const modes = [
     label: 'Storyboard',
     runtimeAvailable: true,
     unavailableReason: null,
-    inputAssets: { minimum: 0, maximum: 0, purposes: [], contentTypes: [] },
+    inputAssets: { minimum: 0, maximum: 5, purposes: ['task_attachment', 'library_asset'], contentTypes: ['text/plain', 'text/markdown', 'application/pdf', 'image/png', 'image/jpeg', 'image/webp'] },
     parameters: ['maxOutputTokens', 'responseFormat'],
   },
 ]
@@ -80,7 +80,11 @@ export const chatCapabilityContract = {
     silentMockFallback: false,
     streamingImplemented: true,
     durableConversationsImplemented: true,
-    attachmentsImplemented: false,
+    attachmentsImplemented: true,
+    attachmentBytesImplemented: false,
+    productContextImplemented: true,
+    runtimeSafetyImplemented: true,
+    productionSafetyClassifierImplemented: false,
   },
   models: {
     primary: {
@@ -118,7 +122,7 @@ export const chatCapabilityContract = {
     implicitAdminOrAuditContextAllowed: false,
     explicitUserSelectionRequiredForProductContext: true,
     attachments: {
-      runtimeAvailable: false,
+      runtimeAvailable: true,
       implementationTaskId: 'V1-22',
       maximumCount: 5,
       maximumBytesPerAsset: 20 * 1024 * 1024,
@@ -263,8 +267,11 @@ export const assertChatGenerationRequest = (request) => {
   if (request.prompt.length > chatCapabilityContract.maxPromptCharacters) {
     throw validationFailed(`prompt must be ${chatCapabilityContract.maxPromptCharacters} characters or fewer`)
   }
-  if (request.inputAssetIds.length !== 0) {
-    throw validationFailed('Chat attachments are unavailable until V1-22')
+  if (request.inputAssetIds.length > mode.inputAssets.maximum) {
+    throw validationFailed(`inputAssetIds must include ${mode.inputAssets.maximum} or fewer assets for ${mode.id}`)
+  }
+  if (new Set(request.inputAssetIds).size !== request.inputAssetIds.length) {
+    throw validationFailed('inputAssetIds must not contain duplicate assets')
   }
   Object.entries(request.parameters).forEach(([key, value]) => {
     if (!mode.parameters.includes(key)) {
