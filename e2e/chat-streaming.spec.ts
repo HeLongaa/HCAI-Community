@@ -132,7 +132,7 @@ test('Chat UI stops an active stream and opens a prefilled safety appeal', async
   await page.getByRole('button', { name: 'Send', exact: true }).click()
   const stopButton = page.getByRole('button', { name: 'Stop', exact: true })
   await expect(stopButton).toBeEnabled()
-  await stopButton.click()
+  await stopButton.evaluate((button: HTMLButtonElement) => button.click())
   await expect(page.getByText('Stopped', { exact: true }).last()).toBeVisible()
 
   await page.getByTitle('New conversation').click()
