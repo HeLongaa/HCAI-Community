@@ -196,6 +196,15 @@ test('GET /api/creative/providers lists safe provider capability metadata', asyn
     const sonnet = payload.data.providers.find((provider) => provider.id === 'anthropic-claude-sonnet-5')
     assert.equal(sonnet.safeMetadata.role, 'backup')
     assert.equal(sonnet.safeMetadata.automaticFailoverAllowed, false)
+    const videoCapability = payload.data.providers[0].capabilities.find((capability) => capability.workspace === 'video')
+    assert.equal(videoCapability.contractVersion, 'video-capability-v1')
+    assert.deepEqual(videoCapability.modes, ['text_to_video', 'image_to_video', 'music_video'])
+    assert.equal(videoCapability.output.formats[0], 'mp4')
+    assert.equal(videoCapability.lifecycle.timeoutSeconds, 900)
+    const veo = payload.data.providers.find((provider) => provider.id === 'google-veo-3-1-fast')
+    assert.equal(veo.enabled, false)
+    assert.equal(veo.safeMetadata.c2paExpected, true)
+    assert.deepEqual(veo.capabilities[0].modes, ['text_to_video', 'image_to_video'])
   } finally {
     await server.close()
   }

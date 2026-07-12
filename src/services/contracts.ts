@@ -762,6 +762,7 @@ export type ApiCreativeParameterDefinition = {
 export type ApiCreativeModeContract = {
   id: 'text_to_image' | 'image_to_image' | 'image_edit' | 'image_variation'
     | 'assistant' | 'prompt_assist' | 'storyboard'
+    | 'text_to_video' | 'image_to_video' | 'music_video'
   label: string
   runtimeAvailable: boolean
   available: boolean
@@ -802,6 +803,8 @@ export type ApiCreativeCapability = {
   context?: Record<string, unknown>
   persistence?: Record<string, unknown>
   tools?: Record<string, unknown>
+  lifecycle?: Record<string, unknown>
+  composition?: Record<string, unknown>
 }
 
 export type ApiCreativeProviderCatalogEntry = ApiCreativeProvider & {

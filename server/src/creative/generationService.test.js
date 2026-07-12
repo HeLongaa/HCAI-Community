@@ -41,7 +41,7 @@ test('getCreativeProviderCatalog exposes safe mock provider capabilities', () =>
   const catalog = getCreativeProviderCatalog({ NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' })
 
   assert.equal(catalog.defaultProviderId, 'mock')
-  assert.equal(catalog.providers.length, 4)
+  assert.equal(catalog.providers.length, 6)
   assert.equal(catalog.providers[0].id, 'mock')
   assert.equal(catalog.providers[0].enabled, true)
   assert.equal(catalog.providers[0].safeMetadata.externalCredentialsConfigured, false)
@@ -63,6 +63,41 @@ test('getCreativeProviderCatalog exposes safe mock provider capabilities', () =>
   assert.equal(terra.capabilities[0].contractVersion, 'chat-capability-v1')
   assert.equal(terra.capabilities[0].persistence.primaryProvider.store, false)
   assert.equal(sonnet.safeMetadata.automaticFailoverAllowed, false)
+  const veo = catalog.providers.find((provider) => provider.id === 'google-veo-3-1-fast')
+  const runway = catalog.providers.find((provider) => provider.id === 'runway-gen-4-5')
+  assert.equal(veo.enabled, false)
+  assert.equal(veo.safeMetadata.adapterImplemented, false)
+  assert.equal(veo.safeMetadata.c2paExpected, true)
+  assert.deepEqual(veo.capabilities[0].modes, ['text_to_video', 'image_to_video'])
+  assert.equal(runway.safeMetadata.automaticFailoverAllowed, false)
+})
+
+test('executeCreativeGeneration applies the Video contract before mock execution', async () => {
+  resetCreativePolicyState()
+  const videoRequest = {
+    workspace: 'video',
+    mode: 'text_to_video',
+    prompt: 'A restrained product launch film.',
+    inputAssetIds: [],
+    parameters: { aspectRatio: '9:16', durationSeconds: 8, motionPreset: 'cinematic', outputFormat: 'mp4' },
+    providerId: null,
+  }
+  const generated = await executeCreativeGeneration({
+    request: videoRequest,
+    actor,
+    source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' },
+  })
+  assert.equal(generated.workspace, 'video')
+  assert.equal(generated.outputs[0].type, 'video')
+  assert.equal(generated.usage.estimatedCredits, 8)
+  await assert.rejects(
+    executeCreativeGeneration({
+      request: { ...videoRequest, parameters: { ...videoRequest.parameters, durationSeconds: 10 } },
+      actor,
+      source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' },
+    }),
+    /parameters.durationSeconds must be one of: 4, 6, 8/,
+  )
 })
 
 test('executeCreativeGeneration applies the Chat contract before mock execution', async () => {

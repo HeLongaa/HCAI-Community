@@ -3,6 +3,7 @@ import { listOAuthProviderMetadata } from '../server/src/auth/oauth.js'
 import { buildChatMessageEncryptionConfig } from '../server/src/chat/messageCrypto.js'
 import { buildOpenAIChatRuntimeConfig } from '../server/src/chat/openaiChatProvider.js'
 import { chatCapabilityContract } from '../server/src/creative/chatCapabilityContract.js'
+import { videoCapabilityContract } from '../server/src/creative/videoCapabilityContract.js'
 
 const args = new Set(process.argv.slice(2))
 const profile = [...args].find((arg) => arg.startsWith('--profile='))?.split('=')[1] ?? 'fixture'
@@ -132,6 +133,16 @@ const summarize = (env, oauthProviders, chatRuntime) => ({
     safetyClassifierEnabled: chatRuntime.safetyClassifierEnabled,
     attachmentBytesEnabled: chatRuntime.attachmentBytesEnabled,
   },
+  video: {
+    contractVersion: videoCapabilityContract.schemaVersion,
+    primaryProviderId: videoCapabilityContract.models.primary.providerId,
+    backupProviderId: videoCapabilityContract.models.backup.providerId,
+    providerAdapterImplemented: videoCapabilityContract.runtime.providerAdapterImplemented,
+    providerHttpClientImplemented: videoCapabilityContract.runtime.providerHttpClientImplemented,
+    providerLifecycleRegistered: videoCapabilityContract.runtime.providerLifecycleRegistered,
+    realProviderCallsApproved: videoCapabilityContract.runtime.realProviderCallsApproved,
+    productionEnablementApproved: videoCapabilityContract.runtime.productionEnablementApproved,
+  },
   authCookieSameSite: env.authCookieSameSite,
   authCookieSecure: env.authCookieSecure,
   authTrustedOriginCount: env.authTrustedOrigins.length,
@@ -235,6 +246,22 @@ check(
     !chatRuntime.token &&
     !chatCapabilityContract.tools.runtimeAvailable,
   'V1-24 code boundaries must remain runtime-disabled in production until separate approval',
+)
+check(
+  checks,
+  'Video capability contract remains Provider-disabled',
+  videoCapabilityContract.schemaVersion === 'video-capability-v1' &&
+    videoCapabilityContract.models.primary.providerId === 'google-veo-3-1-fast' &&
+    videoCapabilityContract.models.primary.enabled === false &&
+    videoCapabilityContract.models.backup.providerId === 'runway-gen-4-5' &&
+    videoCapabilityContract.models.backup.enabled === false &&
+    videoCapabilityContract.runtime.providerAdapterImplemented === false &&
+    videoCapabilityContract.runtime.providerHttpClientImplemented === false &&
+    videoCapabilityContract.runtime.providerLifecycleRegistered === false &&
+    videoCapabilityContract.runtime.automaticFailoverAllowed === false &&
+    videoCapabilityContract.runtime.realProviderCallsApproved === false &&
+    videoCapabilityContract.runtime.productionEnablementApproved === false,
+  'V1-25 freezes Video semantics without registering Provider traffic',
 )
 check(checks, 'media alert channel configured', hasAny(env.hasMediaScanAlertWebhookUrl, env.hasMediaScanAlertSlackWebhookUrl, env.mediaScanAlertEmailRecipientCount > 0), 'At least one media alert channel must be configured')
 check(checks, 'security alert channel configured', hasAny(env.hasSecurityAlertWebhookUrl, env.hasSecurityAlertSlackWebhookUrl, env.securityAlertEmailRecipientCount > 0), 'At least one security alert channel must be configured')

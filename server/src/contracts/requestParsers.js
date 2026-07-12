@@ -12,6 +12,7 @@ import {
 import { permissions } from '../auth/permissions.js'
 import { assertChatGenerationRequest } from '../creative/chatCapabilityContract.js'
 import { assertImageGenerationRequest } from '../creative/imageCapabilityContract.js'
+import { assertVideoGenerationRequest } from '../creative/videoCapabilityContract.js'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const handlePattern = /^[a-zA-Z0-9_-]{3,32}$/
@@ -296,7 +297,7 @@ export const parseCreateCreativeGenerationRequest = (body) => {
   if (request.workspace === 'chat' && request.inputAssetIds.length > 0) {
     throw validationFailed('Chat attachments require the streaming turn API')
   }
-  return assertChatGenerationRequest(assertImageGenerationRequest(request))
+  return assertVideoGenerationRequest(assertChatGenerationRequest(assertImageGenerationRequest(request)))
 }
 
 export const parseCreateChatConversationRequest = (body) => ({

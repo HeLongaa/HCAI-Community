@@ -2,20 +2,13 @@ import { HttpError } from '../common/errors/httpError.js'
 import { buildCreativeProviderConfig } from '../config/env.js'
 import { chatCapabilityForProvider } from './chatCapabilityContract.js'
 import { imageCapabilityForProvider } from './imageCapabilityContract.js'
+import { videoCapabilityForProvider } from './videoCapabilityContract.js'
 
 export const creativeWorkspaces = ['image', 'video', 'music', 'chat']
 
 export const creativeCapabilities = {
   image: imageCapabilityForProvider('mock'),
-  video: {
-    workspace: 'video',
-    label: 'Video Studio',
-    modes: ['text_to_video', 'image_to_video', 'music_video'],
-    inputAssetPurposes: ['submission_asset', 'library_asset'],
-    outputTypes: ['video'],
-    maxPromptCharacters: 2000,
-    supportedParameters: ['aspectRatio', 'durationSeconds', 'motionPreset'],
-  },
+  video: videoCapabilityForProvider('mock'),
   music: {
     workspace: 'music',
     label: 'Music Studio',
@@ -144,6 +137,34 @@ const buildChatProvider = ({ id, label, mode, role }) => ({
   },
 })
 
+const buildVideoProvider = ({ id, label, mode, role }) => ({
+  id,
+  label,
+  mode,
+  enabled: false,
+  configured: false,
+  default: false,
+  fixtureInjectable: false,
+  capabilities: [videoCapabilityForProvider(id)],
+  safeMetadata: {
+    externalCredentialsConfigured: false,
+    persistsOutputs: true,
+    costMetered: true,
+    asynchronous: true,
+    stagingOnly: true,
+    productionDenied: true,
+    approvalRequired: true,
+    role,
+    adapterImplemented: false,
+    httpClientImplemented: false,
+    networkCallsEnabled: false,
+    callbackEnabled: false,
+    pollingEnabled: false,
+    automaticFailoverAllowed: false,
+    c2paExpected: role === 'primary',
+  },
+})
+
 export const createCreativeProviderRegistry = (source = process.env) => {
   const config = buildCreativeProviderConfig(source)
   const providerShells = config.providers
@@ -164,6 +185,18 @@ export const createCreativeProviderRegistry = (source = process.env) => {
         id: 'anthropic-claude-sonnet-5',
         label: 'Anthropic Claude Sonnet 5',
         mode: 'anthropic_chat',
+        role: 'backup',
+      }),
+      buildVideoProvider({
+        id: 'google-veo-3-1-fast',
+        label: 'Google Veo 3.1 Fast',
+        mode: 'google_video',
+        role: 'primary',
+      }),
+      buildVideoProvider({
+        id: 'runway-gen-4-5',
+        label: 'Runway Gen-4.5',
+        mode: 'runway_video',
         role: 'backup',
       }),
       ...providerShells,
