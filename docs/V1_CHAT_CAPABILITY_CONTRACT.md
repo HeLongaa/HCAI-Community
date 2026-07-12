@@ -4,8 +4,8 @@ This document closes the implementation-planning portion of V1-20. The executabl
 `server/src/creative/chatCapabilityContract.js`.
 
 Current decision: **the Chat contract is frozen; encrypted application-owned conversations, governed attachment
-metadata, explicit product context, and application-classified Mock SSE streaming are implemented. Attachment-byte
-reads, real Provider calls, the production Chat UI, and production enablement remain unavailable**.
+metadata, explicit product context, application-classified Mock SSE streaming, and the production Chat UI are
+implemented. Attachment-byte reads, real Provider calls, and production Provider enablement remain unavailable**.
 
 ## Provider Decision
 
