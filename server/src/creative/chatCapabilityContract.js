@@ -72,14 +72,14 @@ export const chatCapabilityContract = {
   schemaVersion: chatCapabilityContractVersion,
   asOf: '2026-07-13',
   workspace: 'chat',
-  decisionState: 'conditionally_approved_for_implementation_planning',
+  decisionState: 'implemented_mock_only',
   runtime: {
     realProviderCallsApproved: false,
     productionEnablementApproved: false,
     productionFallback: 'fail_closed',
     silentMockFallback: false,
-    streamingImplemented: false,
-    durableConversationsImplemented: false,
+    streamingImplemented: true,
+    durableConversationsImplemented: true,
     attachmentsImplemented: false,
   },
   models: {

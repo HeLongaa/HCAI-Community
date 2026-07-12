@@ -57,6 +57,7 @@ import {
 import { dispatchMediaScanAlert } from '../media/alertDispatcher.js'
 import { writeStorageObject } from '../storage/objectWriter.js'
 import { writeJsonArchive } from '../storage/archiveWriter.js'
+import { createPrismaChatRepository } from '../chat/prismaChatRepository.js'
 
 const { Prisma, PrismaClient } = prismaClientPkg
 const safeProviderJobIdPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
@@ -182,6 +183,8 @@ const createPrismaRepository = async (fallbackRepository) => {
       }),
     })
   }
+
+  const chat = createPrismaChatRepository(client, { recordAudit })
 
   const leaseExpiry = (ttlSeconds) => new Date(Date.now() + Math.max(1, Number(ttlSeconds ?? 300)) * 1000)
 
@@ -7575,6 +7578,7 @@ const createPrismaRepository = async (fallbackRepository) => {
     providerBudgetNotifications,
     providerLifecycleAudit,
     providerBudgetAudit,
+    chat,
     creativeGenerations,
     creativeGenerationMutations,
     creativeProviderReplays,

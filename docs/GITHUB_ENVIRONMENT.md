@@ -15,6 +15,12 @@ At least one auth secret is required:
 | `ACCESS_TOKEN_SECRET` | Yes, unless `SESSION_SECRET` is set | Must be at least 32 characters in production |
 | `SESSION_SECRET` | Alternative | Backward-compatible fallback for access token signing |
 
+Chat message encryption secret:
+
+| Name | Required | Notes |
+| --- | --- | --- |
+| `CHAT_MESSAGE_ENCRYPTION_KEY` | Yes | Base64-encoded 32-byte AES-256-GCM key. Keep the previous key in `CHAT_MESSAGE_ENCRYPTION_KEYS` during rotation until all retained messages have been re-encrypted or expired. |
+
 Object storage secrets for managed S3 mode:
 
 | Name | Required | Notes |
@@ -106,6 +112,16 @@ Creative provider preflight variables:
 | `CREATIVE_PROVIDER_POLLING_SWEEP_LIMIT` | Optional oldest-first sweep cap | `10` |
 | `CREATIVE_PROVIDER_POLLING_REQUIRE_CREDIT_RESERVATION` | Optional accounting prerequisite | `false` |
 
+Chat encryption and retention variables:
+
+| Name | Required | Example |
+| --- | --- | --- |
+| `CHAT_MESSAGE_ENCRYPTION_ACTIVE_KEY_ID` | Yes | `v1`; identifies the key used for new ciphertext |
+| `CHAT_MESSAGE_ENCRYPTION_KEYS` | During key rotation | `v1:<base64-key>,v2:<base64-key>`; store this value as a secret when used |
+| `CHAT_RETENTION_WORKER_ENABLED` | Yes for the worker process | `true` |
+| `CHAT_RETENTION_WORKER_INTERVAL_SECONDS` | Recommended | `3600` |
+| `CHAT_RETENTION_SWEEP_LIMIT` | Recommended | `100` |
+
 Production environments must not set `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true`,
 `CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=true`, `CREATIVE_PROVIDER_CALLBACK_ENABLED=true`,
 `CREATIVE_PROVIDER_POLLING_ENABLED=true`, `CREATIVE_PROVIDER_POLLING_WORKER_ENABLED=true`, or
@@ -175,6 +191,9 @@ These have code defaults, but setting them explicitly makes production behavior 
 | `TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS` | `300` or deployment-specific |
 | `TASK_STALE_SUBMISSION_OLDER_THAN_HOURS` | Review SLA threshold, e.g. `72` |
 | `TASK_STALE_SUBMISSION_SWEEP_LIMIT` | Per-run cap, e.g. `25` |
+| `CHAT_RETENTION_WORKER_ENABLED` | `true` for the worker process so inactive Chat records are deleted on schedule |
+| `CHAT_RETENTION_WORKER_INTERVAL_SECONDS` | Sweep cadence, e.g. `3600` |
+| `CHAT_RETENTION_SWEEP_LIMIT` | Per-run oldest-first cap, e.g. `100` |
 | `CREATIVE_PROVIDER_POLLING_ENABLED` | `false` unless a named staging status-read approval is active |
 | `CREATIVE_PROVIDER_POLLING_WORKER_ENABLED` | `false` unless the same approval authorizes the dedicated worker |
 | `CREATIVE_PROVIDER_POLLING_MAX_AGE_SECONDS` | Bounded staging timeout, e.g. `3600` |
@@ -201,7 +220,7 @@ Metrics exporter secret:
 2. Run the `Quality Gates` workflow manually.
 3. Select `smoke_profile=env`.
 4. Set `environment=production`.
-5. Confirm the `Deployment Environment Smoke` job prints only safe summary metadata and all checks pass.
+5. Confirm the `Deployment Environment Smoke` job prints only safe summary metadata, reports Chat encryption as configured, and all checks pass.
 6. Complete the multi-instance rehearsal in `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` before the first production rollout with more than one API or worker process.
 
 For staging-only creative provider preflight, use a dedicated staging environment and follow `docs/REAL_PROVIDER_STAGING_STRATEGY.md` and `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md`. Keep `CREATIVE_PROVIDER_MODE=disabled` so the creative staging smoke can validate secret presence without allowing paid provider calls. Use `CREATIVE_STAGING_SMOKE_MODE=preflight` for the legacy Replicate preflight, `adapter-shell` for its default-disabled adapter metadata, `callback-api` for V1-06 callback configuration, `polling-worker` for V1-07 status-client/worker configuration, and `openai-image-client` for the V1-19 OpenAI Image client, cap, and budget metadata preflight. The OpenAI mode requires `CREATIVE_OPENAI_IMAGE_API_TOKEN` as an Environment secret plus the variables listed in `docs/V1_IMAGE_STAGING_RELEASE_GATE.md`; it requires `CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED=false`. These smoke modes parse safe metadata only and make no callback or Provider request. Before any real integration, also review the go/no-go, rollback, and kill-switch gate in `docs/REAL_PROVIDER_READINESS_CLOSEOUT_GATE.md`.

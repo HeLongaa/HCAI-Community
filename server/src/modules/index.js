@@ -13,6 +13,7 @@ import { registerMediaRoutes } from './media/routes.js'
 import { registerNotificationRoutes } from './notifications/routes.js'
 import { registerCreativeRoutes } from './creative/routes.js'
 import { registerComplianceRoutes } from './compliance/routes.js'
+import { registerChatRoutes } from './chat/routes.js'
 
 export const registerModules = (router) => {
   registerHealthRoutes(router)
@@ -26,6 +27,7 @@ export const registerModules = (router) => {
   registerLibraryRoutes(router)
   registerMediaRoutes(router)
   registerCreativeRoutes(router)
+  registerChatRoutes(router)
   registerNotificationRoutes(router)
   registerAdminRoutes(router)
   registerProfileRoutes(router)

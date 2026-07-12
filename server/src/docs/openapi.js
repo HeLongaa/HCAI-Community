@@ -773,6 +773,108 @@ export const openApiDocument = {
         },
       },
     },
+    '/chat/conversations': {
+      get: {
+        summary: 'List owner-scoped Chat conversations',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 } },
+        ],
+        responses: {
+          '200': { description: 'Encrypted application-owned conversation summaries' },
+          '401': { description: 'Authentication required' },
+          '503': { description: 'Chat encryption is unavailable' },
+        },
+      },
+      post: {
+        summary: 'Create an application-owned Chat conversation',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['mode'],
+                properties: { mode: { type: 'string', enum: ['assistant', 'prompt_assist', 'storyboard'] } },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Conversation created' },
+          '401': { description: 'Authentication required' },
+          '503': { description: 'Chat encryption is unavailable' },
+        },
+      },
+    },
+    '/chat/conversations/{id}': {
+      delete: {
+        summary: 'Delete an owned Chat conversation and create restore-replay evidence',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Conversation deleted with bounded tombstone metadata' },
+          '404': { description: 'Conversation not found for current owner' },
+        },
+      },
+    },
+    '/chat/conversations/{id}/messages': {
+      get: {
+        summary: 'Read decrypted messages from an owned Chat conversation',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 100 } },
+        ],
+        responses: {
+          '200': { description: 'Owner-scoped decrypted messages' },
+          '404': { description: 'Conversation not found for current owner' },
+        },
+      },
+    },
+    '/chat/conversations/{id}/turns/stream': {
+      post: {
+        summary: 'Start an idempotent Chat turn over server-sent events',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['clientTurnId', 'message', 'mode'],
+                properties: {
+                  clientTurnId: { type: 'string', minLength: 8, maxLength: 128 },
+                  message: { type: 'string', maxLength: 4000 },
+                  mode: { type: 'string', enum: ['assistant', 'prompt_assist', 'storyboard'] },
+                  parameters: { type: 'object', additionalProperties: true },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'SSE stream containing accepted, delta, usage, and terminal events' },
+          '404': { description: 'Conversation not found for current owner' },
+          '422': { description: 'Context, safety, or request contract rejected before dispatch' },
+        },
+      },
+    },
+    '/chat/turns/{id}/stop': {
+      post: {
+        summary: 'Request idempotent stop for an owned Chat turn',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Stop request state and current turn snapshot' },
+          '404': { description: 'Turn not found for current owner' },
+        },
+      },
+    },
     '/creative/input-assets': {
       get: {
         summary: 'List current user clean image assets available as creative inputs',

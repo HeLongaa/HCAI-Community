@@ -6,6 +6,8 @@ import {
   parseConvertToTaskRequest,
   parseCompleteMediaUploadRequest,
   parseCreateCreativeGenerationRequest,
+  parseCreateChatConversationRequest,
+  parseCreateChatTurnRequest,
   parseCreativeGenerationHistoryQuery,
   parseAdminAuditListQuery,
   parseAdminCreativeGenerationListQuery,
@@ -360,6 +362,29 @@ test('parseCreateCreativeGenerationRequest applies the frozen Chat request bound
       parameters: { store: true },
     }),
     'parameters.store is not supported for assistant',
+  )
+})
+
+test('Chat conversation and streaming turn parsers enforce closed modes and idempotency', () => {
+  assert.deepEqual(parseCreateChatConversationRequest({ mode: 'storyboard' }), { mode: 'storyboard' })
+  assert.deepEqual(parseCreateChatTurnRequest({
+    clientTurnId: 'client-turn-parser-1',
+    message: 'Build a three-shot storyboard.',
+    mode: 'storyboard',
+    parameters: { maxOutputTokens: 256, responseFormat: 'text' },
+  }), {
+    clientTurnId: 'client-turn-parser-1',
+    message: 'Build a three-shot storyboard.',
+    mode: 'storyboard',
+    parameters: { maxOutputTokens: 256, responseFormat: 'text' },
+  })
+  assertValidationError(
+    () => parseCreateChatTurnRequest({ clientTurnId: 'short', message: 'Hello', mode: 'assistant' }),
+    'clientTurnId must be 8-128 safe characters',
+  )
+  assertValidationError(
+    () => parseCreateChatTurnRequest({ clientTurnId: 'client-turn-parser-2', message: 'Hello', mode: 'unknown' }),
+    'mode must be one of: assistant, prompt_assist, storyboard',
   )
 })
 

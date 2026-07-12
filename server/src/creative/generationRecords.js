@@ -58,7 +58,7 @@ export const buildCreativeGenerationRecordPayload = (generation, actor, override
   providerMode: generation.provider?.mode ?? null,
   status: overrides.status ?? 'queued',
   promptHash: sha256(generation.prompt),
-  promptPreview: promptPreview(generation.prompt),
+  promptPreview: overrides.promptPreview === undefined ? promptPreview(generation.prompt) : overrides.promptPreview,
   inputAssetIds: generation.inputAssetIds ?? [],
   parameterKeys: Object.keys(generation.parameters ?? {}).sort(),
   outputAssetIds: overrides.outputAssetIds ?? [],

@@ -332,6 +332,12 @@ addCheck(
     assetsById.get(chatCapabilityContract.persistence.governanceAssetId)?.locations.includes('postgres') &&
     assetsById.get(chatCapabilityContract.persistence.governanceAssetId)?.locations.includes('backup_archive') &&
     assetsById.get(chatCapabilityContract.persistence.governanceAssetId)?.exampleFields.includes('encrypted user message') &&
+    sameMembers(assetsById.get(chatCapabilityContract.persistence.governanceAssetId)?.prismaModels ?? [], [
+      'ChatConversation',
+      'ChatTurn',
+      'ChatMessage',
+      'ChatDeletionTombstone',
+    ]) &&
     assetsById.get(chatCapabilityContract.persistence.governanceAssetId)?.ownerTasks.includes('V1-21') &&
     assetsById.get(chatCapabilityContract.persistence.governanceAssetId)?.ownerTasks.includes('V1-67'),
   chatCapabilityContract.persistence.governanceAssetId,

@@ -1,5 +1,6 @@
 import { buildEnv } from '../server/src/config/env.js'
 import { listOAuthProviderMetadata } from '../server/src/auth/oauth.js'
+import { buildChatMessageEncryptionConfig } from '../server/src/chat/messageCrypto.js'
 
 const args = new Set(process.argv.slice(2))
 const profile = [...args].find((arg) => arg.startsWith('--profile='))?.split('=')[1] ?? 'fixture'
@@ -65,6 +66,11 @@ const productionFixture = {
   AUTH_FAILURE_IP_ACCOUNT_THRESHOLD: '8',
   AUTH_FAILURE_ACCOUNT_IP_THRESHOLD: '6',
   SECURITY_EVENT_MAX_ITEMS: '1000',
+  CHAT_MESSAGE_ENCRYPTION_KEY: 'CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg=',
+  CHAT_MESSAGE_ENCRYPTION_ACTIVE_KEY_ID: 'v1',
+  CHAT_RETENTION_WORKER_ENABLED: 'true',
+  CHAT_RETENTION_WORKER_INTERVAL_SECONDS: '3600',
+  CHAT_RETENTION_SWEEP_LIMIT: '100',
   OAUTH_GOOGLE_CLIENT_ID: 'google-client-id',
   OAUTH_GOOGLE_CLIENT_SECRET: 'google-client-secret',
   OAUTH_GOOGLE_REDIRECT_URI: 'https://api.example.com/api/auth/oauth/google/callback',
@@ -106,6 +112,11 @@ const summarize = (env, oauthProviders) => ({
     stagingPollingWorkerEnabled: env.creativeProviderPollingWorkerEnabled,
     stagingImageProvider: env.creativeStagingImageProvider || null,
     stagingApiTokenConfigured: env.hasCreativeStagingProviderApiToken,
+  },
+  chat: {
+    encryptionConfigured: env.hasChatMessageEncryptionKey,
+    retentionWorkerEnabled: env.chatRetentionWorkerEnabled,
+    retentionSweepLimit: env.chatRetentionSweepLimit,
   },
   authCookieSameSite: env.authCookieSameSite,
   authCookieSecure: env.authCookieSecure,
@@ -157,6 +168,13 @@ try {
   process.exit(1)
 }
 const oauthProviders = listOAuthProviderMetadata(source)
+let chatEncryption
+try {
+  chatEncryption = buildChatMessageEncryptionConfig(source)
+} catch (error) {
+  console.error(`Production smoke failed during Chat encryption parsing: ${error.message}`)
+  process.exit(1)
+}
 const checks = []
 
 check(checks, 'production mode', env.nodeEnv === 'production', `NODE_ENV=${env.nodeEnv}`)
@@ -174,6 +192,8 @@ check(checks, 'OpenAI Image HTTP client disabled in production smoke', !env.crea
 check(checks, 'OpenAI Image network calls disabled in production smoke', !env.creativeOpenAIImageNetworkCallsEnabled, 'CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED must not be true in production smoke')
 check(checks, 'creative Provider callback disabled in production smoke', !env.creativeProviderCallbackEnabled, 'CREATIVE_PROVIDER_CALLBACK_ENABLED must not be true in production smoke')
 check(checks, 'creative Provider polling disabled in production smoke', !env.creativeProviderPollingEnabled && !env.creativeProviderPollingWorkerEnabled, 'Provider polling switches must not be true in production smoke')
+check(checks, 'Chat message encryption configured', chatEncryption.configured && env.hasChatMessageEncryptionKey, 'A valid 32-byte Chat encryption key is required')
+check(checks, 'Chat retention worker configured', env.chatRetentionWorkerEnabled, 'CHAT_RETENTION_WORKER_ENABLED should be true for the worker process')
 check(checks, 'media alert channel configured', hasAny(env.hasMediaScanAlertWebhookUrl, env.hasMediaScanAlertSlackWebhookUrl, env.mediaScanAlertEmailRecipientCount > 0), 'At least one media alert channel must be configured')
 check(checks, 'security alert channel configured', hasAny(env.hasSecurityAlertWebhookUrl, env.hasSecurityAlertSlackWebhookUrl, env.securityAlertEmailRecipientCount > 0), 'At least one security alert channel must be configured')
 check(

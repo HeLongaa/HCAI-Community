@@ -213,3 +213,33 @@ test('createProductionWorkerJobDefinitions wires creative provider polling disab
     renewIntervalSeconds: 30,
   })
 })
+
+test('createProductionWorkerJobDefinitions wires bounded Chat retention and restore replay', async () => {
+  const calls = []
+  const repositories = {
+    chat: {
+      sweepExpired: async (payload) => {
+        calls.push(['expire', payload])
+        return [{ conversationId: 'expired' }]
+      },
+      replayDeletionTombstones: async (payload) => {
+        calls.push(['replay', payload])
+        return [{ conversationId: 'deleted' }]
+      },
+    },
+  }
+  const env = {
+    workerLeaseTtlSeconds: 120,
+    workerLeaseRenewIntervalSeconds: 30,
+    chatRetentionWorkerEnabled: true,
+    chatRetentionWorkerIntervalSeconds: 3600,
+    chatRetentionSweepLimit: 50,
+  }
+  const definitions = createProductionWorkerJobDefinitions(repositories, env)
+  assert.deepEqual(definitions.map((definition) => definition.id), ['chat-retention-sweep'])
+  assert.deepEqual(await definitions[0].run(), { expired: 1, replayed: 1 })
+  assert.deepEqual(calls, [
+    ['expire', { limit: 50 }],
+    ['replay', { limit: 50 }],
+  ])
+})

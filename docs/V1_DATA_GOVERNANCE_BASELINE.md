@@ -12,9 +12,9 @@ production.
 
 The data inventory and implementation contract are frozen. The complete runtime is not implemented.
 
-- All 36 Prisma models are assigned exactly once to a governed data asset.
-- Seven non-Prisma asset classes cover planned Chat conversation persistence, raw generation inputs, raw Provider
-  payloads, observability, backups, export packages, and deployment secrets.
+- All 40 Prisma models are assigned exactly once to a governed data asset.
+- Six non-Prisma asset classes cover raw generation inputs, raw Provider payloads, observability, backups, export
+  packages, and deployment secrets.
 - Unknown data is `restricted`; unknown flows and processors are denied.
 - Production data in fixtures, mocks, demo seeds, Notion, or source control is forbidden.
 - Raw Provider payload persistence and secret persistence outside a managed secret store are forbidden.
@@ -52,7 +52,7 @@ not become public because the post is public.
 | `media_object_bytes` | Restricted | Object storage | Uploads, attachments, generated assets | Revoke now, object delete within 24 hours |
 | `media_scan_safety_records` | Restricted | PostgreSQL/archive | `MediaScanJob` | Terminal scan + 180 days, maximum 50/asset |
 | `creative_generation_records` | Restricted | PostgreSQL | `CreativeGeneration` | Terminal generation + 365 days; preview 30 days |
-| `chat_conversation_messages` | Restricted | PostgreSQL/encrypted backup | Planned application-owned conversations and messages | Inactive + 365 days; access revoked immediately and primary data deleted within 30 days after an accepted deletion request |
+| `chat_conversation_messages` | Restricted | PostgreSQL/encrypted backup | `ChatConversation`, `ChatTurn`, `ChatMessage`, `ChatDeletionTombstone` | Inactive + 365 days; owner deletion is immediate with 35-day restore-replay evidence |
 | `provider_lifecycle_records` | Restricted | PostgreSQL | `CreativeProviderReplayLedger`, `CreativeGenerationMutation`, `CreativeOutputIngestion`, `CreativeProviderRetryState` | Terminal Provider lifecycle + 180 days; failure evidence is hash-only |
 | `creative_accounting_records` | Confidential | PostgreSQL | `CreativeCreditLedger`, `CreativeQuotaWindow`, `CreativeQuotaReservation` | Terminal/account close + 730 days |
 | `provider_cost_budget_records` | Confidential | PostgreSQL | `CreativeProviderBudgetWindow`, `CreativeProviderCostLedger` | Provider cost close/reconciliation + 730 days; amounts stored as integer micros |
@@ -249,6 +249,8 @@ Available foundations:
 - Support/report/appeal/privacy/export/deletion entry requests use owner-scoped `AdminReview` rows; audit metadata excludes free-form details.
 - The V1-20 Chat contract names the governed conversation asset, 365-day inactivity limit, immediate access revocation,
   30-day primary deletion target, and 35-day backup-expiry boundary.
+- V1-21 encrypts message bodies with versioned AES-256-GCM keys, owner-scopes history, persists explicit stream terminal
+  states, sweeps expired conversations, and reapplies deletion tombstones after restore.
 
 Known gaps:
 
@@ -258,7 +260,7 @@ Known gaps:
 - No backup expiry/restore deletion rehearsal evidence.
 - No global structured-log allowlist enforcement.
 - No legal-hold registry and expiry workflow.
-- No durable Chat conversation/message models, inactivity sweeper, export/delete hooks, or restore-deletion replay.
+- No account-level Chat export/deletion orchestration beyond owner conversation deletion and restore tombstones.
 - Current foreign keys do not implement the frozen anonymization plan by themselves.
 
 ## Implementation Handoff
@@ -275,7 +277,7 @@ Known gaps:
 | V1-12 | Implemented a shared safe error taxonomy, bounded Retry-After, deterministic backoff, durable hash-only retry evidence, CAS attempt budgets, polling integration, and safe Admin/metrics views; real Provider clients and traffic remain unregistered |
 | V1-13 | Implemented catalog-driven internal lifecycle notifications, retry AuditEvent allowlisting, Admin list/export/detail parity, low-cardinality lifecycle metrics, safe samples, and handoff hints; real Provider traffic and external lifecycle delivery remain disabled |
 | V1-20 | Freeze the Chat persistence, retention, export, deletion, backup, and Provider-state contract |
-| V1-21 | Implement encrypted owner-scoped conversations/messages, inactivity expiry, export/delete hooks, and restore-deletion replay |
+| V1-21 | Implemented encrypted owner-scoped conversations/messages, Mock SSE, stop/disconnect closeout, inactivity expiry, owner deletion, and restore-deletion replay; account-wide orchestration remains V1-67 |
 | V1-48 | OAuth scopes, identifiers, unlink, region, and sessions |
 | V1-49 | PostgreSQL backup, expiry, restore, and deletion rehearsal |
 | V1-50 | Private object storage/CDN and lifecycle deletion |

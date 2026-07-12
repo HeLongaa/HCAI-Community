@@ -94,6 +94,7 @@ Includes:
 - guard rail validation for rate limits, request body limits, and auth failure monitoring
 - Prometheus-compatible metrics exporter configuration validation
 - worker topology and lease renewal sanity checks
+- Chat message encryption configuration and the inactivity-retention worker required to enforce the 365-day lifecycle
 - external OAuth provider metadata validation
 - creative provider safety validation: production smoke must keep staging provider preflight and the Provider HTTP
   client disabled, while client tests use injected fetch implementations and never expose real Provider tokens
@@ -107,6 +108,8 @@ Includes:
   synchronized while legal approval and production publication remain fail-closed
 
 The environment profile does not print secrets. It reports booleans, counts, provider modes, and safe operational metadata only.
+For Chat, it reports only whether an encryption key is configured, whether the retention worker is enabled, and the
+bounded sweep limit. The encryption material itself must never appear in smoke output or application logs.
 
 Use `docs/RELEASE_CHECKLIST.md` after the deployment gate passes to run the release execution, post-release operations, alert verification, and rollback checks.
 Use `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` before scaling beyond one API or worker process so the deployment profile, smoke checks, metrics scrape, and rollback boundary are reviewed together.

@@ -666,6 +666,53 @@ export type MediaDownloadContract = {
 
 export type CreativeWorkspace = 'image' | 'video' | 'music' | 'chat'
 
+export type ChatMode = 'assistant' | 'prompt_assist' | 'storyboard'
+export type ChatTurnStatus = 'queued' | 'streaming' | 'completed' | 'stopped' | 'interrupted' | 'failed' | 'blocked'
+export type ChatMessageStatus = 'complete' | 'streaming' | 'stopped' | 'interrupted' | 'failed' | 'blocked'
+
+export type ApiChatConversation = {
+  id: string
+  mode: ChatMode
+  status: 'active' | 'archived'
+  title: string
+  lastMessageAt: string
+  createdAt: string
+}
+
+export type ApiChatMessage = {
+  id: string
+  turnId: string
+  role: 'user' | 'assistant'
+  status: ChatMessageStatus
+  sequence: number
+  content: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type ApiChatTurn = {
+  id: string
+  conversationId: string
+  generationId: string | null
+  clientTurnId: string
+  mode: ChatMode
+  status: ChatTurnStatus
+  errorCode: string | null
+  usage: { inputTokens?: number; outputTokens?: number; metered?: boolean } | null
+  stopRequestedAt: string | null
+  disconnectedAt: string | null
+  completedAt: string | null
+  createdAt: string
+  messages: ApiChatMessage[]
+}
+
+export type ChatStreamEvent =
+  | { event: 'turn.accepted'; data: { duplicate: boolean; turn: ApiChatTurn } }
+  | { event: 'turn.snapshot'; data: { turn: ApiChatTurn } }
+  | { event: 'content.delta'; data: { turnId: string; messageId: string; text: string } }
+  | { event: 'usage'; data: { turnId: string; usage: ApiChatTurn['usage'] } }
+  | { event: `turn.${ChatTurnStatus}`; data: { turnId: string; status: ChatTurnStatus; errorCode: string | null } }
+
 export type CreateCreativeGenerationRequest = {
   workspace: CreativeWorkspace
   mode: string

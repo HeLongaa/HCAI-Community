@@ -30,6 +30,7 @@ const creditCosts = {
     remix: 5,
   },
   chat: {
+    assistant: 1,
     prompt_assist: 1,
     storyboard: 2,
   },
