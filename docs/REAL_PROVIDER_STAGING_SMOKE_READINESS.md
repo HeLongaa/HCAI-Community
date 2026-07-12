@@ -4,13 +4,13 @@ This closeout records the current metadata-only creative staging smoke readiness
 
 Current decision: **ready for metadata-only staging smoke, no-go for external provider calls**.
 
-The smoke validates environment gates, secret presence as a boolean, safe provider catalog metadata, default-disabled execution, independent callback/polling configuration gates, and a self-redaction guard over the emitted safe summary. It does not call Replicate, create provider jobs, send a callback request, register a Provider webhook target, poll Provider status, start a worker interval, deliver external budget alerts, expose Admin mutation controls, or enable production paid-provider traffic.
+The smoke validates environment gates, secret presence as a boolean, safe provider catalog metadata, default-disabled execution, independent callback/polling configuration gates, the OpenAI Image client/cap/budget metadata boundary, and a self-redaction guard over the emitted safe summary. It does not call OpenAI or Replicate, create provider jobs, send a callback request, register a Provider webhook target, poll Provider status, start a worker interval, deliver external budget alerts, expose Admin mutation controls, or enable production paid-provider traffic.
 
 ## What Is Ready
 
 | Surface | Ready State | Evidence |
 | --- | --- | --- |
-| Local fixture smoke | Ready | `npm run smoke:creative-staging` runs preflight, adapter-shell, callback-api, and polling-worker fixtures. |
+| Local fixture smoke | Ready | `npm run smoke:creative-staging` runs preflight, adapter-shell, callback-api, polling-worker, and OpenAI Image client fixtures. |
 | GitHub manual smoke | Ready | `Quality Gates` supports `workflow_dispatch` with `smoke_profile=creative-staging`. |
 | Staging environment inputs | Documented | `docs/GITHUB_ENVIRONMENT.md` lists the required variables and secrets. |
 | Runbook | Documented | `docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md` defines setup, expected checks, evidence, and rollback. |
@@ -93,6 +93,23 @@ Expected meaning:
 - The script does not construct a Provider job, start `server/src/worker.js`, call `getPrediction`, or make any network request.
 - Callback intake remains independently disabled.
 
+### OpenAI Image client preflight
+
+Command:
+
+```bash
+node scripts/smoke-creative-staging.mjs --profile=fixture --mode=openai-image-client
+```
+
+Expected meaning:
+
+- OpenAI GPT Image 2 is the V1 primary Image target and its adapter/client boundary is implemented.
+- `CREATIVE_PROVIDER_MODE=disabled` keeps the product route unavailable.
+- The staging token is exposed only as a configured boolean.
+- The HTTP client construction gate is enabled while `CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED=false` is mandatory.
+- Provider-side cap confirmation, provider cap, app daily budget, and reconciled spend are safe bounded metadata.
+- Production enablement remains explicitly no-go; no request object or network client is constructed.
+
 ### Environment smoke
 
 Command used by GitHub Actions:
@@ -105,7 +122,7 @@ Expected GitHub inputs:
 
 - `smoke_profile=creative-staging`.
 - `environment` points to a dedicated staging GitHub Environment, for example `creative-staging`.
-- `CREATIVE_STAGING_SMOKE_MODE=preflight`, `adapter-shell`, `callback-api`, or `polling-worker` is set in that environment.
+- `CREATIVE_STAGING_SMOKE_MODE=preflight`, `adapter-shell`, `callback-api`, `polling-worker`, or `openai-image-client` is set in that environment.
 
 ## Readiness Checklist
 
@@ -121,6 +138,7 @@ Before recording metadata-only staging smoke as complete, all items below should
 - The safe summary reports the V1-06 callback boundary as implemented and only enables its configuration in callback-api mode.
 - The safe summary reports the V1-07 polling/status-client boundary as implemented and only enables its configuration in polling-worker mode.
 - `replicate-staging` reports `adapterImplemented=false` unless a later explicitly approved adapter PR changes the shell contract.
+- `openai-image-client` reports `adapterImplemented=true`, `httpClientEnabled=true`, `networkCallsEnabled=false`, bounded cap/budget metadata, and `productionNoGo=true`.
 - Production smoke still rejects staging preflight, the Provider HTTP client flag, callback/polling flags, and staging provider token presence.
 - The Notion task for the smoke or adapter step is current and written in Chinese.
 - The run result is recorded with the smoke mode, GitHub workflow URL if applicable, safe summary fields, and a statement that no real provider call was made.

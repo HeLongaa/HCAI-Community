@@ -56,7 +56,7 @@ All 14 direct frontend imports of `src/data/mockData.ts` are checked exactly. Ad
 
 | Surface id | Current behavior | Production disposition | Owners |
 | --- | --- | --- | --- |
-| `fixture-smoke-and-simulation-profiles` | Deterministic production/staging fixtures and UI simulations exercise safe gates | Retain as CI-only evidence | V1-71, V1-75 |
+| `fixture-smoke-and-simulation-profiles` | Deterministic production/staging fixtures, the V1-19 OpenAI Image metadata gate, and UI simulations exercise safe gates without Provider calls | Retain as CI-only evidence | V1-19, V1-71, V1-75 |
 
 ## Production Classification Rules
 

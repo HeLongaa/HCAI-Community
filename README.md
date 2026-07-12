@@ -133,6 +133,11 @@ same-session exact retry, private download contracts, and compatible PNG/JPEG/We
 in memory only for retry and are not written to browser storage or generation history. Refresh preserves job state but
 intentionally removes exact-retry input. No browser path contacts a Provider directly.
 
+V1-19 preparation adds a machine-readable Image staging acceptance contract and an OpenAI Image metadata preflight.
+The preflight checks the selected primary adapter/client boundary, credential presence, bounded Provider/app caps,
+disabled product dispatch, and production no-go while forcing real network calls off. Real staging evidence remains
+pending explicit approval and is not produced by local or CI fixture commands.
+
 ## Verification
 
 ```bash
@@ -141,7 +146,7 @@ npm run check:pr
 npm run check:deploy
 ```
 
-`check:quick` runs lint, the V1 scope, runtime-surface, Provider-decision, content-safety, data-governance, and compliance-policy contracts, plus feature/API contract checks. `check:pr` adds production build, backend tests, Prisma schema validation, and E2E. `check:deploy` adds the safe production smoke fixture. Use `check:deploy:env` in a real deployment environment to validate actual environment variables without printing secrets.
+`check:quick` runs lint, the V1 scope, runtime-surface, Provider-decision, content-safety, data-governance, compliance-policy, and Image staging-gate contracts, plus feature/API contract checks. `check:pr` adds production build, backend tests, Prisma schema validation, and E2E. `check:deploy` adds the safe production smoke fixture. Use `check:deploy:env` in a real deployment environment to validate actual environment variables without printing secrets.
 
 `test:sim` runs feature-contract checks for the planned modules and then verifies API contract consistency across server routes, OpenAPI paths, and the protected-route permission matrix. `test:contracts` can run that API consistency check by itself. The feature-contract checks cover navigation, Task Plaza lifecycle, publish form,
 My Tasks delivery desk, community forum flows, publish-form AI assists, creation tools, points ledger, admin review queue,
@@ -160,6 +165,7 @@ Planning docs for the API, data model, auth, and backend rollout live in `docs/`
 - `docs/V1_RUNTIME_SURFACE_INVENTORY.md`
 - `docs/V1_PROVIDER_DECISION_MATRIX.md`
 - `docs/V1_IMAGE_CAPABILITY_CONTRACT.md`
+- `docs/V1_IMAGE_STAGING_RELEASE_GATE.md`
 - `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md`
 - `docs/V1_DATA_GOVERNANCE_BASELINE.md`
 - `docs/PRODUCT_BACKEND_PLAN.md`

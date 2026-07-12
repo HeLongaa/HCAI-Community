@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "taskId": "V1-19",
+  "title": "Image staging acceptance and release gate",
+  "primaryProviderId": "openai-gpt-image-2",
+  "backupProviderId": "replicate-flux-1-1-pro",
+  "decision": {
+    "fixtureReadiness": "ready",
+    "externalCall": "no_go_pending_explicit_approval",
+    "productionEnablement": "no_go",
+    "ordinaryContinuationIsApproval": false
+  },
+  "limits": {
+    "maximumCallsPerApproval": 1,
+    "maximumApprovalHours": 24,
+    "perJobUsdCap": 0.25,
+    "dailyUsdCap": 8
+  },
+  "requiredScenarios": [
+    {
+      "id": "success",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "pending",
+      "evidence": ["server/src/creative/openaiImageProvider.test.js", "server/src/modules/creative/routes.test.js"]
+    },
+    {
+      "id": "provider_failure",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "pending",
+      "evidence": ["server/src/creative/openaiImageProvider.test.js", "server/src/creative/generationService.test.js"]
+    },
+    {
+      "id": "timeout",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "pending",
+      "evidence": ["server/src/creative/openaiImageProvider.test.js", "server/src/creative/providerErrorPolicy.test.js"]
+    },
+    {
+      "id": "review_required",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "pending",
+      "evidence": ["server/src/modules/creative/routes.test.js", "e2e/image-capability.spec.ts"]
+    },
+    {
+      "id": "cancel",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "pending",
+      "evidence": ["server/src/creative/generationMutationService.test.js", "e2e/image-capability.spec.ts"]
+    },
+    {
+      "id": "over_budget",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "pending",
+      "evidence": ["server/src/creative/openaiImageProvider.test.js", "server/src/creative/providerCostContract.test.js"]
+    },
+    {
+      "id": "provider_cap_block",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "pending",
+      "evidence": ["server/src/creative/providerControlContract.test.js", "server/src/creative/providerControlPlane.test.js"]
+    },
+    {
+      "id": "kill_switch",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "pending",
+      "evidence": ["server/src/config/env.test.js", "server/src/creative/openaiImageProvider.test.js"]
+    },
+    {
+      "id": "rollback",
+      "fixtureStatus": "covered",
+      "realStagingStatus": "pending",
+      "evidence": ["scripts/smoke-creative-staging.mjs", "scripts/smoke-production.mjs"]
+    }
+  ],
+  "requiredApprovalFields": [
+    "approver",
+    "approvalTimestamp",
+    "approvalExpiry",
+    "provider",
+    "environment",
+    "branchOrPr",
+    "maximumProviderCalls",
+    "providerSideSpendingCap",
+    "appSideBudgetCap",
+    "tokenRotationOwner",
+    "killSwitchOwner",
+    "rollbackOwner",
+    "productionNoGo"
+  ],
+  "commands": {
+    "contract": "npm run test:v1-image-staging",
+    "fixtureSmoke": "npm run smoke:creative-staging",
+    "environmentSmoke": "npm run smoke:creative-staging:env",
+    "deploymentGate": "npm run check:deploy"
+  },
+  "documents": [
+    "docs/V1_IMAGE_STAGING_RELEASE_GATE.md",
+    "docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md",
+    "docs/REAL_PROVIDER_STAGING_SMOKE_READINESS.md",
+    "docs/REAL_PROVIDER_STAGING_SMOKE_RUNBOOK.md"
+  ]
+}

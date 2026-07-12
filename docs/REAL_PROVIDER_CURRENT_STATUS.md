@@ -28,6 +28,12 @@ bounded platform polling, cancellation, same-session exact retry, governed downl
 reuse. Raw prompts are not persisted for retry, and the browser never contacts Provider endpoints. This productizes
 the Image job experience without approving or enabling real Provider traffic.
 
+V1-19 preparation adds a machine-readable Image staging gate and an `openai-image-client` metadata smoke. It validates
+the selected primary adapter/client boundary, credential presence, bounded Provider/app caps, disabled product dispatch,
+and production no-go while requiring Provider network calls to remain off. Real staging scenarios, cost reconciliation,
+kill-switch rehearsal, rollback rehearsal, and the production decision remain pending explicit approval and environment
+evidence.
+
 V1-44 freezes the corresponding four-modality content safety baseline in
 `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. It defines 20 risk categories,
 prohibited/block/review/allow decisions, the five-stage responsibility chain, all eight Provider policy mappings,
@@ -45,7 +51,7 @@ Ordinary continuation language such as "continue", "next", "looks good", or "shi
 
 As of PR #89, the post-readiness fixture and read-side closeout package is complete enough to prepare a final staging decision record. The decision remains:
 
-- **Conditional go** for documentation updates, metadata-only smoke evidence, fixture-only Replicate image staging adapter
+- **Conditional go** for documentation updates, metadata-only smoke evidence, fixture-only OpenAI/Replicate Image adapter
   hardening, and default-disabled HTTP client contract tests with injected fetch implementations.
 - **No-go** for the first real provider external-call rehearsal until the approval record in `docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md` is complete in Notion and the user explicitly approves the exact staging run.
 - **No-go** for production paid-provider enablement.

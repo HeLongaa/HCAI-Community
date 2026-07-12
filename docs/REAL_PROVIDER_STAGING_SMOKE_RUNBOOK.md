@@ -2,7 +2,10 @@
 
 This runbook defines the safe staging rehearsal that must pass before any real-provider adapter PR can move from mocked fixture coverage toward an external-call staging test. For the short readiness and closeout checklist, start with `docs/REAL_PROVIDER_STAGING_SMOKE_READINESS.md`, then use this runbook for execution details.
 
-Current status: staging smoke is metadata-only. It validates environment gates, secret presence, provider catalog safety metadata, default-disabled execution, and safe-summary self-redaction. It does not call Replicate, download provider outputs, create generation records, run webhook or polling workers, or enable production paid-provider traffic.
+Current status: staging smoke is metadata-only. It validates environment gates, secret presence, provider catalog safety metadata, default-disabled execution, and safe-summary self-redaction. It does not call OpenAI or Replicate, download provider outputs, create generation records, run webhook or polling workers, or enable production paid-provider traffic.
+
+V1-19 adds `openai-image-client` as the primary Image metadata preflight. The earlier Replicate modes remain useful for
+the asynchronous backup foundation, but they are not evidence that the selected OpenAI primary has passed staging.
 
 The smoke fails before closeout if its safe summary values contain the configured staging token value, raw provider markers, provider URLs, callback URLs, Bearer values, or API-key-like material.
 
@@ -71,6 +74,13 @@ Provider account setup:
 - Keep Provider webhook targets disabled until a named staging delivery is explicitly approved; V1-06 app-side idempotency tests alone are not traffic approval.
 - Rotate the token before moving from metadata smoke to any external-call staging adapter.
 
+### OpenAI Image primary preflight
+
+For `CREATIVE_STAGING_SMOKE_MODE=openai-image-client`, store `CREATIVE_OPENAI_IMAGE_API_TOKEN` as a dedicated staging
+Environment secret and use the variables in `docs/V1_IMAGE_STAGING_RELEASE_GATE.md`. Keep
+`CREATIVE_PROVIDER_MODE=disabled` and `CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED=false`. The mode requires bounded
+Provider/app cap metadata and `CREATIVE_OPENAI_IMAGE_PRODUCTION_NO_GO=true`; it fails if network calls are enabled.
+
 ## Local Fixture Smoke
 
 Run the fixture-only creative staging smoke:
@@ -85,8 +95,11 @@ Expected result:
 - `adapter-shell` fixture passes with `CREATIVE_PROVIDER_MODE=replicate_staging`.
 - `callback-api` fixture passes with Provider dispatch disabled and callback configuration explicitly enabled.
 - `polling-worker` fixture passes with the read-only status client and worker configuration enabled but uncalled.
+- `openai-image-client` passes with the OpenAI adapter/client boundary present, product dispatch disabled, bounded cap
+  metadata, and Provider network calls disabled.
 - Safe summary reports `networkCallsEnabled=false` outside polling-worker mode and `true` only for its no-request construction check.
-- Safe summary reports `adapterImplemented=false`.
+- Safe summary reports `adapterImplemented=false` for Replicate and `adapterImplemented=true` for the fixture-injected
+  OpenAI Image adapter; neither is product-route enabled.
 - Safe summary self-redaction check passes.
 - No token value is printed.
 
@@ -104,7 +117,16 @@ Run the GitHub Actions workflow manually:
 6. For adapter-shell metadata smoke, set `CREATIVE_STAGING_SMOKE_MODE=adapter-shell`.
 7. For callback configuration smoke, set `CREATIVE_STAGING_SMOKE_MODE=callback-api`.
 8. For polling worker configuration smoke, set `CREATIVE_STAGING_SMOKE_MODE=polling-worker`.
-9. Confirm the `Deployment Environment Smoke` job runs `npm run smoke:creative-staging:env`.
+9. For the selected Image primary metadata smoke, set `CREATIVE_STAGING_SMOKE_MODE=openai-image-client` and configure
+   the secret/variables in `docs/V1_IMAGE_STAGING_RELEASE_GATE.md`.
+10. Confirm the `Deployment Environment Smoke` job runs `npm run smoke:creative-staging:env`.
+
+Expected OpenAI Image client checks:
+
+- `OpenAI Image remains unavailable on the product route` passes.
+- `OpenAI Image client construction gate is enabled` passes.
+- `OpenAI Image network calls remain disabled` passes.
+- Provider-side cap, app budget, reconciled spend, and production no-go checks pass.
 
 Expected preflight checks:
 
@@ -142,10 +164,10 @@ Expected polling-worker checks:
 After the metadata smoke passes in a real staging deployment, verify the user-facing generation path is still blocked from paid dispatch.
 
 1. Call `GET /api/creative/providers` with a staging auth token.
-2. Confirm `replicate-staging` is unavailable/default-disabled or safe metadata only.
-3. Call `POST /api/creative/generations` with `providerId=replicate-staging`.
+2. Confirm `openai-gpt-image-2` and `replicate-staging` are unavailable/default-disabled or safe metadata only.
+3. Call `POST /api/creative/generations` with `providerId=openai-gpt-image-2`.
 4. Confirm the route returns provider unavailable or unsupported adapter behavior rather than creating a provider job.
-5. Confirm no provider job id appears in provider console.
+5. Confirm no Provider request appears in the Provider console.
 6. Confirm logs, audit events, smoke output, and Notion notes contain no token value.
 
 ## Closeout Evidence
