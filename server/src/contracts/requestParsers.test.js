@@ -9,6 +9,7 @@ import {
   parseCreateChatConversationRequest,
   parseCreateChatTurnRequest,
   parseCreativeGenerationHistoryQuery,
+  parseGenerationCenterQuery,
   parseAdminAuditListQuery,
   parseAdminCreativeGenerationListQuery,
   parseAdminReviewListQuery,
@@ -526,6 +527,39 @@ test('parseCreativeGenerationHistoryQuery defaults to image and validates lifecy
   assertValidationError(
     () => parseCreativeGenerationHistoryQuery({ limit: '51' }),
     'limit must be an integer between 1 and 50',
+  )
+})
+
+test('parseGenerationCenterQuery supports cross-workspace date filtering', () => {
+  assert.deepEqual(parseGenerationCenterQuery({}), {
+    cursor: null,
+    limit: 20,
+    workspace: null,
+    status: null,
+    dateFrom: null,
+    dateTo: null,
+  })
+  assert.deepEqual(parseGenerationCenterQuery({
+    workspace: 'chat',
+    status: 'completed',
+    dateFrom: '2032-07-12T00:00:00Z',
+    dateTo: '2032-07-12T23:59:59Z',
+    limit: '12',
+  }), {
+    cursor: null,
+    limit: 12,
+    workspace: 'chat',
+    status: 'completed',
+    dateFrom: '2032-07-12T00:00:00.000Z',
+    dateTo: '2032-07-12T23:59:59.000Z',
+  })
+  assertValidationError(
+    () => parseGenerationCenterQuery({ dateFrom: 'not-a-date' }),
+    'dateFrom must be an ISO timestamp',
+  )
+  assertValidationError(
+    () => parseGenerationCenterQuery({ dateFrom: '2032-07-13', dateTo: '2032-07-12' }),
+    'dateFrom must be before or equal to dateTo',
   )
 })
 

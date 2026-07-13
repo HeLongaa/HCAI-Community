@@ -1,5 +1,9 @@
 # Quality Gates
 
+## Unified Generation Center
+
+V1-35 adds an owner-scoped safe projection across Image, Chat, Video, and Music generation records. Quality gates require workspace/status/date filters, stable newest-first cursor pagination, cross-user denial, Provider/private metadata exclusion, server-derived action eligibility, protected Chat summaries, governed output handling, offline/loading/error/empty recovery, workspace deep links, and desktop/mobile keyboard-accessible UI. The focused API and Playwright suites are documented in `docs/V1_UNIFIED_GENERATION_CENTER.md`; the feature must also pass the complete PR and production smoke gates.
+
 This document defines the productization quality gates used before local handoff, pull request review, and deployment.
 
 ## Local Quick Check

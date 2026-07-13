@@ -1291,7 +1291,7 @@ const createPrismaRepository = async (fallbackRepository) => {
           action: 'media.scan.callback_denied',
           createdAt: { gte: since },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       }),
       client.auditEvent.findMany({
         where: {

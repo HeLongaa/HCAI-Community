@@ -1035,6 +1035,60 @@ export type UserCreativeGenerationHistoryPage = {
   nextCursor: string | null
 }
 
+export type ApiGenerationTask = {
+  id: string
+  workspace: CreativeWorkspace
+  mode: string
+  status: string
+  summary: string | null
+  attempt: {
+    number: number
+    retryOfId: string | null
+  }
+  usage: {
+    estimatedCredits: number
+    metered: boolean
+  }
+  review: {
+    required: boolean
+  }
+  error: {
+    code: string
+    message: string | null
+  } | null
+  outputs: ApiUserCreativeGeneration['outputs']
+  actions: {
+    view: ApiUserCreativeGenerationAction
+    cancel: ApiUserCreativeGenerationAction
+    retry: ApiUserCreativeGenerationAction
+    download: ApiUserCreativeGenerationAction
+    reuse: ApiUserCreativeGenerationAction
+  }
+  deepLink: {
+    page: 'playground'
+    workspace: CreativeWorkspace
+  }
+  startedAt: string | null
+  completedAt: string | null
+  failedAt: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export type GenerationCenterQuery = {
+  cursor?: string | null
+  limit?: number
+  workspace?: CreativeWorkspace | null
+  status?: string | null
+  dateFrom?: string | null
+  dateTo?: string | null
+}
+
+export type GenerationCenterPage = {
+  items: ApiGenerationTask[]
+  nextCursor: string | null
+}
+
 export type CreativeGenerationMutationType = 'cancel' | 'retry' | 'manual_replay'
 
 export type AdminProviderControlBundle = {
