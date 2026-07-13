@@ -299,21 +299,21 @@ addCheck(
 addCheck(
   'creation tools',
   'music, chat, image, and video workspaces exist',
-  includesAll(app, ['Create AI songs and voice assets', 'Chat workspace', 'Image Studio', 'Video Studio', 'Text to Video', 'Image to Video']),
+  includesAll(app, ['Music Studio', 'Chat workspace', 'Image Studio', 'Video Studio', 'Text to Video', 'Image to Video']),
   'create/chat/image/video modules',
 )
 
 addCheck(
   'creation tools',
-  'simulated music and API-backed video runtime boundaries remain explicit',
+  'Music and Video use application APIs with explicit runtime boundaries',
   includesAll(app, [
-    'Selected tool: ${tool.label}',
-    '已加入生成队列',
+    "workspace: 'music'",
+    'Private player',
     "workspace: 'video'",
     'Private preview',
     'Fixture only',
-  ]),
-  'music simulation plus application Video APIs and runtime labels',
+  ]) && !includesAll(app, ['music and voice concept is rendering', 'demo-reference.wav']),
+  'application Music/Video APIs and runtime labels',
 )
 
 addCheck(

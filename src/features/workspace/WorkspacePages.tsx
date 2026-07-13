@@ -6,28 +6,23 @@ import {
   Download,
   FileText,
   Image,
-  Mic2,
   Music2,
-  PenLine,
-  Play,
   RefreshCcw,
   RotateCcw,
-  Send,
   Share2,
-  Shuffle,
   Sparkles,
   Square,
   Upload,
   Video,
-  Zap,
 } from 'lucide-react'
-import type { InspirationItem, Page, PlaygroundMode, SimulateAction, Task, Track, Work } from '../../domain/types'
-import { SectionHeader } from '../../components/ui/SectionHeader'
-import { tracks, visualWorks } from '../../data/mockData'
+import type { InspirationItem, Page, PlaygroundMode, SimulateAction, Task, Work } from '../../domain/types'
+import { visualWorks } from '../../data/mockData'
 import { isZhCopy, textFor } from '../../domain/utils'
 import type { VideoGenerationWorkflow } from '../../hooks/useVideoGenerationWorkflow'
+import type { MusicGenerationWorkflow } from '../../hooks/useMusicGenerationWorkflow'
 import type { ApiCreativeCapability, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiUserCreativeGeneration } from '../../services/contracts'
 import { ChatPage } from './ChatPage'
+import { MusicStudioPage } from './MusicStudioPage'
 import { VideoStudioPage } from './VideoStudioPage'
 
 type ImageGenerationState = {
@@ -47,10 +42,6 @@ type ImageGenerationHistoryState = {
 
 export function PlaygroundPage({
   t,
-  prompt,
-  setPrompt,
-  generationState,
-  runGenerate,
   imageGeneration,
   imageGenerationHistory,
   imageGenerationAction,
@@ -66,12 +57,12 @@ export function PlaygroundPage({
   imageInputAssets,
   uploadImageInput,
   runImageGeneration,
+  musicWorkflow,
   videoWorkflow,
   signedIn,
   tasks,
   libraryItems,
   openModerationAppeal,
-  playTrack,
   requireAuth,
   simulateAction,
   workspace,
@@ -79,10 +70,6 @@ export function PlaygroundPage({
   setPage,
 }: {
   t: Record<string, string>
-  prompt: string
-  setPrompt: (value: string) => void
-  generationState: 'idle' | 'loading' | 'done'
-  runGenerate: () => void
   imageGeneration: ImageGenerationState
   imageGenerationHistory: ImageGenerationHistoryState
   imageGenerationAction: {
@@ -102,63 +89,20 @@ export function PlaygroundPage({
   imageInputAssets: ApiMediaAsset[]
   uploadImageInput: (file: File) => Promise<void>
   runImageGeneration: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; strength: number; inputAssetIds: string[] }) => Promise<void>
+  musicWorkflow: MusicGenerationWorkflow
   videoWorkflow: VideoGenerationWorkflow
   signedIn: boolean
   tasks: Task[]
   libraryItems: InspirationItem[]
   openModerationAppeal: (moderationDecisionId: string) => void
-  playTrack: (track: Track) => void
   requireAuth: () => void
   simulateAction: SimulateAction
   workspace: PlaygroundMode
   setWorkspace: (workspace: PlaygroundMode) => void
   setPage: (page: Page) => void
 }) {
-  const isZh = isZhCopy(t)
-  const [mode, setMode] = useState<'instrumental' | 'lyrics'>('instrumental')
-  const [activeTool, setActiveTool] = useState('song')
   const imageProvider = imageProviderCatalog?.providers.find((provider) => provider.id === imageProviderCatalog.defaultProviderId)
   const imageCapability = imageProvider?.capabilities.find((capability) => capability.workspace === 'image') ?? null
-  const tools = [
-    {
-      key: 'song',
-      label: t.createSong,
-      icon: Music2,
-      prompt: textFor(t, 'Lo-fi instrumental song for late-night coding, warm keys, clean drums', '国风 Lo-fi 歌单片头，古筝采样，轻鼓点，夜色城市氛围'),
-    },
-    {
-      key: 'voice',
-      label: t.createVoice,
-      icon: Mic2,
-      prompt: textFor(t, 'Trustworthy product launch narrator, warm, concise, commercial-ready', '中文课程宣传片旁白，专业、克制、有信任感'),
-    },
-    {
-      key: 'tts',
-      label: t.textToSpeech,
-      icon: FileText,
-      prompt: textFor(t, 'Read this product value proposition as a 20-second ad voiceover', '把这段课程卖点朗读成 20 秒中文广告口播'),
-    },
-    { key: 'replace', label: t.replaceFile, icon: Upload, prompt },
-    {
-      key: 'random',
-      label: t.random,
-      icon: Shuffle,
-      prompt: textFor(t, 'Cinematic city-pop chorus, glossy synth bass, late-summer night drive', '国风 Lo-fi 歌单片头，古筝采样，轻鼓点，夜色城市氛围'),
-    },
-  ]
-
-  const handleGenerate = () => {
-    runGenerate()
-    simulateAction(isZh ? '已加入生成队列：音乐/声音方案正在模拟生成' : 'Added to generation queue: music and voice concept is rendering')
-  }
-
-  const selectTool = (tool: (typeof tools)[number]) => {
-    setActiveTool(tool.key)
-    if (tool.key !== 'replace') {
-      setPrompt(tool.prompt)
-    }
-    simulateAction(isZh ? `已选择工具：${tool.label}` : `Selected tool: ${tool.label}`)
-  }
 
   const workspaceTabs = [
     { key: 'music' as PlaygroundMode, label: textFor(t, 'Music', '音乐'), icon: Music2 },
@@ -194,94 +138,12 @@ export function PlaygroundPage({
       </section>
 
       {workspace === 'music' && (
-        <>
-          <SectionHeader eyebrow={textFor(t, 'Music Studio', '音乐工作台')} title={textFor(t, 'Create AI songs and voice assets', '创作 AI 歌曲和声音素材')} />
-          <section className="composer">
-          <div className="composer-top">
-            <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={t.promptPlaceholder} />
-            <div className="composer-actions">
-            <button
-              className="icon-button"
-              type="button"
-              onClick={() => simulateAction(isZh ? '已模拟上传参考文件：demo-reference.wav' : 'Reference file uploaded: demo-reference.wav')}
-            >
-              <Upload size={18} />
-            </button>
-            <button
-              className="icon-button pro"
-              type="button"
-              onClick={() => simulateAction(isZh ? '已开启 Pro 参数预设：高质量、可商用、保留工程说明' : 'Pro preset enabled: high quality, commercial use, project notes')}
-            >
-              <Zap size={18} />
-            </button>
-          </div>
-        </div>
-        <div className="mode-row">
-          <button
-            className={mode === 'instrumental' ? 'chip active' : 'chip'}
-            type="button"
-            onClick={() => {
-              setMode('instrumental')
-              simulateAction(isZh ? '已切换到伴奏模式' : 'Switched to instrumental mode')
-            }}
-          >
-            <Music2 size={16} />
-            {t.instrumental}
-          </button>
-          <button
-            className={mode === 'lyrics' ? 'chip active' : 'chip'}
-            type="button"
-            onClick={() => {
-              setMode('lyrics')
-              simulateAction(isZh ? '已切换到 lyrics 模式' : 'Switched to lyrics mode')
-            }}
-          >
-            <PenLine size={16} />
-            {t.lyrics}
-          </button>
-          <button className="primary-button" type="button" onClick={handleGenerate}>
-            <Send size={17} />
-            {generationState === 'loading' ? t.generating : t.generate}
-          </button>
-          </div>
-        </section>
-
-          <div className="tool-grid">
-            {tools.map((tool) => {
-              const Icon = tool.icon
-              return (
-                <button
-                  className={activeTool === tool.key ? 'tool-card active' : 'tool-card'}
-                  type="button"
-                  key={tool.label}
-                  onClick={() => selectTool(tool)}
-                >
-                  <Icon size={20} />
-                  <span>{tool.label}</span>
-                </button>
-              )
-            })}
-          </div>
-
-          <section className="content-grid two">
-            <div className="panel">
-              <SectionHeader title={textFor(t, 'Generation queue', '生成队列')} />
-              <div className="queue-list">
-                <QueueItem t={t} state={generationState} title={prompt || textFor(t, 'Untitled song', '未命名歌曲')} />
-                <QueueItem t={t} state="done" title={textFor(t, 'Warm cinematic intro with female vocal', '温暖电影感女声片头')} />
-                <QueueItem t={t} state="idle" title={textFor(t, 'Future bass chorus idea', 'Future bass 副歌灵感')} />
-              </div>
-            </div>
-            <div className="panel">
-              <SectionHeader title={textFor(t, 'Recent results', '最近结果')} />
-              <div className="mini-list">
-                {tracks.slice(0, 3).map((track) => (
-                  <WorkspaceTrackRow key={track.id} t={t} track={track} playTrack={playTrack} />
-                ))}
-              </div>
-            </div>
-          </section>
-        </>
+        <MusicStudioPage
+          t={t}
+          providerCatalog={imageProviderCatalog}
+          providerCatalogState={imageProviderCatalogState}
+          workflow={musicWorkflow}
+        />
       )}
 
       {workspace === 'image' && (
@@ -341,24 +203,6 @@ export function PlaygroundPage({
           simulateAction={simulateAction}
         />
       )}
-    </div>
-  )
-}
-
-function QueueItem({ t, state, title }: { t: Record<string, string>; state: 'idle' | 'loading' | 'done'; title: string }) {
-  return (
-    <div className="queue-item">
-      <span className={`status-dot ${state}`} />
-      <div>
-        <strong>{title}</strong>
-        <p>
-          {state === 'loading'
-            ? textFor(t, 'Rendering variations...', '正在渲染变体...')
-            : state === 'done'
-              ? textFor(t, 'Ready for review', '可预览验收')
-              : textFor(t, 'Waiting', '等待中')}
-        </p>
-      </div>
     </div>
   )
 }
@@ -882,23 +726,6 @@ function StudioPage({
           </article>
         ))}
       </section>
-    </div>
-  )
-}
-function WorkspaceTrackRow({ t, track, playTrack }: { t: Record<string, string>; track: Track; playTrack: (track: Track) => void }) {
-  return (
-    <div className="track-row">
-      <button type="button" onClick={() => playTrack(track)}>
-        <img src={track.cover} alt="" />
-        <Play size={14} fill="currentColor" />
-      </button>
-      <div>
-        <strong>{track.title}</strong>
-        <span>
-          {track.artist} · {track.plays} {textFor(t, 'plays', '播放')}
-        </span>
-      </div>
-      <span>{track.duration}</span>
     </div>
   )
 }

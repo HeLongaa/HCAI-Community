@@ -54,12 +54,12 @@
       "ownerTasks": ["V1-35", "V1-36", "V1-39"]
     },
     {
-      "id": "frontend-music-workspace-simulation",
+      "id": "frontend-music-workspace-mock-runtime",
       "area": "music",
       "classification": "release_blocker",
-      "paths": ["src/features/workspace/WorkspacePages.tsx"],
-      "markers": ["Music Studio", "music and voice concept is rendering", "demo-reference.wav"],
-      "productionDisposition": "replace_with_real_provider_job",
+      "paths": ["src/features/workspace/MusicStudioPage.tsx", "src/hooks/useMusicGenerationWorkflow.ts", "src/services/creativeService.ts"],
+      "markers": ["music-studio", "workspace: 'music'", "Fixture only", "Private player"],
+      "productionDisposition": "replace_mock_runtime_with_approved_provider_without_bypassing_application_apis",
       "ownerTasks": ["V1-30", "V1-31", "V1-32", "V1-33", "V1-34", "V1-39"]
     },
     {
