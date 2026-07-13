@@ -23,6 +23,14 @@ test('asset library filters, inspects lineage, archives, and prepares cross-stud
     current = asset({ archivedAt: '2026-07-13T11:00:00.000Z', actions: { ...current.actions, download: { available: false, reason: 'asset_archived' }, archive: { available: false, reason: 'already_archived' }, restore: { available: true, reason: null } } })
     await route.fulfill({ json: { data: current } })
   })
+  await page.route('**/api/creative/generation-center/generation-image', async (route) => {
+    await route.fulfill({ json: { data: {
+      id: 'generation-image', workspace: 'image', mode: 'image_variation', status: 'completed', summary: 'Source image variation',
+      attempt: { number: 1, retryOfId: null }, usage: { estimatedCredits: 1, metered: true }, review: { required: false }, error: null, outputs: [],
+      actions: { view: { available: true, reasonCode: null }, cancel: { available: false, reasonCode: 'completed' }, retry: { available: false, reasonCode: 'no_request', requiresOriginalRequest: true }, download: { available: false, reasonCode: 'no_output' }, reuse: { available: false, reasonCode: 'no_output' } },
+      deepLink: { page: 'playground', workspace: 'image' }, startedAt: null, completedAt: '2026-07-13T10:01:00.000Z', failedAt: null, createdAt: '2026-07-13T10:00:00.000Z', updatedAt: '2026-07-13T10:01:00.000Z',
+    } } })
+  })
 
   await page.goto('/')
   await page.getByTestId('nav-assets').click()
@@ -32,6 +40,12 @@ test('asset library filters, inspects lineage, archives, and prepares cross-stud
   await page.getByRole('button', { name: /campaign-variant.png/ }).click()
   await expect(page.getByText('variant · → asset-library-variant')).toBeVisible()
   await expect(page.getByText('image / image_variation')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Open source task' })).toBeVisible()
+  await page.getByRole('button', { name: 'Open source task' }).click()
+  await expect(page.getByTestId('generation-center')).toBeVisible()
+  await expect(page).toHaveURL(/#generations\/generation-image/)
+  await page.getByTestId('nav-assets').click()
+  await page.getByRole('button', { name: /campaign-variant.png/ }).click()
   await expect(page.getByText('private-storage-key')).toHaveCount(0)
 
   await page.getByLabel('Media type').selectOption('image')
@@ -43,6 +57,10 @@ test('asset library filters, inspects lineage, archives, and prepares cross-stud
   await page.getByLabel('Created before').fill('2026-07-31')
   await expect.poll(() => queryLog.some((query) => query.get('mediaType') === 'image' && query.get('purpose') === 'library_asset' && query.get('search') === 'campaign' && query.get('dateFrom') === '2026-07-01T00:00:00.000Z' && query.get('dateTo') === '2026-07-31T23:59:59.999Z')).toBe(true)
 
+  await page.context().setOffline(true)
+  await expect(page.getByText('Offline. Showing the last loaded asset state.')).toBeVisible()
+  await expect(page.getByRole('button', { name: /image/i }).last()).toBeDisabled()
+  await page.context().setOffline(false)
   await page.getByRole('button', { name: /image/i }).last().click()
   await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem('hcaiAssetReuse'))).toContain('asset-library-image')
   await page.reload()

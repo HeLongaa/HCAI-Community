@@ -27,7 +27,7 @@ V1 exposes reversible archive/restore, not hard deletion. Archive hides an asset
 
 ## Product surface
 
-The `Assets` primary page provides search, media/purpose/source grouping, filters, compact cards, safe detail, source generation, version/reuse lineage, governed download, archive/restore, pagination, loading/empty/error states, and responsive behavior. Sending an eligible asset to Image, Video, or Chat stores an application asset id handoff; the target studio restores it only after its own eligible-input API includes the asset, including after a browser refresh.
+The `Assets` primary page provides search, media/purpose/source grouping, filters, compact cards, safe detail, source-generation deep links, version/reuse lineage, governed download, archive/restore, pagination, loading/empty/offline/error states, and responsive behavior. Sending an eligible asset to Image, Video, or Chat stores an application asset id handoff; the target studio restores it only after its own eligible-input API includes the asset, including after a browser refresh.
 
 ## Verification
 
