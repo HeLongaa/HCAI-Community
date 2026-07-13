@@ -37,7 +37,7 @@ export function useCommunityWorkflows({ locale, publishTask, pushLedger, pushToa
       setLibraryItems(libraryData)
       setSelectedPost((current) => postsData.find((post) => post.id === current.id) ?? postsData[0] ?? current)
     },
-    getErrorMessage: () => (locale === 'zh' ? '无法同步社区内容，当前显示本地演示数据。' : 'Could not sync community content. Showing local demo data.'),
+    getErrorMessage: () => (locale === 'zh' ? '社区 API 暂不可用；未显示本地替代数据。' : 'The community API is unavailable; no local substitute is shown.'),
     deps: [locale],
     logLabel: 'community-service',
   })

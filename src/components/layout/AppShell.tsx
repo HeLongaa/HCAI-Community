@@ -106,7 +106,7 @@ export function AppShell({
       ? textFor(t, 'API session', 'API 会话')
       : accountSource === 'stored'
         ? textFor(t, 'Stored session', '本地会话')
-        : textFor(t, 'Demo fallback', '演示回退')
+        : textFor(t, 'Account unavailable', '账号不可用')
   const navItems: NavItem[] = [
     { key: 'home', label: t.home, icon: LayoutDashboard },
     { key: 'tasks', label: t.tasks, icon: BriefcaseBusiness },

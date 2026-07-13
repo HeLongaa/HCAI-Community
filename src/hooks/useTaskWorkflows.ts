@@ -38,7 +38,7 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
       setTaskList(items)
       setSelectedTask((current) => items.find((item) => item.id === current.id) ?? items[0])
     },
-    getErrorMessage: () => (locale === 'zh' ? '无法同步任务列表，当前显示本地演示数据。' : 'Could not sync tasks. Showing local demo data.'),
+    getErrorMessage: () => (locale === 'zh' ? '任务 API 暂不可用；未显示本地替代数据。' : 'The task API is unavailable; no local substitute is shown.'),
     deps: [locale],
     logLabel: 'task-service',
   })

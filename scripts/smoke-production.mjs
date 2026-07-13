@@ -242,7 +242,7 @@ check(checks, 'media scanner request dispatch configured', env.hasMediaScanReque
 check(checks, 'media scanner request signing configured', env.hasMediaScanRequestSecret, 'MEDIA_SCAN_REQUEST_SECRET is recommended for managed smoke')
 check(checks, 'media scanner callback base URL configured', env.hasMediaScanCallbackBaseUrl, 'MEDIA_SCAN_CALLBACK_BASE_URL is required')
 check(checks, 'media scanner callback signature configured', env.hasMediaScanCallbackSignatureSecret, 'MEDIA_SCAN_CALLBACK_SIGNATURE_SECRET or request secret is required')
-check(checks, 'creative provider mode remains safe', ['mock', 'disabled'].includes(env.creativeProviderMode), `CREATIVE_PROVIDER_MODE=${env.creativeProviderMode}; production smoke allows only mock or disabled`)
+check(checks, 'creative provider mode is explicitly unavailable', env.creativeProviderMode === 'disabled', `CREATIVE_PROVIDER_MODE=${env.creativeProviderMode}; production product runtime requires disabled until approval`)
 check(checks, 'creative staging preflight disabled in production smoke', !env.creativeStagingProviderPreflightEnabled && !env.hasCreativeStagingProviderApiToken, 'Staging provider preflight must not be enabled in production smoke')
 check(checks, 'creative Provider HTTP client disabled in production smoke', !env.creativeProviderHttpClientEnabled, 'CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED must not be true in production smoke')
 check(checks, 'OpenAI Image HTTP client disabled in production smoke', !env.creativeOpenAIImageHttpClientEnabled, 'CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED must not be true in production smoke')
@@ -268,7 +268,7 @@ check(
     chatCapabilityContract.runtime.providerClientImplemented &&
     chatCapabilityContract.runtime.attachmentBytesImplemented &&
     chatCapabilityContract.runtime.productionSafetyClassifierImplemented &&
-    chatRuntime.mode === 'mock' &&
+    chatRuntime.mode === 'disabled' &&
     !chatRuntime.clientEnabled &&
     !chatRuntime.networkCallsEnabled &&
     !chatRuntime.safetyClassifierEnabled &&

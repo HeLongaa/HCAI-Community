@@ -41,7 +41,7 @@ import {
   taskStatusFromLabel,
 } from './prismaTransforms.js'
 import { serializeAuditEvent, serializeSecurityAlertDispatchEvent, serializeSecurityEvent } from './serializers.js'
-import { seedPrismaDatabase } from './prismaSeed.js'
+import { shouldAutoSeedPrisma } from './runtimePolicy.js'
 import { signMediaDownload, signMediaUpload } from '../storage/uploadSigner.js'
 import { diffPointAdjustmentPolicy, normalizePointAdjustmentPolicy, summarizePointPolicyDiff } from '../points/adjustmentPolicy.js'
 import {
@@ -146,13 +146,16 @@ const createClient = async () => {
   return new PrismaClient({ adapter })
 }
 
-const createPrismaRepository = async (fallbackRepository) => {
+const createPrismaRepository = async (fallbackRepository = {}) => {
   const client = await createClient()
   if (!client) {
     return null
   }
 
-  await seedPrismaDatabase(client)
+  if (shouldAutoSeedPrisma()) {
+    const { seedPrismaDatabase } = await import('./prismaSeed.js')
+    await seedPrismaDatabase(client)
+  }
 
   const loadRolePermissionMap = async () => {
     const rows = await client.rolePermission.findMany({
@@ -1626,14 +1629,14 @@ const createPrismaRepository = async (fallbackRepository) => {
         orderBy: { createdAt: 'asc' },
         include: { profile: true },
       })
-      return user ? mapAccount(user) : fallbackRepository.auth.getCurrentUser()
+      return user ? mapAccount(user) : fallbackRepository.auth?.getCurrentUser?.() ?? null
     },
     findDemoAccountByAccessToken: async (token) => {
       const activeAccount = await getActiveAccessAccount(token)
       if (activeAccount) {
         return activeAccount
       }
-      const fallback = fallbackRepository.auth.findDemoAccountByAccessToken(token)
+      const fallback = fallbackRepository.auth?.findDemoAccountByAccessToken?.(token)
       if (fallback) {
         return fallback
       }
@@ -1648,7 +1651,7 @@ const createPrismaRepository = async (fallbackRepository) => {
       return user ? mapAccount(user) : null
     },
     findDemoAccountByRefreshToken: async (token) => {
-      const fallback = fallbackRepository.auth.findDemoAccountByRefreshToken(token)
+      const fallback = fallbackRepository.auth?.findDemoAccountByRefreshToken?.(token)
       if (fallback) {
         return fallback
       }
@@ -1660,7 +1663,7 @@ const createPrismaRepository = async (fallbackRepository) => {
       return refreshToken ? mapAccount(refreshToken.user) : null
     },
     findDemoAccountByHandle: async (handle) => {
-      const fallback = fallbackRepository.auth.findDemoAccountByHandle(handle)
+      const fallback = fallbackRepository.auth?.findDemoAccountByHandle?.(handle)
       if (fallback) {
         return fallback
       }
@@ -7885,7 +7888,7 @@ const createPrismaRepository = async (fallbackRepository) => {
   }
 
   return {
-    ...fallbackRepository,
+    ...(process.env.NODE_ENV === 'production' ? {} : fallbackRepository),
     client,
     auth,
     tasks,

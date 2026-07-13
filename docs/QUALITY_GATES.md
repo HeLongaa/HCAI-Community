@@ -34,7 +34,7 @@ runtime routes or Prisma models.
 
 The V1 runtime-surface contract checks the exact frontend `mockData` import set, visible fallback labels, server
 seed/mock/fixture boundaries, production dispositions, and downstream V1 owners. It deliberately reports the current
-release blockers without claiming that V1 is production-ready.
+release blockers; V1-39 may claim runtime-surface readiness only when the disposition matrix has zero blockers and the production bundle/negative persistence guards pass.
 
 The V1 provider-decision contract checks the four primary/backup pairs, official-source register, pricing examples,
 budget sums, app concurrency and lifecycle bounds, rights/training/retention/region/SLA dispositions, replacement
