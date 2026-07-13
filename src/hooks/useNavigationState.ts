@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { NavigateOptions, Page, PlaygroundMode } from '../domain/types'
 
 const oauthRedirectKey = 'hcaiOAuthRedirectTo'
@@ -73,14 +73,20 @@ const consumeOAuthRedirectPage = (): Page | null => {
 
 const pageFromHash = (): Page | null => {
   if (typeof window === 'undefined') return null
-  if (window.location.hash === '#generations' || window.location.hash.startsWith('#generations/')) return 'generations'
-  if (window.location.hash === '#assets' || window.location.hash.startsWith('#assets/')) return 'assets'
-  return null
+  const path = window.location.hash.replace(/^#\/?/, '').split(/[/?]/)[0]
+  return routablePages.has(path as Page) ? path as Page : null
+}
+
+const workspaceFromHash = (): PlaygroundMode | null => {
+  if (typeof window === 'undefined') return null
+  const query = window.location.hash.split('?')[1]
+  const workspace = query ? new URLSearchParams(query).get('workspace') : null
+  return workspace && ['music', 'image', 'video', 'chat'].includes(workspace) ? workspace as PlaygroundMode : null
 }
 
 export function useNavigationState() {
   const [page, setPage] = useState<Page>(() => consumeOAuthRedirectPage() ?? pageFromHash() ?? 'home')
-  const [playgroundWorkspace, setPlaygroundWorkspace] = useState<PlaygroundMode>('music')
+  const [playgroundWorkspace, setPlaygroundWorkspace] = useState<PlaygroundMode>(() => workspaceFromHash() ?? 'music')
   const [pageReturnTargets, setPageReturnTargets] = useState<Partial<Record<Page, Page>>>({})
 
   const navigateToPage = (target: Page, workspace?: PlaygroundMode, options: NavigateOptions = {}) => {
@@ -104,7 +110,25 @@ export function useNavigationState() {
       return next
     })
     setPage(destination)
+    const selectedWorkspace = workspace ?? (target === 'chat' ? 'chat' : null)
+    const query = destination === 'playground' && selectedWorkspace ? `?workspace=${encodeURIComponent(selectedWorkspace)}` : ''
+    window.history.pushState(null, '', `#${destination}${query}`)
   }
+
+  useEffect(() => {
+    const restore = () => {
+      const restoredPage = pageFromHash()
+      if (restoredPage) setPage(restoredPage)
+      const restoredWorkspace = workspaceFromHash()
+      if (restoredWorkspace) setPlaygroundWorkspace(restoredWorkspace)
+    }
+    window.addEventListener('hashchange', restore)
+    window.addEventListener('popstate', restore)
+    return () => {
+      window.removeEventListener('hashchange', restore)
+      window.removeEventListener('popstate', restore)
+    }
+  }, [])
 
   const navigatePrimary = (target: Page, workspace?: PlaygroundMode) => {
     navigateToPage(target, workspace, { resetReturn: true })

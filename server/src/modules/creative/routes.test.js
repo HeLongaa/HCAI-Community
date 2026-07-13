@@ -2072,7 +2072,8 @@ test('POST generation cancel is owner-scoped and idempotent', async () => {
     assert.equal(notifications.items[0].resourceId, generationId)
     assert.equal(notifications.items[0].metadata.mutationId, cancelled.payload.data.mutation.id)
     assert.equal(notifications.items[0].metadata.workspace, 'image')
-    assert.equal(notifications.items[0].metadata.target.page, 'playground')
+    assert.equal(notifications.items[0].metadata.target.surface, 'image')
+    assert.equal(notifications.items[0].metadata.target.workspace, 'image')
   } finally {
     await server.close()
   }
@@ -2136,7 +2137,8 @@ test('POST generation retry creates a child attempt without storing a raw prompt
     assert.equal(notifications.items[0].resourceId, child.id)
     assert.equal(notifications.items[0].metadata.mutationId, retried.payload.data.mutation.id)
     assert.equal(notifications.items[0].metadata.targetGenerationId, child.id)
-    assert.equal(notifications.items[0].metadata.target.page, 'playground')
+    assert.equal(notifications.items[0].metadata.target.surface, 'image')
+    assert.equal(notifications.items[0].metadata.target.workspace, 'image')
 
     const duplicate = await requestJson(server.url, `/api/creative/generations/${generationId}/retry`, {
       body,

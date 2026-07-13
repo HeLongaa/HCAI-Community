@@ -881,6 +881,20 @@ export function MyTasksPage({
   const showAcceptedTasks = mineTaskFilter === 'all' || mineTaskFilter === 'accepted'
   const publisherTaskKey = publisherTasks.map((task) => task.id).join('|')
   const deliveryTaskKey = deliveryTasks.map((task) => task.id).join('|')
+  useEffect(() => {
+    const query = window.location.hash.startsWith('#mine?') ? window.location.hash.split('?')[1] : ''
+    const taskId = query ? new URLSearchParams(query).get('taskId') : null
+    if (!taskId) return
+    const publisherTask = publisherTasks.find((task) => String(task.id) === taskId)
+    const deliveryTask = deliveryTasks.find((task) => String(task.id) === taskId)
+    const target = publisherTask ?? deliveryTask
+    if (!target) return
+    const timer = window.setTimeout(() => {
+      setSelectedMineTask({ id: target.id, role: publisherTask ? 'publisher' : 'maker' })
+      setMineTaskFilter(publisherTask ? 'posted' : 'accepted')
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [publisherTaskKey, deliveryTaskKey, publisherTasks, deliveryTasks])
   const changeMineTaskFilter = (nextFilter: MineTaskFilter) => {
     setMineTaskFilter(nextFilter)
     const nextTask =

@@ -71,7 +71,9 @@ export type AdminDeepLink = {
 
 export type NotificationDeepLink = {
   page: Page
+  workspace?: PlaygroundMode
   admin?: AdminDeepLink
+  target?: import('./notificationTargets').NotificationTargetV1
 }
 
 export type AsyncResourceState = {

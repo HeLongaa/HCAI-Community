@@ -3686,7 +3686,8 @@ test('manual Provider replay requires a different approver and executes only aft
     )
     assert.equal(requestNotifications.items.length, 1)
     assert.equal(requestNotifications.items[0].metadata.reviewId, requested.payload.data.review.id)
-    assert.equal(requestNotifications.items[0].metadata.target.page, 'playground')
+    assert.equal(requestNotifications.items[0].metadata.target.surface, 'image')
+    assert.equal(requestNotifications.items[0].metadata.target.workspace, 'image')
     assert.equal(JSON.stringify(requestNotifications.items[0]).includes('rawPayload'), false)
 
     const selfApproval = await requestJson(

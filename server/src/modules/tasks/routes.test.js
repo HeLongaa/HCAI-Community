@@ -823,7 +823,7 @@ test('task lifecycle sends proposal, resubmission, approval, and settlement noti
       token: 'demo-access.launchteam',
     })
     assert.equal(publisherInbox.status, 200)
-    assert.ok(publisherInbox.payload.data.some((item) => item.metadata.proposalId === proposal.id && item.metadata.target.page === 'mine'))
+    assert.ok(publisherInbox.payload.data.some((item) => item.metadata.proposalId === proposal.id && item.metadata.target.surface === 'tasks' && item.metadata.target.taskId === String(task.id)))
 
     await requestJson(server.url, `/api/tasks/${task.id}/proposals/${proposal.id}/actions`, {
       body: { decision: 'accept', note: 'Selected for notification coverage.' },
@@ -868,7 +868,7 @@ test('task lifecycle sends proposal, resubmission, approval, and settlement noti
       token: 'demo-access.promptlin',
     })
     assert.ok(creatorSettlementInbox.payload.data.some((item) => item.type === 'task.submission_approved' && item.resourceId === String(task.id)))
-    assert.ok(creatorSettlementInbox.payload.data.some((item) => item.type === 'task.reward_settled' && item.metadata.target.page === 'points'))
+    assert.ok(creatorSettlementInbox.payload.data.some((item) => item.type === 'task.reward_settled' && item.metadata.target.surface === 'points'))
   } finally {
     await server.close()
   }
