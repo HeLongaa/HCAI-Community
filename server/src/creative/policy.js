@@ -1,39 +1,16 @@
 import { HttpError } from '../common/errors/httpError.js'
+import {
+  accountingForCreativeMode,
+  creativeAccountingPolicyV1,
+  creativeQuotaLimitFor,
+  providerCostAvailability,
+} from './accountingPolicy.js'
 
 const quotaCounters = new Map()
 
-const policyVersion = 'creative-policy-v1'
-const defaultDailyQuota = 24
-
-const roleQuotaMultipliers = {
-  admin: 4,
-  moderator: 3,
-  publisher: 2,
-  creator: 2,
-  member: 1,
-}
-
-const creditCosts = {
-  image: {
-    text_to_image: 1,
-    image_to_image: 2,
-    image_edit: 2,
-    image_variation: 2,
-  },
-  video: {
-    text_to_video: 8,
-    image_to_video: 10,
-    music_video: 12,
-  },
-  music: {
-    instrumental: 4,
-    lyrics_to_song: 5,
-  },
-  chat: {
-    assistant: 1,
-    prompt_assist: 1,
-    storyboard: 2,
-  },
+const policyVersion = creativeAccountingPolicyV1.version
+if (policyVersion !== 'creative-policy-v1') {
+  throw new Error('Creative accounting and content-safety policy versions must stay aligned')
 }
 
 const blockedModerationRules = [
@@ -72,14 +49,6 @@ const reviewModerationRules = [
   },
 ]
 
-const clampDailyQuota = (value) => {
-  const parsed = Number.parseInt(String(value ?? ''), 10)
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return defaultDailyQuota
-  }
-  return Math.min(parsed, 500)
-}
-
 export const quotaWindowFor = (now) => {
   const date = now.toISOString().slice(0, 10)
   return {
@@ -93,12 +62,6 @@ export const quotaWindowFor = (now) => {
 
 const quotaKeyFor = ({ actor, request, now }) =>
   `${quotaWindowFor(now).id}:${actor.id}:${request.workspace}`
-
-const quotaLimitFor = ({ actor, source }) => {
-  const base = clampDailyQuota(source.CREATIVE_DAILY_QUOTA)
-  const multiplier = roleQuotaMultipliers[actor.role] ?? 1
-  return base * multiplier
-}
 
 export const resetCreativePolicyState = () => {
   quotaCounters.clear()
@@ -138,7 +101,7 @@ export const reserveCreativeQuota = async ({
   costUnits = 1,
   quotaRepository = null,
 }) => {
-  const limit = quotaLimitFor({ actor, source })
+  const limit = creativeQuotaLimitFor({ actor, source })
   const window = quotaWindowFor(now)
   const units = Math.max(1, Number.parseInt(String(costUnits ?? 1), 10) || 1)
   if (quotaRepository?.reserve) {
@@ -199,12 +162,14 @@ export const reserveCreativeQuota = async ({
 }
 
 export const estimateCreativeUsage = ({ request, provider }) => {
-  const estimatedCredits = creditCosts[request.workspace]?.[request.mode] ?? 1
+  const accounting = accountingForCreativeMode(request.workspace, request.mode) ?? { credits: 1, quotaUnits: 1 }
   return {
-    estimatedCredits,
-    providerCostCents: provider.safeMetadata?.costMetered ? estimatedCredits : 0,
-    metered: Boolean(provider.safeMetadata?.costMetered),
-    costModel: provider.safeMetadata?.costMetered ? 'provider_metered_placeholder' : 'mock_unmetered',
+    estimatedCredits: accounting.credits,
+    quotaUnits: accounting.quotaUnits,
+    creditEstimateKind: 'policy_estimate',
+    providerCostAvailability: providerCostAvailability(provider),
+    metered: Boolean(provider?.safeMetadata?.costMetered),
+    costModel: 'creative_accounting_policy',
     currency: 'credits',
   }
 }
@@ -226,7 +191,7 @@ export const applyCreativeGenerationPolicy = async ({
     source,
     now,
     generationId,
-    costUnits: usage.estimatedCredits,
+    costUnits: usage.quotaUnits,
     quotaRepository,
   })
 

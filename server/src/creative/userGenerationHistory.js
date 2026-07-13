@@ -79,6 +79,14 @@ export const serializeUserCreativeGeneration = async (generation, { mediaReposit
       estimatedCredits: Number(generation.usage?.estimatedCredits ?? 0),
       metered: generation.usage?.metered === true,
     },
+    accounting: {
+      policyVersion: generation.policy?.version ? String(generation.policy.version) : 'legacy',
+      legacy: !generation.policy?.version,
+      quotaUnits: Number(generation.usage?.quotaUnits ?? generation.usage?.estimatedCredits ?? 0),
+      providerCost: generation.usage?.providerCost?.ledger
+        ? { availability: 'available', ledgerStatus: String(generation.usage.providerCost.ledger.status ?? 'unknown') }
+        : { availability: 'unavailable', ledgerStatus: null },
+    },
     safety: {
       reviewRequired: generation.safety?.reviewRequired === true || generation.status === 'review_required',
     },
@@ -121,6 +129,7 @@ export const serializeUserGenerationTask = async (generation, context) => {
     summary: serialized.workspace === 'chat' ? null : serialized.promptPreview,
     attempt: serialized.attempt,
     usage: serialized.usage,
+    accounting: serialized.accounting,
     review: {
       required: serialized.safety.reviewRequired,
     },

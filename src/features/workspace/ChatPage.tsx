@@ -29,6 +29,7 @@ import type {
   ChatStreamEvent,
   ChatTurnStatus,
 } from '../../services/contracts'
+import { CreativeCostPreview } from './CreativeCostPreview'
 
 type ChatPageProps = {
   t: Record<string, string>
@@ -615,6 +616,7 @@ export function ChatPage({
             rows={2}
             disabled={isStreaming}
           />
+          <CreativeCostPreview t={t} workspace="chat" mode={mode} />
           <div className="chat-composer-footer">
             <span>{draft.length}/4000</span>
             {isStreaming ? (

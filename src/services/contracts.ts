@@ -794,6 +794,48 @@ export type CreateCreativeGenerationRequest = {
   providerId?: string | null
 }
 
+export type ApiCreativeAccountingPreview = {
+  policy: {
+    schema: 'CreativeAccountingPolicyV1'
+    version: string
+    effectiveAt: string
+  }
+  workspace: CreativeWorkspace
+  mode: string
+  credits: {
+    estimate: number
+    unit: 'creative_credits'
+  }
+  quota: {
+    policyVersion: string
+    scope: string
+    workspace: CreativeWorkspace
+    weight: number
+    limit: number
+    reserved: number
+    used: number
+    released: number
+    remaining: number
+    allowed: boolean
+    window: { start: string; end: string; resetsAt: string }
+  }
+  capability: {
+    providerId: string
+    available: boolean
+    reasonCode: string | null
+  }
+  providerCost: {
+    availability: 'available' | 'unavailable'
+    reasonCode: string | null
+  }
+  settlement: {
+    success: string
+    reviewRequired: string
+    noOutputFailureOrCancellation: string
+    providerCostUnknown: string
+  }
+}
+
 export type ApiCreativeProvider = {
   id: string
   label: string
@@ -1043,6 +1085,15 @@ export type ApiUserCreativeGeneration = {
     estimatedCredits: number
     metered: boolean
   }
+  accounting?: {
+    policyVersion: string
+    legacy: boolean
+    quotaUnits: number
+    providerCost: {
+      availability: 'available' | 'unavailable'
+      ledgerStatus: string | null
+    }
+  }
   safety: {
     reviewRequired: boolean
   }
@@ -1098,6 +1149,7 @@ export type ApiGenerationTask = {
     estimatedCredits: number
     metered: boolean
   }
+  accounting?: ApiUserCreativeGeneration['accounting']
   review: {
     required: boolean
   }
@@ -1313,7 +1365,12 @@ export type ApiCreativeProviderCost = {
 
 export type ApiCreativeGenerationUsage = {
   estimatedCredits: number | null
-  providerCostCents: number | null
+  quotaUnits: number | null
+  creditEstimateKind: string | null
+  providerCostAvailability: {
+    availability: 'available' | 'unavailable' | null
+    reasonCode: string | null
+  } | null
   metered: boolean | null
   costModel: string | null
   currency: string | null
@@ -1371,7 +1428,12 @@ export type ApiCreativeGeneration = {
   outputs: ApiCreativeGenerationOutput[]
   usage: {
     estimatedCredits: number
-    providerCostCents: number
+    quotaUnits: number
+    creditEstimateKind: 'policy_estimate'
+    providerCostAvailability: {
+      availability: 'available' | 'unavailable'
+      reasonCode: string | null
+    }
     metered: boolean
     costModel?: string
     currency?: string

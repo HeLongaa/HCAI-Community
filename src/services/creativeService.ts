@@ -10,6 +10,7 @@ import type {
   RetryCreativeGenerationRequest,
   ApiUserCreativeGeneration,
   ApiGenerationTask,
+  ApiCreativeAccountingPreview,
   GenerationCenterPage,
   GenerationCenterQuery,
   UserCreativeGenerationHistoryPage,
@@ -17,6 +18,13 @@ import type {
 } from './contracts'
 
 export const creativeService = {
+  accountingPreview(workspace: CreateCreativeGenerationRequest['workspace'], mode: string, providerId?: string | null) {
+    return api.get<ApiCreativeAccountingPreview>(withQuery('/creative/accounting-policy/preview', {
+      workspace,
+      mode,
+      providerId: providerId || undefined,
+    }))
+  },
   listProviders() {
     return api.get<ApiCreativeProviderCatalog>('/creative/providers')
   },

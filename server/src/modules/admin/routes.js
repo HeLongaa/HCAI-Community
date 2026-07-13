@@ -38,6 +38,7 @@ import {
   requestManualProviderReplay,
   resolveManualProviderReplayReview,
 } from '../../creative/manualReplayRequestService.js'
+import { creativeAccountingPolicyHistory } from '../../creative/accountingPolicy.js'
 
 const isPointAdjustmentReview = (review) => review?.queue === 'points' || review?.metadata?.kind === 'point_adjustment'
 const isManualProviderReplayReview = (review) => review?.metadata?.kind === 'manual_provider_replay'
@@ -247,7 +248,15 @@ const safeGenerationUsage = (usage) => {
   if (Object.keys(source).length === 0) return null
   return {
     estimatedCredits: safeNumber(source.estimatedCredits),
-    providerCostCents: safeNumber(source.providerCostCents),
+    quotaUnits: safeNumber(source.quotaUnits),
+    creditEstimateKind: safeString(source.creditEstimateKind),
+    providerCostAvailability: (() => {
+      const availability = asRecord(source.providerCostAvailability)
+      return Object.keys(availability).length > 0 ? {
+        availability: safeString(availability.availability),
+        reasonCode: safeString(availability.reasonCode),
+      } : null
+    })(),
     metered: safeBoolean(source.metered),
     costModel: safeString(source.costModel),
     currency: safeString(source.currency),
@@ -554,6 +563,19 @@ const operationsMetricsExportJson = (artifact) => JSON.stringify(artifact, null,
 export const registerAdminRoutes = (router, options = {}) => {
   const routeRepositories = options.repositories ?? repositories
   const providerMutationAdapters = options.providerMutationAdapters ?? {}
+  router.add('GET', '/api/admin/creative/accounting-policy/history', async (_request, response, context) => {
+    requirePermission(context, 'admin:audit:read')
+    ok(response, creativeAccountingPolicyHistory.map((policy) => ({
+      schema: policy.schema,
+      version: policy.version,
+      effectiveAt: policy.effectiveAt,
+      status: policy.status,
+      immutable: policy.history.immutable,
+      policy,
+    })), {
+      pagination: { limit: creativeAccountingPolicyHistory.length, nextCursor: null },
+    })
+  })
   router.add('GET', '/api/admin/creative/provider-controls', async (_request, response, context) => {
     requirePermission(context, 'admin:creative:provider-control:read')
     const query = parseProviderControlListQuery(context.query)

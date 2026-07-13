@@ -20,6 +20,7 @@ import type {
   ApiCreativeProviderCatalog,
   ApiCreativeProviderCatalogEntry,
 } from '../../services/contracts'
+import { CreativeCostPreview } from './CreativeCostPreview'
 
 const labelForMode = (mode: string, isZh: boolean) => ({
   instrumental: isZh ? '纯音乐' : 'Instrumental',
@@ -251,6 +252,7 @@ export function MusicStudioPage({
             <span>{textFor(t, 'I have the rights to this prompt and any supplied lyrics, and I am not requesting artist imitation.', '我拥有提示词和所填歌词的必要权利，且未要求模仿特定艺人。')}</span>
           </label>
 
+          <CreativeCostPreview t={t} workspace="music" mode={mode} providerId={providerId} />
           <button className="primary-button video-generate-button" type="button" disabled={!canGenerate} onClick={() => void runGeneration()}>
             {workflow.generation.status === 'loading' ? <LoaderCircle className="spin" size={17} /> : <Music2 size={17} />}
             {workflow.generation.status === 'loading' ? textFor(t, 'Creating job', '正在创建任务') : textFor(t, 'Generate music', '生成音乐')}

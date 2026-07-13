@@ -10,6 +10,8 @@ test('Image Studio consumes the capability contract and sends only allowed param
   await page.getByRole('button', { name: 'Image', exact: true }).click()
 
   await expect(page.getByRole('heading', { name: 'Image Studio' })).toBeVisible()
+  await expect(page.getByTestId('creative-cost-image')).toContainText('1 credits estimated')
+  await expect(page.getByTestId('creative-cost-image')).toContainText('Provider cost: unavailable')
   await expect(page.getByRole('button', { name: 'Text to Image' })).toBeEnabled()
   await expect(page.getByRole('button', { name: 'Image to Image' })).toBeEnabled()
   await expect(page.getByRole('button', { name: 'Image Edit' })).toBeEnabled()
