@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Archive, ArchiveRestore, ArrowDownToLine, Boxes, ChevronRight, File, FileAudio, FileImage, FileVideo, FolderSearch, LoaderCircle, RefreshCw, Search, Send, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Archive, ArchiveRestore, ArrowDownToLine, Boxes, ChevronRight, ExternalLink, File, FileAudio, FileImage, FileVideo, FolderSearch, LoaderCircle, RefreshCw, Search, Send, ShieldCheck } from 'lucide-react'
 import type { Page, PlaygroundMode } from '../../domain/types'
 import { textFor } from '../../domain/utils'
 import type { ApiAssetLibraryItem, AssetLibraryQuery, AssetMediaType, AssetWorkspace, MediaAssetPurpose } from '../../services/contracts'
@@ -34,6 +34,7 @@ export function AssetLibraryPage({ t, signedIn, requireAuth, navigateToPage }: {
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [online, setOnline] = useState(() => navigator.onLine)
   const groups = useMemo(() => {
     const grouped = new Map<string, ApiAssetLibraryItem[]>()
     for (const item of items) {
@@ -59,6 +60,12 @@ export function AssetLibraryPage({ t, signedIn, requireAuth, navigateToPage }: {
   }, [filters, signedIn, t])
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), 180); return () => window.clearTimeout(timer) }, [load])
+  useEffect(() => {
+    const sync = () => setOnline(navigator.onLine)
+    window.addEventListener('online', sync)
+    window.addEventListener('offline', sync)
+    return () => { window.removeEventListener('online', sync); window.removeEventListener('offline', sync) }
+  }, [])
 
   const updateArchive = async (asset: ApiAssetLibraryItem) => {
     setBusy(asset.id)
@@ -72,9 +79,15 @@ export function AssetLibraryPage({ t, signedIn, requireAuth, navigateToPage }: {
   }
 
   const reuse = (asset: ApiAssetLibraryItem, workspace: AssetWorkspace) => {
-    if (!asset.actions.reuse[workspace].available || workspace === 'music') return
+    if (!online || !asset.actions.reuse[workspace].available || workspace === 'music') return
     window.sessionStorage.setItem('hcaiAssetReuse', JSON.stringify({ assetId: asset.id, workspace }))
     navigateToPage('playground', workspace)
+  }
+
+  const openSourceGeneration = (asset: ApiAssetLibraryItem) => {
+    if (!asset.sourceGeneration) return
+    window.history.replaceState(null, '', `#generations/${encodeURIComponent(asset.sourceGeneration.id)}`)
+    navigateToPage('generations')
   }
 
   const renderAssetCard = (asset: ApiAssetLibraryItem) => {
@@ -86,6 +99,7 @@ export function AssetLibraryPage({ t, signedIn, requireAuth, navigateToPage }: {
 
   return <main className="asset-library-page" data-testid="asset-library">
     <header className="asset-library-header"><div><span><Boxes size={14}/> {textFor(t, 'Creative system of record', '创作资产事实源')}</span><h1>{textFor(t, 'Assets', '资产库')}</h1><p>{textFor(t, 'Search, trace, archive, and reuse governed outputs across studios.', '跨工作台搜索、追溯、归档和复用受治理的创作产物。')}</p></div><button className="icon-button" aria-label={textFor(t, 'Refresh assets', '刷新资产')} onClick={() => void load()} type="button"><RefreshCw className={loading ? 'spin' : ''} size={17}/></button></header>
+    {!online && <div className="asset-library-notice offline"><AlertTriangle size={15}/><span>{textFor(t, 'Offline. Showing the last loaded asset state.', '当前离线，正在显示上次加载的资产状态。')}</span></div>}
     {error && <div className="asset-library-notice">{error}<button type="button" onClick={() => setError(null)}>×</button></div>}
     <section className="asset-library-filters" aria-label={textFor(t, 'Asset filters', '资产筛选')}>
       <label className="asset-search"><Search size={15}/><input aria-label={textFor(t, 'Search assets', '搜索资产')} placeholder={textFor(t, 'Search filename', '搜索文件名')} value={filters.search} onChange={(event) => setFilters((value) => ({ ...value, search: event.target.value }))}/></label>
@@ -98,7 +112,7 @@ export function AssetLibraryPage({ t, signedIn, requireAuth, navigateToPage }: {
     </section>
     <section className="asset-library-workbench">
       <div className="asset-grid" aria-busy={loading}>{loading && items.length === 0 ? <div className="asset-empty"><LoaderCircle className="spin"/><span>{textFor(t, 'Loading assets…', '正在加载资产…')}</span></div> : items.length === 0 ? <div className="asset-empty"><FolderSearch/><strong>{textFor(t, 'No assets found', '没有找到资产')}</strong><span>{textFor(t, 'Adjust filters or create something in a studio.', '调整筛选条件或前往工作台创作。')}</span></div> : groups.map((group) => <section className="asset-group" key={group.label}><header><strong>{group.label.replaceAll('_', ' ')}</strong><span>{group.assets.length}</span></header><div>{group.assets.map(renderAssetCard)}</div></section>)}{nextCursor && <button className="asset-load-more" disabled={loading} onClick={() => void load(nextCursor)} type="button">{textFor(t, 'Load more', '加载更多')}</button>}</div>
-      <aside className="asset-detail">{!selected ? <div className="asset-empty"><Boxes/><span>{textFor(t, 'Select an asset for details.', '选择资产以查看详情。')}</span></div> : <><div className="asset-detail-title"><span className={`asset-thumb ${selected.mediaType}`}>{(() => { const Icon = icons[selected.mediaType]; return <Icon size={22}/> })()}</span><div><small>{selected.purpose.replaceAll('_', ' ')}</small><h2>{selected.fileName}</h2></div></div><dl><div><dt>{textFor(t, 'Governance', '治理状态')}</dt><dd>{selected.status} / {selected.scanStatus}</dd></div><div><dt>{textFor(t, 'Size', '大小')}</dt><dd>{formatBytes(selected.sizeBytes)}</dd></div><div><dt>{textFor(t, 'Source', '来源')}</dt><dd>{selected.sourceGeneration ? `${selected.sourceGeneration.workspace} / ${selected.sourceGeneration.mode}` : textFor(t, 'Upload', '上传')}</dd></div><div><dt>{textFor(t, 'Evidence', '证据引用')}</dt><dd>{selected.referenced ? textFor(t, 'Retained', '已保留') : textFor(t, 'None', '无')}</dd></div></dl><div className="asset-lineage"><div><strong>{textFor(t, 'Version & reuse lineage', '版本与复用关系')}</strong><span>{selected.relations.length}</span></div>{selected.relations.length === 0 ? <p>{textFor(t, 'Original asset. No derived versions yet.', '原始资产，暂无衍生版本。')}</p> : selected.relations.map((relation) => <p key={relation.id}>{relation.relationType.replaceAll('_', ' ')} · {relation.sourceAssetId === selected.id ? `→ ${relation.targetAssetId}` : `← ${relation.sourceAssetId}`}</p>)}</div><div className="asset-actions"><button className="ghost-button" disabled={!selected.actions.download.available} onClick={() => void download(selected).catch((cause) => setError(cause instanceof Error ? cause.message : 'Download failed'))} type="button"><ArrowDownToLine size={15}/>{textFor(t, 'Download', '下载')}</button><button className="ghost-button" disabled={busy === selected.id} onClick={() => void updateArchive(selected)} type="button">{selected.archivedAt ? <ArchiveRestore size={15}/> : <Archive size={15}/>} {selected.archivedAt ? textFor(t, 'Restore', '恢复') : textFor(t, 'Archive', '归档')}</button></div><div className="asset-reuse"><strong>{textFor(t, 'Send to studio', '发送到工作台')}</strong>{(['image','video','chat'] as AssetWorkspace[]).map((workspace) => <button key={workspace} disabled={!selected.actions.reuse[workspace].available} title={selected.actions.reuse[workspace].reason ?? workspace} onClick={() => reuse(selected, workspace)} type="button"><Send size={14}/>{workspace}</button>)}</div></>}</aside>
+      <aside className="asset-detail">{!selected ? <div className="asset-empty"><Boxes/><span>{textFor(t, 'Select an asset for details.', '选择资产以查看详情。')}</span></div> : <><div className="asset-detail-title"><span className={`asset-thumb ${selected.mediaType}`}>{(() => { const Icon = icons[selected.mediaType]; return <Icon size={22}/> })()}</span><div><small>{selected.purpose.replaceAll('_', ' ')}</small><h2>{selected.fileName}</h2></div></div><dl><div><dt>{textFor(t, 'Governance', '治理状态')}</dt><dd>{selected.status} / {selected.scanStatus}</dd></div><div><dt>{textFor(t, 'Size', '大小')}</dt><dd>{formatBytes(selected.sizeBytes)}</dd></div><div><dt>{textFor(t, 'Source', '来源')}</dt><dd>{selected.sourceGeneration ? `${selected.sourceGeneration.workspace} / ${selected.sourceGeneration.mode}` : textFor(t, 'Upload', '上传')}</dd></div><div><dt>{textFor(t, 'Evidence', '证据引用')}</dt><dd>{selected.referenced ? textFor(t, 'Retained', '已保留') : textFor(t, 'None', '无')}</dd></div></dl><div className="asset-lineage"><div><strong>{textFor(t, 'Version & reuse lineage', '版本与复用关系')}</strong><span>{selected.relations.length}</span></div>{selected.relations.length === 0 ? <p>{textFor(t, 'Original asset. No derived versions yet.', '原始资产，暂无衍生版本。')}</p> : selected.relations.map((relation) => <p key={relation.id}>{relation.relationType.replaceAll('_', ' ')} · {relation.sourceAssetId === selected.id ? `→ ${relation.targetAssetId}` : `← ${relation.sourceAssetId}`}</p>)}</div><div className="asset-actions"><button className="ghost-button" disabled={!selected.actions.download.available || !online} onClick={() => void download(selected).catch((cause) => setError(cause instanceof Error ? cause.message : 'Download failed'))} type="button"><ArrowDownToLine size={15}/>{textFor(t, 'Download', '下载')}</button>{selected.sourceGeneration && <button className="ghost-button" onClick={() => openSourceGeneration(selected)} type="button"><ExternalLink size={15}/>{textFor(t, 'Open source task', '打开来源任务')}</button>}<button className="ghost-button" disabled={busy === selected.id || !online} onClick={() => void updateArchive(selected)} type="button">{selected.archivedAt ? <ArchiveRestore size={15}/> : <Archive size={15}/>} {selected.archivedAt ? textFor(t, 'Restore', '恢复') : textFor(t, 'Archive', '归档')}</button></div><div className="asset-reuse"><strong>{textFor(t, 'Send to studio', '发送到工作台')}</strong>{(['image','video','chat'] as AssetWorkspace[]).map((workspace) => <button key={workspace} disabled={!online || !selected.actions.reuse[workspace].available} title={selected.actions.reuse[workspace].reason ?? workspace} onClick={() => reuse(selected, workspace)} type="button"><Send size={14}/>{workspace}</button>)}</div></>}</aside>
     </section>
   </main>
 }

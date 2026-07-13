@@ -67,6 +67,7 @@
 .asset-library-auth h1, .asset-library-auth p { margin: 0; }
 .asset-library-notice { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid color-mix(in srgb, #e05252 45%, var(--border)); border-radius: 8px; background: color-mix(in srgb, #e05252 8%, var(--panel)); font-size: 13px; }
 .asset-library-notice button { border: 0; background: transparent; color: inherit; }
+.asset-library-notice.offline { justify-content: flex-start; align-items: center; border-color: var(--border); background: var(--control-bg); color: var(--muted); }
 .asset-library-filters { display: grid; grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(130px, .32fr)); gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
 .asset-library-filters select, .asset-library-filters > input, .asset-search { min-height: 38px; border: 1px solid var(--border); border-radius: 7px; background: var(--control-bg); color: var(--text); }
 .asset-library-filters > input { padding: 0 10px; color-scheme: dark; }
