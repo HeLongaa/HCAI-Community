@@ -1,4 +1,5 @@
 import { safeErrorPreview } from '../creative/generationRecords.js'
+import { sanitizeNotificationMetadata } from './notificationTargets.js'
 
 const asObject = (value) => (value && typeof value === 'object' && !Array.isArray(value) ? value : null)
 
@@ -470,7 +471,7 @@ export const getNotificationDto = (notification) => ({
   body: notification.body,
   resourceType: notification.resourceType,
   resourceId: notification.resourceId ?? null,
-  metadata: notification.metadata ?? null,
+  metadata: sanitizeNotificationMetadata(notification.metadata, notification),
   readAt: notification.readAt ? notification.readAt.toISOString() : null,
   createdAt: notification.createdAt ? notification.createdAt.toISOString() : '',
 })

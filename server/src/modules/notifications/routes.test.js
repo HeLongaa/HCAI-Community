@@ -151,14 +151,9 @@ test('high-value point adjustment creates an unread notification for another app
       item.readAt === null
     )
     assert.ok(notification)
-    assert.deepEqual(notification.metadata.target, {
-      page: 'admin',
-      admin: {
-        tab: 'Task review',
-        queue: 'points',
-        reviewId,
-      },
-    })
+    assert.equal(notification.metadata.target.version, 1)
+    assert.equal(notification.metadata.target.surface, 'admin')
+    assert.deepEqual(notification.metadata.target.admin, { tab: 'Task review', queue: 'points', reviewId })
   } finally {
     await server.close()
   }
@@ -263,13 +258,9 @@ test('point policy rollback creates an unread notification for another policy ma
     assert.ok(notification)
     assert.match(notification.metadata.auditEventId, /^audit-/)
     assert.notEqual(notification.metadata.auditEventId, eventId)
-    assert.deepEqual(notification.metadata.target, {
-      page: 'admin',
-      admin: {
-        tab: 'Audit log',
-        auditEventId: notification.metadata.auditEventId,
-      },
-    })
+    assert.equal(notification.metadata.target.version, 1)
+    assert.equal(notification.metadata.target.surface, 'admin')
+    assert.deepEqual(notification.metadata.target.admin, { tab: 'Audit log', auditEventId: notification.metadata.auditEventId })
   } finally {
     await server.close()
   }
@@ -300,13 +291,9 @@ test('media governance policy updates notify policy managers with audit deep lin
     const notification = inbox.payload.data.find((item) => item.resourceType === 'media_governance_policy')
     assert.ok(notification)
     assert.match(notification.metadata.auditEventId, /^audit-/)
-    assert.deepEqual(notification.metadata.target, {
-      page: 'admin',
-      admin: {
-        tab: 'Audit log',
-        auditEventId: notification.metadata.auditEventId,
-      },
-    })
+    assert.equal(notification.metadata.target.version, 1)
+    assert.equal(notification.metadata.target.surface, 'admin')
+    assert.deepEqual(notification.metadata.target.admin, { tab: 'Audit log', auditEventId: notification.metadata.auditEventId })
   } finally {
     await server.close()
   }
@@ -345,14 +332,10 @@ test('media scan callbacks and retries notify queue operators with admin deep li
     assert.equal(opsInbox.status, 200)
     const reviewNotification = opsInbox.payload.data.find((item) => item.resourceId === asset.id)
     assert.ok(reviewNotification)
-    assert.deepEqual(reviewNotification.metadata.target, {
-      page: 'admin',
-      admin: {
-        tab: 'Task review',
-        mediaStatus: 'review',
-        mediaAssetId: asset.id,
-      },
-    })
+    assert.equal(reviewNotification.metadata.target.version, 1)
+    assert.equal(reviewNotification.metadata.target.surface, 'admin')
+    assert.equal(reviewNotification.metadata.target.assetId, asset.id)
+    assert.deepEqual(reviewNotification.metadata.target.admin, { tab: 'Task review', mediaStatus: 'review', mediaAssetId: asset.id })
 
     const retry = await requestJson(server.url, `/api/media/uploads/${asset.id}/scan-retry`, {
       token: 'demo-access.opsplus',
@@ -485,14 +468,9 @@ test('media scan alert notifications fan out to queue readers with dedupe', asyn
     assert.ok(notification)
     assert.equal(notification.metadata.alertType, 'media.scan.callback_denied.spike')
     assert.equal(notification.metadata.severity, 'critical')
-    assert.deepEqual(notification.metadata.target, {
-      page: 'admin',
-      admin: {
-        tab: 'Task review',
-        mediaStatus: null,
-        mediaAssetId: asset.id,
-      },
-    })
+    assert.equal(notification.metadata.target.version, 1)
+    assert.equal(notification.metadata.target.surface, 'admin')
+    assert.deepEqual(notification.metadata.target.admin, { tab: 'Task review', mediaAssetId: asset.id })
     assert.equal(webhookRequests.length, 1)
     assert.equal(webhookRequests[0].url, '/media-alerts')
     assert.equal(webhookRequests[0].body.type, 'media.scan.alert')

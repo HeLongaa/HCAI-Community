@@ -16,6 +16,7 @@ import {
   findProfile,
   pointText,
 } from './domain/utils'
+import { adminDeepLinkFromHash, notificationDeepLink, notificationTargetHash, parseNotificationTarget } from './domain/notificationTargets'
 import { AppShell, PageRenderer } from './components/layout'
 import { useAccountState } from './hooks/useAccountState'
 import { useAppFeedback } from './hooks/useAppFeedback'
@@ -113,6 +114,17 @@ function App() {
   const [notificationReadState, setNotificationReadState] = useState<NonNullable<NotificationListQuery['readState']>>('unread')
   const [adminDeepLink, setAdminDeepLink] = useState<AdminDeepLink | null>(null)
   const t = copy[locale]
+
+  useEffect(() => {
+    const restoreAdminTarget = () => setAdminDeepLink(adminDeepLinkFromHash())
+    restoreAdminTarget()
+    window.addEventListener('hashchange', restoreAdminTarget)
+    window.addEventListener('popstate', restoreAdminTarget)
+    return () => {
+      window.removeEventListener('hashchange', restoreAdminTarget)
+      window.removeEventListener('popstate', restoreAdminTarget)
+    }
+  }, [])
   const { ledgerItems, pointsSummary, pointsStatus, pushToast, pushLedger, simulateAction } = useAppFeedback(locale, `${accountSource}:${accountHandle}`)
   const requireAuth = useCallback(() => setLoginOpen(true), [])
   const musicWorkflow = useMusicGenerationWorkflow({
@@ -588,15 +600,8 @@ function App() {
     const metadata = notification.metadata && typeof notification.metadata === 'object' && !Array.isArray(notification.metadata)
       ? notification.metadata as { target?: unknown; userHandle?: unknown }
       : null
-    const target = metadata?.target && typeof metadata.target === 'object' && !Array.isArray(metadata.target)
-      ? metadata.target as Partial<NotificationDeepLink>
-      : null
-    if (target?.page) {
-      return {
-        page: target.page,
-        admin: target.admin,
-      } as NotificationDeepLink
-    }
+    const versionedTarget = parseNotificationTarget(metadata?.target)
+    if (versionedTarget) return notificationDeepLink(versionedTarget)
     if (notification.resourceType === 'admin_review') {
       return {
         page: 'admin',
@@ -658,6 +663,7 @@ function App() {
         page: 'mine',
       }
     }
+    if (notification.resourceType === 'creative_generation') return { page: 'generations' }
     return {
       page: 'admin',
       admin: {
@@ -672,7 +678,8 @@ function App() {
     if (target.page === 'admin') {
       setAdminDeepLink(target.admin ?? null)
     }
-    navigatePrimary(target.page)
+    navigatePrimary(target.page, target.workspace)
+    if (target.target) window.history.replaceState(null, '', notificationTargetHash(target.target))
   }
 
   useEffect(() => {

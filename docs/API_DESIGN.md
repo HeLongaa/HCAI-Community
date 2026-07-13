@@ -612,11 +612,20 @@ Query:
 
 Returns the current user's notification inbox. Current notification producers cover task proposal submission/acceptance/rejection, submission/resubmission, revision requests, submission approval/rejection, reward settlement, stale submissions, dispute open/receipt, high-value point adjustment requests, point adjustment approval/rejection results, point policy rollback events, media scan manual-review requests, media scan rejections, media scan retry requests, scanner health alerts, and security alerts.
 
-Notification `metadata.target` can carry a client deep link:
+Notification `metadata.target` carries a versioned, allowlisted application deep link:
 
 ```ts
 {
-  page: 'admin' | 'mine' | 'points'
+  version: 1
+  surface: 'generations' | 'image' | 'video' | 'music' | 'chat' | 'tasks' | 'portfolio' | 'admin' | 'points' | 'assets'
+  intent: 'view' | 'resume' | 'review' | 'retry' | 'resolve-budget' | 'view-delivery'
+  fallbackSurface: string
+  workspace?: 'image' | 'video' | 'music' | 'chat'
+  generationId?: string
+  taskId?: string
+  submissionId?: string
+  reviewId?: string
+  assetId?: string
   admin?: {
     tab?: 'Task review' | 'Finance'
     queue?: string
@@ -628,6 +637,8 @@ Notification `metadata.target` can carry a client deep link:
   }
 }
 ```
+
+Unknown metadata and target fields are removed by the notification DTO serializer. Deep links contain application ids only and never grant access: destination APIs reapply owner, task-participant, or Admin permission checks. URL/hash encoding preserves the target across refresh and re-login; malformed or unavailable targets use a safe fallback without exposing whether a protected resource exists. Opening a target and marking the notification read are separate operations. See `docs/V1_NOTIFICATION_DEEP_LINKS.md`.
 
 ### `POST /notifications/:id/read`
 

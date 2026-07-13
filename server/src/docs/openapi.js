@@ -2608,7 +2608,7 @@ export const openApiDocument = {
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
         ],
         responses: {
-          '200': { description: 'Notification inbox for the current user' },
+          '200': { description: 'Recipient-scoped notification inbox with versioned allowlisted metadata.target deep links; destination APIs reauthorize every target' },
           '401': { description: 'Authentication required' },
         },
       },

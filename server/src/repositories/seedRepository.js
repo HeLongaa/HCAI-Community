@@ -73,6 +73,7 @@ import {
   buildProviderBudgetNotificationPayload,
   hasProviderBudgetNotificationSourceKey,
 } from './providerBudgetNotificationWiring.js'
+import { sanitizeNotificationMetadata } from './notificationTargets.js'
 import { safeCreativeCreditMetadata, safeErrorPreview, safeProviderOperationMetadata } from '../creative/generationRecords.js'
 import { assetEligibleForWorkspace, assetMediaType, buildSafeAssetLibraryItem } from '../media/assetLibrary.js'
 import {
@@ -830,7 +831,7 @@ function createNotificationsForHandles(handles, payload) {
       body: payload.body,
       resourceType: payload.resourceType,
       resourceId: payload.resourceId ?? null,
-      metadata: payload.metadata ?? null,
+      metadata: sanitizeNotificationMetadata(payload.metadata, payload),
       readAt: null,
       createdAt: now,
     }))

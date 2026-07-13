@@ -1,6 +1,7 @@
 import { safeErrorPreview, safeProviderJobIdEvidence } from '../creative/generationRecords.js'
 import { safeProviderBudgetEvidenceIdentifier } from '../creative/providerBudgetEvents.js'
 import { safeProviderLifecycleEvidenceIdentifier } from './providerLifecycleWiring.js'
+import { sanitizeNotificationMetadata } from './notificationTargets.js'
 
 const providerBudgetAuditActions = new Set([
   'creative.provider_budget.threshold_crossed',
@@ -760,7 +761,7 @@ export const serializeNotification = (notification) => ({
   body: notification.body,
   resourceType: notification.resourceType,
   resourceId: notification.resourceId ?? null,
-  metadata: notification.metadata ?? null,
+  metadata: sanitizeNotificationMetadata(notification.metadata, notification),
   readAt: notification.readAt ?? null,
   createdAt: notification.createdAt ?? '',
 })

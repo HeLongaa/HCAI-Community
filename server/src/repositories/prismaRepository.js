@@ -99,6 +99,7 @@ import {
   buildProviderBudgetNotificationPayload,
   hasProviderBudgetNotificationSourceKey,
 } from './providerBudgetNotificationWiring.js'
+import { sanitizeNotificationMetadata } from './notificationTargets.js'
 import { safeCreativeCreditMetadata, safeErrorPreview } from '../creative/generationRecords.js'
 import {
   buildConsentStatus,
@@ -742,7 +743,7 @@ const createPrismaRepository = async (fallbackRepository) => {
           body: payload.body,
           resourceType: payload.resourceType,
           resourceId: payload.resourceId ?? null,
-          metadata: payload.metadata ?? null,
+          metadata: sanitizeNotificationMetadata(payload.metadata, payload),
         },
       })
     }))).filter(Boolean)

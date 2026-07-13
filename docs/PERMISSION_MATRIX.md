@@ -115,6 +115,8 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `GET /api/notifications` | Required | Any authenticated user; recipient-scoped | Yes |
 | `POST /api/notifications/:id/read` | Required | Any authenticated user; recipient ownership enforced | Yes |
 | `POST /api/notifications/read-all` | Required | Any authenticated user; recipient ownership enforced | Yes |
+
+Notification targets are location hints, not authorization grants. Generation, asset, task/submission, and Admin destinations must reapply their existing owner, participant, or permission checks after every direct link, refresh, or re-login. `NotificationTargetV1` and its Admin drill-down fields are server-allowlisted; invalid targets fall back without resource-existence disclosure.
 | `GET /api/media/review-queue` | Required | `admin:queue:read` | Yes |
 | `GET /api/media/scan-jobs` | Required | `admin:queue:read` | Yes |
 | `GET /api/media/scan-jobs/archive` | Required | `admin:queue:read` | Yes |

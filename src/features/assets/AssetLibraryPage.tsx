@@ -86,8 +86,8 @@ export function AssetLibraryPage({ t, signedIn, requireAuth, navigateToPage }: {
 
   const openSourceGeneration = (asset: ApiAssetLibraryItem) => {
     if (!asset.sourceGeneration) return
-    window.history.replaceState(null, '', `#generations/${encodeURIComponent(asset.sourceGeneration.id)}`)
     navigateToPage('generations')
+    window.history.replaceState(null, '', `#generations/${encodeURIComponent(asset.sourceGeneration.id)}`)
   }
 
   const renderAssetCard = (asset: ApiAssetLibraryItem) => {
