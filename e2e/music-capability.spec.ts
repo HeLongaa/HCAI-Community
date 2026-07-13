@@ -178,6 +178,9 @@ test('Music Studio restores lifecycle, gates private audio, and submits lyrics s
   await page.getByRole('button', { name: 'Private player' }).click()
   await expect(page.getByTestId('private-music-player')).toBeVisible()
   await expect(page.getByTestId('private-music-player')).toHaveAttribute('src', /^data:audio\/mpeg/)
+  await page.getByRole('button', { name: 'Use in Video' }).click()
+  await expect(page.getByRole('heading', { name: 'Video Studio' })).toBeVisible()
+  await page.getByRole('button', { name: 'Music', exact: true }).click()
 
   await page.getByRole('tab', { name: 'Lyrics to Song' }).click()
   await page.getByLabel('Song lyrics').fill('City lights fade while the morning starts')

@@ -9,6 +9,7 @@ import {
   RefreshCcw,
   RotateCcw,
   Square,
+  Video,
 } from 'lucide-react'
 
 import { isZhCopy, textFor } from '../../domain/utils'
@@ -76,11 +77,13 @@ export function MusicStudioPage({
   providerCatalog,
   providerCatalogState,
   workflow,
+  onUseInVideo,
 }: {
   t: Record<string, string>
   providerCatalog: ApiCreativeProviderCatalog | null
   providerCatalogState: 'loading' | 'ready' | 'error'
   workflow: MusicGenerationWorkflow
+  onUseInVideo: () => void
 }) {
   const isZh = isZhCopy(t)
   const providers = useMemo(() => (providerCatalog?.providers ?? [])
@@ -308,6 +311,11 @@ export function MusicStudioPage({
             {selectedOutput && (
               <button className="icon-button" type="button" title={textFor(t, 'Download output', '下载输出')} disabled={actionBusy || !selectedGeneration?.actions.download.available} onClick={() => void workflow.downloadAsset(selectedOutput.assetId)}>
                 <Download size={16} />
+              </button>
+            )}
+            {selectedOutput && (
+              <button className="ghost-button" type="button" disabled={actionBusy || !selectedGeneration?.actions.reuse.available} onClick={onUseInVideo}>
+                <Video size={15} />{textFor(t, 'Use in Video', '用于视频')}
               </button>
             )}
           </div>
