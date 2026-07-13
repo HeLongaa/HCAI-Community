@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Bell,
   BriefcaseBusiness,
+  Boxes,
   CircleHelp,
   FileText,
   Languages,
@@ -114,12 +115,14 @@ export function AppShell({
     { key: 'explore', label: t.explore, icon: CompassIcon },
     { key: 'playground', label: t.playground ?? t.create, icon: WandSparkles },
     { key: 'generations', label: textFor(t, 'Generations', '生成任务'), icon: ListFilter },
+    { key: 'assets', label: textFor(t, 'Assets', '资产库'), icon: Boxes },
     ...(hasPermission('admin:access') ? [{ key: 'admin' as Page, label: t.admin, icon: UsersRound }] : []),
   ]
   const pageLabels = {
     home: t.home,
     playground: t.playground,
     generations: textFor(t, 'Generations', '生成任务'),
+    assets: textFor(t, 'Assets', '资产库'),
     chat: t.chat,
     explore: t.explore,
     tasks: t.tasks,

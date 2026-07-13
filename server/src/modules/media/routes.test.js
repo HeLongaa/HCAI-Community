@@ -48,6 +48,83 @@ const postSignedScannerCallback = async (url, body, { webhookSecret = 'scan-secr
   }
 }
 
+const completeAndCleanUpload = async (server, token, overrides = {}) => {
+  const upload = await createUpload(server, token, overrides)
+  await requestJson(server.url, `/api/media/uploads/${upload.asset.id}/complete`, { body: {}, token })
+  const reviewed = await requestJson(server.url, `/api/media/uploads/${upload.asset.id}/scan`, {
+    body: { decision: 'clean', note: 'fixture clean' },
+    token: 'demo-access.opsplus',
+  })
+  assert.equal(reviewed.status, 200)
+  return reviewed.payload.data
+}
+
+test('unified asset library is owner scoped, safe, filterable, and archive aware', async () => {
+  const server = await createTestServer()
+  try {
+    const asset = await completeAndCleanUpload(server, 'demo-access.promptlin', {
+      fileName: 'asset-library-source.png', contentType: 'image/png', purpose: 'library_asset',
+    })
+    await completeAndCleanUpload(server, 'demo-access.taskops', {
+      fileName: 'other-owner.png', contentType: 'image/png', purpose: 'library_asset',
+    })
+    const listed = await requestJson(server.url, '/api/media/assets?mediaType=image&workspace=video&search=asset-library-source', {
+      method: 'GET', token: 'demo-access.promptlin',
+    })
+    assert.equal(listed.status, 200)
+    assert.equal(listed.payload.data.length, 1)
+    assert.equal(listed.payload.data[0].id, asset.id)
+    assert.equal(listed.payload.data[0].actions.reuse.video.available, true)
+    assert.equal('storageKey' in listed.payload.data[0], false)
+    assert.equal('metadata' in listed.payload.data[0], false)
+
+    const archived = await requestJson(server.url, `/api/media/assets/${asset.id}/archive`, { token: 'demo-access.promptlin' })
+    assert.equal(archived.status, 200)
+    assert.ok(archived.payload.data.archivedAt)
+    assert.equal(archived.payload.data.actions.download.available, false)
+    const hidden = await requestJson(server.url, '/api/media/assets?search=asset-library-source', { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(hidden.payload.data.length, 0)
+    const archiveList = await requestJson(server.url, '/api/media/assets?archived=archived&search=asset-library-source', { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(archiveList.payload.data.length, 1)
+    const restored = await requestJson(server.url, `/api/media/assets/${asset.id}/restore`, { token: 'demo-access.promptlin' })
+    assert.equal(restored.payload.data.archivedAt, null)
+
+    const denied = await requestJson(server.url, `/api/media/assets/${asset.id}`, { method: 'GET', token: 'demo-access.taskops' })
+    assert.equal(denied.status, 404)
+  } finally {
+    await server.close()
+  }
+})
+
+test('asset lineage is idempotent and rejects ownership bypasses and cycles', async () => {
+  const server = await createTestServer()
+  try {
+    const source = await completeAndCleanUpload(server, 'demo-access.promptlin', { fileName: 'lineage-source.png', contentType: 'image/png', purpose: 'library_asset' })
+    const variant = await completeAndCleanUpload(server, 'demo-access.promptlin', { fileName: 'lineage-variant.png', contentType: 'image/png', purpose: 'library_asset' })
+    const foreign = await completeAndCleanUpload(server, 'demo-access.taskops', { fileName: 'lineage-foreign.png', contentType: 'image/png', purpose: 'library_asset' })
+    const first = await requestJson(server.url, `/api/media/assets/${source.id}/relations`, {
+      body: { targetAssetId: variant.id, relationType: 'variant', role: 'source_image' }, token: 'demo-access.promptlin',
+    })
+    assert.equal(first.status, 200)
+    assert.equal(first.payload.data.relations.length, 1)
+    const duplicate = await requestJson(server.url, `/api/media/assets/${source.id}/relations`, {
+      body: { targetAssetId: variant.id, relationType: 'variant', role: 'source_image' }, token: 'demo-access.promptlin',
+    })
+    assert.equal(duplicate.payload.data.relations.length, 1)
+    const cycle = await requestJson(server.url, `/api/media/assets/${variant.id}/relations`, {
+      body: { targetAssetId: source.id, relationType: 'parent' }, token: 'demo-access.promptlin',
+    })
+    assert.equal(cycle.status, 409)
+    assert.equal(cycle.payload.error.code, 'ASSET_RELATION_CYCLE')
+    const bypass = await requestJson(server.url, `/api/media/assets/${source.id}/relations`, {
+      body: { targetAssetId: foreign.id, relationType: 'variant' }, token: 'demo-access.promptlin',
+    })
+    assert.equal(bypass.status, 404)
+  } finally {
+    await server.close()
+  }
+})
+
 test('POST /api/media/uploads requires authentication', async () => {
   const server = await createTestServer()
   try {

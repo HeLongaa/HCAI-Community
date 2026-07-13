@@ -114,6 +114,18 @@ export function ChatPage({
   const [messageCursor, setMessageCursor] = useState<string | null>(null)
   const [inputAssets, setInputAssets] = useState<ApiChatInputAsset[]>([])
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([])
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem('hcaiAssetReuse')
+      if (!raw) return
+      const reuse = JSON.parse(raw) as { assetId?: string; workspace?: string }
+      if (reuse.workspace !== 'chat' || !reuse.assetId || !inputAssets.some((asset) => asset.id === reuse.assetId)) return
+      window.queueMicrotask(() => {
+        setSelectedAssetIds((current) => current.includes(reuse.assetId!) ? current : [...current, reuse.assetId!].slice(0, 5))
+        window.sessionStorage.removeItem('hcaiAssetReuse')
+      })
+    } catch { window.sessionStorage.removeItem('hcaiAssetReuse') }
+  }, [inputAssets])
   const [selectedContext, setSelectedContext] = useState<ChatProductContextReference[]>([])
   const [draft, setDraft] = useState('')
   const [loadingConversations, setLoadingConversations] = useState(false)

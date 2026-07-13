@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   Bot,
   ChevronDown,
@@ -272,6 +272,19 @@ function StudioPage({
   const [maskAssetId, setMaskAssetId] = useState('')
   const [strength, setStrength] = useState(0.7)
   const [uploadingInput, setUploadingInput] = useState(false)
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem('hcaiAssetReuse')
+      if (!raw) return
+      const reuse = JSON.parse(raw) as { assetId?: string; workspace?: string }
+      if (reuse.workspace !== 'image' || !reuse.assetId || !providerGeneration?.inputAssets.some((asset) => asset.id === reuse.assetId)) return
+      window.queueMicrotask(() => {
+        setActiveImageMode('image_to_image')
+        setSourceAssetId(reuse.assetId!)
+        window.sessionStorage.removeItem('hcaiAssetReuse')
+      })
+    } catch { window.sessionStorage.removeItem('hcaiAssetReuse') }
+  }, [providerGeneration?.inputAssets])
   const parameterDefinitions = providerGeneration?.capability?.parameterDefinitions
   const displayedOptions = providerGeneration
     ? (parameterDefinitions?.stylePreset?.options?.map(String) ?? options)

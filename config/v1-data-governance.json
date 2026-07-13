@@ -371,7 +371,7 @@
     {
       "id": "media_asset_metadata",
       "classification": "confidential",
-      "prismaModels": ["MediaAsset"],
+      "prismaModels": ["MediaAsset", "MediaAssetRelation"],
       "locations": ["postgres"],
       "dataSubjects": ["user", "depicted_third_party"],
       "purposes": ["media_delivery", "creative_generation", "marketplace_delivery", "safety_moderation"],
@@ -1029,7 +1029,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 41,
+    "modelCount": 42,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",

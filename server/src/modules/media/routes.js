@@ -3,7 +3,7 @@ import { created, ok } from '../../common/http/responses.js'
 import { HttpError, notFound } from '../../common/errors/httpError.js'
 import { requirePermission, requireUser } from '../../common/http/auth.js'
 import { readJsonBody, readJsonBodyWithRaw } from '../../common/http/request.js'
-import { parseCompleteMediaUploadRequest, parseCreateMediaUploadRequest, parseMediaGovernancePolicyRequest, parseMediaGovernancePolicyRollbackRequest, parseMediaReviewQueueQuery, parseMediaScanAlertActionRequest, parseMediaScanAlertSilenceRequest, parseMediaScanCallbackRequest, parseMediaScanJobArchiveQuery, parseMediaScanJobHistoryQuery, parseMediaScanJobQuery, parseMediaScanRequest, parsePaginationQuery } from '../../contracts/requestParsers.js'
+import { parseAssetLibraryQuery, parseCompleteMediaUploadRequest, parseCreateAssetRelationRequest, parseCreateMediaUploadRequest, parseMediaGovernancePolicyRequest, parseMediaGovernancePolicyRollbackRequest, parseMediaReviewQueueQuery, parseMediaScanAlertActionRequest, parseMediaScanAlertSilenceRequest, parseMediaScanCallbackRequest, parseMediaScanJobArchiveQuery, parseMediaScanJobHistoryQuery, parseMediaScanJobQuery, parseMediaScanRequest, parsePaginationQuery } from '../../contracts/requestParsers.js'
 import { buildMediaGovernanceConfig } from '../../config/env.js'
 import { repositories } from '../../repositories/index.js'
 
@@ -76,6 +76,40 @@ const requireMediaScanWebhookSecret = (request, rawBody = '') => {
 }
 
 export const registerMediaRoutes = (router) => {
+  router.add('GET', '/api/media/assets', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const page = await repositories.media.listAssetLibrary(actor, parseAssetLibraryQuery(context.query))
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('GET', '/api/media/assets/:id', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const asset = await repositories.media.getAssetLibraryItem(context.params.id, actor)
+    if (!asset) throw notFound(`/api/media/assets/${context.params.id}`)
+    ok(response, asset)
+  })
+
+  router.add('POST', '/api/media/assets/:id/archive', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const asset = await repositories.media.setAssetArchived(context.params.id, true, actor)
+    if (!asset) throw notFound(`/api/media/assets/${context.params.id}`)
+    ok(response, asset)
+  })
+
+  router.add('POST', '/api/media/assets/:id/restore', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const asset = await repositories.media.setAssetArchived(context.params.id, false, actor)
+    if (!asset) throw notFound(`/api/media/assets/${context.params.id}`)
+    ok(response, asset)
+  })
+
+  router.add('POST', '/api/media/assets/:id/relations', async (request, response, context) => {
+    const actor = requireUser(context)
+    const asset = await repositories.media.createAssetRelation(context.params.id, parseCreateAssetRelationRequest((await readJsonBody(request)) ?? {}), actor)
+    if (!asset) throw notFound(`/api/media/assets/${context.params.id}`)
+    ok(response, asset)
+  })
+
   router.add('GET', '/api/media/review-queue', async (_request, response, context) => {
     requirePermission(context, 'admin:queue:read')
     const page = await repositories.media.listReviewQueue(parseMediaReviewQueueQuery(context.query))

@@ -98,6 +98,12 @@ enum MediaAssetStatus {
   rejected
 }
 
+enum MediaAssetRelationType {
+  parent
+  variant
+  reused_as_input
+}
+
 enum MediaScanJobStatus {
   queued
   retrying
@@ -357,6 +363,7 @@ model User {
   pointLedger               PointLedger[]
   adminReviews              AdminReview[]              @relation("AdminReviewReviewer")
   mediaAssets               MediaAsset[]
+  mediaAssetRelations       MediaAssetRelation[]
   notifications             Notification[]
   mediaScanJobsReviewed     MediaScanJob[]             @relation("MediaScanJobReviewer")
   creativeGenerations       CreativeGeneration[]
@@ -581,14 +588,39 @@ model MediaAsset {
   metadata    Json?
   createdAt   DateTime          @default(now()) @map("created_at")
   updatedAt   DateTime          @updatedAt @map("updated_at")
+  archivedAt  DateTime?         @map("archived_at")
 
   owner    User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   scanJobs MediaScanJob[]
+  outgoingRelations MediaAssetRelation[] @relation("MediaAssetRelationSource")
+  incomingRelations MediaAssetRelation[] @relation("MediaAssetRelationTarget")
 
-  @@index([ownerId])
+  @@index([ownerId, archivedAt, createdAt])
   @@index([purpose])
   @@index([status])
   @@map("media_assets")
+}
+
+model MediaAssetRelation {
+  id                 String                 @id @default(cuid())
+  ownerId            String                 @map("owner_id")
+  sourceAssetId      String                 @map("source_asset_id")
+  targetAssetId      String                 @map("target_asset_id")
+  relationType       MediaAssetRelationType @map("relation_type")
+  sourceGenerationId String?                @map("source_generation_id")
+  targetWorkspace    String?                @map("target_workspace")
+  role               String?
+  createdAt          DateTime               @default(now()) @map("created_at")
+
+  owner       User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  sourceAsset MediaAsset @relation("MediaAssetRelationSource", fields: [sourceAssetId], references: [id], onDelete: Restrict)
+  targetAsset MediaAsset @relation("MediaAssetRelationTarget", fields: [targetAssetId], references: [id], onDelete: Restrict)
+
+  @@unique([sourceAssetId, targetAssetId, relationType, targetWorkspace, role])
+  @@index([ownerId, createdAt])
+  @@index([sourceAssetId])
+  @@index([targetAssetId])
+  @@map("media_asset_relations")
 }
 
 model MediaScanJob {

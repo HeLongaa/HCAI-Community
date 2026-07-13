@@ -282,6 +282,50 @@ export const parseCreateMediaUploadRequest = (body) => {
   }
 }
 
+const mediaAssetRelationTypes = ['parent', 'variant', 'reused_as_input']
+
+export const parseAssetLibraryQuery = (query) => {
+  const purpose = optionalText(query, 'purpose', null)
+  const mediaType = optionalText(query, 'mediaType', null)
+  const workspace = optionalText(query, 'workspace', null)
+  const archived = optionalText(query, 'archived', 'active')
+  if (purpose && !Object.hasOwn(mediaPurposePolicies, purpose)) {
+    throw validationFailed(`purpose must be one of: ${Object.keys(mediaPurposePolicies).join(', ')}`)
+  }
+  if (mediaType && !['image', 'video', 'audio', 'document'].includes(mediaType)) {
+    throw validationFailed('mediaType must be one of: image, video, audio, document')
+  }
+  if (workspace && !creativeWorkspaces.includes(workspace)) {
+    throw validationFailed(`workspace must be one of: ${creativeWorkspaces.join(', ')}`)
+  }
+  if (!['active', 'archived', 'all'].includes(archived)) {
+    throw validationFailed('archived must be one of: active, archived, all')
+  }
+  const dateFrom = query.dateFrom ? new Date(query.dateFrom) : null
+  const dateTo = query.dateTo ? new Date(query.dateTo) : null
+  if ((dateFrom && Number.isNaN(dateFrom.getTime())) || (dateTo && Number.isNaN(dateTo.getTime()))) throw validationFailed('dateFrom and dateTo must be ISO timestamps')
+  if (dateFrom && dateTo && dateFrom > dateTo) throw validationFailed('dateFrom must be before or equal to dateTo')
+  return {
+    ...parsePaginationQuery(query, { defaultLimit: 24, maxLimit: 100 }),
+    purpose,
+    mediaType,
+    workspace,
+    archived,
+    search: optionalText(query, 'search', null),
+    dateFrom: dateFrom?.toISOString() ?? null,
+    dateTo: dateTo?.toISOString() ?? null,
+  }
+}
+
+export const parseCreateAssetRelationRequest = (body) => ({
+  targetAssetId: requireText(body, 'targetAssetId'),
+  relationType: requireOneOf(body, 'relationType', mediaAssetRelationTypes),
+  targetWorkspace: body.relationType === 'reused_as_input'
+    ? requireOneOf(body, 'targetWorkspace', creativeWorkspaces)
+    : optionalText(body, 'targetWorkspace', null),
+  role: optionalText(body, 'role', null),
+})
+
 export const parseCreateCreativeGenerationRequest = (body) => {
   const prompt = requireText(body, 'prompt')
   if (prompt.length > 4000) {
