@@ -162,7 +162,9 @@ const summarize = (env, oauthProviders, chatRuntime) => ({
     backupProviderId: musicCapabilityContract.models.backup.providerId,
     providerAdapterImplemented: musicCapabilityContract.runtime.providerAdapterImplemented,
     providerAdapterRegistered: musicCapabilityContract.runtime.providerAdapterRegistered,
+    fixtureAdapterOnly: musicCapabilityContract.runtime.fixtureAdapterOnly,
     providerHttpClientImplemented: musicCapabilityContract.runtime.providerHttpClientImplemented,
+    providerCredentialsImplemented: musicCapabilityContract.runtime.providerCredentialsImplemented,
     providerLifecycleImplemented: musicCapabilityContract.runtime.providerLifecycleImplemented,
     providerLifecycleEnabled: musicCapabilityContract.runtime.providerLifecycleEnabled,
     outputIngestionImplemented: musicCapabilityContract.runtime.outputIngestionImplemented,
@@ -312,9 +314,14 @@ check(
     musicCapabilityContract.models.backup.providerId === 'google-lyria-3-pro-preview' &&
     musicCapabilityContract.models.backup.enabled === false &&
     musicCapabilityContract.models.backup.suppliedLyricsSupportConfirmed === false &&
-    musicCapabilityContract.runtime.providerAdapterImplemented === false &&
+    musicCapabilityContract.runtime.providerAdapterImplemented === true &&
     musicCapabilityContract.runtime.providerAdapterRegistered === false &&
+    musicCapabilityContract.runtime.fixtureAdapterOnly === true &&
     musicCapabilityContract.runtime.providerHttpClientImplemented === false &&
+    musicCapabilityContract.runtime.providerCredentialsImplemented === false &&
+    musicCapabilityContract.runtime.providerResponseValidationImplemented === true &&
+    musicCapabilityContract.runtime.licenseMetadataProjectionImplemented === true &&
+    musicCapabilityContract.runtime.providerCostMetadataImplemented === true &&
     musicCapabilityContract.runtime.providerLifecycleImplemented === false &&
     musicCapabilityContract.runtime.providerLifecycleEnabled === false &&
     musicCapabilityContract.runtime.outputIngestionImplemented === false &&
@@ -325,7 +332,7 @@ check(
     musicCapabilityContract.productBoundary.referenceAudioSupported === false &&
     musicCapabilityContract.productBoundary.voiceCloningSupported === false &&
     musicCapabilityContract.productBoundary.textToSpeechSupported === false,
-  'V1-30 freezes the Music contract without enabling Provider traffic or adjacent voice products',
+  'V1-31 adds only an injected fixture adapter without enabling HTTP, credentials, Provider traffic, lifecycle, output ingestion, or adjacent voice products',
 )
 check(checks, 'media alert channel configured', hasAny(env.hasMediaScanAlertWebhookUrl, env.hasMediaScanAlertSlackWebhookUrl, env.mediaScanAlertEmailRecipientCount > 0), 'At least one media alert channel must be configured')
 check(checks, 'security alert channel configured', hasAny(env.hasSecurityAlertWebhookUrl, env.hasSecurityAlertSlackWebhookUrl, env.securityAlertEmailRecipientCount > 0), 'At least one security alert channel must be configured')
