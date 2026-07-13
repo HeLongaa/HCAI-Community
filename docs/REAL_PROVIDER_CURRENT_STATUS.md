@@ -2,7 +2,7 @@
 
 This is the first decision page to read before starting any real-provider work. It compresses the current provider readiness state into one handoff: what is usable now, what is fixture-only, what remains deferred, and what requires explicit approval.
 
-Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, owner-scoped Image lifecycle history, Admin generation history, internal mutation controls, Provider budget observability, the V1-11 fail-closed Provider control plane, the V1-12 shared error/durable retry policy, a fixture-only OpenAI GPT Image 2 adapter, a default-disabled OpenAI Chat staging boundary, the executable Video contract/lifecycle package, and the V1-30 fail-closed Music capability contract are available. All unapproved Provider HTTP clients, callback APIs, and workers remain off by default. Real paid-provider calls, real Provider webhook delivery, external Provider alert delivery, enabled real polling, real Provider mutation clients, real cap readers/probes, and production paid-provider enablement remain no-go.
+Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, owner-scoped Image lifecycle history, Admin generation history, internal mutation controls, Provider budget observability, the V1-11 fail-closed Provider control plane, the V1-12 shared error/durable retry policy, a fixture-only OpenAI GPT Image 2 adapter, a default-disabled OpenAI Chat staging boundary, the executable Video contract/lifecycle package, and the V1-31 fail-closed Music contract plus fixture adapter are available. All unapproved Provider HTTP clients, callback APIs, and workers remain off by default. Real paid-provider calls, real Provider webhook delivery, external Provider alert delivery, enabled real polling, real Provider mutation clients, real cap readers/probes, and production paid-provider enablement remain no-go.
 
 V1-04 now records conditional implementation-planning decisions for all four modalities in
 `docs/V1_PROVIDER_DECISION_MATRIX.md` and `config/v1-provider-matrix.json`. These selections define primary/backup
@@ -84,8 +84,13 @@ V1-30 adds `server/src/creative/musicCapabilityContract.js`. It freezes instrume
 closed duration/genre/mood/tempo/language/MP3 parameters, a three-minute maximum, application-owned asynchronous state,
 private scanner-gated output, license metadata, rights/safety/data requirements, and the USD 0.60/10/250 budget envelope.
 ElevenLabs Music v2 Enterprise and Google Lyria 3 Pro Preview are catalog-only disabled shells. Reference audio, remix,
-voice cloning, and TTS are explicitly unavailable. No Music adapter, HTTP client, credential, lifecycle, output
-ingestion, real call, automatic backup, or production enablement exists.
+voice cloning, and TTS are explicitly unavailable.
+
+V1-31 adds `server/src/creative/elevenLabsMusicProvider.js` as an injected fixture-only boundary. It maps the two Music
+modes to a closed `music_v2` request, validates exact MP3 bytes/MIME and generated duration, projects safe errors,
+generated-minute costs, frozen budget caps, and mandatory `fixture_only` Enterprise license evidence. The adapter is
+not registered with product dispatch and retains no output bytes, raw payloads, Provider URLs, or credentials. No Music
+HTTP client, credential, lifecycle, output ingestion, real call, automatic backup, or production enablement exists.
 
 V1-44 freezes the corresponding four-modality content safety baseline in
 `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. It defines 20 risk categories,

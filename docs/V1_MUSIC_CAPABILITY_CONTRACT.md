@@ -3,9 +3,10 @@
 V1-30 freezes the Music product and Provider contract. The executable source of truth is
 `server/src/creative/musicCapabilityContract.js`.
 
-Current decision: **the contract is implemented, but every real Music Provider path remains unavailable**. ElevenLabs
-Music v2 Enterprise and Google Lyria 3 Pro Preview are disabled catalog shells. There is no Music adapter, SDK, HTTP
-client, credential, lifecycle worker, output ingestion, real call, automatic backup, or production enablement.
+Current decision: **the contract and an injected fixture-only ElevenLabs adapter are implemented, but every real Music
+Provider path remains unavailable**. ElevenLabs Music v2 Enterprise and Google Lyria 3 Pro Preview remain disabled
+catalog shells. There is no Music SDK, HTTP client, credential, product registration, lifecycle worker, output
+ingestion, real call, automatic backup, or production enablement.
 
 ## Product Modes
 
@@ -53,8 +54,22 @@ Provider spend remains separate from product credits: USD 0.60 per job, USD 10 d
 day. A current estimate, Provider cap evidence, control-plane approval, and durable reservation are required before any
 future dispatch.
 
-## V1-31 Handoff
+## V1-31 Fixture Boundary
 
-V1-31 should implement governed Music request mapping and an injected fixture-only ElevenLabs boundary, including
-strict MP3 byte validation, safe error projection, cost metadata, and license metadata. It must keep HTTP, credentials,
-real traffic, product registration, and production enablement absent until separate approval.
+`server/src/creative/elevenLabsMusicProvider.js` implements the governed fixture boundary:
+
+- Instrumental and lyrics-to-song requests map to a closed `music_v2` compose shape with one MP3 output.
+- Only an explicitly injected `compose` client can run; there is no default client or network construction path.
+- Responses reject unknown fields, invalid IDs, non-MP3 MIME or bytes, duration mismatches, and incomplete license
+  evidence.
+- Generation projections retain safe output hashes, generated-minute cost metadata, and `fixture_only` license evidence,
+  but never retain output bytes, raw Provider payloads, Provider URLs, or credentials.
+- Failed fixture calls use the shared safe Provider error projection, and frozen per-job/daily/monthly caps are checked
+  before the injected client runs.
+
+## V1-32 Handoff
+
+V1-32 should add application-owned Music lifecycle persistence and bounded MP3 output ingestion for the fixture path,
+including owner-scoped generation history, idempotent terminal replay, private storage, scan/review gating, and durable
+cost closeout. It must keep the ElevenLabs adapter unregistered and keep HTTP, credentials, real Provider traffic,
+automatic Lyria failover, and production enablement absent until separate approval.
