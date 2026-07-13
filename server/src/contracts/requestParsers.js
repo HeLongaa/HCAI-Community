@@ -668,6 +668,17 @@ export const parseGenerationCenterQuery = (query) => {
   }
 }
 
+export const parseCreativeAccountingPreviewQuery = (query) => {
+  const workspace = optionalText(query, 'workspace', null)
+  const mode = optionalText(query, 'mode', null)
+  const providerId = optionalText(query, 'providerId', null)
+  if (!workspace || !creativeWorkspaces.includes(workspace)) {
+    throw validationFailed(`workspace must be one of: ${creativeWorkspaces.join(', ')}`)
+  }
+  if (!mode) throw validationFailed('mode is required')
+  return { workspace, mode, providerId }
+}
+
 export const parseAdminReviewListQuery = (query) => ({
   ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 }),
   queue: optionalText(query, 'queue', null),

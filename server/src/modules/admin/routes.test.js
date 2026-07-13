@@ -25,6 +25,28 @@ const createInjectedAdminServer = (repository, options = {}) => createRouteTestS
   (router) => registerAdminRoutes(router, { repositories: repository, ...options }),
 )
 
+test('GET Admin creative accounting policy history is immutable and permission protected', async () => {
+  const server = await createTestServer()
+  try {
+    const denied = await requestJson(server.url, '/api/admin/creative/accounting-policy/history', {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(denied.status, 403)
+    const result = await requestJson(server.url, '/api/admin/creative/accounting-policy/history', {
+      method: 'GET',
+      token: 'demo-access.opsplus',
+    })
+    assert.equal(result.status, 200)
+    assert.equal(result.payload.data.length, 1)
+    assert.equal(result.payload.data[0].version, 'creative-policy-v1')
+    assert.equal(result.payload.data[0].immutable, true)
+    assert.equal(result.payload.data[0].policy.history.repriceHistoricalLedger, false)
+  } finally {
+    await server.close()
+  }
+})
+
 const providerOutputPng = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
   'base64',
@@ -1000,7 +1022,7 @@ test('GET /api/admin/creative/generations surfaces sanitized provider cost and b
     const item = list.payload.data.find((entry) => entry.id === generationId)
     assert.ok(item)
     assert.equal(item.usage.estimatedCredits, 1)
-    assert.equal(item.usage.providerCostCents, 20)
+    assert.equal('providerCostCents' in item.usage, false)
     assert.equal(item.usage.providerCost.schemaVersion, 'provider-cost-v1')
     assert.equal(item.usage.providerCost.providerId, 'replicate')
     assert.equal(item.usage.providerCost.providerAccountRef, 'staging')

@@ -269,17 +269,21 @@ export const executeCreativeGeneration = async ({
     }
   }
 
-  const attachPolicy = (generation) => ({
-    ...generation,
-    usage: {
-      ...generation.usage,
-      ...policyResult.usage,
-      ...(generation.usage?.providerCost ? { providerCost: generation.usage.providerCost } : {}),
-    },
-    quota: policyResult.quota,
-    safety: policyResult.safety,
-    policy: policyResult.policy,
-  })
+  const attachPolicy = (generation) => {
+    const providerUsage = { ...(generation.usage ?? {}) }
+    delete providerUsage.providerCostCents
+    return {
+      ...generation,
+      usage: {
+        ...providerUsage,
+        ...policyResult.usage,
+        ...(generation.usage?.providerCost ? { providerCost: generation.usage.providerCost } : {}),
+      },
+      quota: policyResult.quota,
+      safety: policyResult.safety,
+      policy: policyResult.policy,
+    }
+  }
 
   return attachPolicy(generated)
 }

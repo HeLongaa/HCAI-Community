@@ -96,6 +96,8 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `POST /api/library/items/:id/convert-to-task` | Required | `task:create` | Yes |
 | `POST /api/library/items/:id/send-to-workspace` | Required | Any authenticated user | Yes |
 | `POST /api/creative/generations` | Required | Any authenticated user | Yes |
+| `GET /api/creative/accounting-policy` | Required | Any authenticated user | Yes |
+| `GET /api/creative/accounting-policy/preview` | Required | Any authenticated user; quota is actor/workspace scoped | Yes |
 | `POST /api/creative/providers/replicate/callback/:generationId` | Provider callback | Timestamped HMAC, generation/job nonce, staging kill switch | Yes |
 | `GET /api/compliance/consent` | Required | Any authenticated user; consent record scoped to actor | Yes |
 | `POST /api/compliance/consent` | Required | Any authenticated user; exact current policy versions required | Yes |
@@ -152,6 +154,7 @@ Notification targets are location hints, not authorization grants. Generation, a
 | `GET /api/admin/audit/export` | Required | `admin:audit:read` | Yes |
 | `GET /api/admin/audit/:id` | Required | `admin:audit:read` | Yes |
 | `GET /api/admin/creative/generations` | Required | `admin:audit:read` | Yes |
+| `GET /api/admin/creative/accounting-policy/history` | Required | `admin:audit:read` | Yes |
 | `GET /api/admin/creative/generations/:id` | Required | `admin:audit:read` | Yes |
 | `GET /api/admin/creative/provider-controls` | Required | `admin:creative:provider-control:read` | Yes |
 | `POST /api/admin/creative/provider-controls/disable` | Required | `admin:creative:provider-control:manage` | Yes |

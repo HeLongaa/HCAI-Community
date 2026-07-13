@@ -50,6 +50,7 @@ test('Video Studio uses capability parameters and labels disabled Provider shell
   await page.getByRole('button', { name: 'Video', exact: true }).click()
 
   await expect(page.getByRole('heading', { name: 'Video Studio' })).toBeVisible()
+  await expect(page.getByTestId('creative-cost-video')).toContainText('8 credits estimated')
   await expect(page.getByLabel('Video runtime')).toHaveValue('mock')
   await expect(page.locator('.runtime-badge', { hasText: 'Mock' })).toBeVisible()
   await expect(page.getByRole('tab', { name: 'Text to Video' })).toBeEnabled()

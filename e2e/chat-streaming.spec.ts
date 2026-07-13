@@ -83,6 +83,7 @@ test('Chat UI creates, streams, recovers, grounds, and deletes a conversation', 
     })
   })
   await openChatWorkspace(page)
+  await expect(page.getByTestId('creative-cost-chat')).toContainText('1 credits estimated')
   await page.getByTitle('New conversation').click()
 
   const attachmentCheckbox = page.getByRole('checkbox', { name: /launch-brief\.pdf/ })

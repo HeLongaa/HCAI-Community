@@ -1990,6 +1990,13 @@ kbd {
 .chat-composer-footer > span { color: var(--muted); font-size: 10px; }
 .chat-composer-footer .primary-button { min-height: 34px; padding: 0 12px; border-radius: 6px; }
 .chat-composer-footer .primary-button.danger { background: #dc2626; color: #fff; }
+.creative-cost-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 8px 0; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-soft); color: var(--muted); font-size: 12px; }
+.creative-cost-preview span { display: inline-flex; align-items: center; gap: 5px; }
+.creative-cost-preview strong { color: var(--text); }
+.creative-cost-preview small { flex-basis: 100%; font-size: 10px; }
+.creative-cost-preview.blocked { border-color: #ef4444; }
+.creative-cost-preview.loading, .creative-cost-preview.unavailable { opacity: .8; }
+.chat-composer > .creative-cost-preview { margin: 0 8px 4px; }
 
 .chat-context-panel details { border-bottom: 1px solid var(--border); }
 .chat-context-panel summary { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 7px; min-height: 44px; padding: 0 14px; color: var(--text); font-size: 12px; font-weight: 700; cursor: pointer; list-style: none; }

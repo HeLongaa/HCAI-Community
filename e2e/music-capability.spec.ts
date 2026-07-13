@@ -76,6 +76,7 @@ test('Music Studio submits capability parameters and keeps real Provider shells 
   await page.goto('/')
   await page.getByRole('button', { name: 'AI Workspace' }).click()
   await expect(page.getByRole('heading', { name: 'Music Studio' })).toBeVisible()
+  await expect(page.getByTestId('creative-cost-music')).toContainText('4 credits estimated')
   await expect(page.getByLabel('Music runtime')).toHaveValue('mock')
   await expect(page.locator('.runtime-badge', { hasText: 'Mock' })).toBeVisible()
   await expect(page.getByRole('tab', { name: 'Instrumental' })).toBeEnabled()

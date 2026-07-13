@@ -25,6 +25,7 @@ import type {
   ApiCreativeProviderCatalogEntry,
   ApiMediaAsset,
 } from '../../services/contracts'
+import { CreativeCostPreview } from './CreativeCostPreview'
 
 const imageTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
 const audioTypes = new Set(['audio/mpeg', 'audio/wav', 'audio/mp4'])
@@ -327,6 +328,7 @@ export function VideoStudioPage({
             <span>{textFor(t, 'I have the rights and consent required for this prompt and selected media.', '我已获得此提示词及所选素材所需的权利与授权。')}</span>
           </label>
 
+          <CreativeCostPreview t={t} workspace="video" mode={mode} providerId={providerId} />
           <button className="primary-button video-generate-button" type="button" disabled={!canGenerate} onClick={() => void runGeneration()}>
             {workflow.generation.status === 'loading' ? <LoaderCircle className="spin" size={17} /> : <Video size={17} />}
             {workflow.generation.status === 'loading' ? textFor(t, 'Creating job', '正在创建任务') : textFor(t, 'Generate video', '生成视频')}

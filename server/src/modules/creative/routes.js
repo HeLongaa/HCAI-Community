@@ -9,6 +9,7 @@ import {
   parseCreativeGenerationHistoryQuery,
   parseGenerationCenterQuery,
   parsePaginationQuery,
+  parseCreativeAccountingPreviewQuery,
 } from '../../contracts/requestParsers.js'
 import { executeCreativeGeneration, getCreativeProviderCatalog, persistCreativeGenerationOutputs } from '../../creative/generationService.js'
 import { providerCallbackAuthConfig } from '../../creative/providerCallbackAuth.js'
@@ -41,6 +42,15 @@ import {
   serializeUserGenerationTaskPage,
 } from '../../creative/userGenerationHistory.js'
 import { recordVideoProviderOperationDispatch } from '../../creative/videoProviderLifecycle.js'
+import {
+  accountingForCreativeMode,
+  creativeAccountingPolicyV1,
+  creativeQuotaLimitFor,
+  creativeSettlementSummary,
+  providerCostAvailability,
+} from '../../creative/accountingPolicy.js'
+import { createCreativeProviderRegistry } from '../../creative/providerRegistry.js'
+import { quotaWindowFor } from '../../creative/policy.js'
 
 const terminalProviderFailureStatuses = new Set(['failed', 'cancelled'])
 
@@ -87,6 +97,78 @@ export const registerCreativeRoutes = (router, options = {}) => {
   const routeRepositories = options.repositories ?? repositories
   const callbackSource = options.source ?? process.env
   const callbackNow = () => typeof options.now === 'function' ? options.now() : options.now ?? new Date()
+
+  router.add('GET', '/api/creative/accounting-policy', async (_request, response, context) => {
+    requireUser(context)
+    ok(response, creativeAccountingPolicyV1)
+  })
+
+  router.add('GET', '/api/creative/accounting-policy/preview', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const query = parseCreativeAccountingPreviewQuery(context.query)
+    const accounting = accountingForCreativeMode(query.workspace, query.mode)
+    if (!accounting) {
+      throw new HttpError(400, 'VALIDATION_FAILED', `mode is not supported by accounting policy: ${query.workspace}/${query.mode}`)
+    }
+    const now = callbackNow()
+    const window = quotaWindowFor(now)
+    const limit = creativeQuotaLimitFor({ actor, source: callbackSource })
+    const currentQuota = await routeRepositories.creativeQuota?.getQuotaWindow?.({
+      actorId: actor.id,
+      actorHandle: actor.handle,
+      workspace: query.workspace,
+      windowType: window.type,
+      windowStart: window.start,
+      windowEnd: window.end,
+      limit,
+      policyVersion: creativeAccountingPolicyV1.version,
+    })
+    const registry = createCreativeProviderRegistry(callbackSource)
+    const selectedProviderId = query.providerId ?? registry.config.defaultProviderId
+    const provider = registry.providers.find((candidate) => candidate.id === selectedProviderId) ?? null
+    const capability = provider?.capabilities?.find((candidate) => candidate.workspace === query.workspace) ?? null
+    const modeContract = capability?.modeContracts?.find((candidate) => candidate.id === query.mode) ?? null
+    const providerAvailable = Boolean(provider?.enabled && provider?.configured && modeContract?.available !== false)
+    const quota = currentQuota ?? {
+      policyVersion: creativeAccountingPolicyV1.version,
+      scope: 'user_workspace_daily',
+      workspace: query.workspace,
+      limit,
+      reserved: 0,
+      used: 0,
+      released: 0,
+      remaining: limit,
+      reservationId: null,
+      window,
+    }
+    ok(response, {
+      policy: {
+        schema: creativeAccountingPolicyV1.schema,
+        version: creativeAccountingPolicyV1.version,
+        effectiveAt: creativeAccountingPolicyV1.effectiveAt,
+      },
+      workspace: query.workspace,
+      mode: query.mode,
+      credits: {
+        estimate: accounting.credits,
+        unit: creativeAccountingPolicyV1.units.credits.code,
+      },
+      quota: {
+        ...quota,
+        weight: accounting.quotaUnits,
+        allowed: quota.remaining >= accounting.quotaUnits,
+      },
+      capability: {
+        providerId: provider?.id ?? selectedProviderId,
+        available: providerAvailable,
+        reasonCode: provider
+          ? (providerAvailable ? null : 'provider_or_mode_unavailable')
+          : 'provider_not_found',
+      },
+      providerCost: providerCostAvailability(provider),
+      settlement: creativeSettlementSummary(),
+    })
+  })
 
   router.add('GET', '/api/creative/input-assets', async (_request, response, context) => {
     const actor = requireUser(context)

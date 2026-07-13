@@ -975,6 +975,32 @@ export const openApiDocument = {
         },
       },
     },
+    '/creative/accounting-policy': {
+      get: {
+        summary: 'Read the active immutable creative accounting policy',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'CreativeAccountingPolicyV1 manifest with separate credit, quota, and Provider cost units' },
+          '401': { description: 'Authentication required' },
+        },
+      },
+    },
+    '/creative/accounting-policy/preview': {
+      get: {
+        summary: 'Preview creative credits, quota, capability, and Provider cost availability before generation',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'workspace', in: 'query', required: true, schema: { type: 'string', enum: ['image', 'video', 'music', 'chat'] } },
+          { name: 'mode', in: 'query', required: true, schema: { type: 'string' } },
+          { name: 'providerId', in: 'query', schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'Actor-scoped preflight estimate; Provider cost is available/unavailable and never converted from credits' },
+          '400': { description: 'Unsupported workspace or mode' },
+          '401': { description: 'Authentication required' },
+        },
+      },
+    },
     '/creative/providers': {
       get: {
         summary: 'List safe creative provider capabilities',
@@ -1337,7 +1363,15 @@ export const openApiDocument = {
                           type: 'object',
                           properties: {
                             estimatedCredits: { type: 'number' },
-                            providerCostCents: { type: 'number' },
+                            quotaUnits: { type: 'integer' },
+                            creditEstimateKind: { type: 'string', enum: ['policy_estimate'] },
+                            providerCostAvailability: {
+                              type: 'object',
+                              properties: {
+                                availability: { type: 'string', enum: ['available', 'unavailable'] },
+                                reasonCode: { type: ['string', 'null'] },
+                              },
+                            },
                             metered: { type: 'boolean' },
                             costModel: { type: 'string' },
                             currency: { type: 'string' },
@@ -2260,6 +2294,16 @@ export const openApiDocument = {
           '200': { description: 'Pending recovery review; approval must be performed by another operator' },
           '403': { description: 'Requires admin:creative:provider-control:recover' },
           '409': { description: 'Duplicate or stale recovery request' },
+        },
+      },
+    },
+    '/admin/creative/accounting-policy/history': {
+      get: {
+        summary: 'Read immutable creative accounting policy history',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Immutable policy manifests; historical ledgers are not repriced' },
+          '403': { description: 'Requires admin:audit:read' },
         },
       },
     },

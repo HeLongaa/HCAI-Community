@@ -24,6 +24,7 @@ import type { ApiCreativeCapability, ApiCreativeGeneration, ApiCreativeProviderC
 import { ChatPage } from './ChatPage'
 import { MusicStudioPage } from './MusicStudioPage'
 import { VideoStudioPage } from './VideoStudioPage'
+import { CreativeCostPreview } from './CreativeCostPreview'
 
 type ImageGenerationState = {
   status: 'idle' | 'loading' | 'done' | 'error'
@@ -177,6 +178,7 @@ export function PlaygroundPage({
             inputAssets: imageInputAssets,
             uploadInput: uploadImageInput,
             providerAvailable: Boolean(imageProvider?.enabled && imageProvider.configured),
+            providerId: imageProvider?.id ?? null,
             onGenerate: runImageGeneration,
           }}
         />
@@ -257,6 +259,7 @@ function StudioPage({
     capability: ApiCreativeCapability | null
     catalogState: 'loading' | 'ready' | 'error'
     providerAvailable: boolean
+    providerId: string | null
     inputAssets: ApiMediaAsset[]
     uploadInput: (file: File) => Promise<void>
     onGenerate: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; strength: number; inputAssetIds: string[] }) => Promise<void>
@@ -505,6 +508,7 @@ function StudioPage({
           </div>
         )}
         <div className="button-row">
+          {providerGeneration && <CreativeCostPreview t={t} workspace="image" mode={activeImageMode} providerId={providerGeneration.providerId} />}
           <button
             className="primary-button"
             type="button"

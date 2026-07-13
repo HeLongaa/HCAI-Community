@@ -178,6 +178,40 @@ const signedCallbackHeaders = ({ source, generationId, providerJobId, body, time
   }
 }
 
+test('creative accounting policy and preview expose separate credits quota and Provider availability', async () => {
+  const repository = createSeedRepository()
+  const source = { NODE_ENV: 'test', CREATIVE_PROVIDER_MODE: 'mock', CREATIVE_DAILY_QUOTA: '10' }
+  const now = new Date('2026-07-14T08:00:00.000Z')
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+    source,
+    now,
+  }))
+  try {
+    const unauthenticated = await requestJson(server.url, '/api/creative/accounting-policy', { method: 'GET' })
+    assert.equal(unauthenticated.status, 401)
+
+    const policy = await requestJson(server.url, '/api/creative/accounting-policy', { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(policy.status, 200)
+    assert.equal(policy.payload.data.schema, 'CreativeAccountingPolicyV1')
+    assert.equal(policy.payload.data.units.credits.convertibleToProviderCurrency, false)
+
+    const preview = await requestJson(server.url, '/api/creative/accounting-policy/preview?workspace=video&mode=music_video', {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(preview.status, 200)
+    assert.equal(preview.payload.data.credits.estimate, 12)
+    assert.equal(preview.payload.data.quota.weight, 12)
+    assert.equal(preview.payload.data.quota.limit, 20)
+    assert.equal(preview.payload.data.quota.remaining, 20)
+    assert.equal(preview.payload.data.providerCost.availability, 'unavailable')
+    assert.equal('amount' in preview.payload.data.providerCost, false)
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/creative/providers lists safe provider capability metadata', async () => {
   const server = await createRouteTestServer(registerCreativeRoutes)
   try {
@@ -568,6 +602,9 @@ test('GET generation center unifies owner-scoped workspaces with safe date pagin
     assert.equal(chatTask.actions.cancel.available, false)
     assert.equal(chatTask.actions.cancel.reasonCode, 'chat_turn_managed_in_chat_workspace')
     assert.equal(chatTask.deepLink.workspace, 'chat')
+    assert.equal(chatTask.accounting.policyVersion, 'legacy')
+    assert.equal(chatTask.accounting.quotaUnits, 3)
+    assert.equal(chatTask.accounting.providerCost.availability, 'unavailable')
     const serialized = JSON.stringify(chatTask)
     assert.equal(serialized.includes('private-provider'), false)
     assert.equal(serialized.includes('private-input-id'), false)
@@ -1316,7 +1353,7 @@ test('POST /api/creative/generations persists mock provider output through media
     assert.equal(payload.data.outputs[0].storage.scanStatus, 'pending')
     assert.equal(payload.data.outputs[0].source.persistedMediaAssetId, payload.data.outputs[0].storage.mediaAssetId)
     assert.equal(payload.data.outputs[0].url.startsWith('mock://creative/image/'), true)
-    assert.equal(payload.data.usage.providerCostCents, 0)
+    assert.equal('providerCostCents' in payload.data.usage, false)
     assert.equal(payload.data.credit.status, 'settled')
     assert.equal(payload.data.credit.reserved, 1)
     assert.equal(payload.data.credit.settled, 1)

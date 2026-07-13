@@ -317,7 +317,10 @@ export function GenerationCenterPage({
               <dl className="generation-detail-grid">
                 <div><dt>{textFor(t, 'Created', '创建时间')}</dt><dd>{formatDate(selected.createdAt, locale)}</dd></div>
                 <div><dt>{textFor(t, 'Attempt', '尝试次数')}</dt><dd>#{selected.attempt.number}</dd></div>
-                <div><dt>{textFor(t, 'Credits', '额度')}</dt><dd>{selected.usage.estimatedCredits} {selected.usage.metered ? textFor(t, 'metered', '已计量') : textFor(t, 'estimated', '预估')}</dd></div>
+                <div><dt>{textFor(t, 'Credits', '积分')}</dt><dd>{selected.usage.estimatedCredits} {textFor(t, 'estimated', '预估')}</dd></div>
+                <div><dt>{textFor(t, 'Quota', '限额')}</dt><dd>{selected.accounting?.quotaUnits ?? selected.usage.estimatedCredits} {textFor(t, 'units', '单位')}</dd></div>
+                <div><dt>{textFor(t, 'Provider cost', '提供方成本')}</dt><dd>{selected.accounting?.providerCost.availability === 'available' ? selected.accounting.providerCost.ledgerStatus : textFor(t, 'unavailable', '不可用')}</dd></div>
+                <div><dt>{textFor(t, 'Policy', '政策')}</dt><dd>{!selected.accounting || selected.accounting.legacy ? textFor(t, 'Legacy', '旧版') : selected.accounting.policyVersion}</dd></div>
                 <div><dt>{textFor(t, 'Review', '审核')}</dt><dd>{selected.review.required ? textFor(t, 'Required', '需要审核') : textFor(t, 'Clear', '无需审核')}</dd></div>
               </dl>
               {selected.error && <div className="generation-detail-error"><AlertTriangle size={16} /><span><strong>{selected.error.code}</strong>{selected.error.message && <small>{selected.error.message}</small>}</span></div>}
