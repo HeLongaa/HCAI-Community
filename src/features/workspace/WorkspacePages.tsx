@@ -143,6 +143,7 @@ export function PlaygroundPage({
           providerCatalog={imageProviderCatalog}
           providerCatalogState={imageProviderCatalogState}
           workflow={musicWorkflow}
+          onUseInVideo={() => setWorkspace('video')}
         />
       )}
 
