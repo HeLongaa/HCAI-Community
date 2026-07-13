@@ -165,6 +165,7 @@ const summarize = (env, oauthProviders, chatRuntime) => ({
     fixtureAdapterOnly: musicCapabilityContract.runtime.fixtureAdapterOnly,
     providerHttpClientImplemented: musicCapabilityContract.runtime.providerHttpClientImplemented,
     providerCredentialsImplemented: musicCapabilityContract.runtime.providerCredentialsImplemented,
+    applicationLifecyclePersistenceImplemented: musicCapabilityContract.runtime.applicationLifecyclePersistenceImplemented,
     providerLifecycleImplemented: musicCapabilityContract.runtime.providerLifecycleImplemented,
     providerLifecycleEnabled: musicCapabilityContract.runtime.providerLifecycleEnabled,
     outputIngestionImplemented: musicCapabilityContract.runtime.outputIngestionImplemented,
@@ -322,17 +323,18 @@ check(
     musicCapabilityContract.runtime.providerResponseValidationImplemented === true &&
     musicCapabilityContract.runtime.licenseMetadataProjectionImplemented === true &&
     musicCapabilityContract.runtime.providerCostMetadataImplemented === true &&
+    musicCapabilityContract.runtime.applicationLifecyclePersistenceImplemented === true &&
     musicCapabilityContract.runtime.providerLifecycleImplemented === false &&
     musicCapabilityContract.runtime.providerLifecycleEnabled === false &&
-    musicCapabilityContract.runtime.outputIngestionImplemented === false &&
-    musicCapabilityContract.runtime.providerCostCloseoutImplemented === false &&
+    musicCapabilityContract.runtime.outputIngestionImplemented === true &&
+    musicCapabilityContract.runtime.providerCostCloseoutImplemented === true &&
     musicCapabilityContract.runtime.automaticFailoverAllowed === false &&
     musicCapabilityContract.runtime.realProviderCallsApproved === false &&
     musicCapabilityContract.runtime.productionEnablementApproved === false &&
     musicCapabilityContract.productBoundary.referenceAudioSupported === false &&
     musicCapabilityContract.productBoundary.voiceCloningSupported === false &&
     musicCapabilityContract.productBoundary.textToSpeechSupported === false,
-  'V1-31 adds only an injected fixture adapter without enabling HTTP, credentials, Provider traffic, lifecycle, output ingestion, or adjacent voice products',
+  'V1-32 adds application-owned Music persistence, MP3 ingestion, and cost closeout without enabling HTTP, credentials, Provider traffic, Provider lifecycle, failover, production, or adjacent voice products',
 )
 check(checks, 'media alert channel configured', hasAny(env.hasMediaScanAlertWebhookUrl, env.hasMediaScanAlertSlackWebhookUrl, env.mediaScanAlertEmailRecipientCount > 0), 'At least one media alert channel must be configured')
 check(checks, 'security alert channel configured', hasAny(env.hasSecurityAlertWebhookUrl, env.hasSecurityAlertSlackWebhookUrl, env.securityAlertEmailRecipientCount > 0), 'At least one security alert channel must be configured')

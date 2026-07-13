@@ -13,6 +13,7 @@ import { createProviderControlPlane } from './providerControlPlane.js'
 import { resetCreativePolicyState } from './policy.js'
 import { createOpenAIImageGeneration, projectOpenAIImageGenerationResponse } from './openaiImageProvider.js'
 import { createGoogleVeoGeneration } from './googleVeoProvider.js'
+import { createElevenLabsMusicGeneration } from './elevenLabsMusicProvider.js'
 
 const actor = {
   id: 'demo-user-creator',
@@ -37,6 +38,30 @@ const stagingSource = {
   CREATIVE_STAGING_PROVIDER_API_TOKEN: 'replicate-token',
   CREATIVE_STAGING_PROVIDER_CONFIRMATION: 'staging-only',
 }
+
+const mp3Bytes = () => Buffer.from([
+  0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0xff, 0xfb, 0x90, 0x64, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00,
+])
+
+const elevenLabsMusicResponse = (overrides = {}) => ({
+  requestId: 'music-request-service-1',
+  body: mp3Bytes(),
+  contentType: 'audio/mpeg',
+  usage: { generatedSeconds: 60, actualCostUsd: 0.15 },
+  license: {
+    licenseId: 'fixture-license-1',
+    termsVersion: 'enterprise-music-v1',
+    rightsBasis: 'enterprise_music_contract',
+    commercialUseAllowed: true,
+    resaleAndStreamingAllowed: true,
+    attributionRequired: false,
+    trainingOptOutApplied: true,
+    evidenceStatus: 'fixture_only',
+  },
+  ...overrides,
+})
 
 test('getCreativeProviderCatalog exposes safe mock provider capabilities', () => {
   const catalog = getCreativeProviderCatalog({ NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock' })
@@ -89,13 +114,59 @@ test('getCreativeProviderCatalog exposes safe mock provider capabilities', () =>
   const lyria = catalog.providers.find((provider) => provider.id === 'google-lyria-3-pro-preview')
   assert.equal(eleven.enabled, false)
   assert.equal(eleven.configured, false)
-  assert.equal(eleven.safeMetadata.adapterImplemented, false)
+  assert.equal(eleven.safeMetadata.adapterImplemented, true)
+  assert.equal(eleven.safeMetadata.adapterRegistered, false)
+  assert.equal(eleven.safeMetadata.fixtureAdapterOnly, true)
   assert.equal(eleven.safeMetadata.httpClientImplemented, false)
+  assert.equal(eleven.safeMetadata.outputIngestionImplemented, true)
+  assert.equal(eleven.safeMetadata.providerCostCloseoutImplemented, true)
   assert.equal(eleven.safeMetadata.enterpriseMusicContractRequired, true)
   assert.deepEqual(eleven.capabilities[0].modes, ['instrumental', 'lyrics_to_song'])
   assert.equal(lyria.safeMetadata.previewRiskAcceptanceRequired, true)
   assert.equal(lyria.safeMetadata.automaticFailoverAllowed, false)
   assert.deepEqual(lyria.capabilities[0].modes, ['instrumental'])
+})
+
+test('executeCreativeGeneration runs the ElevenLabs Music fixture and settles generated-minute cost', async () => {
+  resetCreativePolicyState()
+  const repository = createSeedRepository()
+  const musicRequest = {
+    workspace: 'music',
+    mode: 'instrumental',
+    prompt: 'A restrained cinematic theme with warm piano and clean percussion.',
+    inputAssetIds: [],
+    parameters: { durationSeconds: 60, genre: 'cinematic', mood: 'calm', tempoBpm: 96, outputFormat: 'mp3' },
+    providerId: 'elevenlabs-music-v2-enterprise',
+  }
+  let mappedRequest
+  const generated = await executeCreativeGeneration({
+    request: musicRequest,
+    actor,
+    generationId: 'gen-elevenlabs-music-service-fixture',
+    providerCostRepository: repository.creativeProviderCosts,
+    fixtureAdapters: {
+      'elevenlabs-music-v2-enterprise': (context) => createElevenLabsMusicGeneration({
+        ...context,
+        client: {
+          compose: async (providerRequest) => {
+            mappedRequest = providerRequest
+            return elevenLabsMusicResponse()
+          },
+        },
+      }),
+    },
+  })
+
+  assert.equal(generated.status, 'completed')
+  assert.equal(generated.provider.id, 'elevenlabs-music-v2-enterprise')
+  assert.equal(generated.providerRequestId, 'music-request-service-1')
+  assert.equal(generated.outputs[0].type, 'audio')
+  assert.equal(generated.outputs[0].storage.provider, 'elevenlabs-music-fixture')
+  assert.equal(generated.outputs[0].license.evidenceStatus, 'fixture_only')
+  assert.equal(generated.usage.providerCost.ledger.status, 'settled')
+  assert.equal(generated.usage.providerCost.pricingSnapshot.billingUnit, 'generated_minutes')
+  assert.equal(mappedRequest.body.model_id, 'music_v2')
+  assert.equal(JSON.stringify(generated).includes(mp3Bytes().toString('base64')), false)
 })
 
 test('executeCreativeGeneration applies the Music contract before mock execution', async () => {
@@ -1004,6 +1075,100 @@ test('persistCreativeGenerationOutputs hides persisted Replicate provider output
   assert.equal(persisted.outputs[0].storage.downloadPath, `/api/media/assets/${mediaAssetId}/download`)
   assert.equal(JSON.stringify({ asset, ingestions }).includes('provider-output-should-not-leak'), false)
   assert.equal(JSON.stringify(persisted).includes('provider-output-should-not-leak'), false)
+})
+
+test('persistCreativeGenerationOutputs ingests ElevenLabs Music MP3 once with scan-gated private storage', async () => {
+  resetCreativePolicyState()
+  const previousScanProvider = process.env.MEDIA_SCAN_PROVIDER
+  process.env.MEDIA_SCAN_PROVIDER = 'mock'
+  const repository = createSeedRepository()
+  const generated = await executeCreativeGeneration({
+    request: {
+      workspace: 'music',
+      mode: 'instrumental',
+      prompt: 'A restrained cinematic theme with warm piano and clean percussion.',
+      inputAssetIds: [],
+      parameters: { durationSeconds: 60, genre: 'cinematic', mood: 'calm', tempoBpm: 96, outputFormat: 'mp3' },
+      providerId: 'elevenlabs-music-v2-enterprise',
+    },
+    actor,
+    generationId: `gen-elevenlabs-music-ingest-${Date.now()}`,
+    providerCostRepository: repository.creativeProviderCosts,
+    fixtureAdapters: {
+      'elevenlabs-music-v2-enterprise': (context) => createElevenLabsMusicGeneration({
+        ...context,
+        client: { compose: async () => elevenLabsMusicResponse() },
+      }),
+    },
+  })
+
+  try {
+    const first = await persistCreativeGenerationOutputs(generated, {
+      actor,
+      mediaRepository: repository.media,
+      repositories: repository,
+    })
+    const duplicate = await persistCreativeGenerationOutputs(generated, {
+      actor,
+      mediaRepository: repository.media,
+      repositories: repository,
+    })
+
+    assert.equal(first.outputs[0].storage.persisted, true)
+    assert.equal(first.outputs[0].storage.provider, 'media_asset')
+    assert.equal(first.outputs[0].storage.mediaAssetId, duplicate.outputs[0].storage.mediaAssetId)
+    assert.equal(first.outputs[0].storage.scanStatus, 'clean')
+    assert.match(first.outputs[0].url, /^\/api\/media\/assets\/.+\/download$/)
+    assert.equal(first.outputs[0].contentType, 'audio/mpeg')
+    assert.equal(first.status, 'completed')
+
+    const asset = await repository.media.find(first.outputs[0].storage.mediaAssetId)
+    const ingestions = await repository.creativeOutputIngestions.listForGeneration(generated.id)
+    assert.equal(asset.contentType, 'audio/mpeg')
+    assert.equal(asset.metadata.ingestion.sha256, generated.outputs[0].storage.sha256)
+    assert.equal(asset.metadata.creative.sourceUrl, null)
+    assert.equal(asset.metadata.creative.ingestion.contentType, 'audio/mpeg')
+    assert.equal(ingestions.items.length, 1)
+    assert.equal(ingestions.items[0].status, 'completed')
+    assert.equal(JSON.stringify({ first, asset, ingestions }).includes(mp3Bytes().toString('base64')), false)
+  } finally {
+    if (previousScanProvider == null) delete process.env.MEDIA_SCAN_PROVIDER
+    else process.env.MEDIA_SCAN_PROVIDER = previousScanProvider
+  }
+})
+
+test('persistCreativeGenerationOutputs fails closed when ElevenLabs MP3 bytes leave process memory', async () => {
+  resetCreativePolicyState()
+  const repository = createSeedRepository()
+  const generated = await executeCreativeGeneration({
+    request: {
+      workspace: 'music',
+      mode: 'instrumental',
+      prompt: 'A restrained cinematic theme with warm piano and clean percussion.',
+      inputAssetIds: [],
+      parameters: { durationSeconds: 60, genre: 'cinematic', mood: 'calm', tempoBpm: 96, outputFormat: 'mp3' },
+      providerId: 'elevenlabs-music-v2-enterprise',
+    },
+    actor,
+    generationId: `gen-elevenlabs-music-missing-bytes-${Date.now()}`,
+    fixtureAdapters: {
+      'elevenlabs-music-v2-enterprise': (context) => createElevenLabsMusicGeneration({
+        ...context,
+        client: { compose: async () => elevenLabsMusicResponse() },
+      }),
+    },
+  })
+
+  await assert.rejects(
+    persistCreativeGenerationOutputs(structuredClone(generated), {
+      actor,
+      mediaRepository: repository.media,
+      repositories: repository,
+    }),
+    { code: 'CREATIVE_PROVIDER_OUTPUT_BYTES_MISSING' },
+  )
+  const ingestions = await repository.creativeOutputIngestions.listForGeneration(generated.id)
+  assert.equal(ingestions.items.length, 0)
 })
 
 test('persistCreativeGenerationOutputs fails closed when OpenAI inline bytes leave process memory', async () => {

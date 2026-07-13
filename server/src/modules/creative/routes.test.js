@@ -8,6 +8,7 @@ import { signProviderCallbackNonce, signProviderCallbackPayload } from '../../cr
 import { createReplicateStagingPrediction } from '../../creative/replicateStagingProvider.js'
 import { createOpenAIImageGeneration, projectOpenAIImageGenerationResponse } from '../../creative/openaiImageProvider.js'
 import { createGoogleVeoGeneration } from '../../creative/googleVeoProvider.js'
+import { createElevenLabsMusicGeneration } from '../../creative/elevenLabsMusicProvider.js'
 import { executeCreativeGeneration } from '../../creative/generationService.js'
 import { repositories } from '../../repositories/index.js'
 import { createSeedRepository } from '../../repositories/seedRepository.js'
@@ -25,6 +26,29 @@ const fixtureProviderOutputFetcher = async () => ({
   extension: 'png',
   sizeBytes: providerOutputPng.length,
   sha256: sha256(providerOutputPng),
+})
+
+const mp3Bytes = () => Buffer.from([
+  0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0xff, 0xfb, 0x90, 0x64, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00,
+])
+
+const elevenLabsMusicResponse = () => ({
+  requestId: 'music-route-fixture-request',
+  body: mp3Bytes(),
+  contentType: 'audio/mpeg',
+  usage: { generatedSeconds: 60, actualCostUsd: 0.15 },
+  license: {
+    licenseId: 'fixture-license-1',
+    termsVersion: 'enterprise-music-v1',
+    rightsBasis: 'enterprise_music_contract',
+    commercialUseAllowed: true,
+    resaleAndStreamingAllowed: true,
+    attributionRequired: false,
+    trainingOptOutApplied: true,
+    evidenceStatus: 'fixture_only',
+  },
 })
 
 const replicateStagingEnvKeys = [
@@ -225,9 +249,13 @@ test('GET /api/creative/providers lists safe provider capability metadata', asyn
     const lyria = payload.data.providers.find((provider) => provider.id === 'google-lyria-3-pro-preview')
     assert.equal(eleven.enabled, false)
     assert.equal(eleven.configured, false)
-    assert.equal(eleven.safeMetadata.adapterImplemented, false)
+    assert.equal(eleven.safeMetadata.adapterImplemented, true)
+    assert.equal(eleven.safeMetadata.adapterRegistered, false)
+    assert.equal(eleven.safeMetadata.fixtureAdapterOnly, true)
     assert.equal(eleven.safeMetadata.httpClientImplemented, false)
     assert.equal(eleven.safeMetadata.networkCallsEnabled, false)
+    assert.equal(eleven.safeMetadata.outputIngestionImplemented, true)
+    assert.equal(eleven.safeMetadata.providerCostCloseoutImplemented, true)
     assert.equal(eleven.safeMetadata.enterpriseMusicContractRequired, true)
     assert.deepEqual(eleven.capabilities[0].modes, ['instrumental', 'lyrics_to_song'])
     assert.equal(lyria.safeMetadata.previewRiskAcceptanceRequired, true)
@@ -235,6 +263,79 @@ test('GET /api/creative/providers lists safe provider capability metadata', asyn
     assert.deepEqual(lyria.capabilities[0].modes, ['instrumental'])
   } finally {
     await server.close()
+  }
+})
+
+test('POST /api/creative/generations persists injected ElevenLabs Music fixture output privately', async () => {
+  resetCreativePolicyState()
+  const previousScanProvider = process.env.MEDIA_SCAN_PROVIDER
+  process.env.MEDIA_SCAN_PROVIDER = 'mock'
+  const repository = createSeedRepository()
+  let fixtureCalls = 0
+  const server = await createRouteTestServer(
+    (router) => registerCreativeRoutes(router, {
+      repositories: repository,
+      fixtureAdapters: {
+        'elevenlabs-music-v2-enterprise': (context) => createElevenLabsMusicGeneration({
+          ...context,
+          client: {
+            compose: async () => {
+              fixtureCalls += 1
+              return elevenLabsMusicResponse()
+            },
+          },
+        }),
+      },
+      executeCreativeGeneration: (options) => executeCreativeGeneration({
+        ...options,
+        now: new Date('2030-07-13T00:00:00.000Z'),
+      }),
+    }),
+  )
+  try {
+    const { status, payload } = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'music',
+        mode: 'instrumental',
+        providerId: 'elevenlabs-music-v2-enterprise',
+        prompt: 'A fixture-only governed Music request.',
+        parameters: {
+          durationSeconds: 60,
+          genre: 'cinematic',
+          mood: 'calm',
+          tempoBpm: 96,
+          outputFormat: 'mp3',
+        },
+      },
+      token: 'demo-access.promptlin',
+    })
+
+    assert.equal(status, 200)
+    assert.equal(fixtureCalls, 1)
+    assert.equal(payload.data.status, 'completed')
+    assert.equal(payload.data.providerRequestId, 'music-route-fixture-request')
+    assert.equal(payload.data.outputs[0].contentType, 'audio/mpeg')
+    assert.equal(payload.data.outputs[0].storage.provider, 'media_asset')
+    assert.equal(payload.data.outputs[0].storage.scanStatus, 'clean')
+    assert.match(payload.data.outputs[0].url, /^\/api\/media\/assets\/.+\/download$/)
+    assert.equal(payload.data.outputs[0].license.evidenceStatus, 'fixture_only')
+    assert.equal(payload.data.usage.providerCost.ledger.status, 'settled')
+    assert.equal(payload.data.credit.status, 'settled')
+    assert.equal(payload.data.generationRecord.status, 'completed')
+
+    const history = await requestJson(server.url, `/api/creative/generations/${payload.data.id}`, {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(history.status, 200)
+    assert.equal(history.payload.data.outputs[0].scanStatus, 'clean')
+    assert.equal(history.payload.data.actions.download.available, true)
+    assert.equal(JSON.stringify({ created: payload.data, history: history.payload.data }).includes(mp3Bytes().toString('base64')), false)
+    assert.equal(JSON.stringify(payload.data).includes('api.elevenlabs.io'), false)
+  } finally {
+    await server.close()
+    if (previousScanProvider == null) delete process.env.MEDIA_SCAN_PROVIDER
+    else process.env.MEDIA_SCAN_PROVIDER = previousScanProvider
   }
 })
 
