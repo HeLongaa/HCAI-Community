@@ -1,5 +1,12 @@
 # API Design
 
+## Unified generation history
+
+- `GET /api/creative/generation-center` lists the authenticated user's Image, Chat, Video, and Music generation tasks through one safe projection. Filters: `workspace`, `status`, `dateFrom`, `dateTo`, `cursor`, and `limit`.
+- `GET /api/creative/generation-center/:id` returns one owned task through the same projection.
+- The projection intentionally omits Provider identity and private generation inputs. Mutations remain on the existing owner-scoped generation and Chat lifecycle routes.
+- Ordering is `createdAt DESC, id DESC`; cursors are opaque to clients.
+
 Base path: `/api`
 
 All responses use the same envelope:

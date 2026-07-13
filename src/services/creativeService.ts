@@ -9,6 +9,9 @@ import type {
   CreativeGenerationMutationRequest,
   RetryCreativeGenerationRequest,
   ApiUserCreativeGeneration,
+  ApiGenerationTask,
+  GenerationCenterPage,
+  GenerationCenterQuery,
   UserCreativeGenerationHistoryPage,
   UserCreativeGenerationHistoryQuery,
 } from './contracts'
@@ -32,6 +35,16 @@ export const creativeService = {
   },
   generation(id: string) {
     return api.get<ApiUserCreativeGeneration>(`/creative/generations/${id}`)
+  },
+  async listGenerationTasks(query: GenerationCenterQuery = {}): Promise<GenerationCenterPage> {
+    const envelope = await api.getEnvelope<ApiGenerationTask[]>(withQuery('/creative/generation-center', query))
+    return {
+      items: envelope.data,
+      nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null,
+    }
+  },
+  generationTask(id: string) {
+    return api.get<ApiGenerationTask>(`/creative/generation-center/${id}`)
   },
   cancelGeneration(id: string, body: CreativeGenerationMutationRequest) {
     return api.post<ApiCreativeGenerationMutationResponse>(`/creative/generations/${id}/cancel`, body)

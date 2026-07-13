@@ -591,6 +591,39 @@ export const parseCreativeGenerationHistoryQuery = (query) => {
   }
 }
 
+const parseGenerationHistoryDate = (query, field) => {
+  const value = optionalText(query, field, null)
+  if (value == null) return null
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) {
+    throw validationFailed(`${field} must be an ISO timestamp`)
+  }
+  return new Date(timestamp).toISOString()
+}
+
+export const parseGenerationCenterQuery = (query) => {
+  const workspace = optionalText(query, 'workspace', null)
+  const status = optionalText(query, 'status', null)
+  if (workspace && !creativeWorkspaces.includes(workspace)) {
+    throw validationFailed(`workspace must be one of: ${creativeWorkspaces.join(', ')}`)
+  }
+  if (status && !creativeGenerationStatuses.includes(status)) {
+    throw validationFailed(`status must be one of: ${creativeGenerationStatuses.join(', ')}`)
+  }
+  const dateFrom = parseGenerationHistoryDate(query, 'dateFrom')
+  const dateTo = parseGenerationHistoryDate(query, 'dateTo')
+  if (dateFrom && dateTo && Date.parse(dateFrom) > Date.parse(dateTo)) {
+    throw validationFailed('dateFrom must be before or equal to dateTo')
+  }
+  return {
+    ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 50 }),
+    workspace,
+    status,
+    dateFrom,
+    dateTo,
+  }
+}
+
 export const parseAdminReviewListQuery = (query) => ({
   ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 }),
   queue: optionalText(query, 'queue', null),

@@ -23,6 +23,7 @@ import { PointsPage } from '../../features/rewards'
 import { AboutPage, ApiPage, EarnPage, LegalPage, PricingPage, SupportPage } from '../../features/static-pages'
 import { MyTasksPage, PublishPage, TasksPage } from '../../features/tasks'
 import { ChatPage, PlaygroundPage } from '../../features/workspace'
+import { GenerationCenterPage } from '../../features/generations'
 
 type PageRendererProps = {
   t: Record<string, string>
@@ -156,6 +157,14 @@ export function PageRenderer({
           workspace={playgroundWorkspace}
           setWorkspace={setPlaygroundWorkspace}
           setPage={navigateToPage}
+        />
+      )}
+      {page === 'generations' && (
+        <GenerationCenterPage
+          t={t}
+          signedIn={Boolean(account.accountHandle)}
+          requireAuth={requireAuth}
+          navigateToPage={navigateToPage}
         />
       )}
       {page === 'chat' && (

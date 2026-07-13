@@ -7,6 +7,7 @@ import {
   parseCreativeGenerationCancelRequest,
   parseCreativeGenerationRetryRequest,
   parseCreativeGenerationHistoryQuery,
+  parseGenerationCenterQuery,
   parsePaginationQuery,
 } from '../../contracts/requestParsers.js'
 import { executeCreativeGeneration, getCreativeProviderCatalog, persistCreativeGenerationOutputs } from '../../creative/generationService.js'
@@ -36,6 +37,8 @@ import {
   generationBelongsToActor,
   serializeUserCreativeGeneration,
   serializeUserCreativeGenerationPage,
+  serializeUserGenerationTask,
+  serializeUserGenerationTaskPage,
 } from '../../creative/userGenerationHistory.js'
 import { recordVideoProviderOperationDispatch } from '../../creative/videoProviderLifecycle.js'
 
@@ -123,6 +126,38 @@ export const registerCreativeRoutes = (router, options = {}) => {
       throw notFound(`/api/creative/generations/${context.params.id}`)
     }
     ok(response, await serializeUserCreativeGeneration(generation, {
+      mediaRepository: routeRepositories.media,
+      actor,
+    }))
+  })
+
+  router.add('GET', '/api/creative/generation-center', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const query = parseGenerationCenterQuery(context.query)
+    const page = await routeRepositories.creativeGenerations.list({
+      ...query,
+      actorId: actor.id,
+      actorHandle: actor.handle,
+    })
+    const items = await serializeUserGenerationTaskPage(page.items, {
+      mediaRepository: routeRepositories.media,
+      actor,
+    })
+    ok(response, items, {
+      pagination: {
+        limit: page.limit,
+        nextCursor: page.nextCursor,
+      },
+    })
+  })
+
+  router.add('GET', '/api/creative/generation-center/:id', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const generation = await routeRepositories.creativeGenerations.find(context.params.id)
+    if (!generationBelongsToActor(generation, actor)) {
+      throw notFound(`/api/creative/generation-center/${context.params.id}`)
+    }
+    ok(response, await serializeUserGenerationTask(generation, {
       mediaRepository: routeRepositories.media,
       actor,
     }))

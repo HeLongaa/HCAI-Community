@@ -100,3 +100,44 @@ export const serializeUserCreativeGeneration = async (generation, { mediaReposit
 
 export const serializeUserCreativeGenerationPage = async (items, context) =>
   Promise.all((items ?? []).map((item) => serializeUserCreativeGeneration(item, context)))
+
+const generationCenterActions = (generation, actions) => ({
+  view: action(true),
+  cancel: generation.workspace === 'chat'
+    ? action(false, 'chat_turn_managed_in_chat_workspace')
+    : actions.cancel,
+  retry: actions.retry,
+  download: actions.download,
+  reuse: actions.reuse,
+})
+
+export const serializeUserGenerationTask = async (generation, context) => {
+  const serialized = await serializeUserCreativeGeneration(generation, context)
+  return {
+    id: serialized.id,
+    workspace: serialized.workspace,
+    mode: serialized.mode,
+    status: serialized.status,
+    summary: serialized.workspace === 'chat' ? null : serialized.promptPreview,
+    attempt: serialized.attempt,
+    usage: serialized.usage,
+    review: {
+      required: serialized.safety.reviewRequired,
+    },
+    error: serialized.error,
+    outputs: serialized.outputs,
+    actions: generationCenterActions(generation, serialized.actions),
+    deepLink: {
+      page: 'playground',
+      workspace: serialized.workspace,
+    },
+    startedAt: serialized.startedAt,
+    completedAt: serialized.completedAt,
+    failedAt: serialized.failedAt,
+    createdAt: serialized.createdAt,
+    updatedAt: serialized.updatedAt,
+  }
+}
+
+export const serializeUserGenerationTaskPage = async (items, context) =>
+  Promise.all((items ?? []).map((item) => serializeUserGenerationTask(item, context)))

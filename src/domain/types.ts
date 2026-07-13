@@ -27,6 +27,7 @@ export type Permission =
 export type Page =
   | 'home'
   | 'playground'
+  | 'generations'
   | 'chat'
   | 'explore'
   | 'tasks'

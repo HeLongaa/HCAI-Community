@@ -2299,7 +2299,10 @@ export const createSeedRepository = () => ({
         })
       }
       const items = timelineEvents
-        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+        .sort((left, right) => {
+          const createdDifference = new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+          return createdDifference || right.id.localeCompare(left.id)
+        })
         .map((event) => serializeTaskTimelineItem(event, task.id))
       return paginateByCursor(items, options)
     },

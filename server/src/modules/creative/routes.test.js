@@ -509,6 +509,90 @@ test('GET creative generation history is authenticated owner-scoped and safely h
   }
 })
 
+test('GET generation center unifies owner-scoped workspaces with safe date pagination', async () => {
+  const repository = createSeedRepository()
+  const actor = { id: 'demo-user-promptlin', handle: 'promptlin' }
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
+  const records = [
+    { id: `center-image-${suffix}`, workspace: 'image', status: 'completed', createdAt: '2032-08-01T10:00:00.000Z' },
+    { id: `center-chat-${suffix}`, workspace: 'chat', status: 'running', createdAt: '2032-08-01T11:00:00.000Z' },
+    { id: `center-video-${suffix}`, workspace: 'video', status: 'failed', createdAt: '2032-08-02T10:00:00.000Z' },
+  ]
+  for (const record of records) {
+    await repository.creativeGenerations.create({
+      ...record,
+      actorId: actor.id,
+      actorHandle: actor.handle,
+      mode: record.workspace === 'chat' ? 'assistant' : 'text_to_generation',
+      providerId: 'private-provider-id',
+      providerMode: 'private-provider-mode',
+      promptHash: 'f'.repeat(64),
+      promptPreview: record.workspace === 'chat' ? null : `${record.workspace} safe preview`,
+      inputAssetIds: ['private-input-id'],
+      parameterKeys: ['privateParameter'],
+      outputAssetIds: [],
+      usage: { estimatedCredits: 3, metered: true, actualCostUsd: 99 },
+      attemptNumber: 1,
+    }, actor)
+  }
+  await repository.creativeGenerations.create({
+    id: `center-other-${suffix}`,
+    actorId: 'demo-user-taskops',
+    actorHandle: 'taskops',
+    workspace: 'music',
+    mode: 'instrumental',
+    providerId: 'mock',
+    status: 'completed',
+    promptHash: 'e'.repeat(64),
+    inputAssetIds: [],
+    parameterKeys: [],
+    outputAssetIds: [],
+    createdAt: '2032-08-01T12:00:00.000Z',
+  }, { id: 'demo-user-taskops', handle: 'taskops' })
+
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, { repositories: repository }))
+  try {
+    const denied = await requestJson(server.url, '/api/creative/generation-center', { method: 'GET' })
+    assert.equal(denied.status, 401)
+
+    const first = await requestJson(
+      server.url,
+      '/api/creative/generation-center?dateFrom=2032-08-01T00%3A00%3A00Z&dateTo=2032-08-01T23%3A59%3A59Z&limit=1',
+      { method: 'GET', token: 'demo-access.promptlin' },
+    )
+    assert.equal(first.status, 200)
+    assert.deepEqual(first.payload.data.map((item) => item.workspace), ['chat'])
+    assert.ok(first.payload.meta.pagination.nextCursor)
+    const chatTask = first.payload.data[0]
+    assert.equal(chatTask.summary, null)
+    assert.equal(chatTask.actions.cancel.available, false)
+    assert.equal(chatTask.actions.cancel.reasonCode, 'chat_turn_managed_in_chat_workspace')
+    assert.equal(chatTask.deepLink.workspace, 'chat')
+    const serialized = JSON.stringify(chatTask)
+    assert.equal(serialized.includes('private-provider'), false)
+    assert.equal(serialized.includes('private-input-id'), false)
+    assert.equal(serialized.includes('privateParameter'), false)
+    assert.equal(serialized.includes('actualCostUsd'), false)
+
+    const second = await requestJson(
+      server.url,
+      `/api/creative/generation-center?dateFrom=2032-08-01T00%3A00%3A00Z&dateTo=2032-08-01T23%3A59%3A59Z&limit=1&cursor=${encodeURIComponent(first.payload.meta.pagination.nextCursor)}`,
+      { method: 'GET', token: 'demo-access.promptlin' },
+    )
+    assert.deepEqual(second.payload.data.map((item) => item.workspace), ['image'])
+    assert.equal(second.payload.data.some((item) => item.workspace === 'music'), false)
+
+    const detail = await requestJson(server.url, `/api/creative/generation-center/${records[0].id}`, {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(detail.status, 200)
+    assert.equal(detail.payload.data.id, records[0].id)
+  } finally {
+    await server.close()
+  }
+})
+
 test('POST image-to-image persists governed parent lineage in output and media metadata', async () => {
   resetCreativePolicyState()
   const repository = createSeedRepository()

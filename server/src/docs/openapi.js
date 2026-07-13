@@ -1125,6 +1125,38 @@ export const openApiDocument = {
         },
       },
     },
+    '/creative/generation-center': {
+      get: {
+        summary: 'List the current user generation tasks across Image, Chat, Video, and Music',
+        description: 'Returns one safe owner-scoped projection without raw prompts, Provider identifiers, private URLs, storage keys, or internal safety evidence.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'workspace', in: 'query', schema: { type: 'string', enum: ['image', 'video', 'music', 'chat'] } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['queued', 'running', 'completed', 'failed', 'cancelled', 'review_required'] } },
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 } },
+        ],
+        responses: {
+          '200': { description: 'Newest-first stable cursor page of unified safe generation tasks' },
+          '400': { description: 'Invalid workspace, status, date range, cursor, or limit' },
+          '401': { description: 'Authentication required' },
+        },
+      },
+    },
+    '/creative/generation-center/{id}': {
+      get: {
+        summary: 'Read one owned generation task through the unified safe projection',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Safe task detail with cost summary, review state, governed assets, errors, action eligibility, and workspace deep link' },
+          '401': { description: 'Authentication required' },
+          '404': { description: 'Generation not found or belongs to another user' },
+        },
+      },
+    },
     '/creative/generations': {
       get: {
         summary: 'List the current user creative generation history with safe lifecycle and governed output summaries',

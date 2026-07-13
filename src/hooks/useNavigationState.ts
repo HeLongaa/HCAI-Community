@@ -5,6 +5,7 @@ const oauthRedirectKey = 'hcaiOAuthRedirectTo'
 const routablePages = new Set<Page>([
   'home',
   'playground',
+  'generations',
   'chat',
   'explore',
   'tasks',
@@ -29,6 +30,7 @@ const routablePages = new Set<Page>([
 
 const parentPages = {
   playground: 'home',
+  generations: 'home',
   chat: 'home',
   explore: 'home',
   tasks: 'home',
@@ -67,8 +69,15 @@ const consumeOAuthRedirectPage = (): Page | null => {
   }
 }
 
+const pageFromHash = (): Page | null => {
+  if (typeof window === 'undefined') return null
+  return window.location.hash === '#generations' || window.location.hash.startsWith('#generations/')
+    ? 'generations'
+    : null
+}
+
 export function useNavigationState() {
-  const [page, setPage] = useState<Page>(() => consumeOAuthRedirectPage() ?? 'home')
+  const [page, setPage] = useState<Page>(() => consumeOAuthRedirectPage() ?? pageFromHash() ?? 'home')
   const [playgroundWorkspace, setPlaygroundWorkspace] = useState<PlaygroundMode>('music')
   const [pageReturnTargets, setPageReturnTargets] = useState<Partial<Record<Page, Page>>>({})
 
