@@ -164,6 +164,15 @@ export type LocalizedText = {
   zh: string
 }
 
+export type PortfolioDisplayItem = LocalizedText | {
+  id: string
+  assetId: string
+  title: string
+  caption: string
+  status: 'draft' | 'published' | 'withdrawn' | 'archived'
+  asset: { fileName: string; contentType: string } | null
+}
+
 export type MarketplaceProfile = {
   id: string
   handle: string
@@ -187,7 +196,7 @@ export type MarketplaceProfile = {
     rank: string
   }
   badges: LocalizedText[]
-  portfolio: LocalizedText[]
+  portfolio: PortfolioDisplayItem[]
   reviews: LocalizedText[]
 }
 

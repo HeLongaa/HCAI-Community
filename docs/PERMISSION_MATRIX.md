@@ -12,6 +12,7 @@ The executable fallback role defaults live in `server/src/auth/permissions.js`. 
 | `task:propose` | Submit task proposals | `POST /api/tasks/:id/proposals` | Not guarded yet |
 | `task:claim` | Claim an open task | `POST /api/tasks/:id/claim` | Claim task |
 | `task:submit` | Submit task deliverables | `POST /api/tasks/:id/submissions` | Submit work |
+| `task:submit` | Discover actor-scoped submit-ready delivery targets | `GET /api/tasks/delivery-targets` | Use creative output |
 | `task:review` | Approve/reject task submissions and proposals | `POST /api/tasks/:id/review`, `POST /api/tasks/:id/proposals/:proposalId/actions` | Approve task, reject task |
 | `task:moderate` | Moderate tasks at operations level | Repository-level roadmap checks only | Not guarded yet |
 | `post:create` | Create community posts | `POST /api/posts` | Not guarded yet |
@@ -85,6 +86,11 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `POST /api/tasks/:id/proposals` | Required | `task:propose` | Yes |
 | `POST /api/tasks/:id/proposals/:proposalId/actions` | Required | `task:review` plus owner/admin check | Yes |
 | `POST /api/tasks/:id/submissions` | Required | `task:submit` | Yes |
+| `GET /api/tasks/delivery-targets` | Required | `task:submit` plus assignee/status scope | Yes |
+| `POST /api/media/assets/:id/library` | Required | Asset owner and current delivery governance | Yes |
+| `POST /api/media/assets/:id/portfolio` | Required | Asset owner and current delivery governance | Yes |
+| `GET /api/profiles/me/portfolio` | Required | Profile owner | Yes |
+| `PATCH /api/profiles/me/portfolio/:id` | Required | Profile owner plus lifecycle transition rules | Yes |
 | `GET /api/tasks/:id/submissions` | Required | Resource-level visibility | Yes |
 | `POST /api/tasks/:id/review` | Required | `task:review` | Yes |
 | `POST /api/posts` | Required | `post:create` | Yes |

@@ -479,6 +479,16 @@ export const openApiDocument = {
         },
       },
     },
+    '/tasks/delivery-targets': {
+      get: {
+        summary: 'List tasks the current actor can legally submit to',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Owner-scoped submit-ready task projections' },
+          '403': { description: 'Requires task submit permission' },
+        },
+      },
+    },
     '/tasks/{id}/claim': {
       post: {
         summary: 'Claim an open task',
@@ -565,7 +575,8 @@ export const openApiDocument = {
         },
       },
       post: {
-        summary: 'Submit task work',
+        summary: 'Submit task work with immutable governed asset evidence',
+        description: 'Every asset id is revalidated for owner, active uploaded state, clean scan, compatible purpose, and completed source generation. The submission stores an allowlisted evidence snapshot and rights note; later asset archival does not alter that evidence.',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         requestBody: {
           required: true,
@@ -585,6 +596,7 @@ export const openApiDocument = {
         },
         responses: {
           '201': { description: 'Updated task and created normalized submission' },
+          '409': { description: 'Task is not submit-ready or an asset fails delivery governance' },
         },
       },
     },
@@ -781,6 +793,29 @@ export const openApiDocument = {
         security: [{ bearerAuth: [] }],
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         responses: { '200': { description: 'Safe asset detail' }, '404': { description: 'Asset not found or not owned by the caller' } },
+      },
+    },
+    '/media/assets/{id}/library': {
+      post: {
+        summary: 'Save an owned governed creative output as an idempotent private library reference',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '201': { description: 'Private LibraryItem reference; no media bytes or provenance are copied' },
+          '409': { description: 'Asset fails delivery governance or lacks completed generation evidence' },
+        },
+      },
+    },
+    '/media/assets/{id}/portfolio': {
+      post: {
+        summary: 'Create an idempotent private portfolio draft from a governed creative output',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { title: { type: 'string' }, caption: { type: 'string' }, sourceSubmissionId: { type: ['string', 'null'] } } } } } },
+        responses: {
+          '201': { description: 'Draft normalized portfolio relation; it is not public until explicitly published' },
+          '409': { description: 'Asset or optional source submission fails governance validation' },
+        },
       },
     },
     '/media/assets/{id}/archive': {
@@ -2081,6 +2116,23 @@ export const openApiDocument = {
         },
       },
     },
+    '/profiles/me/portfolio': {
+      get: {
+        summary: 'List the current owner private portfolio records in every lifecycle state',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'Private draft, published, withdrawn, and archived portfolio records' } },
+      },
+    },
+    '/profiles/me/portfolio/{id}': {
+      patch: {
+        summary: 'Edit or explicitly transition an owned portfolio record',
+        description: 'Supported actions are publish, withdraw, archive, and restore. Publish revalidates current asset governance. Restoring an archived record returns it to draft and never republishes automatically.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { title: { type: 'string' }, caption: { type: 'string' }, sortOrder: { type: 'integer', minimum: 0 }, action: { type: 'string', enum: ['publish', 'withdraw', 'archive', 'restore'] } } } } } },
+        responses: { '200': { description: 'Updated private portfolio record' }, '409': { description: 'Invalid lifecycle transition or asset governance failure' } },
+      },
+    },
     '/profiles': {
       get: {
         summary: 'List public profiles',
@@ -2097,7 +2149,7 @@ export const openApiDocument = {
     },
     '/profiles/{handle}': {
       get: {
-        summary: 'Get a public profile by handle',
+        summary: 'Get a public profile with only clean active published portfolio assets',
         parameters: [{ name: 'handle', in: 'path', required: true, schema: { type: 'string' } }],
         responses: {
           '200': { description: 'Profile detail' },

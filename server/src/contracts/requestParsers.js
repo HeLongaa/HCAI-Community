@@ -210,6 +210,19 @@ export const parseSubmitTaskRequest = (body) => ({
   rightsNote: optionalText(body, 'rightsNote', ''),
 })
 
+export const parseCreatePortfolioAssetRequest = (body) => ({
+  title: optionalText(body, 'title', ''),
+  caption: optionalText(body, 'caption', ''),
+  sourceSubmissionId: nullableText(body, 'sourceSubmissionId'),
+})
+
+export const parseUpdatePortfolioAssetRequest = (body) => ({
+  title: body?.title == null ? undefined : requireText(body, 'title'),
+  caption: body?.caption == null ? undefined : optionalText(body, 'caption', ''),
+  sortOrder: optionalNonNegativeInteger(body, 'sortOrder'),
+  action: body?.action == null ? undefined : requireOneOf(body, 'action', ['publish', 'withdraw', 'archive', 'restore']),
+})
+
 export const parseCreateTaskDisputeRequest = (body) => ({
   reason: requireText(body, 'reason'),
 })

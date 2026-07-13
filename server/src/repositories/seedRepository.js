@@ -34,6 +34,7 @@ import {
   serializeNotification,
   serializePost,
   serializePostDetail,
+  serializePortfolioAsset,
   serializeProfile,
   serializeSecurityAlertDispatchEvent,
   serializeTask,
@@ -76,6 +77,7 @@ import {
 import { sanitizeNotificationMetadata } from './notificationTargets.js'
 import { safeCreativeCreditMetadata, safeErrorPreview, safeProviderOperationMetadata } from '../creative/generationRecords.js'
 import { assetEligibleForWorkspace, assetMediaType, buildSafeAssetLibraryItem } from '../media/assetLibrary.js'
+import { resolveCreativeDeliveryAssets } from '../creative/deliveryAssets.js'
 import {
   buildConsentStatus,
   compliancePolicyManifest,
@@ -109,6 +111,7 @@ const creativeProviderRetryStatesBySourceKey = new Map()
 const creativeCreditLedgerById = new Map()
 const creativeQuotaWindowsById = new Map()
 const creativeQuotaReservationsById = new Map()
+const portfolioAssetsById = new Map()
 
 const getAccountByHandle = (handle) => seedStore.demoAccountByHandle.get(handle) ?? null
 const getAccountById = (id) => seedStore.demoAccounts.find((account) => account.id === id) ?? null
@@ -790,6 +793,14 @@ const getSeedAssetLibraryItem = (asset, actor) => {
   const referenced = Boolean(generation || [...creativeGenerationsById.values()].some((item) => item.inputAssetIds?.includes(asset.id)))
   return buildSafeAssetLibraryItem(asset, { generation, relations, referenced })
 }
+const getSeedPublicPortfolio = (handle) => [...portfolioAssetsById.values()]
+  .filter((item) => item.ownerHandle === handle && item.status === 'published')
+  .filter((item) => {
+    const asset = mediaAssetsById.get(item.assetId)
+    return asset && !asset.archivedAt && asset.status === 'uploaded' && asset.metadata?.security?.scanStatus === 'clean'
+  })
+  .sort((left, right) => left.sortOrder - right.sortOrder || right.createdAt.localeCompare(left.createdAt))
+  .map((item) => serializePortfolioAsset(item, mediaAssetsById.get(item.assetId)))
 const notifications = []
 
 const getCursorValue = (item, cursorKey) => item?.[cursorKey] ?? item?.id ?? item?.handle ?? null
@@ -2053,6 +2064,10 @@ export const createSeedRepository = () => ({
     },
   },
   tasks: {
+    listDeliveryTargets: (actor) => seedStore.tasks
+      .filter((task) => getHandle(task.assignee) === actor.handle)
+      .filter((task) => ['In Progress', 'Rejected'].includes(task.status))
+      .map((task) => ({ id: String(task.id), title: task.title, status: task.status, category: task.category })),
     list: (options = {}) => {
       const search = options.search ? options.search.toLowerCase() : null
       const filtered = seedStore.tasks.filter((task) => {
@@ -2218,6 +2233,18 @@ export const createSeedRepository = () => ({
       return serializeTaskProposal(proposal)
     },
     submit: (id, payload, actor = null) => {
+      const currentTask = getTaskById(id)
+      if (currentTask && !canAccessOwnedResource(getHandle(currentTask.assignee), actor)) return null
+      if ((payload.assetIds?.length ?? 0) > 0 && currentTask && !['In Progress', 'Rejected'].includes(currentTask.status)) {
+        throw new HttpError(409, 'TASK_NOT_SUBMITTABLE', 'Task is not currently eligible for submission')
+      }
+      const resolvedAssets = resolveCreativeDeliveryAssets({
+        assetIds: payload.assetIds,
+        assets: (payload.assetIds ?? []).map((assetId) => mediaAssetsById.get(String(assetId))).filter(Boolean),
+        generations: [...creativeGenerationsById.values()],
+        actor,
+        target: 'task_submission',
+      })
       const task = updateTask(id, (task) => ({
         ...task,
         status: 'Pending Review',
@@ -2240,6 +2267,7 @@ export const createSeedRepository = () => ({
           reviewNote: '',
           reviewedBy: null,
           reviewedAt: null,
+          metadata: { assetEvidence: resolvedAssets.map((item) => item.evidence) },
           createdAt: new Date().toISOString(),
         }
         taskSubmissions.unshift(submission)
@@ -2426,7 +2454,7 @@ export const createSeedRepository = () => ({
           const createdAt = new Date(submission.createdAt).getTime()
           return submission.status === 'pending_review' &&
             !Number.isNaN(createdAt) &&
-            createdAt < cutoff &&
+            createdAt <= cutoff &&
             (!payload.taskId || submission.taskId === String(payload.taskId))
         })
         .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
@@ -2718,12 +2746,61 @@ export const createSeedRepository = () => ({
           if (!haystack.includes(search)) return false
         }
         return true
-      }).map(serializeProfile)
+      }).map((profile) => ({ ...serializeProfile(profile), portfolio: getSeedPublicPortfolio(profile.handle) }))
       return paginateByCursor(filtered, { ...options, cursorKey: 'handle' })
     },
     findByHandle: (handle) => {
       const profile = seedStore.profileByHandle.get(handle) ?? null
-      return profile ? serializeProfile(profile) : null
+      if (!profile) return null
+      return { ...serializeProfile(profile), portfolio: getSeedPublicPortfolio(handle) }
+    },
+    listOwnPortfolio: (actor) => [...portfolioAssetsById.values()]
+      .filter((item) => item.ownerHandle === actor.handle)
+      .sort((left, right) => left.sortOrder - right.sortOrder || right.createdAt.localeCompare(left.createdAt))
+      .map((item) => serializePortfolioAsset(item, mediaAssetsById.get(item.assetId))),
+    createPortfolioDraft: (assetId, payload, actor) => {
+      const asset = mediaAssetsById.get(String(assetId)) ?? null
+      const generation = [...creativeGenerationsById.values()].find((item) => item.outputAssetIds?.includes(String(assetId))) ?? null
+      const [resolved] = resolveCreativeDeliveryAssets({ assetIds: [assetId], assets: asset ? [asset] : [], generations: generation ? [generation] : [], actor, target: 'profile_portfolio' })
+      if (payload.sourceSubmissionId) {
+        const source = taskSubmissions.find((item) => item.id === payload.sourceSubmissionId && item.submitterHandle === actor.handle && item.assetIds?.includes(String(assetId)))
+        if (!source) throw new HttpError(409, 'PORTFOLIO_SOURCE_SUBMISSION_INVALID', 'Source submission does not contain this asset')
+      }
+      const existing = [...portfolioAssetsById.values()].find((item) => item.ownerHandle === actor.handle && item.assetId === String(assetId))
+      if (existing) return serializePortfolioAsset(existing, asset)
+      const now = new Date().toISOString()
+      const item = {
+        id: `portfolio-${randomUUID()}`, ownerHandle: actor.handle, assetId: String(assetId),
+        sourceGenerationId: resolved.generation.id, sourceSubmissionId: payload.sourceSubmissionId ?? null,
+        title: payload.title || asset.fileName, caption: payload.caption ?? '', status: 'draft', sortOrder: 0,
+        publishedAt: null, withdrawnAt: null, archivedAt: null, createdAt: now, updatedAt: now,
+      }
+      portfolioAssetsById.set(item.id, item)
+      recordAudit(actor, 'profile.portfolio.draft_created', 'profile_portfolio_asset', item.id, { assetId: item.assetId })
+      return serializePortfolioAsset(item, asset)
+    },
+    updatePortfolioAsset: (id, payload, actor) => {
+      const current = portfolioAssetsById.get(String(id)) ?? null
+      if (!current || current.ownerHandle !== actor.handle) return null
+      const allowed = { publish: ['draft', 'withdrawn'], withdraw: ['published'], archive: ['draft', 'published', 'withdrawn'], restore: ['archived'] }
+      if (payload.action && !allowed[payload.action]?.includes(current.status)) {
+        throw new HttpError(409, 'PORTFOLIO_TRANSITION_INVALID', `Cannot ${payload.action} a ${current.status} portfolio item`)
+      }
+      const now = new Date().toISOString()
+      const actionState = payload.action === 'publish' ? { status: 'published', publishedAt: now, withdrawnAt: null, archivedAt: null }
+        : payload.action === 'withdraw' ? { status: 'withdrawn', withdrawnAt: now }
+          : payload.action === 'archive' ? { status: 'archived', archivedAt: now }
+            : payload.action === 'restore' ? { status: 'draft', publishedAt: null, withdrawnAt: null, archivedAt: null }
+              : {}
+      if (payload.action === 'publish') {
+        const asset = mediaAssetsById.get(current.assetId)
+        const generation = [...creativeGenerationsById.values()].find((item) => item.outputAssetIds?.includes(current.assetId))
+        resolveCreativeDeliveryAssets({ assetIds: [current.assetId], assets: asset ? [asset] : [], generations: generation ? [generation] : [], actor, target: 'profile_portfolio' })
+      }
+      const updated = { ...current, ...actionState, ...(payload.title !== undefined ? { title: payload.title } : {}), ...(payload.caption !== undefined ? { caption: payload.caption } : {}), ...(payload.sortOrder !== undefined ? { sortOrder: payload.sortOrder } : {}), updatedAt: now }
+      portfolioAssetsById.set(updated.id, updated)
+      recordAudit(actor, `profile.portfolio.${payload.action ?? 'updated'}`, 'profile_portfolio_asset', updated.id, { assetId: updated.assetId })
+      return serializePortfolioAsset(updated, mediaAssetsById.get(updated.assetId))
     },
     listRankings: () =>
       seedStore.profiles
@@ -4436,11 +4513,34 @@ export const createSeedRepository = () => ({
       if (!asset || asset.ownerHandle !== actor.handle) return null
       return getSeedAssetLibraryItem(asset, actor)
     },
+    saveAssetToLibrary: (id, actor) => {
+      const asset = mediaAssetsById.get(String(id)) ?? null
+      const generation = [...creativeGenerationsById.values()].find((item) => item.outputAssetIds?.includes(String(id))) ?? null
+      const [resolved] = resolveCreativeDeliveryAssets({ assetIds: [id], assets: asset ? [asset] : [], generations: generation ? [generation] : [], actor, target: 'private_library' })
+      const existing = seedLibraryItems.find((item) => item.ownerHandle === actor.handle && item.sourceType === 'asset' && item.sourceId === String(id))
+      if (existing) return serializeLibraryItem(existing)
+      const item = {
+        id: `library-${randomUUID()}`, type: 'asset', source: 'Creative output', sourceType: 'asset', saves: '1',
+        text: '', title: asset.fileName, ownerHandle: actor.handle, sourceId: String(id),
+        metadata: { kind: 'media_asset', assetEvidence: resolved.evidence },
+      }
+      seedLibraryItems.unshift(item)
+      libraryItemsById.set(item.id, item)
+      recordAudit(actor, 'media.asset.saved_to_library', 'media_asset', asset.id, { libraryItemId: item.id })
+      return serializeLibraryItem(item)
+    },
     setAssetArchived: (id, archived, actor) => {
       const asset = mediaAssetsById.get(String(id)) ?? null
       if (!asset || asset.ownerHandle !== actor.handle) return null
       const updated = { ...asset, archivedAt: archived ? (asset.archivedAt ?? new Date().toISOString()) : null, updatedAt: new Date().toISOString() }
       mediaAssetsById.set(updated.id, updated)
+      if (archived) {
+        for (const [portfolioId, item] of portfolioAssetsById.entries()) {
+          if (item.assetId === updated.id && item.status === 'published') {
+            portfolioAssetsById.set(portfolioId, { ...item, status: 'withdrawn', withdrawnAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+          }
+        }
+      }
       recordAudit(actor, archived ? 'media.asset.archived' : 'media.asset.restored', 'media_asset', updated.id, { referenced: [...creativeGenerationsById.values()].some((item) => item.inputAssetIds?.includes(updated.id) || item.outputAssetIds?.includes(updated.id)) })
       return getSeedAssetLibraryItem(updated, actor)
     },

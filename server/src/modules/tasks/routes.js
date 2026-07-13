@@ -26,6 +26,11 @@ export const registerTaskRoutes = (router) => {
     })
   })
 
+  router.add('GET', '/api/tasks/delivery-targets', async (_request, response, context) => {
+    const actor = requirePermission(context, 'task:submit')
+    ok(response, await repositories.tasks.listDeliveryTargets(actor))
+  })
+
   router.add('GET', '/api/tasks/:id', async (_request, response, context) => {
     const task = await repositories.tasks.findById(context.params.id)
     if (!task) {

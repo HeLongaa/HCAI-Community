@@ -7,6 +7,7 @@ import { TrackRow } from '../explore'
 import { MyTasksPage, StatusBadge } from '../tasks'
 import { marketplaceProfiles, tracks } from '../../data/mockData'
 import { categoryLabel, isZhCopy, localizeText, localizedTasks, pointText, profileTags, textFor } from '../../domain/utils'
+import { PortfolioManager } from './PortfolioManager'
 
 export function PlaylistPage({
   t,
@@ -222,6 +223,9 @@ export function ProfilePage({
           </button>
         ))}
       </div>
+      {isPersonalCenter && activeTab === 'overview' && (
+        <PortfolioManager t={t}/>
+      )}
       {activeTab === 'myTasks' ? (
         <MyTasksPage t={t} tasks={tasks} setPage={setPage} accountHandle={profile.handle} submitTask={submitTask} simulateAction={simulateAction} />
       ) : (
@@ -257,10 +261,10 @@ export function ProfilePage({
                 ))
               ) : (
                 profile.portfolio.map((item) => (
-                  <div className="proof-item task-proof-item" key={item.en}>
+                  <div className="proof-item task-proof-item" key={'en' in item ? item.en : item.id}>
                     <StatusBadge status="Completed" t={t} />
-                    <strong>{localizeText(item, t)}</strong>
-                    <span>{textFor(t, 'Portfolio item from public profile', '公开主页作品案例')}</span>
+                    <strong>{'en' in item ? localizeText(item, t) : item.title}</strong>
+                    <span>{'en' in item ? textFor(t, 'Portfolio item from public profile', '公开主页作品案例') : (item.caption || item.asset?.fileName || item.assetId)}</span>
                   </div>
                 ))
               )}

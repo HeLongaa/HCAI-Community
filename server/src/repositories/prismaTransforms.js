@@ -167,9 +167,32 @@ export const getTaskSubmissionDto = (submission) => ({
   acceptanceChecklist: asObject(submission.metadata)?.acceptanceChecklist ?? [],
   dispute: asObject(submission.metadata)?.dispute ?? null,
   stale: asObject(submission.metadata)?.stale ?? null,
+  assetEvidence: asObject(submission.metadata)?.assetEvidence ?? [],
   reviewedBy: submission.reviewedBy ? buildUserSummary(submission.reviewedBy) : null,
   reviewedAt: submission.reviewedAt ? submission.reviewedAt.toISOString() : null,
   createdAt: submission.createdAt ? submission.createdAt.toISOString() : '',
+})
+
+export const getPortfolioAssetDto = (item) => ({
+  id: item.id,
+  assetId: item.assetId,
+  sourceGenerationId: item.sourceGenerationId ?? null,
+  sourceSubmissionId: item.sourceSubmissionId ?? null,
+  title: item.title,
+  caption: item.caption,
+  status: item.status,
+  sortOrder: item.sortOrder,
+  publishedAt: item.publishedAt?.toISOString() ?? null,
+  withdrawnAt: item.withdrawnAt?.toISOString() ?? null,
+  archivedAt: item.archivedAt?.toISOString() ?? null,
+  createdAt: item.createdAt?.toISOString() ?? '',
+  updatedAt: item.updatedAt?.toISOString() ?? '',
+  asset: item.asset ? {
+    id: item.asset.id,
+    fileName: item.asset.fileName,
+    contentType: item.asset.contentType,
+    purpose: item.asset.purpose,
+  } : null,
 })
 
 export const getMediaAssetDto = (asset) => ({

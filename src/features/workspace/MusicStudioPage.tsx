@@ -21,6 +21,7 @@ import type {
   ApiCreativeProviderCatalogEntry,
 } from '../../services/contracts'
 import { CreativeCostPreview } from './CreativeCostPreview'
+import { UseCreativeAsset } from '../assets/UseCreativeAsset'
 
 const labelForMode = (mode: string, isZh: boolean) => ({
   instrumental: isZh ? '纯音乐' : 'Instrumental',
@@ -321,6 +322,10 @@ export function MusicStudioPage({
               </button>
             )}
           </div>
+
+          {selectedOutput && (
+            <UseCreativeAsset t={t} assetId={selectedOutput.assetId} fileName={selectedOutput.fileName} available={selectedOutput.scanStatus === 'clean' && selectedGeneration?.status === 'completed'}/>
+          )}
 
           {selectedGeneration?.actions.retry.available && !exactRetryAvailable && (
             <p className="video-runtime-message">{textFor(t, 'Exact retry is unavailable after refresh. Recreate the request from its safe preview.', '刷新后无法精确重试，请根据安全预览重新填写请求。')}</p>

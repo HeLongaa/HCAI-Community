@@ -3,7 +3,7 @@ import { created, ok } from '../../common/http/responses.js'
 import { HttpError, notFound } from '../../common/errors/httpError.js'
 import { requirePermission, requireUser } from '../../common/http/auth.js'
 import { readJsonBody, readJsonBodyWithRaw } from '../../common/http/request.js'
-import { parseAssetLibraryQuery, parseCompleteMediaUploadRequest, parseCreateAssetRelationRequest, parseCreateMediaUploadRequest, parseMediaGovernancePolicyRequest, parseMediaGovernancePolicyRollbackRequest, parseMediaReviewQueueQuery, parseMediaScanAlertActionRequest, parseMediaScanAlertSilenceRequest, parseMediaScanCallbackRequest, parseMediaScanJobArchiveQuery, parseMediaScanJobHistoryQuery, parseMediaScanJobQuery, parseMediaScanRequest, parsePaginationQuery } from '../../contracts/requestParsers.js'
+import { parseAssetLibraryQuery, parseCompleteMediaUploadRequest, parseCreateAssetRelationRequest, parseCreateMediaUploadRequest, parseCreatePortfolioAssetRequest, parseMediaGovernancePolicyRequest, parseMediaGovernancePolicyRollbackRequest, parseMediaReviewQueueQuery, parseMediaScanAlertActionRequest, parseMediaScanAlertSilenceRequest, parseMediaScanCallbackRequest, parseMediaScanJobArchiveQuery, parseMediaScanJobHistoryQuery, parseMediaScanJobQuery, parseMediaScanRequest, parsePaginationQuery } from '../../contracts/requestParsers.js'
 import { buildMediaGovernanceConfig } from '../../config/env.js'
 import { repositories } from '../../repositories/index.js'
 
@@ -87,6 +87,20 @@ export const registerMediaRoutes = (router) => {
     const asset = await repositories.media.getAssetLibraryItem(context.params.id, actor)
     if (!asset) throw notFound(`/api/media/assets/${context.params.id}`)
     ok(response, asset)
+  })
+
+  router.add('POST', '/api/media/assets/:id/library', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const item = await repositories.media.saveAssetToLibrary(context.params.id, actor)
+    if (!item) throw notFound(`/api/media/assets/${context.params.id}`)
+    created(response, item)
+  })
+
+  router.add('POST', '/api/media/assets/:id/portfolio', async (request, response, context) => {
+    const actor = requireUser(context)
+    const item = await repositories.profiles.createPortfolioDraft(context.params.id, parseCreatePortfolioAssetRequest((await readJsonBody(request)) ?? {}), actor)
+    if (!item) throw notFound(`/api/media/assets/${context.params.id}`)
+    created(response, item)
   })
 
   router.add('POST', '/api/media/assets/:id/archive', async (_request, response, context) => {

@@ -67,7 +67,7 @@ Stores login provider identities.
 | `lane` | enum | `maker`, `publisher`, `both` |
 | `skills` | text[] | |
 | `languages` | text[] | |
-| `portfolio` | jsonb | Normalization can happen later |
+| `portfolio` | jsonb | Legacy read compatibility only; new governed works use `profile_portfolio_assets` |
 | `stats` | jsonb | Derived stats cache |
 
 ### `tasks`
