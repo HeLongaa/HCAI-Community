@@ -5,7 +5,7 @@ This document records every known demo, mock, catalog, seed, fixture, and fallba
 ## Decision
 
 - Silent production fallback is forbidden.
-- The current repository is not production-ready while any `release_blocker` remains.
+- V1-39 resolved all inventoried `release_blocker` entries on 2026-07-14; `productionReady=true` is valid only while the disposition, production-bundle, negative persistence, and smoke guards continue to pass.
 - Fixture and development implementations may remain only when their environment boundary is explicit and tested.
 - V1-39 owns the final production removal/explicit-unavailable gate; domain tasks own the real replacements.
 - A visible “Demo fallback” label is useful audit evidence today, not permission to ship the fallback in V1.
@@ -14,19 +14,19 @@ This document records every known demo, mock, catalog, seed, fixture, and fallba
 
 | Surface id | Current behavior | Production disposition | Owners |
 | --- | --- | --- | --- |
-| `frontend-marketplace-demo-state` | Tasks and home start from local task records and retain them after list failure | API data or explicit unavailable state | V1-39, V1-64 |
-| `frontend-community-library-demo-state` | Community/library start from local posts, works, and inspiration | API data or explicit unavailable state | V1-39, V1-66 |
-| `frontend-account-profile-demo-catalog` | Account/profile/search can use local marketplace profiles | Account/profile APIs and governed portfolio assets | V1-36, V1-37, V1-39, V1-66, V1-67 |
-| `frontend-player-search-demo-catalog` | Player queue and global search use local tracks/profiles | Unified asset/catalog API | V1-32, V1-33, V1-35, V1-36, V1-39 |
-| `frontend-explore-demo-catalog` | Explore radio, tracks, images, and videos are local catalog content | Real catalog or explicit unavailable state | V1-35, V1-36, V1-39 |
-| `frontend-music-workspace-mock-runtime` | Music Studio uses application APIs for capability-driven instrumental/lyrics modes, history, polling, cancel/retry, scan/review states, private MP3 playback and download; Mock is explicit and ElevenLabs/Lyria are visibly unavailable | Replace Mock execution with an approved Provider without bypassing application APIs | V1-30 through V1-34, V1-39 |
-| `frontend-video-workspace-mock-runtime` | Video Studio uses application APIs for capability-driven modes/parameters, governed image/audio inputs, history, polling, cancel/retry, scan/review states, private preview and download; Mock is explicit and Veo/Runway are visibly unavailable | Replace Mock execution with an approved Provider without bypassing application APIs | V1-25 through V1-29, V1-39 |
-| `creative-image-mock-execution` | Image uses a contract-driven API/UI, governed input assets, lineage, owner-scoped lifecycle history, active-job polling, mutations and downloads; OpenAI generation/edit adapters exist only behind fixture injection, while the product route still executes deterministic mock output | Approved real Image Provider | V1-15 through V1-19, V1-39 |
-| `frontend-admin-demo-queue` | Admin review queue retains local rows when API load fails | Admin API data or explicit error | V1-39, V1-42, V1-43, V1-69 |
-| `frontend-static-plan-api-catalog` | Pricing/API pages use static local plan and feature cards | Approved internal-credit/API product content | V1-39, V1-40, V1-70, V1-78 |
-| `frontend-points-demo-ledger` | Points starts from a local ledger and retains it after failure | Points API or explicit error | V1-39, V1-40, V1-65 |
+| `frontend-marketplace-demo-state` | Production resolves the catalog module to explicit unavailable data until the task API succeeds; API failure never renders local task success | Retain API-only/error behavior | V1-39, V1-64 |
+| `frontend-community-library-demo-state` | Production uses API content or explicit unavailable records; API failure never renders demo posts or replies | Retain API-only/error behavior | V1-39, V1-66 |
+| `frontend-account-profile-demo-catalog` | Production uses account/profile APIs or an explicit unavailable profile, while demo profiles are excluded from the bundle | Retain API-only/error behavior | V1-36, V1-37, V1-39, V1-66, V1-67 |
+| `frontend-player-search-demo-catalog` | Production player/search catalog is explicit unavailable and contains no demo tracks | Replace unavailable state only when a governed catalog API is approved | V1-32, V1-33, V1-35, V1-36, V1-39 |
+| `frontend-explore-demo-catalog` | Production Explore catalog is explicit unavailable and contains no demo radio/works | Replace unavailable state only when a public catalog API is approved | V1-35, V1-36, V1-39 |
+| `frontend-music-workspace-mock-runtime` | Production defaults the application Provider mode to disabled; fixture Music remains development/test only | Keep disabled until separate Music approval | V1-30 through V1-34, V1-39 |
+| `frontend-video-workspace-mock-runtime` | Production defaults the application Provider mode to disabled; fixture Video remains development/test only | Keep disabled until separate Video approval | V1-25 through V1-29, V1-39 |
+| `creative-image-mock-execution` | Production defaults the application Provider mode to disabled; mock Image execution remains development/test only | Keep disabled until separate Image approval | V1-15 through V1-19, V1-39 |
+| `frontend-admin-demo-queue` | Production uses the permission-scoped Admin API or an explicit unavailable queue | Retain API-only/error behavior | V1-39, V1-42, V1-43, V1-69 |
+| `frontend-static-plan-api-catalog` | Production pricing/API catalog is explicit unavailable until approved versioned content exists | Replace only with approved product content | V1-39, V1-40, V1-70, V1-78 |
+| `frontend-points-demo-ledger` | Production uses the Points API or an explicit unavailable ledger | Retain API-only/error behavior | V1-39, V1-40, V1-65 |
 | `frontend-runtime-source-labels` | Shell exposes API, stored, fallback, and mock classifications | Retain until blockers close, then show only real/unavailable states | V1-02, V1-39 |
-| `frontend-mockdata-root` | Shared source for local tasks, profiles, posts, tracks, works, queues, and plans | Restrict to test/development/controlled seed migration | V1-39 |
+| `frontend-mockdata-root` | Vite production resolution replaces the shared demo module with explicit unavailable records; bundle guard rejects known demo markers | Retain only for development/tests | V1-39 |
 
 All 14 direct frontend imports of `src/data/mockData.ts` are checked exactly. Adding, removing, or moving one requires updating the machine inventory in the same pull request.
 
@@ -34,8 +34,8 @@ All 14 direct frontend imports of `src/data/mockData.ts` are checked exactly. Ad
 
 | Surface id | Current behavior | Production disposition | Owners |
 | --- | --- | --- | --- |
-| `server-seed-repository-fallback` | Missing `DATABASE_URL` silently selects in-memory seed repository | Require PostgreSQL and fail closed | V1-39, V1-49 |
-| `server-prisma-demo-autoseed` | An empty Prisma database is populated from demo seed data | Explicit environment bootstrap without demo users/content | V1-39, V1-49 |
+| `server-seed-repository-fallback` | Production requires `DATABASE_URL`, does not import Seed repository, and fails startup when Prisma is unavailable | Retain fail-closed PostgreSQL requirement | V1-39, V1-49 |
+| `server-prisma-demo-autoseed` | Production repository creation never imports or runs demo autoseed; development/test seeding is explicit and configurable | Retain explicit bootstrap | V1-39, V1-49 |
 | `server-demo-auth-compatibility` | Demo handles/tokens support local and test workflows | Restrict to development and tests | V1-39, V1-48, V1-67 |
 | `server-mock-storage-driver` | Missing S3 configuration selects `mock://` upload/download/archive | Require S3-compatible storage in production | V1-39, V1-50 |
 | `server-manual-mock-scanner` | Scanner can remain manual or classify from deterministic mock signatures | Require real scanner request and signed callback | V1-39, V1-51 |

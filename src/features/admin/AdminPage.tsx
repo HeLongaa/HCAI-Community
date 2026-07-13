@@ -587,7 +587,7 @@ export function AdminPage({
     onSuccess: (items) => {
       if (items.length > 0) setQueueItems(items)
     },
-    getErrorMessage: () => (isZh ? '无法读取运营队列，当前显示本地演示数据。' : 'Could not load review queue. Showing local demo data.'),
+    getErrorMessage: () => (isZh ? '运营队列 API 暂不可用；未显示本地替代数据。' : 'The operations queue API is unavailable; no local substitute is shown.'),
     deps: [isZh],
     logLabel: 'admin-service',
   })

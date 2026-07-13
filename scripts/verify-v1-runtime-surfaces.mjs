@@ -4,6 +4,7 @@ import path from 'node:path'
 const root = process.cwd()
 const inventoryPath = path.join(root, 'config/v1-runtime-surfaces.json')
 const inventory = JSON.parse(fs.readFileSync(inventoryPath, 'utf8'))
+const releaseBlockers = inventory.surfaces.filter((surface) => surface.classification === 'release_blocker')
 const checks = []
 
 const addCheck = (name, pass, detail) => checks.push({ name, pass: Boolean(pass), detail })
@@ -13,7 +14,7 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 
 addCheck('inventory schema version is supported', inventory.schemaVersion === 1, `schemaVersion=${inventory.schemaVersion}`)
 addCheck('silent production fallback is forbidden', inventory.productionPolicy.silentFallback === 'forbidden', inventory.productionPolicy.silentFallback)
-addCheck('inventory does not claim production readiness', inventory.productionPolicy.productionReady === false, `productionReady=${inventory.productionPolicy.productionReady}`)
+addCheck('production readiness matches resolved blocker state', inventory.productionPolicy.productionReady === (releaseBlockers.length === 0), `productionReady=${inventory.productionPolicy.productionReady}; blockers=${releaseBlockers.length}`)
 addCheck('unresolved surfaces are owned by V1-39', inventory.productionPolicy.releaseGateTask === 'V1-39', inventory.productionPolicy.releaseGateTask)
 
 const ids = inventory.surfaces.map((surface) => surface.id)
@@ -94,8 +95,7 @@ addCheck(
   serverBoundaryFiles.filter((file) => !trackedPaths.has(file)).join(', ') || `${serverBoundaryFiles.length} tracked file(s)`,
 )
 
-const releaseBlockers = inventory.surfaces.filter((surface) => surface.classification === 'release_blocker')
-addCheck('release blockers remain explicit until V1-39', releaseBlockers.length > 0, `${releaseBlockers.length} release blocker(s)`)
+addCheck('release blockers are closed by V1-39 readiness', releaseBlockers.length === 0, `${releaseBlockers.length} release blocker(s)`)
 addCheck(
   'every release blocker names V1-39',
   releaseBlockers.every((surface) => surface.ownerTasks.includes('V1-39')),

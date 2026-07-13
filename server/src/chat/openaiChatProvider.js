@@ -61,7 +61,7 @@ const runtimeError = (status, code, message, reasonCode, details = {}) => new Ht
 const parseFlag = (source, key) => String(source[key] ?? '').trim().toLowerCase() === 'true'
 
 export const buildOpenAIChatRuntimeConfig = (source = process.env) => {
-  const mode = String(source.CHAT_PROVIDER_MODE ?? 'mock').trim().toLowerCase()
+  const mode = String(source.CHAT_PROVIDER_MODE ?? (source.NODE_ENV === 'production' ? 'disabled' : 'mock')).trim().toLowerCase()
   const runtimeEnv = String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? source.DEPLOYMENT_ENV ?? source.NODE_ENV ?? 'development').trim().toLowerCase()
   const clientEnabled = parseFlag(source, 'CHAT_OPENAI_HTTP_CLIENT_ENABLED')
   const networkCallsEnabled = parseFlag(source, 'CHAT_OPENAI_NETWORK_CALLS_ENABLED')
@@ -94,6 +94,9 @@ export const buildOpenAIChatRuntimeConfig = (source = process.env) => {
     if (!clientEnabled || !networkCallsEnabled || !safetyClassifierEnabled) {
       throw new Error('OpenAI Chat runtime requires HTTP client, network calls, and safety classifier to be enabled')
     }
+  }
+  if (source.NODE_ENV === 'production' && runtimeEnv === 'production' && mode !== 'disabled') {
+    throw new Error('Production product runtime requires CHAT_PROVIDER_MODE=disabled until a Provider is explicitly approved')
   }
   return Object.freeze({
     mode,

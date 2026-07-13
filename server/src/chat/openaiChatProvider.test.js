@@ -64,6 +64,11 @@ test('OpenAI Chat runtime gates require explicit staging-only configuration', ()
     token: '',
     baseUrl: 'https://api.openai.com/v1',
   })
+  assert.equal(buildOpenAIChatRuntimeConfig({ NODE_ENV: 'production' }).mode, 'disabled')
+  assert.throws(
+    () => buildOpenAIChatRuntimeConfig({ NODE_ENV: 'production', CHAT_PROVIDER_MODE: 'mock' }),
+    /requires CHAT_PROVIDER_MODE=disabled/,
+  )
   assert.throws(
     () => buildOpenAIChatRuntimeConfig({ ...source, CREATIVE_PROVIDER_RUNTIME_ENV: 'production' }),
     /CREATIVE_PROVIDER_RUNTIME_ENV=staging/,

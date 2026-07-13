@@ -14,7 +14,7 @@ export function useAppFeedback(locale: Locale, accountKey = 'anonymous') {
       if (entries.length > 0) setLedgerItems(entries)
       setPointsSummary(summary)
     },
-    getErrorMessage: () => (locale === 'zh' ? '无法同步积分流水，当前显示本地演示数据。' : 'Could not sync points ledger. Showing local demo data.'),
+    getErrorMessage: () => (locale === 'zh' ? '积分 API 暂不可用；未显示本地替代数据。' : 'The points API is unavailable; no local substitute is shown.'),
     deps: [locale, accountKey],
     logLabel: 'points-service',
   })

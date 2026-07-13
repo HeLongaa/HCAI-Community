@@ -752,9 +752,9 @@ function App() {
   } = useCommunityWorkflows({ locale, publishTask, pushLedger, pushToast, setPage })
   const sourceCopy = {
     loading: locale === 'zh' ? '同步中' : 'Syncing',
-    fallback: locale === 'zh' ? '演示回退' : 'Demo fallback',
+    fallback: locale === 'zh' ? '账号不可用' : 'Account unavailable',
     stored: locale === 'zh' ? '本地会话' : 'Stored session',
-    mock: locale === 'zh' ? '模拟工作台' : 'Mock workspace',
+    mock: locale === 'zh' ? '工作台未启用' : 'Workspace unavailable',
   }
   const sourceFromStatus = (label: string, status: { loading: boolean; error: string | null }, apiDetail: string, fallbackDetail: string) => ({
     label,

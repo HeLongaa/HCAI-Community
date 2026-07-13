@@ -645,8 +645,8 @@ addCheck(
 addCheck(
   'prototype boundary',
   'runtime data sources are visible in the shell and home page',
-  includesAll(app, ['accountSource', 'accountReady', 'data-source-panel', 'Demo fallback', 'Mock workspace', 'API session']),
-  'visible API/demo data source labels',
+  includesAll(app, ['accountSource', 'accountReady', 'data-source-panel', 'Account unavailable', 'Workspace unavailable', 'API session']),
+  'visible API/unavailable data source labels',
 )
 
 const grouped = checks.reduce((acc, check) => {

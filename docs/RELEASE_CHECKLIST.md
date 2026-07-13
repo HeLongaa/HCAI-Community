@@ -20,7 +20,7 @@ npm run check:deploy:env
 Confirm:
 
 - `npm run test:v1-scope` passes and the scope manifest matches `docs/V1_SCOPE_AND_DEFINITION_OF_DONE.md`.
-- `npm run test:v1-surfaces` passes, every inventoried release blocker is closed, and `productionReady` can be set only by the V1-39 gate.
+- `npm run test:v1-surfaces`, `npm run test:v1-production-fallbacks`, and the post-build `npm run test:v1-production-bundle` pass; every inventoried release blocker is closed and `productionReady=true` remains evidence-backed.
 - `npm run test:v1-compliance` passes, the final legal entity/jurisdiction are recorded, qualified legal review is approved, and the published versions match the consent gate. The current engineering draft intentionally does not satisfy this release condition.
 - No RMB payment, withdrawal/payout, KYC, invoice, tax-settlement, or merchant-settlement route or schema is present.
 - Internal points, creative credits, quota, escrow, compensation, and refunds are not represented as withdrawable money.

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "task": "V1-39",
+  "policy": {
+    "productionReadyRequiresZeroReleaseBlockers": true,
+    "allowedTargets": ["production_capable", "development_only", "fixture_only", "explicit_unavailable"],
+    "realProviderApprovalRequired": true
+  },
+  "dispositions": [
+    { "id": "frontend-marketplace-demo-state", "targetClassification": "production_capable", "strategy": "api_only", "evidence": ["src/hooks/useTaskWorkflows.ts", "e2e/task-proposals.spec.ts"] },
+    { "id": "frontend-community-library-demo-state", "targetClassification": "production_capable", "strategy": "api_only_or_explicit_unavailable", "evidence": ["src/hooks/useCommunityWorkflows.ts", "src/features/community/CommunityPage.tsx"] },
+    { "id": "frontend-account-profile-demo-catalog", "targetClassification": "production_capable", "strategy": "account_and_profile_api_only", "evidence": ["src/hooks/useAccountState.ts", "src/services/profileService.ts"] },
+    { "id": "frontend-player-search-demo-catalog", "targetClassification": "explicit_unavailable", "strategy": "governed_asset_api_or_unavailable", "evidence": ["src/hooks/usePlayerState.ts", "src/components/overlays/Overlays.tsx"] },
+    { "id": "frontend-explore-demo-catalog", "targetClassification": "explicit_unavailable", "strategy": "public_catalog_api_or_unavailable", "evidence": ["src/features/explore/ExplorePages.tsx"] },
+    { "id": "frontend-music-workspace-mock-runtime", "targetClassification": "explicit_unavailable", "strategy": "capability_contract_without_fixture_dispatch", "evidence": ["src/hooks/useMusicGenerationWorkflow.ts", "server/src/creative/musicCapabilityContract.js"] },
+    { "id": "frontend-video-workspace-mock-runtime", "targetClassification": "explicit_unavailable", "strategy": "capability_contract_without_fixture_dispatch", "evidence": ["src/hooks/useVideoGenerationWorkflow.ts", "server/src/creative/videoCapabilityContract.js"] },
+    { "id": "creative-image-mock-execution", "targetClassification": "explicit_unavailable", "strategy": "capability_contract_without_mock_dispatch", "evidence": ["server/src/creative/providerRegistry.js", "server/src/creative/imageCapabilityContract.js"] },
+    { "id": "frontend-admin-demo-queue", "targetClassification": "production_capable", "strategy": "permission_scoped_api_only", "evidence": ["src/features/admin/AdminPage.tsx", "src/services/adminService.ts"] },
+    { "id": "frontend-static-plan-api-catalog", "targetClassification": "explicit_unavailable", "strategy": "approved_versioned_content_only", "evidence": ["src/features/static-pages/StaticPages.tsx"] },
+    { "id": "frontend-points-demo-ledger", "targetClassification": "production_capable", "strategy": "points_api_only", "evidence": ["src/hooks/useAppFeedback.ts", "src/services/pointsService.ts"] },
+    { "id": "frontend-mockdata-root", "targetClassification": "development_only", "strategy": "zero_production_imports", "evidence": ["src/data/mockData.ts", "scripts/verify-v1-production-fallbacks.mjs"] },
+    { "id": "server-seed-repository-fallback", "targetClassification": "development_only", "strategy": "production_requires_postgresql", "evidence": ["server/src/repositories/index.js", "server/src/repositories/index.test.js"] },
+    { "id": "server-prisma-demo-autoseed", "targetClassification": "development_only", "strategy": "explicit_development_seed_only", "evidence": ["server/src/repositories/prismaRepository.js", "server/prisma/seed.js"] }
+  ]
+}

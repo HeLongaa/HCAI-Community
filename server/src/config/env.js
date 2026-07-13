@@ -20,7 +20,7 @@ const storageRequiredKeys = ['STORAGE_ENDPOINT', 'STORAGE_REGION', 'STORAGE_BUCK
 
 const getStorageDriver = (source) => String(source.STORAGE_DRIVER ?? (source.STORAGE_BUCKET ? 's3' : 'mock')).trim().toLowerCase()
 const getMediaScanProvider = (source) => String(source.MEDIA_SCAN_PROVIDER ?? 'manual').trim().toLowerCase()
-const getCreativeProviderMode = (source) => String(source.CREATIVE_PROVIDER_MODE ?? 'mock').trim().toLowerCase()
+const getCreativeProviderMode = (source) => String(source.CREATIVE_PROVIDER_MODE ?? (source.NODE_ENV === 'production' ? 'disabled' : 'mock')).trim().toLowerCase()
 const getCreativeProviderRuntimeEnv = (source) =>
   String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? source.DEPLOYMENT_ENV ?? source.NODE_ENV ?? 'development').trim().toLowerCase()
 const supportedMediaScanRequestAdapters = ['generic-webhook', 'clamav-http']
@@ -255,6 +255,9 @@ export const buildEnv = (source = process.env) => {
     if (creativeStagingProviderConfirmation !== 'staging-only') {
       throw new Error('CREATIVE_STAGING_PROVIDER_CONFIRMATION must be staging-only when CREATIVE_PROVIDER_MODE=replicate_staging')
     }
+  }
+  if (nodeEnv === 'production' && creativeProviderRuntimeEnv === 'production' && creativeProviderMode !== 'disabled') {
+    throw new Error('Production product runtime requires CREATIVE_PROVIDER_MODE=disabled until a Provider is explicitly approved')
   }
   if (hasCreativeStagingProviderApiToken && !creativeStagingProviderPreflightEnabled && creativeProviderMode !== 'replicate_staging') {
     throw new Error('CREATIVE_STAGING_PROVIDER_API_TOKEN requires CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true or CREATIVE_PROVIDER_MODE=replicate_staging')
