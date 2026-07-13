@@ -33,6 +33,7 @@ import {
   getNotificationDto,
   getPostDto,
   getPostDetailDto,
+  getPortfolioAssetDto,
   getProfileDto,
   getTaskProposalDto,
   getTaskSubmissionDto,
@@ -61,6 +62,7 @@ import { writeJsonArchive } from '../storage/archiveWriter.js'
 import { createPrismaChatRepository } from '../chat/prismaChatRepository.js'
 import { safeProviderOperationMetadata } from '../creative/generationRecords.js'
 import { assetEligibleForWorkspace, assetMediaType, buildSafeAssetLibraryItem } from '../media/assetLibrary.js'
+import { resolveCreativeDeliveryAssets } from '../creative/deliveryAssets.js'
 
 const { Prisma, PrismaClient } = prismaClientPkg
 const safeProviderJobIdPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
@@ -2035,6 +2037,16 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   }
 
   const tasks = {
+    listDeliveryTargets: async (actor) => {
+      const owner = await findUserByHandle(actor.handle)
+      if (!owner) return []
+      const rows = await client.task.findMany({
+        where: { assigneeId: owner.id, status: { in: ['in_progress', 'rejected'] } },
+        select: { id: true, title: true, status: true, category: true },
+        orderBy: { updatedAt: 'desc' },
+      })
+      return rows.map((task) => ({ ...task, status: task.status === 'rejected' ? 'Rejected' : 'In Progress' }))
+    },
     list: async (options = {}) => {
       const limit = options.limit ?? 20
       const cursor = options.cursor
@@ -2381,14 +2393,23 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       if (!task) {
         return null
       }
+      const publisherHandle = task.publisher?.profile?.handle ?? task.publisher?.id ?? null
       const assigneeHandle = task.assignee?.profile?.handle ?? task.assignee?.id ?? null
       if (assigneeHandle && actor && assigneeHandle !== actor.handle && !hasPermission(actor, 'admin:access')) {
         return null
+      }
+      if ((payload.assetIds?.length ?? 0) > 0 && !['in_progress', 'rejected'].includes(task.status)) {
+        throw new HttpError(409, 'TASK_NOT_SUBMITTABLE', 'Task is not currently eligible for submission')
       }
       const submitter = await findUserByHandle(actor.handle)
       if (!submitter) {
         return null
       }
+      const [assets, generations] = await Promise.all([
+        client.mediaAsset.findMany({ where: { id: { in: payload.assetIds ?? [] } } }),
+        client.creativeGeneration.findMany({ where: { outputAssetIds: { hasSome: payload.assetIds ?? [] } } }),
+      ])
+      const resolvedAssets = resolveCreativeDeliveryAssets({ assetIds: payload.assetIds, assets, generations, actor: { ...actor, id: submitter.id }, target: 'task_submission' })
       const previousSubmission = await client.taskSubmission.findFirst({
         where: { taskId: String(id), submitterId: submitter.id },
         orderBy: { createdAt: 'desc' },
@@ -2420,6 +2441,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           assetIds: payload.assetIds ?? [],
           rightsNote: payload.rightsNote ?? '',
           status: 'pending_review',
+          metadata: { assetEvidence: resolvedAssets.map((item) => item.evidence) },
         },
       })
       await recordAudit({
@@ -2707,7 +2729,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         const submissions = await transaction.taskSubmission.findMany({
           where: {
             status: 'pending_review',
-            createdAt: { lt: cutoff },
+            createdAt: { lte: cutoff },
             ...(payload.taskId ? { taskId: String(payload.taskId) } : {}),
           },
           include: {
@@ -3213,6 +3235,15 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
   }
 
+  const publicPortfolioWhere = {
+    status: 'published',
+    asset: { is: { archivedAt: null, status: 'uploaded', metadata: { path: ['security', 'scanStatus'], equals: 'clean' } } },
+  }
+  const publicProfileDto = (row) => ({
+    ...getProfileDto(row),
+    portfolio: (row.portfolioAssets ?? []).map(getPortfolioAssetDto),
+  })
+
   const profiles = {
     list: async (options = {}) => {
       const limit = options.limit ?? 20
@@ -3229,14 +3260,14 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             ],
           } : {}),
         },
-        include: { user: true },
+        include: { user: true, portfolioAssets: { where: publicPortfolioWhere, include: { asset: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }] } },
         orderBy: { handle: 'asc' },
         take: limit + 1,
         ...(cursor ? { cursor: { handle: cursor.handle }, skip: 1 } : {}),
       })
       const pageRows = rows.slice(0, limit)
       return {
-        items: pageRows.map(getProfileDto),
+        items: pageRows.map(publicProfileDto),
         nextCursor: rows.length > limit && pageRows.length > 0 ? pageRows[pageRows.length - 1].handle : null,
         limit,
       }
@@ -3244,17 +3275,77 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     findByHandle: async (handle) => {
       const row = await client.profile.findUnique({
         where: { handle },
-        include: { user: true },
+        include: { user: true, portfolioAssets: { where: publicPortfolioWhere, include: { asset: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }] } },
       })
-      return row ? getProfileDto(row) : null
+      return row ? publicProfileDto(row) : null
+    },
+    listOwnPortfolio: async (actor) => {
+      const owner = await findUserByHandle(actor.handle)
+      if (!owner) return []
+      const rows = await client.profilePortfolioAsset.findMany({
+        where: { ownerId: owner.id }, include: { asset: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+      })
+      return rows.map(getPortfolioAssetDto)
+    },
+    createPortfolioDraft: async (assetId, payload, actor) => {
+      const owner = await findUserByHandle(actor.handle)
+      if (!owner) return null
+      const [asset, generation] = await Promise.all([
+        client.mediaAsset.findUnique({ where: { id: String(assetId) } }),
+        client.creativeGeneration.findFirst({ where: { outputAssetIds: { has: String(assetId) } } }),
+      ])
+      const [resolved] = resolveCreativeDeliveryAssets({ assetIds: [assetId], assets: asset ? [asset] : [], generations: generation ? [generation] : [], actor: { ...actor, id: owner.id }, target: 'profile_portfolio' })
+      if (payload.sourceSubmissionId) {
+        const source = await client.taskSubmission.findFirst({ where: { id: payload.sourceSubmissionId, submitterId: owner.id, assetIds: { has: String(assetId) } } })
+        if (!source) throw new HttpError(409, 'PORTFOLIO_SOURCE_SUBMISSION_INVALID', 'Source submission does not contain this asset')
+      }
+      const row = await client.profilePortfolioAsset.upsert({
+        where: { ownerId_assetId: { ownerId: owner.id, assetId: String(assetId) } },
+        create: {
+          ownerId: owner.id, assetId: String(assetId), sourceGenerationId: resolved.generation.id,
+          sourceSubmissionId: payload.sourceSubmissionId ?? null, title: payload.title || asset.fileName, caption: payload.caption ?? '',
+        },
+        update: {},
+        include: { asset: true },
+      })
+      await recordAudit({ actor, action: 'profile.portfolio.draft_created', resourceType: 'profile_portfolio_asset', resourceId: row.id, metadata: { assetId: row.assetId } })
+      return getPortfolioAssetDto(row)
+    },
+    updatePortfolioAsset: async (id, payload, actor) => {
+      const owner = await findUserByHandle(actor.handle)
+      if (!owner) return null
+      const current = await client.profilePortfolioAsset.findFirst({ where: { id: String(id), ownerId: owner.id }, include: { asset: true, sourceGeneration: true } })
+      if (!current) return null
+      const allowed = {
+        publish: ['draft', 'withdrawn'], withdraw: ['published'], archive: ['draft', 'published', 'withdrawn'], restore: ['archived'],
+      }
+      if (payload.action && !allowed[payload.action]?.includes(current.status)) {
+        throw new HttpError(409, 'PORTFOLIO_TRANSITION_INVALID', `Cannot ${payload.action} a ${current.status} portfolio item`)
+      }
+      if (payload.action === 'publish') {
+        resolveCreativeDeliveryAssets({ assetIds: [current.assetId], assets: [current.asset], generations: current.sourceGeneration ? [current.sourceGeneration] : [], actor: { ...actor, id: owner.id }, target: 'profile_portfolio' })
+      }
+      const now = new Date()
+      const actionData = payload.action === 'publish' ? { status: 'published', publishedAt: now, withdrawnAt: null, archivedAt: null }
+        : payload.action === 'withdraw' ? { status: 'withdrawn', withdrawnAt: now }
+          : payload.action === 'archive' ? { status: 'archived', archivedAt: now }
+            : payload.action === 'restore' ? { status: 'draft', publishedAt: null, withdrawnAt: null, archivedAt: null }
+              : {}
+      const row = await client.profilePortfolioAsset.update({
+        where: { id: current.id },
+        data: { ...actionData, title: payload.title, caption: payload.caption, sortOrder: payload.sortOrder },
+        include: { asset: true },
+      })
+      await recordAudit({ actor, action: `profile.portfolio.${payload.action ?? 'updated'}`, resourceType: 'profile_portfolio_asset', resourceId: row.id, metadata: { assetId: row.assetId } })
+      return getPortfolioAssetDto(row)
     },
     listRankings: async () => {
       const rows = await client.profile.findMany({
-        include: { user: true },
+        include: { user: true, portfolioAssets: { where: publicPortfolioWhere, include: { asset: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }] } },
         orderBy: { handle: 'asc' },
       })
       return rows
-        .map(getProfileDto)
+        .map(publicProfileDto)
         .sort((left, right) => (right.stats?.score ?? 0) - (left.stats?.score ?? 0))
     },
     updateCurrent: async (user, patch) => {
@@ -6236,12 +6327,52 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       ])
       return buildSafeAssetLibraryItem(asset, { generation, relations: [...asset.outgoingRelations, ...asset.incomingRelations], referenced: Boolean(generation || inputReference || submissionReference) })
     },
+    saveAssetToLibrary: async (id, actor) => {
+      const owner = await findUserByHandle(actor.handle)
+      if (!owner) return null
+      const [asset, generation] = await Promise.all([
+        client.mediaAsset.findUnique({ where: { id: String(id) } }),
+        client.creativeGeneration.findFirst({ where: { outputAssetIds: { has: String(id) } } }),
+      ])
+      const [resolved] = resolveCreativeDeliveryAssets({
+        assetIds: [id], assets: asset ? [asset] : [], generations: generation ? [generation] : [],
+        actor: { ...actor, id: owner.id }, target: 'private_library',
+      })
+      const referenceWhere = { userId: owner.id, sourceType: 'asset', sourceId: String(id) }
+      let row = await client.libraryItem.findFirst({ where: referenceWhere })
+      if (!row) {
+        try {
+          row = await client.libraryItem.create({
+            data: {
+              ...referenceWhere, title: asset.fileName, content: '',
+              metadata: { kind: 'media_asset', type: 'asset', source: 'Creative output', assetEvidence: resolved.evidence },
+            },
+          })
+        } catch (error) {
+          if (error?.code !== 'P2002') throw error
+          row = await client.libraryItem.findFirst({ where: referenceWhere })
+          if (!row) throw error
+        }
+      }
+      await recordAudit({ actor, action: 'media.asset.saved_to_library', resourceType: 'media_asset', resourceId: asset.id, metadata: { libraryItemId: row.id } })
+      return {
+        id: row.id, title: row.title, type: 'asset', source: 'Creative output', saves: '1', text: row.content,
+        sourceId: row.sourceId, metadata: row.metadata,
+      }
+    },
     setAssetArchived: async (id, archived, actor) => {
       const owner = await findUserByHandle(actor.handle)
       if (!owner) return null
       const current = await client.mediaAsset.findFirst({ where: { id: String(id), ownerId: owner.id } })
       if (!current) return null
-      const asset = await client.mediaAsset.update({ where: { id: current.id }, data: { archivedAt: archived ? (current.archivedAt ?? new Date()) : null } })
+      const now = new Date()
+      const asset = await client.$transaction(async (transaction) => {
+        const updated = await transaction.mediaAsset.update({ where: { id: current.id }, data: { archivedAt: archived ? (current.archivedAt ?? now) : null } })
+        if (archived) {
+          await transaction.profilePortfolioAsset.updateMany({ where: { assetId: current.id, status: 'published' }, data: { status: 'withdrawn', withdrawnAt: now } })
+        }
+        return updated
+      })
       await recordAudit({ actor, action: archived ? 'media.asset.archived' : 'media.asset.restored', resourceType: 'media_asset', resourceId: asset.id, metadata: {} })
       return media.getAssetLibraryItem(asset.id, actor)
     },

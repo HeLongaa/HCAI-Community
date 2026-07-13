@@ -364,9 +364,26 @@ export type ApiTaskSubmission = {
   acceptanceChecklist: ApiAcceptanceChecklistItem[]
   dispute?: Record<string, unknown> | null
   stale?: Record<string, unknown> | null
+  assetEvidence: ApiCreativeAssetEvidence[]
   reviewedBy: ApiProfileSummary | { handle: string } | null
   reviewedAt: string | null
   createdAt: string
+}
+
+export type ApiCreativeAssetEvidence = {
+  assetId: string
+  fileName: string
+  contentType: string
+  purpose: MediaAssetPurpose
+  sourceGeneration: { id: string; workspace: CreativeWorkspace; mode: string; status: string }
+  governance: { assetStatus: string; scanStatus: string; archived: boolean; capturedAt: string }
+}
+
+export type ApiTaskDeliveryTarget = {
+  id: string
+  title: string
+  status: string
+  category: string
 }
 
 export type CreateTaskDisputeRequest = {
@@ -447,6 +464,34 @@ export type ApiAssetLibraryItem = {
   }
   createdAt: string
   updatedAt: string
+}
+
+export type ApiSavedAssetReference = {
+  id: string
+  title: string
+  type: string
+  source: string
+  sourceId: string | null
+  metadata: unknown
+}
+
+export type PortfolioAssetStatus = 'draft' | 'published' | 'withdrawn' | 'archived'
+
+export type ApiPortfolioAsset = {
+  id: string
+  assetId: string
+  sourceGenerationId: string | null
+  sourceSubmissionId: string | null
+  title: string
+  caption: string
+  status: PortfolioAssetStatus
+  sortOrder: number
+  publishedAt: string | null
+  withdrawnAt: string | null
+  archivedAt: string | null
+  createdAt: string
+  updatedAt: string
+  asset: { id: string; fileName: string; contentType: string; purpose: MediaAssetPurpose } | null
 }
 
 export type AssetLibraryQuery = {

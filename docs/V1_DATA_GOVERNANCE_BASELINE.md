@@ -42,7 +42,7 @@ not become public because the post is public.
 | --- | --- | --- | --- | --- |
 | `governance_configuration` | Internal | PostgreSQL | `Permission`, `RolePermission`, `SystemSetting` | Superseded history 365 days |
 | `operation_leases` | Internal | PostgreSQL | `OperationLease` | Expiry/release + 7 days |
-| `identity_account_profile` | Confidential | PostgreSQL | `User`, `Profile` | Verified deletion + 30 days |
+| `identity_account_profile` | Confidential | PostgreSQL | `User`, `Profile`, `ProfilePortfolioAsset` | Verified deletion + 30 days |
 | `authentication_credentials_sessions` | Restricted | PostgreSQL | `AuthAccount`, `RefreshToken` | Unlink/expiry/revoke + 30 days |
 | `marketplace_records` | Confidential | PostgreSQL | `Task`, `TaskProposal`, `TaskSubmission` | Terminal task/dispute + 730 days |
 | `community_content_interactions` | Public | PostgreSQL | `Post`, `Comment`, `PostLike` | Delete request + 30 days |
@@ -70,6 +70,8 @@ not become public because the post is public.
 
 These are maximum engineering defaults, not a reason to keep unused data. Data may be deleted earlier when its purpose
 ends and no validated exception applies.
+
+Normalized portfolio lifecycle records are confidential while draft, withdrawn, or archived. Public profile projection exposes only allowlisted fields for explicitly published records whose source `MediaAsset` is still clean, uploaded, and active. V1-37 owns this delivery projection; V1-67 retains export and deletion ownership.
 
 ## Deletion Semantics
 

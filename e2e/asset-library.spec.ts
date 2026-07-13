@@ -15,6 +15,8 @@ test('asset library filters, inspects lineage, archives, and prepares cross-stud
   await signInPage(page, request, 'promptlin')
   let current = asset()
   const queryLog: URLSearchParams[] = []
+  let privateLibrarySaves = 0
+  let portfolioDrafts = 0
   await page.route('**/api/media/assets?*', async (route) => {
     queryLog.push(new URL(route.request().url()).searchParams)
     await route.fulfill({ json: { data: current.archivedAt ? [] : [current], meta: { pagination: { limit: 24, nextCursor: null } } } })
@@ -22,6 +24,17 @@ test('asset library filters, inspects lineage, archives, and prepares cross-stud
   await page.route('**/api/media/assets/asset-library-image/archive', async (route) => {
     current = asset({ archivedAt: '2026-07-13T11:00:00.000Z', actions: { ...current.actions, download: { available: false, reason: 'asset_archived' }, archive: { available: false, reason: 'already_archived' }, restore: { available: true, reason: null } } })
     await route.fulfill({ json: { data: current } })
+  })
+  await page.route('**/api/tasks/delivery-targets', async (route) => {
+    await route.fulfill({ json: { data: [] } })
+  })
+  await page.route('**/api/media/assets/asset-library-image/library', async (route) => {
+    privateLibrarySaves += 1
+    await route.fulfill({ status: 201, json: { data: { id: 'library-output-1', title: current.fileName, type: 'asset', source: 'Creative output', sourceId: current.id, metadata: {} } } })
+  })
+  await page.route('**/api/media/assets/asset-library-image/portfolio', async (route) => {
+    portfolioDrafts += 1
+    await route.fulfill({ status: 201, json: { data: { id: 'portfolio-output-1', assetId: current.id, title: current.fileName, caption: '', status: 'draft' } } })
   })
   await page.route('**/api/creative/generation-center/generation-image', async (route) => {
     await route.fulfill({ json: { data: {
@@ -47,6 +60,13 @@ test('asset library filters, inspects lineage, archives, and prepares cross-stud
   await page.getByTestId('nav-assets').click()
   await page.getByRole('button', { name: /campaign-variant.png/ }).click()
   await expect(page.getByText('private-storage-key')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Use output' }).click()
+  await page.getByRole('button', { name: 'Private library' }).click()
+  await expect(page.getByText('Saved to your private library.')).toBeVisible()
+  await page.getByRole('button', { name: 'Portfolio draft' }).click()
+  await expect(page.getByText('Portfolio draft created.')).toBeVisible()
+  expect(privateLibrarySaves).toBe(1)
+  expect(portfolioDrafts).toBe(1)
 
   await page.getByLabel('Media type').selectOption('image')
   await page.getByLabel('Purpose').selectOption('library_asset')

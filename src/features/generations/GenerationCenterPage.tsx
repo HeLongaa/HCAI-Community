@@ -20,6 +20,7 @@ import {
 import type { Page, PlaygroundMode } from '../../domain/types'
 import { textFor } from '../../domain/utils'
 import { creativeService } from '../../services/creativeService'
+import { UseCreativeAsset } from '../assets/UseCreativeAsset'
 import { mediaService } from '../../services/mediaService'
 import type { ApiGenerationTask, CreativeWorkspace, GenerationCenterQuery } from '../../services/contracts'
 
@@ -331,6 +332,7 @@ export function GenerationCenterPage({
                     <FileOutput size={16} />
                     <span><strong>{output.fileName}</strong><small>{output.scanStatus} · {output.contentType}</small></span>
                     <button aria-label={`${textFor(t, 'Download', '下载')} ${output.fileName}`} disabled={!selected.actions.download.available} title={textFor(t, 'Download', '下载')} type="button" onClick={() => void downloadAsset(output.assetId).catch((downloadError) => setError(downloadError instanceof Error ? downloadError.message : 'Download failed'))}><ArrowDownToLine size={15} /></button>
+                    <UseCreativeAsset t={t} assetId={output.assetId} fileName={output.fileName} available={selected.status === 'completed' && output.status === 'uploaded' && output.scanStatus === 'clean'}/>
                   </div>
                 ))}
               </div>

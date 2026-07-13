@@ -287,16 +287,16 @@
     {
       "id": "identity_account_profile",
       "classification": "confidential",
-      "prismaModels": ["User", "Profile"],
+      "prismaModels": ["User", "Profile", "ProfilePortfolioAsset"],
       "locations": ["postgres"],
       "dataSubjects": ["user"],
       "purposes": ["account_service", "community_participation", "support_operations"],
-      "exampleFields": ["email", "display name", "avatar", "handle", "bio", "skills", "languages", "portfolio"],
+      "exampleFields": ["email", "display name", "avatar", "handle", "bio", "skills", "languages", "portfolio draft relation", "portfolio lifecycle state"],
       "accessRoles": ["user_self", "authorized_service", "support_operator_allowlisted"],
       "retentionPolicyId": "account_deletion_plus_30d",
       "exportPolicy": "include_user_owned_fields",
       "deletionPolicy": "disable_immediately_delete_profile_and_tombstone_shared_identity",
-      "ownerTasks": ["V1-67"]
+      "ownerTasks": ["V1-37", "V1-67"]
     },
     {
       "id": "authentication_credentials_sessions",
@@ -1029,7 +1029,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 42,
+    "modelCount": 43,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",

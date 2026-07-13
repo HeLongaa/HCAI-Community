@@ -25,6 +25,7 @@ import {
   parseCreateCommentRequest,
   parseCreateLibraryItemRequest,
   parseCreatePostRequest,
+  parseCreatePortfolioAssetRequest,
   parseCreateTaskRequest,
   parseRegisterRequest,
   parseReviewTaskProposalRequest,
@@ -32,6 +33,7 @@ import {
   parseSubmitTaskRequest,
   parseTaskChildListQuery,
   parseUpdateRolePermissionsRequest,
+  parseUpdatePortfolioAssetRequest,
 } from './requestParsers.js'
 
 const assertValidationError = (fn, message) => {
@@ -144,6 +146,16 @@ test('parseSubmitTaskRequest validates content and keeps optional fields predict
     assetIds: [],
     rightsNote: '',
   })
+})
+
+test('portfolio parsers freeze draft fields and explicit lifecycle actions', () => {
+  assert.deepEqual(parseCreatePortfolioAssetRequest({ title: ' Final ', caption: ' Proof ', sourceSubmissionId: null }), {
+    title: 'Final', caption: 'Proof', sourceSubmissionId: null,
+  })
+  assert.deepEqual(parseUpdatePortfolioAssetRequest({ action: 'publish', sortOrder: 2 }), {
+    title: undefined, caption: undefined, sortOrder: 2, action: 'publish',
+  })
+  assertValidationError(() => parseUpdatePortfolioAssetRequest({ action: 'delete' }), 'action must be one of: publish, withdraw, archive, restore')
 })
 
 test('parseCreateTaskProposalRequest validates proposal payloads', () => {

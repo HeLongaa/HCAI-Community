@@ -479,9 +479,32 @@ export const serializeTaskSubmission = (submission) => ({
   acceptanceChecklist: submission.acceptanceChecklist ?? submission.metadata?.acceptanceChecklist ?? [],
   dispute: submission.dispute ?? submission.metadata?.dispute ?? null,
   stale: submission.stale ?? submission.metadata?.stale ?? null,
+  assetEvidence: submission.assetEvidence ?? submission.metadata?.assetEvidence ?? [],
   reviewedBy: submission.reviewedBy ?? null,
   reviewedAt: submission.reviewedAt ?? null,
   createdAt: submission.createdAt ?? '',
+})
+
+export const serializePortfolioAsset = (item, asset = null) => ({
+  id: String(item.id),
+  assetId: String(item.assetId),
+  sourceGenerationId: item.sourceGenerationId ?? null,
+  sourceSubmissionId: item.sourceSubmissionId ?? null,
+  title: item.title,
+  caption: item.caption ?? '',
+  status: item.status,
+  sortOrder: item.sortOrder ?? 0,
+  publishedAt: item.publishedAt ?? null,
+  withdrawnAt: item.withdrawnAt ?? null,
+  archivedAt: item.archivedAt ?? null,
+  createdAt: item.createdAt ?? '',
+  updatedAt: item.updatedAt ?? '',
+  asset: asset ? {
+    id: String(asset.id),
+    fileName: asset.fileName,
+    contentType: asset.contentType,
+    purpose: asset.purpose,
+  } : null,
 })
 
 export const serializeMediaAsset = (asset) => ({

@@ -25,6 +25,7 @@ import { ChatPage } from './ChatPage'
 import { MusicStudioPage } from './MusicStudioPage'
 import { VideoStudioPage } from './VideoStudioPage'
 import { CreativeCostPreview } from './CreativeCostPreview'
+import { UseCreativeAsset } from '../assets/UseCreativeAsset'
 
 type ImageGenerationState = {
   status: 'idle' | 'loading' | 'done' | 'error'
@@ -716,6 +717,7 @@ function StudioPage({
                 <Share2 size={16} />
               </button>
             </div>
+            <UseCreativeAsset t={t} assetId={generatedAssetId} fileName={historyOutput?.fileName ?? undefined} available={scanStatus === 'clean' && selectedStatus === 'completed'}/>
           </article>
         )}
         {!providerGeneration && results.map((work) => (

@@ -8,6 +8,8 @@ import type {
   ApiMediaScanAlert,
   ApiMediaScanAlertEvent,
   ApiMediaScanJob,
+  ApiPortfolioAsset,
+  ApiSavedAssetReference,
   ApiPaginationMeta,
   CompleteMediaUploadRequest,
   CreateMediaUploadRequest,
@@ -38,6 +40,12 @@ export const mediaService = {
   },
   restoreAsset(id: string) {
     return api.post<ApiAssetLibraryItem>(`/media/assets/${id}/restore`)
+  },
+  saveAssetToLibrary(id: string) {
+    return api.post<ApiSavedAssetReference>(`/media/assets/${id}/library`)
+  },
+  addAssetToPortfolio(id: string, body: { title?: string; caption?: string; sourceSubmissionId?: string | null } = {}) {
+    return api.post<ApiPortfolioAsset>(`/media/assets/${id}/portfolio`, body)
   },
   createUpload(body: CreateMediaUploadRequest) {
     return api.post<MediaUploadContract>('/media/uploads', body)

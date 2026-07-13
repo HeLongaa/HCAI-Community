@@ -1,6 +1,6 @@
 import { api, withQuery } from './apiClient'
 import type { MarketplaceProfile } from '../domain/types'
-import type { ApiProfile, ProfileListQuery } from './contracts'
+import type { ApiPortfolioAsset, ApiProfile, ProfileListQuery } from './contracts'
 
 const toProfile = (profile: ApiProfile): MarketplaceProfile => ({
   ...profile,
@@ -8,6 +8,12 @@ const toProfile = (profile: ApiProfile): MarketplaceProfile => ({
 })
 
 export const profileService = {
+  ownPortfolio() {
+    return api.get<ApiPortfolioAsset[]>('/profiles/me/portfolio')
+  },
+  updatePortfolioAsset(id: string, body: { title?: string; caption?: string; sortOrder?: number; action?: 'publish' | 'withdraw' | 'archive' | 'restore' }) {
+    return api.patch<ApiPortfolioAsset>(`/profiles/me/portfolio/${id}`, body)
+  },
   async list(query?: ProfileListQuery) {
     const profiles = await api.get<ApiProfile[]>(withQuery('/profiles', query))
     return profiles.map(toProfile)

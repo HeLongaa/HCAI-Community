@@ -26,7 +26,7 @@ const validTaskBody = () => ({
 
 const validSubmissionBody = () => ({
   content: 'Delivery package with prompts, examples, and rights note.',
-  assetIds: ['asset-1'],
+  assetIds: [],
   rightsNote: 'Original work, reusable by the publisher.',
 })
 
@@ -1176,7 +1176,7 @@ test('POST /api/tasks/:id/submissions accepts resubmission after requested chang
       body: {
         ...validSubmissionBody(),
         content: 'Revised delivery with export links and clarified usage rights.',
-        assetIds: ['asset-2'],
+        assetIds: [],
       },
       token: 'demo-access.promptlin',
     })

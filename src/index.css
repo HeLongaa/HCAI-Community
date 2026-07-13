@@ -57,6 +57,41 @@
   --workspace-tab-active-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
 }
 
+/* Governed creative delivery */
+.use-creative-asset { width: 100%; margin-top: 10px; }
+.use-creative-asset-toggle { width: 100%; min-height: 34px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); }
+.use-creative-asset-toggle svg:last-child { margin-left: auto; transition: transform .18s ease; }
+.use-creative-asset-toggle svg:last-child.open { transform: rotate(180deg); }
+.use-creative-asset-panel { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border); border-top: 0; border-radius: 0 0 12px 12px; background: var(--panel); }
+.use-creative-asset-quick-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.use-creative-asset-quick-actions button, .portfolio-manager-list button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; border: 1px solid var(--border); border-radius: 9px; background: transparent; color: var(--text); }
+.use-creative-asset-task { display: grid; gap: 8px; }
+.use-creative-asset-task label { display: grid; gap: 6px; }
+.use-creative-asset-task label > span { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.use-creative-asset-task select, .use-creative-asset-task textarea, .use-creative-asset-task input { width: 100%; border: 1px solid var(--border); border-radius: 9px; background: var(--control-bg); color: var(--text); padding: 9px 10px; }
+.use-creative-asset-task textarea { min-height: 66px; resize: vertical; }
+.use-creative-asset-notice { margin: 0; padding: 8px 10px; border-radius: 8px; font-size: 12px; }
+.use-creative-asset-notice.success { background: color-mix(in srgb, #23a36d 12%, transparent); color: #62d6a6; }
+.use-creative-asset-notice.error { background: color-mix(in srgb, #d64b4b 12%, transparent); color: #ff8e8e; }
+.generation-output-row .use-creative-asset { grid-column: 1 / -1; }
+.asset-library-workbench > .use-creative-asset { grid-column: 2; align-self: start; padding: 0 18px 18px; }
+.portfolio-manager { display: grid; gap: 12px; }
+.portfolio-manager > header { display: flex; align-items: center; justify-content: space-between; }
+.portfolio-manager > header span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+.portfolio-manager > header h2 { margin: 3px 0 0; }
+.portfolio-manager-state { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.portfolio-manager-list { display: grid; gap: 8px; }
+.portfolio-manager-list article { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px; border: 1px solid var(--border); border-radius: 11px; }
+.portfolio-manager-list article > div:first-child { display: grid; gap: 3px; min-width: 0; }
+.portfolio-manager-list article > div:first-child span, .portfolio-manager-list article > div:first-child small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.portfolio-manager-list article > div:last-child { display: flex; flex-wrap: wrap; gap: 6px; }
+
+@media (max-width: 760px) {
+  .use-creative-asset-quick-actions { grid-template-columns: 1fr; }
+  .asset-library-workbench > .use-creative-asset { grid-column: 1; }
+  .portfolio-manager-list article { align-items: stretch; flex-direction: column; }
+}
+
 /* Unified governed asset library */
 .asset-library-page { display: grid; gap: 16px; min-width: 0; }
 .asset-library-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }

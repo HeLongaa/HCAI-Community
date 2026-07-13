@@ -5,6 +5,7 @@ import type {
   ApiTaskProposal,
   ApiTaskSubmission,
   ApiTaskTimelineItem,
+  ApiTaskDeliveryTarget,
   ApiAcceptanceChecklistItem,
   CreateTaskDisputeRequest,
   CreateTaskProposalRequest,
@@ -54,6 +55,9 @@ const toTask = (task: ApiTask): Task => ({
 })
 
 export const taskService = {
+  deliveryTargets() {
+    return api.get<ApiTaskDeliveryTarget[]>('/tasks/delivery-targets')
+  },
   async list(query?: TaskListQuery) {
     const response = await api.get<ApiTask[]>(withQuery('/tasks', query))
     return response.map(toTask)

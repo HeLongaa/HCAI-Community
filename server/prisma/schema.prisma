@@ -67,6 +67,7 @@ enum PostSource {
   tutorial
   template
   external
+  asset
 }
 
 enum LedgerStatus {
@@ -102,6 +103,13 @@ enum MediaAssetRelationType {
   parent
   variant
   reused_as_input
+}
+
+enum PortfolioAssetStatus {
+  draft
+  published
+  withdrawn
+  archived
 }
 
 enum MediaScanJobStatus {
@@ -419,7 +427,8 @@ model Profile {
   stats     Json?
   metadata  Json?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  portfolioAssets ProfilePortfolioAsset[]
 
   @@map("profiles")
 }
@@ -484,9 +493,10 @@ model TaskSubmission {
   createdAt    DateTime             @default(now()) @map("created_at")
   updatedAt    DateTime             @updatedAt @map("updated_at")
 
-  task       Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  submitter  User  @relation("TaskSubmissionSubmitter", fields: [submitterId], references: [id], onDelete: Cascade)
-  reviewedBy User? @relation("TaskSubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  task            Task                    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  submitter       User                    @relation("TaskSubmissionSubmitter", fields: [submitterId], references: [id], onDelete: Cascade)
+  reviewedBy      User?                   @relation("TaskSubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  portfolioAssets ProfilePortfolioAsset[]
 
   @@index([taskId, createdAt])
   @@index([submitterId])
@@ -590,15 +600,45 @@ model MediaAsset {
   updatedAt   DateTime          @updatedAt @map("updated_at")
   archivedAt  DateTime?         @map("archived_at")
 
-  owner    User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  scanJobs MediaScanJob[]
-  outgoingRelations MediaAssetRelation[] @relation("MediaAssetRelationSource")
-  incomingRelations MediaAssetRelation[] @relation("MediaAssetRelationTarget")
+  owner             User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  scanJobs          MediaScanJob[]
+  outgoingRelations MediaAssetRelation[]    @relation("MediaAssetRelationSource")
+  incomingRelations MediaAssetRelation[]    @relation("MediaAssetRelationTarget")
+  portfolioAssets   ProfilePortfolioAsset[]
 
   @@index([ownerId, archivedAt, createdAt])
   @@index([purpose])
   @@index([status])
   @@map("media_assets")
+}
+
+model ProfilePortfolioAsset {
+  id                 String               @id @default(cuid())
+  ownerId            String               @map("owner_id")
+  assetId            String               @map("asset_id")
+  sourceGenerationId String?              @map("source_generation_id")
+  sourceSubmissionId String?              @map("source_submission_id")
+  title              String
+  caption            String               @default("")
+  status             PortfolioAssetStatus @default(draft)
+  sortOrder          Int                  @default(0) @map("sort_order")
+  publishedAt        DateTime?            @map("published_at")
+  withdrawnAt        DateTime?            @map("withdrawn_at")
+  archivedAt         DateTime?            @map("archived_at")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+
+  profile          Profile             @relation(fields: [ownerId], references: [userId], onDelete: Cascade)
+  asset            MediaAsset          @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  sourceGeneration CreativeGeneration? @relation(fields: [sourceGenerationId], references: [id], onDelete: SetNull)
+  sourceSubmission TaskSubmission?     @relation(fields: [sourceSubmissionId], references: [id], onDelete: SetNull)
+
+  @@unique([ownerId, assetId])
+  @@index([ownerId, status, sortOrder])
+  @@index([assetId])
+  @@index([sourceGenerationId])
+  @@index([sourceSubmissionId])
+  @@map("profile_portfolio_assets")
 }
 
 model MediaAssetRelation {
@@ -685,15 +725,16 @@ model CreativeGeneration {
   createdAt           DateTime                 @default(now()) @map("created_at")
   updatedAt           DateTime                 @updatedAt @map("updated_at")
 
-  actor            User?                          @relation(fields: [actorId], references: [id], onDelete: SetNull)
-  retryOf          CreativeGeneration?            @relation("CreativeGenerationRetries", fields: [retryOfId], references: [id], onDelete: SetNull)
-  retryAttempts    CreativeGeneration[]           @relation("CreativeGenerationRetries")
-  mutations        CreativeGenerationMutation[]
-  providerReplays  CreativeProviderReplayLedger[]
-  providerRetries  CreativeProviderRetryState[]
+  actor             User?                          @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  retryOf           CreativeGeneration?            @relation("CreativeGenerationRetries", fields: [retryOfId], references: [id], onDelete: SetNull)
+  retryAttempts     CreativeGeneration[]           @relation("CreativeGenerationRetries")
+  mutations         CreativeGenerationMutation[]
+  providerReplays   CreativeProviderReplayLedger[]
+  providerRetries   CreativeProviderRetryState[]
   providerOperation CreativeProviderOperation?
-  outputIngestions CreativeOutputIngestion[]
-  chatTurn         ChatTurn?
+  outputIngestions  CreativeOutputIngestion[]
+  chatTurn          ChatTurn?
+  portfolioAssets   ProfilePortfolioAsset[]
 
   @@index([actorId, createdAt])
   @@index([actorHandle, createdAt])
@@ -1019,17 +1060,17 @@ model CreativeProviderCircuitState {
   workspace           String
   modelFamily         String?                       @map("model_family")
   status              CreativeProviderCircuitStatus @default(closed)
-  version             Int                            @default(1)
-  failureCount        Int                            @default(0) @map("failure_count")
-  windowStartedAt     DateTime?                      @map("window_started_at")
-  lastFailureAt       DateTime?                      @map("last_failure_at")
-  openedAt            DateTime?                      @map("opened_at")
-  cooldownUntil       DateTime?                      @map("cooldown_until")
-  probeLeaseTokenHash String?                        @map("probe_lease_token_hash")
-  probeLeaseExpiresAt DateTime?                      @map("probe_lease_expires_at")
-  reasonCode          String?                        @map("reason_code")
-  createdAt           DateTime                       @default(now()) @map("created_at")
-  updatedAt           DateTime                       @updatedAt @map("updated_at")
+  version             Int                           @default(1)
+  failureCount        Int                           @default(0) @map("failure_count")
+  windowStartedAt     DateTime?                     @map("window_started_at")
+  lastFailureAt       DateTime?                     @map("last_failure_at")
+  openedAt            DateTime?                     @map("opened_at")
+  cooldownUntil       DateTime?                     @map("cooldown_until")
+  probeLeaseTokenHash String?                       @map("probe_lease_token_hash")
+  probeLeaseExpiresAt DateTime?                     @map("probe_lease_expires_at")
+  reasonCode          String?                       @map("reason_code")
+  createdAt           DateTime                      @default(now()) @map("created_at")
+  updatedAt           DateTime                      @updatedAt @map("updated_at")
 
   events CreativeProviderCircuitEvent[]
 
