@@ -13,7 +13,7 @@ credential, product registration, Provider lifecycle worker, real call, automati
 - `instrumental`: create one instrumental track from a music brief.
 - `lyrics_to_song`: create one song from a music brief plus required lyrics and language.
 - Reference audio, remix, voice cloning, and text-to-speech are not V1-30 Music capabilities.
-- The current Music UI remains a simulation until later tasks replace it with the application workflow.
+- Music Studio consumes the application capability catalog, generation history/detail, lifecycle mutation, and private media download APIs. Mock remains the only product runtime; ElevenLabs and Lyria remain unavailable.
 
 ## Parameters And Output
 
@@ -81,6 +81,7 @@ V1-32 adds application-owned Music fixture persistence:
   private media asset, scan/review-gated download URL, and owner-scoped generation history without persisting Provider
   URLs or raw payloads.
 
-V1-33 should connect the Music workspace UI to application APIs and owner history while keeping the ElevenLabs adapter
-unregistered and keeping HTTP, credentials, real Provider traffic, automatic Lyria failover, and production enablement
+V1-33 connects Music Studio to application APIs and owner history, including lifecycle polling, cancel/retry, governed
+private MP3 playback/download, lyrics parameters, and explicit runtime labels. The ElevenLabs adapter remains
+unregistered, while HTTP, credentials, real Provider traffic, automatic Lyria failover, and production enablement stay
 absent until separate approval.

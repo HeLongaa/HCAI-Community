@@ -24,6 +24,7 @@ import { useNavigationState } from './hooks/useNavigationState'
 import { usePlayerState } from './hooks/usePlayerState'
 import { useTaskWorkflows } from './hooks/useTaskWorkflows'
 import { useThemeState } from './hooks/useThemeState'
+import { useMusicGenerationWorkflow } from './hooks/useMusicGenerationWorkflow'
 import { useVideoGenerationWorkflow } from './hooks/useVideoGenerationWorkflow'
 import { copy } from './i18n/copy'
 import { notificationService } from './services/notificationService'
@@ -70,8 +71,6 @@ function App() {
     acceptCurrentPolicies,
     logout,
   } = useAccountState()
-  const [prompt, setPrompt] = useState('Lo-fi instrumental song for late-night coding')
-  const [generationState, setGenerationState] = useState<'idle' | 'loading' | 'done'>('idle')
   const [imageGeneration, setImageGeneration] = useState<{
     status: 'idle' | 'loading' | 'done' | 'error'
     result: ApiCreativeGeneration | null
@@ -116,6 +115,13 @@ function App() {
   const t = copy[locale]
   const { ledgerItems, pointsSummary, pointsStatus, pushToast, pushLedger, simulateAction } = useAppFeedback(locale, `${accountSource}:${accountHandle}`)
   const requireAuth = useCallback(() => setLoginOpen(true), [])
+  const musicWorkflow = useMusicGenerationWorkflow({
+    enabled: accountSource !== 'fallback',
+    accountKey: `${accountSource}:${accountHandle}`,
+    locale,
+    requireAuth,
+    pushToast,
+  })
   const videoWorkflow = useVideoGenerationWorkflow({
     enabled: accountSource !== 'fallback',
     accountKey: `${accountSource}:${accountHandle}`,
@@ -334,11 +340,6 @@ function App() {
     return () => window.clearTimeout(timer)
   }, [accountProfile, profileList])
 
-  const runGenerate = () => {
-    setGenerationState('loading')
-    window.setTimeout(() => setGenerationState('done'), 900)
-  }
-
   const runImageGeneration = async ({
     prompt: imagePrompt,
     mode,
@@ -364,7 +365,6 @@ function App() {
       pushToast(locale === 'zh' ? '当前图片能力不可用，请稍后重试。' : 'The selected image capability is unavailable.')
       return
     }
-    setGenerationState('loading')
     setImageGeneration({ status: 'loading', result: null, error: null })
     try {
       const request: CreateCreativeGenerationRequest = {
@@ -381,7 +381,6 @@ function App() {
       }
       const result = await creativeService.createGeneration(request)
       imageGenerationRequests.current.set(result.id, request)
-      setGenerationState('done')
       setImageGeneration({ status: 'done', result, error: null })
       try {
         const detail = await creativeService.generation(result.id)
@@ -404,7 +403,6 @@ function App() {
       if (isApiClientError(error) && error.code === 'AUTH_REQUIRED') {
         requireAuth()
       }
-      setGenerationState('idle')
       setImageGeneration({ status: 'error', result: null, error: message })
       pushToast(message)
     }
@@ -894,7 +892,7 @@ function App() {
       <PageRenderer
         t={t}
         navigation={{ page, navigateToPage }}
-        workspace={{ prompt, setPrompt, generationState, runGenerate, imageGeneration, imageGenerationHistory, imageGenerationAction, refreshImageGenerationHistory, selectImageGeneration, cancelImageGeneration, retryImageGeneration, downloadImageGenerationAsset, prepareImageAssetForReuse, hasImageGenerationRetryRequest, imageProviderCatalog, imageProviderCatalogState, imageInputAssets: accountSource === 'fallback' ? [] : imageInputAssets, uploadImageInput, runImageGeneration, videoWorkflow, playgroundWorkspace, setPlaygroundWorkspace }}
+        workspace={{ imageGeneration, imageGenerationHistory, imageGenerationAction, refreshImageGenerationHistory, selectImageGeneration, cancelImageGeneration, retryImageGeneration, downloadImageGenerationAsset, prepareImageAssetForReuse, hasImageGenerationRetryRequest, imageProviderCatalog, imageProviderCatalogState, imageInputAssets: accountSource === 'fallback' ? [] : imageInputAssets, uploadImageInput, runImageGeneration, musicWorkflow, videoWorkflow, playgroundWorkspace, setPlaygroundWorkspace }}
         player={{ playTrack }}
         feedback={{ requireAuth, simulateAction }}
         tasks={{

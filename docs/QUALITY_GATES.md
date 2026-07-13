@@ -58,8 +58,9 @@ The Music capability contract freezes instrumental and lyrics-to-song request sh
 three-minute MP3 output, rights/license gates, application lifecycle, and budget limits. The ElevenLabs adapter tests
 exercise closed fixture request mapping, exact MP3 byte/MIME checks, safe failures, generated-minute costs, frozen caps,
 mandatory fixture license evidence, application-owned persistence, private MP3 ingestion, scan gating, and durable cost
-closeout. Reference audio, remix, voice cloning, TTS, product registration, HTTP, credentials, Provider lifecycle, and
-real traffic remain unavailable.
+closeout. Music Studio now consumes application capability/history/mutation/media APIs, restores owner history, submits
+closed instrumental/lyrics parameters, and gates private playback/download on clean MP3 output. Reference audio, remix,
+voice cloning, TTS, product registration, HTTP, credentials, Provider lifecycle, and real traffic remain unavailable.
 
 Use this before handing off small frontend, contract, or documentation changes.
 
@@ -121,8 +122,9 @@ Includes:
   modes, three-minute private MP3 output, rights/license metadata, application lifecycle, and USD budget limits; the
   injected ElevenLabs fixture adapter validates requests, MP3 bytes, safe errors, generated-minute cost, and license
   evidence, and the fixture path persists owner-scoped private MP3 assets with scan gating and durable cost closeout
-  while product registration, HTTP clients, credentials, Provider lifecycle, real calls, voice/TTS adjacency, production,
-  and failover remain unimplemented or disabled
+  while Music Studio consumes only application capability/history/mutation/media APIs and gates private MP3 playback;
+  product registration, HTTP clients, credentials, Provider lifecycle, real calls, voice/TTS adjacency, production, and
+  failover remain unimplemented or disabled
 - external OAuth provider metadata validation
 - creative provider safety validation: production smoke must keep staging provider preflight and the Provider HTTP
   client disabled, while client tests use injected fetch implementations and never expose real Provider tokens

@@ -2792,6 +2792,7 @@ button.image-history-row.active {
 
 .video-provider-control select,
 .video-parameter-grid select,
+.video-parameter-grid input,
 .video-asset-field select {
   width: 100%;
   min-width: 0;
@@ -2801,6 +2802,10 @@ button.image-history-row.active {
   border-radius: 6px;
   color: var(--text);
   background: var(--control-bg);
+}
+
+.video-parameter-grid input {
+  padding: 0 10px;
 }
 
 .runtime-badge {
@@ -2895,6 +2900,10 @@ button.image-history-row.active {
 .video-mode-tabs button:disabled {
   cursor: not-allowed;
   opacity: 0.42;
+}
+
+.music-mode-tabs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .video-prompt-field {
@@ -3071,6 +3080,44 @@ button.image-history-row.active {
   filter: saturate(0.68) contrast(1.06);
 }
 
+.music-preview-stage {
+  min-height: 240px;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-strong);
+}
+
+.music-preview-stage audio {
+  width: min(100%, 560px);
+}
+
+.music-preview-empty {
+  max-width: 560px;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.music-preview-empty strong {
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.music-preview-empty span {
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.music-lyrics-field textarea {
+  min-height: 160px;
+}
+
 .video-preview-overlay {
   position: absolute;
   inset: 0;
@@ -3173,6 +3220,11 @@ button.image-history-row.active {
   font-size: 0.78rem;
 }
 
+.music-history-row {
+  min-width: 760px;
+  grid-template-columns: 118px minmax(230px, 1fr) 130px 145px 190px;
+}
+
 button.video-history-row {
   border-radius: 0;
   background: transparent;
@@ -3244,6 +3296,15 @@ button.video-history-row.active {
   .video-provider-control {
     flex-basis: auto;
     width: 100%;
+  }
+
+  .video-provider-control label {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .video-provider-control .runtime-badge {
+    align-self: flex-start;
   }
 
   .video-studio-title {

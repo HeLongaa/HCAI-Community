@@ -58,10 +58,6 @@ export function PageRenderer({
   const [supportAppeal, setSupportAppeal] = useState<{ moderationDecisionId: string } | null>(null)
   const { page, navigateToPage } = navigation
   const {
-    prompt,
-    setPrompt,
-    generationState,
-    runGenerate,
     imageGeneration,
     imageGenerationHistory,
     imageGenerationAction,
@@ -77,6 +73,7 @@ export function PageRenderer({
     imageInputAssets,
     uploadImageInput,
     runImageGeneration,
+    musicWorkflow,
     videoWorkflow,
     playgroundWorkspace,
     setPlaygroundWorkspace,
@@ -133,10 +130,6 @@ export function PageRenderer({
       {page === 'playground' && (
         <PlaygroundPage
           t={t}
-          prompt={prompt}
-          setPrompt={setPrompt}
-          generationState={generationState}
-          runGenerate={runGenerate}
           imageGeneration={imageGeneration}
           imageGenerationHistory={imageGenerationHistory}
           imageGenerationAction={imageGenerationAction}
@@ -152,12 +145,12 @@ export function PageRenderer({
           imageInputAssets={imageInputAssets}
           uploadImageInput={uploadImageInput}
           runImageGeneration={runImageGeneration}
+          musicWorkflow={musicWorkflow}
           videoWorkflow={videoWorkflow}
           signedIn={Boolean(account.accountHandle)}
           tasks={taskList}
           libraryItems={libraryItems}
           openModerationAppeal={openModerationAppeal}
-          playTrack={playTrack}
           requireAuth={requireAuth}
           simulateAction={simulateAction}
           workspace={playgroundWorkspace}

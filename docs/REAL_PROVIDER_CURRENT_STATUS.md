@@ -98,6 +98,13 @@ WeakMap, fails closed after serialization, and ingests clean fixture MP3 output 
 The ElevenLabs adapter remains unregistered for product dispatch, and no Music HTTP client, credential, Provider
 lifecycle, real call, automatic backup, or production enablement exists.
 
+V1-33 replaces the local Music workspace simulation with `src/features/workspace/MusicStudioPage.tsx` and
+`src/hooks/useMusicGenerationWorkflow.ts`. The UI derives modes and parameters from the application capability catalog,
+creates and lists owner-scoped Music jobs, polls application generation detail, performs owner cancel/retry mutations,
+and uses private media download contracts for clean MP3 playback and download. Mock execution is labeled as Mock;
+ElevenLabs is fixture-only and unavailable for product generation. The browser never calls a Provider endpoint, and no
+Music credential, HTTP client, real traffic, lifecycle worker, automatic Lyria routing, or production switch is enabled.
+
 V1-44 freezes the corresponding four-modality content safety baseline in
 `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. It defines 20 risk categories,
 prohibited/block/review/allow decisions, the five-stage responsibility chain, all eight Provider policy mappings,
