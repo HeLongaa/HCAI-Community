@@ -36,12 +36,16 @@ test('asset library filters, inspects lineage, archives, and prepares cross-stud
 
   await page.getByLabel('Media type').selectOption('image')
   await page.getByLabel('Purpose').selectOption('library_asset')
+  await page.getByLabel('Group assets by').selectOption('purpose')
+  await expect(page.locator('.asset-group > header')).toContainText('library asset')
   await page.getByLabel('Search assets').fill('campaign')
   await page.getByLabel('Created after').fill('2026-07-01')
   await page.getByLabel('Created before').fill('2026-07-31')
   await expect.poll(() => queryLog.some((query) => query.get('mediaType') === 'image' && query.get('purpose') === 'library_asset' && query.get('search') === 'campaign' && query.get('dateFrom') === '2026-07-01T00:00:00.000Z' && query.get('dateTo') === '2026-07-31T23:59:59.999Z')).toBe(true)
 
   await page.getByRole('button', { name: /image/i }).last().click()
+  await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem('hcaiAssetReuse'))).toContain('asset-library-image')
+  await page.reload()
   await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem('hcaiAssetReuse'))).toContain('asset-library-image')
 
   await page.getByTestId('nav-assets').click()
