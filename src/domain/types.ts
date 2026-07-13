@@ -28,6 +28,7 @@ export type Page =
   | 'home'
   | 'playground'
   | 'generations'
+  | 'assets'
   | 'chat'
   | 'explore'
   | 'tasks'

@@ -136,6 +136,11 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `POST /api/media/uploads/:id/scan-callback` | Not required | `x-media-scan-secret` must match `MEDIA_SCAN_WEBHOOK_SECRET`; optional timestamped HMAC when configured | Yes |
 | `POST /api/media/uploads/:id/scan-retry` | Required | `admin:queue:review` | Yes |
 | `GET /api/media/assets/:id/download` | Required | Owner or `admin:access`; asset must be uploaded and clean | Yes |
+| `GET /api/media/assets` | Required | Any authenticated user; repository enforces owner scope | Yes |
+| `GET /api/media/assets/:id` | Required | Owner only | Yes |
+| `POST /api/media/assets/:id/archive` | Required | Owner only; preserves referenced evidence | Yes |
+| `POST /api/media/assets/:id/restore` | Required | Owner only | Yes |
+| `POST /api/media/assets/:id/relations` | Required | Owner of both assets; governance and cycle checks apply | Yes |
 | `GET /api/admin/permissions` | Required | `admin:audit:read` | Yes |
 | `GET /api/admin/roles` | Required | `admin:audit:read` | Yes |
 | `PUT /api/admin/roles/:role/permissions` | Required | `admin:permissions:manage` | Yes |

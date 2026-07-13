@@ -203,3 +203,4 @@ Multi-instance readiness is not just a passing fixture gate. Before a real rollo
 - Production smoke failures usually mean an environment variable is missing, invalid, or not aligned with the managed deployment profile.
 - E2E failures should be checked after confirming the local dev server ports are free and Playwright artifacts have not been left from a previous interrupted run.
 - After E2E, remove generated reports with `rm -rf test-results playwright-report` when running manually.
+V1-36 asset-library changes must cover owner isolation, safe DTO redaction, stable filters/pagination, governance eligibility, lineage idempotency/cycle rejection, archive evidence retention, cross-studio handoff, and responsive UI. Run the full PR gate and fixture production smoke before closeout.

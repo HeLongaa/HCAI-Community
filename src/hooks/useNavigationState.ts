@@ -6,6 +6,7 @@ const routablePages = new Set<Page>([
   'home',
   'playground',
   'generations',
+  'assets',
   'chat',
   'explore',
   'tasks',
@@ -31,6 +32,7 @@ const routablePages = new Set<Page>([
 const parentPages = {
   playground: 'home',
   generations: 'home',
+  assets: 'home',
   chat: 'home',
   explore: 'home',
   tasks: 'home',
@@ -71,9 +73,9 @@ const consumeOAuthRedirectPage = (): Page | null => {
 
 const pageFromHash = (): Page | null => {
   if (typeof window === 'undefined') return null
-  return window.location.hash === '#generations' || window.location.hash.startsWith('#generations/')
-    ? 'generations'
-    : null
+  if (window.location.hash === '#generations' || window.location.hash.startsWith('#generations/')) return 'generations'
+  if (window.location.hash === '#assets' || window.location.hash.startsWith('#assets/')) return 'assets'
+  return null
 }
 
 export function useNavigationState() {

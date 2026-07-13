@@ -1,6 +1,8 @@
 import { api, withQuery } from './apiClient'
 import type {
   ApiMediaAsset,
+  ApiAssetLibraryItem,
+  AssetLibraryQuery,
   ApiMediaGovernanceConfig,
   MediaGovernancePolicyHistoryItem,
   ApiMediaScanAlert,
@@ -23,6 +25,20 @@ import type {
 } from './contracts'
 
 export const mediaService = {
+  async assetLibrary(query?: AssetLibraryQuery) {
+    const envelope = await api.getEnvelope<ApiAssetLibraryItem[]>(withQuery('/media/assets', query))
+    const pagination = (envelope.meta as ApiPaginationMeta | undefined)?.pagination
+    return { items: envelope.data, limit: pagination?.limit ?? query?.limit ?? envelope.data.length, nextCursor: pagination?.nextCursor ?? null }
+  },
+  assetLibraryItem(id: string) {
+    return api.get<ApiAssetLibraryItem>(`/media/assets/${id}`)
+  },
+  archiveAsset(id: string) {
+    return api.post<ApiAssetLibraryItem>(`/media/assets/${id}/archive`)
+  },
+  restoreAsset(id: string) {
+    return api.post<ApiAssetLibraryItem>(`/media/assets/${id}/restore`)
+  },
   createUpload(body: CreateMediaUploadRequest) {
     return api.post<MediaUploadContract>('/media/uploads', body)
   },

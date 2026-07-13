@@ -74,6 +74,7 @@ import {
   hasProviderBudgetNotificationSourceKey,
 } from './providerBudgetNotificationWiring.js'
 import { safeCreativeCreditMetadata, safeErrorPreview, safeProviderOperationMetadata } from '../creative/generationRecords.js'
+import { assetEligibleForWorkspace, assetMediaType, buildSafeAssetLibraryItem } from '../media/assetLibrary.js'
 import {
   buildConsentStatus,
   compliancePolicyManifest,
@@ -83,6 +84,7 @@ const sessionByRefreshToken = new Map()
 const emailAccountByEmail = new Map()
 const oauthAccountByProviderKey = new Map()
 const creativeGenerationsById = new Map()
+const mediaAssetRelationsById = new Map()
 const creativeGenerationMutationsById = new Map()
 const creativeGenerationMutationsByIdempotencyKey = new Map()
 const creativeProviderReplayLedgerById = new Map()
@@ -779,6 +781,14 @@ const getSeedMediaGovernancePolicy = () =>
 const taskProposals = []
 const taskSubmissions = []
 const mediaAssetsById = new Map()
+
+const getSeedAssetLibraryItem = (asset, actor) => {
+  if (!asset || asset.ownerHandle !== actor.handle) return null
+  const generation = [...creativeGenerationsById.values()].find((item) => item.outputAssetIds?.includes(asset.id)) ?? null
+  const relations = [...mediaAssetRelationsById.values()].filter((item) => item.sourceAssetId === asset.id || item.targetAssetId === asset.id)
+  const referenced = Boolean(generation || [...creativeGenerationsById.values()].some((item) => item.inputAssetIds?.includes(asset.id)))
+  return buildSafeAssetLibraryItem(asset, { generation, relations, referenced })
+}
 const notifications = []
 
 const getCursorValue = (item, cursorKey) => item?.[cursorKey] ?? item?.id ?? item?.handle ?? null
@@ -3108,6 +3118,24 @@ export const createSeedRepository = () => ({
     linkOutputAssets: (id, assetIds = [], actor) => {
       const current = creativeGenerationsById.get(String(id))
       const nextAssetIds = [...new Set([...(current?.outputAssetIds ?? []), ...assetIds.filter(Boolean)])]
+      if (current) {
+        for (const sourceAssetId of current.inputAssetIds ?? []) {
+          for (const targetAssetId of assetIds.filter(Boolean)) {
+            const source = mediaAssetsById.get(String(sourceAssetId))
+            const target = mediaAssetsById.get(String(targetAssetId))
+            if (!source || !target || source.ownerHandle !== target.ownerHandle) continue
+            const relationTypes = current.workspace === 'image' && ['image_to_image', 'image_edit', 'image_variation'].includes(current.mode)
+              ? ['reused_as_input', 'variant'] : ['reused_as_input']
+            for (const relationType of relationTypes) {
+              const exists = [...mediaAssetRelationsById.values()].some((relation) => relation.sourceAssetId === source.id && relation.targetAssetId === target.id && relation.relationType === relationType && relation.targetWorkspace === current.workspace)
+              if (!exists) {
+                const relationId = `asset-relation-${randomUUID()}`
+                mediaAssetRelationsById.set(relationId, { id: relationId, ownerHandle: source.ownerHandle, sourceAssetId: source.id, targetAssetId: target.id, relationType, sourceGenerationId: current.id, targetWorkspace: current.workspace, role: relationType === 'variant' ? 'source' : 'input', createdAt: new Date().toISOString() })
+              }
+            }
+          }
+        }
+      }
       return patchCreativeGeneration(String(id), { outputAssetIds: nextAssetIds }, actor, 'creative.generation.outputs_linked')
     },
     complete: (id, patch = {}, actor) => patchCreativeGeneration(String(id), {
@@ -4385,6 +4413,69 @@ export const createSeedRepository = () => ({
         .filter((asset) => ['image/png', 'image/jpeg', 'image/webp', 'audio/mpeg', 'audio/wav', 'audio/mp4'].includes(asset.contentType))
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id))
       return paginateByCursor(filtered.map(serializeMediaAsset), options)
+    },
+    listAssetLibrary: (actor, options = {}) => {
+      const search = String(options.search ?? '').trim().toLowerCase()
+      const filtered = [...mediaAssetsById.values()]
+        .filter((asset) => asset.ownerHandle === actor.handle)
+        .filter((asset) => options.archived === 'all' || (options.archived === 'archived' ? Boolean(asset.archivedAt) : !asset.archivedAt))
+        .filter((asset) => !options.purpose || asset.purpose === options.purpose)
+        .filter((asset) => !options.mediaType || assetMediaType(asset.contentType) === options.mediaType)
+        .filter((asset) => !options.workspace || assetEligibleForWorkspace(asset, options.workspace))
+        .filter((asset) => !options.dateFrom || asset.createdAt >= options.dateFrom)
+        .filter((asset) => !options.dateTo || asset.createdAt <= options.dateTo)
+        .filter((asset) => !search || asset.fileName.toLowerCase().includes(search))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id))
+      return paginateByCursor(filtered.map((asset) => {
+        return getSeedAssetLibraryItem(asset, actor)
+      }), options)
+    },
+    getAssetLibraryItem: (id, actor) => {
+      const asset = mediaAssetsById.get(String(id)) ?? null
+      if (!asset || asset.ownerHandle !== actor.handle) return null
+      return getSeedAssetLibraryItem(asset, actor)
+    },
+    setAssetArchived: (id, archived, actor) => {
+      const asset = mediaAssetsById.get(String(id)) ?? null
+      if (!asset || asset.ownerHandle !== actor.handle) return null
+      const updated = { ...asset, archivedAt: archived ? (asset.archivedAt ?? new Date().toISOString()) : null, updatedAt: new Date().toISOString() }
+      mediaAssetsById.set(updated.id, updated)
+      recordAudit(actor, archived ? 'media.asset.archived' : 'media.asset.restored', 'media_asset', updated.id, { referenced: [...creativeGenerationsById.values()].some((item) => item.inputAssetIds?.includes(updated.id) || item.outputAssetIds?.includes(updated.id)) })
+      return getSeedAssetLibraryItem(updated, actor)
+    },
+    createAssetRelation: (sourceAssetId, payload, actor) => {
+      const source = mediaAssetsById.get(String(sourceAssetId)) ?? null
+      const target = mediaAssetsById.get(String(payload.targetAssetId)) ?? null
+      if (!source || !target || source.ownerHandle !== actor.handle || target.ownerHandle !== actor.handle) return null
+      if (source.id === target.id) throw new HttpError(409, 'ASSET_RELATION_CYCLE', 'An asset cannot relate to itself')
+      if (payload.relationType === 'reused_as_input' && !assetEligibleForWorkspace(source, payload.targetWorkspace)) {
+        throw new HttpError(409, 'ASSET_NOT_REUSABLE', 'Asset is not eligible for the target workspace')
+      }
+      const graphTypes = new Set(['parent', 'variant'])
+      if (graphTypes.has(payload.relationType)) {
+        const adjacency = new Map()
+        for (const relation of mediaAssetRelationsById.values()) {
+          if (!graphTypes.has(relation.relationType)) continue
+          adjacency.set(relation.sourceAssetId, [...(adjacency.get(relation.sourceAssetId) ?? []), relation.targetAssetId])
+        }
+        const stack = [target.id]
+        const visited = new Set()
+        while (stack.length) {
+          const current = stack.pop()
+          if (current === source.id) throw new HttpError(409, 'ASSET_RELATION_CYCLE', 'Asset relation would create a cycle')
+          if (visited.has(current)) continue
+          visited.add(current)
+          stack.push(...(adjacency.get(current) ?? []))
+        }
+      }
+      const existing = [...mediaAssetRelationsById.values()].find((item) => item.sourceAssetId === source.id && item.targetAssetId === target.id && item.relationType === payload.relationType && item.targetWorkspace === payload.targetWorkspace && item.role === payload.role)
+      if (!existing) {
+        const generation = [...creativeGenerationsById.values()].find((item) => item.outputAssetIds?.includes(source.id)) ?? null
+        const relation = { id: `asset-relation-${randomUUID()}`, ownerHandle: actor.handle, sourceAssetId: source.id, targetAssetId: target.id, relationType: payload.relationType, sourceGenerationId: generation?.id ?? null, targetWorkspace: payload.targetWorkspace ?? null, role: payload.role ?? null, createdAt: new Date().toISOString() }
+        mediaAssetRelationsById.set(relation.id, relation)
+        recordAudit(actor, 'media.asset.relation_created', 'media_asset', source.id, { targetAssetId: target.id, relationType: relation.relationType, targetWorkspace: relation.targetWorkspace, role: relation.role })
+      }
+      return getSeedAssetLibraryItem(source, actor)
     },
     createUpload: (payload, actor) => {
       const now = new Date().toISOString()

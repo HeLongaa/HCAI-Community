@@ -24,6 +24,7 @@ import { AboutPage, ApiPage, EarnPage, LegalPage, PricingPage, SupportPage } fro
 import { MyTasksPage, PublishPage, TasksPage } from '../../features/tasks'
 import { ChatPage, PlaygroundPage } from '../../features/workspace'
 import { GenerationCenterPage } from '../../features/generations'
+import { AssetLibraryPage } from '../../features/assets'
 
 type PageRendererProps = {
   t: Record<string, string>
@@ -161,6 +162,14 @@ export function PageRenderer({
       )}
       {page === 'generations' && (
         <GenerationCenterPage
+          t={t}
+          signedIn={Boolean(account.accountHandle)}
+          requireAuth={requireAuth}
+          navigateToPage={navigateToPage}
+        />
+      )}
+      {page === 'assets' && (
+        <AssetLibraryPage
           t={t}
           signedIn={Boolean(account.accountHandle)}
           requireAuth={requireAuth}

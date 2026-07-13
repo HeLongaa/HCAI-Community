@@ -1458,3 +1458,6 @@ type AdminSecurityAlertDto = {
   createdAt: string
 }
 ```
+### Unified asset library
+
+Authenticated users can list and inspect their governed creative assets through `GET /media/assets` and `GET /media/assets/{id}`. These routes return a safe projection without storage keys, signed URLs, raw metadata, Provider fields, or cross-owner records. Archive/restore is reversible, and `POST /media/assets/{id}/relations` records idempotent application-id-only parent, variant, and reuse lineage with cycle and ownership checks. See `docs/V1_UNIFIED_ASSET_LIBRARY.md`.

@@ -60,6 +60,7 @@ import { writeStorageObject } from '../storage/objectWriter.js'
 import { writeJsonArchive } from '../storage/archiveWriter.js'
 import { createPrismaChatRepository } from '../chat/prismaChatRepository.js'
 import { safeProviderOperationMetadata } from '../creative/generationRecords.js'
+import { assetEligibleForWorkspace, assetMediaType, buildSafeAssetLibraryItem } from '../media/assetLibrary.js'
 
 const { Prisma, PrismaClient } = prismaClientPkg
 const safeProviderJobIdPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
@@ -3933,6 +3934,19 @@ const createPrismaRepository = async (fallbackRepository) => {
         where: { id: current.id },
         data: { outputAssetIds },
       })
+      if ((current.inputAssetIds?.length ?? 0) > 0 && assetIds.filter(Boolean).length > 0 && current.actorId) {
+        for (const sourceAssetId of current.inputAssetIds) {
+          for (const targetAssetId of assetIds.filter(Boolean)) {
+            const relationTypes = current.workspace === 'image' && ['image_to_image', 'image_edit', 'image_variation'].includes(current.mode)
+              ? ['reused_as_input', 'variant'] : ['reused_as_input']
+            for (const relationType of relationTypes) {
+              const data = { ownerId: current.actorId, sourceAssetId, targetAssetId, relationType, sourceGenerationId: current.id, targetWorkspace: current.workspace, role: relationType === 'variant' ? 'source' : 'input' }
+              const existing = await client.mediaAssetRelation.findFirst({ where: data })
+              if (!existing) await client.mediaAssetRelation.create({ data })
+            }
+          }
+        }
+      }
       await recordAudit({
         actor,
         action: 'creative.generation.outputs_linked',
@@ -6153,6 +6167,109 @@ const createPrismaRepository = async (fallbackRepository) => {
         limit,
         nextCursor: assets.length > limit ? page.at(-1)?.id ?? null : null,
       }
+    },
+    listAssetLibrary: async (actor, options = {}) => {
+      const owner = await findUserByHandle(actor.handle)
+      if (!owner) return { items: [], limit: options.limit ?? 24, nextCursor: null }
+      const limit = Math.min(Math.max(Number(options.limit ?? 24), 1), 100)
+      const archivedWhere = options.archived === 'all' ? {} : { archivedAt: options.archived === 'archived' ? { not: null } : null }
+      const contentTypeWhere = options.mediaType === 'image' ? { startsWith: 'image/' }
+        : options.mediaType === 'video' ? { startsWith: 'video/' }
+          : options.mediaType === 'audio' ? { startsWith: 'audio/' }
+            : options.mediaType === 'document' ? { notIn: ['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/webm', 'audio/mpeg', 'audio/wav', 'audio/mp4'] }
+              : undefined
+      const workspaceWhere = options.workspace === 'image' || options.workspace === 'video' ? {
+        archivedAt: null,
+        status: 'uploaded',
+        purpose: { in: ['submission_asset', 'profile_portfolio', 'library_asset'] },
+        contentType: { in: ['image/png', 'image/jpeg', 'image/webp'] },
+        metadata: { path: ['security', 'scanStatus'], equals: 'clean' },
+      } : options.workspace === 'chat' ? {
+        archivedAt: null,
+        status: 'uploaded',
+        purpose: { in: ['task_attachment', 'library_asset'] },
+        contentType: { in: ['text/plain', 'text/markdown', 'application/pdf', 'image/png', 'image/jpeg', 'image/webp'] },
+        sizeBytes: { lte: 20 * 1024 * 1024 },
+        metadata: { path: ['security', 'scanStatus'], equals: 'clean' },
+      } : options.workspace === 'music' ? { id: { equals: '__no_music_inputs__' } } : {}
+      const rows = await client.mediaAsset.findMany({
+        where: {
+          ownerId: owner.id,
+          AND: [
+            archivedWhere,
+            options.purpose ? { purpose: options.purpose } : {},
+            contentTypeWhere ? { contentType: contentTypeWhere } : {},
+            options.search ? { fileName: { contains: options.search, mode: 'insensitive' } } : {},
+            (options.dateFrom || options.dateTo) ? { createdAt: { ...(options.dateFrom ? { gte: new Date(options.dateFrom) } : {}), ...(options.dateTo ? { lte: new Date(options.dateTo) } : {}) } } : {},
+            workspaceWhere,
+          ],
+        },
+        include: { outgoingRelations: true, incomingRelations: true },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: limit + 1,
+        ...(options.cursor ? { cursor: { id: String(options.cursor) }, skip: 1 } : {}),
+      })
+      const page = rows.slice(0, limit)
+      const items = await Promise.all(page.map(async (asset) => {
+        const [generation, inputReference, submissionReference] = await Promise.all([
+          client.creativeGeneration.findFirst({ where: { outputAssetIds: { has: asset.id } } }),
+          client.creativeGeneration.count({ where: { inputAssetIds: { has: asset.id } } }),
+          client.taskSubmission.count({ where: { assetIds: { has: asset.id } } }),
+        ])
+        return buildSafeAssetLibraryItem(asset, { generation, relations: [...asset.outgoingRelations, ...asset.incomingRelations], referenced: Boolean(generation || inputReference || submissionReference) })
+      }))
+      return { items, limit, nextCursor: rows.length > limit ? page.at(-1)?.id ?? null : null }
+    },
+    getAssetLibraryItem: async (id, actor) => {
+      const owner = await findUserByHandle(actor.handle)
+      if (!owner) return null
+      const asset = await client.mediaAsset.findFirst({ where: { id: String(id), ownerId: owner.id }, include: { outgoingRelations: true, incomingRelations: true } })
+      if (!asset) return null
+      const [generation, inputReference, submissionReference] = await Promise.all([
+        client.creativeGeneration.findFirst({ where: { outputAssetIds: { has: asset.id } } }),
+        client.creativeGeneration.count({ where: { inputAssetIds: { has: asset.id } } }),
+        client.taskSubmission.count({ where: { assetIds: { has: asset.id } } }),
+      ])
+      return buildSafeAssetLibraryItem(asset, { generation, relations: [...asset.outgoingRelations, ...asset.incomingRelations], referenced: Boolean(generation || inputReference || submissionReference) })
+    },
+    setAssetArchived: async (id, archived, actor) => {
+      const owner = await findUserByHandle(actor.handle)
+      if (!owner) return null
+      const current = await client.mediaAsset.findFirst({ where: { id: String(id), ownerId: owner.id } })
+      if (!current) return null
+      const asset = await client.mediaAsset.update({ where: { id: current.id }, data: { archivedAt: archived ? (current.archivedAt ?? new Date()) : null } })
+      await recordAudit({ actor, action: archived ? 'media.asset.archived' : 'media.asset.restored', resourceType: 'media_asset', resourceId: asset.id, metadata: {} })
+      return media.getAssetLibraryItem(asset.id, actor)
+    },
+    createAssetRelation: async (sourceAssetId, payload, actor) => {
+      const owner = await findUserByHandle(actor.handle)
+      if (!owner) return null
+      const [source, target] = await Promise.all([
+        client.mediaAsset.findFirst({ where: { id: String(sourceAssetId), ownerId: owner.id } }),
+        client.mediaAsset.findFirst({ where: { id: String(payload.targetAssetId), ownerId: owner.id } }),
+      ])
+      if (!source || !target) return null
+      if (source.id === target.id) throw new HttpError(409, 'ASSET_RELATION_CYCLE', 'An asset cannot relate to itself')
+      if (payload.relationType === 'reused_as_input' && !assetEligibleForWorkspace(source, payload.targetWorkspace)) throw new HttpError(409, 'ASSET_NOT_REUSABLE', 'Asset is not eligible for the target workspace')
+      if (['parent', 'variant'].includes(payload.relationType)) {
+        const relations = await client.mediaAssetRelation.findMany({ where: { ownerId: owner.id, relationType: { in: ['parent', 'variant'] } } })
+        const adjacency = new Map()
+        for (const relation of relations) adjacency.set(relation.sourceAssetId, [...(adjacency.get(relation.sourceAssetId) ?? []), relation.targetAssetId])
+        const stack = [target.id]
+        const visited = new Set()
+        while (stack.length) {
+          const current = stack.pop()
+          if (current === source.id) throw new HttpError(409, 'ASSET_RELATION_CYCLE', 'Asset relation would create a cycle')
+          if (visited.has(current)) continue
+          visited.add(current)
+          stack.push(...(adjacency.get(current) ?? []))
+        }
+      }
+      const generation = await client.creativeGeneration.findFirst({ where: { outputAssetIds: { has: source.id } } })
+      const duplicate = await client.mediaAssetRelation.findFirst({ where: { sourceAssetId: source.id, targetAssetId: target.id, relationType: payload.relationType, targetWorkspace: payload.targetWorkspace ?? null, role: payload.role ?? null } })
+      if (!duplicate) await client.mediaAssetRelation.create({ data: { ownerId: owner.id, sourceAssetId: source.id, targetAssetId: target.id, relationType: payload.relationType, sourceGenerationId: generation?.id ?? null, targetWorkspace: payload.targetWorkspace ?? null, role: payload.role ?? null } })
+      await recordAudit({ actor, action: 'media.asset.relation_created', resourceType: 'media_asset', resourceId: source.id, metadata: { targetAssetId: target.id, relationType: payload.relationType, targetWorkspace: payload.targetWorkspace ?? null, role: payload.role ?? null } })
+      return media.getAssetLibraryItem(source.id, actor)
     },
     getGovernancePolicy: async () => getMediaGovernancePolicy(),
     updateGovernancePolicy: async (patch, actor) => updateMediaGovernancePolicy(patch, actor),

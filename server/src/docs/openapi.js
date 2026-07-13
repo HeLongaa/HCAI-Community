@@ -757,6 +757,57 @@ export const openApiDocument = {
         },
       },
     },
+    '/media/assets': {
+      get: {
+        summary: 'List owner-scoped governed creative assets without private storage or Provider fields',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'search', in: 'query', schema: { type: 'string' } },
+          { name: 'mediaType', in: 'query', schema: { type: 'string', enum: ['image', 'video', 'audio', 'document'] } },
+          { name: 'purpose', in: 'query', schema: { type: 'string', enum: ['task_attachment', 'submission_asset', 'profile_portfolio', 'library_asset'] } },
+          { name: 'workspace', in: 'query', schema: { type: 'string', enum: ['image', 'video', 'music', 'chat'] } },
+          { name: 'archived', in: 'query', schema: { type: 'string', enum: ['active', 'archived', 'all'], default: 'active' } },
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+        ],
+        responses: { '200': { description: 'Safe asset list and stable pagination metadata' }, '401': { description: 'Authentication required' } },
+      },
+    },
+    '/media/assets/{id}': {
+      get: {
+        summary: 'Get an owner-scoped safe asset detail with lineage and action eligibility',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Safe asset detail' }, '404': { description: 'Asset not found or not owned by the caller' } },
+      },
+    },
+    '/media/assets/{id}/archive': {
+      post: {
+        summary: 'Archive an owned asset without deleting referenced delivery evidence',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Archived safe asset detail' }, '404': { description: 'Asset not found or not owned by the caller' } },
+      },
+    },
+    '/media/assets/{id}/restore': {
+      post: {
+        summary: 'Restore an owned archived asset',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Restored safe asset detail' }, '404': { description: 'Asset not found or not owned by the caller' } },
+      },
+    },
+    '/media/assets/{id}/relations': {
+      post: {
+        summary: 'Create an idempotent owner-scoped parent, variant, or reuse relation',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['targetAssetId', 'relationType'], properties: { targetAssetId: { type: 'string' }, relationType: { type: 'string', enum: ['parent', 'variant', 'reused_as_input'] }, targetWorkspace: { type: ['string', 'null'], enum: ['image', 'video', 'music', 'chat', null] }, role: { type: ['string', 'null'] } } } } } },
+        responses: { '200': { description: 'Updated safe asset detail' }, '409': { description: 'Relation cycle or ineligible reuse' }, '404': { description: 'Source or target asset not owned by the caller' } },
+      },
+    },
     '/media/review-queue': {
       get: {
         summary: 'List media assets requiring governance review',

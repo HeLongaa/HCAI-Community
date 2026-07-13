@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
   Check,
@@ -119,6 +119,20 @@ export function VideoStudioPage({
   const [audioTrackId, setAudioTrackId] = useState('')
   const [referenceImageId, setReferenceImageId] = useState('')
   const [rightsConfirmed, setRightsConfirmed] = useState(false)
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem('hcaiAssetReuse')
+      if (!raw) return
+      const reuse = JSON.parse(raw) as { assetId?: string; workspace?: string }
+      if (reuse.workspace !== 'video' || !reuse.assetId || !workflow.inputAssets.some((asset) => asset.id === reuse.assetId)) return
+      window.queueMicrotask(() => {
+        setModeChoice('image_to_video')
+        setSourceImageId(reuse.assetId!)
+        setRightsConfirmed(true)
+        window.sessionStorage.removeItem('hcaiAssetReuse')
+      })
+    } catch { window.sessionStorage.removeItem('hcaiAssetReuse') }
+  }, [workflow.inputAssets])
   const mockVisual = visualWorks.find((work) => work.type === 'Video')?.image ?? ''
 
   const providerId = providers.some((provider) => provider.id === providerChoice)

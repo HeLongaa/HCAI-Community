@@ -412,6 +412,55 @@ export type ApiMediaAsset = {
   updatedAt: string
 }
 
+export type AssetWorkspace = 'image' | 'video' | 'music' | 'chat'
+export type AssetMediaType = 'image' | 'video' | 'audio' | 'document'
+
+export type ApiAssetRelation = {
+  id: string
+  sourceAssetId: string
+  targetAssetId: string
+  relationType: 'parent' | 'variant' | 'reused_as_input'
+  sourceGenerationId: string | null
+  targetWorkspace: AssetWorkspace | null
+  role: string | null
+  createdAt: string
+}
+
+export type ApiAssetLibraryItem = {
+  id: string
+  fileName: string
+  contentType: string
+  mediaType: AssetMediaType
+  sizeBytes: number
+  purpose: MediaAssetPurpose
+  status: 'pending' | 'uploaded' | 'rejected'
+  scanStatus: string
+  archivedAt: string | null
+  sourceGeneration: { id: string; workspace: AssetWorkspace; mode: string; status: string; createdAt: string } | null
+  relations: ApiAssetRelation[]
+  referenced: boolean
+  actions: {
+    download: { available: boolean; reason: string | null }
+    archive: { available: boolean; reason: string | null }
+    restore: { available: boolean; reason: string | null }
+    reuse: Record<AssetWorkspace, { available: boolean; reason: string | null }>
+  }
+  createdAt: string
+  updatedAt: string
+}
+
+export type AssetLibraryQuery = {
+  cursor?: string | null
+  limit?: number | null
+  search?: string | null
+  purpose?: MediaAssetPurpose | null
+  mediaType?: AssetMediaType | null
+  workspace?: AssetWorkspace | null
+  archived?: 'active' | 'archived' | 'all' | null
+  dateFrom?: string | null
+  dateTo?: string | null
+}
+
 export type CreateMediaUploadRequest = {
   fileName: string
   contentType: string
