@@ -18,6 +18,7 @@ const monthlyCapUsd = musicCapabilityContract.cost.monthlyUsdCap
 const maximumJobsPerDay = musicCapabilityContract.cost.maximumJobsPerDay
 const outputMaxBytes = 16 * 1024 * 1024
 const thresholdPercentDefault = 80
+const musicBytesByOutput = new WeakMap()
 const safeIdentifierPattern = /^[a-z0-9][a-z0-9:._-]{0,127}$/i
 const responseKeys = new Set(['requestId', 'body', 'contentType', 'usage', 'license'])
 const usageKeys = new Set(['generatedSeconds', 'actualCostUsd'])
@@ -346,31 +347,34 @@ const baseGeneration = ({ request, provider, actor, source, now, response = null
 
 const completedGeneration = ({ request, provider, actor, response, source, now, generationId }) => {
   const base = baseGeneration({ request, provider, actor, response, source, now, generationId })
+  const output = {
+    id: `out_elevenlabs_music_${response.output.sha256.slice(0, 16)}`,
+    type: 'audio',
+    label: 'ElevenLabs Music output',
+    contentType: 'audio/mpeg',
+    url: `inline://creative-output/${response.output.sha256}`,
+    storage: {
+      persisted: false,
+      provider: 'elevenlabs-music-fixture',
+      sizeBytes: response.output.sizeBytes,
+      sha256: response.output.sha256,
+    },
+    source: {
+      kind: 'elevenlabs_music_fixture_response',
+      modelId,
+      providerRequestId: response.requestId,
+      outputIndex: 0,
+      workspace: 'music',
+    },
+    license: response.license,
+  }
+  musicBytesByOutput.set(output, response.output)
   return {
     ...base,
     status: 'completed',
     providerRequestId: response.requestId,
     providerJobId: response.requestId,
-    outputs: [{
-      id: `out_elevenlabs_music_${response.output.sha256.slice(0, 16)}`,
-      type: 'audio',
-      label: 'ElevenLabs Music output',
-      contentType: 'audio/mpeg',
-      storage: {
-        persisted: false,
-        provider: 'elevenlabs-music-fixture',
-        sizeBytes: response.output.sizeBytes,
-        sha256: response.output.sha256,
-      },
-      source: {
-        kind: 'elevenlabs_music_fixture_response',
-        modelId,
-        providerRequestId: response.requestId,
-        outputIndex: 0,
-        workspace: 'music',
-      },
-      license: response.license,
-    }],
+    outputs: [output],
     completedAt: now.toISOString(),
   }
 }
@@ -414,6 +418,8 @@ export const createElevenLabsMusicGeneration = async ({
     return failedGeneration({ request, provider, actor, error, source, now, generationId })
   }
 }
+
+export const readElevenLabsMusicOutputBytes = (output) => musicBytesByOutput.get(output) ?? null
 
 export const elevenLabsMusicProviderContract = Object.freeze({
   schemaVersion: 'elevenlabs-music-fixture-boundary-v1',

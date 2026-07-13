@@ -36,6 +36,11 @@ import {
   assertGoogleVeoBudgetAllowsDispatch,
   buildGoogleVeoProviderCostMetadata,
 } from './googleVeoProvider.js'
+import {
+  assertElevenLabsMusicBudgetAllowsDispatch,
+  buildElevenLabsMusicCostMetadata,
+  readElevenLabsMusicOutputBytes,
+} from './elevenLabsMusicProvider.js'
 
 const getFixtureProvider = (providerId, registry) => {
   const provider = registry.providers.find((candidate) => candidate.id === providerId)
@@ -65,6 +70,11 @@ const buildProviderCostForRequest = ({ provider, request, source, now }) => {
   if (provider.id === 'google-veo-3-1-fast') {
     const providerCost = buildGoogleVeoProviderCostMetadata({ request, source, now })
     assertGoogleVeoBudgetAllowsDispatch(providerCost)
+    return providerCost
+  }
+  if (provider.id === 'elevenlabs-music-v2-enterprise') {
+    const providerCost = buildElevenLabsMusicCostMetadata({ request, source, now })
+    assertElevenLabsMusicBudgetAllowsDispatch(providerCost)
     return providerCost
   }
   return null
@@ -298,6 +308,23 @@ export const persistCreativeGenerationOutputs = async (generation, {
     }
     if (output.storage?.provider === 'openai') {
       const inlineOutput = readOpenAIImageOutputBytes(output)
+      if (!inlineOutput) {
+        throw new HttpError(503, 'CREATIVE_PROVIDER_OUTPUT_BYTES_MISSING', 'Creative Provider inline output is unavailable', {
+          reasonCode: 'inline_output_missing',
+        })
+      }
+      return ingestCreativeProviderOutput({
+        generation,
+        output,
+        outputDigest: inlineOutput.sha256,
+        outputIndex,
+        actor,
+        repositories: repositories ?? { media: mediaRepository },
+        fetchOutput: async () => inlineOutput,
+      })
+    }
+    if (output.storage?.provider === 'elevenlabs-music-fixture') {
+      const inlineOutput = readElevenLabsMusicOutputBytes(output)
       if (!inlineOutput) {
         throw new HttpError(503, 'CREATIVE_PROVIDER_OUTPUT_BYTES_MISSING', 'Creative Provider inline output is unavailable', {
           reasonCode: 'inline_output_missing',

@@ -3,10 +3,10 @@
 V1-30 freezes the Music product and Provider contract. The executable source of truth is
 `server/src/creative/musicCapabilityContract.js`.
 
-Current decision: **the contract and an injected fixture-only ElevenLabs adapter are implemented, but every real Music
-Provider path remains unavailable**. ElevenLabs Music v2 Enterprise and Google Lyria 3 Pro Preview remain disabled
-catalog shells. There is no Music SDK, HTTP client, credential, product registration, lifecycle worker, output
-ingestion, real call, automatic backup, or production enablement.
+Current decision: **the contract, injected fixture-only ElevenLabs adapter, application-owned persistence, MP3 ingestion,
+and cost closeout are implemented, but every real Music Provider path remains unavailable**. ElevenLabs Music v2
+Enterprise and Google Lyria 3 Pro Preview remain disabled catalog shells. There is no Music SDK, HTTP client,
+credential, product registration, Provider lifecycle worker, real call, automatic backup, or production enablement.
 
 ## Product Modes
 
@@ -69,7 +69,18 @@ future dispatch.
 
 ## V1-32 Handoff
 
-V1-32 should add application-owned Music lifecycle persistence and bounded MP3 output ingestion for the fixture path,
-including owner-scoped generation history, idempotent terminal replay, private storage, scan/review gating, and durable
-cost closeout. It must keep the ElevenLabs adapter unregistered and keep HTTP, credentials, real Provider traffic,
-automatic Lyria failover, and production enablement absent until separate approval.
+V1-32 adds application-owned Music fixture persistence:
+
+- `executeCreativeGeneration` can reserve and settle ElevenLabs generated-minute Provider cost through the shared durable
+  ledger when the fixture adapter is injected.
+- Completed fixture outputs carry only an `inline://` descriptor, SHA-256, size, content type, and license metadata in
+  serializable generation state.
+- `readElevenLabsMusicOutputBytes` exposes MP3 bytes only while the original in-process output object is alive; cloned or
+  cross-process records fail closed before ingestion.
+- `persistCreativeGenerationOutputs` ingests the MP3 through the shared source-keyed output ingestion path, creating a
+  private media asset, scan/review-gated download URL, and owner-scoped generation history without persisting Provider
+  URLs or raw payloads.
+
+V1-33 should connect the Music workspace UI to application APIs and owner history while keeping the ElevenLabs adapter
+unregistered and keeping HTTP, credentials, real Provider traffic, automatic Lyria failover, and production enablement
+absent until separate approval.

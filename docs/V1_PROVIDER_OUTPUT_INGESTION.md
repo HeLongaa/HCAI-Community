@@ -22,7 +22,9 @@ Raw Provider URLs, query signatures, response headers, response bodies, tokens, 
 - request timeout, `Content-Length` preflight, and a streaming hard byte cap
 - workspace MIME policy, magic-byte detection through `file-type`, response/declared MIME agreement, extension agreement, and platform-computed SHA-256
 
-Image supports PNG, JPEG, and WebP. Video and music policies are defined for future fixture coverage, but no real modality Provider is enabled by this task. Chat text does not use binary output ingestion.
+Image supports PNG, JPEG, and WebP. Video supports fixture MP4/WebM ingestion. Music supports fixture MP3/WAV/M4A
+policy and V1-32 ingests ElevenLabs fixture MP3 bytes from process-local memory only. No real modality Provider output
+fetch client is registered by this task. Chat text does not use binary output ingestion.
 
 ## Persistence And Recovery
 
