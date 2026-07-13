@@ -122,7 +122,6 @@ export function ChatPage({
       if (reuse.workspace !== 'chat' || !reuse.assetId || !inputAssets.some((asset) => asset.id === reuse.assetId)) return
       window.queueMicrotask(() => {
         setSelectedAssetIds((current) => current.includes(reuse.assetId!) ? current : [...current, reuse.assetId!].slice(0, 5))
-        window.sessionStorage.removeItem('hcaiAssetReuse')
       })
     } catch { window.sessionStorage.removeItem('hcaiAssetReuse') }
   }, [inputAssets])

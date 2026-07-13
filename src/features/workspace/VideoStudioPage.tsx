@@ -129,7 +129,6 @@ export function VideoStudioPage({
         setModeChoice('image_to_video')
         setSourceImageId(reuse.assetId!)
         setRightsConfirmed(true)
-        window.sessionStorage.removeItem('hcaiAssetReuse')
       })
     } catch { window.sessionStorage.removeItem('hcaiAssetReuse') }
   }, [workflow.inputAssets])

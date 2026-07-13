@@ -281,7 +281,6 @@ function StudioPage({
       window.queueMicrotask(() => {
         setActiveImageMode('image_to_image')
         setSourceAssetId(reuse.assetId!)
-        window.sessionStorage.removeItem('hcaiAssetReuse')
       })
     } catch { window.sessionStorage.removeItem('hcaiAssetReuse') }
   }, [providerGeneration?.inputAssets])
