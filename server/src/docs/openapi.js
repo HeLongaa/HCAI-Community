@@ -2862,6 +2862,71 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/domain-events': {
+      get: {
+        summary: 'List versioned domain event Outbox records and publication state',
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'claimed', 'published', 'failed'] } },
+          { name: 'type', in: 'query', schema: { type: 'string' } },
+          { name: 'aggregateType', in: 'query', schema: { type: 'string' } },
+          { name: 'aggregateId', in: 'query', schema: { type: 'string' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+        ],
+        responses: { '200': { description: 'Sanitized domain event publication page' }, '403': { description: 'Requires admin:events:read' } },
+      },
+    },
+    '/admin/domain-events/{id}': {
+      get: {
+        summary: 'Read one immutable domain event and its publication state',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Domain event detail' }, '404': { description: 'Event not found' } },
+      },
+    },
+    '/admin/domain-events/{id}/replay': {
+      post: {
+        summary: 'Request replay of a published or failed domain event without changing event content',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { reasonCode: { type: 'string' } } } } } },
+        responses: { '200': { description: 'Event returned to pending publication' }, '403': { description: 'Requires admin:events:replay' }, '404': { description: 'Event cannot be replayed' } },
+      },
+    },
+    '/admin/jobs/definitions': {
+      get: {
+        summary: 'List registered job definitions',
+        parameters: [{ name: 'type', in: 'query', schema: { type: 'string' } }, { name: 'enabled', in: 'query', schema: { type: 'boolean' } }],
+        responses: { '200': { description: 'Registered job definitions' }, '403': { description: 'Requires admin:jobs:read' } },
+      },
+    },
+    '/admin/jobs/runs': {
+      get: {
+        summary: 'List job runs with attempts and safe results',
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['queued', 'running', 'succeeded', 'failed', 'timed_out', 'cancelled'] } },
+          { name: 'definitionId', in: 'query', schema: { type: 'string' } },
+          { name: 'ownerId', in: 'query', schema: { type: 'string' } },
+          { name: 'correlationId', in: 'query', schema: { type: 'string' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+        ],
+        responses: { '200': { description: 'Job run page' }, '403': { description: 'Requires admin:jobs:read' } },
+      },
+    },
+    '/admin/jobs/runs/{id}': {
+      get: {
+        summary: 'Read one job run and all attempts',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Job run detail' }, '404': { description: 'Run not found' } },
+      },
+    },
+    '/admin/jobs/runs/{id}/cancel': {
+      post: {
+        summary: 'Request cancellation of a queued or running job',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { reasonCode: { type: 'string' } } } } } },
+        responses: { '200': { description: 'Updated job run' }, '403': { description: 'Requires admin:jobs:manage' }, '404': { description: 'Run not found' } },
+      },
+    },
     '/admin/roles': {
       get: {
         summary: 'List role permission matrix',

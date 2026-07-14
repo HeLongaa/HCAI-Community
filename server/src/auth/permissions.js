@@ -44,6 +44,10 @@ export const permissionRegistry = Object.freeze([
   definePermission('admin:creative:provider-control:manage', 'model-control-plane', 'provider_control', 'manage', 'critical', admins, { resourceAuthorization: true, description: 'Disable Provider controls and record cap evidence' }),
   definePermission('admin:creative:provider-control:recover', 'model-control-plane', 'provider_control', 'recover', 'critical', admins, { resourceAuthorization: true, description: 'Request and approve Provider recovery' }),
   definePermission('security:alerts:manage', 'trust-safety-risk', 'security_alert', 'manage', 'critical', admins, { resourceAuthorization: true, description: 'Acknowledge and silence security alerts' }),
+  definePermission('admin:events:read', 'platform-architecture', 'domain_event', 'read', 'high', admins, { description: 'Read versioned domain event publication evidence' }),
+  definePermission('admin:events:replay', 'platform-architecture', 'domain_event', 'replay', 'critical', admins, { resourceAuthorization: true, description: 'Request replay of a published or failed domain event' }),
+  definePermission('admin:jobs:read', 'jobs-automation', 'job_run', 'read', 'high', admins, { description: 'Read job definitions, runs, attempts, and safe results' }),
+  definePermission('admin:jobs:manage', 'jobs-automation', 'job_run', 'manage', 'critical', admins, { resourceAuthorization: true, description: 'Cancel queued or running job runs' }),
 ])
 
 export const permissions = Object.freeze(permissionRegistry.map(({ id }) => id))
