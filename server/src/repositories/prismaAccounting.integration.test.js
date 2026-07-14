@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createPrismaRepository } from './prismaRepository.js'
-
 const databaseUrl = process.env.ACCOUNTING_DATABASE_URL
 
 test('Prisma quota accounting is concurrent, idempotent, and reconcilable', {
@@ -10,6 +8,7 @@ test('Prisma quota accounting is concurrent, idempotent, and reconcilable', {
 }, async () => {
   process.env.DATABASE_URL = databaseUrl
   process.env.DEMO_DATABASE_AUTOSEED = 'false'
+  const { createPrismaRepository } = await import('./prismaRepository.js')
   const repository = await createPrismaRepository()
   assert.ok(repository)
 
