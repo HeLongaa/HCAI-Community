@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "policyDocument": "docs/HIGH_RISK_ACCESS.md",
+  "permissions": ["admin:high-risk:approve", "admin:temporary-access:manage", "admin:break-glass"],
+  "controls": {
+    "twoPersonApproval": true,
+    "temporaryAuthorizationMaxMinutes": 240,
+    "breakGlassMaxMinutes": 60,
+    "postReviewRequired": true
+  },
+  "routes": [
+    "POST /api/admin/high-risk-approvals",
+    "GET /api/admin/temporary-authorizations",
+    "POST /api/admin/temporary-authorizations/:id/revoke",
+    "POST /api/admin/break-glass",
+    "GET /api/admin/break-glass",
+    "POST /api/admin/break-glass/:id/review"
+  ]
+}

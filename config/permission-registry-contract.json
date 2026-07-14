@@ -7,5 +7,5 @@
   "policyDocument": "docs/RBAC_PERMISSION_REGISTRY.md",
   "roles": ["member", "creator", "publisher", "moderator", "admin"],
   "riskLevels": ["low", "medium", "high", "critical"],
-  "protectedPermissions": ["admin:permissions:manage", "admin:accounting:repair"]
+  "protectedPermissions": ["admin:permissions:manage", "admin:accounting:repair", "admin:high-risk:approve", "admin:temporary-access:manage", "admin:break-glass"]
 }
