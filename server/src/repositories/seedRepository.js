@@ -3654,6 +3654,8 @@ export const createSeedRepository = () => ({
     recordMany: recordProviderBudgetAuditEvents,
   },
   audit: {
+    recordAttempt: ({ actor, action, resourceType, resourceId, metadata }) =>
+      serializeAuditEvent(recordAudit(actor, action, resourceType, resourceId, metadata)),
     find: (id) => {
       const event = auditEvents.find((item) => item.id === String(id)) ?? null
       return event ? serializeAuditEvent(event) : null

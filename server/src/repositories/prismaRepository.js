@@ -8455,6 +8455,13 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   }
 
   const audit = {
+    recordAttempt: async ({ actor, action, resourceType, resourceId, metadata }) => recordAudit({
+      actor,
+      action,
+      resourceType,
+      resourceId,
+      metadata,
+    }),
     find: async (id) => {
       const row = await client.auditEvent.findUnique({ where: { id: String(id) } })
       return row ? serializeAuditEvent(row) : null

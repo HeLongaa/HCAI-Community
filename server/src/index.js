@@ -5,6 +5,7 @@ import { env } from './config/env.js'
 import { registerModules } from './modules/index.js'
 import { startMediaScanWorker } from './media/scanWorker.js'
 import { repositories } from './repositories/index.js'
+import { createAdminMutationAuditHook } from './audit/adminMutationAudit.js'
 
 const main = async () => {
   const router = createRouter()
@@ -12,6 +13,7 @@ const main = async () => {
 
   const server = createServer(router, {
     resolveUser: (token) => repositories.auth.findDemoAccountByAccessToken(token),
+    auditAdminMutation: createAdminMutationAuditHook(repositories.audit),
     rateLimitStore: createRateLimitStore(process.env),
     onRateLimitExceeded: (event) => {
       console.warn('[rate-limit]', JSON.stringify(event))

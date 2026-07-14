@@ -1,4 +1,5 @@
 import { notFound } from '../errors/httpError.js'
+import { getAdminMutationClassification } from '../../audit/adminMutationAudit.js'
 
 export const createRouter = () => {
   const routes = new Map()
@@ -11,17 +12,23 @@ export const createRouter = () => {
       pathname: normalizedPath,
       parts: splitPath(normalizedPath),
       handler,
+      audit: getAdminMutationClassification(method, normalizedPath),
     }
-    routes.set(`${route.method} ${route.pathname}`, handler)
+    routes.set(`${route.method} ${route.pathname}`, route)
     registeredRoutes.push(route)
   }
 
   const handle = async (request, response, context) => {
     const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`)
     const pathname = normalizePath(url.pathname)
-    const exactHandler = routes.get(`${request.method} ${pathname}`)
-    if (exactHandler) {
-      await exactHandler(request, response, { ...context, url, params: {}, query: Object.fromEntries(url.searchParams) })
+    const exactRoute = routes.get(`${request.method} ${pathname}`)
+    if (exactRoute) {
+      const routeContext = { ...context, url, params: {}, query: Object.fromEntries(url.searchParams) }
+      if (exactRoute.audit) {
+        if (!context.auditAdminMutation) throw new Error('ADMIN_AUDIT_UNAVAILABLE')
+        await context.auditAdminMutation({ route: exactRoute.audit, request, context: routeContext })
+      }
+      await exactRoute.handler(request, response, routeContext)
       return
     }
 
@@ -29,12 +36,17 @@ export const createRouter = () => {
     if (!matchedRoute) {
       throw notFound(url.pathname)
     }
-    await matchedRoute.handler(request, response, {
+    const routeContext = {
       ...context,
       url,
       params: matchedRoute.params,
       query: Object.fromEntries(url.searchParams),
-    })
+    }
+    if (matchedRoute.audit) {
+      if (!context.auditAdminMutation) throw new Error('ADMIN_AUDIT_UNAVAILABLE')
+      await context.auditAdminMutation({ route: matchedRoute.audit, request, context: routeContext })
+    }
+    await matchedRoute.handler(request, response, routeContext)
   }
 
   return { add, handle }
