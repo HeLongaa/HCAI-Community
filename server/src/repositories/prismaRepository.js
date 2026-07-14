@@ -4,6 +4,7 @@ import prismaClientPkg from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 import { getPermissionsForRole, hasPermission, permissionById } from '../auth/permissions.js'
+import { authorizeResource } from '../auth/resourcePolicy.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, hashToken, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
 import {
@@ -7275,7 +7276,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       })
       if (!asset) return null
       const ownerHandle = asset.owner?.profile?.handle ?? asset.owner?.id ?? null
-      if (ownerHandle !== actor.handle && !hasPermission(actor, 'admin:access')) return null
+      if (!authorizeResource({ resourceType: 'media_asset', action: 'read', actor, resource: { ownerId: asset.ownerId, ownerHandle }, allowPublic: false }).allowed) return null
       return getMediaAssetDto(asset)
     },
     findOwnedChatInput: async (id, actor) => {
@@ -7518,7 +7519,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         return null
       }
       const ownerHandle = asset.owner?.profile?.handle ?? asset.owner?.id ?? null
-      if (ownerHandle !== actor.handle && !hasPermission(actor, 'admin:access')) {
+      if (!authorizeResource({ resourceType: 'media_asset', action: 'write', actor, resource: { ownerId: asset.ownerId, ownerHandle } }).allowed) {
         return null
       }
       const detectedContentType = payload.detectedContentType || asset.contentType
@@ -8359,7 +8360,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         return null
       }
       const ownerHandle = item.user?.profile?.handle ?? item.user?.id ?? null
-      if (ownerHandle && ownerHandle !== actor.handle && !hasPermission(actor, 'admin:access')) {
+      if (!authorizeResource({ resourceType: 'library_item', action: 'write', actor, resource: { userId: item.userId, ownerHandle } }).allowed) {
         return null
       }
       const publisher = await client.user.findFirst({
@@ -8424,7 +8425,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         return null
       }
       const ownerHandle = item.user?.profile?.handle ?? item.user?.id ?? null
-      if (ownerHandle && ownerHandle !== actor.handle && !hasPermission(actor, 'admin:access')) {
+      if (!authorizeResource({ resourceType: 'library_item', action: 'read', actor, resource: { userId: item.userId, ownerHandle }, allowPublic: false }).allowed) {
         return null
       }
       await recordAudit({

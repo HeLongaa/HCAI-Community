@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { HttpError } from '../common/errors/httpError.js'
 import { hasPermission, permissionRegistry, permissions, rolePermissions } from '../auth/permissions.js'
+import { authorizeResource } from '../auth/resourcePolicy.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
 import { seedStore } from '../data/seed.js'
@@ -154,11 +155,11 @@ const getHandle = (value) => {
   return value.handle ?? value.id ?? null
 }
 
-const canAccessOwnedResource = (ownerHandle, actor, elevatedPermission = 'admin:access') => {
+const canAccessOwnedResource = (ownerHandle, actor, _elevatedPermission = 'admin:access') => {
   if (!ownerHandle) {
     return true
   }
-  return Boolean(actor?.handle === ownerHandle || hasPermission(actor, elevatedPermission))
+  return authorizeResource({ resourceType: 'library_item', action: 'read', actor, resource: { ownerHandle }, allowPublic: false }).allowed
 }
 
 const buildAccountSummary = (actor) => ({
