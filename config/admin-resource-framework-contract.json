@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "taskId": "ADMIN-01",
+  "policyDocument": "docs/ADMIN_RESOURCE_FRAMEWORK.md",
+  "operationPolicyPath": "config/entity-operation-policies.json",
+  "implementationPath": "server/src/admin/adminResourceFramework.js",
+  "resources": [
+    { "id": "domainEvents", "model": "DomainEventOutbox", "routeGroup": "admin", "listRoute": "GET /api/admin/domain-events", "detailRoute": "GET /api/admin/domain-events/:id", "recoveryRoutes": ["POST /api/admin/domain-events/:id/replay"] },
+    { "id": "domainEventInbox", "model": "DomainEventConsumerInbox", "routeGroup": "admin", "listRoute": "GET /api/admin/domain-event-inbox", "detailRoute": "GET /api/admin/domain-event-inbox/:id", "recoveryRoutes": ["POST /api/admin/domain-event-inbox/:id/retry", "POST /api/admin/domain-event-inbox/:id/compensate"] },
+    { "id": "jobRuns", "model": "JobRun", "routeGroup": "admin", "listRoute": "GET /api/admin/jobs/runs", "detailRoute": "GET /api/admin/jobs/runs/:id", "recoveryRoutes": ["POST /api/admin/jobs/runs/:id/cancel"] },
+    { "id": "adminReviews", "model": "AdminReview", "routeGroup": "admin", "listRoute": "GET /api/admin/reviews", "recoveryRoutes": ["POST /api/admin/reviews/:id/actions"] },
+    { "id": "auditEvents", "model": "AuditEvent", "routeGroup": "admin", "listRoute": "GET /api/admin/audit", "detailRoute": "GET /api/admin/audit/:id", "exportRoute": "GET /api/admin/audit/export" },
+    { "id": "accountingReconciliation", "model": "AccountingReconciliationIssue", "routeGroup": "admin", "listRoute": "GET /api/admin/accounting/reconciliation", "detailRoute": "GET /api/admin/accounting/reconciliation/:id", "exportRoute": "GET /api/admin/accounting/reconciliation/export", "recoveryRoutes": ["POST /api/admin/accounting/reconciliation/:id/repair-requests"] },
+    { "id": "pointsLedger", "model": "PointLedger", "routeGroup": "admin", "listRoute": "GET /api/admin/points/ledger", "exportRoute": "GET /api/admin/points/ledger.csv" },
+    { "id": "mediaReviewQueue", "model": "MediaAsset", "routeGroup": "admin", "listRoute": "GET /api/media/review-queue", "recoveryRoutes": ["POST /api/media/uploads/:id/scan", "POST /api/media/uploads/:id/scan-retry"] },
+    { "id": "securityEvents", "model": "SecurityEvent", "routeGroup": "admin", "listRoute": "GET /api/admin/security/events" },
+    { "id": "securityAlerts", "model": "SecurityEvent", "routeGroup": "admin", "listRoute": "GET /api/admin/security/alerts", "exportRoute": "GET /api/admin/security/alerts/:id/export", "recoveryRoutes": ["POST /api/admin/security/alerts/:id/acknowledge", "POST /api/admin/security/alerts/:id/silence", "POST /api/admin/security/alerts/:id/unsilence"] },
+    { "id": "permissions", "model": "Permission", "routeGroup": "admin", "listRoute": "GET /api/admin/permissions", "mutationRoutes": ["PUT /api/admin/roles/:role/permissions"] }
+  ],
+  "policyCapabilities": {
+    "mutable_crud": ["list", "detail", "create", "update", "softDelete", "hardDeleteWhenAllowed", "export"],
+    "state_transition": ["list", "detail", "transition", "retry", "cancel", "export"],
+    "soft_delete": ["list", "detail", "restore", "archive", "export"],
+    "append_only": ["list", "detail", "export", "replayByRegisteredRecovery"],
+    "immutable_evidence": ["list", "detail", "export"]
+  },
+  "forbiddenCapabilities": {
+    "append_only": ["create", "update", "delete", "bulkMutate"],
+    "immutable_evidence": ["create", "update", "delete", "bulkMutate"],
+    "state_transition": ["arbitraryUpdate", "hardDelete"]
+  }
+}

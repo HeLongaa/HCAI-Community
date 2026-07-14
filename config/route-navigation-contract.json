@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "taskId": "ARC-02",
+  "policyDocument": "docs/ROUTE_NAVIGATION_CONTRACT.md",
+  "routeRoot": "server/src/modules",
+  "openApiPath": "server/src/docs/openapi.js",
+  "permissionMatrixPath": "docs/PERMISSION_MATRIX.md",
+  "ignoredRoutes": ["GET /health", "GET /metrics", "GET /api/openapi.json"],
+  "routeGroups": [
+    { "id": "auth", "module": "identity-access", "prefixes": ["/api/auth", "/api/me"], "nav": "account", "breadcrumb": "Account", "deepLink": "account" },
+    { "id": "users", "module": "user-profile", "prefixes": ["/api/users", "/api/profiles"], "nav": "profiles", "breadcrumb": "Profiles", "deepLink": "profiles" },
+    { "id": "tasks", "module": "task-marketplace", "prefixes": ["/api/tasks"], "nav": "tasks", "breadcrumb": "Tasks", "deepLink": "tasks" },
+    { "id": "community", "module": "community", "prefixes": ["/api/posts"], "nav": "community", "breadcrumb": "Community", "deepLink": "community" },
+    { "id": "library", "module": "media-platform", "prefixes": ["/api/library"], "nav": "library", "breadcrumb": "Library", "deepLink": "library" },
+    { "id": "media", "module": "media-platform", "prefixes": ["/api/media"], "nav": "assets", "breadcrumb": "Media", "deepLink": "media" },
+    { "id": "creative", "module": "ai-runtime", "prefixes": ["/api/creative"], "nav": "studios", "breadcrumb": "Creative", "deepLink": "creative" },
+    { "id": "chat", "module": "ai-runtime", "prefixes": ["/api/chat"], "nav": "chat", "breadcrumb": "Chat", "deepLink": "chat" },
+    { "id": "points", "module": "entitlements-accounting", "prefixes": ["/api/points"], "nav": "points", "breadcrumb": "Points", "deepLink": "points" },
+    { "id": "notifications", "module": "notifications-webhooks", "prefixes": ["/api/notifications"], "nav": "notifications", "breadcrumb": "Notifications", "deepLink": "notifications" },
+    { "id": "compliance", "module": "compliance-data-rights", "prefixes": ["/api/compliance", "/api/support"], "nav": "support", "breadcrumb": "Support", "deepLink": "support" },
+    { "id": "admin", "module": "admin-console", "prefixes": ["/api/admin"], "nav": "admin", "breadcrumb": "Admin", "deepLink": "admin", "requiresPermission": "admin:access" }
+  ]
+}
