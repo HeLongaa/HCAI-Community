@@ -22,7 +22,7 @@ import type { TaskChildCollection } from '../../hooks/useTaskWorkflows'
 import type { OAuthLoginResult } from '../../hooks/useAccountState'
 import type { MusicGenerationWorkflow } from '../../hooks/useMusicGenerationWorkflow'
 import type { VideoGenerationWorkflow } from '../../hooks/useVideoGenerationWorkflow'
-import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiNotification, ApiPointsSummary, ApiPolicyConsentStatus, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, ApiUserCreativeGeneration, NotificationListQuery, OAuthProvider, RegisterRequest } from '../../services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiNotification, ApiPointsSummary, ApiPolicyConsentStatus, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, ApiTaskWorkflow, ApiUserCreativeGeneration, NotificationListQuery, OAuthProvider, RegisterRequest } from '../../services/contracts'
 
 export type AppCopyViewModel = {
   t: Record<string, string>
@@ -167,6 +167,7 @@ export type TaskWorkflowViewModel = {
   proposalStateByTask: Record<string, TaskChildCollection<ApiTaskProposal>>
   submissionStateByTask: Record<string, TaskChildCollection<ApiTaskSubmission>>
   timelineStateByTask: Record<string, TaskChildCollection<ApiTaskTimelineItem>>
+  workflowStateByTask: Record<string, ApiTaskWorkflow>
   publishTask: (draft: PublishDraft) => Promise<void>
   claimTask: (task: Task) => Promise<void>
   submitProposal: (task: Task) => Promise<void>
@@ -175,6 +176,7 @@ export type TaskWorkflowViewModel = {
   rejectProposal: (task: Task, proposalId: string) => Promise<void>
   refreshSubmissions: (task: Task) => Promise<void>
   refreshTimeline: (task: Task) => Promise<void>
+  refreshWorkflow: (task: Task) => Promise<void>
   submitTask: (task: Task, options?: { assetIds?: string[]; rightsNote?: string }) => Promise<void>
   approveTask: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
   rejectTask: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>

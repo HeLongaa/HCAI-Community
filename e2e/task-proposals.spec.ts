@@ -132,3 +132,60 @@ test('proposal, submission, and review can complete through the browser workflow
   await publisherPage.close()
   await creatorDeliveryPage.close()
 })
+
+test('rejected delivery can open a dispute and recover after Admin resolution', async ({ page, request }) => {
+  const publisherSession = await login(request, 'launchteam')
+  const creatorSession = await login(request, 'promptlin')
+  const adminSession = await login(request, 'legalpixel')
+  const task = await apiData<{ id: string; title: string }>(
+    request.post(`${apiBaseUrl}/api/tasks`, {
+      headers: authHeaders(publisherSession.accessToken),
+      data: {
+        title: `E2E dispute recovery ${Date.now()}`,
+        category: 'Video',
+        description: 'Browser regression task for rejection, dispute, and recovery.',
+        acceptanceRules: 'Submit one governed delivery and rights note.',
+        pointsReward: 320,
+        visibility: 'public',
+        attachmentIds: [],
+      },
+    }),
+  )
+  await apiData(
+    request.post(`${apiBaseUrl}/api/tasks/${task.id}/submissions`, {
+      headers: authHeaders(creatorSession.accessToken),
+      data: { content: 'Disputed governed delivery.', assetIds: [], rightsNote: 'Rights included.' },
+    }),
+  )
+  await apiData(
+    request.post(`${apiBaseUrl}/api/tasks/${task.id}/review`, {
+      headers: authHeaders(publisherSession.accessToken),
+      data: { decision: 'reject', reviewNote: 'Acceptance evidence is incomplete.', acceptanceChecklist: [] },
+    }),
+  )
+
+  await signInPage(page, request, 'promptlin')
+  await page.goto('/')
+  await page.getByTestId('home-action-mine').click()
+  await page.getByTestId(`mine-task-card-maker-${task.id}`).click()
+  await expect(page.getByTestId('open-dispute-button')).toBeEnabled()
+  const disputeResponse = page.waitForResponse((response) =>
+    response.url().includes(`/api/tasks/${task.id}/disputes`) && response.request().method() === 'POST',
+  )
+  await page.getByTestId('open-dispute-button').click()
+  const dispute = await disputeResponse
+  expect(dispute.ok()).toBeTruthy()
+  const disputePayload = await dispute.json()
+  const reviewId = disputePayload.data.disputeReviewId as string
+
+  await apiData(
+    request.post(`${apiBaseUrl}/api/admin/reviews/${reviewId}/actions`, {
+      headers: authHeaders(adminSession.accessToken),
+      data: { decision: 'approve', note: 'Creator may submit a clarified revision.' },
+    }),
+  )
+  await page.reload()
+  await page.getByTestId(`mine-task-card-maker-${task.id}`).click()
+  await expect(page.getByText('Creator may submit a clarified revision.').first()).toBeVisible()
+  await expect(page.getByTestId('submit-work-button')).toBeEnabled()
+})

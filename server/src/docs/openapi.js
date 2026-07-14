@@ -479,6 +479,41 @@ export const openApiDocument = {
         },
       },
     },
+    '/tasks/{id}/workflow': {
+      get: {
+        summary: 'Return actor-scoped task lifecycle state and allowed actions',
+        description: 'The server derives an allowlisted role and actions from current task, proposal, submission, dispute, and permission state. Clients must not infer mutation eligibility from local UI state.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': {
+            description: 'Task workflow eligibility',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['taskId', 'taskStatus', 'role', 'actions'],
+                  properties: {
+                    taskId: { type: 'string' },
+                    taskStatus: { type: 'string' },
+                    disputeStatus: { type: ['string', 'null'] },
+                    latestSubmissionStatus: { type: ['string', 'null'] },
+                    role: { type: 'string', enum: ['publisher', 'assignee', 'proposer', 'admin', 'viewer'] },
+                    actions: {
+                      type: 'array',
+                      uniqueItems: true,
+                      items: { type: 'string', enum: ['view', 'propose', 'claim', 'review_proposals', 'submit', 'review_submission', 'open_dispute', 'view_timeline'] },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'Authentication required' },
+          '404': { description: 'Task not found' },
+        },
+      },
+    },
     '/tasks/delivery-targets': {
       get: {
         summary: 'List tasks the current actor can legally submit to',
@@ -531,7 +566,8 @@ export const openApiDocument = {
           },
         },
         responses: {
-          '201': { description: 'Created task proposal' },
+          '201': { description: 'Created task proposal or recovered the same creator payload' },
+          '409': { description: 'Task is closed, publisher self-proposal, or the creator already has a different proposal' },
         },
       },
     },
@@ -558,7 +594,8 @@ export const openApiDocument = {
           },
         },
         responses: {
-          '200': { description: 'Reviewed task proposal' },
+          '200': { description: 'Reviewed task proposal or recovered the same prior decision' },
+          '409': { description: 'Proposal or task was decided concurrently or already has a different decision' },
         },
       },
     },
@@ -595,8 +632,8 @@ export const openApiDocument = {
           },
         },
         responses: {
-          '201': { description: 'Updated task and created normalized submission' },
-          '409': { description: 'Task is not submit-ready or an asset fails delivery governance' },
+          '201': { description: 'Updated task and created a normalized submission, or recovered an identical pending payload' },
+          '409': { description: 'Task is not submit-ready, another payload is pending, or an asset fails delivery governance' },
         },
       },
     },
@@ -617,7 +654,7 @@ export const openApiDocument = {
     '/tasks/{id}/disputes': {
       post: {
         summary: 'Open a dispute for a rejected or stale task submission',
-        description: 'The submitter can dispute the latest rejected or stale submission. This marks the task disputed, marks the submission disputed, opens a task_disputes admin review, notifies reviewers, and writes a task timeline event.',
+        description: 'The submitter can dispute the latest rejected or stale submission. This conditionally marks the task and submission disputed, opens one stable task_disputes Admin review, notifies reviewers, and writes a task timeline event. Repeating the same reason recovers the existing result.',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         requestBody: {
           required: true,
@@ -637,6 +674,7 @@ export const openApiDocument = {
           '200': { description: 'Disputed task' },
           '403': { description: 'Requires task submission permission and submission ownership' },
           '404': { description: 'Task not found or no disputable submission exists' },
+          '409': { description: 'A different dispute is already open or state changed concurrently' },
         },
       },
     },
@@ -668,7 +706,7 @@ export const openApiDocument = {
     '/tasks/{id}/review': {
       post: {
         summary: 'Approve, reject, or request changes for a task submission',
-        description: 'Approval requires all supplied acceptance checklist items to be checked, settles the creator reward, and increments creator/publisher reputation once for the completion.',
+        description: 'Approval requires all supplied acceptance checklist items to be checked, settles escrow and the creator reward, and increments reputation once. Rejection keeps escrow pending for revision or dispute; rejected Admin dispute resolution releases escrow. Conditional transitions make repeated identical reviews idempotent.',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         requestBody: {
           required: true,

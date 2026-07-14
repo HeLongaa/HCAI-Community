@@ -85,9 +85,9 @@
       "area": "admin",
       "classification": "production_capable",
       "paths": ["src/features/admin/AdminPage.tsx"],
-      "markers": ["adminQueues", "no local substitute is shown"],
+      "markers": ["adminService.reviews", "no local substitute is shown"],
       "productionDisposition": "permission_scoped_admin_api_or_explicit_unavailable",
-      "ownerTasks": ["V1-39", "V1-42", "V1-43", "V1-69"]
+      "ownerTasks": ["V1-39", "V1-42", "V1-43", "V1-64", "V1-69"]
     },
     {
       "id": "frontend-static-plan-api-catalog",

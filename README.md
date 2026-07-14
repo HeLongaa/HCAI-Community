@@ -2,6 +2,8 @@
 
 A MusicGPT-inspired front-end prototype centered on an AI task marketplace and creator community.
 
+The V1 task marketplace uses an actor-scoped workflow contract for publish, claim, propose, select, deliver, revise, accept, reject, stale review, dispute, and Admin resolution. Duplicate and concurrent lifecycle mutations are guarded so internal escrow, notifications, audit, reputation, and settlement side effects occur once; see `docs/V1_64_TASK_MARKETPLACE_LIFECYCLE.md` and run `npm run test:v1-task-marketplace`.
+
 This project is being productized from a front-end prototype into a typed app plus API server. Core auth, task,
 community, admin, point settlement, and media upload flows now have service/API coverage while some creative outputs
 and catalog content remain simulated for product exploration.

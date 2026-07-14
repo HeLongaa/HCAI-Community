@@ -14,6 +14,7 @@ const createTaskPointsAndProfileServer = () => createRouteTestServer(registerTas
 const createTaskAndAdminServer = () => createRouteTestServer(registerTaskRoutes, registerAdminRoutes)
 const createTaskAndNotificationServer = () => createRouteTestServer(registerTaskRoutes, registerNotificationRoutes)
 const createTaskAdminAndNotificationServer = () => createRouteTestServer(registerTaskRoutes, registerAdminRoutes, registerNotificationRoutes)
+const createTaskAdminNotificationAndPointsServer = () => createRouteTestServer(registerTaskRoutes, registerAdminRoutes, registerNotificationRoutes, registerPointsRoutes)
 
 const validTaskBody = () => ({
   title: 'Integration test task',
@@ -222,6 +223,34 @@ test('POST /api/tasks/:id/claim assigns the task for creators', async () => {
   }
 })
 
+test('GET /api/tasks/:id/workflow returns actor-scoped action eligibility', async () => {
+  const server = await createTestServer()
+  try {
+    const task = await createTask(server, {}, 'demo-access.launchteam')
+    const creatorBefore = await requestJson(server.url, `/api/tasks/${task.id}/workflow`, {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(creatorBefore.status, 200)
+    assert.equal(creatorBefore.payload.data.role, 'viewer')
+    assert.deepEqual(creatorBefore.payload.data.actions.sort(), ['claim', 'propose', 'submit', 'view'].sort())
+
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
+    const publisherAfter = await requestJson(server.url, `/api/tasks/${task.id}/workflow`, {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+    assert.equal(publisherAfter.payload.data.role, 'publisher')
+    assert.ok(publisherAfter.payload.data.actions.includes('review_submission'))
+    assert.equal(publisherAfter.payload.data.actions.includes('submit'), false)
+  } finally {
+    await server.close()
+  }
+})
+
 test('POST /api/tasks/:id/proposals requires task:propose permission', async () => {
   const server = await createTestServer()
   try {
@@ -282,6 +311,33 @@ test('POST /api/tasks/:id/proposals creates a normalized proposal and updates ta
   }
 })
 
+test('POST /api/tasks/:id/proposals is idempotent and rejects a second creator proposal', async () => {
+  const server = await createTestServer()
+  try {
+    const task = await createTask(server)
+    const first = await requestJson(server.url, `/api/tasks/${task.id}/proposals`, {
+      body: validProposalBody(),
+      token: 'demo-access.promptlin',
+    })
+    const duplicate = await requestJson(server.url, `/api/tasks/${task.id}/proposals`, {
+      body: validProposalBody(),
+      token: 'demo-access.promptlin',
+    })
+    const conflict = await requestJson(server.url, `/api/tasks/${task.id}/proposals`, {
+      body: { ...validProposalBody(), coverLetter: 'A different proposal body.' },
+      token: 'demo-access.promptlin',
+    })
+
+    assert.equal(first.status, 201)
+    assert.equal(duplicate.status, 201)
+    assert.equal(duplicate.payload.data.id, first.payload.data.id)
+    assert.equal(conflict.status, 409)
+    assert.equal(conflict.payload.error.code, 'TASK_PROPOSAL_ALREADY_EXISTS')
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/tasks/:id/proposals paginates proposals for task publishers', async () => {
   const server = await createTestServer()
   try {
@@ -292,7 +348,7 @@ test('GET /api/tasks/:id/proposals paginates proposals for task publishers', asy
     })
     await requestJson(server.url, `/api/tasks/${task.id}/proposals`, {
       body: { ...validProposalBody(), coverLetter: 'Second proposal.' },
-      token: 'demo-access.promptlin',
+      token: 'demo-access.opsplus',
     })
 
     const firstPage = await requestJson(server.url, `/api/tasks/${task.id}/proposals?limit=1`, {
@@ -479,6 +535,37 @@ test('POST /api/tasks/:id/submissions creates a submission envelope', async () =
   }
 })
 
+test('POST /api/tasks/:id/submissions recovers identical retries and blocks competing payloads', async () => {
+  const server = await createTestServer()
+  try {
+    const task = await createTask(server)
+    const first = await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
+    const duplicate = await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
+    const conflict = await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: { ...validSubmissionBody(), content: 'Competing delivery payload.' },
+      token: 'demo-access.promptlin',
+    })
+    const submissions = await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      method: 'GET',
+      token: 'demo-access.taskops',
+    })
+
+    assert.equal(first.status, 201)
+    assert.equal(duplicate.status, 201)
+    assert.equal(conflict.status, 409)
+    assert.equal(conflict.payload.error.code, 'TASK_SUBMISSION_ALREADY_PENDING')
+    assert.equal(submissions.payload.data.length, 1)
+  } finally {
+    await server.close()
+  }
+})
+
 test('POST /api/tasks/:id/submissions hides tasks assigned to another creator', async () => {
   const server = await createTestServer()
   try {
@@ -650,6 +737,10 @@ test('POST /api/tasks/:id/review requires checked acceptance checklist before ap
   const server = await createTestServer()
   try {
     const task = await createTask(server, {}, 'demo-access.launchteam')
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
     const { status, payload } = await requestJson(server.url, `/api/tasks/${task.id}/review`, {
       body: {
         ...validReviewBody(),
@@ -674,6 +765,10 @@ test('POST /api/tasks/:id/review approves a task for publishers', async () => {
   const server = await createTestServer()
   try {
     const task = await createTask(server, {}, 'demo-access.launchteam')
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
     const { status, payload } = await requestJson(server.url, `/api/tasks/${task.id}/review`, {
       body: validReviewBody(),
       token: 'demo-access.launchteam',
@@ -693,6 +788,10 @@ test('POST /api/tasks/:id/review hides tasks owned by another publisher', async 
   const server = await createTestServer()
   try {
     const task = await createTask(server)
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
     const { status, payload } = await requestJson(server.url, `/api/tasks/${task.id}/review`, {
       body: validReviewBody(),
       token: 'demo-access.launchteam',
@@ -710,6 +809,10 @@ test('POST /api/tasks/:id/review allows admin ownership bypass', async () => {
   const server = await createTestServer()
   try {
     const task = await createTask(server)
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
     const { status, payload } = await requestJson(server.url, `/api/tasks/${task.id}/review`, {
       body: validReviewBody(),
       token: 'demo-access.opsplus',
@@ -983,16 +1086,21 @@ test('POST /api/tasks/:id/review does not settle reward points on rejection', as
       token: 'demo-access.launchteam',
     })
     const release = releaseLedger.payload.data.find((entry) => entry.sourceType === 'task_escrow_release' && entry.sourceId === String(task.id))
-    assert.ok(release)
-    assert.equal(release.description, 'Task reward released: Rejected settlement integration task')
-    assert.equal(release.delta, 810)
+    assert.equal(release, undefined)
 
     const cancelledLedger = await requestJson(server.url, '/api/points/ledger?limit=50&status=cancelled', {
       method: 'GET',
       token: 'demo-access.launchteam',
     })
     const cancelledEscrow = cancelledLedger.payload.data.find((entry) => entry.sourceType === 'task_escrow' && entry.sourceId === String(task.id))
-    assert.ok(cancelledEscrow)
+    assert.equal(cancelledEscrow, undefined)
+
+    const pendingLedger = await requestJson(server.url, '/api/points/ledger?limit=50&status=pending', {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+    const pendingEscrow = pendingLedger.payload.data.find((entry) => entry.sourceType === 'task_escrow' && entry.sourceId === String(task.id))
+    assert.ok(pendingEscrow)
   } finally {
     await server.close()
   }
@@ -1053,6 +1161,91 @@ test('POST /api/tasks/:id/disputes opens an admin review for rejected submission
       token: 'demo-access.promptlin',
     })
     assert.ok(creatorInbox.payload.data.some((item) => item.resourceId === String(task.id) && item.metadata.adminReviewId === review.id))
+  } finally {
+    await server.close()
+  }
+})
+
+test('Admin approval resolves a task dispute by reopening revision without releasing escrow', async () => {
+  const server = await createTaskAdminNotificationAndPointsServer()
+  try {
+    const task = await createTask(server, { title: 'Approved dispute lifecycle task', pointsReward: 640 }, 'demo-access.launchteam')
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
+    await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: { decision: 'reject', reviewNote: 'Missing acceptance evidence.' },
+      token: 'demo-access.launchteam',
+    })
+    const dispute = await requestJson(server.url, `/api/tasks/${task.id}/disputes`, {
+      body: { reason: 'The evidence was included in the governed assets.' },
+      token: 'demo-access.promptlin',
+    })
+    const reviewId = dispute.payload.data.disputeReviewId
+    const resolution = await requestJson(server.url, `/api/admin/reviews/${reviewId}/actions`, {
+      body: { decision: 'approve', note: 'Creator may submit a clarified revision.' },
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(resolution.status, 200)
+    assert.equal(resolution.payload.data.metadata.outcome, 'creator_revision_allowed')
+
+    const resolvedTask = await requestJson(server.url, `/api/tasks/${task.id}`, { method: 'GET' })
+    assert.equal(resolvedTask.payload.data.status, 'In Progress')
+    assert.equal(resolvedTask.payload.data.disputeStatus, 'approved')
+    const submissions = await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+    assert.equal(submissions.payload.data[0].status, 'revision_requested')
+    assert.equal(submissions.payload.data[0].dispute.outcome, 'creator_revision_allowed')
+
+    const pendingLedger = await requestJson(server.url, '/api/points/ledger?status=pending&limit=50', {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+    assert.ok(pendingLedger.payload.data.some((entry) => entry.sourceType === 'task_escrow' && entry.sourceId === String(task.id)))
+  } finally {
+    await server.close()
+  }
+})
+
+test('Admin rejection resolves a task dispute and releases escrow once', async () => {
+  const server = await createTaskAdminNotificationAndPointsServer()
+  try {
+    const task = await createTask(server, { title: 'Rejected dispute lifecycle task', pointsReward: 660 }, 'demo-access.launchteam')
+    await requestJson(server.url, `/api/tasks/${task.id}/submissions`, {
+      body: validSubmissionBody(),
+      token: 'demo-access.promptlin',
+    })
+    await requestJson(server.url, `/api/tasks/${task.id}/review`, {
+      body: { decision: 'reject', reviewNote: 'The required deliverable is absent.' },
+      token: 'demo-access.launchteam',
+    })
+    const dispute = await requestJson(server.url, `/api/tasks/${task.id}/disputes`, {
+      body: { reason: 'Please verify the submitted package.' },
+      token: 'demo-access.promptlin',
+    })
+    const reviewId = dispute.payload.data.disputeReviewId
+    const firstResolution = await requestJson(server.url, `/api/admin/reviews/${reviewId}/actions`, {
+      body: { decision: 'reject', note: 'Publisher rejection is upheld.' },
+      token: 'demo-access.legalpixel',
+    })
+    const duplicateResolution = await requestJson(server.url, `/api/admin/reviews/${reviewId}/actions`, {
+      body: { decision: 'reject', note: 'Publisher rejection is upheld.' },
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(firstResolution.status, 200)
+    assert.equal(duplicateResolution.status, 200)
+    assert.equal(firstResolution.payload.data.metadata.outcome, 'publisher_rejection_upheld')
+
+    const settledLedger = await requestJson(server.url, '/api/points/ledger?status=settled&limit=50', {
+      method: 'GET',
+      token: 'demo-access.launchteam',
+    })
+    const releases = settledLedger.payload.data.filter((entry) => entry.sourceType === 'task_escrow_release' && entry.sourceId === String(task.id))
+    assert.equal(releases.length, 1)
+    assert.equal(releases[0].delta, 660)
   } finally {
     await server.close()
   }

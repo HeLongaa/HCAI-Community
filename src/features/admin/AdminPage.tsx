@@ -4,7 +4,6 @@ import type { AdminDeepLink, AuditEvent, Page, Permission, Role, SimulateAction 
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { NotificationList } from '../../components/ui/NotificationList'
 import { StatusBadge } from '../tasks'
-import { adminQueues } from '../../data/mockData'
 import { isZhCopy, pointText, textFor } from '../../domain/utils'
 import { adminService } from '../../services/adminService'
 import { notificationService } from '../../services/notificationService'
@@ -407,23 +406,8 @@ export function AdminPage({
     Tags: textFor(t, 'Tags', '标签'),
     'AI config': textFor(t, 'AI config', 'AI 配置'),
   }
-  const fallbackQueueItems: AdminReviewQueueItemDto[] = useMemo(() => (isZh
-    ? [
-        ['Pending review', '音乐提示词包', 'soundforge', '验收后发放 1,200 积分'],
-        ['Resubmission', '电商图片广告工作流', 'shopstudio', '已驳回一次，需要补充品类样例'],
-        ['Community report', 'AI 任务定价讨论帖', 'n8than', '可考虑精选到灵感库'],
-        ['Publish audit', '产品发布视频需求', 'launchteam', '检查私密附件权限'],
-      ]
-    : adminQueues).map(([status, title, owner, note], index) => ({
-      id: `fallback-review-${index + 1}`,
-      status,
-      title,
-      owner,
-      note,
-      queue: status,
-    })), [isZh])
   const [activeTab, setActiveTab] = useState('Task review')
-  const [queueItems, setQueueItems] = useState<AdminReviewQueueItemDto[]>(fallbackQueueItems)
+  const [queueItems, setQueueItems] = useState<AdminReviewQueueItemDto[]>([])
   const [reviewQueueFilter, setReviewQueueFilter] = useState<string | null>(null)
   const [reviewingQueueItems, setReviewingQueueItems] = useState<Record<string, AdminReviewDecision>>({})
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
@@ -842,14 +826,6 @@ export function AdminPage({
     }
     return risks
   }, [mediaGovernanceConfig, mediaPolicyDraft])
-
-  useEffect(() => {
-    if (queueStatus.error || queueItems.length === 0) {
-      const timer = window.setTimeout(() => setQueueItems(fallbackQueueItems), 0)
-      return () => window.clearTimeout(timer)
-    }
-    return undefined
-  }, [fallbackQueueItems, queueItems.length, queueStatus.error])
 
   useEffect(() => {
     if (!deepLink) return

@@ -475,6 +475,7 @@ model TaskProposal {
 
   @@index([taskId, createdAt])
   @@index([proposerId])
+  @@unique([taskId, proposerId])
   @@map("task_proposals")
 }
 

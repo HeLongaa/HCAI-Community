@@ -22,7 +22,7 @@ This document records every known demo, mock, catalog, seed, fixture, and fallba
 | `frontend-music-workspace-mock-runtime` | Production defaults the application Provider mode to disabled; fixture Music remains development/test only | Keep disabled until separate Music approval | V1-30 through V1-34, V1-39 |
 | `frontend-video-workspace-mock-runtime` | Production defaults the application Provider mode to disabled; fixture Video remains development/test only | Keep disabled until separate Video approval | V1-25 through V1-29, V1-39 |
 | `creative-image-mock-execution` | Production defaults the application Provider mode to disabled; mock Image execution remains development/test only | Keep disabled until separate Image approval | V1-15 through V1-19, V1-39 |
-| `frontend-admin-demo-queue` | Production uses the permission-scoped Admin API or an explicit unavailable queue | Retain API-only/error behavior | V1-39, V1-42, V1-43, V1-69 |
+| `frontend-admin-demo-queue` | Production uses the permission-scoped Admin API or an explicit unavailable queue; V1-64 removed local review fallback records | Retain API-only/error behavior | V1-39, V1-42, V1-43, V1-64, V1-69 |
 | `frontend-static-plan-api-catalog` | Production pricing/API catalog is explicit unavailable until approved versioned content exists | Replace only with approved product content | V1-39, V1-40, V1-70, V1-78 |
 | `frontend-points-demo-ledger` | Production uses the Points API or an explicit unavailable ledger | Retain API-only/error behavior | V1-39, V1-40, V1-65 |
 | `frontend-runtime-source-labels` | Shell exposes API, stored, fallback, and mock classifications | Retain until blockers close, then show only real/unavailable states | V1-02, V1-39 |
