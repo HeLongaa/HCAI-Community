@@ -122,6 +122,28 @@ test('seed creative quota repository keeps commit and release idempotent', async
   assert.deepEqual(commitAfterRelease, firstRelease)
 })
 
+test('seed creative quota repository recovers identical reservations and rejects payload conflicts', async () => {
+  const repository = createSeedRepository()
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
+  const replayActor = { id: `quota-replay-user-${suffix}`, handle: `quotareplay${suffix.replaceAll(/[^a-z0-9]/gi, '').slice(-8)}` }
+  const payload = quotaPayload({
+    generationId: `gen-quota-replay-${suffix}`,
+    actorId: replayActor.id,
+    actorHandle: replayActor.handle,
+  })
+
+  const reserved = await repository.creativeQuota.reserve(payload, replayActor)
+  const replayed = await repository.creativeQuota.reserve(payload, replayActor)
+
+  assert.equal(reserved.reserved, true)
+  assert.equal(replayed.reservationId, reserved.reservationId)
+  assert.equal(replayed.quota.reserved, 1)
+  assert.throws(
+    () => repository.creativeQuota.reserve({ ...payload, costUnits: 2 }, replayActor),
+    (error) => error?.statusCode === 409 && error?.code === 'ACCOUNTING_OPERATION_CONFLICT',
+  )
+})
+
 test('seed creative quota repository records only safe audit metadata', async () => {
   const repository = createSeedRepository()
   const auditActor = { id: 'demo-user-quota-audit', handle: 'quotaaudit' }

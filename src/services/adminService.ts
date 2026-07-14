@@ -1,6 +1,12 @@
-import { api, withQuery } from './apiClient'
+import { api, apiEnvelope, withQuery } from './apiClient'
 import type {
   AdminAuditListQuery,
+  AdminAccountingReconciliationPage,
+  AdminAccountingReconciliationQuery,
+  AdminAccountingIssueDto,
+  AdminAccountingIssueSummary,
+  AdminAccountingRepairRequest,
+  AdminAccountingRepairResponse,
   AdminCreativeGenerationHistoryPage,
   AdminCreativeGenerationHistoryQuery,
   AdminPointAdjustmentRequest,
@@ -56,6 +62,41 @@ export const adminService = {
   },
   async auditEvent(id: string) {
     return api.get<AuditEventDto>(`/admin/audit/${id}`)
+  },
+  async accountingReconciliation(query?: AdminAccountingReconciliationQuery): Promise<AdminAccountingReconciliationPage> {
+    const envelope = await api.getEnvelope<AdminAccountingIssueDto[]>(withQuery('/admin/accounting/reconciliation', query))
+    const meta = envelope.meta as (ApiPaginationMeta & {
+      summary?: AdminAccountingIssueSummary
+      generatedAt?: string
+    }) | undefined
+    return {
+      items: envelope.data,
+      summary: meta?.summary ?? { total: 0, open: 0, repairPending: 0, resolved: 0, ignored: 0 },
+      generatedAt: meta?.generatedAt ?? '',
+      nextCursor: meta?.pagination?.nextCursor ?? null,
+    }
+  },
+  async scanAccountingReconciliation(query?: AdminAccountingReconciliationQuery): Promise<AdminAccountingReconciliationPage> {
+    const envelope = await apiEnvelope<AdminAccountingIssueDto[]>(withQuery('/admin/accounting/reconciliation/scan', query), { method: 'POST' })
+    const meta = envelope.meta as (ApiPaginationMeta & {
+      summary?: AdminAccountingIssueSummary
+      generatedAt?: string
+    }) | undefined
+    return {
+      items: envelope.data,
+      summary: meta?.summary ?? { total: 0, open: 0, repairPending: 0, resolved: 0, ignored: 0 },
+      generatedAt: meta?.generatedAt ?? '',
+      nextCursor: meta?.pagination?.nextCursor ?? null,
+    }
+  },
+  async accountingIssue(id: string) {
+    return api.get<AdminAccountingIssueDto>(`/admin/accounting/reconciliation/${id}`)
+  },
+  async exportAccountingReconciliationJson(query?: AdminAccountingReconciliationQuery) {
+    return api.text(withQuery('/admin/accounting/reconciliation/export', query))
+  },
+  async requestAccountingRepair(id: string, payload: AdminAccountingRepairRequest) {
+    return api.post<AdminAccountingRepairResponse>(`/admin/accounting/reconciliation/${id}/repair-requests`, payload)
   },
   async creativeGenerations(query?: AdminCreativeGenerationHistoryQuery): Promise<AdminCreativeGenerationHistoryPage> {
     const envelope = await api.getEnvelope<ApiCreativeGenerationRecord[]>(withQuery('/admin/creative/generations', query))

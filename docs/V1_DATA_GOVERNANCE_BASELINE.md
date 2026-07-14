@@ -12,7 +12,7 @@ production.
 
 The data inventory and implementation contract are frozen. The complete runtime is not implemented.
 
-- All 40 Prisma models are assigned exactly once to a governed data asset.
+- All 47 Prisma models are assigned exactly once to a governed data asset.
 - Six non-Prisma asset classes cover raw generation inputs, raw Provider payloads, observability, backups, export
   packages, and deployment secrets.
 - Unknown data is `restricted`; unknown flows and processors are denied.
@@ -47,7 +47,7 @@ not become public because the post is public.
 | `marketplace_records` | Confidential | PostgreSQL | `Task`, `TaskProposal`, `TaskSubmission` | Terminal task/dispute + 730 days |
 | `community_content_interactions` | Public | PostgreSQL | `Post`, `Comment`, `PostLike` | Delete request + 30 days |
 | `private_library_items` | Confidential | PostgreSQL | `LibraryItem` | Delete request + 30 days |
-| `internal_points_ledger` | Confidential | PostgreSQL | `PointLedger` | Terminal entry/account close + 730 days |
+| `internal_points_ledger` | Confidential | PostgreSQL | `PointLedger`, `InternalPointAccount` | Terminal entry/account close + 730 days |
 | `media_asset_metadata` | Confidential | PostgreSQL | `MediaAsset`, `MediaAssetRelation` | Delete/reject/abandon + 30 days; V1-09 output metadata excludes Provider URLs; V1-36 lineage stores application asset ids only |
 | `media_object_bytes` | Restricted | Object storage | Uploads, attachments, generated assets | Revoke now, object delete within 24 hours |
 | `media_scan_safety_records` | Restricted | PostgreSQL/archive | `MediaScanJob` | Terminal scan + 180 days, maximum 50/asset |
@@ -55,6 +55,7 @@ not become public because the post is public.
 | `chat_conversation_messages` | Restricted | PostgreSQL/encrypted backup | `ChatConversation`, `ChatTurn`, `ChatMessage`, `ChatDeletionTombstone` | Inactive + 365 days; owner deletion is immediate with 35-day restore-replay evidence |
 | `provider_lifecycle_records` | Restricted | PostgreSQL | `CreativeProviderReplayLedger`, `CreativeGenerationMutation`, `CreativeOutputIngestion`, `CreativeProviderRetryState`, `CreativeProviderOperation` | Terminal Provider lifecycle + 180 days; operation and failure evidence is allowlisted/hash-only |
 | `creative_accounting_records` | Confidential | PostgreSQL | `CreativeCreditLedger`, `CreativeQuotaWindow`, `CreativeQuotaReservation` | Terminal/account close + 730 days |
+| `internal_accounting_invariant_records` | Confidential | PostgreSQL | `InternalAccountingOperation`, `InternalAccountingMovement`, `AccountingReconciliationIssue` | Terminal/account close + 730 days; open reconciliation and dispute are retention exceptions |
 | `provider_cost_budget_records` | Confidential | PostgreSQL | `CreativeProviderBudgetWindow`, `CreativeProviderCostLedger` | Provider cost close/reconciliation + 730 days; amounts stored as integer micros |
 | `provider_control_records` | Confidential | PostgreSQL | `CreativeProviderControlState`, `CreativeProviderCapEvidence`, `CreativeProviderCircuitState`, `CreativeProviderCircuitEvent` | Control/circuit reconciliation + 730 days; evidence and probe tokens are hash-only |
 | `notification_records` | Confidential | PostgreSQL | `Notification` | Created + 180 days |
@@ -82,6 +83,8 @@ Deletion uses the action appropriate to the record, not a single database cascad
 - Auth data: revoke live sessions and OAuth access immediately, then hard-delete credential material.
 - Marketplace and internal ledger: delete private drafts/content; anonymize the subject while retaining bounded shared
   transaction and reconciliation evidence.
+- Internal accounting invariant records: never rewrite historical operations or movements; anonymize subject references
+  at deletion and retain bounded operation, movement, issue, review, and append-only compensation evidence.
 - Community and private library: delete user-owned content, or retain only anonymized thread structure when deleting a
   node would corrupt another user's conversation.
 - Media: revoke download immediately, invalidate cache/CDN within 24 hours, delete the object within 24 hours, then

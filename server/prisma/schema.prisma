@@ -76,6 +76,26 @@ enum LedgerStatus {
   cancelled
 }
 
+enum InternalAccountingUnit {
+  points
+  creative_credit
+  quota_unit
+}
+
+enum InternalAccountingOperationStatus {
+  pending
+  applied
+  compensated
+  failed
+}
+
+enum AccountingReconciliationStatus {
+  open
+  repair_pending
+  resolved
+  ignored
+}
+
 enum AuditActorType {
   user
   system
@@ -369,6 +389,8 @@ model User {
   postLikes                 PostLike[]
   libraryItems              LibraryItem[]
   pointLedger               PointLedger[]
+  internalPointAccount      InternalPointAccount?
+  accountingIssuesReviewed AccountingReconciliationIssue[] @relation("AccountingIssueReviewer")
   adminReviews              AdminReview[]              @relation("AdminReviewReviewer")
   mediaAssets               MediaAsset[]
   mediaAssetRelations       MediaAssetRelation[]
@@ -585,6 +607,97 @@ model PointLedger {
 
   @@unique([userId, sourceType, sourceId])
   @@map("point_ledger")
+}
+
+model InternalPointAccount {
+  id             String   @id @default(cuid())
+  userId         String   @unique @map("user_id")
+  balance        Int
+  openingBalance Int      @map("opening_balance")
+  version        Int      @default(0)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([updatedAt])
+  @@map("internal_point_accounts")
+}
+
+model InternalAccountingOperation {
+  id                   String                            @id @default(cuid())
+  operationKey         String                            @map("operation_key")
+  unit                 InternalAccountingUnit
+  kind                 String
+  status               InternalAccountingOperationStatus @default(pending)
+  sourceType           String                            @map("source_type")
+  sourceId             String                            @map("source_id")
+  payloadHash          String                            @map("payload_hash")
+  reasonCode           String                            @map("reason_code")
+  originalOperationKey String?                           @map("original_operation_key")
+  reconciliationIssueId String?                          @map("reconciliation_issue_id")
+  actorRef             String?                           @map("actor_ref")
+  metadata             Json?
+  appliedAt            DateTime?                         @map("applied_at")
+  createdAt            DateTime                          @default(now()) @map("created_at")
+  updatedAt            DateTime                          @updatedAt @map("updated_at")
+
+  movements InternalAccountingMovement[]
+
+  @@unique([operationKey, unit])
+  @@index([sourceType, sourceId, createdAt])
+  @@index([unit, status, createdAt])
+  @@index([reconciliationIssueId])
+  @@map("internal_accounting_operations")
+}
+
+model InternalAccountingMovement {
+  id           String                 @id @default(cuid())
+  operationId  String                 @map("operation_id")
+  unit         InternalAccountingUnit
+  accountRef   String                 @map("account_ref")
+  accountType  String                 @map("account_type")
+  amount       Int
+  balanceAfter Int?                   @map("balance_after")
+  sequence     Int
+  metadata     Json?
+  createdAt    DateTime               @default(now()) @map("created_at")
+
+  operation InternalAccountingOperation @relation(fields: [operationId], references: [id], onDelete: Restrict)
+
+  @@unique([operationId, sequence])
+  @@index([accountRef, createdAt])
+  @@index([unit, accountType, createdAt])
+  @@map("internal_accounting_movements")
+}
+
+model AccountingReconciliationIssue {
+  id                String                         @id @default(cuid())
+  issueKey          String                         @unique @map("issue_key")
+  type              String
+  unit              InternalAccountingUnit
+  status            AccountingReconciliationStatus @default(open)
+  sourceType        String                         @map("source_type")
+  sourceId          String                         @map("source_id")
+  expectedAmount    Int?                           @map("expected_amount")
+  actualAmount      Int?                           @map("actual_amount")
+  differenceAmount  Int?                           @map("difference_amount")
+  operationKey      String?                        @map("operation_key")
+  repairOperationKey String?                       @map("repair_operation_key")
+  evidence          Json?
+  detectedAt        DateTime                       @default(now()) @map("detected_at")
+  reviewedById      String?                        @map("reviewed_by_id")
+  reviewedAt        DateTime?                      @map("reviewed_at")
+  resolvedAt        DateTime?                      @map("resolved_at")
+  createdAt         DateTime                       @default(now()) @map("created_at")
+  updatedAt         DateTime                       @updatedAt @map("updated_at")
+
+  reviewedBy User? @relation("AccountingIssueReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([status, detectedAt])
+  @@index([unit, type, detectedAt])
+  @@index([sourceType, sourceId])
+  @@map("accounting_reconciliation_issues")
 }
 
 model MediaAsset {
@@ -1188,6 +1301,7 @@ model CreativeQuotaReservation {
   actorHandle   String?                        @map("actor_handle")
   workspace     String
   units         Int
+  idempotencyPayloadHash String?                    @map("idempotency_payload_hash")
   status        CreativeQuotaReservationStatus
   reason        String?
   reservedAt    DateTime                       @default(now()) @map("reserved_at")

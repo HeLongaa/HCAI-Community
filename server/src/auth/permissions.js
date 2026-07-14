@@ -14,6 +14,9 @@ export const permissions = Object.freeze([
   'admin:audit:read',
   'admin:queue:read',
   'admin:queue:review',
+  'admin:accounting:read',
+  'admin:accounting:scan',
+  'admin:accounting:repair',
   'admin:permissions:manage',
   'admin:creative:cancel',
   'admin:creative:retry',
@@ -35,6 +38,7 @@ const rolePermissionMap = {
     'admin:audit:read',
     'admin:queue:read',
     'admin:queue:review',
+    'admin:accounting:read',
     'post:create',
     'comment:create',
     'points:read',
@@ -66,7 +70,7 @@ export const hasPermission = (actor, permission) =>
   Boolean(actor && Array.isArray(actor.permissions) && actor.permissions.includes(permission))
 
 export const protectedRolePermissions = Object.freeze({
-  admin: Object.freeze(['admin:permissions:manage']),
+  admin: Object.freeze(['admin:permissions:manage', 'admin:accounting:repair']),
 })
 
 export const getProtectedRolePermissions = (role) => [...(protectedRolePermissions[role] ?? [])]

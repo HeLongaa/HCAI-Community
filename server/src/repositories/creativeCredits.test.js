@@ -91,14 +91,15 @@ test('seed creative credit repository reuses quota reservation id as idempotency
   const payload = creditPayload({ quotaReservationId: 'quota-idempotent-credit' })
 
   const reserved = await repository.creativeCredits.reserve(payload, actor)
-  const replayed = await repository.creativeCredits.reserve({
-    ...payload,
-    amount: 99,
-  }, actor)
+  const replayed = await repository.creativeCredits.reserve(payload, actor)
 
   assert.equal(replayed.reserved, true)
   assert.equal(replayed.credit.ledgerId, reserved.credit.ledgerId)
   assert.equal(replayed.credit.reserved, 2)
+  assert.throws(
+    () => repository.creativeCredits.reserve({ ...payload, amount: 99 }, actor),
+    (error) => error?.statusCode === 409 && error?.code === 'ACCOUNTING_OPERATION_CONFLICT',
+  )
 })
 
 test('seed creative credit repository stores only safe metadata and audit evidence', async () => {

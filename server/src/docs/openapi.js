@@ -2295,6 +2295,93 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/accounting/reconciliation': {
+      get: {
+        summary: 'List internal accounting reconciliation issues',
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['open', 'repair_pending', 'resolved', 'ignored'] } },
+          { name: 'unit', in: 'query', schema: { type: 'string', enum: ['points', 'creative_credit', 'quota_unit'] } },
+          { name: 'type', in: 'query', schema: { type: 'string' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+        ],
+        responses: {
+          '200': { description: 'Reconciliation issues with status summary and scan timestamp' },
+          '403': { description: 'Requires admin:accounting:read' },
+        },
+      },
+    },
+    '/admin/accounting/reconciliation/scan': {
+      post: {
+        summary: 'Run and persist an internal accounting reconciliation scan',
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['open', 'repair_pending', 'resolved', 'ignored'] } },
+          { name: 'unit', in: 'query', schema: { type: 'string', enum: ['points', 'creative_credit', 'quota_unit'] } },
+          { name: 'type', in: 'query', schema: { type: 'string' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+        ],
+        responses: {
+          '200': { description: 'Persisted reconciliation scan results' },
+          '403': { description: 'Requires admin:accounting:scan' },
+        },
+      },
+    },
+    '/admin/accounting/reconciliation/export': {
+      get: {
+        summary: 'Export filtered internal accounting reconciliation evidence as JSON',
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['open', 'repair_pending', 'resolved', 'ignored'] } },
+          { name: 'unit', in: 'query', schema: { type: 'string', enum: ['points', 'creative_credit', 'quota_unit'] } },
+          { name: 'type', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 100 } },
+        ],
+        responses: {
+          '200': { description: 'Reconciliation evidence export artifact' },
+          '403': { description: 'Requires admin:accounting:read' },
+        },
+      },
+    },
+    '/admin/accounting/reconciliation/{id}': {
+      get: {
+        summary: 'Read one internal accounting reconciliation issue',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Reconciliation issue detail and evidence' },
+          '403': { description: 'Requires admin:accounting:read' },
+          '404': { description: 'Reconciliation issue not found' },
+        },
+      },
+    },
+    '/admin/accounting/reconciliation/{id}/repair-requests': {
+      post: {
+        summary: 'Request reviewed compensation for a supported accounting issue',
+        description: 'Queues a high-risk compensation request. Approval must come from a different admin and appends a compensation operation without rewriting historical movements.',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['repairKind', 'reasonCode', 'reason'],
+                properties: {
+                  repairKind: { type: 'string', enum: ['compensation'] },
+                  reasonCode: { type: 'string', enum: ['repair_missing_movement', 'repair_balance_drift'] },
+                  reason: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Repair review request and repair-pending issue' },
+          '403': { description: 'Requires admin:accounting:repair' },
+          '404': { description: 'Reconciliation issue not found' },
+          '409': { description: 'Issue is stale, already closed, or not eligible for automated compensation' },
+        },
+      },
+    },
     '/admin/creative/provider-controls': {
       get: {
         summary: 'List sanitized Provider controls, circuits, cap evidence, and retry state',

@@ -24,8 +24,9 @@
     },
     {
       "id": "internal-points",
-      "evidence": ["server/src/modules/points/routes.js", "server/src/repositories/creativeCredits.test.js", "src/services/pointsService.ts"],
-      "completionGates": ["ledger invariants", "quota and escrow lifecycle", "idempotent compensation and refund semantics"]
+      "evidence": ["config/v1-internal-accounting-invariants.json", "server/src/accounting/internalAccounting.js", "server/src/modules/points/routes.js", "server/src/repositories/creativeCredits.test.js", "src/services/pointsService.ts"],
+      "completionGates": ["balanced operation movements and atomic point balances", "quota and escrow lifecycle", "idempotent compensation and reconciliation semantics"],
+      "verificationCommand": "npm run test:v1-accounting"
     },
     {
       "id": "notifications",

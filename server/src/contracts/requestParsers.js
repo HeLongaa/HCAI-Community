@@ -711,6 +711,39 @@ export const parseAdminAuditListQuery = (query) => ({
   actorId: optionalText(query, 'actorId', null),
 })
 
+export const parseAdminAccountingReconciliationQuery = (query) => {
+  const status = optionalText(query, 'status', null)
+  const unit = optionalText(query, 'unit', null)
+  const type = optionalText(query, 'type', null)
+  const statuses = ['open', 'repair_pending', 'resolved', 'ignored']
+  const units = ['points', 'creative_credit', 'quota_unit']
+  const types = [
+    'point_balance_drift',
+    'unbalanced_operation',
+    'orphan_reservation',
+    'missing_terminal_movement',
+    'duplicate_operation_source',
+    'escrow_state_mismatch',
+    'credit_state_mismatch',
+    'quota_state_mismatch',
+  ]
+  if (status && !statuses.includes(status)) throw validationFailed(`status must be one of: ${statuses.join(', ')}`)
+  if (unit && !units.includes(unit)) throw validationFailed(`unit must be one of: ${units.join(', ')}`)
+  if (type && !types.includes(type)) throw validationFailed(`type must be one of: ${types.join(', ')}`)
+  return {
+    ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 }),
+    status,
+    unit,
+    type,
+  }
+}
+
+export const parseAdminAccountingRepairRequest = (body) => ({
+  repairKind: requireOneOf(body, 'repairKind', ['compensation']),
+  reasonCode: requireOneOf(body, 'reasonCode', ['repair_missing_movement', 'repair_balance_drift']),
+  reason: requireText(body, 'reason'),
+})
+
 export const parseAdminSecurityEventListQuery = (query) => ({
   ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 }),
   type: optionalText(query, 'type', null),
