@@ -21,6 +21,8 @@ Includes:
 - `npm run test:permission-registry`
 - `npm run test:resource-authorization`
 - `npm run test:admin-mutation-audit`
+- `npm run test:domain-events`
+- `npm run test:job-runtime`
 - `npm run test:v1-scope`
 - `npm run test:v1-surfaces`
 - `npm run test:v1-providers`
@@ -71,6 +73,14 @@ closed instrumental/lyrics parameters, and gates private playback/download on cl
 voice cloning, TTS, product registration, HTTP, credentials, Provider lifecycle, and real traffic remain unavailable.
 
 Use this before handing off small frontend, contract, or documentation changes.
+
+For migration or repository changes in EVENT-01/JOB-01, also run the opt-in real PostgreSQL gate after `0043_domain_events_and_job_runs` is deployed:
+
+```bash
+FOUNDATION_DATABASE_URL="$DATABASE_URL" npm run test:events-jobs-integration
+```
+
+This verifies Task/Outbox atomic commit and rollback, event and job claim competition, immutable replay, foreign/late lease rejection, sensitive job input/result redaction, cooperative cancellation, and timeout sweeping. The test skips when `FOUNDATION_DATABASE_URL` is absent so the ordinary fixture gate never guesses a database target.
 
 ## Pull Request Check
 

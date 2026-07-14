@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "events": [
+    {
+      "type": "task.created",
+      "version": 1,
+      "owner": "task-marketplace",
+      "aggregateType": "task",
+      "payloadSchemaVersion": 1,
+      "requiredPayloadFields": ["taskId", "publisherId", "status", "category"],
+      "sensitiveFields": []
+    }
+  ]
+}

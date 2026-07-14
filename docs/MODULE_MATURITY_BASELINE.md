@@ -21,7 +21,7 @@ Maturity has four meanings:
 
 | Module | Maturity | Current user outcome | Current administrator outcome | Primary gaps |
 | --- | --- | --- | --- | --- |
-| Platform architecture | Partial | Unified API entry and explicit unavailable states | Release and runtime inventories | Domain dependency rules, route/query contracts |
+| Platform architecture | Partial | Unified API entry and explicit unavailable states | Release/runtime inventories and Outbox publication inspection/replay | Broader domain dependency enforcement and EVENT-02 consumer controls |
 | Admin console | Partial | No direct user surface | RBAC, review, audit, accounting, security, metrics | Reusable resource framework, bulk jobs, global search |
 | User and profile | Partial | Personal profile, public page, portfolio, sessions | Limited role and audit read sides | Account lifecycle, export/deletion, full Admin management |
 | Identity and access | Partial | Email/OAuth login and session revocation | Role permission editing | Permission registry, resource policy, high-risk access controls |
@@ -34,7 +34,7 @@ Maturity has four meanings:
 | Entitlements and accounting | Production capable | Points, credits, quota, escrow and refunds | Policy, adjustments, reconciliation and compensation | Broader billing statistics and user detail experience |
 | Notifications and webhooks | Partial | Inbox, read state and safe deep links | Limited evidence lookup | Durable delivery jobs, retry/DLQ, webhook subscriptions |
 | Trust, safety and risk | Partial | Policy blocks/review and appeal entry | Security alerts and moderation queues | Unified cases, abuse rules, risk policy and statistics |
-| Jobs and automation | Contract only | Partial async recovery | Lease metrics | Unified jobs, attempts, cancellation, retry, DLQ and cron UI |
+| Jobs and automation | Partial | Existing interval work is durably tracked | Definition/run list, detail, safe cancellation, attempts and lease evidence | Retry, DLQ, Cron, pause/resume and manual rerun controls |
 | Audit and evidence | Partial | Critical flows emit evidence | Search, detail, export and redaction | Shared Admin write middleware, retention and evidence verification |
 | Observability and incident response | Partial | Stable errors and explicit failure | Metrics, Prometheus and security dispositions | Trace correlation, SLOs, dashboards and incident workflow |
 | Developer platform | Contract only | OpenAPI document | No API key administration | API v1 policy, keys, scopes, usage and deprecation |

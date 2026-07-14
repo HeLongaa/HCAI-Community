@@ -40,6 +40,36 @@ Permission IDs remain stable. `GET /api/admin/permissions` additionally exposes 
 
 All non-GET `/api/admin/**` routes are audit-classified. Before a handler runs, a sanitized attempt event records actor, stable action, resource, reason code, request ID, and bounded parameter evidence. Raw request bodies, prompts, Provider payloads, URLs, cookies, tokens, and secrets are excluded. Domain audit events continue to record the final outcome.
 
+## Domain Event And Job Operations
+
+### `GET /admin/domain-events`
+
+Requires `admin:events:read`. Lists safe Outbox facts with publication state. Filters: `type`, `aggregateType`, `aggregateId`, `status`, `cursor`, and `limit` (1..100). Results use newest-first cursor pagination.
+
+### `GET /admin/domain-events/:id`
+
+Requires `admin:events:read`. Returns the immutable event fact and current publication state.
+
+### `POST /admin/domain-events/:id/replay`
+
+Requires `admin:events:replay` and a validated `reasonCode`. Only `published` or `failed` publications can return to `pending`; event identity, payload, aggregate, correlation, and occurrence time never change. The mutation writes sanitized attempt and domain outcome audit evidence.
+
+### `GET /admin/jobs/definitions`
+
+Requires `admin:jobs:read`. Lists registered definitions; filters: `enabled` and `type`.
+
+### `GET /admin/jobs/runs`
+
+Requires `admin:jobs:read`. Lists safe run and attempt projections. Filters: `status`, `definitionId`, `ownerId`, `correlationId`, `cursor`, and `limit` (1..100).
+
+### `GET /admin/jobs/runs/:id`
+
+Requires `admin:jobs:read`. Returns one run, definition, attempts, cancellation/timeout evidence, and redacted versioned input/result.
+
+### `POST /admin/jobs/runs/:id/cancel`
+
+Requires `admin:jobs:manage` and a validated `reasonCode`. Queued runs cancel immediately; running runs record a cancellation request and finish only when the matching worker lease acknowledges it. Terminal runs remain unchanged. JOB-01 intentionally exposes no arbitrary execute, retry, replay, or Cron endpoint.
+
 ## Auth
 
 ### `POST /auth/login`
