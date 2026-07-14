@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "taskId": "ARC-03",
+  "policyDocument": "docs/LIST_QUERY_CONTRACT.md",
+  "defaults": {
+    "pagination": "cursor",
+    "maxLimit": 100,
+    "cursorField": "id",
+    "exportFormats": ["json", "csv"]
+  },
+  "resources": [
+    { "id": "tasks", "routes": ["GET /api/tasks"], "cursor": true, "filters": ["status", "category", "q"], "sorts": ["createdAt", "reward"], "export": false },
+    { "id": "taskProposals", "routes": ["GET /api/tasks/:id/proposals"], "cursor": true, "filters": ["status"], "sorts": ["createdAt"], "export": false },
+    { "id": "taskSubmissions", "routes": ["GET /api/tasks/:id/submissions"], "cursor": true, "filters": ["status"], "sorts": ["createdAt"], "export": false },
+    { "id": "posts", "routes": ["GET /api/posts"], "cursor": true, "filters": ["category", "q"], "sorts": ["createdAt", "likes"], "export": false },
+    { "id": "profiles", "routes": ["GET /api/profiles"], "cursor": true, "filters": ["lane", "q"], "sorts": ["rank"], "export": false },
+    { "id": "library", "routes": ["GET /api/library"], "cursor": true, "filters": ["type", "q"], "sorts": ["createdAt"], "export": false },
+    { "id": "mediaAssets", "routes": ["GET /api/media/assets"], "cursor": true, "filters": ["purpose", "status", "q"], "sorts": ["createdAt"], "export": false },
+    { "id": "mediaReviewQueue", "routes": ["GET /api/media/review-queue"], "cursor": true, "filters": ["status", "purpose", "q"], "sorts": ["createdAt"], "export": false },
+    { "id": "mediaScanJobs", "routes": ["GET /api/media/scan-jobs"], "cursor": true, "filters": ["status", "provider"], "sorts": ["updatedAt"], "export": true, "exportRoutes": ["GET /api/media/scan-jobs/archive"] },
+    { "id": "notifications", "routes": ["GET /api/notifications"], "cursor": true, "filters": ["readState", "type", "resourceType"], "sorts": ["createdAt"], "export": false },
+    { "id": "pointsLedger", "routes": ["GET /api/points/ledger"], "cursor": true, "filters": ["userHandle", "status", "q"], "sorts": ["createdAt"], "export": false },
+    { "id": "adminPointsLedger", "routes": ["GET /api/admin/points/ledger"], "cursor": true, "filters": ["userHandle", "status", "q"], "sorts": ["createdAt"], "export": true, "exportRoutes": ["GET /api/admin/points/ledger.csv"] },
+    { "id": "adminReviews", "routes": ["GET /api/admin/reviews"], "cursor": true, "filters": ["queue", "status"], "sorts": ["createdAt"], "export": false },
+    { "id": "adminAudit", "routes": ["GET /api/admin/audit"], "cursor": true, "filters": ["action", "resourceType", "actorId"], "sorts": ["createdAt"], "export": true, "exportRoutes": ["GET /api/admin/audit/export"] },
+    { "id": "adminAccountingReconciliation", "routes": ["GET /api/admin/accounting/reconciliation"], "cursor": true, "filters": ["status", "unit", "q"], "sorts": ["createdAt"], "export": true, "exportRoutes": ["GET /api/admin/accounting/reconciliation/export"] },
+    { "id": "adminCreativeGenerations", "routes": ["GET /api/admin/creative/generations"], "cursor": true, "filters": ["workspace", "status", "provider"], "sorts": ["createdAt"], "export": false },
+    { "id": "adminSecurityEvents", "routes": ["GET /api/admin/security/events"], "cursor": true, "filters": ["source", "severity", "type"], "sorts": ["occurredAt"], "export": false },
+    { "id": "adminSecurityAlerts", "routes": ["GET /api/admin/security/alerts"], "cursor": true, "filters": ["status", "severity", "source"], "sorts": ["createdAt"], "export": true, "exportRoutes": ["GET /api/admin/security/alerts/:id/export"] },
+    { "id": "domainEvents", "routes": ["GET /api/admin/domain-events"], "cursor": true, "filters": ["type", "aggregateType", "aggregateId", "status"], "sorts": ["occurredAt"], "export": false },
+    { "id": "domainEventInbox", "routes": ["GET /api/admin/domain-event-inbox"], "cursor": true, "filters": ["consumerKey", "status", "aggregateType", "aggregateId"], "sorts": ["receivedAt"], "export": false },
+    { "id": "jobRuns", "routes": ["GET /api/admin/jobs/runs"], "cursor": true, "filters": ["definitionKey", "status"], "sorts": ["createdAt"], "export": false },
+    { "id": "supportRequests", "routes": ["GET /api/support/requests"], "cursor": true, "filters": ["status", "category"], "sorts": ["createdAt"], "export": false }
+  ]
+}
