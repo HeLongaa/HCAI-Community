@@ -16,7 +16,13 @@ for (const status of contract.runStatuses) add(`JobRun status ${status} exists`,
 add('JobRun has idempotency and correlation', schema.includes('idempotencyKey') && schema.includes('correlationId'), 'idempotencyKey/correlationId')
 add('JobAttempt has worker lease and timeout', schema.includes('leaseToken') && schema.includes('heartbeatAt') && schema.includes('timeoutAt'), 'lease/heartbeat/timeout')
 add('interval workers use JobRun when manager is configured', worker.includes('jobManager.ensureDefinition') && worker.includes('jobManager.claim') && worker.includes('jobManager.complete'), 'tracked worker wrapper')
-add('Admin supports list detail and cancel only', routes.includes('/api/admin/jobs/definitions') && routes.includes('/api/admin/jobs/runs/:id/cancel') && !routes.includes('/retry'), contract.deferredToJob02.join(','))
+add(
+  'Admin supports list detail and cancel only',
+  routes.includes('/api/admin/jobs/definitions') &&
+    routes.includes('/api/admin/jobs/runs/:id/cancel') &&
+    !/\/api\/admin\/jobs\/[^'"]*\/retry/.test(routes),
+  contract.deferredToJob02.join(','),
+)
 add('package exposes JOB-01 gate', packageJson.scripts['test:job-runtime'] === 'node scripts/verify-job-runtime.mjs && node --test server/src/jobs/jobRepository.test.js server/src/operations/worker.test.js server/src/modules/operations/routes.test.js')
 add('quick gate includes JOB-01 gate', packageJson.scripts['check:quick'].includes('npm run test:job-runtime'))
 add('policy document exists', fs.existsSync(path.join(root, contract.policyDocument)), contract.policyDocument)

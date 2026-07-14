@@ -46,6 +46,7 @@ export const permissionRegistry = Object.freeze([
   definePermission('security:alerts:manage', 'trust-safety-risk', 'security_alert', 'manage', 'critical', admins, { resourceAuthorization: true, description: 'Acknowledge and silence security alerts' }),
   definePermission('admin:events:read', 'platform-architecture', 'domain_event', 'read', 'high', admins, { description: 'Read versioned domain event publication evidence' }),
   definePermission('admin:events:replay', 'platform-architecture', 'domain_event', 'replay', 'critical', admins, { resourceAuthorization: true, description: 'Request replay of a published or failed domain event' }),
+  definePermission('admin:events:recover', 'platform-architecture', 'domain_event_consumption', 'recover', 'critical', admins, { resourceAuthorization: true, description: 'Retry dead-lettered event consumption or request compensation' }),
   definePermission('admin:jobs:read', 'jobs-automation', 'job_run', 'read', 'high', admins, { description: 'Read job definitions, runs, attempts, and safe results' }),
   definePermission('admin:jobs:manage', 'jobs-automation', 'job_run', 'manage', 'critical', admins, { resourceAuthorization: true, description: 'Cancel queued or running job runs' }),
 ])

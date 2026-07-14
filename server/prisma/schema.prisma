@@ -270,6 +270,30 @@ enum DomainEventPublicationStatus {
   failed
 }
 
+enum DomainEventConsumptionStatus {
+  pending
+  processing
+  retry_scheduled
+  succeeded
+  dead_lettered
+  compensation_pending
+  compensated
+  compensation_failed
+}
+
+enum DomainEventAttemptStatus {
+  running
+  succeeded
+  failed
+}
+
+enum DomainEventCompensationStatus {
+  pending
+  processing
+  succeeded
+  failed
+}
+
 enum JobRunStatus {
   queued
   running
@@ -385,6 +409,7 @@ model DomainEventOutbox {
   eventVersion         Int      @map("event_version")
   aggregateType        String   @map("aggregate_type")
   aggregateId          String   @map("aggregate_id")
+  aggregateSequence    Int      @map("aggregate_sequence")
   ownerId              String?  @map("owner_id")
   correlationId        String   @map("correlation_id")
   causationId          String?  @map("causation_id")
@@ -394,12 +419,26 @@ model DomainEventOutbox {
   occurredAt           DateTime @default(now()) @map("occurred_at")
   createdAt            DateTime @default(now()) @map("created_at")
 
-  publication DomainEventPublication?
+  publication   DomainEventPublication?
+  inboxReceipts DomainEventConsumerInbox[]
 
+  @@unique([aggregateType, aggregateId, aggregateSequence])
   @@index([eventType, occurredAt])
   @@index([aggregateType, aggregateId, occurredAt])
   @@index([correlationId, occurredAt])
   @@map("domain_event_outbox")
+}
+
+model DomainEventAggregateSequence {
+  id              String   @id
+  aggregateType   String   @map("aggregate_type")
+  aggregateId     String   @map("aggregate_id")
+  currentSequence Int      @default(0) @map("current_sequence")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([aggregateType, aggregateId])
+  @@map("domain_event_aggregate_sequences")
 }
 
 model DomainEventPublication {
@@ -420,6 +459,146 @@ model DomainEventPublication {
   @@index([status, availableAt])
   @@index([claimExpiresAt])
   @@map("domain_event_publications")
+}
+
+model DomainEventConsumerInbox {
+  id                String   @id
+  eventId           String   @map("event_id")
+  consumerKey       String   @map("consumer_key")
+  eventType         String   @map("event_type")
+  eventVersion      Int      @map("event_version")
+  aggregateType     String   @map("aggregate_type")
+  aggregateId       String   @map("aggregate_id")
+  aggregateSequence Int      @map("aggregate_sequence")
+  ownerId           String?  @map("owner_id")
+  correlationId     String   @map("correlation_id")
+  idempotencyKey    String   @unique @map("idempotency_key")
+  receivedAt        DateTime @default(now()) @map("received_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  event        DomainEventOutbox               @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  consumption  DomainEventConsumption?
+  attempts     DomainEventConsumptionAttempt[]
+  compensation DomainEventCompensation?
+
+  @@unique([eventId, consumerKey])
+  @@index([consumerKey, receivedAt])
+  @@index([consumerKey, aggregateType, aggregateId, aggregateSequence])
+  @@map("domain_event_consumer_inbox")
+}
+
+model DomainEventConsumption {
+  inboxId                 String                       @id @map("inbox_id")
+  status                  DomainEventConsumptionStatus @default(pending)
+  attempts                Int                          @default(0)
+  maxAttempts             Int                          @map("max_attempts")
+  availableAt             DateTime                     @default(now()) @map("available_at")
+  leaseToken              String?                      @unique @map("lease_token")
+  claimedBy               String?                      @map("claimed_by")
+  claimExpiresAt          DateTime?                    @map("claim_expires_at")
+  lastErrorCode           String?                      @map("last_error_code")
+  lastAttemptAt           DateTime?                    @map("last_attempt_at")
+  succeededAt             DateTime?                    @map("succeeded_at")
+  deadLetteredAt          DateTime?                    @map("dead_lettered_at")
+  compensationRequestedAt DateTime?                    @map("compensation_requested_at")
+  compensatedAt           DateTime?                    @map("compensated_at")
+  createdAt               DateTime                     @default(now()) @map("created_at")
+  updatedAt               DateTime                     @updatedAt @map("updated_at")
+
+  inbox DomainEventConsumerInbox @relation(fields: [inboxId], references: [id], onDelete: Restrict)
+
+  @@index([status, availableAt])
+  @@index([claimExpiresAt])
+  @@map("domain_event_consumptions")
+}
+
+model DomainEventConsumptionAttempt {
+  id            String                   @id
+  inboxId       String                   @map("inbox_id")
+  attemptNumber Int                      @map("attempt_number")
+  status        DomainEventAttemptStatus @default(running)
+  workerId      String                   @map("worker_id")
+  leaseToken    String                   @unique @map("lease_token")
+  errorCode     String?                  @map("error_code")
+  startedAt     DateTime                 @default(now()) @map("started_at")
+  completedAt   DateTime?                @map("completed_at")
+  createdAt     DateTime                 @default(now()) @map("created_at")
+
+  inbox DomainEventConsumerInbox @relation(fields: [inboxId], references: [id], onDelete: Restrict)
+
+  @@unique([inboxId, attemptNumber])
+  @@index([status, startedAt])
+  @@map("domain_event_consumption_attempts")
+}
+
+model DomainEventConsumerCursor {
+  id            String   @id
+  consumerKey   String   @map("consumer_key")
+  aggregateType String   @map("aggregate_type")
+  aggregateId   String   @map("aggregate_id")
+  lastSequence  Int      @default(0) @map("last_sequence")
+  lastInboxId   String?  @map("last_inbox_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([consumerKey, aggregateType, aggregateId])
+  @@map("domain_event_consumer_cursors")
+}
+
+model DomainEventCompensation {
+  id             String   @id
+  inboxId        String   @unique @map("inbox_id")
+  requestedById  String?  @map("requested_by_id")
+  reasonCode     String   @map("reason_code")
+  idempotencyKey String   @unique @map("idempotency_key")
+  requestedAt    DateTime @default(now()) @map("requested_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  inbox    DomainEventConsumerInbox         @relation(fields: [inboxId], references: [id], onDelete: Restrict)
+  state    DomainEventCompensationState?
+  attempts DomainEventCompensationAttempt[]
+
+  @@index([requestedById, requestedAt])
+  @@map("domain_event_compensations")
+}
+
+model DomainEventCompensationState {
+  compensationId String                        @id @map("compensation_id")
+  status         DomainEventCompensationStatus @default(pending)
+  attempts       Int                           @default(0)
+  availableAt    DateTime                      @default(now()) @map("available_at")
+  leaseToken     String?                       @unique @map("lease_token")
+  claimedBy      String?                       @map("claimed_by")
+  claimExpiresAt DateTime?                     @map("claim_expires_at")
+  lastErrorCode  String?                       @map("last_error_code")
+  succeededAt    DateTime?                     @map("succeeded_at")
+  createdAt      DateTime                      @default(now()) @map("created_at")
+  updatedAt      DateTime                      @updatedAt @map("updated_at")
+
+  compensation DomainEventCompensation @relation(fields: [compensationId], references: [id], onDelete: Restrict)
+
+  @@index([status, availableAt])
+  @@index([claimExpiresAt])
+  @@map("domain_event_compensation_states")
+}
+
+model DomainEventCompensationAttempt {
+  id             String                   @id
+  compensationId String                   @map("compensation_id")
+  attemptNumber  Int                      @map("attempt_number")
+  status         DomainEventAttemptStatus @default(running)
+  workerId       String                   @map("worker_id")
+  leaseToken     String                   @unique @map("lease_token")
+  errorCode      String?                  @map("error_code")
+  startedAt      DateTime                 @default(now()) @map("started_at")
+  completedAt    DateTime?                @map("completed_at")
+  createdAt      DateTime                 @default(now()) @map("created_at")
+
+  compensation DomainEventCompensation @relation(fields: [compensationId], references: [id], onDelete: Restrict)
+
+  @@unique([compensationId, attemptNumber])
+  @@index([status, startedAt])
+  @@map("domain_event_compensation_attempts")
 }
 
 model JobDefinition {

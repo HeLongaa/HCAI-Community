@@ -35,6 +35,9 @@ test('buildEnv allows development without managed token secrets', () => {
     apiEmbeddedWorkersEnabled: false,
     workerLeaseTtlSeconds: 300,
     workerLeaseRenewIntervalSeconds: 60,
+    domainEventWorkerEnabled: true,
+    domainEventWorkerIntervalSeconds: 5,
+    domainEventWorkerBatchSize: 50,
     mediaScanWorkerEnabled: false,
     mediaScanWorkerIntervalSeconds: 60,
     taskStaleSubmissionWorkerEnabled: false,
@@ -866,6 +869,28 @@ test('buildEnv validates and exposes security event collector settings', () => {
   assert.equal(env.securityAlertEmailTimeoutSeconds, 8)
 })
 
+test('buildEnv validates and exposes domain event worker settings', () => {
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', DOMAIN_EVENT_WORKER_INTERVAL_SECONDS: '0' }),
+    /DOMAIN_EVENT_WORKER_INTERVAL_SECONDS must be a positive integer/,
+  )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', DOMAIN_EVENT_WORKER_BATCH_SIZE: '0' }),
+    /DOMAIN_EVENT_WORKER_BATCH_SIZE must be a positive integer/,
+  )
+
+  const env = buildEnv({
+    NODE_ENV: 'development',
+    DOMAIN_EVENT_WORKER_ENABLED: 'false',
+    DOMAIN_EVENT_WORKER_INTERVAL_SECONDS: '15',
+    DOMAIN_EVENT_WORKER_BATCH_SIZE: '20',
+  })
+
+  assert.equal(env.domainEventWorkerEnabled, false)
+  assert.equal(env.domainEventWorkerIntervalSeconds, 15)
+  assert.equal(env.domainEventWorkerBatchSize, 20)
+})
+
 test('buildEnv validates and exposes creative provider alert settings without enabling delivery', () => {
   assert.throws(
     () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_ALERT_WINDOW_MINUTES: '0' }),
@@ -1186,6 +1211,9 @@ test('deployment smoke accepts production auth, storage, scanner, and notificati
     MEDIA_SCAN_ALERT_EMAIL_FROM: 'alerts@example.com',
     MEDIA_SCAN_WORKER_ENABLED: 'true',
     MEDIA_SCAN_WORKER_INTERVAL_SECONDS: '30',
+    DOMAIN_EVENT_WORKER_ENABLED: 'true',
+    DOMAIN_EVENT_WORKER_INTERVAL_SECONDS: '10',
+    DOMAIN_EVENT_WORKER_BATCH_SIZE: '75',
     TASK_STALE_SUBMISSION_WORKER_ENABLED: 'true',
     TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS: '300',
     TASK_STALE_SUBMISSION_OLDER_THAN_HOURS: '72',
@@ -1244,6 +1272,9 @@ test('deployment smoke accepts production auth, storage, scanner, and notificati
   assert.equal(env.apiEmbeddedWorkersEnabled, false)
   assert.equal(env.workerLeaseTtlSeconds, 300)
   assert.equal(env.workerLeaseRenewIntervalSeconds, 60)
+  assert.equal(env.domainEventWorkerEnabled, true)
+  assert.equal(env.domainEventWorkerIntervalSeconds, 10)
+  assert.equal(env.domainEventWorkerBatchSize, 75)
   assert.equal(env.mediaScanWorkerEnabled, true)
   assert.equal(env.mediaScanWorkerIntervalSeconds, 30)
   assert.equal(env.taskStaleSubmissionWorkerEnabled, true)

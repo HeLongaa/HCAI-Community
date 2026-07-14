@@ -7,6 +7,7 @@
       "version": 1,
       "owner": "task-marketplace",
       "aggregateType": "task",
+      "ordering": "aggregate_sequence",
       "payloadSchemaVersion": 1,
       "requiredPayloadFields": ["taskId", "publisherId", "status", "category"],
       "sensitiveFields": []

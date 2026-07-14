@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "registry": "config/domain-event-consumer-registry.json",
+  "eventRegistry": "config/domain-event-registry.json",
+  "schemaPath": "server/prisma/schema.prisma",
+  "migration": "server/prisma/migrations/0044_domain_event_consumers/migration.sql",
+  "policyDocument": "docs/DOMAIN_EVENT_CONSUMERS.md",
+  "requiredModels": [
+    "DomainEventAggregateSequence",
+    "DomainEventConsumerInbox",
+    "DomainEventConsumption",
+    "DomainEventConsumptionAttempt",
+    "DomainEventConsumerCursor",
+    "DomainEventCompensation",
+    "DomainEventCompensationState",
+    "DomainEventCompensationAttempt"
+  ],
+  "deferredToJob02": ["generic job retry", "Cron scheduling", "generic job DLQ", "manual JobRun rerun"]
+}

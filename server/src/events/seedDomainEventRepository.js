@@ -4,12 +4,16 @@ import { domainEventDto } from './domainEvents.js'
 export const createSeedDomainEventRepository = ({ recordAudit = async () => {} } = {}) => {
   const events = new Map()
   const publications = new Map()
+  const aggregateSequences = new Map()
   const row = (event) => event ? { ...event, publication: publications.get(event.id) ?? null } : null
   const repository = {
     async enqueue(event) {
       const existing = [...events.values()].find((item) => item.idempotencyKey === event.idempotencyKey)
       if (existing) return domainEventDto(row(existing))
-      const created = { ...event, createdAt: new Date(event.occurredAt ?? Date.now()) }
+      const sequenceKey = `${event.aggregateType}:${event.aggregateId}`
+      const aggregateSequence = (aggregateSequences.get(sequenceKey) ?? 0) + 1
+      aggregateSequences.set(sequenceKey, aggregateSequence)
+      const created = { ...event, aggregateSequence, createdAt: new Date(event.occurredAt ?? Date.now()) }
       events.set(created.id, created)
       publications.set(created.id, { eventId: created.id, status: 'pending', attempts: 0, availableAt: new Date(), claimToken: null, claimedBy: null, claimExpiresAt: null, publishedAt: null, lastErrorCode: null, createdAt: new Date(), updatedAt: new Date() })
       return domainEventDto(row(created))

@@ -7,6 +7,7 @@ import { getPermissionsForRole, hasPermission, permissionById } from '../auth/pe
 import { authorizeResource } from '../auth/resourcePolicy.js'
 import { taskCreatedEvent } from '../events/domainEvents.js'
 import { createPrismaDomainEventRepository, enqueueDomainEvent } from '../events/prismaDomainEventRepository.js'
+import { createPrismaDomainEventConsumerRepository } from '../events/prismaDomainEventConsumerRepository.js'
 import { createPrismaJobRepository } from '../jobs/prismaJobRepository.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, hashToken, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
@@ -191,8 +192,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     return databasePermissions?.length ? databasePermissions : getPermissionsForRole(role)
   }
 
-  const recordAudit = async ({ actor = null, action, resourceType, resourceId = null, metadata = null }) => {
-    await client.auditEvent.create({
+  const recordAudit = async ({ actor = null, action, resourceType, resourceId = null, metadata = null }, db = client) => {
+    await db.auditEvent.create({
       data: buildAuditRecord({
         actorType: actor ? 'user' : 'system',
         actorId: actor?.id ?? null,
@@ -206,6 +207,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
 
   const chat = createPrismaChatRepository(client, { recordAudit })
   const domainEvents = createPrismaDomainEventRepository(client, { recordAudit })
+  const domainEventConsumers = createPrismaDomainEventConsumerRepository(client, { recordAudit })
   const jobs = createPrismaJobRepository(client, { recordAudit })
 
   const leaseExpiry = (ttlSeconds) => new Date(Date.now() + Math.max(1, Number(ttlSeconds ?? 300)) * 1000)
@@ -9243,6 +9245,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     securityEvents,
     operationLeases,
     domainEvents,
+    domainEventConsumers,
     jobs,
     operationsMetrics,
     authorization,

@@ -4,6 +4,8 @@ import { ok } from '../../common/http/responses.js'
 import { readJsonBody } from '../../common/http/request.js'
 import {
   parseDomainEventListQuery,
+  parseDomainEventInboxListQuery,
+  parseDomainEventRecoveryRequest,
   parseDomainEventReplayRequest,
   parseJobCancelRequest,
   parseJobDefinitionListQuery,
@@ -35,6 +37,46 @@ export const registerOperationRoutes = (router, options = {}) => {
     const event = await routeRepositories.domainEvents.replay(context.params.id, actor, payload)
     if (!event) throw notFound(`/api/admin/domain-events/${context.params.id}`)
     ok(response, event)
+  })
+
+  router.add('GET', '/api/admin/domain-event-consumers', async (_request, response, context) => {
+    requirePermission(context, 'admin:events:read')
+    const routeRepositories = await resolveRepositories()
+    const definitions = routeRepositories.domainEventConsumers.listDefinitions()
+    ok(response, definitions, { pagination: { limit: definitions.length, nextCursor: null } })
+  })
+
+  router.add('GET', '/api/admin/domain-event-inbox', async (_request, response, context) => {
+    requirePermission(context, 'admin:events:read')
+    const routeRepositories = await resolveRepositories()
+    const page = await routeRepositories.domainEventConsumers.list(parseDomainEventInboxListQuery(context.query))
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('GET', '/api/admin/domain-event-inbox/:id', async (_request, response, context) => {
+    requirePermission(context, 'admin:events:read')
+    const routeRepositories = await resolveRepositories()
+    const inbox = await routeRepositories.domainEventConsumers.find(context.params.id)
+    if (!inbox) throw notFound(`/api/admin/domain-event-inbox/${context.params.id}`)
+    ok(response, inbox)
+  })
+
+  router.add('POST', '/api/admin/domain-event-inbox/:id/retry', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:events:recover')
+    const routeRepositories = await resolveRepositories()
+    const payload = parseDomainEventRecoveryRequest((await readJsonBody(request)) ?? {})
+    const inbox = await routeRepositories.domainEventConsumers.retry(context.params.id, actor, payload)
+    if (!inbox) throw notFound(`/api/admin/domain-event-inbox/${context.params.id}`)
+    ok(response, inbox)
+  })
+
+  router.add('POST', '/api/admin/domain-event-inbox/:id/compensate', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:events:recover')
+    const routeRepositories = await resolveRepositories()
+    const payload = parseDomainEventRecoveryRequest((await readJsonBody(request)) ?? {})
+    const inbox = await routeRepositories.domainEventConsumers.requestCompensation(context.params.id, actor, payload)
+    if (!inbox) throw notFound(`/api/admin/domain-event-inbox/${context.params.id}`)
+    ok(response, inbox)
   })
 
   router.add('GET', '/api/admin/jobs/definitions', async (_request, response, context) => {
