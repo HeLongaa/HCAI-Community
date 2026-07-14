@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "policyDocument": "docs/RUNTIME_CONFIG_REGISTRY.md",
+  "secretPolicy": {
+    "storage": "secret_ref_only",
+    "forbiddenValueKeys": ["secret", "token", "password", "apiKey", "privateKey", "cipher", "credential"],
+    "allowedRefPattern": "^secretref://[a-z0-9][a-z0-9._/-]{2,120}$"
+  },
+  "entries": [
+    {
+      "key": "auth.session",
+      "domain": "identity-access",
+      "scope": "environment",
+      "valueType": "object",
+      "schemaVersion": 1,
+      "defaultValue": { "refreshTtlDays": 30, "sameSite": "Lax" },
+      "publishStrategy": "reviewed_version"
+    },
+    {
+      "key": "media.scan",
+      "domain": "media-platform",
+      "scope": "environment",
+      "valueType": "object",
+      "schemaVersion": 1,
+      "defaultValue": { "provider": "manual", "maxAttempts": 3, "timeoutSeconds": 900 },
+      "publishStrategy": "reviewed_version"
+    },
+    {
+      "key": "jobs.worker",
+      "domain": "jobs-automation",
+      "scope": "environment",
+      "valueType": "object",
+      "schemaVersion": 1,
+      "defaultValue": { "leaseTtlSeconds": 300, "renewIntervalSeconds": 60 },
+      "publishStrategy": "reviewed_version"
+    },
+    {
+      "key": "storage.objects",
+      "domain": "media-platform",
+      "scope": "environment",
+      "valueType": "object",
+      "schemaVersion": 1,
+      "defaultValue": { "driver": "mock", "bucketRef": null },
+      "publishStrategy": "reviewed_version"
+    }
+  ]
+}

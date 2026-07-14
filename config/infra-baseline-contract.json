@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "scope": "INFRA-01",
+  "policyDocument": "docs/INFRASTRUCTURE_BASELINE.md",
+  "envSource": "server/src/config/env.js",
+  "requiredServices": [
+    { "id": "postgres", "env": "DATABASE_URL", "productionRequired": true },
+    { "id": "redis", "env": "RATE_LIMIT_REDIS_URL", "productionRequiredWhen": "RATE_LIMIT_STORE=redis" },
+    { "id": "object-storage", "env": "STORAGE_BUCKET", "productionRequiredWhen": "STORAGE_DRIVER=s3" },
+    { "id": "secret-manager", "env": "SECRET_MANAGER_PROVIDER", "productionRequired": true }
+  ],
+  "environments": ["development", "test", "ci", "staging", "production"],
+  "forbiddenProductionFallbacks": ["seed_repository", "mock_storage", "mock_provider", "inline_secret_values"],
+  "requiredEnvFields": ["deploymentEnv", "secretManagerProvider", "hasSecretManager", "hasDatabaseUrl", "infrastructureBaseline"]
+}
