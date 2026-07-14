@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { HttpError } from '../common/errors/httpError.js'
-import { hasPermission, permissions, rolePermissions } from '../auth/permissions.js'
+import { hasPermission, permissionRegistry, permissions, rolePermissions } from '../auth/permissions.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
 import { seedStore } from '../data/seed.js'
@@ -3784,7 +3784,7 @@ export const createSeedRepository = () => ({
     },
   },
   authorization: {
-    listPermissions: () => permissions.map((id) => ({ id, description: null })),
+    listPermissions: () => permissionRegistry.map(({ defaultRoles: _defaultRoles, ...permission }) => ({ ...permission })),
     listRolePermissions: () =>
       [...editableRolePermissions.entries()].map(([role, rolePermissionIds]) => ({
         role,

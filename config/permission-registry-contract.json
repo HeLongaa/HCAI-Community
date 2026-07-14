@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "registryPath": "server/src/auth/permissions.js",
+  "schemaPath": "server/prisma/schema.prisma",
+  "migration": "server/prisma/migrations/0042_structured_permission_registry/migration.sql",
+  "policyDocument": "docs/RBAC_PERMISSION_REGISTRY.md",
+  "roles": ["member", "creator", "publisher", "moderator", "admin"],
+  "riskLevels": ["low", "medium", "high", "critical"],
+  "protectedPermissions": ["admin:permissions:manage", "admin:accounting:repair"]
+}

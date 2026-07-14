@@ -302,9 +302,15 @@ model SecurityEvent {
 }
 
 model Permission {
-  id          String   @id
-  description String?
-  createdAt   DateTime @default(now()) @map("created_at")
+  id                    String   @id
+  module                String   @default("unclassified")
+  resource              String   @default("unclassified")
+  action                String   @default("unclassified")
+  riskLevel             String   @default("high") @map("risk_level")
+  isProtected           Boolean  @default(false) @map("is_protected")
+  resourceAuthorization Boolean  @default(false) @map("resource_authorization")
+  description           String?
+  createdAt             DateTime @default(now()) @map("created_at")
 
   roles RolePermission[]
 

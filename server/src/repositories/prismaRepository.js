@@ -3,7 +3,7 @@ import { HttpError } from '../common/errors/httpError.js'
 import prismaClientPkg from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
-import { getPermissionsForRole, hasPermission } from '../auth/permissions.js'
+import { getPermissionsForRole, hasPermission, permissionById } from '../auth/permissions.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, hashToken, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
 import {
@@ -8791,6 +8791,12 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       })
       return rows.map((row) => ({
         id: row.id,
+        module: row.module,
+        resource: row.resource,
+        action: row.action,
+        riskLevel: row.riskLevel,
+        protected: row.isProtected,
+        resourceAuthorization: row.resourceAuthorization,
         description: row.description,
       }))
     },
@@ -8805,6 +8811,9 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     updateRolePermissions: async (role, permissionIds, actor) => {
       const roles = ['member', 'creator', 'publisher', 'moderator', 'admin']
       if (!roles.includes(role)) {
+        return null
+      }
+      if (permissionIds.some((permissionId) => !permissionById[permissionId])) {
         return null
       }
       const updated = await client.$transaction(async (transaction) => {
