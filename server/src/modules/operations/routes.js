@@ -9,19 +9,20 @@ import {
   parseJobDefinitionListQuery,
   parseJobRunListQuery,
 } from '../../contracts/requestParsers.js'
-import { repositories } from '../../repositories/index.js'
 
 export const registerOperationRoutes = (router, options = {}) => {
-  const routeRepositories = options.repositories ?? repositories
+  const resolveRepositories = async () => options.repositories ?? (await import('../../repositories/index.js')).repositories
 
   router.add('GET', '/api/admin/domain-events', async (_request, response, context) => {
     requirePermission(context, 'admin:events:read')
+    const routeRepositories = await resolveRepositories()
     const page = await routeRepositories.domainEvents.list(parseDomainEventListQuery(context.query))
     ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
   })
 
   router.add('GET', '/api/admin/domain-events/:id', async (_request, response, context) => {
     requirePermission(context, 'admin:events:read')
+    const routeRepositories = await resolveRepositories()
     const event = await routeRepositories.domainEvents.find(context.params.id)
     if (!event) throw notFound(`/api/admin/domain-events/${context.params.id}`)
     ok(response, event)
@@ -29,6 +30,7 @@ export const registerOperationRoutes = (router, options = {}) => {
 
   router.add('POST', '/api/admin/domain-events/:id/replay', async (request, response, context) => {
     const actor = requirePermission(context, 'admin:events:replay')
+    const routeRepositories = await resolveRepositories()
     const payload = parseDomainEventReplayRequest((await readJsonBody(request)) ?? {})
     const event = await routeRepositories.domainEvents.replay(context.params.id, actor, payload)
     if (!event) throw notFound(`/api/admin/domain-events/${context.params.id}`)
@@ -37,18 +39,21 @@ export const registerOperationRoutes = (router, options = {}) => {
 
   router.add('GET', '/api/admin/jobs/definitions', async (_request, response, context) => {
     requirePermission(context, 'admin:jobs:read')
+    const routeRepositories = await resolveRepositories()
     const definitions = await routeRepositories.jobs.listDefinitions(parseJobDefinitionListQuery(context.query))
     ok(response, definitions, { pagination: { limit: definitions.length, nextCursor: null } })
   })
 
   router.add('GET', '/api/admin/jobs/runs', async (_request, response, context) => {
     requirePermission(context, 'admin:jobs:read')
+    const routeRepositories = await resolveRepositories()
     const page = await routeRepositories.jobs.list(parseJobRunListQuery(context.query))
     ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
   })
 
   router.add('GET', '/api/admin/jobs/runs/:id', async (_request, response, context) => {
     requirePermission(context, 'admin:jobs:read')
+    const routeRepositories = await resolveRepositories()
     const run = await routeRepositories.jobs.find(context.params.id)
     if (!run) throw notFound(`/api/admin/jobs/runs/${context.params.id}`)
     ok(response, run)
@@ -56,6 +61,7 @@ export const registerOperationRoutes = (router, options = {}) => {
 
   router.add('POST', '/api/admin/jobs/runs/:id/cancel', async (request, response, context) => {
     const actor = requirePermission(context, 'admin:jobs:manage')
+    const routeRepositories = await resolveRepositories()
     const payload = parseJobCancelRequest((await readJsonBody(request)) ?? {})
     const run = await routeRepositories.jobs.requestCancel(context.params.id, actor, payload)
     if (!run) throw notFound(`/api/admin/jobs/runs/${context.params.id}`)
