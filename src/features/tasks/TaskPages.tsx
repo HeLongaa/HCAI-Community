@@ -18,7 +18,7 @@ import type { AsyncResourceState, MarketplaceProfile, Page, PublishDraft, Simula
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import type { TaskChildCollection } from '../../hooks/useTaskWorkflows'
 import { mediaService } from '../../services/mediaService'
-import type { ApiAcceptanceChecklistItem, ApiMediaAsset, ApiProfileSummary, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, MediaAssetPurpose } from '../../services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiMediaAsset, ApiProfileSummary, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, ApiTaskWorkflow, MediaAssetPurpose } from '../../services/contracts'
 import {
   categoryLabel,
   findProfile,
@@ -678,11 +678,13 @@ export function MyTasksPage({
   proposalStateByTask = {},
   submissionStateByTask = {},
   timelineStateByTask = {},
+  workflowStateByTask = {},
   refreshProposals = async () => undefined,
   acceptProposal = async () => undefined,
   rejectProposal = async () => undefined,
   refreshSubmissions = async () => undefined,
   refreshTimeline = async () => undefined,
+  refreshWorkflow = async () => undefined,
   submitTask,
   approveTask = async () => undefined,
   rejectTask = async () => undefined,
@@ -697,11 +699,13 @@ export function MyTasksPage({
   proposalStateByTask?: Record<string, TaskChildCollection<ApiTaskProposal>>
   submissionStateByTask?: Record<string, TaskChildCollection<ApiTaskSubmission>>
   timelineStateByTask?: Record<string, TaskChildCollection<ApiTaskTimelineItem>>
+  workflowStateByTask?: Record<string, ApiTaskWorkflow>
   refreshProposals?: (task: Task) => Promise<void>
   acceptProposal?: (task: Task, proposalId: string) => Promise<void>
   rejectProposal?: (task: Task, proposalId: string) => Promise<void>
   refreshSubmissions?: (task: Task) => Promise<void>
   refreshTimeline?: (task: Task) => Promise<void>
+  refreshWorkflow?: (task: Task) => Promise<void>
   submitTask: (task: Task, options?: { assetIds?: string[]; rightsNote?: string }) => Promise<void>
   approveTask?: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
   rejectTask?: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
@@ -732,30 +736,17 @@ export function MyTasksPage({
     () => [...assignedTasks, ...proposedTasks.filter((task) => !assignedTasks.some((assigned) => assigned.id === task.id))],
     [assignedTasks, proposedTasks],
   )
-  const proposalRows = isZh
-    ? [
-        { maker: 'promptlin', title: '结构最清晰，含首版样例和验收拆分', meta: '预计 1 天提交首版' },
-        { maker: 'legalpixel', title: '版权边界完整，适合公开模板沉淀', meta: '预计 2 天提交首版' },
-        { maker: 'iriswood', title: '视觉参考充分，适合图片/视频类任务', meta: '预计当天确认方向' },
-      ]
-    : [
-        { maker: 'scriptbear', title: 'Clear scope with sample scenes and acceptance checks', meta: 'First draft in 1 day' },
-        { maker: 'legalpixel', title: 'Strong rights language and review checklist', meta: 'First draft in 2 days' },
-        { maker: 'iriswood', title: 'Visual references fit image and video tasks', meta: 'Direction confirmed today' },
-      ]
-  const discussionLog = isZh
-    ? ['发布方：请先确认前三秒钩子和版权范围。', '创作者：已补充两版方案，保留可编辑提示词。', '发布方：采用第二版，进入交付验收。']
-    : ['Publisher: Please confirm the hook and rights scope first.', 'Maker: Added two proposal variants with editable prompts.', 'Publisher: Choosing the second plan and moving to delivery review.']
+  const activeDiscussionCount = deliveryTasks.filter((task) => ['In Progress', 'Pending Review', 'Disputed', 'Rejected'].includes(task.status)).length
   const stages = isZh
     ? [
         { label: '待选方案', value: `${publisherTasks.length}`, text: '我发布的任务收到多个方案，等待选择。' },
         { label: '接取任务', value: `${deliveryTasks.length}`, text: '我接取、提交方案或正在交付的任务。' },
-        { label: '沟通中', value: '3', text: '双方围绕方案、修改和验收确认。' },
+        { label: '沟通中', value: `${activeDiscussionCount}`, text: '双方围绕方案、修改和验收确认。' },
       ]
     : [
         { label: 'Proposal queues', value: `${publisherTasks.length}`, text: 'My posted tasks with multiple proposals to choose from.' },
         { label: 'Accepted tasks', value: `${deliveryTasks.length}`, text: 'Tasks I accepted, proposed for, or am delivering.' },
-        { label: 'In discussion', value: '3', text: 'Both sides are aligning scope, revisions, and acceptance.' },
+        { label: 'In discussion', value: `${activeDiscussionCount}`, text: 'Both sides are aligning scope, revisions, and acceptance.' },
       ]
   const typeFieldsFor = (task: Task, mode: 'publisher' | 'maker') => {
     const category = task.category.toLowerCase()
@@ -967,45 +958,13 @@ export function MyTasksPage({
       return { ...current, [selectedTaskKey]: next }
     })
   }
-  const demoProposals: ApiTaskProposal[] = proposalRows.map((proposal, index) => ({
-    id: `demo-proposal-${index}`,
-    taskId: selectedTaskKey,
-    proposer: {
-      handle: proposal.maker,
-      name: { en: proposal.maker, zh: proposal.maker },
-      role: { en: 'creator', zh: 'creator' },
-      lane: 'maker',
-      initials: proposal.maker.slice(0, 2).toUpperCase(),
-    },
-    coverLetter: proposal.title,
-    estimate: proposal.meta,
-    status: 'pending',
-    decisionNote: '',
-    createdAt: '',
-  }))
-  const visibleProposals = proposalCollection?.items.length ? proposalCollection.items : demoProposals
-  const visibleSubmissions =
-    submissionCollection?.items.length
-      ? submissionCollection.items
-      : selectedTask?.submission && selectedTask.submission !== 'No submission yet.'
-        ? [
-            {
-              id: `demo-submission-${selectedTaskKey}`,
-              taskId: selectedTaskKey,
-              submitter: { handle: selectedTask.assignee },
-              content: selectedTask.submission,
-              assetIds: [],
-              rightsNote: selectedTask.rights,
-              status: selectedTask.status === 'Completed' ? 'approved' as const : 'pending_review' as const,
-              reviewNote: selectedTask.reviewNote,
-              acceptanceChecklist: [],
-              reviewedBy: null,
-              reviewedAt: null,
-              createdAt: '',
-            },
-          ]
-        : []
-  const canOpenDispute = selectedRole === 'maker' && visibleSubmissions.some((submission) => ['rejected', 'stale'].includes(submission.status))
+  const visibleProposals = proposalCollection?.items ?? []
+  const visibleSubmissions = submissionCollection?.items ?? []
+  const workflow = selectedTaskKey ? workflowStateByTask[selectedTaskKey] : undefined
+  const canReviewProposals = workflow?.actions.includes('review_proposals') ?? false
+  const canReviewSubmission = workflow?.actions.includes('review_submission') ?? false
+  const canSubmitWork = workflow?.actions.includes('submit') ?? false
+  const canOpenDispute = selectedRole === 'maker' && (workflow?.actions.includes('open_dispute') ?? false)
   const handleFor = (summary: ApiProfileSummary | { handle: string } | null) =>
     summary?.handle ? `@${summary.handle}` : textFor(t, 'Unknown user', '未知用户')
   const timelineDate = (value: string) => {
@@ -1021,6 +980,7 @@ export function MyTasksPage({
 
   useEffect(() => {
     if (!selectedTask) return
+    void refreshWorkflow(selectedTask)
     if (selectedRole === 'publisher') {
       void refreshProposals(selectedTask)
       void refreshSubmissions(selectedTask)
@@ -1053,7 +1013,7 @@ export function MyTasksPage({
           <small>
             {role === 'publisher'
               ? textFor(t, `${task.proposals} proposals waiting`, `${task.proposals} 个方案待查看`)
-              : textFor(t, `${discussionLog.length} discussion updates`, `${discussionLog.length} 条沟通记录`)}
+              : textFor(t, `${timelineStateByTask[String(task.id)]?.items.length ?? 0} timeline events`, `${timelineStateByTask[String(task.id)]?.items.length ?? 0} 条时间线记录`)}
           </small>
         </div>
       </button>
@@ -1197,7 +1157,6 @@ export function MyTasksPage({
                     </div>
                   )}
                   {visibleProposals.map((proposal, index) => {
-                    const isDemo = proposal.id.startsWith('demo-proposal-')
                     return (
                     <div className="proposal-card" key={proposal.id}>
                       <div>
@@ -1211,32 +1170,19 @@ export function MyTasksPage({
                           className={proposal.status === 'accepted' || index === 0 ? 'primary-button small' : 'ghost-button small'}
                           data-testid={`proposal-accept-${proposal.id}`}
                           type="button"
-                          disabled={proposal.status !== 'pending' && !isDemo}
-                          onClick={() =>
-                            isDemo
-                              ? simulateAction(
-                                  isZh ? `已选择方案：${handleFor(proposal.proposer)}` : `Selected proposal from ${handleFor(proposal.proposer)}`,
-                                  {
-                                    description: isZh ? `选择方案：${handleFor(proposal.proposer)}` : `Selected proposal: ${handleFor(proposal.proposer)}`,
-                                    delta: '+0',
-                                  },
-                                )
-                              : void acceptProposal(selectedTask, proposal.id)
-                          }
+                          disabled={proposal.status !== 'pending' || !canReviewProposals}
+                          onClick={() => void acceptProposal(selectedTask, proposal.id)}
                         >
                           <Check size={15} />
-                          {proposal.status === 'accepted' || (isDemo && index === 0) ? textFor(t, 'Selected', '已选择') : textFor(t, 'Choose', '选择方案')}
+                          {proposal.status === 'accepted' ? textFor(t, 'Selected', '已选择') : textFor(t, 'Choose', '选择方案')}
                         </button>
                         {proposal.status === 'pending' && (
                           <button
                             className="ghost-button small"
                             data-testid={`proposal-reject-${proposal.id}`}
                             type="button"
-                            onClick={() =>
-                              isDemo
-                                ? simulateAction(isZh ? `已暂不采纳：${handleFor(proposal.proposer)}` : `Skipped proposal from ${handleFor(proposal.proposer)}`)
-                                : void rejectProposal(selectedTask, proposal.id)
-                            }
+                            disabled={!canReviewProposals}
+                            onClick={() => void rejectProposal(selectedTask, proposal.id)}
                           >
                             <X size={15} />
                             {textFor(t, 'Reject', '拒绝')}
@@ -1272,17 +1218,17 @@ export function MyTasksPage({
                     className="primary-button"
                     data-testid="approve-submission-button"
                     type="button"
-                    disabled={!allAcceptanceChecked}
+                    disabled={!allAcceptanceChecked || !canReviewSubmission}
                     onClick={() => void approveTask(selectedTask, { acceptanceChecklist })}
                   >
                     <Check size={17} />
                     {textFor(t, 'Review acceptance', '进入验收')}
                   </button>
-                  <button className="ghost-button" data-testid="request-changes-button" type="button" onClick={() => void requestRevisionTask(selectedTask, { acceptanceChecklist })}>
+                  <button className="ghost-button" data-testid="request-changes-button" type="button" disabled={!canReviewSubmission} onClick={() => void requestRevisionTask(selectedTask, { acceptanceChecklist })}>
                     <MessageCircle size={17} />
                     {textFor(t, 'Request changes', '要求修改')}
                   </button>
-                  <button className="ghost-button" data-testid="reject-submission-button" type="button" onClick={() => void rejectTask(selectedTask, { acceptanceChecklist })}>
+                  <button className="ghost-button" data-testid="reject-submission-button" type="button" disabled={!canReviewSubmission} onClick={() => void rejectTask(selectedTask, { acceptanceChecklist })}>
                     <X size={17} />
                     {textFor(t, 'Reject final', '最终驳回')}
                   </button>
@@ -1294,7 +1240,6 @@ export function MyTasksPage({
               </>
             ) : (
               <>
-                <InfoBox title={textFor(t, 'Discussion record', '沟通记录')} items={discussionLog} />
                 {submissionCollection?.loading && (
                   <div className="empty-state">
                     <strong>{textFor(t, 'Loading submissions', '正在加载交付')}</strong>
@@ -1354,6 +1299,7 @@ export function MyTasksPage({
                     className="primary-button"
                     data-testid="submit-work-button"
                     type="button"
+                    disabled={!canSubmitWork}
                     onClick={() =>
                       void submitTask(selectedTask, {
                         assetIds: submissionAssets.map((asset) => asset.id),

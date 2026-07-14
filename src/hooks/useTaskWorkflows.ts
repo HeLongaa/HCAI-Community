@@ -4,7 +4,7 @@ import { tasks } from '../data/mockData'
 import { copy } from '../i18n/copy'
 import { localeFirstTask } from '../domain/utils'
 import { taskService } from '../services/taskService'
-import type { ApiAcceptanceChecklistItem, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem } from '../services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, ApiTaskWorkflow } from '../services/contracts'
 import { useAsyncResource } from './useAsyncResource'
 
 export type TaskChildCollection<T> = {
@@ -30,6 +30,7 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
   const [proposalStateByTask, setProposalStateByTask] = useState<Record<string, TaskChildCollection<ApiTaskProposal>>>({})
   const [submissionStateByTask, setSubmissionStateByTask] = useState<Record<string, TaskChildCollection<ApiTaskSubmission>>>({})
   const [timelineStateByTask, setTimelineStateByTask] = useState<Record<string, TaskChildCollection<ApiTaskTimelineItem>>>({})
+  const [workflowStateByTask, setWorkflowStateByTask] = useState<Record<string, ApiTaskWorkflow>>({})
 
   const taskStatus = useAsyncResource<Task[]>({
     load: () => taskService.list({ limit: 100 }),
@@ -148,6 +149,20 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     }
   }
 
+  const refreshWorkflow = async (task: Task) => {
+    try {
+      const workflow = await taskService.workflow(task.id)
+      setWorkflowStateByTask((current) => ({ ...current, [String(task.id)]: workflow }))
+    } catch (error) {
+      console.info('[task-service]', error)
+      setWorkflowStateByTask((current) => {
+        const next = { ...current }
+        delete next[String(task.id)]
+        return next
+      })
+    }
+  }
+
   const submitProposal = async (task: Task) => {
     const isZh = locale === 'zh'
     try {
@@ -167,6 +182,7 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
       })
       incrementTaskProposals(task.id)
       await refreshTimeline(task)
+      await refreshWorkflow(task)
       pushLedger(isZh ? `提交方案草稿：${task.title}` : `Submitted proposal draft: ${task.title}`, '+50')
       pushToast(isZh ? `方案已提交：${task.title}` : `Proposal submitted: ${task.title}`)
       setPage('mine')
@@ -198,6 +214,7 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
       })
       await taskStatus.refresh()
       await refreshTimeline(task)
+      await refreshWorkflow(task)
       pushToast(isZh ? `已采纳方案：${task.title}` : `Proposal accepted: ${task.title}`)
     } catch (error) {
       console.info('[task-service]', error)
@@ -218,6 +235,7 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
         return { ...current, [key]: { items: nextItems, loading: false, error: null } }
       })
       await refreshTimeline(task)
+      await refreshWorkflow(task)
       pushToast(isZh ? `已拒绝方案：${task.title}` : `Proposal rejected: ${task.title}`)
     } catch (error) {
       console.info('[task-service]', error)
@@ -235,6 +253,7 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
       updateTask(task.id, updated)
       await refreshSubmissions(updated)
       await refreshTimeline(updated)
+      await refreshWorkflow(updated)
       pushLedger(isZh ? `提交成果：${task.title}` : `Submitted deliverable: ${task.title}`, '+120')
       pushToast(isZh ? `已提交成果：${task.title}` : `Deliverable submitted: ${task.title}`)
       setPage('mine')
@@ -251,6 +270,7 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
       updateTask(task.id, updated)
       await refreshSubmissions(updated)
       await refreshTimeline(updated)
+      await refreshWorkflow(updated)
       pushLedger(isZh ? `验收通过：${task.title}` : `Accepted task: ${task.title}`, `+${task.points.replace(/[^\d]/g, '') || '500'}`)
       pushToast(isZh ? `验收通过：${task.title}` : `Task accepted: ${task.title}`)
       setPage('points')
@@ -267,6 +287,7 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
       updateTask(task.id, updated)
       await refreshSubmissions(updated)
       await refreshTimeline(updated)
+      await refreshWorkflow(updated)
       pushToast(isZh ? `已驳回任务：${task.title}` : `Task rejected: ${task.title}`)
     } catch (error) {
       console.info('[task-service]', error)
@@ -281,6 +302,7 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
       updateTask(task.id, updated)
       await refreshSubmissions(updated)
       await refreshTimeline(updated)
+      await refreshWorkflow(updated)
       pushToast(isZh ? `已要求修改：${task.title}` : `Changes requested: ${task.title}`)
     } catch (error) {
       console.info('[task-service]', error)
@@ -300,6 +322,7 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
       updateTask(task.id, updated)
       await refreshSubmissions(updated)
       await refreshTimeline(updated)
+      await refreshWorkflow(updated)
       pushToast(isZh ? `已发起争议：${task.title}` : `Dispute opened: ${task.title}`)
     } catch (error) {
       console.info('[task-service]', error)
@@ -315,6 +338,7 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     proposalStateByTask,
     submissionStateByTask,
     timelineStateByTask,
+    workflowStateByTask,
     refreshTasks: taskStatus.refresh,
     publishTask,
     claimTask,
@@ -324,6 +348,7 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     rejectProposal,
     refreshSubmissions,
     refreshTimeline,
+    refreshWorkflow,
     submitTask,
     approveTask,
     rejectTask,

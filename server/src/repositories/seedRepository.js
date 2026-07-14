@@ -78,6 +78,7 @@ import { sanitizeNotificationMetadata } from './notificationTargets.js'
 import { safeCreativeCreditMetadata, safeErrorPreview, safeProviderOperationMetadata } from '../creative/generationRecords.js'
 import { assetEligibleForWorkspace, assetMediaType, buildSafeAssetLibraryItem } from '../media/assetLibrary.js'
 import { resolveCreativeDeliveryAssets } from '../creative/deliveryAssets.js'
+import { taskWorkflowDto } from '../tasks/taskLifecycle.js'
 import {
   buildConsentStatus,
   compliancePolicyManifest,
@@ -2064,6 +2065,25 @@ export const createSeedRepository = () => ({
     },
   },
   tasks: {
+    workflow: (id, actor) => {
+      const task = getTaskById(id)
+      if (!task) return null
+      const proposals = taskProposals.filter((entry) => entry.taskId === String(task.id))
+      const submissions = taskSubmissions.filter((entry) => entry.taskId === String(task.id))
+      const latestSubmission = submissions[0] ?? null
+      return taskWorkflowDto({
+        taskId: task.id,
+        status: task.status,
+        disputeStatus: task.disputeStatus ?? null,
+        actorHandle: actor.handle,
+        publisherHandle: getHandle(task.publisher),
+        assigneeHandle: getHandle(task.assignee),
+        hasProposal: proposals.some((entry) => entry.proposerHandle === actor.handle),
+        latestSubmissionStatus: latestSubmission?.status ?? null,
+        latestSubmitterHandle: latestSubmission?.submitterHandle ?? null,
+        admin: hasPermission(actor, 'admin:access'),
+      })
+    },
     listDeliveryTargets: (actor) => seedStore.tasks
       .filter((task) => getHandle(task.assignee) === actor.handle)
       .filter((task) => ['In Progress', 'Rejected'].includes(task.status))
@@ -2125,6 +2145,17 @@ export const createSeedRepository = () => ({
       return serializeTask(task)
     },
     claim: (id, actor) => {
+      const current = getTaskById(id)
+      if (!current) return null
+      if (current.status !== 'Open' || getHandle(current.assignee) !== null) {
+        if (getHandle(current.assignee) === actor.handle && current.status === 'In Progress') {
+          return serializeTask(current)
+        }
+        throw new HttpError(409, 'TASK_NOT_CLAIMABLE', 'Task is not currently eligible to be claimed')
+      }
+      if (getHandle(current.publisher) === actor.handle) {
+        throw new HttpError(409, 'TASK_SELF_ASSIGNMENT_NOT_ALLOWED', 'Publishers cannot claim their own tasks')
+      }
       const task = updateTask(id, (task) => ({
         ...task,
         status: 'In Progress',
@@ -2136,6 +2167,23 @@ export const createSeedRepository = () => ({
       return task ? serializeTask(task) : null
     },
     createProposal: (id, payload, actor) => {
+      const currentTask = getTaskById(id)
+      if (!currentTask) return null
+      if (currentTask.status !== 'Open') {
+        throw new HttpError(409, 'TASK_NOT_OPEN_FOR_PROPOSALS', 'Task is not open for proposals')
+      }
+      if (getHandle(currentTask.publisher) === actor.handle) {
+        throw new HttpError(409, 'TASK_SELF_PROPOSAL_NOT_ALLOWED', 'Publishers cannot propose on their own tasks')
+      }
+      const existingProposal = taskProposals.find((entry) =>
+        entry.taskId === String(currentTask.id) && entry.proposerHandle === actor.handle,
+      )
+      if (existingProposal) {
+        if (existingProposal.coverLetter === payload.coverLetter && existingProposal.estimate === payload.estimate) {
+          return serializeTaskProposal(existingProposal)
+        }
+        throw new HttpError(409, 'TASK_PROPOSAL_ALREADY_EXISTS', 'A proposal already exists for this creator and task')
+      }
       const task = updateTask(id, (task) => ({
         ...task,
         proposals: (Number(task.proposals) || 0) + 1,
@@ -2183,6 +2231,15 @@ export const createSeedRepository = () => ({
       if (!proposal) {
         return null
       }
+      const expectedStatus = payload.decision === 'accept' ? 'accepted' : 'rejected'
+      if (proposal.status !== 'pending') {
+        if (proposal.status === expectedStatus) return serializeTaskProposal(proposal)
+        throw new HttpError(409, 'TASK_PROPOSAL_ALREADY_DECIDED', 'Proposal already has a different decision')
+      }
+      const currentTask = getTaskById(id)
+      if (!currentTask || currentTask.status !== 'Open') {
+        throw new HttpError(409, 'TASK_PROPOSAL_NOT_REVIEWABLE', 'Task is not open for proposal review')
+      }
       const task = updateTask(id, (task) => ({
         ...task,
         ...(payload.decision === 'accept' ? {
@@ -2193,7 +2250,7 @@ export const createSeedRepository = () => ({
       if (!task) {
         return null
       }
-      proposal.status = payload.decision === 'accept' ? 'accepted' : 'rejected'
+      proposal.status = expectedStatus
       proposal.decisionNote = payload.note ?? ''
       const autoRejectedProposerHandles = []
       if (payload.decision === 'accept') {
@@ -2235,7 +2292,20 @@ export const createSeedRepository = () => ({
     submit: (id, payload, actor = null) => {
       const currentTask = getTaskById(id)
       if (currentTask && !canAccessOwnedResource(getHandle(currentTask.assignee), actor)) return null
-      if ((payload.assetIds?.length ?? 0) > 0 && currentTask && !['In Progress', 'Rejected'].includes(currentTask.status)) {
+      if (!currentTask) return null
+      const latestSubmission = taskSubmissions.find((entry) =>
+        entry.taskId === String(currentTask.id) && entry.submitterHandle === actor.handle,
+      ) ?? null
+      if (currentTask.status === 'Pending Review' && latestSubmission?.status === 'pending_review') {
+        const samePayload = latestSubmission.content === payload.content &&
+          latestSubmission.rightsNote === (payload.rightsNote ?? '') &&
+          JSON.stringify(latestSubmission.assetIds ?? []) === JSON.stringify(payload.assetIds ?? [])
+        if (samePayload) return serializeTask(currentTask)
+        throw new HttpError(409, 'TASK_SUBMISSION_ALREADY_PENDING', 'A different submission is already pending review')
+      }
+      const directOpenSubmission = currentTask.status === 'Open' && !getHandle(currentTask.assignee) && getHandle(currentTask.publisher) !== actor.handle
+      const disputeClosed = currentTask.disputeStatus === 'rejected'
+      if ((!directOpenSubmission && !['In Progress', 'Rejected'].includes(currentTask.status)) || disputeClosed) {
         throw new HttpError(409, 'TASK_NOT_SUBMITTABLE', 'Task is not currently eligible for submission')
       }
       const resolvedAssets = resolveCreativeDeliveryAssets({
@@ -2248,6 +2318,7 @@ export const createSeedRepository = () => ({
       const task = updateTask(id, (task) => ({
         ...task,
         status: 'Pending Review',
+        assignee: getHandle(task.assignee) ?? actor.handle,
         submission: payload.content,
         resultLinks: payload.assetIds?.length ? payload.assetIds : task.resultLinks,
         rights: payload.rightsNote ?? task.rights,
@@ -2358,6 +2429,10 @@ export const createSeedRepository = () => ({
       }
       if (actor?.handle !== submission.submitterHandle && !hasPermission(actor, 'admin:access')) {
         return null
+      }
+      if (submission.status === 'disputed') {
+        if (submission.dispute?.reason === payload.reason) return serializeTask(task)
+        throw new HttpError(409, 'TASK_DISPUTE_ALREADY_OPEN', 'A dispute is already open for this submission')
       }
       const publisherHandle = getHandle(task.publisher)
       const reviewId = submission.dispute?.adminReviewId ?? `review-task-dispute-${task.id}-${submission.id}`
@@ -2495,6 +2570,16 @@ export const createSeedRepository = () => ({
       const isApproval = payload.decision === 'approve'
       const isRevisionRequest = payload.decision === 'request_changes'
       const previousTask = seedStore.taskById.get(Number(id))
+      if (!previousTask) return null
+      const pendingSubmission = taskSubmissions.find((entry) => entry.taskId === String(previousTask.id) && entry.status === 'pending_review')
+      if (!pendingSubmission) {
+        const expectedTaskStatus = isApproval ? 'Completed' : isRevisionRequest ? 'In Progress' : 'Rejected'
+        const sameDecision = previousTask.status === expectedTaskStatus &&
+          previousTask.reviewNote === payload.reviewNote &&
+          JSON.stringify(previousTask.acceptanceChecklist ?? []) === JSON.stringify(payload.acceptanceChecklist ?? [])
+        if (sameDecision) return serializeTask(previousTask)
+        throw new HttpError(409, 'TASK_NOT_REVIEWABLE', 'Task has no submission pending review')
+      }
       const shouldApplyCompletionReputation = isApproval && previousTask?.status !== 'Completed'
       const task = updateTask(id, (task) => ({
         ...task,
@@ -2517,8 +2602,6 @@ export const createSeedRepository = () => ({
           if (shouldApplyCompletionReputation) {
             applyTaskCompletionReputation(task, getHandle(task.assignee) ?? submission?.submitterHandle)
           }
-        } else if (!isRevisionRequest) {
-          finalizeTaskEscrow(task, getHandle(task.publisher), 'reject')
         }
         const assigneeHandle = getHandle(task.assignee) ?? submission?.submitterHandle
         const notificationCopy = {
@@ -5311,6 +5394,62 @@ export const createSeedRepository = () => ({
               },
             },
           },
+        })
+      }
+      if (reviewed.metadata?.kind === 'task_dispute') {
+        const task = getTaskById(reviewed.metadata.taskId)
+        const submission = taskSubmissions.find((entry) => entry.id === reviewed.metadata.submissionId) ?? null
+        if (!task || !submission || submission.status !== 'disputed') {
+          throw new HttpError(409, 'TASK_DISPUTE_NOT_REVIEWABLE', 'Task dispute is no longer pending review')
+        }
+        const disputeApproved = action.decision === 'approve'
+        submission.status = disputeApproved ? 'revision_requested' : 'rejected'
+        submission.dispute = {
+          ...(submission.dispute ?? reviewed.metadata),
+          outcome: disputeApproved ? 'creator_revision_allowed' : 'publisher_rejection_upheld',
+          resolvedBy: actor.handle,
+          resolvedAt: reviewed.reviewedAt,
+          resolutionNote: reviewed.note,
+        }
+        const resolvedTask = updateTask(task.id, (entry) => ({
+          ...entry,
+          status: disputeApproved ? 'In Progress' : 'Rejected',
+          disputeStatus: disputeApproved ? 'approved' : 'rejected',
+          disputeReason: reviewed.metadata.reason,
+          disputeReviewId: reviewed.id,
+          reviewNote: reviewed.note,
+        }), () => true)
+        if (!disputeApproved) finalizeTaskEscrow(task, getHandle(task.publisher), 'reject')
+        reviewed.metadata = {
+          ...reviewed.metadata,
+          outcome: submission.dispute.outcome,
+          resolvedTaskStatus: resolvedTask?.status ?? null,
+          resolvedSubmissionStatus: submission.status,
+          resolvedBy: actor.handle,
+          resolvedAt: reviewed.reviewedAt,
+        }
+        createNotificationsForHandles(uniqueHandles([reviewed.metadata.creatorHandle, reviewed.metadata.publisherHandle]), {
+          type: disputeApproved ? 'task.dispute_approved' : 'task.dispute_rejected',
+          title: disputeApproved ? `Task dispute approved: ${task.title}` : `Task dispute rejected: ${task.title}`,
+          body: disputeApproved
+            ? `${task.title} was reopened for a revised submission.`
+            : `${task.title} rejection was upheld and escrow was released.`,
+          resourceType: 'task',
+          resourceId: String(task.id),
+          metadata: {
+            taskId: String(task.id),
+            submissionId: submission.id,
+            adminReviewId: reviewed.id,
+            outcome: submission.dispute.outcome,
+            target: taskNotificationTarget('mine'),
+          },
+          dedupeUnread: true,
+        })
+        recordAudit(actor, 'task.dispute.resolved', 'task', task.id, {
+          adminReviewId: reviewed.id,
+          submissionId: submission.id,
+          decision: action.decision,
+          outcome: submission.dispute.outcome,
         })
       }
       adminReviewById.set(reviewed.id, reviewed)

@@ -90,6 +90,7 @@ export function PageRenderer({
     proposalStateByTask,
     submissionStateByTask,
     timelineStateByTask,
+    workflowStateByTask,
     publishTask,
     submitProposal,
     refreshProposals,
@@ -97,6 +98,7 @@ export function PageRenderer({
     rejectProposal,
     refreshSubmissions,
     refreshTimeline,
+    refreshWorkflow,
     submitTask,
     approveTask,
     rejectTask,
@@ -223,11 +225,13 @@ export function PageRenderer({
           proposalStateByTask={proposalStateByTask}
           submissionStateByTask={submissionStateByTask}
           timelineStateByTask={timelineStateByTask}
+          workflowStateByTask={workflowStateByTask}
           refreshProposals={refreshProposals}
           acceptProposal={acceptProposal}
           rejectProposal={rejectProposal}
           refreshSubmissions={refreshSubmissions}
           refreshTimeline={refreshTimeline}
+          refreshWorkflow={refreshWorkflow}
           submitTask={submitTask}
           approveTask={approveTask}
           rejectTask={rejectTask}

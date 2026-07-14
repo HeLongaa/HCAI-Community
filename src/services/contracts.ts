@@ -331,6 +331,15 @@ export type TaskChildListQuery = {
   limit?: number | null
 }
 
+export type ApiTaskWorkflow = {
+  taskId: string
+  taskStatus: string
+  disputeStatus: string | null
+  latestSubmissionStatus: string | null
+  role: 'publisher' | 'assignee' | 'proposer' | 'admin' | 'viewer'
+  actions: Array<'view' | 'propose' | 'claim' | 'review_proposals' | 'submit' | 'review_submission' | 'open_dispute' | 'view_timeline'>
+}
+
 export type ApiTaskProposal = {
   id: string
   taskId: string

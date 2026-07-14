@@ -39,6 +39,13 @@ export const registerTaskRoutes = (router) => {
     ok(response, task)
   })
 
+  router.add('GET', '/api/tasks/:id/workflow', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const workflow = await repositories.tasks.workflow(context.params.id, actor)
+    if (!workflow) throw notFound(`/api/tasks/${context.params.id}/workflow`)
+    ok(response, workflow)
+  })
+
   router.add('POST', '/api/tasks', async (request, response, context) => {
     const actor = requirePermission(context, 'task:create')
     const body = (await readJsonBody(request)) ?? {}

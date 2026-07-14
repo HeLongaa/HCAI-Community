@@ -55,7 +55,6 @@ const expectedMockDataImports = [
   'src/components/overlays/Overlays.tsx',
   'src/components/prototype/PrototypeComponents.tsx',
   'src/domain/utils.ts',
-  'src/features/admin/AdminPage.tsx',
   'src/features/community/CommunityPage.tsx',
   'src/features/explore/ExplorePages.tsx',
   'src/features/profile/ProfilePages.tsx',

@@ -13,8 +13,9 @@
     },
     {
       "id": "task-marketplace",
-      "evidence": ["server/src/modules/tasks/routes.js", "src/services/taskService.ts", "e2e/task-proposals.spec.ts"],
-      "completionGates": ["publish through dispute lifecycle", "role and ownership enforcement", "idempotent delivery and review"]
+      "evidence": ["config/v1-task-marketplace-lifecycle.json", "server/src/tasks/taskLifecycle.js", "server/src/modules/tasks/routes.test.js", "src/services/taskService.ts", "e2e/task-proposals.spec.ts", "docs/V1_64_TASK_MARKETPLACE_LIFECYCLE.md"],
+      "completionGates": ["publish through Admin-resolved dispute lifecycle", "server-derived role and action enforcement", "idempotent and concurrent delivery, review, and dispute resolution"],
+      "verificationCommand": "npm run test:v1-task-marketplace"
     },
     {
       "id": "community-profile",

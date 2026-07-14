@@ -5,6 +5,7 @@ import type {
   ApiTaskProposal,
   ApiTaskSubmission,
   ApiTaskTimelineItem,
+  ApiTaskWorkflow,
   ApiTaskDeliveryTarget,
   ApiAcceptanceChecklistItem,
   CreateTaskDisputeRequest,
@@ -55,6 +56,9 @@ const toTask = (task: ApiTask): Task => ({
 })
 
 export const taskService = {
+  workflow(id: string | number) {
+    return api.get<ApiTaskWorkflow>(`/tasks/${id}/workflow`)
+  },
   deliveryTargets() {
     return api.get<ApiTaskDeliveryTarget[]>('/tasks/delivery-targets')
   },

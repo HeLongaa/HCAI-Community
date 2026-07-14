@@ -209,8 +209,8 @@ addCheck(
 
 addCheck(
   'my tasks',
-  'my task desk simulates claimed/submitted/completed delivery tracking',
-  includesAll(app, ['Posted', 'Accepted', 'Review acceptance', 'Discussion record', 'Submit acceptance work', 'Publisher review fields']),
+  'my task desk renders API-backed proposal, delivery, review, timeline, and dispute tracking',
+  includesAll(app, ['Posted', 'Accepted', 'Review acceptance', 'Task timeline', 'Submit acceptance work', 'Open dispute', 'workflowStateByTask']),
   'task desk lifecycle',
 )
 

@@ -1,5 +1,9 @@
 # API Design
 
+## V1-64 task marketplace lifecycle
+
+`GET /api/tasks/:id/workflow` is the actor-scoped source of truth for task actions. Task clients must use its allowlisted actions instead of inferring eligibility from local state. Proposal creation is unique per task and creator; proposal decisions, delivery submission, review, stale sweeps, dispute opening, and Admin dispute resolution use conditional state transitions and recover identical retries without repeating notifications, audit, reputation, or ledger effects. Rejection keeps internal point escrow pending until revision, acceptance, or dispute resolution. This contract does not represent RMB payment or withdrawal.
+
 ## Unified generation history
 
 - `GET /api/creative/generation-center` lists the authenticated user's Image, Chat, Video, and Music generation tasks through one safe projection. Filters: `workspace`, `status`, `dateFrom`, `dateTo`, `cursor`, and `limit`.

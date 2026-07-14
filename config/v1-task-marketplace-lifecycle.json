@@ -1,0 +1,55 @@
+{
+  "version": "task-marketplace-lifecycle-v1",
+  "scope": {
+    "included": [
+      "internal_points",
+      "task_escrow",
+      "proposal_selection",
+      "delivery_review",
+      "revision",
+      "stale_review",
+      "dispute_resolution",
+      "internal_notifications",
+      "audit_evidence"
+    ],
+    "excluded": [
+      "rmb_payment",
+      "withdrawal",
+      "kyc",
+      "invoice",
+      "merchant_settlement",
+      "external_notification_delivery",
+      "paid_provider_traffic"
+    ]
+  },
+  "roles": ["publisher", "creator", "participant", "admin"],
+  "taskStates": ["Open", "In Progress", "Pending Review", "Disputed", "Completed", "Rejected"],
+  "proposalStates": ["pending", "accepted", "rejected"],
+  "submissionStates": ["pending_review", "revision_requested", "stale", "disputed", "approved", "rejected"],
+  "transitions": [
+    { "operation": "claim", "from": ["Open"], "to": "In Progress", "actors": ["creator"] },
+    { "operation": "propose", "from": ["Open"], "to": "Open", "actors": ["creator"], "invariant": "one_proposal_per_creator_task" },
+    { "operation": "accept_proposal", "from": ["Open"], "to": "In Progress", "actors": ["publisher", "admin"], "invariant": "single_selected_creator" },
+    { "operation": "submit", "from": ["Open", "In Progress", "Rejected"], "to": "Pending Review", "actors": ["creator", "admin"], "invariant": "single_pending_submission" },
+    { "operation": "request_changes", "from": ["Pending Review"], "to": "In Progress", "actors": ["publisher", "admin"] },
+    { "operation": "approve_submission", "from": ["Pending Review"], "to": "Completed", "actors": ["publisher", "admin"], "invariant": "settle_once" },
+    { "operation": "reject_submission", "from": ["Pending Review"], "to": "Rejected", "actors": ["publisher", "admin"], "invariant": "escrow_remains_pending" },
+    { "operation": "mark_stale", "from": ["Pending Review"], "to": "Pending Review", "actors": ["admin"], "invariant": "stale_once" },
+    { "operation": "open_dispute", "from": ["Rejected", "Pending Review"], "to": "Disputed", "actors": ["creator", "admin"], "invariant": "single_open_dispute" },
+    { "operation": "approve_dispute", "from": ["Disputed"], "to": "In Progress", "actors": ["admin"], "invariant": "revision_allowed_escrow_pending" },
+    { "operation": "reject_dispute", "from": ["Disputed"], "to": "Rejected", "actors": ["admin"], "invariant": "release_escrow_once" }
+  ],
+  "requiredSideEffects": ["task_state", "child_state", "notification", "audit", "escrow", "reputation_when_completed"],
+  "idempotency": {
+    "proposal": "task_id_plus_proposer_id",
+    "submission": "single_pending_submission_plus_payload_match",
+    "review": "conditional_state_transition_plus_result_match",
+    "dispute": "stable_review_id_plus_reason_match",
+    "adminResolution": "admin_review_decision_once",
+    "staleSweep": "conditional_submission_status_transition"
+  },
+  "verification": {
+    "command": "npm run test:v1-task-marketplace",
+    "qualityGate": "npm run check:quick"
+  }
+}
