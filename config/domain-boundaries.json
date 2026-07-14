@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "contractId": "domain-boundaries-v1",
+  "scope": "personal_accounts_only",
+  "decisionDocument": "docs/ADR_001_DOMAIN_BOUNDARIES.md",
+  "verificationCommand": "npm run test:architecture-boundaries",
+  "layers": ["transport", "application", "domain", "repository", "infrastructure"],
+  "dependencyRules": [
+    { "from": "transport", "mayDependOn": ["application", "domain"] },
+    { "from": "application", "mayDependOn": ["domain", "repository"] },
+    { "from": "domain", "mayDependOn": [] },
+    { "from": "repository", "mayDependOn": ["domain", "infrastructure"] },
+    { "from": "infrastructure", "mayDependOn": ["domain"] }
+  ],
+  "crossModuleRules": {
+    "synchronous": "Call an exported application contract; never import another module's route handler or persistence internals.",
+    "asynchronous": "Publish a versioned domain event through the transactional event boundary.",
+    "reads": "Use an owner-authorized query contract or a purpose-built redacted read model.",
+    "writes": "The owning module performs validation, authorization, state transition, audit, and transaction control.",
+    "shared": "Common HTTP, validation, identity, and telemetry primitives may not contain business policy."
+  },
+  "routeModules": [
+    { "id": "health", "domain": "platform-release", "layer": "transport", "registration": "registerHealthRoutes" },
+    { "id": "metrics", "domain": "observability-incident", "layer": "transport", "registration": "registerMetricsRoutes" },
+    { "id": "docs", "domain": "developer-platform", "layer": "transport", "registration": "registerDocsRoutes" },
+    { "id": "compliance", "domain": "compliance-data-rights", "layer": "transport", "registration": "registerComplianceRoutes" },
+    { "id": "auth", "domain": "identity-access", "layer": "transport", "registration": "registerAuthRoutes" },
+    { "id": "users", "domain": "user-profile", "layer": "transport", "registration": "registerUserRoutes" },
+    { "id": "tasks", "domain": "task-marketplace", "layer": "transport", "registration": "registerTaskRoutes" },
+    { "id": "posts", "domain": "community", "layer": "transport", "registration": "registerPostRoutes" },
+    { "id": "library", "domain": "media-platform", "layer": "transport", "registration": "registerLibraryRoutes" },
+    { "id": "media", "domain": "media-platform", "layer": "transport", "registration": "registerMediaRoutes" },
+    { "id": "creative", "domain": "ai-runtime", "layer": "transport", "registration": "registerCreativeRoutes" },
+    { "id": "chat", "domain": "ai-runtime", "layer": "transport", "registration": "registerChatRoutes" },
+    { "id": "notifications", "domain": "notifications-webhooks", "layer": "transport", "registration": "registerNotificationRoutes" },
+    { "id": "admin", "domain": "admin-console", "layer": "transport", "registration": "registerAdminRoutes" },
+    { "id": "profiles", "domain": "user-profile", "layer": "transport", "registration": "registerProfileRoutes" },
+    { "id": "points", "domain": "entitlements-accounting", "layer": "transport", "registration": "registerPointsRoutes" }
+  ],
+  "ownership": [
+    { "domain": "identity-access", "owns": ["credentials", "sessions", "roles", "permissions"] },
+    { "domain": "user-profile", "owns": ["personal account lifecycle", "profile", "portfolio"] },
+    { "domain": "task-marketplace", "owns": ["tasks", "proposals", "submissions", "disputes"] },
+    { "domain": "community", "owns": ["posts", "comments", "likes"] },
+    { "domain": "media-platform", "owns": ["assets", "lineage", "scan jobs", "download policy"] },
+    { "domain": "ai-runtime", "owns": ["generations", "conversations", "provider operations"] },
+    { "domain": "entitlements-accounting", "owns": ["points", "credits", "quota", "reconciliation"] },
+    { "domain": "notifications-webhooks", "owns": ["notifications", "delivery state"] },
+    { "domain": "trust-safety-risk", "owns": ["security events", "risk decisions", "moderation cases"] },
+    { "domain": "jobs-automation", "owns": ["jobs", "attempts", "leases", "schedules"] },
+    { "domain": "audit-evidence", "owns": ["audit events", "immutable evidence"] },
+    { "domain": "config-feature-flags", "owns": ["versioned configuration", "feature flags", "secret references"] }
+  ]
+}

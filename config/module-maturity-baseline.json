@@ -1,0 +1,243 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "module-maturity-baseline-v1",
+  "scope": "personal_accounts_only",
+  "reviewedAt": "2026-07-14",
+  "policyDocument": "docs/MODULE_MATURITY_BASELINE.md",
+  "verificationCommand": "npm run test:foundation-baseline",
+  "maturityLevels": ["production_capable", "partial", "contract_only", "planned"],
+  "operationPolicies": ["mutable_crud", "state_transition", "soft_delete", "append_only", "immutable_evidence", "not_applicable"],
+  "modules": [
+    {
+      "id": "platform-architecture",
+      "name": "平台架构",
+      "maturity": "partial",
+      "ownerTask": "ARC-01",
+      "userCapabilities": ["统一 API 入口", "明确不可用状态"],
+      "adminCapabilities": ["运行面清单", "发布范围验证"],
+      "operationPolicies": ["not_applicable"],
+      "evidence": ["server/src/modules/index.js", "config/v1-runtime-surfaces.json", "config/v1-release-scope.json"],
+      "gapTasks": ["ARC-01", "ARC-02", "ARC-03"]
+    },
+    {
+      "id": "admin-console",
+      "name": "运营控制台",
+      "maturity": "partial",
+      "ownerTask": "ADMIN-01",
+      "userCapabilities": ["无直接用户能力"],
+      "adminCapabilities": ["权限矩阵", "审核队列", "审计检索", "账务对账", "安全告警", "运营指标"],
+      "operationPolicies": ["mutable_crud", "state_transition", "append_only", "immutable_evidence"],
+      "evidence": ["server/src/modules/admin/routes.js", "src/features/admin/AdminPage.tsx", "e2e/admin-permissions.spec.ts"],
+      "gapTasks": ["ADMIN-01", "ADMIN-02", "ADMIN-03"]
+    },
+    {
+      "id": "user-profile",
+      "name": "用户与资料",
+      "maturity": "partial",
+      "ownerTask": "USER-01",
+      "userCapabilities": ["个人账户资料", "公开主页", "作品集", "会话管理"],
+      "adminCapabilities": ["有限的角色与审计读侧"],
+      "operationPolicies": ["mutable_crud", "soft_delete", "immutable_evidence"],
+      "evidence": ["server/src/modules/users/routes.js", "server/src/modules/profiles/routes.js", "src/features/profile/ProfilePages.tsx"],
+      "gapTasks": ["USER-01", "USER-02"]
+    },
+    {
+      "id": "identity-access",
+      "name": "身份与权限",
+      "maturity": "partial",
+      "ownerTask": "RBAC-01",
+      "userCapabilities": ["邮箱登录", "OAuth 登录", "刷新与注销", "会话撤销"],
+      "adminCapabilities": ["角色权限查看与修改", "受保护权限保留"],
+      "operationPolicies": ["mutable_crud", "state_transition", "append_only"],
+      "evidence": ["server/src/modules/auth/routes.js", "server/src/auth/permissions.js", "e2e/auth-email.spec.ts"],
+      "gapTasks": ["RBAC-01", "IAM-01", "IAM-02"]
+    },
+    {
+      "id": "config-feature-flags",
+      "name": "配置与功能开关",
+      "maturity": "contract_only",
+      "ownerTask": "CONFIG-01",
+      "userCapabilities": ["由服务端安全配置决定功能可用性"],
+      "adminCapabilities": ["部分媒体与积分策略版本管理"],
+      "operationPolicies": ["state_transition", "immutable_evidence"],
+      "evidence": ["server/src/config/env.js", "server/src/modules/media/routes.js", "server/src/points/adjustmentPolicy.js"],
+      "gapTasks": ["CONFIG-01", "CONFIG-02"]
+    },
+    {
+      "id": "model-control-plane",
+      "name": "模型控制面",
+      "maturity": "contract_only",
+      "ownerTask": "MODEL-01",
+      "userCapabilities": ["安全的 Provider 与模型能力元数据"],
+      "adminCapabilities": ["Kill switch", "预算证据", "熔断与双人恢复"],
+      "operationPolicies": ["state_transition", "append_only", "immutable_evidence"],
+      "evidence": ["server/src/creative/providerControlPlane.js", "server/src/modules/admin/routes.js", "docs/V1_PROVIDER_CONTROL_PLANE.md"],
+      "gapTasks": ["MODEL-01", "MODEL-02", "MODEL-03", "PROVIDER-APPROVAL"]
+    },
+    {
+      "id": "ai-runtime",
+      "name": "AI 运行时",
+      "maturity": "partial",
+      "ownerTask": "AI-RUNTIME-01",
+      "userCapabilities": ["图像生成", "流式对话", "视频与音乐 Fixture 生命周期", "统一生成记录"],
+      "adminCapabilities": ["生成检索", "取消与重试授权", "人工重放审批", "安全失败证据"],
+      "operationPolicies": ["state_transition", "append_only", "immutable_evidence"],
+      "evidence": ["server/src/creative/generationService.js", "server/src/chat/chatService.js", "server/src/modules/creative/routes.js"],
+      "gapTasks": ["AI-RUNTIME-01", "AI-EVAL-01", "PROVIDER-APPROVAL"]
+    },
+    {
+      "id": "task-marketplace",
+      "name": "任务广场",
+      "maturity": "production_capable",
+      "ownerTask": "TASK-01",
+      "userCapabilities": ["发布", "提案", "选择", "交付", "修改", "验收", "拒绝", "申诉"],
+      "adminCapabilities": ["争议队列", "重开或释放托管", "操作审计"],
+      "operationPolicies": ["mutable_crud", "state_transition", "append_only", "immutable_evidence"],
+      "evidence": ["server/src/modules/tasks/routes.js", "e2e/task-proposals.spec.ts", "docs/V1_64_TASK_MARKETPLACE_LIFECYCLE.md"],
+      "gapTasks": ["TASK-01", "TASK-02"]
+    },
+    {
+      "id": "community",
+      "name": "社区",
+      "maturity": "partial",
+      "ownerTask": "COMMUNITY-01",
+      "userCapabilities": ["帖子", "评论", "点赞", "转任务", "公开资料"],
+      "adminCapabilities": ["通用审核权限与队列"],
+      "operationPolicies": ["mutable_crud", "soft_delete", "state_transition"],
+      "evidence": ["server/src/modules/posts/routes.js", "server/src/modules/profiles/routes.js", "src/features/community/CommunityPage.tsx"],
+      "gapTasks": ["COMMUNITY-01", "TRUST-01"]
+    },
+    {
+      "id": "media-platform",
+      "name": "媒体资产平台",
+      "maturity": "partial",
+      "ownerTask": "MEDIA-01",
+      "userCapabilities": ["私有上传", "扫描门禁", "下载", "归档恢复", "资产血缘与复用"],
+      "adminCapabilities": ["审核队列", "扫描作业", "策略历史回滚", "告警处置", "归档导出"],
+      "operationPolicies": ["mutable_crud", "state_transition", "soft_delete", "append_only"],
+      "evidence": ["server/src/modules/media/routes.js", "server/src/media/scanWorker.js", "e2e/asset-library.spec.ts"],
+      "gapTasks": ["MEDIA-01", "MEDIA-02", "MEDIA-03"]
+    },
+    {
+      "id": "entitlements-accounting",
+      "name": "权益用量与账务",
+      "maturity": "production_capable",
+      "ownerTask": "BILLING-01",
+      "userCapabilities": ["积分明细", "创作积分", "配额", "托管", "补偿与退款语义"],
+      "adminCapabilities": ["跨用户查询", "策略历史", "调整审批", "对账扫描导出与补偿"],
+      "operationPolicies": ["state_transition", "append_only", "immutable_evidence"],
+      "evidence": ["config/v1-internal-accounting-invariants.json", "server/src/accounting/internalAccounting.js", "server/src/modules/admin/routes.js"],
+      "gapTasks": ["BILLING-01", "BILLING-02"]
+    },
+    {
+      "id": "notifications-webhooks",
+      "name": "通知与 Webhook",
+      "maturity": "partial",
+      "ownerTask": "NOTIFY-01",
+      "userCapabilities": ["站内通知", "未读状态", "安全深链"],
+      "adminCapabilities": ["按资源检索通知证据"],
+      "operationPolicies": ["state_transition", "append_only"],
+      "evidence": ["server/src/modules/notifications/routes.js", "src/components/ui/NotificationList.tsx", "docs/V1_NOTIFICATION_DEEP_LINKS.md"],
+      "gapTasks": ["NOTIFY-01", "WEBHOOK-01"]
+    },
+    {
+      "id": "trust-safety-risk",
+      "name": "信任安全与风控",
+      "maturity": "partial",
+      "ownerTask": "TRUST-01",
+      "userCapabilities": ["内容拦截与人工复核", "申诉入口", "登录与速率保护"],
+      "adminCapabilities": ["安全事件", "告警确认静默与导出", "内容审核队列"],
+      "operationPolicies": ["state_transition", "append_only", "immutable_evidence"],
+      "evidence": ["config/v1-content-safety-policy.json", "server/src/security/alertPolicy.js", "server/src/modules/admin/routes.js"],
+      "gapTasks": ["TRUST-01", "RISK-01"]
+    },
+    {
+      "id": "jobs-automation",
+      "name": "作业与自动化",
+      "maturity": "contract_only",
+      "ownerTask": "JOB-01",
+      "userCapabilities": ["部分异步生成与扫描恢复"],
+      "adminCapabilities": ["部分租约和作业指标"],
+      "operationPolicies": ["state_transition", "append_only"],
+      "evidence": ["server/src/operations/worker.js", "server/src/operations/workerJobs.js", "server/src/repositories/operationLeases.test.js"],
+      "gapTasks": ["JOB-01", "JOB-02"]
+    },
+    {
+      "id": "audit-evidence",
+      "name": "审计与证据",
+      "maturity": "partial",
+      "ownerTask": "AUDIT-01",
+      "userCapabilities": ["关键流程产生安全证据"],
+      "adminCapabilities": ["审计检索", "筛选分页", "详情与导出", "敏感字段投影"],
+      "operationPolicies": ["append_only", "immutable_evidence"],
+      "evidence": ["server/src/modules/admin/routes.js", "server/src/repositories/serializers.js", "server/prisma/schema.prisma"],
+      "gapTasks": ["AUDIT-01", "AUDIT-02"]
+    },
+    {
+      "id": "observability-incident",
+      "name": "可观测性与事件响应",
+      "maturity": "partial",
+      "ownerTask": "OBS-01",
+      "userCapabilities": ["稳定错误码与显式失败状态"],
+      "adminCapabilities": ["运营指标", "Prometheus 导出", "安全告警处置"],
+      "operationPolicies": ["append_only", "immutable_evidence"],
+      "evidence": ["server/src/operations/metrics.js", "server/src/operations/metricsExporter.js", "docs/OPERATIONS_RUNBOOK.md"],
+      "gapTasks": ["OBS-01", "OBS-BASE-01", "OBS-02"]
+    },
+    {
+      "id": "developer-platform",
+      "name": "开发者平台",
+      "maturity": "contract_only",
+      "ownerTask": "DX-01",
+      "userCapabilities": ["OpenAPI 文档"],
+      "adminCapabilities": ["无完整 API Key 管理"],
+      "operationPolicies": ["mutable_crud", "state_transition"],
+      "evidence": ["server/src/docs/openapi.js", "server/src/modules/docs/routes.js", "scripts/verify-api-contracts.mjs"],
+      "gapTasks": ["API-01", "DX-01"]
+    },
+    {
+      "id": "search-discovery",
+      "name": "搜索与发现",
+      "maturity": "planned",
+      "ownerTask": "SEARCH-01",
+      "userCapabilities": ["模块内有限筛选"],
+      "adminCapabilities": ["无统一全局搜索"],
+      "operationPolicies": ["not_applicable"],
+      "evidence": ["server/src/contracts/requestParsers.js", "src/features/explore/ExplorePages.tsx"],
+      "gapTasks": ["SEARCH-01", "ADMIN-03"]
+    },
+    {
+      "id": "support",
+      "name": "支持服务",
+      "maturity": "partial",
+      "ownerTask": "SUPPORT-01",
+      "userCapabilities": ["提交并查看个人支持请求"],
+      "adminCapabilities": ["通过审核与审计基础设施处理证据"],
+      "operationPolicies": ["state_transition", "append_only"],
+      "evidence": ["server/src/modules/compliance/routes.js", "e2e/compliance-support.spec.ts", "docs/V1_COMPLIANCE_AND_SUPPORT_BASELINE.md"],
+      "gapTasks": ["SUPPORT-01"]
+    },
+    {
+      "id": "compliance-data-rights",
+      "name": "合规与数据权利",
+      "maturity": "partial",
+      "ownerTask": "LEGAL-BASE-01",
+      "userCapabilities": ["版本化政策", "明确同意", "举报与数据权利入口"],
+      "adminCapabilities": ["同意与支持请求审计证据"],
+      "operationPolicies": ["append_only", "immutable_evidence"],
+      "evidence": ["config/v1-compliance-policy.json", "server/src/modules/compliance/routes.js", "docs/V1_DATA_GOVERNANCE_BASELINE.md"],
+      "gapTasks": ["LEGAL-BASE-01", "LEGAL-01", "DATA-RIGHTS-01"]
+    },
+    {
+      "id": "platform-release",
+      "name": "平台工程与发布",
+      "maturity": "partial",
+      "ownerTask": "INFRA-01",
+      "userCapabilities": ["生产失败关闭", "显式不可用状态"],
+      "adminCapabilities": ["质量门禁", "部署 Smoke", "回滚运行手册"],
+      "operationPolicies": ["not_applicable"],
+      "evidence": ["docs/QUALITY_GATES.md", "docs/RELEASE_CHECKLIST.md", "scripts/smoke-production.mjs"],
+      "gapTasks": ["INFRA-01", "RELEASE-01"]
+    }
+  ]
+}

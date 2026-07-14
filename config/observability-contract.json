@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "contractId": "observability-contract-v1",
+  "scope": "personal_accounts_only",
+  "policyDocument": "docs/OBSERVABILITY_CONTRACT.md",
+  "verificationCommand": "npm run test:observability-contract",
+  "correlation": {
+    "requestHeader": "x-request-id",
+    "responseHeader": "x-request-id",
+    "traceHeader": "traceparent",
+    "fields": ["timestamp", "level", "service", "environment", "event", "requestId", "traceId", "spanId", "module", "operation", "outcome", "durationMs", "errorCode"],
+    "asyncFields": ["jobId", "attemptId", "eventId", "causationId", "correlationId"],
+    "sensitiveFieldsForbidden": ["authorization", "cookie", "password", "secret", "token", "prompt", "messageBody", "providerPayload", "storageUrl"]
+  },
+  "errorTaxonomy": ["validation", "authentication", "authorization", "not_found", "conflict", "rate_limit", "dependency", "timeout", "policy", "internal"],
+  "metricRules": {
+    "prefix": "museflow_",
+    "allowedLabelDimensions": ["service", "environment", "module", "operation", "method", "routeTemplate", "statusClass", "outcome", "errorCategory", "provider", "workspace", "jobType"],
+    "forbiddenLabelDimensions": ["userId", "resourceId", "requestId", "traceId", "jobId", "providerJobId", "prompt", "errorMessage", "email", "ipAddress"],
+    "families": [
+      { "id": "http_requests", "method": "RED", "metrics": ["museflow_http_requests_total", "museflow_http_request_duration_seconds", "museflow_http_request_errors_total"] },
+      { "id": "jobs", "method": "RED", "metrics": ["museflow_jobs_started_total", "museflow_job_duration_seconds", "museflow_jobs_failed_total", "museflow_jobs_queue_age_seconds"] },
+      { "id": "dependencies", "method": "RED", "metrics": ["museflow_dependency_requests_total", "museflow_dependency_duration_seconds", "museflow_dependency_errors_total"] },
+      { "id": "runtime", "method": "USE", "metrics": ["museflow_runtime_utilization_ratio", "museflow_runtime_saturation_ratio", "museflow_runtime_errors_total"] },
+      { "id": "business", "method": "domain", "metrics": ["museflow_state_transitions_total", "museflow_reconciliation_issues_total", "museflow_policy_blocks_total"] }
+    ]
+  },
+  "slos": [
+    { "id": "api-availability", "indicator": "successful eligible API requests / eligible API requests", "target": 0.999, "windowDays": 30, "ownerTask": "OBS-02" },
+    { "id": "api-latency", "indicator": "eligible API requests completed within 750ms", "target": 0.99, "windowDays": 30, "ownerTask": "OBS-02" },
+    { "id": "async-start-latency", "indicator": "eligible async jobs started within 60s", "target": 0.99, "windowDays": 30, "ownerTask": "JOB-02" },
+    { "id": "notification-delivery", "indicator": "eligible in-app notifications persisted within 60s", "target": 0.995, "windowDays": 30, "ownerTask": "NOTIFY-01" }
+  ],
+  "retention": {
+    "applicationLogsDays": 30,
+    "securityLogsDays": 180,
+    "metricResolutionDays": 90,
+    "traceDays": 14,
+    "auditEvidencePolicy": "governed_by_data_retention_and_legal_hold"
+  },
+  "alerts": {
+    "requiredFields": ["alertId", "severity", "service", "module", "condition", "startedAt", "runbook", "owner"],
+    "severities": ["critical", "high", "medium", "low"],
+    "states": ["firing", "acknowledged", "silenced", "resolved"]
+  }
+}
