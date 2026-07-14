@@ -1,5 +1,4 @@
 import http from 'node:http'
-import { randomUUID } from 'node:crypto'
 import { HttpError } from '../errors/httpError.js'
 import { parseBearerToken } from './auth.js'
 import { enforceRequestBodySize, requestBodyRejectedEvent } from './bodySize.js'
@@ -7,6 +6,7 @@ import { handleCors } from './origin.js'
 import { enforceRateLimit } from './rateLimit.js'
 import { fail } from './responses.js'
 import { recordSecurityEvent } from '../../security/securityEvents.js'
+import { createCorrelationContext } from '../../observability/structuredLogging.js'
 
 export const createServer = (router, context = {}) => {
   return http.createServer(async (request, response) => {
@@ -39,9 +39,14 @@ export const createServer = (router, context = {}) => {
         },
       })
       const authToken = parseBearerToken(request.headers.authorization)
+      const correlation = createCorrelationContext(request.headers)
+      response.setHeader('x-request-id', correlation.requestId)
       const requestContext = {
         ...context,
-        requestId: String(request.headers['x-request-id'] ?? '').match(/^[A-Za-z0-9._:-]{1,128}$/)?.[0] ?? randomUUID(),
+        requestId: correlation.requestId,
+        traceId: correlation.traceId,
+        spanId: correlation.spanId,
+        correlation,
         authToken,
         user: authToken ? (await context.resolveUser?.(authToken)) ?? null : null,
       }

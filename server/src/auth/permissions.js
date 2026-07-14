@@ -52,6 +52,9 @@ export const permissionRegistry = Object.freeze([
   definePermission('admin:jobs:recover', 'jobs-automation', 'job_run', 'recover', 'critical', admins, { resourceAuthorization: true, description: 'Retry dead-lettered job runs and request safe manual reruns' }),
   definePermission('admin:jobs:schedule', 'jobs-automation', 'job_definition', 'schedule', 'critical', admins, { resourceAuthorization: true, description: 'Pause and resume registered scheduled job definitions' }),
   definePermission('admin:bulk-actions:manage', 'admin-console', 'admin_bulk_action', 'manage', 'critical', admins, { resourceAuthorization: true, description: 'Preview and confirm registered JobRun-backed admin bulk actions' }),
+  definePermission('admin:high-risk:approve', 'identity-access', 'high_risk_approval', 'approve', 'critical', admins, { protected: true, protectionRank: 3, resourceAuthorization: true, description: 'Request and approve temporary high-risk access with two-person control' }),
+  definePermission('admin:temporary-access:manage', 'identity-access', 'temporary_authorization', 'manage', 'critical', admins, { protected: true, protectionRank: 4, resourceAuthorization: true, description: 'List and revoke temporary administrative authorization grants' }),
+  definePermission('admin:break-glass', 'identity-access', 'break_glass_access', 'manage', 'critical', admins, { protected: true, protectionRank: 5, resourceAuthorization: true, description: 'Activate and post-review emergency break-glass access' }),
 ])
 
 export const permissions = Object.freeze(permissionRegistry.map(({ id }) => id))

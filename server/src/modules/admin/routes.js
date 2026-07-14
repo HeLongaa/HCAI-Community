@@ -13,9 +13,11 @@ import {
   parseAdminPointsLedgerQuery,
   parseAdminReviewActionRequest,
   parseAdminReviewListQuery,
+  parseBreakGlassAccessRequest,
   parseAdminSecurityAlertActionRequest,
   parseAdminSecurityAlertSilenceRequest,
   parseAdminSecurityEventListQuery,
+  parseHighRiskApprovalRequest,
   parsePointAdjustmentPolicyRequest,
   parsePointAdjustmentPolicyRollbackRequest,
   parsePointAdjustmentRequest,
@@ -23,6 +25,7 @@ import {
   parseProviderControlDisableRequest,
   parseProviderControlListQuery,
   parseProviderControlRecoveryRequest,
+  parseTemporaryAuthorizationRevokeRequest,
   parseUpdateRolePermissionsRequest,
 } from '../../contracts/requestParsers.js'
 import { repositories } from '../../repositories/index.js'
@@ -41,6 +44,16 @@ import {
   resolveManualProviderReplayReview,
 } from '../../creative/manualReplayRequestService.js'
 import { creativeAccountingPolicyHistory } from '../../creative/accountingPolicy.js'
+import {
+  isHighRiskAccessReview,
+  listBreakGlassAccess,
+  listTemporaryAuthorizations,
+  requestHighRiskApproval,
+  resolveHighRiskApproval,
+  reviewBreakGlassAccess,
+  revokeTemporaryAuthorization,
+  startBreakGlassAccess,
+} from '../../auth/highRiskAccess.js'
 
 const isPointAdjustmentReview = (review) => review?.queue === 'points' || review?.metadata?.kind === 'point_adjustment'
 const isManualProviderReplayReview = (review) => review?.metadata?.kind === 'manual_provider_replay'
@@ -706,6 +719,46 @@ export const registerAdminRoutes = (router, options = {}) => {
     })
   })
 
+  router.add('POST', '/api/admin/high-risk-approvals', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:high-risk:approve')
+    const payload = parseHighRiskApprovalRequest((await readJsonBody(request)) ?? {})
+    ok(response, await requestHighRiskApproval({ payload, actor, repositories: routeRepositories }))
+  })
+
+  router.add('GET', '/api/admin/temporary-authorizations', async (_request, response, context) => {
+    requirePermission(context, 'admin:temporary-access:manage')
+    const items = listTemporaryAuthorizations()
+    ok(response, items, { pagination: { limit: items.length, nextCursor: null } })
+  })
+
+  router.add('POST', '/api/admin/temporary-authorizations/:id/revoke', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:temporary-access:manage')
+    const payload = parseTemporaryAuthorizationRevokeRequest((await readJsonBody(request)) ?? {})
+    const revoked = revokeTemporaryAuthorization({ id: context.params.id, actor, reasonCode: payload.reasonCode })
+    if (!revoked) throw notFound(`/api/admin/temporary-authorizations/${context.params.id}`)
+    ok(response, revoked)
+  })
+
+  router.add('POST', '/api/admin/break-glass', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:break-glass')
+    const payload = parseBreakGlassAccessRequest((await readJsonBody(request)) ?? {})
+    ok(response, startBreakGlassAccess({ payload, actor }))
+  })
+
+  router.add('GET', '/api/admin/break-glass', async (_request, response, context) => {
+    requirePermission(context, 'admin:break-glass')
+    const items = listBreakGlassAccess()
+    ok(response, items, { pagination: { limit: items.length, nextCursor: null } })
+  })
+
+  router.add('POST', '/api/admin/break-glass/:id/review', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:break-glass')
+    const action = parseAdminReviewActionRequest((await readJsonBody(request)) ?? {})
+    const reviewed = reviewBreakGlassAccess({ id: context.params.id, action, actor })
+    if (!reviewed) throw notFound(`/api/admin/break-glass/${context.params.id}`)
+    ok(response, reviewed)
+  })
+
   router.add('POST', '/api/admin/reviews/:id/actions', async (request, response, context) => {
     const actor = requirePermission(context, 'admin:queue:review')
     const body = (await readJsonBody(request)) ?? {}
@@ -713,6 +766,13 @@ export const registerAdminRoutes = (router, options = {}) => {
     const current = await routeRepositories.adminReviews.find(context.params.id)
     if (!current) {
       throw notFound(`/api/admin/reviews/${context.params.id}`)
+    }
+    if (!current.decision && isHighRiskAccessReview(current)) {
+      requirePermission(context, 'admin:high-risk:approve')
+      const result = await resolveHighRiskApproval({ review: current, action, actor, repositories: routeRepositories })
+      if (!result) throw notFound(`/api/admin/reviews/${context.params.id}`)
+      ok(response, result)
+      return
     }
     if (!current.decision && isPointAdjustmentReview(current)) {
       requirePermission(context, 'points:adjust')

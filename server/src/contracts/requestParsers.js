@@ -602,6 +602,37 @@ export const parseProviderControlRecoveryRequest = (body) => ({
   probeTtlSeconds: Math.min(optionalPositiveInteger(body, 'probeTtlSeconds') ?? 60, 300),
 })
 
+const requireSafeResourceId = (body, field) => {
+  const value = requireText(body, field)
+  if (!safeResourceIdPattern.test(value)) {
+    throw validationFailed(`${field} must be a safe resource identifier`)
+  }
+  return value
+}
+
+export const parseHighRiskApprovalRequest = (body) => ({
+  action: requireText(body, 'action'),
+  resourceType: requireText(body, 'resourceType'),
+  resourceId: requireSafeResourceId(body, 'resourceId'),
+  permissionId: requireOneOf(body, 'permissionId', permissions),
+  reasonCode: requireText(body, 'reasonCode'),
+  reason: requireText(body, 'reason'),
+  temporaryAuthorizationTtlMinutes: Math.min(optionalPositiveInteger(body, 'temporaryAuthorizationTtlMinutes') ?? 30, 240),
+})
+
+export const parseTemporaryAuthorizationRevokeRequest = (body) => ({
+  reasonCode: requireText(body, 'reasonCode'),
+})
+
+export const parseBreakGlassAccessRequest = (body) => ({
+  permissionId: requireOneOf(body, 'permissionId', permissions),
+  resourceType: requireText(body, 'resourceType'),
+  resourceId: requireSafeResourceId(body, 'resourceId'),
+  reasonCode: requireText(body, 'reasonCode'),
+  reason: requireText(body, 'reason'),
+  ttlMinutes: Math.min(optionalPositiveInteger(body, 'ttlMinutes') ?? 15, 60),
+})
+
 export const parseProviderCapEvidenceRequest = (body) => ({
   sourceKey: requireProviderControlScope(body, 'sourceKey'),
   scopeKey: requireProviderControlScope(body),

@@ -152,6 +152,88 @@ test('GET Admin creative accounting policy history is immutable and permission p
   }
 })
 
+test('Admin high-risk access routes enforce two-person temporary grants and break-glass review', async () => {
+  const server = await createTestServer()
+  try {
+    const denied = await requestJson(server.url, '/api/admin/high-risk-approvals', {
+      token: 'demo-access.legalpixel',
+      body: {
+        action: 'security_containment',
+        resourceType: 'security_alert',
+        resourceId: 'alert-1',
+        permissionId: 'admin:break-glass',
+        reasonCode: 'security_incident',
+        reason: 'Contain active incident.',
+      },
+    })
+    assert.equal(denied.status, 403)
+
+    const requested = await requestJson(server.url, '/api/admin/high-risk-approvals', {
+      token: 'demo-access.opsplus',
+      headers: {
+        'x-request-id': 'iam-route-request-1',
+        traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
+      },
+      body: {
+        action: 'security_containment',
+        resourceType: 'security_alert',
+        resourceId: 'alert-1',
+        permissionId: 'admin:break-glass',
+        reasonCode: 'security_incident',
+        reason: 'Contain active incident.',
+        temporaryAuthorizationTtlMinutes: 10,
+      },
+    })
+    assert.equal(requested.status, 200)
+    assert.equal(requested.payload.data.review.queue, 'high_risk_access')
+
+    const selfApproval = await requestJson(server.url, `/api/admin/reviews/${requested.payload.data.review.id}/actions`, {
+      token: 'demo-access.opsplus',
+      body: { decision: 'approve', note: 'self approval' },
+    })
+    assert.equal(selfApproval.status, 400)
+
+    const approved = await requestJson(server.url, `/api/admin/reviews/${requested.payload.data.review.id}/actions`, {
+      token: 'demo-access.finops',
+      body: { decision: 'approve', note: 'approved by second admin' },
+    })
+    assert.equal(approved.status, 200)
+    assert.equal(approved.payload.data.review.decision, 'approve')
+    assert.equal(approved.payload.data.temporaryAuthorization.status, 'active')
+
+    const revoked = await requestJson(server.url, `/api/admin/temporary-authorizations/${approved.payload.data.temporaryAuthorization.id}/revoke`, {
+      token: 'demo-access.finops',
+      body: { reasonCode: 'incident_closed' },
+    })
+    assert.equal(revoked.status, 200)
+    assert.equal(revoked.payload.data.status, 'revoked')
+
+    const breakGlass = await requestJson(server.url, '/api/admin/break-glass', {
+      token: 'demo-access.opsplus',
+      body: {
+        permissionId: 'admin:break-glass',
+        resourceType: 'security_alert',
+        resourceId: 'alert-2',
+        reasonCode: 'security_incident',
+        reason: 'Emergency containment.',
+        ttlMinutes: 5,
+      },
+    })
+    assert.equal(breakGlass.status, 200)
+    assert.equal(breakGlass.payload.data.status, 'active')
+
+    const reviewed = await requestJson(server.url, `/api/admin/break-glass/${breakGlass.payload.data.id}/review`, {
+      token: 'demo-access.finops',
+      body: { decision: 'approve', note: 'valid emergency use' },
+    })
+    assert.equal(reviewed.status, 200)
+    assert.equal(reviewed.payload.data.status, 'reviewed')
+    assert.equal(reviewed.payload.data.reviewedBy, 'finops')
+  } finally {
+    await server.close()
+  }
+})
+
 const providerOutputPng = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
   'base64',
@@ -1826,7 +1908,7 @@ test('PUT /api/admin/roles/:role/permissions keeps protected admin grants', asyn
     assert.equal(status, 400)
     assert.equal(payload.data, null)
     assert.equal(payload.error.code, 'VALIDATION_FAILED')
-    assert.equal(payload.error.message, 'cannot remove protected permissions: admin:permissions:manage, admin:accounting:repair')
+    assert.equal(payload.error.message, 'cannot remove protected permissions: admin:permissions:manage, admin:accounting:repair, admin:high-risk:approve, admin:temporary-access:manage, admin:break-glass')
   } finally {
     await server.close()
   }
