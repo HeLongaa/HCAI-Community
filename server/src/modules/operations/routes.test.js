@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
+import { createInjectedRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
 import { buildDomainEvent } from '../../events/domainEvents.js'
 import { createSeedRepository } from '../../repositories/seedRepository.js'
 import { registerOperationRoutes } from './routes.js'
 
-const createServer = (repository) => createRouteTestServer((router) => registerOperationRoutes(router, { repositories: repository }))
+const createServer = (repository) => createInjectedRouteTestServer(repository, (router) => registerOperationRoutes(router, { repositories: repository }))
 
 test('Admin domain event APIs enforce dedicated read and replay permissions', async () => {
   const repository = createSeedRepository()

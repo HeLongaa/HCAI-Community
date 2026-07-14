@@ -1,9 +1,8 @@
 import { createRouter } from '../http/router.js'
 import { createServer } from '../http/server.js'
-import { repositories } from '../../repositories/index.js'
 import { createAdminMutationAuditHook } from '../../audit/adminMutationAudit.js'
 
-export const createRouteTestServer = async (...registerRoutes) => {
+const createServerWithRepositories = async (repositories, registerRoutes) => {
   const router = createRouter()
   for (const registerRoute of registerRoutes) {
     registerRoute(router)
@@ -19,6 +18,14 @@ export const createRouteTestServer = async (...registerRoutes) => {
     close: () => new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve()))),
   }
 }
+
+export const createRouteTestServer = async (...registerRoutes) => {
+  const { repositories } = await import('../../repositories/index.js')
+  return createServerWithRepositories(repositories, registerRoutes)
+}
+
+export const createInjectedRouteTestServer = (repositories, ...registerRoutes) =>
+  createServerWithRepositories(repositories, registerRoutes)
 
 export const requestJson = async (baseUrl, path, { method = 'POST', body, token, headers = {} } = {}) => {
   const response = await fetch(`${baseUrl}${path}`, {
