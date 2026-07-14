@@ -20,6 +20,15 @@ test('domain event registry rejects unknown versions and payload drift', () => {
   assert.throws(() => buildDomainEvent({ type: 'task.created', aggregateId: 'task-valid2', idempotencyKey: 'extra-field', payload: { taskId: 'task-valid2', publisherId: 'user-valid2', status: 'open', category: 'design', secret: 'no' } }), /FIELD_NOT_REGISTERED/)
 })
 
+test('Outbox assigns aggregate sequence instead of trusting caller input', async () => {
+  const repository = createSeedDomainEventRepository()
+  const first = await repository.enqueue(eventPayload('sequence-a'))
+  const secondInput = { ...eventPayload('sequence-b'), aggregateId: first.aggregateId, aggregateSequence: 99 }
+  const second = await repository.enqueue(secondInput)
+  assert.equal(first.aggregateSequence, 1)
+  assert.equal(second.aggregateSequence, 2)
+})
+
 test('Outbox claims, publishes, fails, and replays without mutating event facts', async () => {
   const audit = []
   const repository = createSeedDomainEventRepository({ recordAudit: async (item) => audit.push(item) })

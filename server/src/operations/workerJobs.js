@@ -1,5 +1,6 @@
 import { buildProviderPollingLeaseKey, runProviderPollingWorkerOnce } from '../creative/providerPollingWorker.js'
 import { runVideoProviderLifecycleWorkerOnce } from '../creative/videoProviderLifecycle.js'
+import { runDomainEventPipelineOnce } from '../events/domainEventPipeline.js'
 
 export const createProductionWorkerJobDefinitions = (repositories, env, options = {}) => {
   const jobs = []
@@ -8,6 +9,15 @@ export const createProductionWorkerJobDefinitions = (repositories, env, options 
     ttlSeconds: env.workerLeaseTtlSeconds,
     renewIntervalSeconds: env.workerLeaseRenewIntervalSeconds,
   })
+  if (repositories.domainEvents && repositories.domainEventConsumers) {
+    jobs.push({
+      id: 'domain-event-pipeline',
+      enabled: env.domainEventWorkerEnabled,
+      intervalSeconds: env.domainEventWorkerIntervalSeconds,
+      lease: lease('domain-event-pipeline'),
+      run: () => runDomainEventPipelineOnce({ repositories, limit: env.domainEventWorkerBatchSize }),
+    })
+  }
   if (repositories.media?.sweepScanJobs) {
     jobs.push({
       id: 'media-scan-sweep',

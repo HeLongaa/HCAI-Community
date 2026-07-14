@@ -4,13 +4,34 @@ import { domainEventDto } from './domainEvents.js'
 const includePublication = { publication: true }
 const nowPlus = (seconds) => new Date(Date.now() + Math.max(1, Number(seconds ?? 60)) * 1000)
 
-export const enqueueDomainEvent = async (db, event) => db.domainEventOutbox.create({
-  data: { ...event, publication: { create: {} } },
-  include: includePublication,
-})
+const sequenceId = (event) => `sequence:${event.aggregateType}:${event.aggregateId}`
+export const enqueueDomainEvent = async (db, event) => {
+  const current = await db.domainEventOutbox.findUnique({ where: { idempotencyKey: event.idempotencyKey }, include: includePublication })
+  if (current) return current
+  await db.domainEventAggregateSequence.createMany({
+    data: [{ id: sequenceId(event), aggregateType: event.aggregateType, aggregateId: event.aggregateId, currentSequence: 0 }],
+    skipDuplicates: true,
+  })
+  const sequence = await db.domainEventAggregateSequence.update({
+    where: { aggregateType_aggregateId: { aggregateType: event.aggregateType, aggregateId: event.aggregateId } },
+    data: { currentSequence: { increment: 1 } },
+  })
+  return db.domainEventOutbox.create({
+    data: { ...event, aggregateSequence: sequence.currentSequence, publication: { create: {} } },
+    include: includePublication,
+  })
+}
 
 export const createPrismaDomainEventRepository = (client, { recordAudit = async () => {} } = {}) => ({
-  enqueue: (event, db = client) => enqueueDomainEvent(db, event).then(domainEventDto),
+  async enqueue(event, db = null) {
+    if (db) return domainEventDto(await enqueueDomainEvent(db, event))
+    try {
+      return domainEventDto(await client.$transaction((transaction) => enqueueDomainEvent(transaction, event)))
+    } catch (error) {
+      if (error?.code !== 'P2002') throw error
+      return domainEventDto(await client.domainEventOutbox.findUnique({ where: { idempotencyKey: event.idempotencyKey }, include: includePublication }))
+    }
+  },
   async find(id) {
     return domainEventDto(await client.domainEventOutbox.findUnique({ where: { id: String(id) }, include: includePublication }))
   },

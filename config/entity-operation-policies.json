@@ -21,6 +21,14 @@
     { "model": "OperationLease", "domain": "jobs-automation", "policy": "state_transition", "hardDelete": true },
     { "model": "DomainEventOutbox", "domain": "platform-architecture", "policy": "append_only", "hardDelete": false },
     { "model": "DomainEventPublication", "domain": "platform-architecture", "policy": "state_transition", "hardDelete": false },
+    { "model": "DomainEventAggregateSequence", "domain": "platform-architecture", "policy": "state_transition", "hardDelete": false },
+    { "model": "DomainEventConsumerInbox", "domain": "platform-architecture", "policy": "append_only", "hardDelete": false },
+    { "model": "DomainEventConsumption", "domain": "platform-architecture", "policy": "state_transition", "hardDelete": false },
+    { "model": "DomainEventConsumptionAttempt", "domain": "platform-architecture", "policy": "state_transition", "hardDelete": false },
+    { "model": "DomainEventConsumerCursor", "domain": "platform-architecture", "policy": "state_transition", "hardDelete": false },
+    { "model": "DomainEventCompensation", "domain": "platform-architecture", "policy": "append_only", "hardDelete": false },
+    { "model": "DomainEventCompensationState", "domain": "platform-architecture", "policy": "state_transition", "hardDelete": false },
+    { "model": "DomainEventCompensationAttempt", "domain": "platform-architecture", "policy": "state_transition", "hardDelete": false },
     { "model": "JobDefinition", "domain": "jobs-automation", "policy": "mutable_crud", "hardDelete": false },
     { "model": "JobRun", "domain": "jobs-automation", "policy": "state_transition", "hardDelete": false },
     { "model": "JobAttempt", "domain": "jobs-automation", "policy": "state_transition", "hardDelete": false },
@@ -71,7 +79,7 @@
   ],
   "protectedFamilies": {
     "accounting": ["PointLedger", "InternalAccountingOperation", "InternalAccountingMovement"],
-    "audit": ["AuditEvent", "SecurityEvent", "DomainEventOutbox"],
+    "audit": ["AuditEvent", "SecurityEvent", "DomainEventOutbox", "DomainEventConsumerInbox", "DomainEventCompensation"],
     "evidence": ["MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger"]
   }
 }

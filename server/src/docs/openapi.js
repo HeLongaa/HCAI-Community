@@ -2891,6 +2891,50 @@ export const openApiDocument = {
         responses: { '200': { description: 'Event returned to pending publication' }, '403': { description: 'Requires admin:events:replay' }, '404': { description: 'Event cannot be replayed' } },
       },
     },
+    '/admin/domain-event-consumers': {
+      get: {
+        summary: 'List registered domain event consumers and bounded retry policy',
+        responses: { '200': { description: 'Registered consumer definitions' }, '403': { description: 'Requires admin:events:read' } },
+      },
+    },
+    '/admin/domain-event-inbox': {
+      get: {
+        summary: 'List immutable Inbox receipts with processing and compensation state',
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'processing', 'retry_scheduled', 'succeeded', 'dead_lettered', 'compensation_pending', 'compensated', 'compensation_failed'] } },
+          { name: 'consumerKey', in: 'query', schema: { type: 'string' } },
+          { name: 'eventType', in: 'query', schema: { type: 'string' } },
+          { name: 'aggregateType', in: 'query', schema: { type: 'string' } },
+          { name: 'aggregateId', in: 'query', schema: { type: 'string' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+        ],
+        responses: { '200': { description: 'Consumer Inbox page' }, '403': { description: 'Requires admin:events:read' } },
+      },
+    },
+    '/admin/domain-event-inbox/{id}': {
+      get: {
+        summary: 'Read one Inbox receipt, attempts, DLQ and compensation evidence',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Consumer Inbox detail' }, '404': { description: 'Inbox receipt not found' } },
+      },
+    },
+    '/admin/domain-event-inbox/{id}/retry': {
+      post: {
+        summary: 'Grant one audited recovery attempt to a dead-lettered consumption',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { reasonCode: { type: 'string' } } } } } },
+        responses: { '200': { description: 'Consumption scheduled for recovery' }, '403': { description: 'Requires admin:events:recover' }, '404': { description: 'Consumption is not recoverable' } },
+      },
+    },
+    '/admin/domain-event-inbox/{id}/compensate': {
+      post: {
+        summary: 'Request an audited registered compensation for a succeeded consumption',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { reasonCode: { type: 'string' } } } } } },
+        responses: { '200': { description: 'Compensation queued' }, '403': { description: 'Requires admin:events:recover' }, '404': { description: 'Compensation is not allowed' } },
+      },
+    },
     '/admin/jobs/definitions': {
       get: {
         summary: 'List registered job definitions',

@@ -20,6 +20,8 @@
     { "method": "POST", "path": "/api/admin/points/policy/rollback", "action": "admin.points_policy.rollback.attempted", "resourceType": "point_adjustment_policy", "resourceParam": null, "reasonCode": "points_policy_rollback", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/points/adjustments", "action": "admin.points.adjust.attempted", "resourceType": "point_ledger", "resourceParam": null, "reasonCode": "points_adjustment", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/domain-events/:id/replay", "action": "admin.domain_event.replay.attempted", "resourceType": "domain_event", "resourceParam": "id", "reasonCode": "domain_event_replay", "mode": "domain_audited", "risk": "critical" },
+    { "method": "POST", "path": "/api/admin/domain-event-inbox/:id/retry", "action": "admin.domain_event_consumer.retry.attempted", "resourceType": "domain_event_inbox", "resourceParam": "id", "reasonCode": "domain_event_consumer_retry", "mode": "domain_audited", "risk": "critical" },
+    { "method": "POST", "path": "/api/admin/domain-event-inbox/:id/compensate", "action": "admin.domain_event_consumer.compensate.attempted", "resourceType": "domain_event_inbox", "resourceParam": "id", "reasonCode": "domain_event_consumer_compensate", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/jobs/runs/:id/cancel", "action": "admin.job.cancel.attempted", "resourceType": "job_run", "resourceParam": "id", "reasonCode": "job_cancel", "mode": "domain_audited", "risk": "critical" }
   ]
 }

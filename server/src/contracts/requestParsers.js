@@ -897,6 +897,24 @@ export const parseDomainEventReplayRequest = (body) => ({
   reasonCode: optionalText(body, 'reasonCode', 'admin_replay'),
 })
 
+export const parseDomainEventInboxListQuery = (query) => {
+  const status = optionalText(query, 'status', null)
+  const statuses = ['pending', 'processing', 'retry_scheduled', 'succeeded', 'dead_lettered', 'compensation_pending', 'compensated', 'compensation_failed']
+  if (status && !statuses.includes(status)) throw validationFailed(`status must be one of: ${statuses.join(', ')}`)
+  return {
+    ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 }),
+    status,
+    consumerKey: optionalText(query, 'consumerKey', null),
+    eventType: optionalText(query, 'eventType', null),
+    aggregateType: optionalText(query, 'aggregateType', null),
+    aggregateId: optionalText(query, 'aggregateId', null),
+  }
+}
+
+export const parseDomainEventRecoveryRequest = (body) => ({
+  reasonCode: optionalText(body, 'reasonCode', 'admin_recovery'),
+})
+
 export const parseJobDefinitionListQuery = (query) => ({
   type: optionalText(query, 'type', null),
   enabled: query.enabled == null || query.enabled === '' ? null : ['1', 'true', 'yes'].includes(String(query.enabled).toLowerCase()),

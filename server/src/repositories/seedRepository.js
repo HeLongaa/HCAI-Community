@@ -4,6 +4,7 @@ import { hasPermission, permissionRegistry, permissions, rolePermissions } from 
 import { authorizeResource } from '../auth/resourcePolicy.js'
 import { taskCreatedEvent } from '../events/domainEvents.js'
 import { createSeedDomainEventRepository } from '../events/seedDomainEventRepository.js'
+import { createSeedDomainEventConsumerRepository } from '../events/seedDomainEventConsumerRepository.js'
 import { createSeedJobRepository } from '../jobs/seedJobRepository.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
@@ -2316,6 +2317,7 @@ const getSeedMediaScanJobArchiveManifest = (options = {}) => {
 export const createSeedRepository = () => {
   const auditRecorder = ({ actor, action, resourceType, resourceId, metadata }) => recordAudit(actor, action, resourceType, resourceId, metadata)
   const domainEvents = createSeedDomainEventRepository({ recordAudit: auditRecorder })
+  const domainEventConsumers = createSeedDomainEventConsumerRepository({ recordAudit: auditRecorder })
   const jobs = createSeedJobRepository({ recordAudit: auditRecorder })
   return {
   chat: createSeedChatRepository({
@@ -3775,6 +3777,7 @@ export const createSeedRepository = () => {
     },
   },
   domainEvents,
+  domainEventConsumers,
   jobs,
   operationsMetrics: {
     summary: async (options = {}) => buildSeedOperationsMetrics(options),
