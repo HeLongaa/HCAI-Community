@@ -263,6 +263,30 @@ enum CreativeProviderOperationStatus {
   timed_out
 }
 
+enum DomainEventPublicationStatus {
+  pending
+  claimed
+  published
+  failed
+}
+
+enum JobRunStatus {
+  queued
+  running
+  succeeded
+  failed
+  timed_out
+  cancelled
+}
+
+enum JobAttemptStatus {
+  running
+  succeeded
+  failed
+  timed_out
+  cancelled
+}
+
 model AuditEvent {
   id                    String         @id @default(cuid())
   actorType             AuditActorType @map("actor_type")
@@ -353,6 +377,123 @@ model OperationLease {
   @@index([ownerId])
   @@index([expiresAt])
   @@map("operation_leases")
+}
+
+model DomainEventOutbox {
+  id                   String   @id
+  eventType            String   @map("event_type")
+  eventVersion         Int      @map("event_version")
+  aggregateType        String   @map("aggregate_type")
+  aggregateId          String   @map("aggregate_id")
+  ownerId              String?  @map("owner_id")
+  correlationId        String   @map("correlation_id")
+  causationId          String?  @map("causation_id")
+  idempotencyKey       String   @unique @map("idempotency_key")
+  payload              Json
+  payloadSchemaVersion Int      @default(1) @map("payload_schema_version")
+  occurredAt           DateTime @default(now()) @map("occurred_at")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  publication DomainEventPublication?
+
+  @@index([eventType, occurredAt])
+  @@index([aggregateType, aggregateId, occurredAt])
+  @@index([correlationId, occurredAt])
+  @@map("domain_event_outbox")
+}
+
+model DomainEventPublication {
+  eventId        String                       @id @map("event_id")
+  status         DomainEventPublicationStatus @default(pending)
+  attempts       Int                          @default(0)
+  availableAt    DateTime                     @default(now()) @map("available_at")
+  claimToken     String?                      @unique @map("claim_token")
+  claimedBy      String?                      @map("claimed_by")
+  claimExpiresAt DateTime?                    @map("claim_expires_at")
+  publishedAt    DateTime?                    @map("published_at")
+  lastErrorCode  String?                      @map("last_error_code")
+  createdAt      DateTime                     @default(now()) @map("created_at")
+  updatedAt      DateTime                     @updatedAt @map("updated_at")
+
+  event DomainEventOutbox @relation(fields: [eventId], references: [id], onDelete: Restrict)
+
+  @@index([status, availableAt])
+  @@index([claimExpiresAt])
+  @@map("domain_event_publications")
+}
+
+model JobDefinition {
+  id                    String   @id
+  type                  String
+  version               Int      @default(1)
+  enabled               Boolean  @default(true)
+  defaultTimeoutSeconds Int      @default(300) @map("default_timeout_seconds")
+  description           String?
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  runs JobRun[]
+
+  @@unique([type, version])
+  @@map("job_definitions")
+}
+
+model JobRun {
+  id                  String       @id
+  definitionId        String       @map("definition_id")
+  status              JobRunStatus @default(queued)
+  priority            Int          @default(0)
+  idempotencyKey      String       @unique @map("idempotency_key")
+  ownerId             String?      @map("owner_id")
+  requestedById       String?      @map("requested_by_id")
+  correlationId       String       @map("correlation_id")
+  input               Json?
+  inputSchemaVersion  Int          @default(1) @map("input_schema_version")
+  result              Json?
+  resultSchemaVersion Int          @default(1) @map("result_schema_version")
+  errorCode           String?      @map("error_code")
+  scheduledAt         DateTime     @default(now()) @map("scheduled_at")
+  startedAt           DateTime?    @map("started_at")
+  heartbeatAt         DateTime?    @map("heartbeat_at")
+  timeoutAt           DateTime?    @map("timeout_at")
+  cancelRequestedAt   DateTime?    @map("cancel_requested_at")
+  completedAt         DateTime?    @map("completed_at")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+
+  definition JobDefinition @relation(fields: [definitionId], references: [id], onDelete: Restrict)
+  attempts   JobAttempt[]
+
+  @@index([status, scheduledAt, priority])
+  @@index([definitionId, createdAt])
+  @@index([ownerId, createdAt])
+  @@index([correlationId, createdAt])
+  @@map("job_runs")
+}
+
+model JobAttempt {
+  id                  String           @id
+  runId               String           @map("run_id")
+  attemptNumber       Int              @map("attempt_number")
+  status              JobAttemptStatus @default(running)
+  workerId            String           @map("worker_id")
+  leaseToken          String           @unique @map("lease_token")
+  heartbeatAt         DateTime         @default(now()) @map("heartbeat_at")
+  timeoutAt           DateTime         @map("timeout_at")
+  result              Json?
+  resultSchemaVersion Int              @default(1) @map("result_schema_version")
+  errorCode           String?          @map("error_code")
+  startedAt           DateTime         @default(now()) @map("started_at")
+  completedAt         DateTime?        @map("completed_at")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+
+  run JobRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+
+  @@unique([runId, attemptNumber])
+  @@index([status, timeoutAt])
+  @@index([workerId, startedAt])
+  @@map("job_attempts")
 }
 
 model AdminReview {

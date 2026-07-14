@@ -10,6 +10,7 @@ const worker = startWorkerJobs(createProductionWorkerJobDefinitions(repositories
 }), {
   logger: console,
   leaseManager: repositories.operationLeases,
+  jobManager: repositories.jobs,
   unrefTimers: false,
 })
 

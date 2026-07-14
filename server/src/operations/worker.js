@@ -114,6 +114,7 @@ export const startIntervalWorkerJob = ({
   intervalSeconds = 60,
   lease = null,
   leaseManager = null,
+  jobManager = null,
   workerId = `worker-${randomUUID()}`,
   run,
   runImmediately = true,
@@ -131,7 +132,26 @@ export const startIntervalWorkerJob = ({
       return { skipped: true }
     }
     running = true
+    let trackedRun = null
     try {
+      if (jobManager) {
+        await jobManager.ensureDefinition({
+          id,
+          type: 'interval',
+          version: 1,
+          enabled: true,
+          defaultTimeoutSeconds: positiveSeconds(lease?.ttlSeconds, Math.max(60, Math.ceil(intervalMs / 1000))),
+          description: `Tracked interval worker: ${id}`,
+        })
+        const queued = await jobManager.enqueue({
+          definitionId: id,
+          idempotencyKey: `interval:${id}:${randomUUID()}`,
+          correlationId: `worker:${workerId}:${id}:${randomUUID()}`,
+          input: { source: 'interval_worker', jobId: id },
+        })
+        trackedRun = queued ? await jobManager.claim({ workerId, definitionId: id }) : null
+        if (!trackedRun) return { skipped: true, reason: 'job_run_unavailable' }
+      }
       const result = await runWithLease({
         id,
         lease,
@@ -140,9 +160,24 @@ export const startIntervalWorkerJob = ({
         logger,
         run,
       })
+      if (trackedRun) {
+        const latest = typeof jobManager.find === 'function' ? await jobManager.find(trackedRun.id) : null
+        if (latest?.cancelRequestedAt && typeof jobManager.cancelRunning === 'function') {
+          await jobManager.cancelRunning(trackedRun.id, trackedRun.leaseToken)
+        } else {
+          await jobManager.complete(trackedRun.id, trackedRun.leaseToken, result ?? null)
+        }
+      }
       log(logger, 'info', `[worker:${id}] completed`, result)
       return result
     } catch (error) {
+      if (trackedRun) {
+        try {
+          await jobManager.fail(trackedRun.id, trackedRun.leaseToken, error?.code ?? 'JOB_EXECUTION_FAILED')
+        } catch (recordError) {
+          log(logger, 'error', `[worker:${id}] failed to persist JobRun failure`, recordError)
+        }
+      }
       log(logger, 'error', `[worker:${id}] failed`, error)
       return null
     } finally {
@@ -184,6 +219,7 @@ export const startWorkerJobs = (definitions = [], options = {}) => {
       ...definition,
       logger: definition.logger ?? logger,
       leaseManager: definition.leaseManager ?? options.leaseManager,
+      jobManager: definition.jobManager ?? options.jobManager,
       workerId: definition.workerId ?? workerId,
       unrefTimers: definition.unrefTimers ?? options.unrefTimers,
     }))
