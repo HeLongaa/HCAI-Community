@@ -4,5 +4,6 @@ export const startMediaScanWorker = (repositories, options = {}) => startInterva
   id: 'media-scan-sweep',
   enabled: options.enabled && Boolean(repositories.media?.sweepScanJobs),
   intervalSeconds: options.intervalSeconds,
+  jobManager: repositories.jobs,
   run: () => repositories.media.sweepScanJobs({ source: 'worker' }),
 })

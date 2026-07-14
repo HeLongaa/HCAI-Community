@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { startIntervalWorkerJob, startWorkerJobs } from './worker.js'
 import { createProductionWorkerJobDefinitions } from './workerJobs.js'
+import { createSeedJobRepository } from '../jobs/seedJobRepository.js'
 
 test('startIntervalWorkerJob prevents overlapping runs', async () => {
   let release
@@ -128,6 +129,55 @@ test('startIntervalWorkerJob releases durable lease after a successful run', asy
       }],
       ['release', { key: 'leased-job', token: 'token-a' }],
     ])
+  } finally {
+    job.stop()
+  }
+})
+
+test('startIntervalWorkerJob records a unified JobRun and attempt', async () => {
+  const jobManager = createSeedJobRepository()
+  const job = startIntervalWorkerJob({
+    id: 'tracked-worker',
+    intervalSeconds: 60,
+    runImmediately: false,
+    jobManager,
+    workerId: 'worker-tracked',
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    run: async () => ({ processed: 3 }),
+  })
+  try {
+    assert.deepEqual(await job.run(), { processed: 3 })
+    const page = await jobManager.list({ definitionId: 'tracked-worker' })
+    assert.equal(page.items.length, 1)
+    assert.equal(page.items[0].status, 'succeeded')
+    assert.equal(page.items[0].attempts.length, 1)
+    assert.deepEqual(page.items[0].result, { processed: 3 })
+  } finally {
+    job.stop()
+  }
+})
+
+test('startIntervalWorkerJob cooperatively acknowledges a cancellation requested during execution', async () => {
+  const jobManager = createSeedJobRepository()
+  const job = startIntervalWorkerJob({
+    id: 'cancelled-worker',
+    intervalSeconds: 60,
+    runImmediately: false,
+    jobManager,
+    workerId: 'worker-cancelled',
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    run: async () => {
+      const page = await jobManager.list({ definitionId: 'cancelled-worker', status: 'running' })
+      await jobManager.requestCancel(page.items[0].id, { id: 'admin' }, { reasonCode: 'test_cancel' })
+      return { processed: 1 }
+    },
+  })
+  try {
+    assert.deepEqual(await job.run(), { processed: 1 })
+    const page = await jobManager.list({ definitionId: 'cancelled-worker' })
+    assert.equal(page.items[0].status, 'cancelled')
+    assert.equal(page.items[0].attempts[0].status, 'cancelled')
+    assert.equal(page.items[0].result, null)
   } finally {
     job.stop()
   }

@@ -5,6 +5,9 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 import { getPermissionsForRole, hasPermission, permissionById } from '../auth/permissions.js'
 import { authorizeResource } from '../auth/resourcePolicy.js'
+import { taskCreatedEvent } from '../events/domainEvents.js'
+import { createPrismaDomainEventRepository, enqueueDomainEvent } from '../events/prismaDomainEventRepository.js'
+import { createPrismaJobRepository } from '../jobs/prismaJobRepository.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, hashToken, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
 import {
@@ -202,6 +205,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   }
 
   const chat = createPrismaChatRepository(client, { recordAudit })
+  const domainEvents = createPrismaDomainEventRepository(client, { recordAudit })
+  const jobs = createPrismaJobRepository(client, { recordAudit })
 
   const leaseExpiry = (ttlSeconds) => new Date(Date.now() + Math.max(1, Number(ttlSeconds ?? 300)) * 1000)
 
@@ -2634,6 +2639,12 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           ),
         })
         await createTaskEscrow(transaction, createdTask, publisher.id, actor)
+        await enqueueDomainEvent(transaction, taskCreatedEvent({
+          task: createdTask,
+          publisherId: publisher.id,
+          correlationId: `task-create:${createdTask.id}`,
+          actor,
+        }))
         return createdTask
       })
       await recordAudit({
@@ -9231,6 +9242,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     audit,
     securityEvents,
     operationLeases,
+    domainEvents,
+    jobs,
     operationsMetrics,
     authorization,
     adminReviews,

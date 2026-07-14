@@ -19,6 +19,11 @@
     { "model": "RolePermission", "domain": "identity-access", "policy": "mutable_crud", "hardDelete": true },
     { "model": "SystemSetting", "domain": "config-feature-flags", "policy": "mutable_crud", "hardDelete": false },
     { "model": "OperationLease", "domain": "jobs-automation", "policy": "state_transition", "hardDelete": true },
+    { "model": "DomainEventOutbox", "domain": "platform-architecture", "policy": "append_only", "hardDelete": false },
+    { "model": "DomainEventPublication", "domain": "platform-architecture", "policy": "state_transition", "hardDelete": false },
+    { "model": "JobDefinition", "domain": "jobs-automation", "policy": "mutable_crud", "hardDelete": false },
+    { "model": "JobRun", "domain": "jobs-automation", "policy": "state_transition", "hardDelete": false },
+    { "model": "JobAttempt", "domain": "jobs-automation", "policy": "state_transition", "hardDelete": false },
     { "model": "AdminReview", "domain": "admin-console", "policy": "state_transition", "hardDelete": false },
     { "model": "User", "domain": "user-profile", "policy": "soft_delete", "hardDelete": false },
     { "model": "AuthAccount", "domain": "identity-access", "policy": "mutable_crud", "hardDelete": true },
@@ -66,7 +71,7 @@
   ],
   "protectedFamilies": {
     "accounting": ["PointLedger", "InternalAccountingOperation", "InternalAccountingMovement"],
-    "audit": ["AuditEvent", "SecurityEvent"],
+    "audit": ["AuditEvent", "SecurityEvent", "DomainEventOutbox"],
     "evidence": ["MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger"]
   }
 }

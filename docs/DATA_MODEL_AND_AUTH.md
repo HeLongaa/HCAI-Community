@@ -22,9 +22,24 @@ policy version change makes the previous record non-current. Full export/deletio
 
 ## Core Entities
 
-Phase 1 migrations `0041` and `0042` add two cross-cutting rules. Every Prisma `Json` field has a sibling integer schema-version column (36 fields at version 1). Task submission, creative generation input/output, and Chat turn input media references now dual-write to FK-backed relation tables while keeping legacy arrays as API-compatible projections. See `docs/DATA_RELATION_AND_JSON_SCHEMA.md`.
+Phase 1 migrations `0041`, `0042`, and `0043` add three cross-cutting rules. Every Prisma `Json` field has a sibling integer schema-version column (40 fields at version 1). Task submission, creative generation input/output, and Chat turn input media references dual-write to FK-backed relation tables while keeping legacy arrays as API-compatible projections. Transactional domain events separate immutable facts from mutable publication state, and the unified job runtime persists definitions, runs, and worker attempts. See `docs/DATA_RELATION_AND_JSON_SCHEMA.md`, `docs/TRANSACTIONAL_DOMAIN_EVENTS.md`, and `docs/UNIFIED_JOB_RUNTIME.md`.
 
 The product remains personal-account-only. RBAC metadata is defined by `server/src/auth/permissions.js`; object authorization is separately enforced by `server/src/auth/resourcePolicy.js`. No tenant, organization, team, membership, invitation, or tenant-workspace model is present.
+
+### Transactional domain events
+
+- `domain_event_outbox` stores immutable event identity, registered type/version, aggregate, personal owner, correlation/causation, unique idempotency key, allowlisted versioned payload, and occurrence time.
+- `domain_event_publications` has a one-to-one restrictive FK to the Outbox fact and owns `pending|claimed|published|failed`, availability, attempts, claim token/lease, publication time, and bounded error code.
+- `task.created.v1` is the first producer. Task, point escrow, Outbox fact, and publication row commit or roll back in one Prisma transaction.
+- Replay updates only `domain_event_publications`; there is no event-fact update API. Inbox, consumer idempotency, ordering, retry policy, DLQ, and compensation belong to `EVENT-02`.
+
+### Unified job runtime
+
+- `job_definitions` registers a stable handler identity, type/version, enabled state, default timeout, and description.
+- `job_runs` stores `queued|running|succeeded|failed|timed_out|cancelled`, unique idempotency, correlation, optional personal owner/requester, priority/schedule, safe versioned input/result, cancellation, heartbeat, timeout, and terminal evidence.
+- `job_attempts` binds one worker and unique lease token to an attempt. `(run_id, attempt_number)` is unique; late and foreign tokens cannot heartbeat or close a run.
+- `operation_leases` remains the cross-instance singleton lease. JOB-01 does not create a competing lease abstraction.
+- JOB-01 permits automatic enqueue/claim and Admin list/detail/cancel only. Retry, DLQ, Cron, pause/resume, and manual rerun belong to `JOB-02`.
 
 ### `users`
 
@@ -246,7 +261,7 @@ Every non-GET `/api/admin/**` route writes a mandatory sanitized attempt event b
 
 ### `permissions`
 
-The stable string `id` remains API-compatible. Persisted metadata now includes `module`, `resource`, `action`, `risk_level`, `is_protected`, and `resource_authorization`. Runtime startup upserts all 26 registered permissions, while mutable grants remain in `role_permissions`.
+The stable string `id` remains API-compatible. Persisted metadata includes `module`, `resource`, `action`, `risk_level`, `is_protected`, and `resource_authorization`. Runtime startup upserts all 30 registered permissions, while mutable grants remain in `role_permissions`. EVENT-01/JOB-01 add `admin:events:read`, `admin:events:replay`, `admin:jobs:read`, and `admin:jobs:manage`; replay and cancellation are separately guarded and audited.
 
 ### `admin_reviews`
 

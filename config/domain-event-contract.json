@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "registry": "config/domain-event-registry.json",
+  "schemaPath": "server/prisma/schema.prisma",
+  "migration": "server/prisma/migrations/0043_domain_events_and_job_runs/migration.sql",
+  "policyDocument": "docs/TRANSACTIONAL_DOMAIN_EVENTS.md",
+  "requiredModels": ["DomainEventOutbox", "DomainEventPublication"],
+  "firstAtomicProducer": "task.created.v1",
+  "producerSource": "server/src/repositories/prismaRepository.js"
+}

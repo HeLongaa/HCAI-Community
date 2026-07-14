@@ -107,6 +107,28 @@ Use `docs/GITHUB_ENVIRONMENT.md` when configuring the GitHub Environment variabl
 Use `docs/RELEASE_CHECKLIST.md` for release execution, post-release verification, and rollback criteria.
 Use `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` as the deployment topology entry point before scaling API or worker process counts.
 
+## Domain Event Publication Triage
+
+Use `GET /api/admin/domain-events` with `status=failed` or `status=claimed` to inspect safe publication evidence. Never edit `domain_event_outbox`: it is the immutable fact. A stale `claimed` row becomes claimable after `claim_expires_at`; do not clear tokens manually while a worker may still be active.
+
+For a confirmed recoverable `published` or `failed` event, an operator with `admin:events:replay` may call `POST /api/admin/domain-events/:id/replay` with a stable reason code. Replay moves only the publication row to `pending` and writes audit evidence. EVENT-01 has no consumer Inbox, automatic retry policy, DLQ, ordering, or compensation; if downstream side effects are uncertain, stop and escalate instead of replaying repeatedly.
+
+Triage order:
+
+1. Inspect event type/version, aggregate, correlation, attempts, claim expiry, and bounded last error code.
+2. Confirm the registered publisher/consumer deployment understands that exact version.
+3. Confirm the original aggregate state and whether any downstream side effect already occurred.
+4. Replay once with an incident or operator reason code, then observe publication state.
+5. Preserve event, publication, and audit identifiers in the incident record.
+
+## Unified Job Runtime Triage
+
+Use `GET /api/admin/jobs/runs` to filter by definition, status, owner, or correlation. `GET /api/admin/jobs/runs/:id` shows safe input/result, attempts, worker, heartbeat, timeout, cancellation, and terminal evidence. Secret-like keys, prompts, Provider payloads, URLs, tokens, and credentials are deliberately absent.
+
+Queued jobs may be cancelled immediately with `POST /api/admin/jobs/runs/:id/cancel`. Running cancellation is cooperative: the API records `cancel_requested_at`, and only the worker holding the matching attempt lease may acknowledge the terminal `cancelled` transition. A cancellation request does not forcibly interrupt a handler. Timed-out attempts reject late completion.
+
+JOB-01 exposes no arbitrary execution, retry, DLQ, Cron, pause/resume, or manual rerun action. Do not mutate job rows to simulate those features; they require JOB-02 policy and audit controls.
+
 ## External Metrics Exporter
 
 Enable the Prometheus-compatible scrape endpoint with:

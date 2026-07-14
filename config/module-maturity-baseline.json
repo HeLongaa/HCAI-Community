@@ -14,9 +14,9 @@
       "maturity": "partial",
       "ownerTask": "ARC-01",
       "userCapabilities": ["统一 API 入口", "明确不可用状态"],
-      "adminCapabilities": ["运行面清单", "发布范围验证"],
+      "adminCapabilities": ["运行面清单", "发布范围验证", "Outbox 发布检索与重放"],
       "operationPolicies": ["not_applicable"],
-      "evidence": ["server/src/modules/index.js", "config/v1-runtime-surfaces.json", "config/v1-release-scope.json"],
+      "evidence": ["server/src/modules/index.js", "config/v1-runtime-surfaces.json", "config/v1-release-scope.json", "server/src/events/prismaDomainEventRepository.js", "docs/TRANSACTIONAL_DOMAIN_EVENTS.md"],
       "gapTasks": ["ARC-01", "ARC-02", "ARC-03"]
     },
     {
@@ -154,12 +154,12 @@
     {
       "id": "jobs-automation",
       "name": "作业与自动化",
-      "maturity": "contract_only",
+      "maturity": "partial",
       "ownerTask": "JOB-01",
       "userCapabilities": ["部分异步生成与扫描恢复"],
-      "adminCapabilities": ["部分租约和作业指标"],
+      "adminCapabilities": ["定义与运行检索", "作业详情", "安全取消", "尝试与租约证据"],
       "operationPolicies": ["state_transition", "append_only"],
-      "evidence": ["server/src/operations/worker.js", "server/src/operations/workerJobs.js", "server/src/repositories/operationLeases.test.js"],
+      "evidence": ["server/src/operations/worker.js", "server/src/jobs/prismaJobRepository.js", "server/src/modules/operations/routes.js", "server/src/repositories/prismaEventsJobs.integration.test.js", "docs/UNIFIED_JOB_RUNTIME.md"],
       "gapTasks": ["JOB-01", "JOB-02"]
     },
     {

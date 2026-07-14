@@ -14,7 +14,8 @@
     "CreativeProviderOperation.safeMetadata", "ChatTurn.usage", "ChatTurn.productContext", "ChatTurn.safety",
     "CreativeGenerationMutation.safeMetadata", "CreativeGenerationMutation.result", "CreativeProviderReplayLedger.sideEffectPlan",
     "CreativeProviderReplayLedger.sideEffectResult", "CreativeProviderCostLedger.pricingSnapshot", "CreativeProviderCostLedger.usage",
-    "CreativeProviderCostLedger.risk", "CreativeCreditLedger.metadata", "Notification.metadata"
+    "CreativeProviderCostLedger.risk", "CreativeCreditLedger.metadata", "Notification.metadata",
+    "DomainEventOutbox.payload", "JobRun.input", "JobRun.result", "JobAttempt.result"
   ],
   "normalizedReferences": [
     { "legacy": "TaskSubmission.assetIds", "model": "TaskSubmissionAsset", "table": "task_submission_assets", "target": "MediaAsset", "mode": "dual_write" },

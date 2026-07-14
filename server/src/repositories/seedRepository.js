@@ -2,6 +2,9 @@ import { createHash, randomUUID } from 'node:crypto'
 import { HttpError } from '../common/errors/httpError.js'
 import { hasPermission, permissionRegistry, permissions, rolePermissions } from '../auth/permissions.js'
 import { authorizeResource } from '../auth/resourcePolicy.js'
+import { taskCreatedEvent } from '../events/domainEvents.js'
+import { createSeedDomainEventRepository } from '../events/seedDomainEventRepository.js'
+import { createSeedJobRepository } from '../jobs/seedJobRepository.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
 import { seedStore } from '../data/seed.js'
@@ -2310,7 +2313,11 @@ const getSeedMediaScanJobArchiveManifest = (options = {}) => {
   }
 }
 
-export const createSeedRepository = () => ({
+export const createSeedRepository = () => {
+  const auditRecorder = ({ actor, action, resourceType, resourceId, metadata }) => recordAudit(actor, action, resourceType, resourceId, metadata)
+  const domainEvents = createSeedDomainEventRepository({ recordAudit: auditRecorder })
+  const jobs = createSeedJobRepository({ recordAudit: auditRecorder })
+  return {
   chat: createSeedChatRepository({
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) =>
       recordAudit(actor, action, resourceType, resourceId, metadata),
@@ -2469,7 +2476,7 @@ export const createSeedRepository = () => ({
         content: [task.description, ...(task.requirements ?? [])].filter(Boolean).join('\n'),
       }
     },
-    create: (payload, actor) => {
+    create: async (payload, actor) => {
       const id = String(seedStore.tasks.length + 1)
       const task = buildTaskViewModel({
         id: Number(id),
@@ -2494,6 +2501,7 @@ export const createSeedRepository = () => ({
       seedStore.tasks.push(task)
       seedStore.taskById.set(Number(id), task)
       createTaskEscrow(task, actor.handle)
+      await domainEvents.enqueue(taskCreatedEvent({ task: { ...task, status: 'open', category: task.category }, publisherId: actor.id, correlationId: `task-create:${task.id}`, actor }))
       recordAudit(actor, 'task.created', 'task', task.id, { status: 'open', category: payload.category })
       return serializeTask(task)
     },
@@ -3766,6 +3774,8 @@ export const createSeedRepository = () => ({
       }
     },
   },
+  domainEvents,
+  jobs,
   operationsMetrics: {
     summary: async (options = {}) => buildSeedOperationsMetrics(options),
     exportSnapshot: async (options = {}, actor = null) => {
@@ -6287,4 +6297,5 @@ export const createSeedRepository = () => ({
       }
     },
   },
-})
+  }
+}

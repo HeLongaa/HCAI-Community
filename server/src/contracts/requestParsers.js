@@ -879,6 +879,47 @@ export const parseAdminPointsLedgerQuery = (query) => ({
   search: optionalText(query, 'search', null),
 })
 
+export const parseDomainEventListQuery = (query) => {
+  const status = optionalText(query, 'status', null)
+  if (status && !['pending', 'claimed', 'published', 'failed'].includes(status)) {
+    throw validationFailed('status must be one of: pending, claimed, published, failed')
+  }
+  return {
+    ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 }),
+    status,
+    type: optionalText(query, 'type', null),
+    aggregateType: optionalText(query, 'aggregateType', null),
+    aggregateId: optionalText(query, 'aggregateId', null),
+  }
+}
+
+export const parseDomainEventReplayRequest = (body) => ({
+  reasonCode: optionalText(body, 'reasonCode', 'admin_replay'),
+})
+
+export const parseJobDefinitionListQuery = (query) => ({
+  type: optionalText(query, 'type', null),
+  enabled: query.enabled == null || query.enabled === '' ? null : ['1', 'true', 'yes'].includes(String(query.enabled).toLowerCase()),
+})
+
+export const parseJobRunListQuery = (query) => {
+  const status = optionalText(query, 'status', null)
+  if (status && !['queued', 'running', 'succeeded', 'failed', 'timed_out', 'cancelled'].includes(status)) {
+    throw validationFailed('status must be one of: queued, running, succeeded, failed, timed_out, cancelled')
+  }
+  return {
+    ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 }),
+    status,
+    definitionId: optionalText(query, 'definitionId', null),
+    ownerId: optionalText(query, 'ownerId', null),
+    correlationId: optionalText(query, 'correlationId', null),
+  }
+}
+
+export const parseJobCancelRequest = (body) => ({
+  reasonCode: optionalText(body, 'reasonCode', 'admin_cancel'),
+})
+
 export const parsePointAdjustmentRequest = (body) => {
   const delta = requireNumber(body, 'delta')
   if (!Number.isInteger(delta) || delta === 0 || Math.abs(delta) > 1_000_000) {
