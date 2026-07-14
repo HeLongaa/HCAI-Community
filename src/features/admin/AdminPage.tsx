@@ -11,6 +11,11 @@ import { mediaService } from '../../services/mediaService'
 import { useAsyncResource } from '../../hooks/useAsyncResource'
 import type {
   AdminPermissionDto,
+  AdminAccountingIssueDto,
+  AdminAccountingIssueStatus,
+  AdminAccountingIssueSummary,
+  AdminAccountingReconciliationQuery,
+  AdminAccountingUnit,
   AdminCreativeGenerationHistoryQuery,
   AdminOperationsMetricsDto,
   AdminProviderControlBundle,
@@ -392,12 +397,13 @@ export function AdminPage({
   onOpenNotificationResource?: (notification: ApiNotification) => void
 }) {
   const isZh = isZhCopy(t)
-  const adminTabs = ['Task review', 'Access', 'Security', 'Finance', 'Generations', 'Submissions', 'Community', 'Audit log', 'Users', 'Tags', 'AI config']
+  const adminTabs = ['Task review', 'Access', 'Security', 'Finance', 'Accounting', 'Generations', 'Submissions', 'Community', 'Audit log', 'Users', 'Tags', 'AI config']
   const adminTabLabels: Record<string, string> = {
     'Task review': textFor(t, 'Task review', '任务审核'),
     Access: textFor(t, 'Access', '权限'),
     Security: textFor(t, 'Security', '安全'),
     Finance: textFor(t, 'Finance', '账务'),
+    Accounting: textFor(t, 'Accounting', '对账'),
     Generations: textFor(t, 'Generations', '生成历史'),
     Submissions: textFor(t, 'Submissions', '交付物'),
     Community: textFor(t, 'Community', '社区'),
@@ -427,6 +433,16 @@ export function AdminPage({
   const [ledgerSearch, setLedgerSearch] = useState('')
   const [ledgerRows, setLedgerRows] = useState<ApiLedgerEntry[]>([])
   const [ledgerSummary, setLedgerSummary] = useState<ApiPointsSummary | null>(null)
+  const [accountingIssues, setAccountingIssues] = useState<AdminAccountingIssueDto[]>([])
+  const [accountingSummary, setAccountingSummary] = useState<AdminAccountingIssueSummary>({ total: 0, open: 0, repairPending: 0, resolved: 0, ignored: 0 })
+  const [accountingGeneratedAt, setAccountingGeneratedAt] = useState('')
+  const [accountingStatusFilter, setAccountingStatusFilter] = useState<AdminAccountingIssueStatus | null>('open')
+  const [accountingUnitFilter, setAccountingUnitFilter] = useState<AdminAccountingUnit | null>(null)
+  const [accountingTypeFilter, setAccountingTypeFilter] = useState('')
+  const [selectedAccountingIssueId, setSelectedAccountingIssueId] = useState<string | null>(null)
+  const [scanningAccounting, setScanningAccounting] = useState(false)
+  const [exportingAccounting, setExportingAccounting] = useState(false)
+  const [requestingAccountingRepairId, setRequestingAccountingRepairId] = useState<string | null>(null)
   const [generationRows, setGenerationRows] = useState<ApiCreativeGenerationRecord[]>([])
   const [providerControls, setProviderControls] = useState<AdminProviderControlBundle>({ controls: [], circuits: [], capEvidence: [] })
   const [providerControlReason, setProviderControlReason] = useState('operator_requested')
@@ -520,6 +536,9 @@ export function AdminPage({
   const canReadQueues = account.hasPermission('admin:queue:read')
   const canReviewQueues = account.hasPermission('admin:queue:review')
   const canReadAudit = account.hasPermission('admin:audit:read')
+  const canReadAccounting = account.hasPermission('admin:accounting:read')
+  const canScanAccounting = account.hasPermission('admin:accounting:scan')
+  const canRepairAccounting = account.hasPermission('admin:accounting:repair')
   const canCancelGenerations = account.hasPermission('admin:creative:cancel')
   const canRequestGenerationRetries = account.hasPermission('admin:creative:retry')
   const canRequestManualReplay = account.hasPermission('admin:creative:replay')
@@ -538,6 +557,12 @@ export function AdminPage({
     status: ledgerStatus,
     search: ledgerSearch,
     limit: 12,
+  }
+  const accountingQuery: AdminAccountingReconciliationQuery = {
+    status: accountingStatusFilter,
+    unit: accountingUnitFilter,
+    type: accountingTypeFilter || null,
+    limit: 20,
   }
   const generationQuery: AdminCreativeGenerationHistoryQuery = {
     userHandle: generationUserHandle || null,
@@ -644,6 +669,27 @@ export function AdminPage({
     },
     getErrorMessage: () => (isZh ? '无法读取用户账本，请确认账号具备积分调整权限。' : 'Could not load user ledger. Confirm points adjustment access.'),
     deps: [canAdjustPoints, isZh, ledgerUserHandle, ledgerStatus, ledgerSearch],
+    logLabel: 'admin-service',
+  })
+  const accountingStatusResource = useAsyncResource<Awaited<ReturnType<typeof adminService.accountingReconciliation>>>({
+    load: () => canReadAccounting
+      ? adminService.accountingReconciliation(accountingQuery)
+      : Promise.resolve({
+          items: [],
+          summary: { total: 0, open: 0, repairPending: 0, resolved: 0, ignored: 0 },
+          generatedAt: '',
+          nextCursor: null,
+        }),
+    onSuccess: (page) => {
+      setAccountingIssues(page.items)
+      setAccountingSummary(page.summary)
+      setAccountingGeneratedAt(page.generatedAt)
+      if (selectedAccountingIssueId && !page.items.some((issue) => issue.id === selectedAccountingIssueId)) {
+        setSelectedAccountingIssueId(null)
+      }
+    },
+    getErrorMessage: () => (isZh ? '无法读取内部对账结果。' : 'Could not load internal accounting reconciliation.'),
+    deps: [canReadAccounting, isZh, accountingStatusFilter, accountingUnitFilter, accountingTypeFilter],
     logLabel: 'admin-service',
   })
   const generationHistoryStatus = useAsyncResource<{ items: ApiCreativeGenerationRecord[]; nextCursor: string | null }>({
@@ -1842,6 +1888,78 @@ export function AdminPage({
       simulateAction(isZh ? '导出积分账本失败。' : 'Could not export points ledger.')
     } finally {
       setExportingLedger(false)
+    }
+  }
+
+  const scanAccounting = async () => {
+    if (!canScanAccounting || scanningAccounting) return
+    setScanningAccounting(true)
+    try {
+      const page = await adminService.scanAccountingReconciliation(accountingQuery)
+      setAccountingIssues(page.items)
+      setAccountingSummary(page.summary)
+      setAccountingGeneratedAt(page.generatedAt)
+      simulateAction(isZh ? `对账扫描完成：${page.summary.open} 个未解决问题。` : `Accounting scan complete: ${page.summary.open} open issue(s).`)
+    } catch (error) {
+      console.info('[admin-service]', error)
+      simulateAction(isZh ? '内部对账扫描失败。' : 'Internal accounting scan failed.')
+    } finally {
+      setScanningAccounting(false)
+    }
+  }
+
+  const exportAccounting = async () => {
+    if (!canReadAccounting || exportingAccounting) return
+    setExportingAccounting(true)
+    try {
+      const json = await adminService.exportAccountingReconciliationJson({ ...accountingQuery, limit: 100 })
+      const blob = new Blob([json], { type: 'application/json;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `accounting-reconciliation-${new Date().toISOString().slice(0, 10)}.json`
+      link.click()
+      URL.revokeObjectURL(url)
+      simulateAction(isZh ? '已导出内部对账证据。' : 'Exported internal accounting evidence.')
+    } catch (error) {
+      console.info('[admin-service]', error)
+      simulateAction(isZh ? '内部对账导出失败。' : 'Could not export internal accounting evidence.')
+    } finally {
+      setExportingAccounting(false)
+    }
+  }
+
+  const accountingIssueCanRepair = (issue: AdminAccountingIssueDto) =>
+    issue.status === 'open' && (
+      (issue.type === 'point_balance_drift' && issue.sourceType === 'internal_point_account') ||
+      (issue.type === 'quota_state_mismatch' && issue.sourceType === 'creative_quota_window')
+    )
+
+  const requestAccountingRepair = async (issue: AdminAccountingIssueDto) => {
+    if (!canRepairAccounting || requestingAccountingRepairId) return
+    setRequestingAccountingRepairId(issue.id)
+    try {
+      const result = await adminService.requestAccountingRepair(issue.id, {
+        repairKind: 'compensation',
+        reasonCode: issue.type === 'point_balance_drift' ? 'repair_balance_drift' : 'repair_missing_movement',
+        reason: `Compensate ${issue.issueKey} without rewriting historical accounting evidence.`,
+      })
+      setAccountingIssues((current) => current.map((item) => item.id === issue.id ? result.issue : item))
+      setAccountingSummary((current) => ({
+        ...current,
+        open: Math.max(0, current.open - 1),
+        repairPending: current.repairPending + 1,
+      }))
+      setQueueItems((current) => [result.review, ...current.filter((item) => item.id !== result.review.id)])
+      setReviewQueueFilter('accounting_reconciliation')
+      void queueStatus.refresh()
+      void auditStatus.refresh()
+      simulateAction(isZh ? '补偿申请已提交双人审批。' : 'Compensation request sent for dual review.')
+    } catch (error) {
+      console.info('[admin-service]', error)
+      simulateAction(error instanceof Error ? error.message : (isZh ? '补偿申请失败。' : 'Could not request compensation.'))
+    } finally {
+      setRequestingAccountingRepairId(null)
     }
   }
 
@@ -3070,6 +3188,136 @@ export function AdminPage({
               <span>@{entry.userHandle ?? ledgerSummary?.userHandle ?? '-'}</span>
               <small>{entry.sourceType}{entry.sourceId ? ` / ${entry.sourceId}` : ''} · {entry.occurredAtLabel}</small>
               <b className={Number(entry.delta) >= 0 ? 'positive' : 'negative'}>{Number(entry.delta) >= 0 ? `+${entry.delta}` : entry.delta}</b>
+            </div>
+          ))}
+        </div>
+      </section>
+      <section className="panel accounting-reconciliation-panel" data-testid="admin-accounting-reconciliation">
+        <SectionHeader
+          eyebrow={textFor(t, 'Internal accounting', '内部账务')}
+          title={textFor(t, 'Reconciliation', '对账中心')}
+          action={
+            <div className="button-row compact-buttons">
+              <button className="ghost-button" type="button" onClick={() => void exportAccounting()} disabled={!canReadAccounting || exportingAccounting}>
+                <Download size={16} />
+                {exportingAccounting ? textFor(t, 'Exporting', '导出中') : textFor(t, 'Export JSON', '导出 JSON')}
+              </button>
+              <button className="primary-button" type="button" onClick={() => void scanAccounting()} disabled={!canScanAccounting || scanningAccounting}>
+                <Activity size={16} />
+                {scanningAccounting ? textFor(t, 'Scanning', '扫描中') : textFor(t, 'Run scan', '执行扫描')}
+              </button>
+            </div>
+          }
+        />
+        <div className="permission-summary">
+          <label>
+            <span>{textFor(t, 'Status', '状态')}</span>
+            <select
+              aria-label={textFor(t, 'Accounting issue status', '对账问题状态')}
+              value={accountingStatusFilter ?? ''}
+              onChange={(event) => setAccountingStatusFilter(event.target.value ? event.target.value as AdminAccountingIssueStatus : null)}
+            >
+              <option value="">{textFor(t, 'All', '全部')}</option>
+              <option value="open">{textFor(t, 'Open', '待处理')}</option>
+              <option value="repair_pending">{textFor(t, 'Repair pending', '待审批')}</option>
+              <option value="resolved">{textFor(t, 'Resolved', '已解决')}</option>
+              <option value="ignored">{textFor(t, 'Ignored', '已忽略')}</option>
+            </select>
+          </label>
+          <label>
+            <span>{textFor(t, 'Unit', '单位')}</span>
+            <select
+              aria-label={textFor(t, 'Accounting unit', '账务单位')}
+              value={accountingUnitFilter ?? ''}
+              onChange={(event) => setAccountingUnitFilter(event.target.value ? event.target.value as AdminAccountingUnit : null)}
+            >
+              <option value="">{textFor(t, 'All', '全部')}</option>
+              <option value="points">points</option>
+              <option value="creative_credit">creative_credit</option>
+              <option value="quota_unit">quota_unit</option>
+            </select>
+          </label>
+          <label>
+            <span>{textFor(t, 'Issue type', '问题类型')}</span>
+            <input
+              aria-label={textFor(t, 'Accounting issue type', '对账问题类型')}
+              value={accountingTypeFilter}
+              onChange={(event) => setAccountingTypeFilter(event.target.value)}
+              placeholder="point_balance_drift"
+            />
+          </label>
+          <button className="ghost-button" type="button" onClick={() => void accountingStatusResource.refresh()} disabled={!canReadAccounting}>
+            {textFor(t, 'Refresh', '刷新')}
+          </button>
+        </div>
+        <div className="market-dashboard">
+          {[
+            [textFor(t, 'Open', '待处理'), accountingSummary.open],
+            [textFor(t, 'Repair pending', '待审批'), accountingSummary.repairPending],
+            [textFor(t, 'Resolved', '已解决'), accountingSummary.resolved],
+            [textFor(t, 'Total', '总计'), accountingSummary.total],
+          ].map(([label, value]) => (
+            <article className="metric-card highlight" key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+              <small>{accountingGeneratedAt ? formatAuditTime(accountingGeneratedAt) : textFor(t, 'No scan yet', '尚未扫描')}</small>
+            </article>
+          ))}
+        </div>
+        <div className="admin-table">
+          {accountingStatusResource.loading && (
+            <div className="empty-state">
+              <strong>{textFor(t, 'Loading reconciliation', '正在加载对账结果')}</strong>
+            </div>
+          )}
+          {!accountingStatusResource.loading && accountingStatusResource.error && (
+            <div className="empty-state">
+              <strong>{textFor(t, 'Reconciliation unavailable', '对账不可用')}</strong>
+              <span>{accountingStatusResource.error}</span>
+            </div>
+          )}
+          {!accountingStatusResource.loading && !accountingStatusResource.error && accountingIssues.length === 0 && (
+            <div className="empty-state">
+              <strong>{textFor(t, 'No matching issues', '没有匹配的问题')}</strong>
+              <span>{textFor(t, 'The selected reconciliation view is clear.', '当前筛选范围内没有对账异常。')}</span>
+            </div>
+          )}
+          {!accountingStatusResource.error && accountingIssues.map((issue) => (
+            <div className="admin-row" key={issue.id}>
+              <StatusBadge status={issue.status} t={t} />
+              <strong>{issue.type}</strong>
+              <span>{issue.unit} · {issue.sourceType}</span>
+              <small>
+                {textFor(t, 'expected', '预期')} {issue.expectedAmount ?? '-'} · {textFor(t, 'actual', '实际')} {issue.actualAmount ?? '-'} · {textFor(t, 'difference', '差额')} {issue.differenceAmount ?? '-'}
+              </small>
+              <div className="button-row compact-buttons">
+                <button
+                  className="ghost-button small"
+                  type="button"
+                  onClick={() => setSelectedAccountingIssueId((current) => current === issue.id ? null : issue.id)}
+                >
+                  {selectedAccountingIssueId === issue.id ? textFor(t, 'Hide', '收起') : textFor(t, 'Evidence', '证据')}
+                </button>
+                {accountingIssueCanRepair(issue) && (
+                  <button
+                    className="danger-button small"
+                    type="button"
+                    onClick={() => void requestAccountingRepair(issue)}
+                    disabled={!canRepairAccounting || Boolean(requestingAccountingRepairId)}
+                  >
+                    <ShieldAlert size={15} />
+                    {requestingAccountingRepairId === issue.id ? textFor(t, 'Requesting', '提交中') : textFor(t, 'Request compensation', '申请补偿')}
+                  </button>
+                )}
+              </div>
+              {selectedAccountingIssueId === issue.id && (
+                <div className="admin-detail-panel">
+                  <strong>{issue.issueKey}</strong>
+                  <span>{issue.sourceId}</span>
+                  <pre>{formatMetadataJson(issue.evidence)}</pre>
+                  {issue.repairOperationKey && <small>{issue.repairOperationKey}</small>}
+                </div>
+              )}
             </div>
           ))}
         </div>

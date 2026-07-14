@@ -4440,6 +4440,44 @@ button.video-history-row.active {
   justify-content: flex-end;
 }
 
+.accounting-reconciliation-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: auto;
+  min-height: 540px;
+  overflow: hidden;
+}
+
+.accounting-reconciliation-panel .permission-summary > button {
+  align-self: end;
+  min-height: 40px;
+}
+
+.accounting-reconciliation-panel .admin-table {
+  max-height: 560px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.accounting-reconciliation-panel .admin-row {
+  grid-template-columns: 130px minmax(180px, 1fr) minmax(150px, 0.8fr) minmax(220px, 1.2fr) auto;
+  align-items: start;
+}
+
+.accounting-reconciliation-panel .admin-detail-panel {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.accounting-reconciliation-panel .admin-detail-panel pre {
+  max-width: 100%;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .operations-overview {
   display: grid;
   gap: 12px;
@@ -9674,6 +9712,10 @@ button.video-history-row.active {
 
   .admin-row.generation-row,
   .generation-mutation-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .accounting-reconciliation-panel .admin-row {
     grid-template-columns: 1fr;
   }
 

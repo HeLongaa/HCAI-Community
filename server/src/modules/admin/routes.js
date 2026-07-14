@@ -5,6 +5,8 @@ import { validationFailed } from '../../common/http/validation.js'
 import { readJsonBody } from '../../common/http/request.js'
 import {
   parseAdminAuditListQuery,
+  parseAdminAccountingReconciliationQuery,
+  parseAdminAccountingRepairRequest,
   parseAdminCreativeGenerationListQuery,
   parseAdminCreativeGenerationMutationRequest,
   parseAdminOperationsMetricsQuery,
@@ -43,6 +45,7 @@ import { creativeAccountingPolicyHistory } from '../../creative/accountingPolicy
 const isPointAdjustmentReview = (review) => review?.queue === 'points' || review?.metadata?.kind === 'point_adjustment'
 const isManualProviderReplayReview = (review) => review?.metadata?.kind === 'manual_provider_replay'
 const isProviderControlRecoveryReview = (review) => review?.metadata?.kind === 'provider_control_recovery'
+const isAccountingCompensationReview = (review) => review?.metadata?.kind === 'accounting_compensation'
 
 const safeProviderControlBundle = ({ controls, circuits, capEvidence, retries = [] }) => ({
   controls: controls.map((control) => ({
@@ -560,6 +563,20 @@ const securityAlertExportJson = (artifact) => JSON.stringify(artifact, null, 2)
 
 const operationsMetricsExportJson = (artifact) => JSON.stringify(artifact, null, 2)
 
+const accountingReconciliationExportJson = (page, query) => JSON.stringify({
+  exportedAt: new Date().toISOString(),
+  generatedAt: page.generatedAt,
+  query: {
+    status: query.status,
+    unit: query.unit,
+    type: query.type,
+    limit: query.limit,
+  },
+  summary: page.summary,
+  count: page.items.length,
+  issues: page.items,
+}, null, 2)
+
 export const registerAdminRoutes = (router, options = {}) => {
   const routeRepositories = options.repositories ?? repositories
   const providerMutationAdapters = options.providerMutationAdapters ?? {}
@@ -727,6 +744,16 @@ export const registerAdminRoutes = (router, options = {}) => {
       })
       return
     }
+    if (!current.decision && isAccountingCompensationReview(current)) {
+      requirePermission(context, 'admin:accounting:repair')
+      if (action.decision === 'approve' && current.metadata?.requestedBy === actor.handle) {
+        throw validationFailed('accounting compensation requires a different approver')
+      }
+      const result = await routeRepositories.accountingReconciliation.reviewRepair(current.id, action, actor)
+      if (!result) throw notFound(`/api/admin/reviews/${context.params.id}`)
+      ok(response, result)
+      return
+    }
     const reviewed = await routeRepositories.adminReviews.review(context.params.id, action, actor)
     if (!reviewed) {
       throw notFound(`/api/admin/reviews/${context.params.id}`)
@@ -769,6 +796,51 @@ export const registerAdminRoutes = (router, options = {}) => {
       throw notFound(`/api/admin/audit/${context.params.id}`)
     }
     ok(response, event)
+  })
+
+  router.add('GET', '/api/admin/accounting/reconciliation', async (_request, response, context) => {
+    requirePermission(context, 'admin:accounting:read')
+    const page = await routeRepositories.accountingReconciliation.list(parseAdminAccountingReconciliationQuery(context.query))
+    ok(response, page.items, {
+      pagination: { limit: page.limit, nextCursor: page.nextCursor },
+      summary: page.summary,
+      generatedAt: page.generatedAt,
+    })
+  })
+
+  router.add('POST', '/api/admin/accounting/reconciliation/scan', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:accounting:scan')
+    const report = await routeRepositories.accountingReconciliation.scan(
+      actor,
+      parseAdminAccountingReconciliationQuery(context.query),
+    )
+    ok(response, report.issues.items, {
+      pagination: { limit: report.issues.limit, nextCursor: report.issues.nextCursor },
+      summary: report.summary,
+      generatedAt: report.generatedAt,
+    })
+  })
+
+  router.add('GET', '/api/admin/accounting/reconciliation/export', async (_request, response, context) => {
+    requirePermission(context, 'admin:accounting:read')
+    const query = parseAdminAccountingReconciliationQuery({ ...context.query, limit: context.query.limit ?? '100' })
+    const page = await routeRepositories.accountingReconciliation.list(query)
+    text(response, 200, accountingReconciliationExportJson(page, query), 'application/json; charset=utf-8')
+  })
+
+  router.add('GET', '/api/admin/accounting/reconciliation/:id', async (_request, response, context) => {
+    requirePermission(context, 'admin:accounting:read')
+    const issue = await routeRepositories.accountingReconciliation.find(context.params.id)
+    if (!issue) throw notFound(`/api/admin/accounting/reconciliation/${context.params.id}`)
+    ok(response, issue)
+  })
+
+  router.add('POST', '/api/admin/accounting/reconciliation/:id/repair-requests', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:accounting:repair')
+    const payload = parseAdminAccountingRepairRequest((await readJsonBody(request)) ?? {})
+    const result = await routeRepositories.accountingReconciliation.requestRepair(context.params.id, payload, actor)
+    if (!result) throw notFound(`/api/admin/accounting/reconciliation/${context.params.id}`)
+    ok(response, result)
   })
 
   router.add('GET', '/api/admin/creative/generations', async (_request, response, context) => {

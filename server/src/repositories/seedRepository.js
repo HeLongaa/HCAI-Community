@@ -80,6 +80,12 @@ import { assetEligibleForWorkspace, assetMediaType, buildSafeAssetLibraryItem } 
 import { resolveCreativeDeliveryAssets } from '../creative/deliveryAssets.js'
 import { taskWorkflowDto } from '../tasks/taskLifecycle.js'
 import {
+  accountingOperationKey,
+  accountingPayloadHash,
+  reconcilePointLedgerRows,
+  validateMovementGroup,
+} from '../accounting/internalAccounting.js'
+import {
   buildConsentStatus,
   compliancePolicyManifest,
 } from '../compliance/policyManifest.js'
@@ -113,6 +119,10 @@ const creativeCreditLedgerById = new Map()
 const creativeQuotaWindowsById = new Map()
 const creativeQuotaReservationsById = new Map()
 const portfolioAssetsById = new Map()
+const internalPointAccountsByHandle = new Map()
+const internalAccountingOperationsByKey = new Map()
+const internalAccountingMovementsByOperationKey = new Map()
+const accountingReconciliationIssuesByKey = new Map()
 
 const getAccountByHandle = (handle) => seedStore.demoAccountByHandle.get(handle) ?? null
 const getAccountById = (id) => seedStore.demoAccounts.find((account) => account.id === id) ?? null
@@ -165,9 +175,295 @@ const parsePointsAmount = (value) => {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-const latestLedgerBalance = (userHandle) => {
+const legacyLatestLedgerBalance = (userHandle) => {
   const latest = seedStore.pointsLedger.find((entry) => !userHandle || entry.userHandle === userHandle)
   return parsePointsAmount(latest?.balanceAfter)
+}
+
+const getSeedPointAccount = (userHandle) => {
+  const handle = String(userHandle ?? '')
+  const existing = internalPointAccountsByHandle.get(handle)
+  if (existing) return existing
+  const openingBalance = legacyLatestLedgerBalance(handle)
+  const created = {
+    id: `point-account-${handle}`,
+    userHandle: handle,
+    balance: openingBalance,
+    openingBalance,
+    version: 0,
+    updatedAt: new Date().toISOString(),
+  }
+  internalPointAccountsByHandle.set(handle, created)
+  return created
+}
+
+const latestLedgerBalance = (userHandle) => userHandle
+  ? getSeedPointAccount(userHandle).balance
+  : legacyLatestLedgerBalance(null)
+
+const applySeedAccountingOperation = ({
+  unit,
+  kind,
+  sourceType,
+  sourceId,
+  reasonCode,
+  phase = 'apply',
+  payload = {},
+  movements,
+  actor,
+  allowNegative = false,
+  originalOperationKey = null,
+  reconciliationIssueId = null,
+}) => {
+  const operationKey = accountingOperationKey({ kind, sourceType, sourceId, phase })
+  const mapKey = `${unit}:${operationKey}`
+  const payloadHash = accountingPayloadHash(payload)
+  const existing = internalAccountingOperationsByKey.get(mapKey)
+  if (existing) {
+    if (existing.payloadHash !== payloadHash) {
+      throw new HttpError(409, 'ACCOUNTING_OPERATION_CONFLICT', 'Accounting operation already exists with a different payload')
+    }
+    return { operation: existing, movements: internalAccountingMovementsByOperationKey.get(mapKey) ?? [], recovered: true }
+  }
+  const validation = validateMovementGroup({ unit, movements })
+  if (!validation.valid) {
+    throw new HttpError(409, validation.code, 'Accounting movement group is invalid')
+  }
+  const appliedMovements = movements.map((movement, index) => {
+    let balanceAfter = null
+    if (unit === 'points' && movement.accountType === 'available' && movement.ownerHandle) {
+      const account = getSeedPointAccount(movement.ownerHandle)
+      const nextBalance = account.balance + movement.amount
+      if (!allowNegative && nextBalance < 0) {
+        throw new HttpError(409, 'POINTS_INSUFFICIENT_BALANCE', 'Available point balance is insufficient')
+      }
+      const updated = {
+        ...account,
+        balance: nextBalance,
+        version: account.version + 1,
+        updatedAt: new Date().toISOString(),
+      }
+      internalPointAccountsByHandle.set(movement.ownerHandle, updated)
+      balanceAfter = nextBalance
+    }
+    return {
+      id: `accounting-movement-${randomUUID()}`,
+      unit,
+      accountRef: movement.accountRef,
+      accountType: movement.accountType,
+      amount: movement.amount,
+      balanceAfter,
+      sequence: index + 1,
+    }
+  })
+  const now = new Date().toISOString()
+  const operation = {
+    id: `accounting-operation-${randomUUID()}`,
+    operationKey,
+    unit,
+    kind,
+    status: 'applied',
+    sourceType,
+    sourceId: String(sourceId),
+    payloadHash,
+    reasonCode,
+    originalOperationKey,
+    reconciliationIssueId,
+    actorRef: actor?.handle ?? actor?.id ?? 'system',
+    appliedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  }
+  internalAccountingOperationsByKey.set(mapKey, operation)
+  internalAccountingMovementsByOperationKey.set(mapKey, appliedMovements)
+  recordAudit(actor, 'accounting.operation.applied', 'internal_accounting_operation', operation.id, {
+    operationKey,
+    unit,
+    kind,
+    sourceType,
+    sourceId: String(sourceId),
+    reasonCode,
+    movementCount: appliedMovements.length,
+  })
+  return { operation, movements: appliedMovements, recovered: false }
+}
+
+const serializeAccountingIssue = (issue) => ({
+  id: issue.id,
+  issueKey: issue.issueKey,
+  type: issue.type,
+  unit: issue.unit,
+  status: issue.status,
+  sourceType: issue.sourceType,
+  sourceId: issue.sourceId,
+  expectedAmount: issue.expectedAmount ?? null,
+  actualAmount: issue.actualAmount ?? null,
+  differenceAmount: issue.differenceAmount ?? null,
+  operationKey: issue.operationKey ?? null,
+  repairOperationKey: issue.repairOperationKey ?? null,
+  evidence: issue.evidence ?? null,
+  detectedAt: issue.detectedAt,
+  reviewedAt: issue.reviewedAt ?? null,
+  resolvedAt: issue.resolvedAt ?? null,
+})
+
+const scanSeedAccounting = () => {
+  const detected = new Map()
+  const addIssue = (issue) => {
+    const existing = accountingReconciliationIssuesByKey.get(issue.issueKey)
+    const now = new Date().toISOString()
+    const next = {
+      id: existing?.id ?? `accounting-issue-${randomUUID()}`,
+      status: existing?.status === 'ignored' ? 'ignored' : 'open',
+      detectedAt: existing?.detectedAt ?? now,
+      reviewedAt: existing?.reviewedAt ?? null,
+      resolvedAt: null,
+      ...existing,
+      ...issue,
+      updatedAt: now,
+    }
+    accountingReconciliationIssuesByKey.set(next.issueKey, next)
+    detected.set(next.issueKey, next)
+  }
+
+  const rowsByHandle = new Map()
+  for (const row of seedStore.pointsLedger) {
+    const rows = rowsByHandle.get(row.userHandle) ?? []
+    rows.push(row)
+    rowsByHandle.set(row.userHandle, rows)
+  }
+  for (const [handle, rows] of rowsByHandle) {
+    const report = reconcilePointLedgerRows(rows)
+    for (const drift of report.issues) {
+      addIssue({
+        issueKey: `point_balance_drift:${handle}:${drift.ledgerId}`,
+        type: 'point_balance_drift',
+        unit: 'points',
+        sourceType: 'point_ledger',
+        sourceId: drift.ledgerId,
+        expectedAmount: drift.expectedBalance,
+        actualAmount: drift.actualBalance,
+        differenceAmount: drift.difference,
+        evidence: { userHandle: handle },
+      })
+    }
+    const account = getSeedPointAccount(handle)
+    if (account.balance !== report.actualBalance) {
+      addIssue({
+        issueKey: `point_balance_drift:${handle}:account`,
+        type: 'point_balance_drift',
+        unit: 'points',
+        sourceType: 'internal_point_account',
+        sourceId: account.id,
+        expectedAmount: report.actualBalance,
+        actualAmount: account.balance,
+        differenceAmount: account.balance - report.actualBalance,
+        evidence: { userHandle: handle, accountVersion: account.version },
+      })
+    }
+  }
+
+  for (const [mapKey, operation] of internalAccountingOperationsByKey) {
+    const movements = internalAccountingMovementsByOperationKey.get(mapKey) ?? []
+    const validation = validateMovementGroup({ unit: operation.unit, movements })
+    if (!validation.valid) {
+      addIssue({
+        issueKey: `unbalanced_operation:${operation.unit}:${operation.operationKey}`,
+        type: 'unbalanced_operation',
+        unit: operation.unit,
+        sourceType: 'internal_accounting_operation',
+        sourceId: operation.id,
+        expectedAmount: 0,
+        actualAmount: validation.total,
+        differenceAmount: validation.total,
+        operationKey: operation.operationKey,
+        evidence: { code: validation.code },
+      })
+    }
+  }
+
+  for (const ledger of creativeCreditLedgerById.values()) {
+    const active = ledger.status === 'reserved' ? ledger.reservationAmount : 0
+    const cancelled = ledger.status === 'cancelled' ? ledger.reservationAmount : 0
+    const terminalTotal = ledger.settledAmount + ledger.refundedAmount + active + cancelled
+    if (terminalTotal !== ledger.reservationAmount) {
+      addIssue({
+        issueKey: `credit_state_mismatch:${ledger.id}`,
+        type: 'credit_state_mismatch',
+        unit: 'creative_credit',
+        sourceType: 'creative_credit_ledger',
+        sourceId: ledger.id,
+        expectedAmount: ledger.reservationAmount,
+        actualAmount: terminalTotal,
+        differenceAmount: terminalTotal - ledger.reservationAmount,
+        evidence: { generationId: ledger.generationId, status: ledger.status },
+      })
+    }
+  }
+
+  for (const window of creativeQuotaWindowsById.values()) {
+    const reservations = [...creativeQuotaReservationsById.values()].filter((reservation) => reservation.quotaWindowId === window.id)
+    const expectedReserved = reservations.filter((reservation) => reservation.status === 'reserved').reduce((sum, reservation) => sum + reservation.units, 0)
+    const expectedUsed = reservations.filter((reservation) => reservation.status === 'committed').reduce((sum, reservation) => sum + reservation.units, 0)
+    const expectedReleased = reservations.filter((reservation) => reservation.status === 'released').reduce((sum, reservation) => sum + reservation.units, 0)
+    const countersMatch = expectedReserved === window.reservedUnits && expectedUsed === window.usedUnits && expectedReleased === window.releasedUnits
+    const withinLimit = window.reservedUnits + window.usedUnits <= window.limitUnits
+    if (!countersMatch || !withinLimit) {
+      addIssue({
+        issueKey: `quota_state_mismatch:${window.id}`,
+        type: 'quota_state_mismatch',
+        unit: 'quota_unit',
+        sourceType: 'creative_quota_window',
+        sourceId: window.id,
+        expectedAmount: expectedReserved + expectedUsed,
+        actualAmount: window.reservedUnits + window.usedUnits,
+        differenceAmount: (window.reservedUnits + window.usedUnits) - (expectedReserved + expectedUsed),
+        evidence: {
+          workspace: window.workspace,
+          limitUnits: window.limitUnits,
+          expectedReserved,
+          expectedUsed,
+          expectedReleased,
+          actualReleased: window.releasedUnits,
+          withinLimit,
+        },
+      })
+    }
+  }
+  for (const reservation of creativeQuotaReservationsById.values()) {
+    if (!creativeQuotaWindowsById.has(reservation.quotaWindowId)) {
+      addIssue({
+        issueKey: `orphan_reservation:${reservation.id}`,
+        type: 'orphan_reservation',
+        unit: 'quota_unit',
+        sourceType: 'creative_quota_reservation',
+        sourceId: reservation.id,
+        expectedAmount: reservation.units,
+        actualAmount: 0,
+        differenceAmount: -reservation.units,
+        evidence: { generationId: reservation.generationId, quotaWindowId: reservation.quotaWindowId },
+      })
+    }
+  }
+
+  const now = new Date().toISOString()
+  for (const [key, issue] of accountingReconciliationIssuesByKey) {
+    if (!detected.has(key) && ['open', 'repair_pending'].includes(issue.status)) {
+      accountingReconciliationIssuesByKey.set(key, { ...issue, status: 'resolved', resolvedAt: now, updatedAt: now })
+    }
+  }
+  const issues = [...accountingReconciliationIssuesByKey.values()].map(serializeAccountingIssue)
+  return {
+    generatedAt: now,
+    summary: {
+      total: issues.length,
+      open: issues.filter((issue) => issue.status === 'open').length,
+      repairPending: issues.filter((issue) => issue.status === 'repair_pending').length,
+      resolved: issues.filter((issue) => issue.status === 'resolved').length,
+      ignored: issues.filter((issue) => issue.status === 'ignored').length,
+    },
+    issues,
+  }
 }
 
 const buildPointSummary = (entries, userHandle) => {
@@ -581,13 +877,25 @@ const settleTaskReward = (task, recipientHandle) => {
   if (existing) {
     return existing
   }
-  const latestBalance = latestLedgerBalance(recipientHandle)
+  const publisherHandle = getHandle(task.publisher)
+  applySeedAccountingOperation({
+    unit: 'points',
+    kind: 'task_escrow_transfer',
+    sourceType: 'task',
+    sourceId: task.id,
+    reasonCode: 'task_completed',
+    payload: { taskId: String(task.id), publisherHandle, recipientHandle, amount: pointsReward },
+    movements: [
+      { unit: 'points', accountRef: `task:${task.id}:points:escrow`, accountType: 'escrow', amount: -pointsReward },
+      { unit: 'points', accountRef: `user:${recipientHandle}:points:available`, accountType: 'available', ownerHandle: recipientHandle, amount: pointsReward },
+    ],
+  })
   const entry = {
     id: `ledger-${randomUUID()}`,
     occurredAtLabel: 'Just now',
     description: `Task accepted: ${task.title}`,
     delta: pointsReward,
-    balanceAfter: latestBalance + pointsReward,
+    balanceAfter: latestLedgerBalance(recipientHandle),
     status: 'settled',
     sourceType: 'task_completion',
     sourceId: String(task.id),
@@ -643,12 +951,24 @@ const createTaskEscrow = (task, publisherHandle) => {
   if (existing) {
     return existing
   }
+  applySeedAccountingOperation({
+    unit: 'points',
+    kind: 'task_escrow_reserve',
+    sourceType: 'task',
+    sourceId: task.id,
+    reasonCode: 'task_published',
+    payload: { taskId: String(task.id), publisherHandle, amount: pointsReward },
+    movements: [
+      { unit: 'points', accountRef: `user:${publisherHandle}:points:available`, accountType: 'available', ownerHandle: publisherHandle, amount: -pointsReward },
+      { unit: 'points', accountRef: `task:${task.id}:points:escrow`, accountType: 'escrow', amount: pointsReward },
+    ],
+  })
   const entry = {
     id: `ledger-escrow-${task.id}-${publisherHandle}`,
     occurredAtLabel: 'Just now',
     description: `Task reward held: ${task.title}`,
     delta: -pointsReward,
-    balanceAfter: latestLedgerBalance(publisherHandle) - pointsReward,
+    balanceAfter: latestLedgerBalance(publisherHandle),
     status: 'pending',
     sourceType: 'task_escrow',
     sourceId: String(task.id),
@@ -672,12 +992,24 @@ const finalizeTaskEscrow = (task, publisherHandle, decision) => {
   if (existingRelease || pointsReward <= 0) {
     return existingRelease ?? escrow
   }
+  applySeedAccountingOperation({
+    unit: 'points',
+    kind: 'task_escrow_release',
+    sourceType: 'task',
+    sourceId: task.id,
+    reasonCode: 'task_dispute_rejected',
+    payload: { taskId: String(task.id), publisherHandle, amount: pointsReward },
+    movements: [
+      { unit: 'points', accountRef: `task:${task.id}:points:escrow`, accountType: 'escrow', amount: -pointsReward },
+      { unit: 'points', accountRef: `user:${publisherHandle}:points:available`, accountType: 'available', ownerHandle: publisherHandle, amount: pointsReward },
+    ],
+  })
   const release = {
     id: `ledger-escrow-release-${task.id}-${publisherHandle}`,
     occurredAtLabel: 'Just now',
     description: `Task reward released: ${task.title}`,
     delta: pointsReward,
-    balanceAfter: latestLedgerBalance(publisherHandle) + pointsReward,
+    balanceAfter: latestLedgerBalance(publisherHandle),
     status: 'settled',
     sourceType: 'task_escrow_release',
     sourceId: String(task.id),
@@ -699,12 +1031,32 @@ const createManualPointAdjustment = (payload, actor, options = {}) => {
   if (existing) {
     return existing
   }
+  applySeedAccountingOperation({
+    unit: 'points',
+    kind: 'manual_adjustment',
+    sourceType: 'point_adjustment',
+    sourceId,
+    reasonCode: 'admin_adjustment_approved',
+    payload: {
+      sourceId,
+      userHandle: account.handle,
+      delta: payload.delta,
+      reasonCode: payload.reasonCode ?? null,
+      reviewId: options.reviewId ?? null,
+    },
+    movements: [
+      { unit: 'points', accountRef: 'system:adjustments:points:source', accountType: 'system_source', amount: -payload.delta },
+      { unit: 'points', accountRef: `user:${account.handle}:points:available`, accountType: 'available', ownerHandle: account.handle, amount: payload.delta },
+    ],
+    actor,
+    allowNegative: true,
+  })
   const entry = {
     id: `ledger-adjust-${randomUUID()}`,
     occurredAtLabel: 'Just now',
     description: `Manual adjustment: ${payload.reason}`,
     delta: payload.delta,
-    balanceAfter: latestLedgerBalance(account.handle) + payload.delta,
+    balanceAfter: latestLedgerBalance(account.handle),
     status: 'settled',
     sourceType: 'manual_adjustment',
     sourceId,
@@ -3055,6 +3407,203 @@ export const createSeedRepository = () => ({
       return rolledBack
     },
   },
+  accountingReconciliation: {
+    scan: (_actor, options = {}) => {
+      const report = scanSeedAccounting()
+      const filtered = report.issues
+        .filter((issue) => !options.status || issue.status === options.status)
+        .filter((issue) => !options.unit || issue.unit === options.unit)
+        .filter((issue) => !options.type || issue.type === options.type)
+      return {
+        ...report,
+        issues: paginateByCursor(filtered, options),
+      }
+    },
+    list: (options = {}) => {
+      const report = scanSeedAccounting()
+      const filtered = report.issues
+        .filter((issue) => !options.status || issue.status === options.status)
+        .filter((issue) => !options.unit || issue.unit === options.unit)
+        .filter((issue) => !options.type || issue.type === options.type)
+      return { ...paginateByCursor(filtered, options), summary: report.summary, generatedAt: report.generatedAt }
+    },
+    find: (id) => {
+      scanSeedAccounting()
+      const issue = [...accountingReconciliationIssuesByKey.values()].find((item) => item.id === String(id)) ?? null
+      return issue ? serializeAccountingIssue(issue) : null
+    },
+    requestRepair: (id, payload, actor) => {
+      scanSeedAccounting()
+      const issue = [...accountingReconciliationIssuesByKey.values()].find((item) => item.id === String(id)) ?? null
+      if (!issue) return null
+      if (!['open', 'repair_pending'].includes(issue.status)) {
+        throw new HttpError(409, 'ACCOUNTING_ISSUE_NOT_REPAIRABLE', 'Only open accounting issues can request repair')
+      }
+      const supported = (issue.type === 'point_balance_drift' && issue.sourceType === 'internal_point_account') ||
+        (issue.type === 'quota_state_mismatch' && issue.sourceType === 'creative_quota_window')
+      if (!supported) {
+        throw new HttpError(409, 'ACCOUNTING_REPAIR_UNSUPPORTED', 'This issue requires manual investigation and cannot be compensated automatically')
+      }
+      const reviewId = `review-accounting-${issue.id}`
+      const existingReview = adminReviewById.get(reviewId)
+      if (existingReview) {
+        return { issue: serializeAccountingIssue(issue), review: serializeAdminReview(existingReview) }
+      }
+      const now = new Date().toISOString()
+      const review = {
+        id: reviewId,
+        queue: 'accounting_reconciliation',
+        status: 'Pending review',
+        title: `Accounting repair: ${issue.type}`,
+        owner: actor.handle,
+        note: safeErrorPreview(payload.reason),
+        decision: undefined,
+        reviewedBy: null,
+        reviewedAt: null,
+        metadata: {
+          kind: 'accounting_compensation',
+          issueId: issue.id,
+          issueKey: issue.issueKey,
+          repairKind: payload.repairKind,
+          reasonCode: payload.reasonCode,
+          requestedBy: actor.handle,
+        },
+        createdAt: now,
+        updatedAt: now,
+      }
+      const updatedIssue = { ...issue, status: 'repair_pending', reviewedAt: now, updatedAt: now }
+      accountingReconciliationIssuesByKey.set(issue.issueKey, updatedIssue)
+      adminReviewQueue.unshift(review)
+      adminReviewById.set(review.id, review)
+      recordAudit(actor, 'accounting.repair.requested', 'accounting_reconciliation_issue', issue.id, {
+        reviewId,
+        issueKey: issue.issueKey,
+        repairKind: payload.repairKind,
+        reasonCode: payload.reasonCode,
+      })
+      return { issue: serializeAccountingIssue(updatedIssue), review: serializeAdminReview(review) }
+    },
+    reviewRepair: (reviewId, action, actor) => {
+      const review = adminReviewById.get(String(reviewId)) ?? null
+      const metadata = review?.metadata ?? {}
+      if (!review || metadata.kind !== 'accounting_compensation') return null
+      const issue = [...accountingReconciliationIssuesByKey.values()].find((item) => item.id === metadata.issueId) ?? null
+      if (!issue) return null
+      if (review.decision) {
+        return { review: serializeAdminReview(review), issue: serializeAccountingIssue(issue), compensation: null }
+      }
+      const reviewedAt = new Date().toISOString()
+      if (action.decision === 'reject') {
+        const rejectedReview = {
+          ...review,
+          status: 'Rejected',
+          decision: 'reject',
+          note: action.note || review.note,
+          reviewedBy: actor.handle,
+          reviewedAt,
+          updatedAt: reviewedAt,
+        }
+        const reopenedIssue = { ...issue, status: 'open', reviewedAt, updatedAt: reviewedAt }
+        adminReviewById.set(review.id, rejectedReview)
+        const reviewIndex = adminReviewQueue.findIndex((item) => item.id === review.id)
+        if (reviewIndex >= 0) adminReviewQueue[reviewIndex] = rejectedReview
+        accountingReconciliationIssuesByKey.set(issue.issueKey, reopenedIssue)
+        recordAudit(actor, 'accounting.repair.rejected', 'accounting_reconciliation_issue', issue.id, { reviewId: review.id })
+        return { review: serializeAdminReview(rejectedReview), issue: serializeAccountingIssue(reopenedIssue), compensation: null }
+      }
+
+      let movements
+      let repairPayload
+      let applySnapshot = () => {}
+      if (issue.type === 'point_balance_drift' && issue.sourceType === 'internal_point_account') {
+        const account = [...internalPointAccountsByHandle.values()].find((item) => item.id === issue.sourceId)
+        if (!account || account.balance !== issue.actualAmount) {
+          throw new HttpError(409, 'ACCOUNTING_REPAIR_STALE', 'Point account changed after the issue was detected; scan again')
+        }
+        const delta = Number(issue.expectedAmount) - account.balance
+        if (!Number.isSafeInteger(delta) || delta === 0) {
+          throw new HttpError(409, 'ACCOUNTING_REPAIR_STALE', 'Point account no longer requires compensation')
+        }
+        movements = [
+          { unit: 'points', accountRef: 'system:reconciliation:points:source', accountType: 'system_source', amount: -delta },
+          { unit: 'points', accountRef: `user:${account.userHandle}:points:available`, accountType: 'available', ownerHandle: account.userHandle, amount: delta },
+        ]
+        repairPayload = { issueId: issue.id, accountId: account.id, userHandle: account.userHandle, delta }
+      } else if (issue.type === 'quota_state_mismatch' && issue.sourceType === 'creative_quota_window') {
+        const window = creativeQuotaWindowsById.get(issue.sourceId)
+        if (!window || window.reservedUnits + window.usedUnits !== issue.actualAmount) {
+          throw new HttpError(409, 'ACCOUNTING_REPAIR_STALE', 'Quota window changed after the issue was detected; scan again')
+        }
+        const reservations = [...creativeQuotaReservationsById.values()].filter((reservation) => reservation.quotaWindowId === window.id)
+        const expectedReserved = reservations.filter((reservation) => reservation.status === 'reserved').reduce((sum, reservation) => sum + reservation.units, 0)
+        const expectedUsed = reservations.filter((reservation) => reservation.status === 'committed').reduce((sum, reservation) => sum + reservation.units, 0)
+        const expectedReleased = reservations.filter((reservation) => reservation.status === 'released').reduce((sum, reservation) => sum + reservation.units, 0)
+        const reservedDelta = expectedReserved - window.reservedUnits
+        const usedDelta = expectedUsed - window.usedUnits
+        const remainingDelta = -(reservedDelta + usedDelta)
+        movements = [
+          { unit: 'quota_unit', accountRef: `quota-window:${window.id}:remaining`, accountType: 'remaining', amount: remainingDelta },
+          { unit: 'quota_unit', accountRef: `quota-window:${window.id}:reserved`, accountType: 'reserved', amount: reservedDelta },
+          { unit: 'quota_unit', accountRef: `quota-window:${window.id}:used`, accountType: 'used', amount: usedDelta },
+        ].filter((movement) => movement.amount !== 0)
+        if (movements.length < 2) {
+          throw new HttpError(409, 'ACCOUNTING_REPAIR_UNSUPPORTED', 'Released-only quota drift requires manual investigation')
+        }
+        repairPayload = { issueId: issue.id, windowId: window.id, reservedDelta, usedDelta, remainingDelta, expectedReleased }
+        applySnapshot = () => creativeQuotaWindowsById.set(window.id, {
+          ...window,
+          reservedUnits: expectedReserved,
+          usedUnits: expectedUsed,
+          releasedUnits: expectedReleased,
+          updatedAt: reviewedAt,
+        })
+      } else {
+        throw new HttpError(409, 'ACCOUNTING_REPAIR_UNSUPPORTED', 'This issue cannot be compensated automatically')
+      }
+      const applied = applySeedAccountingOperation({
+        unit: issue.unit,
+        kind: 'compensation',
+        sourceType: 'accounting_reconciliation_issue',
+        sourceId: issue.id,
+        phase: 'approve',
+        reasonCode: metadata.reasonCode,
+        payload: repairPayload,
+        movements,
+        actor,
+        allowNegative: true,
+        originalOperationKey: issue.operationKey,
+        reconciliationIssueId: issue.id,
+      })
+      applySnapshot()
+      const repairOperationKey = applied.operation.operationKey
+      const resolvedIssue = { ...issue, status: 'resolved', repairOperationKey, reviewedAt, resolvedAt: reviewedAt, updatedAt: reviewedAt }
+      const approvedReview = {
+        ...review,
+        status: 'Approved',
+        decision: 'approve',
+        note: action.note || review.note,
+        reviewedBy: actor.handle,
+        reviewedAt,
+        updatedAt: reviewedAt,
+        metadata: { ...metadata, repairOperationKey, approvedBy: actor.handle },
+      }
+      accountingReconciliationIssuesByKey.set(issue.issueKey, resolvedIssue)
+      adminReviewById.set(review.id, approvedReview)
+      const reviewIndex = adminReviewQueue.findIndex((item) => item.id === review.id)
+      if (reviewIndex >= 0) adminReviewQueue[reviewIndex] = approvedReview
+      return {
+        review: serializeAdminReview(approvedReview),
+        issue: serializeAccountingIssue(resolvedIssue),
+        compensation: {
+          operationKey: repairOperationKey,
+          unit: applied.operation.unit,
+          kind: applied.operation.kind,
+          status: applied.operation.status,
+          reasonCode: applied.operation.reasonCode,
+        },
+      }
+    },
+  },
   notifications: {
     list: (actor, options = {}) => {
       const filtered = notifications
@@ -4282,10 +4831,21 @@ export const createSeedRepository = () => ({
   },
   creativeCredits: {
     reserve: (payload, actor) => {
+      const amount = Math.max(0, Number.parseInt(String(payload.amount ?? payload.estimatedCredits ?? 0), 10) || 0)
+      if (amount <= 0) {
+        throw new HttpError(409, 'CREATIVE_CREDIT_AMOUNT_INVALID', 'Creative credit reservation amount must be positive')
+      }
       const existing = payload.quotaReservationId
         ? findCreativeCreditLedger(payload.quotaReservationId)
         : null
       if (existing) {
+        const samePayload = existing.generationId === String(payload.generationId ?? '') &&
+          existing.reservationAmount === amount &&
+          existing.workspace === payload.workspace &&
+          existing.mode === payload.mode
+        if (!samePayload) {
+          throw new HttpError(409, 'ACCOUNTING_OPERATION_CONFLICT', 'Creative credit reservation already exists with a different payload')
+        }
         return {
           reserved: existing.status === 'reserved',
           credit: getCreativeCreditDto(existing),
@@ -4293,7 +4853,6 @@ export const createSeedRepository = () => ({
       }
 
       const now = new Date().toISOString()
-      const amount = Math.max(0, Number.parseInt(String(payload.amount ?? payload.estimatedCredits ?? 0), 10) || 0)
       const ledger = {
         id: `credit-${randomUUID()}`,
         generationId: String(payload.generationId ?? ''),
@@ -4315,6 +4874,19 @@ export const createSeedRepository = () => ({
         createdAt: now,
         updatedAt: now,
       }
+      applySeedAccountingOperation({
+        unit: 'creative_credit',
+        kind: 'credit_reserve',
+        sourceType: 'generation',
+        sourceId: ledger.generationId,
+        reasonCode: 'generation_reserved',
+        payload: { generationId: ledger.generationId, actorHandle: ledger.actorHandle, amount },
+        movements: [
+          { unit: 'creative_credit', accountRef: `user:${ledger.actorHandle}:creative_credit:available`, accountType: 'available', amount: -amount },
+          { unit: 'creative_credit', accountRef: `generation:${ledger.generationId}:creative_credit:reserved`, accountType: 'reserved', amount },
+        ],
+        actor,
+      })
       creativeCreditLedgerById.set(ledger.id, ledger)
       recordAudit(actor, 'creative.credit.reserved', 'creative_credit_ledger', ledger.id, {
         generationId: ledger.generationId,
@@ -4348,6 +4920,19 @@ export const createSeedRepository = () => ({
         settledAt: now,
         updatedAt: now,
       }
+      applySeedAccountingOperation({
+        unit: 'creative_credit',
+        kind: 'credit_settle',
+        sourceType: 'generation',
+        sourceId: updated.generationId,
+        reasonCode: payload.reasonCode === 'generation_review_required' ? 'generation_review_required' : 'generation_completed',
+        payload: { generationId: updated.generationId, ledgerId: updated.id, amount: settledAmount },
+        movements: [
+          { unit: 'creative_credit', accountRef: `generation:${updated.generationId}:creative_credit:reserved`, accountType: 'reserved', amount: -settledAmount },
+          { unit: 'creative_credit', accountRef: `system:creative_credit:consumed`, accountType: 'consumed', amount: settledAmount },
+        ],
+        actor,
+      })
       creativeCreditLedgerById.set(updated.id, updated)
       recordAudit(actor, 'creative.credit.settled', 'creative_credit_ledger', updated.id, {
         generationId: updated.generationId,
@@ -4378,6 +4963,19 @@ export const createSeedRepository = () => ({
         refundedAt: now,
         updatedAt: now,
       }
+      applySeedAccountingOperation({
+        unit: 'creative_credit',
+        kind: 'credit_refund',
+        sourceType: 'generation',
+        sourceId: updated.generationId,
+        reasonCode: String(payload.reasonCode ?? '').includes('cancel') ? 'generation_cancelled' : 'generation_failed',
+        payload: { generationId: updated.generationId, ledgerId: updated.id, amount: refundedAmount },
+        movements: [
+          { unit: 'creative_credit', accountRef: `generation:${updated.generationId}:creative_credit:reserved`, accountType: 'reserved', amount: -refundedAmount },
+          { unit: 'creative_credit', accountRef: `user:${updated.actorHandle}:creative_credit:available`, accountType: 'available', amount: refundedAmount },
+        ],
+        actor,
+      })
       creativeCreditLedgerById.set(updated.id, updated)
       recordAudit(actor, 'creative.credit.refunded', 'creative_credit_ledger', updated.id, {
         generationId: updated.generationId,
@@ -4408,6 +5006,20 @@ export const createSeedRepository = () => ({
         cancelledAt: now,
         updatedAt: now,
       }
+      applySeedAccountingOperation({
+        unit: 'creative_credit',
+        kind: 'credit_refund',
+        sourceType: 'generation',
+        sourceId: updated.generationId,
+        phase: 'cancel',
+        reasonCode: 'generation_cancelled',
+        payload: { generationId: updated.generationId, ledgerId: updated.id, amount: updated.reservationAmount },
+        movements: [
+          { unit: 'creative_credit', accountRef: `generation:${updated.generationId}:creative_credit:reserved`, accountType: 'reserved', amount: -updated.reservationAmount },
+          { unit: 'creative_credit', accountRef: `user:${updated.actorHandle}:creative_credit:available`, accountType: 'available', amount: updated.reservationAmount },
+        ],
+        actor,
+      })
       creativeCreditLedgerById.set(updated.id, updated)
       recordAudit(actor, 'creative.credit.cancelled', 'creative_credit_ledger', updated.id, {
         generationId: updated.generationId,
@@ -4421,8 +5033,38 @@ export const createSeedRepository = () => ({
   },
   creativeQuota: {
     reserve: (payload, actor) => {
-      const units = Math.max(1, Number(payload.costUnits) || 1)
-      const window = getOrCreateCreativeQuotaWindow(payload)
+      const generationId = String(payload.generationId ?? '').trim()
+      if (!generationId) {
+        throw new HttpError(409, 'CREATIVE_QUOTA_GENERATION_INVALID', 'Creative quota reservations require a generation id')
+      }
+      const units = Math.max(1, Number.parseInt(String(payload.costUnits ?? 1), 10) || 1)
+      const limitUnits = Math.max(0, Number.parseInt(String(payload.limit ?? 0), 10) || 0)
+      const normalizedPayload = { ...payload, generationId, costUnits: units, limit: limitUnits }
+      const idempotencyPayloadHash = accountingPayloadHash({
+        generationId,
+        actorId: payload.actorId ?? null,
+        actorHandle: payload.actorHandle ?? null,
+        workspace: payload.workspace,
+        windowType: payload.windowType,
+        windowStart: payload.windowStart,
+        windowEnd: payload.windowEnd,
+        limitUnits,
+        units,
+        policyVersion: payload.policyVersion,
+      })
+      const existing = [...creativeQuotaReservationsById.values()].find((reservation) => reservation.generationId === generationId)
+      if (existing) {
+        if (existing.idempotencyPayloadHash !== idempotencyPayloadHash) {
+          throw new HttpError(409, 'ACCOUNTING_OPERATION_CONFLICT', 'Creative quota reservation already exists with a different payload')
+        }
+        const existingWindow = creativeQuotaWindowsById.get(existing.quotaWindowId)
+        return {
+          reserved: existing.status === 'reserved',
+          reservationId: existing.id,
+          quota: existingWindow ? getCreativeQuotaDto(existingWindow, existing.id) : null,
+        }
+      }
+      const window = getOrCreateCreativeQuotaWindow(normalizedPayload)
       if (window.usedUnits + window.reservedUnits + units > window.limitUnits) {
         return {
           reserved: false,
@@ -4438,17 +5080,31 @@ export const createSeedRepository = () => ({
       const reservation = {
         id: reservationId,
         quotaWindowId: updatedWindow.id,
-        generationId: payload.generationId ?? null,
+        generationId,
         actorId: payload.actorId ?? null,
         actorHandle: payload.actorHandle ?? null,
         workspace: payload.workspace,
         units,
+        idempotencyPayloadHash,
         status: 'reserved',
         reason: null,
         reservedAt: new Date().toISOString(),
         committedAt: null,
         releasedAt: null,
       }
+      applySeedAccountingOperation({
+        unit: 'quota_unit',
+        kind: 'quota_reserve',
+        sourceType: 'generation',
+        sourceId: String(reservation.generationId),
+        reasonCode: 'generation_reserved',
+        payload: { generationId: reservation.generationId, reservationId, units, windowId: reservation.quotaWindowId },
+        movements: [
+          { unit: 'quota_unit', accountRef: `quota-window:${reservation.quotaWindowId}:remaining`, accountType: 'remaining', amount: -units },
+          { unit: 'quota_unit', accountRef: `generation:${reservation.generationId}:quota_unit:reserved`, accountType: 'reserved', amount: units },
+        ],
+        actor,
+      })
       creativeQuotaWindowsById.set(updatedWindow.id, updatedWindow)
       creativeQuotaReservationsById.set(reservation.id, reservation)
       recordAudit(actor, 'creative.quota.reserved', 'creative_quota_reservation', reservation.id, {
@@ -4489,6 +5145,19 @@ export const createSeedRepository = () => ({
         status: 'committed',
         committedAt: new Date().toISOString(),
       }
+      applySeedAccountingOperation({
+        unit: 'quota_unit',
+        kind: 'quota_commit',
+        sourceType: 'generation',
+        sourceId: String(updatedReservation.generationId),
+        reasonCode: 'generation_completed',
+        payload: { generationId: updatedReservation.generationId, reservationId: updatedReservation.id, units: updatedReservation.units },
+        movements: [
+          { unit: 'quota_unit', accountRef: `generation:${updatedReservation.generationId}:quota_unit:reserved`, accountType: 'reserved', amount: -updatedReservation.units },
+          { unit: 'quota_unit', accountRef: `quota-window:${updatedReservation.quotaWindowId}:used`, accountType: 'used', amount: updatedReservation.units },
+        ],
+        actor,
+      })
       creativeQuotaWindowsById.set(updatedWindow.id, updatedWindow)
       creativeQuotaReservationsById.set(updatedReservation.id, updatedReservation)
       recordAudit(actor, 'creative.quota.committed', 'creative_quota_reservation', updatedReservation.id, {
@@ -4526,6 +5195,19 @@ export const createSeedRepository = () => ({
         reason: safeReason,
         releasedAt: new Date().toISOString(),
       }
+      applySeedAccountingOperation({
+        unit: 'quota_unit',
+        kind: 'quota_release',
+        sourceType: 'generation',
+        sourceId: String(updatedReservation.generationId),
+        reasonCode: String(safeReason).includes('cancel') ? 'generation_cancelled' : 'generation_failed',
+        payload: { generationId: updatedReservation.generationId, reservationId: updatedReservation.id, units: updatedReservation.units },
+        movements: [
+          { unit: 'quota_unit', accountRef: `generation:${updatedReservation.generationId}:quota_unit:reserved`, accountType: 'reserved', amount: -updatedReservation.units },
+          { unit: 'quota_unit', accountRef: `quota-window:${updatedReservation.quotaWindowId}:remaining`, accountType: 'remaining', amount: updatedReservation.units },
+        ],
+        actor,
+      })
       creativeQuotaWindowsById.set(updatedWindow.id, updatedWindow)
       creativeQuotaReservationsById.set(updatedReservation.id, updatedReservation)
       recordAudit(actor, 'creative.quota.released', 'creative_quota_reservation', updatedReservation.id, {

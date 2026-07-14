@@ -1,0 +1,106 @@
+{
+  "version": "internal-accounting-invariants-v1",
+  "scope": {
+    "included": [
+      "internal_points",
+      "task_escrow",
+      "creative_credits",
+      "quota_units",
+      "compensation",
+      "reconciliation"
+    ],
+    "excluded": [
+      "provider_currency_conversion",
+      "rmb_payment",
+      "withdrawal",
+      "kyc",
+      "invoice",
+      "merchant_settlement"
+    ]
+  },
+  "units": {
+    "points": {
+      "accountTypes": ["available", "escrow", "system_source"],
+      "userVisible": true
+    },
+    "creative_credit": {
+      "accountTypes": ["available", "reserved", "consumed", "system_source"],
+      "userVisible": true
+    },
+    "quota_unit": {
+      "accountTypes": ["remaining", "reserved", "used", "system_source"],
+      "userVisible": true
+    },
+    "provider_currency": {
+      "accountTypes": ["provider_budget"],
+      "userVisible": false,
+      "separateEvidenceOnly": true
+    }
+  },
+  "operationKinds": [
+    "opening_snapshot",
+    "task_escrow_reserve",
+    "task_escrow_transfer",
+    "task_escrow_release",
+    "manual_adjustment",
+    "credit_reserve",
+    "credit_settle",
+    "credit_refund",
+    "quota_reserve",
+    "quota_commit",
+    "quota_release",
+    "compensation"
+  ],
+  "reasonCodes": [
+    "legacy_opening_balance",
+    "task_published",
+    "task_completed",
+    "task_dispute_rejected",
+    "admin_adjustment_approved",
+    "generation_reserved",
+    "generation_completed",
+    "generation_review_required",
+    "generation_failed",
+    "generation_cancelled",
+    "generation_timed_out",
+    "repair_missing_movement",
+    "repair_balance_drift"
+  ],
+  "movementTemplates": {
+    "task_escrow_reserve": ["points:available:-amount", "points:escrow:+amount"],
+    "task_escrow_transfer": ["points:escrow:-amount", "points:available:+amount"],
+    "task_escrow_release": ["points:escrow:-amount", "points:available:+amount"],
+    "manual_adjustment": ["points:system_source:-delta", "points:available:+delta"],
+    "credit_reserve": ["creative_credit:available:-amount", "creative_credit:reserved:+amount"],
+    "credit_settle": ["creative_credit:reserved:-amount", "creative_credit:consumed:+amount"],
+    "credit_refund": ["creative_credit:reserved:-amount", "creative_credit:available:+amount"],
+    "quota_reserve": ["quota_unit:remaining:-amount", "quota_unit:reserved:+amount"],
+    "quota_commit": ["quota_unit:reserved:-amount", "quota_unit:used:+amount"],
+    "quota_release": ["quota_unit:reserved:-amount", "quota_unit:remaining:+amount"]
+  },
+  "invariants": [
+    "one_result_per_operation_key_and_unit",
+    "movement_group_sums_to_zero_within_unit",
+    "point_snapshot_equals_opening_plus_effective_movements",
+    "task_escrow_has_one_terminal_transfer_or_release",
+    "credit_reservation_has_one_terminal_settle_or_refund",
+    "quota_reservation_has_one_terminal_commit_or_release",
+    "quota_reserved_plus_used_does_not_exceed_limit",
+    "compensation_references_original_operation_and_issue",
+    "provider_currency_never_changes_internal_units"
+  ],
+  "reconciliationIssueTypes": [
+    "point_balance_drift",
+    "unbalanced_operation",
+    "orphan_reservation",
+    "missing_terminal_movement",
+    "duplicate_operation_source",
+    "escrow_state_mismatch",
+    "credit_state_mismatch",
+    "quota_state_mismatch"
+  ],
+  "verification": {
+    "command": "npm run test:v1-accounting",
+    "qualityGate": "npm run check:quick"
+  }
+}

@@ -64,6 +64,12 @@ import { safeProviderOperationMetadata } from '../creative/generationRecords.js'
 import { assetEligibleForWorkspace, assetMediaType, buildSafeAssetLibraryItem } from '../media/assetLibrary.js'
 import { resolveCreativeDeliveryAssets } from '../creative/deliveryAssets.js'
 import { taskWorkflowDto } from '../tasks/taskLifecycle.js'
+import {
+  accountingOperationKey,
+  accountingPayloadHash,
+  reconcilePointLedgerRows,
+  validateMovementGroup,
+} from '../accounting/internalAccounting.js'
 
 const { Prisma, PrismaClient } = prismaClientPkg
 const safeProviderJobIdPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
@@ -361,7 +367,414 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     }
   }
 
-  const settleTaskReward = async (transaction, task, recipientId) => {
+  const getOrCreatePointAccount = async (transaction, userId) => {
+    const existing = await transaction.internalPointAccount.findUnique({ where: { userId } })
+    if (existing) return existing
+    const latest = await transaction.pointLedger.findFirst({
+      where: { userId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    })
+    const openingBalance = latest?.balanceAfter ?? 0
+    const id = `point-account-${userId}`
+    await transaction.$executeRaw`
+      INSERT INTO "internal_point_accounts" (
+        "id", "user_id", "balance", "opening_balance", "version", "created_at", "updated_at"
+      ) VALUES (
+        ${id}, ${userId}, ${openingBalance}, ${openingBalance}, 0, NOW(), NOW()
+      )
+      ON CONFLICT ("user_id") DO NOTHING
+    `
+    return transaction.internalPointAccount.findUnique({ where: { userId } })
+  }
+
+  const applyPrismaAccountingOperation = async (transaction, {
+    unit,
+    kind,
+    sourceType,
+    sourceId,
+    reasonCode,
+    phase = 'apply',
+    payload = {},
+    movements,
+    actor,
+    allowNegative = false,
+    originalOperationKey = null,
+    reconciliationIssueId = null,
+  }) => {
+    const operationKey = accountingOperationKey({ kind, sourceType, sourceId, phase })
+    const payloadHash = accountingPayloadHash(payload)
+    const validation = validateMovementGroup({ unit, movements })
+    if (!validation.valid) {
+      throw new HttpError(409, validation.code, 'Accounting movement group is invalid')
+    }
+    const operationId = `accounting-operation-${randomUUID()}`
+    const actorRef = actor?.handle ?? actor?.id ?? 'system'
+    const inserted = await transaction.$queryRaw`
+      INSERT INTO "internal_accounting_operations" (
+        "id", "operation_key", "unit", "kind", "status", "source_type", "source_id",
+        "payload_hash", "reason_code", "original_operation_key", "reconciliation_issue_id",
+        "actor_ref", "created_at", "updated_at"
+      ) VALUES (
+        ${operationId}, ${operationKey}, CAST(${unit} AS "InternalAccountingUnit"), ${kind},
+        'pending', ${sourceType}, ${String(sourceId)}, ${payloadHash}, ${reasonCode},
+        ${originalOperationKey}, ${reconciliationIssueId}, ${actorRef}, NOW(), NOW()
+      )
+      ON CONFLICT ("operation_key", "unit") DO NOTHING
+      RETURNING "id"
+    `
+    if (!Array.isArray(inserted) || inserted.length === 0) {
+      const existing = await transaction.internalAccountingOperation.findUnique({
+        where: { operationKey_unit: { operationKey, unit } },
+        include: { movements: { orderBy: { sequence: 'asc' } } },
+      })
+      if (!existing || existing.payloadHash !== payloadHash) {
+        throw new HttpError(409, 'ACCOUNTING_OPERATION_CONFLICT', 'Accounting operation already exists with a different payload')
+      }
+      return { operation: existing, movements: existing.movements, recovered: true }
+    }
+
+    const balancesBySequence = new Map()
+    const pointMovements = movements
+      .map((movement, index) => ({ ...movement, sequence: index + 1 }))
+      .filter((movement) => unit === 'points' && movement.accountType === 'available' && movement.ownerUserId)
+      .sort((left, right) => String(left.ownerUserId).localeCompare(String(right.ownerUserId)))
+    for (const movement of pointMovements) {
+      await getOrCreatePointAccount(transaction, movement.ownerUserId)
+      const updated = await transaction.$queryRaw`
+        UPDATE "internal_point_accounts"
+        SET
+          "balance" = "balance" + ${movement.amount},
+          "version" = "version" + 1,
+          "updated_at" = NOW()
+        WHERE "user_id" = ${movement.ownerUserId}
+          AND (${allowNegative} OR ("balance" + ${movement.amount}) >= 0)
+        RETURNING "balance", "version"
+      `
+      if (!Array.isArray(updated) || updated.length !== 1) {
+        throw new HttpError(409, 'POINTS_INSUFFICIENT_BALANCE', 'Available point balance is insufficient')
+      }
+      balancesBySequence.set(movement.sequence, Number(updated[0].balance))
+    }
+
+    await transaction.internalAccountingMovement.createMany({
+      data: movements.map((movement, index) => ({
+        id: `accounting-movement-${randomUUID()}`,
+        operationId,
+        unit,
+        accountRef: movement.accountRef,
+        accountType: movement.accountType,
+        amount: movement.amount,
+        balanceAfter: balancesBySequence.get(index + 1) ?? null,
+        sequence: index + 1,
+      })),
+    })
+    const operation = await transaction.internalAccountingOperation.update({
+      where: { id: operationId },
+      data: { status: 'applied', appliedAt: new Date() },
+      include: { movements: { orderBy: { sequence: 'asc' } } },
+    })
+    await transaction.auditEvent.create({
+      data: buildAuditRecord({
+        actorType: actor ? 'user' : 'system',
+        actorId: actor?.id ?? null,
+        action: 'accounting.operation.applied',
+        resourceType: 'internal_accounting_operation',
+        resourceId: operation.id,
+        metadata: {
+          operationKey,
+          unit,
+          kind,
+          sourceType,
+          sourceId: String(sourceId),
+          reasonCode,
+          movementCount: movements.length,
+        },
+      }),
+    })
+    return { operation, movements: operation.movements, recovered: false }
+  }
+
+  const serializeAccountingIssue = (issue) => issue ? ({
+    id: issue.id,
+    issueKey: issue.issueKey,
+    type: issue.type,
+    unit: issue.unit,
+    status: issue.status,
+    sourceType: issue.sourceType,
+    sourceId: issue.sourceId,
+    expectedAmount: issue.expectedAmount ?? null,
+    actualAmount: issue.actualAmount ?? null,
+    differenceAmount: issue.differenceAmount ?? null,
+    operationKey: issue.operationKey ?? null,
+    repairOperationKey: issue.repairOperationKey ?? null,
+    evidence: issue.evidence ?? null,
+    detectedAt: issue.detectedAt.toISOString(),
+    reviewedAt: issue.reviewedAt?.toISOString() ?? null,
+    resolvedAt: issue.resolvedAt?.toISOString() ?? null,
+  }) : null
+
+  const accountingIssueSummary = (issues) => ({
+    total: issues.length,
+    open: issues.filter((issue) => issue.status === 'open').length,
+    repairPending: issues.filter((issue) => issue.status === 'repair_pending').length,
+    resolved: issues.filter((issue) => issue.status === 'resolved').length,
+    ignored: issues.filter((issue) => issue.status === 'ignored').length,
+  })
+
+  const paginateAccountingIssues = (issues, options = {}) => {
+    const limit = Math.min(Math.max(Number(options.limit ?? 20), 1), 100)
+    const cursorIndex = options.cursor
+      ? issues.findIndex((issue) => issue.id === String(options.cursor))
+      : -1
+    const start = cursorIndex >= 0 ? cursorIndex + 1 : 0
+    const items = issues.slice(start, start + limit)
+    return {
+      items: items.map(serializeAccountingIssue),
+      nextCursor: start + limit < issues.length && items.length > 0 ? items.at(-1).id : null,
+      limit,
+    }
+  }
+
+  const filterAccountingIssues = (issues, options = {}) => issues
+    .filter((issue) => !options.status || issue.status === options.status)
+    .filter((issue) => !options.unit || issue.unit === options.unit)
+    .filter((issue) => !options.type || issue.type === options.type)
+
+  const scanPrismaAccounting = async (actor = null, options = {}) => {
+    const generatedAt = new Date()
+    const result = await client.$transaction(async (transaction) => {
+      const [ledgerRows, pointAccounts, operations, creditLedgers, quotaWindows, tasks, existingIssues] = await Promise.all([
+        transaction.pointLedger.findMany({ orderBy: [{ userId: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] }),
+        transaction.internalPointAccount.findMany(),
+        transaction.internalAccountingOperation.findMany({ include: { movements: { orderBy: { sequence: 'asc' } } } }),
+        transaction.creativeCreditLedger.findMany(),
+        transaction.creativeQuotaWindow.findMany({ include: { reservations: true } }),
+        transaction.task.findMany({ where: { pointsReward: { gt: 0 } } }),
+        transaction.accountingReconciliationIssue.findMany(),
+      ])
+      const detected = new Map()
+      const addIssue = (issue) => detected.set(issue.issueKey, issue)
+      const operationsByIdentity = new Map(operations.map((operation) => [
+        `${operation.unit}:${operation.operationKey}`,
+        operation,
+      ]))
+      const hasOperation = (unit, kind, sourceType, sourceId, phase = 'apply') => operationsByIdentity.has(
+        `${unit}:${accountingOperationKey({ kind, sourceType, sourceId, phase })}`,
+      )
+
+      const rowsByUser = new Map()
+      for (const row of ledgerRows) {
+        const rows = rowsByUser.get(row.userId) ?? []
+        rows.push(row)
+        rowsByUser.set(row.userId, rows)
+      }
+      const accountByUser = new Map(pointAccounts.map((account) => [account.userId, account]))
+      for (const [userId, rows] of rowsByUser) {
+        const report = reconcilePointLedgerRows(rows)
+        for (const drift of report.issues) {
+          addIssue({
+            issueKey: `point_balance_drift:${userId}:${drift.ledgerId}`,
+            type: 'point_balance_drift',
+            unit: 'points',
+            sourceType: 'point_ledger',
+            sourceId: drift.ledgerId,
+            expectedAmount: drift.expectedBalance,
+            actualAmount: drift.actualBalance,
+            differenceAmount: drift.difference,
+            evidence: { userId },
+          })
+        }
+        const account = accountByUser.get(userId)
+        const latestBalance = report.actualBalance
+        if (!account || account.balance !== latestBalance) {
+          addIssue({
+            issueKey: `point_balance_drift:${userId}:account`,
+            type: 'point_balance_drift',
+            unit: 'points',
+            sourceType: 'internal_point_account',
+            sourceId: account?.id ?? `missing:${userId}`,
+            expectedAmount: latestBalance,
+            actualAmount: account?.balance ?? 0,
+            differenceAmount: (account?.balance ?? 0) - latestBalance,
+            evidence: { userId, accountVersion: account?.version ?? null },
+          })
+        }
+      }
+
+      for (const operation of operations) {
+        const validation = validateMovementGroup({ unit: operation.unit, movements: operation.movements })
+        if (!validation.valid || !['applied', 'compensated'].includes(operation.status)) {
+          addIssue({
+            issueKey: `unbalanced_operation:${operation.unit}:${operation.operationKey}`,
+            type: 'unbalanced_operation',
+            unit: operation.unit,
+            sourceType: 'internal_accounting_operation',
+            sourceId: operation.id,
+            expectedAmount: 0,
+            actualAmount: validation.total,
+            differenceAmount: validation.total,
+            operationKey: operation.operationKey,
+            evidence: { code: validation.code, status: operation.status },
+          })
+        }
+      }
+
+      for (const ledger of creditLedgers) {
+        const active = ledger.status === 'reserved' ? ledger.reservationAmount : 0
+        const cancelled = ledger.status === 'cancelled' ? ledger.reservationAmount : 0
+        const actual = ledger.settledAmount + ledger.refundedAmount + active + cancelled
+        const reservePresent = hasOperation('creative_credit', 'credit_reserve', 'generation', ledger.generationId)
+        const terminalPresent = ledger.status === 'settled'
+          ? hasOperation('creative_credit', 'credit_settle', 'generation', ledger.generationId)
+          : ledger.status === 'refunded'
+            ? hasOperation('creative_credit', 'credit_refund', 'generation', ledger.generationId)
+            : ledger.status === 'cancelled'
+              ? hasOperation('creative_credit', 'credit_refund', 'generation', ledger.generationId, 'cancel')
+              : true
+        if (actual !== ledger.reservationAmount || !reservePresent || !terminalPresent) {
+          addIssue({
+            issueKey: `credit_state_mismatch:${ledger.id}`,
+            type: 'credit_state_mismatch',
+            unit: 'creative_credit',
+            sourceType: 'creative_credit_ledger',
+            sourceId: ledger.id,
+            expectedAmount: ledger.reservationAmount,
+            actualAmount: actual,
+            differenceAmount: actual - ledger.reservationAmount,
+            evidence: { generationId: ledger.generationId, status: ledger.status, reservePresent, terminalPresent },
+          })
+        }
+      }
+
+      for (const window of quotaWindows) {
+        const expectedReserved = window.reservations
+          .filter((reservation) => reservation.status === 'reserved')
+          .reduce((total, reservation) => total + reservation.units, 0)
+        const expectedUsed = window.reservations
+          .filter((reservation) => reservation.status === 'committed')
+          .reduce((total, reservation) => total + reservation.units, 0)
+        const expectedReleased = window.reservations
+          .filter((reservation) => reservation.status === 'released')
+          .reduce((total, reservation) => total + reservation.units, 0)
+        const countersMatch = expectedReserved === window.reservedUnits &&
+          expectedUsed === window.usedUnits &&
+          expectedReleased === window.releasedUnits
+        const withinLimit = window.reservedUnits + window.usedUnits <= window.limitUnits
+        if (!countersMatch || !withinLimit) {
+          addIssue({
+            issueKey: `quota_state_mismatch:${window.id}`,
+            type: 'quota_state_mismatch',
+            unit: 'quota_unit',
+            sourceType: 'creative_quota_window',
+            sourceId: window.id,
+            expectedAmount: expectedReserved + expectedUsed,
+            actualAmount: window.reservedUnits + window.usedUnits,
+            differenceAmount: (window.reservedUnits + window.usedUnits) - (expectedReserved + expectedUsed),
+            evidence: {
+              workspace: window.workspace,
+              limitUnits: window.limitUnits,
+              expectedReserved,
+              expectedUsed,
+              expectedReleased,
+              actualReleased: window.releasedUnits,
+              withinLimit,
+            },
+          })
+        }
+        for (const reservation of window.reservations) {
+          const reservePresent = hasOperation('quota_unit', 'quota_reserve', 'generation', reservation.generationId)
+          const terminalPresent = reservation.status === 'committed'
+            ? hasOperation('quota_unit', 'quota_commit', 'generation', reservation.generationId)
+            : reservation.status === 'released'
+              ? hasOperation('quota_unit', 'quota_release', 'generation', reservation.generationId)
+              : true
+          if (!reservePresent || !terminalPresent) {
+            addIssue({
+              issueKey: `quota_state_mismatch:${reservation.id}`,
+              type: 'quota_state_mismatch',
+              unit: 'quota_unit',
+              sourceType: 'creative_quota_reservation',
+              sourceId: reservation.id,
+              expectedAmount: reservation.units,
+              actualAmount: reservePresent && terminalPresent ? reservation.units : 0,
+              differenceAmount: reservePresent && terminalPresent ? 0 : -reservation.units,
+              evidence: { generationId: reservation.generationId, status: reservation.status, reservePresent, terminalPresent },
+            })
+          }
+        }
+      }
+
+      const escrowRowsByTask = new Map(ledgerRows
+        .filter((row) => row.sourceType === 'task_escrow' && row.sourceId)
+        .map((row) => [row.sourceId, row]))
+      for (const task of tasks) {
+        const reservePresent = hasOperation('points', 'task_escrow_reserve', 'task', task.id)
+        const transferPresent = hasOperation('points', 'task_escrow_transfer', 'task', task.id)
+        const releasePresent = hasOperation('points', 'task_escrow_release', 'task', task.id)
+        const escrow = escrowRowsByTask.get(task.id)
+        const terminalCount = Number(transferPresent) + Number(releasePresent)
+        const stateMatches = reservePresent && terminalCount <= 1 &&
+          (task.status !== 'completed' || transferPresent) &&
+          (!escrow || escrow.status !== 'settled' || transferPresent) &&
+          (!escrow || escrow.status !== 'cancelled' || releasePresent)
+        if (!stateMatches) {
+          addIssue({
+            issueKey: `escrow_state_mismatch:${task.id}`,
+            type: 'escrow_state_mismatch',
+            unit: 'points',
+            sourceType: 'task',
+            sourceId: task.id,
+            expectedAmount: task.pointsReward,
+            actualAmount: reservePresent ? task.pointsReward : 0,
+            differenceAmount: reservePresent ? 0 : -task.pointsReward,
+            evidence: { taskStatus: task.status, escrowStatus: escrow?.status ?? null, reservePresent, transferPresent, releasePresent },
+          })
+        }
+      }
+
+      const existingByKey = new Map(existingIssues.map((issue) => [issue.issueKey, issue]))
+      for (const issue of detected.values()) {
+        const existing = existingByKey.get(issue.issueKey)
+        const status = ['ignored', 'repair_pending'].includes(existing?.status)
+          ? existing.status
+          : 'open'
+        await transaction.accountingReconciliationIssue.upsert({
+          where: { issueKey: issue.issueKey },
+          create: {
+            id: `accounting-issue-${randomUUID()}`,
+            ...issue,
+            status,
+            detectedAt: generatedAt,
+          },
+          update: {
+            ...issue,
+            status,
+            resolvedAt: null,
+          },
+        })
+      }
+      const resolvedIds = existingIssues
+        .filter((issue) => !detected.has(issue.issueKey) && ['open', 'repair_pending'].includes(issue.status))
+        .map((issue) => issue.id)
+      if (resolvedIds.length > 0) {
+        await transaction.accountingReconciliationIssue.updateMany({
+          where: { id: { in: resolvedIds } },
+          data: { status: 'resolved', resolvedAt: generatedAt },
+        })
+      }
+      return transaction.accountingReconciliationIssue.findMany({
+        orderBy: [{ detectedAt: 'desc' }, { id: 'desc' }],
+      })
+    })
+    const filtered = filterAccountingIssues(result, options)
+    return {
+      generatedAt: generatedAt.toISOString(),
+      summary: accountingIssueSummary(result),
+      issues: paginateAccountingIssues(filtered, options),
+    }
+  }
+
+  const settleTaskReward = async (transaction, task, recipientId, actor = null) => {
     const pointsReward = Number(task.pointsReward) || 0
     if (!recipientId || pointsReward <= 0) {
       return null
@@ -376,10 +789,20 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     if (existing) {
       return existing
     }
-    const latest = await transaction.pointLedger.findFirst({
-      where: { userId: recipientId },
-      orderBy: { createdAt: 'desc' },
+    await applyPrismaAccountingOperation(transaction, {
+      unit: 'points',
+      kind: 'task_escrow_transfer',
+      sourceType: 'task',
+      sourceId: task.id,
+      reasonCode: 'task_completed',
+      payload: { taskId: String(task.id), publisherId: task.publisherId, recipientId, amount: pointsReward },
+      movements: [
+        { unit: 'points', accountRef: `task:${task.id}:points:escrow`, accountType: 'escrow', amount: -pointsReward },
+        { unit: 'points', accountRef: `user:${recipientId}:points:available`, accountType: 'available', ownerUserId: recipientId, amount: pointsReward },
+      ],
+      actor,
     })
+    const account = await getOrCreatePointAccount(transaction, recipientId)
     return transaction.pointLedger.create({
       data: {
         id: `ledger-task-${task.id}-${recipientId}`,
@@ -387,7 +810,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         sourceType: 'task_completion',
         sourceId: String(task.id),
         delta: pointsReward,
-        balanceAfter: (latest?.balanceAfter ?? 0) + pointsReward,
+        balanceAfter: account.balance,
         status: 'settled',
         description: `Task accepted: ${task.title}`,
         occurredAtLabel: 'Just now',
@@ -433,15 +856,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     }
   }
 
-  const getLatestLedgerBalance = async (transaction, userId) => {
-    const latest = await transaction.pointLedger.findFirst({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-    })
-    return latest?.balanceAfter ?? 0
-  }
-
-  const createTaskEscrow = async (transaction, task, publisherId) => {
+  const createTaskEscrow = async (transaction, task, publisherId, actor = null) => {
     const pointsReward = Number(task.pointsReward) || 0
     if (!publisherId || pointsReward <= 0) {
       return null
@@ -456,7 +871,20 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     if (existing) {
       return existing
     }
-    const latestBalance = await getLatestLedgerBalance(transaction, publisherId)
+    await applyPrismaAccountingOperation(transaction, {
+      unit: 'points',
+      kind: 'task_escrow_reserve',
+      sourceType: 'task',
+      sourceId: task.id,
+      reasonCode: 'task_published',
+      payload: { taskId: String(task.id), publisherId, amount: pointsReward },
+      movements: [
+        { unit: 'points', accountRef: `user:${publisherId}:points:available`, accountType: 'available', ownerUserId: publisherId, amount: -pointsReward },
+        { unit: 'points', accountRef: `task:${task.id}:points:escrow`, accountType: 'escrow', amount: pointsReward },
+      ],
+      actor,
+    })
+    const account = await getOrCreatePointAccount(transaction, publisherId)
     return transaction.pointLedger.create({
       data: {
         id: `ledger-task-escrow-${task.id}-${publisherId}`,
@@ -464,7 +892,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         sourceType: 'task_escrow',
         sourceId: String(task.id),
         delta: -pointsReward,
-        balanceAfter: latestBalance - pointsReward,
+        balanceAfter: account.balance,
         status: 'pending',
         description: `Task reward held: ${task.title}`,
         occurredAtLabel: 'Just now',
@@ -472,7 +900,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     })
   }
 
-  const finalizeTaskEscrow = async (transaction, task, publisherId, decision) => {
+  const finalizeTaskEscrow = async (transaction, task, publisherId, decision, actor = null) => {
     const pointsReward = Number(task.pointsReward) || 0
     if (!publisherId || pointsReward <= 0) {
       return null
@@ -504,7 +932,20 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     if (existingRelease) {
       return existingRelease
     }
-    const latestBalance = await getLatestLedgerBalance(transaction, publisherId)
+    await applyPrismaAccountingOperation(transaction, {
+      unit: 'points',
+      kind: 'task_escrow_release',
+      sourceType: 'task',
+      sourceId: task.id,
+      reasonCode: 'task_dispute_rejected',
+      payload: { taskId: String(task.id), publisherId, amount: pointsReward },
+      movements: [
+        { unit: 'points', accountRef: `task:${task.id}:points:escrow`, accountType: 'escrow', amount: -pointsReward },
+        { unit: 'points', accountRef: `user:${publisherId}:points:available`, accountType: 'available', ownerUserId: publisherId, amount: pointsReward },
+      ],
+      actor,
+    })
+    const account = await getOrCreatePointAccount(transaction, publisherId)
     return transaction.pointLedger.create({
       data: {
         id: `ledger-task-escrow-release-${task.id}-${publisherId}`,
@@ -512,7 +953,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         sourceType: 'task_escrow_release',
         sourceId: String(task.id),
         delta: pointsReward,
-        balanceAfter: latestBalance + pointsReward,
+        balanceAfter: account.balance,
         status: 'settled',
         description: `Task reward released: ${task.title}`,
         occurredAtLabel: 'Just now',
@@ -978,10 +1419,27 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     if (existing) {
       return existing
     }
-    const latest = await transaction.pointLedger.findFirst({
-      where: { userId: user.id },
-      orderBy: { createdAt: 'desc' },
+    await applyPrismaAccountingOperation(transaction, {
+      unit: 'points',
+      kind: 'manual_adjustment',
+      sourceType: 'point_adjustment',
+      sourceId,
+      reasonCode: 'admin_adjustment_approved',
+      payload: {
+        sourceId,
+        userId: user.id,
+        delta: payload.delta,
+        reasonCode: payload.reasonCode ?? null,
+        reviewId: options.reviewId ?? null,
+      },
+      movements: [
+        { unit: 'points', accountRef: 'system:adjustments:points:source', accountType: 'system_source', amount: -payload.delta },
+        { unit: 'points', accountRef: `user:${user.id}:points:available`, accountType: 'available', ownerUserId: user.id, amount: payload.delta },
+      ],
+      actor,
+      allowNegative: true,
     })
+    const account = await getOrCreatePointAccount(transaction, user.id)
     const ledgerEntry = await transaction.pointLedger.create({
       data: {
         id: `ledger-${sourceId}`,
@@ -989,7 +1447,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         sourceType: 'manual_adjustment',
         sourceId,
         delta: payload.delta,
-        balanceAfter: (latest?.balanceAfter ?? 0) + payload.delta,
+        balanceAfter: account.balance,
         status: 'settled',
         description: `Manual adjustment: ${payload.reason}`,
         occurredAtLabel: 'Just now',
@@ -2174,7 +2632,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             null,
           ),
         })
-        await createTaskEscrow(transaction, createdTask, publisher.id)
+        await createTaskEscrow(transaction, createdTask, publisher.id, actor)
         return createdTask
       })
       await recordAudit({
@@ -3019,8 +3477,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           }
         }
         if (isApproval) {
-          await finalizeTaskEscrow(transaction, task, task.publisherId, 'approve')
-          await settleTaskReward(transaction, task, task.assigneeId ?? pendingSubmission?.submitterId ?? null)
+          await finalizeTaskEscrow(transaction, task, task.publisherId, 'approve', actor)
+          await settleTaskReward(transaction, task, task.assigneeId ?? pendingSubmission?.submitterId ?? null, actor)
           await applyTaskCompletionReputation(transaction, task, task.assigneeId ?? pendingSubmission?.submitterId ?? null)
         }
         return updatedTask
@@ -5969,52 +6427,77 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     reserve: async (payload, actor) => {
       const actorUser = payload.actorHandle || actor?.handle ? await findUserByHandle(payload.actorHandle ?? actor.handle) : null
       const amount = Math.max(0, Number.parseInt(String(payload.amount ?? payload.estimatedCredits ?? 0), 10) || 0)
-      const existing = payload.quotaReservationId
-        ? await client.creativeCreditLedger.findUnique({ where: { quotaReservationId: String(payload.quotaReservationId) } })
-        : null
-      if (existing) {
-        return {
-          reserved: existing.status === 'reserved',
-          credit: getCreativeCreditDto(existing),
+      if (amount <= 0) {
+        throw new HttpError(409, 'CREATIVE_CREDIT_AMOUNT_INVALID', 'Creative credit reservation amount must be positive')
+      }
+      return client.$transaction(async (transaction) => {
+        const lockKey = `creative-credit:${payload.quotaReservationId ?? payload.generationId ?? ''}`
+        await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+        const existing = await findCreativeCreditLedger(transaction, payload.quotaReservationId ?? payload.generationId)
+        if (existing) {
+          const samePayload = existing.generationId === String(payload.generationId ?? '') &&
+            existing.reservationAmount === amount &&
+            existing.workspace === payload.workspace &&
+            existing.mode === payload.mode
+          if (!samePayload) {
+            throw new HttpError(409, 'ACCOUNTING_OPERATION_CONFLICT', 'Creative credit reservation already exists with a different payload')
+          }
+          return {
+            reserved: existing.status === 'reserved',
+            credit: getCreativeCreditDto(existing),
+          }
         }
-      }
-      const ledger = await client.creativeCreditLedger.create({
-        data: {
-          id: `credit-${randomUUID()}`,
-          generationId: String(payload.generationId ?? ''),
-          quotaReservationId: payload.quotaReservationId ?? null,
-          actorId: actorUser?.id ?? null,
-          actorHandle: payload.actorHandle ?? actorUser?.profile?.handle ?? null,
-          workspace: payload.workspace,
-          mode: payload.mode,
-          reservationAmount: amount,
-          settledAmount: 0,
-          refundedAmount: 0,
-          status: 'reserved',
-          reasonCode: safeErrorPreview(payload.reasonCode ?? 'generation_reserved'),
-          metadata: safeCreativeCreditMetadata(payload.metadata) ?? undefined,
-        },
-      })
-      await client.auditEvent.create({
-        data: buildAuditRecord({
-          actorType: actor ? 'user' : 'system',
-          actorId: actor?.id ?? null,
-          action: 'creative.credit.reserved',
-          resourceType: 'creative_credit_ledger',
-          resourceId: ledger.id,
-          metadata: {
-            generationId: ledger.generationId,
-            quotaReservationId: ledger.quotaReservationId,
-            workspace: ledger.workspace,
-            mode: ledger.mode,
-            amount,
+        const ledger = await transaction.creativeCreditLedger.create({
+          data: {
+            id: `credit-${randomUUID()}`,
+            generationId: String(payload.generationId ?? ''),
+            quotaReservationId: payload.quotaReservationId ?? null,
+            actorId: actorUser?.id ?? null,
+            actorHandle: payload.actorHandle ?? actorUser?.profile?.handle ?? null,
+            workspace: payload.workspace,
+            mode: payload.mode,
+            reservationAmount: amount,
+            settledAmount: 0,
+            refundedAmount: 0,
+            status: 'reserved',
+            reasonCode: safeErrorPreview(payload.reasonCode ?? 'generation_reserved'),
+            metadata: safeCreativeCreditMetadata(payload.metadata) ?? undefined,
           },
-        }),
+        })
+        await applyPrismaAccountingOperation(transaction, {
+          unit: 'creative_credit',
+          kind: 'credit_reserve',
+          sourceType: 'generation',
+          sourceId: ledger.generationId,
+          reasonCode: 'generation_reserved',
+          payload: { generationId: ledger.generationId, actorHandle: ledger.actorHandle, amount },
+          movements: [
+            { unit: 'creative_credit', accountRef: `user:${ledger.actorHandle}:creative_credit:available`, accountType: 'available', amount: -amount },
+            { unit: 'creative_credit', accountRef: `generation:${ledger.generationId}:creative_credit:reserved`, accountType: 'reserved', amount },
+          ],
+          actor,
+        })
+        await transaction.auditEvent.create({
+          data: buildAuditRecord({
+            actorType: actor ? 'user' : 'system',
+            actorId: actor?.id ?? null,
+            action: 'creative.credit.reserved',
+            resourceType: 'creative_credit_ledger',
+            resourceId: ledger.id,
+            metadata: {
+              generationId: ledger.generationId,
+              quotaReservationId: ledger.quotaReservationId,
+              workspace: ledger.workspace,
+              mode: ledger.mode,
+              amount,
+            },
+          }),
+        })
+        return {
+          reserved: true,
+          credit: getCreativeCreditDto(ledger),
+        }
       })
-      return {
-        reserved: true,
-        credit: getCreativeCreditDto(ledger),
-      }
     },
     settle: async (reference, payload = {}, actor) => {
       return client.$transaction(async (transaction) => {
@@ -6026,8 +6509,11 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           return getCreativeCreditDto(ledger)
         }
         const settledAmount = Math.max(0, Number.parseInt(String(payload.settledAmount ?? ledger.reservationAmount), 10) || 0)
-        const updated = await transaction.creativeCreditLedger.update({
-          where: { id: ledger.id },
+        if (settledAmount !== ledger.reservationAmount) {
+          throw new HttpError(409, 'CREATIVE_CREDIT_CLOSEOUT_MISMATCH', 'Settled credits must equal the reservation amount')
+        }
+        const claimed = await transaction.creativeCreditLedger.updateMany({
+          where: { id: ledger.id, status: 'reserved' },
           data: {
             status: 'settled',
             settledAmount,
@@ -6036,6 +6522,24 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             metadata: safeCreativeCreditMetadata(payload.metadata) ?? ledger.metadata ?? undefined,
             settledAt: new Date(),
           },
+        })
+        if (claimed.count !== 1) {
+          const concurrent = await findCreativeCreditLedger(transaction, ledger.id)
+          return getCreativeCreditDto(concurrent)
+        }
+        const updated = await findCreativeCreditLedger(transaction, ledger.id)
+        await applyPrismaAccountingOperation(transaction, {
+          unit: 'creative_credit',
+          kind: 'credit_settle',
+          sourceType: 'generation',
+          sourceId: updated.generationId,
+          reasonCode: payload.reasonCode === 'generation_review_required' ? 'generation_review_required' : 'generation_completed',
+          payload: { generationId: updated.generationId, ledgerId: updated.id, amount: settledAmount },
+          movements: [
+            { unit: 'creative_credit', accountRef: `generation:${updated.generationId}:creative_credit:reserved`, accountType: 'reserved', amount: -settledAmount },
+            { unit: 'creative_credit', accountRef: 'system:creative_credit:consumed', accountType: 'consumed', amount: settledAmount },
+          ],
+          actor,
         })
         await transaction.auditEvent.create({
           data: buildAuditRecord({
@@ -6066,8 +6570,11 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           return getCreativeCreditDto(ledger)
         }
         const refundedAmount = Math.max(0, Number.parseInt(String(payload.refundedAmount ?? ledger.reservationAmount), 10) || 0)
-        const updated = await transaction.creativeCreditLedger.update({
-          where: { id: ledger.id },
+        if (refundedAmount !== ledger.reservationAmount) {
+          throw new HttpError(409, 'CREATIVE_CREDIT_CLOSEOUT_MISMATCH', 'Refunded credits must equal the reservation amount')
+        }
+        const claimed = await transaction.creativeCreditLedger.updateMany({
+          where: { id: ledger.id, status: 'reserved' },
           data: {
             status: 'refunded',
             settledAmount: 0,
@@ -6076,6 +6583,24 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             metadata: safeCreativeCreditMetadata(payload.metadata) ?? ledger.metadata ?? undefined,
             refundedAt: new Date(),
           },
+        })
+        if (claimed.count !== 1) {
+          const concurrent = await findCreativeCreditLedger(transaction, ledger.id)
+          return getCreativeCreditDto(concurrent)
+        }
+        const updated = await findCreativeCreditLedger(transaction, ledger.id)
+        await applyPrismaAccountingOperation(transaction, {
+          unit: 'creative_credit',
+          kind: 'credit_refund',
+          sourceType: 'generation',
+          sourceId: updated.generationId,
+          reasonCode: String(payload.reasonCode ?? '').includes('cancel') ? 'generation_cancelled' : 'generation_failed',
+          payload: { generationId: updated.generationId, ledgerId: updated.id, amount: refundedAmount },
+          movements: [
+            { unit: 'creative_credit', accountRef: `generation:${updated.generationId}:creative_credit:reserved`, accountType: 'reserved', amount: -refundedAmount },
+            { unit: 'creative_credit', accountRef: `user:${updated.actorHandle}:creative_credit:available`, accountType: 'available', amount: refundedAmount },
+          ],
+          actor,
         })
         await transaction.auditEvent.create({
           data: buildAuditRecord({
@@ -6106,8 +6631,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         if (ledger.status !== 'reserved') {
           return getCreativeCreditDto(ledger)
         }
-        const updated = await transaction.creativeCreditLedger.update({
-          where: { id: ledger.id },
+        const claimed = await transaction.creativeCreditLedger.updateMany({
+          where: { id: ledger.id, status: 'reserved' },
           data: {
             status: 'cancelled',
             settledAmount: 0,
@@ -6116,6 +6641,25 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             metadata: safeCreativeCreditMetadata(payload.metadata) ?? ledger.metadata ?? undefined,
             cancelledAt: new Date(),
           },
+        })
+        if (claimed.count !== 1) {
+          const concurrent = await findCreativeCreditLedger(transaction, ledger.id)
+          return getCreativeCreditDto(concurrent)
+        }
+        const updated = await findCreativeCreditLedger(transaction, ledger.id)
+        await applyPrismaAccountingOperation(transaction, {
+          unit: 'creative_credit',
+          kind: 'credit_refund',
+          sourceType: 'generation',
+          sourceId: updated.generationId,
+          phase: 'cancel',
+          reasonCode: 'generation_cancelled',
+          payload: { generationId: updated.generationId, ledgerId: updated.id, amount: updated.reservationAmount },
+          movements: [
+            { unit: 'creative_credit', accountRef: `generation:${updated.generationId}:creative_credit:reserved`, accountType: 'reserved', amount: -updated.reservationAmount },
+            { unit: 'creative_credit', accountRef: `user:${updated.actorHandle}:creative_credit:available`, accountType: 'available', amount: updated.reservationAmount },
+          ],
+          actor,
         })
         await transaction.auditEvent.create({
           data: buildAuditRecord({
@@ -6140,10 +6684,53 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
 
   const creativeQuota = {
     reserve: async (payload, actor) => {
-      const units = Math.max(1, Number(payload.costUnits) || 1)
+      const generationId = String(payload.generationId ?? '').trim()
+      if (!generationId) {
+        throw new HttpError(409, 'CREATIVE_QUOTA_GENERATION_INVALID', 'Creative quota reservations require a generation id')
+      }
+      const units = Math.max(1, Number.parseInt(String(payload.costUnits ?? 1), 10) || 1)
+      const limitUnits = Math.max(0, Number.parseInt(String(payload.limit ?? 0), 10) || 0)
       const actorUser = payload.actorHandle || actor?.handle ? await findUserByHandle(payload.actorHandle ?? actor.handle) : null
       const windowId = creativeQuotaWindowId(payload)
+      const actorHandle = payload.actorHandle ?? actorUser?.profile?.handle ?? null
+      const idempotencyPayloadHash = accountingPayloadHash({
+        generationId,
+        actorId: actorUser?.id ?? null,
+        actorHandle,
+        workspace: payload.workspace,
+        windowType: payload.windowType,
+        windowStart: payload.windowStart,
+        windowEnd: payload.windowEnd,
+        limitUnits,
+        units,
+        policyVersion: payload.policyVersion,
+      })
       return client.$transaction(async (transaction) => {
+        const lockKey = `creative-quota:${generationId}`
+        await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+        const existing = await transaction.creativeQuotaReservation.findFirst({
+          where: { generationId },
+          include: { quotaWindow: true },
+          orderBy: { createdAt: 'asc' },
+        })
+        if (existing) {
+          const sameLegacyPayload = existing.quotaWindowId === windowId &&
+            existing.actorId === (actorUser?.id ?? null) &&
+            existing.actorHandle === actorHandle &&
+            existing.workspace === payload.workspace &&
+            existing.units === units
+          const samePayload = existing.idempotencyPayloadHash
+            ? existing.idempotencyPayloadHash === idempotencyPayloadHash
+            : sameLegacyPayload
+          if (!samePayload) {
+            throw new HttpError(409, 'ACCOUNTING_OPERATION_CONFLICT', 'Creative quota reservation already exists with a different payload')
+          }
+          return {
+            reserved: existing.status === 'reserved',
+            reservationId: existing.id,
+            quota: getCreativeQuotaDto(existing.quotaWindow, existing.id),
+          }
+        }
         await transaction.creativeQuotaWindow.upsert({
           where: { id: windowId },
           create: {
@@ -6154,14 +6741,14 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             windowType: payload.windowType,
             windowStart: new Date(payload.windowStart),
             windowEnd: new Date(payload.windowEnd),
-            limitUnits: payload.limit,
+            limitUnits,
             reservedUnits: 0,
             usedUnits: 0,
             releasedUnits: 0,
             policyVersion: payload.policyVersion,
           },
           update: {
-            limitUnits: payload.limit,
+            limitUnits,
             policyVersion: payload.policyVersion,
           },
         })
@@ -6183,13 +6770,27 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           data: {
             id: `quota-${randomUUID()}`,
             quotaWindowId: windowId,
-            generationId: String(payload.generationId ?? ''),
+            generationId,
             actorId: actorUser?.id ?? null,
-            actorHandle: payload.actorHandle ?? actorUser?.profile?.handle ?? null,
+            actorHandle,
             workspace: payload.workspace,
             units,
+            idempotencyPayloadHash,
             status: 'reserved',
           },
+        })
+        await applyPrismaAccountingOperation(transaction, {
+          unit: 'quota_unit',
+          kind: 'quota_reserve',
+          sourceType: 'generation',
+          sourceId: reservation.generationId,
+          reasonCode: 'generation_reserved',
+          payload: { generationId: reservation.generationId, reservationId: reservation.id, units, windowId },
+          movements: [
+            { unit: 'quota_unit', accountRef: `quota-window:${windowId}:remaining`, accountType: 'remaining', amount: -units },
+            { unit: 'quota_unit', accountRef: `generation:${reservation.generationId}:quota_unit:reserved`, accountType: 'reserved', amount: units },
+          ],
+          actor,
         })
         await transaction.auditEvent.create({
           data: buildAuditRecord({
@@ -6226,19 +6827,45 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         if (reservation.status !== 'reserved') {
           return getCreativeQuotaDto(reservation.quotaWindow, reservation.id)
         }
-        await transaction.creativeQuotaWindow.update({
-          where: { id: reservation.quotaWindowId },
-          data: {
-            reservedUnits: { decrement: reservation.units },
-            usedUnits: { increment: reservation.units },
-          },
-        })
-        const updatedReservation = await transaction.creativeQuotaReservation.update({
-          where: { id: reservation.id },
+        const claimed = await transaction.creativeQuotaReservation.updateMany({
+          where: { id: reservation.id, status: 'reserved' },
           data: {
             status: 'committed',
             committedAt: new Date(),
           },
+        })
+        if (claimed.count !== 1) {
+          const concurrent = await transaction.creativeQuotaReservation.findUnique({
+            where: { id: reservation.id },
+            include: { quotaWindow: true },
+          })
+          return concurrent ? getCreativeQuotaDto(concurrent.quotaWindow, concurrent.id) : null
+        }
+        const updatedWindowCount = await transaction.$executeRaw`
+          UPDATE "creative_quota_windows"
+          SET
+            "reserved_units" = "reserved_units" - ${reservation.units},
+            "used_units" = "used_units" + ${reservation.units},
+            "updated_at" = NOW()
+          WHERE "id" = ${reservation.quotaWindowId}
+            AND "reserved_units" >= ${reservation.units}
+        `
+        if (Number(updatedWindowCount) !== 1) {
+          throw new HttpError(409, 'CREATIVE_QUOTA_STATE_CONFLICT', 'Creative quota reservation does not match the quota window')
+        }
+        const updatedReservation = await transaction.creativeQuotaReservation.findUnique({ where: { id: reservation.id } })
+        await applyPrismaAccountingOperation(transaction, {
+          unit: 'quota_unit',
+          kind: 'quota_commit',
+          sourceType: 'generation',
+          sourceId: updatedReservation.generationId,
+          reasonCode: 'generation_completed',
+          payload: { generationId: updatedReservation.generationId, reservationId: updatedReservation.id, units: updatedReservation.units },
+          movements: [
+            { unit: 'quota_unit', accountRef: `generation:${updatedReservation.generationId}:quota_unit:reserved`, accountType: 'reserved', amount: -updatedReservation.units },
+            { unit: 'quota_unit', accountRef: `quota-window:${updatedReservation.quotaWindowId}:used`, accountType: 'used', amount: updatedReservation.units },
+          ],
+          actor,
         })
         await transaction.auditEvent.create({
           data: buildAuditRecord({
@@ -6271,20 +6898,46 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           return getCreativeQuotaDto(reservation.quotaWindow, reservation.id)
         }
         const safeReason = safeErrorPreview(reason)
-        await transaction.creativeQuotaWindow.update({
-          where: { id: reservation.quotaWindowId },
-          data: {
-            reservedUnits: { decrement: reservation.units },
-            releasedUnits: { increment: reservation.units },
-          },
-        })
-        const updatedReservation = await transaction.creativeQuotaReservation.update({
-          where: { id: reservation.id },
+        const claimed = await transaction.creativeQuotaReservation.updateMany({
+          where: { id: reservation.id, status: 'reserved' },
           data: {
             status: 'released',
             reason: safeReason,
             releasedAt: new Date(),
           },
+        })
+        if (claimed.count !== 1) {
+          const concurrent = await transaction.creativeQuotaReservation.findUnique({
+            where: { id: reservation.id },
+            include: { quotaWindow: true },
+          })
+          return concurrent ? getCreativeQuotaDto(concurrent.quotaWindow, concurrent.id) : null
+        }
+        const updatedWindowCount = await transaction.$executeRaw`
+          UPDATE "creative_quota_windows"
+          SET
+            "reserved_units" = "reserved_units" - ${reservation.units},
+            "released_units" = "released_units" + ${reservation.units},
+            "updated_at" = NOW()
+          WHERE "id" = ${reservation.quotaWindowId}
+            AND "reserved_units" >= ${reservation.units}
+        `
+        if (Number(updatedWindowCount) !== 1) {
+          throw new HttpError(409, 'CREATIVE_QUOTA_STATE_CONFLICT', 'Creative quota reservation does not match the quota window')
+        }
+        const updatedReservation = await transaction.creativeQuotaReservation.findUnique({ where: { id: reservation.id } })
+        await applyPrismaAccountingOperation(transaction, {
+          unit: 'quota_unit',
+          kind: 'quota_release',
+          sourceType: 'generation',
+          sourceId: updatedReservation.generationId,
+          reasonCode: String(safeReason).includes('cancel') ? 'generation_cancelled' : 'generation_failed',
+          payload: { generationId: updatedReservation.generationId, reservationId: updatedReservation.id, units: updatedReservation.units },
+          movements: [
+            { unit: 'quota_unit', accountRef: `generation:${updatedReservation.generationId}:quota_unit:reserved`, accountType: 'reserved', amount: -updatedReservation.units },
+            { unit: 'quota_unit', accountRef: `quota-window:${updatedReservation.quotaWindowId}:remaining`, accountType: 'remaining', amount: updatedReservation.units },
+          ],
+          actor,
         })
         await transaction.auditEvent.create({
           data: buildAuditRecord({
@@ -6308,6 +6961,255 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     getQuotaWindow: async (payload) => {
       const window = await client.creativeQuotaWindow.findUnique({ where: { id: creativeQuotaWindowId(payload) } })
       return window ? getCreativeQuotaDto(window) : null
+    },
+  }
+
+  const accountingReconciliation = {
+    scan: async (actor, options = {}) => scanPrismaAccounting(actor, options),
+    list: async (options = {}) => {
+      const issues = await client.accountingReconciliationIssue.findMany({
+        orderBy: [{ detectedAt: 'desc' }, { id: 'desc' }],
+      })
+      return {
+        ...paginateAccountingIssues(filterAccountingIssues(issues, options), options),
+        summary: accountingIssueSummary(issues),
+        generatedAt: new Date().toISOString(),
+      }
+    },
+    find: async (id) => {
+      const issue = await client.accountingReconciliationIssue.findUnique({ where: { id: String(id) } })
+      return serializeAccountingIssue(issue)
+    },
+    requestRepair: async (id, payload, actor) => {
+      const reviewId = `review-accounting-${String(id)}`
+      const result = await client.$transaction(async (transaction) => {
+        const issue = await transaction.accountingReconciliationIssue.findUnique({ where: { id: String(id) } })
+        if (!issue) return null
+        if (!['open', 'repair_pending'].includes(issue.status)) {
+          throw new HttpError(409, 'ACCOUNTING_ISSUE_NOT_REPAIRABLE', 'Only open accounting issues can request repair')
+        }
+        const supported = (issue.type === 'point_balance_drift' && issue.sourceType === 'internal_point_account') ||
+          (issue.type === 'quota_state_mismatch' && issue.sourceType === 'creative_quota_window')
+        if (!supported) {
+          throw new HttpError(409, 'ACCOUNTING_REPAIR_UNSUPPORTED', 'This issue requires manual investigation and cannot be compensated automatically')
+        }
+        const existingReview = await transaction.adminReview.findUnique({
+          where: { id: reviewId },
+          include: { reviewedBy: { include: { profile: true } } },
+        })
+        if (existingReview) return { issue, review: existingReview }
+        const review = await transaction.adminReview.create({
+          data: {
+            id: reviewId,
+            queue: 'accounting_reconciliation',
+            status: 'Pending review',
+            title: `Accounting repair: ${issue.type}`,
+            owner: actor.handle,
+            note: safeErrorPreview(payload.reason),
+            metadata: {
+              kind: 'accounting_compensation',
+              issueId: issue.id,
+              issueKey: issue.issueKey,
+              repairKind: payload.repairKind,
+              reasonCode: payload.reasonCode,
+              requestedBy: actor.handle,
+            },
+          },
+          include: { reviewedBy: { include: { profile: true } } },
+        })
+        const updatedIssue = await transaction.accountingReconciliationIssue.update({
+          where: { id: issue.id },
+          data: { status: 'repair_pending' },
+        })
+        await transaction.auditEvent.create({
+          data: buildAuditRecord({
+            actorType: 'user',
+            actorId: actor.id ?? null,
+            action: 'accounting.repair.requested',
+            resourceType: 'accounting_reconciliation_issue',
+            resourceId: issue.id,
+            metadata: {
+              reviewId,
+              issueKey: issue.issueKey,
+              repairKind: payload.repairKind,
+              reasonCode: payload.reasonCode,
+            },
+          }),
+        })
+        return { issue: updatedIssue, review }
+      })
+      return result ? {
+        issue: serializeAccountingIssue(result.issue),
+        review: getAdminReviewDto(result.review),
+      } : null
+    },
+    reviewRepair: async (reviewId, action, actor) => {
+      const reviewer = await client.user.findFirst({ where: { profile: { handle: actor.handle } } })
+      if (!reviewer) return null
+      const result = await client.$transaction(async (transaction) => {
+        const review = await transaction.adminReview.findUnique({
+          where: { id: String(reviewId) },
+          include: { reviewedBy: { include: { profile: true } } },
+        })
+        const metadata = asObject(review?.metadata) ?? {}
+        if (!review || metadata.kind !== 'accounting_compensation') return null
+        const issue = await transaction.accountingReconciliationIssue.findUnique({ where: { id: String(metadata.issueId) } })
+        if (!issue) return null
+        if (review.decision) return { review, issue, operation: null }
+        if (action.decision === 'reject') {
+          const rejectedAt = new Date()
+          const [updatedReview, updatedIssue] = await Promise.all([
+            transaction.adminReview.update({
+              where: { id: review.id },
+              data: {
+                status: 'Rejected',
+                decision: 'reject',
+                note: action.note || review.note,
+                reviewedById: reviewer.id,
+                reviewedAt: rejectedAt,
+              },
+              include: { reviewedBy: { include: { profile: true } } },
+            }),
+            transaction.accountingReconciliationIssue.update({
+              where: { id: issue.id },
+              data: { status: 'open', reviewedById: reviewer.id, reviewedAt: rejectedAt },
+            }),
+          ])
+          await transaction.auditEvent.create({
+            data: buildAuditRecord({
+              actorType: 'user',
+              actorId: reviewer.id,
+              action: 'accounting.repair.rejected',
+              resourceType: 'accounting_reconciliation_issue',
+              resourceId: issue.id,
+              metadata: { reviewId: review.id, issueKey: issue.issueKey },
+            }),
+          })
+          return { review: updatedReview, issue: updatedIssue, operation: null }
+        }
+
+        let movements
+        let repairPayload
+        let applySnapshot
+        if (issue.type === 'point_balance_drift' && issue.sourceType === 'internal_point_account') {
+          const account = await transaction.internalPointAccount.findUnique({ where: { id: issue.sourceId } })
+          if (!account || account.balance !== issue.actualAmount) {
+            throw new HttpError(409, 'ACCOUNTING_REPAIR_STALE', 'Point account changed after the issue was detected; scan again')
+          }
+          const delta = Number(issue.expectedAmount) - account.balance
+          if (!Number.isSafeInteger(delta) || delta === 0) {
+            throw new HttpError(409, 'ACCOUNTING_REPAIR_STALE', 'Point account no longer requires compensation')
+          }
+          movements = [
+            { unit: 'points', accountRef: 'system:reconciliation:points:source', accountType: 'system_source', amount: -delta },
+            { unit: 'points', accountRef: `user:${account.userId}:points:available`, accountType: 'available', ownerUserId: account.userId, amount: delta },
+          ]
+          repairPayload = { issueId: issue.id, accountId: account.id, userId: account.userId, delta }
+          applySnapshot = async () => {}
+        } else if (issue.type === 'quota_state_mismatch' && issue.sourceType === 'creative_quota_window') {
+          const window = await transaction.creativeQuotaWindow.findUnique({
+            where: { id: issue.sourceId },
+            include: { reservations: true },
+          })
+          if (!window || window.reservedUnits + window.usedUnits !== issue.actualAmount) {
+            throw new HttpError(409, 'ACCOUNTING_REPAIR_STALE', 'Quota window changed after the issue was detected; scan again')
+          }
+          const expectedReserved = window.reservations.filter((row) => row.status === 'reserved').reduce((sum, row) => sum + row.units, 0)
+          const expectedUsed = window.reservations.filter((row) => row.status === 'committed').reduce((sum, row) => sum + row.units, 0)
+          const expectedReleased = window.reservations.filter((row) => row.status === 'released').reduce((sum, row) => sum + row.units, 0)
+          const reservedDelta = expectedReserved - window.reservedUnits
+          const usedDelta = expectedUsed - window.usedUnits
+          const remainingDelta = -(reservedDelta + usedDelta)
+          movements = [
+            { unit: 'quota_unit', accountRef: `quota-window:${window.id}:remaining`, accountType: 'remaining', amount: remainingDelta },
+            { unit: 'quota_unit', accountRef: `quota-window:${window.id}:reserved`, accountType: 'reserved', amount: reservedDelta },
+            { unit: 'quota_unit', accountRef: `quota-window:${window.id}:used`, accountType: 'used', amount: usedDelta },
+          ].filter((movement) => movement.amount !== 0)
+          if (movements.length < 2) {
+            throw new HttpError(409, 'ACCOUNTING_REPAIR_UNSUPPORTED', 'Released-only quota drift requires manual investigation')
+          }
+          repairPayload = {
+            issueId: issue.id,
+            windowId: window.id,
+            reservedDelta,
+            usedDelta,
+            remainingDelta,
+            expectedReleased,
+          }
+          applySnapshot = () => transaction.creativeQuotaWindow.update({
+            where: { id: window.id },
+            data: {
+              reservedUnits: expectedReserved,
+              usedUnits: expectedUsed,
+              releasedUnits: expectedReleased,
+            },
+          })
+        } else {
+          throw new HttpError(409, 'ACCOUNTING_REPAIR_UNSUPPORTED', 'This issue cannot be compensated automatically')
+        }
+
+        const applied = await applyPrismaAccountingOperation(transaction, {
+          unit: issue.unit,
+          kind: 'compensation',
+          sourceType: 'accounting_reconciliation_issue',
+          sourceId: issue.id,
+          phase: 'approve',
+          reasonCode: metadata.reasonCode,
+          payload: repairPayload,
+          movements,
+          actor,
+          allowNegative: true,
+          originalOperationKey: issue.operationKey,
+          reconciliationIssueId: issue.id,
+        })
+        await applySnapshot()
+        const repairedAt = new Date()
+        const repairOperationKey = applied.operation.operationKey
+        const updatedIssue = await transaction.accountingReconciliationIssue.update({
+          where: { id: issue.id },
+          data: {
+            status: 'resolved',
+            repairOperationKey,
+            reviewedById: reviewer.id,
+            reviewedAt: repairedAt,
+            resolvedAt: repairedAt,
+          },
+        })
+        const updatedReview = await transaction.adminReview.update({
+          where: { id: review.id },
+          data: {
+            status: 'Approved',
+            decision: 'approve',
+            note: action.note || review.note,
+            reviewedById: reviewer.id,
+            reviewedAt: repairedAt,
+            metadata: { ...metadata, repairOperationKey, approvedBy: actor.handle },
+          },
+          include: { reviewedBy: { include: { profile: true } } },
+        })
+        await transaction.auditEvent.create({
+          data: buildAuditRecord({
+            actorType: 'user',
+            actorId: reviewer.id,
+            action: 'accounting.repair.approved',
+            resourceType: 'accounting_reconciliation_issue',
+            resourceId: issue.id,
+            metadata: { reviewId: review.id, issueKey: issue.issueKey, repairOperationKey },
+          }),
+        })
+        return { review: updatedReview, issue: updatedIssue, operation: applied.operation }
+      })
+      return result ? {
+        review: getAdminReviewDto(result.review),
+        issue: serializeAccountingIssue(result.issue),
+        compensation: result.operation ? {
+          operationKey: result.operation.operationKey,
+          unit: result.operation.unit,
+          kind: result.operation.kind,
+          status: result.operation.status,
+          reasonCode: result.operation.reasonCode,
+        } : null,
+      } : null
     },
   }
 
@@ -8047,7 +8949,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             },
           })
           if (!disputeApproved) {
-            await finalizeTaskEscrow(transaction, disputeTask, disputeTask.publisherId, 'reject')
+            await finalizeTaskEscrow(transaction, disputeTask, disputeTask.publisherId, 'reject', actor)
           }
           nextMetadata = {
             ...metadata,
@@ -8256,6 +9158,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     creativeProviderCosts,
     creativeCredits,
     creativeQuota,
+    accountingReconciliation,
     media,
     library,
     audit,

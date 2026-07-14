@@ -357,7 +357,7 @@
     {
       "id": "internal_points_ledger",
       "classification": "confidential",
-      "prismaModels": ["PointLedger"],
+      "prismaModels": ["PointLedger", "InternalPointAccount"],
       "locations": ["postgres"],
       "dataSubjects": ["user"],
       "purposes": ["internal_accounting", "marketplace_delivery", "support_operations"],
@@ -465,6 +465,20 @@
       "exportPolicy": "include_user_credit_and_quota_history",
       "deletionPolicy": "anonymize_subject_and_retain_immutable_reconciliation_evidence",
       "ownerTasks": ["V1-40", "V1-65", "V1-67"]
+    },
+    {
+      "id": "internal_accounting_invariant_records",
+      "classification": "confidential",
+      "prismaModels": ["InternalAccountingOperation", "InternalAccountingMovement", "AccountingReconciliationIssue"],
+      "locations": ["postgres"],
+      "dataSubjects": ["user", "authorized_operator"],
+      "purposes": ["internal_accounting", "support_operations", "marketplace_delivery", "creative_generation"],
+      "exampleFields": ["stable operation key", "unit", "balanced movement", "payload hash", "safe source reference", "reconciliation issue", "repair operation reference"],
+      "accessRoles": ["authorized_service", "accounting_reader", "accounting_scanner", "dual_review_accounting_repairer", "auditor"],
+      "retentionPolicyId": "internal_ledger_plus_730d",
+      "exportPolicy": "exclude_internal_detection_and_other_subject_evidence_include_subject_visible_status_summary_only",
+      "deletionPolicy": "anonymize_subject_and_retain_immutable_operation_movement_and_reconciliation_evidence",
+      "ownerTasks": ["V1-65", "V1-67"]
     },
     {
       "id": "provider_cost_budget_records",
@@ -664,7 +678,7 @@
       "id": "api_to_postgres",
       "from": "api_memory",
       "to": "postgres",
-      "dataAssetIds": ["governance_configuration", "identity_account_profile", "authentication_credentials_sessions", "marketplace_records", "community_content_interactions", "private_library_items", "internal_points_ledger", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "chat_conversation_messages", "provider_lifecycle_records", "creative_accounting_records", "notification_records", "moderation_review_records", "audit_event_records", "security_event_records"],
+      "dataAssetIds": ["governance_configuration", "identity_account_profile", "authentication_credentials_sessions", "marketplace_records", "community_content_interactions", "private_library_items", "internal_points_ledger", "internal_accounting_invariant_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "chat_conversation_messages", "provider_lifecycle_records", "creative_accounting_records", "notification_records", "moderation_review_records", "audit_event_records", "security_event_records"],
       "requiredControls": ["validated DTO", "field allowlist", "transaction and ownership checks", "encrypted connection", "no secret or raw Provider payload"],
       "destinationPersistence": "retention_policy_applies"
     },
@@ -768,7 +782,7 @@
       "id": "api_to_admin_console",
       "from": "api_memory",
       "to": "admin_console",
-      "dataAssetIds": ["marketplace_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "provider_cost_budget_records", "provider_control_records", "moderation_review_records", "audit_event_records", "security_event_records"],
+      "dataAssetIds": ["marketplace_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "internal_accounting_invariant_records", "provider_cost_budget_records", "provider_control_records", "moderation_review_records", "audit_event_records", "security_event_records"],
       "requiredControls": ["RBAC", "purpose-specific allowlist", "redaction", "pagination", "elevated access audit", "no private URL or raw prompt"],
       "destinationPersistence": "none"
     },
@@ -1029,7 +1043,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 43,
+    "modelCount": 47,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",
@@ -1042,6 +1056,7 @@
       "Provider failures use a shared safe taxonomy, bounded Retry-After, deterministic backoff, hash-only failure dedupe, and CAS retry state",
       "Provider output ingestion uses a durable source key, claim lease, allowlisted injected fetch, bounded byte reads, magic-byte MIME validation, SHA-256, deterministic storage, and scan-gated media assets",
       "Provider dispatch uses versioned fail-closed controls, expiring hashed cap evidence, explicit circuit recovery, one-claim probes, two-person review, and low-cardinality operations evidence",
+      "Internal accounting uses stable operation keys, same-unit balanced movements, atomic point snapshots, locked quota idempotency, persisted reconciliation issues, and dual-reviewed append-only compensation",
       "Chat has encrypted owner-scoped conversations and messages, idempotent Mock SSE turns, strict owner attachment checks, explicitly selected read-time-authorized product context, identity-free input/output safety evidence, a 512-character unclassified output buffer, explicit stop/disconnect closeout, retention sweeps, restore-deletion tombstones, and a default-disabled staging Provider boundary whose attachment bytes and Provider payloads remain in request memory only",
       "Admin creative serializers redact unsafe identifiers, URLs, and error previews",
       "archive and object writers support mock/S3-compatible boundaries"

@@ -84,10 +84,10 @@
       "id": "frontend-admin-demo-queue",
       "area": "admin",
       "classification": "production_capable",
-      "paths": ["src/features/admin/AdminPage.tsx"],
-      "markers": ["adminService.reviews", "no local substitute is shown"],
+      "paths": ["src/features/admin/AdminPage.tsx", "src/services/adminService.ts", "server/src/modules/admin/routes.js", "server/src/repositories/prismaRepository.js"],
+      "markers": ["adminService.reviews", "accountingReconciliation", "admin:accounting:repair"],
       "productionDisposition": "permission_scoped_admin_api_or_explicit_unavailable",
-      "ownerTasks": ["V1-39", "V1-42", "V1-43", "V1-64", "V1-69"]
+      "ownerTasks": ["V1-39", "V1-42", "V1-43", "V1-64", "V1-65", "V1-69"]
     },
     {
       "id": "frontend-static-plan-api-catalog",
@@ -102,8 +102,8 @@
       "id": "frontend-points-demo-ledger",
       "area": "points",
       "classification": "production_capable",
-      "paths": ["src/hooks/useAppFeedback.ts"],
-      "markers": ["pointsLedger", "no local substitute is shown"],
+      "paths": ["src/hooks/useAppFeedback.ts", "src/features/rewards/PointsPage.tsx", "src/services/pointsService.ts", "server/src/repositories/prismaRepository.js", "server/prisma/schema.prisma"],
+      "markers": ["pointsLedger", "pointsService", "InternalPointAccount"],
       "productionDisposition": "points_api_or_explicit_unavailable",
       "ownerTasks": ["V1-39", "V1-40", "V1-65"]
     },

@@ -49,6 +49,7 @@ const expectedAssets = [
   'deployment_secrets',
   'governance_configuration',
   'identity_account_profile',
+  'internal_accounting_invariant_records',
   'internal_points_ledger',
   'marketplace_records',
   'media_asset_metadata',

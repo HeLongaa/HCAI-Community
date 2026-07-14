@@ -1758,6 +1758,62 @@ export type AdminAuditListQuery = {
   limit?: number | null
 }
 
+export type AdminAccountingUnit = 'points' | 'creative_credit' | 'quota_unit'
+export type AdminAccountingIssueStatus = 'open' | 'repair_pending' | 'resolved' | 'ignored'
+
+export type AdminAccountingIssueDto = {
+  id: string
+  issueKey: string
+  type: string
+  unit: AdminAccountingUnit
+  status: AdminAccountingIssueStatus
+  sourceType: string
+  sourceId: string
+  expectedAmount: number | null
+  actualAmount: number | null
+  differenceAmount: number | null
+  operationKey: string | null
+  repairOperationKey: string | null
+  evidence: Record<string, unknown> | null
+  detectedAt: string
+  reviewedAt: string | null
+  resolvedAt: string | null
+}
+
+export type AdminAccountingIssueSummary = {
+  total: number
+  open: number
+  repairPending: number
+  resolved: number
+  ignored: number
+}
+
+export type AdminAccountingReconciliationQuery = {
+  status?: AdminAccountingIssueStatus | null
+  unit?: AdminAccountingUnit | null
+  type?: string | null
+  cursor?: string | null
+  limit?: number | null
+}
+
+export type AdminAccountingReconciliationPage = {
+  items: AdminAccountingIssueDto[]
+  summary: AdminAccountingIssueSummary
+  generatedAt: string
+  nextCursor: string | null
+}
+
+export type AdminAccountingRepairRequest = {
+  repairKind: 'compensation'
+  reasonCode: 'repair_missing_movement' | 'repair_balance_drift'
+  reason: string
+}
+
+export type AdminAccountingRepairResponse = {
+  issue: AdminAccountingIssueDto
+  review: AdminReviewQueueItemDto
+}
+
 export type AdminSecurityEventSource = 'rate_limit' | 'body_size' | 'auth_failure' | string
 
 export type AdminSecurityEventListQuery = {

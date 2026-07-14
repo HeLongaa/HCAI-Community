@@ -16,6 +16,9 @@ export type Permission =
   | 'admin:audit:read'
   | 'admin:queue:read'
   | 'admin:queue:review'
+  | 'admin:accounting:read'
+  | 'admin:accounting:scan'
+  | 'admin:accounting:repair'
   | 'admin:permissions:manage'
   | 'admin:creative:cancel'
   | 'admin:creative:retry'
@@ -58,7 +61,7 @@ export type NavigateOptions = {
 }
 
 export type AdminDeepLink = {
-  tab?: 'Task review' | 'Access' | 'Security' | 'Finance' | 'Generations' | 'Submissions' | 'Community' | 'Audit log' | 'Users' | 'Tags' | 'AI config'
+  tab?: 'Task review' | 'Access' | 'Security' | 'Finance' | 'Accounting' | 'Generations' | 'Submissions' | 'Community' | 'Audit log' | 'Users' | 'Tags' | 'AI config'
   queue?: string | null
   reviewId?: string | null
   auditEventId?: string | null

@@ -25,6 +25,111 @@ const createInjectedAdminServer = (repository, options = {}) => createRouteTestS
   (router) => registerAdminRoutes(router, { repositories: repository, ...options }),
 )
 
+test('Admin accounting reconciliation routes enforce read, scan, export, and repair permissions', async () => {
+  const issue = {
+    id: 'accounting-issue-route-1',
+    issueKey: 'quota_state_mismatch:window-route-1',
+    type: 'quota_state_mismatch',
+    unit: 'quota_unit',
+    status: 'open',
+    sourceType: 'creative_quota_window',
+    sourceId: 'window-route-1',
+    expectedAmount: 1,
+    actualAmount: 2,
+    differenceAmount: 1,
+    operationKey: null,
+    repairOperationKey: null,
+    evidence: { withinLimit: false },
+    detectedAt: '2026-07-14T00:00:00.000Z',
+    reviewedAt: null,
+    resolvedAt: null,
+  }
+  const repository = {
+    ...createSeedRepository(),
+    accountingReconciliation: {
+      list: async () => ({
+        items: [issue],
+        limit: 20,
+        nextCursor: null,
+        summary: { total: 1, open: 1, repairPending: 0, resolved: 0, ignored: 0 },
+        generatedAt: '2026-07-14T00:00:00.000Z',
+      }),
+      scan: async () => ({
+        issues: { items: [issue], limit: 20, nextCursor: null },
+        summary: { total: 1, open: 1, repairPending: 0, resolved: 0, ignored: 0 },
+        generatedAt: '2026-07-14T00:00:01.000Z',
+      }),
+      find: async (id) => id === issue.id ? issue : null,
+      requestRepair: async (id, payload, actor) => id === issue.id ? {
+        issue: { ...issue, status: 'repair_pending' },
+        review: {
+          id: `review-accounting-${issue.id}`,
+          queue: 'accounting_reconciliation',
+          status: 'Pending review',
+          owner: actor.handle,
+          metadata: { kind: 'accounting_compensation', ...payload },
+        },
+      } : null,
+    },
+  }
+  const server = await createInjectedAdminServer(repository)
+  try {
+    const denied = await requestJson(server.url, '/api/admin/accounting/reconciliation', {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(denied.status, 403)
+
+    const listed = await requestJson(server.url, '/api/admin/accounting/reconciliation?status=open&unit=quota_unit', {
+      method: 'GET',
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(listed.status, 200)
+    assert.equal(listed.payload.data[0].id, issue.id)
+    assert.equal(listed.payload.meta.summary.open, 1)
+
+    const moderatorScan = await requestJson(server.url, '/api/admin/accounting/reconciliation/scan', {
+      token: 'demo-access.legalpixel',
+      body: {},
+    })
+    assert.equal(moderatorScan.status, 403)
+    const scanned = await requestJson(server.url, '/api/admin/accounting/reconciliation/scan', {
+      token: 'demo-access.opsplus',
+      body: {},
+    })
+    assert.equal(scanned.status, 200)
+    assert.equal(scanned.payload.meta.generatedAt, '2026-07-14T00:00:01.000Z')
+
+    const detail = await requestJson(server.url, `/api/admin/accounting/reconciliation/${issue.id}`, {
+      method: 'GET',
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(detail.status, 200)
+    assert.equal(detail.payload.data.issueKey, issue.issueKey)
+
+    const exported = await requestJson(server.url, '/api/admin/accounting/reconciliation/export', {
+      method: 'GET',
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(exported.status, 200)
+    assert.equal(exported.payload.issues[0].id, issue.id)
+
+    const repair = await requestJson(server.url, `/api/admin/accounting/reconciliation/${issue.id}/repair-requests`, {
+      token: 'demo-access.opsplus',
+      body: {
+        repairKind: 'compensation',
+        reasonCode: 'repair_balance_drift',
+        reason: 'Restore the frozen internal invariant.',
+      },
+    })
+    assert.equal(repair.status, 200)
+    assert.equal(repair.payload.data.issue.status, 'repair_pending')
+    assert.equal(repair.payload.data.review.queue, 'accounting_reconciliation')
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET Admin creative accounting policy history is immutable and permission protected', async () => {
   const server = await createTestServer()
   try {
@@ -1721,7 +1826,7 @@ test('PUT /api/admin/roles/:role/permissions keeps protected admin grants', asyn
     assert.equal(status, 400)
     assert.equal(payload.data, null)
     assert.equal(payload.error.code, 'VALIDATION_FAILED')
-    assert.equal(payload.error.message, 'cannot remove protected permissions: admin:permissions:manage')
+    assert.equal(payload.error.message, 'cannot remove protected permissions: admin:permissions:manage, admin:accounting:repair')
   } finally {
     await server.close()
   }
