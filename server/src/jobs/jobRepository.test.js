@@ -51,3 +51,33 @@ test('timeout sweep closes the active attempt and rejects late completion', asyn
   assert.equal(timedOut.attempts[0].status, 'timed_out')
   assert.equal(await repository.complete(queued.id, claimed.leaseToken, { unsafeToken: 'secret' }), null)
 })
+
+test('failed jobs retry with bounded attempts then enter DLQ and can be recovered', async () => {
+  const audit = []
+  const repository = createSeedJobRepository({ recordAudit: async (item) => audit.push(item) })
+  await repository.ensureDefinition({ id: 'retry', type: 'interval', defaultTimeoutSeconds: 60, maxAttempts: 2, retryBackoffSeconds: 0 })
+  const run = await repository.enqueue({ definitionId: 'retry', idempotencyKey: 'retry:1', correlationId: 'retry-1' })
+  const first = await repository.claim({ workerId: 'worker-a', definitionId: 'retry' })
+  assert.equal((await repository.fail(first.id, first.leaseToken, 'TRANSIENT')).status, 'retry_scheduled')
+  const second = await repository.claim({ workerId: 'worker-b', definitionId: 'retry' })
+  assert.equal(second.attempts.length, 2)
+  const dead = await repository.fail(second.id, second.leaseToken, 'STILL_BROKEN')
+  assert.equal(dead.status, 'dead_lettered')
+  assert.equal(dead.id, run.id)
+  const retried = await repository.retryDeadLetter(run.id, { id: 'admin' }, { reasonCode: 'dependency_restored' })
+  assert.equal(retried.status, 'retry_scheduled')
+  assert.equal(audit.at(-1).action, 'job.retry_requested')
+})
+
+test('cron scheduling and pause/resume only enqueue registered enabled definitions', async () => {
+  const repository = createSeedJobRepository()
+  await repository.ensureDefinition({ id: 'cron-a', type: 'interval', cronSchedule: '* * * * *' })
+  await repository.ensureDefinition({ id: 'cron-b', type: 'interval', cronSchedule: '* * * * *', enabled: false })
+  const now = new Date('2026-07-15T10:15:22.000Z')
+  assert.equal((await repository.enqueueDueCron(now)).length, 1)
+  assert.equal((await repository.enqueueDueCron(now)).length, 1)
+  await repository.pauseDefinition('cron-a', { id: 'admin' })
+  assert.equal((await repository.enqueueDueCron(new Date('2026-07-15T10:16:00.000Z'))).length, 0)
+  await repository.resumeDefinition('cron-a', { id: 'admin' })
+  assert.equal((await repository.enqueueDueCron(new Date('2026-07-15T10:16:00.000Z'))).length, 1)
+})

@@ -922,8 +922,8 @@ export const parseJobDefinitionListQuery = (query) => ({
 
 export const parseJobRunListQuery = (query) => {
   const status = optionalText(query, 'status', null)
-  if (status && !['queued', 'running', 'succeeded', 'failed', 'timed_out', 'cancelled'].includes(status)) {
-    throw validationFailed('status must be one of: queued, running, succeeded, failed, timed_out, cancelled')
+  if (status && !['queued', 'running', 'retry_scheduled', 'dead_lettered', 'succeeded', 'failed', 'timed_out', 'cancelled'].includes(status)) {
+    throw validationFailed('status must be one of: queued, running, retry_scheduled, dead_lettered, succeeded, failed, timed_out, cancelled')
   }
   return {
     ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 }),
@@ -936,6 +936,23 @@ export const parseJobRunListQuery = (query) => {
 
 export const parseJobCancelRequest = (body) => ({
   reasonCode: optionalText(body, 'reasonCode', 'admin_cancel'),
+})
+
+export const parseJobRecoveryRequest = (body) => ({
+  reasonCode: optionalText(body, 'reasonCode', 'admin_recovery'),
+  idempotencyKey: optionalText(body, 'idempotencyKey', null),
+})
+
+export const parseAdminBulkPreviewRequest = (body) => ({
+  targetIds: requireStringArray(body, 'targetIds'),
+  reasonCode: optionalText(body, 'reasonCode', 'admin_bulk_action'),
+})
+
+export const parseAdminBulkConfirmRequest = (body) => ({
+  targetIds: requireStringArray(body, 'targetIds'),
+  reasonCode: optionalText(body, 'reasonCode', 'admin_bulk_action'),
+  confirmationText: requireText(body, 'confirmationText'),
+  idempotencyKey: optionalText(body, 'idempotencyKey', null),
 })
 
 export const parsePointAdjustmentRequest = (body) => {

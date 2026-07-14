@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto'
 
-export const terminalJobRunStatuses = Object.freeze(['succeeded', 'failed', 'timed_out', 'cancelled'])
+export const terminalJobRunStatuses = Object.freeze(['succeeded', 'failed', 'timed_out', 'cancelled', 'dead_lettered'])
 export const jobRunTransitions = Object.freeze({
   queued: Object.freeze(['running', 'cancelled']),
-  running: Object.freeze(['succeeded', 'failed', 'timed_out', 'cancelled']),
+  retry_scheduled: Object.freeze(['running', 'cancelled']),
+  running: Object.freeze(['retry_scheduled', 'dead_lettered', 'succeeded', 'failed', 'timed_out', 'cancelled']),
+  dead_lettered: Object.freeze(['retry_scheduled']),
   succeeded: Object.freeze([]),
   failed: Object.freeze([]),
   timed_out: Object.freeze([]),
@@ -28,6 +30,10 @@ export const jobDefinitionDto = (row) => row ? {
   version: row.version,
   enabled: row.enabled,
   defaultTimeoutSeconds: row.defaultTimeoutSeconds,
+  maxAttempts: row.maxAttempts,
+  retryBackoffSeconds: row.retryBackoffSeconds,
+  cronSchedule: row.cronSchedule ?? null,
+  pausedAt: row.pausedAt?.toISOString?.() ?? null,
   description: row.description ?? null,
   createdAt: row.createdAt?.toISOString?.() ?? row.createdAt,
   updatedAt: row.updatedAt?.toISOString?.() ?? row.updatedAt,
