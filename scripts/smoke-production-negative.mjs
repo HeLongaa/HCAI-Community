@@ -20,6 +20,8 @@ if (shouldAutoSeedPrisma({ NODE_ENV: 'production', DEMO_DATABASE_AUTOSEED: 'true
 const base = { NODE_ENV: 'production', ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef' }
 for (const [label, run] of [
   ['creative mock', () => buildEnv({ ...base, CREATIVE_PROVIDER_MODE: 'mock' })],
+  ['missing secret manager', () => buildEnv({ ...base, DEPLOYMENT_ENV: 'production', STORAGE_DRIVER: 's3', STORAGE_ENDPOINT: 'https://storage.example.com', STORAGE_REGION: 'us-east-1', STORAGE_BUCKET: 'media-prod', STORAGE_ACCESS_KEY_ID: 'storage-access', STORAGE_SECRET_ACCESS_KEY: 'storage-secret' })],
+  ['mock storage', () => buildEnv({ ...base, DEPLOYMENT_ENV: 'production', SECRET_MANAGER_PROVIDER: 'aws-secrets-manager', STORAGE_DRIVER: 'mock' })],
   ['chat mock', () => buildOpenAIChatRuntimeConfig({ NODE_ENV: 'production', CHAT_PROVIDER_MODE: 'mock' })],
 ]) {
   try { run(); failures.push(`${label} was accepted in production`) } catch { /* expected */ }

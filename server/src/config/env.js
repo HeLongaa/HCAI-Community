@@ -26,6 +26,8 @@ const getCreativeProviderRuntimeEnv = (source) =>
 const supportedMediaScanRequestAdapters = ['generic-webhook', 'clamav-http']
 const supportedCreativeProviderModes = ['mock', 'disabled', 'replicate_staging']
 const supportedCreativeProviderRuntimeEnvs = ['development', 'test', 'ci', 'staging', 'production']
+const supportedDeploymentEnvs = ['development', 'test', 'ci', 'staging', 'production']
+const supportedSecretManagerProviders = ['aws-secrets-manager', 'gcp-secret-manager', 'vault', '1password']
 const supportedCreativeStagingImageProviders = ['replicate']
 const getMediaScanRequestAdapter = (source) => String(source.MEDIA_SCAN_REQUEST_ADAPTER ?? 'generic-webhook').trim().toLowerCase()
 const supportedRateLimitStores = ['memory', 'redis']
@@ -35,6 +37,8 @@ const supportedCreativeProviderAlertChannels = ['webhook', 'slack', 'email']
 const getRateLimitStore = (source) => String(source.RATE_LIMIT_STORE ?? 'memory').trim().toLowerCase()
 const getRateLimitFailureMode = (source) => String(source.RATE_LIMIT_REDIS_FAILURE_MODE ?? source.RATE_LIMIT_STORE_FAILURE_MODE ?? 'fail_closed').trim().toLowerCase()
 const getMetricsExporterFormat = (source) => String(source.METRICS_EXPORTER_FORMAT ?? 'prometheus').trim().toLowerCase()
+const getDeploymentEnv = (source) => String(source.DEPLOYMENT_ENV ?? 'development').trim().toLowerCase()
+const getSecretManagerProvider = (source) => String(source.SECRET_MANAGER_PROVIDER ?? '').trim().toLowerCase()
 const getRedisUrl = (source) => {
   const value = String(source.RATE_LIMIT_REDIS_URL ?? '').trim()
   if (!value) return ''
@@ -99,6 +103,9 @@ const getAuthCookieSameSite = (source) => {
 
 export const buildEnv = (source = process.env) => {
   const nodeEnv = source.NODE_ENV || 'development'
+  const deploymentEnv = getDeploymentEnv(source)
+  const secretManagerProvider = getSecretManagerProvider(source)
+  const hasDatabaseUrl = Boolean(String(source.DATABASE_URL ?? '').trim())
   const accessTokenSecret = getAccessTokenSecret(source)
   const storageDriver = getStorageDriver(source)
   const mediaScanProvider = getMediaScanProvider(source)
@@ -203,11 +210,23 @@ export const buildEnv = (source = process.env) => {
   const mediaScanRequestTimeoutSeconds = positiveInteger(source, 'MEDIA_SCAN_REQUEST_TIMEOUT_SECONDS', 10)
   const mediaScanCallbackSignatureToleranceSeconds = positiveInteger(source, 'MEDIA_SCAN_CALLBACK_SIGNATURE_TOLERANCE_SECONDS', 300)
   const authCookieSameSite = getAuthCookieSameSite(source)
+  if (!supportedDeploymentEnvs.includes(deploymentEnv)) {
+    throw new Error(`DEPLOYMENT_ENV must be one of: ${supportedDeploymentEnvs.join(', ')}`)
+  }
+  if (secretManagerProvider && !supportedSecretManagerProviders.includes(secretManagerProvider)) {
+    throw new Error(`SECRET_MANAGER_PROVIDER must be one of: ${supportedSecretManagerProviders.join(', ')}`)
+  }
   if (nodeEnv === 'production' && !accessTokenSecret) {
     throw new Error('ACCESS_TOKEN_SECRET or SESSION_SECRET is required in production')
   }
   if (nodeEnv === 'production' && accessTokenSecret.length < 32) {
     throw new Error('ACCESS_TOKEN_SECRET or SESSION_SECRET must be at least 32 characters in production')
+  }
+  if (deploymentEnv === 'production' && !secretManagerProvider) {
+    throw new Error('SECRET_MANAGER_PROVIDER is required in production')
+  }
+  if (deploymentEnv === 'production' && storageDriver !== 's3') {
+    throw new Error('Production requires STORAGE_DRIVER=s3')
   }
   if (storageDriver === 's3') {
     const missing = storageRequiredKeys.filter((key) => !String(source[key] ?? '').trim())
@@ -407,6 +426,18 @@ export const buildEnv = (source = process.env) => {
   return {
     port: toPort(source.PORT),
     nodeEnv,
+    deploymentEnv,
+    secretManagerProvider,
+    hasSecretManager: Boolean(secretManagerProvider),
+    hasDatabaseUrl,
+    infrastructureBaseline: {
+      postgresRequired: deploymentEnv === 'production',
+      postgresConfigured: hasDatabaseUrl,
+      redisConfigured: Boolean(rateLimitRedisUrl),
+      objectStorageConfigured: storageDriver === 's3',
+      secretManagerConfigured: Boolean(secretManagerProvider),
+      environment: deploymentEnv,
+    },
     accessTokenKeyId: source.ACCESS_TOKEN_KEY_ID || 'current',
     hasManagedAccessTokenSecret: Boolean(accessTokenSecret),
     storageDriver,

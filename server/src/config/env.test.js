@@ -7,6 +7,18 @@ test('buildEnv allows development without managed token secrets', () => {
   assert.deepEqual(buildEnv({ NODE_ENV: 'development', PORT: '9999' }), {
     port: 9999,
     nodeEnv: 'development',
+    deploymentEnv: 'development',
+    secretManagerProvider: '',
+    hasSecretManager: false,
+    hasDatabaseUrl: false,
+    infrastructureBaseline: {
+      postgresRequired: false,
+      postgresConfigured: false,
+      redisConfigured: false,
+      objectStorageConfigured: false,
+      secretManagerConfigured: false,
+      environment: 'development',
+    },
     accessTokenKeyId: 'current',
     hasManagedAccessTokenSecret: false,
     storageDriver: 'mock',
@@ -1189,6 +1201,9 @@ test('deployment smoke accepts production auth, storage, scanner, and notificati
     PORT: '8787',
     ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
     ACCESS_TOKEN_KEY_ID: '2026-07',
+    DEPLOYMENT_ENV: 'production',
+    SECRET_MANAGER_PROVIDER: 'aws-secrets-manager',
+    DATABASE_URL: 'postgresql://app:secret@db.example.com:5432/newchat',
     STORAGE_DRIVER: 's3',
     STORAGE_ENDPOINT: 'https://storage.example.com',
     STORAGE_REGION: 'us-east-1',
@@ -1243,6 +1258,18 @@ test('deployment smoke accepts production auth, storage, scanner, and notificati
   })
 
   assert.equal(env.nodeEnv, 'production')
+  assert.equal(env.deploymentEnv, 'production')
+  assert.equal(env.secretManagerProvider, 'aws-secrets-manager')
+  assert.equal(env.hasSecretManager, true)
+  assert.equal(env.hasDatabaseUrl, true)
+  assert.deepEqual(env.infrastructureBaseline, {
+    postgresRequired: true,
+    postgresConfigured: true,
+    redisConfigured: true,
+    objectStorageConfigured: true,
+    secretManagerConfigured: true,
+    environment: 'production',
+  })
   assert.equal(env.hasManagedAccessTokenSecret, true)
   assert.equal(env.accessTokenKeyId, '2026-07')
   assert.equal(env.storageDriver, 's3')
@@ -1308,6 +1335,29 @@ test('deployment smoke accepts production auth, storage, scanner, and notificati
   assert.equal(env.authFailureIpAccountThreshold, 8)
   assert.equal(env.authFailureAccountIpThreshold, 6)
   assert.equal(env.securityEventMaxItems, 1000)
+})
+
+test('production infrastructure baseline fails closed for missing Secret Manager and mock storage', () => {
+  const base = {
+    NODE_ENV: 'production',
+    DEPLOYMENT_ENV: 'production',
+    ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+    STORAGE_DRIVER: 's3',
+    STORAGE_ENDPOINT: 'https://storage.example.com',
+    STORAGE_REGION: 'us-east-1',
+    STORAGE_BUCKET: 'media-prod',
+    STORAGE_ACCESS_KEY_ID: 'storage-access',
+    STORAGE_SECRET_ACCESS_KEY: 'storage-secret',
+  }
+  assert.throws(() => buildEnv(base), /SECRET_MANAGER_PROVIDER is required in production/)
+  assert.throws(
+    () => buildEnv({ ...base, SECRET_MANAGER_PROVIDER: 'aws-secrets-manager', STORAGE_DRIVER: 'mock' }),
+    /Production requires STORAGE_DRIVER=s3/,
+  )
+  assert.throws(
+    () => buildEnv({ ...base, SECRET_MANAGER_PROVIDER: 'local-file' }),
+    /SECRET_MANAGER_PROVIDER must be one of/,
+  )
 })
 
 test('buildMediaGovernanceConfig exposes safe scanner and alert policy metadata', () => {
