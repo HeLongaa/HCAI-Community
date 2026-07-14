@@ -2999,6 +2999,13 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             rightsNote: payload.rightsNote ?? '',
             status: 'pending_review',
             metadata: { assetEvidence: resolvedAssets.map((item) => item.evidence) },
+            assets: {
+              create: resolvedAssets.map((item, position) => ({
+                assetId: item.asset.id,
+                ownerId: submitter.id,
+                position,
+              })),
+            },
           },
         })
         const updatedTask = await transaction.task.findUnique({
@@ -4556,10 +4563,31 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     create: async (payload, actor) => {
       const actorUser = payload.actorHandle || actor?.handle ? await findUserByHandle(payload.actorHandle ?? actor.handle) : null
       const data = buildCreativeGenerationData(payload, actorUser)
-      const row = await client.creativeGeneration.upsert({
-        where: { id: data.id },
-        create: data,
-        update: {},
+      const row = await client.$transaction(async (transaction) => {
+        const generation = await transaction.creativeGeneration.upsert({
+          where: { id: data.id },
+          create: data,
+          update: {},
+        })
+        if (generation.actorId) {
+          const requested = [...new Set([...(generation.inputAssetIds ?? []), ...(generation.outputAssetIds ?? [])])]
+          const existingAssets = await transaction.mediaAsset.findMany({
+            where: { id: { in: requested }, ownerId: generation.actorId },
+            select: { id: true },
+          })
+          const existing = new Set(existingAssets.map((asset) => asset.id))
+          const relations = [
+            ...(generation.inputAssetIds ?? []).map((assetId, position) => ({ assetId, direction: 'input', position })),
+            ...(generation.outputAssetIds ?? []).map((assetId, position) => ({ assetId, direction: 'output', position })),
+          ].filter((relation) => existing.has(relation.assetId))
+          if (relations.length) {
+            await transaction.creativeGenerationAsset.createMany({
+              data: relations.map((relation) => ({ ...relation, generationId: generation.id, ownerId: generation.actorId })),
+              skipDuplicates: true,
+            })
+          }
+        }
+        return generation
       })
       await recordAudit({
         actor,
@@ -4599,9 +4627,31 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         return null
       }
       const outputAssetIds = [...new Set([...(current.outputAssetIds ?? []), ...assetIds.filter(Boolean)])]
-      const row = await client.creativeGeneration.update({
-        where: { id: current.id },
-        data: { outputAssetIds },
+      const row = await client.$transaction(async (transaction) => {
+        const generation = await transaction.creativeGeneration.update({
+          where: { id: current.id },
+          data: { outputAssetIds },
+        })
+        if (generation.actorId) {
+          const assets = await transaction.mediaAsset.findMany({
+            where: { id: { in: assetIds.filter(Boolean) }, ownerId: generation.actorId },
+            select: { id: true },
+          })
+          const positions = new Map(outputAssetIds.map((assetId, position) => [assetId, position]))
+          if (assets.length) {
+            await transaction.creativeGenerationAsset.createMany({
+              data: assets.map((asset) => ({
+                generationId: generation.id,
+                assetId: asset.id,
+                ownerId: generation.actorId,
+                direction: 'output',
+                position: positions.get(asset.id),
+              })),
+              skipDuplicates: true,
+            })
+          }
+        }
+        return generation
       })
       if ((current.inputAssetIds?.length ?? 0) > 0 && assetIds.filter(Boolean).length > 0 && current.actorId) {
         for (const sourceAssetId of current.inputAssetIds) {

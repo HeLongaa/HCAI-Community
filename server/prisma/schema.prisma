@@ -264,14 +264,15 @@ enum CreativeProviderOperationStatus {
 }
 
 model AuditEvent {
-  id           String         @id @default(cuid())
-  actorType    AuditActorType @map("actor_type")
-  actorId      String?        @map("actor_id")
-  action       String
-  resourceType String         @map("resource_type")
-  resourceId   String?        @map("resource_id")
-  metadata     Json?
-  createdAt    DateTime       @default(now()) @map("created_at")
+  id                    String         @id @default(cuid())
+  actorType             AuditActorType @map("actor_type")
+  actorId               String?        @map("actor_id")
+  action                String
+  resourceType          String         @map("resource_type")
+  resourceId            String?        @map("resource_id")
+  metadata              Json?
+  metadataSchemaVersion Int            @default(1) @map("metadata_schema_version")
+  createdAt             DateTime       @default(now()) @map("created_at")
 
   @@index([createdAt])
   @@index([action, createdAt])
@@ -280,17 +281,18 @@ model AuditEvent {
 }
 
 model SecurityEvent {
-  id         String   @id
-  type       String
-  severity   String
-  source     String
-  clientKey  String?  @map("client_key")
-  identity   String?
-  method     String?
-  pathname   String?
-  details    Json?
-  occurredAt DateTime @default(now()) @map("occurred_at")
-  createdAt  DateTime @default(now()) @map("created_at")
+  id                   String   @id
+  type                 String
+  severity             String
+  source               String
+  clientKey            String?  @map("client_key")
+  identity             String?
+  method               String?
+  pathname             String?
+  details              Json?
+  detailsSchemaVersion Int      @default(1) @map("details_schema_version")
+  occurredAt           DateTime @default(now()) @map("occurred_at")
+  createdAt            DateTime @default(now()) @map("created_at")
 
   @@index([occurredAt])
   @@index([source, occurredAt])
@@ -321,24 +323,26 @@ model RolePermission {
 }
 
 model SystemSetting {
-  key       String   @id
-  value     Json
-  updatedAt DateTime @updatedAt @map("updated_at")
+  key                String   @id
+  value              Json
+  valueSchemaVersion Int      @default(1) @map("value_schema_version")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   @@map("system_settings")
 }
 
 model OperationLease {
-  key        String    @id
-  ownerId    String    @map("owner_id")
-  token      String    @unique
-  metadata   Json?
-  acquiredAt DateTime  @default(now()) @map("acquired_at")
-  renewedAt  DateTime? @map("renewed_at")
-  expiresAt  DateTime  @map("expires_at")
-  releasedAt DateTime? @map("released_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
+  key                   String    @id
+  ownerId               String    @map("owner_id")
+  token                 String    @unique
+  metadata              Json?
+  metadataSchemaVersion Int       @default(1) @map("metadata_schema_version")
+  acquiredAt            DateTime  @default(now()) @map("acquired_at")
+  renewedAt             DateTime? @map("renewed_at")
+  expiresAt             DateTime  @map("expires_at")
+  releasedAt            DateTime? @map("released_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
   @@index([ownerId])
   @@index([expiresAt])
@@ -346,18 +350,19 @@ model OperationLease {
 }
 
 model AdminReview {
-  id           String               @id @default(cuid())
-  queue        String
-  status       String
-  title        String
-  owner        String
-  note         String
-  decision     AdminReviewDecision?
-  reviewedById String?              @map("reviewed_by_id")
-  reviewedAt   DateTime?            @map("reviewed_at")
-  metadata     Json?
-  createdAt    DateTime             @default(now()) @map("created_at")
-  updatedAt    DateTime             @updatedAt @map("updated_at")
+  id                    String               @id @default(cuid())
+  queue                 String
+  status                String
+  title                 String
+  owner                 String
+  note                  String
+  decision              AdminReviewDecision?
+  reviewedById          String?              @map("reviewed_by_id")
+  reviewedAt            DateTime?            @map("reviewed_at")
+  metadata              Json?
+  metadataSchemaVersion Int                  @default(1) @map("metadata_schema_version")
+  createdAt             DateTime             @default(now()) @map("created_at")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
 
   reviewedBy User? @relation("AdminReviewReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
 
@@ -379,29 +384,32 @@ model User {
   profile                   Profile?
   authAccounts              AuthAccount[]
   refreshTokens             RefreshToken[]
-  publisherTasks            Task[]                     @relation("TaskPublisher")
-  assigneeTasks             Task[]                     @relation("TaskAssignee")
+  publisherTasks            Task[]                          @relation("TaskPublisher")
+  assigneeTasks             Task[]                          @relation("TaskAssignee")
   taskProposals             TaskProposal[]
-  taskSubmissions           TaskSubmission[]           @relation("TaskSubmissionSubmitter")
-  reviewedTaskSubmissions   TaskSubmission[]           @relation("TaskSubmissionReviewer")
+  taskSubmissions           TaskSubmission[]                @relation("TaskSubmissionSubmitter")
+  reviewedTaskSubmissions   TaskSubmission[]                @relation("TaskSubmissionReviewer")
   authoredPosts             Post[]
   comments                  Comment[]
   postLikes                 PostLike[]
   libraryItems              LibraryItem[]
   pointLedger               PointLedger[]
   internalPointAccount      InternalPointAccount?
-  accountingIssuesReviewed AccountingReconciliationIssue[] @relation("AccountingIssueReviewer")
-  adminReviews              AdminReview[]              @relation("AdminReviewReviewer")
+  accountingIssuesReviewed  AccountingReconciliationIssue[] @relation("AccountingIssueReviewer")
+  adminReviews              AdminReview[]                   @relation("AdminReviewReviewer")
   mediaAssets               MediaAsset[]
   mediaAssetRelations       MediaAssetRelation[]
   notifications             Notification[]
-  mediaScanJobsReviewed     MediaScanJob[]             @relation("MediaScanJobReviewer")
+  mediaScanJobsReviewed     MediaScanJob[]                  @relation("MediaScanJobReviewer")
   creativeGenerations       CreativeGeneration[]
   creativeQuotaWindows      CreativeQuotaWindow[]
   creativeQuotaReservations CreativeQuotaReservation[]
   creativeCreditLedger      CreativeCreditLedger[]
   chatConversations         ChatConversation[]
   chatDeletionTombstones    ChatDeletionTombstone[]
+  taskSubmissionAssets      TaskSubmissionAsset[]
+  creativeGenerationAssets  CreativeGenerationAsset[]
+  chatTurnInputAssets       ChatTurnInputAsset[]
 
   @@map("users")
 }
@@ -439,15 +447,18 @@ model RefreshToken {
 }
 
 model Profile {
-  userId    String      @id @map("user_id")
-  handle    String      @unique
-  bio       String?
-  lane      ProfileLane
-  skills    String[]
-  languages String[]
-  portfolio Json?
-  stats     Json?
-  metadata  Json?
+  userId                 String      @id @map("user_id")
+  handle                 String      @unique
+  bio                    String?
+  lane                   ProfileLane
+  skills                 String[]
+  languages              String[]
+  portfolio              Json?
+  portfolioSchemaVersion Int         @default(1) @map("portfolio_schema_version")
+  stats                  Json?
+  statsSchemaVersion     Int         @default(1) @map("stats_schema_version")
+  metadata               Json?
+  metadataSchemaVersion  Int         @default(1) @map("metadata_schema_version")
 
   user            User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   portfolioAssets ProfilePortfolioAsset[]
@@ -456,22 +467,23 @@ model Profile {
 }
 
 model Task {
-  id              String         @id @default(cuid())
-  title           String
-  category        String
-  description     String
-  acceptanceRules String         @map("acceptance_rules")
-  rewardAmount    Decimal?       @map("reward_amount")
-  rewardCurrency  String?        @map("reward_currency")
-  pointsReward    Int            @map("points_reward")
-  status          TaskStatus
-  publisherId     String         @map("publisher_id")
-  assigneeId      String?        @map("assignee_id")
-  visibility      TaskVisibility
-  deadlineAt      DateTime?      @map("deadline_at")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
-  metadata        Json?
+  id                    String         @id @default(cuid())
+  title                 String
+  category              String
+  description           String
+  acceptanceRules       String         @map("acceptance_rules")
+  rewardAmount          Decimal?       @map("reward_amount")
+  rewardCurrency        String?        @map("reward_currency")
+  pointsReward          Int            @map("points_reward")
+  status                TaskStatus
+  publisherId           String         @map("publisher_id")
+  assigneeId            String?        @map("assignee_id")
+  visibility            TaskVisibility
+  deadlineAt            DateTime?      @map("deadline_at")
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+  metadata              Json?
+  metadataSchemaVersion Int            @default(1) @map("metadata_schema_version")
 
   publisher   User?            @relation("TaskPublisher", fields: [publisherId], references: [id], onDelete: Restrict)
   assignee    User?            @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
@@ -482,44 +494,47 @@ model Task {
 }
 
 model TaskProposal {
-  id          String             @id @default(cuid())
-  taskId      String             @map("task_id")
-  proposerId  String             @map("proposer_id")
-  coverLetter String             @map("cover_letter")
-  estimate    String?
-  status      TaskProposalStatus @default(pending)
-  metadata    Json?
-  createdAt   DateTime           @default(now()) @map("created_at")
-  updatedAt   DateTime           @updatedAt @map("updated_at")
+  id                    String             @id @default(cuid())
+  taskId                String             @map("task_id")
+  proposerId            String             @map("proposer_id")
+  coverLetter           String             @map("cover_letter")
+  estimate              String?
+  status                TaskProposalStatus @default(pending)
+  metadata              Json?
+  metadataSchemaVersion Int                @default(1) @map("metadata_schema_version")
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
 
   task     Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   proposer User @relation(fields: [proposerId], references: [id], onDelete: Cascade)
 
+  @@unique([taskId, proposerId])
   @@index([taskId, createdAt])
   @@index([proposerId])
-  @@unique([taskId, proposerId])
   @@map("task_proposals")
 }
 
 model TaskSubmission {
-  id           String               @id @default(cuid())
-  taskId       String               @map("task_id")
-  submitterId  String               @map("submitter_id")
-  content      String
-  assetIds     String[]             @map("asset_ids")
-  rightsNote   String               @default("") @map("rights_note")
-  status       TaskSubmissionStatus @default(pending_review)
-  reviewNote   String?              @map("review_note")
-  reviewedById String?              @map("reviewed_by_id")
-  reviewedAt   DateTime?            @map("reviewed_at")
-  metadata     Json?
-  createdAt    DateTime             @default(now()) @map("created_at")
-  updatedAt    DateTime             @updatedAt @map("updated_at")
+  id                    String               @id @default(cuid())
+  taskId                String               @map("task_id")
+  submitterId           String               @map("submitter_id")
+  content               String
+  assetIds              String[]             @map("asset_ids")
+  rightsNote            String               @default("") @map("rights_note")
+  status                TaskSubmissionStatus @default(pending_review)
+  reviewNote            String?              @map("review_note")
+  reviewedById          String?              @map("reviewed_by_id")
+  reviewedAt            DateTime?            @map("reviewed_at")
+  metadata              Json?
+  metadataSchemaVersion Int                  @default(1) @map("metadata_schema_version")
+  createdAt             DateTime             @default(now()) @map("created_at")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
 
   task            Task                    @relation(fields: [taskId], references: [id], onDelete: Cascade)
   submitter       User                    @relation("TaskSubmissionSubmitter", fields: [submitterId], references: [id], onDelete: Cascade)
   reviewedBy      User?                   @relation("TaskSubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   portfolioAssets ProfilePortfolioAsset[]
+  assets          TaskSubmissionAsset[]
 
   @@index([taskId, createdAt])
   @@index([submitterId])
@@ -527,18 +542,37 @@ model TaskSubmission {
   @@map("task_submissions")
 }
 
+model TaskSubmissionAsset {
+  submissionId String   @map("submission_id")
+  assetId      String   @map("asset_id")
+  ownerId      String   @map("owner_id")
+  position     Int
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  submission TaskSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  asset      MediaAsset     @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  owner      User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@id([submissionId, assetId])
+  @@unique([submissionId, position])
+  @@index([assetId])
+  @@index([ownerId, createdAt])
+  @@map("task_submission_assets")
+}
+
 model Post {
-  id         String   @id @default(cuid())
-  authorId   String   @map("author_id")
-  title      String
-  body       String
-  category   String
-  tag        String
-  solved     Boolean  @default(false)
-  viewsCount Int      @default(0) @map("views_count")
-  likesCount Int      @default(0) @map("likes_count")
-  createdAt  DateTime @default(now()) @map("created_at")
-  metadata   Json?
+  id                    String   @id @default(cuid())
+  authorId              String   @map("author_id")
+  title                 String
+  body                  String
+  category              String
+  tag                   String
+  solved                Boolean  @default(false)
+  viewsCount            Int      @default(0) @map("views_count")
+  likesCount            Int      @default(0) @map("likes_count")
+  createdAt             DateTime @default(now()) @map("created_at")
+  metadata              Json?
+  metadataSchemaVersion Int      @default(1) @map("metadata_schema_version")
 
   author   User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
   comments Comment[]
@@ -577,14 +611,15 @@ model PostLike {
 }
 
 model LibraryItem {
-  id         String     @id @default(cuid())
-  userId     String     @map("user_id")
-  sourceType PostSource @map("source_type")
-  sourceId   String?    @map("source_id")
-  title      String
-  content    String
-  metadata   Json?
-  createdAt  DateTime   @default(now()) @map("created_at")
+  id                    String     @id @default(cuid())
+  userId                String     @map("user_id")
+  sourceType            PostSource @map("source_type")
+  sourceId              String?    @map("source_id")
+  title                 String
+  content               String
+  metadata              Json?
+  metadataSchemaVersion Int        @default(1) @map("metadata_schema_version")
+  createdAt             DateTime   @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -625,22 +660,23 @@ model InternalPointAccount {
 }
 
 model InternalAccountingOperation {
-  id                   String                            @id @default(cuid())
-  operationKey         String                            @map("operation_key")
-  unit                 InternalAccountingUnit
-  kind                 String
-  status               InternalAccountingOperationStatus @default(pending)
-  sourceType           String                            @map("source_type")
-  sourceId             String                            @map("source_id")
-  payloadHash          String                            @map("payload_hash")
-  reasonCode           String                            @map("reason_code")
-  originalOperationKey String?                           @map("original_operation_key")
-  reconciliationIssueId String?                          @map("reconciliation_issue_id")
-  actorRef             String?                           @map("actor_ref")
-  metadata             Json?
-  appliedAt            DateTime?                         @map("applied_at")
-  createdAt            DateTime                          @default(now()) @map("created_at")
-  updatedAt            DateTime                          @updatedAt @map("updated_at")
+  id                    String                            @id @default(cuid())
+  operationKey          String                            @map("operation_key")
+  unit                  InternalAccountingUnit
+  kind                  String
+  status                InternalAccountingOperationStatus @default(pending)
+  sourceType            String                            @map("source_type")
+  sourceId              String                            @map("source_id")
+  payloadHash           String                            @map("payload_hash")
+  reasonCode            String                            @map("reason_code")
+  originalOperationKey  String?                           @map("original_operation_key")
+  reconciliationIssueId String?                           @map("reconciliation_issue_id")
+  actorRef              String?                           @map("actor_ref")
+  metadata              Json?
+  metadataSchemaVersion Int                               @default(1) @map("metadata_schema_version")
+  appliedAt             DateTime?                         @map("applied_at")
+  createdAt             DateTime                          @default(now()) @map("created_at")
+  updatedAt             DateTime                          @updatedAt @map("updated_at")
 
   movements InternalAccountingMovement[]
 
@@ -652,16 +688,17 @@ model InternalAccountingOperation {
 }
 
 model InternalAccountingMovement {
-  id           String                 @id @default(cuid())
-  operationId  String                 @map("operation_id")
-  unit         InternalAccountingUnit
-  accountRef   String                 @map("account_ref")
-  accountType  String                 @map("account_type")
-  amount       Int
-  balanceAfter Int?                   @map("balance_after")
-  sequence     Int
-  metadata     Json?
-  createdAt    DateTime               @default(now()) @map("created_at")
+  id                    String                 @id @default(cuid())
+  operationId           String                 @map("operation_id")
+  unit                  InternalAccountingUnit
+  accountRef            String                 @map("account_ref")
+  accountType           String                 @map("account_type")
+  amount                Int
+  balanceAfter          Int?                   @map("balance_after")
+  sequence              Int
+  metadata              Json?
+  metadataSchemaVersion Int                    @default(1) @map("metadata_schema_version")
+  createdAt             DateTime               @default(now()) @map("created_at")
 
   operation InternalAccountingOperation @relation(fields: [operationId], references: [id], onDelete: Restrict)
 
@@ -672,25 +709,26 @@ model InternalAccountingMovement {
 }
 
 model AccountingReconciliationIssue {
-  id                String                         @id @default(cuid())
-  issueKey          String                         @unique @map("issue_key")
-  type              String
-  unit              InternalAccountingUnit
-  status            AccountingReconciliationStatus @default(open)
-  sourceType        String                         @map("source_type")
-  sourceId          String                         @map("source_id")
-  expectedAmount    Int?                           @map("expected_amount")
-  actualAmount      Int?                           @map("actual_amount")
-  differenceAmount  Int?                           @map("difference_amount")
-  operationKey      String?                        @map("operation_key")
-  repairOperationKey String?                       @map("repair_operation_key")
-  evidence          Json?
-  detectedAt        DateTime                       @default(now()) @map("detected_at")
-  reviewedById      String?                        @map("reviewed_by_id")
-  reviewedAt        DateTime?                      @map("reviewed_at")
-  resolvedAt        DateTime?                      @map("resolved_at")
-  createdAt         DateTime                       @default(now()) @map("created_at")
-  updatedAt         DateTime                       @updatedAt @map("updated_at")
+  id                    String                         @id @default(cuid())
+  issueKey              String                         @unique @map("issue_key")
+  type                  String
+  unit                  InternalAccountingUnit
+  status                AccountingReconciliationStatus @default(open)
+  sourceType            String                         @map("source_type")
+  sourceId              String                         @map("source_id")
+  expectedAmount        Int?                           @map("expected_amount")
+  actualAmount          Int?                           @map("actual_amount")
+  differenceAmount      Int?                           @map("difference_amount")
+  operationKey          String?                        @map("operation_key")
+  repairOperationKey    String?                        @map("repair_operation_key")
+  evidence              Json?
+  evidenceSchemaVersion Int                            @default(1) @map("evidence_schema_version")
+  detectedAt            DateTime                       @default(now()) @map("detected_at")
+  reviewedById          String?                        @map("reviewed_by_id")
+  reviewedAt            DateTime?                      @map("reviewed_at")
+  resolvedAt            DateTime?                      @map("resolved_at")
+  createdAt             DateTime                       @default(now()) @map("created_at")
+  updatedAt             DateTime                       @updatedAt @map("updated_at")
 
   reviewedBy User? @relation("AccountingIssueReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
 
@@ -701,24 +739,28 @@ model AccountingReconciliationIssue {
 }
 
 model MediaAsset {
-  id          String            @id @default(cuid())
-  ownerId     String            @map("owner_id")
-  fileName    String            @map("file_name")
-  storageKey  String            @unique @map("storage_key")
-  contentType String            @map("content_type")
-  sizeBytes   Int               @map("size_bytes")
-  purpose     MediaAssetPurpose
-  status      MediaAssetStatus  @default(pending)
-  metadata    Json?
-  createdAt   DateTime          @default(now()) @map("created_at")
-  updatedAt   DateTime          @updatedAt @map("updated_at")
-  archivedAt  DateTime?         @map("archived_at")
+  id                    String            @id @default(cuid())
+  ownerId               String            @map("owner_id")
+  fileName              String            @map("file_name")
+  storageKey            String            @unique @map("storage_key")
+  contentType           String            @map("content_type")
+  sizeBytes             Int               @map("size_bytes")
+  purpose               MediaAssetPurpose
+  status                MediaAssetStatus  @default(pending)
+  metadata              Json?
+  metadataSchemaVersion Int               @default(1) @map("metadata_schema_version")
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+  archivedAt            DateTime?         @map("archived_at")
 
-  owner             User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  scanJobs          MediaScanJob[]
-  outgoingRelations MediaAssetRelation[]    @relation("MediaAssetRelationSource")
-  incomingRelations MediaAssetRelation[]    @relation("MediaAssetRelationTarget")
-  portfolioAssets   ProfilePortfolioAsset[]
+  owner                    User                      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  scanJobs                 MediaScanJob[]
+  outgoingRelations        MediaAssetRelation[]      @relation("MediaAssetRelationSource")
+  incomingRelations        MediaAssetRelation[]      @relation("MediaAssetRelationTarget")
+  portfolioAssets          ProfilePortfolioAsset[]
+  taskSubmissionAssets     TaskSubmissionAsset[]
+  creativeGenerationAssets CreativeGenerationAsset[]
+  chatTurnInputAssets      ChatTurnInputAsset[]
 
   @@index([ownerId, archivedAt, createdAt])
   @@index([purpose])
@@ -778,25 +820,26 @@ model MediaAssetRelation {
 }
 
 model MediaScanJob {
-  id              String             @id @default(cuid())
-  assetId         String             @map("asset_id")
-  provider        String
-  status          MediaScanJobStatus
-  scanStatus      String             @map("scan_status")
-  externalScanId  String?            @map("external_scan_id")
-  attempts        Int                @default(1)
-  requestedAt     DateTime?          @map("requested_at")
-  timeoutAt       DateTime?          @map("timeout_at")
-  nextRetryAt     DateTime?          @map("next_retry_at")
-  callbackAt      DateTime?          @map("callback_at")
-  failedAt        DateTime?          @map("failed_at")
-  reviewedById    String?            @map("reviewed_by_id")
-  reviewedAt      DateTime?          @map("reviewed_at")
-  note            String?
-  rejectionReason String?            @map("rejection_reason")
-  metadata        Json?
-  createdAt       DateTime           @default(now()) @map("created_at")
-  updatedAt       DateTime           @updatedAt @map("updated_at")
+  id                    String             @id @default(cuid())
+  assetId               String             @map("asset_id")
+  provider              String
+  status                MediaScanJobStatus
+  scanStatus            String             @map("scan_status")
+  externalScanId        String?            @map("external_scan_id")
+  attempts              Int                @default(1)
+  requestedAt           DateTime?          @map("requested_at")
+  timeoutAt             DateTime?          @map("timeout_at")
+  nextRetryAt           DateTime?          @map("next_retry_at")
+  callbackAt            DateTime?          @map("callback_at")
+  failedAt              DateTime?          @map("failed_at")
+  reviewedById          String?            @map("reviewed_by_id")
+  reviewedAt            DateTime?          @map("reviewed_at")
+  note                  String?
+  rejectionReason       String?            @map("rejection_reason")
+  metadata              Json?
+  metadataSchemaVersion Int                @default(1) @map("metadata_schema_version")
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
 
   asset      MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
   reviewedBy User?      @relation("MediaScanJobReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
@@ -823,10 +866,15 @@ model CreativeGeneration {
   parameterKeys       String[]                 @map("parameter_keys")
   outputAssetIds      String[]                 @map("output_asset_ids")
   usage               Json?
+  usageSchemaVersion  Int                      @default(1) @map("usage_schema_version")
   credit              Json?
+  creditSchemaVersion Int                      @default(1) @map("credit_schema_version")
   quota               Json?
+  quotaSchemaVersion  Int                      @default(1) @map("quota_schema_version")
   safety              Json?
+  safetySchemaVersion Int                      @default(1) @map("safety_schema_version")
   policy              Json?
+  policySchemaVersion Int                      @default(1) @map("policy_schema_version")
   providerRequestId   String?                  @map("provider_request_id")
   providerJobId       String?                  @map("provider_job_id")
   retryOfId           String?                  @map("retry_of_id")
@@ -849,6 +897,7 @@ model CreativeGeneration {
   outputIngestions  CreativeOutputIngestion[]
   chatTurn          ChatTurn?
   portfolioAssets   ProfilePortfolioAsset[]
+  assets            CreativeGenerationAsset[]
 
   @@index([actorId, createdAt])
   @@index([actorHandle, createdAt])
@@ -859,25 +908,46 @@ model CreativeGeneration {
   @@map("creative_generations")
 }
 
+model CreativeGenerationAsset {
+  generationId String   @map("generation_id")
+  assetId      String   @map("asset_id")
+  ownerId      String   @map("owner_id")
+  direction    String
+  position     Int
+  role         String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  generation CreativeGeneration @relation(fields: [generationId], references: [id], onDelete: Cascade)
+  asset      MediaAsset         @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  owner      User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@id([generationId, direction, assetId])
+  @@unique([generationId, direction, position])
+  @@index([assetId, direction])
+  @@index([ownerId, createdAt])
+  @@map("creative_generation_assets")
+}
+
 model CreativeProviderOperation {
-  id                  String                          @id @default(cuid())
-  generationId        String                          @unique @map("generation_id")
-  providerId          String                          @map("provider_id")
-  providerMode        String                          @map("provider_mode")
-  providerJobId       String                          @map("provider_job_id")
-  status              CreativeProviderOperationStatus
-  version             Int                             @default(1)
-  pollAttempts        Int                             @default(0) @map("poll_attempts")
-  nextPollAt          DateTime?                       @map("next_poll_at")
-  timeoutAt           DateTime                        @map("timeout_at")
-  lastPayloadHash     String?                         @map("last_payload_hash")
-  outputDigest        String?                         @map("output_digest")
-  lastErrorCode       String?                         @map("last_error_code")
-  sideEffectsComplete Boolean                         @default(false) @map("side_effects_complete")
-  safeMetadata        Json?                           @map("safe_metadata")
-  terminalAt          DateTime?                       @map("terminal_at")
-  createdAt           DateTime                        @default(now()) @map("created_at")
-  updatedAt           DateTime                        @updatedAt @map("updated_at")
+  id                        String                          @id @default(cuid())
+  generationId              String                          @unique @map("generation_id")
+  providerId                String                          @map("provider_id")
+  providerMode              String                          @map("provider_mode")
+  providerJobId             String                          @map("provider_job_id")
+  status                    CreativeProviderOperationStatus
+  version                   Int                             @default(1)
+  pollAttempts              Int                             @default(0) @map("poll_attempts")
+  nextPollAt                DateTime?                       @map("next_poll_at")
+  timeoutAt                 DateTime                        @map("timeout_at")
+  lastPayloadHash           String?                         @map("last_payload_hash")
+  outputDigest              String?                         @map("output_digest")
+  lastErrorCode             String?                         @map("last_error_code")
+  sideEffectsComplete       Boolean                         @default(false) @map("side_effects_complete")
+  safeMetadata              Json?                           @map("safe_metadata")
+  safeMetadataSchemaVersion Int                             @default(1) @map("safe_metadata_schema_version")
+  terminalAt                DateTime?                       @map("terminal_at")
+  createdAt                 DateTime                        @default(now()) @map("created_at")
+  updatedAt                 DateTime                        @updatedAt @map("updated_at")
 
   generation CreativeGeneration @relation(fields: [generationId], references: [id], onDelete: Cascade)
 
@@ -909,32 +979,54 @@ model ChatConversation {
 }
 
 model ChatTurn {
-  id              String         @id
-  conversationId  String         @map("conversation_id")
-  generationId    String?        @unique @map("generation_id")
-  clientTurnId    String         @map("client_turn_id")
-  mode            String
-  status          ChatTurnStatus @default(queued)
-  errorCode       String?        @map("error_code")
-  usage           Json?
-  inputAssetIds   String[]       @default([]) @map("input_asset_ids")
-  productContext  Json?          @map("product_context")
-  safety          Json?
-  stopRequestedAt DateTime?      @map("stop_requested_at")
-  disconnectedAt  DateTime?      @map("disconnected_at")
-  completedAt     DateTime?      @map("completed_at")
-  failedAt        DateTime?      @map("failed_at")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
+  id                          String         @id
+  conversationId              String         @map("conversation_id")
+  generationId                String?        @unique @map("generation_id")
+  clientTurnId                String         @map("client_turn_id")
+  mode                        String
+  status                      ChatTurnStatus @default(queued)
+  errorCode                   String?        @map("error_code")
+  usage                       Json?
+  usageSchemaVersion          Int            @default(1) @map("usage_schema_version")
+  inputAssetIds               String[]       @default([]) @map("input_asset_ids")
+  productContext              Json?          @map("product_context")
+  productContextSchemaVersion Int            @default(1) @map("product_context_schema_version")
+  safety                      Json?
+  safetySchemaVersion         Int            @default(1) @map("safety_schema_version")
+  stopRequestedAt             DateTime?      @map("stop_requested_at")
+  disconnectedAt              DateTime?      @map("disconnected_at")
+  completedAt                 DateTime?      @map("completed_at")
+  failedAt                    DateTime?      @map("failed_at")
+  createdAt                   DateTime       @default(now()) @map("created_at")
+  updatedAt                   DateTime       @updatedAt @map("updated_at")
 
-  conversation ChatConversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  generation   CreativeGeneration? @relation(fields: [generationId], references: [id], onDelete: SetNull)
+  conversation ChatConversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  generation   CreativeGeneration?  @relation(fields: [generationId], references: [id], onDelete: SetNull)
   messages     ChatMessage[]
+  inputAssets  ChatTurnInputAsset[]
 
   @@unique([conversationId, clientTurnId])
   @@index([conversationId, createdAt])
   @@index([status, updatedAt])
   @@map("chat_turns")
+}
+
+model ChatTurnInputAsset {
+  turnId    String   @map("turn_id")
+  assetId   String   @map("asset_id")
+  ownerId   String   @map("owner_id")
+  position  Int
+  createdAt DateTime @default(now()) @map("created_at")
+
+  turn  ChatTurn   @relation(fields: [turnId], references: [id], onDelete: Cascade)
+  asset MediaAsset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  owner User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@id([turnId, assetId])
+  @@unique([turnId, position])
+  @@index([assetId])
+  @@index([ownerId, createdAt])
+  @@map("chat_turn_input_assets")
 }
 
 model ChatMessage {
@@ -979,22 +1071,24 @@ model ChatDeletionTombstone {
 }
 
 model CreativeGenerationMutation {
-  id                 String                           @id @default(cuid())
-  generationId       String                           @map("generation_id")
-  type               CreativeGenerationMutationType
-  status             CreativeGenerationMutationStatus
-  idempotencyKey     String                           @unique @map("idempotency_key")
-  requestedById      String?                          @map("requested_by_id")
-  requestedByHandle  String?                          @map("requested_by_handle")
-  reasonCode         String                           @map("reason_code")
-  notePreview        String?                          @map("note_preview")
-  reviewId           String?                          @unique @map("review_id")
-  targetGenerationId String?                          @map("target_generation_id")
-  safeMetadata       Json?                            @map("safe_metadata")
-  result             Json?
-  completedAt        DateTime?                        @map("completed_at")
-  createdAt          DateTime                         @default(now()) @map("created_at")
-  updatedAt          DateTime                         @updatedAt @map("updated_at")
+  id                        String                           @id @default(cuid())
+  generationId              String                           @map("generation_id")
+  type                      CreativeGenerationMutationType
+  status                    CreativeGenerationMutationStatus
+  idempotencyKey            String                           @unique @map("idempotency_key")
+  requestedById             String?                          @map("requested_by_id")
+  requestedByHandle         String?                          @map("requested_by_handle")
+  reasonCode                String                           @map("reason_code")
+  notePreview               String?                          @map("note_preview")
+  reviewId                  String?                          @unique @map("review_id")
+  targetGenerationId        String?                          @map("target_generation_id")
+  safeMetadata              Json?                            @map("safe_metadata")
+  safeMetadataSchemaVersion Int                              @default(1) @map("safe_metadata_schema_version")
+  result                    Json?
+  resultSchemaVersion       Int                              @default(1) @map("result_schema_version")
+  completedAt               DateTime?                        @map("completed_at")
+  createdAt                 DateTime                         @default(now()) @map("created_at")
+  updatedAt                 DateTime                         @updatedAt @map("updated_at")
 
   generation CreativeGeneration @relation(fields: [generationId], references: [id], onDelete: Cascade)
 
@@ -1004,26 +1098,28 @@ model CreativeGenerationMutation {
 }
 
 model CreativeProviderReplayLedger {
-  id               String                       @id @default(cuid())
-  generationId     String                       @map("generation_id")
-  providerId       String                       @map("provider_id")
-  providerMode     String?                      @map("provider_mode")
-  providerJobId    String?                      @map("provider_job_id")
-  providerEventId  String?                      @map("provider_event_id")
-  sourceType       String                       @map("source_type")
-  idempotencyKey   String                       @unique @map("idempotency_key")
-  payloadHash      String?                      @map("payload_hash")
-  previousStatus   CreativeGenerationStatus?    @map("previous_status")
-  normalizedStatus CreativeGenerationStatus?    @map("normalized_status")
-  action           CreativeProviderReplayAction
-  reasonCode       String?                      @map("reason_code")
-  sideEffectPlan   Json?                        @map("side_effect_plan")
-  sideEffectResult Json?                        @map("side_effect_result")
-  errorPreview     String?                      @map("error_preview")
-  receivedAt       DateTime                     @default(now()) @map("received_at")
-  appliedAt        DateTime?                    @map("applied_at")
-  createdAt        DateTime                     @default(now()) @map("created_at")
-  updatedAt        DateTime                     @updatedAt @map("updated_at")
+  id                            String                       @id @default(cuid())
+  generationId                  String                       @map("generation_id")
+  providerId                    String                       @map("provider_id")
+  providerMode                  String?                      @map("provider_mode")
+  providerJobId                 String?                      @map("provider_job_id")
+  providerEventId               String?                      @map("provider_event_id")
+  sourceType                    String                       @map("source_type")
+  idempotencyKey                String                       @unique @map("idempotency_key")
+  payloadHash                   String?                      @map("payload_hash")
+  previousStatus                CreativeGenerationStatus?    @map("previous_status")
+  normalizedStatus              CreativeGenerationStatus?    @map("normalized_status")
+  action                        CreativeProviderReplayAction
+  reasonCode                    String?                      @map("reason_code")
+  sideEffectPlan                Json?                        @map("side_effect_plan")
+  sideEffectPlanSchemaVersion   Int                          @default(1) @map("side_effect_plan_schema_version")
+  sideEffectResult              Json?                        @map("side_effect_result")
+  sideEffectResultSchemaVersion Int                          @default(1) @map("side_effect_result_schema_version")
+  errorPreview                  String?                      @map("error_preview")
+  receivedAt                    DateTime                     @default(now()) @map("received_at")
+  appliedAt                     DateTime?                    @map("applied_at")
+  createdAt                     DateTime                     @default(now()) @map("created_at")
+  updatedAt                     DateTime                     @updatedAt @map("updated_at")
 
   generation CreativeGeneration @relation(fields: [generationId], references: [id], onDelete: Cascade)
 
@@ -1088,32 +1184,35 @@ model CreativeProviderBudgetWindow {
 }
 
 model CreativeProviderCostLedger {
-  id                  String                           @id @default(cuid())
-  sourceKey           String                           @unique @map("source_key")
-  generationId        String                           @map("generation_id")
-  budgetWindowId      String                           @map("budget_window_id")
-  providerId          String                           @map("provider_id")
-  providerAccountRef  String                           @map("provider_account_ref")
-  providerModelId     String                           @map("provider_model_id")
-  providerJobId       String?                          @map("provider_job_id")
-  workspace           String
-  mode                String
-  currency            String
-  pricingSnapshot     Json                             @map("pricing_snapshot")
-  pricingSnapshotHash String                           @map("pricing_snapshot_hash")
-  estimateMicros      BigInt                           @map("estimate_micros")
-  reservedMicros      BigInt                           @map("reserved_micros")
-  actualMicros        BigInt?                          @map("actual_micros")
-  status              CreativeProviderCostLedgerStatus
-  usage               Json?
-  risk                Json?
-  reasonCode          String?                          @map("reason_code")
-  reservedAt          DateTime                         @default(now()) @map("reserved_at")
-  settledAt           DateTime?                        @map("settled_at")
-  releasedAt          DateTime?                        @map("released_at")
-  reconciliationAt    DateTime?                        @map("reconciliation_at")
-  createdAt           DateTime                         @default(now()) @map("created_at")
-  updatedAt           DateTime                         @updatedAt @map("updated_at")
+  id                           String                           @id @default(cuid())
+  sourceKey                    String                           @unique @map("source_key")
+  generationId                 String                           @map("generation_id")
+  budgetWindowId               String                           @map("budget_window_id")
+  providerId                   String                           @map("provider_id")
+  providerAccountRef           String                           @map("provider_account_ref")
+  providerModelId              String                           @map("provider_model_id")
+  providerJobId                String?                          @map("provider_job_id")
+  workspace                    String
+  mode                         String
+  currency                     String
+  pricingSnapshot              Json                             @map("pricing_snapshot")
+  pricingSnapshotSchemaVersion Int                              @default(1) @map("pricing_snapshot_schema_version")
+  pricingSnapshotHash          String                           @map("pricing_snapshot_hash")
+  estimateMicros               BigInt                           @map("estimate_micros")
+  reservedMicros               BigInt                           @map("reserved_micros")
+  actualMicros                 BigInt?                          @map("actual_micros")
+  status                       CreativeProviderCostLedgerStatus
+  usage                        Json?
+  usageSchemaVersion           Int                              @default(1) @map("usage_schema_version")
+  risk                         Json?
+  riskSchemaVersion            Int                              @default(1) @map("risk_schema_version")
+  reasonCode                   String?                          @map("reason_code")
+  reservedAt                   DateTime                         @default(now()) @map("reserved_at")
+  settledAt                    DateTime?                        @map("settled_at")
+  releasedAt                   DateTime?                        @map("released_at")
+  reconciliationAt             DateTime?                        @map("reconciliation_at")
+  createdAt                    DateTime                         @default(now()) @map("created_at")
+  updatedAt                    DateTime                         @updatedAt @map("updated_at")
 
   budgetWindow CreativeProviderBudgetWindow @relation(fields: [budgetWindowId], references: [id], onDelete: Restrict)
 
@@ -1239,25 +1338,26 @@ model CreativeProviderRetryState {
 }
 
 model CreativeCreditLedger {
-  id                 String                     @id @default(cuid())
-  generationId       String                     @map("generation_id")
-  quotaReservationId String?                    @unique @map("quota_reservation_id")
-  actorId            String?                    @map("actor_id")
-  actorHandle        String?                    @map("actor_handle")
-  workspace          String
-  mode               String
-  reservationAmount  Int                        @map("reservation_amount")
-  settledAmount      Int                        @default(0) @map("settled_amount")
-  refundedAmount     Int                        @default(0) @map("refunded_amount")
-  status             CreativeCreditLedgerStatus
-  reasonCode         String?                    @map("reason_code")
-  metadata           Json?
-  reservedAt         DateTime                   @default(now()) @map("reserved_at")
-  settledAt          DateTime?                  @map("settled_at")
-  refundedAt         DateTime?                  @map("refunded_at")
-  cancelledAt        DateTime?                  @map("cancelled_at")
-  createdAt          DateTime                   @default(now()) @map("created_at")
-  updatedAt          DateTime                   @updatedAt @map("updated_at")
+  id                    String                     @id @default(cuid())
+  generationId          String                     @map("generation_id")
+  quotaReservationId    String?                    @unique @map("quota_reservation_id")
+  actorId               String?                    @map("actor_id")
+  actorHandle           String?                    @map("actor_handle")
+  workspace             String
+  mode                  String
+  reservationAmount     Int                        @map("reservation_amount")
+  settledAmount         Int                        @default(0) @map("settled_amount")
+  refundedAmount        Int                        @default(0) @map("refunded_amount")
+  status                CreativeCreditLedgerStatus
+  reasonCode            String?                    @map("reason_code")
+  metadata              Json?
+  metadataSchemaVersion Int                        @default(1) @map("metadata_schema_version")
+  reservedAt            DateTime                   @default(now()) @map("reserved_at")
+  settledAt             DateTime?                  @map("settled_at")
+  refundedAt            DateTime?                  @map("refunded_at")
+  cancelledAt           DateTime?                  @map("cancelled_at")
+  createdAt             DateTime                   @default(now()) @map("created_at")
+  updatedAt             DateTime                   @updatedAt @map("updated_at")
 
   actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
@@ -1294,21 +1394,21 @@ model CreativeQuotaWindow {
 }
 
 model CreativeQuotaReservation {
-  id            String                         @id @default(cuid())
-  quotaWindowId String                         @map("quota_window_id")
-  generationId  String                         @map("generation_id")
-  actorId       String?                        @map("actor_id")
-  actorHandle   String?                        @map("actor_handle")
-  workspace     String
-  units         Int
-  idempotencyPayloadHash String?                    @map("idempotency_payload_hash")
-  status        CreativeQuotaReservationStatus
-  reason        String?
-  reservedAt    DateTime                       @default(now()) @map("reserved_at")
-  committedAt   DateTime?                      @map("committed_at")
-  releasedAt    DateTime?                      @map("released_at")
-  createdAt     DateTime                       @default(now()) @map("created_at")
-  updatedAt     DateTime                       @updatedAt @map("updated_at")
+  id                     String                         @id @default(cuid())
+  quotaWindowId          String                         @map("quota_window_id")
+  generationId           String                         @map("generation_id")
+  actorId                String?                        @map("actor_id")
+  actorHandle            String?                        @map("actor_handle")
+  workspace              String
+  units                  Int
+  idempotencyPayloadHash String?                        @map("idempotency_payload_hash")
+  status                 CreativeQuotaReservationStatus
+  reason                 String?
+  reservedAt             DateTime                       @default(now()) @map("reserved_at")
+  committedAt            DateTime?                      @map("committed_at")
+  releasedAt             DateTime?                      @map("released_at")
+  createdAt              DateTime                       @default(now()) @map("created_at")
+  updatedAt              DateTime                       @updatedAt @map("updated_at")
 
   quotaWindow CreativeQuotaWindow @relation(fields: [quotaWindowId], references: [id], onDelete: Cascade)
   actor       User?               @relation(fields: [actorId], references: [id], onDelete: SetNull)
@@ -1320,16 +1420,17 @@ model CreativeQuotaReservation {
 }
 
 model Notification {
-  id           String    @id @default(cuid())
-  recipientId  String    @map("recipient_id")
-  type         String
-  title        String
-  body         String
-  resourceType String    @map("resource_type")
-  resourceId   String?   @map("resource_id")
-  metadata     Json?
-  readAt       DateTime? @map("read_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  id                    String    @id @default(cuid())
+  recipientId           String    @map("recipient_id")
+  type                  String
+  title                 String
+  body                  String
+  resourceType          String    @map("resource_type")
+  resourceId            String?   @map("resource_id")
+  metadata              Json?
+  metadataSchemaVersion Int       @default(1) @map("metadata_schema_version")
+  readAt                DateTime? @map("read_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
 
   recipient User @relation(fields: [recipientId], references: [id], onDelete: Cascade)
 

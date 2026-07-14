@@ -180,6 +180,12 @@ export const createPrismaChatRepository = (client, { recordAudit = async () => {
         const assistantIdentity = { conversationId: conversation.id, messageId: payload.assistantMessage.id, role: 'assistant', sequence: assistantSequence }
         const userEncrypted = payload.encrypt(payload.userMessage.content, userIdentity)
         const assistantEncrypted = payload.encrypt(payload.assistantMessage.content, assistantIdentity)
+        const requestedAssetIds = [...new Set((payload.inputAssetIds ?? []).map(String))]
+        const existingAssets = await transaction.mediaAsset.findMany({
+          where: { id: { in: requestedAssetIds }, ownerId: conversation.ownerId },
+          select: { id: true },
+        })
+        const existingAssetIds = new Set(existingAssets.map((asset) => asset.id))
         return transaction.chatTurn.create({
           data: {
             id: String(payload.id),
@@ -189,6 +195,12 @@ export const createPrismaChatRepository = (client, { recordAudit = async () => {
             inputAssetIds: payload.inputAssetIds ?? [],
             productContext: payload.productContext ?? [],
             createdAt: now,
+            inputAssets: {
+              create: requestedAssetIds
+                .map((assetId, position) => ({ assetId, position }))
+                .filter(({ assetId }) => existingAssetIds.has(assetId))
+                .map(({ assetId, position }) => ({ assetId, ownerId: conversation.ownerId, position })),
+            },
             messages: {
               create: [
                 { id: payload.userMessage.id, conversationId: conversation.id, role: 'user', status: 'complete', sequence: userSequence, ...userEncrypted, createdAt: now },
