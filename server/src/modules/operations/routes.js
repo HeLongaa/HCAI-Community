@@ -2,13 +2,17 @@ import { notFound } from '../../common/errors/httpError.js'
 import { requirePermission } from '../../common/http/auth.js'
 import { ok } from '../../common/http/responses.js'
 import { readJsonBody } from '../../common/http/request.js'
+import { confirmAdminBulkAction, previewAdminBulkAction } from '../../admin/adminBulkActions.js'
 import {
+  parseAdminBulkConfirmRequest,
+  parseAdminBulkPreviewRequest,
   parseDomainEventListQuery,
   parseDomainEventInboxListQuery,
   parseDomainEventRecoveryRequest,
   parseDomainEventReplayRequest,
   parseJobCancelRequest,
   parseJobDefinitionListQuery,
+  parseJobRecoveryRequest,
   parseJobRunListQuery,
 } from '../../contracts/requestParsers.js'
 
@@ -108,5 +112,54 @@ export const registerOperationRoutes = (router, options = {}) => {
     const run = await routeRepositories.jobs.requestCancel(context.params.id, actor, payload)
     if (!run) throw notFound(`/api/admin/jobs/runs/${context.params.id}`)
     ok(response, run)
+  })
+
+  router.add('POST', '/api/admin/jobs/runs/:id/retry', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:jobs:recover')
+    const routeRepositories = await resolveRepositories()
+    const payload = parseJobRecoveryRequest((await readJsonBody(request)) ?? {})
+    const run = await routeRepositories.jobs.retryDeadLetter(context.params.id, actor, payload)
+    if (!run) throw notFound(`/api/admin/jobs/runs/${context.params.id}`)
+    ok(response, run)
+  })
+
+  router.add('POST', '/api/admin/jobs/runs/:id/rerun', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:jobs:recover')
+    const routeRepositories = await resolveRepositories()
+    const payload = parseJobRecoveryRequest((await readJsonBody(request)) ?? {})
+    const run = await routeRepositories.jobs.rerun(context.params.id, actor, payload)
+    if (!run) throw notFound(`/api/admin/jobs/runs/${context.params.id}`)
+    ok(response, run)
+  })
+
+  router.add('POST', '/api/admin/jobs/definitions/:id/pause', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:jobs:schedule')
+    const routeRepositories = await resolveRepositories()
+    const payload = parseJobCancelRequest((await readJsonBody(request)) ?? {})
+    const definition = await routeRepositories.jobs.pauseDefinition(context.params.id, actor, payload)
+    if (!definition) throw notFound(`/api/admin/jobs/definitions/${context.params.id}`)
+    ok(response, definition)
+  })
+
+  router.add('POST', '/api/admin/jobs/definitions/:id/resume', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:jobs:schedule')
+    const routeRepositories = await resolveRepositories()
+    const payload = parseJobCancelRequest((await readJsonBody(request)) ?? {})
+    const definition = await routeRepositories.jobs.resumeDefinition(context.params.id, actor, payload)
+    if (!definition) throw notFound(`/api/admin/jobs/definitions/${context.params.id}`)
+    ok(response, definition)
+  })
+
+  router.add('POST', '/api/admin/bulk-actions/:id/preview', async (request, response, context) => {
+    requirePermission(context, 'admin:bulk-actions:manage')
+    const payload = parseAdminBulkPreviewRequest((await readJsonBody(request)) ?? {})
+    ok(response, previewAdminBulkAction({ actionId: context.params.id, ...payload }))
+  })
+
+  router.add('POST', '/api/admin/bulk-actions/:id/confirm', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:bulk-actions:manage')
+    const routeRepositories = await resolveRepositories()
+    const payload = parseAdminBulkConfirmRequest((await readJsonBody(request)) ?? {})
+    ok(response, await confirmAdminBulkAction({ repositories: routeRepositories, actionId: context.params.id, actor, ...payload }))
   })
 }

@@ -297,6 +297,8 @@ enum DomainEventCompensationStatus {
 enum JobRunStatus {
   queued
   running
+  retry_scheduled
+  dead_lettered
   succeeded
   failed
   timed_out
@@ -602,14 +604,18 @@ model DomainEventCompensationAttempt {
 }
 
 model JobDefinition {
-  id                    String   @id
+  id                    String    @id
   type                  String
-  version               Int      @default(1)
-  enabled               Boolean  @default(true)
-  defaultTimeoutSeconds Int      @default(300) @map("default_timeout_seconds")
+  version               Int       @default(1)
+  enabled               Boolean   @default(true)
+  defaultTimeoutSeconds Int       @default(300) @map("default_timeout_seconds")
+  maxAttempts           Int       @default(3) @map("max_attempts")
+  retryBackoffSeconds   Int       @default(60) @map("retry_backoff_seconds")
+  cronSchedule          String?   @map("cron_schedule")
+  pausedAt              DateTime? @map("paused_at")
   description           String?
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
   runs JobRun[]
 

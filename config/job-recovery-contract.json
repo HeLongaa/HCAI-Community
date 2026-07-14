@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "scope": "JOB-02",
+  "schemaPath": "server/prisma/schema.prisma",
+  "migration": "server/prisma/migrations/0045_job_recovery_admin_bulk/migration.sql",
+  "requiredDefinitionFields": ["maxAttempts", "retryBackoffSeconds", "cronSchedule", "pausedAt"],
+  "runStatuses": ["retry_scheduled", "dead_lettered"],
+  "repositoryMethods": ["retryDeadLetter", "rerun", "pauseDefinition", "resumeDefinition", "enqueueDueCron"],
+  "adminRoutes": [
+    "POST /api/admin/jobs/runs/:id/retry",
+    "POST /api/admin/jobs/runs/:id/rerun",
+    "POST /api/admin/jobs/definitions/:id/pause",
+    "POST /api/admin/jobs/definitions/:id/resume"
+  ],
+  "forbiddenRoutes": ["POST /api/admin/jobs/definitions/:id/execute", "POST /api/admin/jobs/handlers/:id/run"]
+}

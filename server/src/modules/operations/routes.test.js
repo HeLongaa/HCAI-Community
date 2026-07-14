@@ -54,6 +54,39 @@ test('Admin job APIs list definitions and runs and cancel safely', async () => {
   } finally { await server.close() }
 })
 
+test('Admin job recovery and bulk action APIs require safe registered operations', async () => {
+  const repository = createSeedRepository()
+  await repository.jobs.ensureDefinition({ id: 'recovery-job', type: 'interval', maxAttempts: 1, retryBackoffSeconds: 0 })
+  const run = await repository.jobs.enqueue({ definitionId: 'recovery-job', idempotencyKey: 'recovery-job:1', correlationId: 'recovery-correlation', input: { safe: true } })
+  const claimed = await repository.jobs.claim({ workerId: 'worker-a', definitionId: 'recovery-job' })
+  await repository.jobs.fail(claimed.id, claimed.leaseToken, 'BROKEN')
+  const server = await createServer(repository)
+  try {
+    const denied = await requestJson(server.url, `/api/admin/jobs/runs/${run.id}/retry`, { token: 'demo-access.legalpixel', body: { reasonCode: 'dependency_restored' } })
+    assert.equal(denied.status, 403)
+    const retried = await requestJson(server.url, `/api/admin/jobs/runs/${run.id}/retry`, { token: 'demo-access.opsplus', body: { reasonCode: 'dependency_restored' } })
+    assert.equal(retried.status, 200)
+    assert.equal(retried.payload.data.status, 'retry_scheduled')
+    const rerun = await requestJson(server.url, `/api/admin/jobs/runs/${run.id}/rerun`, { token: 'demo-access.opsplus', body: { reasonCode: 'manual_rerun', idempotencyKey: 'rerun:route:1' } })
+    assert.equal(rerun.status, 200)
+    assert.equal(rerun.payload.data.definitionId, 'recovery-job')
+    const paused = await requestJson(server.url, '/api/admin/jobs/definitions/recovery-job/pause', { token: 'demo-access.opsplus', body: { reasonCode: 'maintenance' } })
+    assert.equal(paused.status, 200)
+    assert.ok(paused.payload.data.pausedAt)
+    const resumed = await requestJson(server.url, '/api/admin/jobs/definitions/recovery-job/resume', { token: 'demo-access.opsplus', body: { reasonCode: 'maintenance_done' } })
+    assert.equal(resumed.status, 200)
+    assert.equal(resumed.payload.data.pausedAt, null)
+    const preview = await requestJson(server.url, '/api/admin/bulk-actions/jobs.retry_dead_lettered/preview', { token: 'demo-access.opsplus', body: { targetIds: [run.id], reasonCode: 'bulk_retry' } })
+    assert.equal(preview.status, 200)
+    assert.equal(preview.payload.data.requiredConfirmationText, 'RETRY DEAD LETTERED JOBS')
+    const badConfirm = await requestJson(server.url, '/api/admin/bulk-actions/jobs.retry_dead_lettered/confirm', { token: 'demo-access.opsplus', body: { targetIds: [run.id], reasonCode: 'bulk_retry', confirmationText: 'retry' } })
+    assert.equal(badConfirm.status, 400)
+    const confirmed = await requestJson(server.url, '/api/admin/bulk-actions/jobs.retry_dead_lettered/confirm', { token: 'demo-access.opsplus', body: { targetIds: [run.id], reasonCode: 'bulk_retry', confirmationText: 'RETRY DEAD LETTERED JOBS', idempotencyKey: 'bulk:route:1' } })
+    assert.equal(confirmed.status, 200)
+    assert.equal(confirmed.payload.data.run.definitionId, 'admin.bulk.jobs.retry_dead_lettered')
+  } finally { await server.close() }
+})
+
 test('Admin consumer Inbox APIs separate read from audited recovery actions', async () => {
   const repository = createSeedRepository()
   repository.domainEventConsumers = createSeedDomainEventConsumerRepository({ retryDelaySeconds: 0 })

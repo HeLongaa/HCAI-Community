@@ -12,6 +12,9 @@ export const createPrismaJobRepository = (client, { recordAudit = async () => {}
       version: Number(definition.version ?? 1),
       enabled: definition.enabled !== false,
       defaultTimeoutSeconds: Math.min(Math.max(Number(definition.defaultTimeoutSeconds ?? 300), 1), 86400),
+      maxAttempts: Math.min(Math.max(Number(definition.maxAttempts ?? 3), 1), 20),
+      retryBackoffSeconds: Math.min(Math.max(Number(definition.retryBackoffSeconds ?? 60), 0), 86400),
+      cronSchedule: definition.cronSchedule ? String(definition.cronSchedule).slice(0, 120) : null,
       description: definition.description ? String(definition.description).slice(0, 500) : null,
     }
     return jobDefinitionDto(await client.jobDefinition.upsert({ where: { id: data.id }, create: data, update: data }))
@@ -26,7 +29,7 @@ export const createPrismaJobRepository = (client, { recordAudit = async () => {}
   async enqueue(payload) {
     const data = buildJobRun(payload)
     const definition = await client.jobDefinition.findUnique({ where: { id: data.definitionId } })
-    if (!definition?.enabled) return null
+    if (!definition?.enabled || definition.pausedAt) return null
     return jobRunDto(await client.jobRun.upsert({ where: { idempotencyKey: data.idempotencyKey }, create: data, update: {}, include: runInclude }))
   },
   async find(id) {
@@ -53,20 +56,21 @@ export const createPrismaJobRepository = (client, { recordAudit = async () => {}
     const now = new Date()
     return client.$transaction(async (transaction) => {
       const candidate = await transaction.jobRun.findFirst({
-        where: { status: 'queued', scheduledAt: { lte: now }, cancelRequestedAt: null, definition: { enabled: true }, ...(definitionId ? { definitionId: String(definitionId) } : {}) },
+        where: { status: { in: ['queued', 'retry_scheduled'] }, scheduledAt: { lte: now }, cancelRequestedAt: null, definition: { enabled: true, pausedAt: null }, ...(definitionId ? { definitionId: String(definitionId) } : {}) },
         include: { definition: true },
         orderBy: [{ priority: 'desc' }, { scheduledAt: 'asc' }, { id: 'asc' }],
       })
       if (!candidate) return null
       const timeoutAt = plusSeconds(now, candidate.definition.defaultTimeoutSeconds)
       const claimed = await transaction.jobRun.updateMany({
-        where: { id: candidate.id, status: 'queued', cancelRequestedAt: null },
+        where: { id: candidate.id, status: candidate.status, cancelRequestedAt: null },
         data: { status: 'running', startedAt: now, heartbeatAt: now, timeoutAt },
       })
       if (!claimed.count) return null
       const leaseToken = randomUUID()
+      const attemptNumber = await transaction.jobAttempt.count({ where: { runId: candidate.id } }) + 1
       await transaction.jobAttempt.create({
-        data: { id: `attempt-${randomUUID()}`, runId: candidate.id, attemptNumber: 1, workerId: String(workerId), leaseToken, heartbeatAt: now, timeoutAt },
+        data: { id: `attempt-${randomUUID()}`, runId: candidate.id, attemptNumber, workerId: String(workerId), leaseToken, heartbeatAt: now, timeoutAt },
       })
       const row = await transaction.jobRun.findUnique({ where: { id: candidate.id }, include: runInclude })
       return { ...jobRunDto(row), leaseToken }
@@ -97,11 +101,51 @@ export const createPrismaJobRepository = (client, { recordAudit = async () => {}
     const now = new Date()
     return client.$transaction(async (transaction) => {
       const code = String(errorCode ?? 'JOB_FAILED').slice(0, 120)
-      const attempt = await transaction.jobAttempt.updateMany({ where: { runId: String(id), leaseToken: String(leaseToken), status: 'running' }, data: { status: 'failed', errorCode: code, completedAt: now } })
+      const currentAttempt = await transaction.jobAttempt.findFirst({ where: { runId: String(id), leaseToken: String(leaseToken), status: 'running' }, select: { id: true, attemptNumber: true } })
+      if (!currentAttempt) return null
+      const run = await transaction.jobRun.findUnique({ where: { id: String(id) }, include: { definition: true } })
+      if (!run || run.status !== 'running') return null
+      const attempt = await transaction.jobAttempt.updateMany({ where: { id: currentAttempt.id, status: 'running' }, data: { status: 'failed', errorCode: code, completedAt: now } })
       if (!attempt.count) return null
-      await transaction.jobRun.updateMany({ where: { id: String(id), status: 'running' }, data: { status: 'failed', errorCode: code, completedAt: now } })
+      const canRetry = currentAttempt.attemptNumber < run.definition.maxAttempts
+      await transaction.jobRun.updateMany({ where: { id: String(id), status: 'running' }, data: canRetry ? { status: 'retry_scheduled', errorCode: code, scheduledAt: plusSeconds(now, run.definition.retryBackoffSeconds) } : { status: 'dead_lettered', errorCode: code, completedAt: now } })
       return jobRunDto(await transaction.jobRun.findUnique({ where: { id: String(id) }, include: runInclude }))
     })
+  },
+  async retryDeadLetter(id, actor, options = {}) {
+    const now = new Date()
+    const updated = await client.jobRun.updateMany({ where: { id: String(id), status: 'dead_lettered' }, data: { status: 'retry_scheduled', scheduledAt: now, completedAt: null, cancelRequestedAt: null } })
+    if (updated.count) await recordAudit({ actor, action: 'job.retry_requested', resourceType: 'job_run', resourceId: String(id), metadata: { reasonCode: options.reasonCode ?? 'job_retry' } })
+    return this.find(id)
+  },
+  async rerun(id, actor, options = {}) {
+    const run = await this.find(id)
+    if (!run) return null
+    const idempotencyKey = String(options.idempotencyKey ?? `rerun:${run.id}:${options.reasonCode ?? 'manual'}`)
+    const copy = await this.enqueue({ definitionId: run.definitionId, idempotencyKey, correlationId: `rerun:${run.correlationId}`, input: run.input, ownerId: run.ownerId, requestedById: actor?.id, priority: run.priority })
+    if (copy) await recordAudit({ actor, action: 'job.rerun_requested', resourceType: 'job_run', resourceId: run.id, metadata: { newRunId: copy.id, reasonCode: options.reasonCode ?? 'manual_rerun' } })
+    return copy
+  },
+  async pauseDefinition(id, actor, options = {}) {
+    const now = new Date()
+    const row = await client.jobDefinition.update({ where: { id: String(id) }, data: { pausedAt: now } }).catch(() => null)
+    if (row) await recordAudit({ actor, action: 'job.definition_paused', resourceType: 'job_definition', resourceId: row.id, metadata: { reasonCode: options.reasonCode ?? 'admin_pause' } })
+    return jobDefinitionDto(row)
+  },
+  async resumeDefinition(id, actor, options = {}) {
+    const row = await client.jobDefinition.update({ where: { id: String(id) }, data: { pausedAt: null } }).catch(() => null)
+    if (row) await recordAudit({ actor, action: 'job.definition_resumed', resourceType: 'job_definition', resourceId: row.id, metadata: { reasonCode: options.reasonCode ?? 'admin_resume' } })
+    return jobDefinitionDto(row)
+  },
+  async enqueueDueCron(now = new Date()) {
+    const slot = new Date(now); slot.setSeconds(0, 0)
+    const definitions = await client.jobDefinition.findMany({ where: { enabled: true, pausedAt: null, cronSchedule: { not: null } }, orderBy: { id: 'asc' } })
+    const created = []
+    for (const definition of definitions) {
+      const run = await this.enqueue({ definitionId: definition.id, idempotencyKey: `cron:${definition.id}:${slot.toISOString()}`, correlationId: `cron:${definition.id}:${slot.toISOString()}`, input: { trigger: 'cron', schedule: definition.cronSchedule, slot: slot.toISOString() } })
+      if (run) created.push(run)
+    }
+    return created
   },
   async requestCancel(id, actor, options = {}) {
     const now = new Date()

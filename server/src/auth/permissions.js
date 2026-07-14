@@ -49,6 +49,9 @@ export const permissionRegistry = Object.freeze([
   definePermission('admin:events:recover', 'platform-architecture', 'domain_event_consumption', 'recover', 'critical', admins, { resourceAuthorization: true, description: 'Retry dead-lettered event consumption or request compensation' }),
   definePermission('admin:jobs:read', 'jobs-automation', 'job_run', 'read', 'high', admins, { description: 'Read job definitions, runs, attempts, and safe results' }),
   definePermission('admin:jobs:manage', 'jobs-automation', 'job_run', 'manage', 'critical', admins, { resourceAuthorization: true, description: 'Cancel queued or running job runs' }),
+  definePermission('admin:jobs:recover', 'jobs-automation', 'job_run', 'recover', 'critical', admins, { resourceAuthorization: true, description: 'Retry dead-lettered job runs and request safe manual reruns' }),
+  definePermission('admin:jobs:schedule', 'jobs-automation', 'job_definition', 'schedule', 'critical', admins, { resourceAuthorization: true, description: 'Pause and resume registered scheduled job definitions' }),
+  definePermission('admin:bulk-actions:manage', 'admin-console', 'admin_bulk_action', 'manage', 'critical', admins, { resourceAuthorization: true, description: 'Preview and confirm registered JobRun-backed admin bulk actions' }),
 ])
 
 export const permissions = Object.freeze(permissionRegistry.map(({ id }) => id))

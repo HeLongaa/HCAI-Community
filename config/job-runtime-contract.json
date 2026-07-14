@@ -5,6 +5,6 @@
   "migration": "server/prisma/migrations/0043_domain_events_and_job_runs/migration.sql",
   "policyDocument": "docs/UNIFIED_JOB_RUNTIME.md",
   "requiredModels": ["JobDefinition", "JobRun", "JobAttempt", "OperationLease"],
-  "runStatuses": ["queued", "running", "succeeded", "failed", "timed_out", "cancelled"],
-  "deferredToJob02": ["automatic retry policy", "DLQ", "Cron scheduling", "manual rerun"]
+  "runStatuses": ["queued", "running", "retry_scheduled", "dead_lettered", "succeeded", "failed", "timed_out", "cancelled"],
+  "job02Capabilities": ["automatic retry policy", "DLQ", "Cron scheduling", "manual rerun", "pause/resume"]
 }

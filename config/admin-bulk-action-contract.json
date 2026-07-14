@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "scope": "ADMIN-02",
+  "registryPath": "server/src/admin/adminBulkActions.js",
+  "requiredRoutes": [
+    "POST /api/admin/bulk-actions/:id/preview",
+    "POST /api/admin/bulk-actions/:id/confirm"
+  ],
+  "requiredPermission": "admin:bulk-actions:manage",
+  "requiredProperties": ["requiredConfirmationText", "maxTargets", "jobDefinitionId"],
+  "constraints": [
+    "registered actions only",
+    "preview before confirm",
+    "confirmation phrase required",
+    "JobRun-backed execution",
+    "idempotency key supported",
+    "safe audit evidence"
+  ]
+}
