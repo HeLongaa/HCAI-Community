@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "registryPath": "server/src/auth/resourcePolicy.js",
+  "policyDocument": "docs/PERSONAL_RESOURCE_AUTHORIZATION.md",
+  "requiredResources": ["user_profile", "task", "task_proposal", "task_submission", "post", "comment", "library_item", "media_asset", "creative_generation", "chat_conversation", "chat_turn", "notification", "support_request", "accounting_read_model", "admin_resource"],
+  "actions": ["read", "write"],
+  "forbiddenScopes": ["tenantId", "organizationId", "teamId", "workspaceId", "membershipId"]
+}

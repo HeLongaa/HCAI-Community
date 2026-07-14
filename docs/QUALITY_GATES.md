@@ -17,6 +17,10 @@ npm run check:quick
 Includes:
 
 - `npm run lint`
+- `npm run test:data-schema-contract`
+- `npm run test:permission-registry`
+- `npm run test:resource-authorization`
+- `npm run test:admin-mutation-audit`
 - `npm run test:v1-scope`
 - `npm run test:v1-surfaces`
 - `npm run test:v1-providers`

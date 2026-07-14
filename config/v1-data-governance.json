@@ -315,7 +315,7 @@
     {
       "id": "marketplace_records",
       "classification": "confidential",
-      "prismaModels": ["Task", "TaskProposal", "TaskSubmission"],
+      "prismaModels": ["Task", "TaskProposal", "TaskSubmission", "TaskSubmissionAsset"],
       "locations": ["postgres"],
       "dataSubjects": ["publisher", "creator", "reviewer"],
       "purposes": ["marketplace_delivery", "internal_accounting", "support_operations"],
@@ -371,7 +371,7 @@
     {
       "id": "media_asset_metadata",
       "classification": "confidential",
-      "prismaModels": ["MediaAsset", "MediaAssetRelation"],
+      "prismaModels": ["MediaAsset", "MediaAssetRelation", "CreativeGenerationAsset", "ChatTurnInputAsset"],
       "locations": ["postgres"],
       "dataSubjects": ["user", "depicted_third_party"],
       "purposes": ["media_delivery", "creative_generation", "marketplace_delivery", "safety_moderation"],
@@ -1043,7 +1043,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 47,
+    "modelCount": 50,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",

@@ -27,6 +27,7 @@
     { "model": "Task", "domain": "task-marketplace", "policy": "state_transition", "hardDelete": false },
     { "model": "TaskProposal", "domain": "task-marketplace", "policy": "state_transition", "hardDelete": false },
     { "model": "TaskSubmission", "domain": "task-marketplace", "policy": "state_transition", "hardDelete": false },
+    { "model": "TaskSubmissionAsset", "domain": "task-marketplace", "policy": "immutable_evidence", "hardDelete": false },
     { "model": "Post", "domain": "community", "policy": "soft_delete", "hardDelete": false },
     { "model": "Comment", "domain": "community", "policy": "soft_delete", "hardDelete": false },
     { "model": "PostLike", "domain": "community", "policy": "mutable_crud", "hardDelete": true },
@@ -41,9 +42,11 @@
     { "model": "MediaAssetRelation", "domain": "media-platform", "policy": "immutable_evidence", "hardDelete": false },
     { "model": "MediaScanJob", "domain": "media-platform", "policy": "state_transition", "hardDelete": false },
     { "model": "CreativeGeneration", "domain": "ai-runtime", "policy": "state_transition", "hardDelete": false },
+    { "model": "CreativeGenerationAsset", "domain": "ai-runtime", "policy": "immutable_evidence", "hardDelete": false },
     { "model": "CreativeProviderOperation", "domain": "ai-runtime", "policy": "state_transition", "hardDelete": false },
     { "model": "ChatConversation", "domain": "ai-runtime", "policy": "soft_delete", "hardDelete": false },
     { "model": "ChatTurn", "domain": "ai-runtime", "policy": "state_transition", "hardDelete": false },
+    { "model": "ChatTurnInputAsset", "domain": "ai-runtime", "policy": "immutable_evidence", "hardDelete": false },
     { "model": "ChatMessage", "domain": "ai-runtime", "policy": "state_transition", "hardDelete": false },
     { "model": "ChatDeletionTombstone", "domain": "ai-runtime", "policy": "append_only", "hardDelete": false },
     { "model": "CreativeGenerationMutation", "domain": "ai-runtime", "policy": "state_transition", "hardDelete": false },
@@ -64,6 +67,6 @@
   "protectedFamilies": {
     "accounting": ["PointLedger", "InternalAccountingOperation", "InternalAccountingMovement"],
     "audit": ["AuditEvent", "SecurityEvent"],
-    "evidence": ["MediaAssetRelation", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger"]
+    "evidence": ["MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger"]
   }
 }

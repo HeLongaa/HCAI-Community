@@ -22,6 +22,10 @@ policy version change makes the previous record non-current. Full export/deletio
 
 ## Core Entities
 
+Phase 1 migrations `0041` and `0042` add two cross-cutting rules. Every Prisma `Json` field has a sibling integer schema-version column (36 fields at version 1). Task submission, creative generation input/output, and Chat turn input media references now dual-write to FK-backed relation tables while keeping legacy arrays as API-compatible projections. See `docs/DATA_RELATION_AND_JSON_SCHEMA.md`.
+
+The product remains personal-account-only. RBAC metadata is defined by `server/src/auth/permissions.js`; object authorization is separately enforced by `server/src/auth/resourcePolicy.js`. No tenant, organization, team, membership, invitation, or tenant-workspace model is present.
+
 ### `users`
 
 | Field | Type | Notes |
@@ -101,8 +105,13 @@ Stores login provider identities.
 | `estimate` | text | Nullable |
 | `status` | enum | `pending`, `accepted`, `rejected`, `withdrawn` |
 | `metadata` | jsonb | Nullable extension point |
+| `metadata_schema_version` | integer | Independent JSON document version, default 1 |
 | `created_at` | timestamptz | |
 | `updated_at` | timestamptz | |
+
+### `task_submission_assets`
+
+FK-backed compatibility projection for `task_submissions.asset_ids`. The composite identity is `(submission_id, asset_id)` with stable position, personal `owner_id`, restrictive media deletion, and cascading submission deletion.
 
 ### `task_submissions`
 
@@ -136,6 +145,12 @@ Append-only audit log.
 | `to_status` | text | Nullable |
 | `metadata` | jsonb | |
 | `created_at` | timestamptz | |
+
+### Normalized generation and Chat assets
+
+- `creative_generation_assets` relates a generation to owned `MediaAsset` rows with `input`/`output` direction, position, and optional role.
+- `chat_turn_input_assets` relates an owned Chat turn to ordered owned `MediaAsset` inputs.
+- Migration backfill accepts only IDs that resolve to existing media rows. Unmatched historical IDs stay in compatibility arrays for reconciliation.
 
 ### `posts`
 
@@ -224,7 +239,14 @@ Admin operations metrics reuse `audit_events` for security alert dispositions, a
 | `resource_type` | text | |
 | `resource_id` | uuid/text | Nullable |
 | `metadata` | jsonb | |
+| `metadata_schema_version` | integer | Independent audit metadata version, default 1 |
 | `created_at` | timestamptz | |
+
+Every non-GET `/api/admin/**` route writes a mandatory sanitized attempt event before handler execution; existing domain events remain the authoritative outcome and before/after evidence. Audit persistence failure closes high-risk mutations. See `docs/ADMIN_MUTATION_AUDIT.md`.
+
+### `permissions`
+
+The stable string `id` remains API-compatible. Persisted metadata now includes `module`, `resource`, `action`, `risk_level`, `is_protected`, and `resource_authorization`. Runtime startup upserts all 26 registered permissions, while mutable grants remain in `role_permissions`.
 
 ### `admin_reviews`
 

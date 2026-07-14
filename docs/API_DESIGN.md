@@ -34,6 +34,12 @@ type ApiResponse<T> = {
 }
 ```
 
+## Authorization And Admin Audit
+
+Permission IDs remain stable. `GET /api/admin/permissions` additionally exposes module, resource, action, risk level, protected status, and whether object authorization is required. RBAC permits an action; personal resource policies separately enforce owner/participant/elevated access. Unauthorized user-owned objects are hidden as `404`, while known administrative permission failures return `403`.
+
+All non-GET `/api/admin/**` routes are audit-classified. Before a handler runs, a sanitized attempt event records actor, stable action, resource, reason code, request ID, and bounded parameter evidence. Raw request bodies, prompts, Provider payloads, URLs, cookies, tokens, and secrets are excluded. Domain audit events continue to record the final outcome.
+
 ## Auth
 
 ### `POST /auth/login`

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { permissions, rolePermissions } from '../auth/permissions.js'
+import { permissionRegistry, rolePermissions } from '../auth/permissions.js'
 import { seedStore } from '../data/seed.js'
 import {
   buildAdminReviewRecord,
@@ -60,13 +60,19 @@ const buildHandleMap = () => {
 export const toTokenHash = (token) => createHash('sha256').update(token).digest('hex')
 
 const seedPermissionPolicy = async (client) => {
-  await client.permission.createMany({
-    data: permissions.map((permission) => ({
-      id: permission,
-      description: null,
-    })),
-    skipDuplicates: true,
-  })
+  await Promise.all(permissionRegistry.map((permission) => {
+    const data = {
+      id: permission.id,
+      module: permission.module,
+      resource: permission.resource,
+      action: permission.action,
+      riskLevel: permission.riskLevel,
+      isProtected: permission.protected,
+      resourceAuthorization: permission.resourceAuthorization,
+      description: permission.description,
+    }
+    return client.permission.upsert({ where: { id: permission.id }, create: data, update: data })
+  }))
 
   await client.rolePermission.createMany({
     data: Object.entries(rolePermissions).flatMap(([role, rolePermissionIds]) =>

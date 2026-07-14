@@ -1,4 +1,5 @@
 import http from 'node:http'
+import { randomUUID } from 'node:crypto'
 import { HttpError } from '../errors/httpError.js'
 import { parseBearerToken } from './auth.js'
 import { enforceRequestBodySize, requestBodyRejectedEvent } from './bodySize.js'
@@ -40,6 +41,7 @@ export const createServer = (router, context = {}) => {
       const authToken = parseBearerToken(request.headers.authorization)
       const requestContext = {
         ...context,
+        requestId: String(request.headers['x-request-id'] ?? '').match(/^[A-Za-z0-9._:-]{1,128}$/)?.[0] ?? randomUUID(),
         authToken,
         user: authToken ? (await context.resolveUser?.(authToken)) ?? null : null,
       }
