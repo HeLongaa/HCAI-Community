@@ -22,8 +22,10 @@ import {
   createOAuthState,
   exchangeOAuthCodeForProfile,
   getOAuthAuthorizationUrl,
+  hashOAuthState,
   isSupportedOAuthProvider,
   listOAuthProviderMetadata,
+  normalizeOAuthRedirect,
   normalizeOAuthProvider,
   verifyOAuthState,
 } from '../../auth/oauth.js'
@@ -67,8 +69,6 @@ const shouldRenderOAuthBridge = (request, query, fallback = false) => {
 
 const renderOAuthBridge = (response, payload) => {
   const bridgePayload = {
-    accessToken: payload.accessToken,
-    user: payload.user,
     redirectTo: payload.redirectTo ?? '/',
   }
   const body = `<!doctype html>
@@ -83,8 +83,8 @@ const renderOAuthBridge = (response, payload) => {
     (function () {
       var payload = ${scriptSafeJson(bridgePayload)};
       try {
-        window.localStorage.setItem('hcaiAccessToken', payload.accessToken);
-        window.localStorage.setItem('hcaiUser', JSON.stringify(payload.user));
+        window.localStorage.removeItem('hcaiAccessToken');
+        window.localStorage.removeItem('hcaiUser');
         window.localStorage.setItem('hcaiOAuthRedirectTo', payload.redirectTo || '/');
       } catch (error) {}
       window.location.replace('/');
@@ -140,20 +140,60 @@ const recordAuthFailureAnomaly = async (event, context) => {
 
 export const registerAuthRoutes = (router) => {
   const completeOAuthCallback = async ({ provider, query }) => {
+    if (!oauthAccountProviders.includes(provider)) {
+      throw new HttpError(404, 'NOT_FOUND', 'OAuth provider not found')
+    }
     const statePayload = verifyOAuthState(query.state)
     if (!statePayload || statePayload.provider !== provider) {
       throw new HttpError(400, 'OAUTH_STATE_INVALID', 'OAuth state is invalid or expired')
+    }
+    const authorizationRequest = await repositories.auth.consumeOAuthAuthorizationRequest?.({
+      stateHash: hashOAuthState(query.state),
+      provider,
+    })
+    if (!authorizationRequest) {
+      recordSecurityEvent({
+        type: 'auth.oauth.state_rejected',
+        severity: 'warning',
+        source: 'oauth_callback',
+        identity: provider,
+        details: { provider, reason: 'missing_expired_or_replayed' },
+      })
+      throw new HttpError(400, 'OAUTH_STATE_INVALID', 'OAuth state is invalid or expired')
+    }
+    if (query.error) {
+      const cancelled = query.error === 'access_denied'
+      recordSecurityEvent({
+        type: cancelled ? 'auth.oauth.cancelled' : 'auth.oauth.provider_rejected',
+        severity: cancelled ? 'info' : 'warning',
+        source: 'oauth_callback',
+        identity: provider,
+        details: { provider, reason: cancelled ? 'access_denied' : 'provider_error' },
+      })
+      throw new HttpError(cancelled ? 400 : 401, cancelled ? 'OAUTH_CANCELLED' : 'OAUTH_FAILED', cancelled
+        ? 'OAuth authorization was cancelled'
+        : 'OAuth provider response could not be verified')
+    }
+    if (typeof query.code !== 'string' || query.code.length < 1 || query.code.length > 4_096) {
+      throw new HttpError(401, 'OAUTH_FAILED', 'OAuth provider response could not be verified')
     }
     const profile = await exchangeOAuthCodeForProfile(provider, query.code, {
       statePayload,
       user: query.user,
     })
     if (!profile) {
+      recordSecurityEvent({
+        type: 'auth.oauth.verification_failed',
+        severity: 'warning',
+        source: 'oauth_callback',
+        identity: provider,
+        details: { provider, reason: 'profile_verification_failed' },
+      })
       throw new HttpError(401, 'OAUTH_FAILED', 'OAuth provider response could not be verified')
     }
     const session = await repositories.auth.completeOAuthLogin?.({
       profile,
-      linkUserId: statePayload.linkUserId,
+      linkUserId: authorizationRequest.linkUserId,
     })
     if (!session) {
       throw new HttpError(409, 'OAUTH_ACCOUNT_CONFLICT', 'OAuth account is already linked to another user')
@@ -162,7 +202,7 @@ export const registerAuthRoutes = (router) => {
       accessToken: session.accessToken,
       refreshToken: session.refreshToken,
       user: serializeAccount(session.user),
-      redirectTo: statePayload.redirectTo,
+      redirectTo: authorizationRequest.redirectTo,
     }
   }
 
@@ -252,21 +292,32 @@ export const registerAuthRoutes = (router) => {
 
   router.add('POST', '/api/auth/oauth/:provider/start', async (request, response, context) => {
     const provider = normalizeOAuthProvider(context.params.provider)
-    if (!isSupportedOAuthProvider(provider)) {
+    if (!isSupportedOAuthProvider(provider) || !oauthAccountProviders.includes(provider)) {
       throw new HttpError(404, 'NOT_FOUND', 'OAuth provider not found')
     }
     const payload = parseOAuthStartRequest((await readJsonBody(request)) ?? {})
     const linkUser = payload.linkAccount ? requireUser(context) : null
-    const state = createOAuthState({
-      provider,
-      redirectTo: payload.redirectTo,
-      linkUserId: linkUser?.id ?? null,
-    })
+    const state = createOAuthState({ provider })
     const origin = `${context.url.protocol}//${context.url.host}`
+    const authorization = getOAuthAuthorizationUrl({ provider, state, origin })
+    if (authorization.mode === 'unavailable' || !authorization.authorizationUrl) {
+      throw new HttpError(503, 'OAUTH_PROVIDER_UNAVAILABLE', 'OAuth provider is not configured for this environment')
+    }
+    const statePayload = verifyOAuthState(state)
+    const stateCreated = await repositories.auth.createOAuthAuthorizationRequest?.({
+      stateHash: hashOAuthState(state),
+      provider,
+      redirectTo: normalizeOAuthRedirect(payload.redirectTo),
+      linkUserId: linkUser?.id ?? null,
+      expiresAt: new Date(statePayload.exp),
+    })
+    if (!stateCreated) {
+      throw new HttpError(409, 'OAUTH_STATE_CONFLICT', 'OAuth authorization request could not be created')
+    }
     created(response, {
       provider,
       state,
-      ...getOAuthAuthorizationUrl({ provider, state, origin }),
+      ...authorization,
     })
   })
 

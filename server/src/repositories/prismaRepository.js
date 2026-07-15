@@ -134,6 +134,9 @@ const getHandleFromToken = (token, prefix) => {
 const tokenForHandle = (prefix, handle) => `${prefix}${handle}`
 const normalizeEmail = (email) => String(email ?? '').trim().toLowerCase()
 const oauthKey = (provider, providerUserId) => ({ provider, providerUserId })
+const oauthAuditResourceId = (provider, providerUserId) => (
+  `${provider}:${createHash('sha256').update(`${provider}:${providerUserId}`).digest('hex').slice(0, 24)}`
+)
 
 const asObject = (value) => (value && typeof value === 'object' && !Array.isArray(value) ? value : null)
 
@@ -1016,30 +1019,46 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     active: !row.revokedAt && row.expiresAt > new Date(),
   })
 
+  const runSerializableTransaction = async (operation, maxAttempts = 3) => {
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await client.$transaction(operation, { isolationLevel: 'Serializable' })
+      } catch (error) {
+        if (error?.code !== 'P2034' || attempt === maxAttempts) {
+          throw error
+        }
+      }
+    }
+    return null
+  }
+
   const createSessionForUser = async (user, reason = 'auth.session.created', options = {}) => {
     const accessToken = createAccessToken(user.id)
     const refreshToken = createOpaqueToken('hcai_refresh')
-    await client.refreshToken.create({
-      data: {
-        userId: user.id,
-        tokenHash: hashToken(refreshToken),
-        familyId: options.familyId ?? randomUUID(),
-        expiresAt: futureDate(refreshTokenTtlMs),
-        revokedAt: null,
-      },
-    })
-    await recordAudit({
-      actor: mapAccount(user),
-      action: reason,
-      resourceType: 'auth_session',
-      resourceId: user.id,
-      metadata: { refreshTokenStoredAsHash: true },
-    })
-    return {
-      accessToken,
-      refreshToken,
-      user: mapAccount(user),
+    const persist = async (db) => {
+      await db.refreshToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: hashToken(refreshToken),
+          familyId: options.familyId ?? randomUUID(),
+          expiresAt: futureDate(refreshTokenTtlMs),
+          revokedAt: null,
+        },
+      })
+      await recordAudit({
+        actor: mapAccount(user),
+        action: reason,
+        resourceType: 'auth_session',
+        resourceId: user.id,
+        metadata: { refreshTokenStoredAsHash: true },
+      }, db)
+      return {
+        accessToken,
+        refreshToken,
+        user: mapAccount(user),
+      }
     }
+    return options.db ? persist(options.db) : client.$transaction(persist)
   }
 
   const findUserByHandle = (handle) =>
@@ -1398,11 +1417,11 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
   })
 
-  const makeUniqueProfileHandle = async (email, fallback = 'oauth') => {
+  const makeUniqueProfileHandle = async (email, fallback = 'oauth', db = client) => {
     const base = String(email?.split('@')[0] ?? fallback).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24) || fallback
     let handle = base.length >= 3 ? base : `user_${base}`
     let suffix = 1
-    while (await client.profile.findUnique({ where: { handle }, select: { userId: true } })) {
+    while (await db.profile.findUnique({ where: { handle }, select: { userId: true } })) {
       handle = `${base.slice(0, 24)}${suffix}`
       suffix += 1
     }
@@ -2253,110 +2272,165 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       }
       return createSessionForUser(authAccount.user, 'auth.session.created')
     },
+    createOAuthAuthorizationRequest: async ({ stateHash, provider, redirectTo, linkUserId = null, expiresAt }) => {
+      try {
+        await client.$transaction(async (transaction) => {
+          await transaction.oAuthAuthorizationRequest.deleteMany({
+            where: { expiresAt: { lte: new Date() } },
+          })
+          await transaction.oAuthAuthorizationRequest.create({
+            data: {
+              stateHash,
+              provider,
+              redirectTo,
+              linkUserId,
+              expiresAt: new Date(expiresAt),
+            },
+          })
+        })
+        return true
+      } catch (error) {
+        if (error?.code === 'P2002') {
+          return false
+        }
+        throw error
+      }
+    },
+    consumeOAuthAuthorizationRequest: async ({ stateHash, provider }) => {
+      return client.$transaction(async (transaction) => {
+        const result = await transaction.oAuthAuthorizationRequest.updateMany({
+          where: {
+            stateHash,
+            provider,
+            consumedAt: null,
+            expiresAt: { gt: new Date() },
+          },
+          data: { consumedAt: new Date() },
+        })
+        if (result.count !== 1) {
+          return null
+        }
+        return transaction.oAuthAuthorizationRequest.findUnique({ where: { stateHash } })
+      })
+    },
     completeOAuthLogin: async ({ profile, linkUserId = null }) => {
       const normalizedEmail = normalizeEmail(profile.email)
       const providerWhere = {
         provider_providerUserId: oauthKey(profile.provider, profile.providerUserId),
       }
-      const linkedAccount = await client.authAccount.findUnique({
-        where: providerWhere,
-        include: { user: { include: { profile: true } } },
-      })
+      try {
+        return await runSerializableTransaction(async (transaction) => {
+        const linkedAccount = await transaction.authAccount.findUnique({
+          where: providerWhere,
+          include: { user: { include: { profile: true } } },
+        })
 
-      if (linkUserId) {
-        if (linkedAccount && linkedAccount.userId !== linkUserId) {
-          return null
+        if (linkUserId) {
+          if (linkedAccount && linkedAccount.userId !== linkUserId) {
+            return null
+          }
+          const user = await transaction.user.findUnique({
+            where: { id: linkUserId },
+            include: { profile: true },
+          })
+          if (!user || user.status !== 'active') {
+            return null
+          }
+          if (!linkedAccount) {
+            await transaction.authAccount.create({
+              data: {
+                userId: user.id,
+                provider: profile.provider,
+                providerUserId: profile.providerUserId,
+                passwordHash: null,
+              },
+            })
+            await recordAudit({
+              actor: mapAccount(user),
+              action: 'auth.oauth.linked',
+              resourceType: 'auth_account',
+              resourceId: oauthAuditResourceId(profile.provider, profile.providerUserId),
+              metadata: { provider: profile.provider },
+            }, transaction)
+          }
+          return createSessionForUser(user, 'auth.session.created', { db: transaction })
         }
-        const user = await client.user.findUnique({
-          where: { id: linkUserId },
+
+        if (linkedAccount) {
+          return linkedAccount.user?.status === 'active'
+            ? createSessionForUser(linkedAccount.user, 'auth.session.created', { db: transaction })
+            : null
+        }
+
+        const existingUser = await transaction.user.findUnique({
+          where: { email: normalizedEmail },
           include: { profile: true },
         })
-        if (!user) {
-          return null
-        }
-        if (!linkedAccount) {
-          await client.authAccount.create({
+        if (existingUser) {
+          if (existingUser.status !== 'active') {
+            return null
+          }
+          await transaction.authAccount.create({
             data: {
-              userId: user.id,
+              userId: existingUser.id,
               provider: profile.provider,
               providerUserId: profile.providerUserId,
               passwordHash: null,
             },
           })
+          await recordAudit({
+            actor: mapAccount(existingUser),
+            action: 'auth.oauth.linked',
+            resourceType: 'auth_account',
+            resourceId: oauthAuditResourceId(profile.provider, profile.providerUserId),
+            metadata: { provider: profile.provider },
+          }, transaction)
+          return createSessionForUser(existingUser, 'auth.session.created', { db: transaction })
         }
+
+        const handle = await makeUniqueProfileHandle(normalizedEmail, profile.provider, transaction)
+        const user = await transaction.user.create({
+          data: {
+            email: normalizedEmail,
+            displayName: profile.displayName,
+            role: 'member',
+            status: 'active',
+            profile: {
+              create: {
+                handle,
+                lane: 'both',
+                skills: [],
+                languages: [],
+                portfolio: {},
+                stats: {},
+                metadata: {},
+              },
+            },
+            authAccounts: {
+              create: {
+                provider: profile.provider,
+                providerUserId: profile.providerUserId,
+                passwordHash: null,
+              },
+            },
+          },
+          include: { profile: true },
+        })
         await recordAudit({
           actor: mapAccount(user),
-          action: 'auth.oauth.linked',
-          resourceType: 'auth_account',
-          resourceId: `${profile.provider}:${profile.providerUserId}`,
+          action: 'auth.oauth.registered',
+          resourceType: 'user',
+          resourceId: user.id,
           metadata: { provider: profile.provider },
+        }, transaction)
+          return createSessionForUser(user, 'auth.session.created', { db: transaction })
         })
-        return createSessionForUser(user, 'auth.session.created')
+      } catch (error) {
+        if (error?.code === 'P2002') {
+          return null
+        }
+        throw error
       }
-
-      if (linkedAccount) {
-        return linkedAccount.user?.status === 'active' ? createSessionForUser(linkedAccount.user, 'auth.session.created') : null
-      }
-
-      const existingUser = await client.user.findUnique({
-        where: { email: normalizedEmail },
-        include: { profile: true },
-      })
-      if (existingUser) {
-        await client.authAccount.create({
-          data: {
-            userId: existingUser.id,
-            provider: profile.provider,
-            providerUserId: profile.providerUserId,
-            passwordHash: null,
-          },
-        })
-        await recordAudit({
-          actor: mapAccount(existingUser),
-          action: 'auth.oauth.linked',
-          resourceType: 'auth_account',
-          resourceId: `${profile.provider}:${profile.providerUserId}`,
-          metadata: { provider: profile.provider },
-        })
-        return createSessionForUser(existingUser, 'auth.session.created')
-      }
-
-      const handle = await makeUniqueProfileHandle(normalizedEmail, profile.provider)
-      const user = await client.user.create({
-        data: {
-          email: normalizedEmail,
-          displayName: profile.displayName,
-          role: 'member',
-          status: 'active',
-          profile: {
-            create: {
-              handle,
-              lane: 'both',
-              skills: [],
-              languages: [],
-              portfolio: {},
-              stats: {},
-              metadata: {},
-            },
-          },
-          authAccounts: {
-            create: {
-              provider: profile.provider,
-              providerUserId: profile.providerUserId,
-              passwordHash: null,
-            },
-          },
-        },
-        include: { profile: true },
-      })
-      await recordAudit({
-        actor: mapAccount(user),
-        action: 'auth.oauth.registered',
-        resourceType: 'user',
-        resourceId: user.id,
-        metadata: { provider: profile.provider },
-      })
-      return createSessionForUser(user, 'auth.session.created')
     },
     listOAuthAccounts: async (actor) => {
       const accounts = await client.authAccount.findMany({
@@ -2372,31 +2446,33 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       }))
     },
     unlinkOAuthAccount: async (provider, actor) => {
-      const account = await client.authAccount.findFirst({
-        where: {
-          userId: actor.id,
-          provider,
-          NOT: { provider: 'email' },
-        },
+      return runSerializableTransaction(async (transaction) => {
+        const account = await transaction.authAccount.findFirst({
+          where: {
+            userId: actor.id,
+            provider,
+            NOT: { provider: 'email' },
+          },
+        })
+        if (!account) {
+          return null
+        }
+        const authMethodCount = await transaction.authAccount.count({
+          where: { userId: actor.id },
+        })
+        if (authMethodCount <= 1) {
+          return { blocked: true }
+        }
+        await transaction.authAccount.delete({ where: { id: account.id } })
+        await recordAudit({
+          actor,
+          action: 'auth.oauth.unlinked',
+          resourceType: 'auth_account',
+          resourceId: oauthAuditResourceId(account.provider, account.providerUserId),
+          metadata: { provider: account.provider },
+        }, transaction)
+        return { unlinked: true }
       })
-      if (!account) {
-        return null
-      }
-      const authMethodCount = await client.authAccount.count({
-        where: { userId: actor.id },
-      })
-      if (authMethodCount <= 1) {
-        return { blocked: true }
-      }
-      await client.authAccount.delete({ where: { id: account.id } })
-      await recordAudit({
-        actor,
-        action: 'auth.oauth.unlinked',
-        resourceType: 'auth_account',
-        resourceId: `${account.provider}:${account.providerUserId}`,
-        metadata: { provider: account.provider },
-      })
-      return { unlinked: true }
     },
     rotateSession: async (token) => {
       const tokenHash = hashToken(token)

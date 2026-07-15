@@ -41,7 +41,7 @@
     { "id": "points", "domain": "entitlements-accounting", "layer": "transport", "registration": "registerPointsRoutes" }
   ],
   "ownership": [
-    { "domain": "identity-access", "owns": ["credentials", "sessions", "roles", "permissions"] },
+    { "domain": "identity-access", "owns": ["credentials", "OAuth authorization requests", "sessions", "roles", "permissions"] },
     { "domain": "user-profile", "owns": ["personal account lifecycle", "profile", "portfolio"] },
     { "domain": "task-marketplace", "owns": ["tasks", "proposals", "submissions", "disputes"] },
     { "domain": "community", "owns": ["posts", "comments", "likes"] },

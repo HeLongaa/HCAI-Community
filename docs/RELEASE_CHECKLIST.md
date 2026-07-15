@@ -67,6 +67,8 @@ Deploy order:
 Critical API smoke checks:
 
 - `GET /api/auth/oauth/providers`
+- Confirm every unconfigured OAuth provider is reported as `mode=unavailable`, `available=false`, with no authorization URL.
+- Do not invoke a real OAuth start/callback flow without the separately recorded Provider approval and staging run window.
 - `POST /api/auth/login`
 - `POST /api/auth/refresh` with CSRF header and cookie credentials
 - `GET /api/me`

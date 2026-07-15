@@ -1,0 +1,56 @@
+import fs from 'node:fs'
+import path from 'node:path'
+
+const root = process.cwd()
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8')
+const contract = JSON.parse(read('config/oauth-hardening-contract.json'))
+const schema = read('server/prisma/schema.prisma')
+const migration = read('server/prisma/migrations/0050_oauth_authorization_hardening/migration.sql')
+const oauth = read('server/src/auth/oauth.js')
+const routes = read('server/src/modules/auth/routes.js')
+const prismaRepository = read('server/src/repositories/prismaRepository.js')
+const seedRepository = read('server/src/repositories/seedRepository.js')
+const frontend = read('src/hooks/useAccountState.ts')
+const openapi = read('server/src/docs/openapi.js')
+const governance = JSON.parse(read('config/v1-data-governance.json'))
+const operationPolicies = JSON.parse(read('config/entity-operation-policies.json'))
+const packageJson = JSON.parse(read('package.json'))
+const oauthStateSource = oauth.slice(oauth.indexOf('export const createOAuthState'), oauth.indexOf('export const hashOAuthState'))
+const checks = []
+const add = (name, pass, detail = '') => checks.push({ name, pass: Boolean(pass), detail })
+
+add('contract schema is supported', contract.schemaVersion === 1, `schemaVersion=${contract.schemaVersion}`)
+add('scope remains personal accounts only', contract.scope === 'personal_accounts_only', contract.scope)
+add('real Provider calls remain unapproved', contract.realProviderCallsApproved === false, 'realProviderCallsApproved=false')
+add('authorization request model exists', schema.includes('model OAuthAuthorizationRequest'), contract.authorizationRequest.model)
+add('authorization state persists as a hash only', schema.includes('stateHash') && !schema.includes('rawState'), 'stateHash/no rawState')
+add('Provider-visible state excludes internal context', !oauthStateSource.includes('redirectTo') && !oauthStateSource.includes('linkUserId') && routes.includes('authorizationRequest.linkUserId') && routes.includes('authorizationRequest.redirectTo'), 'server-side link/redirect context')
+add('migration creates hashed authorization requests', migration.includes('CREATE TABLE "oauth_authorization_requests"') && migration.includes('"state_hash" TEXT NOT NULL'), contract.authorizationRequest.migration)
+add('migration indexes expiry and consumption', migration.includes('oauth_authorization_requests_expires_at_consumed_at_idx'), 'expiry/consumption index')
+add('one account per user and Provider is enforced', schema.includes('@@unique([userId, provider])') && migration.includes('auth_accounts_user_id_provider_key'), 'database unique constraint')
+add('Seed and Prisma repositories consume state once', seedRepository.includes('consumeOAuthAuthorizationRequest') && prismaRepository.includes('consumedAt: null') && prismaRepository.includes('result.count === 1'), 'single-use CAS')
+add('callback consumes state before exchange', routes.indexOf('consumeOAuthAuthorizationRequest') < routes.indexOf('exchangeOAuthCodeForProfile(provider'), 'consume before exchange')
+add('production dev fallback is disabled', oauth.includes("source.NODE_ENV !== 'production'") && oauth.includes("mode = configured ? 'external' : isOAuthDevModeEnabled(source) ? 'dev' : 'unavailable'"), 'explicit unavailable mode')
+add('Google and Discord use S256 PKCE', oauth.includes("const pkceProviders = new Set(['google', 'discord'])") && oauth.includes("method: 'S256'"), 'google/discord S256')
+add('PKCE verifier is not persisted', !schema.includes('codeVerifier') && !migration.includes('code_verifier'), 'derived verifier')
+add('Provider calls have bounded timeout', oauth.includes('OAUTH_PROVIDER_TIMEOUT_MS') && oauth.includes('controller.abort()'), '1-15 second bound')
+add('all Provider emails require verification', oauth.includes('profile.email_verified !== true') && oauth.includes('profile.verified !== true') && oauth.includes('emailVerified'), 'verified email')
+add('callback bridge embeds no access token', !routes.includes("localStorage.setItem('hcaiAccessToken'") && routes.includes("localStorage.removeItem('hcaiAccessToken'"), 'cookie recovery bridge')
+add('frontend recovers through refresh cookie', frontend.includes('await authService.refresh()') && frontend.includes('return authService.me()'), 'refresh then /me')
+add('account lifecycle uses Serializable transactions', prismaRepository.includes("isolationLevel: 'Serializable'") && prismaRepository.includes("action: 'auth.oauth.unlinked'"), 'transactional link/unlink')
+add('audit resource ids hash Provider identities', prismaRepository.includes("oauthAuditResourceId") && seedRepository.includes('oauthAuditResourceId'), 'hashed audit ids')
+add('OpenAPI exposes unavailable provider state', openapi.includes("enum: ['dev', 'external', 'unavailable']") && openapi.includes("'503': { description: 'Provider is unavailable"), 'OpenAPI')
+add('governance includes authorization request model', governance.dataAssets.some((item) => item.prismaModels?.includes('OAuthAuthorizationRequest')), 'restricted auth data')
+add('operation policy covers authorization requests', operationPolicies.entities.some((item) => item.model === 'OAuthAuthorizationRequest' && item.policy === 'state_transition'), 'state transition')
+add('policy document exists', fs.existsSync(path.join(root, 'docs/OAUTH_SECURITY_AND_STAGING.md')), 'docs/OAUTH_SECURITY_AND_STAGING.md')
+add('package exposes AUTH-01 gate', packageJson.scripts['test:oauth-hardening']?.includes('verify-oauth-hardening.mjs'), 'test:oauth-hardening')
+add('quick gate includes AUTH-01', packageJson.scripts['check:quick']?.includes('npm run test:oauth-hardening'), 'check:quick')
+
+for (const check of checks) console.log(`${check.pass ? 'PASS' : 'FAIL'} ${check.name}${check.detail ? ` (${check.detail})` : ''}`)
+const failures = checks.filter((check) => !check.pass)
+if (failures.length) {
+  console.error(`OAuth hardening verification failed: ${failures.length} check(s)`)
+  process.exitCode = 1
+} else {
+  console.log(`OAuth hardening verified: ${checks.length} checks`)
+}

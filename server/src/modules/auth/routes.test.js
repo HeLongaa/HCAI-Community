@@ -453,6 +453,32 @@ test('POST /api/auth/oauth/:provider/start returns a signed dev authorization UR
   }
 })
 
+test('POST /api/auth/oauth/:provider/start fails closed when provider is unavailable', async () => {
+  await withProcessEnv({
+    OAUTH_DEV_MODE: 'disabled',
+    OAUTH_GOOGLE_CLIENT_ID: null,
+    OAUTH_GOOGLE_CLIENT_SECRET: null,
+    OAUTH_GOOGLE_REDIRECT_URI: null,
+  }, async () => {
+    const server = await createTestServer()
+    try {
+      const providers = await requestJson(server.url, '/api/auth/oauth/providers', { method: 'GET' })
+      const google = providers.payload.data.find((provider) => provider.provider === 'google')
+      const start = await requestJson(server.url, '/api/auth/oauth/google/start', {
+        body: { redirectTo: '/profile' },
+      })
+
+      assert.equal(google.mode, 'unavailable')
+      assert.equal(google.available, false)
+      assert.equal(google.authorizationUrl, null)
+      assert.equal(start.status, 503)
+      assert.equal(start.payload.error.code, 'OAUTH_PROVIDER_UNAVAILABLE')
+    } finally {
+      await server.close()
+    }
+  })
+})
+
 test('OAuth account linking lists and unlinks provider accounts', async () => {
   const server = await createTestServer()
   try {
@@ -491,6 +517,17 @@ test('OAuth account linking lists and unlinks provider accounts', async () => {
     assert.equal(linked.payload.data.length, 1)
     assert.equal(linked.payload.data[0].provider, 'google')
     assert.equal(linked.payload.data[0].linked, true)
+
+    const conflictingStart = await requestJson(server.url, '/api/auth/oauth/google/start', {
+      body: { redirectTo: '/profile', linkAccount: true },
+      token: callback.payload.data.accessToken,
+    })
+    const conflictingCallbackUrl = new URL(conflictingStart.payload.data.authorizationUrl)
+    const conflictingCallback = await requestJson(server.url, `${conflictingCallbackUrl.pathname}${conflictingCallbackUrl.search}`, {
+      method: 'GET',
+    })
+    assert.equal(conflictingCallback.status, 409)
+    assert.equal(conflictingCallback.payload.error.code, 'OAUTH_ACCOUNT_CONFLICT')
 
     const unlinked = await requestJson(server.url, '/api/auth/oauth/accounts/google', {
       method: 'DELETE',
@@ -578,12 +615,13 @@ test('GET /api/auth/oauth/:provider/callback renders a browser bridge for HTML c
     assert.match(cookie, /^hcaiRefreshToken=hcai_refresh\./)
     assert.match(cookie, /HttpOnly/)
     assert.match(csrfCookie, /^hcaiCsrfToken=/)
-    assert.match(body, /localStorage\.setItem\('hcaiAccessToken'/)
-    assert.match(body, /localStorage\.setItem\('hcaiUser'/)
+    assert.match(body, /localStorage\.removeItem\('hcaiAccessToken'/)
+    assert.match(body, /localStorage\.removeItem\('hcaiUser'/)
     assert.match(body, /localStorage\.setItem\('hcaiOAuthRedirectTo'/)
     assert.match(body, /"redirectTo":"\/profile"/)
     assert.match(body, /window\.location\.replace\('\/'\)/)
     assert.equal(body.includes('refreshToken'), false)
+    assert.equal(body.includes('accessToken"'), false)
   } finally {
     await server.close()
   }
@@ -627,6 +665,47 @@ test('GET /api/auth/oauth/:provider/callback rejects invalid state', async () =>
 
     assert.equal(callback.status, 400)
     assert.equal(callback.payload.error.code, 'OAUTH_STATE_INVALID')
+  } finally {
+    await server.close()
+  }
+})
+
+test('OAuth callback state is single-use and rejects replay', async () => {
+  const server = await createTestServer()
+  try {
+    const start = await requestJson(server.url, '/api/auth/oauth/google/start', {
+      body: { redirectTo: '/profile' },
+    })
+    const callbackUrl = new URL(start.payload.data.authorizationUrl)
+    const callbackPath = `${callbackUrl.pathname}${callbackUrl.search}`
+    const first = await requestJson(server.url, callbackPath, { method: 'GET' })
+    const replay = await requestJson(server.url, callbackPath, { method: 'GET' })
+
+    assert.equal(first.status, 201)
+    assert.equal(replay.status, 400)
+    assert.equal(replay.payload.error.code, 'OAUTH_STATE_INVALID')
+  } finally {
+    await server.close()
+  }
+})
+
+test('OAuth callback maps provider cancellation without accepting the state again', async () => {
+  const server = await createTestServer()
+  try {
+    const start = await requestJson(server.url, '/api/auth/oauth/discord/start', {
+      body: { redirectTo: '/community' },
+    })
+    const callbackUrl = new URL(start.payload.data.authorizationUrl)
+    const state = callbackUrl.searchParams.get('state')
+    const cancelled = await requestJson(server.url, `/api/auth/oauth/discord/callback?state=${encodeURIComponent(state)}&error=access_denied`, {
+      method: 'GET',
+    })
+    const replay = await requestJson(server.url, `${callbackUrl.pathname}${callbackUrl.search}`, { method: 'GET' })
+
+    assert.equal(cancelled.status, 400)
+    assert.equal(cancelled.payload.error.code, 'OAUTH_CANCELLED')
+    assert.equal(replay.status, 400)
+    assert.equal(replay.payload.error.code, 'OAUTH_STATE_INVALID')
   } finally {
     await server.close()
   }

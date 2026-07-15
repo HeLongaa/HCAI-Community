@@ -15,8 +15,8 @@ Run `npm run test:data-operation-policies` after any Prisma model or policy chan
 
 ## Domain Summary
 
-- Identity and profile: credentials and role assignments are controlled CRUD; sessions are state transitions; users are
-  soft deleted.
+- Identity and profile: credentials and role assignments are controlled CRUD; OAuth authorization requests and sessions
+  are bounded state transitions; users are soft deleted.
 - Marketplace and media: business aggregates use state machines; user removal is soft deletion; asset lineage is
   immutable evidence.
 - AI runtime: generations, turns, messages, mutations, and ingestion use explicit lifecycle transitions; replay and

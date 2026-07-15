@@ -186,8 +186,9 @@ export const openApiDocument = {
                           provider: { type: 'string', enum: ['google', 'apple', 'discord'] },
                           label: { type: 'string' },
                           configured: { type: 'boolean' },
-                          mode: { type: 'string', enum: ['dev', 'external'] },
-                          authorizationUrl: { type: 'string', format: 'uri' },
+                          available: { type: 'boolean' },
+                          mode: { type: 'string', enum: ['dev', 'external', 'unavailable'] },
+                          authorizationUrl: { type: ['string', 'null'], format: 'uri' },
                           callbackMethod: { type: 'string', enum: ['GET', 'POST'] },
                           scopes: { type: 'array', items: { type: 'string' } },
                         },
@@ -250,7 +251,7 @@ export const openApiDocument = {
       post: {
         summary: 'Start an OAuth login or account-link flow',
         parameters: [
-          { name: 'provider', in: 'path', required: true, schema: { type: 'string', enum: ['google', 'apple', 'discord', 'dev'] } },
+          { name: 'provider', in: 'path', required: true, schema: { type: 'string', enum: ['google', 'apple', 'discord'] } },
         ],
         requestBody: {
           required: false,
@@ -269,6 +270,7 @@ export const openApiDocument = {
         responses: {
           '201': { description: 'Signed OAuth state and authorization URL' },
           '404': { description: 'Provider not found' },
+          '503': { description: 'Provider is unavailable in this environment' },
         },
       },
     },
@@ -278,12 +280,14 @@ export const openApiDocument = {
         parameters: [
           { name: 'provider', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'state', in: 'query', required: true, schema: { type: 'string' } },
-          { name: 'code', in: 'query', required: true, schema: { type: 'string' } },
+          { name: 'code', in: 'query', required: false, schema: { type: 'string' } },
+          { name: 'error', in: 'query', required: false, schema: { type: 'string' } },
         ],
         responses: {
           '200': { description: 'Browser OAuth bridge HTML for top-level redirects' },
           '201': { description: 'Session tokens and user' },
           '400': { description: 'Invalid or expired OAuth state' },
+          '401': { description: 'Provider response could not be verified' },
           '409': { description: 'OAuth account conflict' },
         },
       },
@@ -298,10 +302,11 @@ export const openApiDocument = {
             'application/x-www-form-urlencoded': {
               schema: {
                 type: 'object',
-                required: ['state', 'code'],
+                required: ['state'],
                 properties: {
                   state: { type: 'string' },
                   code: { type: 'string' },
+                  error: { type: 'string' },
                   user: { type: 'string', description: 'Apple first-login user payload' },
                 },
               },
@@ -312,6 +317,7 @@ export const openApiDocument = {
           '200': { description: 'Browser OAuth bridge HTML for form-post redirects' },
           '201': { description: 'Session tokens and user' },
           '400': { description: 'Invalid or expired OAuth state' },
+          '401': { description: 'Provider response could not be verified' },
           '409': { description: 'OAuth account conflict' },
         },
       },

@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "contractId": "auth-01-oauth-hardening",
+  "scope": "personal_accounts_only",
+  "providers": ["google", "apple", "discord"],
+  "realProviderCallsApproved": false,
+  "runtime": {
+    "productionDevFallback": false,
+    "explicitUnavailableMode": true,
+    "providerTimeoutMs": { "default": 8000, "minimum": 1000, "maximum": 15000 }
+  },
+  "authorizationRequest": {
+    "model": "OAuthAuthorizationRequest",
+    "migration": "0050_oauth_authorization_hardening",
+    "rawStatePersisted": false,
+    "stateHashAlgorithm": "sha256",
+    "providerVisibleInternalContext": false,
+    "serverSideContext": ["redirectTo", "linkUserId"],
+    "singleUse": true,
+    "ttlSeconds": 600
+  },
+  "accountBinding": {
+    "oneAccountPerUserProvider": true,
+    "providerIdentityGloballyUnique": true
+  },
+  "pkce": {
+    "method": "S256",
+    "providers": ["google", "discord"],
+    "verifierPersisted": false
+  },
+  "browserCallback": {
+    "accessTokenEmbedded": false,
+    "refreshCookie": true,
+    "csrfCookie": true
+  },
+  "requiredSecurityEvents": [
+    "auth.oauth.state_rejected",
+    "auth.oauth.cancelled",
+    "auth.oauth.provider_rejected",
+    "auth.oauth.verification_failed"
+  ],
+  "productionValidation": "deferred_pending_explicit_provider_approval"
+}
