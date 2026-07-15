@@ -52,10 +52,48 @@ import type {
   AdminObservabilityQuery,
   AdminSloSummaryDto,
   AdminTraceDto,
+  SystemSettingChangeDto,
+  SystemSettingChangeRequest,
+  SystemSettingDto,
+  SystemSettingListQuery,
+  SystemSettingPreviewDto,
+  SystemSettingPublishResult,
+  SystemSettingRevisionDto,
+  SystemSettingTransitionRequest,
 } from './contracts'
 import type { Permission, Role } from '../domain/types'
 
 export const adminService = {
+  async systemSettings(query?: SystemSettingListQuery) {
+    const envelope = await api.getEnvelope<SystemSettingDto[]>(withQuery('/admin/settings', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async systemSetting(key: string) {
+    return api.get<SystemSettingDto>(`/admin/settings/${encodeURIComponent(key)}`)
+  },
+  async systemSettingChanges(query?: SystemSettingListQuery) {
+    const envelope = await api.getEnvelope<SystemSettingChangeDto[]>(withQuery('/admin/settings/changes', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async systemSettingHistory(key: string, query?: Pick<SystemSettingListQuery, 'cursor' | 'limit'>) {
+    const envelope = await api.getEnvelope<SystemSettingRevisionDto[]>(withQuery(`/admin/settings/${encodeURIComponent(key)}/history`, query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async previewSystemSetting(key: string, value: Record<string, unknown>) {
+    return api.post<SystemSettingPreviewDto>(`/admin/settings/${encodeURIComponent(key)}/preview`, { value })
+  },
+  async requestSystemSettingChange(key: string, payload: SystemSettingChangeRequest) {
+    return api.post<SystemSettingChangeDto>(`/admin/settings/${encodeURIComponent(key)}/changes`, payload)
+  },
+  async requestSystemSettingRollback(key: string, revisionId: string, payload: Omit<SystemSettingChangeRequest, 'value'>) {
+    return api.post<SystemSettingChangeDto>(`/admin/settings/${encodeURIComponent(key)}/rollback-requests`, { revisionId, ...payload })
+  },
+  async transitionSystemSettingChange(id: string, action: 'approve' | 'reject', payload: SystemSettingTransitionRequest) {
+    return api.post<SystemSettingChangeDto>(`/admin/settings/changes/${id}/${action}`, payload)
+  },
+  async publishSystemSettingChange(id: string, payload: SystemSettingTransitionRequest) {
+    return api.post<SystemSettingPublishResult>(`/admin/settings/changes/${id}/publish`, payload)
+  },
   async releaseChanges(query?: ReleaseChangeListQuery) {
     const envelope = await api.getEnvelope<ReleaseChangeDto[]>(withQuery('/admin/releases', query))
     return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }

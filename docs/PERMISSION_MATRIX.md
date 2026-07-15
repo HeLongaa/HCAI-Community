@@ -32,6 +32,10 @@ The executable fallback role defaults live in `server/src/auth/permissions.js`. 
 | `admin:observability:read` | Search sanitized logs and read log detail, traces, SLOs, and alerts | `GET /api/admin/observability/logs`, `/logs/:id`, `/traces/:traceId`, `/slos`, `/alerts` | Admin Observability tab for moderators and admins |
 | `admin:observability:export` | Export bounded sanitized observability evidence | `GET /api/admin/observability/logs/export` | Admin Observability export control for admins |
 | `admin:observability:manage` | Evaluate SLOs and disposition versioned alerts | `POST /api/admin/observability/slos/evaluate` and the explicit acknowledge, silence, and resolve alert routes | Admin Observability SLO and alert controls for admins |
+| `admin:settings:read` | Read registered settings, pending changes, and immutable revision history | `GET /api/admin/settings`, detail, changes, and history routes | Admin Settings tab for moderators and admins |
+| `admin:settings:manage` | Preview and request versioned setting changes or rollbacks | Settings preview, change request, and rollback request routes | Settings editor and rollback controls |
+| `admin:settings:approve` | Approve or reject a setting change using two-person control | Setting change approve and reject routes | Settings review actions |
+| `admin:settings:publish` | Publish an approved setting change with CAS | Setting change publish route | Settings publish action |
 
 ## Creative Generation Mutation Permissions
 
@@ -140,6 +144,17 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `POST /api/admin/observability/alerts/:id/resolve` | Required | `admin:observability:manage` | Yes |
 | `GET /api/admin/overview` | Required | `admin:access`; sections additionally require their existing queue/audit/event/job permissions | Yes |
 | `GET /api/admin/search` | Required | `admin:access`; result families additionally require their existing read permissions | Yes |
+| `GET /api/admin/settings` | Required | `admin:settings:read` | Yes |
+| `GET /api/admin/settings/changes` | Required | `admin:settings:read` | Yes |
+| `GET /api/admin/settings/changes/:id` | Required | `admin:settings:read` | Yes |
+| `GET /api/admin/settings/:key` | Required | `admin:settings:read` | Yes |
+| `GET /api/admin/settings/:key/history` | Required | `admin:settings:read` | Yes |
+| `POST /api/admin/settings/:key/preview` | Required | `admin:settings:manage` | Yes |
+| `POST /api/admin/settings/:key/changes` | Required | `admin:settings:manage` | Yes |
+| `POST /api/admin/settings/:key/rollback-requests` | Required | `admin:settings:manage` | Yes |
+| `POST /api/admin/settings/changes/:id/approve` | Required | `admin:settings:approve`; requester must differ | Yes |
+| `POST /api/admin/settings/changes/:id/reject` | Required | `admin:settings:approve`; requester must differ | Yes |
+| `POST /api/admin/settings/changes/:id/publish` | Required | `admin:settings:publish`; approved state and CAS required | Yes |
 | `GET /api/notifications` | Required | Any authenticated user; recipient-scoped | Yes |
 | `POST /api/notifications/:id/read` | Required | Any authenticated user; recipient ownership enforced | Yes |
 | `POST /api/notifications/read-all` | Required | Any authenticated user; recipient ownership enforced | Yes |

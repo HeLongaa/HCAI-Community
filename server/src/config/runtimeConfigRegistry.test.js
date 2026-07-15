@@ -15,11 +15,15 @@ test('runtime config registry rejects unknown keys and inline secrets', () => {
     /configuration key is not registered/,
   )
   assert.throws(
-    () => validateRuntimeConfigValue('storage.objects', { driver: 's3', apiKey: 'plain-secret' }),
+    () => validateRuntimeConfigValue('storage.objects', { driver: 's3', bucketRef: 'prod-assets', apiKey: 'plain-secret' }),
     /apiKey must be a secretref/,
   )
   assert.equal(
-    validateRuntimeConfigValue('storage.objects', { driver: 's3', apiKey: 'secretref://prod/storage/access-key' }).value.apiKey,
+    validateRuntimeConfigValue('storage.objects', { driver: 's3', bucketRef: 'prod-assets', apiKey: 'secretref://prod/storage/access-key' }).value.apiKey,
     'secretref://prod/storage/access-key',
+  )
+  assert.throws(
+    () => validateRuntimeConfigValue('storage.objects', { driver: 's3', bucketRef: 'prod-assets', region: 'us-east-1' }),
+    /region is not allowed/,
   )
 })

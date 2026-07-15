@@ -17,6 +17,7 @@ import { createSeedRepository } from '../../repositories/seedRepository.js'
 import { registerMediaRoutes } from '../media/routes.js'
 import { registerCreativeRoutes } from '../creative/routes.js'
 import { registerAdminRoutes } from './routes.js'
+import { getProtectedRolePermissions } from '../../auth/permissions.js'
 
 const createTestServer = () => createRouteTestServer(registerAdminRoutes)
 const createCreativeAdminServer = () => createRouteTestServer(registerCreativeRoutes, registerAdminRoutes)
@@ -2034,7 +2035,7 @@ test('PUT /api/admin/roles/:role/permissions keeps protected admin grants', asyn
     assert.equal(status, 400)
     assert.equal(payload.data, null)
     assert.equal(payload.error.code, 'VALIDATION_FAILED')
-    assert.equal(payload.error.message, 'cannot remove protected permissions: admin:permissions:manage, admin:accounting:repair, admin:high-risk:approve, admin:temporary-access:manage, admin:break-glass, admin:releases:manage, admin:releases:approve, admin:releases:deploy, admin:audit:archive')
+    assert.equal(payload.error.message, `cannot remove protected permissions: ${getProtectedRolePermissions('admin').join(', ')}`)
   } finally {
     await server.close()
   }

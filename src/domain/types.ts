@@ -37,6 +37,10 @@ export type Permission =
   | 'admin:releases:manage'
   | 'admin:releases:approve'
   | 'admin:releases:deploy'
+  | 'admin:settings:read'
+  | 'admin:settings:manage'
+  | 'admin:settings:approve'
+  | 'admin:settings:publish'
 export type Page =
   | 'home'
   | 'playground'
@@ -71,7 +75,7 @@ export type NavigateOptions = {
 }
 
 export type AdminDeepLink = {
-  tab?: 'Overview' | 'Task review' | 'Access' | 'Security' | 'Finance' | 'Accounting' | 'Generations' | 'Submissions' | 'Community' | 'Audit log' | 'Users' | 'Tags' | 'AI config'
+  tab?: 'Overview' | 'Observability' | 'Settings' | 'Task review' | 'Access' | 'Security' | 'Finance' | 'Accounting' | 'Generations' | 'Submissions' | 'Community' | 'Audit log' | 'Users' | 'Tags' | 'AI config'
   overviewResourceType?: string | null
   overviewResourceId?: string | null
   queue?: string | null

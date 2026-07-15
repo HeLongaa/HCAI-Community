@@ -35,6 +35,7 @@
     { "id": "notifications", "domain": "notifications-webhooks", "layer": "transport", "registration": "registerNotificationRoutes" },
     { "id": "admin", "domain": "admin-console", "layer": "transport", "registration": "registerAdminRoutes" },
     { "id": "observability", "domain": "observability-incident", "layer": "transport", "registration": "registerObservabilityRoutes" },
+    { "id": "settings", "domain": "config-feature-flags", "layer": "transport", "registration": "registerSettingsRoutes" },
     { "id": "operations", "domain": "jobs-automation", "layer": "transport", "registration": "registerOperationRoutes" },
     { "id": "profiles", "domain": "user-profile", "layer": "transport", "registration": "registerProfileRoutes" },
     { "id": "points", "domain": "entitlements-accounting", "layer": "transport", "registration": "registerPointsRoutes" }

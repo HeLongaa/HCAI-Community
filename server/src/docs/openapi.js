@@ -2886,6 +2886,57 @@ export const openApiDocument = {
         responses: { '200': { description: 'Rolled-back release change with evidence' }, '409': { description: 'Change cannot be rolled back or was modified concurrently' } },
       },
     },
+    '/admin/settings': {
+      get: {
+        summary: 'List registered system settings by category and search text',
+        parameters: [
+          { name: 'category', in: 'query', schema: { type: 'string', maxLength: 96 } },
+          { name: 'search', in: 'query', schema: { type: 'string', maxLength: 96 } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+        ],
+        responses: { '200': { description: 'Registered settings with current published projections' }, '403': { description: 'Requires settings read permission' } },
+      },
+    },
+    '/admin/settings/changes': {
+      get: {
+        summary: 'List versioned system setting changes',
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending_approval', 'approved', 'rejected', 'published'] } },
+          { name: 'settingKey', in: 'query', schema: { type: 'string' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+        ],
+        responses: { '200': { description: 'Cursor-paginated setting changes' }, '403': { description: 'Requires settings read permission' } },
+      },
+    },
+    '/admin/settings/changes/{id}': {
+      get: { summary: 'Read one system setting change', responses: { '200': { description: 'Setting change detail' }, '404': { description: 'Change not found' } } },
+    },
+    '/admin/settings/{key}': {
+      get: { summary: 'Read one registered system setting', responses: { '200': { description: 'Current setting projection and schema' }, '404': { description: 'Setting not registered' } } },
+    },
+    '/admin/settings/{key}/history': {
+      get: { summary: 'List immutable published revisions for one setting', responses: { '200': { description: 'Cursor-paginated setting revisions' }, '404': { description: 'Setting not registered' } } },
+    },
+    '/admin/settings/{key}/preview': {
+      post: { summary: 'Validate a candidate setting value and preview its deterministic diff', responses: { '200': { description: 'Validated preview and content hash' }, '400': { description: 'Invalid schema or inline secret' } } },
+    },
+    '/admin/settings/{key}/changes': {
+      post: { summary: 'Request a versioned system setting change using a base version', responses: { '200': { description: 'Pending setting change' }, '409': { description: 'Base version conflict' } } },
+    },
+    '/admin/settings/{key}/rollback-requests': {
+      post: { summary: 'Request rollback to an immutable prior revision', responses: { '200': { description: 'Pending rollback change' }, '409': { description: 'Base version conflict or revision already current' } } },
+    },
+    '/admin/settings/changes/{id}/approve': {
+      post: { summary: 'Approve a setting change using an independent reviewer and CAS', responses: { '200': { description: 'Approved setting change' }, '400': { description: 'Requester cannot self-approve' }, '409': { description: 'Invalid or concurrent transition' } } },
+    },
+    '/admin/settings/changes/{id}/reject': {
+      post: { summary: 'Reject a setting change using an independent reviewer and CAS', responses: { '200': { description: 'Rejected setting change' }, '409': { description: 'Invalid or concurrent transition' } } },
+    },
+    '/admin/settings/changes/{id}/publish': {
+      post: { summary: 'Publish an approved setting change atomically with revision and audit evidence', responses: { '200': { description: 'Published setting, change, and immutable revision' }, '409': { description: 'Base or transition version conflict' } } },
+    },
     '/admin/points/ledger': {
       get: {
         summary: 'Search points ledger entries across users',

@@ -65,6 +65,10 @@ export const permissionRegistry = Object.freeze([
   definePermission('admin:releases:manage', 'platform-release', 'release_change', 'manage', 'critical', admins, { protected: true, protectionRank: 6, resourceAuthorization: true, description: 'Request environment promotion, configuration, and SecretRef rotation changes' }),
   definePermission('admin:releases:approve', 'platform-release', 'release_change', 'approve', 'critical', admins, { protected: true, protectionRank: 7, resourceAuthorization: true, description: 'Approve or reject release changes with two-person control' }),
   definePermission('admin:releases:deploy', 'platform-release', 'release_change', 'deploy', 'critical', admins, { protected: true, protectionRank: 8, resourceAuthorization: true, description: 'Record deployment outcomes and execute versioned rollback' }),
+  definePermission('admin:settings:read', 'config-feature-flags', 'system_setting', 'read', 'high', moderators, { description: 'Read registered system settings, revisions, and change evidence' }),
+  definePermission('admin:settings:manage', 'config-feature-flags', 'system_setting_change', 'manage', 'critical', admins, { protected: true, protectionRank: 10, resourceAuthorization: true, description: 'Preview and request versioned system setting changes or rollbacks' }),
+  definePermission('admin:settings:approve', 'config-feature-flags', 'system_setting_change', 'approve', 'critical', admins, { protected: true, protectionRank: 11, resourceAuthorization: true, description: 'Approve or reject system setting changes with two-person control' }),
+  definePermission('admin:settings:publish', 'config-feature-flags', 'system_setting', 'publish', 'critical', admins, { protected: true, protectionRank: 12, resourceAuthorization: true, description: 'Publish approved system setting changes with independent execution' }),
 ])
 
 export const permissions = Object.freeze(permissionRegistry.map(({ id }) => id))

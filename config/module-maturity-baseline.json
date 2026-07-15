@@ -55,13 +55,13 @@
     {
       "id": "config-feature-flags",
       "name": "配置与功能开关",
-      "maturity": "contract_only",
+      "maturity": "partial",
       "ownerTask": "CONFIG-01",
       "userCapabilities": ["由服务端安全配置决定功能可用性"],
-      "adminCapabilities": ["部分媒体与积分策略版本管理"],
-      "operationPolicies": ["state_transition", "immutable_evidence"],
-      "evidence": ["server/src/config/env.js", "server/src/modules/media/routes.js", "server/src/points/adjustmentPolicy.js"],
-      "gapTasks": ["CONFIG-01", "CONFIG-02"]
+      "adminCapabilities": ["注册配置检索", "Schema 校验", "影响预览", "双人审批", "CAS 发布与历史回滚"],
+      "operationPolicies": ["mutable_crud", "state_transition", "immutable_evidence"],
+      "evidence": ["config/runtime-config-registry.json", "server/src/modules/settings/routes.js", "src/features/admin/SystemSettingsPanel.tsx", "docs/SYSTEM_SETTINGS_CONTROL.md"],
+      "gapTasks": ["CONFIG-01", "CONFIG-02", "SET-01"]
     },
     {
       "id": "model-control-plane",

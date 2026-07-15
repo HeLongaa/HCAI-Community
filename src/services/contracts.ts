@@ -2313,3 +2313,111 @@ export type AdminObservabilityAlertDto = {
   createdAt: string
   updatedAt: string
 }
+
+export type SystemSettingChangeStatus = 'pending_approval' | 'approved' | 'rejected' | 'published'
+export type SystemSettingChangeKind = 'update' | 'rollback'
+
+export type SystemSettingDiffItem = {
+  path: string
+  previous: unknown
+  next: unknown
+}
+
+export type SystemSettingDiff = {
+  schemaVersion: number
+  changes: SystemSettingDiffItem[]
+}
+
+export type SystemSettingDto = {
+  key: string
+  domain: string
+  scope: string
+  schema: Record<string, unknown>
+  value: Record<string, unknown>
+  valueSchemaVersion: number
+  publishedVersion: number
+  currentRevisionId: string | null
+  source: 'default' | 'published'
+  updatedAt: string | null
+  pendingChanges?: number
+}
+
+export type SystemSettingChangeDto = {
+  id: string
+  settingKey: string
+  kind: SystemSettingChangeKind
+  status: SystemSettingChangeStatus
+  baseVersion: number
+  candidateValue: Record<string, unknown>
+  candidateValueSchemaVersion: number
+  diff: SystemSettingDiff
+  targetRevisionId: string | null
+  requestedByRef: string
+  approvedByRef: string | null
+  rejectedByRef: string | null
+  publishedByRef: string | null
+  reasonCode: string
+  note: string | null
+  version: number
+  requestedAt: string
+  approvedAt: string | null
+  rejectedAt: string | null
+  publishedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type SystemSettingRevisionDto = {
+  id: string
+  settingKey: string
+  settingVersion: number
+  value: Record<string, unknown>
+  valueSchemaVersion: number
+  previousRevisionId: string | null
+  sourceChangeId: string
+  eventType: 'published' | 'rolled_back'
+  contentHash: string
+  actorRef: string
+  createdAt: string
+}
+
+export type SystemSettingPreviewDto = {
+  key: string
+  domain: string
+  scope: string
+  baseVersion: number
+  valueSchemaVersion: number
+  previous: Record<string, unknown>
+  next: Record<string, unknown>
+  diff: SystemSettingDiff
+  changed: boolean
+  contentHash: string
+}
+
+export type SystemSettingListQuery = {
+  category?: string | null
+  search?: string | null
+  status?: SystemSettingChangeStatus | null
+  settingKey?: string | null
+  cursor?: string | null
+  limit?: number
+}
+
+export type SystemSettingChangeRequest = {
+  value: Record<string, unknown>
+  baseVersion: number
+  reasonCode: string
+  note?: string
+}
+
+export type SystemSettingTransitionRequest = {
+  expectedVersion: number
+  reasonCode: string
+  note?: string
+}
+
+export type SystemSettingPublishResult = {
+  change: SystemSettingChangeDto
+  setting: SystemSettingDto
+  revision: SystemSettingRevisionDto
+}

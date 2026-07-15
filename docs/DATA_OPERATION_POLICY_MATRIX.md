@@ -28,6 +28,8 @@ Run `npm run test:data-operation-policies` after any Prisma model or policy chan
   triggers reject updates and deletes outside an explicit transaction-local maintenance override.
 - Observability: sanitized logs and Trace spans are append-only and may be hard-deleted only by retention maintenance;
   SLO alerts use compare-and-set state transitions and preserve their versioned disposition evidence.
+- Configuration: the current setting projection is mutable only through a published change; change requests use an
+  explicit state machine and optimistic versions, and published revisions are immutable evidence.
 
 ## Enforcement Boundary
 
