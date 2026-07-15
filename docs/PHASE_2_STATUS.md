@@ -70,13 +70,17 @@ Estimated overall Phase 2 completion: **92%**.
   - `GET /api/auth/oauth/:provider/callback`
   - Public provider metadata exposes provider labels, `dev`/`external` mode, callback method, and requested scopes without leaking secrets.
   - Signed short-lived OAuth state with nonce, redirect, and optional account-link user id.
+  - OAuth state is persisted only as a SHA-256 hash and atomically consumed once before exchange; replay and expired state are rejected across API instances.
+  - Google and Discord authorization-code flows use S256 PKCE without persisting the verifier.
+  - Production never silently falls back to dev OAuth; missing or invalid Provider configuration is explicitly unavailable.
+  - Provider redirect URIs are exact callback paths, external JSON calls have bounded timeouts, and verified email evidence is mandatory before email-account linking.
   - Account-link start now requires an authenticated user when `linkAccount` is requested.
   - Dev OAuth provider mode for local login/linking without external provider credentials.
   - Google OAuth token exchange and OpenID userinfo profile verification.
   - Discord OAuth token exchange and `/users/@me` profile verification.
   - Apple Sign in token exchange, ES256 client secret generation, JWKS-backed `id_token` verification, nonce checks, and first-login name capture.
   - OAuth callback supports GET and form-post provider callbacks.
-  - OAuth callback now returns a browser bridge for top-level HTML callbacks, stores the access token/user snapshot in the frontend's existing local storage keys, preserves the target app page through a one-time redirect marker, and keeps API clients on the existing JSON session response.
+  - OAuth callback returns a token-free browser bridge for top-level HTML callbacks, sets refresh/CSRF cookies, clears stale access state, preserves a bounded one-time app redirect, and restores `/api/me` through a single-flight cookie rotation; API clients keep the JSON session response.
   - Browser refresh sessions now issue and rotate `hcaiRefreshToken` as an HttpOnly `/api/auth` cookie with `SameSite=Lax`; refresh/logout can use the cookie while JSON-body refresh tokens remain supported for API clients.
   - Cookie-backed refresh/logout now require double-submit CSRF protection through the readable `hcaiCsrfToken` cookie and `x-csrf-token` header, plus trusted Origin checks and credentialed CORS preflight support for configured frontend origins.
   - Deployment smoke coverage validates production OAuth provider metadata, managed token secrets, trusted origins, `SameSite=None` secure cookie mode, object storage, media scanner callbacks, and notification delivery channel configuration.

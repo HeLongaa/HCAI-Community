@@ -43,6 +43,7 @@
     { "model": "AdminReview", "domain": "admin-console", "policy": "state_transition", "hardDelete": false },
     { "model": "User", "domain": "user-profile", "policy": "soft_delete", "hardDelete": false },
     { "model": "AuthAccount", "domain": "identity-access", "policy": "mutable_crud", "hardDelete": true },
+    { "model": "OAuthAuthorizationRequest", "domain": "identity-access", "policy": "state_transition", "hardDelete": true },
     { "model": "RefreshToken", "domain": "identity-access", "policy": "state_transition", "hardDelete": true },
     { "model": "Profile", "domain": "user-profile", "policy": "mutable_crud", "hardDelete": false },
     { "model": "Task", "domain": "task-marketplace", "policy": "state_transition", "hardDelete": false },

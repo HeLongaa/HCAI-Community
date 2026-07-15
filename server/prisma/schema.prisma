@@ -961,6 +961,7 @@ model User {
 
   profile                   Profile?
   authAccounts              AuthAccount[]
+  oauthAuthorizationRequests OAuthAuthorizationRequest[]
   refreshTokens             RefreshToken[]
   publisherTasks            Task[]                          @relation("TaskPublisher")
   assigneeTasks             Task[]                          @relation("TaskAssignee")
@@ -1002,7 +1003,25 @@ model AuthAccount {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerUserId])
+  @@unique([userId, provider])
   @@map("auth_accounts")
+}
+
+model OAuthAuthorizationRequest {
+  id         String    @id @default(cuid())
+  stateHash  String    @unique @map("state_hash")
+  provider   String
+  redirectTo String    @map("redirect_to")
+  linkUserId String?   @map("link_user_id")
+  expiresAt  DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  linkUser User? @relation(fields: [linkUserId], references: [id], onDelete: Cascade)
+
+  @@index([linkUserId])
+  @@index([expiresAt, consumedAt])
+  @@map("oauth_authorization_requests")
 }
 
 model RefreshToken {

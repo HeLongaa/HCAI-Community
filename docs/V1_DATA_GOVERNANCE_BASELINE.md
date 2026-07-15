@@ -12,7 +12,7 @@ production.
 
 The data inventory and implementation contract are frozen. The complete runtime is not implemented.
 
-- All 47 Prisma models are assigned exactly once to a governed data asset.
+- All 72 Prisma models are assigned exactly once to a governed data asset.
 - Six non-Prisma asset classes cover raw generation inputs, raw Provider payloads, observability, backups, export
   packages, and deployment secrets.
 - Unknown data is `restricted`; unknown flows and processors are denied.
@@ -43,7 +43,7 @@ not become public because the post is public.
 | `governance_configuration` | Internal | PostgreSQL | `Permission`, `RolePermission`, `SystemSetting`, `SystemSettingChange`, `SystemSettingRevision` | Superseded history 365 days |
 | `operation_leases` | Internal | PostgreSQL | `OperationLease` | Expiry/release + 7 days |
 | `identity_account_profile` | Confidential | PostgreSQL | `User`, `Profile`, `ProfilePortfolioAsset` | Verified deletion + 30 days |
-| `authentication_credentials_sessions` | Restricted | PostgreSQL | `AuthAccount`, `RefreshToken` | Unlink/expiry/revoke + 30 days |
+| `authentication_credentials_sessions` | Restricted | PostgreSQL | `AuthAccount`, `OAuthAuthorizationRequest`, `RefreshToken` | OAuth request expiry; unlink/expiry/revoke + 30 days |
 | `marketplace_records` | Confidential | PostgreSQL | `Task`, `TaskProposal`, `TaskSubmission` | Terminal task/dispute + 730 days |
 | `community_content_interactions` | Public | PostgreSQL | `Post`, `Comment`, `PostLike` | Delete request + 30 days |
 | `private_library_items` | Confidential | PostgreSQL | `LibraryItem` | Delete request + 30 days |

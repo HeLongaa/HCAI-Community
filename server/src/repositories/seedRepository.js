@@ -107,6 +107,7 @@ import {
 const sessionByRefreshToken = new Map()
 const emailAccountByEmail = new Map()
 const oauthAccountByProviderKey = new Map()
+const oauthAuthorizationRequestsByStateHash = new Map()
 const creativeGenerationsById = new Map()
 const mediaAssetRelationsById = new Map()
 const creativeGenerationMutationsById = new Map()
@@ -142,9 +143,21 @@ const getAccountByHandle = (handle) => seedStore.demoAccountByHandle.get(handle)
 const getAccountById = (id) => seedStore.demoAccounts.find((account) => account.id === id) ?? null
 const normalizeEmail = (email) => String(email ?? '').trim().toLowerCase()
 const oauthKey = (provider, providerUserId) => `${provider}:${providerUserId}`
+const oauthAuditResourceId = (provider, providerUserId) => (
+  `${provider}:${createHash('sha256').update(`${provider}:${providerUserId}`).digest('hex').slice(0, 24)}`
+)
 const splitOAuthKey = (key) => {
   const [provider, ...rest] = String(key).split(':')
   return { provider, providerUserId: rest.join(':') }
+}
+const findOAuthAccountForProvider = (actor, provider) => {
+  for (const [key, handle] of oauthAccountByProviderKey.entries()) {
+    const account = splitOAuthKey(key)
+    if (account.provider === provider && getAccountByHandle(handle)?.id === actor.id) {
+      return account
+    }
+  }
+  return null
 }
 
 const makeUniqueHandle = (email, fallback = 'oauth') => {
@@ -590,6 +603,41 @@ const loginWithPassword = async ({ email, password }) => {
   return issueSession(account)
 }
 
+const createOAuthAuthorizationRequest = async ({ stateHash, provider, redirectTo, linkUserId = null, expiresAt }) => {
+  const now = Date.now()
+  for (const [key, request] of oauthAuthorizationRequestsByStateHash.entries()) {
+    if (new Date(request.expiresAt).getTime() <= now) {
+      oauthAuthorizationRequestsByStateHash.delete(key)
+    }
+  }
+  if (oauthAuthorizationRequestsByStateHash.has(stateHash)) {
+    return false
+  }
+  oauthAuthorizationRequestsByStateHash.set(stateHash, {
+    stateHash,
+    provider,
+    redirectTo,
+    linkUserId,
+    expiresAt: new Date(expiresAt).toISOString(),
+    consumedAt: null,
+  })
+  return true
+}
+
+const consumeOAuthAuthorizationRequest = async ({ stateHash, provider }) => {
+  const request = oauthAuthorizationRequestsByStateHash.get(stateHash)
+  if (
+    !request ||
+    request.provider !== provider ||
+    request.consumedAt ||
+    new Date(request.expiresAt).getTime() <= Date.now()
+  ) {
+    return null
+  }
+  request.consumedAt = new Date().toISOString()
+  return { ...request }
+}
+
 const completeOAuthLogin = async ({ profile, linkUserId = null }) => {
   const key = oauthKey(profile.provider, profile.providerUserId)
   const linkedHandle = oauthAccountByProviderKey.get(key)
@@ -598,8 +646,12 @@ const completeOAuthLogin = async ({ profile, linkUserId = null }) => {
     if (!actor || (linkedHandle && getAccountByHandle(linkedHandle)?.id !== linkUserId)) {
       return null
     }
+    const existingProviderAccount = findOAuthAccountForProvider(actor, profile.provider)
+    if (existingProviderAccount && existingProviderAccount.providerUserId !== profile.providerUserId) {
+      return null
+    }
     oauthAccountByProviderKey.set(key, actor.handle)
-    recordAudit(actor, 'auth.oauth.linked', 'auth_account', key, { provider: profile.provider })
+    recordAudit(actor, 'auth.oauth.linked', 'auth_account', oauthAuditResourceId(profile.provider, profile.providerUserId), { provider: profile.provider })
     return issueSession(actor)
   }
 
@@ -611,8 +663,12 @@ const completeOAuthLogin = async ({ profile, linkUserId = null }) => {
   const normalizedEmail = normalizeEmail(profile.email)
   const existing = seedStore.demoAccounts.find((account) => normalizeEmail(account.email) === normalizedEmail) ?? null
   if (existing) {
+    const existingProviderAccount = findOAuthAccountForProvider(existing, profile.provider)
+    if (existingProviderAccount && existingProviderAccount.providerUserId !== profile.providerUserId) {
+      return null
+    }
     oauthAccountByProviderKey.set(key, existing.handle)
-    recordAudit(existing, 'auth.oauth.linked', 'auth_account', key, { provider: profile.provider })
+    recordAudit(existing, 'auth.oauth.linked', 'auth_account', oauthAuditResourceId(profile.provider, profile.providerUserId), { provider: profile.provider })
     return issueSession(existing)
   }
 
@@ -664,7 +720,7 @@ const unlinkOAuthAccount = (provider, actor) => {
     return { blocked: true }
   }
   oauthAccountByProviderKey.delete(oauthKey(account.provider, account.providerUserId))
-  recordAudit(actor, 'auth.oauth.unlinked', 'auth_account', `${account.provider}:${account.providerUserId}`, { provider: account.provider })
+  recordAudit(actor, 'auth.oauth.unlinked', 'auth_account', oauthAuditResourceId(account.provider, account.providerUserId), { provider: account.provider })
   return { unlinked: true }
 }
 
@@ -2361,6 +2417,8 @@ export const createSeedRepository = () => {
     issueSession: (account) => issueSession(account),
     registerEmailAccount,
     loginWithPassword,
+    createOAuthAuthorizationRequest,
+    consumeOAuthAuthorizationRequest,
     completeOAuthLogin,
     listOAuthAccounts,
     unlinkOAuthAccount,

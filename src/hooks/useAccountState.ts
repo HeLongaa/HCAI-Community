@@ -19,6 +19,23 @@ type AccountState = {
 }
 
 const fallbackProfile = findProfile('taskops') ?? null
+let accountBootstrapPromise: Promise<SessionUser> | null = null
+
+const bootstrapAccount = () => {
+  if (!accountBootstrapPromise) {
+    accountBootstrapPromise = (async () => {
+      try {
+        return await authService.me()
+      } catch {
+        await authService.refresh()
+        return authService.me()
+      }
+    })().finally(() => {
+      accountBootstrapPromise = null
+    })
+  }
+  return accountBootstrapPromise
+}
 
 const guestState = (): AccountState => ({
   displayName: 'Guest',
@@ -121,8 +138,7 @@ export function useAccountState() {
 
   useEffect(() => {
     let active = true
-    authService
-      .me()
+    bootstrapAccount()
       .then((user) => {
         if (!active) return
         setAccount(stateFromUser(user))

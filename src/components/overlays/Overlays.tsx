@@ -573,8 +573,9 @@ const defaultOAuthProviders: OAuthProviderMetadata[] = [
     provider: 'google',
     label: 'Google',
     configured: false,
-    mode: 'dev',
-    authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+    available: false,
+    mode: 'unavailable',
+    authorizationUrl: null,
     callbackMethod: 'GET',
     scopes: ['openid', 'email', 'profile'],
   },
@@ -582,8 +583,9 @@ const defaultOAuthProviders: OAuthProviderMetadata[] = [
     provider: 'apple',
     label: 'Apple',
     configured: false,
-    mode: 'dev',
-    authorizationUrl: 'https://appleid.apple.com/auth/authorize',
+    available: false,
+    mode: 'unavailable',
+    authorizationUrl: null,
     callbackMethod: 'POST',
     scopes: ['name', 'email'],
   },
@@ -591,8 +593,9 @@ const defaultOAuthProviders: OAuthProviderMetadata[] = [
     provider: 'discord',
     label: 'Discord',
     configured: false,
-    mode: 'dev',
-    authorizationUrl: 'https://discord.com/oauth2/authorize',
+    available: false,
+    mode: 'unavailable',
+    authorizationUrl: null,
     callbackMethod: 'GET',
     scopes: ['identify', 'email'],
   },
@@ -626,7 +629,9 @@ const oauthErrorCopy = (error: unknown, t: Record<string, string>) => {
   }
   const messages: Record<string, [string, string]> = {
     OAUTH_STATE_INVALID: ['This sign-in request expired. Please try again.', '本次登录请求已过期，请重试'],
+    OAUTH_CANCELLED: ['Sign-in was cancelled.', '已取消第三方登录'],
     OAUTH_FAILED: ['Provider verification failed. Try again or use email login.', '第三方验证失败，请重试或使用邮箱登录'],
+    OAUTH_PROVIDER_UNAVAILABLE: ['This sign-in provider is unavailable.', '该登录方式当前不可用'],
     OAUTH_ACCOUNT_CONFLICT: ['This provider account is already linked to another user.', '该第三方账号已绑定到其他用户'],
     AUTH_ACCOUNT_REQUIRED: ['Add another sign-in method before unlinking this provider.', '解绑前请先添加另一种登录方式'],
     NOT_FOUND: ['This sign-in provider is unavailable.', '该登录方式暂不可用'],
@@ -954,7 +959,9 @@ export function LoginModal({
             <span>
               {hasExternalOAuthProviders && !hasDevOAuthProviders
                 ? textFor(t, 'External OAuth is configured for this environment.', '当前环境已配置外部 OAuth。')
-                : textFor(t, 'Using local dev callbacks until external OAuth credentials are configured.', '当前使用本地开发回调；配置外部 OAuth 凭据后会切换。')}
+                : hasDevOAuthProviders
+                  ? textFor(t, 'Using signed local callbacks in this development environment.', '当前开发环境使用签名本地回调。')
+                  : textFor(t, 'OAuth providers are unavailable in this environment.', '当前环境未启用第三方登录。')}
             </span>
           </div>
           {providers.map((provider) => {
@@ -964,7 +971,7 @@ export function LoginModal({
                 className={selectedProvider === provider.provider ? 'social-login active' : 'social-login'}
                 type="button"
                 key={provider.provider}
-                disabled={selectedProvider !== '' && selectedProvider !== provider.provider}
+                disabled={!provider.available || (selectedProvider !== '' && selectedProvider !== provider.provider)}
                 onClick={() => {
                   setSelectedProvider(provider.provider)
                   setError('')

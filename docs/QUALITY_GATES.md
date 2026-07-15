@@ -144,6 +144,9 @@ Includes:
   product registration, HTTP clients, credentials, Provider lifecycle, real calls, voice/TTS adjacency, production, and
   failover remain unimplemented or disabled
 - external OAuth provider metadata validation
+- OAuth hardening validation: `npm run test:oauth-hardening` proves production fail-closed behavior, hashed single-use
+  state, PKCE, bounded Provider failures, cookie-based callback recovery, transactional account lifecycle, governance,
+  and opt-in PostgreSQL concurrency coverage without making a real Provider call
 - creative provider safety validation: production smoke must keep staging provider preflight and the Provider HTTP
   client disabled, while client tests use injected fetch implementations and never expose real Provider tokens
 - provider decision validation: all four modalities retain a conditional primary and backup with explicit legal, data,
@@ -178,6 +181,8 @@ Use `docs/V1_DATA_GOVERNANCE_BASELINE.md` before adding a Prisma model, persiste
 retention job, export/delete path, backup, Admin view, notification field, or secret boundary.
 Use `docs/V1_COMPLIANCE_AND_SUPPORT_BASELINE.md` before changing policy text or versions, consent capture, Provider
 disclosures, support categories, rights entry points, or legal-publication status.
+Use `docs/OAUTH_SECURITY_AND_STAGING.md` before changing OAuth Provider configuration, callback/session behavior, or
+requesting approval for a real staging validation.
 
 ## GitHub Actions
 

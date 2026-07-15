@@ -95,7 +95,7 @@ async function request(path: string, options: RequestOptions = {}) {
   if (!headers.has('content-type') && options.body && !(options.body instanceof FormData)) {
     headers.set('content-type', 'application/json')
   }
-  const token = options.token ?? getStoredAccessToken()
+  const token = options.token === undefined ? getStoredAccessToken() : options.token
   if (token) {
     headers.set('authorization', `Bearer ${token}`)
   }

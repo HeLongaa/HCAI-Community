@@ -62,13 +62,13 @@ export const authService = {
   },
   async refresh(refreshToken?: string | null) {
     const body: RefreshSessionRequest = refreshToken ? { refreshToken } : {}
-    const session = await api.post<SessionResponse>('/auth/refresh', body)
+    const session = await api.post<SessionResponse>('/auth/refresh', body, { token: null })
     setStoredAccessToken(session.accessToken)
     return session
   },
   async logout(refreshToken?: string | null) {
     const body: LogoutRequest = refreshToken ? { refreshToken } : {}
-    await api.post('/auth/logout', body)
+    await api.post('/auth/logout', body, { token: null })
     setStoredAccessToken(null)
   },
   async listSessions() {

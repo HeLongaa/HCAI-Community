@@ -5,10 +5,12 @@ import test from 'node:test'
 import {
   createAppleClientSecret,
   createDevOAuthCode,
+  createOAuthPkce,
   createOAuthState,
   exchangeOAuthCodeForProfile,
   getOAuthAuthorizationUrl,
   listOAuthProviderMetadata,
+  normalizeOAuthRedirect,
   readDevOAuthCode,
   verifyOAuthState,
 } from './oauth.js'
@@ -24,13 +26,13 @@ const createRs256Jwt = ({ claims, kid, privateKey }) => {
   return `${header}.${payload}.${signer.sign(privateKey).toString('base64url')}`
 }
 
-test('createOAuthState signs provider state with redirect and nonce', () => {
-  const state = createOAuthState({ provider: 'google', redirectTo: '/tasks', linkUserId: 'user-1' })
+test('createOAuthState signs only provider protocol metadata and nonce', () => {
+  const state = createOAuthState({ provider: 'google' })
   const payload = verifyOAuthState(state)
 
   assert.equal(payload.provider, 'google')
-  assert.equal(payload.redirectTo, '/tasks')
-  assert.equal(payload.linkUserId, 'user-1')
+  assert.equal(payload.redirectTo, undefined)
+  assert.equal(payload.linkUserId, undefined)
   assert.ok(payload.nonce)
 })
 
@@ -40,6 +42,13 @@ test('verifyOAuthState rejects tampered state values', () => {
 
   assert.equal(verifyOAuthState(`${payload}.invalid`), null)
   assert.equal(verifyOAuthState('not-state'), null)
+})
+
+test('OAuth state folds unsafe app redirects to the application root', () => {
+  for (const redirectTo of ['https://evil.example/path', '//evil.example/path', '/\\evil.example/path', '/path\nnext']) {
+    assert.equal(normalizeOAuthRedirect(redirectTo), '/')
+  }
+  assert.equal(normalizeOAuthRedirect('/tasks?status=open#next'), '/tasks?status=open#next')
 })
 
 test('dev OAuth codes round-trip provider profile claims', () => {
@@ -57,17 +66,19 @@ test('listOAuthProviderMetadata returns public provider mode without secrets', (
   const providers = listOAuthProviderMetadata({
     OAUTH_GOOGLE_CLIENT_ID: 'google-client',
     OAUTH_GOOGLE_CLIENT_SECRET: 'google-secret',
-    OAUTH_GOOGLE_REDIRECT_URI: 'https://app.example.com/callback',
+    OAUTH_GOOGLE_REDIRECT_URI: 'https://app.example.com/api/auth/oauth/google/callback',
   })
   const google = providers.find((provider) => provider.provider === 'google')
   const apple = providers.find((provider) => provider.provider === 'apple')
 
   assert.equal(providers.length, 3)
   assert.equal(google.mode, 'external')
+  assert.equal(google.available, true)
   assert.equal(google.configured, true)
   assert.equal(google.clientSecret, undefined)
   assert.deepEqual(google.scopes, ['openid', 'email', 'profile'])
   assert.equal(apple.mode, 'dev')
+  assert.equal(apple.available, true)
   assert.equal(apple.callbackMethod, 'POST')
 })
 
@@ -116,6 +127,9 @@ test('getOAuthAuthorizationUrl builds a real Google authorization URL when confi
     assert.equal(url.searchParams.get('redirect_uri'), 'https://app.example.com/api/auth/oauth/google/callback')
     assert.equal(url.searchParams.get('scope'), 'openid email profile')
     assert.equal(url.searchParams.get('state'), state)
+    assert.equal(url.searchParams.get('access_type'), null)
+    assert.equal(url.searchParams.get('code_challenge_method'), 'S256')
+    assert.equal(url.searchParams.get('code_challenge'), createOAuthPkce(verifyOAuthState(state)).challenge)
   } finally {
     for (const [key, value] of Object.entries(original)) {
       if (value == null) delete process.env[key]
@@ -147,8 +161,9 @@ test('exchangeOAuthCodeForProfile verifies Google token and userinfo responses',
     source: {
       OAUTH_GOOGLE_CLIENT_ID: 'google-client',
       OAUTH_GOOGLE_CLIENT_SECRET: 'google-secret',
-      OAUTH_GOOGLE_REDIRECT_URI: 'https://app.example.com/callback',
+      OAUTH_GOOGLE_REDIRECT_URI: 'https://app.example.com/api/auth/oauth/google/callback',
     },
+    statePayload: verifyOAuthState(createOAuthState({ provider: 'google' })),
   })
 
   assert.equal(profile.provider, 'google')
@@ -156,6 +171,7 @@ test('exchangeOAuthCodeForProfile verifies Google token and userinfo responses',
   assert.equal(profile.email, 'maker@example.com')
   assert.equal(profile.displayName, 'Google Maker')
   assert.equal(calls[0].options.body.get('code'), 'auth-code')
+  assert.ok(calls[0].options.body.get('code_verifier'))
   assert.equal(calls[1].options.headers.authorization, 'Bearer google-access')
 })
 
@@ -169,6 +185,7 @@ test('exchangeOAuthCodeForProfile verifies Discord token and user responses', as
       json: async () => ({
         id: 'discord-user-1',
         email: 'discord@example.com',
+        verified: true,
         username: 'discordname',
         global_name: 'Discord Maker',
       }),
@@ -180,8 +197,9 @@ test('exchangeOAuthCodeForProfile verifies Discord token and user responses', as
     source: {
       OAUTH_DISCORD_CLIENT_ID: 'discord-client',
       OAUTH_DISCORD_CLIENT_SECRET: 'discord-secret',
-      OAUTH_DISCORD_REDIRECT_URI: 'https://app.example.com/callback',
+      OAUTH_DISCORD_REDIRECT_URI: 'https://app.example.com/api/auth/oauth/discord/callback',
     },
+    statePayload: verifyOAuthState(createOAuthState({ provider: 'discord' })),
   })
 
   assert.equal(profile.provider, 'discord')
@@ -249,7 +267,7 @@ test('exchangeOAuthCodeForProfile verifies Apple id_token and nonce', async () =
       OAUTH_APPLE_TEAM_ID: 'TEAM123',
       OAUTH_APPLE_KEY_ID: 'KEY123',
       OAUTH_APPLE_PRIVATE_KEY: appleClientPrivateKey.export({ format: 'pem', type: 'pkcs8' }),
-      OAUTH_APPLE_REDIRECT_URI: 'https://app.example.com/callback',
+      OAUTH_APPLE_REDIRECT_URI: 'https://app.example.com/api/auth/oauth/apple/callback',
     },
   })
 
@@ -258,4 +276,64 @@ test('exchangeOAuthCodeForProfile verifies Apple id_token and nonce', async () =
   assert.equal(profile.email, 'apple@example.com')
   assert.equal(profile.displayName, 'Apple Maker')
   assert.equal(calls[0].options.body.get('client_secret').split('.').length, 3)
+  assert.equal(calls[0].options.body.has('code_verifier'), false)
+})
+
+test('production OAuth metadata fails closed when credentials are absent or redirect URIs are unsafe', () => {
+  const absent = listOAuthProviderMetadata({ NODE_ENV: 'production' })
+  assert.deepEqual(absent.map((provider) => [provider.provider, provider.mode, provider.available]), [
+    ['google', 'unavailable', false],
+    ['apple', 'unavailable', false],
+    ['discord', 'unavailable', false],
+  ])
+  assert.equal(absent.every((provider) => provider.authorizationUrl === null), true)
+
+  const unsafe = listOAuthProviderMetadata({
+    NODE_ENV: 'production',
+    OAUTH_GOOGLE_CLIENT_ID: 'google-client',
+    OAUTH_GOOGLE_CLIENT_SECRET: 'google-secret',
+    OAUTH_GOOGLE_REDIRECT_URI: 'http://app.example.com/api/auth/oauth/google/callback',
+  }).find((provider) => provider.provider === 'google')
+  assert.equal(unsafe.mode, 'unavailable')
+  assert.equal(unsafe.configured, false)
+})
+
+test('OAuth provider failures and timeouts return a closed verification result', async () => {
+  const source = {
+    OAUTH_GOOGLE_CLIENT_ID: 'google-client',
+    OAUTH_GOOGLE_CLIENT_SECRET: 'google-secret',
+    OAUTH_GOOGLE_REDIRECT_URI: 'https://app.example.com/api/auth/oauth/google/callback',
+    OAUTH_PROVIDER_TIMEOUT_MS: '1000',
+  }
+  const statePayload = verifyOAuthState(createOAuthState({ provider: 'google' }))
+  const networkFailure = await exchangeOAuthCodeForProfile('google', 'auth-code', {
+    source,
+    statePayload,
+    fetchImpl: async () => { throw new Error('raw provider failure') },
+  })
+  const aborted = await exchangeOAuthCodeForProfile('google', 'auth-code', {
+    source,
+    statePayload,
+    fetchImpl: async (_url, options) => new Promise((resolve) => {
+      options.signal.addEventListener('abort', () => resolve({ ok: false }))
+    }),
+  })
+  assert.equal(networkFailure, null)
+  assert.equal(aborted, null)
+})
+
+test('OAuth profile mapping rejects unverified email evidence', async () => {
+  const statePayload = verifyOAuthState(createOAuthState({ provider: 'google' }))
+  const profile = await exchangeOAuthCodeForProfile('google', 'auth-code', {
+    statePayload,
+    source: {
+      OAUTH_GOOGLE_CLIENT_ID: 'google-client',
+      OAUTH_GOOGLE_CLIENT_SECRET: 'google-secret',
+      OAUTH_GOOGLE_REDIRECT_URI: 'https://app.example.com/api/auth/oauth/google/callback',
+    },
+    fetchImpl: async (url) => url === 'https://oauth2.googleapis.com/token'
+      ? { ok: true, json: async () => ({ access_token: 'google-access' }) }
+      : { ok: true, json: async () => ({ sub: 'unverified-user', email: 'user@example.com', email_verified: false }) },
+  })
+  assert.equal(profile, null)
 })

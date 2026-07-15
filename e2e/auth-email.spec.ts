@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('email registration and password login work from the login modal', async ({ page }) => {
+test('email registration and password login work from the login modal', async ({ page, context }) => {
   const suffix = Date.now()
   const email = `browser-${suffix}@example.com`
   const password = 'correct-horse-42'
@@ -24,6 +24,7 @@ test('email registration and password login work from the login modal', async ({
   await expect(page.locator('.sidebar-profile-name', { hasText: displayName })).toBeVisible()
 
   await page.evaluate(() => localStorage.clear())
+  await context.clearCookies()
   await page.reload()
   await page.getByRole('button', { name: 'Login' }).click()
   await page.getByPlaceholder('Email').fill(email)
@@ -101,4 +102,32 @@ test('dev OAuth provider login works from the login modal', async ({ page }) => 
   await page.getByRole('button', { name: 'Accept current versions' }).click()
   expect((await consentResponse).ok()).toBeTruthy()
   await expect(page.getByRole('heading', { name: 'Review the policies required for this account' })).toBeHidden()
+})
+
+test('top-level OAuth callback restores the browser session through refresh cookies', async ({ page }) => {
+  await page.goto('/')
+  const authorizationUrl = await page.evaluate(async () => {
+    localStorage.setItem('hcaiAccessToken', 'stale-access-token')
+    localStorage.setItem('hcaiUser', JSON.stringify({ displayName: 'Stale User' }))
+    const response = await fetch('/api/auth/oauth/google/start', {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ redirectTo: '/profile' }),
+    })
+    const payload = await response.json()
+    const callback = new URL(payload.data.authorizationUrl as string)
+    return `${window.location.origin}${callback.pathname}${callback.search}`
+  })
+
+  const refreshResponse = page.waitForResponse((response) =>
+    response.url().endsWith('/api/auth/refresh') && response.request().method() === 'POST' && response.ok(),
+  )
+  await page.goto(authorizationUrl)
+  expect((await refreshResponse).ok()).toBeTruthy()
+  await expect(page.locator('.sidebar-profile-name', { hasText: 'Google User' })).toBeVisible()
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('hcaiAccessToken'))).not.toBe('stale-access-token')
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('hcaiOAuthRedirectTo'))).toBeNull()
 })

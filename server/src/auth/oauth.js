@@ -1,9 +1,11 @@
-import { createHmac, createPublicKey, createSign, createVerify, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, createPublicKey, createSign, createVerify, randomBytes, timingSafeEqual } from 'node:crypto'
 import { getAccessTokenKeyRing } from './sessionTokens.js'
 
 const oauthStateTtlMs = 10 * 60 * 1000
+const defaultProviderTimeoutMs = 8_000
 const supportedProviders = ['google', 'apple', 'discord', 'dev']
 const listedProviders = ['google', 'apple', 'discord']
+const pkceProviders = new Set(['google', 'discord'])
 
 const providerNames = {
   google: 'Google',
@@ -38,6 +40,30 @@ const encodeJson = (value) => Buffer.from(JSON.stringify(value)).toString('base6
 const decodeJson = (value) => JSON.parse(Buffer.from(value, 'base64url').toString('utf8'))
 
 const sign = (payload, secret) => createHmac('sha256', secret).update(payload).digest('base64url')
+
+const oauthProviderTimeoutMs = (source = process.env) => {
+  const parsed = Number.parseInt(source.OAUTH_PROVIDER_TIMEOUT_MS ?? '', 10)
+  return Number.isInteger(parsed) && parsed >= 1_000 && parsed <= 15_000 ? parsed : defaultProviderTimeoutMs
+}
+
+const isOAuthDevModeEnabled = (source = process.env) => (
+  source.NODE_ENV !== 'production' && String(source.OAUTH_DEV_MODE ?? 'enabled').trim().toLowerCase() !== 'disabled'
+)
+
+const hasValidRedirectUri = (provider, value, source = process.env) => {
+  try {
+    const redirect = new URL(String(value ?? ''))
+    const localDevelopment = source.NODE_ENV !== 'production' && ['localhost', '127.0.0.1', '::1'].includes(redirect.hostname)
+    return (redirect.protocol === 'https:' || (localDevelopment && redirect.protocol === 'http:'))
+      && redirect.username === ''
+      && redirect.password === ''
+      && redirect.search === ''
+      && redirect.hash === ''
+      && redirect.pathname === `/api/auth/oauth/${provider}/callback`
+  } catch {
+    return false
+  }
+}
 
 const normalizePrivateKey = (value) => String(value ?? '').replace(/\\n/g, '\n')
 
@@ -92,31 +118,63 @@ const verifyRs256Jwt = (token, jwks) => {
   return verified ? decodeJwtPart(token, 1) : null
 }
 
-const sanitizeRedirect = (redirectTo) => {
-  if (typeof redirectTo !== 'string' || !redirectTo.startsWith('/') || redirectTo.startsWith('//')) {
+export const normalizeOAuthRedirect = (redirectTo) => {
+  if (
+    typeof redirectTo !== 'string' ||
+    redirectTo.length > 512 ||
+    !redirectTo.startsWith('/') ||
+    redirectTo.startsWith('//') ||
+    redirectTo.includes('\\') ||
+    /[\u0000-\u001f\u007f]/.test(redirectTo)
+  ) {
     return '/'
   }
-  return redirectTo
+  try {
+    const redirect = new URL(redirectTo, 'https://oauth.local')
+    return redirect.origin === 'https://oauth.local'
+      ? `${redirect.pathname}${redirect.search}${redirect.hash}`
+      : '/'
+  } catch {
+    return '/'
+  }
 }
 
 export const normalizeOAuthProvider = (provider) => String(provider ?? '').trim().toLowerCase()
 
 export const isSupportedOAuthProvider = (provider) => supportedProviders.includes(normalizeOAuthProvider(provider))
 
-export const createOAuthState = ({ provider, redirectTo = '/', linkUserId = null }) => {
+export const createOAuthState = ({ provider }) => {
   const currentKey = getAccessTokenKeyRing().find((key) => key.current)
   const now = Date.now()
   const payload = encodeJson({
     typ: 'oauth_state',
     provider: normalizeOAuthProvider(provider),
-    redirectTo: sanitizeRedirect(redirectTo),
-    linkUserId,
     nonce: randomBytes(16).toString('base64url'),
     iat: now,
     exp: now + oauthStateTtlMs,
     kid: currentKey.kid,
   })
   return `${payload}.${sign(payload, currentKey.secret)}`
+}
+
+export const hashOAuthState = (state) => createHash('sha256').update(String(state ?? '')).digest('hex')
+
+export const createOAuthPkce = (statePayload) => {
+  if (!statePayload?.nonce || !statePayload?.provider || !pkceProviders.has(statePayload.provider)) {
+    return null
+  }
+  const key = getAccessTokenKeyRing().find((candidate) => candidate.kid === statePayload.kid)
+  if (!key) {
+    return null
+  }
+  const verifier = createHmac('sha256', key.secret)
+    .update(`oauth_pkce:${statePayload.provider}:${statePayload.nonce}`)
+    .digest('base64url')
+  return {
+    verifier,
+    challenge: createHash('sha256').update(verifier).digest('base64url'),
+    method: 'S256',
+  }
 }
 
 export const verifyOAuthState = (state) => {
@@ -129,7 +187,18 @@ export const verifyOAuthState = (state) => {
   }
   try {
     const decoded = decodeJson(payload)
-    if (decoded.typ !== 'oauth_state' || decoded.exp <= Date.now() || !isSupportedOAuthProvider(decoded.provider)) {
+    const now = Date.now()
+    if (
+      decoded.typ !== 'oauth_state' ||
+      !Number.isFinite(decoded.iat) ||
+      !Number.isFinite(decoded.exp) ||
+      decoded.iat > now + 30_000 ||
+      decoded.exp <= now ||
+      decoded.exp - decoded.iat !== oauthStateTtlMs ||
+      typeof decoded.kid !== 'string' ||
+      !/^[A-Za-z0-9_-]{16,64}$/.test(decoded.nonce ?? '') ||
+      !isSupportedOAuthProvider(decoded.provider)
+    ) {
       return null
     }
     const candidates = decoded.kid
@@ -176,7 +245,7 @@ export const readDevOAuthCode = (provider, code) => {
 export const getOAuthProviderMetadata = (provider, source = process.env) => {
   const normalizedProvider = normalizeOAuthProvider(provider)
   const prefix = `OAUTH_${normalizedProvider.toUpperCase()}`
-  const configured = normalizedProvider === 'apple'
+  const credentialsPresent = normalizedProvider === 'apple'
     ? Boolean(
         source[`${prefix}_CLIENT_ID`] &&
         source[`${prefix}_TEAM_ID`] &&
@@ -185,10 +254,13 @@ export const getOAuthProviderMetadata = (provider, source = process.env) => {
         source[`${prefix}_REDIRECT_URI`],
       )
     : Boolean(source[`${prefix}_CLIENT_ID`] && source[`${prefix}_CLIENT_SECRET`] && source[`${prefix}_REDIRECT_URI`])
+  const configured = credentialsPresent && hasValidRedirectUri(normalizedProvider, source[`${prefix}_REDIRECT_URI`], source)
+  const mode = configured ? 'external' : isOAuthDevModeEnabled(source) ? 'dev' : 'unavailable'
   return {
     provider: normalizedProvider,
     label: providerNames[normalizedProvider] ?? normalizedProvider,
     configured,
+    mode,
     clientId: source[`${prefix}_CLIENT_ID`] ?? null,
     clientSecret: source[`${prefix}_CLIENT_SECRET`] ?? null,
     teamId: source[`${prefix}_TEAM_ID`] ?? null,
@@ -205,17 +277,21 @@ export const listOAuthProviderMetadata = (source = process.env) => listedProvide
     provider: metadata.provider,
     label: metadata.label,
     configured: metadata.configured,
-    mode: metadata.configured ? 'external' : 'dev',
-    authorizationUrl: metadata.authorizationUrl,
+    available: metadata.mode !== 'unavailable',
+    mode: metadata.mode,
+    authorizationUrl: metadata.mode === 'unavailable' ? null : metadata.authorizationUrl,
     callbackMethod: metadata.provider === 'apple' ? 'POST' : 'GET',
     scopes: metadata.scope.split(' '),
   }
 })
 
-export const getOAuthAuthorizationUrl = ({ provider, state, origin }) => {
-  const metadata = getOAuthProviderMetadata(provider)
+export const getOAuthAuthorizationUrl = ({ provider, state, origin, source = process.env }) => {
+  const metadata = getOAuthProviderMetadata(provider, source)
   const statePayload = verifyOAuthState(state)
-  if (!metadata.configured || !providerConfigs[metadata.provider]) {
+  if (metadata.mode === 'unavailable' || !providerConfigs[metadata.provider]) {
+    return { mode: 'unavailable', authorizationUrl: null }
+  }
+  if (metadata.mode === 'dev') {
     const code = createDevOAuthCode(provider, statePayload)
     return {
       mode: 'dev',
@@ -228,8 +304,12 @@ export const getOAuthAuthorizationUrl = ({ provider, state, origin }) => {
   authorizationUrl.searchParams.set('response_type', 'code')
   authorizationUrl.searchParams.set('scope', metadata.scope)
   authorizationUrl.searchParams.set('state', state)
+  const pkce = createOAuthPkce(statePayload)
+  if (pkce) {
+    authorizationUrl.searchParams.set('code_challenge', pkce.challenge)
+    authorizationUrl.searchParams.set('code_challenge_method', pkce.method)
+  }
   if (metadata.provider === 'google') {
-    authorizationUrl.searchParams.set('access_type', 'offline')
     authorizationUrl.searchParams.set('prompt', 'select_account')
   }
   if (metadata.provider === 'apple') {
@@ -242,7 +322,24 @@ export const getOAuthAuthorizationUrl = ({ provider, state, origin }) => {
   }
 }
 
-const postOAuthTokenRequest = async ({ metadata, code, fetchImpl }) => {
+const fetchOAuthJson = async ({ url, options, fetchImpl, source }) => {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), oauthProviderTimeoutMs(source))
+  try {
+    const response = await fetchImpl(url, { ...options, signal: controller.signal })
+    if (!response?.ok) {
+      return null
+    }
+    const payload = await response.json()
+    return payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+const postOAuthTokenRequest = async ({ metadata, code, fetchImpl, statePayload, source }) => {
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
@@ -250,67 +347,94 @@ const postOAuthTokenRequest = async ({ metadata, code, fetchImpl }) => {
     client_secret: metadata.provider === 'apple' ? createAppleClientSecret(metadata) : metadata.clientSecret,
     redirect_uri: metadata.redirectUri,
   })
-  const response = await fetchImpl(metadata.tokenUrl, {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/x-www-form-urlencoded',
-    },
-    body,
-  })
-  if (!response.ok) {
-    return null
+  const pkce = createOAuthPkce(statePayload)
+  if (pkce) {
+    body.set('code_verifier', pkce.verifier)
   }
-  return response.json()
+  return fetchOAuthJson({
+    url: metadata.tokenUrl,
+    fetchImpl,
+    source,
+    options: {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body,
+    },
+  })
 }
 
-const fetchOAuthUserInfo = async ({ metadata, accessToken, fetchImpl }) => {
-  const response = await fetchImpl(metadata.userInfoUrl, {
+const fetchOAuthUserInfo = ({ metadata, accessToken, fetchImpl, source }) => fetchOAuthJson({
+  url: metadata.userInfoUrl,
+  fetchImpl,
+  source,
+  options: {
     method: 'GET',
     headers: {
       accept: 'application/json',
       authorization: `Bearer ${accessToken}`,
     },
-  })
-  if (!response.ok) {
-    return null
-  }
-  return response.json()
-}
+  },
+})
 
-const fetchAppleJwks = async ({ metadata, fetchImpl }) => {
-  const response = await fetchImpl(metadata.jwksUrl, {
+const fetchAppleJwks = ({ metadata, fetchImpl, source }) => fetchOAuthJson({
+  url: metadata.jwksUrl,
+  fetchImpl,
+  source,
+  options: {
     method: 'GET',
     headers: { accept: 'application/json' },
-  })
-  if (!response.ok) {
-    return null
-  }
-  return response.json()
-}
+  },
+})
 
-const mapGoogleProfile = (profile) => {
-  if (!profile?.sub || !profile?.email || profile.email_verified === false) {
+const safeProfile = ({ provider, providerUserId, email, displayName }) => {
+  const normalizedProviderUserId = String(providerUserId ?? '').trim()
+  const normalizedEmail = String(email ?? '').trim().toLowerCase()
+  const normalizedDisplayName = String(displayName ?? '')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (
+    !normalizedProviderUserId ||
+    normalizedProviderUserId.length > 255 ||
+    /[\u0000-\u001f\u007f]/.test(normalizedProviderUserId) ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) ||
+    normalizedEmail.length > 254
+  ) {
     return null
   }
   return {
+    provider,
+    providerUserId: normalizedProviderUserId,
+    email: normalizedEmail,
+    displayName: (normalizedDisplayName || normalizedEmail.split('@')[0]).slice(0, 120),
+  }
+}
+
+const mapGoogleProfile = (profile) => {
+  if (!profile?.sub || !profile?.email || profile.email_verified !== true) {
+    return null
+  }
+  return safeProfile({
     provider: 'google',
     providerUserId: String(profile.sub),
     email: String(profile.email).trim().toLowerCase(),
     displayName: String(profile.name ?? profile.email.split('@')[0]),
-  }
+  })
 }
 
 const mapDiscordProfile = (profile) => {
-  if (!profile?.id || !profile?.email) {
+  if (!profile?.id || !profile?.email || profile.verified !== true) {
     return null
   }
-  return {
+  return safeProfile({
     provider: 'discord',
     providerUserId: String(profile.id),
     email: String(profile.email).trim().toLowerCase(),
     displayName: String(profile.global_name ?? profile.username ?? profile.email.split('@')[0]),
-  }
+  })
 }
 
 const normalizeAppleUserName = (userPayload) => {
@@ -337,44 +461,53 @@ const mapAppleProfile = (claims, metadata, statePayload, userPayload = null) => 
     !claims?.sub ||
     !claims?.email ||
     !emailVerified ||
+    !Number.isFinite(claims.exp) ||
     claims.exp <= now ||
     claims.nonce !== statePayload?.nonce
   ) {
     return null
   }
-  return {
+  return safeProfile({
     provider: 'apple',
     providerUserId: String(claims.sub),
     email: String(claims.email).trim().toLowerCase(),
     displayName: normalizeAppleUserName(userPayload) ?? String(claims.email).split('@')[0],
-  }
+  })
 }
 
 export const exchangeOAuthCodeForProfile = async (provider, code, options = {}) => {
   const normalizedProvider = normalizeOAuthProvider(provider)
   const metadata = getOAuthProviderMetadata(normalizedProvider, options.source ?? process.env)
-  if (!metadata.configured || !providerConfigs[normalizedProvider]) {
+  if (metadata.mode === 'unavailable' || !providerConfigs[normalizedProvider]) {
+    return null
+  }
+  if (metadata.mode === 'dev') {
     return readDevOAuthCode(normalizedProvider, code)
   }
   const fetchImpl = options.fetchImpl ?? fetch
-  const token = await postOAuthTokenRequest({ metadata, code, fetchImpl })
-  if (!token?.access_token && normalizedProvider !== 'apple') {
-    return null
-  }
-  if (normalizedProvider === 'apple') {
-    if (!token?.id_token) {
+  const source = options.source ?? process.env
+  try {
+    const token = await postOAuthTokenRequest({ metadata, code, fetchImpl, statePayload: options.statePayload, source })
+    if (!token?.access_token && normalizedProvider !== 'apple') {
       return null
     }
-    const jwks = await fetchAppleJwks({ metadata, fetchImpl })
-    const claims = verifyRs256Jwt(token.id_token, jwks)
-    return claims ? mapAppleProfile(claims, metadata, options.statePayload, options.user) : null
+    if (normalizedProvider === 'apple') {
+      if (!token?.id_token) {
+        return null
+      }
+      const jwks = await fetchAppleJwks({ metadata, fetchImpl, source })
+      const claims = verifyRs256Jwt(token.id_token, jwks)
+      return claims ? mapAppleProfile(claims, metadata, options.statePayload, options.user) : null
+    }
+    const profile = await fetchOAuthUserInfo({ metadata, accessToken: token.access_token, fetchImpl, source })
+    if (normalizedProvider === 'google') {
+      return mapGoogleProfile(profile)
+    }
+    if (normalizedProvider === 'discord') {
+      return mapDiscordProfile(profile)
+    }
+    return null
+  } catch {
+    return null
   }
-  const profile = await fetchOAuthUserInfo({ metadata, accessToken: token.access_token, fetchImpl })
-  if (normalizedProvider === 'google') {
-    return mapGoogleProfile(profile)
-  }
-  if (normalizedProvider === 'discord') {
-    return mapDiscordProfile(profile)
-  }
-  return null
 }
