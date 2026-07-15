@@ -88,6 +88,69 @@ test('Admin overview and global search are bounded permission-aware read models'
   }
 })
 
+test('release control routes enforce approval, SecretRef validation, evidence, and rollback', async () => {
+  const repository = createSeedRepository()
+  const server = await createInjectedAdminServer(repository)
+  try {
+    const denied = await requestJson(server.url, '/api/admin/releases', { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(denied.status, 403)
+
+    const leakedSecret = await requestJson(server.url, '/api/admin/releases', {
+      token: 'demo-access.opsplus',
+      body: {
+        changeType: 'secret_rotation', targetEnvironment: 'staging', artifactVersion: 'sha-1', rollbackVersion: 'sha-0',
+        secretRef: 'secret://museflow/oauth', secretVersion: 'v2', secretValue: 'must-not-persist', summary: 'Rotate OAuth key', reasonCode: 'rotation_due',
+      },
+    })
+    assert.equal(leakedSecret.status, 400)
+
+    const requested = await requestJson(server.url, '/api/admin/releases', {
+      token: 'demo-access.opsplus',
+      body: {
+        changeType: 'promotion', sourceEnvironment: 'staging', targetEnvironment: 'production', artifactVersion: 'sha-2', rollbackVersion: 'sha-1',
+        summary: 'Production promotion', reasonCode: 'scheduled_release',
+      },
+    })
+    assert.equal(requested.status, 200)
+    assert.equal(requested.payload.data.status, 'pending_approval')
+
+    const selfApproval = await requestJson(server.url, `/api/admin/releases/${requested.payload.data.id}/approve`, {
+      token: 'demo-access.opsplus', body: { reasonCode: 'reviewed' },
+    })
+    assert.equal(selfApproval.status, 400)
+
+    const approved = await requestJson(server.url, `/api/admin/releases/${requested.payload.data.id}/approve`, {
+      token: 'demo-access.finops', body: { reasonCode: 'checks_green', note: 'Quality gate passed' },
+    })
+    assert.equal(approved.status, 200)
+    assert.equal(approved.payload.data.status, 'approved')
+
+    const deployed = await requestJson(server.url, `/api/admin/releases/${requested.payload.data.id}/apply`, {
+      token: 'demo-access.opsplus',
+      body: { outcome: 'deployed', deploymentId: 'deploy-route-1', evidenceUrl: 'https://ci.example/deploy-route-1', reasonCode: 'applied' },
+    })
+    assert.equal(deployed.status, 200)
+    assert.equal(deployed.payload.data.status, 'deployed')
+
+    const rolledBack = await requestJson(server.url, `/api/admin/releases/${requested.payload.data.id}/rollback`, {
+      token: 'demo-access.finops',
+      body: { deploymentId: 'rollback-route-1', evidenceUrl: 'https://ci.example/rollback-route-1', reasonCode: 'regression' },
+    })
+    assert.equal(rolledBack.status, 200)
+    assert.equal(rolledBack.payload.data.status, 'rolled_back')
+    assert.equal(rolledBack.payload.data.evidence.length, 4)
+
+    const listed = await requestJson(server.url, '/api/admin/releases?status=rolled_back&targetEnvironment=production', {
+      method: 'GET', token: 'demo-access.opsplus',
+    })
+    assert.equal(listed.status, 200)
+    assert.equal(listed.payload.data.length, 1)
+    assert.equal(JSON.stringify(listed.payload).includes('must-not-persist'), false)
+  } finally {
+    await server.close()
+  }
+})
+
 test('Admin accounting reconciliation routes enforce read, scan, export, and repair permissions', async () => {
   const issue = {
     id: 'accounting-issue-route-1',
@@ -1971,7 +2034,7 @@ test('PUT /api/admin/roles/:role/permissions keeps protected admin grants', asyn
     assert.equal(status, 400)
     assert.equal(payload.data, null)
     assert.equal(payload.error.code, 'VALIDATION_FAILED')
-    assert.equal(payload.error.message, 'cannot remove protected permissions: admin:permissions:manage, admin:accounting:repair, admin:high-risk:approve, admin:temporary-access:manage, admin:break-glass')
+    assert.equal(payload.error.message, 'cannot remove protected permissions: admin:permissions:manage, admin:accounting:repair, admin:high-risk:approve, admin:temporary-access:manage, admin:break-glass, admin:releases:manage, admin:releases:approve, admin:releases:deploy')
   } finally {
     await server.close()
   }

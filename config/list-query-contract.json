@@ -32,6 +32,7 @@
     { "id": "domainEvents", "routes": ["GET /api/admin/domain-events"], "cursor": true, "filters": ["type", "aggregateType", "aggregateId", "status"], "sorts": ["occurredAt"], "export": false },
     { "id": "domainEventInbox", "routes": ["GET /api/admin/domain-event-inbox"], "cursor": true, "filters": ["consumerKey", "status", "aggregateType", "aggregateId"], "sorts": ["receivedAt"], "export": false },
     { "id": "jobRuns", "routes": ["GET /api/admin/jobs/runs"], "cursor": true, "filters": ["definitionKey", "status"], "sorts": ["createdAt"], "export": false },
-    { "id": "supportRequests", "routes": ["GET /api/support/requests"], "cursor": true, "filters": ["status", "category"], "sorts": ["createdAt"], "export": false }
+    { "id": "supportRequests", "routes": ["GET /api/support/requests"], "cursor": true, "filters": ["status", "category"], "sorts": ["createdAt"], "export": false },
+    { "id": "releaseChanges", "routes": ["GET /api/admin/releases"], "cursor": true, "filters": ["status", "targetEnvironment", "changeType"], "sorts": ["createdAt"], "export": false }
   ]
 }

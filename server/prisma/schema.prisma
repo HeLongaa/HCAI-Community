@@ -313,6 +313,21 @@ enum JobAttemptStatus {
   cancelled
 }
 
+enum ReleaseChangeType {
+  promotion
+  secret_rotation
+  configuration
+}
+
+enum ReleaseChangeStatus {
+  pending_approval
+  approved
+  rejected
+  deployed
+  failed
+  rolled_back
+}
+
 model AuditEvent {
   id                    String         @id @default(cuid())
   actorType             AuditActorType @map("actor_type")
@@ -328,6 +343,56 @@ model AuditEvent {
   @@index([action, createdAt])
   @@index([resourceType, createdAt])
   @@map("audit_events")
+}
+
+model ReleaseChange {
+  id                String              @id
+  changeType        ReleaseChangeType   @map("change_type")
+  status            ReleaseChangeStatus @default(pending_approval)
+  sourceEnvironment String?             @map("source_environment")
+  targetEnvironment String              @map("target_environment")
+  artifactVersion   String              @map("artifact_version")
+  rollbackVersion   String              @map("rollback_version")
+  secretRef         String?             @map("secret_ref")
+  secretVersion     String?             @map("secret_version")
+  summary           String
+  reasonCode        String              @map("reason_code")
+  requestedByRef    String              @map("requested_by_ref")
+  approvedByRef     String?             @map("approved_by_ref")
+  appliedByRef      String?             @map("applied_by_ref")
+  rolledBackByRef   String?             @map("rolled_back_by_ref")
+  version           Int                 @default(1)
+  requestedAt       DateTime            @default(now()) @map("requested_at")
+  approvedAt        DateTime?           @map("approved_at")
+  appliedAt         DateTime?           @map("applied_at")
+  rolledBackAt      DateTime?           @map("rolled_back_at")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  evidence ReleaseEvidence[]
+
+  @@index([status, createdAt])
+  @@index([targetEnvironment, createdAt])
+  @@index([changeType, createdAt])
+  @@map("release_changes")
+}
+
+model ReleaseEvidence {
+  id                    String   @id
+  releaseChangeId       String   @map("release_change_id")
+  eventType             String   @map("event_type")
+  actorRef              String   @map("actor_ref")
+  reasonCode            String   @map("reason_code")
+  evidence              Json
+  evidenceSchemaVersion Int      @default(1) @map("evidence_schema_version")
+  evidenceHash          String   @map("evidence_hash")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  releaseChange ReleaseChange @relation(fields: [releaseChangeId], references: [id], onDelete: Restrict)
+
+  @@index([releaseChangeId, createdAt])
+  @@index([eventType, createdAt])
+  @@map("release_evidence")
 }
 
 model SecurityEvent {

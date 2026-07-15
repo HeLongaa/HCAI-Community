@@ -10,6 +10,7 @@ import { notificationService } from '../../services/notificationService'
 import { mediaService } from '../../services/mediaService'
 import { useAsyncResource } from '../../hooks/useAsyncResource'
 import { AdminOverviewPanel } from './AdminOverviewPanel'
+import { ReleaseControlPanel } from './ReleaseControlPanel'
 import type {
   AdminPermissionDto,
   AdminAccountingIssueDto,
@@ -2263,6 +2264,11 @@ export function AdminPage({
         ))}
       </div>
       <AdminOverviewPanel t={t} target={overviewTarget} />
+      <ReleaseControlPanel
+        hasPermission={account.hasPermission}
+        isZh={isZh}
+        notify={(message) => simulateAction(message)}
+      />
       <section className="panel">
         <SectionHeader
           eyebrow={textFor(t, 'Notifications', '通知')}

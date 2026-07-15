@@ -55,6 +55,10 @@ export const permissionRegistry = Object.freeze([
   definePermission('admin:high-risk:approve', 'identity-access', 'high_risk_approval', 'approve', 'critical', admins, { protected: true, protectionRank: 3, resourceAuthorization: true, description: 'Request and approve temporary high-risk access with two-person control' }),
   definePermission('admin:temporary-access:manage', 'identity-access', 'temporary_authorization', 'manage', 'critical', admins, { protected: true, protectionRank: 4, resourceAuthorization: true, description: 'List and revoke temporary administrative authorization grants' }),
   definePermission('admin:break-glass', 'identity-access', 'break_glass_access', 'manage', 'critical', admins, { protected: true, protectionRank: 5, resourceAuthorization: true, description: 'Activate and post-review emergency break-glass access' }),
+  definePermission('admin:releases:read', 'platform-release', 'release_change', 'read', 'high', admins, { description: 'Read release changes and immutable deployment evidence' }),
+  definePermission('admin:releases:manage', 'platform-release', 'release_change', 'manage', 'critical', admins, { protected: true, protectionRank: 6, resourceAuthorization: true, description: 'Request environment promotion, configuration, and SecretRef rotation changes' }),
+  definePermission('admin:releases:approve', 'platform-release', 'release_change', 'approve', 'critical', admins, { protected: true, protectionRank: 7, resourceAuthorization: true, description: 'Approve or reject release changes with two-person control' }),
+  definePermission('admin:releases:deploy', 'platform-release', 'release_change', 'deploy', 'critical', admins, { protected: true, protectionRank: 8, resourceAuthorization: true, description: 'Record deployment outcomes and execute versioned rollback' }),
 ])
 
 export const permissions = Object.freeze(permissionRegistry.map(({ id }) => id))

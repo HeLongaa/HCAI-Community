@@ -1,6 +1,6 @@
 import { ok, text } from '../../common/http/responses.js'
 import { requirePermission } from '../../common/http/auth.js'
-import { notFound } from '../../common/errors/httpError.js'
+import { HttpError, notFound } from '../../common/errors/httpError.js'
 import { validationFailed } from '../../common/http/validation.js'
 import { readJsonBody } from '../../common/http/request.js'
 import {
@@ -27,6 +27,11 @@ import {
   parseProviderControlDisableRequest,
   parseProviderControlListQuery,
   parseProviderControlRecoveryRequest,
+  parseReleaseApplyRequest,
+  parseReleaseChangeListQuery,
+  parseReleaseChangeRequest,
+  parseReleaseDecisionRequest,
+  parseReleaseRollbackRequest,
   parseTemporaryAuthorizationRevokeRequest,
   parseUpdateRolePermissionsRequest,
 } from '../../contracts/requestParsers.js'
@@ -57,6 +62,13 @@ import {
   startBreakGlassAccess,
 } from '../../auth/highRiskAccess.js'
 import { buildAdminOperationsOverview, searchAdminOperations } from '../../admin/adminOperationsOverview.js'
+import {
+  applyReleaseChange,
+  approveReleaseChange,
+  rejectReleaseChange,
+  requestReleaseChange,
+  rollbackReleaseChange,
+} from '../../releases/releaseControl.js'
 
 const isPointAdjustmentReview = (review) => review?.queue === 'points' || review?.metadata?.kind === 'point_adjustment'
 const isManualProviderReplayReview = (review) => review?.metadata?.kind === 'manual_provider_replay'
@@ -595,6 +607,15 @@ const accountingReconciliationExportJson = (page, query) => JSON.stringify({
 
 export const registerAdminRoutes = (router, options = {}) => {
   const routeRepositories = options.repositories ?? repositories
+  const loadReleaseChange = async (id) => {
+    const change = await routeRepositories.releaseChanges.find(id)
+    if (!change) throw notFound(`/api/admin/releases/${id}`)
+    return change
+  }
+  const requireTransitionResult = (result) => {
+    if (!result) throw new HttpError(409, 'STATE_CONFLICT', 'release change was modified concurrently')
+    return result
+  }
   const providerMutationAdapters = options.providerMutationAdapters ?? {}
   router.add('GET', '/api/admin/creative/accounting-policy/history', async (_request, response, context) => {
     requirePermission(context, 'admin:audit:read')
@@ -1091,6 +1112,51 @@ export const registerAdminRoutes = (router, options = {}) => {
     await repositories.securityEvents.flushPending?.()
     const artifact = await repositories.operationsMetrics.exportSnapshot(parseAdminOperationsMetricsQuery(context.query), actor)
     text(response, 200, operationsMetricsExportJson(artifact), 'application/json; charset=utf-8')
+  })
+
+  router.add('GET', '/api/admin/releases', async (_request, response, context) => {
+    requirePermission(context, 'admin:releases:read')
+    const page = await routeRepositories.releaseChanges.list(parseReleaseChangeListQuery(context.query))
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('GET', '/api/admin/releases/:id', async (_request, response, context) => {
+    requirePermission(context, 'admin:releases:read')
+    ok(response, await loadReleaseChange(context.params.id))
+  })
+
+  router.add('POST', '/api/admin/releases', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:releases:manage')
+    const payload = parseReleaseChangeRequest((await readJsonBody(request)) ?? {})
+    ok(response, await requestReleaseChange({ payload, actor, repository: routeRepositories.releaseChanges }))
+  })
+
+  router.add('POST', '/api/admin/releases/:id/approve', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:releases:approve')
+    const change = await loadReleaseChange(context.params.id)
+    const payload = parseReleaseDecisionRequest((await readJsonBody(request)) ?? {})
+    ok(response, requireTransitionResult(await approveReleaseChange({ change, payload, actor, repository: routeRepositories.releaseChanges })))
+  })
+
+  router.add('POST', '/api/admin/releases/:id/reject', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:releases:approve')
+    const change = await loadReleaseChange(context.params.id)
+    const payload = parseReleaseDecisionRequest((await readJsonBody(request)) ?? {})
+    ok(response, requireTransitionResult(await rejectReleaseChange({ change, payload, actor, repository: routeRepositories.releaseChanges })))
+  })
+
+  router.add('POST', '/api/admin/releases/:id/apply', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:releases:deploy')
+    const change = await loadReleaseChange(context.params.id)
+    const payload = parseReleaseApplyRequest((await readJsonBody(request)) ?? {})
+    ok(response, requireTransitionResult(await applyReleaseChange({ change, payload, actor, repository: routeRepositories.releaseChanges })))
+  })
+
+  router.add('POST', '/api/admin/releases/:id/rollback', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:releases:deploy')
+    const change = await loadReleaseChange(context.params.id)
+    const payload = parseReleaseRollbackRequest((await readJsonBody(request)) ?? {})
+    ok(response, requireTransitionResult(await rollbackReleaseChange({ change, payload, actor, repository: routeRepositories.releaseChanges })))
   })
 
   router.add('GET', '/api/admin/points/ledger', async (_request, response, context) => {

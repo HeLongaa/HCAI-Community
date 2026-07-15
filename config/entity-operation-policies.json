@@ -14,6 +14,8 @@
   },
   "entities": [
     { "model": "AuditEvent", "domain": "audit-evidence", "policy": "append_only", "hardDelete": false },
+    { "model": "ReleaseChange", "domain": "platform-release", "policy": "state_transition", "hardDelete": false },
+    { "model": "ReleaseEvidence", "domain": "platform-release", "policy": "immutable_evidence", "hardDelete": false },
     { "model": "SecurityEvent", "domain": "trust-safety-risk", "policy": "append_only", "hardDelete": false },
     { "model": "Permission", "domain": "identity-access", "policy": "mutable_crud", "hardDelete": false },
     { "model": "RolePermission", "domain": "identity-access", "policy": "mutable_crud", "hardDelete": true },
@@ -80,6 +82,6 @@
   "protectedFamilies": {
     "accounting": ["PointLedger", "InternalAccountingOperation", "InternalAccountingMovement"],
     "audit": ["AuditEvent", "SecurityEvent", "DomainEventOutbox", "DomainEventConsumerInbox", "DomainEventCompensation"],
-    "evidence": ["MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger"]
+    "evidence": ["MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence"]
   }
 }

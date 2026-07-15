@@ -40,10 +40,32 @@ import type {
   PointsLedgerQuery,
   AuditEventDto,
   UpdateRolePermissionsRequest,
+  ReleaseChangeDto,
+  ReleaseChangeListQuery,
+  ReleaseChangeRequest,
 } from './contracts'
 import type { Permission, Role } from '../domain/types'
 
 export const adminService = {
+  async releaseChanges(query?: ReleaseChangeListQuery) {
+    const envelope = await api.getEnvelope<ReleaseChangeDto[]>(withQuery('/admin/releases', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async requestReleaseChange(payload: ReleaseChangeRequest) {
+    return api.post<ReleaseChangeDto>('/admin/releases', payload)
+  },
+  async approveReleaseChange(id: string, reasonCode: string, note = '') {
+    return api.post<ReleaseChangeDto>(`/admin/releases/${id}/approve`, { reasonCode, note })
+  },
+  async rejectReleaseChange(id: string, reasonCode: string, note = '') {
+    return api.post<ReleaseChangeDto>(`/admin/releases/${id}/reject`, { reasonCode, note })
+  },
+  async applyReleaseChange(id: string, body: { outcome: 'deployed' | 'failed'; deploymentId: string; evidenceUrl: string; reasonCode: string; note?: string }) {
+    return api.post<ReleaseChangeDto>(`/admin/releases/${id}/apply`, body)
+  },
+  async rollbackReleaseChange(id: string, body: { deploymentId: string; evidenceUrl: string; reasonCode: string; note?: string }) {
+    return api.post<ReleaseChangeDto>(`/admin/releases/${id}/rollback`, body)
+  },
   async overview(windowMinutes = 60) {
     return api.get<AdminOperationsOverviewDto>(withQuery('/admin/overview', { windowMinutes }))
   },

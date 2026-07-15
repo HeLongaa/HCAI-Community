@@ -27,6 +27,10 @@ export type Permission =
   | 'admin:creative:provider-control:manage'
   | 'admin:creative:provider-control:recover'
   | 'security:alerts:manage'
+  | 'admin:releases:read'
+  | 'admin:releases:manage'
+  | 'admin:releases:approve'
+  | 'admin:releases:deploy'
 export type Page =
   | 'home'
   | 'playground'
