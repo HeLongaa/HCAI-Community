@@ -25,6 +25,10 @@ The executable fallback role defaults live in `server/src/auth/permissions.js`. 
 | `admin:queue:read` | Read admin review queues | `GET /api/admin/reviews`, `GET /api/media/review-queue` | Admin review queue and media governance API loads |
 | `admin:queue:review` | Perform admin review actions | `POST /api/admin/reviews/:id/actions`, `POST /api/media/uploads/:id/scan` | Admin queue and media approve/reject buttons |
 | `admin:permissions:manage` | Edit role permission grants and point policy | `PUT /api/admin/roles/:role/permissions`, `PUT /api/admin/points/policy`, `POST /api/admin/points/policy/rollback` | Admin permission matrix edit/save controls; point policy save/rollback |
+| `admin:releases:read` | Inspect release changes and deployment evidence | `GET /api/admin/releases`, `GET /api/admin/releases/:id` | Release control panel |
+| `admin:releases:manage` | Request environment promotion, configuration release, or SecretRef rotation | `POST /api/admin/releases` | Release request form |
+| `admin:releases:approve` | Approve or reject a release request using two-person control | `POST /api/admin/releases/:id/approve`, `POST /api/admin/releases/:id/reject` | Release review actions |
+| `admin:releases:deploy` | Record deployment outcomes and rollback | `POST /api/admin/releases/:id/apply`, `POST /api/admin/releases/:id/rollback` | Deploy and rollback actions |
 
 ## Creative Generation Mutation Permissions
 
@@ -71,6 +75,7 @@ The frontend currently checks permissions in `src/App.tsx` before triggering hig
 | Edit role permissions | `admin:permissions:manage` | Shows edit/save controls in permission matrix |
 | Search/export/admin-adjust point ledgers | `points:adjust` | Shows Admin Finance tab, adjustment/export controls, policy view, and point approval filter |
 | Edit point adjustment policy | `admin:permissions:manage` | Enables point policy save |
+| Manage release changes | Dedicated `admin:releases:*` permission | Hides or disables release request, approval, deployment, and rollback controls independently |
 | Record current policy consent | Authenticated account | First-use consent gate blocks normal UI until exact current versions are accepted |
 | Submit or track a support request | Authenticated account | Support center opens login and backend enforces request ownership |
 

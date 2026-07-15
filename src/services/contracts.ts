@@ -1725,6 +1725,58 @@ export type ProfileListQuery = {
 
 export type AuditEventDto = AuditEvent
 
+export type ReleaseChangeStatus = 'pending_approval' | 'approved' | 'rejected' | 'deployed' | 'failed' | 'rolled_back'
+export type ReleaseChangeType = 'promotion' | 'secret_rotation' | 'configuration'
+export type ReleaseEnvironment = 'development' | 'staging' | 'production'
+export type ReleaseEvidenceDto = {
+  id: string
+  eventType: string
+  actorRef: string
+  reasonCode: string
+  evidence: Record<string, unknown>
+  evidenceHash: string
+  createdAt: string
+}
+export type ReleaseChangeDto = {
+  id: string
+  changeType: ReleaseChangeType
+  status: ReleaseChangeStatus
+  sourceEnvironment: ReleaseEnvironment | null
+  targetEnvironment: ReleaseEnvironment
+  artifactVersion: string
+  rollbackVersion: string
+  secretRef: string | null
+  secretVersion: string | null
+  summary: string
+  reasonCode: string
+  requestedByRef: string
+  approvedByRef: string | null
+  appliedByRef: string | null
+  rolledBackByRef: string | null
+  version: number
+  createdAt: string
+  updatedAt: string
+  evidence: ReleaseEvidenceDto[]
+}
+export type ReleaseChangeListQuery = {
+  status?: ReleaseChangeStatus | null
+  targetEnvironment?: ReleaseEnvironment | null
+  changeType?: ReleaseChangeType | null
+  cursor?: string | null
+  limit?: number | null
+}
+export type ReleaseChangeRequest = {
+  changeType: ReleaseChangeType
+  sourceEnvironment?: ReleaseEnvironment | null
+  targetEnvironment: ReleaseEnvironment
+  artifactVersion: string
+  rollbackVersion: string
+  secretRef?: string | null
+  secretVersion?: string | null
+  summary: string
+  reasonCode: string
+}
+
 export type AdminPermissionDto = {
   id: Permission
   description?: string | null

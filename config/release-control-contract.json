@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "taskId": "RELEASE-00",
+  "scope": "personal_accounts_only",
+  "policyDocument": "docs/RELEASE_CHANGE_CONTROL.md",
+  "schemaPath": "server/prisma/schema.prisma",
+  "migration": "server/prisma/migrations/0046_release_change_control/migration.sql",
+  "implementationPath": "server/src/releases/releaseControl.js",
+  "states": ["pending_approval", "approved", "rejected", "deployed", "failed", "rolled_back"],
+  "changeTypes": ["promotion", "secret_rotation", "configuration"],
+  "environments": ["development", "staging", "production"],
+  "permissions": ["admin:releases:read", "admin:releases:manage", "admin:releases:approve", "admin:releases:deploy"],
+  "routes": [
+    "GET /api/admin/releases",
+    "GET /api/admin/releases/:id",
+    "POST /api/admin/releases",
+    "POST /api/admin/releases/:id/approve",
+    "POST /api/admin/releases/:id/reject",
+    "POST /api/admin/releases/:id/apply",
+    "POST /api/admin/releases/:id/rollback"
+  ],
+  "controls": {
+    "twoPersonApproval": true,
+    "optimisticConcurrency": true,
+    "appendOnlyEvidence": true,
+    "productionPromotionFromStagingOnly": true,
+    "plaintextSecretsForbidden": true,
+    "realProviderCalls": false,
+    "tenantModels": false
+  }
+}

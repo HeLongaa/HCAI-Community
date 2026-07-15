@@ -2705,6 +2705,54 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/releases': {
+      get: {
+        summary: 'List release changes and immutable evidence',
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending_approval', 'approved', 'rejected', 'deployed', 'failed', 'rolled_back'] } },
+          { name: 'targetEnvironment', in: 'query', schema: { type: 'string', enum: ['development', 'staging', 'production'] } },
+          { name: 'changeType', in: 'query', schema: { type: 'string', enum: ['promotion', 'secret_rotation', 'configuration'] } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 } },
+        ],
+        responses: { '200': { description: 'Cursor-paginated release changes' }, '403': { description: 'Requires release read permission' } },
+      },
+      post: {
+        summary: 'Request an environment, configuration, or SecretRef release change',
+        description: 'Creates a pending change with artifact and rollback versions. Plaintext secret fields are rejected.',
+        responses: { '200': { description: 'Pending release change with request evidence' }, '400': { description: 'Invalid environment, version, or SecretRef' }, '403': { description: 'Requires release management permission' } },
+      },
+    },
+    '/admin/releases/{id}': {
+      get: {
+        summary: 'Get one release change and its evidence chain',
+        responses: { '200': { description: 'Release change details' }, '403': { description: 'Requires release read permission' }, '404': { description: 'Release change not found' } },
+      },
+    },
+    '/admin/releases/{id}/approve': {
+      post: {
+        summary: 'Approve a release change using two-person control',
+        responses: { '200': { description: 'Approved release change' }, '400': { description: 'Requester cannot self-approve' }, '409': { description: 'Invalid or concurrent transition' } },
+      },
+    },
+    '/admin/releases/{id}/reject': {
+      post: {
+        summary: 'Reject a release change using two-person control',
+        responses: { '200': { description: 'Rejected release change' }, '400': { description: 'Requester cannot self-review' }, '409': { description: 'Invalid or concurrent transition' } },
+      },
+    },
+    '/admin/releases/{id}/apply': {
+      post: {
+        summary: 'Record a deployment outcome and evidence URL',
+        responses: { '200': { description: 'Deployed or failed release change' }, '409': { description: 'Change is not approved or was modified concurrently' } },
+      },
+    },
+    '/admin/releases/{id}/rollback': {
+      post: {
+        summary: 'Record rollback to the required rollback version',
+        responses: { '200': { description: 'Rolled-back release change with evidence' }, '409': { description: 'Change cannot be rolled back or was modified concurrently' } },
+      },
+    },
     '/admin/points/ledger': {
       get: {
         summary: 'Search points ledger entries across users',

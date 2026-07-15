@@ -35,5 +35,8 @@ test('structured registry separates RBAC from resource authorization', () => {
     'admin:high-risk:approve',
     'admin:temporary-access:manage',
     'admin:break-glass',
+    'admin:releases:manage',
+    'admin:releases:approve',
+    'admin:releases:deploy',
   ])
 })

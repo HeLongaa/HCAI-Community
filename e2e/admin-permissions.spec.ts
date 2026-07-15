@@ -39,3 +39,41 @@ test('admin can edit and save role permissions from the permission matrix', asyn
   )
   expect(roles.find((role) => role.role === 'creator')?.permissions).toContain('task:moderate')
 })
+
+test('release control UI requests, independently approves, and records a deployment', async ({ page, request }) => {
+  const requester = await login(request, 'opsplus')
+  const approver = await login(request, 'finops')
+  await signInPage(page, request, 'opsplus')
+  await page.goto('/')
+  await page.getByTestId('nav-admin').click()
+
+  const panel = page.getByTestId('admin-release-control')
+  await expect(panel).toBeVisible()
+  await panel.getByLabel('Artifact version').fill('e2e-release-current')
+  await panel.getByLabel('Rollback version').fill('e2e-release-previous')
+  await panel.getByLabel('Release summary').fill('E2E production promotion')
+  const requestResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/releases') && response.request().method() === 'POST')
+  await panel.getByRole('button', { name: 'Request' }).click()
+  const requested = await requestResponse.then((response) => response.json()) as { data: { id: string } }
+  await expect(panel.getByText('E2E production promotion')).toBeVisible()
+
+  await apiData(request.post(`${apiBaseUrl}/api/admin/releases/${requested.data.id}/approve`, {
+    headers: authHeaders(approver.accessToken),
+    data: { reasonCode: 'e2e_quality_gate' },
+  }))
+  await panel.getByTitle('Refresh').click()
+  const releaseRow = panel.locator('button.admin-row').filter({ hasText: 'E2E production promotion' })
+  await expect(releaseRow.locator('.status')).toHaveText('approved')
+  await panel.getByLabel('Deployment id').fill('e2e-deployment-1')
+  await panel.getByLabel('Evidence URL').fill('https://example.test/evidence/e2e-deployment-1')
+  const deployResponse = page.waitForResponse((response) => response.url().endsWith(`/api/admin/releases/${requested.data.id}/apply`))
+  await panel.getByRole('button', { name: 'Record deployment' }).click()
+  await deployResponse
+  await expect(releaseRow.locator('.status')).toHaveText('deployed')
+
+  const release = await apiData<{ status: string; evidence: unknown[] }>(request.get(`${apiBaseUrl}/api/admin/releases/${requested.data.id}`, {
+    headers: authHeaders(requester.accessToken),
+  }))
+  expect(release.status).toBe('deployed')
+  expect(release.evidence).toHaveLength(3)
+})

@@ -6,6 +6,7 @@ import { taskCreatedEvent } from '../events/domainEvents.js'
 import { createSeedDomainEventRepository } from '../events/seedDomainEventRepository.js'
 import { createSeedDomainEventConsumerRepository } from '../events/seedDomainEventConsumerRepository.js'
 import { createSeedJobRepository } from '../jobs/seedJobRepository.js'
+import { createSeedReleaseRepository } from '../releases/seedReleaseRepository.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
 import { seedStore } from '../data/seed.js'
@@ -2319,11 +2320,13 @@ export const createSeedRepository = () => {
   const domainEvents = createSeedDomainEventRepository({ recordAudit: auditRecorder })
   const domainEventConsumers = createSeedDomainEventConsumerRepository({ recordAudit: auditRecorder })
   const jobs = createSeedJobRepository({ recordAudit: auditRecorder })
+  const releaseChanges = createSeedReleaseRepository()
   return {
   chat: createSeedChatRepository({
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) =>
       recordAudit(actor, action, resourceType, resourceId, metadata),
   }),
+  releaseChanges,
   auth: {
     getCurrentUser: () => seedStore.me,
     findDemoAccountByAccessToken: (token) => {

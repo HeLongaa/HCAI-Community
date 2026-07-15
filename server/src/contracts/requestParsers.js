@@ -10,6 +10,7 @@ import {
   validationFailed,
 } from '../common/http/validation.js'
 import { permissions } from '../auth/permissions.js'
+import { releaseChangeTypes, releaseEnvironments, releaseStatuses } from '../releases/releaseControl.js'
 import { adminGlobalSearchTypes } from '../admin/adminOperationsOverview.js'
 import { assertChatGenerationRequest } from '../creative/chatCapabilityContract.js'
 import { assertImageGenerationRequest } from '../creative/imageCapabilityContract.js'
@@ -662,6 +663,69 @@ const parseLimit = (query, fallback = 20, maximum = 100) => {
 export const parsePaginationQuery = (query, options = {}) => ({
   cursor: optionalText(query, 'cursor', null),
   limit: parseLimit(query, options.defaultLimit ?? 20, options.maxLimit ?? 100),
+})
+
+export const parseReleaseChangeListQuery = (query) => ({
+  ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 50 }),
+  status: query.status ? requireOneOf(query, 'status', releaseStatuses) : null,
+  targetEnvironment: query.targetEnvironment ? requireOneOf(query, 'targetEnvironment', releaseEnvironments) : null,
+  changeType: query.changeType ? requireOneOf(query, 'changeType', releaseChangeTypes) : null,
+})
+
+export const parseReleaseChangeRequest = (body) => {
+  for (const prohibited of ['secret', 'secretValue', 'credential', 'token', 'apiKey']) {
+    if (body?.[prohibited] != null) throw validationFailed(`${prohibited} must not contain secret material; use secretRef`)
+  }
+  const changeType = requireOneOf(body, 'changeType', releaseChangeTypes)
+  const targetEnvironment = requireOneOf(body, 'targetEnvironment', releaseEnvironments)
+  const sourceEnvironment = body.sourceEnvironment ? requireOneOf(body, 'sourceEnvironment', releaseEnvironments) : null
+  if (changeType === 'promotion' && !sourceEnvironment) throw validationFailed('sourceEnvironment is required for promotion')
+  if (sourceEnvironment === targetEnvironment) throw validationFailed('sourceEnvironment and targetEnvironment must differ')
+  if (targetEnvironment === 'production' && changeType === 'promotion' && sourceEnvironment !== 'staging') {
+    throw validationFailed('production promotion must originate from staging')
+  }
+  const secretRef = body.secretRef == null ? null : requireText(body, 'secretRef')
+  const secretVersion = body.secretVersion == null ? null : requireText(body, 'secretVersion')
+  if (changeType === 'secret_rotation' && (!secretRef || !secretVersion)) {
+    throw validationFailed('secret_rotation requires secretRef and secretVersion')
+  }
+  if (changeType !== 'secret_rotation' && (secretRef || secretVersion)) {
+    throw validationFailed('secretRef and secretVersion are only allowed for secret_rotation')
+  }
+  if (secretRef && !/^secret:\/\/[a-zA-Z0-9][a-zA-Z0-9/_.:-]{2,180}$/.test(secretRef)) {
+    throw validationFailed('secretRef must be a secret:// reference')
+  }
+  return {
+    changeType,
+    sourceEnvironment,
+    targetEnvironment,
+    artifactVersion: requireText(body, 'artifactVersion'),
+    rollbackVersion: requireText(body, 'rollbackVersion'),
+    secretRef,
+    secretVersion,
+    summary: requireText(body, 'summary'),
+    reasonCode: requireText(body, 'reasonCode'),
+  }
+}
+
+export const parseReleaseDecisionRequest = (body) => ({
+  reasonCode: requireText(body, 'reasonCode'),
+  note: optionalText(body, 'note', ''),
+})
+
+export const parseReleaseApplyRequest = (body) => ({
+  outcome: requireOneOf(body, 'outcome', ['deployed', 'failed']),
+  deploymentId: requireText(body, 'deploymentId'),
+  evidenceUrl: requireText(body, 'evidenceUrl'),
+  reasonCode: requireText(body, 'reasonCode'),
+  note: optionalText(body, 'note', ''),
+})
+
+export const parseReleaseRollbackRequest = (body) => ({
+  deploymentId: requireText(body, 'deploymentId'),
+  evidenceUrl: requireText(body, 'evidenceUrl'),
+  reasonCode: requireText(body, 'reasonCode'),
+  note: optionalText(body, 'note', ''),
 })
 
 export const parseCreativeGenerationHistoryQuery = (query) => {
