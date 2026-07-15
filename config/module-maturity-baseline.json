@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "baselineId": "module-maturity-baseline-v1",
   "scope": "personal_accounts_only",
-  "reviewedAt": "2026-07-14",
+  "reviewedAt": "2026-07-15",
   "policyDocument": "docs/MODULE_MATURITY_BASELINE.md",
   "verificationCommand": "npm run test:foundation-baseline",
   "maturityLevels": ["production_capable", "partial", "contract_only", "planned"],
@@ -179,10 +179,10 @@
       "maturity": "partial",
       "ownerTask": "OBS-01",
       "userCapabilities": ["稳定错误码与显式失败状态"],
-      "adminCapabilities": ["运营指标", "Prometheus 导出", "安全告警处置"],
-      "operationPolicies": ["append_only", "immutable_evidence"],
-      "evidence": ["server/src/operations/metrics.js", "server/src/operations/metricsExporter.js", "docs/OPERATIONS_RUNBOOK.md"],
-      "gapTasks": ["OBS-01", "OBS-BASE-01", "OBS-02"]
+      "adminCapabilities": ["运营指标", "Prometheus 导出", "安全告警处置", "日志筛选与导出", "Trace 时间线", "SLO 多窗口燃烧率告警"],
+      "operationPolicies": ["append_only", "state_transition", "immutable_evidence"],
+      "evidence": ["server/src/operations/metrics.js", "server/src/operations/metricsExporter.js", "server/src/modules/observability/routes.js", "src/features/admin/ObservabilityPanel.tsx", "docs/OBSERVABILITY_SEARCH_AND_TRACE.md"],
+      "gapTasks": ["OBS-01", "OBS-BASE-01"]
     },
     {
       "id": "developer-platform",

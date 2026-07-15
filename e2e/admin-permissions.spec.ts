@@ -93,3 +93,44 @@ test('audit UI verifies the chain and creates an immutable archive manifest', as
   await archiveResponse
   await expect(page.getByText(/Archives: 1/)).toBeVisible()
 })
+
+test('admin observability UI searches logs, drills into a trace, and exposes SLO controls', async ({ page, request }) => {
+  await signInPage(page, request, 'opsplus')
+  await page.goto('/')
+  await page.getByTestId('nav-admin').click()
+
+  const logsResponse = page.waitForResponse((response) =>
+    response.url().includes('/api/admin/observability/logs?') && response.request().method() === 'GET',
+  )
+  await page.getByRole('button', { name: 'Observability', exact: true }).click()
+  await logsResponse
+
+  const panel = page.getByTestId('admin-observability-panel')
+  await expect(panel).toBeVisible()
+  await expect(panel.getByText('SLO status')).toBeVisible()
+  await expect(panel.getByRole('button', { name: 'Evaluate now' })).toBeVisible()
+  await expect(panel.getByTitle('Export JSON')).toBeEnabled()
+
+  const firstLog = panel.locator('.observability-log-row').first()
+  await expect(firstLog).toBeVisible()
+  const detailResponse = page.waitForResponse((response) =>
+    /\/api\/admin\/observability\/logs\/[^?]+$/.test(response.url()),
+  )
+  await firstLog.click()
+  await detailResponse
+  await expect(panel.getByText('Request ID', { exact: true })).toBeVisible()
+  await expect(panel.getByText('Trace timeline')).toBeVisible()
+  await expect(panel.locator('.trace-span').first()).toBeVisible()
+})
+
+test('moderator observability UI is read-only', async ({ page, request }) => {
+  await signInPage(page, request, 'legalpixel')
+  await page.goto('/')
+  await page.getByTestId('nav-admin').click()
+  await page.getByRole('button', { name: 'Observability', exact: true }).click()
+
+  const panel = page.getByTestId('admin-observability-panel')
+  await expect(panel).toBeVisible()
+  await expect(panel.getByTitle('Export JSON')).toBeDisabled()
+  await expect(panel.getByRole('button', { name: 'Evaluate now' })).toHaveCount(0)
+})

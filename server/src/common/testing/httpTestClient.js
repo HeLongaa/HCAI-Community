@@ -10,6 +10,7 @@ const createServerWithRepositories = async (repositories, registerRoutes) => {
   const server = createServer(router, {
     resolveUser: (token) => repositories.auth.findDemoAccountByAccessToken(token),
     auditAdminMutation: createAdminMutationAuditHook(repositories.audit),
+    onRequestFinished: (input) => repositories.observability.recordHttp(input),
   })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const { port } = server.address()

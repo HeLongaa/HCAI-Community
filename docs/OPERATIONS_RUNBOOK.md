@@ -18,6 +18,11 @@ Use the quality gate tiers in `docs/QUALITY_GATES.md`:
 
 - `npm run check:quick` for local handoff.
 - `npm run check:pr` before merge.
+- `npm run test:observability-search` after changes to HTTP telemetry, Trace propagation, Admin observability, SLOs, alerts, redaction, or observability persistence.
+
+## Logs, Traces, And SLO Alerts
+
+Use the Admin **Observability** tab for bounded sanitized log search, request and Trace drill-down, verifiable export, SLO evaluation, and alert disposition. Follow `docs/OBSERVABILITY_SEARCH_AND_TRACE.md`; an `unverifiable` SLO result is an operational failure requiring telemetry recovery, never a healthy state.
 - `npm run check:deploy` before deployment with a safe fixture smoke profile.
 - `npm run check:deploy:env` in the deployment environment.
 

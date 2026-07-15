@@ -7,6 +7,7 @@ import { createSeedDomainEventRepository } from '../events/seedDomainEventReposi
 import { createSeedDomainEventConsumerRepository } from '../events/seedDomainEventConsumerRepository.js'
 import { createSeedJobRepository } from '../jobs/seedJobRepository.js'
 import { createSeedReleaseRepository } from '../releases/seedReleaseRepository.js'
+import { createSeedObservabilityRepository } from '../observability/seedObservabilityRepository.js'
 import {
   appendSeedAuditIntegrity,
   buildPortableAuditExport,
@@ -2328,12 +2329,14 @@ export const createSeedRepository = () => {
   const domainEventConsumers = createSeedDomainEventConsumerRepository({ recordAudit: auditRecorder })
   const jobs = createSeedJobRepository({ recordAudit: auditRecorder })
   const releaseChanges = createSeedReleaseRepository()
+  const observability = createSeedObservabilityRepository()
   return {
   chat: createSeedChatRepository({
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) =>
       recordAudit(actor, action, resourceType, resourceId, metadata),
   }),
   releaseChanges,
+  observability,
   auth: {
     getCurrentUser: () => seedStore.me,
     findDemoAccountByAccessToken: (token) => {

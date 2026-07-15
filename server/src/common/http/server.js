@@ -10,6 +10,31 @@ import { createCorrelationContext } from '../../observability/structuredLogging.
 
 export const createServer = (router, context = {}) => {
   return http.createServer(async (request, response) => {
+    const startedAt = new Date()
+    const correlation = createCorrelationContext(request.headers)
+    response.setHeader('x-request-id', correlation.requestId)
+    const requestContext = {
+      ...context,
+      requestId: correlation.requestId,
+      traceId: correlation.traceId,
+      spanId: correlation.spanId,
+      correlation,
+      routeTemplate: null,
+      routeParams: {},
+      authToken: null,
+      user: null,
+    }
+    response.once('finish', () => {
+      Promise.resolve(context.onRequestFinished?.({
+        request,
+        response,
+        correlation,
+        routeTemplate: requestContext.routeTemplate,
+        params: requestContext.routeParams,
+        startedAt,
+        endedAt: new Date(),
+      })).catch((error) => console.error('[observability]', error?.message ?? 'telemetry write failed'))
+    })
     try {
       if (handleCors(request, response)) {
         return
@@ -39,17 +64,8 @@ export const createServer = (router, context = {}) => {
         },
       })
       const authToken = parseBearerToken(request.headers.authorization)
-      const correlation = createCorrelationContext(request.headers)
-      response.setHeader('x-request-id', correlation.requestId)
-      const requestContext = {
-        ...context,
-        requestId: correlation.requestId,
-        traceId: correlation.traceId,
-        spanId: correlation.spanId,
-        correlation,
-        authToken,
-        user: authToken ? (await context.resolveUser?.(authToken)) ?? null : null,
-      }
+      requestContext.authToken = authToken
+      requestContext.user = authToken ? (await context.resolveUser?.(authToken)) ?? null : null
       await router.handle(request, response, requestContext)
     } catch (error) {
       if (error instanceof HttpError) {

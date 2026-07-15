@@ -117,6 +117,7 @@ import {
 import { sanitizeNotificationMetadata } from './notificationTargets.js'
 import { safeCreativeCreditMetadata, safeErrorPreview } from '../creative/generationRecords.js'
 import { buildPortableAuditExport } from '../audit/auditIntegrity.js'
+import { createPrismaObservabilityRepository } from '../observability/prismaObservabilityRepository.js'
 import {
   buildConsentStatus,
   compliancePolicyManifest,
@@ -213,6 +214,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   const domainEventConsumers = createPrismaDomainEventConsumerRepository(client, { recordAudit })
   const jobs = createPrismaJobRepository(client, { recordAudit })
   const releaseChanges = createPrismaReleaseRepository(client)
+  const observability = createPrismaObservabilityRepository(client)
 
   const leaseExpiry = (ttlSeconds) => new Date(Date.now() + Math.max(1, Number(ttlSeconds ?? 300)) * 1000)
 
@@ -9327,6 +9329,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     domainEventConsumers,
     jobs,
     releaseChanges,
+    observability,
     operationsMetrics,
     authorization,
     adminReviews,

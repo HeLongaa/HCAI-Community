@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 
 const requestIdPattern = /^[A-Za-z0-9._:-]{1,128}$/
 const traceparentPattern = /^00-([a-f0-9]{32})-([a-f0-9]{16})-([0-9a-f]{2})$/i
@@ -64,8 +64,9 @@ export const createCorrelationContext = (headers = {}) => {
   const trace = parseTraceparent(headers.traceparent)
   return {
     requestId,
-    traceId: trace.traceId,
-    spanId: trace.spanId,
+    traceId: trace.traceId ?? randomBytes(16).toString('hex'),
+    spanId: randomBytes(8).toString('hex'),
+    parentSpanId: trace.spanId,
     sampled: trace.sampled,
     responseHeaders: { 'x-request-id': requestId },
   }
@@ -79,6 +80,9 @@ const isSensitiveKey = (key) => {
 export const sanitizeLogPayload = (value) => {
   if (Array.isArray(value)) {
     return value.map(sanitizeLogPayload)
+  }
+  if (value instanceof Date) {
+    return value
   }
   if (!value || typeof value !== 'object') {
     return value

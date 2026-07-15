@@ -15,6 +15,9 @@
   "entities": [
     { "model": "AuditEvent", "domain": "audit-evidence", "policy": "append_only", "hardDelete": false },
     { "model": "AuditArchiveManifest", "domain": "audit-evidence", "policy": "immutable_evidence", "hardDelete": false },
+    { "model": "ObservabilityLog", "domain": "observability-incident", "policy": "append_only", "hardDelete": true },
+    { "model": "TraceSpan", "domain": "observability-incident", "policy": "append_only", "hardDelete": true },
+    { "model": "ObservabilityAlert", "domain": "observability-incident", "policy": "state_transition", "hardDelete": false },
     { "model": "ReleaseChange", "domain": "platform-release", "policy": "state_transition", "hardDelete": false },
     { "model": "ReleaseEvidence", "domain": "platform-release", "policy": "immutable_evidence", "hardDelete": false },
     { "model": "SecurityEvent", "domain": "trust-safety-risk", "policy": "append_only", "hardDelete": false },

@@ -17,7 +17,8 @@ test('createCorrelationContext propagates safe request id and W3C traceparent', 
 
   assert.equal(context.requestId, 'request-fixture-1')
   assert.equal(context.traceId, '4bf92f3577b34da6a3ce929d0e0e4736')
-  assert.equal(context.spanId, '00f067aa0ba902b7')
+  assert.match(context.spanId, /^[a-f0-9]{16}$/)
+  assert.equal(context.parentSpanId, '00f067aa0ba902b7')
   assert.equal(context.sampled, true)
   assert.deepEqual(context.responseHeaders, { 'x-request-id': 'request-fixture-1' })
 })
@@ -76,4 +77,6 @@ test('async correlation projection is explicit and sanitized payload helper is r
   })
 
   assert.equal(sanitizeLogPayload({ storageUrl: 'https://signed.example.test' }).storageUrl, '[REDACTED]')
+  const timestamp = new Date('2026-07-15T00:00:00.000Z')
+  assert.equal(sanitizeLogPayload({ timestamp }).timestamp, timestamp)
 })

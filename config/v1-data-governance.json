@@ -595,11 +595,11 @@
     {
       "id": "observability_logs_traces_metrics",
       "classification": "internal",
-      "prismaModels": [],
-      "locations": ["observability"],
+      "prismaModels": ["ObservabilityLog", "TraceSpan", "ObservabilityAlert"],
+      "locations": ["postgres", "observability"],
       "dataSubjects": ["user", "staff_role", "system"],
       "purposes": ["auth_security", "support_operations"],
-      "exampleFields": ["request id", "route template", "status family", "latency", "low-cardinality error code", "aggregate count"],
+      "exampleFields": ["request id", "trace id", "span id", "parent span id", "route template", "status family", "latency", "low-cardinality error code", "resource correlation", "SLO burn rate", "alert state", "aggregate count"],
       "accessRoles": ["authorized_service", "operations_operator", "security_operator"],
       "retentionPolicyId": "observability_bounded",
       "exportPolicy": "exclude_internal_telemetry_provide_user_event_summary_when_required",
@@ -1043,7 +1043,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 66,
+    "modelCount": 69,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",

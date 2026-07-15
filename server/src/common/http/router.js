@@ -23,6 +23,8 @@ export const createRouter = () => {
     const pathname = normalizePath(url.pathname)
     const exactRoute = routes.get(`${request.method} ${pathname}`)
     if (exactRoute) {
+      context.routeTemplate = exactRoute.pathname
+      context.routeParams = {}
       const routeContext = { ...context, url, params: {}, query: Object.fromEntries(url.searchParams) }
       if (exactRoute.audit) {
         if (!context.auditAdminMutation) throw new Error('ADMIN_AUDIT_UNAVAILABLE')
@@ -42,6 +44,8 @@ export const createRouter = () => {
       params: matchedRoute.params,
       query: Object.fromEntries(url.searchParams),
     }
+    context.routeTemplate = matchedRoute.pathname
+    context.routeParams = matchedRoute.params
     if (matchedRoute.audit) {
       if (!context.auditAdminMutation) throw new Error('ADMIN_AUDIT_UNAVAILABLE')
       await context.auditAdminMutation({ route: matchedRoute.audit, request, context: routeContext })

@@ -40,3 +40,7 @@ governed separately by data retention and legal hold. Operations search and expo
 redaction, pagination, and audit of exports.
 
 This contract does not enable real Provider traffic and does not add shared account or group-scoped telemetry.
+
+## OBS-02 Search And Incident Response
+
+`OBS-02` implements the searchable persistence and Admin workflow described by this baseline. Its bounded query, Trace reconstruction, SLO burn-rate, alert disposition, export integrity, redaction, and access-audit contract is documented in `docs/OBSERVABILITY_SEARCH_AND_TRACE.md` and verified by `npm run test:observability-search`.
