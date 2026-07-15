@@ -338,11 +338,29 @@ model AuditEvent {
   metadata              Json?
   metadataSchemaVersion Int            @default(1) @map("metadata_schema_version")
   createdAt             DateTime       @default(now()) @map("created_at")
+  sequence              BigInt?        @unique
+  previousHash          String?        @map("previous_hash")
+  contentHash           String?        @unique @map("content_hash")
+  chainVersion          Int            @default(1) @map("chain_version")
 
   @@index([createdAt])
   @@index([action, createdAt])
   @@index([resourceType, createdAt])
   @@map("audit_events")
+}
+
+model AuditArchiveManifest {
+  id           String   @id
+  fromSequence BigInt   @map("from_sequence")
+  toSequence   BigInt   @map("to_sequence")
+  eventCount   Int      @map("event_count")
+  rootHash     String   @map("root_hash")
+  objectRef    String   @map("object_ref")
+  actorId      String?  @map("actor_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("audit_archive_manifests")
 }
 
 model ReleaseChange {

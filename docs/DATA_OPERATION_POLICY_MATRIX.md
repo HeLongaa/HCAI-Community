@@ -24,7 +24,8 @@ Run `npm run test:data-operation-policies` after any Prisma model or policy chan
 - Entitlements and accounting: balance snapshots and reservation aggregates may transition atomically, while ledger
   facts, accounting operations, and movements are append-only. Corrections are linked compensation records.
 - Provider control and risk: mutable state is separated from immutable cap evidence and append-only circuit events.
-- Audit and security: audit and security facts are append-only and have no update or delete API.
+- Audit and security: audit and security facts are append-only; audit archive manifests are immutable evidence. Database
+  triggers reject updates and deletes outside an explicit transaction-local maintenance override.
 
 ## Enforcement Boundary
 

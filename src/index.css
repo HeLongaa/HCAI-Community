@@ -5722,6 +5722,25 @@ button.video-history-row.active {
   border-top: 1px solid var(--border);
 }
 
+.audit-integrity-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  min-height: 42px;
+  margin: 10px 0 14px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid #737373;
+  background: color-mix(in srgb, var(--panel) 94%, #737373 6%);
+}
+
+.audit-integrity-summary.complete { border-left-color: #16835b; }
+.audit-integrity-summary.broken { border-left-color: #c33b3b; }
+.audit-integrity-summary.unverifiable { border-left-color: #b7791f; }
+.audit-integrity-summary span { color: var(--muted); }
+.audit-integrity-summary code { margin-left: auto; font-size: 12px; }
+
 .audit-detail-summary,
 .audit-json-block {
   display: grid;

@@ -575,18 +575,6 @@ const ledgerCsv = (items) => [
   ].map(csvCell).join(',')),
 ].join('\n')
 
-const auditExportJson = (events, query) => JSON.stringify({
-  exportedAt: new Date().toISOString(),
-  query: {
-    action: query.action ?? null,
-    resourceType: query.resourceType ?? null,
-    actorId: query.actorId ?? null,
-    limit: query.limit,
-  },
-  count: events.length,
-  events,
-}, null, 2)
-
 const securityAlertExportJson = (artifact) => JSON.stringify(artifact, null, 2)
 
 const operationsMetricsExportJson = (artifact) => JSON.stringify(artifact, null, 2)
@@ -856,8 +844,16 @@ export const registerAdminRoutes = (router, options = {}) => {
   })
 
   router.add('GET', '/api/admin/audit', async (_request, response, context) => {
-    requirePermission(context, 'admin:audit:read')
-    const page = await repositories.audit.list(parseAdminAuditListQuery(context.query))
+    const actor = requirePermission(context, 'admin:audit:read')
+    const query = parseAdminAuditListQuery(context.query)
+    const page = await routeRepositories.audit.list(query)
+    await routeRepositories.audit.recordAttempt({
+      actor,
+      action: 'admin.audit.queried',
+      resourceType: 'audit_event_collection',
+      resourceId: null,
+      metadata: { action: query.action ?? null, resourceType: query.resourceType ?? null, actorId: query.actorId ?? null, limit: query.limit, resultCount: page.items.length },
+    })
     ok(response, page.items, {
       pagination: {
         limit: page.limit,
@@ -867,18 +863,65 @@ export const registerAdminRoutes = (router, options = {}) => {
   })
 
   router.add('GET', '/api/admin/audit/export', async (_request, response, context) => {
-    requirePermission(context, 'admin:audit:read')
+    const actor = requirePermission(context, 'admin:audit:export')
     const query = parseAdminAuditListQuery({ ...context.query, limit: context.query.limit ?? '100' })
-    const page = await repositories.audit.list(query)
-    text(response, 200, auditExportJson(page.items, query), 'application/json; charset=utf-8')
+    const artifact = await routeRepositories.audit.export(query)
+    await routeRepositories.audit.recordAttempt({
+      actor,
+      action: 'admin.audit.exported',
+      resourceType: 'audit_export',
+      resourceId: artifact.manifest.rootHash,
+      metadata: { count: artifact.manifest.count, rootHash: artifact.manifest.rootHash, query: artifact.manifest.query },
+    })
+    text(response, 200, JSON.stringify(artifact, null, 2), 'application/json; charset=utf-8')
+  })
+
+  router.add('GET', '/api/admin/audit/verify', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:audit:verify')
+    const integrity = await routeRepositories.audit.verify()
+    await routeRepositories.audit.recordAttempt({
+      actor,
+      action: 'admin.audit.verified',
+      resourceType: 'audit_chain',
+      resourceId: integrity.rootHash,
+      metadata: { status: integrity.status, count: integrity.count, failureCount: integrity.failures.length },
+    })
+    ok(response, integrity)
+  })
+
+  router.add('GET', '/api/admin/audit/archives', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:audit:read')
+    const manifests = await routeRepositories.audit.listArchives()
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.audit.archives_queried', resourceType: 'audit_archive_manifest', resourceId: null, metadata: { resultCount: manifests.length } })
+    ok(response, manifests)
+  })
+
+  router.add('POST', '/api/admin/audit/archives', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:audit:archive')
+    const payload = (await readJsonBody(request)) ?? {}
+    const objectRef = payload.objectRef == null ? null : String(payload.objectRef).trim()
+    if (objectRef && (!/^[a-z][a-z0-9+.-]*:\/\/[a-z0-9][a-z0-9._~:/?#\[\]@!$&'()*+,;=%-]{0,500}$/i.test(objectRef))) {
+      throw validationFailed('objectRef must be a safe absolute object reference')
+    }
+    const result = await routeRepositories.audit.archive({ actor, objectRef })
+    if (!result.manifest) throw new HttpError(409, 'AUDIT_CHAIN_UNVERIFIABLE', 'audit chain must be complete before archiving')
+    await routeRepositories.audit.recordAttempt({
+      actor,
+      action: 'admin.audit.archived',
+      resourceType: 'audit_archive_manifest',
+      resourceId: result.manifest.id,
+      metadata: { rootHash: result.manifest.rootHash, eventCount: result.manifest.eventCount, objectRef: result.manifest.objectRef },
+    })
+    ok(response, result)
   })
 
   router.add('GET', '/api/admin/audit/:id', async (_request, response, context) => {
-    requirePermission(context, 'admin:audit:read')
-    const event = await repositories.audit.find(context.params.id)
+    const actor = requirePermission(context, 'admin:audit:read')
+    const event = await routeRepositories.audit.find(context.params.id)
     if (!event) {
       throw notFound(`/api/admin/audit/${context.params.id}`)
     }
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.audit.detail_read', resourceType: 'audit_event', resourceId: event.id, metadata: null })
     ok(response, event)
   })
 

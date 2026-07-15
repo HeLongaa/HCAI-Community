@@ -3,6 +3,7 @@
   "scope": "all_admin_mutations",
   "policyDocument": "docs/ADMIN_MUTATION_AUDIT.md",
   "routes": [
+    { "method": "POST", "path": "/api/admin/audit/archives", "action": "admin.audit.archive.attempted", "resourceType": "audit_archive_manifest", "resourceParam": null, "reasonCode": "audit_archive_create", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/creative/provider-controls/disable", "action": "admin.provider_control.disable.attempted", "resourceType": "provider_control", "resourceParam": null, "reasonCode": "provider_control_disable", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/creative/provider-controls/cap-evidence", "action": "admin.provider_cap_evidence.create.attempted", "resourceType": "provider_cap_evidence", "resourceParam": null, "reasonCode": "provider_cap_evidence_create", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/creative/provider-controls/recovery-requests", "action": "admin.provider_control.recovery.attempted", "resourceType": "provider_control", "resourceParam": null, "reasonCode": "provider_control_recovery", "mode": "domain_audited", "risk": "critical" },

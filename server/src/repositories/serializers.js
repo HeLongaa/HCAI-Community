@@ -835,6 +835,12 @@ export const serializeAuditEvent = (event) => {
                 ? safeMediaAssetLifecycleAuditMetadata(event.metadata)
                 : event.metadata ?? null,
     createdAt: event.createdAt?.toISOString?.() ?? event.createdAt ?? '',
+    integrity: event.sequence == null || !event.contentHash ? null : {
+      sequence: String(event.sequence),
+      previousHash: event.previousHash ?? null,
+      contentHash: event.contentHash,
+      chainVersion: event.chainVersion ?? 1,
+    },
   }
 }
 
