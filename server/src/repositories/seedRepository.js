@@ -7,6 +7,7 @@ import { createSeedDomainEventRepository } from '../events/seedDomainEventReposi
 import { createSeedDomainEventConsumerRepository } from '../events/seedDomainEventConsumerRepository.js'
 import { createSeedJobRepository } from '../jobs/seedJobRepository.js'
 import { createSeedReleaseRepository } from '../releases/seedReleaseRepository.js'
+import { createSeedSystemSettingsRepository } from '../settings/seedSystemSettingsRepository.js'
 import { createSeedObservabilityRepository } from '../observability/seedObservabilityRepository.js'
 import {
   appendSeedAuditIntegrity,
@@ -2329,6 +2330,7 @@ export const createSeedRepository = () => {
   const domainEventConsumers = createSeedDomainEventConsumerRepository({ recordAudit: auditRecorder })
   const jobs = createSeedJobRepository({ recordAudit: auditRecorder })
   const releaseChanges = createSeedReleaseRepository()
+  const systemSettings = createSeedSystemSettingsRepository({ recordAudit: auditRecorder })
   const observability = createSeedObservabilityRepository()
   return {
   chat: createSeedChatRepository({
@@ -2336,6 +2338,7 @@ export const createSeedRepository = () => {
       recordAudit(actor, action, resourceType, resourceId, metadata),
   }),
   releaseChanges,
+  systemSettings,
   observability,
   auth: {
     getCurrentUser: () => seedStore.me,

@@ -12,6 +12,7 @@ import { useAsyncResource } from '../../hooks/useAsyncResource'
 import { AdminOverviewPanel } from './AdminOverviewPanel'
 import { ReleaseControlPanel } from './ReleaseControlPanel'
 import { ObservabilityPanel } from './ObservabilityPanel'
+import { SystemSettingsPanel } from './SystemSettingsPanel'
 import type {
   AdminPermissionDto,
   AdminAuditArchiveManifestDto,
@@ -402,10 +403,11 @@ export function AdminPage({
   onOpenNotificationResource?: (notification: ApiNotification) => void
 }) {
   const isZh = isZhCopy(t)
-  const adminTabs = ['Overview', 'Observability', 'Task review', 'Access', 'Security', 'Finance', 'Accounting', 'Generations', 'Submissions', 'Community', 'Audit log', 'Users', 'Tags', 'AI config']
+  const adminTabs = ['Overview', 'Observability', 'Settings', 'Task review', 'Access', 'Security', 'Finance', 'Accounting', 'Generations', 'Submissions', 'Community', 'Audit log', 'Users', 'Tags', 'AI config']
   const adminTabLabels: Record<string, string> = {
     Overview: textFor(t, 'Overview', '概览'),
     Observability: textFor(t, 'Observability', '可观测性'),
+    Settings: textFor(t, 'Settings', '系统设置'),
     'Task review': textFor(t, 'Task review', '任务审核'),
     Access: textFor(t, 'Access', '权限'),
     Security: textFor(t, 'Security', '安全'),
@@ -2316,6 +2318,14 @@ export function AdminPage({
           notify={(message) => simulateAction(message)}
         />
       )}
+      {activeTab === 'Settings' && (
+        <SystemSettingsPanel
+          hasPermission={account.hasPermission}
+          isZh={isZh}
+          notify={(message) => simulateAction(message)}
+        />
+      )}
+      {activeTab !== 'Settings' && <>
       <AdminOverviewPanel t={t} target={overviewTarget} />
       <ReleaseControlPanel
         hasPermission={account.hasPermission}
@@ -4831,6 +4841,7 @@ export function AdminPage({
           })}
         </div>
       </section>
+      </>}
     </div>
   )
 }

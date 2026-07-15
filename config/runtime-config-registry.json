@@ -14,6 +14,13 @@
       "scope": "environment",
       "valueType": "object",
       "schemaVersion": 1,
+      "schema": {
+        "required": ["refreshTtlDays", "sameSite"],
+        "properties": {
+          "refreshTtlDays": { "type": "integer", "minimum": 1, "maximum": 365 },
+          "sameSite": { "type": "string", "enum": ["Lax", "Strict", "None"] }
+        }
+      },
       "defaultValue": { "refreshTtlDays": 30, "sameSite": "Lax" },
       "publishStrategy": "reviewed_version"
     },
@@ -23,6 +30,14 @@
       "scope": "environment",
       "valueType": "object",
       "schemaVersion": 1,
+      "schema": {
+        "required": ["provider", "maxAttempts", "timeoutSeconds"],
+        "properties": {
+          "provider": { "type": "string", "enum": ["manual", "webhook"] },
+          "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 10 },
+          "timeoutSeconds": { "type": "integer", "minimum": 30, "maximum": 3600 }
+        }
+      },
       "defaultValue": { "provider": "manual", "maxAttempts": 3, "timeoutSeconds": 900 },
       "publishStrategy": "reviewed_version"
     },
@@ -32,6 +47,13 @@
       "scope": "environment",
       "valueType": "object",
       "schemaVersion": 1,
+      "schema": {
+        "required": ["leaseTtlSeconds", "renewIntervalSeconds"],
+        "properties": {
+          "leaseTtlSeconds": { "type": "integer", "minimum": 30, "maximum": 3600 },
+          "renewIntervalSeconds": { "type": "integer", "minimum": 5, "maximum": 1800 }
+        }
+      },
       "defaultValue": { "leaseTtlSeconds": 300, "renewIntervalSeconds": 60 },
       "publishStrategy": "reviewed_version"
     },
@@ -41,6 +63,14 @@
       "scope": "environment",
       "valueType": "object",
       "schemaVersion": 1,
+      "schema": {
+        "required": ["driver", "bucketRef"],
+        "properties": {
+          "driver": { "type": "string", "enum": ["mock", "s3"] },
+          "bucketRef": { "type": ["string", "null"], "pattern": "^[a-zA-Z0-9._/-]{1,128}$" },
+          "apiKey": { "type": "string", "pattern": "^secretref://[a-z0-9][a-z0-9._/-]{2,120}$" }
+        }
+      },
       "defaultValue": { "driver": "mock", "bucketRef": null },
       "publishStrategy": "reviewed_version"
     }

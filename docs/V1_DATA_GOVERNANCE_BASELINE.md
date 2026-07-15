@@ -40,7 +40,7 @@ not become public because the post is public.
 
 | Asset id | Class | Primary persistence | Prisma models or runtime form | Default retention |
 | --- | --- | --- | --- | --- |
-| `governance_configuration` | Internal | PostgreSQL | `Permission`, `RolePermission`, `SystemSetting` | Superseded history 365 days |
+| `governance_configuration` | Internal | PostgreSQL | `Permission`, `RolePermission`, `SystemSetting`, `SystemSettingChange`, `SystemSettingRevision` | Superseded history 365 days |
 | `operation_leases` | Internal | PostgreSQL | `OperationLease` | Expiry/release + 7 days |
 | `identity_account_profile` | Confidential | PostgreSQL | `User`, `Profile`, `ProfilePortfolioAsset` | Verified deletion + 30 days |
 | `authentication_credentials_sessions` | Restricted | PostgreSQL | `AuthAccount`, `RefreshToken` | Unlink/expiry/revoke + 30 days |

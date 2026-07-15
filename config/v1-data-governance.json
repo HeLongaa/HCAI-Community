@@ -259,7 +259,7 @@
     {
       "id": "governance_configuration",
       "classification": "internal",
-      "prismaModels": ["Permission", "RolePermission", "SystemSetting"],
+      "prismaModels": ["Permission", "RolePermission", "SystemSetting", "SystemSettingChange", "SystemSettingRevision"],
       "locations": ["postgres"],
       "dataSubjects": ["staff_role", "system"],
       "purposes": ["auth_security", "support_operations"],
@@ -1043,7 +1043,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 69,
+    "modelCount": 71,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",

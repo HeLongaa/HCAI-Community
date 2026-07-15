@@ -10,6 +10,7 @@ import { createPrismaDomainEventRepository, enqueueDomainEvent } from '../events
 import { createPrismaDomainEventConsumerRepository } from '../events/prismaDomainEventConsumerRepository.js'
 import { createPrismaJobRepository } from '../jobs/prismaJobRepository.js'
 import { createPrismaReleaseRepository } from '../releases/prismaReleaseRepository.js'
+import { createPrismaSystemSettingsRepository } from '../settings/prismaSystemSettingsRepository.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, hashToken, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
 import {
@@ -214,6 +215,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   const domainEventConsumers = createPrismaDomainEventConsumerRepository(client, { recordAudit })
   const jobs = createPrismaJobRepository(client, { recordAudit })
   const releaseChanges = createPrismaReleaseRepository(client)
+  const systemSettings = createPrismaSystemSettingsRepository(client, { recordAudit })
   const observability = createPrismaObservabilityRepository(client)
 
   const leaseExpiry = (ttlSeconds) => new Date(Date.now() + Math.max(1, Number(ttlSeconds ?? 300)) * 1000)
@@ -9329,6 +9331,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     domainEventConsumers,
     jobs,
     releaseChanges,
+    systemSettings,
     observability,
     operationsMetrics,
     authorization,

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "taskId": "SET-01",
+  "scope": "personal_accounts_only",
+  "policyDocument": "docs/SYSTEM_SETTINGS_CONTROL.md",
+  "registryPath": "config/runtime-config-registry.json",
+  "schemaPath": "server/prisma/schema.prisma",
+  "migration": "server/prisma/migrations/0049_system_settings_control/migration.sql",
+  "implementationPath": "server/src/settings/systemSettingsRuntime.js",
+  "repositoryPaths": ["server/src/settings/seedSystemSettingsRepository.js", "server/src/settings/prismaSystemSettingsRepository.js"],
+  "states": ["pending_approval", "approved", "rejected", "published"],
+  "changeKinds": ["update", "rollback"],
+  "permissions": ["admin:settings:read", "admin:settings:manage", "admin:settings:approve", "admin:settings:publish"],
+  "routes": [
+    "GET /api/admin/settings", "GET /api/admin/settings/changes", "GET /api/admin/settings/changes/:id",
+    "GET /api/admin/settings/:key", "GET /api/admin/settings/:key/history", "POST /api/admin/settings/:key/preview",
+    "POST /api/admin/settings/:key/changes", "POST /api/admin/settings/:key/rollback-requests",
+    "POST /api/admin/settings/changes/:id/approve", "POST /api/admin/settings/changes/:id/reject",
+    "POST /api/admin/settings/changes/:id/publish"
+  ],
+  "controls": {
+    "registeredKeysOnly": true, "maximumPageSize": 100, "schemaValidation": true, "unknownFieldsRejected": true,
+    "plaintextSecretsForbidden": true, "deterministicPreview": true, "twoPersonApproval": true,
+    "optimisticConcurrency": true, "atomicPublishAudit": true, "immutableRevisions": true,
+    "rollbackCreatesChange": true, "realProviderCalls": false, "tenantModels": false
+  }
+}

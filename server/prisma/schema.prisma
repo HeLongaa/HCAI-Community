@@ -328,6 +328,18 @@ enum ReleaseChangeStatus {
   rolled_back
 }
 
+enum SystemSettingChangeKind {
+  update
+  rollback
+}
+
+enum SystemSettingChangeStatus {
+  pending_approval
+  approved
+  rejected
+  published
+}
+
 model AuditEvent {
   id                    String         @id @default(cuid())
   actorType             AuditActorType @map("actor_type")
@@ -551,9 +563,74 @@ model SystemSetting {
   key                String   @id
   value              Json
   valueSchemaVersion Int      @default(1) @map("value_schema_version")
+  publishedVersion   Int      @default(1) @map("published_version")
+  currentRevisionId  String?  @map("current_revision_id")
   updatedAt          DateTime @updatedAt @map("updated_at")
 
+  currentRevision SystemSettingRevision? @relation("CurrentSystemSettingRevision", fields: [currentRevisionId], references: [id], onDelete: Restrict)
+
   @@map("system_settings")
+}
+
+model SystemSettingChange {
+  id                          String                    @id
+  settingKey                  String                    @map("setting_key")
+  kind                        SystemSettingChangeKind
+  status                      SystemSettingChangeStatus @default(pending_approval)
+  baseVersion                 Int                       @map("base_version")
+  candidateValue              Json                      @map("candidate_value")
+  candidateValueSchemaVersion Int                       @default(1) @map("candidate_value_schema_version")
+  diff                        Json
+  diffSchemaVersion           Int                       @default(1) @map("diff_schema_version")
+  targetRevisionId            String?                   @map("target_revision_id")
+  requestedByRef              String                    @map("requested_by_ref")
+  approvedByRef               String?                   @map("approved_by_ref")
+  rejectedByRef               String?                   @map("rejected_by_ref")
+  publishedByRef              String?                   @map("published_by_ref")
+  reasonCode                  String                    @map("reason_code")
+  note                        String?
+  version                     Int                       @default(1)
+  requestedAt                 DateTime                  @default(now()) @map("requested_at")
+  approvedAt                  DateTime?                 @map("approved_at")
+  rejectedAt                  DateTime?                 @map("rejected_at")
+  publishedAt                 DateTime?                 @map("published_at")
+  createdAt                   DateTime                  @default(now()) @map("created_at")
+  updatedAt                   DateTime                  @updatedAt @map("updated_at")
+
+  targetRevision SystemSettingRevision?  @relation("RollbackTargetRevision", fields: [targetRevisionId], references: [id], onDelete: Restrict)
+  revisions      SystemSettingRevision[]
+
+  @@index([settingKey, createdAt])
+  @@index([status, createdAt])
+  @@index([requestedByRef, createdAt])
+  @@index([targetRevisionId])
+  @@map("system_setting_changes")
+}
+
+model SystemSettingRevision {
+  id                 String   @id
+  settingKey         String   @map("setting_key")
+  settingVersion     Int      @map("setting_version")
+  value              Json
+  valueSchemaVersion Int      @default(1) @map("value_schema_version")
+  previousRevisionId String?  @map("previous_revision_id")
+  sourceChangeId     String   @map("source_change_id")
+  eventType          String   @map("event_type")
+  contentHash        String   @map("content_hash")
+  actorRef           String   @map("actor_ref")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  sourceChange       SystemSettingChange      @relation(fields: [sourceChangeId], references: [id], onDelete: Restrict)
+  previousRevision   SystemSettingRevision?   @relation("SystemSettingRevisionChain", fields: [previousRevisionId], references: [id], onDelete: Restrict)
+  nextRevisions      SystemSettingRevision[]  @relation("SystemSettingRevisionChain")
+  currentForSettings SystemSetting[]          @relation("CurrentSystemSettingRevision")
+  rollbackChanges    SystemSettingChange[]    @relation("RollbackTargetRevision")
+
+  @@unique([settingKey, settingVersion])
+  @@index([settingKey, createdAt])
+  @@index([sourceChangeId])
+  @@index([previousRevisionId])
+  @@map("system_setting_revisions")
 }
 
 model OperationLease {
