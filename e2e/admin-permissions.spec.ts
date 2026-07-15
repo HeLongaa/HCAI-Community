@@ -77,3 +77,19 @@ test('release control UI requests, independently approves, and records a deploym
   expect(release.status).toBe('deployed')
   expect(release.evidence).toHaveLength(3)
 })
+
+test('audit UI verifies the chain and creates an immutable archive manifest', async ({ page, request }) => {
+  await signInPage(page, request, 'opsplus')
+  await page.goto('/')
+  await page.getByTestId('nav-admin').click()
+
+  const verifyResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/audit/verify'))
+  await page.getByRole('button', { name: 'Verify integrity' }).click()
+  await verifyResponse
+  await expect(page.getByText('Integrity complete')).toBeVisible()
+
+  const archiveResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/audit/archives') && response.request().method() === 'POST')
+  await page.getByRole('button', { name: 'Archive evidence' }).click()
+  await archiveResponse
+  await expect(page.getByText(/Archives: 1/)).toBeVisible()
+})

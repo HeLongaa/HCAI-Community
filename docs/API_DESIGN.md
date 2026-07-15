@@ -1459,8 +1459,13 @@ type AdminAuditQuery = {
 `GET /admin/audit/:id` requires `admin:audit:read` and returns a single `AuditEventDto`.
 It is intended for copied audit links and notification deep links so operators can open a specific event even when it is not present on the current audit list page.
 
-`GET /admin/audit/export` requires `admin:audit:read` and returns a JSON export artifact for the current audit filters.
-It accepts the same filter fields as `GET /admin/audit`, defaults `limit` to `100`, and returns `{ exportedAt, query, count, events }`.
+`GET /admin/audit/export` requires `admin:audit:export` and returns a portable SHA-256 chained JSON artifact for the current audit filters.
+It accepts the same filter fields as `GET /admin/audit`, defaults `limit` to `100`, and retains the compatible
+`{ exportedAt, query, count, events }` fields while adding an integrity manifest and per-event chain links.
+
+`GET /admin/audit/verify` requires `admin:audit:verify` and returns `complete`, `broken`, or `unverifiable` chain evidence.
+`GET /admin/audit/archives` requires `admin:audit:read`. `POST /admin/audit/archives` requires the protected
+`admin:audit:archive` permission and appends an immutable range/count/object-reference/root-hash manifest without deleting source events.
 
 `GET /admin/security/events` requires `admin:audit:read` and returns normalized security events from durable storage when available, or from the in-process fallback collector in local/test mode.
 

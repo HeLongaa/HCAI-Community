@@ -1810,6 +1810,31 @@ export type AdminAuditListQuery = {
   limit?: number | null
 }
 
+export type AuditIntegrityStatus = 'complete' | 'broken' | 'unverifiable'
+export type AdminAuditIntegrityDto = {
+  status: AuditIntegrityStatus
+  verified: boolean
+  count: number
+  firstSequence?: string | number | null
+  lastSequence?: string | number | null
+  rootHash: string | null
+  failures: Array<{ sequence?: number; reason: string }>
+}
+export type AdminAuditArchiveManifestDto = {
+  id: string
+  fromSequence: string | number
+  toSequence: string | number
+  eventCount: number
+  rootHash: string
+  objectRef: string
+  actorId: string | null
+  createdAt: string
+}
+export type AdminAuditArchiveResultDto = {
+  integrity: AdminAuditIntegrityDto
+  manifest: AdminAuditArchiveManifestDto | null
+}
+
 export type AdminAccountingUnit = 'points' | 'creative_credit' | 'quota_unit'
 export type AdminAccountingIssueStatus = 'open' | 'repair_pending' | 'resolved' | 'ignored'
 

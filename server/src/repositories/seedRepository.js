@@ -7,6 +7,12 @@ import { createSeedDomainEventRepository } from '../events/seedDomainEventReposi
 import { createSeedDomainEventConsumerRepository } from '../events/seedDomainEventConsumerRepository.js'
 import { createSeedJobRepository } from '../jobs/seedJobRepository.js'
 import { createSeedReleaseRepository } from '../releases/seedReleaseRepository.js'
+import {
+  appendSeedAuditIntegrity,
+  buildPortableAuditExport,
+  createSeedArchiveManifest,
+  verifySeedAuditChain,
+} from '../audit/auditIntegrity.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
 import { seedStore } from '../data/seed.js'
@@ -730,6 +736,7 @@ for (const item of seedLibraryItems) {
 }
 
 const auditEvents = []
+const auditArchiveManifests = []
 const policyConsentByUserId = new Map()
 const operationLeaseStore = new Map()
 const safeProviderJobIdPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
@@ -746,7 +753,7 @@ const safeProviderJobIdEvidence = (value) => {
 }
 
 const recordAudit = (actor, action, resourceType, resourceId = null, metadata = null) => {
-  const event = {
+  const event = appendSeedAuditIntegrity({
     id: `audit-${auditEvents.length + 1}`,
     actorType: actor ? 'user' : 'system',
     actorId: actor?.id ?? null,
@@ -755,7 +762,7 @@ const recordAudit = (actor, action, resourceType, resourceId = null, metadata = 
     resourceId,
     metadata,
     createdAt: new Date().toISOString(),
-  }
+  }, auditEvents[0] ?? null)
   auditEvents.unshift(event)
   return event
 }
@@ -3682,6 +3689,25 @@ export const createSeedRepository = () => {
       })
       return paginateByCursor(filtered.map(serializeAuditEvent), options)
     },
+    verify: () => verifySeedAuditChain(auditEvents),
+    export: (options = {}) => {
+      const events = auditEvents
+        .filter((event) => {
+          if (options.action && event.action !== options.action) return false
+          if (options.resourceType && event.resourceType !== options.resourceType) return false
+          if (options.actorId && event.actorId !== options.actorId) return false
+          return true
+        })
+        .slice(0, options.limit ?? 100)
+        .map(serializeAuditEvent)
+      return buildPortableAuditExport({ events, query: options })
+    },
+    archive: ({ actor, objectRef = null } = {}) => {
+      const result = createSeedArchiveManifest({ events: auditEvents, actor, objectRef })
+      if (result.manifest) auditArchiveManifests.unshift(result.manifest)
+      return result
+    },
+    listArchives: () => [...auditArchiveManifests],
   },
   securityEvents: {
     flushPending: flushSecurityEvents,

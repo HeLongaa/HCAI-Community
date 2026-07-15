@@ -2034,7 +2034,7 @@ test('PUT /api/admin/roles/:role/permissions keeps protected admin grants', asyn
     assert.equal(status, 400)
     assert.equal(payload.data, null)
     assert.equal(payload.error.code, 'VALIDATION_FAILED')
-    assert.equal(payload.error.message, 'cannot remove protected permissions: admin:permissions:manage, admin:accounting:repair, admin:high-risk:approve, admin:temporary-access:manage, admin:break-glass, admin:releases:manage, admin:releases:approve, admin:releases:deploy')
+    assert.equal(payload.error.message, 'cannot remove protected permissions: admin:permissions:manage, admin:accounting:repair, admin:high-risk:approve, admin:temporary-access:manage, admin:break-glass, admin:releases:manage, admin:releases:approve, admin:releases:deploy, admin:audit:archive')
   } finally {
     await server.close()
   }
@@ -3192,7 +3192,7 @@ test('GET /api/admin/audit list, export, and detail sanitize media asset lifecyc
   }
 })
 
-test('GET /api/admin/audit/export requires audit read permission', async () => {
+test('GET /api/admin/audit/export requires audit export permission', async () => {
   const server = await createTestServer()
   try {
     const denied = await requestJson(server.url, '/api/admin/audit/export', {
@@ -3200,7 +3200,48 @@ test('GET /api/admin/audit/export requires audit read permission', async () => {
       token: 'demo-access.taskops',
     })
     assert.equal(denied.status, 403)
-    assert.equal(denied.payload.error.message, 'Missing permission: admin:audit:read')
+    assert.equal(denied.payload.error.message, 'Missing permission: admin:audit:export')
+  } finally {
+    await server.close()
+  }
+})
+
+test('audit verification and archives use dedicated permissions and audit their own access', async () => {
+  const server = await createTestServer()
+  try {
+    const deniedVerify = await requestJson(server.url, '/api/admin/audit/verify', {
+      method: 'GET', token: 'demo-access.legalpixel',
+    })
+    assert.equal(deniedVerify.status, 403)
+    assert.equal(deniedVerify.payload.error.message, 'Missing permission: admin:audit:verify')
+
+    const verified = await requestJson(server.url, '/api/admin/audit/verify', {
+      method: 'GET', token: 'demo-access.opsplus',
+    })
+    assert.equal(verified.status, 200)
+    assert.equal(verified.payload.data.status, 'complete')
+    assert.equal(verified.payload.data.verified, true)
+    assert.equal(verified.payload.data.failures.length, 0)
+
+    const archived = await requestJson(server.url, '/api/admin/audit/archives', {
+      method: 'POST', token: 'demo-access.opsplus', body: {},
+    })
+    assert.equal(archived.status, 200)
+    assert.equal(archived.payload.data.integrity.status, 'complete')
+    assert.ok(archived.payload.data.manifest.id.startsWith('audit-archive-'))
+    assert.ok(archived.payload.data.manifest.objectRef.startsWith('audit-archive://'))
+
+    const manifests = await requestJson(server.url, '/api/admin/audit/archives', {
+      method: 'GET', token: 'demo-access.opsplus',
+    })
+    assert.equal(manifests.status, 200)
+    assert.equal(manifests.payload.data[0].id, archived.payload.data.manifest.id)
+
+    const accessAudit = await requestJson(server.url, '/api/admin/audit?action=admin.audit.archived&limit=1', {
+      method: 'GET', token: 'demo-access.opsplus',
+    })
+    assert.equal(accessAudit.status, 200)
+    assert.equal(accessAudit.payload.data[0].resourceId, archived.payload.data.manifest.id)
   } finally {
     await server.close()
   }

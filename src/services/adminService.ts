@@ -1,6 +1,9 @@
 import { api, apiEnvelope, withQuery } from './apiClient'
 import type {
   AdminAuditListQuery,
+  AdminAuditArchiveManifestDto,
+  AdminAuditArchiveResultDto,
+  AdminAuditIntegrityDto,
   AdminAccountingReconciliationPage,
   AdminAccountingReconciliationQuery,
   AdminAccountingIssueDto,
@@ -180,6 +183,15 @@ export const adminService = {
   },
   async exportAuditJson(query?: AdminAuditListQuery) {
     return api.text(withQuery('/admin/audit/export', query))
+  },
+  async verifyAuditIntegrity() {
+    return api.get<AdminAuditIntegrityDto>('/admin/audit/verify')
+  },
+  async auditArchives() {
+    return api.get<AdminAuditArchiveManifestDto[]>('/admin/audit/archives')
+  },
+  async archiveAudit(objectRef?: string | null) {
+    return api.post<AdminAuditArchiveResultDto>('/admin/audit/archives', objectRef ? { objectRef } : {})
   },
   async securityEvents(query?: AdminSecurityEventListQuery) {
     const envelope = await api.getEnvelope<AdminSecurityEventDto[]>(withQuery('/admin/security/events', query))

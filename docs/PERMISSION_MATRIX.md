@@ -164,7 +164,10 @@ Notification targets are location hints, not authorization grants. Generation, a
 | `GET /api/admin/reviews` | Required | `admin:queue:read` | Yes |
 | `POST /api/admin/reviews/:id/actions` | Required | `admin:queue:review` | Yes |
 | `GET /api/admin/audit` | Required | `admin:audit:read` | Yes |
-| `GET /api/admin/audit/export` | Required | `admin:audit:read` | Yes |
+| `GET /api/admin/audit/export` | Required | `admin:audit:export` | Yes |
+| `GET /api/admin/audit/verify` | Required | `admin:audit:verify` | Yes |
+| `GET /api/admin/audit/archives` | Required | `admin:audit:read` | Yes |
+| `POST /api/admin/audit/archives` | Required | `admin:audit:archive` | Yes |
 | `GET /api/admin/audit/:id` | Required | `admin:audit:read` | Yes |
 | `GET /api/admin/creative/generations` | Required | `admin:audit:read` | Yes |
 | `GET /api/admin/creative/accounting-policy/history` | Required | `admin:audit:read` | Yes |

@@ -14,6 +14,9 @@ export type Permission =
   | 'points:adjust'
   | 'admin:access'
   | 'admin:audit:read'
+  | 'admin:audit:export'
+  | 'admin:audit:verify'
+  | 'admin:audit:archive'
   | 'admin:queue:read'
   | 'admin:queue:review'
   | 'admin:accounting:read'
@@ -220,4 +223,10 @@ export type AuditEvent = {
   resourceId: string | null
   metadata: unknown
   createdAt: string
+  integrity: {
+    sequence: string
+    previousHash: string | null
+    contentHash: string
+    chainVersion: number
+  } | null
 }

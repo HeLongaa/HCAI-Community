@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "contractId": "audit-integrity-v1",
+  "scope": "personal_accounts_only",
+  "migration": "server/prisma/migrations/0047_audit_integrity/migration.sql",
+  "implementation": "server/src/audit/auditIntegrity.js",
+  "offlineVerifier": "scripts/verify-audit-export.mjs",
+  "policyDocument": "docs/AUDIT_INTEGRITY_AND_ARCHIVES.md",
+  "permissions": ["admin:audit:read", "admin:audit:export", "admin:audit:verify", "admin:audit:archive"],
+  "accessAuditActions": ["admin.audit.queried", "admin.audit.detail_read", "admin.audit.exported", "admin.audit.verified", "admin.audit.archives_queried", "admin.audit.archived"],
+  "states": ["complete", "broken", "unverifiable"],
+  "hashAlgorithm": "sha256",
+  "chainVersion": 1,
+  "archivePolicy": "immutable_evidence"
+}

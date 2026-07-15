@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, Archive, BarChart3, Bell, Clipboard, Download, PlayCircle, RotateCcw, ShieldAlert, Trophy, XCircle } from 'lucide-react'
+import { Activity, Archive, BarChart3, Bell, Clipboard, Download, PlayCircle, RotateCcw, ShieldAlert, ShieldCheck, Trophy, XCircle } from 'lucide-react'
 import type { AdminDeepLink, AuditEvent, Page, Permission, Role, SimulateAction } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { NotificationList } from '../../components/ui/NotificationList'
@@ -13,6 +13,8 @@ import { AdminOverviewPanel } from './AdminOverviewPanel'
 import { ReleaseControlPanel } from './ReleaseControlPanel'
 import type {
   AdminPermissionDto,
+  AdminAuditArchiveManifestDto,
+  AdminAuditIntegrityDto,
   AdminAccountingIssueDto,
   AdminAccountingIssueStatus,
   AdminAccountingIssueSummary,
@@ -476,6 +478,10 @@ export function AdminPage({
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
   const [exportingLedger, setExportingLedger] = useState(false)
   const [exportingAudit, setExportingAudit] = useState(false)
+  const [auditIntegrity, setAuditIntegrity] = useState<AdminAuditIntegrityDto | null>(null)
+  const [auditArchives, setAuditArchives] = useState<AdminAuditArchiveManifestDto[]>([])
+  const [verifyingAudit, setVerifyingAudit] = useState(false)
+  const [archivingAudit, setArchivingAudit] = useState(false)
   const [pointPolicy, setPointPolicy] = useState<PointAdjustmentPolicy | null>(null)
   const [policyRoleLimits, setPolicyRoleLimits] = useState<Record<string, string>>({})
   const [policyReasonCodes, setPolicyReasonCodes] = useState('')
@@ -540,6 +546,9 @@ export function AdminPage({
   const canReadQueues = account.hasPermission('admin:queue:read')
   const canReviewQueues = account.hasPermission('admin:queue:review')
   const canReadAudit = account.hasPermission('admin:audit:read')
+  const canExportAudit = account.hasPermission('admin:audit:export')
+  const canVerifyAudit = account.hasPermission('admin:audit:verify')
+  const canArchiveAudit = account.hasPermission('admin:audit:archive')
   const canReadAccounting = account.hasPermission('admin:accounting:read')
   const canScanAccounting = account.hasPermission('admin:accounting:scan')
   const canRepairAccounting = account.hasPermission('admin:accounting:repair')
@@ -1994,6 +2003,41 @@ export function AdminPage({
       simulateAction(isZh ? '导出审计事件失败。' : 'Could not export audit events.')
     } finally {
       setExportingAudit(false)
+    }
+  }
+
+  const verifyAuditIntegrity = async () => {
+    setVerifyingAudit(true)
+    try {
+      const result = await adminService.verifyAuditIntegrity()
+      setAuditIntegrity(result)
+      setAuditArchives(await adminService.auditArchives())
+      simulateAction(result.verified
+        ? (isZh ? '审计链完整。' : 'Audit chain is complete.')
+        : (isZh ? '审计链验证失败。' : 'Audit chain verification failed.'))
+    } catch (error) {
+      console.info('[admin-service]', error)
+      setAuditIntegrity({ status: 'unverifiable', verified: false, count: 0, rootHash: null, failures: [{ reason: 'request_failed' }] })
+      simulateAction(isZh ? '无法验证审计链。' : 'Could not verify the audit chain.')
+    } finally {
+      setVerifyingAudit(false)
+    }
+  }
+
+  const archiveAuditEvidence = async () => {
+    setArchivingAudit(true)
+    try {
+      const result = await adminService.archiveAudit()
+      setAuditIntegrity(result.integrity)
+      const manifest = result.manifest
+      if (manifest) setAuditArchives((current) => [manifest, ...current.filter((item) => item.id !== manifest.id)])
+      void auditStatus.refresh()
+      simulateAction(isZh ? '已创建不可变归档清单。' : 'Created immutable archive manifest.')
+    } catch (error) {
+      console.info('[admin-service]', error)
+      simulateAction(isZh ? '创建审计归档失败。' : 'Could not create audit archive.')
+    } finally {
+      setArchivingAudit(false)
     }
   }
 
@@ -4593,14 +4637,33 @@ export function AdminPage({
           <button className="ghost-button" type="button" onClick={focusMediaGovernanceAudit} disabled={!canReadAudit}>
             {textFor(t, 'Media policy audit', '媒体策略审计')}
           </button>
-          <button className="ghost-button" type="button" onClick={() => void exportAuditEvents()} disabled={!canReadAudit || exportingAudit}>
+          <button className="ghost-button" type="button" onClick={() => void exportAuditEvents()} disabled={!canExportAudit || exportingAudit}>
             <Download size={17} />
             {exportingAudit ? textFor(t, 'Exporting', '导出中') : textFor(t, 'Export JSON', '导出 JSON')}
+          </button>
+          <button className="ghost-button" type="button" onClick={() => void verifyAuditIntegrity()} disabled={!canVerifyAudit || verifyingAudit}>
+            <ShieldCheck size={17} />
+            {verifyingAudit ? textFor(t, 'Verifying', '验证中') : textFor(t, 'Verify integrity', '验证完整性')}
+          </button>
+          <button className="ghost-button" type="button" onClick={() => void archiveAuditEvidence()} disabled={!canArchiveAudit || archivingAudit}>
+            <Archive size={17} />
+            {archivingAudit ? textFor(t, 'Archiving', '归档中') : textFor(t, 'Archive evidence', '归档证据')}
           </button>
           <button className="ghost-button" type="button" onClick={clearAuditFilters} disabled={!canReadAudit || (!auditActionFilter && !auditResourceTypeFilter && !highlightedAuditEventId)}>
             {textFor(t, 'Clear filters', '清除筛选')}
           </button>
         </div>
+        {auditIntegrity && (
+          <div className={`audit-integrity-summary ${auditIntegrity.status}`} role="status">
+            <strong>{auditIntegrity.status === 'complete'
+              ? textFor(t, 'Integrity complete', '完整性正常')
+              : auditIntegrity.status === 'broken'
+                ? textFor(t, 'Integrity broken', '完整性损坏')
+                : textFor(t, 'Integrity unverifiable', '无法验证完整性')}</strong>
+            <span>{textFor(t, 'Events', '事件')}: {auditIntegrity.count} · {textFor(t, 'Archives', '归档')}: {auditArchives.length}</span>
+            {auditIntegrity.rootHash && <code>{auditIntegrity.rootHash.slice(0, 16)}</code>}
+          </div>
+        )}
         <div className="admin-table">
           {auditStatus.loading && (
             <div className="empty-state">

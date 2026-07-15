@@ -116,6 +116,7 @@ import {
 } from './providerBudgetNotificationWiring.js'
 import { sanitizeNotificationMetadata } from './notificationTargets.js'
 import { safeCreativeCreditMetadata, safeErrorPreview } from '../creative/generationRecords.js'
+import { buildPortableAuditExport } from '../audit/auditIntegrity.js'
 import {
   buildConsentStatus,
   compliancePolicyManifest,
@@ -194,7 +195,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   }
 
   const recordAudit = async ({ actor = null, action, resourceType, resourceId = null, metadata = null }, db = client) => {
-    await db.auditEvent.create({
+    const row = await db.auditEvent.create({
       data: buildAuditRecord({
         actorType: actor ? 'user' : 'system',
         actorId: actor?.id ?? null,
@@ -204,6 +205,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         metadata,
       }),
     })
+    return serializeAuditEvent(row)
   }
 
   const chat = createPrismaChatRepository(client, { recordAudit })
@@ -8469,6 +8471,33 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
   }
 
+  const verifyPersistedAuditChain = async (db) => {
+    const rows = await db.$queryRawUnsafe(`
+      SELECT sequence, previous_hash, content_hash,
+        audit_event_content_hash(audit_events.*) AS expected_hash,
+        lag(content_hash) OVER (ORDER BY sequence) AS expected_previous_hash,
+        row_number() OVER (ORDER BY sequence) AS expected_sequence
+      FROM audit_events
+      ORDER BY sequence
+    `)
+    const failures = []
+    for (const row of rows) {
+      const sequence = Number(row.sequence)
+      if (sequence !== Number(row.expected_sequence)) failures.push({ sequence, reason: 'sequence_mismatch' })
+      if ((row.previous_hash ?? null) !== (row.expected_previous_hash ?? null)) failures.push({ sequence, reason: 'previous_hash_mismatch' })
+      if (row.content_hash !== row.expected_hash) failures.push({ sequence, reason: 'content_hash_mismatch' })
+    }
+    return {
+      status: failures.length === 0 ? 'complete' : 'broken',
+      verified: failures.length === 0,
+      count: rows.length,
+      firstSequence: rows[0] ? String(rows[0].sequence) : null,
+      lastSequence: rows.at(-1) ? String(rows.at(-1).sequence) : null,
+      rootHash: rows.at(-1)?.content_hash ?? null,
+      failures,
+    }
+  }
+
   const audit = {
     recordAttempt: async ({ actor, action, resourceType, resourceId, metadata }) => recordAudit({
       actor,
@@ -8503,6 +8532,54 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         limit,
       }
     },
+    export: async (options = {}) => {
+      const page = await audit.list(options)
+      return buildPortableAuditExport({ events: page.items, query: options })
+    },
+    verify: async () => client.$transaction((transaction) => verifyPersistedAuditChain(transaction), { isolationLevel: 'RepeatableRead' }),
+    archive: async ({ actor, objectRef = null } = {}) => {
+      return client.$transaction(async (transaction) => {
+        await transaction.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext('audit_event_chain_v1'))")
+        const integrity = await verifyPersistedAuditChain(transaction)
+        if (!integrity.verified || integrity.count === 0) {
+          return {
+            integrity: integrity.count === 0 ? { ...integrity, status: 'unverifiable', verified: false, failures: [{ reason: 'empty_chain' }] } : integrity,
+            manifest: null,
+          }
+        }
+        const [first, last] = await Promise.all([
+          transaction.auditEvent.findFirst({ orderBy: { sequence: 'asc' } }),
+          transaction.auditEvent.findFirst({ orderBy: { sequence: 'desc' } }),
+        ])
+        const id = `audit-archive-${randomUUID()}`
+        const manifest = await transaction.auditArchiveManifest.create({
+          data: {
+            id,
+            fromSequence: first.sequence,
+            toSequence: last.sequence,
+            eventCount: integrity.count,
+            rootHash: last.contentHash,
+            objectRef: objectRef || `audit-archive://${id}`,
+            actorId: actor?.id ?? null,
+          },
+        })
+        return {
+          integrity,
+          manifest: {
+            ...manifest,
+            fromSequence: String(manifest.fromSequence),
+            toSequence: String(manifest.toSequence),
+            createdAt: manifest.createdAt.toISOString(),
+          },
+        }
+      }, { isolationLevel: 'RepeatableRead' })
+    },
+    listArchives: async () => (await client.auditArchiveManifest.findMany({ orderBy: { createdAt: 'desc' }, take: 20 })).map((manifest) => ({
+      ...manifest,
+      fromSequence: String(manifest.fromSequence),
+      toSequence: String(manifest.toSequence),
+      createdAt: manifest.createdAt.toISOString(),
+    })),
   }
 
   const getPrismaSecurityEventAlerts = async () => {

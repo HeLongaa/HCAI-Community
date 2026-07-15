@@ -2271,7 +2271,7 @@ export const openApiDocument = {
     },
     '/admin/audit/export': {
       get: {
-        summary: 'Export filtered privileged audit events as JSON',
+        summary: 'Export filtered privileged audit events as a portable verifiable JSON chain',
         parameters: [
           { name: 'action', in: 'query', schema: { type: 'string' } },
           { name: 'resourceType', in: 'query', schema: { type: 'string' } },
@@ -2279,8 +2279,38 @@ export const openApiDocument = {
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 100 } },
         ],
         responses: {
-          '200': { description: 'Filtered audit export artifact' },
-          '403': { description: 'Requires audit read permission' },
+          '200': { description: 'Filtered audit export with integrity manifest, event links, and root hash' },
+          '403': { description: 'Requires admin:audit:export' },
+        },
+      },
+    },
+    '/admin/audit/verify': {
+      get: {
+        summary: 'Verify the persisted audit event hash chain',
+        responses: {
+          '200': { description: 'Complete, broken, or unverifiable integrity result' },
+          '403': { description: 'Requires admin:audit:verify' },
+        },
+      },
+    },
+    '/admin/audit/archives': {
+      get: {
+        summary: 'List immutable audit archive manifests',
+        responses: {
+          '200': { description: 'Recent archive manifests with sequence ranges and root hashes' },
+          '403': { description: 'Requires admin:audit:read' },
+        },
+      },
+      post: {
+        summary: 'Anchor the current complete audit chain in an immutable archive manifest',
+        requestBody: {
+          required: false,
+          content: { 'application/json': { schema: { type: 'object', properties: { objectRef: { type: 'string' } } } } },
+        },
+        responses: {
+          '200': { description: 'Immutable archive manifest and integrity evidence' },
+          '403': { description: 'Requires admin:audit:archive' },
+          '409': { description: 'Audit chain is broken or unverifiable' },
         },
       },
     },
