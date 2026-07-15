@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "taskId": "ADMIN-03",
+  "policyDocument": "docs/ADMIN_OPERATIONS_OVERVIEW.md",
+  "implementationPath": "server/src/admin/adminOperationsOverview.js",
+  "frontendPath": "src/features/admin/AdminOverviewPanel.tsx",
+  "routes": {
+    "overview": "GET /api/admin/overview",
+    "search": "GET /api/admin/search"
+  },
+  "overviewSections": ["operations_metrics", "pending_reviews", "active_alerts", "recovery_items"],
+  "searchTypes": [
+    "task",
+    "profile",
+    "admin_review",
+    "audit_event",
+    "security_event",
+    "security_alert",
+    "accounting_issue",
+    "domain_event",
+    "event_inbox",
+    "job_run",
+    "media_asset",
+    "creative_generation"
+  ],
+  "search": {
+    "minimumQueryLength": 2,
+    "maximumQueryLength": 80,
+    "maximumResults": 20,
+    "pagination": "cursor",
+    "permissionFiltered": true,
+    "safeProjectionOnly": true,
+    "deepLinkFields": ["page", "tab", "resourceType", "resourceId"]
+  },
+  "constraints": {
+    "readOnly": true,
+    "newPersistenceModels": false,
+    "realProviderCalls": false,
+    "tenantModels": false
+  }
+}

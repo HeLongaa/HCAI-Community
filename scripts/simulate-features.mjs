@@ -453,6 +453,13 @@ addCheck(
 
 addCheck(
   'admin',
+  'admin operations home exposes permission-aware overview search and durable deep links',
+  includesAll(app, ['AdminOverviewPanel', 'adminService.overview', 'adminService.globalSearch', 'admin-operations-overview', 'admin-global-search-input', 'overviewResourceType', 'overviewResourceId', 'Global entity search']),
+  'operations counters, bounded search, safe result selection, and refreshable Admin targets',
+)
+
+addCheck(
+  'admin',
   'admin generation history exposes permission-scoped creative operations',
   includesAll(app, ['admin-generation-history', 'Generation history', 'adminService.creativeGenerations', 'adminService.creativeGeneration', 'cancelCreativeGeneration', 'requestCreativeGenerationRetry', 'requestCreativeGenerationManualReplay', 'runGenerationMutation', 'admin:creative:cancel', 'admin:creative:retry', 'admin:creative:replay', 'generationRows', 'generationNextCursor', 'toggleGenerationDetail', 'loadMoreGenerations', 'focusGenerationMediaAsset', 'creative_generation', 'promptHash', 'outputAssetIds', 'retryOfId', 'attemptNumber', 'providerReplayEvidence', 'mutationEvidence']),
   'typed generation history, safe mutation controls, child-attempt evidence, reviewed replay, media links, and audit links',

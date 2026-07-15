@@ -15,6 +15,10 @@ import type {
   AdminProviderControlBundle,
   AdminProviderControlRecoveryTarget,
   AdminOperationsMetricsDto,
+  AdminOperationsOverviewDto,
+  AdminGlobalSearchQuery,
+  AdminGlobalSearchResultDto,
+  AdminGlobalSearchPage,
   AdminReviewActionRequest,
   AdminReviewDecision,
   AdminReviewListQuery,
@@ -40,6 +44,21 @@ import type {
 import type { Permission, Role } from '../domain/types'
 
 export const adminService = {
+  async overview(windowMinutes = 60) {
+    return api.get<AdminOperationsOverviewDto>(withQuery('/admin/overview', { windowMinutes }))
+  },
+  async globalSearch(query: AdminGlobalSearchQuery): Promise<AdminGlobalSearchPage> {
+    const envelope = await api.getEnvelope<AdminGlobalSearchResultDto[]>(withQuery('/admin/search', {
+      q: query.q,
+      types: query.types?.join(',') ?? null,
+      limit: query.limit ?? 20,
+      cursor: query.cursor ?? null,
+    }))
+    return {
+      items: envelope.data,
+      nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null,
+    }
+  },
   async permissions() {
     return api.get<AdminPermissionDto[]>('/admin/permissions')
   },

@@ -2020,6 +2020,71 @@ export type AdminOperationsMetricsDto = {
   }
 }
 
+export type AdminOperationsQueueItemDto = {
+  type: string
+  id: string
+  title: string
+  detail: string
+  status: string | null
+  timestamp: string | null
+}
+
+export type AdminOperationsOverviewDto = {
+  generatedAt: string
+  windowMinutes: number
+  totals: {
+    pendingReviews: number
+    activeAlerts: number
+    recoveryItems: number
+    failedOperations: number
+  }
+  pendingReviews: AdminOperationsQueueItemDto[]
+  alerts: AdminOperationsQueueItemDto[]
+  recoveryItems: AdminOperationsQueueItemDto[]
+  metrics: AdminOperationsMetricsDto | null
+}
+
+export type AdminGlobalSearchType =
+  | 'task'
+  | 'profile'
+  | 'admin_review'
+  | 'audit_event'
+  | 'security_event'
+  | 'security_alert'
+  | 'accounting_issue'
+  | 'domain_event'
+  | 'event_inbox'
+  | 'job_run'
+  | 'media_asset'
+  | 'creative_generation'
+
+export type AdminGlobalSearchResultDto = {
+  type: AdminGlobalSearchType
+  id: string
+  title: string
+  subtitle: string
+  status: string | null
+  timestamp: string | null
+  target: {
+    page: 'admin'
+    tab: 'Overview'
+    resourceType: AdminGlobalSearchType
+    resourceId: string
+  }
+}
+
+export type AdminGlobalSearchQuery = {
+  q: string
+  types?: AdminGlobalSearchType[]
+  limit?: number
+  cursor?: string | null
+}
+
+export type AdminGlobalSearchPage = {
+  items: AdminGlobalSearchResultDto[]
+  nextCursor: string | null
+}
+
 export type AdminReviewQueueItemDto = {
   id: string
   status: string

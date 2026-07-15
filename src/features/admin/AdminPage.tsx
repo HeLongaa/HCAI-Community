@@ -9,6 +9,7 @@ import { adminService } from '../../services/adminService'
 import { notificationService } from '../../services/notificationService'
 import { mediaService } from '../../services/mediaService'
 import { useAsyncResource } from '../../hooks/useAsyncResource'
+import { AdminOverviewPanel } from './AdminOverviewPanel'
 import type {
   AdminPermissionDto,
   AdminAccountingIssueDto,
@@ -397,8 +398,9 @@ export function AdminPage({
   onOpenNotificationResource?: (notification: ApiNotification) => void
 }) {
   const isZh = isZhCopy(t)
-  const adminTabs = ['Task review', 'Access', 'Security', 'Finance', 'Accounting', 'Generations', 'Submissions', 'Community', 'Audit log', 'Users', 'Tags', 'AI config']
+  const adminTabs = ['Overview', 'Task review', 'Access', 'Security', 'Finance', 'Accounting', 'Generations', 'Submissions', 'Community', 'Audit log', 'Users', 'Tags', 'AI config']
   const adminTabLabels: Record<string, string> = {
+    Overview: textFor(t, 'Overview', '概览'),
     'Task review': textFor(t, 'Task review', '任务审核'),
     Access: textFor(t, 'Access', '权限'),
     Security: textFor(t, 'Security', '安全'),
@@ -412,7 +414,8 @@ export function AdminPage({
     Tags: textFor(t, 'Tags', '标签'),
     'AI config': textFor(t, 'AI config', 'AI 配置'),
   }
-  const [activeTab, setActiveTab] = useState('Task review')
+  const [activeTab, setActiveTab] = useState('Overview')
+  const [overviewTarget, setOverviewTarget] = useState<{ resourceType?: string | null; resourceId?: string | null } | null>(null)
   const [queueItems, setQueueItems] = useState<AdminReviewQueueItemDto[]>([])
   const [reviewQueueFilter, setReviewQueueFilter] = useState<string | null>(null)
   const [reviewingQueueItems, setReviewingQueueItems] = useState<Record<string, AdminReviewDecision>>({})
@@ -878,6 +881,9 @@ export function AdminPage({
     const timer = window.setTimeout(() => {
       if (deepLink.tab) {
         setActiveTab(deepLink.tab)
+      }
+      if (deepLink.overviewResourceType || deepLink.overviewResourceId) {
+        setOverviewTarget({ resourceType: deepLink.overviewResourceType, resourceId: deepLink.overviewResourceId })
       }
       if (deepLink.queue !== undefined) {
         setReviewQueueFilter(deepLink.queue)
@@ -2256,6 +2262,7 @@ export function AdminPage({
           </button>
         ))}
       </div>
+      <AdminOverviewPanel t={t} target={overviewTarget} />
       <section className="panel">
         <SectionHeader
           eyebrow={textFor(t, 'Notifications', '通知')}

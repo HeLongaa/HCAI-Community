@@ -10,6 +10,8 @@ import {
   parseAdminCreativeGenerationListQuery,
   parseAdminCreativeGenerationMutationRequest,
   parseAdminOperationsMetricsQuery,
+  parseAdminOperationsOverviewQuery,
+  parseAdminGlobalSearchQuery,
   parseAdminPointsLedgerQuery,
   parseAdminReviewActionRequest,
   parseAdminReviewListQuery,
@@ -54,6 +56,7 @@ import {
   revokeTemporaryAuthorization,
   startBreakGlassAccess,
 } from '../../auth/highRiskAccess.js'
+import { buildAdminOperationsOverview, searchAdminOperations } from '../../admin/adminOperationsOverview.js'
 
 const isPointAdjustmentReview = (review) => review?.queue === 'points' || review?.metadata?.kind === 'point_adjustment'
 const isManualProviderReplayReview = (review) => review?.metadata?.kind === 'manual_provider_replay'
@@ -1058,6 +1061,29 @@ export const registerAdminRoutes = (router, options = {}) => {
     requirePermission(context, 'admin:audit:read')
     await repositories.securityEvents.flushPending?.()
     ok(response, await repositories.operationsMetrics.summary(parseAdminOperationsMetricsQuery(context.query)))
+  })
+
+  router.add('GET', '/api/admin/overview', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:access')
+    await routeRepositories.securityEvents.flushPending?.()
+    ok(response, await buildAdminOperationsOverview({
+      repositories: routeRepositories,
+      actor,
+      ...parseAdminOperationsOverviewQuery(context.query),
+    }))
+  })
+
+  router.add('GET', '/api/admin/search', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:access')
+    const search = parseAdminGlobalSearchQuery(context.query)
+    await routeRepositories.securityEvents.flushPending?.()
+    const page = await searchAdminOperations({ repositories: routeRepositories, actor, ...search })
+    ok(response, page.items, {
+      query: search.query,
+      types: search.types,
+      pagination: { limit: search.limit, nextCursor: page.nextCursor },
+      returned: page.items.length,
+    })
   })
 
   router.add('GET', '/api/admin/operations/metrics/export', async (_request, response, context) => {

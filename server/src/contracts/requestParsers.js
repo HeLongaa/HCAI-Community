@@ -10,6 +10,7 @@ import {
   validationFailed,
 } from '../common/http/validation.js'
 import { permissions } from '../auth/permissions.js'
+import { adminGlobalSearchTypes } from '../admin/adminOperationsOverview.js'
 import { assertChatGenerationRequest } from '../creative/chatCapabilityContract.js'
 import { assertImageGenerationRequest } from '../creative/imageCapabilityContract.js'
 import { assertMusicGenerationRequest } from '../creative/musicCapabilityContract.js'
@@ -833,6 +834,27 @@ export const parseAdminOperationsMetricsQuery = (query) => {
     throw validationFailed('windowMinutes must be an integer between 5 and 1440')
   }
   return { windowMinutes }
+}
+
+export const parseAdminOperationsOverviewQuery = (query) => parseAdminOperationsMetricsQuery(query)
+
+export const parseAdminGlobalSearchQuery = (query) => {
+  const search = optionalText(query, 'q', null)
+  if (!search || search.length < 2 || search.length > 80) {
+    throw validationFailed('q must be between 2 and 80 characters')
+  }
+  const limit = Number(query.limit ?? 20)
+  if (!Number.isInteger(limit) || limit < 1 || limit > 20) {
+    throw validationFailed('limit must be an integer between 1 and 20')
+  }
+  const requestedTypes = optionalText(query, 'types', null)?.split(',').map((value) => value.trim()).filter(Boolean) ?? adminGlobalSearchTypes
+  const unknownTypes = requestedTypes.filter((type) => !adminGlobalSearchTypes.includes(type))
+  if (unknownTypes.length > 0) {
+    throw validationFailed(`types must only include: ${adminGlobalSearchTypes.join(', ')}`)
+  }
+  const cursor = optionalText(query, 'cursor', null)
+  if (cursor && cursor.length > 300) throw validationFailed('cursor must not exceed 300 characters')
+  return { query: search, types: [...new Set(requestedTypes)], limit, cursor }
 }
 
 export const parseAdminSecurityAlertActionRequest = (body) => ({
