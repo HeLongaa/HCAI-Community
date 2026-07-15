@@ -29,6 +29,9 @@ The executable fallback role defaults live in `server/src/auth/permissions.js`. 
 | `admin:releases:manage` | Request environment promotion, configuration release, or SecretRef rotation | `POST /api/admin/releases` | Release request form |
 | `admin:releases:approve` | Approve or reject a release request using two-person control | `POST /api/admin/releases/:id/approve`, `POST /api/admin/releases/:id/reject` | Release review actions |
 | `admin:releases:deploy` | Record deployment outcomes and rollback | `POST /api/admin/releases/:id/apply`, `POST /api/admin/releases/:id/rollback` | Deploy and rollback actions |
+| `admin:observability:read` | Search sanitized logs and read log detail, traces, SLOs, and alerts | `GET /api/admin/observability/logs`, `/logs/:id`, `/traces/:traceId`, `/slos`, `/alerts` | Admin Observability tab for moderators and admins |
+| `admin:observability:export` | Export bounded sanitized observability evidence | `GET /api/admin/observability/logs/export` | Admin Observability export control for admins |
+| `admin:observability:manage` | Evaluate SLOs and disposition versioned alerts | `POST /api/admin/observability/slos/evaluate` and the explicit acknowledge, silence, and resolve alert routes | Admin Observability SLO and alert controls for admins |
 
 ## Creative Generation Mutation Permissions
 
@@ -125,6 +128,16 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `POST /api/admin/points/adjustments` | Required | `points:adjust` | Yes |
 | `GET /api/admin/operations/metrics` | Required | `admin:audit:read` | Yes |
 | `GET /api/admin/operations/metrics/export` | Required | `admin:audit:read` | Yes |
+| `GET /api/admin/observability/logs` | Required | `admin:observability:read` | Yes |
+| `GET /api/admin/observability/logs/export` | Required | `admin:observability:export` | Yes |
+| `GET /api/admin/observability/logs/:id` | Required | `admin:observability:read` | Yes |
+| `GET /api/admin/observability/traces/:traceId` | Required | `admin:observability:read` | Yes |
+| `GET /api/admin/observability/slos` | Required | `admin:observability:read` | Yes |
+| `POST /api/admin/observability/slos/evaluate` | Required | `admin:observability:manage` | Yes |
+| `GET /api/admin/observability/alerts` | Required | `admin:observability:read` | Yes |
+| `POST /api/admin/observability/alerts/:id/acknowledge` | Required | `admin:observability:manage` | Yes |
+| `POST /api/admin/observability/alerts/:id/silence` | Required | `admin:observability:manage` | Yes |
+| `POST /api/admin/observability/alerts/:id/resolve` | Required | `admin:observability:manage` | Yes |
 | `GET /api/admin/overview` | Required | `admin:access`; sections additionally require their existing queue/audit/event/job permissions | Yes |
 | `GET /api/admin/search` | Required | `admin:access`; result families additionally require their existing read permissions | Yes |
 | `GET /api/notifications` | Required | Any authenticated user; recipient-scoped | Yes |

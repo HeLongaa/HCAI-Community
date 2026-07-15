@@ -2181,3 +2181,135 @@ export type AdminReviewActionRequest = {
   decision: AdminReviewDecision
   note?: string
 }
+
+export type AdminObservabilityLevel = 'debug' | 'info' | 'warn' | 'error'
+export type AdminObservabilityOutcome = 'success' | 'client_error' | 'server_error'
+export type AdminObservabilityAlertState = 'firing' | 'acknowledged' | 'silenced' | 'resolved'
+
+export type AdminObservabilityQuery = {
+  level?: AdminObservabilityLevel | null
+  service?: string | null
+  module?: string | null
+  operation?: string | null
+  outcome?: AdminObservabilityOutcome | null
+  errorCode?: string | null
+  requestId?: string | null
+  traceId?: string | null
+  resourceType?: string | null
+  resourceId?: string | null
+  dateFrom?: string | null
+  dateTo?: string | null
+  cursor?: string | null
+  limit?: number
+}
+
+export type AdminObservabilityLogDto = {
+  id: string
+  timestamp: string
+  level: AdminObservabilityLevel
+  service: string
+  environment: string
+  event: string
+  requestId: string | null
+  traceId: string | null
+  spanId: string | null
+  parentSpanId: string | null
+  module: string
+  operation: string
+  outcome: AdminObservabilityOutcome
+  durationMs: number | null
+  errorCode: string | null
+  method: string | null
+  routeTemplate: string | null
+  statusCode: number | null
+  resourceType: string | null
+  resourceId: string | null
+  attributes: Record<string, unknown> | null
+}
+
+export type AdminObservabilityLogPage = {
+  items: AdminObservabilityLogDto[]
+  nextCursor: string | null
+}
+
+export type AdminTraceSpanDto = {
+  id: string
+  traceId: string
+  spanId: string
+  parentSpanId: string | null
+  requestId: string | null
+  service: string
+  module: string
+  operation: string
+  outcome: AdminObservabilityOutcome
+  startedAt: string
+  endedAt: string
+  durationMs: number
+  errorCode: string | null
+  resourceType: string | null
+  resourceId: string | null
+  jobId: string | null
+  eventId: string | null
+}
+
+export type AdminTraceDto = {
+  traceId: string
+  startedAt: string
+  endedAt: string
+  spans: AdminTraceSpanDto[]
+}
+
+export type AdminSloWindowDto = {
+  requests: number
+  availability: number | null
+  serverErrors: number
+  latencyEligible: number
+  latencyWithinTarget: number | null
+  latencyViolations: number
+}
+
+export type AdminSloDto = {
+  id: string
+  target: number
+  shortWindowBurn: number
+  longWindowBurn: number
+  firing: boolean
+  current: number | null
+  owner: string
+  runbook: string
+}
+
+export type AdminSloSummaryDto = {
+  generatedAt?: string
+  status?: 'complete' | 'unverifiable'
+  reason?: string
+  windows?: {
+    fiveMinutes: AdminSloWindowDto
+    sixtyMinutes: AdminSloWindowDto
+    thirtyDays: AdminSloWindowDto
+  }
+  slos?: AdminSloDto[]
+  alerts?: AdminObservabilityAlertDto[]
+}
+
+export type AdminObservabilityAlertDto = {
+  id: string
+  alertKey: string
+  sloId: string
+  state: AdminObservabilityAlertState
+  severity: string
+  shortWindowBurn: number
+  longWindowBurn: number
+  threshold: number
+  owner: string
+  runbook: string
+  version: number
+  startedAt: string
+  acknowledgedAt: string | null
+  acknowledgedBy: string | null
+  silencedUntil: string | null
+  resolvedAt: string | null
+  resolutionNote: string | null
+  createdAt: string
+  updatedAt: string
+}

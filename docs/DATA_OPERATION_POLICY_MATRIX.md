@@ -26,6 +26,8 @@ Run `npm run test:data-operation-policies` after any Prisma model or policy chan
 - Provider control and risk: mutable state is separated from immutable cap evidence and append-only circuit events.
 - Audit and security: audit and security facts are append-only; audit archive manifests are immutable evidence. Database
   triggers reject updates and deletes outside an explicit transaction-local maintenance override.
+- Observability: sanitized logs and Trace spans are append-only and may be hard-deleted only by retention maintenance;
+  SLO alerts use compare-and-set state transitions and preserve their versioned disposition evidence.
 
 ## Enforcement Boundary
 

@@ -2254,6 +2254,109 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/observability/logs': {
+      get: {
+        summary: 'Search sanitized structured application logs',
+        parameters: [
+          { name: 'level', in: 'query', schema: { type: 'string', enum: ['debug', 'info', 'warn', 'error'] } },
+          { name: 'service', in: 'query', schema: { type: 'string' } },
+          { name: 'module', in: 'query', schema: { type: 'string' } },
+          { name: 'operation', in: 'query', schema: { type: 'string' } },
+          { name: 'outcome', in: 'query', schema: { type: 'string', enum: ['success', 'client_error', 'server_error'] } },
+          { name: 'errorCode', in: 'query', schema: { type: 'string' } },
+          { name: 'requestId', in: 'query', schema: { type: 'string' } },
+          { name: 'traceId', in: 'query', schema: { type: 'string', pattern: '^[a-f0-9]{32}$' } },
+          { name: 'resourceType', in: 'query', schema: { type: 'string' } },
+          { name: 'resourceId', in: 'query', schema: { type: 'string' } },
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+        ],
+        responses: {
+          '200': { description: 'Cursor-paginated sanitized log records' },
+          '400': { description: 'Invalid filter or date range exceeds 30 days' },
+          '403': { description: 'Requires admin:observability:read' },
+        },
+      },
+    },
+    '/admin/observability/logs/export': {
+      get: {
+        summary: 'Export up to 1000 sanitized log records with an integrity manifest',
+        responses: {
+          '200': { description: 'Verifiable observability.log-export.v1 JSON artifact' },
+          '403': { description: 'Requires admin:observability:export' },
+        },
+      },
+    },
+    '/admin/observability/logs/{id}': {
+      get: {
+        summary: 'Read one sanitized structured log record',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Sanitized log detail' },
+          '403': { description: 'Requires admin:observability:read' },
+          '404': { description: 'Log record not found' },
+        },
+      },
+    },
+    '/admin/observability/traces/{traceId}': {
+      get: {
+        summary: 'Reconstruct a trace timeline from persisted spans',
+        parameters: [{ name: 'traceId', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{32}$' } }],
+        responses: {
+          '200': { description: 'Ordered trace spans and parent relationships' },
+          '400': { description: 'Invalid W3C trace identifier' },
+          '403': { description: 'Requires admin:observability:read' },
+          '404': { description: 'Trace not found' },
+        },
+      },
+    },
+    '/admin/observability/slos': {
+      get: {
+        summary: 'Read API availability and latency SLO status',
+        responses: {
+          '200': { description: 'Thirty-day SLO status with 5-minute and 60-minute burn rates' },
+          '403': { description: 'Requires admin:observability:read' },
+        },
+      },
+    },
+    '/admin/observability/slos/evaluate': {
+      post: {
+        summary: 'Evaluate SLO burn rates and persist alert transitions',
+        responses: {
+          '200': { description: 'SLO evaluation and current alerts' },
+          '403': { description: 'Requires admin:observability:manage' },
+        },
+      },
+    },
+    '/admin/observability/alerts': {
+      get: {
+        summary: 'List SLO burn-rate alerts',
+        responses: {
+          '200': { description: 'Current and resolved observability alerts' },
+          '403': { description: 'Requires admin:observability:read' },
+        },
+      },
+    },
+    '/admin/observability/alerts/{id}/acknowledge': {
+      post: {
+        summary: 'Acknowledge an observability alert using optimistic concurrency',
+        responses: { '200': { description: 'Acknowledged alert' }, '409': { description: 'Alert version conflict' } },
+      },
+    },
+    '/admin/observability/alerts/{id}/silence': {
+      post: {
+        summary: 'Silence an observability alert for at most seven days',
+        responses: { '200': { description: 'Silenced alert' }, '409': { description: 'Alert version conflict' } },
+      },
+    },
+    '/admin/observability/alerts/{id}/resolve': {
+      post: {
+        summary: 'Resolve an observability alert using optimistic concurrency',
+        responses: { '200': { description: 'Resolved alert' }, '409': { description: 'Alert version conflict' } },
+      },
+    },
     '/admin/audit': {
       get: {
         summary: 'List recent privileged audit events',

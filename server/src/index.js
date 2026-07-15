@@ -14,6 +14,7 @@ const main = async () => {
   const server = createServer(router, {
     resolveUser: (token) => repositories.auth.findDemoAccountByAccessToken(token),
     auditAdminMutation: createAdminMutationAuditHook(repositories.audit),
+    onRequestFinished: (input) => repositories.observability.recordHttp(input),
     rateLimitStore: createRateLimitStore(process.env),
     onRateLimitExceeded: (event) => {
       console.warn('[rate-limit]', JSON.stringify(event))

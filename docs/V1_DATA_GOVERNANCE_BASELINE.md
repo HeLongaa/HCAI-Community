@@ -64,7 +64,7 @@ not become public because the post is public.
 | `security_event_records` | Restricted | PostgreSQL | `SecurityEvent` | 365 days; confirmed critical incident 730 days |
 | `raw_generation_inputs` | Restricted | Browser/runtime memory | Prompt, message, attachment, reference, attestation | Zero durable retention unless separately normalized |
 | `raw_provider_payloads` | Restricted | Runtime memory | Provider request/response/callback/poll | Zero durable retention after allowlisted normalization |
-| `observability_logs_traces_metrics` | Internal | Telemetry store | Structured logs, traces, metrics | Logs 30 days, traces 7, aggregate metrics 90 |
+| `observability_logs_traces_metrics` | Internal | PostgreSQL telemetry store | Sanitized structured logs, Trace spans, and versioned SLO alerts | Logs 30 days, traces 14 days, alerts by incident policy |
 | `backup_archive_copies` | Restricted | Backup/archive store | Encrypted database/object backup, archive manifest | Rolling maximum 35 days |
 | `user_export_packages` | Restricted | Temporary export storage | Manifest, JSON, clean owned assets, checksums | Package 7 days, private link 24 hours |
 | `deployment_secrets` | Secret | Managed secret store/runtime memory | Keys, credentials, signing material | Rotate every 90 days; retire/delete within 30 |

@@ -15,6 +15,7 @@ import { registerCreativeRoutes } from './creative/routes.js'
 import { registerComplianceRoutes } from './compliance/routes.js'
 import { registerChatRoutes } from './chat/routes.js'
 import { registerOperationRoutes } from './operations/routes.js'
+import { registerObservabilityRoutes } from './observability/routes.js'
 
 export const registerModules = (router) => {
   registerHealthRoutes(router)
@@ -31,6 +32,7 @@ export const registerModules = (router) => {
   registerChatRoutes(router)
   registerNotificationRoutes(router)
   registerAdminRoutes(router)
+  registerObservabilityRoutes(router)
   registerOperationRoutes(router)
   registerProfileRoutes(router)
   registerPointsRoutes(router)

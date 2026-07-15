@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "contractId": "observability-search-trace-v1",
+  "scope": "personal_accounts_only",
+  "migration": "server/prisma/migrations/0048_observability_search/migration.sql",
+  "implementation": "server/src/observability/observabilityRuntime.js",
+  "repositoryImplementations": ["server/src/observability/seedObservabilityRepository.js", "server/src/observability/prismaObservabilityRepository.js"],
+  "routes": "server/src/modules/observability/routes.js",
+  "policyDocument": "docs/OBSERVABILITY_SEARCH_AND_TRACE.md",
+  "verificationCommand": "npm run test:observability-search",
+  "permissions": ["admin:observability:read", "admin:observability:export", "admin:observability:manage"],
+  "models": ["ObservabilityLog", "TraceSpan", "ObservabilityAlert"],
+  "retentionDays": 30,
+  "traceRetentionDays": 14,
+  "pageLimit": 100,
+  "exportLimit": 1000,
+  "sensitiveFieldsForbidden": ["authorization", "cookie", "password", "secret", "token", "prompt", "messageBody", "providerPayload", "storageUrl"],
+  "accessAuditActions": ["admin.observability.logs_queried", "admin.observability.logs_exported", "admin.observability.log_detail_read", "admin.observability.trace_read", "admin.observability.slos_read", "admin.observability.alerts_read"],
+  "sloEvaluation": { "shortWindowMinutes": 5, "longWindowMinutes": 60, "shortBurnThreshold": 14.4, "longBurnThreshold": 6 },
+  "slos": [
+    { "id": "api-availability", "target": 0.999, "windowDays": 30 },
+    { "id": "api-latency", "target": 0.99, "thresholdMs": 750, "windowDays": 30 }
+  ],
+  "realProviderCalls": false,
+  "tenantModels": false
+}

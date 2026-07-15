@@ -57,6 +57,85 @@
   --workspace-tab-active-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
 }
 
+.observability-panel { display: grid; gap: 14px; }
+.observability-header,
+.observability-health-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.observability-header small,
+.observability-health-header small { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.observability-header h2,
+.observability-health-header h3 { margin: 3px 0 0; font-size: 18px; letter-spacing: 0; }
+.observability-filters { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)) auto; gap: 8px; }
+.observability-filters input,
+.observability-filters select { width: 100%; min-width: 0; }
+.observability-workbench { display: grid; grid-template-columns: minmax(360px, .9fr) minmax(420px, 1.1fr); min-height: 520px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--panel-soft); }
+.observability-log-list { min-width: 0; border-right: 1px solid var(--border); }
+.observability-log-row { width: 100%; min-height: 82px; display: grid; grid-template-columns: 54px minmax(0, 1fr) auto; align-items: center; gap: 5px 10px; padding: 11px 12px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; }
+.observability-log-row:hover,
+.observability-log-row.selected { background: color-mix(in srgb, var(--accent) 9%, var(--panel)); }
+.observability-log-row.selected { box-shadow: inset 3px 0 var(--accent); }
+.observability-log-row strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.observability-log-row > span:not(.observability-level) { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.observability-log-row small { grid-column: 2 / -1; min-width: 0; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.observability-level,
+.observability-alert-state { display: inline-flex; align-items: center; justify-content: center; min-height: 22px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.observability-level.warn,
+.observability-alert-state.firing { border-color: #d89b29; color: #d89b29; }
+.observability-level.error { border-color: #e05252; color: #e05252; }
+.observability-level.info,
+.observability-alert-state.acknowledged { border-color: #4a8fd8; color: #4a8fd8; }
+.observability-alert-state.resolved { border-color: #4eaa73; color: #4eaa73; }
+.observability-pagination { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; }
+.observability-pagination span { color: var(--muted); font-size: 12px; }
+.observability-detail { min-width: 0; padding: 14px; overflow: auto; }
+.observability-detail-heading,
+.observability-trace-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.observability-detail-heading span,
+.observability-trace-heading span { color: var(--muted); font-size: 12px; }
+.observability-metadata { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin: 0 0 12px; background: var(--border); }
+.observability-metadata div { min-width: 0; padding: 9px; background: var(--panel); }
+.observability-metadata dt { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.observability-metadata dd { margin: 4px 0 0; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+.observability-json { max-height: 160px; margin: 0 0 16px; padding: 10px; overflow: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--panel-strong); font-size: 11px; }
+.trace-span { display: grid; gap: 5px; margin-bottom: 11px; }
+.trace-span > div:first-child { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.trace-span > div:first-child span,
+.trace-span small { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.trace-track { position: relative; height: 7px; overflow: hidden; border-radius: 3px; background: var(--border); }
+.trace-track i { position: absolute; inset-block: 0; border-radius: 3px; background: var(--accent); }
+.observability-error,
+.observability-unverifiable { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid #e05252; border-radius: 6px; color: #e05252; font-size: 12px; }
+.observability-unverifiable { border-color: #d89b29; color: #d89b29; }
+.slo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.slo-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; padding: 11px; border: 1px solid var(--border); border-radius: 6px; }
+.slo-item.firing { border-color: #d89b29; }
+.slo-item span,
+.slo-item small { color: var(--muted); font-size: 11px; }
+.slo-item small { grid-column: 1 / -1; }
+.observability-alerts { display: grid; gap: 1px; background: var(--border); }
+.observability-alert-row { min-width: 0; display: grid; grid-template-columns: 92px minmax(120px, .5fr) minmax(160px, 1fr) auto auto; align-items: center; gap: 10px; padding: 10px; background: var(--panel); }
+.observability-alert-row > span,
+.observability-alert-row small { color: var(--muted); font-size: 11px; }
+
+@media (max-width: 980px) {
+  .observability-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .observability-workbench { grid-template-columns: 1fr; }
+  .observability-log-list { border-right: 0; border-bottom: 1px solid var(--border); }
+  .observability-alert-row { grid-template-columns: 90px minmax(0, 1fr); }
+  .observability-alert-row .button-row { grid-column: 1 / -1; }
+}
+
+@media (max-width: 620px) {
+  .observability-header,
+  .observability-health-header { align-items: flex-start; }
+  .observability-filters,
+  .slo-grid { grid-template-columns: 1fr; }
+  .observability-workbench { min-height: 0; }
+  .observability-log-row { grid-template-columns: 50px minmax(0, 1fr); }
+  .observability-log-row > span:not(.observability-level),
+  .observability-log-row small { grid-column: 2; white-space: normal; }
+  .observability-metadata { grid-template-columns: 1fr; }
+}
+
 /* Governed creative delivery */
 .use-creative-asset { width: 100%; margin-top: 10px; }
 .use-creative-asset-toggle { width: 100%; min-height: 34px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); }
@@ -11240,4 +11319,14 @@ button.video-history-row.active {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
+}
+
+/* Admin observability is a vertical work surface, not the three-column chat panel. */
+.panel.observability-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  gap: 14px;
 }

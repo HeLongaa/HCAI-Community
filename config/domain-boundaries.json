@@ -34,6 +34,7 @@
     { "id": "chat", "domain": "ai-runtime", "layer": "transport", "registration": "registerChatRoutes" },
     { "id": "notifications", "domain": "notifications-webhooks", "layer": "transport", "registration": "registerNotificationRoutes" },
     { "id": "admin", "domain": "admin-console", "layer": "transport", "registration": "registerAdminRoutes" },
+    { "id": "observability", "domain": "observability-incident", "layer": "transport", "registration": "registerObservabilityRoutes" },
     { "id": "operations", "domain": "jobs-automation", "layer": "transport", "registration": "registerOperationRoutes" },
     { "id": "profiles", "domain": "user-profile", "layer": "transport", "registration": "registerProfileRoutes" },
     { "id": "points", "domain": "entitlements-accounting", "layer": "transport", "registration": "registerPointsRoutes" }
@@ -50,6 +51,7 @@
     { "domain": "trust-safety-risk", "owns": ["security events", "risk decisions", "moderation cases"] },
     { "domain": "jobs-automation", "owns": ["jobs", "attempts", "leases", "schedules"] },
     { "domain": "audit-evidence", "owns": ["audit events", "immutable evidence"] },
+    { "domain": "observability-incident", "owns": ["sanitized logs", "trace spans", "SLO alerts"] },
     { "domain": "config-feature-flags", "owns": ["versioned configuration", "feature flags", "secret references"] }
   ]
 }

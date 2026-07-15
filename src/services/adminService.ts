@@ -46,6 +46,12 @@ import type {
   ReleaseChangeDto,
   ReleaseChangeListQuery,
   ReleaseChangeRequest,
+  AdminObservabilityAlertDto,
+  AdminObservabilityLogDto,
+  AdminObservabilityLogPage,
+  AdminObservabilityQuery,
+  AdminSloSummaryDto,
+  AdminTraceDto,
 } from './contracts'
 import type { Permission, Role } from '../domain/types'
 
@@ -245,6 +251,38 @@ export const adminService = {
   },
   async rollbackPointPolicy(eventId: string) {
     return api.post<PointAdjustmentPolicy>('/admin/points/policy/rollback', { eventId })
+  },
+  async observabilityLogs(query?: AdminObservabilityQuery): Promise<AdminObservabilityLogPage> {
+    const envelope = await api.getEnvelope<AdminObservabilityLogDto[]>(withQuery('/admin/observability/logs', query))
+    return {
+      items: envelope.data,
+      nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null,
+    }
+  },
+  async observabilityLog(id: string) {
+    return api.get<AdminObservabilityLogDto>(`/admin/observability/logs/${id}`)
+  },
+  async observabilityTrace(traceId: string) {
+    return api.get<AdminTraceDto>(`/admin/observability/traces/${traceId}`)
+  },
+  async observabilitySlos() {
+    return api.get<AdminSloSummaryDto>('/admin/observability/slos')
+  },
+  async evaluateObservabilitySlos() {
+    return api.post<AdminSloSummaryDto>('/admin/observability/slos/evaluate')
+  },
+  async observabilityAlerts() {
+    return api.get<AdminObservabilityAlertDto[]>('/admin/observability/alerts')
+  },
+  async transitionObservabilityAlert(
+    id: string,
+    action: 'acknowledge' | 'silence' | 'resolve',
+    body: { expectedVersion: number; note?: string; until?: string },
+  ) {
+    return api.post<AdminObservabilityAlertDto>(`/admin/observability/alerts/${id}/${action}`, body)
+  },
+  async exportObservabilityLogs(query?: AdminObservabilityQuery) {
+    return api.text(withQuery('/admin/observability/logs/export', { ...query, cursor: null, limit: 1000 }))
   },
   async exportPointLedgerCsv(query?: PointsLedgerQuery) {
     return api.text(withQuery('/admin/points/ledger.csv', query))

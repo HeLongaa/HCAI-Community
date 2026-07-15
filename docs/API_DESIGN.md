@@ -135,6 +135,12 @@ Requires auth and request ownership. Returns one tracked request or `404` withou
 
 ## Users And Profiles
 
+## Admin Observability
+
+The `/admin/observability` family requires dedicated read, export, or manage permissions. Search filters are exact-match, queries are limited to a 30-day range and 100-row pages, and exports are capped at 1000 sanitized records. Detail, Trace, SLO, alert, export, evaluation, and disposition access is audited.
+
+Trace reads accept a 32-character lowercase hexadecimal W3C trace ID. Alert mutations require `expectedVersion`; stale operations return `409 STATE_CONFLICT`. The complete endpoint inventory and incident policy are in `docs/OBSERVABILITY_SEARCH_AND_TRACE.md` and `server/src/docs/openapi.js`.
+
 ### `GET /profiles/:handle`
 
 Public. Returns public profile, portfolio, badges, stats, and public reviews.

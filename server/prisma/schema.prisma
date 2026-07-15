@@ -363,6 +363,92 @@ model AuditArchiveManifest {
   @@map("audit_archive_manifests")
 }
 
+model ObservabilityLog {
+  id                      String   @id
+  timestamp               DateTime @default(now())
+  level                   String
+  service                 String
+  environment             String
+  event                   String
+  requestId               String   @map("request_id")
+  traceId                 String   @map("trace_id")
+  spanId                  String   @map("span_id")
+  parentSpanId            String?  @map("parent_span_id")
+  module                  String
+  operation               String
+  outcome                 String
+  durationMs              Int?     @map("duration_ms")
+  errorCode               String?  @map("error_code")
+  method                  String?
+  routeTemplate           String?  @map("route_template")
+  statusCode              Int?     @map("status_code")
+  resourceType            String?  @map("resource_type")
+  resourceId              String?  @map("resource_id")
+  attributes              Json?
+  attributesSchemaVersion Int      @default(1) @map("attributes_schema_version")
+
+  @@index([timestamp])
+  @@index([traceId, timestamp])
+  @@index([requestId, timestamp])
+  @@index([module, timestamp])
+  @@index([level, timestamp])
+  @@index([resourceType, resourceId, timestamp])
+  @@map("observability_logs")
+}
+
+model TraceSpan {
+  id             String   @id
+  traceId        String   @map("trace_id")
+  spanId         String   @unique @map("span_id")
+  parentSpanId   String?  @map("parent_span_id")
+  requestId      String   @map("request_id")
+  service        String
+  module         String
+  operation      String
+  outcome        String
+  startedAt      DateTime @map("started_at")
+  endedAt        DateTime @map("ended_at")
+  durationMs     Int      @map("duration_ms")
+  errorCode      String?  @map("error_code")
+  resourceType   String?  @map("resource_type")
+  resourceId     String?  @map("resource_id")
+  jobId          String?  @map("job_id")
+  eventId        String?  @map("event_id")
+
+  @@index([traceId, startedAt])
+  @@index([requestId, startedAt])
+  @@index([jobId, startedAt])
+  @@index([eventId, startedAt])
+  @@index([startedAt])
+  @@map("trace_spans")
+}
+
+model ObservabilityAlert {
+  id               String   @id
+  alertKey         String   @unique @map("alert_key")
+  sloId            String   @map("slo_id")
+  state            String
+  severity         String
+  shortWindowBurn  Float    @map("short_window_burn")
+  longWindowBurn   Float    @map("long_window_burn")
+  threshold        Float
+  owner            String
+  runbook           String
+  version           Int      @default(1)
+  startedAt         DateTime @map("started_at")
+  acknowledgedAt    DateTime? @map("acknowledged_at")
+  acknowledgedBy    String?  @map("acknowledged_by")
+  silencedUntil     DateTime? @map("silenced_until")
+  resolvedAt        DateTime? @map("resolved_at")
+  resolutionNote    String?   @map("resolution_note")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  @@index([state, updatedAt])
+  @@index([sloId, updatedAt])
+  @@map("observability_alerts")
+}
+
 model ReleaseChange {
   id                String              @id
   changeType        ReleaseChangeType   @map("change_type")
