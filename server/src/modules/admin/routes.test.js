@@ -25,6 +25,69 @@ const createInjectedAdminServer = (repository, options = {}) => createRouteTestS
   (router) => registerAdminRoutes(router, { repositories: repository, ...options }),
 )
 
+test('Admin overview and global search are bounded permission-aware read models', async () => {
+  const repository = createSeedRepository()
+  repository.adminReviews.list = async () => ({
+    items: [{
+      id: 'review-search-fixture',
+      title: 'Fixture approval',
+      queue: 'tasks',
+      owner: 'opsplus',
+      status: 'Pending review',
+      metadata: { token: 'must-not-leak' },
+      createdAt: '2026-07-15T00:00:00.000Z',
+    }],
+    limit: 50,
+    nextCursor: null,
+  })
+  repository.audit.list = async () => ({
+    items: [{
+      id: 'audit-search-fixture',
+      action: 'fixture.reviewed',
+      resourceType: 'task',
+      resourceId: 'task-fixture',
+      metadata: { authorization: 'must-not-leak' },
+      createdAt: '2026-07-15T00:01:00.000Z',
+    }],
+    limit: 50,
+    nextCursor: null,
+  })
+  const server = await createInjectedAdminServer(repository)
+  try {
+    const denied = await requestJson(server.url, '/api/admin/overview', {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(denied.status, 403)
+
+    const overview = await requestJson(server.url, '/api/admin/overview?windowMinutes=60', {
+      method: 'GET',
+      token: 'demo-access.opsplus',
+    })
+    assert.equal(overview.status, 200)
+    assert.equal(overview.payload.data.totals.pendingReviews, 1)
+    assert.equal(JSON.stringify(overview.payload).includes('must-not-leak'), false)
+
+    const invalid = await requestJson(server.url, '/api/admin/search?q=x', {
+      method: 'GET',
+      token: 'demo-access.opsplus',
+    })
+    assert.equal(invalid.status, 400)
+
+    const searched = await requestJson(server.url, '/api/admin/search?q=fixture&types=admin_review,audit_event&limit=10', {
+      method: 'GET',
+      token: 'demo-access.opsplus',
+    })
+    assert.equal(searched.status, 200)
+    assert.deepEqual(searched.payload.data.map((item) => item.type).sort(), ['admin_review', 'audit_event'])
+    assert.ok(searched.payload.data.every((item) => item.target.tab === 'Overview'))
+    assert.equal(searched.payload.meta.returned, 2)
+    assert.equal(JSON.stringify(searched.payload).includes('must-not-leak'), false)
+  } finally {
+    await server.close()
+  }
+})
+
 test('Admin accounting reconciliation routes enforce read, scan, export, and repair permissions', async () => {
   const issue = {
     id: 'accounting-issue-route-1',

@@ -2663,6 +2663,35 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/overview': {
+      get: {
+        summary: 'Return a permission-aware Admin operations overview',
+        parameters: [
+          { name: 'windowMinutes', in: 'query', schema: { type: 'integer', minimum: 5, maximum: 1440, default: 60 } },
+        ],
+        responses: {
+          '200': { description: 'Bounded operations metrics, pending reviews, active alerts, and recovery items' },
+          '400': { description: 'Invalid overview window' },
+          '403': { description: 'Requires Admin console access' },
+        },
+      },
+    },
+    '/admin/search': {
+      get: {
+        summary: 'Search permission-aware safe projections across Admin resource families',
+        parameters: [
+          { name: 'q', in: 'query', required: true, schema: { type: 'string', minLength: 2, maxLength: 80 } },
+          { name: 'types', in: 'query', schema: { type: 'string', description: 'Comma-separated allowlisted resource types' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 20, default: 20 } },
+          { name: 'cursor', in: 'query', schema: { type: 'string', maxLength: 300 } },
+        ],
+        responses: {
+          '200': { description: 'Safe bounded search projections with Admin deep links' },
+          '400': { description: 'Invalid query, type, or limit' },
+          '403': { description: 'Requires Admin console access' },
+        },
+      },
+    },
     '/admin/operations/metrics/export': {
       get: {
         summary: 'Export an auditable operations metrics handoff snapshot',

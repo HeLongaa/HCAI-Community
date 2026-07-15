@@ -20,7 +20,7 @@ The executable fallback role defaults live in `server/src/auth/permissions.js`. 
 | `comment:create` | Create community comments | `POST /api/posts/:id/comments` | Not guarded yet |
 | `points:read` | Read points ledger | `GET /api/points/ledger`; task approval writes settlement ledger entries | Not guarded yet |
 | `points:adjust` | Search/export user ledgers, adjust points, submit high-value adjustments for review, read point policy/history, and approve points queue reviews | `GET /api/admin/points/ledger`, `GET /api/admin/points/ledger.csv`, `GET /api/admin/points/policy`, `GET /api/admin/points/policy/history`, `POST /api/admin/points/adjustments`; also permits `userHandle` lookup on `GET /api/points/ledger`; required with `admin:queue:review` for `points` queue decisions | Admin Finance tab visibility and actions |
-| `admin:access` | Access operations/admin shell | Not a data route guard | Admin navigation visibility |
+| `admin:access` | Access operations/admin shell and permission-filtered read models | `GET /api/admin/overview`, `GET /api/admin/search`; each response additionally filters resource families by their existing read permission | Admin navigation, operations home, and global search visibility |
 | `admin:audit:read` | Read privileged audit events and operations history | `GET /api/admin/audit`, `GET /api/admin/audit/:id`, `GET /api/admin/audit/export`, `GET /api/admin/creative/generations`, `GET /api/admin/creative/generations/:id` | Admin page audit API load, deep-link lookup, JSON export, and creative generation history |
 | `admin:queue:read` | Read admin review queues | `GET /api/admin/reviews`, `GET /api/media/review-queue` | Admin review queue and media governance API loads |
 | `admin:queue:review` | Perform admin review actions | `POST /api/admin/reviews/:id/actions`, `POST /api/media/uploads/:id/scan` | Admin queue and media approve/reject buttons |
@@ -120,6 +120,8 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `POST /api/admin/points/adjustments` | Required | `points:adjust` | Yes |
 | `GET /api/admin/operations/metrics` | Required | `admin:audit:read` | Yes |
 | `GET /api/admin/operations/metrics/export` | Required | `admin:audit:read` | Yes |
+| `GET /api/admin/overview` | Required | `admin:access`; sections additionally require their existing queue/audit/event/job permissions | Yes |
+| `GET /api/admin/search` | Required | `admin:access`; result families additionally require their existing read permissions | Yes |
 | `GET /api/notifications` | Required | Any authenticated user; recipient-scoped | Yes |
 | `POST /api/notifications/:id/read` | Required | Any authenticated user; recipient ownership enforced | Yes |
 | `POST /api/notifications/read-all` | Required | Any authenticated user; recipient ownership enforced | Yes |

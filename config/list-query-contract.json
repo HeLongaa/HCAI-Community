@@ -28,6 +28,7 @@
     { "id": "adminCreativeGenerations", "routes": ["GET /api/admin/creative/generations"], "cursor": true, "filters": ["workspace", "status", "provider"], "sorts": ["createdAt"], "export": false },
     { "id": "adminSecurityEvents", "routes": ["GET /api/admin/security/events"], "cursor": true, "filters": ["source", "severity", "type"], "sorts": ["occurredAt"], "export": false },
     { "id": "adminSecurityAlerts", "routes": ["GET /api/admin/security/alerts"], "cursor": true, "filters": ["status", "severity", "source"], "sorts": ["createdAt"], "export": true, "exportRoutes": ["GET /api/admin/security/alerts/:id/export"] },
+    { "id": "adminGlobalSearch", "routes": ["GET /api/admin/search"], "cursor": true, "filters": ["q", "types"], "sorts": ["relevance", "timestamp"], "export": false },
     { "id": "domainEvents", "routes": ["GET /api/admin/domain-events"], "cursor": true, "filters": ["type", "aggregateType", "aggregateId", "status"], "sorts": ["occurredAt"], "export": false },
     { "id": "domainEventInbox", "routes": ["GET /api/admin/domain-event-inbox"], "cursor": true, "filters": ["consumerKey", "status", "aggregateType", "aggregateId"], "sorts": ["receivedAt"], "export": false },
     { "id": "jobRuns", "routes": ["GET /api/admin/jobs/runs"], "cursor": true, "filters": ["definitionKey", "status"], "sorts": ["createdAt"], "export": false },
