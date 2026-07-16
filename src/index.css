@@ -180,6 +180,39 @@
 .admin-media-lifecycle { display: grid; gap: 10px; width: 100%; min-width: 0; max-width: 100%; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
 .panel.admin-media-governance-panel { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 0; overflow: visible; }
 .admin-tabs { width: 100%; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.panel.model-control-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; width: 100%; max-width: 100%; height: auto; min-height: 0; overflow: visible; }
+.model-control-panel input, .model-control-panel select { width: 100%; min-width: 0; max-width: 100%; }
+.model-control-gate { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 8px 12px; border: 1px solid var(--border); border-left: 3px solid #27845b; background: color-mix(in srgb, #27845b 8%, var(--panel-soft)); }
+.model-control-gate span { margin-left: auto; color: var(--muted); }
+.model-control-toolbar, .model-control-create, .model-tool-section { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: end; }
+.model-control-toolbar label { display: grid; gap: 6px; }
+.model-control-toolbar label > span { color: var(--muted); font-size: 12px; }
+.model-control-create { grid-template-columns: repeat(3, minmax(0, 1fr)) auto; }
+.model-control-layout { display: grid; grid-template-columns: minmax(260px, .8fr) minmax(0, 1.4fr); min-height: 390px; border-top: 1px solid var(--border); }
+.model-control-list { border-right: 1px solid var(--border); padding: 10px 10px 10px 0; overflow: auto; max-height: 560px; }
+.model-control-row { width: 100%; min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid transparent; background: transparent; color: inherit; text-align: left; }
+.model-control-row:hover, .model-control-row.active { border-color: var(--border); background: var(--panel-soft); }
+.model-control-row span { min-width: 0; display: grid; gap: 3px; }
+.model-control-row strong, .model-control-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-control-row small { color: var(--muted); }
+.model-control-row em { flex: 0 0 auto; font-style: normal; font-size: 11px; text-transform: uppercase; }
+.model-control-row em[data-status='active'] { color: #27845b; }
+.model-control-row em[data-status='disabled'], .model-control-row em[data-status='archived'] { color: #a44a42; }
+.model-control-detail { padding: 14px 0 14px 18px; min-width: 0; }
+.model-control-detail > header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; }
+.model-control-detail h3 { margin: 3px 0 0; font-size: 20px; }
+.model-version-tools { display: grid; gap: 12px; margin-top: 18px; }
+.model-tool-section { grid-template-columns: minmax(90px, .55fr) repeat(3, minmax(0, 1fr)) auto; padding-top: 12px; border-top: 1px solid var(--border); }
+.model-tool-section h4 { margin: 0; font-size: 14px; }
+.model-version-counts { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: 12px; }
+@media (max-width: 780px) {
+  .model-control-toolbar, .model-control-create, .model-tool-section { grid-template-columns: 1fr; }
+  .model-control-layout { grid-template-columns: 1fr; }
+  .model-control-list { border-right: 0; border-bottom: 1px solid var(--border); padding-right: 0; max-height: 260px; }
+  .model-control-detail { padding-left: 0; }
+  .model-control-gate { align-items: flex-start; flex-wrap: wrap; }
+  .model-control-gate span { width: 100%; margin-left: 28px; }
+}
 .admin-media-lifecycle-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .admin-media-lifecycle-heading > div, .admin-media-lifecycle-list article > div:first-child { display: grid; gap: 3px; min-width: 0; }
 .admin-media-lifecycle-heading span, .admin-media-lifecycle-list span, .admin-media-lifecycle-list small { color: var(--muted); }

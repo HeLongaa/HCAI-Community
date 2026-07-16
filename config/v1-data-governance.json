@@ -497,11 +497,11 @@
     {
       "id": "provider_control_records",
       "classification": "confidential",
-      "prismaModels": ["CreativeProviderControlState", "CreativeProviderCapEvidence", "CreativeProviderCircuitState", "CreativeProviderCircuitEvent"],
+      "prismaModels": ["CreativeProviderControlState", "CreativeProviderCapEvidence", "CreativeProviderCircuitState", "CreativeProviderCircuitEvent", "Provider", "Model", "ModelVersion", "ModelCapability", "ModelDeployment", "PricingVersion"],
       "locations": ["postgres"],
-      "dataSubjects": ["user"],
+      "dataSubjects": ["user", "system", "authorized_operator"],
       "purposes": ["creative_generation", "internal_accounting", "support_operations"],
-      "exampleFields": ["safe scope and Provider references", "versioned enable state", "integer-micros cap evidence", "evidence/source hashes", "circuit status and failure category", "probe lease token hash", "safe reason code"],
+      "exampleFields": ["safe scope and Provider references", "model and version catalog", "capability schema", "deployment reference", "additive pricing version", "versioned enable state", "integer-micros cap evidence", "evidence/source hashes", "circuit status and failure category", "probe lease token hash", "safe reason code"],
       "accessRoles": ["authorized_service", "creative_operator_allowlisted", "creative_accounting_operator", "auditor"],
       "retentionPolicyId": "internal_ledger_plus_730d",
       "exportPolicy": "exclude_provider_account_cap_evidence_circuit_and_probe_records_from_user_export",
@@ -1043,7 +1043,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 78,
+    "modelCount": 84,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",

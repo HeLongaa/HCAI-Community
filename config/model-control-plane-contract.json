@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "taskIds": ["MODEL-01", "MODEL-04"],
+  "migration": "server/prisma/migrations/0056_model_control_plane_registry/migration.sql",
+  "policyDocument": "docs/MODEL_CONTROL_PLANE_REGISTRY.md",
+  "entities": ["Provider", "Model", "ModelVersion", "ModelCapability", "ModelDeployment", "PricingVersion"],
+  "generationReferences": ["modelVersionId", "modelDeploymentId", "pricingVersionId"],
+  "permissions": ["admin:model-control:read", "admin:model-control:manage", "admin:model-control:transition"],
+  "providerTrafficEnabled": false,
+  "credentialsAccepted": false,
+  "realProviderApprovalRequired": true,
+  "allowedModalities": ["image", "chat", "video", "music"],
+  "allowedEnvironments": ["development", "staging", "production"]
+}

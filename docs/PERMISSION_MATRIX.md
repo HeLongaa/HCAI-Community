@@ -93,6 +93,29 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 
 ## Backend Route Guards
 
+| `GET /api/admin/model-control/summary` | Required | `admin:model-control:read`; credential-free readiness summary | Yes |
+| `GET /api/admin/model-control/export` | Required | `admin:model-control:read`; bounded credential-free export | Yes |
+| `GET /api/admin/model-control/providers` | Required | `admin:model-control:read` | Yes |
+| `POST /api/admin/model-control/providers` | Required | `admin:model-control:manage`; creates draft only | Yes |
+| `GET /api/admin/model-control/providers/:id` | Required | `admin:model-control:read` | Yes |
+| `PATCH /api/admin/model-control/providers/:id` | Required | `admin:model-control:manage`; optimistic concurrency | Yes |
+| `POST /api/admin/model-control/providers/:id/status` | Required | `admin:model-control:transition`; audited state machine | Yes |
+| `GET /api/admin/model-control/models` | Required | `admin:model-control:read` | Yes |
+| `POST /api/admin/model-control/models` | Required | `admin:model-control:manage`; registered Provider required | Yes |
+| `GET /api/admin/model-control/models/:id` | Required | `admin:model-control:read` | Yes |
+| `POST /api/admin/model-control/models/:id/status` | Required | `admin:model-control:transition`; audited state machine | Yes |
+| `POST /api/admin/model-control/versions` | Required | `admin:model-control:manage`; additive version only | Yes |
+| `GET /api/admin/model-control/versions` | Required | `admin:model-control:read`; model and status filters | Yes |
+| `GET /api/admin/model-control/versions/:id` | Required | `admin:model-control:read` | Yes |
+| `POST /api/admin/model-control/versions/:id/status` | Required | `admin:model-control:transition`; audited state machine | Yes |
+| `PUT /api/admin/model-control/versions/:id/capabilities` | Required | `admin:model-control:manage`; draft versions only | Yes |
+| `POST /api/admin/model-control/deployments` | Required | `admin:model-control:manage`; traffic disabled by default | Yes |
+| `GET /api/admin/model-control/deployments/:id` | Required | `admin:model-control:read` | Yes |
+| `POST /api/admin/model-control/deployments/:id/status` | Required | `admin:model-control:transition`; traffic activation requires `PROVIDER-APPROVAL` | Yes |
+| `POST /api/admin/model-control/pricing` | Required | `admin:model-control:manage`; additive pricing history | Yes |
+| `GET /api/admin/model-control/pricing/:id` | Required | `admin:model-control:read` | Yes |
+| `POST /api/admin/model-control/pricing/:id/status` | Required | `admin:model-control:transition`; audited state machine | Yes |
+
 | Route | Auth requirement | Permission requirement | Covered by tests |
 | --- | --- | --- | --- |
 | `POST /api/tasks` | Required | `task:create` | Yes |

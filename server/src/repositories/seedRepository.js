@@ -9,6 +9,7 @@ import { createSeedJobRepository } from '../jobs/seedJobRepository.js'
 import { createSeedReleaseRepository } from '../releases/seedReleaseRepository.js'
 import { createSeedSystemSettingsRepository } from '../settings/seedSystemSettingsRepository.js'
 import { createSeedConfigResourcesRepository } from '../configResources/seedConfigResourcesRepository.js'
+import { createSeedModelControlRepository } from '../modelControl/seedModelControlRepository.js'
 import { createSeedObservabilityRepository } from '../observability/seedObservabilityRepository.js'
 import {
   appendSeedAuditIntegrity,
@@ -2413,6 +2414,7 @@ export const createSeedRepository = () => {
   const releaseChanges = createSeedReleaseRepository()
   const systemSettings = createSeedSystemSettingsRepository({ recordAudit: auditRecorder })
   const configResources = createSeedConfigResourcesRepository({ recordAudit: auditRecorder })
+  const modelControl = createSeedModelControlRepository({ recordAudit: auditRecorder })
   const observability = createSeedObservabilityRepository()
   return {
   chat: createSeedChatRepository({
@@ -2422,6 +2424,7 @@ export const createSeedRepository = () => {
   releaseChanges,
   systemSettings,
   configResources,
+  modelControl,
   observability,
   auth: {
     getCurrentUser: () => seedStore.me,

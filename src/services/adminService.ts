@@ -70,10 +70,65 @@ import type {
   ConfigResourceExportDocument,
   FeatureFlagEmergencyResult,
   FeatureFlagEvaluation,
+  ModelCatalogModelDto,
+  ModelCapabilityDto,
+  ModelControlListQuery,
+  ModelControlStatus,
+  ModelControlSummaryDto,
+  ModelDeploymentDto,
+  ModelProviderDto,
+  ModelVersionDto,
+  PricingVersionDto,
 } from './contracts'
 import type { Permission, Role } from '../domain/types'
 
 export const adminService = {
+  async modelControlSummary() {
+    return api.get<ModelControlSummaryDto>('/admin/model-control/summary')
+  },
+  async modelProviders(query?: ModelControlListQuery) {
+    const envelope = await api.getEnvelope<ModelProviderDto[]>(withQuery('/admin/model-control/providers', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async createModelProvider(payload: { key: string; name: string; websiteUrl?: string | null; regions?: string[]; dataProcessingRegions?: string[] }) {
+    return api.post<ModelProviderDto>('/admin/model-control/providers', payload)
+  },
+  async updateModelProvider(id: string, payload: { expectedVersion: number; name: string; websiteUrl?: string | null; regions?: string[]; dataProcessingRegions?: string[] }) {
+    return api.patch<ModelProviderDto>(`/admin/model-control/providers/${encodeURIComponent(id)}`, payload)
+  },
+  async catalogModels(query?: ModelControlListQuery) {
+    const envelope = await api.getEnvelope<ModelCatalogModelDto[]>(withQuery('/admin/model-control/models', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async createCatalogModel(payload: { providerId: string; key: string; name: string; family?: string | null }) {
+    return api.post<ModelCatalogModelDto>('/admin/model-control/models', payload)
+  },
+  async createModelVersion(payload: { modelId: string; versionKey: string; releaseDate?: string | null; contextWindow?: number | null; maxOutputUnits?: number | null; parameterSchema?: Record<string, unknown> | null }) {
+    return api.post<ModelVersionDto>('/admin/model-control/versions', payload)
+  },
+  async modelVersions(query?: ModelControlListQuery) {
+    const envelope = await api.getEnvelope<ModelVersionDto[]>(withQuery('/admin/model-control/versions', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async modelVersion(id: string) {
+    return api.get<ModelVersionDto>(`/admin/model-control/versions/${encodeURIComponent(id)}`)
+  },
+  async upsertModelCapability(id: string, payload: Omit<ModelCapabilityDto, 'id' | 'modelVersionId'>) {
+    return api.put<ModelCapabilityDto>(`/admin/model-control/versions/${encodeURIComponent(id)}/capabilities`, payload)
+  },
+  async createModelDeployment(payload: { modelVersionId: string; key: string; environment: string; region: string; deploymentRef: string }) {
+    return api.post<ModelDeploymentDto>('/admin/model-control/deployments', payload)
+  },
+  async createPricingVersion(payload: { modelVersionId: string; modelDeploymentId?: string | null; versionKey: string; currency: string; unit: string; unitPriceMicros: number; effectiveFrom: string; effectiveTo?: string | null }) {
+    return api.post<PricingVersionDto>('/admin/model-control/pricing', payload)
+  },
+  async transitionModelControl(type: 'provider' | 'model' | 'version' | 'deployment' | 'pricing', id: string, expectedVersion: number, status: ModelControlStatus, reasonCode: string) {
+    const resource = type === 'pricing' ? 'pricing' : `${type}s`
+    return api.post<ModelProviderDto | ModelCatalogModelDto | ModelVersionDto | ModelDeploymentDto | PricingVersionDto>(`/admin/model-control/${resource}/${encodeURIComponent(id)}/status`, { expectedVersion, status, reasonCode })
+  },
+  async exportModelControlCatalog() {
+    return api.get<Record<string, unknown>>('/admin/model-control/export')
+  },
   async configResources(kind: ConfigResourceKind, query?: ConfigResourceListQuery) {
     const envelope = await api.getEnvelope<ConfigResourceDto[]>(withQuery(`/admin/config-resources/${kind}`, query))
     return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }

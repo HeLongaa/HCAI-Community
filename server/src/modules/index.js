@@ -18,6 +18,7 @@ import { registerOperationRoutes } from './operations/routes.js'
 import { registerObservabilityRoutes } from './observability/routes.js'
 import { registerSettingsRoutes } from './settings/routes.js'
 import { registerConfigResourceRoutes } from './configResources/routes.js'
+import { registerModelControlRoutes } from './modelControl/routes.js'
 
 export const registerModules = (router) => {
   registerHealthRoutes(router)
@@ -37,6 +38,7 @@ export const registerModules = (router) => {
   registerObservabilityRoutes(router)
   registerSettingsRoutes(router)
   registerConfigResourceRoutes(router)
+  registerModelControlRoutes(router)
   registerOperationRoutes(router)
   registerProfileRoutes(router)
   registerPointsRoutes(router)
