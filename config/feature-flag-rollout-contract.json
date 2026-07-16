@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "taskId": "SET-02",
+  "scope": "personal_accounts_only",
+  "dependsOn": ["CONFIG-02", "SET-01", "IAM-02", "AUDIT-01"],
+  "policyDocument": "docs/FEATURE_FLAG_ROLLOUT.md",
+  "schemaPath": "server/prisma/schema.prisma",
+  "migration": "server/prisma/migrations/0052_feature_flag_rollout/migration.sql",
+  "runtimePath": "server/src/configResources/configResourceRuntime.js",
+  "repositoryPath": "server/src/configResources/prismaConfigResourcesRepository.js",
+  "routePath": "server/src/modules/configResources/routes.js",
+  "frontendPath": "src/features/admin/ConfigurationResourcesPanel.tsx",
+  "ruleTypes": ["user", "role", "environment"],
+  "priority": ["emergency_off", "user", "role", "environment", "percentage", "default"],
+  "limits": { "rules": 100, "valuesPerRule": 100, "percentageMinimum": 0, "percentageMaximum": 100 },
+  "percentage": { "hash": "sha256", "stableInputs": ["rolloutSeed", "flagKey", "userId"] },
+  "permissions": ["admin:feature-flags:read", "admin:feature-flags:manage", "admin:feature-flags:publish", "admin:feature-flags:emergency"],
+  "runtimeRoute": "GET /api/feature-flags/:key/evaluate",
+  "adminRoutes": [
+    "POST /api/admin/config-resources/feature_flag/:id/preview",
+    "POST /api/admin/config-resources/feature_flag/:id/emergency-off",
+    "POST /api/admin/config-resources/feature_flag/:id/emergency-restore"
+  ],
+  "auditActions": ["feature_flags.evaluated", "admin.feature_flags.previewed", "admin.feature_flags.emergency_disabled", "admin.feature_flags.emergency_restored"],
+  "realProviderCalls": false,
+  "tenantModels": false
+}

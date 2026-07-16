@@ -18,6 +18,7 @@ const compare = (field, order) => (left, right) => {
 export const createSeedConfigResourcesRepository = ({ recordAudit } = {}) => {
   const resources = new Map()
   const revisions = []
+  const featureFlagOverrides = new Map()
 
   const get = (id) => resources.get(String(id)) ?? null
   const getDto = (id) => clone(get(id))
@@ -29,6 +30,28 @@ export const createSeedConfigResourcesRepository = ({ recordAudit } = {}) => {
       .filter((item) => !options.search || `${item.key} ${item.title} ${item.description ?? ''}`.toLowerCase().includes(options.search.toLowerCase()))
       .sort(compare(options.sort, options.order)), options),
     findById: async (id) => getDto(id),
+    findPublishedFeatureFlag: async (key) => {
+      const resource = [...resources.values()].find((item) => item.kind === 'feature_flag' && item.key === String(key))
+      if (!resource?.publishedValue) return null
+      const override = featureFlagOverrides.get(resource.id) ?? {}
+      return clone({
+        resourceId: resource.id, key: resource.key, ...resource.publishedValue,
+        publishedVersion: resource.publishedVersion, deletedAt: resource.deletedAt,
+        emergencyOff: false, emergencyOffByRef: null, emergencyOffReasonCode: null, emergencyOffAt: null,
+        ...override,
+      })
+    },
+    setFeatureFlagEmergency: async (id, version, emergencyOff, payload) => {
+      const resource = get(id)
+      if (!resource || resource.kind !== 'feature_flag' || resource.deletedAt || !resource.publishedValue || resource.version !== version) return null
+      const timestamp = nowIso()
+      const override = emergencyOff
+        ? { emergencyOff: true, emergencyOffByRef: payload.actorRef, emergencyOffReasonCode: payload.reasonCode, emergencyOffAt: timestamp }
+        : { emergencyOff: false, emergencyOffByRef: null, emergencyOffReasonCode: null, emergencyOffAt: null }
+      featureFlagOverrides.set(resource.id, override)
+      Object.assign(resource, { updatedByRef: payload.actorRef, version: resource.version + 1, updatedAt: timestamp })
+      return { resource: clone(resource), featureFlag: clone({ resourceId: resource.id, key: resource.key, ...resource.publishedValue, publishedVersion: resource.publishedVersion, deletedAt: null, ...override }) }
+    },
     create: async (input) => {
       if ([...resources.values()].some((item) => item.kind === input.kind && item.key === input.key)) throw new HttpError(409, 'RESOURCE_CONFLICT', 'resource key already exists')
       const timestamp = nowIso()

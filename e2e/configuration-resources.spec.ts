@@ -15,7 +15,15 @@ test('admin manages a feature flag through publish, rollback, archive, and resto
   await panel.getByLabel('Key').fill(key)
   await panel.getByLabel('Title').fill('E2E editor flag')
   await panel.getByLabel('Description').fill('Managed through the configuration resource console.')
-  await panel.getByLabel('Resource JSON').fill(JSON.stringify({ enabled: false, payload: { variant: 'control' } }, null, 2))
+  await panel.getByLabel('Feature flag payload JSON').fill(JSON.stringify({ variant: 'control' }, null, 2))
+  await panel.getByRole('checkbox', { name: 'Percentage rollout' }).check()
+  await panel.getByRole('slider').fill('25')
+  await panel.getByTitle('Add rule').click()
+  await panel.getByLabel('Rule 1 ID').fill('staging-candidate')
+  await panel.getByLabel('Rule 1 type').selectOption('environment')
+  await panel.getByLabel('Rule 1 values').fill('staging')
+  await panel.getByLabel('Rule 1 payload').fill('{"variant":"candidate"}')
+  await panel.getByLabel('Rule 1 payload').press('Tab')
 
   const createResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/config-resources/feature_flag') && response.request().method() === 'POST')
   await panel.getByRole('button', { name: 'Save draft' }).click()
@@ -25,14 +33,23 @@ test('admin manages a feature flag through publish, rollback, archive, and resto
   await panel.getByRole('button', { name: 'Publish', exact: true }).click()
   await expect(panel.locator('.settings-history-list')).toContainText('v1 · published')
 
-  await panel.getByLabel('Resource JSON').fill(JSON.stringify({ enabled: true, payload: { variant: 'treatment' } }, null, 2))
+  await panel.getByLabel('Preview environment').fill('staging')
+  await panel.getByRole('button', { name: 'Preview', exact: true }).click()
+  await expect(panel.locator('.feature-preview-result')).toContainText('Enabled · environment rule')
+  await panel.getByRole('button', { name: 'Emergency off' }).click()
+  await expect(panel.locator('.feature-preview-result')).toContainText('Disabled · emergency off')
+  await panel.getByRole('button', { name: 'Restore flag' }).click()
+  await expect(panel.locator('.feature-preview-result')).toContainText('Enabled · environment rule')
+
+  await panel.getByRole('checkbox', { name: 'Default enabled' }).check()
+  await panel.getByLabel('Feature flag payload JSON').fill(JSON.stringify({ variant: 'treatment' }, null, 2))
   await panel.getByRole('button', { name: 'Save draft' }).click()
   await panel.getByRole('button', { name: 'Publish', exact: true }).click()
   await expect(panel.locator('.settings-history-list')).toContainText('v2 · published')
 
   await panel.getByTitle('Rollback to version 1').click()
   await expect(panel.locator('.settings-history-list')).toContainText('v3 · rolled back')
-  await expect(panel.getByLabel('Resource JSON')).toHaveValue(/"enabled": false/)
+  await expect(panel.getByRole('checkbox', { name: 'Default enabled' })).not.toBeChecked()
 
   await panel.getByRole('button', { name: 'Archive', exact: true }).click()
   await panel.getByLabel('Archive status').selectOption('deleted')
@@ -46,6 +63,7 @@ test('admin manages a feature flag through publish, rollback, archive, and resto
   expect(desktopOverflow).toBe(0)
 
   await page.setViewportSize({ width: 390, height: 844 })
+  await page.evaluate(() => window.scrollTo(0, 0))
   const mobileLayout = await panel.evaluate((root) => {
     const bounds = root.getBoundingClientRect()
     return {

@@ -29,7 +29,7 @@ add('soft-delete and CAS fields exist', schema.includes('deletedAt') && schema.i
 add('migration creates both tables', migration.includes('CREATE TABLE "config_resources"') && migration.includes('CREATE TABLE "config_resource_revisions"'), contract.migration)
 add('database protects immutable revisions', migration.includes('reject_config_resource_revision_mutation') && migration.includes('config_resource_revisions_reject_delete'), 'revision triggers')
 add('all kinds are explicit', contract.managedResources.kinds.every((kind) => runtime.includes(`'${kind}'`)), contract.managedResources.kinds.join(', '))
-add('feature rollout remains deferred', contract.featureFlagBoundary.deferredTo === 'SET-02' && contract.featureFlagBoundary.excluded.every((field) => !runtime.includes(field)), contract.featureFlagBoundary.deferredTo)
+add('feature rollout extension is owned by SET-02', contract.featureFlagBoundary.completedBy === 'SET-02' && contract.featureFlagBoundary.excluded.length === 0 && runtime.includes('evaluateFeatureFlag'), contract.featureFlagBoundary.completedBy)
 for (const permission of Object.values(contract.permissions).flat()) add(`${permission} registered`, Boolean(permissionById[permission]), permission)
 for (const route of contract.routes) {
   const [method, routePath] = route.split(' ')

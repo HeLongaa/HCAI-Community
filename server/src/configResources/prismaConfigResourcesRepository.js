@@ -10,6 +10,12 @@ const resourceDto = (row) => row ? ({
   updatedAt: row.updatedAt.toISOString(),
 }) : null
 const revisionDto = (row) => row ? ({ ...row, createdAt: row.createdAt.toISOString() }) : null
+const featureFlagDto = (row) => row ? ({
+  ...row,
+  emergencyOffAt: row.emergencyOffAt?.toISOString() ?? null,
+  deletedAt: row.deletedAt?.toISOString() ?? null,
+  updatedAt: row.updatedAt.toISOString(),
+}) : null
 
 export const createPrismaConfigResourcesRepository = (client, { recordAudit } = {}) => ({
   list: async (kind, options) => {
@@ -33,6 +39,29 @@ export const createPrismaConfigResourcesRepository = (client, { recordAudit } = 
     return { items: selected.map(resourceDto), limit: options.limit, nextCursor: rows.length > options.limit ? selected.at(-1)?.id ?? null : null }
   },
   findById: async (id) => resourceDto(await client.configResource.findUnique({ where: { id: String(id) } })),
+  findPublishedFeatureFlag: async (key) => featureFlagDto(await client.featureFlag.findUnique({ where: { key: String(key) } })),
+  setFeatureFlagEmergency: async (id, version, emergencyOff, payload) => client.$transaction(async (transaction) => {
+    const resource = await transaction.configResource.findUnique({ where: { id: String(id) } })
+    if (!resource || resource.kind !== 'feature_flag' || resource.deletedAt || resource.version !== version) return null
+    const flag = await transaction.featureFlag.findUnique({ where: { resourceId: resource.id } })
+    if (!flag || flag.deletedAt) return null
+    const timestamp = new Date()
+    const updated = await transaction.configResource.updateMany({
+      where: { id: resource.id, version, deletedAt: null },
+      data: { updatedByRef: payload.actorRef, version: { increment: 1 } },
+    })
+    if (!updated.count) throw new HttpError(409, 'STATE_CONFLICT', 'feature flag changed during emergency override')
+    const featureFlag = await transaction.featureFlag.update({
+      where: { resourceId: resource.id },
+      data: emergencyOff
+        ? { emergencyOff: true, emergencyOffByRef: payload.actorRef, emergencyOffReasonCode: payload.reasonCode, emergencyOffAt: timestamp }
+        : { emergencyOff: false, emergencyOffByRef: null, emergencyOffReasonCode: null, emergencyOffAt: null },
+    })
+    return {
+      resource: resourceDto(await transaction.configResource.findUnique({ where: { id: resource.id } })),
+      featureFlag: featureFlagDto(featureFlag),
+    }
+  }),
   create: async (input) => {
     try {
       return resourceDto(await client.configResource.create({ data: input }))
@@ -160,8 +189,16 @@ export const createPrismaConfigResourcesRepository = (client, { recordAudit } = 
         if (resource.kind === 'feature_flag') {
           await transaction.featureFlag.upsert({
             where: { resourceId: resource.id },
-            create: { resourceId: resource.id, key: resource.key, enabled: snapshot.value.enabled, payload: snapshot.value.payload, payloadSchemaVersion: 1, publishedVersion: resourceVersion },
-            update: { enabled: snapshot.value.enabled, payload: snapshot.value.payload, payloadSchemaVersion: 1, publishedVersion: resourceVersion, deletedAt: null },
+            create: {
+              resourceId: resource.id, key: resource.key, enabled: snapshot.value.enabled, payload: snapshot.value.payload,
+              rules: snapshot.value.rules, rulesSchemaVersion: 1, rolloutPercentage: snapshot.value.rolloutPercentage, rolloutSeed: snapshot.value.rolloutSeed,
+              payloadSchemaVersion: 1, publishedVersion: resourceVersion,
+            },
+            update: {
+              enabled: snapshot.value.enabled, payload: snapshot.value.payload, rules: snapshot.value.rules, rulesSchemaVersion: 1,
+              rolloutPercentage: snapshot.value.rolloutPercentage, rolloutSeed: snapshot.value.rolloutSeed,
+              payloadSchemaVersion: 1, publishedVersion: resourceVersion, deletedAt: null,
+            },
           })
         } else if (resource.kind === 'reference_data') {
           await transaction.referenceDataEntry.upsert({

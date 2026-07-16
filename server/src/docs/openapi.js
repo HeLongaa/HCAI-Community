@@ -2959,7 +2959,7 @@ export const openApiDocument = {
       },
       post: {
         summary: 'Create a validated configuration resource draft',
-        description: 'The value schema is selected by kind. Feature flags intentionally exclude audience and rollout rules, which belong to SET-02.',
+        description: 'The value schema is selected by kind. Feature flags support bounded user, role, and environment rules plus deterministic percentage rollout.',
         responses: { '200': { description: 'Created draft' }, '400': { description: 'Invalid kind-specific schema' }, '409': { description: 'Kind and key already exist' } },
       },
     },
@@ -2988,6 +2988,18 @@ export const openApiDocument = {
     },
     '/admin/config-resources/{kind}/{id}/restore': {
       post: { summary: 'Restore a soft-deleted configuration resource using optimistic concurrency', responses: { '200': { description: 'Restored resource' }, '409': { description: 'Expected version conflict or resource is active' } } },
+    },
+    '/feature-flags/{key}/evaluate': {
+      get: { summary: 'Evaluate one published feature flag for the authenticated user and server environment', responses: { '200': { description: 'Deterministic evaluation without raw targeting context' }, '401': { description: 'Authentication required' }, '404': { description: 'Published flag not found' } } },
+    },
+    '/admin/config-resources/feature_flag/{id}/preview': {
+      post: { summary: 'Preview a feature flag draft against an explicit administrative context', responses: { '200': { description: 'Matched rule summary and effective value' }, '400': { description: 'Invalid preview context' }, '403': { description: 'Requires feature flag read permission' } } },
+    },
+    '/admin/config-resources/feature_flag/{id}/emergency-off': {
+      post: { summary: 'Immediately disable a published feature flag using optimistic concurrency', responses: { '200': { description: 'Emergency override and updated resource version' }, '403': { description: 'Requires feature flag emergency permission' }, '409': { description: 'Expected version conflict or unpublished flag' } } },
+    },
+    '/admin/config-resources/feature_flag/{id}/emergency-restore': {
+      post: { summary: 'Remove a feature flag emergency override using optimistic concurrency', responses: { '200': { description: 'Restored rule evaluation and updated resource version' }, '403': { description: 'Requires feature flag emergency permission' }, '409': { description: 'Expected version conflict or unpublished flag' } } },
     },
     '/admin/points/ledger': {
       get: {

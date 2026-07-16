@@ -5,6 +5,8 @@ import { validationFailed } from '../common/http/validation.js'
 
 export const configResourceKinds = Object.freeze(['feature_flag', 'reference_data', 'announcement'])
 export const configResourcePageLimit = 100
+export const featureFlagRuleLimit = 100
+export const featureFlagRuleTypes = Object.freeze(['user', 'role', 'environment'])
 
 export const configResourcePolicy = Object.freeze({
   feature_flag: Object.freeze({
@@ -74,10 +76,41 @@ export const parseConfigResourceKind = (value) => {
   return kind
 }
 
+const validateFeatureFlagRule = (raw, index) => {
+  const rule = objectValue(raw, `value.rules[${index}]`)
+  exactFields(rule, ['id', 'type', 'values', 'enabled', 'payload'], `value.rules[${index}]`)
+  const type = String(rule.type ?? '')
+  if (!featureFlagRuleTypes.includes(type)) throw validationFailed(`value.rules[${index}].type must be one of: ${featureFlagRuleTypes.join(', ')}`)
+  if (!Array.isArray(rule.values) || !rule.values.length || rule.values.length > 100) throw validationFailed(`value.rules[${index}].values must contain between 1 and 100 entries`)
+  const values = rule.values.map((item, valueIndex) => safeText(item, `value.rules[${index}].values[${valueIndex}]`, { required: true, maximum: 128 }))
+  if (new Set(values).size !== values.length) throw validationFailed(`value.rules[${index}].values contains duplicates`)
+  return {
+    id: safeText(rule.id, `value.rules[${index}].id`, { required: true, maximum: 64 }),
+    type,
+    values,
+    enabled: booleanValue(rule.enabled, `value.rules[${index}].enabled`),
+    ...(Object.hasOwn(rule, 'payload') ? { payload: clone(rule.payload) } : {}),
+  }
+}
+
 const validateFeatureFlag = (raw) => {
   const value = objectValue(raw)
-  exactFields(value, ['enabled', 'payload'])
-  return { enabled: booleanValue(value.enabled, 'value.enabled'), payload: clone(value.payload ?? {}) }
+  exactFields(value, ['enabled', 'payload', 'rules', 'rolloutPercentage', 'rolloutSeed'])
+  const rules = value.rules == null ? [] : value.rules
+  if (!Array.isArray(rules) || rules.length > featureFlagRuleLimit) throw validationFailed(`value.rules must contain at most ${featureFlagRuleLimit} rules`)
+  const normalizedRules = rules.map(validateFeatureFlagRule)
+  if (new Set(normalizedRules.map((rule) => rule.id)).size !== normalizedRules.length) throw validationFailed('value.rules contains duplicate ids')
+  const rolloutPercentage = value.rolloutPercentage == null ? null : Number(value.rolloutPercentage)
+  if (rolloutPercentage != null && (!Number.isInteger(rolloutPercentage) || rolloutPercentage < 0 || rolloutPercentage > 100)) {
+    throw validationFailed('value.rolloutPercentage must be an integer between 0 and 100 or null')
+  }
+  return {
+    enabled: booleanValue(value.enabled, 'value.enabled'),
+    payload: clone(value.payload ?? {}),
+    rules: normalizedRules,
+    rolloutPercentage,
+    rolloutSeed: safeText(value.rolloutSeed ?? 'v1', 'value.rolloutSeed', { required: true, maximum: 64 }),
+  }
 }
 const validateReferenceData = (raw) => {
   const value = objectValue(raw)
@@ -114,6 +147,77 @@ export const validateConfigResourceValue = (kind, value) => ({
   reference_data: validateReferenceData,
   announcement: validateAnnouncement,
 })[parseConfigResourceKind(kind)](value)
+
+export const parseFeatureFlagEvaluationContext = (context = {}) => ({
+  environment: safeText(context.environment, 'environment', { required: true, maximum: 64 }),
+  userId: safeText(context.userId, 'userId', { required: true, maximum: 160 }),
+  roles: [...new Set((Array.isArray(context.roles) ? context.roles : []).map((role, index) => safeText(role, `roles[${index}]`, { required: true, maximum: 64 })))].slice(0, 20),
+})
+
+const percentageBucket = (key, seed, userId) => Number.parseInt(createHash('sha256')
+  .update(`${seed}:${key}:${userId}`)
+  .digest('hex')
+  .slice(0, 8), 16) / 0x1_0000_0000 * 100
+
+export const evaluateFeatureFlag = ({ key, value, emergencyOff = false, context }) => {
+  const definition = validateFeatureFlag(value)
+  const normalized = parseFeatureFlagEvaluationContext(context)
+  if (emergencyOff) return { enabled: false, payload: definition.payload, reason: 'emergency_off', ruleId: null }
+
+  const candidates = {
+    user: [normalized.userId],
+    role: normalized.roles,
+    environment: [normalized.environment],
+  }
+  for (const type of featureFlagRuleTypes) {
+    const rule = definition.rules.find((item) => item.type === type && item.values.some((valueItem) => candidates[type].includes(valueItem)))
+    if (rule) return { enabled: rule.enabled, payload: Object.hasOwn(rule, 'payload') ? rule.payload : definition.payload, reason: `${type}_rule`, ruleId: rule.id }
+  }
+  if (definition.rolloutPercentage != null) {
+    return {
+      enabled: percentageBucket(key, definition.rolloutSeed, normalized.userId) < definition.rolloutPercentage,
+      payload: definition.payload,
+      reason: 'percentage_rollout',
+      ruleId: null,
+    }
+  }
+  return { enabled: definition.enabled, payload: definition.payload, reason: 'default', ruleId: null }
+}
+
+export const featureFlagContextForActor = (actor, environment) => parseFeatureFlagEvaluationContext({
+  environment,
+  userId: actor?.id ?? actor?.handle,
+  roles: actor?.role ? [actor.role] : [],
+})
+
+export const evaluatePublishedFeatureFlag = async ({ key, context, repository }) => {
+  const flag = await repository.findPublishedFeatureFlag(key)
+  if (!flag || flag.deletedAt) return null
+  return {
+    resourceId: flag.resourceId,
+    key: flag.key,
+    publishedVersion: flag.publishedVersion,
+    emergencyOff: flag.emergencyOff,
+    ...evaluateFeatureFlag({ key: flag.key, value: {
+      enabled: flag.enabled,
+      payload: flag.payload,
+      rules: flag.rules,
+      rolloutPercentage: flag.rolloutPercentage,
+      rolloutSeed: flag.rolloutSeed,
+    }, emergencyOff: flag.emergencyOff, context }),
+  }
+}
+
+export const setFeatureFlagEmergency = async ({ resource, payload, emergencyOff, actor, repository }) => {
+  requireResourceState(resource)
+  if (resource.kind !== 'feature_flag') throw validationFailed('emergency override is only supported for feature_flag')
+  const transition = parseConfigResourceTransition(payload)
+  const result = await repository.setFeatureFlagEmergency(resource.id, transition.expectedVersion, emergencyOff, {
+    actorRef: actorRef(actor), reasonCode: transition.reasonCode,
+  })
+  if (!result) throw new HttpError(409, 'STATE_CONFLICT', 'feature flag changed before emergency override')
+  return { ...result, reasonCode: transition.reasonCode }
+}
 
 const resourceKey = (value) => {
   const key = safeText(value, 'key', { required: true, maximum: 128 })

@@ -44,6 +44,7 @@ test('structured registry separates RBAC from resource authorization', () => {
     'admin:settings:publish',
     'admin:feature-flags:manage',
     'admin:feature-flags:publish',
+    'admin:feature-flags:emergency',
     'admin:reference-data:manage',
     'admin:reference-data:publish',
     'admin:announcements:manage',

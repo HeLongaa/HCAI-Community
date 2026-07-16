@@ -702,6 +702,14 @@ model FeatureFlag {
   key              String   @unique
   enabled          Boolean
   payload          Json
+  rules            Json
+  rulesSchemaVersion Int     @default(1) @map("rules_schema_version")
+  rolloutPercentage Int?    @map("rollout_percentage")
+  rolloutSeed      String   @map("rollout_seed")
+  emergencyOff     Boolean  @default(false) @map("emergency_off")
+  emergencyOffByRef String? @map("emergency_off_by_ref")
+  emergencyOffReasonCode String? @map("emergency_off_reason_code")
+  emergencyOffAt   DateTime? @map("emergency_off_at")
   payloadSchemaVersion Int    @default(1) @map("payload_schema_version")
   publishedVersion Int      @map("published_version")
   deletedAt        DateTime? @map("deleted_at")
