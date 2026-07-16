@@ -13,6 +13,7 @@ import { createSeedModelControlRepository } from '../modelControl/seedModelContr
 import { createSeedModelRoutingRepository } from '../modelControl/seedModelRoutingRepository.js'
 import { createSeedModelGovernanceRepository } from '../modelControl/seedModelGovernanceRepository.js'
 import { createSeedProviderOperationsRepository } from '../modelControl/seedProviderOperationsRepository.js'
+import { createSeedModelEvaluationRepository } from '../modelControl/seedModelEvaluationRepository.js'
 import { createSeedGenerationExecutionRepository } from '../creative/seedGenerationExecutionRepository.js'
 import { createSeedObservabilityRepository } from '../observability/seedObservabilityRepository.js'
 import {
@@ -2420,6 +2421,7 @@ export const createSeedRepository = () => {
   const configResources = createSeedConfigResourcesRepository({ recordAudit: auditRecorder })
   const modelControl = createSeedModelControlRepository({ recordAudit: auditRecorder })
   const modelRouting = createSeedModelRoutingRepository({ modelControl, recordAudit: auditRecorder })
+  const modelEvaluation = createSeedModelEvaluationRepository({ modelControl })
   let modelGovernance
   const releaseChanges = createSeedReleaseRepository({
     onModelPromotionCreated: async (releaseChangeId, promotion) => modelGovernance?.recordPromotion(releaseChangeId, promotion),
@@ -2432,7 +2434,7 @@ export const createSeedRepository = () => {
       )
     },
   })
-  modelGovernance = createSeedModelGovernanceRepository({ modelControl, modelRouting, releaseChanges })
+  modelGovernance = createSeedModelGovernanceRepository({ modelControl, modelRouting, modelEvaluation, releaseChanges })
   const providerOperations = createSeedProviderOperationsRepository({ modelControl })
   const observability = createSeedObservabilityRepository()
   return {
@@ -2446,6 +2448,7 @@ export const createSeedRepository = () => {
   modelControl,
   modelRouting,
   modelGovernance,
+  modelEvaluation,
   providerOperations,
   creativeGenerationExecutions,
   observability,

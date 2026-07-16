@@ -1908,6 +1908,7 @@ model ModelVersion {
   deployments  ModelDeployment[]
   prices       PricingVersion[]
   generations  CreativeGeneration[]
+  evaluationRuns AiEvaluationRun[]
 
   @@unique([modelId, versionKey])
   @@index([status, updatedAt])
@@ -1954,6 +1955,7 @@ model ModelDeployment {
   routeTargets   ModelRouteTarget[]
   routeDecisions ModelRouteDecision[]
   promotions     ModelPromotion[]
+  evaluationRuns AiEvaluationRun[]
 
   @@unique([environment, key])
   @@index([modelVersionId, environment, status])
@@ -2093,6 +2095,7 @@ model ModelPromotion {
   routePolicyId         String   @map("route_policy_id")
   routePolicyRevisionId String   @map("route_policy_revision_id")
   providerSecretRefId   String   @map("provider_secret_ref_id")
+  evaluationRunId       String?  @map("evaluation_run_id")
   createdByRef          String   @map("created_by_ref")
   createdAt             DateTime @default(now()) @map("created_at")
 
@@ -2101,11 +2104,143 @@ model ModelPromotion {
   routePolicy         ModelRoutePolicy         @relation(fields: [routePolicyId], references: [id], onDelete: Restrict)
   routePolicyRevision ModelRoutePolicyRevision @relation(fields: [routePolicyRevisionId], references: [id], onDelete: Restrict)
   providerSecretRef   ProviderSecretRef        @relation(fields: [providerSecretRefId], references: [id], onDelete: Restrict)
+  evaluationRun       AiEvaluationRun?         @relation(fields: [evaluationRunId], references: [id], onDelete: Restrict)
 
   @@index([modelDeploymentId, createdAt])
   @@index([routePolicyId, createdAt])
   @@index([providerSecretRefId, createdAt])
+  @@index([evaluationRunId, createdAt])
   @@map("model_promotions")
+}
+
+model AiEvaluationSuite {
+  id            String                    @id
+  suiteKey      String                    @map("suite_key")
+  name          String
+  version       Int
+  modality      ModelCapabilityModality
+  operation     String
+  description   String?
+  contentHash   String                    @map("content_hash")
+  reasonCode    String                    @map("reason_code")
+  createdByRef  String                    @map("created_by_ref")
+  createdAt     DateTime                  @default(now()) @map("created_at")
+
+  cases    AiEvaluationCase[]
+  policies AiEvaluationPolicy[]
+  runs     AiEvaluationRun[]
+
+  @@unique([suiteKey, version])
+  @@index([modality, operation, createdAt])
+  @@map("ai_evaluation_suites")
+}
+
+model AiEvaluationCase {
+  id           String   @id
+  suiteId      String   @map("suite_id")
+  caseKey      String   @map("case_key")
+  category     String
+  scoringType  String   @map("scoring_type")
+  inputHash    String   @map("input_hash")
+  expectedHash String   @map("expected_hash")
+  weight       Int
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  suite   AiEvaluationSuite        @relation(fields: [suiteId], references: [id], onDelete: Restrict)
+  results AiEvaluationCaseResult[]
+
+  @@unique([suiteId, caseKey])
+  @@index([suiteId, category])
+  @@map("ai_evaluation_cases")
+}
+
+model AiEvaluationPolicy {
+  id                  String                     @id
+  policyKey           String                     @map("policy_key")
+  version             Int
+  suiteId             String                     @map("suite_id")
+  modality            ModelCapabilityModality
+  operation           String
+  environment         ModelDeploymentEnvironment
+  qualityThresholdBps Int                        @map("quality_threshold_bps")
+  safetyThresholdBps  Int                        @map("safety_threshold_bps")
+  maxRegressionBps    Int                        @map("max_regression_bps")
+  minimumCases        Int                        @map("minimum_cases")
+  evidenceTtlSeconds  Int                        @map("evidence_ttl_seconds")
+  policyHash          String                     @map("policy_hash")
+  reviewedByRef       String                     @map("reviewed_by_ref")
+  reasonCode          String                     @map("reason_code")
+  createdByRef        String                     @map("created_by_ref")
+  reviewedAt          DateTime                   @default(now()) @map("reviewed_at")
+  createdAt           DateTime                   @default(now()) @map("created_at")
+
+  suite AiEvaluationSuite @relation(fields: [suiteId], references: [id], onDelete: Restrict)
+  runs  AiEvaluationRun[]
+
+  @@unique([policyKey, version])
+  @@index([suiteId, environment, createdAt])
+  @@index([modality, operation, environment, createdAt])
+  @@map("ai_evaluation_policies")
+}
+
+model AiEvaluationRun {
+  id                String   @id
+  sourceKey         String   @unique @map("source_key")
+  suiteId           String   @map("suite_id")
+  policyId          String   @map("policy_id")
+  modelVersionId    String   @map("model_version_id")
+  modelDeploymentId String?  @map("model_deployment_id")
+  baselineRunId     String?  @map("baseline_run_id")
+  status            String
+  reasonCodes       String[] @default([]) @map("reason_codes")
+  totalCases        Int      @map("total_cases")
+  passedCases       Int      @map("passed_cases")
+  qualityScoreBps   Int      @map("quality_score_bps")
+  safetyScoreBps    Int      @map("safety_score_bps")
+  regressionDeltaBps Int?    @map("regression_delta_bps")
+  reportHash        String   @map("report_hash")
+  executorRef       String   @map("executor_ref")
+  createdByRef      String   @map("created_by_ref")
+  startedAt         DateTime @map("started_at")
+  completedAt       DateTime @map("completed_at")
+  expiresAt         DateTime @map("expires_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  suite           AiEvaluationSuite       @relation(fields: [suiteId], references: [id], onDelete: Restrict)
+  policy          AiEvaluationPolicy      @relation(fields: [policyId], references: [id], onDelete: Restrict)
+  modelVersion    ModelVersion            @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
+  modelDeployment ModelDeployment?        @relation(fields: [modelDeploymentId], references: [id], onDelete: Restrict)
+  baselineRun     AiEvaluationRun?         @relation("AiEvaluationRunBaseline", fields: [baselineRunId], references: [id], onDelete: Restrict)
+  candidateRuns   AiEvaluationRun[]        @relation("AiEvaluationRunBaseline")
+  results         AiEvaluationCaseResult[]
+  promotions      ModelPromotion[]
+
+  @@index([suiteId, createdAt])
+  @@index([policyId, status, createdAt])
+  @@index([modelVersionId, createdAt])
+  @@index([modelDeploymentId, status, expiresAt])
+  @@index([baselineRunId, createdAt])
+  @@map("ai_evaluation_runs")
+}
+
+model AiEvaluationCaseResult {
+  id           String   @id
+  runId        String   @map("run_id")
+  caseId       String   @map("case_id")
+  status       String
+  scoreBps     Int      @map("score_bps")
+  safetyPassed Boolean  @map("safety_passed")
+  latencyMs    Int?     @map("latency_ms")
+  outputHash   String   @map("output_hash")
+  resultHash   String   @map("result_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  run            AiEvaluationRun  @relation(fields: [runId], references: [id], onDelete: Restrict)
+  evaluationCase AiEvaluationCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
+
+  @@unique([runId, caseId])
+  @@index([caseId, status, createdAt])
+  @@map("ai_evaluation_case_results")
 }
 
 model PricingVersion {

@@ -12,7 +12,7 @@ production.
 
 The data inventory and implementation contract are frozen. The complete runtime is not implemented.
 
-- All 72 Prisma models are assigned exactly once to a governed data asset.
+- All 100 Prisma models are assigned exactly once to a governed data asset.
 - Six non-Prisma asset classes cover raw generation inputs, raw Provider payloads, observability, backups, export
   packages, and deployment secrets.
 - Unknown data is `restricted`; unknown flows and processors are denied.
@@ -58,6 +58,7 @@ not become public because the post is public.
 | `internal_accounting_invariant_records` | Confidential | PostgreSQL | `InternalAccountingOperation`, `InternalAccountingMovement`, `AccountingReconciliationIssue` | Terminal/account close + 730 days; open reconciliation and dispute are retention exceptions |
 | `provider_cost_budget_records` | Confidential | PostgreSQL | `CreativeProviderBudgetWindow`, `CreativeProviderCostLedger` | Provider cost close/reconciliation + 730 days; amounts stored as integer micros |
 | `provider_control_records` | Confidential | PostgreSQL | `CreativeProviderControlState`, `CreativeProviderCapEvidence`, `CreativeProviderCircuitState`, `CreativeProviderCircuitEvent` | Control/circuit reconciliation + 730 days; evidence and probe tokens are hash-only |
+| `ai_evaluation_records` | Restricted | PostgreSQL/archive | `AiEvaluationSuite`, `AiEvaluationCase`, `AiEvaluationPolicy`, `AiEvaluationRun`, `AiEvaluationCaseResult` | Created + 730 days; raw prompts/outputs are forbidden and only hashes, bounded scores, safety outcomes, and regression evidence persist |
 | `notification_records` | Confidential | PostgreSQL | `Notification` | Created + 180 days |
 | `moderation_review_records` | Restricted | PostgreSQL | `AdminReview` | Review/appeal close + 730 days |
 | `audit_event_records` | Restricted | PostgreSQL/archive | `AuditEvent`, `AuditArchiveManifest` | Created + 730 days; chained facts and archive manifests are immutable evidence |

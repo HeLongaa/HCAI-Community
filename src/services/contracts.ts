@@ -2858,16 +2858,19 @@ export type ModelPromotionDto = {
   routePolicyId: string
   routePolicyRevisionId: string
   providerSecretRefId: string
+  evaluationRunId: string
   createdByRef: string
   createdAt: string
   releaseChange: ReleaseChangeDto
   providerSecretRef?: ProviderSecretRefDto
+  evaluationRun?: AiEvaluationRunDto
 }
 export type ModelPromotionRequest = {
   modelDeploymentId: string
   routePolicyId: string
   routePolicyRevisionId: string
   providerSecretRefId: string
+  evaluationRunId: string
   artifactVersion: string
   rollbackVersion: string
   summary: string
@@ -2888,6 +2891,119 @@ export type ModelGovernanceSummaryDto = {
   decisionSourceCounts: Partial<Record<'preview' | 'dispatch', number>>
   promotionStatusCounts: Partial<Record<ReleaseChangeStatus | 'unknown', number>>
   expiringSecretRefCount: number
+}
+export type AiEvaluationCaseDto = {
+  id: string
+  suiteId: string
+  caseKey: string
+  category: 'quality' | 'safety'
+  scoringType: 'exact' | 'semantic' | 'policy'
+  inputHash: string
+  expectedHash: string
+  weight: number
+  createdAt: string
+}
+export type AiEvaluationSuiteDto = {
+  id: string
+  suiteKey: string
+  name: string
+  version: number
+  modality: ModelCapabilityModality
+  operation: string
+  description: string | null
+  contentHash: string
+  reasonCode: string
+  createdByRef: string
+  createdAt: string
+  cases: AiEvaluationCaseDto[]
+}
+export type AiEvaluationPolicyDto = {
+  id: string
+  policyKey: string
+  version: number
+  suiteId: string
+  modality: ModelCapabilityModality
+  operation: string
+  environment: ModelDeploymentEnvironment
+  qualityThresholdBps: number
+  safetyThresholdBps: number
+  maxRegressionBps: number
+  minimumCases: number
+  evidenceTtlSeconds: number
+  policyHash: string
+  reviewedByRef: string
+  reasonCode: string
+  createdByRef: string
+  reviewedAt: string
+  createdAt: string
+  suite?: AiEvaluationSuiteDto
+}
+export type AiEvaluationCaseResultDto = {
+  id: string
+  runId: string
+  caseId: string
+  status: 'passed' | 'failed'
+  scoreBps: number
+  safetyPassed: boolean
+  latencyMs: number | null
+  outputHash: string
+  resultHash: string
+  createdAt: string
+}
+export type AiEvaluationRunDto = {
+  id: string
+  sourceKey: string
+  suiteId: string
+  policyId: string
+  modelVersionId: string
+  modelDeploymentId: string | null
+  baselineRunId: string | null
+  status: 'passed' | 'failed' | 'unverifiable'
+  reasonCodes: string[]
+  totalCases: number
+  passedCases: number
+  qualityScoreBps: number
+  safetyScoreBps: number
+  regressionDeltaBps: number | null
+  reportHash: string
+  executorRef: string
+  startedAt: string
+  completedAt: string
+  expiresAt: string
+  createdAt: string
+  suite?: AiEvaluationSuiteDto
+  policy?: AiEvaluationPolicyDto
+  results: AiEvaluationCaseResultDto[]
+}
+export type AiEvaluationSummaryDto = {
+  suiteCount: number
+  policyCount: number
+  runCount: number
+  currentPassingCount: number
+  statusCounts: Partial<Record<AiEvaluationRunDto['status'], number>>
+}
+export type AiEvaluationSuiteRequest = {
+  suiteKey: string
+  name: string
+  version: number
+  modality: ModelCapabilityModality
+  operation: string
+  description?: string | null
+  reasonCode: string
+  cases: Array<{ caseKey: string; category: AiEvaluationCaseDto['category']; scoringType: AiEvaluationCaseDto['scoringType']; inputHash: string; expectedHash: string; weight: number }>
+}
+export type AiEvaluationPolicyRequest = Omit<AiEvaluationPolicyDto, 'id' | 'policyHash' | 'createdByRef' | 'reviewedAt' | 'createdAt' | 'suite'>
+export type AiEvaluationRunRequest = {
+  sourceKey: string
+  suiteId: string
+  policyId: string
+  modelVersionId: string
+  modelDeploymentId?: string | null
+  baselineRunId?: string | null
+  executorRef: string
+  startedAt?: string
+  completedAt?: string
+  results: Array<{ caseId: string; scoreBps: number; safetyPassed: boolean; latencyMs?: number | null; outputHash: string }>
 }
 export type ProviderReadinessGateDto = { id: string; allowed: boolean; reasonCode: string | null; blockedScopeKey?: string | null }
 export type ProviderOperationalReadinessDto = { ready: boolean; reasonCode: string | null; gates: ProviderReadinessGateDto[]; checkedAt: string }

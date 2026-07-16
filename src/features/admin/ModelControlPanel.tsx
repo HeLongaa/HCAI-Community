@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Archive, Ban, Boxes, Download, History, KeyRound, Play, Plus, RefreshCw, RotateCcw, Save, Search, ShieldCheck, Waypoints } from 'lucide-react'
+import { Archive, Ban, Boxes, Download, FlaskConical, History, KeyRound, Play, Plus, RefreshCw, RotateCcw, Save, Search, ShieldCheck, Waypoints } from 'lucide-react'
 
 import type { Permission } from '../../domain/types'
 import { adminService } from '../../services/adminService'
-import type { ModelCatalogModelDto, ModelCapabilityModality, ModelControlStatus, ModelControlSummaryDto, ModelDeploymentDto, ModelDeploymentEnvironment, ModelGovernanceSummaryDto, ModelPromotionDto, ModelProviderDto, ModelRouteDecisionDto, ModelRoutePolicyDto, ModelRoutePreviewResult, ModelRouteRevisionDto, ModelRouteSummaryDto, ModelVersionDto, ProviderOperationalPolicyDto, ProviderOperationsSummaryDto, ProviderSecretRefDto } from '../../services/contracts'
+import type { AiEvaluationPolicyDto, AiEvaluationRunDto, AiEvaluationSuiteDto, AiEvaluationSummaryDto, ModelCatalogModelDto, ModelCapabilityModality, ModelControlStatus, ModelControlSummaryDto, ModelDeploymentDto, ModelDeploymentEnvironment, ModelGovernanceSummaryDto, ModelPromotionDto, ModelProviderDto, ModelRouteDecisionDto, ModelRoutePolicyDto, ModelRoutePreviewResult, ModelRouteRevisionDto, ModelRouteSummaryDto, ModelVersionDto, ProviderOperationalPolicyDto, ProviderOperationsSummaryDto, ProviderSecretRefDto } from '../../services/contracts'
 
 type Mode = 'providers' | 'models' | 'versions' | 'routes'
-type GovernanceMode = 'operations' | 'decisions' | 'secrets' | 'promotions'
+type GovernanceMode = 'operations' | 'evaluations' | 'decisions' | 'secrets' | 'promotions'
 const statuses: Array<ModelControlStatus | ''> = ['', 'draft', 'active', 'disabled', 'deprecated', 'archived']
 const transitions: Record<ModelControlStatus, ModelControlStatus[]> = {
   draft: ['active', 'archived'], active: ['disabled', 'deprecated'], disabled: ['active', 'archived'], deprecated: ['disabled', 'archived'], archived: [],
@@ -35,11 +35,16 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
   const [secretRefs, setSecretRefs] = useState<ProviderSecretRefDto[]>([])
   const [promotions, setPromotions] = useState<ModelPromotionDto[]>([])
   const [providerOperations, setProviderOperations] = useState<ProviderOperationalPolicyDto[]>([])
+  const [evaluationSuites, setEvaluationSuites] = useState<AiEvaluationSuiteDto[]>([])
+  const [evaluationPolicies, setEvaluationPolicies] = useState<AiEvaluationPolicyDto[]>([])
+  const [evaluationRuns, setEvaluationRuns] = useState<AiEvaluationRunDto[]>([])
   const [governanceMode, setGovernanceMode] = useState<GovernanceMode>('decisions')
   const [summary, setSummary] = useState<ModelControlSummaryDto | null>(null)
   const [routeSummary, setRouteSummary] = useState<ModelRouteSummaryDto | null>(null)
   const [governanceSummary, setGovernanceSummary] = useState<ModelGovernanceSummaryDto | null>(null)
   const [operationsSummary, setOperationsSummary] = useState<ProviderOperationsSummaryDto | null>(null)
+  const [evaluationSummary, setEvaluationSummary] = useState<AiEvaluationSummaryDto | null>(null)
+  const [evaluationReferenceTime, setEvaluationReferenceTime] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedVersion, setSelectedVersion] = useState<ModelVersionDto | null>(null)
   const [selectedRoute, setSelectedRoute] = useState<ModelRoutePolicyDto | null>(null)
@@ -60,19 +65,24 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
   const [routeTargets, setRouteTargets] = useState({ primary: '', backup: '' })
   const [previewDraft, setPreviewDraft] = useState({ subjectKey: 'preview-user', role: 'member', region: '' })
   const [secretDraft, setSecretDraft] = useState({ providerId: '', environment: 'staging' as ModelDeploymentEnvironment, purpose: 'inference', secretRef: '', externalVersion: '', ownerRef: '', checksumSha256: '', expiresAt: '', rotatedFromId: '' })
-  const [promotionDraft, setPromotionDraft] = useState({ modelDeploymentId: '', routePolicyId: '', routePolicyRevisionId: '', providerSecretRefId: '', artifactVersion: '', rollbackVersion: '', summary: '' })
+  const [promotionDraft, setPromotionDraft] = useState({ modelDeploymentId: '', routePolicyId: '', routePolicyRevisionId: '', providerSecretRefId: '', evaluationRunId: '', artifactVersion: '', rollbackVersion: '', summary: '' })
   const [promotionRevisions, setPromotionRevisions] = useState<ModelRouteRevisionDto[]>([])
   const [operationsDraft, setOperationsDraft] = useState({ providerId: '', environment: 'staging' as ModelDeploymentEnvironment, providerAccountRef: 'default', secretPurpose: 'inference', workspace: 'image' as ModelCapabilityModality, modelFamily: '', currency: 'USD', perRequestBudgetMicros: '250000', maxRequestsPerMinute: '60', maxConcurrentRequests: '4', healthTtlSeconds: '300' })
   const [healthDraft, setHealthDraft] = useState({ policyId: '', status: 'healthy' as 'healthy' | 'degraded' | 'unavailable', latencyMs: '', successRateBps: '', sourceType: 'provider_probe' as 'provider_probe' | 'provider_status_page' | 'manual_unavailable' | 'fixture_probe', sourceRef: '' })
+  const [evaluationSuiteDraft, setEvaluationSuiteDraft] = useState({ suiteKey: 'chat-regression', name: 'Chat regression', version: '1', modality: 'chat' as ModelCapabilityModality, operation: 'generate', qualityInputHash: '', qualityExpectedHash: '', safetyInputHash: '', safetyExpectedHash: '' })
+  const [evaluationPolicyDraft, setEvaluationPolicyDraft] = useState({ policyKey: 'chat-production', version: '1', suiteId: '', environment: 'production' as ModelDeploymentEnvironment, qualityThresholdBps: '8000', safetyThresholdBps: '10000', maxRegressionBps: '250', minimumCases: '2', evidenceTtlSeconds: '86400', reviewedByRef: 'independent-reviewer' })
+  const [evaluationRunDraft, setEvaluationRunDraft] = useState({ suiteId: '', policyId: '', modelVersionId: '', modelDeploymentId: '', baselineRunId: '', scoreBps: '10000', safetyPassed: true, outputHash: '', executorRef: 'evaluation-runner' })
   const canManage = hasPermission('admin:model-control:manage')
   const canTransition = hasPermission('admin:model-control:transition')
   const canRequestPromotion = hasPermission('admin:releases:manage')
+  const canManageEvaluations = hasPermission('admin:model-evaluations:manage')
+  const canExecuteEvaluations = hasPermission('admin:model-evaluations:execute')
 
   const refresh = useCallback(async () => {
     setBusy(true); setError(null)
     try {
       const query = { search: search || null, status: status || null, limit: 100, sort: 'updatedAt' as const, order: 'desc' as const }
-      const [providerPage, modelPage, versionPage, deploymentPage, routePage, decisionPage, secretPage, promotionPage, operationsPage, nextSummary, nextRouteSummary, nextGovernanceSummary, nextOperationsSummary] = await Promise.all([
+      const [providerPage, modelPage, versionPage, deploymentPage, routePage, decisionPage, secretPage, promotionPage, operationsPage, suitePage, policyPage, runPage, nextSummary, nextRouteSummary, nextGovernanceSummary, nextOperationsSummary, nextEvaluationSummary] = await Promise.all([
         adminService.modelProviders(mode === 'providers' ? query : { limit: 100 }),
         adminService.catalogModels(mode === 'models' ? query : { limit: 100 }),
         adminService.modelVersions(mode === 'versions' ? query : { limit: 100 }),
@@ -82,12 +92,16 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
         adminService.providerSecretRefs({ limit: 100, sort: 'createdAt', order: 'desc' }),
         adminService.modelPromotions({ limit: 100, order: 'desc' }),
         adminService.providerOperationalPolicies(),
+        adminService.evaluationSuites(),
+        adminService.evaluationPolicies(),
+        adminService.evaluationRuns(),
         adminService.modelControlSummary(),
         adminService.modelRouteSummary(),
         adminService.modelGovernanceSummary(),
         adminService.providerOperationsSummary(),
+        adminService.evaluationSummary(),
       ])
-      setProviders(providerPage.items); setModels(modelPage.items); setVersions(versionPage.items); setDeployments(deploymentPage.items); setRoutes(routePage.items); setRouteDecisions(decisionPage.items); setSecretRefs(secretPage.items); setPromotions(promotionPage.items); setProviderOperations(operationsPage.items); setSummary(nextSummary); setRouteSummary(nextRouteSummary); setGovernanceSummary(nextGovernanceSummary); setOperationsSummary(nextOperationsSummary)
+      setProviders(providerPage.items); setModels(modelPage.items); setVersions(versionPage.items); setDeployments(deploymentPage.items); setRoutes(routePage.items); setRouteDecisions(decisionPage.items); setSecretRefs(secretPage.items); setPromotions(promotionPage.items); setProviderOperations(operationsPage.items); setEvaluationSuites(suitePage.items); setEvaluationPolicies(policyPage.items); setEvaluationRuns(runPage.items); setSummary(nextSummary); setRouteSummary(nextRouteSummary); setGovernanceSummary(nextGovernanceSummary); setOperationsSummary(nextOperationsSummary); setEvaluationSummary(nextEvaluationSummary); setEvaluationReferenceTime(Date.now())
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally { setBusy(false) }
@@ -217,6 +231,34 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
   const transitionOperations = (profile: ProviderOperationalPolicyDto, target: 'active' | 'disabled') => void run(async () => {
     await adminService.transitionProviderOperationalPolicy(profile.id, profile.version, target, reasonCode)
   }, isZh ? `Provider 运营策略已${target === 'active' ? '启用' : '停用'}。` : `Provider operations policy ${target}.`)
+  const createEvaluationSuite = () => void run(async () => {
+    await adminService.createEvaluationSuite({
+      suiteKey: evaluationSuiteDraft.suiteKey, name: evaluationSuiteDraft.name, version: Number(evaluationSuiteDraft.version), modality: evaluationSuiteDraft.modality, operation: evaluationSuiteDraft.operation,
+      description: null, reasonCode,
+      cases: [
+        { caseKey: 'quality-1', category: 'quality', scoringType: 'semantic', inputHash: evaluationSuiteDraft.qualityInputHash, expectedHash: evaluationSuiteDraft.qualityExpectedHash, weight: 1 },
+        { caseKey: 'safety-1', category: 'safety', scoringType: 'policy', inputHash: evaluationSuiteDraft.safetyInputHash, expectedHash: evaluationSuiteDraft.safetyExpectedHash, weight: 1 },
+      ],
+    })
+  }, isZh ? '评测套件版本已追加。' : 'Evaluation suite version appended.')
+  const createEvaluationPolicy = () => void run(async () => {
+    const suite = evaluationSuites.find((item) => item.id === evaluationPolicyDraft.suiteId)
+    if (!suite) return
+    await adminService.createEvaluationPolicy({
+      policyKey: evaluationPolicyDraft.policyKey, version: Number(evaluationPolicyDraft.version), suiteId: suite.id, modality: suite.modality, operation: suite.operation,
+      environment: evaluationPolicyDraft.environment, qualityThresholdBps: Number(evaluationPolicyDraft.qualityThresholdBps), safetyThresholdBps: Number(evaluationPolicyDraft.safetyThresholdBps),
+      maxRegressionBps: Number(evaluationPolicyDraft.maxRegressionBps), minimumCases: Number(evaluationPolicyDraft.minimumCases), evidenceTtlSeconds: Number(evaluationPolicyDraft.evidenceTtlSeconds), reviewedByRef: evaluationPolicyDraft.reviewedByRef, reasonCode,
+    })
+  }, isZh ? '评测阈值策略已独立复核并追加。' : 'Reviewed evaluation policy appended.')
+  const createEvaluationRun = () => void run(async () => {
+    const suite = evaluationSuites.find((item) => item.id === evaluationRunDraft.suiteId)
+    if (!suite) return
+    await adminService.createEvaluationRun({
+      sourceKey: `admin-evaluation-${Date.now()}`, suiteId: suite.id, policyId: evaluationRunDraft.policyId, modelVersionId: evaluationRunDraft.modelVersionId,
+      modelDeploymentId: evaluationRunDraft.modelDeploymentId || null, baselineRunId: evaluationRunDraft.baselineRunId || null, executorRef: evaluationRunDraft.executorRef,
+      results: suite.cases.map((item) => ({ caseId: item.id, scoreBps: Number(evaluationRunDraft.scoreBps), safetyPassed: evaluationRunDraft.safetyPassed, latencyMs: null, outputHash: evaluationRunDraft.outputHash })),
+    })
+  }, isZh ? '不可变评测报告已生成。' : 'Immutable evaluation report recorded.')
 
   if (!hasPermission('admin:model-control:read')) return null
   return (
@@ -269,7 +311,7 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
       </div>
       <section className="model-governance-workbench" data-testid="model-governance-workbench">
         <header className="settings-panel-header"><div><small>MODEL-05</small><h3>{isZh ? '决策、凭证与环境提升' : 'Decisions, secrets, and promotion'}</h3><small>{governanceSummary?.decisionCount ?? 0} decisions · {governanceSummary?.secretRefCount ?? 0} SecretRefs · {governanceSummary?.promotionCount ?? 0} promotions</small></div><button className="icon-button" type="button" title={isZh ? '导出治理证据' : 'Export governance evidence'} onClick={() => void run(async () => downloadJson(await adminService.exportModelGovernance()), isZh ? '治理证据已导出。' : 'Governance evidence exported.')}><Download size={17} /></button></header>
-        <div className="chip-row" role="tablist">{(['operations', 'decisions', 'secrets', 'promotions'] as GovernanceMode[]).map((item) => <button key={item} type="button" className={governanceMode === item ? 'chip active' : 'chip'} onClick={() => setGovernanceMode(item)}>{({ operations: isZh ? '运营就绪' : 'Operations', decisions: isZh ? '路由决策' : 'Route decisions', secrets: 'SecretRef', promotions: isZh ? '环境提升' : 'Promotions' })[item]}</button>)}</div>
+        <div className="chip-row" role="tablist">{(['operations', 'evaluations', 'decisions', 'secrets', 'promotions'] as GovernanceMode[]).map((item) => <button key={item} type="button" className={governanceMode === item ? 'chip active' : 'chip'} onClick={() => setGovernanceMode(item)}>{({ operations: isZh ? '运营就绪' : 'Operations', evaluations: isZh ? '质量评测' : 'Evaluations', decisions: isZh ? '路由决策' : 'Route decisions', secrets: 'SecretRef', promotions: isZh ? '环境提升' : 'Promotions' })[item]}</button>)}</div>
         {governanceMode === 'operations' && <>
           <div className="model-control-gate"><ShieldCheck size={18} /><strong>{operationsSummary?.readyCount ?? 0} / {operationsSummary?.profileCount ?? 0} {isZh ? '策略就绪' : 'policies ready'}</strong><span>{operationsSummary?.blockedCount ?? 0} {isZh ? '阻断' : 'blocked'} · {operationsSummary?.activeLeaseCount ?? 0} {isZh ? '活跃租约' : 'active leases'}</span><button className="icon-button" type="button" title={isZh ? '导出运营证据' : 'Export operations evidence'} onClick={() => void run(async () => downloadJson(await adminService.exportProviderOperations()), isZh ? '运营证据已导出。' : 'Operations evidence exported.')}><Download size={16} /></button></div>
           {canManage && <div className="model-governance-form">
@@ -294,6 +336,43 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
             <button className="primary-button" type="button" onClick={recordHealth} disabled={busy || !healthDraft.policyId || !healthDraft.sourceRef}><Plus size={17} />{isZh ? '追加健康证据' : 'Append health'}</button>
           </div>}
         </>}
+        {governanceMode === 'evaluations' && <>
+          <div className="model-control-gate" data-testid="model-evaluation-gate"><FlaskConical size={18} /><strong>{evaluationSummary?.currentPassingCount ?? 0} {isZh ? '份当前合格证据' : 'current passing reports'}</strong><span>{evaluationSummary?.suiteCount ?? 0} suites · {evaluationSummary?.policyCount ?? 0} policies · {evaluationSummary?.runCount ?? 0} runs</span><button className="icon-button" type="button" title={isZh ? '导出评测证据' : 'Export evaluation evidence'} onClick={() => void run(async () => downloadJson(await adminService.exportEvaluations()), isZh ? '评测证据已导出。' : 'Evaluation evidence exported.')}><Download size={16} /></button></div>
+          {canManageEvaluations && <div className="model-governance-form" data-testid="evaluation-suite-form">
+            <input aria-label="Evaluation suite key" value={evaluationSuiteDraft.suiteKey} onChange={(event) => setEvaluationSuiteDraft({ ...evaluationSuiteDraft, suiteKey: event.target.value })} />
+            <input aria-label="Evaluation suite name" value={evaluationSuiteDraft.name} onChange={(event) => setEvaluationSuiteDraft({ ...evaluationSuiteDraft, name: event.target.value })} />
+            <input aria-label="Evaluation suite version" type="number" min="1" value={evaluationSuiteDraft.version} onChange={(event) => setEvaluationSuiteDraft({ ...evaluationSuiteDraft, version: event.target.value })} />
+            <select aria-label="Evaluation modality" value={evaluationSuiteDraft.modality} onChange={(event) => setEvaluationSuiteDraft({ ...evaluationSuiteDraft, modality: event.target.value as ModelCapabilityModality })}>{(['image', 'chat', 'video', 'music'] as ModelCapabilityModality[]).map((item) => <option key={item}>{item}</option>)}</select>
+            <input aria-label="Evaluation operation" value={evaluationSuiteDraft.operation} onChange={(event) => setEvaluationSuiteDraft({ ...evaluationSuiteDraft, operation: event.target.value })} />
+            <input aria-label="Quality input hash" value={evaluationSuiteDraft.qualityInputHash} onChange={(event) => setEvaluationSuiteDraft({ ...evaluationSuiteDraft, qualityInputHash: event.target.value })} placeholder="quality input sha256" />
+            <input aria-label="Quality expected hash" value={evaluationSuiteDraft.qualityExpectedHash} onChange={(event) => setEvaluationSuiteDraft({ ...evaluationSuiteDraft, qualityExpectedHash: event.target.value })} placeholder="quality expected sha256" />
+            <input aria-label="Safety input hash" value={evaluationSuiteDraft.safetyInputHash} onChange={(event) => setEvaluationSuiteDraft({ ...evaluationSuiteDraft, safetyInputHash: event.target.value })} placeholder="safety input sha256" />
+            <input aria-label="Safety expected hash" value={evaluationSuiteDraft.safetyExpectedHash} onChange={(event) => setEvaluationSuiteDraft({ ...evaluationSuiteDraft, safetyExpectedHash: event.target.value })} placeholder="safety expected sha256" />
+            <button className="primary-button" type="button" onClick={createEvaluationSuite} disabled={busy}><Plus size={17} />{isZh ? '追加套件' : 'Append suite'}</button>
+          </div>}
+          {canManageEvaluations && <div className="model-governance-form" data-testid="evaluation-policy-form">
+            <select aria-label="Evaluation policy suite" value={evaluationPolicyDraft.suiteId} onChange={(event) => setEvaluationPolicyDraft({ ...evaluationPolicyDraft, suiteId: event.target.value })}><option value="">{isZh ? '评测套件' : 'Evaluation suite'}</option>{evaluationSuites.map((item) => <option value={item.id} key={item.id}>{item.suiteKey} v{item.version}</option>)}</select>
+            <input aria-label="Evaluation policy key" value={evaluationPolicyDraft.policyKey} onChange={(event) => setEvaluationPolicyDraft({ ...evaluationPolicyDraft, policyKey: event.target.value })} />
+            <input aria-label="Evaluation policy version" type="number" min="1" value={evaluationPolicyDraft.version} onChange={(event) => setEvaluationPolicyDraft({ ...evaluationPolicyDraft, version: event.target.value })} />
+            <select aria-label="Evaluation policy environment" value={evaluationPolicyDraft.environment} onChange={(event) => setEvaluationPolicyDraft({ ...evaluationPolicyDraft, environment: event.target.value as ModelDeploymentEnvironment })}>{(['development', 'staging', 'production'] as ModelDeploymentEnvironment[]).map((item) => <option key={item}>{item}</option>)}</select>
+            <input aria-label="Quality threshold" type="number" min="0" max="10000" value={evaluationPolicyDraft.qualityThresholdBps} onChange={(event) => setEvaluationPolicyDraft({ ...evaluationPolicyDraft, qualityThresholdBps: event.target.value })} />
+            <input aria-label="Safety threshold" type="number" min="0" max="10000" value={evaluationPolicyDraft.safetyThresholdBps} onChange={(event) => setEvaluationPolicyDraft({ ...evaluationPolicyDraft, safetyThresholdBps: event.target.value })} />
+            <input aria-label="Regression threshold" type="number" min="0" max="10000" value={evaluationPolicyDraft.maxRegressionBps} onChange={(event) => setEvaluationPolicyDraft({ ...evaluationPolicyDraft, maxRegressionBps: event.target.value })} />
+            <input aria-label="Evaluation reviewer" value={evaluationPolicyDraft.reviewedByRef} onChange={(event) => setEvaluationPolicyDraft({ ...evaluationPolicyDraft, reviewedByRef: event.target.value })} />
+            <button className="primary-button" type="button" onClick={createEvaluationPolicy} disabled={busy || !evaluationPolicyDraft.suiteId}><ShieldCheck size={17} />{isZh ? '追加策略' : 'Append policy'}</button>
+          </div>}
+          {canExecuteEvaluations && <div className="model-governance-form" data-testid="evaluation-run-form">
+            <select aria-label="Evaluation run suite" value={evaluationRunDraft.suiteId} onChange={(event) => setEvaluationRunDraft({ ...evaluationRunDraft, suiteId: event.target.value })}><option value="">{isZh ? '评测套件' : 'Evaluation suite'}</option>{evaluationSuites.map((item) => <option value={item.id} key={item.id}>{item.suiteKey} v{item.version}</option>)}</select>
+            <select aria-label="Evaluation run policy" value={evaluationRunDraft.policyId} onChange={(event) => setEvaluationRunDraft({ ...evaluationRunDraft, policyId: event.target.value })}><option value="">{isZh ? '阈值策略' : 'Threshold policy'}</option>{evaluationPolicies.filter((item) => !evaluationRunDraft.suiteId || item.suiteId === evaluationRunDraft.suiteId).map((item) => <option value={item.id} key={item.id}>{item.policyKey} v{item.version}</option>)}</select>
+            <select aria-label="Evaluation model version" value={evaluationRunDraft.modelVersionId} onChange={(event) => setEvaluationRunDraft({ ...evaluationRunDraft, modelVersionId: event.target.value })}><option value="">{isZh ? '模型版本' : 'Model version'}</option>{versions.map((item) => <option value={item.id} key={item.id}>{item.versionKey}</option>)}</select>
+            <select aria-label="Evaluation deployment" value={evaluationRunDraft.modelDeploymentId} onChange={(event) => setEvaluationRunDraft({ ...evaluationRunDraft, modelDeploymentId: event.target.value })}><option value="">{isZh ? '无部署' : 'No deployment'}</option>{deployments.filter((item) => !evaluationRunDraft.modelVersionId || item.modelVersionId === evaluationRunDraft.modelVersionId).map((item) => <option value={item.id} key={item.id}>{item.key}</option>)}</select>
+            <select aria-label="Evaluation baseline" value={evaluationRunDraft.baselineRunId} onChange={(event) => setEvaluationRunDraft({ ...evaluationRunDraft, baselineRunId: event.target.value })}><option value="">{isZh ? '基线运行' : 'Baseline run'}</option>{evaluationRuns.filter((item) => item.suiteId === evaluationRunDraft.suiteId && item.policyId === evaluationRunDraft.policyId).map((item) => <option value={item.id} key={item.id}>{item.status} · {item.qualityScoreBps}</option>)}</select>
+            <input aria-label="Evaluation score" type="number" min="0" max="10000" value={evaluationRunDraft.scoreBps} onChange={(event) => setEvaluationRunDraft({ ...evaluationRunDraft, scoreBps: event.target.value })} />
+            <label><input aria-label="Evaluation safety passed" type="checkbox" checked={evaluationRunDraft.safetyPassed} onChange={(event) => setEvaluationRunDraft({ ...evaluationRunDraft, safetyPassed: event.target.checked })} />{isZh ? '安全通过' : 'Safety passed'}</label>
+            <input aria-label="Evaluation output hash" value={evaluationRunDraft.outputHash} onChange={(event) => setEvaluationRunDraft({ ...evaluationRunDraft, outputHash: event.target.value })} placeholder="output sha256" />
+            <button className="primary-button" type="button" onClick={createEvaluationRun} disabled={busy || !evaluationRunDraft.suiteId || !evaluationRunDraft.policyId || !evaluationRunDraft.modelVersionId}><Play size={17} />{isZh ? '记录运行' : 'Record run'}</button>
+          </div>}
+        </>}
         {governanceMode === 'secrets' && canManage && <div className="model-governance-form">
           <select aria-label="SecretRef Provider" value={secretDraft.providerId} onChange={(event) => setSecretDraft({ ...secretDraft, providerId: event.target.value })}><option value="">Provider</option>{providers.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select>
           <select aria-label="SecretRef environment" value={secretDraft.environment} onChange={(event) => setSecretDraft({ ...secretDraft, environment: event.target.value as ModelDeploymentEnvironment })}>{(['development', 'staging', 'production'] as ModelDeploymentEnvironment[]).map((item) => <option key={item}>{item}</option>)}</select>
@@ -311,6 +390,7 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
           <select aria-label="Promotion route policy" value={promotionDraft.routePolicyId} onChange={(event) => void selectPromotionPolicy(event.target.value)}><option value="">{isZh ? '生产路由' : 'Production route'}</option>{routes.filter((item) => item.environment === 'production' && item.status === 'active').map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select>
           <select aria-label="Promotion route revision" value={promotionDraft.routePolicyRevisionId} onChange={(event) => setPromotionDraft({ ...promotionDraft, routePolicyRevisionId: event.target.value })}><option value="">{isZh ? '路由修订' : 'Route revision'}</option>{promotionRevisions.map((item) => <option value={item.id} key={item.id}>r{item.revisionNumber} · {item.reasonCode}</option>)}</select>
           <select aria-label="Promotion SecretRef" value={promotionDraft.providerSecretRefId} onChange={(event) => setPromotionDraft({ ...promotionDraft, providerSecretRefId: event.target.value })}><option value="">SecretRef</option>{secretRefs.filter((item) => item.environment === 'production').map((item) => <option value={item.id} key={item.id}>{item.purpose} · {item.externalVersion}</option>)}</select>
+          <select aria-label="Promotion evaluation run" value={promotionDraft.evaluationRunId} onChange={(event) => setPromotionDraft({ ...promotionDraft, evaluationRunId: event.target.value })}><option value="">{isZh ? '评测证据' : 'Evaluation evidence'}</option>{evaluationRuns.filter((item) => item.status === 'passed' && item.baselineRunId && item.modelDeploymentId === promotionDraft.modelDeploymentId && Date.parse(item.expiresAt) > evaluationReferenceTime).map((item) => <option value={item.id} key={item.id}>{item.qualityScoreBps} / {item.safetyScoreBps} · {item.reportHash.slice(0, 8)}</option>)}</select>
           <input aria-label="Promotion artifact version" value={promotionDraft.artifactVersion} onChange={(event) => setPromotionDraft({ ...promotionDraft, artifactVersion: event.target.value })} placeholder="artifact-version" />
           <input aria-label="Promotion rollback version" value={promotionDraft.rollbackVersion} onChange={(event) => setPromotionDraft({ ...promotionDraft, rollbackVersion: event.target.value })} placeholder="rollback-version" />
           <input aria-label="Promotion summary" value={promotionDraft.summary} onChange={(event) => setPromotionDraft({ ...promotionDraft, summary: event.target.value })} placeholder={isZh ? '提升摘要' : 'Promotion summary'} />
@@ -320,8 +400,9 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
           {governanceMode === 'decisions' && routeDecisions.map((item) => <div key={item.id}><span><strong>{item.status}</strong><small>{item.modality} · {item.environment} · {item.reasonCode}</small></span><code>{item.subjectHash.slice(0, 12)}</code><time>{new Date(item.createdAt).toLocaleString()}</time></div>)}
           {governanceMode === 'secrets' && secretRefs.map((item) => <div key={item.id}><span><strong>{item.purpose} · {item.externalVersion}</strong><small>{item.secretRef} · {item.environment}</small></span><code>{item.ownerRef}</code><time>{item.expiresAt ? new Date(item.expiresAt).toLocaleString() : 'no expiry'}</time></div>)}
           {governanceMode === 'promotions' && promotions.map((item) => <div key={item.id}><span><strong>{item.releaseChange.status}</strong><small>{item.modelDeploymentId} · {item.releaseChange.artifactVersion}</small></span><code>{item.releaseChangeId}</code><time>{new Date(item.createdAt).toLocaleString()}</time></div>)}
+          {governanceMode === 'evaluations' && evaluationRuns.map((item) => <div key={item.id}><span><strong>{item.status} · {item.qualityScoreBps}/{item.safetyScoreBps}</strong><small>{item.suite?.suiteKey ?? item.suiteId} · {item.baselineRunId ? `delta ${item.regressionDeltaBps ?? 0}` : (isZh ? '基线' : 'baseline')}</small></span><code>{item.reportHash.slice(0, 12)}</code><time>{new Date(item.completedAt).toLocaleString()}</time></div>)}
           {governanceMode === 'operations' && providerOperations.map((item) => <div key={item.id}><span><strong>{item.provider?.name ?? item.providerId} · {item.environment}</strong><small>{item.workspace} · {item.readiness.ready ? (isZh ? '就绪' : 'ready') : item.readiness.reasonCode} · {item.maxRequestsPerMinute}/min · {item.rate?.inFlightCount ?? 0}/{item.maxConcurrentRequests} concurrent · {item.health?.status ?? 'health unknown'} · {item.cost?.actualMicros ?? '0'} {item.currency} micros</small></span><code>{item.status} · v{item.version}</code>{canTransition && <button className="ghost-button small" type="button" onClick={() => transitionOperations(item, item.status === 'active' ? 'disabled' : 'active')} disabled={busy}>{item.status === 'active' ? (isZh ? '停用' : 'Disable') : (isZh ? '启用' : 'Activate')}</button>}</div>)}
-          {((governanceMode === 'operations' && !providerOperations.length) || (governanceMode === 'decisions' && !routeDecisions.length) || (governanceMode === 'secrets' && !secretRefs.length) || (governanceMode === 'promotions' && !promotions.length)) && <div className="empty-state">{isZh ? '暂无记录' : 'No records'}</div>}
+          {((governanceMode === 'operations' && !providerOperations.length) || (governanceMode === 'evaluations' && !evaluationRuns.length) || (governanceMode === 'decisions' && !routeDecisions.length) || (governanceMode === 'secrets' && !secretRefs.length) || (governanceMode === 'promotions' && !promotions.length)) && <div className="empty-state">{isZh ? '暂无记录' : 'No records'}</div>}
         </div>
       </section>
     </section>

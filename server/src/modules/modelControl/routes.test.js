@@ -343,6 +343,44 @@ test('route decisions and SecretRefs are append-only safe facts and approved pro
     assert.equal(rotatedSecret.status, 201)
 
     const revisions = await repository.modelRouting.listRevisions(policyActive.payload.data.id)
+    const suiteResponse = await requestJson(server.url, '/api/admin/model-control/evaluation-suites', {
+      token: admin,
+      body: {
+        suiteKey: 'image-production', name: 'Image production regression', version: 1, modality: 'image', operation: 'generate', reasonCode: 'initial_suite',
+        cases: [
+          { caseKey: 'quality-1', category: 'quality', scoringType: 'semantic', inputHash: '1'.repeat(64), expectedHash: '2'.repeat(64), weight: 1 },
+          { caseKey: 'safety-1', category: 'safety', scoringType: 'policy', inputHash: '3'.repeat(64), expectedHash: '4'.repeat(64), weight: 1 },
+        ],
+      },
+    })
+    assert.equal(suiteResponse.status, 201)
+    const suite = suiteResponse.payload.data
+    const policyResponse = await requestJson(server.url, '/api/admin/model-control/evaluation-policies', {
+      token: admin,
+      body: { policyKey: 'image-production', version: 1, suiteId: suite.id, modality: 'image', operation: 'generate', environment: 'production', qualityThresholdBps: 8000, safetyThresholdBps: 10000, maxRegressionBps: 250, minimumCases: 2, evidenceTtlSeconds: 3600, reviewedByRef: 'independent-evaluation-reviewer', reasonCode: 'thresholds_reviewed' },
+    })
+    assert.equal(policyResponse.status, 201)
+    const evaluationPolicy = policyResponse.payload.data
+    const runBody = (sourceKey, baselineRunId, scoreBps = 9000) => ({
+      sourceKey, suiteId: suite.id, policyId: evaluationPolicy.id, modelVersionId: version.id, modelDeploymentId: deployment.id, baselineRunId, executorRef: 'fixture-runner',
+      results: suite.cases.map((item) => ({ caseId: item.id, scoreBps, safetyPassed: true, latencyMs: 20, outputHash: '5'.repeat(64) })),
+    })
+    const baselineResponse = await requestJson(server.url, '/api/admin/model-control/evaluation-runs', { token: admin, body: runBody('promotion-baseline', null) })
+    assert.equal(baselineResponse.status, 201)
+    const candidateBody = runBody('promotion-candidate', baselineResponse.payload.data.id, 8900)
+    const candidateResponse = await requestJson(server.url, '/api/admin/model-control/evaluation-runs', { token: admin, body: candidateBody })
+    assert.equal(candidateResponse.status, 201)
+    assert.equal(candidateResponse.payload.data.status, 'passed')
+    assert.equal(candidateResponse.payload.data.regressionDeltaBps, -100)
+    const duplicateCandidate = await requestJson(server.url, '/api/admin/model-control/evaluation-runs', { token: admin, body: candidateBody })
+    assert.equal(duplicateCandidate.status, 201)
+    assert.equal(duplicateCandidate.payload.data.id, candidateResponse.payload.data.id)
+
+    const blockedWithoutEvaluation = await requestJson(server.url, '/api/admin/model-control/promotions', {
+      token: admin,
+      body: { modelDeploymentId: deployment.id, routePolicyId: policyActive.payload.data.id, routePolicyRevisionId: revisions[0].id, providerSecretRefId: rotatedSecret.payload.data.id, artifactVersion: 'v1', rollbackVersion: 'promotion-model-v0', summary: 'Missing evaluation', reasonCode: 'provider_enablement' },
+    })
+    assert.equal(blockedWithoutEvaluation.status, 400)
     const promotionResponse = await requestJson(server.url, '/api/admin/model-control/promotions', {
       token: admin,
       body: {
@@ -350,6 +388,7 @@ test('route decisions and SecretRefs are append-only safe facts and approved pro
         routePolicyId: policyActive.payload.data.id,
         routePolicyRevisionId: revisions[0].id,
         providerSecretRefId: rotatedSecret.payload.data.id,
+        evaluationRunId: candidateResponse.payload.data.id,
         artifactVersion: 'v1',
         rollbackVersion: 'promotion-model-v0',
         summary: 'Promote production image route',
@@ -393,6 +432,7 @@ test('route decisions and SecretRefs are append-only safe facts and approved pro
     const stalePromotion = {
       id: 'model-promotion-stale-route', modelDeploymentId: deployment.id, routePolicyId: policyActive.payload.data.id,
       routePolicyRevisionId: revisions[0].id, providerSecretRefId: rotatedSecret.payload.data.id, createdByRef: 'opsplus',
+      evaluationRunId: candidateResponse.payload.data.id,
     }
     const staleRequest = await requestReleaseChange({
       payload: { changeType: 'promotion', sourceEnvironment: 'staging', targetEnvironment: 'production', artifactVersion: 'v1', rollbackVersion: 'v0', secretRef: null, secretVersion: null, summary: 'Stale route promotion', reasonCode: 'provider_enablement', modelPromotion: stalePromotion },

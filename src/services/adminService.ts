@@ -98,6 +98,13 @@ import type {
   ProviderOperationalPolicyRequest,
   ProviderHealthEvidenceDto,
   ProviderOperationsSummaryDto,
+  AiEvaluationPolicyDto,
+  AiEvaluationPolicyRequest,
+  AiEvaluationRunDto,
+  AiEvaluationRunRequest,
+  AiEvaluationSuiteDto,
+  AiEvaluationSuiteRequest,
+  AiEvaluationSummaryDto,
   ModelVersionDto,
   PricingVersionDto,
 } from './contracts'
@@ -211,6 +218,33 @@ export const adminService = {
   },
   async modelGovernanceSummary() {
     return api.get<ModelGovernanceSummaryDto>('/admin/model-control/governance-summary')
+  },
+  async evaluationSuites() {
+    const envelope = await api.getEnvelope<AiEvaluationSuiteDto[]>('/admin/model-control/evaluation-suites?limit=100')
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async createEvaluationSuite(payload: AiEvaluationSuiteRequest) {
+    return api.post<AiEvaluationSuiteDto>('/admin/model-control/evaluation-suites', payload)
+  },
+  async evaluationPolicies() {
+    const envelope = await api.getEnvelope<AiEvaluationPolicyDto[]>('/admin/model-control/evaluation-policies?limit=100')
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async createEvaluationPolicy(payload: AiEvaluationPolicyRequest) {
+    return api.post<AiEvaluationPolicyDto>('/admin/model-control/evaluation-policies', payload)
+  },
+  async evaluationRuns() {
+    const envelope = await api.getEnvelope<AiEvaluationRunDto[]>('/admin/model-control/evaluation-runs?limit=100')
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async createEvaluationRun(payload: AiEvaluationRunRequest) {
+    return api.post<AiEvaluationRunDto>('/admin/model-control/evaluation-runs', payload)
+  },
+  async evaluationSummary() {
+    return api.get<AiEvaluationSummaryDto>('/admin/model-control/evaluation-summary')
+  },
+  async exportEvaluations() {
+    return api.get<Record<string, unknown>>('/admin/model-control/evaluation-export')
   },
   async providerOperationalPolicies() {
     const envelope = await api.getEnvelope<ProviderOperationalPolicyDto[]>('/admin/model-control/provider-operations?limit=100')

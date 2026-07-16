@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { createModelRouteDecision } from '../modelControl/modelGovernanceRuntime.js'
+import { parseEvaluationPolicyCreate, parseEvaluationRunCreate, parseEvaluationSuiteCreate } from '../modelControl/modelEvaluationRuntime.js'
 import { applyReleaseChange, approveReleaseChange, requestReleaseChange, rollbackReleaseChange } from '../releases/releaseControl.js'
 
 const databaseUrl = process.env.FOUNDATION_DATABASE_URL
@@ -60,9 +61,28 @@ test('Prisma model governance preserves immutable facts and atomically gates pro
     assert.equal(JSON.stringify(decision).includes(context.subjectKey), false)
     await assert.rejects(repository.client.modelRouteDecision.delete({ where: { id: decision.id } }), /model governance facts are immutable/)
 
+    const evaluationActor = { id: actorRef, handle: actorRef }
+    const suite = await repository.modelEvaluation.createSuite(parseEvaluationSuiteCreate({
+      suiteKey: `${runId}-suite`, name: 'Governance promotion suite', version: 1, modality: 'image', operation: 'generate', reasonCode: 'integration_suite',
+      cases: [
+        { caseKey: 'quality', category: 'quality', scoringType: 'semantic', inputHash: '1'.repeat(64), expectedHash: '2'.repeat(64), weight: 1 },
+        { caseKey: 'safety', category: 'safety', scoringType: 'policy', inputHash: '3'.repeat(64), expectedHash: '4'.repeat(64), weight: 1 },
+      ],
+    }, evaluationActor))
+    ids.evaluationSuite = suite.id
+    const evaluationPolicy = await repository.modelEvaluation.createPolicy(parseEvaluationPolicyCreate({
+      policyKey: `${runId}-policy`, version: 1, suiteId: suite.id, modality: 'image', operation: 'generate', environment: 'production', qualityThresholdBps: 8000, safetyThresholdBps: 10000, maxRegressionBps: 250, minimumCases: 2, evidenceTtlSeconds: 3600, reviewedByRef: `${runId}-reviewer`, reasonCode: 'integration_policy',
+    }, evaluationActor))
+    const evaluationInput = (sourceKey, baselineRunId, scoreBps) => parseEvaluationRunCreate({
+      sourceKey, suiteId: suite.id, policyId: evaluationPolicy.id, modelVersionId: version.id, modelDeploymentId: deployment.id, baselineRunId, executorRef: `${runId}-runner`,
+      results: suite.cases.map((item) => ({ caseId: item.id, scoreBps, safetyPassed: true, outputHash: '5'.repeat(64) })),
+    }, evaluationActor)
+    const baselineRun = await repository.modelEvaluation.createRun(evaluationInput(`${runId}-baseline`, null, 9000))
+    const evaluationRun = await repository.modelEvaluation.createRun(evaluationInput(`${runId}-candidate`, baselineRun.id, 8900))
+
     const promotion = {
       id: `${runId}-promotion`, modelDeploymentId: deployment.id, routePolicyId: policy.id, routePolicyRevisionId: revision.id,
-      providerSecretRefId: currentSecretRef.id, createdByRef: actorRef,
+      providerSecretRefId: currentSecretRef.id, evaluationRunId: evaluationRun.id, createdByRef: actorRef,
     }
     ids.promotion = promotion.id
     await repository.modelGovernance.validatePromotion(promotion, { artifactVersion: 'v1' })
@@ -92,6 +112,14 @@ test('Prisma model governance preserves immutable facts and atomically gates pro
         await transaction.releaseChange.deleteMany({ where: { id: ids.release } })
       }
       if (ids.decision) await transaction.modelRouteDecision.deleteMany({ where: { id: ids.decision } })
+      if (ids.evaluationSuite) {
+        await transaction.$executeRawUnsafe("SET LOCAL app.ai_evaluation_maintenance = 'on'")
+        await transaction.aiEvaluationCaseResult.deleteMany({ where: { run: { suiteId: ids.evaluationSuite } } })
+        await transaction.aiEvaluationRun.deleteMany({ where: { suiteId: ids.evaluationSuite } })
+        await transaction.aiEvaluationPolicy.deleteMany({ where: { suiteId: ids.evaluationSuite } })
+        await transaction.aiEvaluationCase.deleteMany({ where: { suiteId: ids.evaluationSuite } })
+        await transaction.aiEvaluationSuite.deleteMany({ where: { id: ids.evaluationSuite } })
+      }
       if (ids.provider) await transaction.providerSecretRef.deleteMany({ where: { providerId: ids.provider } })
       if (ids.policy) {
         await transaction.modelRoutePolicyRevision.deleteMany({ where: { policyId: ids.policy } })

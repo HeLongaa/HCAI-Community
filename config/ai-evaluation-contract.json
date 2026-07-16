@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "taskId": "AI-EVAL-01",
+  "scope": "personal_accounts_only",
+  "migration": "server/prisma/migrations/0061_ai_evaluation_gate/migration.sql",
+  "policyDocument": "docs/AI_EVALUATION_QUALITY_GATE.md",
+  "entities": ["AiEvaluationSuite", "AiEvaluationCase", "AiEvaluationPolicy", "AiEvaluationRun", "AiEvaluationCaseResult"],
+  "operationPolicy": "immutable_evidence",
+  "runStatuses": ["passed", "failed", "unverifiable"],
+  "promotionRequirements": ["passed", "baseline_comparison", "current_evidence", "matching_model_version", "matching_deployment", "production_policy"],
+  "sensitiveContentPersisted": false,
+  "sourceKeyIdempotent": true,
+  "twoPersonPolicyReview": true,
+  "realProviderCalls": false,
+  "tenantModels": false
+}

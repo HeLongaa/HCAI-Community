@@ -3149,9 +3149,36 @@ export const openApiDocument = {
     '/admin/model-control/secret-refs/{id}': {
       get: { summary: 'Read one immutable SecretRef metadata record', responses: { '200': { description: 'SecretRef metadata detail' }, '404': { description: 'SecretRef not found' } } },
     },
+    '/admin/model-control/evaluation-suites': {
+      get: { summary: 'List immutable versioned AI evaluation suites with modality, operation, search, and cursor filters', responses: { '200': { description: 'Evaluation suite page without raw prompts or expected outputs' }, '403': { description: 'Requires model evaluation read permission' } } },
+      post: { summary: 'Append a versioned evaluation suite and hashed case references atomically', responses: { '201': { description: 'Immutable suite and cases appended' }, '400': { description: 'Raw or invalid evidence rejected' }, '409': { description: 'Suite version conflict' } } },
+    },
+    '/admin/model-control/evaluation-suites/{id}': {
+      get: { summary: 'Read one immutable evaluation suite and its hashed case inventory', responses: { '200': { description: 'Evaluation suite detail' }, '404': { description: 'Suite not found' } } },
+    },
+    '/admin/model-control/evaluation-policies': {
+      get: { summary: 'List independently reviewed immutable quality and safety threshold policies', responses: { '200': { description: 'Evaluation policy page' }, '403': { description: 'Requires model evaluation read permission' } } },
+      post: { summary: 'Append a reviewed threshold policy version', responses: { '201': { description: 'Immutable threshold policy appended' }, '400': { description: 'Invalid or self-reviewed policy' }, '409': { description: 'Policy version conflict' } } },
+    },
+    '/admin/model-control/evaluation-policies/{id}': {
+      get: { summary: 'Read one immutable evaluation threshold policy', responses: { '200': { description: 'Evaluation policy detail' }, '404': { description: 'Policy not found' } } },
+    },
+    '/admin/model-control/evaluation-runs': {
+      get: { summary: 'List immutable evaluation runs with suite, policy, model, deployment, status, and cursor filters', responses: { '200': { description: 'Evaluation run page' }, '403': { description: 'Requires model evaluation read permission' } } },
+      post: { summary: 'Record a deterministic scored evaluation run and regression report', responses: { '201': { description: 'Immutable run and case results recorded' }, '400': { description: 'Unsafe, incomplete, or invalid result shape' }, '409': { description: 'Source-key or evidence conflict' }, '422': { description: 'Suite, policy, baseline, model, or deployment mismatch' } } },
+    },
+    '/admin/model-control/evaluation-runs/{id}': {
+      get: { summary: 'Read one immutable evaluation run, case results, threshold policy, and baseline comparison', responses: { '200': { description: 'Verifiable regression report detail' }, '404': { description: 'Run not found' } } },
+    },
+    '/admin/model-control/evaluation-summary': {
+      get: { summary: 'Read evaluation suite, policy, run, status, and current passing evidence counts', responses: { '200': { description: 'AI evaluation operational summary' } } },
+    },
+    '/admin/model-control/evaluation-export': {
+      get: { summary: 'Export bounded immutable suites, policies, runs, and hashed case results', responses: { '200': { description: 'Versioned AI evaluation evidence document' } } },
+    },
     '/admin/model-control/promotions': {
       get: { summary: 'List model promotions and linked release approval state', responses: { '200': { description: 'Promotion page' } } },
-      post: { summary: 'Request staging-to-production model promotion using existing release approval control', responses: { '201': { description: 'Promotion pending independent approval' }, '409': { description: 'Route, SecretRef, or deployment is not eligible' }, '422': { description: 'Promotion references or scopes mismatch' } } },
+      post: { summary: 'Request staging-to-production model promotion using current passing evaluation evidence and existing release approval control', responses: { '201': { description: 'Promotion pending independent approval' }, '409': { description: 'Route, SecretRef, evaluation, or deployment is not eligible' }, '422': { description: 'Promotion references or scopes mismatch' } } },
     },
     '/admin/model-control/promotions/{id}': {
       get: { summary: 'Read one promotion with immutable associations and linked release evidence', responses: { '200': { description: 'Promotion detail' }, '404': { description: 'Promotion not found' } } },

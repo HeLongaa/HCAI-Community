@@ -80,10 +80,10 @@
       "maturity": "partial",
       "ownerTask": "AI-RUNTIME-01",
       "userCapabilities": ["图像生成", "流式对话", "视频与音乐 Fixture 生命周期", "统一生成记录"],
-      "adminCapabilities": ["生成检索", "取消与重试授权", "人工重放审批", "安全失败证据"],
+      "adminCapabilities": ["生成检索", "取消与重试授权", "人工重放审批", "版本化质量与安全评测", "回归提升门禁", "安全失败证据"],
       "operationPolicies": ["state_transition", "append_only", "immutable_evidence"],
-      "evidence": ["server/src/creative/generationService.js", "server/src/chat/chatService.js", "server/src/modules/creative/routes.js"],
-      "gapTasks": ["AI-RUNTIME-01", "AI-EVAL-01", "PROVIDER-APPROVAL"]
+      "evidence": ["server/src/creative/generationService.js", "server/src/chat/chatService.js", "server/src/modules/creative/routes.js", "server/src/modelControl/modelEvaluationRuntime.js", "docs/AI_EVALUATION_QUALITY_GATE.md"],
+      "gapTasks": ["AI-RUNTIME-01", "PROVIDER-APPROVAL"]
     },
     {
       "id": "task-marketplace",
