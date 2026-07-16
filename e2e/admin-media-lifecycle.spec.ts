@@ -27,5 +27,8 @@ test('admin filters and transitions owner media lifecycle records', async ({ pag
   await expect(row).toContainText('Active')
 
   await expect(panel).toBeVisible()
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+  expect(await panel.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    return rect.left >= 0 && rect.right <= document.documentElement.clientWidth && element.scrollWidth <= element.clientWidth
+  })).toBe(true)
 })
