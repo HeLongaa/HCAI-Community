@@ -82,6 +82,14 @@ FOUNDATION_DATABASE_URL="$DATABASE_URL" npm run test:events-jobs-integration
 
 This verifies Task/Outbox atomic commit and rollback, event and job claim competition, immutable replay, foreign/late lease rejection, sensitive job input/result redaction, cooperative cancellation, and timeout sweeping. The test skips when `FOUNDATION_DATABASE_URL` is absent so the ordinary fixture gate never guesses a database target.
 
+For CONFIG-02 schema or repository changes, deploy the complete migration chain through `0051_config_resource_domains`, then run:
+
+```bash
+FOUNDATION_DATABASE_URL="$DATABASE_URL" npm run test:config-resource-domains:integration
+```
+
+This verifies concurrent publication, audit rollback atomicity, immutable revisions, all three independent published projections, mirrored soft deletion, restore, and versioned rollback. The test skips when `FOUNDATION_DATABASE_URL` is absent.
+
 ## Pull Request Check
 
 Run:

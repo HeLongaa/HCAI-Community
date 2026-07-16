@@ -4718,6 +4718,43 @@ button.video-history-row.active {
   overflow: visible;
 }
 
+.admin-settings-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  min-width: 0;
+}
+
+.config-resource-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--control-bg);
+}
+
+.config-resource-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  min-width: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.config-resource-tabs button.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.24);
+}
+
 .system-settings-panel > *,
 .settings-workspace > *,
 .settings-evidence-grid > * {
@@ -4824,6 +4861,79 @@ button.video-history-row.active {
 .settings-list button.admin-row.selected,
 .settings-change-list button.admin-row.selected {
   background: var(--control-bg);
+}
+
+.config-resource-list > .admin-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.config-resource-list > .admin-row.selected {
+  background: var(--control-bg);
+}
+
+.config-resource-list > .admin-row > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  min-height: 58px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.config-resource-list > .admin-row > button > span:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.config-resource-list > .admin-row > button strong,
+.config-resource-list > .admin-row > button small {
+  overflow-wrap: anywhere;
+}
+
+.config-resource-list > .admin-row > input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.config-bulk-action {
+  margin: 10px;
+}
+
+.config-import-input {
+  display: none;
+}
+
+.config-resource-fields {
+  display: grid;
+  grid-template-columns: minmax(140px, .7fr) minmax(180px, 1fr);
+  gap: 10px;
+}
+
+.config-resource-fields input {
+  min-width: 0;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--control-bg);
+  color: var(--text);
+}
+
+.config-resource-fields input:last-child {
+  grid-column: 1 / -1;
 }
 
 .settings-list .admin-row > span:first-child,
@@ -4934,6 +5044,16 @@ button.video-history-row.active {
 }
 
 @media (max-width: 560px) {
+  .config-resource-tabs,
+  .config-resource-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .config-resource-tabs button {
+    justify-content: flex-start;
+    padding: 0 10px;
+  }
+
   .settings-filter-row > *,
   .settings-action-fields > * {
     width: 100%;

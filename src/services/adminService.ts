@@ -1,4 +1,4 @@
-import { api, apiEnvelope, withQuery } from './apiClient'
+import { api, apiEnvelope, apiRequest, withQuery } from './apiClient'
 import type {
   AdminAuditListQuery,
   AdminAuditArchiveManifestDto,
@@ -60,10 +60,53 @@ import type {
   SystemSettingPublishResult,
   SystemSettingRevisionDto,
   SystemSettingTransitionRequest,
+  ConfigResourceDraftRequest,
+  ConfigResourceDto,
+  ConfigResourceKind,
+  ConfigResourceListQuery,
+  ConfigResourcePublishResult,
+  ConfigResourceRevisionDto,
+  ConfigResourceTransitionRequest,
+  ConfigResourceExportDocument,
 } from './contracts'
 import type { Permission, Role } from '../domain/types'
 
 export const adminService = {
+  async configResources(kind: ConfigResourceKind, query?: ConfigResourceListQuery) {
+    const envelope = await api.getEnvelope<ConfigResourceDto[]>(withQuery(`/admin/config-resources/${kind}`, query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async createConfigResource(kind: ConfigResourceKind, payload: ConfigResourceDraftRequest) {
+    return api.post<ConfigResourceDto>(`/admin/config-resources/${kind}`, payload)
+  },
+  async updateConfigResource(kind: ConfigResourceKind, id: string, payload: ConfigResourceDraftRequest) {
+    return api.patch<ConfigResourceDto>(`/admin/config-resources/${kind}/${encodeURIComponent(id)}`, payload)
+  },
+  async publishConfigResource(kind: ConfigResourceKind, id: string, payload: ConfigResourceTransitionRequest) {
+    return api.post<ConfigResourcePublishResult>(`/admin/config-resources/${kind}/${encodeURIComponent(id)}/publish`, payload)
+  },
+  async configResourceHistory(kind: ConfigResourceKind, id: string, query?: Pick<ConfigResourceListQuery, 'cursor' | 'limit'>) {
+    const envelope = await api.getEnvelope<ConfigResourceRevisionDto[]>(withQuery(`/admin/config-resources/${kind}/${encodeURIComponent(id)}/history`, query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async rollbackConfigResource(kind: ConfigResourceKind, id: string, revisionId: string, payload: ConfigResourceTransitionRequest) {
+    return api.post<ConfigResourcePublishResult>(`/admin/config-resources/${kind}/${encodeURIComponent(id)}/rollback`, { revisionId, ...payload })
+  },
+  async deleteConfigResource(kind: ConfigResourceKind, id: string, payload: ConfigResourceTransitionRequest) {
+    return apiRequest<ConfigResourceDto>(`/admin/config-resources/${kind}/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify(payload) })
+  },
+  async restoreConfigResource(kind: ConfigResourceKind, id: string, payload: ConfigResourceTransitionRequest) {
+    return api.post<ConfigResourceDto>(`/admin/config-resources/${kind}/${encodeURIComponent(id)}/restore`, payload)
+  },
+  async bulkDeleteConfigResources(kind: ConfigResourceKind, items: Array<{ id: string; expectedVersion: number }>, reasonCode: string) {
+    return api.post<ConfigResourceDto[]>(`/admin/config-resources/${kind}/bulk-delete`, { items, reasonCode })
+  },
+  async exportConfigResources(kind: ConfigResourceKind) {
+    return api.get<ConfigResourceExportDocument>(`/admin/config-resources/${kind}/export`)
+  },
+  async importConfigResources(kind: ConfigResourceKind, items: ConfigResourceExportDocument['items'], reasonCode: string) {
+    return api.post<ConfigResourceDto[]>(`/admin/config-resources/${kind}/import`, { items, reasonCode })
+  },
   async systemSettings(query?: SystemSettingListQuery) {
     const envelope = await api.getEnvelope<SystemSettingDto[]>(withQuery('/admin/settings', query))
     return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }

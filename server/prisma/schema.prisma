@@ -340,6 +340,12 @@ enum SystemSettingChangeStatus {
   published
 }
 
+enum ConfigResourceKind {
+  feature_flag
+  reference_data
+  announcement
+}
+
 model AuditEvent {
   id                    String         @id @default(cuid())
   actorType             AuditActorType @map("actor_type")
@@ -631,6 +637,116 @@ model SystemSettingRevision {
   @@index([sourceChangeId])
   @@index([previousRevisionId])
   @@map("system_setting_revisions")
+}
+
+model ConfigResource {
+  id                String             @id
+  kind              ConfigResourceKind
+  key               String
+  title             String
+  description       String?
+  draftValue        Json               @map("draft_value")
+  draftValueSchemaVersion Int          @default(1) @map("draft_value_schema_version")
+  publishedValue    Json?              @map("published_value")
+  publishedValueSchemaVersion Int      @default(1) @map("published_value_schema_version")
+  publishedVersion  Int                @default(0) @map("published_version")
+  currentRevisionId String?            @map("current_revision_id")
+  version           Int                @default(1)
+  createdByRef      String             @map("created_by_ref")
+  updatedByRef      String             @map("updated_by_ref")
+  deletedByRef      String?            @map("deleted_by_ref")
+  deletedAt         DateTime?          @map("deleted_at")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  currentRevision ConfigResourceRevision?  @relation("CurrentConfigResourceRevision", fields: [currentRevisionId], references: [id], onDelete: Restrict)
+  revisions       ConfigResourceRevision[] @relation("ConfigResourceRevisions")
+  featureFlag     FeatureFlag?
+  referenceData   ReferenceDataEntry?
+  announcement    Announcement?
+
+  @@unique([kind, key])
+  @@index([kind, deletedAt, updatedAt])
+  @@index([currentRevisionId])
+  @@map("config_resources")
+}
+
+model ConfigResourceRevision {
+  id                 String   @id
+  resourceId         String   @map("resource_id")
+  resourceVersion    Int      @map("resource_version")
+  title              String
+  description        String?
+  value              Json
+  valueSchemaVersion Int      @default(1) @map("value_schema_version")
+  previousRevisionId String?  @map("previous_revision_id")
+  eventType          String   @map("event_type")
+  contentHash        String   @map("content_hash")
+  actorRef           String   @map("actor_ref")
+  reasonCode         String   @map("reason_code")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  resource           ConfigResource           @relation("ConfigResourceRevisions", fields: [resourceId], references: [id], onDelete: Restrict)
+  previousRevision   ConfigResourceRevision?  @relation("ConfigResourceRevisionChain", fields: [previousRevisionId], references: [id], onDelete: Restrict)
+  nextRevisions      ConfigResourceRevision[] @relation("ConfigResourceRevisionChain")
+  currentForResources ConfigResource[]         @relation("CurrentConfigResourceRevision")
+
+  @@unique([resourceId, resourceVersion])
+  @@index([resourceId, createdAt])
+  @@index([previousRevisionId])
+  @@map("config_resource_revisions")
+}
+
+model FeatureFlag {
+  resourceId       String   @id @map("resource_id")
+  key              String   @unique
+  enabled          Boolean
+  payload          Json
+  payloadSchemaVersion Int    @default(1) @map("payload_schema_version")
+  publishedVersion Int      @map("published_version")
+  deletedAt        DateTime? @map("deleted_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  resource ConfigResource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+
+  @@map("feature_flags")
+}
+
+model ReferenceDataEntry {
+  resourceId       String   @id @map("resource_id")
+  key              String   @unique
+  label            String
+  value            Json
+  valueSchemaVersion Int      @default(1) @map("value_schema_version")
+  sortOrder        Int      @default(0) @map("sort_order")
+  active           Boolean  @default(true)
+  publishedVersion Int      @map("published_version")
+  deletedAt        DateTime? @map("deleted_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  resource ConfigResource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+
+  @@index([deletedAt, active, sortOrder])
+  @@map("reference_data_entries")
+}
+
+model Announcement {
+  resourceId       String    @id @map("resource_id")
+  key              String    @unique
+  title            String
+  body             String
+  level            String
+  startsAt         DateTime? @map("starts_at")
+  endsAt           DateTime? @map("ends_at")
+  active           Boolean   @default(true)
+  publishedVersion Int       @map("published_version")
+  deletedAt        DateTime? @map("deleted_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  resource ConfigResource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+
+  @@index([deletedAt, active, startsAt, endsAt])
+  @@map("announcements")
 }
 
 model OperationLease {

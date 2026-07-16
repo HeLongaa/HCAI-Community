@@ -69,6 +69,15 @@ export const permissionRegistry = Object.freeze([
   definePermission('admin:settings:manage', 'config-feature-flags', 'system_setting_change', 'manage', 'critical', admins, { protected: true, protectionRank: 10, resourceAuthorization: true, description: 'Preview and request versioned system setting changes or rollbacks' }),
   definePermission('admin:settings:approve', 'config-feature-flags', 'system_setting_change', 'approve', 'critical', admins, { protected: true, protectionRank: 11, resourceAuthorization: true, description: 'Approve or reject system setting changes with two-person control' }),
   definePermission('admin:settings:publish', 'config-feature-flags', 'system_setting', 'publish', 'critical', admins, { protected: true, protectionRank: 12, resourceAuthorization: true, description: 'Publish approved system setting changes with independent execution' }),
+  definePermission('admin:feature-flags:read', 'config-feature-flags', 'feature_flag', 'read', 'high', moderators, { description: 'Read feature flag definitions and immutable revisions' }),
+  definePermission('admin:feature-flags:manage', 'config-feature-flags', 'feature_flag', 'manage', 'critical', admins, { protected: true, protectionRank: 13, resourceAuthorization: true, description: 'Create, edit, soft-delete, and restore feature flag definitions' }),
+  definePermission('admin:feature-flags:publish', 'config-feature-flags', 'feature_flag', 'publish', 'critical', admins, { protected: true, protectionRank: 14, resourceAuthorization: true, description: 'Publish and roll back feature flag definitions' }),
+  definePermission('admin:reference-data:read', 'config-feature-flags', 'reference_data', 'read', 'high', moderators, { description: 'Read reference data entries and immutable revisions' }),
+  definePermission('admin:reference-data:manage', 'config-feature-flags', 'reference_data', 'manage', 'critical', admins, { protected: true, protectionRank: 15, resourceAuthorization: true, description: 'Create, edit, soft-delete, restore, and bulk-manage reference data' }),
+  definePermission('admin:reference-data:publish', 'config-feature-flags', 'reference_data', 'publish', 'critical', admins, { protected: true, protectionRank: 16, resourceAuthorization: true, description: 'Publish and roll back reference data entries' }),
+  definePermission('admin:announcements:read', 'config-feature-flags', 'announcement', 'read', 'high', moderators, { description: 'Read announcement drafts and immutable revisions' }),
+  definePermission('admin:announcements:manage', 'config-feature-flags', 'announcement', 'manage', 'critical', admins, { protected: true, protectionRank: 17, resourceAuthorization: true, description: 'Create, edit, soft-delete, and restore announcements' }),
+  definePermission('admin:announcements:publish', 'config-feature-flags', 'announcement', 'publish', 'critical', admins, { protected: true, protectionRank: 18, resourceAuthorization: true, description: 'Publish and roll back announcements' }),
 ])
 
 export const permissions = Object.freeze(permissionRegistry.map(({ id }) => id))

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "taskId": "CONFIG-02",
+  "scope": "personal_accounts_only",
+  "policyDocument": "docs/CONFIG_RESOURCE_DOMAINS.md",
+  "schemaPath": "server/prisma/schema.prisma",
+  "migration": "server/prisma/migrations/0051_config_resource_domains/migration.sql",
+  "runtimePath": "server/src/configResources/configResourceRuntime.js",
+  "routePath": "server/src/modules/configResources/routes.js",
+  "frontendPath": "src/features/admin/ConfigurationResourcesPanel.tsx",
+  "runtimeConfiguration": {
+    "model": "SystemSetting",
+    "routesPrefix": "/api/admin/settings",
+    "lifecycle": ["preview", "request", "approve", "publish", "rollback"]
+  },
+  "managedResources": {
+    "model": "ConfigResource",
+    "revisionModel": "ConfigResourceRevision",
+    "publishedProjectionModels": ["FeatureFlag", "ReferenceDataEntry", "Announcement"],
+    "routesPrefix": "/api/admin/config-resources/:kind",
+    "kinds": ["feature_flag", "reference_data", "announcement"],
+    "lifecycle": ["draft", "publish", "rollback", "soft_delete", "restore"],
+    "controls": ["optimistic_concurrency", "immutable_revisions", "atomic_publish_audit", "bounded_pagination"]
+  },
+  "featureFlagBoundary": {
+    "included": ["definition", "default_enabled_state", "payload", "version", "publish", "rollback"],
+    "deferredTo": "SET-02",
+    "excluded": ["audience_rules", "percentage_rollout", "runtime_evaluation"]
+  },
+  "permissions": {
+    "feature_flag": ["admin:feature-flags:read", "admin:feature-flags:manage", "admin:feature-flags:publish"],
+    "reference_data": ["admin:reference-data:read", "admin:reference-data:manage", "admin:reference-data:publish"],
+    "announcement": ["admin:announcements:read", "admin:announcements:manage", "admin:announcements:publish"]
+  },
+  "routes": [
+    "GET /api/admin/config-resources/:kind",
+    "POST /api/admin/config-resources/:kind",
+    "POST /api/admin/config-resources/:kind/bulk-delete",
+    "GET /api/admin/config-resources/:kind/export",
+    "POST /api/admin/config-resources/:kind/import",
+    "GET /api/admin/config-resources/:kind/:id",
+    "PATCH /api/admin/config-resources/:kind/:id",
+    "DELETE /api/admin/config-resources/:kind/:id",
+    "GET /api/admin/config-resources/:kind/:id/history",
+    "POST /api/admin/config-resources/:kind/:id/publish",
+    "POST /api/admin/config-resources/:kind/:id/rollback",
+    "POST /api/admin/config-resources/:kind/:id/restore"
+  ],
+  "realProviderCalls": false,
+  "tenantModels": false
+}

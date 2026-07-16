@@ -26,6 +26,11 @@
     { "model": "SystemSetting", "domain": "config-feature-flags", "policy": "mutable_crud", "hardDelete": false },
     { "model": "SystemSettingChange", "domain": "config-feature-flags", "policy": "state_transition", "hardDelete": false },
     { "model": "SystemSettingRevision", "domain": "config-feature-flags", "policy": "immutable_evidence", "hardDelete": false },
+    { "model": "ConfigResource", "domain": "config-feature-flags", "policy": "soft_delete", "hardDelete": false },
+    { "model": "ConfigResourceRevision", "domain": "config-feature-flags", "policy": "immutable_evidence", "hardDelete": false },
+    { "model": "FeatureFlag", "domain": "config-feature-flags", "policy": "mutable_crud", "hardDelete": false },
+    { "model": "ReferenceDataEntry", "domain": "config-feature-flags", "policy": "mutable_crud", "hardDelete": false },
+    { "model": "Announcement", "domain": "config-feature-flags", "policy": "mutable_crud", "hardDelete": false },
     { "model": "OperationLease", "domain": "jobs-automation", "policy": "state_transition", "hardDelete": true },
     { "model": "DomainEventOutbox", "domain": "platform-architecture", "policy": "append_only", "hardDelete": false },
     { "model": "DomainEventPublication", "domain": "platform-architecture", "policy": "state_transition", "hardDelete": false },
@@ -89,6 +94,6 @@
   "protectedFamilies": {
     "accounting": ["PointLedger", "InternalAccountingOperation", "InternalAccountingMovement"],
     "audit": ["AuditEvent", "SecurityEvent", "DomainEventOutbox", "DomainEventConsumerInbox", "DomainEventCompensation"],
-    "evidence": ["AuditArchiveManifest", "MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence", "SystemSettingRevision"]
+    "evidence": ["AuditArchiveManifest", "MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence", "SystemSettingRevision", "ConfigResourceRevision"]
   }
 }
