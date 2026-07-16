@@ -4,6 +4,7 @@ import test from 'node:test'
 
 import { createModelRouteDecision } from '../modelControl/modelGovernanceRuntime.js'
 import { parseEvaluationPolicyCreate, parseEvaluationRunCreate, parseEvaluationSuiteCreate } from '../modelControl/modelEvaluationRuntime.js'
+import { parseProviderLegalReviewCreate } from '../modelControl/providerLegalRuntime.js'
 import { applyReleaseChange, approveReleaseChange, requestReleaseChange, rollbackReleaseChange } from '../releases/releaseControl.js'
 
 const databaseUrl = process.env.FOUNDATION_DATABASE_URL
@@ -79,10 +80,16 @@ test('Prisma model governance preserves immutable facts and atomically gates pro
     }, evaluationActor)
     const baselineRun = await repository.modelEvaluation.createRun(evaluationInput(`${runId}-baseline`, null, 9000))
     const evaluationRun = await repository.modelEvaluation.createRun(evaluationInput(`${runId}-candidate`, baselineRun.id, 8900))
+    const legalReview = await repository.providerLegal.createReview(parseProviderLegalReviewCreate({
+      sourceKey: `${runId}-legal`, version: 1, providerId: provider.id, modelVersionId: version.id, environment: 'production', decision: 'approved', allowedRegions: ['us'],
+      geographyStatus: 'approved', dpaStatus: 'executed', retentionStatus: 'approved', retentionDays: 30, trainingStatus: 'contractual_no_training', copyrightStatus: 'approved', slaStatus: 'approved',
+      sourceEvidenceHash: '6'.repeat(64), counselRef: `${runId}-counsel`, productOwnerRef: `${runId}-product-owner`, reviewedAt: new Date(Date.now() - 60_000).toISOString(), validFrom: new Date(Date.now() - 30_000).toISOString(), expiresAt: new Date(Date.now() + 86_400_000).toISOString(), reasonCode: 'integration_legal_reviewed',
+    }, evaluationActor))
+    ids.legalReview = legalReview.id
 
     const promotion = {
       id: `${runId}-promotion`, modelDeploymentId: deployment.id, routePolicyId: policy.id, routePolicyRevisionId: revision.id,
-      providerSecretRefId: currentSecretRef.id, evaluationRunId: evaluationRun.id, createdByRef: actorRef,
+      providerSecretRefId: currentSecretRef.id, evaluationRunId: evaluationRun.id, legalReviewId: legalReview.id, createdByRef: actorRef,
     }
     ids.promotion = promotion.id
     await repository.modelGovernance.validatePromotion(promotion, { artifactVersion: 'v1' })
@@ -106,6 +113,7 @@ test('Prisma model governance preserves immutable facts and atomically gates pro
     await repository.client.$transaction(async (transaction) => {
       await transaction.$executeRawUnsafe("SET LOCAL app.model_control_maintenance = 'on'")
       await transaction.$executeRawUnsafe("SET LOCAL app.audit_maintenance = 'on'")
+      await transaction.$executeRawUnsafe("SET LOCAL app.provider_legal_maintenance = 'on'")
       if (ids.release) {
         await transaction.releaseEvidence.deleteMany({ where: { releaseChangeId: ids.release } })
         await transaction.modelPromotion.deleteMany({ where: { releaseChangeId: ids.release } })
@@ -121,6 +129,7 @@ test('Prisma model governance preserves immutable facts and atomically gates pro
         await transaction.aiEvaluationSuite.deleteMany({ where: { id: ids.evaluationSuite } })
       }
       if (ids.provider) await transaction.providerSecretRef.deleteMany({ where: { providerId: ids.provider } })
+      if (ids.provider) await transaction.providerLegalReview.deleteMany({ where: { providerId: ids.provider } })
       if (ids.policy) {
         await transaction.modelRoutePolicyRevision.deleteMany({ where: { policyId: ids.policy } })
         await transaction.modelRouteTarget.deleteMany({ where: { policyId: ids.policy } })

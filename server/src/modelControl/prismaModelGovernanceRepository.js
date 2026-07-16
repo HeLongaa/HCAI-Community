@@ -10,6 +10,7 @@ const promotionInclude = {
   routePolicyRevision: true,
   providerSecretRef: true,
   evaluationRun: { include: { policy: true } },
+  legalReview: true,
 }
 const promotionDto = (row) => row ? ({
   ...row,
@@ -34,7 +35,7 @@ const conflict = (error) => {
   throw error
 }
 
-export const createPrismaModelGovernanceRepository = (client, { modelEvaluation } = {}) => ({
+export const createPrismaModelGovernanceRepository = (client, { modelEvaluation, providerLegal } = {}) => ({
   createDecision: async (input) => {
     try { return decisionDto(await client.modelRouteDecision.create({ data: input })) } catch (error) { return conflict(error) }
   },
@@ -97,6 +98,7 @@ export const createPrismaModelGovernanceRepository = (client, { modelEvaluation 
     if (latestSecretRef?.id !== secretRef.id) throw new HttpError(409, 'PROMOTION_SECRET_STALE', 'only the current SecretRef version can be promoted')
     if (release?.artifactVersion !== deployment.modelVersion.versionKey) throw new HttpError(422, 'PROMOTION_ARTIFACT_MISMATCH', 'artifactVersion must match the production deployment model version')
     await modelEvaluation.assertPromotionEvidence(input.evaluationRunId, deployment)
+    await providerLegal.assertPromotionEvidence(input.legalReviewId, deployment)
     if (conflictingPromotion) throw new HttpError(409, 'PROMOTION_ALREADY_ACTIVE', 'production deployment already has an active or pending promotion')
     return true
   },

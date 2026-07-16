@@ -78,10 +78,11 @@ export const createPrismaReleaseRepository = (client) => ({
       where: { releaseChangeId: String(id) },
       include: {
         releaseChange: true,
-        modelDeployment: { include: { modelVersion: true } },
+        modelDeployment: { include: { modelVersion: { include: { model: true } } } },
         routePolicy: { include: { targets: true, revisions: { orderBy: { revisionNumber: 'desc' }, take: 1 } } },
         providerSecretRef: true,
         evaluationRun: { include: { policy: true } },
+        legalReview: true,
       },
     })
     const lifecycleStatus = ['deployed', 'failed', 'rolled_back'].includes(patch.status)
@@ -111,6 +112,13 @@ export const createPrismaReleaseRepository = (client) => ({
       if (promotion.evaluationRun.expiresAt <= new Date()) throw new HttpError(409, 'PROMOTION_EVALUATION_EXPIRED', 'evaluation evidence expired before promotion was applied')
       if (promotion.evaluationRun.modelDeploymentId !== promotion.modelDeploymentId || promotion.evaluationRun.modelVersionId !== promotion.modelDeployment.modelVersionId || promotion.evaluationRun.policy.environment !== 'production') {
         throw new HttpError(409, 'PROMOTION_EVALUATION_CHANGED', 'evaluation evidence no longer matches the production deployment')
+      }
+      if (!promotion.legalReview || promotion.legalReview.decision !== 'approved') throw new HttpError(409, 'PROMOTION_LEGAL_BLOCKED', 'approved promotion no longer has passing Provider legal evidence')
+      const latestLegalReview = await tx.providerLegalReview.findFirst({ where: { scopeKey: promotion.legalReview.scopeKey }, orderBy: { version: 'desc' } })
+      if (latestLegalReview?.id !== promotion.legalReviewId) throw new HttpError(409, 'PROMOTION_LEGAL_CHANGED', 'Provider legal evidence is no longer the current scope version')
+      if (promotion.legalReview.validFrom > new Date() || promotion.legalReview.expiresAt <= new Date()) throw new HttpError(409, 'PROMOTION_LEGAL_EXPIRED', 'Provider legal evidence is not currently valid')
+      if (promotion.legalReview.providerId !== promotion.modelDeployment.modelVersion.model.providerId || promotion.legalReview.modelVersionId !== promotion.modelDeployment.modelVersionId || promotion.legalReview.environment !== 'production' || !promotion.legalReview.allowedRegions.includes(promotion.modelDeployment.region.toLowerCase())) {
+        throw new HttpError(409, 'PROMOTION_LEGAL_MISMATCH', 'Provider legal evidence no longer matches the production Provider, model, environment, and region')
       }
     }
     const changed = await tx.releaseChange.updateMany({

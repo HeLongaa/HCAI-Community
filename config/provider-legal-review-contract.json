@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "taskId": "LEGAL-BASE-01",
+  "scope": "personal_accounts_only",
+  "migration": "server/prisma/migrations/0062_provider_legal_reviews/migration.sql",
+  "policyDocument": "docs/PROVIDER_LEGAL_REVIEW_GATE.md",
+  "entities": ["ProviderLegalReview"],
+  "operationPolicy": "immutable_evidence",
+  "scopeFields": ["providerId", "modelVersionId", "environment"],
+  "reviewGates": ["geography", "dpa", "retention", "training_use", "copyright_commercial_use", "sla"],
+  "promotionRequirements": ["approved", "latest_scope_version", "current_validity", "matching_provider", "matching_model_version", "matching_environment", "approved_region"],
+  "qualifiedCounselRequired": true,
+  "productOwnerAttestationRequired": true,
+  "contractBodiesPersisted": false,
+  "sourceEvidenceIsSha256": true,
+  "realProviderCalls": false,
+  "tenantModels": false
+}

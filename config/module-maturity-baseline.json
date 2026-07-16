@@ -66,12 +66,12 @@
     {
       "id": "model-control-plane",
       "name": "模型控制面",
-      "maturity": "contract_only",
+      "maturity": "partial",
       "ownerTask": "MODEL-01",
       "userCapabilities": ["安全的 Provider 与模型能力元数据"],
-      "adminCapabilities": ["Kill switch", "预算证据", "熔断与双人恢复"],
+      "adminCapabilities": ["Provider/模型/部署目录", "版本化路由与提升审批", "Kill switch", "预算证据", "熔断与双人恢复", "不可变评测和法务审查证据"],
       "operationPolicies": ["state_transition", "append_only", "immutable_evidence"],
-      "evidence": ["server/src/creative/providerControlPlane.js", "server/src/modules/admin/routes.js", "docs/V1_PROVIDER_CONTROL_PLANE.md"],
+      "evidence": ["server/src/creative/providerControlPlane.js", "server/src/modules/modelControl/routes.js", "server/src/modelControl/providerLegalRuntime.js", "src/features/admin/ModelControlPanel.tsx", "docs/V1_PROVIDER_CONTROL_PLANE.md", "docs/PROVIDER_LEGAL_REVIEW_GATE.md"],
       "gapTasks": ["MODEL-01", "MODEL-02", "MODEL-03", "PROVIDER-APPROVAL"]
     },
     {
@@ -223,9 +223,9 @@
       "maturity": "partial",
       "ownerTask": "LEGAL-BASE-01",
       "userCapabilities": ["版本化政策", "明确同意", "举报与数据权利入口"],
-      "adminCapabilities": ["同意与支持请求审计证据"],
+      "adminCapabilities": ["同意与支持请求审计证据", "Provider/模型/环境级不可变法务审查", "提升与发布时失效关闭复核"],
       "operationPolicies": ["append_only", "immutable_evidence"],
-      "evidence": ["config/v1-compliance-policy.json", "server/src/modules/compliance/routes.js", "docs/V1_DATA_GOVERNANCE_BASELINE.md"],
+      "evidence": ["config/v1-compliance-policy.json", "config/provider-legal-review-contract.json", "server/src/modules/compliance/routes.js", "server/src/modelControl/providerLegalRuntime.js", "docs/V1_DATA_GOVERNANCE_BASELINE.md", "docs/PROVIDER_LEGAL_REVIEW_GATE.md"],
       "gapTasks": ["LEGAL-BASE-01", "LEGAL-01", "DATA-RIGHTS-01"]
     },
     {

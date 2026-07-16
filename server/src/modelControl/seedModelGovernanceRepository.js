@@ -8,7 +8,7 @@ const paginate = (items, options) => {
   return { items: copy(selected), limit: options.limit, nextCursor: items.length > start + options.limit ? selected.at(-1)?.id ?? null : null }
 }
 
-export const createSeedModelGovernanceRepository = ({ modelControl, modelRouting, modelEvaluation, releaseChanges }) => {
+export const createSeedModelGovernanceRepository = ({ modelControl, modelRouting, modelEvaluation, providerLegal, releaseChanges }) => {
   const decisions = new Map()
   const secretRefs = new Map()
   const promotions = new Map()
@@ -62,6 +62,7 @@ export const createSeedModelGovernanceRepository = ({ modelControl, modelRouting
       if (latestSecretRef?.id !== secretRef.id) throw new HttpError(409, 'PROMOTION_SECRET_STALE', 'only the current SecretRef version can be promoted')
       if (release?.artifactVersion !== deployment.modelVersion?.versionKey) throw new HttpError(422, 'PROMOTION_ARTIFACT_MISMATCH', 'artifactVersion must match the production deployment model version')
       await modelEvaluation.assertPromotionEvidence(input.evaluationRunId, deployment)
+      await providerLegal.assertPromotionEvidence(input.legalReviewId, deployment)
       for (const promotion of promotions.values()) {
         if (promotion.modelDeploymentId !== input.modelDeploymentId) continue
         if (release?.id && promotion.releaseChangeId === release.id) continue
@@ -78,12 +79,12 @@ export const createSeedModelGovernanceRepository = ({ modelControl, modelRouting
     findPromotion: async (id) => {
       const row = promotions.get(String(id))
       if (!row) return null
-      return copy({ ...row, releaseChange: await releaseChanges.find(row.releaseChangeId), providerSecretRef: secretRefs.get(row.providerSecretRefId), evaluationRun: await modelEvaluation.findRun(row.evaluationRunId) })
+      return copy({ ...row, releaseChange: await releaseChanges.find(row.releaseChangeId), providerSecretRef: secretRefs.get(row.providerSecretRefId), evaluationRun: await modelEvaluation.findRun(row.evaluationRunId), legalReview: await providerLegal.findReview(row.legalReviewId) })
     },
     findPromotionByReleaseChange: async (releaseChangeId) => {
       const row = [...promotions.values()].find((item) => item.releaseChangeId === String(releaseChangeId))
       if (!row) return null
-      return copy({ ...row, releaseChange: await releaseChanges.find(row.releaseChangeId), providerSecretRef: secretRefs.get(row.providerSecretRefId), evaluationRun: await modelEvaluation.findRun(row.evaluationRunId) })
+      return copy({ ...row, releaseChange: await releaseChanges.find(row.releaseChangeId), providerSecretRef: secretRefs.get(row.providerSecretRefId), evaluationRun: await modelEvaluation.findRun(row.evaluationRunId), legalReview: await providerLegal.findReview(row.legalReviewId) })
     },
     listPromotions: async (options) => {
       const rows = []
@@ -91,7 +92,7 @@ export const createSeedModelGovernanceRepository = ({ modelControl, modelRouting
         const releaseChange = await releaseChanges.find(row.releaseChangeId)
         if (options.status && releaseChange?.status !== options.status) continue
         if (options.modelDeploymentId && row.modelDeploymentId !== options.modelDeploymentId) continue
-        rows.push({ ...row, releaseChange, providerSecretRef: secretRefs.get(row.providerSecretRefId), evaluationRun: await modelEvaluation.findRun(row.evaluationRunId) })
+        rows.push({ ...row, releaseChange, providerSecretRef: secretRefs.get(row.providerSecretRefId), evaluationRun: await modelEvaluation.findRun(row.evaluationRunId), legalReview: await providerLegal.findReview(row.legalReviewId) })
       }
       return paginate(rows, options)
     },

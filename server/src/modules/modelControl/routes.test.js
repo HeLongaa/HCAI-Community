@@ -285,7 +285,7 @@ test('model routing policies are revisioned, permission scoped, concurrency safe
 test('route decisions and SecretRefs are append-only safe facts and approved promotion controls production traffic', async () => {
   const { repository, server } = await createServer()
   try {
-    const provider = await repository.modelControl.createProvider({ id: 'promotion-provider', key: 'promotion-provider', name: 'Promotion Provider', websiteUrl: null, regions: ['us'], dataProcessingRegions: ['us'], createdByRef: 'ops', updatedByRef: 'ops' })
+    const provider = await repository.modelControl.createProvider({ id: 'promotion-provider', key: 'promotion-provider', name: 'Promotion Provider', websiteUrl: 'https://provider.example/legal-source-must-not-leak', regions: ['us'], dataProcessingRegions: ['us'], createdByRef: 'ops', updatedByRef: 'ops' })
     const model = await repository.modelControl.createModel({ id: 'promotion-model', providerId: provider.id, key: 'promotion-model', name: 'Promotion Model', family: 'image', createdByRef: 'ops', updatedByRef: 'ops' })
     const version = await repository.modelControl.createVersion({ id: 'promotion-version', modelId: model.id, versionKey: 'v1', releaseDate: null, contextWindow: null, maxOutputUnits: 1, parameterSchema: null, createdByRef: 'ops', updatedByRef: 'ops' })
     await repository.modelControl.upsertCapability({ id: 'promotion-capability', modelVersionId: version.id, modality: 'image', operations: ['generate'], inputMimeTypes: [], outputMimeTypes: ['image/png'], constraints: null })
@@ -376,6 +376,23 @@ test('route decisions and SecretRefs are append-only safe facts and approved pro
     assert.equal(duplicateCandidate.status, 201)
     assert.equal(duplicateCandidate.payload.data.id, candidateResponse.payload.data.id)
 
+    const legalResponse = await requestJson(server.url, '/api/admin/model-control/provider-legal-reviews', {
+      token: admin,
+      body: {
+        sourceKey: 'promotion-provider-production-v1', version: 1, providerId: provider.id, modelVersionId: version.id, environment: 'production', decision: 'approved',
+        allowedRegions: ['us'], geographyStatus: 'approved', dpaStatus: 'executed', retentionStatus: 'approved', retentionDays: 30,
+        trainingStatus: 'contractual_no_training', copyrightStatus: 'approved', slaStatus: 'approved', sourceEvidenceHash: '6'.repeat(64),
+        counselRef: 'qualified-counsel', productOwnerRef: 'product-owner', reviewedAt: new Date(Date.now() - 60_000).toISOString(), validFrom: new Date(Date.now() - 30_000).toISOString(), expiresAt: new Date(Date.now() + 86400_000).toISOString(), reasonCode: 'provider_reviewed',
+      },
+    })
+    assert.equal(legalResponse.status, 201)
+    assert.match(legalResponse.payload.data.evidenceHash, /^[a-f0-9]{64}$/)
+    assert.equal(JSON.stringify(legalResponse.payload.data).includes('https://'), false)
+    const legalSummary = await requestJson(server.url, '/api/admin/model-control/provider-legal-summary', { method: 'GET', token: moderator })
+    assert.equal(legalSummary.payload.data.approvedCount, 1)
+    const legalExport = await requestJson(server.url, '/api/admin/model-control/provider-legal-export', { method: 'GET', token: moderator })
+    assert.equal(JSON.stringify(legalExport.payload.data).includes('https://'), false)
+
     const blockedWithoutEvaluation = await requestJson(server.url, '/api/admin/model-control/promotions', {
       token: admin,
       body: { modelDeploymentId: deployment.id, routePolicyId: policyActive.payload.data.id, routePolicyRevisionId: revisions[0].id, providerSecretRefId: rotatedSecret.payload.data.id, artifactVersion: 'v1', rollbackVersion: 'promotion-model-v0', summary: 'Missing evaluation', reasonCode: 'provider_enablement' },
@@ -389,6 +406,7 @@ test('route decisions and SecretRefs are append-only safe facts and approved pro
         routePolicyRevisionId: revisions[0].id,
         providerSecretRefId: rotatedSecret.payload.data.id,
         evaluationRunId: candidateResponse.payload.data.id,
+        legalReviewId: legalResponse.payload.data.id,
         artifactVersion: 'v1',
         rollbackVersion: 'promotion-model-v0',
         summary: 'Promote production image route',
@@ -433,6 +451,7 @@ test('route decisions and SecretRefs are append-only safe facts and approved pro
       id: 'model-promotion-stale-route', modelDeploymentId: deployment.id, routePolicyId: policyActive.payload.data.id,
       routePolicyRevisionId: revisions[0].id, providerSecretRefId: rotatedSecret.payload.data.id, createdByRef: 'opsplus',
       evaluationRunId: candidateResponse.payload.data.id,
+      legalReviewId: legalResponse.payload.data.id,
     }
     const staleRequest = await requestReleaseChange({
       payload: { changeType: 'promotion', sourceEnvironment: 'staging', targetEnvironment: 'production', artifactVersion: 'v1', rollbackVersion: 'v0', secretRef: null, secretVersion: null, summary: 'Stale route promotion', reasonCode: 'provider_enablement', modelPromotion: stalePromotion },

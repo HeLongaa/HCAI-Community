@@ -136,6 +136,7 @@ export function ChatPage({
   const [stopping, setStopping] = useState(false)
   const [requestState, setRequestState] = useState<RequestState>({ status: 'idle', error: null, moderationDecisionId: null })
   const abortRef = useRef<AbortController | null>(null)
+  const streamGenerationRef = useRef(0)
   const latestMessageRef = useRef<HTMLDivElement>(null)
 
   const selectedConversation = conversations.find((item) => item.id === selectedConversationId) ?? null
@@ -405,6 +406,8 @@ export function ChatPage({
     setDraft('')
     setRequestState({ status: 'streaming', error: null, moderationDecisionId: null })
     const controller = new AbortController()
+    const streamGeneration = streamGenerationRef.current + 1
+    streamGenerationRef.current = streamGeneration
     abortRef.current = controller
     try {
       await chatService.streamTurn(conversation.id, {
@@ -414,9 +417,12 @@ export function ChatPage({
         parameters: { maxOutputTokens: 1024, responseFormat: 'text' },
         inputAssetIds: selectedAssetIds,
         productContext: selectedContext,
-      }, (event) => applyStreamEvent(event, temporaryUserId, temporaryAssistantId), controller.signal)
-      await refreshConversations(conversation.id)
+      }, (event) => {
+        if (streamGenerationRef.current === streamGeneration) applyStreamEvent(event, temporaryUserId, temporaryAssistantId)
+      }, controller.signal)
+      if (streamGenerationRef.current === streamGeneration) await refreshConversations(conversation.id)
     } catch (error) {
+      if (streamGenerationRef.current !== streamGeneration) return
       if (controller.signal.aborted) {
         setRequestState({ status: 'interrupted', error: textFor(t, 'Connection closed. Reopen the conversation to recover its saved state.', '连接已关闭。重新打开对话可恢复已保存状态。'), moderationDecisionId: null })
       } else {
@@ -435,9 +441,11 @@ export function ChatPage({
         await refreshConversations(conversation.id)
       }
     } finally {
-      abortRef.current = null
-      setActiveTurnId(null)
-      setStopping(false)
+      if (streamGenerationRef.current === streamGeneration) {
+        abortRef.current = null
+        setActiveTurnId(null)
+        setStopping(false)
+      }
     }
   }
 

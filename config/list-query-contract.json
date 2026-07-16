@@ -43,6 +43,7 @@
     { "id": "providerHealthEvidence", "routes": ["GET /api/admin/model-control/provider-operations/:id/health"], "cursor": true, "filters": ["status"], "sorts": ["checkedAt"], "export": true, "exportRoutes": ["GET /api/admin/model-control/provider-operations-export"] },
     { "id": "aiEvaluationSuites", "routes": ["GET /api/admin/model-control/evaluation-suites"], "cursor": true, "filters": ["modality", "operation", "search"], "sorts": ["createdAt"], "export": true, "exportRoutes": ["GET /api/admin/model-control/evaluation-export"] },
     { "id": "aiEvaluationPolicies", "routes": ["GET /api/admin/model-control/evaluation-policies"], "cursor": true, "filters": ["suiteId", "environment", "modality"], "sorts": ["createdAt"], "export": true, "exportRoutes": ["GET /api/admin/model-control/evaluation-export"] },
-    { "id": "aiEvaluationRuns", "routes": ["GET /api/admin/model-control/evaluation-runs"], "cursor": true, "filters": ["suiteId", "policyId", "modelVersionId", "modelDeploymentId", "status"], "sorts": ["createdAt"], "export": true, "exportRoutes": ["GET /api/admin/model-control/evaluation-export"] }
+    { "id": "aiEvaluationRuns", "routes": ["GET /api/admin/model-control/evaluation-runs"], "cursor": true, "filters": ["suiteId", "policyId", "modelVersionId", "modelDeploymentId", "status"], "sorts": ["createdAt"], "export": true, "exportRoutes": ["GET /api/admin/model-control/evaluation-export"] },
+    { "id": "providerLegalReviews", "routes": ["GET /api/admin/model-control/provider-legal-reviews"], "cursor": true, "filters": ["providerId", "modelVersionId", "environment", "decision"], "sorts": ["createdAt"], "export": true, "exportRoutes": ["GET /api/admin/model-control/provider-legal-export"] }
   ]
 }

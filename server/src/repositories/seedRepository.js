@@ -14,6 +14,7 @@ import { createSeedModelRoutingRepository } from '../modelControl/seedModelRouti
 import { createSeedModelGovernanceRepository } from '../modelControl/seedModelGovernanceRepository.js'
 import { createSeedProviderOperationsRepository } from '../modelControl/seedProviderOperationsRepository.js'
 import { createSeedModelEvaluationRepository } from '../modelControl/seedModelEvaluationRepository.js'
+import { createSeedProviderLegalRepository } from '../modelControl/seedProviderLegalRepository.js'
 import { createSeedGenerationExecutionRepository } from '../creative/seedGenerationExecutionRepository.js'
 import { createSeedObservabilityRepository } from '../observability/seedObservabilityRepository.js'
 import {
@@ -2422,6 +2423,7 @@ export const createSeedRepository = () => {
   const modelControl = createSeedModelControlRepository({ recordAudit: auditRecorder })
   const modelRouting = createSeedModelRoutingRepository({ modelControl, recordAudit: auditRecorder })
   const modelEvaluation = createSeedModelEvaluationRepository({ modelControl })
+  const providerLegal = createSeedProviderLegalRepository({ modelControl })
   let modelGovernance
   const releaseChanges = createSeedReleaseRepository({
     onModelPromotionCreated: async (releaseChangeId, promotion) => modelGovernance?.recordPromotion(releaseChangeId, promotion),
@@ -2434,7 +2436,7 @@ export const createSeedRepository = () => {
       )
     },
   })
-  modelGovernance = createSeedModelGovernanceRepository({ modelControl, modelRouting, modelEvaluation, releaseChanges })
+  modelGovernance = createSeedModelGovernanceRepository({ modelControl, modelRouting, modelEvaluation, providerLegal, releaseChanges })
   const providerOperations = createSeedProviderOperationsRepository({ modelControl })
   const observability = createSeedObservabilityRepository()
   return {
@@ -2449,6 +2451,7 @@ export const createSeedRepository = () => {
   modelRouting,
   modelGovernance,
   modelEvaluation,
+  providerLegal,
   providerOperations,
   creativeGenerationExecutions,
   observability,

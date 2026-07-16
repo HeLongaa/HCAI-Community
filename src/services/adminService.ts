@@ -105,6 +105,9 @@ import type {
   AiEvaluationSuiteDto,
   AiEvaluationSuiteRequest,
   AiEvaluationSummaryDto,
+  ProviderLegalReviewDto,
+  ProviderLegalReviewRequest,
+  ProviderLegalSummaryDto,
   ModelVersionDto,
   PricingVersionDto,
 } from './contracts'
@@ -245,6 +248,19 @@ export const adminService = {
   },
   async exportEvaluations() {
     return api.get<Record<string, unknown>>('/admin/model-control/evaluation-export')
+  },
+  async providerLegalReviews() {
+    const envelope = await api.getEnvelope<ProviderLegalReviewDto[]>('/admin/model-control/provider-legal-reviews?limit=100')
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async createProviderLegalReview(payload: ProviderLegalReviewRequest) {
+    return api.post<ProviderLegalReviewDto>('/admin/model-control/provider-legal-reviews', payload)
+  },
+  async providerLegalSummary() {
+    return api.get<ProviderLegalSummaryDto>('/admin/model-control/provider-legal-summary')
+  },
+  async exportProviderLegalReviews() {
+    return api.get<Record<string, unknown>>('/admin/model-control/provider-legal-export')
   },
   async providerOperationalPolicies() {
     const envelope = await api.getEnvelope<ProviderOperationalPolicyDto[]>('/admin/model-control/provider-operations?limit=100')

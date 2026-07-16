@@ -63,6 +63,7 @@ const expectedAssets = [
   'private_library_items',
   'provider_cost_budget_records',
   'provider_control_records',
+  'provider_legal_review_records',
   'provider_lifecycle_records',
   'raw_generation_inputs',
   'raw_provider_payloads',

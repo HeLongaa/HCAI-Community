@@ -59,6 +59,14 @@ cooldown, request half-open, run exactly one approved fixture probe, and request
 Any future real Provider integration must separately approve and register the Provider client, pricing source,
 Provider-side cap API, probe implementation, credential scope, traffic limit, and rollback owner.
 
+## Promotion Evidence
+
+Production promotion additionally binds an immutable `ProviderLegalReview` and a passed AI evaluation run. Legal
+evidence is scoped to the exact Provider, model version and environment, must include the deployment region, and must
+be the current unexpired scope version. Promotion creation and Release apply both revalidate these conditions; a newer
+blocking review or expiry therefore closes traffic without rewriting historical promotions. See
+`docs/PROVIDER_LEGAL_REVIEW_GATE.md` for the evidence fields and external qualified-counsel boundary.
+
 ## Verification
 
 ```bash

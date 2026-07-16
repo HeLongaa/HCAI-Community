@@ -41,6 +41,8 @@ export type Permission =
   | 'admin:model-evaluations:read'
   | 'admin:model-evaluations:manage'
   | 'admin:model-evaluations:execute'
+  | 'admin:provider-legal:read'
+  | 'admin:provider-legal:manage'
   | 'security:alerts:manage'
   | 'admin:releases:read'
   | 'admin:releases:manage'
