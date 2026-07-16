@@ -1,6 +1,11 @@
 import { api, apiEnvelope, apiRequest, withQuery } from './apiClient'
 import type {
   AdminAuditListQuery,
+  AdminOAuthAccount,
+  AdminOAuthAccountQuery,
+  AdminOAuthAuthorizationQuery,
+  AdminOAuthAuthorizationRequest,
+  AdminOAuthProviderControl,
   AdminAuditArchiveManifestDto,
   AdminAuditArchiveResultDto,
   AdminAuditIntegrityDto,
@@ -118,6 +123,26 @@ import type {
 import type { Permission, Role } from '../domain/types'
 
 export const adminService = {
+  async oauthProviders() {
+    return api.get<AdminOAuthProviderControl[]>('/admin/auth/oauth/providers')
+  },
+  async setOAuthProviderStatus(provider: string, payload: { enabled: boolean; expectedVersion: number; reasonCode: string }) {
+    return api.post<AdminOAuthProviderControl>(`/admin/auth/oauth/providers/${encodeURIComponent(provider)}/status`, payload)
+  },
+  async oauthAccounts(query?: AdminOAuthAccountQuery) {
+    const envelope = await api.getEnvelope<AdminOAuthAccount[]>(withQuery('/admin/auth/oauth/accounts', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async unlinkOAuthAccount(id: string) {
+    return api.del<{ unlinked: true; account: AdminOAuthAccount }>(`/admin/auth/oauth/accounts/${encodeURIComponent(id)}`)
+  },
+  async oauthAuthorizationRequests(query?: AdminOAuthAuthorizationQuery) {
+    const envelope = await api.getEnvelope<AdminOAuthAuthorizationRequest[]>(withQuery('/admin/auth/oauth/authorization-requests', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async revokeOAuthAuthorizationRequest(id: string, reasonCode: string) {
+    return api.post<{ revoked: true; request: AdminOAuthAuthorizationRequest }>(`/admin/auth/oauth/authorization-requests/${encodeURIComponent(id)}/revoke`, { reasonCode })
+  },
   async modelControlSummary() {
     return api.get<ModelControlSummaryDto>('/admin/model-control/summary')
   },

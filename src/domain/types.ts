@@ -29,6 +29,8 @@ export type Permission =
   | 'admin:accounting:scan'
   | 'admin:accounting:repair'
   | 'admin:permissions:manage'
+  | 'admin:auth:read'
+  | 'admin:auth:manage'
   | 'admin:creative:cancel'
   | 'admin:creative:retry'
   | 'admin:creative:replay'

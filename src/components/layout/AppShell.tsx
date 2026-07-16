@@ -169,7 +169,7 @@ export function AppShell({
   }
 
   return (
-    <div className={sidebarCollapsed ? 'app-shell sidebar-collapsed' : 'app-shell'} data-theme={themeMode}>
+    <div className={`${sidebarCollapsed ? 'app-shell sidebar-collapsed' : 'app-shell'} page-${page}`} data-theme={themeMode}>
       <aside className={sidebarCollapsed ? 'sidebar mobile-expanded collapsed' : 'sidebar'}>
         <button className="brand" type="button" onClick={() => { navigatePrimary('home'); closeMobileSidebar() }}>
           <span className="brand-mark">

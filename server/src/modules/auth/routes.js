@@ -265,7 +265,13 @@ export const registerAuthRoutes = (router) => {
   })
 
   router.add('GET', '/api/auth/oauth/providers', async (_request, response) => {
-    ok(response, listOAuthProviderMetadata())
+    const metadata = listOAuthProviderMetadata()
+    const controls = await repositories.oauthAdmin?.listProviderControls?.() ?? []
+    const controlByProvider = new Map(controls.map((control) => [control.provider, control]))
+    ok(response, metadata.map((provider) => {
+      if (controlByProvider.get(provider.provider)?.enabled !== false) return provider
+      return { ...provider, available: false, mode: 'unavailable', authorizationUrl: null }
+    }))
   })
 
   router.add('GET', '/api/auth/oauth/accounts', async (_request, response, context) => {
@@ -294,6 +300,9 @@ export const registerAuthRoutes = (router) => {
     const provider = normalizeOAuthProvider(context.params.provider)
     if (!isSupportedOAuthProvider(provider) || !oauthAccountProviders.includes(provider)) {
       throw new HttpError(404, 'NOT_FOUND', 'OAuth provider not found')
+    }
+    if (await repositories.oauthAdmin?.isProviderEnabled?.(provider) === false) {
+      throw new HttpError(503, 'OAUTH_PROVIDER_DISABLED', 'OAuth provider is disabled by an administrator')
     }
     const payload = parseOAuthStartRequest((await readJsonBody(request)) ?? {})
     const linkUser = payload.linkAccount ? requireUser(context) : null

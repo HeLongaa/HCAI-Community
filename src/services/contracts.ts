@@ -263,6 +263,67 @@ export type UnlinkOAuthAccountResponse = {
   unlinked: boolean
 }
 
+export type AdminOAuthProviderControl = {
+  provider: Exclude<OAuthProvider, 'dev'>
+  label: string
+  configured: boolean
+  environmentAvailable: boolean
+  mode: 'dev' | 'external' | 'unavailable'
+  authorizationUrl: string | null
+  callbackMethod: 'GET' | 'POST'
+  scopes: string[]
+  enabled: boolean
+  version: number
+  reasonCode: string
+  enabledAt: string | null
+  disabledAt: string | null
+  updatedAt: string | null
+}
+
+export type AdminOAuthAccount = {
+  id: string
+  provider: Exclude<OAuthProvider, 'dev'>
+  providerUserIdHint: string
+  createdAt: string
+  updatedAt: string
+  user: {
+    id: string
+    handle: string | null
+    email: string | null
+    displayName: string
+    status: string
+  }
+}
+
+export type AdminOAuthAuthorizationRequest = {
+  id: string
+  provider: Exclude<OAuthProvider, 'dev'>
+  status: 'pending' | 'consumed' | 'revoked' | 'expired'
+  createdAt: string
+  expiresAt: string
+  consumedAt: string | null
+  revokedAt: string | null
+  revokeReasonCode: string | null
+}
+
+export type AdminOAuthAccountQuery = {
+  provider?: string | null
+  search?: string | null
+  cursor?: string | null
+  limit?: number
+  sort?: 'createdAt'
+  order?: 'asc' | 'desc'
+}
+
+export type AdminOAuthAuthorizationQuery = {
+  provider?: string | null
+  status?: string | null
+  cursor?: string | null
+  limit?: number
+  sort?: 'createdAt' | 'expiresAt'
+  order?: 'asc' | 'desc'
+}
+
 export type ApiTask = {
   id: string
   title: string
@@ -1923,6 +1984,12 @@ export type ReleaseChangeRequest = {
 
 export type AdminPermissionDto = {
   id: Permission
+  module?: string
+  resource?: string
+  action?: string
+  riskLevel?: string
+  protected?: boolean
+  resourceAuthorization?: boolean
   description?: string | null
 }
 

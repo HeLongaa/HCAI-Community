@@ -301,11 +301,11 @@
     {
       "id": "authentication_credentials_sessions",
       "classification": "restricted",
-      "prismaModels": ["AuthAccount", "OAuthAuthorizationRequest", "RefreshToken"],
+      "prismaModels": ["AuthAccount", "OAuthAuthorizationRequest", "OAuthProviderControl", "RefreshToken"],
       "locations": ["postgres"],
       "dataSubjects": ["user"],
       "purposes": ["account_service", "auth_security"],
-      "exampleFields": ["provider user id", "password hash", "OAuth state hash", "authorization expiry/consumption", "token hash", "token family", "expiry", "revocation"],
+      "exampleFields": ["provider user id", "password hash", "OAuth state hash", "authorization expiry/consumption/revocation", "Provider enabled state and reason code", "token hash", "token family", "expiry", "revocation"],
       "accessRoles": ["authorized_auth_service", "security_operator_redacted"],
       "retentionPolicyId": "auth_expiry_plus_30d",
       "exportPolicy": "include_provider_names_and_session_summary_only",
@@ -1071,7 +1071,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 101,
+    "modelCount": 102,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",

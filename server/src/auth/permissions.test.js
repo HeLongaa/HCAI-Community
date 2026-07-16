@@ -32,6 +32,7 @@ test('structured registry separates RBAC from resource authorization', () => {
   assert.deepEqual(getProtectedRolePermissions('admin'), [
     'admin:permissions:manage',
     'admin:accounting:repair',
+    'admin:auth:manage',
     'admin:high-risk:approve',
     'admin:temporary-access:manage',
     'admin:break-glass',

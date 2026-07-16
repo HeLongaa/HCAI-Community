@@ -167,6 +167,70 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/auth/oauth/providers': {
+      get: {
+        summary: 'List secret-free OAuth Provider controls and environment readiness',
+        parameters: [],
+        responses: {
+          '200': { description: 'Provider control state, version, mode, callback method, and scopes' },
+          '403': { description: 'Missing admin:auth:read' },
+        },
+      },
+    },
+    '/admin/auth/oauth/providers/{provider}/status': {
+      post: {
+        summary: 'Enable or disable one OAuth Provider with optimistic version control',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: {
+            type: 'object', required: ['enabled', 'expectedVersion', 'reasonCode'], additionalProperties: false,
+            properties: { enabled: { type: 'boolean' }, expectedVersion: { type: 'integer', minimum: 0 }, reasonCode: { type: 'string', pattern: '^[a-z0-9][a-z0-9._:-]{0,79}$' } },
+          } } },
+        },
+        responses: { '200': { description: 'Updated Provider control' }, '403': { description: 'Missing admin:auth:manage' }, '409': { description: 'Stale version or unavailable environment configuration' } },
+      },
+    },
+    '/admin/auth/oauth/accounts': {
+      get: {
+        summary: 'Query linked OAuth accounts using a masked Provider identity projection',
+        parameters: [
+          { name: 'provider', in: 'query', schema: { type: 'string', enum: ['google', 'apple', 'discord'] } },
+          { name: 'search', in: 'query', schema: { type: 'string', maxLength: 96 } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+          { name: 'sort', in: 'query', schema: { type: 'string', enum: ['createdAt'] } },
+          { name: 'order', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
+        ],
+        responses: { '200': { description: 'Bounded OAuth account page' }, '403': { description: 'Missing admin:auth:read' } },
+      },
+    },
+    '/admin/auth/oauth/accounts/{id}': {
+      delete: {
+        summary: 'Unlink an OAuth account while preserving a final sign-in method',
+        responses: { '200': { description: 'OAuth account unlinked' }, '403': { description: 'Missing admin:auth:manage' }, '404': { description: 'OAuth account not found' }, '409': { description: 'Final sign-in method cannot be removed' } },
+      },
+    },
+    '/admin/auth/oauth/authorization-requests': {
+      get: {
+        summary: 'Query safe OAuth authorization request lifecycle projections',
+        parameters: [
+          { name: 'provider', in: 'query', schema: { type: 'string', enum: ['google', 'apple', 'discord'] } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'consumed', 'revoked', 'expired'] } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+          { name: 'sort', in: 'query', schema: { type: 'string', enum: ['createdAt', 'expiresAt'] } },
+          { name: 'order', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
+        ],
+        responses: { '200': { description: 'Bounded authorization request page without state or redirect context' }, '403': { description: 'Missing admin:auth:read' } },
+      },
+    },
+    '/admin/auth/oauth/authorization-requests/{id}/revoke': {
+      post: {
+        summary: 'Revoke one pending OAuth authorization request',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['reasonCode'], additionalProperties: false, properties: { reasonCode: { type: 'string', pattern: '^[a-z0-9][a-z0-9._:-]{0,79}$' } } } } } },
+        responses: { '200': { description: 'Authorization request revoked' }, '403': { description: 'Missing admin:auth:manage' }, '404': { description: 'Authorization request not found' }, '409': { description: 'Authorization request is not pending' } },
+      },
+    },
     '/auth/oauth/providers': {
       get: {
         summary: 'List public OAuth provider configuration status',
