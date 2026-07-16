@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "taskId": "MODEL-03",
+  "scope": "personal_accounts_only",
+  "migration": "server/prisma/migrations/0060_provider_operations/migration.sql",
+  "entities": ["ProviderOperationalPolicy", "ProviderHealthEvidence", "ProviderRateLimitWindow", "ProviderDispatchLease"],
+  "reusedEntities": ["ProviderSecretRef", "CreativeProviderControlState", "CreativeProviderCapEvidence", "CreativeProviderCircuitState", "CreativeProviderBudgetWindow", "CreativeProviderCostLedger"],
+  "readinessGates": ["active_policy", "current_secret_ref", "kill_switch", "budget_cap_evidence", "circuit_health", "current_health_evidence", "request_rate", "concurrency"],
+  "healthEvidence": { "appendOnly": true, "plaintextSecretsForbidden": true, "rawProviderPayloadsForbidden": true },
+  "rateLimit": { "windowSeconds": 60, "atomicLease": true, "idempotentSourceKey": true, "expiredLeaseRecovery": true },
+  "activation": { "failClosed": true, "requiresAllReadinessGates": true, "productionStillRequiresPromotion": true },
+  "realProviderCalls": false,
+  "tenantModels": false
+}

@@ -3162,6 +3162,27 @@ export const openApiDocument = {
     '/admin/model-control/governance-summary': {
       get: { summary: 'Read route decision, SecretRef expiry, and promotion status counts', responses: { '200': { description: 'Model governance operational summary' } } },
     },
+    '/admin/model-control/provider-operations': {
+      get: { summary: 'List Provider operational policies with explainable readiness, filters, sorting, and cursor pagination', responses: { '200': { description: 'Provider operations policy page' }, '403': { description: 'Requires model control read permission' } } },
+      post: { summary: 'Create a disabled-by-default Provider operational policy referencing an external SecretRef purpose', responses: { '201': { description: 'Provider operations draft created' }, '409': { description: 'Operational scope already exists' }, '422': { description: 'Provider not found' } } },
+    },
+    '/admin/model-control/provider-operations/{id}': {
+      get: { summary: 'Read a Provider operational policy with secret, budget, health, circuit, Kill Switch, and rate-limit gates', responses: { '200': { description: 'Provider operations readiness snapshot' }, '404': { description: 'Policy not found' } } },
+      patch: { summary: 'Update a disabled Provider operational policy using optimistic concurrency', responses: { '200': { description: 'Policy updated' }, '409': { description: 'Active policy or version conflict' } } },
+    },
+    '/admin/model-control/provider-operations/{id}/status': {
+      post: { summary: 'Activate only when every external readiness gate passes, or immediately disable', responses: { '200': { description: 'Policy transitioned' }, '409': { description: 'Readiness gate or version conflict' } } },
+    },
+    '/admin/model-control/provider-operations/{id}/health': {
+      get: { summary: 'List append-only Provider health evidence by status with cursor pagination', responses: { '200': { description: 'Safe health evidence page' } } },
+      post: { summary: 'Append hashed Provider health evidence without raw requests, responses, URLs, prompts, or credentials', responses: { '201': { description: 'Health evidence appended' }, '400': { description: 'Unsafe or invalid evidence rejected' } } },
+    },
+    '/admin/model-control/provider-operations-summary': {
+      get: { summary: 'Read Provider readiness, health, and active dispatch lease counts', responses: { '200': { description: 'Provider operations summary' } } },
+    },
+    '/admin/model-control/provider-operations-export': {
+      get: { summary: 'Export bounded Provider operational policies, append-only health evidence, safe leases, and readiness results', responses: { '200': { description: 'Versioned Provider operations evidence' } } },
+    },
     '/admin/model-control/export': {
       get: { summary: 'Export the bounded normalized model catalog without credentials or endpoints', responses: { '200': { description: 'Portable model catalog document' }, '403': { description: 'Requires model control read permission' } } },
     },

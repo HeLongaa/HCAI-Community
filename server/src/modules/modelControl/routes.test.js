@@ -6,6 +6,7 @@ import { assertStatusTransition } from '../../modelControl/modelControlRuntime.j
 import { createSeedRepository } from '../../repositories/seedRepository.js'
 import { registerModelControlRoutes } from './routes.js'
 import { applyReleaseChange, approveReleaseChange, requestReleaseChange, rollbackReleaseChange } from '../../releases/releaseControl.js'
+import { buildProviderControlScopes, createProviderCapEvidence, providerCircuitScope } from '../../creative/providerControlContract.js'
 
 const admin = 'demo-access.opsplus'
 const moderator = 'demo-access.legalpixel'
@@ -123,6 +124,87 @@ test('state transitions reject skipped lifecycle states, stale writes, and traff
     () => assertStatusTransition({ id: 'deployment-1', status: 'draft', version: 1 }, { status: 'active', expectedVersion: 1 }, { trafficEligible: true }),
     (error) => error.code === 'PROVIDER_APPROVAL_REQUIRED',
   )
+})
+
+test('Provider operations fail closed, reject sensitive evidence, activate with complete gates, and enforce leases', async () => {
+  const { repository, server } = await createServer()
+  try {
+    const provider = await repository.modelControl.createProvider({ id: 'operations-provider', key: 'operations-provider', name: 'Operations Provider', websiteUrl: null, regions: ['us'], dataProcessingRegions: ['us'], createdByRef: 'ops', updatedByRef: 'ops' })
+    const createdProfile = await requestJson(server.url, '/api/admin/model-control/provider-operations', {
+      token: admin,
+      body: { providerId: provider.id, environment: 'staging', providerAccountRef: 'default', secretPurpose: 'inference', workspace: 'image', modelFamily: 'image-v1', currency: 'USD', perRequestBudgetMicros: 250000, maxRequestsPerMinute: 2, maxConcurrentRequests: 1, healthTtlSeconds: 300, reasonCode: 'initial_policy' },
+    })
+    assert.equal(createdProfile.status, 201)
+    const profile = createdProfile.payload.data
+    assert.equal(profile.status, 'draft')
+    assert.equal(profile.readiness.ready, false)
+    assert.equal(profile.readiness.reasonCode, 'provider_policy_draft')
+
+    const premature = await requestJson(server.url, `/api/admin/model-control/provider-operations/${profile.id}/status`, {
+      token: admin, body: { expectedVersion: profile.version, status: 'active', reasonCode: 'premature' },
+    })
+    assert.equal(premature.status, 409)
+    assert.equal(premature.payload.error.code, 'PROVIDER_OPERATIONAL_NOT_READY')
+
+    const rejectedEvidence = await requestJson(server.url, `/api/admin/model-control/provider-operations/${profile.id}/health`, {
+      token: admin,
+      body: { sourceKey: 'health-sensitive', status: 'healthy', checkedAt: new Date().toISOString(), sourceType: 'fixture_probe', sourceRef: 'fixture:health', details: { rawResponse: 'secret-provider-body' } },
+    })
+    assert.equal(rejectedEvidence.status, 400)
+    assert.equal(JSON.stringify(rejectedEvidence.payload).includes('secret-provider-body'), false)
+
+    const secret = await requestJson(server.url, '/api/admin/model-control/secret-refs', {
+      token: admin,
+      body: { providerId: provider.id, environment: 'staging', purpose: 'inference', secretRef: 'secret://vault/operations/key', externalVersion: 'v1', ownerRef: 'ops', checksumSha256: 'c'.repeat(64), reasonCode: 'initial' },
+    })
+    assert.equal(secret.status, 201)
+    const scopes = buildProviderControlScopes({ providerId: provider.key, providerAccountRef: 'default', workspace: 'image', modelFamily: 'image-v1' })
+    for (const scope of scopes.filter((item) => ['global', 'provider'].includes(item.scopeType))) {
+      const current = await repository.creativeProviderControls.findControl(scope.scopeKey)
+      await repository.creativeProviderControls.setControl({ ...scope, enabled: true, reasonCode: 'operations_ready', expectedVersion: current?.version ?? 0 }, { id: 'admin', handle: 'opsplus' })
+    }
+    const providerScope = scopes.find((item) => item.scopeType === 'provider')
+    const now = new Date()
+    await repository.creativeProviderControls.putCapEvidence(createProviderCapEvidence({ sourceKey: 'operations-cap-v1', scopeKey: providerScope.scopeKey, providerId: provider.key, providerAccountRef: 'default', currency: 'USD', capAmount: '10', remainingAmount: '9', sourceType: 'fixture_config', sourceRef: 'fixture:operations-cap', verifiedAt: new Date(now.getTime() - 60_000).toISOString(), expiresAt: new Date(now.getTime() + 3_600_000).toISOString() }), { id: 'admin', handle: 'opsplus' })
+    await repository.creativeProviderControls.ensureCircuit(providerCircuitScope(scopes), { id: 'admin', handle: 'opsplus' })
+
+    const healthBody = { sourceKey: 'health-clean-v1', status: 'healthy', checkedAt: now.toISOString(), latencyMs: 120, successRateBps: 9990, sourceType: 'fixture_probe', sourceRef: 'fixture:health-clean', details: { region: 'us', sampleCount: 10 } }
+    const health = await requestJson(server.url, `/api/admin/model-control/provider-operations/${profile.id}/health`, { token: admin, body: healthBody })
+    assert.equal(health.status, 201)
+    assert.match(health.payload.data.evidenceHash, /^[a-f0-9]{64}$/)
+    assert.equal(JSON.stringify(health.payload.data).includes('fixture:health-clean'), false)
+    const duplicateHealth = await requestJson(server.url, `/api/admin/model-control/provider-operations/${profile.id}/health`, { token: admin, body: healthBody })
+    assert.equal(duplicateHealth.status, 201)
+    assert.equal(duplicateHealth.payload.data.id, health.payload.data.id)
+
+    const activated = await requestJson(server.url, `/api/admin/model-control/provider-operations/${profile.id}/status`, {
+      token: admin, body: { expectedVersion: profile.version, status: 'active', reasonCode: 'all_gates_verified' },
+    })
+    assert.equal(activated.status, 200)
+    assert.equal(activated.payload.data.readiness.ready, true)
+
+    const first = await repository.providerOperations.acquireLease({ policyId: profile.id, sourceKey: 'dispatch-1', estimateMicros: '1000', leaseTtlSeconds: 60, now })
+    assert.equal(first.duplicate, false)
+    assert.equal((await repository.providerOperations.acquireLease({ policyId: profile.id, sourceKey: 'dispatch-1', estimateMicros: '1000', leaseTtlSeconds: 60, now })).duplicate, true)
+    await assert.rejects(() => repository.providerOperations.acquireLease({ policyId: profile.id, sourceKey: 'dispatch-2', estimateMicros: '1000', leaseTtlSeconds: 60, now }), { code: 'PROVIDER_CONCURRENCY_LIMIT_EXCEEDED' })
+    await repository.providerOperations.releaseLease({ id: first.lease.id, reasonCode: 'dispatch_completed', now })
+    const second = await repository.providerOperations.acquireLease({ policyId: profile.id, sourceKey: 'dispatch-2', estimateMicros: '1000', leaseTtlSeconds: 60, now })
+    assert.equal(second.duplicate, false)
+    await repository.providerOperations.releaseLease({ id: second.lease.id, reasonCode: 'dispatch_completed', now })
+    await assert.rejects(() => repository.providerOperations.acquireLease({ policyId: profile.id, sourceKey: 'dispatch-3', estimateMicros: '1000', leaseTtlSeconds: 60, now }), { code: 'PROVIDER_RATE_LIMIT_EXCEEDED' })
+
+    const summary = await requestJson(server.url, '/api/admin/model-control/provider-operations-summary', { method: 'GET', token: moderator })
+    assert.equal(summary.status, 200)
+    assert.equal(summary.payload.data.profileCount, 1)
+    assert.equal(summary.payload.data.readyCount, 0)
+    assert.equal(summary.payload.data.blockedCount, 1)
+    const exported = await requestJson(server.url, '/api/admin/model-control/provider-operations-export', { method: 'GET', token: moderator })
+    assert.equal(exported.status, 200)
+    assert.equal(exported.payload.data.healthEvidence.length, 1)
+    assert.equal(JSON.stringify(exported.payload.data).includes('secret-provider-body'), false)
+  } finally {
+    await server.close()
+  }
 })
 
 test('model routing policies are revisioned, permission scoped, concurrency safe, and fail closed', async () => {

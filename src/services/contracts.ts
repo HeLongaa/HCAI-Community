@@ -2889,3 +2889,70 @@ export type ModelGovernanceSummaryDto = {
   promotionStatusCounts: Partial<Record<ReleaseChangeStatus | 'unknown', number>>
   expiringSecretRefCount: number
 }
+export type ProviderReadinessGateDto = { id: string; allowed: boolean; reasonCode: string | null; blockedScopeKey?: string | null }
+export type ProviderOperationalReadinessDto = { ready: boolean; reasonCode: string | null; gates: ProviderReadinessGateDto[]; checkedAt: string }
+export type ProviderOperationalPolicyDto = {
+  id: string
+  providerId: string
+  scopeKey: string
+  environment: ModelDeploymentEnvironment
+  providerAccountRef: string
+  secretPurpose: string
+  workspace: ModelCapabilityModality
+  modelFamily: string | null
+  currency: string
+  perRequestBudgetMicros: string
+  maxRequestsPerMinute: number
+  maxConcurrentRequests: number
+  healthTtlSeconds: number
+  status: ModelControlStatus
+  version: number
+  reasonCode: string
+  provider?: ModelProviderDto
+  readiness: ProviderOperationalReadinessDto
+  budget?: { currency: string; capMicros: string; remainingMicros: string | null; expiresAt: string }
+  health?: ProviderHealthEvidenceDto | null
+  rate?: { windowStart: string; windowEnd: string; requestCount: number; inFlightCount: number }
+  cost?: { currency: string; ledgerCount: number; estimateMicros: string; reservedMicros: string; actualMicros: string; statusCounts: Record<string, number> }
+  createdAt: string
+  updatedAt: string
+}
+export type ProviderOperationalPolicyRequest = {
+  providerId: string
+  environment: ModelDeploymentEnvironment
+  providerAccountRef: string
+  secretPurpose: string
+  workspace: ModelCapabilityModality
+  modelFamily?: string | null
+  currency: string
+  perRequestBudgetMicros: number
+  maxRequestsPerMinute: number
+  maxConcurrentRequests: number
+  healthTtlSeconds: number
+  reasonCode: string
+}
+export type ProviderHealthEvidenceDto = {
+  id: string
+  policyId: string
+  sourceKey: string
+  status: 'healthy' | 'degraded' | 'unavailable'
+  checkedAt: string
+  expiresAt: string
+  latencyMs: number | null
+  successRateBps: number | null
+  sourceType: 'provider_probe' | 'provider_status_page' | 'manual_unavailable' | 'fixture_probe'
+  sourceRefHash: string
+  evidenceHash: string
+  details: Record<string, unknown> | null
+  createdAt: string
+}
+export type ProviderOperationsSummaryDto = {
+  profileCount: number
+  healthEvidenceCount: number
+  activeLeaseCount: number
+  readyCount: number
+  blockedCount: number
+  totalActualMicros: string
+  statusCounts: Partial<Record<ModelControlStatus, number>>
+  healthCounts: Partial<Record<ProviderHealthEvidenceDto['status'], number>>
+}

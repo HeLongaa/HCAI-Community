@@ -12,6 +12,7 @@ import { createSeedConfigResourcesRepository } from '../configResources/seedConf
 import { createSeedModelControlRepository } from '../modelControl/seedModelControlRepository.js'
 import { createSeedModelRoutingRepository } from '../modelControl/seedModelRoutingRepository.js'
 import { createSeedModelGovernanceRepository } from '../modelControl/seedModelGovernanceRepository.js'
+import { createSeedProviderOperationsRepository } from '../modelControl/seedProviderOperationsRepository.js'
 import { createSeedGenerationExecutionRepository } from '../creative/seedGenerationExecutionRepository.js'
 import { createSeedObservabilityRepository } from '../observability/seedObservabilityRepository.js'
 import {
@@ -2432,6 +2433,7 @@ export const createSeedRepository = () => {
     },
   })
   modelGovernance = createSeedModelGovernanceRepository({ modelControl, modelRouting, releaseChanges })
+  const providerOperations = createSeedProviderOperationsRepository({ modelControl })
   const observability = createSeedObservabilityRepository()
   return {
   chat: createSeedChatRepository({
@@ -2444,6 +2446,7 @@ export const createSeedRepository = () => {
   modelControl,
   modelRouting,
   modelGovernance,
+  providerOperations,
   creativeGenerationExecutions,
   observability,
   auth: {

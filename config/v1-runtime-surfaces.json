@@ -273,7 +273,7 @@
       "id": "server-provider-control-plane",
       "area": "provider-operations",
       "classification": "production_capable",
-      "paths": ["server/src/contracts/requestParsers.js", "server/src/creative/providerControlContract.js", "server/src/creative/providerControlPlane.js", "server/src/creative/generationService.js", "server/src/repositories/seedRepository.js", "server/src/repositories/prismaRepository.js", "server/src/modules/admin/routes.js", "server/src/operations/metrics.js", "src/features/admin/AdminPage.tsx"],
+      "paths": ["server/src/contracts/requestParsers.js", "server/src/creative/providerControlContract.js", "server/src/creative/providerControlPlane.js", "server/src/modelControl/providerOperationsRuntime.js", "server/src/modelControl/prismaProviderOperationsRepository.js", "server/src/modelControl/seedProviderOperationsRepository.js", "server/src/creative/generationService.js", "server/src/repositories/seedRepository.js", "server/src/repositories/prismaRepository.js", "server/src/modules/admin/routes.js", "server/src/modules/modelControl/routes.js", "server/src/operations/metrics.js", "src/features/admin/AdminPage.tsx", "src/features/admin/ModelControlPanel.tsx"],
       "markers": ["createProviderControlPlane", "creativeProviderControls", "provider_control_recovery", "admin:creative:provider-control:recover"],
       "productionDisposition": "retain_fail_closed_app_control_plane_and_keep_real_provider_clients_pricing_cap_readers_probes_and_dispatch_unregistered_until_approved",
       "ownerTasks": ["V1-11"]

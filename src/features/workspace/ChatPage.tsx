@@ -443,9 +443,20 @@ export function ChatPage({
 
   const stopGeneration = async () => {
     if (!activeTurnId || stopping) return
+    const turnId = activeTurnId
     setStopping(true)
     try {
-      await chatService.stopTurn(activeTurnId)
+      const result = await chatService.stopTurn(turnId)
+      const effectiveStatus = result.changed ? 'stopped' : result.turn.status
+      setMessages((current) => [
+        ...current.filter((message) => message.turnId !== result.turn.id),
+        ...result.turn.messages.map((message) => result.changed && message.role === 'assistant'
+          ? { ...message, status: 'stopped' as const }
+          : message),
+      ].sort((left, right) => left.sequence - right.sequence))
+      if (terminalStatuses.has(effectiveStatus)) {
+        setRequestState({ status: effectiveStatus, error: null, moderationDecisionId: result.turn.safety?.reviewId ?? null })
+      }
     } catch (error) {
       setStopping(false)
       setRequestState((current) => ({

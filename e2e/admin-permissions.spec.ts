@@ -107,7 +107,7 @@ test('admin observability UI searches logs, drills into a trace, and exposes SLO
 
   const panel = page.getByTestId('admin-observability-panel')
   await expect(panel).toBeVisible()
-  await expect(panel.getByText('SLO status')).toBeVisible()
+  await expect(panel.getByText('SLO status', { exact: true })).toBeVisible()
   await expect(panel.getByRole('button', { name: 'Evaluate now' })).toBeVisible()
   await expect(panel.getByTitle('Export JSON')).toBeEnabled()
 

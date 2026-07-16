@@ -128,7 +128,7 @@ test('Chat UI stops an active stream and opens a prefilled safety appeal', async
   await openChatWorkspace(page)
   await page.getByTitle('New conversation').click()
 
-  const longPrompt = `Build a detailed creative checklist from these notes: ${'clear step, '.repeat(45)}`
+  const longPrompt = `Build a detailed creative checklist from these notes: ${'clear step, '.repeat(200)}`
   await page.getByPlaceholder('Ask for a prompt, script, brief, or revision...').fill(longPrompt)
   await page.getByRole('button', { name: 'Send', exact: true }).click()
   const stopButton = page.getByRole('button', { name: 'Stop', exact: true })

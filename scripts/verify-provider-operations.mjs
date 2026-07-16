@@ -1,0 +1,40 @@
+import fs from 'node:fs'
+
+const contract = JSON.parse(fs.readFileSync('config/provider-operations-contract.json', 'utf8'))
+const schema = fs.readFileSync('server/prisma/schema.prisma', 'utf8')
+const migration = fs.readFileSync(contract.migration, 'utf8')
+const routes = fs.readFileSync('server/src/modules/modelControl/routes.js', 'utf8')
+const runtime = fs.readFileSync('server/src/modelControl/providerOperationsRuntime.js', 'utf8')
+const repository = fs.readFileSync('server/src/modelControl/prismaProviderOperationsRepository.js', 'utf8')
+const ui = fs.readFileSync('src/features/admin/ModelControlPanel.tsx', 'utf8')
+const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+let failures = 0
+let checks = 0
+const verify = (condition, label) => { checks += 1; if (!condition) failures += 1; console.log(`${condition ? 'PASS' : 'FAIL'} ${label}`) }
+
+verify(contract.schemaVersion === 1, 'contract schema is supported')
+verify(contract.taskId === 'MODEL-03', 'contract owns MODEL-03')
+verify(contract.scope === 'personal_accounts_only', 'scope remains personal accounts only')
+verify(contract.realProviderCalls === false, 'control-plane delivery performs no Provider call')
+verify(contract.tenantModels === false, 'tenant models remain forbidden')
+for (const entity of contract.entities) verify(schema.includes(`model ${entity} {`), `${entity} exists in Prisma`)
+verify(migration.includes('provider_operational_policies'), 'migration creates operational policies')
+verify(migration.includes('provider_health_evidence_no_update'), 'database protects append-only health evidence')
+verify(migration.includes('provider_operational_policies_limits_check'), 'database bounds budgets and rate limits')
+verify(runtime.includes('forbiddenEvidenceKey'), 'health evidence rejects sensitive and raw fields')
+verify(runtime.includes('evaluateProviderControlSnapshot'), 'readiness reuses Kill Switch, cap, and circuit controls')
+verify(runtime.includes("id: 'secret'"), 'readiness requires a current SecretRef')
+verify(runtime.includes("id: 'health'"), 'readiness requires current health evidence')
+verify(runtime.includes("id: 'rate_limit'"), 'readiness requires request and concurrency capacity')
+verify(repository.includes('pg_advisory_xact_lock'), 'dispatch lease uses a PostgreSQL advisory lock')
+verify(repository.includes("isolationLevel: 'Serializable'"), 'dispatch lease uses serializable transactions')
+verify(repository.includes('sourceKey'), 'dispatch lease is idempotent by source key')
+for (const marker of ['/provider-operations\'', '/provider-operations/:id\'', '/provider-operations/:id/status', '/provider-operations/:id/health', '/provider-operations-summary', '/provider-operations-export']) verify(routes.includes(marker), `${marker} Admin route exists`)
+verify(routes.includes('provider_operational_policy_missing'), 'model routing fails closed without an operational policy')
+verify(ui.includes("governanceMode === 'operations'"), 'Admin workbench exposes Provider operations')
+verify(ui.includes('readiness.reasonCode'), 'Admin workbench explains blocked readiness')
+verify(packageJson.scripts['test:provider-operations']?.includes('verify-provider-operations.mjs'), 'package exposes MODEL-03 gate')
+verify(packageJson.scripts['check:quick']?.includes('test:provider-operations'), 'quick gate includes MODEL-03')
+for (const name of ['Tenant', 'Organization', 'Team', 'Membership', 'Invitation']) verify(!schema.includes(`model ${name} {`), `${name} remains absent`)
+if (failures) { console.error(`Provider operations verification failed: ${failures} check(s)`); process.exit(1) }
+console.log(`Provider operations verified: ${checks} checks`)

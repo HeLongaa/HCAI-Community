@@ -32,7 +32,16 @@ import {
   parseProviderSecretRefListQuery,
   resolveAndRecordModelRoute,
 } from '../../modelControl/modelGovernanceRuntime.js'
-import { buildProviderControlScopes, evaluateProviderRoutingSnapshot, providerCircuitScope } from '../../creative/providerControlContract.js'
+import { buildProviderControlScopes, providerCircuitScope } from '../../creative/providerControlContract.js'
+import {
+  evaluateProviderOperationalReadiness,
+  parseProviderHealthEvidenceCreate,
+  parseProviderHealthEvidenceListQuery,
+  parseProviderOperationalPolicyCreate,
+  parseProviderOperationalPolicyListQuery,
+  parseProviderOperationalPolicyTransition,
+  parseProviderOperationalPolicyUpdate,
+} from '../../modelControl/providerOperationsRuntime.js'
 import { requestReleaseChange } from '../../releases/releaseControl.js'
 import { repositories } from '../../repositories/index.js'
 
@@ -47,6 +56,7 @@ export const registerModelControlRoutes = (router, options = {}) => {
   const repository = routeRepositories.modelControl
   const routingRepository = routeRepositories.modelRouting
   const governanceRepository = routeRepositories.modelGovernance
+  const providerOperationsRepository = routeRepositories.providerOperations
   const find = async (type, id, path) => {
     const resource = await repository.find(type, id)
     if (!resource) throw notFound(path)
@@ -69,22 +79,44 @@ export const registerModelControlRoutes = (router, options = {}) => {
     if (!resource) throw notFound(path)
     return resource
   }
+  const findProviderOperationsProfile = async (id, path = `/api/admin/model-control/provider-operations/${id}`) => {
+    const profile = await providerOperationsRepository.findProfile(id)
+    if (!profile) throw notFound(path)
+    return profile
+  }
+  const operationalSnapshot = async (profile, { ignorePolicyStatus = false } = {}) => {
+    const provider = profile.provider ?? await repository.find('provider', profile.providerId)
+    if (!provider) throw new HttpError(422, 'REFERENCE_NOT_FOUND', 'Provider operations profile references a missing Provider')
+    const controlScopes = buildProviderControlScopes({ providerId: provider.key, providerAccountRef: profile.providerAccountRef, workspace: profile.workspace, modelFamily: profile.modelFamily })
+    const providerScope = controlScopes.find((scope) => scope.scopeType === 'provider')
+    const circuitScope = providerCircuitScope(controlScopes)
+    const [controls, capEvidence, circuit, secretPage, health, rate, cost] = await Promise.all([
+      Promise.all(controlScopes.map((scope) => routeRepositories.creativeProviderControls.findControl(scope.scopeKey))),
+      routeRepositories.creativeProviderControls.findCapEvidence(providerScope.scopeKey),
+      routeRepositories.creativeProviderControls.findCircuit(circuitScope.scopeKey),
+      governanceRepository.listSecretRefs({ providerId: profile.providerId, environment: profile.environment, purpose: profile.secretPurpose, search: null, cursor: null, sort: 'createdAt', order: 'desc', limit: 100 }),
+      providerOperationsRepository.findCurrentHealth(profile.id),
+      providerOperationsRepository.getRateState(profile.id),
+      providerOperationsRepository.getCostSummary({ providerKey: provider.key, workspace: profile.workspace, currency: profile.currency }),
+    ])
+    const secretRef = secretPage.items.find((item) => !secretPage.items.some((candidate) => candidate.rotatedFromId === item.id)) ?? null
+    const enriched = { ...profile, provider, controlScopes }
+    return { profile: enriched, secretRef, controls: controls.filter(Boolean), budget: capEvidence ? { currency: capEvidence.currency, capMicros: capEvidence.capMicros, remainingMicros: capEvidence.remainingMicros, expiresAt: capEvidence.expiresAt } : null, circuit, health, rate, cost, readiness: evaluateProviderOperationalReadiness({ profile: enriched, secretRef, controls: controls.filter(Boolean), capEvidence, circuit, health, rate, estimateMicros: profile.perRequestBudgetMicros, ignorePolicyStatus }) }
+  }
   const evaluateCandidate = async (target, policy) => {
     const model = target.deployment?.modelVersion?.model
     const provider = model?.provider
     if (!provider) return { allowed: false, reasonCode: 'provider_metadata_missing' }
-    const scopes = buildProviderControlScopes({
-      providerId: provider.key,
-      providerAccountRef: 'default',
-      workspace: policy.modality,
-      modelFamily: model.family ?? model.key,
+    const profilePage = await providerOperationsRepository.listProfiles({
+      providerId: provider.id, environment: policy.environment, workspace: policy.modality, status: null,
+      search: null, cursor: null, sort: 'updatedAt', order: 'desc', limit: 100,
     })
-    const circuitScope = providerCircuitScope(scopes)
-    const [controls, circuit] = await Promise.all([
-      Promise.all(scopes.map((scope) => routeRepositories.creativeProviderControls.findControl(scope.scopeKey))),
-      routeRepositories.creativeProviderControls.findCircuit(circuitScope.scopeKey),
-    ])
-    return evaluateProviderRoutingSnapshot({ scopes, controls: controls.filter(Boolean), circuit })
+    const modelFamily = model.family ?? model.key
+    const profile = profilePage.items.find((item) => item.modelFamily === modelFamily)
+      ?? profilePage.items.find((item) => item.modelFamily == null)
+    if (!profile) return { allowed: false, reasonCode: 'provider_operational_policy_missing' }
+    const snapshot = await operationalSnapshot(profile)
+    return { allowed: snapshot.readiness.ready, reasonCode: snapshot.readiness.reasonCode }
   }
 
   router.add('GET', '/api/admin/model-control/routing-summary', async (_request, response, context) => {
@@ -94,6 +126,97 @@ export const registerModelControlRoutes = (router, options = {}) => {
     const targetCounts = exported.policies.flatMap((policy) => policy.targets ?? []).reduce((summary, target) => ({ ...summary, [target.role]: (summary[target.role] ?? 0) + 1 }), {})
     await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_route.summary_read', resourceType: 'model_route_policy', resourceId: null, metadata: { policyCount: exported.policies.length, providerTrafficEnabled: exported.providerTrafficEnabled } })
     ok(response, { policyCount: exported.policies.length, revisionCount: exported.revisions.length, statusCounts, targetCounts, providerTrafficEnabled: exported.providerTrafficEnabled, automaticFallbackDefault: 'fail_closed' })
+  })
+
+  router.add('GET', '/api/admin/model-control/provider-operations', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const page = await providerOperationsRepository.listProfiles(parseProviderOperationalPolicyListQuery(context.query))
+    const items = await Promise.all(page.items.map(async (profile) => { const snapshot = await operationalSnapshot(profile); return { ...profile, readiness: snapshot.readiness, budget: snapshot.budget, health: snapshot.health, rate: snapshot.rate, cost: snapshot.cost } }))
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.provider_operations_queried', resourceType: 'provider_operational_policy', resourceId: null, metadata: { resultCount: items.length, limit: page.limit } })
+    ok(response, items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('POST', '/api/admin/model-control/provider-operations', async (request, response, context) => {
+    const actor = requirePermission(context, permissions.manage)
+    const profile = await providerOperationsRepository.createProfile(parseProviderOperationalPolicyCreate((await readJsonBody(request)) ?? {}, actor))
+    await audit(actor, 'admin.model_control.provider_operations_created', 'provider_operational_policy', profile, { environment: profile.environment, workspace: profile.workspace })
+    created(response, { ...profile, readiness: (await operationalSnapshot(profile)).readiness })
+  })
+
+  router.add('GET', '/api/admin/model-control/provider-operations/:id', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const profile = await findProviderOperationsProfile(context.params.id)
+    const snapshot = await operationalSnapshot(profile)
+    await audit(actor, 'admin.model_control.provider_operations_read', 'provider_operational_policy', profile)
+    ok(response, snapshot)
+  })
+
+  router.add('PATCH', '/api/admin/model-control/provider-operations/:id', async (request, response, context) => {
+    const actor = requirePermission(context, permissions.manage)
+    const current = await findProviderOperationsProfile(context.params.id)
+    if (current.status === 'active') throw new HttpError(409, 'IMMUTABLE_ACTIVE_POLICY', 'disable Provider operations policy before editing it')
+    const input = parseProviderOperationalPolicyUpdate((await readJsonBody(request)) ?? {}, actor)
+    const profile = await providerOperationsRepository.updateProfile(current.id, input.expectedVersion, input.data)
+    if (!profile) throw new HttpError(409, 'STATE_CONFLICT', 'Provider operations policy changed before update')
+    await audit(actor, 'admin.model_control.provider_operations_updated', 'provider_operational_policy', profile, { previousVersion: current.version })
+    ok(response, { ...profile, readiness: (await operationalSnapshot(profile)).readiness })
+  })
+
+  router.add('POST', '/api/admin/model-control/provider-operations/:id/status', async (request, response, context) => {
+    const actor = requirePermission(context, permissions.transition)
+    const current = await findProviderOperationsProfile(context.params.id)
+    const input = parseProviderOperationalPolicyTransition((await readJsonBody(request)) ?? {}, actor)
+    if (current.version !== input.expectedVersion) throw new HttpError(409, 'STATE_CONFLICT', 'Provider operations policy changed before transition')
+    if (current.status === input.status) throw new HttpError(409, 'INVALID_STATE_TRANSITION', `Provider operations policy is already ${input.status}`)
+    if (!(['draft', 'disabled'].includes(current.status) && input.status === 'active') && !(current.status === 'active' && input.status === 'disabled') && !(current.status === 'draft' && input.status === 'disabled')) {
+      throw new HttpError(409, 'INVALID_STATE_TRANSITION', `cannot transition Provider operations policy from ${current.status} to ${input.status}`)
+    }
+    if (input.status === 'active') {
+      const snapshot = await operationalSnapshot(current, { ignorePolicyStatus: true })
+      if (!snapshot.readiness.ready) throw new HttpError(409, 'PROVIDER_OPERATIONAL_NOT_READY', 'Provider operations policy cannot activate until all external gates pass', { reasonCode: snapshot.readiness.reasonCode, gates: snapshot.readiness.gates })
+    }
+    const profile = await providerOperationsRepository.transitionProfile(current.id, input)
+    if (!profile) throw new HttpError(409, 'STATE_CONFLICT', 'Provider operations policy changed before transition')
+    await audit(actor, 'admin.model_control.provider_operations_transitioned', 'provider_operational_policy', profile, { previousStatus: current.status, reasonCode: input.reasonCode })
+    ok(response, { ...profile, readiness: (await operationalSnapshot(profile)).readiness })
+  })
+
+  router.add('GET', '/api/admin/model-control/provider-operations/:id/health', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const profile = await findProviderOperationsProfile(context.params.id)
+    const page = await providerOperationsRepository.listHealth(profile.id, parseProviderHealthEvidenceListQuery(context.query))
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.provider_health_queried', resourceType: 'provider_health_evidence', resourceId: profile.id, metadata: { resultCount: page.items.length, limit: page.limit } })
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('POST', '/api/admin/model-control/provider-operations/:id/health', async (request, response, context) => {
+    const actor = requirePermission(context, permissions.manage)
+    const profile = await findProviderOperationsProfile(context.params.id)
+    const evidence = await providerOperationsRepository.recordHealth(parseProviderHealthEvidenceCreate(profile, (await readJsonBody(request)) ?? {}, actor))
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.provider_health_recorded', resourceType: 'provider_health_evidence', resourceId: evidence.id, metadata: { policyId: profile.id, status: evidence.status, sourceType: evidence.sourceType, evidenceHash: evidence.evidenceHash } })
+    created(response, evidence)
+  })
+
+  router.add('GET', '/api/admin/model-control/provider-operations-summary', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const exported = await providerOperationsRepository.exportAll()
+    const readiness = await Promise.all(exported.profiles.map((profile) => operationalSnapshot(profile)))
+    const statusCounts = exported.profiles.reduce((counts, item) => ({ ...counts, [item.status]: (counts[item.status] ?? 0) + 1 }), {})
+    const healthCounts = exported.healthEvidence.reduce((counts, item) => ({ ...counts, [item.status]: (counts[item.status] ?? 0) + 1 }), {})
+    const readyCount = readiness.filter((item) => item.readiness.ready).length
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.provider_operations_summary_read', resourceType: 'provider_operations', resourceId: null, metadata: { profileCount: exported.profiles.length, readyCount } })
+    ok(response, { profileCount: exported.profiles.length, healthEvidenceCount: exported.healthEvidence.length, activeLeaseCount: exported.leases.filter((item) => item.status === 'active' && Date.parse(item.leaseExpiresAt) > Date.now()).length, readyCount, blockedCount: exported.profiles.length - readyCount, totalActualMicros: readiness.reduce((total, item) => total + BigInt(item.cost.actualMicros), 0n).toString(), statusCounts, healthCounts })
+  })
+
+  router.add('GET', '/api/admin/model-control/provider-operations-export', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const exported = await providerOperationsRepository.exportAll()
+    const operations = await Promise.all(exported.profiles.map(async (profile) => {
+      const snapshot = await operationalSnapshot(profile)
+      return { profileId: profile.id, readiness: snapshot.readiness, budget: snapshot.budget, health: snapshot.health, rate: snapshot.rate, cost: snapshot.cost }
+    }))
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.provider_operations_exported', resourceType: 'provider_operations', resourceId: null, metadata: { profileCount: exported.profiles.length, healthEvidenceCount: exported.healthEvidence.length } })
+    ok(response, { ...exported, operations })
   })
 
   router.add('GET', '/api/admin/model-control/routing-export', async (_request, response, context) => {

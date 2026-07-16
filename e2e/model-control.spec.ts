@@ -65,6 +65,21 @@ test('admin builds a promotion-gated model registry with durable route and Secre
   await governance.getByRole('button', { name: 'Append reference' }).click()
   await expect(governance).toContainText(`secret://e2e/${suffix}`)
 
+  await governance.getByRole('button', { name: 'Operations', exact: true }).click()
+  await governance.getByLabel('Operations Provider').selectOption({ label: `E2E Provider ${suffix}` })
+  await governance.getByLabel('Operations environment').selectOption('staging')
+  await governance.getByLabel('Operations workspace').selectOption('image')
+  await governance.getByLabel('Operations model family').fill(`e2e-model-${suffix}`)
+  await governance.getByRole('button', { name: 'Create policy' }).click()
+  await expect(governance).toContainText('provider_policy_draft')
+  await governance.getByLabel('Health policy').selectOption({ label: `E2E Provider ${suffix} · staging · image` })
+  await governance.getByLabel('Health source type').selectOption('fixture_probe')
+  await governance.getByLabel('Health source reference').fill(`fixture:health:${suffix}`)
+  await governance.getByLabel('Health latency').fill('120')
+  await governance.getByLabel('Health success rate').fill('9990')
+  await governance.getByRole('button', { name: 'Append health' }).click()
+  await expect(governance).toContainText('healthy')
+
   await page.setViewportSize({ width: 390, height: 844 })
   const layout = await panel.evaluate((element) => {
     const width = document.documentElement.clientWidth
