@@ -2422,3 +2422,77 @@ export type SystemSettingPublishResult = {
   setting: SystemSettingDto
   revision: SystemSettingRevisionDto
 }
+
+export type ConfigResourceKind = 'feature_flag' | 'reference_data' | 'announcement'
+export type ConfigResourceDeletedFilter = 'active' | 'deleted' | 'all'
+
+export type ConfigResourceDto = {
+  id: string
+  kind: ConfigResourceKind
+  key: string
+  title: string
+  description: string | null
+  draftValue: Record<string, unknown>
+  draftValueSchemaVersion: number
+  publishedValue: Record<string, unknown> | null
+  publishedValueSchemaVersion: number
+  publishedVersion: number
+  currentRevisionId: string | null
+  version: number
+  createdByRef: string
+  updatedByRef: string
+  deletedByRef: string | null
+  deletedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type ConfigResourceRevisionDto = {
+  id: string
+  resourceId: string
+  resourceVersion: number
+  title: string
+  description: string | null
+  value: Record<string, unknown>
+  valueSchemaVersion: number
+  previousRevisionId: string | null
+  eventType: 'published' | 'rolled_back'
+  contentHash: string
+  actorRef: string
+  reasonCode: string
+  createdAt: string
+}
+
+export type ConfigResourceListQuery = {
+  search?: string | null
+  deleted?: ConfigResourceDeletedFilter
+  sort?: 'key' | 'title' | 'updatedAt' | 'publishedVersion'
+  order?: 'asc' | 'desc'
+  cursor?: string | null
+  limit?: number
+}
+
+export type ConfigResourceDraftRequest = {
+  key?: string
+  title: string
+  description?: string | null
+  value: Record<string, unknown>
+  expectedVersion?: number
+}
+
+export type ConfigResourceTransitionRequest = {
+  expectedVersion: number
+  reasonCode: string
+}
+
+export type ConfigResourcePublishResult = {
+  resource: ConfigResourceDto
+  revision: ConfigResourceRevisionDto
+}
+
+export type ConfigResourceExportDocument = {
+  schemaVersion: 1
+  kind: ConfigResourceKind
+  exportedAt: string
+  items: Array<ConfigResourceDraftRequest & { key: string; expectedVersion: number }>
+}

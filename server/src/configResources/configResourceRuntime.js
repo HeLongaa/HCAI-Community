@@ -1,0 +1,260 @@
+import { createHash, randomUUID } from 'node:crypto'
+
+import { HttpError } from '../common/errors/httpError.js'
+import { validationFailed } from '../common/http/validation.js'
+
+export const configResourceKinds = Object.freeze(['feature_flag', 'reference_data', 'announcement'])
+export const configResourcePageLimit = 100
+
+export const configResourcePolicy = Object.freeze({
+  feature_flag: Object.freeze({
+    label: 'Feature flags',
+    permissions: Object.freeze({
+      read: 'admin:feature-flags:read', manage: 'admin:feature-flags:manage', publish: 'admin:feature-flags:publish',
+    }),
+  }),
+  reference_data: Object.freeze({
+    label: 'Reference data',
+    permissions: Object.freeze({
+      read: 'admin:reference-data:read', manage: 'admin:reference-data:manage', publish: 'admin:reference-data:publish',
+    }),
+  }),
+  announcement: Object.freeze({
+    label: 'Announcements',
+    permissions: Object.freeze({
+      read: 'admin:announcements:read', manage: 'admin:announcements:manage', publish: 'admin:announcements:publish',
+    }),
+  }),
+})
+
+const actorRef = (actor) => actor?.handle ?? actor?.id ?? 'unknown'
+const clone = (value) => JSON.parse(JSON.stringify(value))
+const canonical = (value) => {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
+  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`
+}
+export const hashConfigResource = ({ title, description, value }) => createHash('sha256')
+  .update(canonical({ title, description: description ?? null, value }))
+  .digest('hex')
+
+const objectValue = (value, name = 'value') => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw validationFailed(`${name} must be an object`)
+  return value
+}
+const exactFields = (value, allowed, name = 'value') => {
+  const unexpected = Object.keys(value).filter((key) => !allowed.includes(key))
+  if (unexpected.length) throw validationFailed(`${name} contains unsupported fields: ${unexpected.join(', ')}`)
+}
+const safeText = (value, name, { required = false, maximum = 500 } = {}) => {
+  const normalized = String(value ?? '').trim()
+  if (required && !normalized) throw validationFailed(`${name} is required`)
+  if (normalized.length > maximum) throw validationFailed(`${name} cannot exceed ${maximum} characters`)
+  return normalized
+}
+const expectedVersion = (value) => {
+  const version = Number.parseInt(String(value ?? ''), 10)
+  if (!Number.isInteger(version) || version < 1) throw validationFailed('expectedVersion must be a positive integer')
+  return version
+}
+const booleanValue = (value, name) => {
+  if (typeof value !== 'boolean') throw validationFailed(`${name} must be a boolean`)
+  return value
+}
+const optionalIsoDate = (value, name) => {
+  if (value == null || value === '') return null
+  const normalized = String(value)
+  if (!Number.isFinite(Date.parse(normalized))) throw validationFailed(`${name} must be an ISO 8601 datetime`)
+  return new Date(normalized).toISOString()
+}
+
+export const parseConfigResourceKind = (value) => {
+  const kind = String(value ?? '')
+  if (!configResourceKinds.includes(kind)) throw validationFailed(`kind must be one of: ${configResourceKinds.join(', ')}`)
+  return kind
+}
+
+const validateFeatureFlag = (raw) => {
+  const value = objectValue(raw)
+  exactFields(value, ['enabled', 'payload'])
+  return { enabled: booleanValue(value.enabled, 'value.enabled'), payload: clone(value.payload ?? {}) }
+}
+const validateReferenceData = (raw) => {
+  const value = objectValue(raw)
+  exactFields(value, ['label', 'value', 'sortOrder', 'active'])
+  if (!Object.hasOwn(value, 'value') || value.value == null) throw validationFailed('value.value is required')
+  const sortOrder = Number(value.sortOrder ?? 0)
+  if (!Number.isSafeInteger(sortOrder) || sortOrder < -1_000_000 || sortOrder > 1_000_000) throw validationFailed('value.sortOrder must be an integer between -1000000 and 1000000')
+  return {
+    label: safeText(value.label, 'value.label', { required: true, maximum: 160 }),
+    value: clone(value.value),
+    sortOrder,
+    active: value.active == null ? true : booleanValue(value.active, 'value.active'),
+  }
+}
+const validateAnnouncement = (raw) => {
+  const value = objectValue(raw)
+  exactFields(value, ['body', 'level', 'startsAt', 'endsAt', 'active'])
+  const level = String(value.level ?? 'info')
+  if (!['info', 'success', 'warning', 'critical'].includes(level)) throw validationFailed('value.level must be one of: info, success, warning, critical')
+  const startsAt = optionalIsoDate(value.startsAt, 'value.startsAt')
+  const endsAt = optionalIsoDate(value.endsAt, 'value.endsAt')
+  if (startsAt && endsAt && Date.parse(endsAt) <= Date.parse(startsAt)) throw validationFailed('value.endsAt must be after value.startsAt')
+  return {
+    body: safeText(value.body, 'value.body', { required: true, maximum: 5000 }),
+    level,
+    startsAt,
+    endsAt,
+    active: value.active == null ? true : booleanValue(value.active, 'value.active'),
+  }
+}
+
+export const validateConfigResourceValue = (kind, value) => ({
+  feature_flag: validateFeatureFlag,
+  reference_data: validateReferenceData,
+  announcement: validateAnnouncement,
+})[parseConfigResourceKind(kind)](value)
+
+const resourceKey = (value) => {
+  const key = safeText(value, 'key', { required: true, maximum: 128 })
+  if (!/^[a-z0-9][a-z0-9._/-]*$/.test(key)) throw validationFailed('key must use lowercase letters, numbers, dots, slashes, underscores, or hyphens')
+  return key
+}
+
+export const parseConfigResourceListQuery = (query = {}) => {
+  const limit = query.limit == null || query.limit === '' ? 20 : Number.parseInt(String(query.limit), 10)
+  if (!Number.isInteger(limit) || limit < 1 || limit > configResourcePageLimit) throw validationFailed(`limit must be between 1 and ${configResourcePageLimit}`)
+  const deleted = String(query.deleted ?? 'active')
+  if (!['active', 'deleted', 'all'].includes(deleted)) throw validationFailed('deleted must be one of: active, deleted, all')
+  const sort = String(query.sort ?? 'updatedAt')
+  if (!['key', 'title', 'updatedAt', 'publishedVersion'].includes(sort)) throw validationFailed('sort must be one of: key, title, updatedAt, publishedVersion')
+  const order = String(query.order ?? 'desc').toLowerCase()
+  if (!['asc', 'desc'].includes(order)) throw validationFailed('order must be asc or desc')
+  return {
+    search: safeText(query.search, 'search', { maximum: 96 }) || null,
+    deleted,
+    sort,
+    order,
+    cursor: query.cursor ? String(query.cursor) : null,
+    limit,
+  }
+}
+
+export const parseConfigResourceCreate = (kind, payload = {}) => ({
+  id: `config-resource-${randomUUID()}`,
+  kind: parseConfigResourceKind(kind),
+  key: resourceKey(payload.key),
+  title: safeText(payload.title, 'title', { required: true, maximum: 160 }),
+  description: safeText(payload.description, 'description', { maximum: 1000 }) || null,
+  draftValue: validateConfigResourceValue(kind, payload.value),
+})
+
+export const parseConfigResourceUpdate = (kind, payload = {}) => ({
+  expectedVersion: expectedVersion(payload.expectedVersion),
+  title: safeText(payload.title, 'title', { required: true, maximum: 160 }),
+  description: safeText(payload.description, 'description', { maximum: 1000 }) || null,
+  draftValue: validateConfigResourceValue(kind, payload.value),
+})
+
+export const parseConfigResourceTransition = (payload = {}) => ({
+  expectedVersion: expectedVersion(payload.expectedVersion),
+  reasonCode: safeText(payload.reasonCode, 'reasonCode', { required: true, maximum: 96 }),
+})
+
+export const parseConfigResourceRollback = (payload = {}) => ({
+  ...parseConfigResourceTransition(payload),
+  revisionId: safeText(payload.revisionId, 'revisionId', { required: true, maximum: 160 }),
+})
+
+export const parseConfigResourceBulkDelete = (payload = {}) => {
+  if (!Array.isArray(payload.items) || !payload.items.length || payload.items.length > 100) throw validationFailed('items must contain between 1 and 100 resources')
+  return {
+    reasonCode: safeText(payload.reasonCode, 'reasonCode', { required: true, maximum: 96 }),
+    items: payload.items.map((item) => ({
+      id: safeText(item?.id, 'items.id', { required: true, maximum: 160 }),
+      expectedVersion: expectedVersion(item?.expectedVersion),
+    })),
+  }
+}
+
+export const parseConfigResourceImport = (kind, payload = {}) => {
+  if (parseConfigResourceKind(kind) !== 'reference_data') throw validationFailed('import is only supported for reference_data')
+  if (!Array.isArray(payload.items) || !payload.items.length || payload.items.length > 100) throw validationFailed('items must contain between 1 and 100 resources')
+  const items = payload.items.map((item) => {
+    const base = parseConfigResourceCreate(kind, item)
+    return {
+      ...base,
+      ...(item.expectedVersion == null ? {} : { expectedVersion: expectedVersion(item.expectedVersion) }),
+    }
+  })
+  if (new Set(items.map((item) => item.key)).size !== items.length) throw validationFailed('items contain duplicate keys')
+  return { reasonCode: safeText(payload.reasonCode, 'reasonCode', { required: true, maximum: 96 }), items }
+}
+
+const requireResourceState = (resource, { deleted = false } = {}) => {
+  if (!resource) return null
+  if (deleted !== Boolean(resource.deletedAt)) throw new HttpError(409, 'STATE_CONFLICT', deleted ? 'resource is not deleted' : 'resource is deleted')
+  return resource
+}
+
+export const createConfigResource = ({ kind, payload, actor, repository }) => repository.create({
+  ...parseConfigResourceCreate(kind, payload),
+  createdByRef: actorRef(actor),
+  updatedByRef: actorRef(actor),
+})
+
+export const updateConfigResource = async ({ kind, resource, payload, actor, repository }) => {
+  requireResourceState(resource)
+  const input = parseConfigResourceUpdate(kind, payload)
+  const updated = await repository.updateDraft(resource.id, input.expectedVersion, {
+    title: input.title, description: input.description, draftValue: input.draftValue, updatedByRef: actorRef(actor),
+  })
+  if (!updated) throw new HttpError(409, 'STATE_CONFLICT', 'resource changed after this edit started')
+  return updated
+}
+
+export const publishConfigResource = async ({ resource, payload, actor, repository }) => {
+  requireResourceState(resource)
+  const transition = parseConfigResourceTransition(payload)
+  const result = await repository.publish(resource.id, transition.expectedVersion, {
+    actor, actorRef: actorRef(actor), reasonCode: transition.reasonCode, eventType: 'published',
+  })
+  if (!result) throw new HttpError(409, 'STATE_CONFLICT', 'resource changed before publication')
+  return result
+}
+
+export const rollbackConfigResource = async ({ resource, payload, actor, repository }) => {
+  requireResourceState(resource)
+  const transition = parseConfigResourceRollback(payload)
+  const revision = await repository.findRevision(transition.revisionId)
+  if (!revision || revision.resourceId !== resource.id) return null
+  const result = await repository.publish(resource.id, transition.expectedVersion, {
+    actor, actorRef: actorRef(actor), reasonCode: transition.reasonCode, eventType: 'rolled_back',
+    snapshot: { title: revision.title, description: revision.description, value: revision.value },
+  })
+  if (!result) throw new HttpError(409, 'STATE_CONFLICT', 'resource changed before rollback')
+  return result
+}
+
+export const deleteConfigResource = async ({ resource, payload, actor, repository }) => {
+  requireResourceState(resource)
+  const transition = parseConfigResourceTransition(payload)
+  const deleted = await repository.softDelete(resource.id, transition.expectedVersion, actorRef(actor))
+  if (!deleted) throw new HttpError(409, 'STATE_CONFLICT', 'resource changed before deletion')
+  return deleted
+}
+
+export const restoreConfigResource = async ({ resource, payload, actor, repository }) => {
+  requireResourceState(resource, { deleted: true })
+  const transition = parseConfigResourceTransition(payload)
+  const restored = await repository.restore(resource.id, transition.expectedVersion, actorRef(actor))
+  if (!restored) throw new HttpError(409, 'STATE_CONFLICT', 'resource changed before restore')
+  return restored
+}
+
+export const importConfigResources = async ({ kind, payload, actor, repository }) => {
+  const input = parseConfigResourceImport(kind, payload)
+  const imported = await repository.importDrafts(kind, input.items, actorRef(actor))
+  if (!imported) throw new HttpError(409, 'STATE_CONFLICT', 'import contains an existing, deleted, or stale resource')
+  return imported
+}

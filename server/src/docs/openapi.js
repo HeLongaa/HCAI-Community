@@ -2943,6 +2943,52 @@ export const openApiDocument = {
     '/admin/settings/changes/{id}/publish': {
       post: { summary: 'Publish an approved setting change atomically with revision and audit evidence', responses: { '200': { description: 'Published setting, change, and immutable revision' }, '409': { description: 'Base or transition version conflict' } } },
     },
+    '/admin/config-resources/{kind}': {
+      get: {
+        summary: 'List one independently authorized configuration resource domain',
+        parameters: [
+          { name: 'kind', in: 'path', required: true, schema: { type: 'string', enum: ['feature_flag', 'reference_data', 'announcement'] } },
+          { name: 'search', in: 'query', schema: { type: 'string', maxLength: 96 } },
+          { name: 'deleted', in: 'query', schema: { type: 'string', enum: ['active', 'deleted', 'all'], default: 'active' } },
+          { name: 'sort', in: 'query', schema: { type: 'string', enum: ['key', 'title', 'updatedAt', 'publishedVersion'], default: 'updatedAt' } },
+          { name: 'order', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+        ],
+        responses: { '200': { description: 'Cursor-paginated draft and published projections' }, '403': { description: 'Requires the kind-specific read permission' } },
+      },
+      post: {
+        summary: 'Create a validated configuration resource draft',
+        description: 'The value schema is selected by kind. Feature flags intentionally exclude audience and rollout rules, which belong to SET-02.',
+        responses: { '200': { description: 'Created draft' }, '400': { description: 'Invalid kind-specific schema' }, '409': { description: 'Kind and key already exist' } },
+      },
+    },
+    '/admin/config-resources/{kind}/bulk-delete': {
+      post: { summary: 'Atomically soft-delete up to 100 resources using expected versions', responses: { '200': { description: 'Soft-deleted resources' }, '409': { description: 'At least one resource was stale or unavailable' } } },
+    },
+    '/admin/config-resources/{kind}/export': {
+      get: { summary: 'Export up to 1000 active reference data drafts as versioned JSON', responses: { '200': { description: 'Portable reference data document' }, '404': { description: 'Export is not supported for this kind' } } },
+    },
+    '/admin/config-resources/{kind}/import': {
+      post: { summary: 'Atomically import up to 100 validated reference data drafts', responses: { '200': { description: 'Created and updated drafts' }, '400': { description: 'Invalid document or kind-specific value' }, '409': { description: 'Existing, deleted, or stale resource' } } },
+    },
+    '/admin/config-resources/{kind}/{id}': {
+      get: { summary: 'Read one configuration resource draft and published projection', responses: { '200': { description: 'Configuration resource' }, '404': { description: 'Resource not found in this kind' } } },
+      patch: { summary: 'Update a configuration resource draft using optimistic concurrency', responses: { '200': { description: 'Updated draft' }, '400': { description: 'Invalid kind-specific schema' }, '409': { description: 'Expected version conflict or resource is deleted' } } },
+      delete: { summary: 'Soft-delete a configuration resource using optimistic concurrency', responses: { '200': { description: 'Soft-deleted resource' }, '409': { description: 'Expected version conflict' } } },
+    },
+    '/admin/config-resources/{kind}/{id}/history': {
+      get: { summary: 'List immutable published revisions', responses: { '200': { description: 'Cursor-paginated revisions' }, '404': { description: 'Resource not found in this kind' } } },
+    },
+    '/admin/config-resources/{kind}/{id}/publish': {
+      post: { summary: 'Atomically publish the draft with immutable revision and audit evidence', responses: { '200': { description: 'Published resource and revision' }, '409': { description: 'Expected version conflict or deleted resource' } } },
+    },
+    '/admin/config-resources/{kind}/{id}/rollback': {
+      post: { summary: 'Publish a new version from an immutable prior revision', responses: { '200': { description: 'Rolled-back resource and new revision' }, '404': { description: 'Revision does not belong to this resource' }, '409': { description: 'Expected version conflict' } } },
+    },
+    '/admin/config-resources/{kind}/{id}/restore': {
+      post: { summary: 'Restore a soft-deleted configuration resource using optimistic concurrency', responses: { '200': { description: 'Restored resource' }, '409': { description: 'Expected version conflict or resource is active' } } },
+    },
     '/admin/points/ledger': {
       get: {
         summary: 'Search points ledger entries across users',

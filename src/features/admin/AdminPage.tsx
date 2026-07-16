@@ -13,6 +13,7 @@ import { AdminOverviewPanel } from './AdminOverviewPanel'
 import { ReleaseControlPanel } from './ReleaseControlPanel'
 import { ObservabilityPanel } from './ObservabilityPanel'
 import { SystemSettingsPanel } from './SystemSettingsPanel'
+import { ConfigurationResourcesPanel } from './ConfigurationResourcesPanel'
 import type {
   AdminPermissionDto,
   AdminAuditArchiveManifestDto,
@@ -2319,11 +2320,18 @@ export function AdminPage({
         />
       )}
       {activeTab === 'Settings' && (
-        <SystemSettingsPanel
-          hasPermission={account.hasPermission}
-          isZh={isZh}
-          notify={(message) => simulateAction(message)}
-        />
+        <div className="admin-settings-stack">
+          <SystemSettingsPanel
+            hasPermission={account.hasPermission}
+            isZh={isZh}
+            notify={(message) => simulateAction(message)}
+          />
+          <ConfigurationResourcesPanel
+            hasPermission={account.hasPermission}
+            isZh={isZh}
+            notify={(message) => simulateAction(message)}
+          />
+        </div>
       )}
       {activeTab !== 'Settings' && <>
       <AdminOverviewPanel t={t} target={overviewTarget} />
