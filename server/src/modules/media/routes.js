@@ -3,7 +3,7 @@ import { created, ok } from '../../common/http/responses.js'
 import { HttpError, notFound } from '../../common/errors/httpError.js'
 import { requirePermission, requireUser } from '../../common/http/auth.js'
 import { readJsonBody, readJsonBodyWithRaw } from '../../common/http/request.js'
-import { parseAssetLibraryQuery, parseCompleteMediaUploadRequest, parseCreateAssetRelationRequest, parseCreateMediaUploadRequest, parseCreatePortfolioAssetRequest, parseMediaGovernancePolicyRequest, parseMediaGovernancePolicyRollbackRequest, parseMediaReviewQueueQuery, parseMediaScanAlertActionRequest, parseMediaScanAlertSilenceRequest, parseMediaScanCallbackRequest, parseMediaScanJobArchiveQuery, parseMediaScanJobHistoryQuery, parseMediaScanJobQuery, parseMediaScanRequest, parsePaginationQuery } from '../../contracts/requestParsers.js'
+import { parseAdminMediaAssetQuery, parseAssetLibraryQuery, parseCompleteMediaUploadRequest, parseCreateAssetRelationRequest, parseCreateMediaUploadRequest, parseCreatePortfolioAssetRequest, parseMediaAssetDeleteRequest, parseMediaGovernancePolicyRequest, parseMediaGovernancePolicyRollbackRequest, parseMediaReviewQueueQuery, parseMediaScanAlertActionRequest, parseMediaScanAlertSilenceRequest, parseMediaScanCallbackRequest, parseMediaScanJobArchiveQuery, parseMediaScanJobHistoryQuery, parseMediaScanJobQuery, parseMediaScanRequest, parsePaginationQuery } from '../../contracts/requestParsers.js'
 import { buildMediaGovernanceConfig } from '../../config/env.js'
 import { repositories } from '../../repositories/index.js'
 
@@ -114,6 +114,45 @@ export const registerMediaRoutes = (router) => {
     const actor = requireUser(context)
     const asset = await repositories.media.setAssetArchived(context.params.id, false, actor)
     if (!asset) throw notFound(`/api/media/assets/${context.params.id}`)
+    ok(response, asset)
+  })
+
+  router.add('DELETE', '/api/media/assets/:id', async (request, response, context) => {
+    const actor = requireUser(context)
+    const asset = await repositories.media.setAssetDeleted(context.params.id, true, actor, parseMediaAssetDeleteRequest((await readJsonBody(request)) ?? {}))
+    if (!asset) throw notFound(`/api/media/assets/${context.params.id}`)
+    ok(response, asset)
+  })
+
+  router.add('POST', '/api/media/assets/:id/recover', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const asset = await repositories.media.setAssetDeleted(context.params.id, false, actor)
+    if (!asset) throw notFound(`/api/media/assets/${context.params.id}`)
+    ok(response, asset)
+  })
+
+  router.add('GET', '/api/admin/media/assets', async (_request, response, context) => {
+    requirePermission(context, 'admin:queue:read')
+    const page = await repositories.media.listAdminAssets(parseAdminMediaAssetQuery(context.query))
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('GET', '/api/admin/media/assets/:id', async (_request, response, context) => {
+    requirePermission(context, 'admin:queue:read')
+    const asset = await repositories.media.getAdminAsset(context.params.id)
+    if (!asset) throw notFound(`/api/admin/media/assets/${context.params.id}`)
+    ok(response, asset)
+  })
+
+  router.add('POST', '/api/admin/media/assets/:id/:action', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:queue:review')
+    const action = context.params.action
+    if (!['archive', 'restore', 'delete', 'recover'].includes(action)) throw notFound(`/api/admin/media/assets/${context.params.id}/${action}`)
+    const payload = action === 'delete' ? parseMediaAssetDeleteRequest((await readJsonBody(request)) ?? {}) : {}
+    const asset = action === 'delete' || action === 'recover'
+      ? await repositories.media.setAdminAssetDeleted(context.params.id, action === 'delete', actor, payload)
+      : await repositories.media.setAdminAssetArchived(context.params.id, action === 'archive', actor)
+    if (!asset) throw notFound(`/api/admin/media/assets/${context.params.id}`)
     ok(response, asset)
   })
 

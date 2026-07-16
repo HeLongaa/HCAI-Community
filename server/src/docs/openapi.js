@@ -822,7 +822,7 @@ export const openApiDocument = {
           { name: 'mediaType', in: 'query', schema: { type: 'string', enum: ['image', 'video', 'audio', 'document'] } },
           { name: 'purpose', in: 'query', schema: { type: 'string', enum: ['task_attachment', 'submission_asset', 'profile_portfolio', 'library_asset'] } },
           { name: 'workspace', in: 'query', schema: { type: 'string', enum: ['image', 'video', 'music', 'chat'] } },
-          { name: 'archived', in: 'query', schema: { type: 'string', enum: ['active', 'archived', 'all'], default: 'active' } },
+          { name: 'lifecycle', in: 'query', schema: { type: 'string', enum: ['active', 'archived', 'deleted', 'all'], default: 'active' } },
           { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
           { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
           { name: 'cursor', in: 'query', schema: { type: 'string' } },
@@ -837,6 +837,12 @@ export const openApiDocument = {
         security: [{ bearerAuth: [] }],
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         responses: { '200': { description: 'Safe asset detail' }, '404': { description: 'Asset not found or not owned by the caller' } },
+      },
+      delete: {
+        summary: 'Soft-delete an owned asset and immediately revoke download, reuse, and public portfolio projection',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Soft-deleted safe asset detail with retained lineage evidence' }, '404': { description: 'Asset not found or not owned by the caller' } },
       },
     },
     '/media/assets/{id}/library': {
@@ -876,6 +882,50 @@ export const openApiDocument = {
         security: [{ bearerAuth: [] }],
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         responses: { '200': { description: 'Restored safe asset detail' }, '404': { description: 'Asset not found or not owned by the caller' } },
+      },
+    },
+    '/media/assets/{id}/recover': {
+      post: {
+        summary: 'Recover an owned soft-deleted asset without silently republishing portfolio records',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Recovered safe asset detail' }, '404': { description: 'Asset not found or not owned by the caller' } },
+      },
+    },
+    '/admin/media/assets': {
+      get: {
+        summary: 'List safe cross-owner media lifecycle records for administrators',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'search', in: 'query', schema: { type: 'string' } },
+          { name: 'ownerHandle', in: 'query', schema: { type: 'string' } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'uploaded', 'rejected'] } },
+          { name: 'purpose', in: 'query', schema: { type: 'string', enum: ['task_attachment', 'submission_asset', 'profile_portfolio', 'library_asset'] } },
+          { name: 'lifecycle', in: 'query', schema: { type: 'string', enum: ['active', 'archived', 'deleted', 'all'], default: 'all' } },
+          { name: 'sort', in: 'query', schema: { type: 'string', enum: ['created_desc', 'created_asc', 'updated_desc', 'name_asc'] } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+        ],
+        responses: { '200': { description: 'Safe lifecycle list with owner and portfolio state summaries' }, '403': { description: 'Requires admin queue read permission' } },
+      },
+    },
+    '/admin/media/assets/{id}': {
+      get: {
+        summary: 'Get a safe administrative media lifecycle detail',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Safe administrative media lifecycle detail' }, '404': { description: 'Asset not found' } },
+      },
+    },
+    '/admin/media/assets/{id}/{action}': {
+      post: {
+        summary: 'Apply an audited archive, restore, delete, or recover transition',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'action', in: 'path', required: true, schema: { type: 'string', enum: ['archive', 'restore', 'delete', 'recover'] } },
+        ],
+        responses: { '200': { description: 'Updated safe lifecycle detail' }, '403': { description: 'Requires admin queue review permission' }, '409': { description: 'Invalid lifecycle transition' } },
       },
     },
     '/media/assets/{id}/relations': {

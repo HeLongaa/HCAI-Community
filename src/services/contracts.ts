@@ -435,6 +435,9 @@ export type ApiMediaAsset = {
   purpose: MediaAssetPurpose
   status: 'pending' | 'uploaded' | 'rejected'
   metadata?: unknown
+  archivedAt?: string | null
+  deletedAt?: string | null
+  deletionReason?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -463,6 +466,8 @@ export type ApiAssetLibraryItem = {
   status: 'pending' | 'uploaded' | 'rejected'
   scanStatus: string
   archivedAt: string | null
+  deletedAt: string | null
+  deletionReason: string | null
   sourceGeneration: { id: string; workspace: AssetWorkspace; mode: string; status: string; createdAt: string } | null
   relations: ApiAssetRelation[]
   referenced: boolean
@@ -470,6 +475,8 @@ export type ApiAssetLibraryItem = {
     download: { available: boolean; reason: string | null }
     archive: { available: boolean; reason: string | null }
     restore: { available: boolean; reason: string | null }
+    delete: { available: boolean; reason: string | null }
+    recover: { available: boolean; reason: string | null }
     reuse: Record<AssetWorkspace, { available: boolean; reason: string | null }>
   }
   createdAt: string
@@ -512,8 +519,20 @@ export type AssetLibraryQuery = {
   mediaType?: AssetMediaType | null
   workspace?: AssetWorkspace | null
   archived?: 'active' | 'archived' | 'all' | null
+  lifecycle?: 'active' | 'archived' | 'deleted' | 'all' | null
   dateFrom?: string | null
   dateTo?: string | null
+}
+
+export type AdminMediaAssetQuery = AssetLibraryQuery & {
+  ownerHandle?: string | null
+  status?: 'pending' | 'uploaded' | 'rejected' | null
+  sort?: 'created_desc' | 'created_asc' | 'updated_desc' | 'name_asc' | null
+}
+
+export type ApiAdminMediaAsset = ApiAssetLibraryItem & {
+  owner: { id: string; handle: string }
+  portfolio: ApiPortfolioAsset[]
 }
 
 export type CreateMediaUploadRequest = {

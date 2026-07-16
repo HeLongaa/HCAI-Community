@@ -26,6 +26,7 @@ const generationMatches = (generation, asset, actor) => {
 export const evaluateCreativeDeliveryAsset = ({ asset, generation, actor, target }) => {
   if (!asset) return { eligible: false, code: 'ASSET_NOT_FOUND' }
   if (!ownerMatches(asset, actor)) return { eligible: false, code: 'ASSET_OWNER_MISMATCH' }
+  if (asset.deletedAt) return { eligible: false, code: 'ASSET_DELETED' }
   if (asset.archivedAt) return { eligible: false, code: 'ASSET_ARCHIVED' }
   if (asset.status !== 'uploaded') return { eligible: false, code: 'ASSET_NOT_UPLOADED' }
   if (asObject(asset.metadata).security?.scanStatus !== 'clean') return { eligible: false, code: 'ASSET_SCAN_NOT_CLEAN' }
@@ -57,6 +58,7 @@ export const buildCreativeAssetEvidence = (asset, generation, capturedAt = new D
     assetStatus: String(asset.status),
     scanStatus: String(asObject(asset.metadata).security?.scanStatus ?? ''),
     archived: Boolean(asset.archivedAt),
+    deleted: Boolean(asset.deletedAt),
     capturedAt: capturedAt instanceof Date ? capturedAt.toISOString() : String(capturedAt),
   },
 })

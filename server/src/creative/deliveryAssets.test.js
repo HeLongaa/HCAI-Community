@@ -10,7 +10,7 @@ import {
 const actor = { id: 'user-1', handle: 'maker' }
 const asset = {
   id: 'asset-1', ownerId: 'user-1', fileName: 'final.png', contentType: 'image/png',
-  purpose: 'submission_asset', status: 'uploaded', archivedAt: null,
+  purpose: 'submission_asset', status: 'uploaded', archivedAt: null, deletedAt: null,
   metadata: { security: { scanStatus: 'clean', internalFinding: 'redact-me' } },
 }
 const generation = {
@@ -21,6 +21,7 @@ const generation = {
 test('creative delivery eligibility requires ownership, clean active media, purpose, and completed generation evidence', () => {
   assert.deepEqual(evaluateCreativeDeliveryAsset({ asset, generation, actor, target: 'task_submission' }), { eligible: true, code: null })
   assert.equal(evaluateCreativeDeliveryAsset({ asset: { ...asset, archivedAt: new Date() }, generation, actor, target: 'task_submission' }).code, 'ASSET_ARCHIVED')
+  assert.equal(evaluateCreativeDeliveryAsset({ asset: { ...asset, deletedAt: new Date() }, generation, actor, target: 'task_submission' }).code, 'ASSET_DELETED')
   assert.equal(evaluateCreativeDeliveryAsset({ asset: { ...asset, ownerId: 'other' }, generation, actor, target: 'task_submission' }).code, 'ASSET_OWNER_MISMATCH')
   assert.equal(evaluateCreativeDeliveryAsset({ asset, generation: null, actor, target: 'task_submission' }).code, 'ASSET_GENERATION_EVIDENCE_MISSING')
 })
@@ -30,7 +31,7 @@ test('creative delivery evidence is immutable-shaped and excludes storage and pr
   assert.deepEqual(evidence, {
     assetId: 'asset-1', fileName: 'final.png', contentType: 'image/png', purpose: 'submission_asset',
     sourceGeneration: { id: 'generation-1', workspace: 'image', mode: 'text_to_image', status: 'completed' },
-    governance: { assetStatus: 'uploaded', scanStatus: 'clean', archived: false, capturedAt: '2026-07-14T00:00:00.000Z' },
+    governance: { assetStatus: 'uploaded', scanStatus: 'clean', archived: false, deleted: false, capturedAt: '2026-07-14T00:00:00.000Z' },
   })
   assert.equal('metadata' in evidence, false)
 })

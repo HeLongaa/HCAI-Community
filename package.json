@@ -55,6 +55,7 @@
     "test:feature-flag-rollout": "node scripts/verify-feature-flag-rollout.mjs && npm --prefix server run db:generate && node --test server/src/configResources/configResourceRuntime.test.js server/src/modules/configResources/routes.test.js",
     "test:oauth-hardening": "node scripts/verify-oauth-hardening.mjs && npm --prefix server run db:generate && node --test server/src/auth/oauth.test.js server/src/modules/auth/routes.test.js server/src/repositories/prismaOAuth.integration.test.js",
     "test:oauth-hardening:integration": "npm --prefix server run db:generate && node --test server/src/repositories/prismaOAuth.integration.test.js",
+    "test:media-lifecycle:integration": "npm --prefix server run db:generate && node --test server/src/repositories/prismaMediaLifecycle.integration.test.js",
     "test:audit-integrity": "node scripts/verify-audit-integrity.mjs && npm --prefix server run db:generate && node --test server/src/audit/auditIntegrity.test.js server/src/modules/admin/routes.test.js",
     "test:audit-integrity:integration": "npm --prefix server run db:generate && node --test server/src/repositories/prismaAuditIntegrity.integration.test.js",
     "test:sim": "node scripts/simulate-features.mjs && node scripts/verify-api-contracts.mjs",

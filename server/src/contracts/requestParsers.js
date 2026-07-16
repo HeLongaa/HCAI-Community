@@ -304,6 +304,7 @@ export const parseAssetLibraryQuery = (query) => {
   const mediaType = optionalText(query, 'mediaType', null)
   const workspace = optionalText(query, 'workspace', null)
   const archived = optionalText(query, 'archived', 'active')
+  const lifecycle = optionalText(query, 'lifecycle', null) ?? (archived === 'archived' ? 'archived' : archived === 'all' ? 'all' : 'active')
   if (purpose && !Object.hasOwn(mediaPurposePolicies, purpose)) {
     throw validationFailed(`purpose must be one of: ${Object.keys(mediaPurposePolicies).join(', ')}`)
   }
@@ -316,6 +317,9 @@ export const parseAssetLibraryQuery = (query) => {
   if (!['active', 'archived', 'all'].includes(archived)) {
     throw validationFailed('archived must be one of: active, archived, all')
   }
+  if (!['active', 'archived', 'deleted', 'all'].includes(lifecycle)) {
+    throw validationFailed('lifecycle must be one of: active, archived, deleted, all')
+  }
   const dateFrom = query.dateFrom ? new Date(query.dateFrom) : null
   const dateTo = query.dateTo ? new Date(query.dateTo) : null
   if ((dateFrom && Number.isNaN(dateFrom.getTime())) || (dateTo && Number.isNaN(dateTo.getTime()))) throw validationFailed('dateFrom and dateTo must be ISO timestamps')
@@ -326,10 +330,28 @@ export const parseAssetLibraryQuery = (query) => {
     mediaType,
     workspace,
     archived,
+    lifecycle,
     search: optionalText(query, 'search', null),
     dateFrom: dateFrom?.toISOString() ?? null,
     dateTo: dateTo?.toISOString() ?? null,
   }
+}
+
+export const parseMediaAssetDeleteRequest = (body) => ({
+  reason: optionalText(body, 'reason', 'user_requested'),
+})
+
+export const parseAdminMediaAssetQuery = (query) => {
+  const base = parseAssetLibraryQuery({ ...query, lifecycle: query.lifecycle ?? 'all', archived: 'all' })
+  const sort = optionalText(query, 'sort', 'created_desc')
+  const status = optionalText(query, 'status', null)
+  if (!['created_desc', 'created_asc', 'updated_desc', 'name_asc'].includes(sort)) {
+    throw validationFailed('sort must be one of: created_desc, created_asc, updated_desc, name_asc')
+  }
+  if (status && !['pending', 'uploaded', 'rejected'].includes(status)) {
+    throw validationFailed('status must be one of: pending, uploaded, rejected')
+  }
+  return { ...base, ownerHandle: optionalText(query, 'ownerHandle', null), status, sort }
 }
 
 export const parseCreateAssetRelationRequest = (body) => ({
