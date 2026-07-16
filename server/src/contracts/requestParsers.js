@@ -486,6 +486,31 @@ export const parseCreativeGenerationCancelRequest = (body) =>
 export const parseAdminCreativeGenerationMutationRequest = (body) =>
   parseGenerationMutationReason(body, 'admin_requested')
 
+const parseAdminCreativeGenerationBulkBase = (body) => {
+  const targetIds = requireStringArray(body, 'targetIds')
+  if (targetIds.some((targetId) => !safeResourceIdPattern.test(targetId))) {
+    throw validationFailed('targetIds must contain safe generation identifiers')
+  }
+  return {
+    action: requireOneOf(body, 'action', ['cancel', 'authorize_retry']),
+    targetIds,
+  }
+}
+
+export const parseAdminCreativeGenerationBulkPreviewRequest = (body) =>
+  parseAdminCreativeGenerationBulkBase(body)
+
+export const parseAdminCreativeGenerationBulkActionRequest = (body) => {
+  const targetHash = requireText(body, 'targetHash')
+  if (!/^[a-f0-9]{64}$/.test(targetHash)) throw validationFailed('targetHash must be a SHA-256 digest')
+  return {
+    ...parseAdminCreativeGenerationBulkBase(body),
+    ...parseGenerationMutationReason(body, 'operator_requested'),
+    targetHash,
+    confirmationText: requireText(body, 'confirmationText'),
+  }
+}
+
 export const parseCreativeGenerationRetryRequest = (body) => ({
   ...parseGenerationMutationReason(body, 'user_retry'),
   authorizationMutationId: optionalText(body, 'authorizationMutationId', null),

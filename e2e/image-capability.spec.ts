@@ -12,16 +12,16 @@ test('Image Studio consumes the capability contract and sends only allowed param
   await expect(page.getByRole('heading', { name: 'Image Studio' })).toBeVisible()
   await expect(page.getByTestId('creative-cost-image')).toContainText('1 credits estimated')
   await expect(page.getByTestId('creative-cost-image')).toContainText('Provider cost: unavailable')
-  await expect(page.getByRole('button', { name: 'Text to Image' })).toBeEnabled()
-  await expect(page.getByRole('button', { name: 'Image to Image' })).toBeEnabled()
-  await expect(page.getByRole('button', { name: 'Image Edit' })).toBeEnabled()
-  await expect(page.getByRole('button', { name: 'Image Variation' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Text to Image', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Image to Image', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Image Edit', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Image Variation', exact: true })).toBeEnabled()
   await expect(page.getByText(/image-capability-v1/)).toBeVisible()
 
-  await page.getByRole('button', { name: 'Image to Image' }).click()
+  await page.getByRole('button', { name: 'Image to Image', exact: true }).click()
   await expect(page.getByText('Source image')).toBeVisible()
   await expect(page.getByText(/Change strength 70%/)).toBeVisible()
-  await page.getByRole('button', { name: 'Text to Image' }).click()
+  await page.getByRole('button', { name: 'Text to Image', exact: true }).click()
 
   const generationResponse = page.waitForResponse((response) =>
     response.url().endsWith('/api/creative/generations') && response.request().method() === 'POST',
@@ -194,7 +194,7 @@ test('Image Studio renders active lifecycle controls and refresh-safe retry degr
   await expect(page.getByText(/Exact retry is unavailable after refresh/)).toBeVisible()
   await page.locator('.image-history-row').filter({ hasText: 'Reusable lifecycle image' }).click()
   await page.getByRole('button', { name: 'Use result as source' }).click()
-  await expect(page.getByRole('button', { name: 'Image to Image' })).toHaveClass(/active/)
+  await expect(page.getByRole('button', { name: 'Image to Image', exact: true })).toHaveClass(/active/)
   await expect(page.getByLabel('Source image')).toHaveValue('asset-ui-reusable')
   await expect(page.getByLabel('Source image').locator('option[value="asset-ui-audio"]')).toHaveCount(0)
 

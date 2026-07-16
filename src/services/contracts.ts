@@ -1538,6 +1538,52 @@ export type AdminCreativeGenerationHistoryPage = {
   nextCursor: string | null
 }
 
+export type AdminCreativeGenerationBulkAction = 'cancel' | 'authorize_retry'
+
+export type AdminCreativeGenerationBulkPreview = {
+  action: AdminCreativeGenerationBulkAction
+  targetCount: number
+  targetHash: string
+  requiredConfirmationText: string
+  eligibleCount: number
+  blockedCount: number
+  missingCount: number
+  targets: Array<{
+    id: string
+    status: string | null
+    eligible: boolean
+    reasonCode: string
+  }>
+}
+
+export type AdminCreativeGenerationBulkResult = {
+  action: AdminCreativeGenerationBulkAction
+  targetCount: number
+  targetHash: string
+  counts: Record<'succeeded' | 'duplicate' | 'blocked' | 'missing', number>
+  results: Array<{
+    id: string
+    outcome: 'succeeded' | 'duplicate' | 'blocked' | 'missing'
+    code: string
+  }>
+}
+
+export type AdminCreativeGenerationExecution = {
+  id: string
+  generationId: string
+  status: 'claimed' | 'succeeded' | 'failed' | 'recovery_required'
+  workspace: CreativeWorkspace | string
+  mode: string
+  actorId: string
+  actorHandle: string | null
+  attempt: number
+  errorCode: string | null
+  leaseExpiresAt: string
+  completedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export type ApiCreativeCredit = {
   ledgerId: string
   generationId: string

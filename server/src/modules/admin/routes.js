@@ -9,6 +9,8 @@ import {
   parseAdminAccountingRepairRequest,
   parseAdminCreativeGenerationListQuery,
   parseAdminCreativeGenerationExportQuery,
+  parseAdminCreativeGenerationBulkActionRequest,
+  parseAdminCreativeGenerationBulkPreviewRequest,
   parseAdminCreativeExecutionListQuery,
   parseAdminCreativeExecutionRecoveryRequest,
   parseAdminCreativeGenerationMutationRequest,
@@ -49,6 +51,11 @@ import {
   cancelCreativeGeneration,
   createAdminRetryAuthorization,
 } from '../../creative/generationMutationService.js'
+import {
+  executeCreativeGenerationBulkAction,
+  generationBulkActionDefinitions,
+  previewCreativeGenerationBulkAction,
+} from '../../creative/generationBulkActionService.js'
 import {
   requestManualProviderReplay,
   resolveManualProviderReplayReview,
@@ -1026,6 +1033,42 @@ export const registerAdminRoutes = (router, options = {}) => {
       routeRepositories.creativeProviderCosts,
     )
     text(response, 200, creativeGenerationExport(items, query), query.format === 'csv' ? 'text/csv; charset=utf-8' : 'application/json; charset=utf-8')
+  })
+
+  router.add('POST', '/api/admin/creative/generations/bulk-preview', async (request, response, context) => {
+    const payload = parseAdminCreativeGenerationBulkPreviewRequest((await readJsonBody(request)) ?? {})
+    const actor = requirePermission(context, generationBulkActionDefinitions[payload.action].permission)
+    const preview = await previewCreativeGenerationBulkAction({
+      repositories: routeRepositories,
+      action: payload.action,
+      targetIds: payload.targetIds,
+    })
+    await routeRepositories.audit?.recordAttempt?.({
+      actor,
+      action: 'admin.creative.generation_bulk_preview',
+      resourceType: 'creative_generation_bulk_action',
+      resourceId: payload.action,
+      metadata: {
+        action: payload.action,
+        targetCount: preview.targetCount,
+        targetHash: preview.targetHash,
+        eligibleCount: preview.eligibleCount,
+        blockedCount: preview.blockedCount,
+        missingCount: preview.missingCount,
+      },
+    })
+    ok(response, preview)
+  })
+
+  router.add('POST', '/api/admin/creative/generations/bulk-actions', async (request, response, context) => {
+    const payload = parseAdminCreativeGenerationBulkActionRequest((await readJsonBody(request)) ?? {})
+    const actor = requirePermission(context, generationBulkActionDefinitions[payload.action].permission)
+    ok(response, await executeCreativeGenerationBulkAction({
+      repositories: routeRepositories,
+      providerMutationAdapters,
+      actor,
+      request: payload,
+    }))
   })
 
   router.add('GET', '/api/admin/creative/executions', async (_request, response, context) => {

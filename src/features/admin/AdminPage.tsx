@@ -27,6 +27,10 @@ import type {
   AdminAccountingUnit,
   AdminCreativeGenerationHistoryQuery,
   AdminCreativeGenerationSummary,
+  AdminCreativeGenerationBulkAction,
+  AdminCreativeGenerationBulkPreview,
+  AdminCreativeGenerationBulkResult,
+  AdminCreativeGenerationExecution,
   AdminOperationsMetricsDto,
   AdminProviderControlBundle,
   AdminProviderControlRecoveryTarget,
@@ -500,6 +504,16 @@ export function AdminPage({
   const [generationMutationNote, setGenerationMutationNote] = useState('')
   const [generationReplayStatus, setGenerationReplayStatus] = useState<'queued' | 'running' | 'completed' | 'failed' | 'cancelled'>('failed')
   const [runningGenerationAction, setRunningGenerationAction] = useState<'cancel' | 'retry' | 'manual_replay' | null>(null)
+  const [selectedGenerationIds, setSelectedGenerationIds] = useState<string[]>([])
+  const [generationBulkAction, setGenerationBulkAction] = useState<AdminCreativeGenerationBulkAction>('cancel')
+  const [generationBulkPreview, setGenerationBulkPreview] = useState<AdminCreativeGenerationBulkPreview | null>(null)
+  const [generationBulkConfirmation, setGenerationBulkConfirmation] = useState('')
+  const [generationBulkResult, setGenerationBulkResult] = useState<AdminCreativeGenerationBulkResult | null>(null)
+  const [runningGenerationBulkAction, setRunningGenerationBulkAction] = useState(false)
+  const [generationExecutions, setGenerationExecutions] = useState<AdminCreativeGenerationExecution[]>([])
+  const [recoveringGenerationExecutionId, setRecoveringGenerationExecutionId] = useState<string | null>(null)
+  const [generationRecoveryReason, setGenerationRecoveryReason] = useState('operator_verified_no_result')
+  const [generationRecoveryError, setGenerationRecoveryError] = useState('CREATIVE_GENERATION_EXECUTION_ABANDONED')
   const [adjustDelta, setAdjustDelta] = useState('100')
   const [adjustReason, setAdjustReason] = useState('')
   const [adjustReasonCode, setAdjustReasonCode] = useState('')
@@ -755,6 +769,13 @@ export function AdminPage({
     },
     getErrorMessage: () => (isZh ? '无法读取生成历史，请确认账号具备审计读取权限。' : 'Could not load generation history. Confirm audit read access.'),
     deps: [canReadAudit, isZh, generationUserHandle, generationWorkspace, generationProviderId, generationStatusFilter, generationReviewFilter, generationMediaAssetId, generationDateFrom, generationDateTo, generationSort, generationDirection],
+    logLabel: 'admin-service',
+  })
+  const generationExecutionStatus = useAsyncResource<AdminCreativeGenerationExecution[]>({
+    load: () => canReadAudit ? adminService.creativeGenerationExecutions() : Promise.resolve([]),
+    onSuccess: setGenerationExecutions,
+    getErrorMessage: () => (isZh ? '无法读取生成恢复队列。' : 'Could not load generation recovery queue.'),
+    deps: [canReadAudit, isZh],
     logLabel: 'admin-service',
   })
   const providerControlStatus = useAsyncResource<AdminProviderControlBundle>({
@@ -1446,8 +1467,81 @@ export function AdminPage({
     setGenerationNextCursor(null)
     setSelectedGenerationId(null)
     setSelectedGeneration(null)
+    setSelectedGenerationIds([])
+    setGenerationBulkPreview(null)
+    setGenerationBulkResult(null)
+    setGenerationBulkConfirmation('')
     setGenerationDetailError(null)
     simulateAction(isZh ? '已清除生成历史筛选。' : 'Cleared generation history filters.')
+  }
+
+  const toggleGenerationSelection = (generationId: string) => {
+    setSelectedGenerationIds((current) => current.includes(generationId)
+      ? current.filter((id) => id !== generationId)
+      : current.length < 50 ? [...current, generationId] : current)
+    setGenerationBulkPreview(null)
+    setGenerationBulkResult(null)
+    setGenerationBulkConfirmation('')
+  }
+
+  const previewGenerationBulkAction = async () => {
+    if (!selectedGenerationIds.length || runningGenerationBulkAction) return
+    setRunningGenerationBulkAction(true)
+    setGenerationBulkResult(null)
+    setGenerationBulkConfirmation('')
+    try {
+      const preview = await adminService.previewCreativeGenerationBulkAction(generationBulkAction, selectedGenerationIds)
+      setGenerationBulkPreview(preview)
+      simulateAction(textFor(t, 'Bulk action preview is ready.', '批量操作预检已完成。'))
+    } catch (error) {
+      console.info('[admin-service]', error)
+      setGenerationBulkPreview(null)
+      simulateAction(error instanceof Error ? error.message : textFor(t, 'Bulk preview failed.', '批量预检失败。'))
+    } finally {
+      setRunningGenerationBulkAction(false)
+    }
+  }
+
+  const executeGenerationBulkAction = async () => {
+    if (!generationBulkPreview || runningGenerationBulkAction) return
+    setRunningGenerationBulkAction(true)
+    try {
+      const result = await adminService.executeCreativeGenerationBulkAction({
+        action: generationBulkPreview.action,
+        targetIds: selectedGenerationIds,
+        targetHash: generationBulkPreview.targetHash,
+        confirmationText: generationBulkConfirmation,
+        idempotencyKey: `admin-generation-bulk:${generationBulkPreview.action}:${Date.now()}`,
+        reasonCode: generationMutationReason || 'operator_requested',
+        note: generationMutationNote,
+      })
+      setGenerationBulkResult(result)
+      setGenerationBulkPreview(null)
+      setGenerationBulkConfirmation('')
+      setSelectedGenerationIds([])
+      await generationHistoryStatus.refresh()
+      simulateAction(textFor(t, 'Bulk generation action completed.', '批量生成操作已完成。'))
+    } catch (error) {
+      console.info('[admin-service]', error)
+      simulateAction(error instanceof Error ? error.message : textFor(t, 'Bulk action failed.', '批量操作失败。'))
+    } finally {
+      setRunningGenerationBulkAction(false)
+    }
+  }
+
+  const recoverGenerationExecution = async (executionId: string) => {
+    if (!canRequestGenerationRetries || recoveringGenerationExecutionId) return
+    setRecoveringGenerationExecutionId(executionId)
+    try {
+      await adminService.recoverCreativeGenerationExecution(executionId, generationRecoveryReason, generationRecoveryError)
+      await generationExecutionStatus.refresh()
+      simulateAction(textFor(t, 'Generation execution marked failed.', '生成执行已标记失败。'))
+    } catch (error) {
+      console.info('[admin-service]', error)
+      simulateAction(error instanceof Error ? error.message : textFor(t, 'Execution recovery failed.', '执行恢复失败。'))
+    } finally {
+      setRecoveringGenerationExecutionId(null)
+    }
   }
 
   const exportGenerations = async () => {
@@ -3571,7 +3665,7 @@ export function AdminPage({
           </div>
         )}
       </section>
-      <section className="panel" data-testid="admin-generation-history">
+      <section className="panel admin-generation-operations-panel" data-testid="admin-generation-history">
         <SectionHeader
           eyebrow={textFor(t, 'Creative operations', '创作运营')}
           title={textFor(t, 'Generation history', '生成历史')}
@@ -3716,6 +3810,91 @@ export function AdminPage({
             </article>
           ))}
         </div>
+        <div className="admin-detail-panel" data-testid="admin-generation-bulk-actions">
+          <div>
+            <strong>{textFor(t, 'Batch disposition', '批量处置')}</strong>
+            <span>{selectedGenerationIds.length}/50 {textFor(t, 'selected', '已选择')}</span>
+          </div>
+          <div className="permission-summary generation-mutation-controls">
+            <label>
+              <span>{textFor(t, 'Action', '操作')}</span>
+              <select
+                aria-label={textFor(t, 'Generation bulk action', '生成批量操作')}
+                value={generationBulkAction}
+                onChange={(event) => {
+                  setGenerationBulkAction(event.target.value as AdminCreativeGenerationBulkAction)
+                  setGenerationBulkPreview(null)
+                  setGenerationBulkResult(null)
+                  setGenerationBulkConfirmation('')
+                }}
+                disabled={runningGenerationBulkAction}
+              >
+                <option value="cancel">{textFor(t, 'Cancel eligible', '取消可处置任务')}</option>
+                <option value="authorize_retry">{textFor(t, 'Authorize eligible retries', '授权可重试任务')}</option>
+              </select>
+            </label>
+            <label>
+              <span>{textFor(t, 'Reason code', '原因代码')}</span>
+              <input
+                aria-label={textFor(t, 'Generation bulk reason code', '生成批量原因代码')}
+                value={generationMutationReason}
+                onChange={(event) => setGenerationMutationReason(event.target.value)}
+                disabled={runningGenerationBulkAction}
+              />
+            </label>
+            <label>
+              <span>{textFor(t, 'Operator note', '操作说明')}</span>
+              <input
+                aria-label={textFor(t, 'Generation bulk operator note', '生成批量操作说明')}
+                value={generationMutationNote}
+                onChange={(event) => setGenerationMutationNote(event.target.value)}
+                disabled={runningGenerationBulkAction}
+              />
+            </label>
+            <button
+              className="ghost-button"
+              type="button"
+              onClick={() => void previewGenerationBulkAction()}
+              disabled={!selectedGenerationIds.length || runningGenerationBulkAction || (generationBulkAction === 'cancel' ? !canCancelGenerations : !canRequestGenerationRetries)}
+            >
+              {textFor(t, 'Preview', '预检')}
+            </button>
+            {generationBulkPreview && (
+              <>
+                <span data-testid="generation-bulk-preview-counts">
+                  {textFor(t, 'Eligible', '可执行')} {generationBulkPreview.eligibleCount}
+                  {' · '}{textFor(t, 'Blocked', '已阻止')} {generationBulkPreview.blockedCount}
+                  {' · '}{textFor(t, 'Missing', '不存在')} {generationBulkPreview.missingCount}
+                </span>
+                <label>
+                  <span>{generationBulkPreview.requiredConfirmationText}</span>
+                  <input
+                    aria-label={textFor(t, 'Generation bulk confirmation', '生成批量确认短语')}
+                    value={generationBulkConfirmation}
+                    onChange={(event) => setGenerationBulkConfirmation(event.target.value)}
+                    disabled={runningGenerationBulkAction}
+                  />
+                </label>
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={() => void executeGenerationBulkAction()}
+                  disabled={runningGenerationBulkAction || generationBulkConfirmation !== generationBulkPreview.requiredConfirmationText}
+                >
+                  {runningGenerationBulkAction ? textFor(t, 'Executing', '执行中') : textFor(t, 'Execute', '执行')}
+                </button>
+              </>
+            )}
+          </div>
+          {generationBulkResult && (
+            <p data-testid="generation-bulk-result">
+              {textFor(t, 'Succeeded', '成功')} {generationBulkResult.counts.succeeded}
+              {' · '}{textFor(t, 'Duplicate', '重复')} {generationBulkResult.counts.duplicate}
+              {' · '}{textFor(t, 'Blocked', '已阻止')} {generationBulkResult.counts.blocked}
+              {' · '}{textFor(t, 'Missing', '不存在')} {generationBulkResult.counts.missing}
+            </p>
+          )}
+        </div>
         <div className="admin-table">
           {generationHistoryStatus.loading && (
             <div className="empty-state">
@@ -3748,6 +3927,15 @@ export function AdminPage({
             const isSelected = selectedGenerationId === generation.id
             return (
               <div className={isSelected ? 'admin-row generation-row deep-linked' : 'admin-row generation-row'} key={generation.id}>
+                <label title={textFor(t, 'Select generation', '选择生成任务')}>
+                  <input
+                    type="checkbox"
+                    aria-label={`${textFor(t, 'Select generation', '选择生成任务')} ${generation.id}`}
+                    checked={selectedGenerationIds.includes(generation.id)}
+                    onChange={() => toggleGenerationSelection(generation.id)}
+                    disabled={runningGenerationBulkAction}
+                  />
+                </label>
                 <StatusBadge status={formatGenerationStatus(generation.status)} t={t} />
                 <strong>{title}</strong>
                 <span>
@@ -4007,6 +4195,48 @@ export function AdminPage({
             )}
           </div>
         )}
+        <div className="admin-detail-panel" data-testid="admin-generation-recovery">
+          <div>
+            <strong>{textFor(t, 'Execution recovery', '执行恢复')}</strong>
+            <button className="ghost-button" type="button" onClick={() => void generationExecutionStatus.refresh()} disabled={!canReadAudit || generationExecutionStatus.loading}>
+              {generationExecutionStatus.loading ? textFor(t, 'Loading', '加载中') : textFor(t, 'Refresh', '刷新')}
+            </button>
+          </div>
+          <div className="permission-summary generation-mutation-controls">
+            <label>
+              <span>{textFor(t, 'Reason code', '原因代码')}</span>
+              <input aria-label={textFor(t, 'Execution recovery reason', '执行恢复原因')} value={generationRecoveryReason} onChange={(event) => setGenerationRecoveryReason(event.target.value)} disabled={!canRequestGenerationRetries || Boolean(recoveringGenerationExecutionId)} />
+            </label>
+            <label>
+              <span>{textFor(t, 'Error code', '错误代码')}</span>
+              <input aria-label={textFor(t, 'Execution recovery error', '执行恢复错误')} value={generationRecoveryError} onChange={(event) => setGenerationRecoveryError(event.target.value)} disabled={!canRequestGenerationRetries || Boolean(recoveringGenerationExecutionId)} />
+            </label>
+          </div>
+          {generationExecutionStatus.error && <p>{generationExecutionStatus.error}</p>}
+          {!generationExecutionStatus.loading && !generationExecutionStatus.error && generationExecutions.length === 0 && (
+            <p>{textFor(t, 'No executions require recovery.', '暂无需要恢复的执行记录。')}</p>
+          )}
+          <div className="admin-table">
+            {generationExecutions.map((execution) => (
+              <div className="admin-row" key={execution.id}>
+                <StatusBadge status="Recovery required" t={t} />
+                <strong>{execution.generationId}</strong>
+                <span>{execution.workspace}/{execution.mode} · @{execution.actorHandle ?? execution.actorId}</span>
+                <small>{textFor(t, 'Lease expired', '租约过期')} {formatAuditTime(execution.leaseExpiresAt)} · #{execution.attempt}</small>
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={() => void recoverGenerationExecution(execution.id)}
+                  disabled={!canRequestGenerationRetries || Boolean(recoveringGenerationExecutionId)}
+                  title={textFor(t, 'Mark execution failed after evidence review', '证据复核后标记执行失败')}
+                >
+                  <RotateCcw size={16} aria-hidden="true" />
+                  {recoveringGenerationExecutionId === execution.id ? textFor(t, 'Recovering', '恢复中') : textFor(t, 'Resolve', '处置')}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
       <section className="panel">
         <SectionHeader eyebrow={textFor(t, 'Queue', '队列')} title={textFor(t, 'Review and moderation', '审核与治理')} />

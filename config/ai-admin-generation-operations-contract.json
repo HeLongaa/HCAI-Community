@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "taskId": "AI-ADMIN-01",
+  "scope": "personal_accounts_only",
+  "maxBulkTargets": 50,
+  "bulkActions": ["cancel", "authorize_retry"],
+  "bulkManualProviderReplay": false,
+  "requiredRoutes": [
+    "GET /api/admin/creative/generations",
+    "GET /api/admin/creative/generations/summary",
+    "GET /api/admin/creative/generations/export",
+    "POST /api/admin/creative/generations/bulk-preview",
+    "POST /api/admin/creative/generations/bulk-actions",
+    "GET /api/admin/creative/executions",
+    "POST /api/admin/creative/executions/:id/recover"
+  ],
+  "permissions": {
+    "read": "admin:audit:read",
+    "export": "admin:audit:export",
+    "cancel": "admin:creative:cancel",
+    "authorizeRetry": "admin:creative:retry",
+    "recover": "admin:creative:retry"
+  },
+  "controls": [
+    "preview_before_execute",
+    "stable_target_hash",
+    "exact_confirmation_phrase",
+    "required_root_idempotency_key",
+    "per_target_derived_idempotency_key",
+    "execution_time_state_recheck",
+    "bounded_partial_result",
+    "aggregate_safe_audit_metadata"
+  ],
+  "evidence": {
+    "routes": "server/src/modules/admin/routes.js",
+    "service": "server/src/creative/generationBulkActionService.js",
+    "parsers": "server/src/contracts/requestParsers.js",
+    "ui": "src/features/admin/AdminPage.tsx",
+    "client": "src/services/adminService.ts",
+    "openapi": "server/src/docs/openapi.js",
+    "tests": "server/src/creative/generationBulkActionService.test.js",
+    "routeTests": "server/src/modules/admin/routes.test.js",
+    "e2e": "e2e/admin-generation-runtime.spec.ts",
+    "document": "docs/AI_ADMIN_GENERATION_OPERATIONS.md"
+  }
+}

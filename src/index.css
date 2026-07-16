@@ -179,6 +179,8 @@
 .asset-upload-button input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .admin-media-lifecycle { display: grid; gap: 10px; width: 100%; min-width: 0; max-width: 100%; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
 .panel.admin-media-governance-panel { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 0; overflow: visible; }
+.panel.admin-generation-operations-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; width: 100%; max-width: 100%; height: auto; min-height: 0; overflow: visible; }
+.admin-generation-operations-panel input, .admin-generation-operations-panel select { min-width: 0; max-width: 100%; }
 .admin-tabs { width: 100%; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
 .panel.model-control-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; width: 100%; max-width: 100%; height: auto; min-height: 0; overflow: visible; }
 .model-control-panel > .chip-row { flex-wrap: wrap; max-width: 100%; overflow: visible; }
@@ -4609,8 +4611,15 @@ button.video-history-row.active {
 }
 
 .admin-row.generation-row {
-  grid-template-columns: 120px minmax(180px, 0.85fr) minmax(180px, 1fr) minmax(240px, 1.35fr);
+  grid-template-columns: 28px 120px minmax(180px, 0.85fr) minmax(180px, 1fr) minmax(240px, 1.35fr);
   align-items: start;
+}
+
+.admin-row.generation-row > label:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
 }
 
 .admin-row.generation-row .button-row {
