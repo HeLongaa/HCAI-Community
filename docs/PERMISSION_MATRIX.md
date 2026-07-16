@@ -24,6 +24,9 @@ The executable fallback role defaults live in `server/src/auth/permissions.js`. 
 | `admin:audit:read` | Read privileged audit events and operations history | `GET /api/admin/audit`, `GET /api/admin/audit/:id`, `GET /api/admin/audit/export`, `GET /api/admin/creative/generations`, `GET /api/admin/creative/generations/:id` | Admin page audit API load, deep-link lookup, JSON export, and creative generation history |
 | `admin:queue:read` | Read admin review queues | `GET /api/admin/reviews`, `GET /api/media/review-queue` | Admin review queue and media governance API loads |
 | `admin:queue:review` | Perform admin review actions | `POST /api/admin/reviews/:id/actions`, `POST /api/media/uploads/:id/scan` | Admin queue and media approve/reject buttons |
+| `admin:media:read` | Read safe media administration projections | `GET /api/admin/media/assets`, detail | Admin media lifecycle list and detail workbench |
+| `admin:media:manage` | Review scans and manage media lifecycle state | Admin media scan, retry, single and bulk lifecycle routes | Admin media mutation controls |
+| `admin:media:export` | Export bounded safe media evidence | `GET /api/admin/media/assets/export` | Admin media JSON/CSV export |
 | `admin:permissions:manage` | Edit role permission grants and point policy | `PUT /api/admin/roles/:role/permissions`, `PUT /api/admin/points/policy`, `POST /api/admin/points/policy/rollback` | Admin permission matrix edit/save controls; point policy save/rollback |
 | `admin:releases:read` | Inspect release changes and deployment evidence | `GET /api/admin/releases`, `GET /api/admin/releases/:id` | Release control panel |
 | `admin:releases:manage` | Request environment promotion, configuration release, or SecretRef rotation | `POST /api/admin/releases` | Release request form |
@@ -188,9 +191,13 @@ Notification targets are location hints, not authorization grants. Generation, a
 | `DELETE /api/media/assets/:id` | Required | Owner only; soft delete revokes download/reuse and withdraws published portfolio records | Yes |
 | `POST /api/media/assets/:id/recover` | Required | Owner only; recovery never republishes portfolio records | Yes |
 | `POST /api/media/assets/:id/relations` | Required | Owner of both assets; governance and cycle checks apply | Yes |
-| `GET /api/admin/media/assets` | Required | `admin:queue:read`; safe projection, filters, sorting, and cursor pagination | Yes |
-| `GET /api/admin/media/assets/:id` | Required | `admin:queue:read`; private storage fields excluded | Yes |
-| `POST /api/admin/media/assets/:id/:action` | Required | `admin:queue:review`; action is archive, restore, delete, or recover and is audited | Yes |
+| `GET /api/admin/media/assets` | Required | `admin:media:read`; safe projection, filters, sorting, and cursor pagination | Yes |
+| `GET /api/admin/media/assets/:id` | Required | `admin:media:read`; private storage fields excluded, scan history included | Yes |
+| `GET /api/admin/media/assets/export` | Required | `admin:media:export`; bounded safe JSON/CSV | Yes |
+| `POST /api/admin/media/assets/bulk-actions` | Required | `admin:media:manage`; 1-50 assets with per-item results | Yes |
+| `POST /api/admin/media/assets/:id/:action` | Required | `admin:media:manage`; action is archive, restore, delete, or recover and is audited | Yes |
+| `POST /api/admin/media/assets/:id/scan` | Required | `admin:media:manage`; clean or reject decision | Yes |
+| `POST /api/admin/media/assets/:id/scan-retry` | Required | `admin:media:manage`; bounded scanner retry | Yes |
 | `GET /api/admin/permissions` | Required | `admin:audit:read` | Yes |
 | `GET /api/admin/roles` | Required | `admin:audit:read` | Yes |
 | `PUT /api/admin/roles/:role/permissions` | Required | `admin:permissions:manage` | Yes |

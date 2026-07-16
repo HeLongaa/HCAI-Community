@@ -551,6 +551,9 @@ export function AdminPage({
   const canAdjustPoints = account.hasPermission('points:adjust')
   const canReadQueues = account.hasPermission('admin:queue:read')
   const canReviewQueues = account.hasPermission('admin:queue:review')
+  const canReadMedia = account.hasPermission('admin:media:read')
+  const canManageMedia = account.hasPermission('admin:media:manage')
+  const canExportMedia = account.hasPermission('admin:media:export')
   const canReadAudit = account.hasPermission('admin:audit:read')
   const canExportAudit = account.hasPermission('admin:audit:export')
   const canVerifyAudit = account.hasPermission('admin:audit:verify')
@@ -2520,7 +2523,7 @@ export function AdminPage({
             </>
           }
         />
-        <AdminMediaLifecyclePanel t={t} canRead={canReadQueues} canReview={canReviewQueues}/>
+        <AdminMediaLifecyclePanel t={t} canRead={canReadMedia} canReview={canManageMedia} canExport={canExportMedia}/>
         <div className="admin-detail-panel">
           <div>
             <strong>{textFor(t, 'Governance config', '治理配置')}</strong>

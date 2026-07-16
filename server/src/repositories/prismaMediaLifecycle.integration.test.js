@@ -16,7 +16,7 @@ test('Prisma media lifecycle atomically revokes access, withdraws visibility, re
   const handle = `${runId}-owner`
   const assetId = `${runId}-asset`
   const actor = { id: userId, handle, role: 'creator', permissions: [] }
-  const admin = { id: userId, handle, role: 'admin', permissions: ['admin:access', 'admin:queue:read', 'admin:queue:review'] }
+  const admin = { id: userId, handle, role: 'admin', permissions: ['admin:access', 'admin:media:read', 'admin:media:manage', 'admin:media:export'] }
 
   try {
     await repository.client.user.create({
@@ -56,6 +56,8 @@ test('Prisma media lifecycle atomically revokes access, withdraws visibility, re
     assert.equal(adminProjection.owner.handle, handle)
     assert.equal('storageKey' in adminProjection, false)
     assert.equal(adminProjection.portfolio[0].status, 'withdrawn')
+    assert.equal(await repository.client.permission.count({ where: { id: { in: ['admin:media:read', 'admin:media:manage', 'admin:media:export'] } } }), 3)
+    assert.equal(await repository.client.rolePermission.count({ where: { permissionId: { in: ['admin:media:read', 'admin:media:manage', 'admin:media:export'] } } }), 5)
 
     const recovered = await repository.media.setAdminAssetDeleted(assetId, false, admin)
     assert.equal(recovered.deletedAt, null)

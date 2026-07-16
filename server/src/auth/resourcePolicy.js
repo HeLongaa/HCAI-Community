@@ -19,7 +19,7 @@ export const resourcePolicyRegistry = Object.freeze([
   policy('post', ['authorId', 'authorHandle'], { publicRead: true, readPermission: 'post:moderate', writePermission: 'post:moderate' }),
   policy('comment', ['authorId', 'authorHandle'], { publicRead: true, readPermission: 'post:moderate', writePermission: 'post:moderate' }),
   policy('library_item', ['userId', 'ownerId', 'ownerHandle'], { readPermission: 'admin:access', writePermission: 'admin:access' }),
-  policy('media_asset', ['ownerId', 'ownerHandle'], { readPermission: 'admin:queue:read', writePermission: 'admin:queue:review', redact: ['storageKey', 'signedUrl', 'uploadUrl', 'downloadUrl', 'providerPayload'] }),
+  policy('media_asset', ['ownerId', 'ownerHandle'], { readPermission: 'admin:media:read', writePermission: 'admin:media:manage', redact: ['storageKey', 'signedUrl', 'uploadUrl', 'downloadUrl', 'providerPayload'] }),
   policy('creative_generation', ['actorId', 'actorHandle'], { readPermission: 'admin:audit:read', writePermission: 'admin:creative:cancel', redact: ['prompt', 'providerPayload', 'providerRequest', 'outputUrls'] }),
   policy('chat_conversation', ['ownerId', 'ownerHandle'], { redact: ['ciphertext', 'encryptionKeyId', 'encryptionIv', 'authenticationTag', 'prompt'] }),
   policy('chat_turn', ['ownerId', 'ownerHandle'], { redact: ['ciphertext', 'encryptionKeyId', 'encryptionIv', 'authenticationTag', 'prompt'] }),

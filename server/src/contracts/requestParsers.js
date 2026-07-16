@@ -354,6 +354,22 @@ export const parseAdminMediaAssetQuery = (query) => {
   return { ...base, ownerHandle: optionalText(query, 'ownerHandle', null), status, sort }
 }
 
+export const parseAdminMediaAssetExportQuery = (query) => {
+  const format = optionalText(query, 'format', 'json')
+  if (!['json', 'csv'].includes(format)) throw validationFailed('format must be one of: json, csv')
+  return { ...parseAdminMediaAssetQuery({ ...query, limit: query.limit ?? '100' }), format }
+}
+
+export const parseAdminMediaAssetBulkActionRequest = (body) => {
+  const ids = [...new Set(requireStringArray(body, 'ids').map((id) => id.trim()).filter(Boolean))]
+  if (!ids.length || ids.length > 50) throw validationFailed('ids must include 1-50 unique asset ids')
+  return {
+    ids,
+    action: requireOneOf(body, 'action', ['archive', 'restore', 'delete', 'recover']),
+    reason: optionalText(body, 'reason', 'admin_bulk_action'),
+  }
+}
+
 export const parseCreateAssetRelationRequest = (body) => ({
   targetAssetId: requireText(body, 'targetAssetId'),
   relationType: requireOneOf(body, 'relationType', mediaAssetRelationTypes),
