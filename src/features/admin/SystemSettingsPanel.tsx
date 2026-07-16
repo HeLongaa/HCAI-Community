@@ -49,10 +49,13 @@ export function SystemSettingsPanel({ hasPermission, isZh, notify }: {
     if (!hasPermission('admin:settings:read')) return
     const page = await adminService.systemSettings({ search: search || null, category: category || null, limit: 100 })
     setSettings(page.items)
-    const nextSelected = page.items[0] ?? null
-    setSelectedKey(nextSelected?.key ?? null)
-    setDraft(nextSelected ? pretty(nextSelected.value) : '')
-    setPreview(null)
+    setSelectedKey((current) => {
+      if (current && page.items.some((item) => item.key === current)) return current
+      const nextSelected = page.items[0] ?? null
+      setDraft(nextSelected ? pretty(nextSelected.value) : '')
+      setPreview(null)
+      return nextSelected?.key ?? null
+    })
   }, [category, hasPermission, search])
 
   const refreshChanges = useCallback(async (key?: string | null) => {

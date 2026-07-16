@@ -70,6 +70,7 @@
     { "model": "MediaAssetRelation", "domain": "media-platform", "policy": "immutable_evidence", "hardDelete": false },
     { "model": "MediaScanJob", "domain": "media-platform", "policy": "state_transition", "hardDelete": false },
     { "model": "CreativeGeneration", "domain": "ai-runtime", "policy": "state_transition", "hardDelete": false },
+    { "model": "CreativeGenerationExecution", "domain": "ai-runtime", "policy": "state_transition", "hardDelete": false },
     { "model": "CreativeGenerationAsset", "domain": "ai-runtime", "policy": "immutable_evidence", "hardDelete": false },
     { "model": "CreativeProviderOperation", "domain": "ai-runtime", "policy": "state_transition", "hardDelete": false },
     { "model": "ChatConversation", "domain": "ai-runtime", "policy": "soft_delete", "hardDelete": false },

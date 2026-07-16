@@ -1431,6 +1431,7 @@ export const openApiDocument = {
                 type: 'object',
                 required: ['workspace', 'mode', 'prompt'],
                 properties: {
+                  idempotencyKey: { type: 'string', minLength: 8, maxLength: 128, description: 'Actor-scoped create idempotency key. The web client always supplies one.' },
                   workspace: { type: 'string', enum: ['image', 'video', 'music', 'chat'] },
                   mode: { type: 'string' },
                   prompt: { type: 'string', maxLength: 4000 },
@@ -2734,10 +2735,55 @@ export const openApiDocument = {
           { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
           { name: 'cursor', in: 'query', schema: { type: 'string' } },
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+          { name: 'sort', in: 'query', schema: { type: 'string', enum: ['createdAt', 'updatedAt', 'status'], default: 'createdAt' } },
+          { name: 'direction', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
         ],
         responses: {
           '200': { description: 'Creative generation history list with sanitized durable Provider cost ledger, pricing snapshot, budget, replay, mutation, and output-ingestion evidence summaries when available' },
           '403': { description: 'Requires audit read permission' },
+        },
+      },
+    },
+    '/admin/creative/generations/summary': {
+      get: {
+        summary: 'Aggregate generation lifecycle counts across the complete filtered dataset',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Totals grouped by status, workspace, and Provider plus active, failed, review, and output asset counts' },
+          '403': { description: 'Requires admin:audit:read' },
+        },
+      },
+    },
+    '/admin/creative/generations/export': {
+      get: {
+        summary: 'Export a bounded filtered page of safe generation evidence',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'format', in: 'query', schema: { type: 'string', enum: ['json', 'csv'], default: 'json' } }],
+        responses: {
+          '200': { description: 'JSON or CSV generation evidence export' },
+          '403': { description: 'Requires admin:audit:export' },
+        },
+      },
+    },
+    '/admin/creative/executions': {
+      get: {
+        summary: 'List safe create execution claims and recovery state',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Cursor page without idempotency keys, payload hashes, prompts, or Provider identifiers' },
+          '403': { description: 'Requires admin:audit:read' },
+        },
+      },
+    },
+    '/admin/creative/executions/{id}/recover': {
+      post: {
+        summary: 'Resolve an expired execution lease as failed after operator evidence review',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Recovery-required claim marked failed; redispatch remains explicit through Retry' },
+          '403': { description: 'Requires admin:creative:retry' },
+          '404': { description: 'Recovery-required execution not found' },
         },
       },
     },

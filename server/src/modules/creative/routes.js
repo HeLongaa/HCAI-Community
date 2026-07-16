@@ -51,6 +51,12 @@ import {
 } from '../../creative/accountingPolicy.js'
 import { createCreativeProviderRegistry } from '../../creative/providerRegistry.js'
 import { quotaWindowFor } from '../../creative/policy.js'
+import {
+  assertGenerationExecutionClaim,
+  generationExecutionGenerationId,
+  generationExecutionIdempotencyKey,
+  generationExecutionPayloadHash,
+} from '../../creative/generationExecutionRuntime.js'
 
 const terminalProviderFailureStatuses = new Set(['failed', 'cancelled'])
 
@@ -251,6 +257,7 @@ export const registerCreativeRoutes = (router, options = {}) => {
     generationId = null,
     recordOverrides = {},
   }) => {
+    const { idempotencyKey: _idempotencyKey, ...generationPayload } = payload
     const quotaRepository = routeRepositories.creativeQuota
     const creditRepository = routeRepositories.creativeCredits
     const generationRepository = routeRepositories.creativeGenerations
@@ -260,7 +267,7 @@ export const registerCreativeRoutes = (router, options = {}) => {
     let creditFinalized = false
     try {
       generation = await executeGeneration({
-        request: payload,
+        request: generationPayload,
         actor,
         generationId,
         quotaRepository,
@@ -525,7 +532,40 @@ export const registerCreativeRoutes = (router, options = {}) => {
   router.add('POST', '/api/creative/generations', async (request, response, context) => {
     const actor = requireUser(context)
     const payload = parseCreateCreativeGenerationRequest((await readJsonBody(request)) ?? {})
-    ok(response, await runGenerationRequest({ payload, actor }))
+    const executionRepository = routeRepositories.creativeGenerationExecutions
+    if (!executionRepository?.claim) {
+      ok(response, await runGenerationRequest({ payload, actor }))
+      return
+    }
+    const idempotencyKey = generationExecutionIdempotencyKey(payload.idempotencyKey)
+    const claim = await executionRepository.claim({
+      generationId: generationExecutionGenerationId({ ...payload, idempotencyKey }, actor),
+      idempotencyKey,
+      payloadHash: generationExecutionPayloadHash(payload),
+      workspace: payload.workspace,
+      mode: payload.mode,
+      leaseSeconds: Math.min(900, Math.max(30, Number(callbackSource.CREATIVE_GENERATION_EXECUTION_LEASE_SECONDS ?? 120))),
+      now: callbackNow(),
+    }, actor)
+    if (!claim.claimed && claim.reasonCode === 'succeeded') {
+      const generation = await routeRepositories.creativeGenerations.find(claim.execution.generationId)
+      if (!generation) throw new HttpError(409, 'CREATIVE_GENERATION_RECOVERY_REQUIRED', 'Completed execution is missing its generation record', { executionId: claim.execution.id })
+      ok(response, {
+        ...await serializeUserCreativeGeneration(generation, { mediaRepository: routeRepositories.media, actor }),
+        idempotentReplay: true,
+        execution: claim.execution,
+      })
+      return
+    }
+    assertGenerationExecutionClaim(claim)
+    try {
+      const generated = await runGenerationRequest({ payload, actor, generationId: claim.execution.generationId })
+      const execution = await executionRepository.succeed(claim.execution.id, actor)
+      ok(response, { ...generated, execution, idempotentReplay: false })
+    } catch (error) {
+      await executionRepository.fail(claim.execution.id, error?.code ?? 'CREATIVE_GENERATION_FAILED', actor)
+      throw error
+    }
   })
 
   router.add('POST', '/api/creative/generations/:id/cancel', async (request, response, context) => {

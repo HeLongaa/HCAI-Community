@@ -4177,3 +4177,66 @@ test('manual Provider replay rejection notifies the generation owner and request
     await server.close()
   }
 })
+
+test('Admin generation operations expose full summary, stable export, execution state, and fail-closed recovery', async () => {
+  const repository = createSeedRepository()
+  const owner = { id: 'demo-user-creator', handle: 'promptlin' }
+  await repository.creativeGenerations.create({
+    id: `gen-admin-runtime-${Date.now()}`,
+    actorId: owner.id,
+    actorHandle: owner.handle,
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'mock',
+    status: 'failed',
+    promptHash: 'a'.repeat(64),
+    promptPreview: 'Safe export preview',
+    inputAssetIds: [],
+    parameterKeys: [],
+    outputAssetIds: [],
+    errorCode: 'PROVIDER_TIMEOUT',
+  }, owner)
+  const claimPayload = {
+    generationId: `gen-recovery-${Date.now()}`,
+    idempotencyKey: `generation:recovery-${Date.now()}`,
+    payloadHash: 'b'.repeat(64),
+    workspace: 'video',
+    mode: 'text_to_video',
+    leaseSeconds: 30,
+    now: new Date('2026-07-16T00:00:00.000Z'),
+  }
+  const claim = await repository.creativeGenerationExecutions.claim(claimPayload, owner)
+  await repository.creativeGenerationExecutions.claim({ ...claimPayload, now: new Date('2026-07-16T00:01:00.000Z') }, owner)
+  const server = await createInjectedAdminServer(repository)
+  try {
+    const summary = await requestJson(server.url, '/api/admin/creative/generations/summary?status=failed', { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(summary.status, 200)
+    assert.equal(summary.payload.data.failed >= 1, true)
+    assert.equal(summary.payload.data.byStatus.failed >= 1, true)
+
+    const exported = await fetch(`${server.url}/api/admin/creative/generations/export?format=csv&sort=status&direction=asc`, {
+      headers: { authorization: 'Bearer demo-access.opsplus' },
+    })
+    assert.equal(exported.status, 200)
+    assert.match(exported.headers.get('content-type'), /text\/csv/)
+    const csv = await exported.text()
+    assert.match(csv, /Safe export preview/)
+    assert.equal(csv.includes('b'.repeat(64)), false)
+
+    const executions = await requestJson(server.url, '/api/admin/creative/executions?status=recovery_required', { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(executions.status, 200)
+    assert.equal(executions.payload.data[0].id, claim.execution.id)
+    assert.equal(JSON.stringify(executions.payload).includes(claimPayload.idempotencyKey), false)
+    assert.equal(JSON.stringify(executions.payload).includes(claimPayload.payloadHash), false)
+
+    const recovered = await requestJson(server.url, `/api/admin/creative/executions/${claim.execution.id}/recover`, {
+      body: { reasonCode: 'operator_verified_no_result', errorCode: 'EXECUTION_ABANDONED' },
+      token: 'demo-access.opsplus',
+    })
+    assert.equal(recovered.status, 200)
+    assert.equal(recovered.payload.data.status, 'failed')
+    assert.equal(recovered.payload.data.errorCode, 'EXECUTION_ABANDONED')
+  } finally {
+    await server.close()
+  }
+})

@@ -14,6 +14,7 @@ import { createPrismaSystemSettingsRepository } from '../settings/prismaSystemSe
 import { createPrismaConfigResourcesRepository } from '../configResources/prismaConfigResourcesRepository.js'
 import { createPrismaModelControlRepository } from '../modelControl/prismaModelControlRepository.js'
 import { createPrismaModelRoutingRepository } from '../modelControl/prismaModelRoutingRepository.js'
+import { createPrismaGenerationExecutionRepository } from '../creative/prismaGenerationExecutionRepository.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, hashToken, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
 import {
@@ -226,6 +227,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   const configResources = createPrismaConfigResourcesRepository(client, { recordAudit })
   const modelControl = createPrismaModelControlRepository(client, { recordAudit })
   const modelRouting = createPrismaModelRoutingRepository(client, { recordAudit })
+  const creativeGenerationExecutions = createPrismaGenerationExecutionRepository(client, { recordAudit })
   const observability = createPrismaObservabilityRepository(client)
 
   const leaseExpiry = (ttlSeconds) => new Date(Date.now() + Math.max(1, Number(ttlSeconds ?? 300)) * 1000)
@@ -4694,6 +4696,22 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     return rolledBack
   }
 
+  const creativeGenerationWhere = (options = {}) => ({
+    ...((options.actorHandle || options.actorId) ? {
+      OR: [
+        ...(options.actorHandle ? [{ actorHandle: String(options.actorHandle) }] : []),
+        ...(options.actorId ? [{ actorId: String(options.actorId) }] : []),
+      ],
+    } : {}),
+    ...(options.workspace ? { workspace: String(options.workspace) } : {}),
+    ...(options.mode ? { mode: String(options.mode) } : {}),
+    ...(options.providerId ? { providerId: String(options.providerId) } : {}),
+    ...(options.status ? { status: String(options.status) } : {}),
+    ...(options.reviewRequired == null ? {} : { safety: { path: ['reviewRequired'], equals: Boolean(options.reviewRequired) } }),
+    ...(options.mediaAssetId ? { outputAssetIds: { has: String(options.mediaAssetId) } } : {}),
+    ...((options.dateFrom || options.dateTo) ? { createdAt: { ...(options.dateFrom ? { gte: new Date(options.dateFrom) } : {}), ...(options.dateTo ? { lte: new Date(options.dateTo) } : {}) } } : {}),
+  })
+
   const creativeGenerations = {
     create: async (payload, actor) => {
       const actorUser = payload.actorHandle || actor?.handle ? await findUserByHandle(payload.actorHandle ?? actor.handle) : null
@@ -4889,27 +4907,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         ? await client.creativeGeneration.findUnique({ where: { id: String(options.cursor) }, select: { id: true } })
         : null
       const rows = await client.creativeGeneration.findMany({
-        where: {
-          ...((options.actorHandle || options.actorId) ? {
-            OR: [
-              ...(options.actorHandle ? [{ actorHandle: String(options.actorHandle) }] : []),
-              ...(options.actorId ? [{ actorId: String(options.actorId) }] : []),
-            ],
-          } : {}),
-          ...(options.workspace ? { workspace: String(options.workspace) } : {}),
-          ...(options.mode ? { mode: String(options.mode) } : {}),
-          ...(options.providerId ? { providerId: String(options.providerId) } : {}),
-          ...(options.status ? { status: String(options.status) } : {}),
-          ...(options.reviewRequired == null ? {} : { safety: { path: ['reviewRequired'], equals: Boolean(options.reviewRequired) } }),
-          ...(options.mediaAssetId ? { outputAssetIds: { has: String(options.mediaAssetId) } } : {}),
-          ...((options.dateFrom || options.dateTo) ? {
-            createdAt: {
-              ...(options.dateFrom ? { gte: new Date(options.dateFrom) } : {}),
-              ...(options.dateTo ? { lte: new Date(options.dateTo) } : {}),
-            },
-          } : {}),
-        },
-        orderBy: { createdAt: 'desc' },
+        where: creativeGenerationWhere(options),
+        orderBy: [{ [options.sort ?? 'createdAt']: options.direction ?? 'desc' }, { id: options.direction ?? 'desc' }],
         take: limit + 1,
         ...(cursor ? { cursor: { id: cursor.id }, skip: 1 } : {}),
       })
@@ -4919,6 +4918,21 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         nextCursor: rows.length > limit && pageRows.length > 0 ? pageRows[pageRows.length - 1].id : null,
         limit,
       }
+    },
+    summarize: async (options = {}) => {
+      const where = creativeGenerationWhere(options)
+      const [total, active, failed, reviewRequired, statusGroups, workspaceGroups, providerGroups, assets] = await Promise.all([
+        client.creativeGeneration.count({ where }),
+        client.creativeGeneration.count({ where: { AND: [where, { status: { in: ['queued', 'running'] } }] } }),
+        client.creativeGeneration.count({ where: { AND: [where, { status: 'failed' }] } }),
+        client.creativeGeneration.count({ where: { AND: [where, { OR: [{ status: 'review_required' }, { safety: { path: ['reviewRequired'], equals: true } }] }] } }),
+        client.creativeGeneration.groupBy({ by: ['status'], where, _count: { _all: true } }),
+        client.creativeGeneration.groupBy({ by: ['workspace'], where, _count: { _all: true } }),
+        client.creativeGeneration.groupBy({ by: ['providerId'], where, _count: { _all: true } }),
+        client.creativeGeneration.findMany({ where, select: { outputAssetIds: true } }),
+      ])
+      const grouped = (rows, field) => Object.fromEntries(rows.map((row) => [row[field], row._count._all]))
+      return { total, active, failed, reviewRequired, outputAssets: assets.reduce((sum, row) => sum + row.outputAssetIds.length, 0), byStatus: grouped(statusGroups, 'status'), byWorkspace: grouped(workspaceGroups, 'workspace'), byProvider: grouped(providerGroups, 'providerId') }
     },
   }
 
@@ -9745,6 +9759,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     providerBudgetAudit,
     chat,
     creativeGenerations,
+    creativeGenerationExecutions,
     creativeProviderOperations,
     creativeGenerationMutations,
     creativeProviderReplays,

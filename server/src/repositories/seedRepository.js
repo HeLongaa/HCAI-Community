@@ -11,6 +11,7 @@ import { createSeedSystemSettingsRepository } from '../settings/seedSystemSettin
 import { createSeedConfigResourcesRepository } from '../configResources/seedConfigResourcesRepository.js'
 import { createSeedModelControlRepository } from '../modelControl/seedModelControlRepository.js'
 import { createSeedModelRoutingRepository } from '../modelControl/seedModelRoutingRepository.js'
+import { createSeedGenerationExecutionRepository } from '../creative/seedGenerationExecutionRepository.js'
 import { createSeedObservabilityRepository } from '../observability/seedObservabilityRepository.js'
 import {
   appendSeedAuditIntegrity,
@@ -2412,6 +2413,7 @@ export const createSeedRepository = () => {
   const domainEvents = createSeedDomainEventRepository({ recordAudit: auditRecorder })
   const domainEventConsumers = createSeedDomainEventConsumerRepository({ recordAudit: auditRecorder })
   const jobs = createSeedJobRepository({ recordAudit: auditRecorder })
+  const creativeGenerationExecutions = createSeedGenerationExecutionRepository({ recordAudit: auditRecorder })
   const releaseChanges = createSeedReleaseRepository()
   const systemSettings = createSeedSystemSettingsRepository({ recordAudit: auditRecorder })
   const configResources = createSeedConfigResourcesRepository({ recordAudit: auditRecorder })
@@ -2428,6 +2430,7 @@ export const createSeedRepository = () => {
   configResources,
   modelControl,
   modelRouting,
+  creativeGenerationExecutions,
   observability,
   auth: {
     getCurrentUser: () => seedStore.me,
@@ -4036,9 +4039,39 @@ export const createSeedRepository = () => {
         .filter((record) => !options.mediaAssetId || (record.outputAssetIds ?? []).includes(options.mediaAssetId))
         .filter((record) => !options.dateFrom || new Date(record.createdAt).getTime() >= new Date(options.dateFrom).getTime())
         .filter((record) => !options.dateTo || new Date(record.createdAt).getTime() <= new Date(options.dateTo).getTime())
-        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+        .sort((left, right) => {
+          const field = options.sort ?? 'createdAt'
+          const direction = options.direction === 'asc' ? 1 : -1
+          const leftValue = field === 'status' ? left.status : new Date(left[field] ?? left.createdAt).getTime()
+          const rightValue = field === 'status' ? right.status : new Date(right[field] ?? right.createdAt).getTime()
+          const comparison = typeof leftValue === 'string' ? leftValue.localeCompare(rightValue) : leftValue - rightValue
+          return comparison * direction || left.id.localeCompare(right.id) * direction
+        })
         .map(serializeCreativeGeneration)
       return paginateByCursor(filtered, options)
+    },
+    summarize: (options = {}) => {
+      const rows = [...creativeGenerationsById.values()]
+        .filter((record) => !options.actorHandle || record.actorHandle === options.actorHandle)
+        .filter((record) => !options.workspace || record.workspace === options.workspace)
+        .filter((record) => !options.mode || record.mode === options.mode)
+        .filter((record) => !options.providerId || record.providerId === options.providerId)
+        .filter((record) => !options.status || record.status === options.status)
+        .filter((record) => options.reviewRequired == null || Boolean(record.safety?.reviewRequired) === options.reviewRequired)
+        .filter((record) => !options.mediaAssetId || (record.outputAssetIds ?? []).includes(options.mediaAssetId))
+        .filter((record) => !options.dateFrom || new Date(record.createdAt).getTime() >= new Date(options.dateFrom).getTime())
+        .filter((record) => !options.dateTo || new Date(record.createdAt).getTime() <= new Date(options.dateTo).getTime())
+      const countBy = (field) => Object.fromEntries([...new Set(rows.map((row) => row[field]))].sort().map((value) => [value, rows.filter((row) => row[field] === value).length]))
+      return {
+        total: rows.length,
+        active: rows.filter((row) => ['queued', 'running'].includes(row.status)).length,
+        failed: rows.filter((row) => row.status === 'failed').length,
+        reviewRequired: rows.filter((row) => row.status === 'review_required' || row.safety?.reviewRequired).length,
+        outputAssets: rows.reduce((sum, row) => sum + (row.outputAssetIds?.length ?? 0), 0),
+        byStatus: countBy('status'),
+        byWorkspace: countBy('workspace'),
+        byProvider: countBy('providerId'),
+      }
     },
   },
   creativeProviderOperations: {

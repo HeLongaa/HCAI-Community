@@ -1406,6 +1406,67 @@ test('POST /api/creative/generations persists mock provider output through media
   }
 })
 
+test('POST /api/creative/generations replays a completed idempotent request without dispatching again', async () => {
+  resetCreativePolicyState()
+  const repository = createSeedRepository()
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, { repositories: repository }))
+  const body = {
+    idempotencyKey: `generation:idempotent-${Date.now()}`,
+    workspace: 'image',
+    mode: 'text_to_image',
+    prompt: 'One governed idempotent result',
+    parameters: { aspectRatio: '1:1', seed: 17 },
+  }
+  try {
+    const first = await requestJson(server.url, '/api/creative/generations', { body, token: 'demo-access.promptlin' })
+    const replay = await requestJson(server.url, '/api/creative/generations', { body, token: 'demo-access.promptlin' })
+
+    assert.equal(first.status, 200)
+    assert.equal(first.payload.data.idempotentReplay, false)
+    assert.equal(replay.status, 200)
+    assert.equal(replay.payload.data.idempotentReplay, true)
+    assert.equal(replay.payload.data.id, first.payload.data.id)
+    const page = await repository.creativeGenerations.list({ actorHandle: 'promptlin', limit: 20 })
+    assert.equal(page.items.filter((item) => item.id === first.payload.data.id).length, 1)
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST /api/creative/generations rejects reuse of an idempotency key for different input', async () => {
+  resetCreativePolicyState()
+  const repository = createSeedRepository()
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, { repositories: repository }))
+  const idempotencyKey = `generation:conflict-${Date.now()}`
+  const base = { idempotencyKey, workspace: 'image', mode: 'text_to_image', parameters: { aspectRatio: '1:1', seed: 19 } }
+  try {
+    const first = await requestJson(server.url, '/api/creative/generations', { body: { ...base, prompt: 'First payload' }, token: 'demo-access.promptlin' })
+    const conflict = await requestJson(server.url, '/api/creative/generations', { body: { ...base, prompt: 'Different payload' }, token: 'demo-access.promptlin' })
+
+    assert.equal(first.status, 200)
+    assert.equal(conflict.status, 409)
+    assert.equal(conflict.payload.error.code, 'CREATIVE_GENERATION_IDEMPOTENCY_CONFLICT')
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST /api/creative/generations treats repeated requests without a key as distinct user intent', async () => {
+  resetCreativePolicyState()
+  const repository = createSeedRepository()
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, { repositories: repository }))
+  const body = { workspace: 'image', mode: 'text_to_image', prompt: 'Generate this twice', parameters: { aspectRatio: '1:1', seed: 23 } }
+  try {
+    const first = await requestJson(server.url, '/api/creative/generations', { body, token: 'demo-access.promptlin' })
+    const second = await requestJson(server.url, '/api/creative/generations', { body, token: 'demo-access.promptlin' })
+    assert.equal(first.status, 200)
+    assert.equal(second.status, 200)
+    assert.notEqual(first.payload.data.id, second.payload.data.id)
+  } finally {
+    await server.close()
+  }
+})
+
 test('POST /api/creative/generations can run a Replicate staging fixture through policy and media governance', async () => {
   resetCreativePolicyState()
   const restoreEnv = applyReplicateStagingFixtureEnv({

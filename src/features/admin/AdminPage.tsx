@@ -26,6 +26,7 @@ import type {
   AdminAccountingReconciliationQuery,
   AdminAccountingUnit,
   AdminCreativeGenerationHistoryQuery,
+  AdminCreativeGenerationSummary,
   AdminOperationsMetricsDto,
   AdminProviderControlBundle,
   AdminProviderControlRecoveryTarget,
@@ -491,6 +492,10 @@ export function AdminPage({
   const [generationMediaAssetId, setGenerationMediaAssetId] = useState('')
   const [generationDateFrom, setGenerationDateFrom] = useState('')
   const [generationDateTo, setGenerationDateTo] = useState('')
+  const [generationSort, setGenerationSort] = useState<'createdAt' | 'updatedAt' | 'status'>('createdAt')
+  const [generationDirection, setGenerationDirection] = useState<'asc' | 'desc'>('desc')
+  const [generationSummary, setGenerationSummary] = useState<AdminCreativeGenerationSummary>({ total: 0, active: 0, failed: 0, reviewRequired: 0, outputAssets: 0, byStatus: {}, byWorkspace: {}, byProvider: {} })
+  const [exportingGenerations, setExportingGenerations] = useState(false)
   const [generationMutationReason, setGenerationMutationReason] = useState('operator_requested')
   const [generationMutationNote, setGenerationMutationNote] = useState('')
   const [generationReplayStatus, setGenerationReplayStatus] = useState<'queued' | 'running' | 'completed' | 'failed' | 'cancelled'>('failed')
@@ -613,6 +618,8 @@ export function AdminPage({
     mediaAssetId: generationMediaAssetId || null,
     dateFrom: generationDateFrom || null,
     dateTo: generationDateTo || null,
+    sort: generationSort,
+    direction: generationDirection,
     limit: 12,
   }
   const visibleQueueItems = reviewQueueFilter
@@ -732,13 +739,14 @@ export function AdminPage({
     deps: [canReadAccounting, isZh, accountingStatusFilter, accountingUnitFilter, accountingTypeFilter],
     logLabel: 'admin-service',
   })
-  const generationHistoryStatus = useAsyncResource<{ items: ApiCreativeGenerationRecord[]; nextCursor: string | null }>({
+  const generationHistoryStatus = useAsyncResource<{ items: ApiCreativeGenerationRecord[]; nextCursor: string | null; summary: AdminCreativeGenerationSummary }>({
     load: () => canReadAudit
-      ? adminService.creativeGenerations(generationQuery)
-      : Promise.resolve({ items: [], nextCursor: null }),
-    onSuccess: ({ items, nextCursor }) => {
+      ? Promise.all([adminService.creativeGenerations(generationQuery), adminService.creativeGenerationSummary(generationQuery)]).then(([page, summary]) => ({ ...page, summary }))
+      : Promise.resolve({ items: [], nextCursor: null, summary: { total: 0, active: 0, failed: 0, reviewRequired: 0, outputAssets: 0, byStatus: {}, byWorkspace: {}, byProvider: {} } }),
+    onSuccess: ({ items, nextCursor, summary }) => {
       setGenerationRows(items)
       setGenerationNextCursor(nextCursor)
+      setGenerationSummary(summary)
       if (selectedGenerationId && !items.some((item) => item.id === selectedGenerationId)) {
         setSelectedGenerationId(null)
         setSelectedGeneration(null)
@@ -746,7 +754,7 @@ export function AdminPage({
       }
     },
     getErrorMessage: () => (isZh ? '无法读取生成历史，请确认账号具备审计读取权限。' : 'Could not load generation history. Confirm audit read access.'),
-    deps: [canReadAudit, isZh, generationUserHandle, generationWorkspace, generationProviderId, generationStatusFilter, generationReviewFilter, generationMediaAssetId, generationDateFrom, generationDateTo],
+    deps: [canReadAudit, isZh, generationUserHandle, generationWorkspace, generationProviderId, generationStatusFilter, generationReviewFilter, generationMediaAssetId, generationDateFrom, generationDateTo, generationSort, generationDirection],
     logLabel: 'admin-service',
   })
   const providerControlStatus = useAsyncResource<AdminProviderControlBundle>({
@@ -1433,11 +1441,32 @@ export function AdminPage({
     setGenerationMediaAssetId('')
     setGenerationDateFrom('')
     setGenerationDateTo('')
+    setGenerationSort('createdAt')
+    setGenerationDirection('desc')
     setGenerationNextCursor(null)
     setSelectedGenerationId(null)
     setSelectedGeneration(null)
     setGenerationDetailError(null)
     simulateAction(isZh ? '已清除生成历史筛选。' : 'Cleared generation history filters.')
+  }
+
+  const exportGenerations = async () => {
+    if (!canExportAudit || exportingGenerations) return
+    setExportingGenerations(true)
+    try {
+      const csv = await adminService.exportCreativeGenerations(generationQuery, 'csv')
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+      link.download = `creative-generations-${new Date().toISOString().slice(0, 10)}.csv`
+      link.click()
+      URL.revokeObjectURL(link.href)
+      simulateAction(isZh ? '已导出生成记录。' : 'Exported generation records.')
+    } catch (error) {
+      console.info('[admin-service]', error)
+      simulateAction(isZh ? '导出生成记录失败。' : 'Could not export generation records.')
+    } finally {
+      setExportingGenerations(false)
+    }
   }
 
   const loadMoreGenerations = async () => {
@@ -3547,12 +3576,32 @@ export function AdminPage({
           eyebrow={textFor(t, 'Creative operations', '创作运营')}
           title={textFor(t, 'Generation history', '生成历史')}
           action={
-            <button className="ghost-button" type="button" onClick={() => void generationHistoryStatus.refresh()} disabled={!canReadAudit || generationHistoryStatus.loading}>
-              {generationHistoryStatus.loading ? textFor(t, 'Loading', '加载中') : textFor(t, 'Refresh', '刷新')}
-            </button>
+            <div className="inline-actions">
+              <button className="ghost-button" type="button" onClick={() => void exportGenerations()} disabled={!canExportAudit || exportingGenerations} title={textFor(t, 'Export generation records', '导出生成记录')}>
+                <Download size={16} /> {exportingGenerations ? textFor(t, 'Exporting', '导出中') : 'CSV'}
+              </button>
+              <button className="ghost-button" type="button" onClick={() => void generationHistoryStatus.refresh()} disabled={!canReadAudit || generationHistoryStatus.loading}>
+                {generationHistoryStatus.loading ? textFor(t, 'Loading', '加载中') : textFor(t, 'Refresh', '刷新')}
+              </button>
+            </div>
           }
         />
         <div className="permission-summary">
+          <label>
+            <span>{textFor(t, 'Sort', '排序')}</span>
+            <select aria-label={textFor(t, 'Generation sort', '生成记录排序')} value={generationSort} onChange={(event) => setGenerationSort(event.target.value as typeof generationSort)} disabled={!canReadAudit}>
+              <option value="createdAt">{textFor(t, 'Created', '创建时间')}</option>
+              <option value="updatedAt">{textFor(t, 'Updated', '更新时间')}</option>
+              <option value="status">{textFor(t, 'Status', '状态')}</option>
+            </select>
+          </label>
+          <label>
+            <span>{textFor(t, 'Direction', '方向')}</span>
+            <select aria-label={textFor(t, 'Generation sort direction', '生成记录排序方向')} value={generationDirection} onChange={(event) => setGenerationDirection(event.target.value as typeof generationDirection)} disabled={!canReadAudit}>
+              <option value="desc">{textFor(t, 'Descending', '降序')}</option>
+              <option value="asc">{textFor(t, 'Ascending', '升序')}</option>
+            </select>
+          </label>
           <label>
             <span>{textFor(t, 'User', '用户')}</span>
             <input
@@ -3655,10 +3704,10 @@ export function AdminPage({
         </div>
         <div className="market-dashboard">
           {[
-            [textFor(t, 'Visible rows', '当前记录'), generationRows.length, textFor(t, 'Durable generation records', '持久化生成记录')],
-            [textFor(t, 'Needs review', '需要复核'), generationRows.filter(generationReviewRequired).length, textFor(t, 'Safety or media gate active', '安全或媒体门禁生效')],
-            [textFor(t, 'Settled credits', '已结算 Credits'), generationRows.reduce((sum, row) => sum + generationCreditAmount(row, 'settled'), 0), textFor(t, 'From durable credit metadata', '来自持久化 credit 元数据')],
-            [textFor(t, 'Output assets', '输出资产'), generationRows.reduce((sum, row) => sum + row.outputAssetIds.length, 0), textFor(t, 'Linked media asset ids', '已关联媒体资产 ID')],
+            [textFor(t, 'Total records', '记录总数'), generationSummary.total, textFor(t, 'Complete filtered dataset', '完整筛选数据集')],
+            [textFor(t, 'Active', '进行中'), generationSummary.active, textFor(t, 'Queued or running', '排队中或运行中')],
+            [textFor(t, 'Needs review', '需要复核'), generationSummary.reviewRequired, textFor(t, 'Safety or media gate active', '安全或媒体门禁生效')],
+            [textFor(t, 'Output assets', '输出资产'), generationSummary.outputAssets, textFor(t, 'Linked governed assets', '已关联治理资产')],
           ].map(([label, value, detail]) => (
             <article className="metric-card highlight" key={label}>
               <span>{label}</span>
