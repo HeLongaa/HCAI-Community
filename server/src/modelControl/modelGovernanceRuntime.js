@@ -139,7 +139,7 @@ export const parseProviderSecretRefListQuery = (query = {}) => {
 
 export const parseModelPromotionRequest = (raw = {}, actor) => {
   const payload = objectValue(raw)
-  exactFields(payload, ['modelDeploymentId', 'routePolicyId', 'routePolicyRevisionId', 'providerSecretRefId', 'artifactVersion', 'rollbackVersion', 'summary', 'reasonCode'])
+  exactFields(payload, ['modelDeploymentId', 'routePolicyId', 'routePolicyRevisionId', 'providerSecretRefId', 'evaluationRunId', 'artifactVersion', 'rollbackVersion', 'summary', 'reasonCode'])
   const modelDeploymentId = text(payload.modelDeploymentId, 'modelDeploymentId', { required: true, maximum: 180 })
   return {
     promotion: {
@@ -148,6 +148,7 @@ export const parseModelPromotionRequest = (raw = {}, actor) => {
       routePolicyId: text(payload.routePolicyId, 'routePolicyId', { required: true, maximum: 180 }),
       routePolicyRevisionId: text(payload.routePolicyRevisionId, 'routePolicyRevisionId', { required: true, maximum: 180 }),
       providerSecretRefId: text(payload.providerSecretRefId, 'providerSecretRefId', { required: true, maximum: 180 }),
+      evaluationRunId: text(payload.evaluationRunId, 'evaluationRunId', { required: true, maximum: 180 }),
       createdByRef: actorRef(actor),
     },
     release: {

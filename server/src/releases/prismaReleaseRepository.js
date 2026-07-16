@@ -81,6 +81,7 @@ export const createPrismaReleaseRepository = (client) => ({
         modelDeployment: { include: { modelVersion: true } },
         routePolicy: { include: { targets: true, revisions: { orderBy: { revisionNumber: 'desc' }, take: 1 } } },
         providerSecretRef: true,
+        evaluationRun: { include: { policy: true } },
       },
     })
     const lifecycleStatus = ['deployed', 'failed', 'rolled_back'].includes(patch.status)
@@ -103,6 +104,13 @@ export const createPrismaReleaseRepository = (client) => ({
       if (latestSecretRef?.id !== promotion.providerSecretRefId) throw new HttpError(409, 'PROMOTION_SECRET_CHANGED', 'approved SecretRef is no longer the current scope version')
       if (promotion.releaseChange.artifactVersion !== promotion.modelDeployment.modelVersion.versionKey) {
         throw new HttpError(409, 'PROMOTION_ARTIFACT_CHANGED', 'approved artifact no longer matches the production deployment')
+      }
+      if (!promotion.evaluationRun || promotion.evaluationRun.status !== 'passed' || !promotion.evaluationRun.baselineRunId) {
+        throw new HttpError(409, 'PROMOTION_EVALUATION_BLOCKED', 'approved promotion no longer has passing regression evidence')
+      }
+      if (promotion.evaluationRun.expiresAt <= new Date()) throw new HttpError(409, 'PROMOTION_EVALUATION_EXPIRED', 'evaluation evidence expired before promotion was applied')
+      if (promotion.evaluationRun.modelDeploymentId !== promotion.modelDeploymentId || promotion.evaluationRun.modelVersionId !== promotion.modelDeployment.modelVersionId || promotion.evaluationRun.policy.environment !== 'production') {
+        throw new HttpError(409, 'PROMOTION_EVALUATION_CHANGED', 'evaluation evidence no longer matches the production deployment')
       }
     }
     const changed = await tx.releaseChange.updateMany({

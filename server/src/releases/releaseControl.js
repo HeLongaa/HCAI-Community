@@ -54,6 +54,7 @@ export const requestReleaseChange = async ({ payload, actor, repository }) => {
           routePolicyId: payload.modelPromotion.routePolicyId,
           routePolicyRevisionId: payload.modelPromotion.routePolicyRevisionId,
           providerSecretRefId: payload.modelPromotion.providerSecretRefId,
+          evaluationRunId: payload.modelPromotion.evaluationRunId,
         } : null,
       },
     }),

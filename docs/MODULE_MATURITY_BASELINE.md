@@ -27,7 +27,7 @@ Maturity has four meanings:
 | Identity and access | Partial | Email/OAuth login and session revocation | Role permission editing | Permission registry, resource policy, high-risk access controls |
 | Config and feature flags | Contract only | Server-owned availability | Isolated media/points policies | Versioned registry, secret references, rollout controls |
 | Model control plane | Contract only | Safe model/provider metadata | Kill switch, budget evidence, circuits | Governed model catalog and explicit Provider approval |
-| AI runtime | Partial | Image and Chat runtime; Video/Music fixture lifecycles | Generation inspection and governed mutations | Unified job runtime, evaluations, real Provider evidence |
+| AI runtime | Partial | Image and Chat runtime; Video/Music fixture lifecycles | Generation inspection, governed mutations, immutable quality/safety evaluation, and regression promotion gates | Unified real-Provider runtime and approved external evidence |
 | Task marketplace | Production capable | Publish through dispute lifecycle | Dispute resolution and escrow evidence | Cancellation, expiry, operational depth |
 | Community | Partial | Posts, comments, likes, conversion, profiles | Generic moderation primitives | Content lifecycle, reporting, appeal, dedicated statistics |
 | Media platform | Partial | Private assets, scans, downloads, lineage | Scan queue, policy rollback, alerts | Real storage/scanner rehearsal and cleanup automation |

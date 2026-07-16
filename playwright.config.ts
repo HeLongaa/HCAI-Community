@@ -13,7 +13,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: 'NODE_ENV=test PORT=8787 DATABASE_URL= CHAT_MOCK_STREAM_DELAY_MS=60 CHAT_MESSAGE_ENCRYPTION_KEY=CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg= npm --prefix server run start:e2e',
+      command: 'NODE_ENV=test PORT=8787 DATABASE_URL= CHAT_MOCK_STREAM_DELAY_MS=150 CHAT_MESSAGE_ENCRYPTION_KEY=CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg= npm --prefix server run start:e2e',
       url: 'http://127.0.0.1:8787/health',
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,

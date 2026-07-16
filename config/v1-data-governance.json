@@ -509,6 +509,20 @@
       "ownerTasks": ["V1-11", "V1-53", "V1-67", "V1-69"]
     },
     {
+      "id": "ai_evaluation_records",
+      "classification": "restricted",
+      "prismaModels": ["AiEvaluationSuite", "AiEvaluationCase", "AiEvaluationPolicy", "AiEvaluationRun", "AiEvaluationCaseResult"],
+      "locations": ["postgres", "backup_archive"],
+      "dataSubjects": ["system", "authorized_operator"],
+      "purposes": ["creative_generation", "safety_moderation", "support_operations"],
+      "exampleFields": ["suite and policy version", "input/expected/output SHA-256", "bounded quality score", "safety outcome", "latency", "regression delta", "report hash", "model and deployment reference", "operator reference"],
+      "accessRoles": ["authorized_service", "creative_operator_allowlisted", "trust_safety_reviewer_allowlisted", "auditor"],
+      "retentionPolicyId": "audit_event_plus_730d",
+      "exportPolicy": "exclude_raw_content_and_operator_identity_include_hashes_thresholds_and_regression_summary",
+      "deletionPolicy": "pseudonymize_operator_reference_retain_immutable_quality_and_safety_evidence_until_expiry",
+      "ownerTasks": ["V1-11", "V1-53", "V1-67", "V1-69"]
+    },
+    {
       "id": "notification_records",
       "classification": "confidential",
       "prismaModels": ["Notification"],
@@ -670,7 +684,7 @@
       "id": "browser_to_api",
       "from": "browser",
       "to": "api_memory",
-      "dataAssetIds": ["identity_account_profile", "marketplace_records", "community_content_interactions", "private_library_items", "raw_generation_inputs"],
+      "dataAssetIds": ["identity_account_profile", "marketplace_records", "community_content_interactions", "private_library_items", "raw_generation_inputs", "ai_evaluation_records"],
       "requiredControls": ["TLS", "authentication where required", "CSRF/origin controls", "body limits", "purpose-specific parser"],
       "destinationPersistence": "none_until_validated"
     },
@@ -678,7 +692,7 @@
       "id": "api_to_postgres",
       "from": "api_memory",
       "to": "postgres",
-      "dataAssetIds": ["governance_configuration", "identity_account_profile", "authentication_credentials_sessions", "marketplace_records", "community_content_interactions", "private_library_items", "internal_points_ledger", "internal_accounting_invariant_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "chat_conversation_messages", "provider_lifecycle_records", "creative_accounting_records", "notification_records", "moderation_review_records", "audit_event_records", "security_event_records"],
+      "dataAssetIds": ["governance_configuration", "identity_account_profile", "authentication_credentials_sessions", "marketplace_records", "community_content_interactions", "private_library_items", "internal_points_ledger", "internal_accounting_invariant_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "chat_conversation_messages", "provider_lifecycle_records", "creative_accounting_records", "ai_evaluation_records", "notification_records", "moderation_review_records", "audit_event_records", "security_event_records"],
       "requiredControls": ["validated DTO", "field allowlist", "transaction and ownership checks", "encrypted connection", "no secret or raw Provider payload"],
       "destinationPersistence": "retention_policy_applies"
     },
@@ -774,7 +788,7 @@
       "id": "runtime_to_postgres_normalized_provider_evidence",
       "from": "worker_memory",
       "to": "postgres",
-      "dataAssetIds": ["creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "provider_cost_budget_records", "provider_control_records", "audit_event_records"],
+      "dataAssetIds": ["creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "provider_cost_budget_records", "provider_control_records", "ai_evaluation_records", "audit_event_records"],
       "requiredControls": ["field allowlist", "safe ids and hashes", "redacted previews", "no raw request/response", "idempotency"],
       "destinationPersistence": "retention_policy_applies"
     },
@@ -782,7 +796,7 @@
       "id": "api_to_admin_console",
       "from": "api_memory",
       "to": "admin_console",
-      "dataAssetIds": ["marketplace_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "internal_accounting_invariant_records", "provider_cost_budget_records", "provider_control_records", "moderation_review_records", "audit_event_records", "security_event_records"],
+      "dataAssetIds": ["marketplace_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "internal_accounting_invariant_records", "provider_cost_budget_records", "provider_control_records", "ai_evaluation_records", "moderation_review_records", "audit_event_records", "security_event_records"],
       "requiredControls": ["RBAC", "purpose-specific allowlist", "redaction", "pagination", "elevated access audit", "no private URL or raw prompt"],
       "destinationPersistence": "none"
     },
@@ -1043,7 +1057,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 95,
+    "modelCount": 100,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",

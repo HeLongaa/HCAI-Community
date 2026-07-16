@@ -43,6 +43,14 @@ import {
   parseProviderOperationalPolicyUpdate,
 } from '../../modelControl/providerOperationsRuntime.js'
 import { requestReleaseChange } from '../../releases/releaseControl.js'
+import {
+  parseEvaluationPolicyCreate,
+  parseEvaluationPolicyListQuery,
+  parseEvaluationRunCreate,
+  parseEvaluationRunListQuery,
+  parseEvaluationSuiteCreate,
+  parseEvaluationSuiteListQuery,
+} from '../../modelControl/modelEvaluationRuntime.js'
 import { repositories } from '../../repositories/index.js'
 
 const permissions = Object.freeze({
@@ -56,6 +64,7 @@ export const registerModelControlRoutes = (router, options = {}) => {
   const repository = routeRepositories.modelControl
   const routingRepository = routeRepositories.modelRouting
   const governanceRepository = routeRepositories.modelGovernance
+  const evaluationRepository = routeRepositories.modelEvaluation
   const providerOperationsRepository = routeRepositories.providerOperations
   const find = async (type, id, path) => {
     const resource = await repository.find(type, id)
@@ -118,6 +127,88 @@ export const registerModelControlRoutes = (router, options = {}) => {
     const snapshot = await operationalSnapshot(profile)
     return { allowed: snapshot.readiness.ready, reasonCode: snapshot.readiness.reasonCode }
   }
+
+  router.add('GET', '/api/admin/model-control/evaluation-suites', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:model-evaluations:read')
+    const page = await evaluationRepository.listSuites(parseEvaluationSuiteListQuery(context.query))
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_evaluation.suites_queried', resourceType: 'ai_evaluation_suite', resourceId: null, metadata: { resultCount: page.items.length, limit: page.limit } })
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('POST', '/api/admin/model-control/evaluation-suites', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:model-evaluations:manage')
+    const suite = await evaluationRepository.createSuite(parseEvaluationSuiteCreate((await readJsonBody(request)) ?? {}, actor))
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_evaluation.suite_created', resourceType: 'ai_evaluation_suite', resourceId: suite.id, metadata: { suiteKey: suite.suiteKey, version: suite.version, modality: suite.modality, caseCount: suite.cases.length, contentHash: suite.contentHash } })
+    created(response, suite)
+  })
+
+  router.add('GET', '/api/admin/model-control/evaluation-suites/:id', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:model-evaluations:read')
+    const suite = await evaluationRepository.findSuite(context.params.id)
+    if (!suite) throw notFound(`/api/admin/model-control/evaluation-suites/${context.params.id}`)
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_evaluation.suite_read', resourceType: 'ai_evaluation_suite', resourceId: suite.id, metadata: { version: suite.version, caseCount: suite.cases.length } })
+    ok(response, suite)
+  })
+
+  router.add('GET', '/api/admin/model-control/evaluation-policies', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:model-evaluations:read')
+    const page = await evaluationRepository.listPolicies(parseEvaluationPolicyListQuery(context.query))
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_evaluation.policies_queried', resourceType: 'ai_evaluation_policy', resourceId: null, metadata: { resultCount: page.items.length, limit: page.limit } })
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('POST', '/api/admin/model-control/evaluation-policies', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:model-evaluations:manage')
+    const policy = await evaluationRepository.createPolicy(parseEvaluationPolicyCreate((await readJsonBody(request)) ?? {}, actor))
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_evaluation.policy_created', resourceType: 'ai_evaluation_policy', resourceId: policy.id, metadata: { policyKey: policy.policyKey, version: policy.version, environment: policy.environment, policyHash: policy.policyHash } })
+    created(response, policy)
+  })
+
+  router.add('GET', '/api/admin/model-control/evaluation-policies/:id', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:model-evaluations:read')
+    const policy = await evaluationRepository.findPolicy(context.params.id)
+    if (!policy) throw notFound(`/api/admin/model-control/evaluation-policies/${context.params.id}`)
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_evaluation.policy_read', resourceType: 'ai_evaluation_policy', resourceId: policy.id, metadata: { version: policy.version, environment: policy.environment } })
+    ok(response, policy)
+  })
+
+  router.add('GET', '/api/admin/model-control/evaluation-runs', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:model-evaluations:read')
+    const page = await evaluationRepository.listRuns(parseEvaluationRunListQuery(context.query))
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_evaluation.runs_queried', resourceType: 'ai_evaluation_run', resourceId: null, metadata: { resultCount: page.items.length, limit: page.limit } })
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('POST', '/api/admin/model-control/evaluation-runs', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:model-evaluations:execute')
+    const run = await evaluationRepository.createRun(parseEvaluationRunCreate((await readJsonBody(request)) ?? {}, actor))
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_evaluation.run_recorded', resourceType: 'ai_evaluation_run', resourceId: run.id, metadata: { status: run.status, suiteId: run.suiteId, policyId: run.policyId, modelVersionId: run.modelVersionId, reportHash: run.reportHash, qualityScoreBps: run.qualityScoreBps, safetyScoreBps: run.safetyScoreBps } })
+    created(response, run)
+  })
+
+  router.add('GET', '/api/admin/model-control/evaluation-runs/:id', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:model-evaluations:read')
+    const run = await evaluationRepository.findRun(context.params.id)
+    if (!run) throw notFound(`/api/admin/model-control/evaluation-runs/${context.params.id}`)
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_evaluation.run_read', resourceType: 'ai_evaluation_run', resourceId: run.id, metadata: { status: run.status, reportHash: run.reportHash } })
+    ok(response, run)
+  })
+
+  router.add('GET', '/api/admin/model-control/evaluation-summary', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:model-evaluations:read')
+    const exported = await evaluationRepository.exportAll()
+    const statusCounts = exported.runs.reduce((counts, item) => ({ ...counts, [item.status]: (counts[item.status] ?? 0) + 1 }), {})
+    const currentPassingCount = exported.runs.filter((item) => item.status === 'passed' && item.baselineRunId && Date.parse(item.expiresAt) > Date.now()).length
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_evaluation.summary_read', resourceType: 'ai_evaluation', resourceId: null, metadata: { suiteCount: exported.suites.length, policyCount: exported.policies.length, runCount: exported.runs.length, currentPassingCount } })
+    ok(response, { suiteCount: exported.suites.length, policyCount: exported.policies.length, runCount: exported.runs.length, currentPassingCount, statusCounts })
+  })
+
+  router.add('GET', '/api/admin/model-control/evaluation-export', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:model-evaluations:read')
+    const exported = await evaluationRepository.exportAll()
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_evaluation.exported', resourceType: 'ai_evaluation', resourceId: null, metadata: { suiteCount: exported.suites.length, policyCount: exported.policies.length, runCount: exported.runs.length } })
+    ok(response, exported)
+  })
 
   router.add('GET', '/api/admin/model-control/routing-summary', async (_request, response, context) => {
     const actor = requirePermission(context, permissions.read)

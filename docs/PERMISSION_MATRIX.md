@@ -137,6 +137,14 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `GET /api/admin/model-control/promotions/:id` | Required | `admin:model-control:read`; immutable associations | Yes |
 | `GET /api/admin/model-control/governance-export` | Required | `admin:model-control:read`; bounded safe evidence | Yes |
 | `GET /api/admin/model-control/governance-summary` | Required | `admin:model-control:read`; safe operational counts | Yes |
+| `GET /api/admin/model-control/evaluation-suites` | Required | `admin:model-evaluations:read`; immutable hashed case inventory | Yes |
+| `POST /api/admin/model-control/evaluation-suites` | Required | `admin:model-evaluations:manage`; append-only suite version | Yes |
+| `GET /api/admin/model-control/evaluation-policies` | Required | `admin:model-evaluations:read`; reviewed threshold history | Yes |
+| `POST /api/admin/model-control/evaluation-policies` | Required | `admin:model-evaluations:manage`; independent reviewer required | Yes |
+| `GET /api/admin/model-control/evaluation-runs` | Required | `admin:model-evaluations:read`; bounded regression evidence | Yes |
+| `POST /api/admin/model-control/evaluation-runs` | Required | `admin:model-evaluations:execute`; immutable scored run | Yes |
+| `GET /api/admin/model-control/evaluation-summary` | Required | `admin:model-evaluations:read`; safe aggregate counts | Yes |
+| `GET /api/admin/model-control/evaluation-export` | Required | `admin:model-evaluations:read`; bounded hash-only export | Yes |
 
 | Route | Auth requirement | Permission requirement | Covered by tests |
 | --- | --- | --- | --- |
