@@ -371,11 +371,11 @@
     {
       "id": "media_asset_metadata",
       "classification": "confidential",
-      "prismaModels": ["MediaAsset", "MediaAssetRelation", "CreativeGenerationAsset", "ChatTurnInputAsset"],
+      "prismaModels": ["MediaAsset", "MediaStorageObject", "MediaAssetRelation", "CreativeGenerationAsset", "ChatTurnInputAsset"],
       "locations": ["postgres"],
       "dataSubjects": ["user", "depicted_third_party"],
       "purposes": ["media_delivery", "creative_generation", "marketplace_delivery", "safety_moderation"],
-      "exampleFields": ["owner id", "file name", "storage key", "content type", "size", "purpose", "status", "safe metadata"],
+      "exampleFields": ["owner id", "file name", "storage key", "content type", "size", "purpose", "status", "object lifecycle state", "verification digest", "cleanup deadline", "safe metadata"],
       "accessRoles": ["owner", "authorized_service", "media_reviewer", "support_operator_allowlisted"],
       "retentionPolicyId": "media_asset_delete_plus_30d",
       "exportPolicy": "include_metadata_and_owned_asset_reference",
@@ -1043,7 +1043,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 77,
+    "modelCount": 78,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",

@@ -115,7 +115,10 @@ test('Prisma consumer Inbox is concurrent, ordered, atomic, recoverable, and com
     await repository.client.domainEventPublication.deleteMany({ where: { eventId: { in: eventIds } } })
     await repository.client.domainEventOutbox.deleteMany({ where: { id: { in: eventIds } } })
     await repository.client.domainEventAggregateSequence.deleteMany({ where: { aggregateId: { in: aggregateIds } } })
-    await repository.client.auditEvent.deleteMany({ where: { OR: [{ id: { in: auditIds } }, { actorId: actor.id }] } })
+    await repository.client.$transaction(async (transaction) => {
+      await transaction.$executeRawUnsafe("SET LOCAL app.audit_maintenance = 'on'")
+      await transaction.auditEvent.deleteMany({ where: { OR: [{ id: { in: auditIds } }, { actorId: actor.id }] } })
+    })
     await repository.client.$disconnect()
   }
 })

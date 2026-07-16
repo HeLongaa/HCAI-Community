@@ -27,6 +27,17 @@ export const createProductionWorkerJobDefinitions = (repositories, env, options 
       run: () => repositories.media.sweepScanJobs({ source: 'worker' }),
     })
   }
+  if (repositories.media?.cleanupStorageObjects) {
+    jobs.push({
+      id: 'media-storage-cleanup',
+      enabled: env.mediaStorageCleanupWorkerEnabled,
+      intervalSeconds: env.mediaStorageCleanupWorkerIntervalSeconds,
+      maxAttempts: 3,
+      retryBackoffSeconds: env.mediaStorageCleanupWorkerIntervalSeconds,
+      lease: lease('media-storage-cleanup'),
+      run: () => repositories.media.cleanupStorageObjects({ limit: env.mediaStorageCleanupBatchSize }),
+    })
+  }
   if (repositories.tasks?.sweepStaleSubmissions) {
     jobs.push({
       id: 'task-stale-submission-sweep',

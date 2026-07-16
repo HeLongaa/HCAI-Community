@@ -31,7 +31,9 @@ Confirm:
 - `ACCESS_TOKEN_PREVIOUS_SECRETS` and `ACCESS_TOKEN_PREVIOUS_KEY_IDS` are set when rotating keys.
 - `AUTH_TRUSTED_ORIGINS` includes all browser frontend origins that will use cookie refresh.
 - `STORAGE_DRIVER=s3` and storage bucket/region/endpoint match the deployment.
+- Upload/download/scanner TTLs are bounded, and private CDN URL/secret/key ID are configured together when CDN delivery is enabled.
 - `MEDIA_SCAN_PROVIDER=webhook` has request URL, request signing, callback base URL, and callback signature settings.
+- `MEDIA_STORAGE_CLEANUP_WORKER_ENABLED=true` is set on workers with the approved retention days and bounded batch size.
 - `RATE_LIMIT_STORE=redis` and `RATE_LIMIT_REDIS_URL` are configured for multi-instance API deployments.
 - `METRICS_EXPORTER_ENABLED` and `METRICS_EXPORTER_TOKEN` match the monitoring deployment plan.
 - `API_EMBEDDED_WORKERS_ENABLED=false` is set on API instances.

@@ -425,6 +425,20 @@ export type ApiTaskTimelineItem = {
 }
 
 export type MediaAssetPurpose = 'task_attachment' | 'submission_asset' | 'profile_portfolio' | 'library_asset'
+export type MediaStorageState = 'pending_upload' | 'verifying' | 'quarantined' | 'available' | 'cleanup_pending' | 'deleting' | 'deleted' | 'verification_failed'
+
+export type ApiMediaStorageObject = {
+  provider: string
+  state: MediaStorageState
+  verifiedSizeBytes?: number | null
+  verifiedContentType?: string | null
+  verifiedAt: string | null
+  quarantinedAt?: string | null
+  cleanupAfter: string | null
+  deletedAt: string | null
+  lastErrorCode: string | null
+  version: number
+}
 
 export type ApiMediaAsset = {
   id: string
@@ -434,6 +448,7 @@ export type ApiMediaAsset = {
   sizeBytes: number
   purpose: MediaAssetPurpose
   status: 'pending' | 'uploaded' | 'rejected'
+  storage?: ApiMediaStorageObject | null
   metadata?: unknown
   archivedAt?: string | null
   deletedAt?: string | null
@@ -465,6 +480,7 @@ export type ApiAssetLibraryItem = {
   purpose: MediaAssetPurpose
   status: 'pending' | 'uploaded' | 'rejected'
   scanStatus: string
+  storage: ApiMediaStorageObject | null
   archivedAt: string | null
   deletedAt: string | null
   deletionReason: string | null
@@ -527,6 +543,7 @@ export type AssetLibraryQuery = {
 export type AdminMediaAssetQuery = AssetLibraryQuery & {
   ownerHandle?: string | null
   status?: 'pending' | 'uploaded' | 'rejected' | null
+  storageState?: MediaStorageState | null
   sort?: 'created_desc' | 'created_asc' | 'updated_desc' | 'name_asc' | null
 }
 
@@ -551,11 +568,20 @@ export type AdminMediaAssetExport = {
   items: ApiAdminMediaAsset[]
 }
 
+export type MediaStorageCleanupResult = {
+  inspected: number
+  deleted: number
+  failed: number
+  limit: number
+  items: Array<{ assetId: string; status: 'deleted' | 'failed' | 'skipped'; provider?: string; reasonCode?: string }>
+}
+
 export type CreateMediaUploadRequest = {
   fileName: string
   contentType: string
   sizeBytes: number
   purpose: MediaAssetPurpose
+  checksumSha256?: string
   metadata?: unknown
 }
 
@@ -667,6 +693,14 @@ export type MediaScanSweepResult = {
 export type ApiMediaGovernanceConfig = {
   storage: {
     driver: string
+    uploadTtlSeconds: number
+    downloadTtlSeconds: number
+    scannerReadTtlSeconds: number
+    privateDownloadConfigured: boolean
+    cleanupWorkerEnabled: boolean
+    cleanupWorkerIntervalSeconds: number
+    cleanupBatchSize: number
+    cleanupRetentionDays: number
   }
   scanner: {
     provider: string
@@ -687,6 +721,7 @@ export type ApiMediaGovernanceConfig = {
   retention: {
     historyRetentionDays: number
     historyRetentionMaxPerAsset: number
+    storageCleanupRetentionDays: number
   }
   alerts: {
     windowMinutes: number
@@ -795,7 +830,7 @@ export type ApiMediaScanJob = {
 export type MediaDownloadContract = {
   asset: ApiMediaAsset
   download: {
-    provider?: 'mock' | 's3'
+    provider?: 'mock' | 's3' | 'private-cdn'
     method: 'GET'
     url: string
     headers: Record<string, string>

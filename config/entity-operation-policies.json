@@ -65,6 +65,7 @@
     { "model": "InternalAccountingMovement", "domain": "entitlements-accounting", "policy": "append_only", "hardDelete": false },
     { "model": "AccountingReconciliationIssue", "domain": "entitlements-accounting", "policy": "state_transition", "hardDelete": false },
     { "model": "MediaAsset", "domain": "media-platform", "policy": "soft_delete", "hardDelete": false },
+    { "model": "MediaStorageObject", "domain": "media-platform", "policy": "state_transition", "hardDelete": false },
     { "model": "ProfilePortfolioAsset", "domain": "user-profile", "policy": "state_transition", "hardDelete": false },
     { "model": "MediaAssetRelation", "domain": "media-platform", "policy": "immutable_evidence", "hardDelete": false },
     { "model": "MediaScanJob", "domain": "media-platform", "policy": "state_transition", "hardDelete": false },

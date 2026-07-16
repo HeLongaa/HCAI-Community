@@ -1,5 +1,7 @@
 import { createHmac } from 'node:crypto'
 
+import { signMediaScannerDownload } from '../storage/uploadSigner.js'
+
 const providerMode = () => String(process.env.MEDIA_SCAN_PROVIDER ?? 'manual').trim().toLowerCase()
 const scanRequestAdapterName = () => String(process.env.MEDIA_SCAN_REQUEST_ADAPTER ?? 'generic-webhook').trim().toLowerCase()
 const positiveInteger = (value, fallback) => {
@@ -38,7 +40,7 @@ const signPayload = (body) => {
   return secret ? `sha256=${createHmac('sha256', secret).update(body).digest('hex')}` : null
 }
 
-const buildGenericWebhookPayload = (asset, result, trigger, adapter) => ({
+const buildGenericWebhookPayload = (asset, result, trigger, adapter, readContract) => ({
   scanId: result.externalScanId,
   adapter,
   trigger,
@@ -46,21 +48,21 @@ const buildGenericWebhookPayload = (asset, result, trigger, adapter) => ({
   asset: {
     id: asset.id,
     fileName: asset.fileName,
-    storageKey: asset.storageKey,
     contentType: asset.contentType,
     sizeBytes: asset.sizeBytes,
     purpose: asset.purpose,
+    read: readContract,
   },
 })
 
-const buildClamAvHttpPayload = (asset, result, trigger, adapter) => ({
+const buildClamAvHttpPayload = (asset, result, trigger, adapter, readContract) => ({
   jobId: result.externalScanId,
   adapter,
   callbackUrl: buildCallbackUrl(asset),
   trigger,
   source: {
-    type: 'object-storage',
-    storageKey: asset.storageKey,
+    type: 'private-download',
+    request: readContract,
     fileName: asset.fileName,
     contentType: asset.contentType,
     sizeBytes: asset.sizeBytes,
@@ -101,7 +103,8 @@ const dispatchWebhookScanRequest = async (asset, result, trigger) => {
   if (!requestUrl) {
     return { adapter, status: 'not_configured' }
   }
-  const body = JSON.stringify(adapterConfig.buildPayload(asset, result, trigger, adapter))
+  const readContract = signMediaScannerDownload(asset)
+  const body = JSON.stringify(adapterConfig.buildPayload(asset, result, trigger, adapter, readContract))
   const signature = signPayload(body)
   const headers = {
     'content-type': 'application/json',

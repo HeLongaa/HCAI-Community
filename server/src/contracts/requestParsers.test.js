@@ -594,6 +594,7 @@ test('parseCreateMediaUploadRequest validates upload signing payloads', () => {
       contentType: 'application/pdf',
       sizeBytes: 2048,
       purpose: 'task_attachment',
+      checksumSha256: null,
       metadata,
     },
   )
@@ -622,7 +623,7 @@ test('media lifecycle query parsers validate trash and admin sorting', () => {
   assert.deepEqual(
     parseAdminMediaAssetQuery({ lifecycle: 'archived', ownerHandle: 'promptlin', status: 'uploaded', sort: 'name_asc', limit: '12' }),
     {
-      lifecycle: 'archived', ownerHandle: 'promptlin', status: 'uploaded', sort: 'name_asc', limit: 12, cursor: null,
+      lifecycle: 'archived', ownerHandle: 'promptlin', status: 'uploaded', storageState: null, sort: 'name_asc', limit: 12, cursor: null,
       purpose: null, mediaType: null, workspace: null, archived: 'all', search: null, dateFrom: null, dateTo: null,
     },
   )
@@ -644,6 +645,23 @@ test('parseCompleteMediaUploadRequest keeps checksum optional', () => {
     detectedContentType: 'text/plain',
   })
   assert.deepEqual(parseCompleteMediaUploadRequest({}), { checksum: '', detectedContentType: '' })
+})
+
+test('parseCreateMediaUploadRequest accepts a bounded SHA-256 upload checksum', () => {
+  assert.equal(parseCreateMediaUploadRequest({
+    fileName: 'asset.png',
+    contentType: 'image/png',
+    sizeBytes: 12,
+    purpose: 'library_asset',
+    checksumSha256: 'a'.repeat(64),
+  }).checksumSha256, 'a'.repeat(64))
+  assert.throws(() => parseCreateMediaUploadRequest({
+    fileName: 'asset.png',
+    contentType: 'image/png',
+    sizeBytes: 12,
+    purpose: 'library_asset',
+    checksumSha256: 'not-a-digest',
+  }), /checksumSha256/)
 })
 
 test('parseMediaScanRequest validates scan decisions', () => {
@@ -673,7 +691,7 @@ test('parseMediaScanCallbackRequest validates provider callback states', () => {
     externalScanId: 'scan-1',
   })
   assertValidationError(
-    () => parseMediaScanCallbackRequest({ status: 'scanning' }),
+    () => parseMediaScanCallbackRequest({ status: 'scanning', externalScanId: 'scan-1' }),
     'status must be one of: clean, review, rejected',
   )
 })

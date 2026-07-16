@@ -173,6 +173,20 @@ export const registerMediaRoutes = (router) => {
     ok(response, { action: payload.action, requested: payload.ids.length, succeeded, failed: results.length - succeeded, results })
   })
 
+  router.add('POST', '/api/admin/media/storage/cleanup', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:media:manage')
+    const { limit } = parsePaginationQuery((await readJsonBody(request)) ?? {}, { defaultLimit: 25, maxLimit: 100 })
+    const result = await repositories.media.cleanupStorageObjects?.({ actor, limit })
+    await repositories.audit.recordAttempt({
+      actor,
+      action: 'admin.media.storage.cleanup_executed',
+      resourceType: 'media_storage_object',
+      resourceId: null,
+      metadata: { inspected: result?.inspected ?? 0, deleted: result?.deleted ?? 0, failed: result?.failed ?? 0, limit },
+    })
+    ok(response, result ?? { inspected: 0, deleted: 0, failed: 0, limit, items: [] })
+  })
+
   router.add('GET', '/api/admin/media/assets/:id', async (_request, response, context) => {
     const actor = requirePermission(context, 'admin:media:read')
     const asset = await repositories.media.getAdminAsset(context.params.id)

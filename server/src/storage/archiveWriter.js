@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import { signMediaUpload } from './uploadSigner.js'
 
 const archiveKey = (now = new Date()) =>
@@ -6,9 +8,12 @@ const archiveKey = (now = new Date()) =>
 export const writeJsonArchive = async (payload, options = {}) => {
   const now = options.now ?? new Date()
   const body = JSON.stringify(payload, null, 2)
+  const bytes = Buffer.byteLength(body)
   const asset = {
     storageKey: options.storageKey ?? archiveKey(now),
     contentType: 'application/json',
+    sizeBytes: bytes,
+    checksumSha256: createHash('sha256').update(body).digest('hex'),
   }
   const upload = signMediaUpload(asset, { now, source: options.source ?? process.env })
   if (upload.provider === 'mock') {
@@ -16,7 +21,8 @@ export const writeJsonArchive = async (payload, options = {}) => {
       provider: 'mock',
       storageKey: asset.storageKey,
       url: upload.url,
-      bytes: Buffer.byteLength(body),
+      bytes,
+      checksumSha256: asset.checksumSha256,
       writtenAt: now.toISOString(),
     }
   }
@@ -32,7 +38,8 @@ export const writeJsonArchive = async (payload, options = {}) => {
     provider: upload.provider,
     storageKey: asset.storageKey,
     url: upload.url.split('?')[0],
-    bytes: Buffer.byteLength(body),
+    bytes,
+    checksumSha256: asset.checksumSha256,
     statusCode: response.status,
     writtenAt: now.toISOString(),
   }

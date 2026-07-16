@@ -11,6 +11,7 @@ import type {
 } from '../services/contracts'
 import { creativeService } from '../services/creativeService'
 import { mediaService } from '../services/mediaService'
+import { uploadMediaFile } from '../services/mediaUpload'
 
 export type VideoGenerationState = {
   status: 'idle' | 'loading' | 'done' | 'error'
@@ -421,17 +422,10 @@ export function useVideoGenerationWorkflow({
     }
     setAction({ type: 'upload', targetId: file.name, error: null })
     try {
-      const contract = await mediaService.createUpload({
-        fileName: file.name,
-        contentType: file.type || 'application/octet-stream',
-        sizeBytes: file.size,
+      await uploadMediaFile(file, {
         purpose,
         metadata: { source: 'video-studio-input' },
       })
-      if (!contract.upload.url.startsWith('mock://')) {
-        await fetch(contract.upload.url, { method: contract.upload.method, headers: contract.upload.headers, body: file })
-      }
-      await mediaService.completeUpload(contract.asset.id)
       await refreshInputAssets()
       setAction({ type: null, targetId: null, error: null })
       pushToast(locale === 'zh' ? '素材已上传；扫描通过后可用于视频任务。' : 'Asset uploaded. It becomes selectable after a clean scan.')

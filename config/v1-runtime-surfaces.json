@@ -156,7 +156,7 @@
       "id": "server-mock-storage-driver",
       "area": "media-storage",
       "classification": "development_only",
-      "paths": ["server/src/config/env.js", "server/src/storage/uploadSigner.js", "server/src/storage/objectWriter.js", "server/src/storage/archiveWriter.js"],
+      "paths": ["server/src/config/env.js", "server/src/storage/uploadSigner.js", "server/src/storage/objectStore.js", "server/src/storage/objectWriter.js", "server/src/storage/archiveWriter.js"],
       "markers": ["driver: 'mock'", "mock://media/", "upload.provider === 'mock'"],
       "productionDisposition": "require_s3_in_production",
       "ownerTasks": ["V1-39", "V1-50"]

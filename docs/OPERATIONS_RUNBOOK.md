@@ -53,6 +53,8 @@ Recommended production settings:
 
 - `API_EMBEDDED_WORKERS_ENABLED=false` on API instances.
 - `MEDIA_SCAN_WORKER_ENABLED=true` on worker instances when scanner timeout sweeps should run automatically.
+- `MEDIA_STORAGE_CLEANUP_WORKER_ENABLED=true` on worker instances so due `cleanup_pending` objects are physically deleted.
+- `MEDIA_STORAGE_CLEANUP_WORKER_INTERVAL_SECONDS=300`, `MEDIA_STORAGE_CLEANUP_BATCH_SIZE=25`, and `MEDIA_STORAGE_CLEANUP_RETENTION_DAYS=30` unless the approved retention policy says otherwise.
 - `TASK_STALE_SUBMISSION_WORKER_ENABLED=true` on worker instances when overdue task-review submissions should be marked stale automatically.
 - `WORKER_LEASE_TTL_SECONDS=300` unless a deployment needs a longer stale-worker recovery window.
 - `WORKER_LEASE_RENEW_INTERVAL_SECONDS=60`; this must stay below the lease TTL.
@@ -64,7 +66,8 @@ Operational notes:
 2. Scale worker instances separately from API instances.
 3. Keep worker intervals long enough for normal job duration; each process also skips a job if the previous local run is still active.
 4. Mutating jobs use durable operation leases when `DATABASE_URL` is configured, so multiple worker instances can be deployed safely.
-5. Review `rate_limit.store_unavailable`, `operations.lease.skipped`, `operations.lease.renew_failed`, `media.scan.timeout`, and `task.submission.stale` audit/security events during worker incident triage.
+5. Review `rate_limit.store_unavailable`, `operations.lease.skipped`, `operations.lease.renew_failed`, `media.scan.timeout`, `media.storage.cleanup_failed`, and `task.submission.stale` audit/security events during worker incident triage.
+6. Use `POST /api/admin/media/storage/cleanup` for a bounded operator rerun after fixing storage access; never bypass retention by deleting bucket objects directly.
 
 ## Distributed Worker Leases
 

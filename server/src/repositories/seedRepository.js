@@ -57,7 +57,8 @@ import {
   serializeTaskSubmission,
 } from './serializers.js'
 import { buildTaskViewModel } from './prismaTransforms.js'
-import { signMediaDownload, signMediaUpload } from '../storage/uploadSigner.js'
+import { buildStorageConfig, normalizeStorageChecksumSha256, signMediaDownload, signMediaUpload } from '../storage/uploadSigner.js'
+import { deleteStorageObject, inspectStorageObject, StorageObjectError } from '../storage/objectStore.js'
 import { diffPointAdjustmentPolicy, normalizePointAdjustmentPolicy, summarizePointPolicyDiff } from '../points/adjustmentPolicy.js'
 import {
   buildDefaultMediaGovernancePolicy,
@@ -1640,7 +1641,7 @@ const makeGeneratedStorageKey = (actor, payload, id = randomUUID()) =>
 const makeUploadContract = (asset) => {
   return {
     asset: serializeMediaAsset(asset),
-    upload: signMediaUpload(asset),
+    upload: signMediaUpload({ ...asset, checksumSha256: asset.storage?.checksumSha256 ?? null }),
   }
 }
 
@@ -1656,6 +1657,21 @@ const mediaSecurityMetadata = (asset, patch = {}) => ({
     ...patch,
   },
 })
+
+const transitionSeedStorage = (asset, state, now = new Date().toISOString(), patch = {}) => asset.storage ? {
+  ...asset.storage,
+  ...patch,
+  state,
+  quarantinedAt: state === 'available' ? null : (patch.quarantinedAt ?? asset.storage.quarantinedAt ?? now),
+  version: Number(asset.storage.version ?? 1) + 1,
+} : null
+
+const activeSeedStorageState = (asset, { archivedAt = asset.archivedAt, deletedAt = asset.deletedAt } = {}) => {
+  if (asset.storage?.deletedAt) return 'deleted'
+  if (deletedAt) return 'cleanup_pending'
+  if (archivedAt) return 'quarantined'
+  return asset.metadata?.security?.scanStatus === 'clean' ? 'available' : 'quarantined'
+}
 
 const makeCreativeGenerationRecord = (payload, patch = {}) => {
   const now = new Date().toISOString()
@@ -5420,7 +5436,14 @@ export const createSeedRepository = () => {
       const asset = mediaAssetsById.get(String(id)) ?? null
       if (!asset || asset.ownerHandle !== actor.handle) return null
       if (asset.deletedAt) throw new HttpError(409, 'ASSET_DELETED', 'Deleted assets must be recovered before archive changes')
-      const updated = { ...asset, archivedAt: archived ? (asset.archivedAt ?? new Date().toISOString()) : null, updatedAt: new Date().toISOString() }
+      const now = new Date().toISOString()
+      const archivedAt = archived ? (asset.archivedAt ?? now) : null
+      const updated = {
+        ...asset,
+        archivedAt,
+        storage: transitionSeedStorage(asset, activeSeedStorageState(asset, { archivedAt } ), now),
+        updatedAt: now,
+      }
       mediaAssetsById.set(updated.id, updated)
       if (archived) {
         for (const [portfolioId, item] of portfolioAssetsById.entries()) {
@@ -5435,7 +5458,19 @@ export const createSeedRepository = () => {
     setAssetDeleted: (id, deleted, actor, payload = {}) => {
       const asset = mediaAssetsById.get(String(id)) ?? null
       if (!asset || asset.ownerHandle !== actor.handle) return null
-      const updated = { ...asset, deletedAt: deleted ? (asset.deletedAt ?? new Date().toISOString()) : null, deletedByHandle: deleted ? actor.handle : null, deletionReason: deleted ? payload.reason ?? 'user_requested' : null, updatedAt: new Date().toISOString() }
+      const now = new Date().toISOString()
+      const deletedAt = deleted ? (asset.deletedAt ?? now) : null
+      const nextStorageState = activeSeedStorageState(asset, { deletedAt })
+      const updated = {
+        ...asset,
+        deletedAt,
+        deletedByHandle: deleted ? actor.handle : null,
+        deletionReason: deleted ? payload.reason ?? 'user_requested' : null,
+        storage: transitionSeedStorage(asset, nextStorageState, now, {
+          cleanupAfter: deleted ? new Date(Date.now() + getSeedMediaGovernancePolicy().retention.storageCleanupRetentionDays * 86400_000).toISOString() : null,
+        }),
+        updatedAt: now,
+      }
       mediaAssetsById.set(updated.id, updated)
       if (deleted) {
         for (const [portfolioId, item] of portfolioAssetsById.entries()) if (item.assetId === updated.id && item.status === 'published') portfolioAssetsById.set(portfolioId, { ...item, status: 'withdrawn', withdrawnAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
@@ -5451,6 +5486,7 @@ export const createSeedRepository = () => {
         .filter((asset) => !options.purpose || asset.purpose === options.purpose)
         .filter((asset) => !options.mediaType || assetMediaType(asset.contentType) === options.mediaType)
         .filter((asset) => !options.ownerHandle || asset.ownerHandle === options.ownerHandle)
+        .filter((asset) => !options.storageState || asset.storage?.state === options.storageState)
         .filter((asset) => !search || [asset.id, asset.fileName, asset.ownerHandle].some((value) => String(value).toLowerCase().includes(search)))
         .sort((left, right) => options.sort === 'created_asc' ? left.createdAt.localeCompare(right.createdAt) : options.sort === 'name_asc' ? left.fileName.localeCompare(right.fileName) : options.sort === 'updated_desc' ? right.updatedAt.localeCompare(left.updatedAt) : right.createdAt.localeCompare(left.createdAt))
         .map(getSeedAdminAsset)
@@ -5465,7 +5501,14 @@ export const createSeedRepository = () => {
       const asset = mediaAssetsById.get(String(id)) ?? null
       if (!asset) return null
       if (asset.deletedAt) throw new HttpError(409, 'ASSET_DELETED', 'Deleted assets must be recovered before archive changes')
-      const updated = { ...asset, archivedAt: archived ? (asset.archivedAt ?? new Date().toISOString()) : null, updatedAt: new Date().toISOString() }
+      const now = new Date().toISOString()
+      const archivedAt = archived ? (asset.archivedAt ?? now) : null
+      const updated = {
+        ...asset,
+        archivedAt,
+        storage: transitionSeedStorage(asset, activeSeedStorageState(asset, { archivedAt }), now),
+        updatedAt: now,
+      }
       mediaAssetsById.set(updated.id, updated)
       if (archived) for (const [portfolioId, item] of portfolioAssetsById.entries()) if (item.assetId === updated.id && item.status === 'published') portfolioAssetsById.set(portfolioId, { ...item, status: 'withdrawn', withdrawnAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
       recordAudit(actor, archived ? 'admin.media.asset.archived' : 'admin.media.asset.restored', 'media_asset', updated.id, { ownerHandle: updated.ownerHandle })
@@ -5474,7 +5517,18 @@ export const createSeedRepository = () => {
     setAdminAssetDeleted: (id, deleted, actor, payload = {}) => {
       const asset = mediaAssetsById.get(String(id)) ?? null
       if (!asset) return null
-      const updated = { ...asset, deletedAt: deleted ? (asset.deletedAt ?? new Date().toISOString()) : null, deletedByHandle: deleted ? actor.handle : null, deletionReason: deleted ? payload.reason ?? 'admin_requested' : null, updatedAt: new Date().toISOString() }
+      const now = new Date().toISOString()
+      const deletedAt = deleted ? (asset.deletedAt ?? now) : null
+      const updated = {
+        ...asset,
+        deletedAt,
+        deletedByHandle: deleted ? actor.handle : null,
+        deletionReason: deleted ? payload.reason ?? 'admin_requested' : null,
+        storage: transitionSeedStorage(asset, activeSeedStorageState(asset, { deletedAt }), now, {
+          cleanupAfter: deleted ? new Date(Date.now() + getSeedMediaGovernancePolicy().retention.storageCleanupRetentionDays * 86400_000).toISOString() : null,
+        }),
+        updatedAt: now,
+      }
       mediaAssetsById.set(updated.id, updated)
       if (deleted) for (const [portfolioId, item] of portfolioAssetsById.entries()) if (item.assetId === updated.id && item.status === 'published') portfolioAssetsById.set(portfolioId, { ...item, status: 'withdrawn', withdrawnAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
       recordAudit(actor, deleted ? 'admin.media.asset.deleted' : 'admin.media.asset.recovered', 'media_asset', updated.id, { ownerHandle: updated.ownerHandle, reason: deleted ? updated.deletionReason : 'admin_recovery' })
@@ -5517,6 +5571,10 @@ export const createSeedRepository = () => {
     createUpload: (payload, actor) => {
       const now = new Date().toISOString()
       const id = `media-${randomUUID()}`
+      const storageConfig = buildStorageConfig()
+      if (storageConfig.driver === 's3' && !payload.checksumSha256) {
+        throw new HttpError(400, 'STORAGE_CHECKSUM_REQUIRED', 'checksumSha256 is required for S3 uploads')
+      }
       const asset = {
         id,
         ownerHandle: actor.handle,
@@ -5526,6 +5584,19 @@ export const createSeedRepository = () => {
         sizeBytes: payload.sizeBytes,
         purpose: payload.purpose,
         status: 'pending',
+        storage: {
+          provider: storageConfig.driver,
+          state: 'pending_upload',
+          checksumSha256: payload.checksumSha256 ? normalizeStorageChecksumSha256(payload.checksumSha256) : null,
+          verifiedSizeBytes: null,
+          verifiedContentType: null,
+          verifiedAt: null,
+          quarantinedAt: null,
+          cleanupAfter: null,
+          deletedAt: null,
+          lastErrorCode: null,
+          version: 1,
+        },
         metadata: payload.metadata ?? null,
         createdAt: now,
         updatedAt: now,
@@ -5542,12 +5613,47 @@ export const createSeedRepository = () => {
       if (!asset || !canAccessOwnedResource(asset.ownerHandle, actor)) {
         return null
       }
+      if (asset.status !== 'pending' && asset.storage && !['pending_upload', 'verification_failed', 'verifying'].includes(asset.storage.state)) {
+        return serializeMediaAsset(asset)
+      }
+      if (!asset.storage) throw new HttpError(409, 'STORAGE_OBJECT_STATE_MISSING', 'Storage object lifecycle state is missing')
+      if (asset.storage.state === 'verifying') throw new HttpError(409, 'UPLOAD_COMPLETION_IN_PROGRESS', 'Upload completion is already in progress')
+      Object.assign(asset.storage, {
+        state: 'verifying',
+        lastErrorCode: null,
+        version: asset.storage.version + 1,
+      })
+      let inspection
+      try {
+        inspection = await inspectStorageObject({ ...asset, checksumSha256: asset.storage.checksumSha256 })
+      } catch (error) {
+        const reasonCode = error instanceof StorageObjectError ? error.code : 'STORAGE_VERIFICATION_FAILED'
+        Object.assign(asset.storage, { state: 'verification_failed', lastErrorCode: reasonCode, version: asset.storage.version + 1 })
+        recordAudit(actor, 'media.upload.verification_failed', 'media_asset', asset.id, { purpose: asset.purpose, reasonCode })
+        throw new HttpError(error instanceof StorageObjectError && error.retryable ? 503 : 409, 'MEDIA_STORAGE_VERIFICATION_FAILED', 'Uploaded object could not be verified', { reasonCode })
+      }
+      Object.assign(asset.storage, {
+        state: 'verifying',
+        etag: inspection.etag,
+        checksumSha256: inspection.checksumSha256 ?? asset.storage.checksumSha256,
+        verifiedSizeBytes: inspection.sizeBytes,
+        verifiedContentType: inspection.contentType,
+        verifiedAt: inspection.verifiedAt,
+        lastErrorCode: null,
+        version: asset.storage.version + 1,
+      })
       const detectedContentType = payload.detectedContentType || asset.contentType
       const contentTypeMatches = detectedContentType.toLowerCase() === asset.contentType.toLowerCase()
       const scanResult = contentTypeMatches ? await scanMediaAsset(asset) : null
       const updated = {
         ...asset,
         status: contentTypeMatches && scanResult?.status !== 'rejected' ? 'uploaded' : 'rejected',
+        storage: {
+          ...asset.storage,
+          state: contentTypeMatches && scanResult?.status === 'clean' ? 'available' : 'quarantined',
+          quarantinedAt: contentTypeMatches && scanResult?.status === 'clean' ? null : new Date().toISOString(),
+          version: asset.storage.version + 1,
+        },
         metadata: {
           ...mediaSecurityMetadata(asset, {
             checksum: payload.checksum || undefined,
@@ -5599,6 +5705,19 @@ export const createSeedRepository = () => {
         sizeBytes: storage.bytes,
         purpose: 'library_asset',
         status: 'pending',
+        storage: {
+          provider: storage.provider,
+          state: 'quarantined',
+          checksumSha256: storage.checksumSha256,
+          verifiedSizeBytes: storage.bytes,
+          verifiedContentType: payload.artifact.contentType,
+          verifiedAt: storage.writtenAt,
+          quarantinedAt: storage.writtenAt,
+          cleanupAfter: null,
+          deletedAt: null,
+          lastErrorCode: null,
+          version: 1,
+        },
         metadata: {
           creative: payload.artifact.metadata,
           storage: {
@@ -5615,6 +5734,7 @@ export const createSeedRepository = () => {
       const updated = {
         ...asset,
         status: effectiveScanStatus === 'rejected' ? 'rejected' : 'uploaded',
+        storage: transitionSeedStorage(asset, effectiveScanStatus === 'clean' ? 'available' : 'quarantined'),
         metadata: mediaSecurityMetadata(asset, {
           declaredContentType: asset.contentType,
           detectedContentType: asset.contentType,
@@ -5698,6 +5818,19 @@ export const createSeedRepository = () => {
         sizeBytes: storage.bytes,
         purpose: 'library_asset',
         status: 'pending',
+        storage: {
+          provider: storage.provider,
+          state: 'quarantined',
+          checksumSha256: storage.checksumSha256,
+          verifiedSizeBytes: storage.bytes,
+          verifiedContentType: payload.contentType,
+          verifiedAt: storage.writtenAt,
+          quarantinedAt: storage.writtenAt,
+          cleanupAfter: null,
+          deletedAt: null,
+          lastErrorCode: null,
+          version: 1,
+        },
         metadata: {
           creative: payload.metadata,
           ingestion: {
@@ -5721,6 +5854,7 @@ export const createSeedRepository = () => {
       const updated = {
         ...asset,
         status: effectiveScanStatus === 'rejected' ? 'rejected' : 'uploaded',
+        storage: transitionSeedStorage(asset, effectiveScanStatus === 'clean' ? 'available' : 'quarantined'),
         metadata: mediaSecurityMetadata(asset, {
           checksum: `sha256:${payload.sha256}`,
           declaredContentType: payload.contentType,
@@ -5905,6 +6039,7 @@ export const createSeedRepository = () => {
       const updated = {
         ...asset,
         status: payload.decision === 'clean' ? 'uploaded' : 'rejected',
+        storage: transitionSeedStorage(asset, payload.decision === 'clean' && !asset.archivedAt && !asset.deletedAt ? 'available' : 'quarantined', now),
         metadata: mediaSecurityMetadata(asset, {
           scanStatus: payload.decision === 'clean' ? 'clean' : 'rejected',
           detectedContentType: payload.detectedContentType || asset.metadata?.security?.detectedContentType || asset.contentType,
@@ -5926,10 +6061,23 @@ export const createSeedRepository = () => {
       if (!asset) {
         return null
       }
+      const expectedExternalScanId = String(asset.metadata?.security?.externalScanId ?? '')
+      if (!payload.externalScanId || (expectedExternalScanId && payload.externalScanId !== expectedExternalScanId)) {
+        recordAudit(null, 'media.scan.callback_conflict', 'media_asset', asset.id, { reasonCode: 'external_scan_id_mismatch' })
+        throw new HttpError(409, 'MEDIA_SCAN_CALLBACK_MISMATCH', 'Scan callback does not match the active scan attempt')
+      }
+      if (asset.metadata?.security?.callbackReceivedAt) {
+        if (asset.metadata.security.scanStatus !== payload.status) {
+          recordAudit(null, 'media.scan.callback_conflict', 'media_asset', asset.id, { reasonCode: 'terminal_result_mismatch' })
+          throw new HttpError(409, 'MEDIA_SCAN_CALLBACK_CONFLICT', 'Scan callback conflicts with the recorded result')
+        }
+        return serializeMediaAsset(asset)
+      }
       const now = new Date().toISOString()
       const updated = {
         ...asset,
         status: payload.status === 'rejected' ? 'rejected' : 'uploaded',
+        storage: transitionSeedStorage(asset, payload.status === 'clean' && !asset.archivedAt && !asset.deletedAt ? 'available' : 'quarantined', now),
         metadata: mediaSecurityMetadata(asset, {
           scanStatus: payload.status,
           detectedContentType: payload.detectedContentType || asset.metadata?.security?.detectedContentType || asset.contentType,
@@ -5996,6 +6144,7 @@ export const createSeedRepository = () => {
       const updated = {
         ...asset,
         status: 'uploaded',
+        storage: transitionSeedStorage(asset, 'quarantined'),
         metadata: mediaSecurityMetadata(asset, {
           scanProvider: scanResult.provider,
           scanStatus: scanResult.status,
@@ -6148,9 +6297,41 @@ export const createSeedRepository = () => {
         items: updatedItems,
       }
     },
+    cleanupStorageObjects: async ({ actor = null, limit = 25, now = new Date() } = {}) => {
+      const candidates = [...mediaAssetsById.values()]
+        .filter((asset) => asset.storage?.state === 'cleanup_pending' && asset.storage.cleanupAfter && new Date(asset.storage.cleanupAfter) <= now)
+        .sort((left, right) => left.storage.cleanupAfter.localeCompare(right.storage.cleanupAfter) || left.id.localeCompare(right.id))
+        .slice(0, Math.min(Math.max(Number(limit), 1), 100))
+      const items = []
+      let deleted = 0
+      let failed = 0
+      for (const asset of candidates) {
+        asset.storage = transitionSeedStorage(asset, 'deleting', now.toISOString())
+        try {
+          const result = await deleteStorageObject(asset)
+          asset.storage = transitionSeedStorage(asset, 'deleted', result.deletedAt, {
+            cleanupAfter: null,
+            deletedAt: result.deletedAt,
+            lastErrorCode: null,
+          })
+          recordAudit(actor, 'media.storage.deleted', 'media_asset', asset.id, { provider: result.provider, retentionDays: getSeedMediaGovernancePolicy().retention.storageCleanupRetentionDays })
+          deleted += 1
+          items.push({ assetId: asset.id, status: 'deleted', provider: result.provider })
+        } catch (error) {
+          const reasonCode = error instanceof StorageObjectError ? error.code : 'STORAGE_DELETE_FAILED'
+          asset.storage = transitionSeedStorage(asset, 'cleanup_pending', now.toISOString(), { lastErrorCode: reasonCode })
+          recordAudit(actor, 'media.storage.cleanup_failed', 'media_asset', asset.id, { provider: asset.storage.provider, reasonCode })
+          failed += 1
+          items.push({ assetId: asset.id, status: 'failed', reasonCode })
+        }
+      }
+      const result = { inspected: candidates.length, deleted, failed, limit: Math.min(Math.max(Number(limit), 1), 100), items }
+      if (failed > 0) throw new HttpError(503, 'MEDIA_STORAGE_CLEANUP_PARTIAL_FAILURE', 'One or more storage objects could not be cleaned up', result)
+      return result
+    },
     createDownload: (id, actor) => {
       const asset = mediaAssetsById.get(String(id)) ?? null
-      if (!asset || !canAccessOwnedResource(asset.ownerHandle, actor) || asset.status !== 'uploaded' || asset.metadata?.security?.scanStatus !== 'clean' || asset.archivedAt || asset.deletedAt) {
+      if (!asset || !canAccessOwnedResource(asset.ownerHandle, actor) || asset.status !== 'uploaded' || asset.metadata?.security?.scanStatus !== 'clean' || (asset.storage && asset.storage.state !== 'available') || asset.archivedAt || asset.deletedAt) {
         return null
       }
       recordAudit(actor, 'media.download.signed', 'media_asset', asset.id, {

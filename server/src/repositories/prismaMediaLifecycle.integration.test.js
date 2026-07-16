@@ -38,6 +38,15 @@ test('Prisma media lifecycle atomically revokes access, withdraws visibility, re
         purpose: 'library_asset',
         status: 'uploaded',
         metadata: { security: { scanStatus: 'clean' } },
+        storageObject: {
+          create: {
+            provider: 's3',
+            state: 'available',
+            verifiedSizeBytes: 4096,
+            verifiedContentType: 'image/png',
+            verifiedAt: new Date(),
+          },
+        },
         portfolioAssets: { create: { ownerId: userId, title: 'Published fixture', status: 'published', publishedAt: new Date() } },
       },
     })
@@ -70,6 +79,7 @@ test('Prisma media lifecycle atomically revokes access, withdraws visibility, re
       await transaction.$executeRawUnsafe("SET LOCAL app.audit_maintenance = 'on'")
       await transaction.auditEvent.deleteMany({ where: { OR: [{ actorId: userId }, { resourceId: assetId }] } })
       await transaction.profilePortfolioAsset.deleteMany({ where: { assetId } })
+      await transaction.mediaStorageObject.deleteMany({ where: { assetId } })
       await transaction.mediaAsset.deleteMany({ where: { id: assetId } })
       await transaction.user.deleteMany({ where: { id: userId } })
     })

@@ -37,7 +37,7 @@ All 14 direct frontend imports of `src/data/mockData.ts` are checked exactly. Ad
 | `server-seed-repository-fallback` | Production requires `DATABASE_URL`, does not import Seed repository, and fails startup when Prisma is unavailable | Retain fail-closed PostgreSQL requirement | V1-39, V1-49 |
 | `server-prisma-demo-autoseed` | Production repository creation never imports or runs demo autoseed; development/test seeding is explicit and configurable | Retain explicit bootstrap | V1-39, V1-49 |
 | `server-demo-auth-compatibility` | Demo handles/tokens support local and test workflows | Restrict to development and tests | V1-39, V1-48, V1-67 |
-| `server-mock-storage-driver` | Missing S3 configuration selects `mock://` upload/download/archive | Require S3-compatible storage in production | V1-39, V1-50 |
+| `server-mock-storage-driver` | Missing S3 configuration selects mock upload, verification, download, archive, and physical-delete behavior | Require S3-compatible storage in production | V1-39, V1-50 |
 | `server-manual-mock-scanner` | Scanner can remain manual or classify from deterministic mock signatures | Require real scanner request and signed callback | V1-39, V1-51 |
 | `server-dev-oauth-fallback` | Unconfigured OAuth providers execute a signed local callback | Require external OAuth or explicit unavailable state | V1-39, V1-48 |
 | `server-provider-fixture-injection` | OpenAI Image and Replicate product dispatch plus manual replay clients remain fixture-injected; the production Chat UI uses a deterministic Mock stream and application safety classifier | Retain tests and keep real product dispatch unregistered | V1-05 through V1-08, V1-12, V1-14, V1-16, V1-21, V1-22, V1-24 |

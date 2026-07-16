@@ -139,6 +139,17 @@ enum MediaScanJobStatus {
   failed
 }
 
+enum MediaStorageObjectState {
+  pending_upload
+  verifying
+  quarantined
+  available
+  cleanup_pending
+  deleting
+  deleted
+  verification_failed
+}
+
 enum CreativeGenerationStatus {
   queued
   running
@@ -1478,6 +1489,7 @@ model MediaAsset {
   deletionReason        String?            @map("deletion_reason")
 
   owner                    User                      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  storageObject            MediaStorageObject?
   scanJobs                 MediaScanJob[]
   outgoingRelations        MediaAssetRelation[]      @relation("MediaAssetRelationSource")
   incomingRelations        MediaAssetRelation[]      @relation("MediaAssetRelationTarget")
@@ -1490,6 +1502,30 @@ model MediaAsset {
   @@index([purpose])
   @@index([status])
   @@map("media_assets")
+}
+
+model MediaStorageObject {
+  assetId             String                  @id @map("asset_id")
+  provider            String
+  state               MediaStorageObjectState @default(pending_upload)
+  etag                String?
+  checksumSha256      String?                 @map("checksum_sha256")
+  verifiedSizeBytes   Int?                    @map("verified_size_bytes")
+  verifiedContentType String?                 @map("verified_content_type")
+  verifiedAt          DateTime?               @map("verified_at")
+  quarantinedAt       DateTime?               @map("quarantined_at")
+  cleanupAfter        DateTime?               @map("cleanup_after")
+  deletedAt           DateTime?               @map("deleted_at")
+  lastErrorCode       String?                 @map("last_error_code")
+  version             Int                     @default(1)
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
+
+  asset MediaAsset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+
+  @@index([state, cleanupAfter])
+  @@index([provider, state])
+  @@map("media_storage_objects")
 }
 
 model ProfilePortfolioAsset {

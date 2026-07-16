@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
-import { createHmac } from 'node:crypto'
+import { createHash, createHmac } from 'node:crypto'
 import http from 'node:http'
 import test from 'node:test'
 
 import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
+import { repositories } from '../../repositories/index.js'
 import { registerAdminRoutes } from '../admin/routes.js'
 import { registerMediaRoutes } from './routes.js'
 
@@ -126,6 +127,47 @@ test('owner soft delete revokes access, preserves trash visibility, and supports
     assert.equal(recovered.status, 200)
     assert.equal(recovered.payload.data.deletedAt, null)
     assert.equal(recovered.payload.data.actions.download.available, true)
+  } finally {
+    await server.close()
+  }
+})
+
+test('storage cleanup is permissioned, retention-gated, and physical deletion stays non-recoverable', async () => {
+  const server = await createTestServer()
+  try {
+    const asset = await completeAndCleanUpload(server, 'demo-access.promptlin', {
+      fileName: 'storage-cleanup-source.png', contentType: 'image/png', purpose: 'library_asset',
+    })
+    const deleted = await requestJson(server.url, `/api/media/assets/${asset.id}`, {
+      method: 'DELETE', body: { reason: 'retention_test' }, token: 'demo-access.promptlin',
+    })
+    assert.equal(deleted.status, 200)
+    assert.equal(deleted.payload.data.storage.state, 'cleanup_pending')
+
+    const denied = await requestJson(server.url, '/api/admin/media/storage/cleanup', {
+      body: { limit: 10 }, token: 'demo-access.promptlin',
+    })
+    assert.equal(denied.status, 403)
+
+    const notDue = await requestJson(server.url, '/api/admin/media/storage/cleanup', {
+      body: { limit: 10 }, token: 'demo-access.opsplus',
+    })
+    assert.equal(notDue.status, 200)
+    assert.equal(notDue.payload.data.items.some((item) => item.assetId === asset.id), false)
+
+    const cleanup = await repositories.media.cleanupStorageObjects({
+      limit: 100,
+      now: new Date(Date.now() + 31 * 86400_000),
+    })
+    assert.ok(cleanup.items.some((item) => item.assetId === asset.id && item.status === 'deleted'))
+
+    const recovered = await requestJson(server.url, `/api/media/assets/${asset.id}/recover`, {
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(recovered.status, 200)
+    assert.equal(recovered.payload.data.storage.state, 'deleted')
+    assert.equal(recovered.payload.data.actions.download.available, false)
+    assert.equal(recovered.payload.data.actions.download.reason, 'object_not_available')
   } finally {
     await server.close()
   }
@@ -309,6 +351,137 @@ test('POST /api/media/uploads creates a pending asset and upload contract', asyn
     assert.equal(event.metadata.sizeBytes, 2048)
   } finally {
     await server.close()
+  }
+})
+
+test('S3 upload completion verifies real object bytes, fails closed, retries, and serializes completion', async () => {
+  const storageKeys = ['STORAGE_DRIVER', 'STORAGE_ENDPOINT', 'STORAGE_REGION', 'STORAGE_BUCKET', 'STORAGE_ACCESS_KEY_ID', 'STORAGE_SECRET_ACCESS_KEY', 'MEDIA_SCAN_PROVIDER']
+  const previous = Object.fromEntries(storageKeys.map((key) => [key, process.env[key]]))
+  const objects = new Map()
+  const corruptPaths = new Set()
+  const storageServer = http.createServer((request, response) => {
+    const path = new URL(request.url, 'http://storage.local').pathname
+    if (request.method === 'PUT') {
+      const chunks = []
+      request.on('data', (chunk) => chunks.push(chunk))
+      request.on('end', () => {
+        objects.set(path, {
+          body: Buffer.concat(chunks),
+          contentType: request.headers['content-type'],
+          checksum: request.headers['x-amz-checksum-sha256'],
+        })
+        response.writeHead(200, { etag: '"fixture-etag"' })
+        response.end()
+      })
+      return
+    }
+    if (request.method === 'HEAD') {
+      const object = objects.get(path)
+      if (!object) {
+        response.writeHead(404)
+        response.end()
+        return
+      }
+      setTimeout(() => {
+        response.writeHead(200, {
+          'content-length': String(object.body.length),
+          'content-type': corruptPaths.has(path) ? 'application/octet-stream' : object.contentType,
+          'x-amz-checksum-sha256': object.checksum,
+          etag: '"fixture-etag"',
+        })
+        response.end()
+      }, 30)
+      return
+    }
+    response.writeHead(405)
+    response.end()
+  })
+  await new Promise((resolve) => storageServer.listen(0, '127.0.0.1', resolve))
+  const storagePort = storageServer.address().port
+  Object.assign(process.env, {
+    STORAGE_DRIVER: 's3',
+    STORAGE_ENDPOINT: `http://127.0.0.1:${storagePort}`,
+    STORAGE_REGION: 'us-east-1',
+    STORAGE_BUCKET: 'media',
+    STORAGE_ACCESS_KEY_ID: 'fixture-access-key',
+    STORAGE_SECRET_ACCESS_KEY: 'fixture-secret-key',
+    MEDIA_SCAN_PROVIDER: 'mock',
+  })
+  const server = await createTestServer()
+  const uploadBytes = async (contract, body) => {
+    const response = await fetch(contract.upload.url, {
+      method: contract.upload.method,
+      headers: contract.upload.headers,
+      body,
+    })
+    assert.equal(response.status, 200)
+    return new URL(contract.upload.url).pathname
+  }
+  try {
+    const missingChecksum = await requestJson(server.url, '/api/media/uploads', {
+      body: { ...validUploadBody(), purpose: 'submission_asset' },
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(missingChecksum.status, 400)
+    assert.equal(missingChecksum.payload.error.code, 'STORAGE_CHECKSUM_REQUIRED')
+
+    const cleanBody = Buffer.from('clean real storage bytes')
+    const cleanChecksum = createHash('sha256').update(cleanBody).digest('hex')
+    const clean = await createUpload(server, 'demo-access.promptlin', {
+      fileName: 'clean-real-storage.pdf',
+      purpose: 'submission_asset',
+      sizeBytes: cleanBody.length,
+      checksumSha256: cleanChecksum,
+    })
+    await uploadBytes(clean, cleanBody)
+    const completions = await Promise.all([
+      requestJson(server.url, `/api/media/uploads/${clean.asset.id}/complete`, { body: {}, token: 'demo-access.promptlin' }),
+      requestJson(server.url, `/api/media/uploads/${clean.asset.id}/complete`, { body: {}, token: 'demo-access.promptlin' }),
+    ])
+    assert.deepEqual(completions.map((result) => result.status).sort(), [200, 409])
+    const conflict = completions.find((result) => result.status === 409)
+    assert.equal(conflict.payload.error.code, 'UPLOAD_COMPLETION_IN_PROGRESS')
+    const completed = completions.find((result) => result.status === 200)
+    assert.equal(completed.payload.data.storage.state, 'available')
+    assert.equal(completed.payload.data.storage.verifiedSizeBytes, cleanBody.length)
+    assert.equal(completed.payload.data.storage.verifiedContentType, 'application/pdf')
+    assert.equal('checksumSha256' in completed.payload.data.storage, false)
+
+    const replay = await requestJson(server.url, `/api/media/uploads/${clean.asset.id}/complete`, { body: {}, token: 'demo-access.promptlin' })
+    assert.equal(replay.status, 200)
+    assert.equal(replay.payload.data.storage.state, 'available')
+
+    const mismatchBody = Buffer.from('content type mismatch')
+    const mismatch = await createUpload(server, 'demo-access.promptlin', {
+      fileName: 'mismatch-real-storage.pdf',
+      purpose: 'submission_asset',
+      sizeBytes: mismatchBody.length,
+      checksumSha256: createHash('sha256').update(mismatchBody).digest('hex'),
+    })
+    const mismatchPath = await uploadBytes(mismatch, mismatchBody)
+    corruptPaths.add(mismatchPath)
+    const failed = await requestJson(server.url, `/api/media/uploads/${mismatch.asset.id}/complete`, { body: {}, token: 'demo-access.promptlin' })
+    assert.equal(failed.status, 409)
+    assert.equal(failed.payload.error.code, 'MEDIA_STORAGE_VERIFICATION_FAILED')
+    assert.equal(failed.payload.error.details.reasonCode, 'STORAGE_CONTENT_TYPE_MISMATCH')
+
+    const failedList = await requestJson(server.url, '/api/media/assets?lifecycle=all&search=mismatch-real-storage', { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(failedList.payload.data[0].storage.state, 'verification_failed')
+    assert.equal(failedList.payload.data[0].storage.lastErrorCode, 'STORAGE_CONTENT_TYPE_MISMATCH')
+    assert.equal('checksumSha256' in failedList.payload.data[0].storage, false)
+    assert.equal('storageKey' in failedList.payload.data[0], false)
+
+    corruptPaths.delete(mismatchPath)
+    const retried = await requestJson(server.url, `/api/media/uploads/${mismatch.asset.id}/complete`, { body: {}, token: 'demo-access.promptlin' })
+    assert.equal(retried.status, 200)
+    assert.equal(retried.payload.data.storage.state, 'available')
+  } finally {
+    await server.close()
+    await new Promise((resolve, reject) => storageServer.close((error) => error ? reject(error) : resolve()))
+    for (const key of storageKeys) {
+      if (previous[key] === undefined) delete process.env[key]
+      else process.env[key] = previous[key]
+    }
   }
 })
 
@@ -866,6 +1039,7 @@ test('webhook media scanner records callback results and gates downloads', async
     assert.equal(completed.payload.data.metadata.security.scanProvider, 'webhook')
     assert.equal(completed.payload.data.metadata.security.scanStatus, 'scanning')
     assert.ok(completed.payload.data.metadata.security.externalScanId)
+    const activeScanId = completed.payload.data.metadata.security.externalScanId
     assert.equal(completed.payload.data.metadata.security.scanJobStatus, 'queued')
     assert.equal(completed.payload.data.metadata.security.scanAttempts, 1)
 
@@ -1002,21 +1176,58 @@ test('webhook media scanner records callback results and gates downloads', async
     assert.equal(unsilenced.payload.data.state, 'acknowledged')
     assert.equal(unsilenced.payload.data.silencedUntil, null)
 
+    const mismatchedCallback = await requestJson(server.url, `/api/media/uploads/${asset.id}/scan-callback`, {
+      body: { status: 'clean', externalScanId: 'different-scan-attempt' },
+      headers: { 'x-media-scan-secret': 'scan-secret' },
+    })
+    assert.equal(mismatchedCallback.status, 409)
+    assert.equal(mismatchedCallback.payload.error.code, 'MEDIA_SCAN_CALLBACK_MISMATCH')
+
     const callback = await requestJson(server.url, `/api/media/uploads/${asset.id}/scan-callback`, {
       body: {
         status: 'clean',
         note: 'Vendor passed',
         detectedContentType: 'application/pdf',
-        externalScanId: 'scan-ok',
+        externalScanId: activeScanId,
       },
       headers: { 'x-media-scan-secret': 'scan-secret' },
     })
     assert.equal(callback.status, 200)
     assert.equal(callback.payload.data.status, 'uploaded')
     assert.equal(callback.payload.data.metadata.security.scanStatus, 'clean')
-    assert.equal(callback.payload.data.metadata.security.externalScanId, 'scan-ok')
+    assert.equal(callback.payload.data.metadata.security.externalScanId, activeScanId)
     assert.equal(callback.payload.data.metadata.security.scanJobStatus, 'completed')
     assert.ok(callback.payload.data.metadata.security.callbackReceivedAt)
+
+    const replay = await requestJson(server.url, `/api/media/uploads/${asset.id}/scan-callback`, {
+      body: {
+        status: 'clean',
+        note: 'Vendor passed',
+        detectedContentType: 'application/pdf',
+        externalScanId: activeScanId,
+      },
+      headers: { 'x-media-scan-secret': 'scan-secret' },
+    })
+    assert.equal(replay.status, 200)
+    assert.equal(replay.payload.data.metadata.security.callbackReceivedAt, callback.payload.data.metadata.security.callbackReceivedAt)
+
+    const conflictingReplay = await requestJson(server.url, `/api/media/uploads/${asset.id}/scan-callback`, {
+      body: {
+        status: 'rejected',
+        note: 'Conflicting terminal result',
+        externalScanId: activeScanId,
+      },
+      headers: { 'x-media-scan-secret': 'scan-secret' },
+    })
+    assert.equal(conflictingReplay.status, 409)
+    assert.equal(conflictingReplay.payload.error.code, 'MEDIA_SCAN_CALLBACK_CONFLICT')
+
+    const afterConflict = await requestJson(server.url, `/api/media/assets/${asset.id}`, {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(afterConflict.status, 200)
+    assert.equal(afterConflict.payload.data.scanStatus, 'clean')
 
     const download = await requestJson(server.url, `/api/media/assets/${asset.id}/download`, {
       method: 'GET',
@@ -1025,7 +1236,7 @@ test('webhook media scanner records callback results and gates downloads', async
     assert.equal(download.status, 200)
     assert.equal(download.payload.data.asset.id, asset.id)
 
-    const completedJobs = await requestJson(server.url, '/api/media/scan-jobs?status=completed&search=scan-ok', {
+    const completedJobs = await requestJson(server.url, `/api/media/scan-jobs?status=completed&search=${encodeURIComponent(activeScanId)}`, {
       method: 'GET',
       token: 'demo-access.opsplus',
     })
@@ -1119,6 +1330,9 @@ test('webhook media scanner dispatches scan requests when configured', async () 
     assert.equal(scannerRequest.body.adapter, 'generic-webhook')
     assert.equal(scannerRequest.body.callbackUrl, `https://api.example.test/api/media/uploads/${asset.id}/scan-callback`)
     assert.equal(scannerRequest.body.asset.id, asset.id)
+    assert.equal(scannerRequest.body.asset.storageKey, undefined)
+    assert.equal(scannerRequest.body.asset.read.method, 'GET')
+    assert.match(scannerRequest.body.asset.read.url, /^mock:\/\/media\//)
     assert.equal(scannerRequest.headers['x-media-scan-id'], completed.payload.data.metadata.security.externalScanId)
     assert.equal(scannerRequest.headers['x-media-scan-adapter'], 'generic-webhook')
     assert.match(scannerRequest.headers['x-media-scan-signature'], /^sha256=[a-f0-9]{64}$/)
@@ -1209,8 +1423,10 @@ test('webhook media scanner dispatches ClamAV HTTP adapter payloads', async () =
     assert.equal(scannerRequest.body.jobId, scanId)
     assert.equal(scannerRequest.body.adapter, 'clamav-http')
     assert.equal(scannerRequest.body.callbackUrl, `https://api.example.test/api/media/uploads/${asset.id}/scan-callback`)
-    assert.equal(scannerRequest.body.source.type, 'object-storage')
-    assert.equal(scannerRequest.body.source.storageKey, asset.storageKey)
+    assert.equal(scannerRequest.body.source.type, 'private-download')
+    assert.equal(scannerRequest.body.source.storageKey, undefined)
+    assert.equal(scannerRequest.body.source.request.method, 'GET')
+    assert.match(scannerRequest.body.source.request.url, /^mock:\/\/media\//)
     assert.equal(scannerRequest.body.source.fileName, 'clamav-scan-brief.pdf')
     assert.equal(scannerRequest.body.source.contentType, 'application/pdf')
     assert.equal(scannerRequest.body.metadata.assetId, asset.id)
