@@ -26,22 +26,5 @@ test('admin filters and transitions owner media lifecycle records', async ({ pag
 
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(panel).toBeVisible()
-  const layout = await page.evaluate(() => {
-    const root = document.documentElement
-    const overflow = Array.from(document.querySelectorAll<HTMLElement>('body *')).flatMap((element) => {
-      const rect = element.getBoundingClientRect()
-      if (rect.right <= root.clientWidth + 1 && rect.left >= -1) return []
-      return [{
-        tag: element.tagName,
-        className: element.className,
-        testId: element.dataset.testid,
-        left: Math.round(rect.left),
-        right: Math.round(rect.right),
-        width: Math.round(rect.width),
-      }]
-    }).slice(0, 20)
-    return { clientWidth: root.clientWidth, scrollWidth: root.scrollWidth, bodyWidth: document.body.clientWidth, overflow }
-  })
-  console.info('admin mobile layout', JSON.stringify(layout))
-  expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
 })

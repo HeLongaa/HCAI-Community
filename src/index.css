@@ -8342,7 +8342,6 @@ button.video-history-row.active {
 .search-backdrop {
   position: fixed;
   inset: 0;
-  width: 100vw;
   height: 100dvh;
   z-index: 40;
   display: grid;
