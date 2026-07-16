@@ -1,0 +1,52 @@
+import fs from 'node:fs'
+import path from 'node:path'
+
+const root = process.cwd()
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8')
+const contract = JSON.parse(read('config/oauth-admin-operations-contract.json'))
+const packageJson = JSON.parse(read('package.json'))
+const schema = read('server/prisma/schema.prisma')
+const migration = read('server/prisma/migrations/0063_oauth_admin_operations/migration.sql')
+const permissionMigration = read('server/prisma/migrations/0064_oauth_admin_permission_grants/migration.sql')
+const routes = read('server/src/modules/oauthAdmin/routes.js')
+const publicRoutes = read('server/src/modules/auth/routes.js')
+const runtime = read('server/src/auth/oauthAdminOperations.js')
+const permissions = read('server/src/auth/permissions.js')
+const openapi = read('server/src/docs/openapi.js')
+
+const checks = []
+const add = (name, pass, detail = '') => checks.push({ name, pass: Boolean(pass), detail })
+
+add('contract schema is supported', contract.schemaVersion === 1, `schemaVersion=${contract.schemaVersion}`)
+add('scope is limited to supported personal OAuth providers', contract.providers.join(',') === 'google,apple,discord', contract.providers.join(','))
+add('read and manage permissions are dedicated', permissions.includes(`'${contract.permissions.read}'`) && permissions.includes(`'${contract.permissions.manage}'`))
+add('provider control model contains no credential fields', /model OAuthProviderControl[\s\S]*?provider[\s\S]*?enabled[\s\S]*?version[\s\S]*?reasonCode/.test(schema) && !/model OAuthProviderControl[\s\S]*?(clientSecret|privateKey|accessToken)/.test(schema))
+add('authorization requests support revocation without exposing state', /revokedAt[\s\S]*?revokeReasonCode/.test(schema) && runtime.includes('serializeOAuthAuthorizationRequest'))
+add('account timestamps support deterministic paging', /model AuthAccount[\s\S]*?createdAt[\s\S]*?updatedAt/.test(schema))
+add('migration installs control and revocation constraints', migration.includes('oauth_provider_controls_provider_check') && migration.includes('oauth_authorization_requests_revoke_reason_check'))
+add('migration installs default OAuth Admin grants', permissionMigration.includes("'moderator', 'admin:auth:read'") && permissionMigration.includes("'admin', 'admin:auth:manage'"))
+for (const route of contract.routes) {
+  add(`${route.method} ${route.path} is implemented`, routes.includes(`router.add('${route.method}', '${route.path}'`), route.permission)
+  add(`${route.method} ${route.path} enforces its permission`, routes.includes(`'${route.permission}'`), route.permission)
+  const documentedPath = route.path.replace('/api', '').replace(/:([a-zA-Z]+)/g, '{$1}')
+  add(`${route.method} ${route.path} is documented`, openapi.includes(`'${documentedPath}'`), route.path)
+}
+add('public OAuth metadata reads provider controls', publicRoutes.includes('listProviderControls') && publicRoutes.includes("mode: 'unavailable'"))
+add('public OAuth start blocks disabled providers', publicRoutes.includes('isProviderEnabled') && publicRoutes.includes('OAUTH_PROVIDER_DISABLED'))
+add('provider status uses optimistic versioning', runtime.includes('expectedVersion must be a non-negative integer') && contract.providerControl.optimisticVersioning)
+add('account unlink preserves final sign-in method', contract.accountUnlink.preserveFinalSignInMethod && routes.includes('AUTH_ACCOUNT_REQUIRED'))
+add('authorization revocation is pending-only', contract.authorizationRequest.pendingOnlyRevocation && routes.includes('OAUTH_AUTHORIZATION_NOT_PENDING'))
+add('safe projection omits internal authorization context', !/serializeOAuthAuthorizationRequest[\s\S]{0,900}(stateHash|redirectTo|linkUserId)/.test(runtime))
+add('Admin routes never read credential environment keys', !/OAUTH_.*(CLIENT_SECRET|PRIVATE_KEY|ACCESS_TOKEN)/.test(routes))
+add('policy document exists', fs.existsSync(path.join(root, 'docs/OAUTH_ADMIN_OPERATIONS.md')))
+add('package exposes AUTH-01 Admin gate', packageJson.scripts['test:oauth-admin-operations']?.includes('verify-oauth-admin-operations.mjs'))
+add('quick gate includes AUTH-01 Admin gate', packageJson.scripts['check:quick'].includes('npm run test:oauth-admin-operations'))
+
+for (const check of checks) console.log(`${check.pass ? 'PASS' : 'FAIL'} ${check.name}${check.detail ? ` (${check.detail})` : ''}`)
+const failures = checks.filter((check) => !check.pass)
+if (failures.length) {
+  console.error(`OAuth Admin operations verification failed: ${failures.length} check(s)`)
+  process.exitCode = 1
+} else {
+  console.log(`OAuth Admin operations verified: ${checks.length} checks`)
+}

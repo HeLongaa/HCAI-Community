@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "task": "AUTH-01",
+  "providers": ["google", "apple", "discord"],
+  "permissions": {
+    "read": "admin:auth:read",
+    "manage": "admin:auth:manage"
+  },
+  "routes": [
+    { "method": "GET", "path": "/api/admin/auth/oauth/providers", "permission": "admin:auth:read" },
+    { "method": "POST", "path": "/api/admin/auth/oauth/providers/:provider/status", "permission": "admin:auth:manage" },
+    { "method": "GET", "path": "/api/admin/auth/oauth/accounts", "permission": "admin:auth:read" },
+    { "method": "DELETE", "path": "/api/admin/auth/oauth/accounts/:id", "permission": "admin:auth:manage" },
+    { "method": "GET", "path": "/api/admin/auth/oauth/authorization-requests", "permission": "admin:auth:read" },
+    { "method": "POST", "path": "/api/admin/auth/oauth/authorization-requests/:id/revoke", "permission": "admin:auth:manage" }
+  ],
+  "secretBoundary": {
+    "environmentOnly": true,
+    "forbiddenApiFields": ["clientId", "clientSecret", "privateKey", "stateHash", "redirectTo", "linkUserId", "token", "secret"]
+  },
+  "providerControl": {
+    "missingRowEnabled": true,
+    "optimisticVersioning": true,
+    "disableBlocksPublicMetadataAndStart": true,
+    "enableRequiresEnvironmentAvailability": true
+  },
+  "accountUnlink": {
+    "preserveFinalSignInMethod": true,
+    "auditInSameTransaction": true
+  },
+  "authorizationRequest": {
+    "pendingOnlyRevocation": true,
+    "safeProjectionOnly": true,
+    "expiredRetentionDays": 30
+  }
+}

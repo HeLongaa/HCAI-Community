@@ -1169,11 +1169,13 @@ model User {
 }
 
 model AuthAccount {
-  id             String  @id @default(cuid())
-  userId         String  @map("user_id")
+  id             String   @id @default(cuid())
+  userId         String   @map("user_id")
   provider       String
-  providerUserId String  @map("provider_user_id")
-  passwordHash   String? @map("password_hash")
+  providerUserId String   @map("provider_user_id")
+  passwordHash   String?  @map("password_hash")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1183,20 +1185,36 @@ model AuthAccount {
 }
 
 model OAuthAuthorizationRequest {
-  id         String    @id @default(cuid())
-  stateHash  String    @unique @map("state_hash")
-  provider   String
-  redirectTo String    @map("redirect_to")
-  linkUserId String?   @map("link_user_id")
-  expiresAt  DateTime  @map("expires_at")
-  consumedAt DateTime? @map("consumed_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
+  id               String    @id @default(cuid())
+  stateHash        String    @unique @map("state_hash")
+  provider         String
+  redirectTo       String    @map("redirect_to")
+  linkUserId       String?   @map("link_user_id")
+  expiresAt        DateTime  @map("expires_at")
+  consumedAt       DateTime? @map("consumed_at")
+  revokedAt        DateTime? @map("revoked_at")
+  revokeReasonCode String?   @map("revoke_reason_code")
+  createdAt        DateTime  @default(now()) @map("created_at")
 
   linkUser User? @relation(fields: [linkUserId], references: [id], onDelete: Cascade)
 
   @@index([linkUserId])
-  @@index([expiresAt, consumedAt])
+  @@index([expiresAt, consumedAt, revokedAt])
   @@map("oauth_authorization_requests")
+}
+
+model OAuthProviderControl {
+  id           String    @id @default(cuid())
+  provider     String    @unique
+  enabled      Boolean   @default(true)
+  version      Int       @default(1)
+  reasonCode   String    @map("reason_code")
+  enabledAt    DateTime? @map("enabled_at")
+  disabledAt   DateTime? @map("disabled_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("oauth_provider_controls")
 }
 
 model RefreshToken {

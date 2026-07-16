@@ -28,6 +28,8 @@ The executable fallback role defaults live in `server/src/auth/permissions.js`. 
 | `admin:media:manage` | Review scans and manage media lifecycle state | Admin media scan, retry, single and bulk lifecycle routes | Admin media mutation controls |
 | `admin:media:export` | Export bounded safe media evidence | `GET /api/admin/media/assets/export` | Admin media JSON/CSV export |
 | `admin:permissions:manage` | Edit role permission grants and point policy | `PUT /api/admin/roles/:role/permissions`, `PUT /api/admin/points/policy`, `POST /api/admin/points/policy/rollback` | Admin permission matrix edit/save controls; point policy save/rollback |
+| `admin:auth:read` | Read secret-free OAuth Provider controls, linked-account projections, and authorization lifecycle state | OAuth Admin GET routes | Admin Access tab OAuth operations panel |
+| `admin:auth:manage` | Change OAuth Provider availability, safely unlink accounts, and revoke pending authorization requests | OAuth Admin status, unlink, and revoke routes | Protected OAuth mutation controls |
 | `admin:releases:read` | Inspect release changes and deployment evidence | `GET /api/admin/releases`, `GET /api/admin/releases/:id` | Release control panel |
 | `admin:releases:manage` | Request environment promotion, configuration release, or SecretRef rotation | `POST /api/admin/releases` | Release request form |
 | `admin:releases:approve` | Approve or reject a release request using two-person control | `POST /api/admin/releases/:id/approve`, `POST /api/admin/releases/:id/reject` | Release review actions |
@@ -93,6 +95,12 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 
 ## Backend Route Guards
 
+| `GET /api/admin/auth/oauth/providers` | Required | `admin:auth:read` | Yes |
+| `POST /api/admin/auth/oauth/providers/:provider/status` | Required | `admin:auth:manage`; optimistic concurrency | Yes |
+| `GET /api/admin/auth/oauth/accounts` | Required | `admin:auth:read`; masked Provider identity | Yes |
+| `DELETE /api/admin/auth/oauth/accounts/:id` | Required | `admin:auth:manage`; final sign-in method preserved | Yes |
+| `GET /api/admin/auth/oauth/authorization-requests` | Required | `admin:auth:read`; safe lifecycle projection | Yes |
+| `POST /api/admin/auth/oauth/authorization-requests/:id/revoke` | Required | `admin:auth:manage`; pending only | Yes |
 | `GET /api/admin/model-control/summary` | Required | `admin:model-control:read`; credential-free readiness summary | Yes |
 | `GET /api/admin/model-control/export` | Required | `admin:model-control:read`; bounded credential-free export | Yes |
 | `GET /api/admin/model-control/providers` | Required | `admin:model-control:read` | Yes |

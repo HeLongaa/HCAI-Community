@@ -49,7 +49,7 @@
       "userCapabilities": ["邮箱登录", "OAuth 登录", "刷新与注销", "会话撤销"],
       "adminCapabilities": ["角色权限查看与修改", "受保护权限保留"],
       "operationPolicies": ["mutable_crud", "state_transition", "append_only"],
-      "evidence": ["server/src/modules/auth/routes.js", "server/src/auth/permissions.js", "e2e/auth-email.spec.ts"],
+      "evidence": ["server/src/modules/auth/routes.js", "server/src/modules/oauthAdmin/routes.js", "server/src/auth/permissions.js", "src/features/admin/OAuthAdminPanel.tsx", "e2e/auth-email.spec.ts", "e2e/oauth-admin-operations.spec.ts"],
       "gapTasks": ["RBAC-01", "IAM-01", "IAM-02"]
     },
     {

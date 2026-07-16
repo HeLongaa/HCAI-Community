@@ -128,6 +128,7 @@ import { sanitizeNotificationMetadata } from './notificationTargets.js'
 import { safeCreativeCreditMetadata, safeErrorPreview } from '../creative/generationRecords.js'
 import { buildPortableAuditExport } from '../audit/auditIntegrity.js'
 import { createPrismaObservabilityRepository } from '../observability/prismaObservabilityRepository.js'
+import { createPrismaOAuthAdminRepository } from '../auth/prismaOAuthAdminRepository.js'
 import {
   buildConsentStatus,
   compliancePolicyManifest,
@@ -1048,6 +1049,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     }
     return null
   }
+
+  const oauthAdmin = createPrismaOAuthAdminRepository(client, { runSerializableTransaction, recordAudit })
 
   const createSessionForUser = async (user, reason = 'auth.session.created', options = {}) => {
     const accessToken = createAccessToken(user.id)
@@ -2323,7 +2326,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       try {
         await client.$transaction(async (transaction) => {
           await transaction.oAuthAuthorizationRequest.deleteMany({
-            where: { expiresAt: { lte: new Date() } },
+            where: { expiresAt: { lte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
           })
           await transaction.oAuthAuthorizationRequest.create({
             data: {
@@ -2350,6 +2353,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             stateHash,
             provider,
             consumedAt: null,
+            revokedAt: null,
             expiresAt: { gt: new Date() },
           },
           data: { consumedAt: new Date() },
@@ -9796,6 +9800,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     providerLegal,
     providerOperations,
     observability,
+    oauthAdmin,
     operationsMetrics,
     authorization,
     adminReviews,

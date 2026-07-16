@@ -16,6 +16,7 @@ import { SystemSettingsPanel } from './SystemSettingsPanel'
 import { ConfigurationResourcesPanel } from './ConfigurationResourcesPanel'
 import { ModelControlPanel } from './ModelControlPanel'
 import { AdminMediaLifecyclePanel } from './AdminMediaLifecyclePanel'
+import { OAuthAdminPanel } from './OAuthAdminPanel'
 import type {
   AdminPermissionDto,
   AdminAuditArchiveManifestDto,
@@ -2492,6 +2493,14 @@ export function AdminPage({
         isZh={isZh}
         notify={(message) => simulateAction(message)}
       />
+      {activeTab === 'Access' && (
+        <OAuthAdminPanel
+          t={t}
+          canRead={account.hasPermission('admin:auth:read')}
+          canManage={account.hasPermission('admin:auth:manage')}
+          notify={(message) => simulateAction(message)}
+        />
+      )}
       <section className="panel">
         <SectionHeader
           eyebrow={textFor(t, 'Notifications', '通知')}
@@ -2631,7 +2640,7 @@ export function AdminPage({
               <div className="permission-chip-grid">
                 {permissions.map((permission) => {
                   const isEditing = editingRole === role.role
-                  const isProtected = role.role === 'admin' && permission.id === 'admin:permissions:manage'
+                  const isProtected = role.role === 'admin' && permission.protected === true
                   const granted = isEditing ? permissionDraft.includes(permission.id) : role.permissions.includes(permission.id)
                   return isEditing ? (
                     <button
