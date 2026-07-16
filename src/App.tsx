@@ -32,6 +32,7 @@ import { notificationService } from './services/notificationService'
 import { profileService } from './services/profileService'
 import { creativeService } from './services/creativeService'
 import { mediaService } from './services/mediaService'
+import { uploadMediaFile } from './services/mediaUpload'
 import { isApiClientError } from './services/apiClient'
 import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiNotification, ApiUserCreativeGeneration, CreateCreativeGenerationRequest, NotificationListQuery } from './services/contracts'
 
@@ -421,17 +422,10 @@ function App() {
   }
 
   const uploadImageInput = async (file: File) => {
-    const contract = await mediaService.createUpload({
-      fileName: file.name,
-      contentType: file.type || 'application/octet-stream',
-      sizeBytes: file.size,
+    await uploadMediaFile(file, {
       purpose: 'library_asset',
       metadata: { source: 'image-studio-input' },
     })
-    if (!contract.upload.url.startsWith('mock://')) {
-      await fetch(contract.upload.url, { method: contract.upload.method, headers: contract.upload.headers, body: file })
-    }
-    await mediaService.completeUpload(contract.asset.id)
     const assets = await creativeService.listInputAssets()
     setImageInputAssets(assets)
     pushToast(locale === 'zh' ? '图片已上传；扫描通过后可用于创作。' : 'Image uploaded. It becomes selectable after a clean scan.')

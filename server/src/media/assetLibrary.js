@@ -12,7 +12,8 @@ export const assetMediaType = (contentType = '') => {
 
 export const assetEligibleForWorkspace = (asset, workspace) => {
   if (!workspace) return true
-  if (asset.status !== 'uploaded' || asset.metadata?.security?.scanStatus !== 'clean' || asset.archivedAt || asset.deletedAt) return false
+  const storageState = asset.storageObject?.state ?? asset.storage?.state ?? null
+  if (asset.status !== 'uploaded' || asset.metadata?.security?.scanStatus !== 'clean' || (storageState && storageState !== 'available') || asset.archivedAt || asset.deletedAt) return false
   if (workspace === 'image') return ['submission_asset', 'profile_portfolio', 'library_asset'].includes(asset.purpose) && imageTypes.has(asset.contentType)
   if (workspace === 'video') return ['submission_asset', 'profile_portfolio', 'library_asset'].includes(asset.purpose) && imageTypes.has(asset.contentType)
   if (workspace === 'music') return false
@@ -31,7 +32,9 @@ const safeRelation = (relation) => ({
 })
 
 export const buildSafeAssetLibraryItem = (asset, { generation = null, relations = [], referenced = false } = {}) => {
-  const clean = asset.status === 'uploaded' && asset.metadata?.security?.scanStatus === 'clean'
+  const storage = asset.storageObject ?? asset.storage ?? null
+  const storageAvailable = !storage || storage.state === 'available'
+  const clean = asset.status === 'uploaded' && asset.metadata?.security?.scanStatus === 'clean' && storageAvailable
   const deleted = Boolean(asset.deletedAt)
   return {
     id: String(asset.id),
@@ -42,6 +45,15 @@ export const buildSafeAssetLibraryItem = (asset, { generation = null, relations 
     purpose: asset.purpose,
     status: asset.status,
     scanStatus: asset.metadata?.security?.scanStatus ?? 'pending',
+    storage: storage ? {
+      provider: storage.provider,
+      state: storage.state,
+      verifiedAt: storage.verifiedAt?.toISOString?.() ?? storage.verifiedAt ?? null,
+      cleanupAfter: storage.cleanupAfter?.toISOString?.() ?? storage.cleanupAfter ?? null,
+      deletedAt: storage.deletedAt?.toISOString?.() ?? storage.deletedAt ?? null,
+      lastErrorCode: storage.lastErrorCode ?? null,
+      version: Number(storage.version ?? 1),
+    } : null,
     archivedAt: asset.archivedAt?.toISOString?.() ?? asset.archivedAt ?? null,
     deletedAt: asset.deletedAt?.toISOString?.() ?? asset.deletedAt ?? null,
     deletionReason: asset.deletionReason ?? null,
@@ -55,7 +67,7 @@ export const buildSafeAssetLibraryItem = (asset, { generation = null, relations 
     relations: relations.map(safeRelation),
     referenced,
     actions: {
-      download: { available: clean && !asset.archivedAt && !deleted, reason: deleted ? 'asset_deleted' : clean ? (asset.archivedAt ? 'asset_archived' : null) : 'asset_not_clean' },
+      download: { available: clean && !asset.archivedAt && !deleted, reason: deleted ? 'asset_deleted' : !storageAvailable ? 'object_not_available' : clean ? (asset.archivedAt ? 'asset_archived' : null) : 'asset_not_clean' },
       archive: { available: !asset.archivedAt && !deleted, reason: deleted ? 'asset_deleted' : asset.archivedAt ? 'already_archived' : null },
       restore: { available: Boolean(asset.archivedAt) && !deleted, reason: deleted ? 'asset_deleted' : asset.archivedAt ? null : 'not_archived' },
       delete: { available: !deleted, reason: deleted ? 'already_deleted' : null },

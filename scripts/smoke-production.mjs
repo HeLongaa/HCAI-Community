@@ -20,6 +20,12 @@ const productionFixture = {
   STORAGE_BUCKET: 'media-prod',
   STORAGE_ACCESS_KEY_ID: 'storage-access',
   STORAGE_SECRET_ACCESS_KEY: 'storage-secret',
+  STORAGE_UPLOAD_TTL_SECONDS: '900',
+  STORAGE_DOWNLOAD_TTL_SECONDS: '300',
+  STORAGE_SCANNER_READ_TTL_SECONDS: '600',
+  STORAGE_PRIVATE_DOWNLOAD_BASE_URL: 'https://media.example.com',
+  STORAGE_PRIVATE_DOWNLOAD_SIGNING_SECRET: 'private-download-signing-secret',
+  STORAGE_PRIVATE_DOWNLOAD_KEY_ID: '2026-07',
   MEDIA_SCAN_PROVIDER: 'webhook',
   MEDIA_SCAN_WEBHOOK_SECRET: 'scan-secret',
   MEDIA_SCAN_REQUEST_ADAPTER: 'clamav-http',
@@ -44,6 +50,10 @@ const productionFixture = {
   API_EMBEDDED_WORKERS_ENABLED: 'false',
   MEDIA_SCAN_WORKER_ENABLED: 'true',
   MEDIA_SCAN_WORKER_INTERVAL_SECONDS: '30',
+  MEDIA_STORAGE_CLEANUP_WORKER_ENABLED: 'true',
+  MEDIA_STORAGE_CLEANUP_WORKER_INTERVAL_SECONDS: '300',
+  MEDIA_STORAGE_CLEANUP_BATCH_SIZE: '25',
+  MEDIA_STORAGE_CLEANUP_RETENTION_DAYS: '30',
   TASK_STALE_SUBMISSION_WORKER_ENABLED: 'true',
   TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS: '300',
   TASK_STALE_SUBMISSION_OLDER_THAN_HOURS: '72',
@@ -208,6 +218,8 @@ const summarize = (env, oauthProviders, chatRuntime) => ({
   workers: {
     apiEmbedded: env.apiEmbeddedWorkersEnabled,
     mediaScanEnabled: env.mediaScanWorkerEnabled,
+    mediaStorageCleanupEnabled: env.mediaStorageCleanupWorkerEnabled,
+    mediaStorageCleanupBatchSize: env.mediaStorageCleanupBatchSize,
     staleSubmissionEnabled: env.taskStaleSubmissionWorkerEnabled,
     leaseTtlSeconds: env.workerLeaseTtlSeconds,
     leaseRenewIntervalSeconds: env.workerLeaseRenewIntervalSeconds,
@@ -237,6 +249,7 @@ const checks = []
 check(checks, 'production mode', env.nodeEnv === 'production', `NODE_ENV=${env.nodeEnv}`)
 check(checks, 'managed access token secret', env.hasManagedAccessTokenSecret, 'ACCESS_TOKEN_SECRET or SESSION_SECRET must be present')
 check(checks, 'object storage is S3-backed', env.storageDriver === 's3', `storageDriver=${env.storageDriver}`)
+check(checks, 'private media download signing configured', env.hasStoragePrivateDownloadBaseUrl && env.hasStoragePrivateDownloadSigningSecret, 'STORAGE_PRIVATE_DOWNLOAD_BASE_URL and signing secret are required for CDN delivery')
 check(checks, 'media scanner uses webhook provider', env.mediaScanProvider === 'webhook', `mediaScanProvider=${env.mediaScanProvider}`)
 check(checks, 'media scanner request dispatch configured', env.hasMediaScanRequestUrl, 'MEDIA_SCAN_REQUEST_URL is required for managed smoke')
 check(checks, 'media scanner request signing configured', env.hasMediaScanRequestSecret, 'MEDIA_SCAN_REQUEST_SECRET is recommended for managed smoke')
@@ -354,6 +367,7 @@ check(checks, 'metrics exporter configured', env.metricsExporterEnabled && env.m
 check(checks, 'metrics exporter token protected', env.hasMetricsExporterToken, 'METRICS_EXPORTER_TOKEN should be set when exporter is enabled')
 check(checks, 'api embedded workers disabled', !env.apiEmbeddedWorkersEnabled, 'API_EMBEDDED_WORKERS_ENABLED should be false for multi-instance API deployments')
 check(checks, 'worker media scan sweep configured', env.mediaScanWorkerEnabled, 'MEDIA_SCAN_WORKER_ENABLED should be true for the worker process')
+check(checks, 'worker media storage cleanup configured', env.mediaStorageCleanupWorkerEnabled, 'MEDIA_STORAGE_CLEANUP_WORKER_ENABLED should be true for the worker process')
 check(checks, 'worker stale submission sweep configured', env.taskStaleSubmissionWorkerEnabled, 'TASK_STALE_SUBMISSION_WORKER_ENABLED should be true for the worker process')
 check(checks, 'worker lease renews before expiry', env.workerLeaseRenewIntervalSeconds < env.workerLeaseTtlSeconds, `renew=${env.workerLeaseRenewIntervalSeconds}s ttl=${env.workerLeaseTtlSeconds}s`)
 check(checks, 'request body guard enabled', env.requestBodySizeGuardEnabled, 'REQUEST_BODY_SIZE_GUARD_ENABLED must not be false')

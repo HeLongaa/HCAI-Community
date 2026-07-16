@@ -51,7 +51,8 @@ import {
 } from './prismaTransforms.js'
 import { serializeAuditEvent, serializeSecurityAlertDispatchEvent, serializeSecurityEvent } from './serializers.js'
 import { shouldAutoSeedPrisma } from './runtimePolicy.js'
-import { signMediaDownload, signMediaUpload } from '../storage/uploadSigner.js'
+import { buildStorageConfig, normalizeStorageChecksumSha256, signMediaDownload, signMediaUpload } from '../storage/uploadSigner.js'
+import { deleteStorageObject, inspectStorageObject, StorageObjectError } from '../storage/objectStore.js'
 import { diffPointAdjustmentPolicy, normalizePointAdjustmentPolicy, summarizePointPolicyDiff } from '../points/adjustmentPolicy.js'
 import {
   buildDefaultMediaGovernancePolicy,
@@ -1437,9 +1438,10 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     `${actor.handle}/generated/${payload.generation.workspace}/${id}-${payload.artifact.fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`
 
   const makeUploadContract = (asset) => {
+    const checksumSha256 = asset.storageObject?.checksumSha256 ?? asset.checksumSha256 ?? null
     return {
       asset: getMediaAssetDto(asset),
-      upload: signMediaUpload(asset),
+      upload: signMediaUpload({ ...asset, checksumSha256 }),
     }
   }
 
@@ -1514,6 +1516,35 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     asset: getMediaAssetDto(asset),
     download: signMediaDownload(asset),
   })
+
+  const mediaStorageCleanupRetentionDays = () => {
+    const parsed = Number.parseInt(process.env.MEDIA_STORAGE_CLEANUP_RETENTION_DAYS ?? '', 10)
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.min(parsed, 3650) : 30
+  }
+
+  const mediaStorageCleanupAfter = (now = new Date(), retentionDays = mediaStorageCleanupRetentionDays()) =>
+    new Date(now.getTime() + retentionDays * 86400_000)
+
+  const activePrismaStorageState = (asset, { archivedAt = asset.archivedAt, deletedAt = asset.deletedAt } = {}) => {
+    if (asset.storageObject?.deletedAt) return 'deleted'
+    if (deletedAt) return 'cleanup_pending'
+    if (archivedAt) return 'quarantined'
+    return asObject(asObject(asset.metadata)?.security)?.scanStatus === 'clean' ? 'available' : 'quarantined'
+  }
+
+  const transitionPrismaStorageObject = async (transaction, asset, state, now = new Date(), patch = {}) => {
+    if (!asset.storageObject) return
+    const changed = await transaction.mediaStorageObject.updateMany({
+      where: { assetId: asset.id, version: asset.storageObject.version },
+      data: {
+        ...patch,
+        state,
+        quarantinedAt: state === 'available' ? null : (patch.quarantinedAt ?? asset.storageObject.quarantinedAt ?? now),
+        version: { increment: 1 },
+      },
+    })
+    if (changed.count !== 1) throw new HttpError(409, 'MEDIA_STORAGE_CONFLICT', 'Media storage state changed concurrently')
+  }
 
   const compactObject = (value) => Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ''))
 
@@ -3987,7 +4018,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           sourceSubmissionId: payload.sourceSubmissionId ?? null, title: payload.title || asset.fileName, caption: payload.caption ?? '',
         },
         update: {},
-        include: { asset: true },
+        include: { asset: { include: { storageObject: true } } },
       })
       await recordAudit({ actor, action: 'profile.portfolio.draft_created', resourceType: 'profile_portfolio_asset', resourceId: row.id, metadata: { assetId: row.assetId } })
       return getPortfolioAssetDto(row)
@@ -4015,7 +4046,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       const row = await client.profilePortfolioAsset.update({
         where: { id: current.id },
         data: { ...actionData, title: payload.title, caption: payload.caption, sortOrder: payload.sortOrder },
-        include: { asset: true },
+        include: { asset: { include: { storageObject: true } } },
       })
       await recordAudit({ actor, action: `profile.portfolio.${payload.action ?? 'updated'}`, resourceType: 'profile_portfolio_asset', resourceId: row.id, metadata: { assetId: row.assetId } })
       return getPortfolioAssetDto(row)
@@ -7365,13 +7396,13 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
 
   const media = {
     find: async (id) => {
-      const asset = await client.mediaAsset.findUnique({ where: { id: String(id) } })
+      const asset = await client.mediaAsset.findUnique({ where: { id: String(id) }, include: { storageObject: true } })
       return asset ? getMediaAssetDto(asset) : null
     },
     findAccessibleCreativeInput: async (id, actor) => {
       const asset = await client.mediaAsset.findUnique({
         where: { id: String(id) },
-        include: { owner: { include: { profile: true } } },
+        include: { owner: { include: { profile: true } }, storageObject: true },
       })
       if (!asset || asset.archivedAt || asset.deletedAt) return null
       const ownerHandle = asset.owner?.profile?.handle ?? asset.owner?.id ?? null
@@ -7381,6 +7412,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     findOwnedChatInput: async (id, actor) => {
       const asset = await client.mediaAsset.findFirst({
         where: { id: String(id), ownerId: String(actor.id), archivedAt: null, deletedAt: null },
+        include: { storageObject: true },
       })
       return asset ? getMediaAssetDto(asset) : null
     },
@@ -7398,9 +7430,11 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           contentType: { in: ['text/plain', 'text/markdown', 'application/pdf', 'image/png', 'image/jpeg', 'image/webp'] },
           sizeBytes: { lte: 20 * 1024 * 1024 },
           metadata: { path: ['security', 'scanStatus'], equals: 'clean' },
+          storageObject: { is: { state: 'available' } },
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: limit + 1,
+        include: { storageObject: true },
         ...(options.cursor ? { cursor: { id: String(options.cursor) }, skip: 1 } : {}),
       })
       const page = assets.slice(0, limit)
@@ -7423,9 +7457,11 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           purpose: { in: ['submission_asset', 'profile_portfolio', 'library_asset'] },
           contentType: { in: ['image/png', 'image/jpeg', 'image/webp', 'audio/mpeg', 'audio/wav', 'audio/mp4'] },
           metadata: { path: ['security', 'scanStatus'], equals: 'clean' },
+          storageObject: { is: { state: 'available' } },
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: limit + 1,
+        include: { storageObject: true },
         ...(options.cursor ? { cursor: { id: String(options.cursor) }, skip: 1 } : {}),
       })
       const page = assets.slice(0, limit)
@@ -7451,12 +7487,14 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       const workspaceWhere = options.workspace === 'image' || options.workspace === 'video' ? {
         archivedAt: null,
         status: 'uploaded',
+        storageObject: { is: { state: 'available' } },
         purpose: { in: ['submission_asset', 'profile_portfolio', 'library_asset'] },
         contentType: { in: ['image/png', 'image/jpeg', 'image/webp'] },
         metadata: { path: ['security', 'scanStatus'], equals: 'clean' },
       } : options.workspace === 'chat' ? {
         archivedAt: null,
         status: 'uploaded',
+        storageObject: { is: { state: 'available' } },
         purpose: { in: ['task_attachment', 'library_asset'] },
         contentType: { in: ['text/plain', 'text/markdown', 'application/pdf', 'image/png', 'image/jpeg', 'image/webp'] },
         sizeBytes: { lte: 20 * 1024 * 1024 },
@@ -7474,7 +7512,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             workspaceWhere,
           ],
         },
-        include: { outgoingRelations: true, incomingRelations: true },
+        include: { outgoingRelations: true, incomingRelations: true, storageObject: true },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: limit + 1,
         ...(options.cursor ? { cursor: { id: String(options.cursor) }, skip: 1 } : {}),
@@ -7493,7 +7531,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     getAssetLibraryItem: async (id, actor) => {
       const owner = await findUserByHandle(actor.handle)
       if (!owner) return null
-      const asset = await client.mediaAsset.findFirst({ where: { id: String(id), ownerId: owner.id }, include: { outgoingRelations: true, incomingRelations: true } })
+      const asset = await client.mediaAsset.findFirst({ where: { id: String(id), ownerId: owner.id }, include: { outgoingRelations: true, incomingRelations: true, storageObject: true } })
       if (!asset) return null
       const [generation, inputReference, submissionReference] = await Promise.all([
         client.creativeGeneration.findFirst({ where: { outputAssetIds: { has: asset.id } } }),
@@ -7538,12 +7576,14 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     setAssetArchived: async (id, archived, actor) => {
       const owner = await findUserByHandle(actor.handle)
       if (!owner) return null
-      const current = await client.mediaAsset.findFirst({ where: { id: String(id), ownerId: owner.id } })
+      const current = await client.mediaAsset.findFirst({ where: { id: String(id), ownerId: owner.id }, include: { storageObject: true } })
       if (!current) return null
       if (current.deletedAt) throw new HttpError(409, 'ASSET_DELETED', 'Deleted assets must be recovered before archive changes')
       const now = new Date()
       const asset = await client.$transaction(async (transaction) => {
-        const updated = await transaction.mediaAsset.update({ where: { id: current.id }, data: { archivedAt: archived ? (current.archivedAt ?? now) : null } })
+        const archivedAt = archived ? (current.archivedAt ?? now) : null
+        const updated = await transaction.mediaAsset.update({ where: { id: current.id }, data: { archivedAt } })
+        await transitionPrismaStorageObject(transaction, current, activePrismaStorageState(current, { archivedAt }), now)
         if (archived) {
           await transaction.profilePortfolioAsset.updateMany({ where: { assetId: current.id, status: 'published' }, data: { status: 'withdrawn', withdrawnAt: now } })
         }
@@ -7555,15 +7595,20 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     setAssetDeleted: async (id, deleted, actor, payload = {}) => {
       const owner = await findUserByHandle(actor.handle)
       if (!owner) return null
-      const current = await client.mediaAsset.findFirst({ where: { id: String(id), ownerId: owner.id } })
+      const current = await client.mediaAsset.findFirst({ where: { id: String(id), ownerId: owner.id }, include: { storageObject: true } })
       if (!current) return null
       const now = new Date()
+      const cleanupRetentionDays = deleted ? (await getMediaGovernancePolicy()).retention.storageCleanupRetentionDays : null
       await client.$transaction(async (transaction) => {
+        const deletedAt = deleted ? (current.deletedAt ?? now) : null
         await transaction.mediaAsset.update({
           where: { id: current.id },
           data: deleted
-            ? { deletedAt: current.deletedAt ?? now, deletedByHandle: actor.handle, deletionReason: payload.reason ?? 'user_requested' }
+            ? { deletedAt, deletedByHandle: actor.handle, deletionReason: payload.reason ?? 'user_requested' }
             : { deletedAt: null, deletedByHandle: null, deletionReason: null },
+        })
+        await transitionPrismaStorageObject(transaction, current, activePrismaStorageState(current, { deletedAt }), now, {
+          cleanupAfter: deleted ? mediaStorageCleanupAfter(now, cleanupRetentionDays) : null,
         })
         if (deleted) {
           await transaction.profilePortfolioAsset.updateMany({ where: { assetId: current.id, status: 'published' }, data: { status: 'withdrawn', withdrawnAt: now } })
@@ -7595,9 +7640,10 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             contentTypeWhere ? { contentType: contentTypeWhere } : {},
             options.search ? { OR: [{ id: { contains: options.search, mode: 'insensitive' } }, { fileName: { contains: options.search, mode: 'insensitive' } }, { owner: { profile: { is: { handle: { contains: options.search, mode: 'insensitive' } } } } }] } : {},
             options.ownerHandle ? { owner: { profile: { is: { handle: { equals: options.ownerHandle, mode: 'insensitive' } } } } } : {},
+            options.storageState ? { storageObject: { is: { state: options.storageState } } } : {},
           ],
         },
-        include: { owner: { select: { id: true, profile: { select: { handle: true } } } }, outgoingRelations: true, incomingRelations: true, portfolioAssets: true },
+        include: { owner: { select: { id: true, profile: { select: { handle: true } } } }, outgoingRelations: true, incomingRelations: true, portfolioAssets: true, storageObject: true },
         orderBy,
         take: limit + 1,
         ...(options.cursor ? { cursor: { id: String(options.cursor) }, skip: 1 } : {}),
@@ -7618,23 +7664,30 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       return page.items.find((item) => item.id === String(id)) ?? null
     },
     setAdminAssetArchived: async (id, archived, actor) => {
-      const current = await client.mediaAsset.findUnique({ where: { id: String(id) }, include: { owner: { include: { profile: true } } } })
+      const current = await client.mediaAsset.findUnique({ where: { id: String(id) }, include: { owner: { include: { profile: true } }, storageObject: true } })
       if (!current) return null
       if (current.deletedAt) throw new HttpError(409, 'ASSET_DELETED', 'Deleted assets must be recovered before archive changes')
       const now = new Date()
       await client.$transaction(async (transaction) => {
-        await transaction.mediaAsset.update({ where: { id: current.id }, data: { archivedAt: archived ? (current.archivedAt ?? now) : null } })
+        const archivedAt = archived ? (current.archivedAt ?? now) : null
+        await transaction.mediaAsset.update({ where: { id: current.id }, data: { archivedAt } })
+        await transitionPrismaStorageObject(transaction, current, activePrismaStorageState(current, { archivedAt }), now)
         if (archived) await transaction.profilePortfolioAsset.updateMany({ where: { assetId: current.id, status: 'published' }, data: { status: 'withdrawn', withdrawnAt: now } })
       })
       await recordAudit({ actor, action: archived ? 'admin.media.asset.archived' : 'admin.media.asset.restored', resourceType: 'media_asset', resourceId: current.id, metadata: { ownerHandle: current.owner.profile?.handle ?? current.owner.id } })
       return media.getAdminAsset(current.id)
     },
     setAdminAssetDeleted: async (id, deleted, actor, payload = {}) => {
-      const current = await client.mediaAsset.findUnique({ where: { id: String(id) }, include: { owner: { include: { profile: true } } } })
+      const current = await client.mediaAsset.findUnique({ where: { id: String(id) }, include: { owner: { include: { profile: true } }, storageObject: true } })
       if (!current) return null
       const now = new Date()
+      const cleanupRetentionDays = deleted ? (await getMediaGovernancePolicy()).retention.storageCleanupRetentionDays : null
       await client.$transaction(async (transaction) => {
-        await transaction.mediaAsset.update({ where: { id: current.id }, data: deleted ? { deletedAt: current.deletedAt ?? now, deletedByHandle: actor.handle, deletionReason: payload.reason ?? 'admin_requested' } : { deletedAt: null, deletedByHandle: null, deletionReason: null } })
+        const deletedAt = deleted ? (current.deletedAt ?? now) : null
+        await transaction.mediaAsset.update({ where: { id: current.id }, data: deleted ? { deletedAt, deletedByHandle: actor.handle, deletionReason: payload.reason ?? 'admin_requested' } : { deletedAt: null, deletedByHandle: null, deletionReason: null } })
+        await transitionPrismaStorageObject(transaction, current, activePrismaStorageState(current, { deletedAt }), now, {
+          cleanupAfter: deleted ? mediaStorageCleanupAfter(now, cleanupRetentionDays) : null,
+        })
         if (deleted) await transaction.profilePortfolioAsset.updateMany({ where: { assetId: current.id, status: 'published' }, data: { status: 'withdrawn', withdrawnAt: now } })
       })
       await recordAudit({ actor, action: deleted ? 'admin.media.asset.deleted' : 'admin.media.asset.recovered', resourceType: 'media_asset', resourceId: current.id, metadata: { ownerHandle: current.owner.profile?.handle ?? current.owner.id, reason: deleted ? payload.reason ?? 'admin_requested' : 'admin_recovery' } })
@@ -7680,6 +7733,11 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         return null
       }
       const id = `media-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
+      const storageConfig = buildStorageConfig()
+      if (storageConfig.driver === 's3' && !payload.checksumSha256) {
+        throw new HttpError(400, 'STORAGE_CHECKSUM_REQUIRED', 'checksumSha256 is required for S3 uploads')
+      }
+      const checksumSha256 = payload.checksumSha256 ? normalizeStorageChecksumSha256(payload.checksumSha256) : null
       const asset = await client.mediaAsset.create({
         data: {
           id,
@@ -7691,7 +7749,15 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           purpose: payload.purpose,
           status: 'pending',
           metadata: payload.metadata ?? null,
+          storageObject: {
+            create: {
+              provider: storageConfig.driver,
+              state: 'pending_upload',
+              checksumSha256,
+            },
+          },
         },
+        include: { storageObject: true },
       })
       await recordAudit({
         actor,
@@ -7708,7 +7774,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     completeUpload: async (id, payload, actor) => {
       const asset = await client.mediaAsset.findUnique({
         where: { id: String(id) },
-        include: { owner: { include: { profile: true } } },
+        include: { owner: { include: { profile: true } }, storageObject: true },
       })
       if (!asset) {
         return null
@@ -7717,13 +7783,50 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       if (!authorizeResource({ resourceType: 'media_asset', action: 'write', actor, resource: { ownerId: asset.ownerId, ownerHandle } }).allowed) {
         return null
       }
+      if (asset.status !== 'pending' && asset.storageObject && !['pending_upload', 'verification_failed', 'verifying'].includes(asset.storageObject.state)) {
+        return getMediaAssetDto(asset)
+      }
+      if (!asset.storageObject) {
+        throw new HttpError(409, 'STORAGE_OBJECT_STATE_MISSING', 'Storage object lifecycle state is missing')
+      }
+      if (asset.storageObject.state === 'verifying') {
+        throw new HttpError(409, 'UPLOAD_COMPLETION_IN_PROGRESS', 'Upload completion is already in progress')
+      }
+      let inspection
+      try {
+        inspection = await inspectStorageObject({ ...asset, checksumSha256: asset.storageObject.checksumSha256 })
+      } catch (error) {
+        const reasonCode = error instanceof StorageObjectError ? error.code : 'STORAGE_VERIFICATION_FAILED'
+        await client.mediaStorageObject.updateMany({
+          where: { assetId: asset.id, version: asset.storageObject.version },
+          data: { state: 'verification_failed', lastErrorCode: reasonCode, version: { increment: 1 } },
+        })
+        await recordAudit({ actor, action: 'media.upload.verification_failed', resourceType: 'media_asset', resourceId: asset.id, metadata: { purpose: asset.purpose, reasonCode } })
+        throw new HttpError(error instanceof StorageObjectError && error.retryable ? 503 : 409, 'MEDIA_STORAGE_VERIFICATION_FAILED', 'Uploaded object could not be verified', { reasonCode })
+      }
+      const claimed = await client.mediaStorageObject.updateMany({
+        where: { assetId: asset.id, version: asset.storageObject.version, state: { in: ['pending_upload', 'verification_failed'] } },
+        data: {
+          state: 'verifying',
+          etag: inspection.etag,
+          checksumSha256: inspection.checksumSha256 ?? asset.storageObject.checksumSha256,
+          verifiedSizeBytes: inspection.sizeBytes,
+          verifiedContentType: inspection.contentType,
+          verifiedAt: new Date(inspection.verifiedAt),
+          lastErrorCode: null,
+          version: { increment: 1 },
+        },
+      })
+      if (claimed.count !== 1) throw new HttpError(409, 'UPLOAD_COMPLETION_CONFLICT', 'Upload completion state changed concurrently')
       const detectedContentType = payload.detectedContentType || asset.contentType
       const contentTypeMatches = detectedContentType.toLowerCase() === asset.contentType.toLowerCase()
       const scanResult = contentTypeMatches ? await scanMediaAsset(asset) : null
       const scanJob = contentTypeMatches ? await createMediaScanJob(asset, scanResult) : null
-      const updated = await client.mediaAsset.update({
-        where: { id: asset.id },
-        data: {
+      const finalStorageState = contentTypeMatches && scanResult?.status === 'clean' ? 'available' : 'quarantined'
+      const updated = await client.$transaction(async (transaction) => {
+        const nextAsset = await transaction.mediaAsset.update({
+          where: { id: asset.id },
+          data: {
           status: contentTypeMatches && scanResult?.status !== 'rejected' ? 'uploaded' : 'rejected',
           metadata: compactObject({
             ...mediaSecurityMetadata(asset, {
@@ -7749,7 +7852,20 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             }),
             checksum: payload.checksum,
           }),
-        },
+          },
+          include: { storageObject: true },
+        })
+        const storageUpdate = await transaction.mediaStorageObject.updateMany({
+          where: { assetId: asset.id, state: 'verifying', version: asset.storageObject.version + 1 },
+          data: {
+            state: finalStorageState,
+            quarantinedAt: finalStorageState === 'quarantined' ? new Date() : null,
+            lastErrorCode: null,
+            version: { increment: 1 },
+          },
+        })
+        if (storageUpdate.count !== 1) throw new HttpError(409, 'UPLOAD_COMPLETION_CONFLICT', 'Upload completion state changed concurrently')
+        return transaction.mediaAsset.findUnique({ where: { id: nextAsset.id }, include: { storageObject: true } })
       })
       const updatedWithJob = mediaAssetWithScanJob(updated, scanJob)
       await recordAudit({
@@ -7793,15 +7909,28 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
               writtenAt: storage.writtenAt,
             },
           },
+          storageObject: {
+            create: {
+              provider: storage.provider,
+              state: 'quarantined',
+              checksumSha256: storage.checksumSha256,
+              verifiedSizeBytes: storage.bytes,
+              verifiedContentType: payload.artifact.contentType,
+              verifiedAt: new Date(storage.writtenAt),
+              quarantinedAt: new Date(storage.writtenAt),
+            },
+          },
         },
+        include: { storageObject: true },
       })
       const scanResult = await scanMediaAsset(asset)
       const scanJob = await createMediaScanJob(asset, scanResult)
       const policyReviewRequired = Boolean(payload.generation.safety?.reviewRequired)
       const effectiveScanStatus = policyReviewRequired ? 'review' : scanResult?.status ?? 'pending'
-      const updated = await client.mediaAsset.update({
-        where: { id: asset.id },
-        data: {
+      const updated = await client.$transaction(async (transaction) => {
+        const nextAsset = await transaction.mediaAsset.update({
+          where: { id: asset.id },
+          data: {
           status: effectiveScanStatus === 'rejected' ? 'rejected' : 'uploaded',
           metadata: compactObject({
             ...mediaSecurityMetadata(asset, {
@@ -7827,7 +7956,10 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
               completedAt: new Date().toISOString(),
             }),
           }),
-        },
+          },
+        })
+        await transitionPrismaStorageObject(transaction, asset, effectiveScanStatus === 'clean' ? 'available' : 'quarantined')
+        return transaction.mediaAsset.findUnique({ where: { id: nextAsset.id }, include: { storageObject: true } })
       })
       const updatedWithJob = mediaAssetWithScanJob(updated, scanJob)
       await recordAudit({
@@ -7883,7 +8015,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       return getMediaAssetDto(updatedWithJob)
     },
     createIngestedAsset: async (payload, actor) => {
-      const existing = await client.mediaAsset.findUnique({ where: { storageKey: payload.storageKey } })
+      const existing = await client.mediaAsset.findUnique({ where: { storageKey: payload.storageKey }, include: { storageObject: true } })
       if (existing) return getMediaAssetDto(existing)
       const owner = await findUserByHandle(actor.handle)
       if (!owner) return null
@@ -7917,11 +8049,23 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
                 writtenAt: storage.writtenAt,
               },
             },
+            storageObject: {
+              create: {
+                provider: storage.provider,
+                state: 'quarantined',
+                checksumSha256: storage.checksumSha256,
+                verifiedSizeBytes: storage.bytes,
+                verifiedContentType: payload.contentType,
+                verifiedAt: new Date(storage.writtenAt),
+                quarantinedAt: new Date(storage.writtenAt),
+              },
+            },
           },
+          include: { storageObject: true },
         })
       } catch (error) {
         if (error?.code !== 'P2002') throw error
-        const duplicate = await client.mediaAsset.findUnique({ where: { storageKey: payload.storageKey } })
+        const duplicate = await client.mediaAsset.findUnique({ where: { storageKey: payload.storageKey }, include: { storageObject: true } })
         if (!duplicate) throw error
         return getMediaAssetDto(duplicate)
       }
@@ -7929,9 +8073,10 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       const scanJob = await createMediaScanJob(asset, scanResult)
       const policyReviewRequired = Boolean(payload.generation.safety?.reviewRequired)
       const effectiveScanStatus = policyReviewRequired ? 'review' : scanResult?.status ?? 'pending'
-      const updated = await client.mediaAsset.update({
-        where: { id: asset.id },
-        data: {
+      const updated = await client.$transaction(async (transaction) => {
+        const nextAsset = await transaction.mediaAsset.update({
+          where: { id: asset.id },
+          data: {
           status: effectiveScanStatus === 'rejected' ? 'rejected' : 'uploaded',
           metadata: mediaSecurityMetadata(asset, {
             checksum: `sha256:${payload.sha256}`,
@@ -7956,7 +8101,10 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             creativeReviewReasons: payload.generation.safety?.reasons ?? [],
             completedAt: new Date().toISOString(),
           }),
-        },
+          },
+        })
+        await transitionPrismaStorageObject(transaction, asset, effectiveScanStatus === 'clean' ? 'available' : 'quarantined')
+        return transaction.mediaAsset.findUnique({ where: { id: nextAsset.id }, include: { storageObject: true } })
       })
       const updatedWithJob = mediaAssetWithScanJob(updated, scanJob)
       await recordAudit({
@@ -7997,6 +8145,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             : {}),
         },
         orderBy: { updatedAt: 'desc' },
+        include: { storageObject: true },
         take: limit + 1,
         ...(cursor ? { cursor: { id: cursor.id }, skip: 1 } : {}),
       })
@@ -8029,7 +8178,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
               }
             : {}),
         },
-        include: { asset: true },
+        include: { asset: { include: { storageObject: true } } },
         orderBy: { updatedAt: 'desc' },
         take: limit + 1,
         ...(cursor ? { cursor: { id: cursor.id }, skip: 1 } : {}),
@@ -8087,6 +8236,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     reviewUpload: async (id, payload, actor) => {
       const asset = await client.mediaAsset.findUnique({
         where: { id: String(id) },
+        include: { storageObject: true },
       })
       if (!asset) {
         return null
@@ -8094,19 +8244,28 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       const metadata = asObject(asset.metadata) ?? {}
       const security = asObject(metadata.security) ?? {}
       const reviewedAt = new Date()
-      const updated = await client.mediaAsset.update({
-        where: { id: asset.id },
-        data: {
-          status: payload.decision === 'clean' ? 'uploaded' : 'rejected',
-          metadata: mediaSecurityMetadata(asset, {
-            scanStatus: payload.decision === 'clean' ? 'clean' : 'rejected',
-            detectedContentType: payload.detectedContentType || security.detectedContentType || asset.contentType,
-            scanNote: payload.note,
-            scannedBy: actor.handle,
-            scannedAt: reviewedAt.toISOString(),
-            scanJobStatus: 'completed',
-          }),
-        },
+      const updated = await client.$transaction(async (transaction) => {
+        const nextAsset = await transaction.mediaAsset.update({
+          where: { id: asset.id },
+          data: {
+            status: payload.decision === 'clean' ? 'uploaded' : 'rejected',
+            metadata: mediaSecurityMetadata(asset, {
+              scanStatus: payload.decision === 'clean' ? 'clean' : 'rejected',
+              detectedContentType: payload.detectedContentType || security.detectedContentType || asset.contentType,
+              scanNote: payload.note,
+              scannedBy: actor.handle,
+              scannedAt: reviewedAt.toISOString(),
+              scanJobStatus: 'completed',
+            }),
+          },
+        })
+        await transitionPrismaStorageObject(
+          transaction,
+          asset,
+          payload.decision === 'clean' && !asset.archivedAt && !asset.deletedAt ? 'available' : 'quarantined',
+          reviewedAt,
+        )
+        return transaction.mediaAsset.findUnique({ where: { id: nextAsset.id }, include: { storageObject: true } })
       })
       const job = await updateLatestMediaScanJob(asset, {
         status: 'completed',
@@ -8130,36 +8289,75 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     recordScanCallback: async (id, payload) => {
       const asset = await client.mediaAsset.findUnique({
         where: { id: String(id) },
+        include: { storageObject: true },
       })
       if (!asset) {
         return null
       }
       const metadata = asObject(asset.metadata) ?? {}
       const security = asObject(metadata.security) ?? {}
+      const expectedExternalScanId = String(security.externalScanId ?? '')
+      if (!payload.externalScanId || (expectedExternalScanId && payload.externalScanId !== expectedExternalScanId)) {
+        await recordAudit({ actor: null, action: 'media.scan.callback_conflict', resourceType: 'media_asset', resourceId: asset.id, metadata: { reasonCode: 'external_scan_id_mismatch' } })
+        throw new HttpError(409, 'MEDIA_SCAN_CALLBACK_MISMATCH', 'Scan callback does not match the active scan attempt')
+      }
+      const currentJob = await client.mediaScanJob.findFirst({
+        where: { assetId: asset.id, externalScanId: payload.externalScanId },
+        orderBy: { createdAt: 'desc' },
+      })
+      if (!currentJob) {
+        await recordAudit({ actor: null, action: 'media.scan.callback_conflict', resourceType: 'media_asset', resourceId: asset.id, metadata: { reasonCode: 'scan_job_not_found' } })
+        throw new HttpError(409, 'MEDIA_SCAN_CALLBACK_MISMATCH', 'Scan callback does not match a durable scan job')
+      }
+      if (['completed', 'failed'].includes(currentJob.status)) {
+        if (currentJob.scanStatus !== payload.status) {
+          await recordAudit({ actor: null, action: 'media.scan.callback_conflict', resourceType: 'media_asset', resourceId: asset.id, metadata: { reasonCode: 'terminal_result_mismatch' } })
+          throw new HttpError(409, 'MEDIA_SCAN_CALLBACK_CONFLICT', 'Scan callback conflicts with the recorded result')
+        }
+        return getMediaAssetDto(mediaAssetWithScanJob(asset, currentJob))
+      }
       const callbackAt = new Date()
-      const updated = await client.mediaAsset.update({
-        where: { id: asset.id },
-        data: {
-          status: payload.status === 'rejected' ? 'rejected' : 'uploaded',
-          metadata: mediaSecurityMetadata(asset, {
+      const result = await client.$transaction(async (transaction) => {
+        const jobUpdate = await transaction.mediaScanJob.updateMany({
+          where: { id: currentJob.id, status: { in: ['queued', 'retrying'] } },
+          data: {
+            status: payload.status === 'rejected' ? 'failed' : 'completed',
             scanStatus: payload.status,
-            detectedContentType: payload.detectedContentType || security.detectedContentType || asset.contentType,
-            scanNote: payload.note,
-            rejectionReason: payload.status === 'rejected' ? payload.reason || security.rejectionReason : undefined,
-            externalScanId: payload.externalScanId || security.externalScanId,
-            callbackReceivedAt: callbackAt.toISOString(),
-            scanJobStatus: payload.status === 'rejected' ? 'failed' : 'completed',
-          }),
-        },
+            note: payload.note,
+            rejectionReason: payload.status === 'rejected' ? payload.reason || security.rejectionReason : null,
+            callbackAt,
+          },
+        })
+        if (jobUpdate.count !== 1) throw new HttpError(409, 'MEDIA_SCAN_CALLBACK_CONFLICT', 'Scan callback state changed concurrently')
+        const updated = await transaction.mediaAsset.update({
+          where: { id: asset.id },
+          data: {
+            status: payload.status === 'rejected' ? 'rejected' : 'uploaded',
+            metadata: mediaSecurityMetadata(asset, {
+              scanStatus: payload.status,
+              detectedContentType: payload.detectedContentType || security.detectedContentType || asset.contentType,
+              scanNote: payload.note,
+              rejectionReason: payload.status === 'rejected' ? payload.reason || security.rejectionReason : undefined,
+              externalScanId: payload.externalScanId,
+              callbackReceivedAt: callbackAt.toISOString(),
+              scanJobStatus: payload.status === 'rejected' ? 'failed' : 'completed',
+            }),
+          },
+        })
+        await transitionPrismaStorageObject(
+          transaction,
+          asset,
+          payload.status === 'clean' && !asset.archivedAt && !asset.deletedAt ? 'available' : 'quarantined',
+          callbackAt,
+        )
+        const [nextAsset, nextJob] = await Promise.all([
+          transaction.mediaAsset.findUnique({ where: { id: updated.id }, include: { storageObject: true } }),
+          transaction.mediaScanJob.findUnique({ where: { id: currentJob.id } }),
+        ])
+        return { asset: nextAsset, job: nextJob }
       })
-      const job = await updateLatestMediaScanJob(asset, {
-        externalScanId: payload.externalScanId || security.externalScanId,
-        status: payload.status === 'rejected' ? 'failed' : 'completed',
-        scanStatus: payload.status,
-        note: payload.note,
-        rejectionReason: payload.status === 'rejected' ? payload.reason || security.rejectionReason : undefined,
-        callbackAt,
-      })
+      const updated = result.asset
+      const job = result.job
       await recordAudit({
         actor: null,
         action: 'media.scan.callback',
@@ -8220,15 +8418,17 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     retryScan: async (id, actor) => {
       const asset = await client.mediaAsset.findUnique({
         where: { id: String(id) },
+        include: { storageObject: true },
       })
       if (!asset) {
         return null
       }
       const scanResult = await retryMediaScanAsset(asset)
       const scanJob = await createMediaScanJob(asset, scanResult)
-      const updated = await client.mediaAsset.update({
-        where: { id: asset.id },
-        data: {
+      const updated = await client.$transaction(async (transaction) => {
+        const nextAsset = await transaction.mediaAsset.update({
+          where: { id: asset.id },
+          data: {
           status: 'uploaded',
           metadata: mediaSecurityMetadata(asset, {
             scanProvider: scanResult.provider,
@@ -8247,7 +8447,10 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             scanDispatchRequestedAt: scanResult.dispatchRequestedAt,
             rejectionReason: undefined,
           }),
-        },
+          },
+        })
+        await transitionPrismaStorageObject(transaction, asset, 'quarantined')
+        return transaction.mediaAsset.findUnique({ where: { id: nextAsset.id }, include: { storageObject: true } })
       })
       const updatedWithJob = mediaAssetWithScanJob(updated, scanJob)
       await recordAudit({
@@ -8295,7 +8498,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           status: { in: ['queued', 'retrying'] },
           timeoutAt: { lt: new Date() },
         },
-        include: { asset: true },
+        include: { asset: { include: { storageObject: true } } },
         orderBy: { updatedAt: 'desc' },
       })
       let retried = 0
@@ -8418,10 +8621,62 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         items,
       }
     },
+    cleanupStorageObjects: async ({ actor = null, limit = null, now = new Date() } = {}) => {
+      const policy = await getMediaGovernancePolicy()
+      const batchSize = Math.min(Math.max(Number(limit ?? process.env.MEDIA_STORAGE_CLEANUP_BATCH_SIZE ?? 25), 1), 100)
+      const candidates = await client.mediaStorageObject.findMany({
+        where: { state: 'cleanup_pending', cleanupAfter: { lte: now } },
+        include: { asset: true },
+        orderBy: [{ cleanupAfter: 'asc' }, { assetId: 'asc' }],
+        take: batchSize,
+      })
+      const items = []
+      let deleted = 0
+      let failed = 0
+      for (const candidate of candidates) {
+        const claimed = await client.mediaStorageObject.updateMany({
+          where: { assetId: candidate.assetId, state: 'cleanup_pending', version: candidate.version },
+          data: { state: 'deleting', lastErrorCode: null, version: { increment: 1 } },
+        })
+        if (claimed.count !== 1) {
+          items.push({ assetId: candidate.assetId, status: 'skipped', reasonCode: 'concurrent_change' })
+          continue
+        }
+        try {
+          const result = await deleteStorageObject(candidate.asset)
+          const finalized = await client.mediaStorageObject.updateMany({
+            where: { assetId: candidate.assetId, state: 'deleting', version: candidate.version + 1 },
+            data: {
+              state: 'deleted',
+              deletedAt: new Date(result.deletedAt),
+              cleanupAfter: null,
+              lastErrorCode: null,
+              version: { increment: 1 },
+            },
+          })
+          if (finalized.count !== 1) throw new StorageObjectError('STORAGE_DELETE_CONFLICT', 'Storage cleanup state changed concurrently', { retryable: true })
+          await recordAudit({ actor, action: 'media.storage.deleted', resourceType: 'media_asset', resourceId: candidate.assetId, metadata: { provider: result.provider, retentionDays: policy.retention.storageCleanupRetentionDays } })
+          deleted += 1
+          items.push({ assetId: candidate.assetId, status: 'deleted', provider: result.provider })
+        } catch (error) {
+          const reasonCode = error instanceof StorageObjectError ? error.code : 'STORAGE_DELETE_FAILED'
+          await client.mediaStorageObject.updateMany({
+            where: { assetId: candidate.assetId, state: 'deleting', version: candidate.version + 1 },
+            data: { state: 'cleanup_pending', lastErrorCode: reasonCode, version: { increment: 1 } },
+          })
+          await recordAudit({ actor, action: 'media.storage.cleanup_failed', resourceType: 'media_asset', resourceId: candidate.assetId, metadata: { provider: candidate.provider, reasonCode } })
+          failed += 1
+          items.push({ assetId: candidate.assetId, status: 'failed', reasonCode })
+        }
+      }
+      const result = { inspected: candidates.length, deleted, failed, limit: batchSize, items }
+      if (failed > 0) throw new HttpError(503, 'MEDIA_STORAGE_CLEANUP_PARTIAL_FAILURE', 'One or more storage objects could not be cleaned up', result)
+      return result
+    },
     createDownload: async (id, actor) => {
       const asset = await client.mediaAsset.findUnique({
         where: { id: String(id) },
-        include: { owner: { include: { profile: true } } },
+        include: { owner: { include: { profile: true } }, storageObject: true },
       })
       if (!asset) {
         return null
@@ -8431,7 +8686,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       if (ownerHandle !== actor.handle && !hasPermission(actor, 'admin:access')) {
         return null
       }
-      if (asset.status !== 'uploaded' || scanStatus !== 'clean' || asset.archivedAt || asset.deletedAt) {
+      if (asset.status !== 'uploaded' || scanStatus !== 'clean' || asset.storageObject?.state !== 'available' || asset.archivedAt || asset.deletedAt) {
         return null
       }
       await recordAudit({

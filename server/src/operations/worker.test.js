@@ -191,6 +191,10 @@ test('createProductionWorkerJobDefinitions maps enabled env to repository jobs',
         calls.push(['media', payload])
         return { retried: 0, failed: 0 }
       },
+      cleanupStorageObjects: async (payload) => {
+        calls.push(['cleanup', payload])
+        return { inspected: 1, deleted: 1, failed: 0 }
+      },
     },
     tasks: {
       sweepStaleSubmissions: async (payload) => {
@@ -202,6 +206,9 @@ test('createProductionWorkerJobDefinitions maps enabled env to repository jobs',
   const env = {
     mediaScanWorkerEnabled: true,
     mediaScanWorkerIntervalSeconds: 15,
+    mediaStorageCleanupWorkerEnabled: true,
+    mediaStorageCleanupWorkerIntervalSeconds: 300,
+    mediaStorageCleanupBatchSize: 25,
     workerLeaseTtlSeconds: 120,
     workerLeaseRenewIntervalSeconds: 30,
     taskStaleSubmissionWorkerEnabled: true,
@@ -210,24 +217,34 @@ test('createProductionWorkerJobDefinitions maps enabled env to repository jobs',
     taskStaleSubmissionSweepLimit: 10,
   }
   const definitions = createProductionWorkerJobDefinitions(repositories, env)
-  assert.deepEqual(definitions.map((definition) => definition.id), ['media-scan-sweep', 'task-stale-submission-sweep'])
+  assert.deepEqual(definitions.map((definition) => definition.id), ['media-scan-sweep', 'media-storage-cleanup', 'task-stale-submission-sweep'])
   assert.equal(definitions[0].intervalSeconds, 15)
   assert.equal(definitions[1].intervalSeconds, 300)
+  assert.equal(definitions[1].maxAttempts, 3)
+  assert.equal(definitions[1].retryBackoffSeconds, 300)
+  assert.equal(definitions[2].intervalSeconds, 300)
   assert.deepEqual(definitions[0].lease, {
     key: 'media-scan-sweep',
     ttlSeconds: 120,
     renewIntervalSeconds: 30,
   })
   assert.deepEqual(definitions[1].lease, {
+    key: 'media-storage-cleanup',
+    ttlSeconds: 120,
+    renewIntervalSeconds: 30,
+  })
+  assert.deepEqual(definitions[2].lease, {
     key: 'task-stale-submission-sweep',
     ttlSeconds: 120,
     renewIntervalSeconds: 30,
   })
 
   assert.deepEqual(await definitions[0].run(), { retried: 0, failed: 0 })
-  assert.deepEqual(await definitions[1].run(), { marked: 1 })
+  assert.deepEqual(await definitions[1].run(), { inspected: 1, deleted: 1, failed: 0 })
+  assert.deepEqual(await definitions[2].run(), { marked: 1 })
   assert.deepEqual(calls, [
     ['media', { source: 'worker' }],
+    ['cleanup', { limit: 25 }],
     ['tasks', { olderThanHours: 48, limit: 10 }],
   ])
 })

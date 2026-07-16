@@ -17,7 +17,7 @@ import {
 import type { AsyncResourceState, MarketplaceProfile, Page, PublishDraft, SimulateAction, Task } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import type { TaskChildCollection } from '../../hooks/useTaskWorkflows'
-import { mediaService } from '../../services/mediaService'
+import { uploadMediaFile } from '../../services/mediaUpload'
 import type { ApiAcceptanceChecklistItem, ApiMediaAsset, ApiProfileSummary, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, ApiTaskWorkflow, MediaAssetPurpose } from '../../services/contracts'
 import {
   categoryLabel,
@@ -319,21 +319,10 @@ function MediaUploadPanel({
     setUploading(true)
     setError(null)
     try {
-      const contract = await mediaService.createUpload({
-        fileName: file.name,
-        contentType: file.type || 'application/octet-stream',
-        sizeBytes: file.size,
+      const completed = await uploadMediaFile(file, {
         purpose,
         metadata: { source: 'task-workflow-ui' },
       })
-      if (!contract.upload.url.startsWith('mock://')) {
-        await fetch(contract.upload.url, {
-          method: contract.upload.method,
-          headers: contract.upload.headers,
-          body: file,
-        })
-      }
-      const completed = await mediaService.completeUpload(contract.asset.id)
       setAssets([completed, ...assets.filter((asset) => asset.id !== completed.id)])
       simulateAction(isZh ? `已上传文件：${file.name}` : `Uploaded file: ${file.name}`)
     } catch (uploadError) {

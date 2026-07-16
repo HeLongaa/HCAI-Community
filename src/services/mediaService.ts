@@ -26,6 +26,7 @@ import type {
   MediaScanJobHistoryQuery,
   MediaScanJobQuery,
   MediaScanSweepResult,
+  MediaStorageCleanupResult,
   MediaUploadContract,
   ReviewMediaUploadRequest,
 } from './contracts'
@@ -70,6 +71,9 @@ export const mediaService = {
   },
   adminAssetBulkAction(ids: string[], action: 'archive' | 'restore' | 'delete' | 'recover', reason = 'admin_bulk_action') {
     return api.post<AdminMediaAssetBulkResult>('/admin/media/assets/bulk-actions', { ids, action, reason })
+  },
+  adminStorageCleanup(limit = 25) {
+    return api.post<MediaStorageCleanupResult>('/admin/media/storage/cleanup', { limit })
   },
   adminAssetExport(query: AdminMediaAssetQuery, format: 'json' | 'csv') {
     const path = withQuery('/admin/media/assets/export', { ...query, cursor: null, format })

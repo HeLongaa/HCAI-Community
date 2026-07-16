@@ -48,7 +48,7 @@ not become public because the post is public.
 | `community_content_interactions` | Public | PostgreSQL | `Post`, `Comment`, `PostLike` | Delete request + 30 days |
 | `private_library_items` | Confidential | PostgreSQL | `LibraryItem` | Delete request + 30 days |
 | `internal_points_ledger` | Confidential | PostgreSQL | `PointLedger`, `InternalPointAccount` | Terminal entry/account close + 730 days |
-| `media_asset_metadata` | Confidential | PostgreSQL | `MediaAsset`, `MediaAssetRelation` | Delete/reject/abandon + 30 days; V1-09 output metadata excludes Provider URLs; V1-36 lineage stores application asset ids only |
+| `media_asset_metadata` | Confidential | PostgreSQL | `MediaAsset`, `MediaStorageObject`, `MediaAssetRelation` | Delete/reject/abandon + 30 days; object state and verification evidence stay server-owned; V1-09 output metadata excludes Provider URLs; V1-36 lineage stores application asset ids only |
 | `media_object_bytes` | Restricted | Object storage | Uploads, attachments, generated assets | Revoke now, object delete within 24 hours |
 | `media_scan_safety_records` | Restricted | PostgreSQL/archive | `MediaScanJob` | Terminal scan + 180 days, maximum 50/asset |
 | `creative_generation_records` | Restricted | PostgreSQL | `CreativeGeneration` | Terminal generation + 365 days; preview 30 days |

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Archive, ArchiveRestore, CheckCircle2, Download, LoaderCircle, RefreshCw, RotateCcw, Trash2, Undo2, XCircle } from 'lucide-react'
+import { Archive, ArchiveRestore, CheckCircle2, DatabaseZap, Download, LoaderCircle, RefreshCw, RotateCcw, Trash2, Undo2, XCircle } from 'lucide-react'
 import { textFor } from '../../domain/utils'
-import type { AdminMediaAssetQuery, ApiAdminMediaAsset, MediaAssetPurpose } from '../../services/contracts'
+import type { AdminMediaAssetQuery, ApiAdminMediaAsset, MediaAssetPurpose, MediaStorageState } from '../../services/contracts'
 import { mediaService } from '../../services/mediaService'
 
 const purposes: Array<'' | MediaAssetPurpose> = ['', 'task_attachment', 'submission_asset', 'profile_portfolio', 'library_asset']
+const storageStates: Array<'' | MediaStorageState> = ['', 'pending_upload', 'verifying', 'quarantined', 'available', 'cleanup_pending', 'deleting', 'deleted', 'verification_failed']
 type LifecycleAction = 'archive' | 'restore' | 'delete' | 'recover'
 
 export function AdminMediaLifecyclePanel({ t, canRead, canReview, canExport }: { t: Record<string, string>; canRead: boolean; canReview: boolean; canExport: boolean }) {
@@ -115,6 +116,20 @@ export function AdminMediaLifecyclePanel({ t, canRead, canReview, canExport }: {
     }
   }
 
+  const runStorageCleanup = async () => {
+    setBusy('storage-cleanup')
+    setError(null)
+    try {
+      const result = await mediaService.adminStorageCleanup(25)
+      setNotice(textFor(t, `${result.deleted} objects deleted, ${result.failed} failed.`, `已清理 ${result.deleted} 个对象，失败 ${result.failed} 个。`))
+      await load()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : textFor(t, 'Storage cleanup failed.', '对象清理失败。'))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const focused = detail?.id === focusedId ? detail : items.find((item) => item.id === focusedId) ?? null
   const allSelected = useMemo(() => items.length > 0 && items.every((item) => selectedIds.has(item.id)), [items, selectedIds])
   const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(items.map((item) => item.id)))
@@ -123,6 +138,7 @@ export function AdminMediaLifecyclePanel({ t, canRead, canReview, canExport }: {
     <div className="admin-media-lifecycle-heading">
       <div><strong>{textFor(t, 'Asset administration', '素材资产管理')}</strong><span>{textFor(t, 'Safe metadata, scan evidence, lineage and portfolio state', '安全元数据、扫描证据、谱系与作品集状态')}</span></div>
       <div className="button-row">
+        {canReview && <button className="icon-button" aria-label={textFor(t, 'Run due object cleanup', '执行到期对象清理')} title={textFor(t, 'Run due object cleanup', '执行到期对象清理')} disabled={Boolean(busy)} onClick={() => void runStorageCleanup()} type="button"><DatabaseZap size={16}/></button>}
         {canExport && <><button className="icon-button" aria-label={textFor(t, 'Export media JSON', '导出素材 JSON')} disabled={Boolean(busy)} onClick={() => void exportAssets('json')} type="button"><Download size={16}/></button><button className="ghost-button small" disabled={Boolean(busy)} onClick={() => void exportAssets('csv')} type="button">CSV</button></>}
         <button className="icon-button" aria-label={textFor(t, 'Refresh asset lifecycle', '刷新素材生命周期')} disabled={!canRead || loading} onClick={() => void load()} type="button"><RefreshCw className={loading ? 'spin' : ''} size={16}/></button>
       </div>
@@ -131,6 +147,7 @@ export function AdminMediaLifecyclePanel({ t, canRead, canReview, canExport }: {
       <input aria-label={textFor(t, 'Search asset lifecycle', '搜索素材生命周期')} placeholder={textFor(t, 'ID, filename, owner', 'ID、文件名、所有者')} value={query.search ?? ''} onChange={(event) => setQuery((current) => ({ ...current, search: event.target.value || null }))}/>
       <select aria-label={textFor(t, 'Admin asset lifecycle state', '管理端素材生命周期状态')} value={query.lifecycle ?? 'all'} onChange={(event) => setQuery((current) => ({ ...current, lifecycle: event.target.value as AdminMediaAssetQuery['lifecycle'] }))}><option value="all">{textFor(t, 'All states', '全部状态')}</option><option value="active">{textFor(t, 'Active', '使用中')}</option><option value="archived">{textFor(t, 'Archived', '已归档')}</option><option value="deleted">{textFor(t, 'Deleted', '回收站')}</option></select>
       <select aria-label={textFor(t, 'Admin asset purpose', '管理端素材用途')} value={query.purpose ?? ''} onChange={(event) => setQuery((current) => ({ ...current, purpose: event.target.value as MediaAssetPurpose || null }))}>{purposes.map((purpose) => <option key={purpose || 'all'} value={purpose}>{purpose || textFor(t, 'All purposes', '全部用途')}</option>)}</select>
+      <select aria-label={textFor(t, 'Admin object state', '管理端对象状态')} value={query.storageState ?? ''} onChange={(event) => setQuery((current) => ({ ...current, storageState: event.target.value as MediaStorageState || null }))}>{storageStates.map((state) => <option key={state || 'all'} value={state}>{state || textFor(t, 'All object states', '全部对象状态')}</option>)}</select>
       <select aria-label={textFor(t, 'Admin asset sort', '管理端素材排序')} value={query.sort ?? 'created_desc'} onChange={(event) => setQuery((current) => ({ ...current, sort: event.target.value as AdminMediaAssetQuery['sort'] }))}><option value="created_desc">{textFor(t, 'Newest first', '最新优先')}</option><option value="created_asc">{textFor(t, 'Oldest first', '最早优先')}</option><option value="updated_desc">{textFor(t, 'Recently updated', '最近更新')}</option><option value="name_asc">{textFor(t, 'Filename', '文件名')}</option></select>
     </div>
     {(error || notice) && <p className={`use-creative-asset-notice ${error ? 'error' : ''}`}>{error ?? notice}</p>}
@@ -143,7 +160,7 @@ export function AdminMediaLifecyclePanel({ t, canRead, canReview, canExport }: {
         {!loading && items.length === 0 && <div className="empty-state"><strong>{textFor(t, 'No matching assets', '没有匹配的素材')}</strong><span>{textFor(t, 'Adjust lifecycle filters or search.', '调整生命周期筛选或搜索条件。')}</span></div>}
         {items.map((item) => <article className={focusedId === item.id ? 'selected' : ''} key={item.id}>
           <input aria-label={`${textFor(t, 'Select', '选择')} ${item.fileName}`} type="checkbox" checked={selectedIds.has(item.id)} onChange={() => setSelectedIds((current) => { const next = new Set(current); if (next.has(item.id)) next.delete(item.id); else next.add(item.id); return next })}/>
-          <button className="admin-media-row-copy" type="button" onClick={() => setFocusedId(item.id)}><strong>{item.fileName}</strong><span>@{item.owner.handle} · {item.purpose} · {item.status}/{item.scanStatus}</span><small>{item.deletedAt ? textFor(t, 'Deleted', '回收站') : item.archivedAt ? textFor(t, 'Archived', '已归档') : textFor(t, 'Active', '使用中')} · {item.relations.length} {textFor(t, 'relations', '条关系')} · {item.portfolio.length} {textFor(t, 'portfolio records', '条作品集记录')}</small></button>
+          <button className="admin-media-row-copy" type="button" onClick={() => setFocusedId(item.id)}><strong>{item.fileName}</strong><span>@{item.owner.handle} · {item.purpose} · {item.status}/{item.scanStatus}</span><small>{item.deletedAt ? textFor(t, 'Deleted', '回收站') : item.archivedAt ? textFor(t, 'Archived', '已归档') : textFor(t, 'Active', '使用中')} · {item.storage?.state ?? 'legacy'} · {item.relations.length} {textFor(t, 'relations', '条关系')} · {item.portfolio.length} {textFor(t, 'portfolio records', '条作品集记录')}</small></button>
         </article>)}
         {loading && <div className="portfolio-manager-state"><LoaderCircle className="spin" size={16}/>{textFor(t, 'Loading assets…', '正在加载素材…')}</div>}
         {nextCursor && <button className="ghost-button" disabled={loading} onClick={() => void load(nextCursor)} type="button">{textFor(t, 'Load more', '加载更多')}</button>}
@@ -152,7 +169,7 @@ export function AdminMediaLifecyclePanel({ t, canRead, canReview, canExport }: {
         {!focused && <div className="empty-state"><strong>{textFor(t, 'Select an asset', '选择一个素材')}</strong></div>}
         {focused && <>
           <div><small>{focused.id}</small><h3>{focused.fileName}</h3><span>@{focused.owner.handle} · {focused.contentType}</span></div>
-          <dl><div><dt>{textFor(t, 'Lifecycle', '生命周期')}</dt><dd>{focused.deletedAt ? 'deleted' : focused.archivedAt ? 'archived' : 'active'}</dd></div><div><dt>{textFor(t, 'Scan', '扫描')}</dt><dd>{focused.scanStatus}</dd></div><div><dt>{textFor(t, 'Size', '大小')}</dt><dd>{focused.sizeBytes.toLocaleString()} B</dd></div><div><dt>{textFor(t, 'Purpose', '用途')}</dt><dd>{focused.purpose}</dd></div><div><dt>{textFor(t, 'Relations', '关系')}</dt><dd>{focused.relations.length}</dd></div><div><dt>{textFor(t, 'Portfolio', '作品集')}</dt><dd>{focused.portfolio.length}</dd></div></dl>
+          <dl><div><dt>{textFor(t, 'Lifecycle', '生命周期')}</dt><dd>{focused.deletedAt ? 'deleted' : focused.archivedAt ? 'archived' : 'active'}</dd></div><div><dt>{textFor(t, 'Scan', '扫描')}</dt><dd>{focused.scanStatus}</dd></div><div><dt>{textFor(t, 'Object', '对象')}</dt><dd>{focused.storage?.state ?? 'legacy'}</dd></div><div><dt>{textFor(t, 'Storage', '存储')}</dt><dd>{focused.storage?.provider ?? 'legacy'}</dd></div><div><dt>{textFor(t, 'Size', '大小')}</dt><dd>{focused.sizeBytes.toLocaleString()} B</dd></div><div><dt>{textFor(t, 'Purpose', '用途')}</dt><dd>{focused.purpose}</dd></div><div><dt>{textFor(t, 'Relations', '关系')}</dt><dd>{focused.relations.length}</dd></div><div><dt>{textFor(t, 'Portfolio', '作品集')}</dt><dd>{focused.portfolio.length}</dd></div></dl>
           <div className="button-row admin-media-detail-actions">
             {!focused.deletedAt && !focused.archivedAt && <button className="ghost-button small" disabled={!canReview || busy === focused.id} onClick={() => void runAction(focused, 'archive')} type="button"><Archive size={14}/>{textFor(t, 'Archive', '归档')}</button>}
             {!focused.deletedAt && focused.archivedAt && <button className="ghost-button small" disabled={!canReview || busy === focused.id} onClick={() => void runAction(focused, 'restore')} type="button"><ArchiveRestore size={14}/>{textFor(t, 'Restore', '恢复')}</button>}

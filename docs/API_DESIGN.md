@@ -796,11 +796,12 @@ Body:
   contentType: string
   sizeBytes: number
   purpose: 'task_attachment' | 'submission_asset' | 'profile_portfolio' | 'library_asset'
+  checksumSha256?: string // 64-character hex or 32-byte base64; required for S3
   metadata?: Record<string, unknown>
 }
 ```
 
-Returns a persisted pending asset plus a mock signed upload contract:
+Returns a persisted pending asset plus a bounded upload contract. S3 PUT contracts sign the exact content length, content type, and `x-amz-checksum-sha256` headers.
 
 ```ts
 {
@@ -1213,10 +1214,12 @@ Body:
 }
 ```
 
-Completion records secondary MIME validation plus scan provider metadata under `metadata.security`. `MEDIA_SCAN_PROVIDER=manual` records `scanStatus: 'pending'`; `MEDIA_SCAN_PROVIDER=mock` deterministically records `clean`, `review`, or `rejected` based on filename/storage-key signatures for local testing; `MEDIA_SCAN_PROVIDER=webhook` records `scanStatus: 'scanning'`, an external scan id, and waits for the provider callback. When `MEDIA_SCAN_REQUEST_URL` is configured, webhook mode also POSTs a scan request to the scanner service. `MEDIA_SCAN_REQUEST_ADAPTER` defaults to `generic-webhook` and is mirrored to `metadata.security.scanRequestAdapter` plus scan-job metadata for operations reporting. Supported adapters are:
+Completion first performs an S3 HEAD and verifies size, MIME type, checksum, and ETag. A failed check records `verification_failed` and does not dispatch scanning. Successful completion records scan provider metadata under `metadata.security`. `MEDIA_SCAN_PROVIDER=manual` records `scanStatus: 'pending'`; `MEDIA_SCAN_PROVIDER=mock` deterministically records `clean`, `review`, or `rejected` based on filename/storage-key signatures for local testing; `MEDIA_SCAN_PROVIDER=webhook` records `scanStatus: 'scanning'`, an external scan id, and waits for the provider callback. When `MEDIA_SCAN_REQUEST_URL` is configured, webhook mode also POSTs a scan request to the scanner service. `MEDIA_SCAN_REQUEST_ADAPTER` defaults to `generic-webhook` and is mirrored to `metadata.security.scanRequestAdapter` plus scan-job metadata for operations reporting. Supported adapters are:
 
-- `generic-webhook`: sends `scanId`, `adapter`, `trigger`, `callbackUrl`, and full asset metadata.
-- `clamav-http`: sends a ClamAV-oriented `jobId`, `callbackUrl`, object-storage `source`, and asset `metadata`; also includes `x-clamav-job-id`.
+- `generic-webhook`: sends `scanId`, `adapter`, `trigger`, `callbackUrl`, bounded asset metadata, and a short-lived private `read` contract.
+- `clamav-http`: sends a ClamAV-oriented `jobId`, `callbackUrl`, bounded asset metadata, and a short-lived private `source` contract; it also includes `x-clamav-job-id`.
+
+Neither adapter receives the long-lived storage key.
 
 All adapters send `x-media-scan-id`, `x-media-scan-adapter`, and optional `x-media-scan-signature`; dispatch status is mirrored to `metadata.security.scanDispatchStatus`.
 
@@ -1253,9 +1256,11 @@ Body:
   note?: string
   reason?: string
   detectedContentType?: string
-  externalScanId?: string
+  externalScanId: string
 }
 ```
+
+The external scan ID must match an existing durable active scan job. Exact terminal duplicates are idempotent; mismatched IDs and conflicting terminal results return HTTP 409 and record a bounded conflict audit event.
 
 Callback status mapping:
 
@@ -1269,7 +1274,26 @@ Requires `admin:queue:review`. Requeues an uploaded media asset for webhook scan
 
 ### `GET /media/assets/:id/download`
 
-Requires auth plus owner access or `admin:access`. Returns a private download contract only when the media asset is uploaded and `metadata.security.scanStatus === 'clean'`.
+Requires auth plus owner access or `admin:access`. Returns a short-lived private download contract only when the media asset is uploaded, active, clean, and its physical object state is `available`. The contract is S3-backed unless paired `STORAGE_PRIVATE_DOWNLOAD_*` settings enable HMAC private-CDN delivery.
+
+### `POST /admin/media/storage/cleanup`
+
+Requires `admin:queue:review`. Claims at most `limit` due `cleanup_pending` objects, performs idempotent physical DELETE, and records per-object audit evidence. `limit` defaults to 25 and is capped at 100. A partial storage failure returns HTTP 503 with bounded item results so JOB-02 can retry and eventually move an exhausted run to DLQ.
+
+```ts
+{
+  inspected: number
+  deleted: number
+  failed: number
+  limit: number
+  items: Array<{
+    assetId: string
+    status: 'deleted' | 'failed' | 'skipped'
+    provider?: string
+    reasonCode?: string
+  }>
+}
+```
 
 ## Error Codes
 

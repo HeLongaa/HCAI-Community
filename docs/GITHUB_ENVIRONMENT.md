@@ -28,6 +28,7 @@ Object storage secrets for managed S3 mode:
 | `STORAGE_ACCESS_KEY_ID` | Yes | S3-compatible access key |
 | `STORAGE_SECRET_ACCESS_KEY` | Yes | S3-compatible secret |
 | `STORAGE_SESSION_TOKEN` | Optional | Only for temporary credentials |
+| `STORAGE_PRIVATE_DOWNLOAD_SIGNING_SECRET` | Required for private CDN | HMAC signing secret paired with `STORAGE_PRIVATE_DOWNLOAD_BASE_URL` |
 
 Media scanner secrets:
 
@@ -72,6 +73,11 @@ Object storage:
 | `STORAGE_ENDPOINT` | Yes | `https://s3.amazonaws.com` |
 | `STORAGE_REGION` | Yes | `us-east-1` |
 | `STORAGE_BUCKET` | Yes | `hcai-media-prod` |
+| `STORAGE_UPLOAD_TTL_SECONDS` | Yes | `900` |
+| `STORAGE_DOWNLOAD_TTL_SECONDS` | Yes | `300` |
+| `STORAGE_SCANNER_READ_TTL_SECONDS` | Yes | `600` |
+| `STORAGE_PRIVATE_DOWNLOAD_BASE_URL` | Optional | `https://media.example.com` |
+| `STORAGE_PRIVATE_DOWNLOAD_KEY_ID` | Optional | `2026-07` |
 
 Media scanner:
 
@@ -192,6 +198,10 @@ These have code defaults, but setting them explicitly makes production behavior 
 | `API_EMBEDDED_WORKERS_ENABLED` | `false` for multi-instance API deployments |
 | `MEDIA_SCAN_WORKER_ENABLED` | `true` for the worker process |
 | `MEDIA_SCAN_WORKER_INTERVAL_SECONDS` | `30` or deployment-specific |
+| `MEDIA_STORAGE_CLEANUP_WORKER_ENABLED` | `true` for the worker process |
+| `MEDIA_STORAGE_CLEANUP_WORKER_INTERVAL_SECONDS` | Bounded cadence, e.g. `300` |
+| `MEDIA_STORAGE_CLEANUP_BATCH_SIZE` | Per-run cap, e.g. `25` |
+| `MEDIA_STORAGE_CLEANUP_RETENTION_DAYS` | Approved retention window, default `30` |
 | `TASK_STALE_SUBMISSION_WORKER_ENABLED` | `true` when stale task review sweeps should run automatically |
 | `TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS` | `300` or deployment-specific |
 | `TASK_STALE_SUBMISSION_OLDER_THAN_HOURS` | Review SLA threshold, e.g. `72` |

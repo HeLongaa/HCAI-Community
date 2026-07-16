@@ -162,10 +162,13 @@ test('Prisma Outbox and JobRun lifecycle preserve transaction and lease invarian
     await repository.client.jobAttempt.deleteMany({ where: { runId: { in: createdIds.jobs } } })
     await repository.client.jobRun.deleteMany({ where: { id: { in: createdIds.jobs } } })
     await repository.client.jobDefinition.deleteMany({ where: { id: { in: createdIds.definitions } } })
-    await repository.client.auditEvent.deleteMany({ where: { actorId: actor.id } })
+    await repository.client.$transaction(async (transaction) => {
+      await transaction.$executeRawUnsafe("SET LOCAL app.audit_maintenance = 'on'")
+      await transaction.auditEvent.deleteMany({ where: { actorId: actor.id } })
+    })
     await repository.client.domainEventPublication.deleteMany({ where: { eventId: { in: createdIds.events } } })
     await repository.client.domainEventOutbox.deleteMany({ where: { id: { in: createdIds.events } } })
-    if (createdIds.task) await repository.client.task.deleteMany({ where: { id: createdIds.task } })
+    if (createdIds.task) await repository.client.task.deleteMany({ where: { publisherId: actor.id } })
     await repository.client.user.deleteMany({ where: { id: actor.id } })
     await repository.client.$disconnect()
   }

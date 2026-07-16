@@ -288,11 +288,16 @@ export const parseCreateMediaUploadRequest = (body) => {
   if (!policy.contentTypes.some((pattern) => pattern.test(contentType))) {
     throw validationFailed(`contentType is not allowed for ${purpose}`)
   }
+  const checksumSha256 = optionalText(body, 'checksumSha256', '')
+  if (checksumSha256 && !/^(?:[a-f0-9]{64}|[A-Za-z0-9+/]{43}=)$/i.test(checksumSha256)) {
+    throw validationFailed('checksumSha256 must be a SHA-256 hex or base64 digest')
+  }
   return {
     fileName: requireText(body, 'fileName'),
     contentType,
     sizeBytes,
     purpose,
+    checksumSha256: checksumSha256 || null,
     metadata: body.metadata ?? null,
   }
 }
@@ -345,13 +350,17 @@ export const parseAdminMediaAssetQuery = (query) => {
   const base = parseAssetLibraryQuery({ ...query, lifecycle: query.lifecycle ?? 'all', archived: 'all' })
   const sort = optionalText(query, 'sort', 'created_desc')
   const status = optionalText(query, 'status', null)
+  const storageState = optionalText(query, 'storageState', null)
   if (!['created_desc', 'created_asc', 'updated_desc', 'name_asc'].includes(sort)) {
     throw validationFailed('sort must be one of: created_desc, created_asc, updated_desc, name_asc')
   }
   if (status && !['pending', 'uploaded', 'rejected'].includes(status)) {
     throw validationFailed('status must be one of: pending, uploaded, rejected')
   }
-  return { ...base, ownerHandle: optionalText(query, 'ownerHandle', null), status, sort }
+  if (storageState && !['pending_upload', 'verifying', 'quarantined', 'available', 'cleanup_pending', 'deleting', 'deleted', 'verification_failed'].includes(storageState)) {
+    throw validationFailed('storageState is invalid')
+  }
+  return { ...base, ownerHandle: optionalText(query, 'ownerHandle', null), status, storageState, sort }
 }
 
 export const parseAdminMediaAssetExportQuery = (query) => {
@@ -489,13 +498,19 @@ export const parseMediaScanRequest = (body) => ({
   detectedContentType: optionalText(body, 'detectedContentType', ''),
 })
 
-export const parseMediaScanCallbackRequest = (body) => ({
-  status: requireOneOf(body, 'status', ['clean', 'review', 'rejected']),
-  note: optionalText(body, 'note', ''),
-  reason: optionalText(body, 'reason', ''),
-  detectedContentType: optionalText(body, 'detectedContentType', ''),
-  externalScanId: optionalText(body, 'externalScanId', ''),
-})
+export const parseMediaScanCallbackRequest = (body) => {
+  const externalScanId = requireText(body, 'externalScanId')
+  if (!/^[a-z0-9:_-]{1,128}$/i.test(externalScanId)) {
+    throw validationFailed('externalScanId must contain only letters, numbers, colon, underscore, or hyphen')
+  }
+  return {
+    status: requireOneOf(body, 'status', ['clean', 'review', 'rejected']),
+    note: optionalText(body, 'note', ''),
+    reason: optionalText(body, 'reason', ''),
+    detectedContentType: optionalText(body, 'detectedContentType', ''),
+    externalScanId,
+  }
+}
 
 export const parseMediaReviewQueueQuery = (query) => {
   const status = optionalText(query, 'status', 'review')
@@ -575,6 +590,7 @@ export const parseMediaGovernancePolicyRequest = (body) => {
     retention: compactObject({
       historyRetentionDays: optionalPositiveInteger(retention, 'historyRetentionDays'),
       historyRetentionMaxPerAsset: optionalPositiveInteger(retention, 'historyRetentionMaxPerAsset'),
+      storageCleanupRetentionDays: optionalPositiveInteger(retention, 'storageCleanupRetentionDays'),
     }),
     alerts: {
       ...compactObject({

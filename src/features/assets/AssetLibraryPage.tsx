@@ -4,6 +4,7 @@ import type { Page, PlaygroundMode } from '../../domain/types'
 import { textFor } from '../../domain/utils'
 import type { ApiAssetLibraryItem, AssetLibraryQuery, AssetMediaType, AssetWorkspace, MediaAssetPurpose } from '../../services/contracts'
 import { mediaService } from '../../services/mediaService'
+import { uploadMediaFile } from '../../services/mediaUpload'
 import { UseCreativeAsset } from './UseCreativeAsset'
 
 type Filters = { search: string; mediaType: '' | AssetMediaType; purpose: '' | MediaAssetPurpose; lifecycle: 'active' | 'archived' | 'deleted' | 'all'; dateFrom: string; dateTo: string; groupBy: 'mediaType' | 'purpose' | 'source' }
@@ -103,9 +104,7 @@ export function AssetLibraryPage({ t, signedIn, requireAuth, navigateToPage }: {
     setUploading(true)
     setError(null)
     try {
-      const contract = await mediaService.createUpload({ fileName: file.name, contentType: file.type || 'application/octet-stream', sizeBytes: file.size, purpose: 'library_asset', metadata: { source: 'asset_library' } })
-      if (!contract.upload.url.startsWith('mock://')) throw new Error(textFor(t, 'External storage upload is deferred to MEDIA-03.', '外部存储上传由 MEDIA-03 接管。'))
-      await mediaService.completeUpload(contract.asset.id, { detectedContentType: file.type || contract.asset.contentType })
+      await uploadMediaFile(file, { purpose: 'library_asset', metadata: { source: 'asset_library' } })
       setFilters((current) => ({ ...current, lifecycle: 'active', search: '' }))
       await load()
     } catch (cause) { setError(cause instanceof Error ? cause.message : textFor(t, 'Upload could not be prepared.', '无法准备上传。')) }

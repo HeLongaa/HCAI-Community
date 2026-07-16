@@ -117,6 +117,9 @@ export const startIntervalWorkerJob = ({
   jobManager = null,
   workerId = `worker-${randomUUID()}`,
   run,
+  maxAttempts = 3,
+  retryBackoffSeconds = 60,
+  cronSchedule = null,
   runImmediately = true,
   unrefTimers = true,
   logger = console,
@@ -141,6 +144,9 @@ export const startIntervalWorkerJob = ({
           version: 1,
           enabled: true,
           defaultTimeoutSeconds: positiveSeconds(lease?.ttlSeconds, Math.max(60, Math.ceil(intervalMs / 1000))),
+          maxAttempts,
+          retryBackoffSeconds,
+          cronSchedule,
           description: `Tracked interval worker: ${id}`,
         })
         const queued = await jobManager.enqueue({

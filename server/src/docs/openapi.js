@@ -761,6 +761,7 @@ export const openApiDocument = {
                   fileName: { type: 'string' },
                   contentType: { type: 'string' },
                   sizeBytes: { type: 'integer', minimum: 1, maximum: 104857600, description: 'Purpose-specific limits apply before signing.' },
+                  checksumSha256: { type: 'string', pattern: '^(?:[a-fA-F0-9]{64}|[A-Za-z0-9+/]{43}=)$', description: 'Required for S3 uploads and signed as x-amz-checksum-sha256.' },
                   purpose: { type: 'string', enum: ['task_attachment', 'submission_asset', 'profile_portfolio', 'library_asset'] },
                   metadata: { type: ['object', 'null'] },
                 },
@@ -900,6 +901,7 @@ export const openApiDocument = {
           { name: 'search', in: 'query', schema: { type: 'string' } },
           { name: 'ownerHandle', in: 'query', schema: { type: 'string' } },
           { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'uploaded', 'rejected'] } },
+          { name: 'storageState', in: 'query', schema: { type: 'string', enum: ['pending_upload', 'verifying', 'quarantined', 'available', 'cleanup_pending', 'deleting', 'deleted', 'verification_failed'] } },
           { name: 'purpose', in: 'query', schema: { type: 'string', enum: ['task_attachment', 'submission_asset', 'profile_portfolio', 'library_asset'] } },
           { name: 'lifecycle', in: 'query', schema: { type: 'string', enum: ['active', 'archived', 'deleted', 'all'], default: 'all' } },
           { name: 'sort', in: 'query', schema: { type: 'string', enum: ['created_desc', 'created_asc', 'updated_desc', 'name_asc'] } },
@@ -923,6 +925,14 @@ export const openApiDocument = {
         security: [{ bearerAuth: [] }],
         requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['ids', 'action'], properties: { ids: { type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: { type: 'string' } }, action: { type: 'string', enum: ['archive', 'restore', 'delete', 'recover'] }, reason: { type: 'string' } } } } } },
         responses: { '200': { description: 'Per-item succeeded and failed outcomes' }, '403': { description: 'Requires admin media manage permission' } },
+      },
+    },
+    '/admin/media/storage/cleanup': {
+      post: {
+        summary: 'Run a bounded retention-gated private object cleanup sweep',
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: false, content: { 'application/json': { schema: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 100, default: 25 } } } } } },
+        responses: { '200': { description: 'Per-object cleanup outcomes without storage keys or signed URLs' }, '403': { description: 'Requires admin media manage permission' }, '503': { description: 'One or more object deletions failed and are eligible for JobRun retry/DLQ' } },
       },
     },
     '/admin/media/assets/{id}': {
@@ -1919,7 +1929,7 @@ export const openApiDocument = {
     },
     '/media/uploads/{id}/complete': {
       post: {
-        summary: 'Mark a media upload as completed',
+        summary: 'Verify an uploaded object with HEAD and begin governed scanning',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         requestBody: {
           required: false,
@@ -1936,7 +1946,9 @@ export const openApiDocument = {
           },
         },
         responses: {
-          '200': { description: 'Uploaded media asset, or rejected asset when secondary MIME validation or scanner rejection fails' },
+          '200': { description: 'Verified media asset in available or quarantined storage state' },
+          '409': { description: 'Object missing, mismatched, already completing, or changed concurrently' },
+          '503': { description: 'Storage verification dependency is unavailable' },
         },
       },
     },
@@ -1982,7 +1994,7 @@ export const openApiDocument = {
             'application/json': {
               schema: {
                 type: 'object',
-                required: ['status'],
+                required: ['status', 'externalScanId'],
                 properties: {
                   status: { type: 'string', enum: ['clean', 'review', 'rejected'] },
                   note: { type: 'string' },
@@ -1995,7 +2007,8 @@ export const openApiDocument = {
           },
         },
         responses: {
-          '200': { description: 'Updated scanned media asset' },
+          '200': { description: 'Updated scanned media asset; exact duplicate callbacks are idempotent' },
+          '409': { description: 'Callback attempt mismatch, terminal result conflict, or concurrent transition' },
           '403': { description: 'Invalid or missing media scan callback secret/signature; denied attempts are audited' },
           '404': { description: 'Media asset not found' },
         },

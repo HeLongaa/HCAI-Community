@@ -63,6 +63,7 @@
     { "method": "POST", "path": "/api/admin/config-resources/feature_flag/:id/emergency-restore", "action": "admin.feature_flags.emergency_restore.attempted", "resourceType": "feature_flag", "resourceParam": "id", "reasonCode": "feature_flag_emergency_restore", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/media/assets/bulk-actions", "action": "admin.media.assets.bulk_action.attempted", "resourceType": "media_asset", "resourceParam": null, "reasonCode": "media_asset_bulk_action", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/media/assets/:id/scan", "action": "admin.media.asset.scan.attempted", "resourceType": "media_asset", "resourceParam": "id", "reasonCode": "media_asset_scan", "mode": "domain_audited", "risk": "critical" },
-    { "method": "POST", "path": "/api/admin/media/assets/:id/scan-retry", "action": "admin.media.asset.scan_retry.attempted", "resourceType": "media_asset", "resourceParam": "id", "reasonCode": "media_asset_scan_retry", "mode": "domain_audited", "risk": "critical" }
+    { "method": "POST", "path": "/api/admin/media/assets/:id/scan-retry", "action": "admin.media.asset.scan_retry.attempted", "resourceType": "media_asset", "resourceParam": "id", "reasonCode": "media_asset_scan_retry", "mode": "domain_audited", "risk": "critical" },
+    { "method": "POST", "path": "/api/admin/media/storage/cleanup", "action": "admin.media.storage.cleanup_executed", "resourceType": "media_storage_object", "resourceParam": null, "reasonCode": "media_storage_cleanup", "mode": "domain_audited", "risk": "critical" }
   ]
 }

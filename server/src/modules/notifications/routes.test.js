@@ -319,7 +319,7 @@ test('media scan callbacks and retries notify queue operators with admin deep li
       body: {
         status: 'review',
         note: 'Needs policy review',
-        externalScanId: 'scan-notify',
+        externalScanId: completed.payload.data.metadata.security.externalScanId,
       },
       headers: { 'x-media-scan-secret': 'scan-secret' },
     })

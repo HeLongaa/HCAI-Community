@@ -108,6 +108,11 @@ export const buildEnv = (source = process.env) => {
   const hasDatabaseUrl = Boolean(String(source.DATABASE_URL ?? '').trim())
   const accessTokenSecret = getAccessTokenSecret(source)
   const storageDriver = getStorageDriver(source)
+  const storagePrivateDownloadBaseUrl = getOptionalUrl(source, 'STORAGE_PRIVATE_DOWNLOAD_BASE_URL')
+  const storagePrivateDownloadSigningSecret = String(source.STORAGE_PRIVATE_DOWNLOAD_SIGNING_SECRET ?? '').trim()
+  const storageUploadTtlSeconds = positiveInteger(source, 'STORAGE_UPLOAD_TTL_SECONDS', 900)
+  const storageDownloadTtlSeconds = positiveInteger(source, 'STORAGE_DOWNLOAD_TTL_SECONDS', 300)
+  const storageScannerReadTtlSeconds = positiveInteger(source, 'STORAGE_SCANNER_READ_TTL_SECONDS', 600)
   const mediaScanProvider = getMediaScanProvider(source)
   const creativeProviderMode = getCreativeProviderMode(source)
   const creativeProviderRuntimeEnv = getCreativeProviderRuntimeEnv(source)
@@ -173,6 +178,9 @@ export const buildEnv = (source = process.env) => {
   const mediaScanTimeoutSeconds = positiveInteger(source, 'MEDIA_SCAN_TIMEOUT_SECONDS', 900)
   const mediaScanMaxAttempts = positiveInteger(source, 'MEDIA_SCAN_MAX_ATTEMPTS', 3)
   const mediaScanWorkerIntervalSeconds = positiveInteger(source, 'MEDIA_SCAN_WORKER_INTERVAL_SECONDS', 60)
+  const mediaStorageCleanupWorkerIntervalSeconds = positiveInteger(source, 'MEDIA_STORAGE_CLEANUP_WORKER_INTERVAL_SECONDS', 300)
+  const mediaStorageCleanupBatchSize = positiveInteger(source, 'MEDIA_STORAGE_CLEANUP_BATCH_SIZE', 25)
+  const mediaStorageCleanupRetentionDays = positiveInteger(source, 'MEDIA_STORAGE_CLEANUP_RETENTION_DAYS', 30)
   const workerLeaseTtlSeconds = positiveInteger(source, 'WORKER_LEASE_TTL_SECONDS', 300)
   const workerLeaseRenewIntervalSeconds = positiveInteger(source, 'WORKER_LEASE_RENEW_INTERVAL_SECONDS', 60)
   const domainEventWorkerIntervalSeconds = positiveInteger(source, 'DOMAIN_EVENT_WORKER_INTERVAL_SECONDS', 5)
@@ -233,6 +241,9 @@ export const buildEnv = (source = process.env) => {
     if (missing.length > 0) {
       throw new Error(`Missing object storage configuration: ${missing.join(', ')}`)
     }
+  }
+  if (Boolean(storagePrivateDownloadBaseUrl) !== Boolean(storagePrivateDownloadSigningSecret)) {
+    throw new Error('STORAGE_PRIVATE_DOWNLOAD_BASE_URL and STORAGE_PRIVATE_DOWNLOAD_SIGNING_SECRET must be configured together')
   }
   if (!['manual', 'mock', 'webhook'].includes(mediaScanProvider)) {
     throw new Error('MEDIA_SCAN_PROVIDER must be one of: manual, mock, webhook')
@@ -441,6 +452,11 @@ export const buildEnv = (source = process.env) => {
     accessTokenKeyId: source.ACCESS_TOKEN_KEY_ID || 'current',
     hasManagedAccessTokenSecret: Boolean(accessTokenSecret),
     storageDriver,
+    storageUploadTtlSeconds,
+    storageDownloadTtlSeconds,
+    storageScannerReadTtlSeconds,
+    hasStoragePrivateDownloadBaseUrl: Boolean(storagePrivateDownloadBaseUrl),
+    hasStoragePrivateDownloadSigningSecret: Boolean(storagePrivateDownloadSigningSecret),
     mediaScanProvider,
     creativeProviderMode,
     creativeProviderRuntimeEnv,
@@ -471,6 +487,10 @@ export const buildEnv = (source = process.env) => {
     domainEventWorkerBatchSize,
     mediaScanWorkerEnabled: boolFlag(source, 'MEDIA_SCAN_WORKER_ENABLED', false),
     mediaScanWorkerIntervalSeconds,
+    mediaStorageCleanupWorkerEnabled: boolFlag(source, 'MEDIA_STORAGE_CLEANUP_WORKER_ENABLED', false),
+    mediaStorageCleanupWorkerIntervalSeconds,
+    mediaStorageCleanupBatchSize,
+    mediaStorageCleanupRetentionDays,
     taskStaleSubmissionWorkerEnabled: boolFlag(source, 'TASK_STALE_SUBMISSION_WORKER_ENABLED', false),
     taskStaleSubmissionWorkerIntervalSeconds,
     taskStaleSubmissionOlderThanHours,
@@ -582,6 +602,7 @@ export const buildDefaultMediaGovernancePolicy = (source = process.env) => {
     retention: {
       historyRetentionDays: current.mediaScanHistoryRetentionDays,
       historyRetentionMaxPerAsset: current.mediaScanHistoryRetentionMaxPerAsset,
+      storageCleanupRetentionDays: current.mediaStorageCleanupRetentionDays,
     },
     alerts: {
       windowMinutes: current.mediaScanAlertWindowMinutes,
@@ -611,6 +632,7 @@ export const normalizeMediaGovernancePolicy = (policy = {}, fallback = buildDefa
     retention: {
       historyRetentionDays: positiveIntegerValue(retention.historyRetentionDays, fallback.retention.historyRetentionDays),
       historyRetentionMaxPerAsset: positiveIntegerValue(retention.historyRetentionMaxPerAsset, fallback.retention.historyRetentionMaxPerAsset),
+      storageCleanupRetentionDays: positiveIntegerValue(retention.storageCleanupRetentionDays, fallback.retention.storageCleanupRetentionDays),
     },
     alerts: {
       windowMinutes: positiveIntegerValue(alerts.windowMinutes, fallback.alerts.windowMinutes),
@@ -662,6 +684,7 @@ export const diffMediaGovernancePolicy = (previous, next, fallback = buildDefaul
     retention: compactChanges({
       historyRetentionDays: numericChange(before.retention.historyRetentionDays, after.retention.historyRetentionDays),
       historyRetentionMaxPerAsset: numericChange(before.retention.historyRetentionMaxPerAsset, after.retention.historyRetentionMaxPerAsset),
+      storageCleanupRetentionDays: numericChange(before.retention.storageCleanupRetentionDays, after.retention.storageCleanupRetentionDays),
     }),
     alerts: {
       ...compactChanges({
@@ -695,6 +718,14 @@ export const buildMediaGovernanceConfig = (source = process.env, policy = null) 
   return {
     storage: {
       driver: current.storageDriver,
+      uploadTtlSeconds: current.storageUploadTtlSeconds,
+      downloadTtlSeconds: current.storageDownloadTtlSeconds,
+      scannerReadTtlSeconds: current.storageScannerReadTtlSeconds,
+      privateDownloadConfigured: current.hasStoragePrivateDownloadBaseUrl && current.hasStoragePrivateDownloadSigningSecret,
+      cleanupWorkerEnabled: current.mediaStorageCleanupWorkerEnabled,
+      cleanupWorkerIntervalSeconds: current.mediaStorageCleanupWorkerIntervalSeconds,
+      cleanupBatchSize: current.mediaStorageCleanupBatchSize,
+      cleanupRetentionDays: current.mediaStorageCleanupRetentionDays,
     },
     scanner: {
       provider: current.mediaScanProvider,
@@ -715,6 +746,7 @@ export const buildMediaGovernanceConfig = (source = process.env, policy = null) 
     retention: {
       historyRetentionDays: effectivePolicy.retention.historyRetentionDays,
       historyRetentionMaxPerAsset: effectivePolicy.retention.historyRetentionMaxPerAsset,
+      storageCleanupRetentionDays: effectivePolicy.retention.storageCleanupRetentionDays,
     },
     alerts: {
       windowMinutes: effectivePolicy.alerts.windowMinutes,

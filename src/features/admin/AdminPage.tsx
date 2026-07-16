@@ -84,6 +84,7 @@ const mediaPolicyDraftKeys = [
   'workerIntervalSeconds',
   'historyRetentionDays',
   'historyRetentionMaxPerAsset',
+  'storageCleanupRetentionDays',
   'windowMinutes',
   'callbackDenied',
   'dispatchFailed',
@@ -123,6 +124,7 @@ const mediaGovernanceDiffFields = [
   { path: ['scanner', 'workerIntervalSeconds'], en: 'Worker interval seconds', zh: 'Worker 间隔秒' },
   { path: ['retention', 'historyRetentionDays'], en: 'Retention days', zh: '保留天数' },
   { path: ['retention', 'historyRetentionMaxPerAsset'], en: 'Max history per asset', zh: '单资产历史上限' },
+  { path: ['retention', 'storageCleanupRetentionDays'], en: 'Object cleanup retention days', zh: '对象清理保留天数' },
   { path: ['alerts', 'windowMinutes'], en: 'Alert window minutes', zh: '告警窗口分钟' },
   { path: ['alerts', 'thresholds', 'callbackDenied'], en: 'Callback denied threshold', zh: '回调拒绝阈值' },
   { path: ['alerts', 'thresholds', 'dispatchFailed'], en: 'Dispatch failed threshold', zh: '派发失败阈值' },
@@ -257,6 +259,14 @@ const mediaGovernancePreviewFields = [
     impactZh: '影响每个媒体资产保留的扫描历史数量。',
   },
   {
+    key: 'storageCleanupRetentionDays',
+    en: 'Object cleanup retention days',
+    zh: '对象清理保留天数',
+    current: (config: ApiMediaGovernanceConfig) => config.retention.storageCleanupRetentionDays,
+    impactEn: 'Delay before soft-deleted private objects become eligible for physical deletion.',
+    impactZh: '影响软删除私有对象进入物理清理的等待时间。',
+  },
+  {
     key: 'windowMinutes',
     en: 'Alert window minutes',
     zh: '告警窗口分钟',
@@ -317,6 +327,11 @@ const mediaGovernanceHighRiskRules: Partial<Record<MediaPolicyDraftKey, {
     riskEn: 'Lower per-asset retention may prune additional scan history rows.',
     riskZh: '降低单资产历史上限可能清理更多扫描历史记录。',
   },
+  storageCleanupRetentionDays: {
+    risky: (current, draft) => draft < current,
+    riskEn: 'Shorter object retention makes soft-deleted objects physically irreversible sooner.',
+    riskZh: '缩短对象保留期会更早触发不可逆的物理删除。',
+  },
   callbackDenied: {
     risky: (current, draft) => draft > current,
     riskEn: 'Higher callback-denied threshold can delay authentication failure alerts.',
@@ -345,6 +360,7 @@ const mediaPolicyDraftFromConfig = (config: ApiMediaGovernanceConfig): MediaPoli
   workerIntervalSeconds: String(config.scanner.workerIntervalSeconds),
   historyRetentionDays: String(config.retention.historyRetentionDays),
   historyRetentionMaxPerAsset: String(config.retention.historyRetentionMaxPerAsset),
+  storageCleanupRetentionDays: String(config.retention.storageCleanupRetentionDays),
   windowMinutes: String(config.alerts.windowMinutes),
   callbackDenied: String(config.alerts.thresholds.callbackDenied),
   dispatchFailed: String(config.alerts.thresholds.dispatchFailed),
@@ -370,6 +386,7 @@ const mediaPolicyPatchFromDraft = (draft: MediaPolicyDraft): MediaGovernancePoli
     retention: {
       historyRetentionDays: values.historyRetentionDays ?? undefined,
       historyRetentionMaxPerAsset: values.historyRetentionMaxPerAsset ?? undefined,
+      storageCleanupRetentionDays: values.storageCleanupRetentionDays ?? undefined,
     },
     alerts: {
       windowMinutes: values.windowMinutes ?? undefined,
@@ -2547,6 +2564,14 @@ export function AdminPage({
                   <span>{textFor(t, 'Storage driver', '存储驱动')}</span>
                 </div>
                 <div>
+                  <strong>{enabledLabel(mediaGovernanceConfig.storage.privateDownloadConfigured)}</strong>
+                  <span>{textFor(t, 'Private CDN', '私有 CDN')} · {mediaGovernanceConfig.storage.downloadTtlSeconds}s</span>
+                </div>
+                <div>
+                  <strong>{enabledLabel(mediaGovernanceConfig.storage.cleanupWorkerEnabled)}</strong>
+                  <span>{textFor(t, 'Object cleanup', '对象清理')} · {mediaGovernanceConfig.storage.cleanupWorkerIntervalSeconds}s · {mediaGovernanceConfig.storage.cleanupBatchSize}/{textFor(t, 'run', '次')}</span>
+                </div>
+                <div>
                   <strong>{mediaGovernanceConfig.scanner.provider}</strong>
                   <span>
                     {textFor(t, 'Scanner provider', '扫描提供方')} · {mediaGovernanceConfig.scanner.requestAdapter}
@@ -2609,6 +2634,7 @@ export function AdminPage({
                   ['workerIntervalSeconds', textFor(t, 'Worker interval seconds', 'Worker 间隔秒')],
                   ['historyRetentionDays', textFor(t, 'Retention days', '保留天数')],
                   ['historyRetentionMaxPerAsset', textFor(t, 'Max history per asset', '单资产历史上限')],
+                  ['storageCleanupRetentionDays', textFor(t, 'Object cleanup retention days', '对象清理保留天数')],
                   ['windowMinutes', textFor(t, 'Alert window minutes', '告警窗口分钟')],
                   ['callbackDenied', textFor(t, 'Callback denied threshold', '回调拒绝阈值')],
                   ['dispatchFailed', textFor(t, 'Dispatch failed threshold', '派发失败阈值')],
