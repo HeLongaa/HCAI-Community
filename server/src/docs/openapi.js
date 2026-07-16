@@ -3061,6 +3061,35 @@ export const openApiDocument = {
     '/admin/model-control/summary': {
       get: { summary: 'Read normalized model catalog counts and the real-Provider approval state', responses: { '200': { description: 'Catalog summary with Provider traffic disabled' }, '403': { description: 'Requires model control read permission' } } },
     },
+    '/admin/model-control/routing-summary': {
+      get: { summary: 'Read route-policy, revision, and primary/backup target counts', responses: { '200': { description: 'Credential-free routing summary' }, '403': { description: 'Requires model control read permission' } } },
+    },
+    '/admin/model-control/routing-export': {
+      get: { summary: 'Export bounded route policies and immutable revisions without subject identifiers', responses: { '200': { description: 'Portable routing policy document' }, '403': { description: 'Requires model control read permission' } } },
+    },
+    '/admin/model-control/routing-policies': {
+      get: { summary: 'List route policies with lifecycle, modality, environment, sorting, and cursor filters', responses: { '200': { description: 'Route policy page' }, '403': { description: 'Requires model control read permission' } } },
+      post: { summary: 'Create a fail-closed route policy draft', responses: { '201': { description: 'Route policy draft created' }, '409': { description: 'Policy key already exists' } } },
+    },
+    '/admin/model-control/routing-policies/{id}': {
+      get: { summary: 'Read one route policy and its ordered deployment targets', responses: { '200': { description: 'Route policy detail' }, '404': { description: 'Policy not found' } } },
+      patch: { summary: 'Edit a non-active route policy using optimistic concurrency', responses: { '200': { description: 'Route policy updated' }, '409': { description: 'Active, archived, or stale policy' } } },
+    },
+    '/admin/model-control/routing-policies/{id}/targets': {
+      put: { summary: 'Atomically replace primary and backup targets on a non-active policy and append a revision', responses: { '200': { description: 'Route targets replaced' }, '409': { description: 'Active or stale policy' }, '422': { description: 'Deployment missing or environment mismatch' } } },
+    },
+    '/admin/model-control/routing-policies/{id}/status': {
+      post: { summary: 'Apply an audited route-policy state transition', responses: { '200': { description: 'Route policy transitioned' }, '409': { description: 'Invalid transition, missing primary, or version conflict' } } },
+    },
+    '/admin/model-control/routing-policies/{id}/revisions': {
+      get: { summary: 'List immutable route-policy snapshots', responses: { '200': { description: 'Bounded revision history' }, '404': { description: 'Policy not found' } } },
+    },
+    '/admin/model-control/routing-policies/{id}/rollback': {
+      post: { summary: 'Restore a prior snapshot while keeping traffic disabled until explicit reactivation', responses: { '200': { description: 'Policy restored in its non-active state' }, '404': { description: 'Policy or revision not found' }, '409': { description: 'Active, archived, or stale policy' } } },
+    },
+    '/admin/model-control/route-preview': {
+      post: { summary: 'Preview deterministic audience routing and Provider control/circuit blocks without dispatch', responses: { '200': { description: 'Explainable selected or unavailable route projection' }, '403': { description: 'Requires model control read permission' } } },
+    },
     '/admin/model-control/export': {
       get: { summary: 'Export the bounded normalized model catalog without credentials or endpoints', responses: { '200': { description: 'Portable model catalog document' }, '403': { description: 'Requires model control read permission' } } },
     },
@@ -3099,6 +3128,7 @@ export const openApiDocument = {
       put: { summary: 'Upsert one modality capability while the version is draft', responses: { '200': { description: 'Capability projection updated' }, '409': { description: 'Activated versions are immutable' } } },
     },
     '/admin/model-control/deployments': {
+      get: { summary: 'List deployments by lifecycle, version, and environment with cursor pagination', responses: { '200': { description: 'Deployment page' }, '403': { description: 'Requires model control read permission' } } },
       post: { summary: 'Create a traffic-ineligible environment deployment record', responses: { '201': { description: 'Deployment draft created' }, '422': { description: 'Model version not found' } } },
     },
     '/admin/model-control/deployments/{id}': {

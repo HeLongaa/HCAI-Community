@@ -72,11 +72,18 @@ import type {
   FeatureFlagEvaluation,
   ModelCatalogModelDto,
   ModelCapabilityDto,
+  ModelCapabilityModality,
   ModelControlListQuery,
   ModelControlStatus,
   ModelControlSummaryDto,
   ModelDeploymentDto,
+  ModelDeploymentEnvironment,
   ModelProviderDto,
+  ModelRoutePolicyDraft,
+  ModelRoutePolicyDto,
+  ModelRoutePreviewResult,
+  ModelRouteRevisionDto,
+  ModelRouteSummaryDto,
   ModelVersionDto,
   PricingVersionDto,
 } from './contracts'
@@ -119,6 +126,10 @@ export const adminService = {
   async createModelDeployment(payload: { modelVersionId: string; key: string; environment: string; region: string; deploymentRef: string }) {
     return api.post<ModelDeploymentDto>('/admin/model-control/deployments', payload)
   },
+  async modelDeployments(query?: ModelControlListQuery & { environment?: string | null }) {
+    const envelope = await api.getEnvelope<ModelDeploymentDto[]>(withQuery('/admin/model-control/deployments', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
   async createPricingVersion(payload: { modelVersionId: string; modelDeploymentId?: string | null; versionKey: string; currency: string; unit: string; unitPriceMicros: number; effectiveFrom: string; effectiveTo?: string | null }) {
     return api.post<PricingVersionDto>('/admin/model-control/pricing', payload)
   },
@@ -128,6 +139,40 @@ export const adminService = {
   },
   async exportModelControlCatalog() {
     return api.get<Record<string, unknown>>('/admin/model-control/export')
+  },
+  async modelRouteSummary() {
+    return api.get<ModelRouteSummaryDto>('/admin/model-control/routing-summary')
+  },
+  async modelRoutePolicies(query?: ModelControlListQuery & { environment?: string | null; modality?: string | null }) {
+    const envelope = await api.getEnvelope<ModelRoutePolicyDto[]>(withQuery('/admin/model-control/routing-policies', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async modelRoutePolicy(id: string) {
+    return api.get<ModelRoutePolicyDto>(`/admin/model-control/routing-policies/${encodeURIComponent(id)}`)
+  },
+  async createModelRoutePolicy(payload: ModelRoutePolicyDraft & { key: string }) {
+    return api.post<ModelRoutePolicyDto>('/admin/model-control/routing-policies', payload)
+  },
+  async updateModelRoutePolicy(id: string, expectedVersion: number, payload: ModelRoutePolicyDraft) {
+    return api.patch<ModelRoutePolicyDto>(`/admin/model-control/routing-policies/${encodeURIComponent(id)}`, { expectedVersion, ...payload })
+  },
+  async replaceModelRouteTargets(id: string, expectedVersion: number, reasonCode: string, targets: Array<{ modelDeploymentId: string; role: 'primary' | 'backup'; priority: number; enabled: boolean }>) {
+    return api.put<ModelRoutePolicyDto>(`/admin/model-control/routing-policies/${encodeURIComponent(id)}/targets`, { expectedVersion, reasonCode, targets })
+  },
+  async transitionModelRoutePolicy(id: string, expectedVersion: number, status: ModelControlStatus, reasonCode: string) {
+    return api.post<ModelRoutePolicyDto>(`/admin/model-control/routing-policies/${encodeURIComponent(id)}/status`, { expectedVersion, status, reasonCode })
+  },
+  async modelRouteRevisions(id: string) {
+    return api.get<ModelRouteRevisionDto[]>(`/admin/model-control/routing-policies/${encodeURIComponent(id)}/revisions`)
+  },
+  async rollbackModelRoutePolicy(id: string, expectedVersion: number, revisionNumber: number, reasonCode: string) {
+    return api.post<ModelRoutePolicyDto>(`/admin/model-control/routing-policies/${encodeURIComponent(id)}/rollback`, { expectedVersion, revisionNumber, reasonCode })
+  },
+  async previewModelRoute(payload: { modality: ModelCapabilityModality; operation: string; environment: ModelDeploymentEnvironment; region?: string | null; subjectKey: string; role: string }) {
+    return api.post<ModelRoutePreviewResult>('/admin/model-control/route-preview', payload)
+  },
+  async exportModelRouting() {
+    return api.get<Record<string, unknown>>('/admin/model-control/routing-export')
   },
   async configResources(kind: ConfigResourceKind, query?: ConfigResourceListQuery) {
     const envelope = await api.getEnvelope<ConfigResourceDto[]>(withQuery(`/admin/config-resources/${kind}`, query))

@@ -2700,3 +2700,74 @@ export type ModelControlListQuery = {
   cursor?: string | null
   limit?: number
 }
+export type ModelRouteFallbackMode = 'fail_closed' | 'ordered'
+export type ModelRouteTargetRole = 'primary' | 'backup'
+export type ModelRouteTargetDto = {
+  id: string
+  policyId: string
+  modelDeploymentId: string
+  role: ModelRouteTargetRole
+  priority: number
+  enabled: boolean
+  deployment?: ModelDeploymentDto & { modelVersion?: ModelVersionDto | null }
+}
+export type ModelRoutePolicyDto = {
+  id: string
+  key: string
+  name: string
+  modality: ModelCapabilityModality
+  operation: string
+  environment: ModelDeploymentEnvironment
+  region: string | null
+  audienceRoles: string[]
+  rolloutPercentage: number
+  rolloutSeed: string
+  fallbackMode: ModelRouteFallbackMode
+  priority: number
+  status: ModelControlStatus
+  version: number
+  revisionCount: number
+  targets: ModelRouteTargetDto[]
+  archivedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+export type ModelRoutePolicyDraft = {
+  key?: string
+  name: string
+  modality: ModelCapabilityModality
+  operation: string
+  environment: ModelDeploymentEnvironment
+  region?: string | null
+  audienceRoles?: string[]
+  rolloutPercentage?: number
+  rolloutSeed?: string
+  fallbackMode?: ModelRouteFallbackMode
+  priority?: number
+}
+export type ModelRouteRevisionDto = {
+  id: string
+  policyId: string
+  revisionNumber: number
+  snapshot: Record<string, unknown>
+  reasonCode: string
+  createdByRef: string
+  createdAt: string
+}
+export type ModelRouteSummaryDto = {
+  policyCount: number
+  revisionCount: number
+  statusCounts: Partial<Record<ModelControlStatus, number>>
+  targetCounts: Partial<Record<ModelRouteTargetRole, number>>
+  providerTrafficEnabled: false
+  automaticFallbackDefault: 'fail_closed'
+}
+export type ModelRoutePreviewResult = {
+  status: 'selected' | 'unavailable'
+  reasonCode: string
+  policy: { id: string; key: string; fallbackMode: ModelRouteFallbackMode; bucket?: number } | null
+  selected: { targetId: string; role: ModelRouteTargetRole; deploymentId: string; deploymentKey: string | null; modelVersionId: string | null; modelKey: string | null; providerKey: string | null } | null
+  attempts: Array<{ targetId: string; role: ModelRouteTargetRole; deploymentId: string; deploymentKey: string | null; selected: boolean; reasonCode: string }>
+  consideredPolicies: Array<{ policyId: string; policyKey: string; matched: boolean; reasonCode: string | null; bucket?: number }>
+  providerTrafficEnabled: false
+}

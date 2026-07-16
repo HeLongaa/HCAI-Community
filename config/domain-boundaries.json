@@ -56,6 +56,6 @@
     { "domain": "audit-evidence", "owns": ["audit events", "immutable evidence"] },
     { "domain": "observability-incident", "owns": ["sanitized logs", "trace spans", "SLO alerts"] },
     { "domain": "config-feature-flags", "owns": ["versioned configuration", "feature flags", "reference data", "announcements", "secret references"] },
-    { "domain": "model-control-plane", "owns": ["Providers", "models", "model versions", "capabilities", "deployments", "pricing versions"] }
+    { "domain": "model-control-plane", "owns": ["Providers", "models", "model versions", "capabilities", "deployments", "pricing versions", "route policies", "route targets", "route policy revisions"] }
   ]
 }

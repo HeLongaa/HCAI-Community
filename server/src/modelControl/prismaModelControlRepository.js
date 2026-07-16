@@ -97,7 +97,22 @@ export const createPrismaModelControlRepository = (client, { recordAudit } = {})
       const selected = rows.slice(0, options.limit)
       return { items: selected.map(versionDto), limit: options.limit, nextCursor: rows.length > options.limit ? selected.at(-1)?.id ?? null : null }
     },
+    listDeployments: async (options) => {
+      const cursor = options.cursor ? await client.modelDeployment.findUnique({ where: { id: options.cursor }, select: { id: true } }) : null
+      const sort = options.sort === 'name' ? 'key' : options.sort
+      const rows = await client.modelDeployment.findMany({
+        where: { ...(options.status ? { status: options.status } : {}), ...(options.modelId ? { modelVersionId: options.modelId } : {}), ...(options.environment ? { environment: options.environment } : {}), ...(options.search ? { OR: [{ key: { contains: options.search, mode: 'insensitive' } }, { region: { contains: options.search, mode: 'insensitive' } }] } : {}) },
+        orderBy: [{ [sort]: options.order }, { id: options.order }], take: options.limit + 1,
+        ...(cursor ? { cursor: { id: cursor.id }, skip: 1 } : {}),
+      })
+      const selected = rows.slice(0, options.limit)
+      return { items: selected.map(deploymentDto), limit: options.limit, nextCursor: rows.length > options.limit ? selected.at(-1)?.id ?? null : null }
+    },
     find,
+    findRoutingDeployment: async (id) => deploymentDto(await client.modelDeployment.findUnique({
+      where: { id: String(id) },
+      include: { modelVersion: { include: { model: { include: { provider: true } }, capabilities: true } } },
+    })),
     createProvider: async (input) => create('provider', input),
     updateProvider: async (id, expectedVersion, data) => {
       const updated = await client.provider.updateMany({ where: { id: String(id), version: expectedVersion, status: { not: 'archived' } }, data: { ...data, version: { increment: 1 } } })

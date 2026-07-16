@@ -110,11 +110,23 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `POST /api/admin/model-control/versions/:id/status` | Required | `admin:model-control:transition`; audited state machine | Yes |
 | `PUT /api/admin/model-control/versions/:id/capabilities` | Required | `admin:model-control:manage`; draft versions only | Yes |
 | `POST /api/admin/model-control/deployments` | Required | `admin:model-control:manage`; traffic disabled by default | Yes |
+| `GET /api/admin/model-control/deployments` | Required | `admin:model-control:read`; status, version, environment, sort, cursor filters | Yes |
 | `GET /api/admin/model-control/deployments/:id` | Required | `admin:model-control:read` | Yes |
 | `POST /api/admin/model-control/deployments/:id/status` | Required | `admin:model-control:transition`; traffic activation requires `PROVIDER-APPROVAL` | Yes |
 | `POST /api/admin/model-control/pricing` | Required | `admin:model-control:manage`; additive pricing history | Yes |
 | `GET /api/admin/model-control/pricing/:id` | Required | `admin:model-control:read` | Yes |
 | `POST /api/admin/model-control/pricing/:id/status` | Required | `admin:model-control:transition`; audited state machine | Yes |
+| `GET /api/admin/model-control/routing-summary` | Required | `admin:model-control:read`; credential-free route counts | Yes |
+| `GET /api/admin/model-control/routing-export` | Required | `admin:model-control:read`; bounded policies and revisions | Yes |
+| `GET /api/admin/model-control/routing-policies` | Required | `admin:model-control:read`; filters, sort, cursor pagination | Yes |
+| `POST /api/admin/model-control/routing-policies` | Required | `admin:model-control:manage`; fail-closed draft only | Yes |
+| `GET /api/admin/model-control/routing-policies/:id` | Required | `admin:model-control:read` | Yes |
+| `PATCH /api/admin/model-control/routing-policies/:id` | Required | `admin:model-control:manage`; non-active and optimistic concurrency | Yes |
+| `PUT /api/admin/model-control/routing-policies/:id/targets` | Required | `admin:model-control:manage`; atomic main/backup replacement | Yes |
+| `POST /api/admin/model-control/routing-policies/:id/status` | Required | `admin:model-control:transition`; enabled primary required | Yes |
+| `GET /api/admin/model-control/routing-policies/:id/revisions` | Required | `admin:model-control:read`; immutable snapshots | Yes |
+| `POST /api/admin/model-control/routing-policies/:id/rollback` | Required | `admin:model-control:transition`; restores non-active configuration | Yes |
+| `POST /api/admin/model-control/route-preview` | Required | `admin:model-control:read`; no Provider dispatch or subject persistence | Yes |
 
 | Route | Auth requirement | Permission requirement | Covered by tests |
 | --- | --- | --- | --- |

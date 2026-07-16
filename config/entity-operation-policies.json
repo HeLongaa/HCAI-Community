@@ -93,6 +93,9 @@
     { "model": "ModelCapability", "domain": "model-control-plane", "policy": "state_transition", "hardDelete": false },
     { "model": "ModelDeployment", "domain": "model-control-plane", "policy": "state_transition", "hardDelete": false },
     { "model": "PricingVersion", "domain": "model-control-plane", "policy": "state_transition", "hardDelete": false },
+    { "model": "ModelRoutePolicy", "domain": "model-control-plane", "policy": "state_transition", "hardDelete": false },
+    { "model": "ModelRouteTarget", "domain": "model-control-plane", "policy": "mutable_crud", "hardDelete": true },
+    { "model": "ModelRoutePolicyRevision", "domain": "model-control-plane", "policy": "immutable_evidence", "hardDelete": false },
     { "model": "CreativeCreditLedger", "domain": "entitlements-accounting", "policy": "state_transition", "hardDelete": false },
     { "model": "CreativeQuotaWindow", "domain": "entitlements-accounting", "policy": "state_transition", "hardDelete": false },
     { "model": "CreativeQuotaReservation", "domain": "entitlements-accounting", "policy": "state_transition", "hardDelete": false },
@@ -101,6 +104,6 @@
   "protectedFamilies": {
     "accounting": ["PointLedger", "InternalAccountingOperation", "InternalAccountingMovement"],
     "audit": ["AuditEvent", "SecurityEvent", "DomainEventOutbox", "DomainEventConsumerInbox", "DomainEventCompensation"],
-    "evidence": ["AuditArchiveManifest", "MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence", "SystemSettingRevision", "ConfigResourceRevision"]
+    "evidence": ["AuditArchiveManifest", "MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence", "SystemSettingRevision", "ConfigResourceRevision", "ModelRoutePolicyRevision"]
   }
 }

@@ -30,7 +30,7 @@ export const createSeedModelControlRepository = ({ recordAudit } = {}) => {
     if (type === 'model') return clone({ ...item, provider: collections.providers.get(item.providerId) ?? null, versionCount: [...collections.versions.values()].filter((version) => version.modelId === item.id).length })
     if (type === 'version') return clone({
       ...item,
-      model: collections.models.get(item.modelId) ?? null,
+      model: detail('model', item.modelId),
       capabilities: [...collections.capabilities.values()].filter((capability) => capability.modelVersionId === item.id),
       deployments: [...collections.deployments.values()].filter((deployment) => deployment.modelVersionId === item.id),
       prices: [...collections.prices.values()].filter((price) => price.modelVersionId === item.id),
@@ -66,7 +66,18 @@ export const createSeedModelControlRepository = ({ recordAudit } = {}) => {
       .filter((item) => !options.modelId || item.modelId === options.modelId)
       .filter((item) => !options.search || item.versionKey.toLowerCase().includes(options.search.toLowerCase()))
       .sort(compare(options.sort === 'name' || options.sort === 'key' ? 'versionKey' : options.sort, options.order)), options),
+    listDeployments: async (options) => page([...collections.deployments.values()]
+      .filter((item) => !options.status || item.status === options.status)
+      .filter((item) => !options.modelId || item.modelVersionId === options.modelId)
+      .filter((item) => !options.environment || item.environment === options.environment)
+      .filter((item) => !options.search || `${item.key} ${item.region}`.toLowerCase().includes(options.search.toLowerCase()))
+      .sort(compare(options.sort === 'name' ? 'key' : options.sort, options.order)), options),
     find: async (type, id) => detail(type, id),
+    findRoutingDeployment: async (id) => {
+      const deployment = detail('deployment', id)
+      if (!deployment) return null
+      return clone({ ...deployment, modelVersion: detail('version', deployment.modelVersionId) })
+    },
     createProvider: async (input) => create('provider', input),
     updateProvider: async (id, expectedVersion, data) => {
       const row = collections.providers.get(String(id))

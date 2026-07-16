@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "taskId": "MODEL-02",
+  "scope": "personal_accounts_only",
+  "migration": "server/prisma/migrations/0057_model_routing_failover/migration.sql",
+  "policyDocument": "docs/MODEL_ROUTING_FAILOVER.md",
+  "entities": ["ModelRoutePolicy", "ModelRouteTarget", "ModelRoutePolicyRevision"],
+  "fallbackModes": ["fail_closed", "ordered"],
+  "defaultFallbackMode": "fail_closed",
+  "dimensions": ["modality", "operation", "environment", "region", "audienceRoles", "rolloutPercentage"],
+  "providerTrafficEnabled": false,
+  "credentialsAccepted": false,
+  "subjectIdentifiersPersisted": false,
+  "providerControlReused": true,
+  "realProviderApprovalRequired": true
+}
