@@ -177,14 +177,14 @@
 .asset-library-header-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .asset-upload-button { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
 .asset-upload-button input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-.admin-media-lifecycle { display: grid; gap: 10px; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.admin-media-lifecycle { display: grid; gap: 10px; width: 100%; min-width: 0; max-width: 100%; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
 .panel.admin-media-governance-panel { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 0; overflow: visible; }
 .admin-tabs { width: 100%; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
 .admin-media-lifecycle-heading, .admin-media-lifecycle-list article { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .admin-media-lifecycle-heading > div, .admin-media-lifecycle-list article > div:first-child { display: grid; gap: 3px; min-width: 0; }
 .admin-media-lifecycle-heading span, .admin-media-lifecycle-list span, .admin-media-lifecycle-list small { color: var(--muted); }
 .admin-media-lifecycle-filters { display: grid; grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(130px, .4fr)); gap: 8px; }
-.admin-media-lifecycle-filters input, .admin-media-lifecycle-filters select { min-height: 38px; padding: 0 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--control-bg); color: var(--text); }
+.admin-media-lifecycle-filters input, .admin-media-lifecycle-filters select { width: 100%; min-width: 0; min-height: 38px; padding: 0 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--control-bg); color: var(--text); }
 .admin-media-lifecycle-list { display: grid; gap: 1px; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
 .admin-media-lifecycle-list article { padding: 10px 12px; background: var(--panel); }
 @media (max-width: 760px) {
@@ -192,6 +192,7 @@
   .asset-library-header-actions { justify-content: flex-end; }
   .admin-media-lifecycle-filters { grid-template-columns: 1fr 1fr; }
   .admin-media-lifecycle-list article { align-items: stretch; flex-direction: column; }
+  .admin-media-lifecycle-list .button-row { flex-wrap: wrap; }
 }
 .asset-library-header > div > span { display: inline-flex; align-items: center; gap: 7px; color: var(--accent); font-size: 12px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; }
 .asset-library-header h1 { margin: 6px 0 3px; font-size: clamp(25px, 3vw, 34px); letter-spacing: -.035em; }
