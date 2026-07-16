@@ -4014,6 +4014,110 @@ test('admin generation cancellation and retry authorization use dedicated mutati
   }
 })
 
+test('admin generation bulk disposition previews eligibility, enforces confirmation, and replays idempotently', async () => {
+  const repository = createSeedRepository()
+  const owner = { id: 'demo-user-creator', handle: 'promptlin' }
+  const suffix = Date.now()
+  const queuedId = `gen-bulk-queued-${suffix}`
+  const failedId = `gen-bulk-failed-${suffix}`
+  const completedId = `gen-bulk-completed-${suffix}`
+  const base = {
+    actorId: owner.id,
+    actorHandle: owner.handle,
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'mock',
+    providerMode: 'mock',
+    promptHash: 'd'.repeat(64),
+    promptPreview: 'Bulk disposition fixture',
+    inputAssetIds: [],
+    parameterKeys: [],
+  }
+  await repository.creativeGenerations.create({ ...base, id: queuedId, status: 'queued' }, owner)
+  await repository.creativeGenerations.create({ ...base, id: failedId, status: 'failed', errorCode: 'PROVIDER_TIMEOUT' }, owner)
+  await repository.creativeGenerations.create({ ...base, id: completedId, status: 'completed' }, owner)
+  const server = await createInjectedAdminServer(repository)
+  try {
+    const denied = await requestJson(server.url, '/api/admin/creative/generations/bulk-preview', {
+      body: { action: 'cancel', targetIds: [queuedId] },
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(denied.status, 403)
+    assert.equal(denied.payload.error.message, 'Missing permission: admin:creative:cancel')
+
+    const preview = await requestJson(server.url, '/api/admin/creative/generations/bulk-preview', {
+      body: { action: 'cancel', targetIds: [queuedId, completedId, 'gen-bulk-missing'] },
+      token: 'demo-access.opsplus',
+    })
+    assert.equal(preview.status, 200)
+    assert.equal(preview.payload.data.eligibleCount, 1)
+    assert.equal(preview.payload.data.blockedCount, 1)
+    assert.equal(preview.payload.data.missingCount, 1)
+    assert.equal(preview.payload.data.requiredConfirmationText, 'CANCEL GENERATIONS')
+    assert.match(preview.payload.data.targetHash, /^[a-f0-9]{64}$/)
+
+    const mismatch = await requestJson(server.url, '/api/admin/creative/generations/bulk-actions', {
+      body: {
+        action: 'cancel',
+        targetIds: [queuedId, completedId, 'gen-bulk-missing'],
+        targetHash: 'a'.repeat(64),
+        confirmationText: 'CANCEL GENERATIONS',
+        idempotencyKey: `bulk-cancel-mismatch:${suffix}`,
+      },
+      token: 'demo-access.opsplus',
+    })
+    assert.equal(mismatch.status, 409)
+    assert.equal(mismatch.payload.error.code, 'CREATIVE_GENERATION_BULK_TARGET_CHANGED')
+
+    const body = {
+      action: 'cancel',
+      targetIds: [queuedId, completedId, 'gen-bulk-missing'],
+      targetHash: preview.payload.data.targetHash,
+      confirmationText: 'CANCEL GENERATIONS',
+      idempotencyKey: `bulk-cancel:${suffix}`,
+      reasonCode: 'operator_batch_cancel',
+      note: 'Evidence reviewed',
+    }
+    const executed = await requestJson(server.url, '/api/admin/creative/generations/bulk-actions', {
+      body,
+      token: 'demo-access.opsplus',
+    })
+    assert.equal(executed.status, 200)
+    assert.deepEqual(executed.payload.data.counts, { succeeded: 1, duplicate: 0, blocked: 1, missing: 1 })
+    assert.equal((await repository.creativeGenerations.find(queuedId)).status, 'cancelled')
+
+    const duplicate = await requestJson(server.url, '/api/admin/creative/generations/bulk-actions', {
+      body,
+      token: 'demo-access.opsplus',
+    })
+    assert.equal(duplicate.status, 200)
+    assert.deepEqual(duplicate.payload.data.counts, { succeeded: 0, duplicate: 1, blocked: 1, missing: 1 })
+
+    const retryPreview = await requestJson(server.url, '/api/admin/creative/generations/bulk-preview', {
+      body: { action: 'authorize_retry', targetIds: [failedId] },
+      token: 'demo-access.opsplus',
+    })
+    const retried = await requestJson(server.url, '/api/admin/creative/generations/bulk-actions', {
+      body: {
+        action: 'authorize_retry',
+        targetIds: [failedId],
+        targetHash: retryPreview.payload.data.targetHash,
+        confirmationText: retryPreview.payload.data.requiredConfirmationText,
+        idempotencyKey: `bulk-retry:${suffix}`,
+        reasonCode: 'operator_batch_retry',
+      },
+      token: 'demo-access.opsplus',
+    })
+    assert.equal(retried.status, 200)
+    assert.equal(retried.payload.data.counts.succeeded, 1)
+    const audit = await repository.audit.list({ action: 'admin.creative.generation_bulk_action.executed', limit: 20 })
+    assert.equal(audit.items.length >= 3, true)
+    assert.equal(JSON.stringify(audit.items).includes('Evidence reviewed'), false)
+  } finally {
+    await server.close()
+  }
+})
+
 test('manual Provider replay requires a different approver and executes only after approval', async () => {
   const repository = createSeedRepository()
   const generationId = `gen-admin-manual-replay-${Date.now()}`

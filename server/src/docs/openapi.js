@@ -2765,6 +2765,63 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/creative/generations/bulk-preview': {
+      post: {
+        summary: 'Preview bounded generation cancellation or retry authorization',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['action', 'targetIds'],
+                properties: {
+                  action: { type: 'string', enum: ['cancel', 'authorize_retry'] },
+                  targetIds: { type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: { type: 'string' } },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Eligible, blocked, and missing counts with stable target hash and exact confirmation phrase' },
+          '403': { description: 'Requires the dedicated permission for the selected action' },
+        },
+      },
+    },
+    '/admin/creative/generations/bulk-actions': {
+      post: {
+        summary: 'Execute a previewed bounded generation disposition with per-target idempotency',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['action', 'targetIds', 'targetHash', 'confirmationText', 'idempotencyKey'],
+                properties: {
+                  action: { type: 'string', enum: ['cancel', 'authorize_retry'] },
+                  targetIds: { type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: { type: 'string' } },
+                  targetHash: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+                  confirmationText: { type: 'string' },
+                  idempotencyKey: { type: 'string', minLength: 8, maxLength: 128 },
+                  reasonCode: { type: 'string', maxLength: 64 },
+                  note: { type: 'string', maxLength: 240 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Bounded per-target succeeded, duplicate, blocked, and missing results' },
+          '400': { description: 'Confirmation phrase or request validation failed' },
+          '403': { description: 'Requires the dedicated permission for the selected action' },
+          '409': { description: 'Target hash no longer matches the selected IDs' },
+        },
+      },
+    },
     '/admin/creative/executions': {
       get: {
         summary: 'List safe create execution claims and recovery state',

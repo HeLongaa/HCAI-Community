@@ -13,6 +13,10 @@ import type {
   AdminCreativeGenerationHistoryPage,
   AdminCreativeGenerationHistoryQuery,
   AdminCreativeGenerationSummary,
+  AdminCreativeGenerationBulkAction,
+  AdminCreativeGenerationBulkPreview,
+  AdminCreativeGenerationBulkResult,
+  AdminCreativeGenerationExecution,
   AdminPointAdjustmentRequest,
   AdminPointAdjustmentResponse,
   AdminPermissionDto,
@@ -459,6 +463,27 @@ export const adminService = {
   },
   async exportCreativeGenerations(query?: AdminCreativeGenerationHistoryQuery, format: 'json' | 'csv' = 'csv') {
     return api.text(withQuery('/admin/creative/generations/export', { ...query, format, limit: 100 }))
+  },
+  async previewCreativeGenerationBulkAction(action: AdminCreativeGenerationBulkAction, targetIds: string[]) {
+    return api.post<AdminCreativeGenerationBulkPreview>('/admin/creative/generations/bulk-preview', { action, targetIds })
+  },
+  async executeCreativeGenerationBulkAction(body: {
+    action: AdminCreativeGenerationBulkAction
+    targetIds: string[]
+    targetHash: string
+    confirmationText: string
+    idempotencyKey: string
+    reasonCode?: string
+    note?: string
+  }) {
+    return api.post<AdminCreativeGenerationBulkResult>('/admin/creative/generations/bulk-actions', body)
+  },
+  async creativeGenerationExecutions(status = 'recovery_required') {
+    const envelope = await api.getEnvelope<AdminCreativeGenerationExecution[]>(withQuery('/admin/creative/executions', { status, limit: 50 }))
+    return envelope.data
+  },
+  async recoverCreativeGenerationExecution(id: string, reasonCode: string, errorCode: string) {
+    return api.post<AdminCreativeGenerationExecution>(`/admin/creative/executions/${id}/recover`, { reasonCode, errorCode })
   },
   async providerControls(providerId?: string | null) {
     return api.get<AdminProviderControlBundle>(withQuery('/admin/creative/provider-controls', { providerId: providerId ?? null }))
