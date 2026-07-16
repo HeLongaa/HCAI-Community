@@ -1843,6 +1843,16 @@ export type ReleaseChangeDto = {
   createdAt: string
   updatedAt: string
   evidence: ReleaseEvidenceDto[]
+  modelPromotion?: {
+    id: string
+    releaseChangeId: string
+    modelDeploymentId: string
+    routePolicyId: string
+    routePolicyRevisionId: string
+    providerSecretRefId: string
+    createdByRef: string
+    createdAt: string
+  } | null
 }
 export type ReleaseChangeListQuery = {
   status?: ReleaseChangeStatus | null
@@ -2702,7 +2712,7 @@ export type ModelVersionDto = {
 export type ModelControlSummaryDto = {
   counts: { providers: number; models: number; versions: number; capabilities: number; deployments: number; pricingVersions: number }
   statusCounts: Partial<Record<ModelControlStatus, number>>
-  providerTrafficEnabled: false
+  providerTrafficEnabled: boolean
   realProviderApprovalRequired: true
 }
 export type ModelControlListQuery = {
@@ -2773,15 +2783,109 @@ export type ModelRouteSummaryDto = {
   revisionCount: number
   statusCounts: Partial<Record<ModelControlStatus, number>>
   targetCounts: Partial<Record<ModelRouteTargetRole, number>>
-  providerTrafficEnabled: false
+  providerTrafficEnabled: boolean
   automaticFallbackDefault: 'fail_closed'
 }
 export type ModelRoutePreviewResult = {
+  decisionId: string
   status: 'selected' | 'unavailable'
   reasonCode: string
   policy: { id: string; key: string; fallbackMode: ModelRouteFallbackMode; bucket?: number } | null
   selected: { targetId: string; role: ModelRouteTargetRole; deploymentId: string; deploymentKey: string | null; modelVersionId: string | null; modelKey: string | null; providerKey: string | null } | null
   attempts: Array<{ targetId: string; role: ModelRouteTargetRole; deploymentId: string; deploymentKey: string | null; selected: boolean; reasonCode: string }>
   consideredPolicies: Array<{ policyId: string; policyKey: string; matched: boolean; reasonCode: string | null; bucket?: number }>
-  providerTrafficEnabled: false
+  providerTrafficEnabled: boolean
+}
+export type ModelRouteDecisionDto = {
+  id: string
+  source: 'preview' | 'dispatch'
+  status: 'selected' | 'unavailable'
+  reasonCode: string
+  modality: ModelCapabilityModality
+  operation: string
+  environment: ModelDeploymentEnvironment
+  region: string | null
+  actorRef: string
+  subjectHash: string
+  policyId: string | null
+  policyVersion: number | null
+  selectedDeploymentId: string | null
+  consideredPolicies: ModelRoutePreviewResult['consideredPolicies']
+  attempts: ModelRoutePreviewResult['attempts']
+  createdAt: string
+}
+export type ModelRouteDecisionListQuery = {
+  source?: 'preview' | 'dispatch' | null
+  status?: 'selected' | 'unavailable' | null
+  modality?: ModelCapabilityModality | null
+  environment?: ModelDeploymentEnvironment | null
+  policyId?: string | null
+  sort?: 'createdAt' | 'status' | 'reasonCode' | 'source'
+  order?: 'asc' | 'desc'
+  cursor?: string | null
+  limit?: number
+}
+export type ProviderSecretRefDto = {
+  id: string
+  providerId: string
+  environment: ModelDeploymentEnvironment
+  purpose: string
+  secretRef: string
+  externalVersion: string
+  ownerRef: string
+  checksumSha256: string
+  expiresAt: string | null
+  rotatedFromId: string | null
+  reasonCode: string
+  createdByRef: string
+  createdAt: string
+}
+export type ProviderSecretRefRequest = Omit<ProviderSecretRefDto, 'id' | 'createdByRef' | 'createdAt'>
+export type ProviderSecretRefListQuery = {
+  providerId?: string | null
+  environment?: ModelDeploymentEnvironment | null
+  purpose?: string | null
+  search?: string | null
+  sort?: 'createdAt' | 'expiresAt' | 'purpose' | 'externalVersion'
+  order?: 'asc' | 'desc'
+  cursor?: string | null
+  limit?: number
+}
+export type ModelPromotionDto = {
+  id: string
+  releaseChangeId: string
+  modelDeploymentId: string
+  routePolicyId: string
+  routePolicyRevisionId: string
+  providerSecretRefId: string
+  createdByRef: string
+  createdAt: string
+  releaseChange: ReleaseChangeDto
+  providerSecretRef?: ProviderSecretRefDto
+}
+export type ModelPromotionRequest = {
+  modelDeploymentId: string
+  routePolicyId: string
+  routePolicyRevisionId: string
+  providerSecretRefId: string
+  artifactVersion: string
+  rollbackVersion: string
+  summary: string
+  reasonCode: string
+}
+export type ModelPromotionListQuery = {
+  status?: ReleaseChangeStatus | null
+  modelDeploymentId?: string | null
+  order?: 'asc' | 'desc'
+  cursor?: string | null
+  limit?: number
+}
+export type ModelGovernanceSummaryDto = {
+  decisionCount: number
+  secretRefCount: number
+  promotionCount: number
+  decisionStatusCounts: Partial<Record<'selected' | 'unavailable', number>>
+  decisionSourceCounts: Partial<Record<'preview' | 'dispatch', number>>
+  promotionStatusCounts: Partial<Record<ReleaseChangeStatus | 'unknown', number>>
+  expiringSecretRefCount: number
 }

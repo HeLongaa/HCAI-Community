@@ -23,9 +23,17 @@ import {
   parseModelRoutePreview,
   parseModelRouteRollback,
   parseModelRouteTargets,
-  resolveModelRoute,
 } from '../../modelControl/modelRoutingRuntime.js'
+import {
+  parseModelPromotionListQuery,
+  parseModelPromotionRequest,
+  parseModelRouteDecisionListQuery,
+  parseProviderSecretRefCreate,
+  parseProviderSecretRefListQuery,
+  resolveAndRecordModelRoute,
+} from '../../modelControl/modelGovernanceRuntime.js'
 import { buildProviderControlScopes, evaluateProviderRoutingSnapshot, providerCircuitScope } from '../../creative/providerControlContract.js'
+import { requestReleaseChange } from '../../releases/releaseControl.js'
 import { repositories } from '../../repositories/index.js'
 
 const permissions = Object.freeze({
@@ -38,6 +46,7 @@ export const registerModelControlRoutes = (router, options = {}) => {
   const routeRepositories = options.repositories ?? repositories
   const repository = routeRepositories.modelControl
   const routingRepository = routeRepositories.modelRouting
+  const governanceRepository = routeRepositories.modelGovernance
   const find = async (type, id, path) => {
     const resource = await repository.find(type, id)
     if (!resource) throw notFound(path)
@@ -83,14 +92,14 @@ export const registerModelControlRoutes = (router, options = {}) => {
     const exported = await routingRepository.exportAll()
     const statusCounts = exported.policies.reduce((summary, policy) => ({ ...summary, [policy.status]: (summary[policy.status] ?? 0) + 1 }), {})
     const targetCounts = exported.policies.flatMap((policy) => policy.targets ?? []).reduce((summary, target) => ({ ...summary, [target.role]: (summary[target.role] ?? 0) + 1 }), {})
-    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_route.summary_read', resourceType: 'model_route_policy', resourceId: null, metadata: { policyCount: exported.policies.length, providerTrafficEnabled: false } })
-    ok(response, { policyCount: exported.policies.length, revisionCount: exported.revisions.length, statusCounts, targetCounts, providerTrafficEnabled: false, automaticFallbackDefault: 'fail_closed' })
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_route.summary_read', resourceType: 'model_route_policy', resourceId: null, metadata: { policyCount: exported.policies.length, providerTrafficEnabled: exported.providerTrafficEnabled } })
+    ok(response, { policyCount: exported.policies.length, revisionCount: exported.revisions.length, statusCounts, targetCounts, providerTrafficEnabled: exported.providerTrafficEnabled, automaticFallbackDefault: 'fail_closed' })
   })
 
   router.add('GET', '/api/admin/model-control/routing-export', async (_request, response, context) => {
     const actor = requirePermission(context, permissions.read)
     const exported = await routingRepository.exportAll()
-    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_route.exported', resourceType: 'model_route_policy', resourceId: null, metadata: { policyCount: exported.policies.length, revisionCount: exported.revisions.length, providerTrafficEnabled: false } })
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_route.exported', resourceType: 'model_route_policy', resourceId: null, metadata: { policyCount: exported.policies.length, revisionCount: exported.revisions.length, providerTrafficEnabled: exported.providerTrafficEnabled } })
     ok(response, exported)
   })
 
@@ -167,10 +176,90 @@ export const registerModelControlRoutes = (router, options = {}) => {
   router.add('POST', '/api/admin/model-control/route-preview', async (request, response, context) => {
     const actor = requirePermission(context, permissions.read)
     const input = parseModelRoutePreview((await readJsonBody(request)) ?? {})
-    const policies = await routingRepository.match(input)
-    const result = await resolveModelRoute({ policies, context: input, evaluateCandidate })
-    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_route.previewed', resourceType: 'model_route_policy', resourceId: result.policy?.id ?? null, metadata: { modality: input.modality, operation: input.operation, environment: input.environment, status: result.status, reasonCode: result.reasonCode, attemptedCount: result.attempts.length, providerTrafficEnabled: false } })
+    const result = await resolveAndRecordModelRoute({ source: 'preview', context: input, actor, routingRepository, governanceRepository, evaluateCandidate })
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_route.previewed', resourceType: 'model_route_policy', resourceId: result.policy?.id ?? null, metadata: { modality: input.modality, operation: input.operation, environment: input.environment, status: result.status, reasonCode: result.reasonCode, attemptedCount: result.attempts.length, providerTrafficEnabled: result.providerTrafficEnabled } })
     ok(response, result)
+  })
+
+  router.add('GET', '/api/admin/model-control/route-decisions', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const page = await governanceRepository.listDecisions(parseModelRouteDecisionListQuery(context.query))
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_route.decisions_queried', resourceType: 'model_route_decision', resourceId: null, metadata: { resultCount: page.items.length, limit: page.limit } })
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('GET', '/api/admin/model-control/route-decisions/:id', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const decision = await governanceRepository.findDecision(context.params.id)
+    if (!decision) throw notFound(`/api/admin/model-control/route-decisions/${context.params.id}`)
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_route.decision_read', resourceType: 'model_route_decision', resourceId: decision.id, metadata: { status: decision.status, reasonCode: decision.reasonCode } })
+    ok(response, decision)
+  })
+
+  router.add('GET', '/api/admin/model-control/secret-refs', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const page = await governanceRepository.listSecretRefs(parseProviderSecretRefListQuery(context.query))
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.secret_refs_queried', resourceType: 'provider_secret_ref', resourceId: null, metadata: { resultCount: page.items.length, limit: page.limit } })
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('POST', '/api/admin/model-control/secret-refs', async (request, response, context) => {
+    const actor = requirePermission(context, permissions.manage)
+    const secretRef = await governanceRepository.createSecretRef(parseProviderSecretRefCreate((await readJsonBody(request)) ?? {}, actor))
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.secret_ref_created', resourceType: 'provider_secret_ref', resourceId: secretRef.id, metadata: { providerId: secretRef.providerId, environment: secretRef.environment, purpose: secretRef.purpose, externalVersion: secretRef.externalVersion } })
+    created(response, secretRef)
+  })
+
+  router.add('GET', '/api/admin/model-control/secret-refs/:id', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const secretRef = await governanceRepository.findSecretRef(context.params.id)
+    if (!secretRef) throw notFound(`/api/admin/model-control/secret-refs/${context.params.id}`)
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.secret_ref_read', resourceType: 'provider_secret_ref', resourceId: secretRef.id, metadata: { providerId: secretRef.providerId, environment: secretRef.environment, purpose: secretRef.purpose } })
+    ok(response, secretRef)
+  })
+
+  router.add('GET', '/api/admin/model-control/promotions', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const page = await governanceRepository.listPromotions(parseModelPromotionListQuery(context.query))
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.promotions_queried', resourceType: 'model_promotion', resourceId: null, metadata: { resultCount: page.items.length, limit: page.limit } })
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('GET', '/api/admin/model-control/promotions/:id', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const promotion = await governanceRepository.findPromotion(context.params.id)
+    if (!promotion) throw notFound(`/api/admin/model-control/promotions/${context.params.id}`)
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.promotion_read', resourceType: 'model_promotion', resourceId: promotion.id, metadata: { releaseChangeId: promotion.releaseChangeId, status: promotion.releaseChange?.status } })
+    ok(response, promotion)
+  })
+
+  router.add('POST', '/api/admin/model-control/promotions', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:releases:manage')
+    const input = parseModelPromotionRequest((await readJsonBody(request)) ?? {}, actor)
+    await governanceRepository.validatePromotion(input.promotion, input.release)
+    const release = await requestReleaseChange({ payload: { ...input.release, modelPromotion: input.promotion }, actor, repository: routeRepositories.releaseChanges })
+    const promotion = await governanceRepository.findPromotionByReleaseChange(release.id)
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.promotion_requested', resourceType: 'model_promotion', resourceId: promotion?.id ?? input.promotion.id, metadata: { releaseChangeId: release.id, modelDeploymentId: input.promotion.modelDeploymentId, routePolicyId: input.promotion.routePolicyId } })
+    created(response, promotion ?? { ...input.promotion, releaseChangeId: release.id, releaseChange: release })
+  })
+
+  router.add('GET', '/api/admin/model-control/governance-export', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const exported = await governanceRepository.exportAll()
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.governance_exported', resourceType: 'model_governance', resourceId: null, metadata: { decisionCount: exported.decisions.length, secretRefCount: exported.secretRefs.length, promotionCount: exported.promotions.length } })
+    ok(response, exported)
+  })
+
+  router.add('GET', '/api/admin/model-control/governance-summary', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const exported = await governanceRepository.exportAll()
+    const decisionStatusCounts = exported.decisions.reduce((counts, item) => ({ ...counts, [item.status]: (counts[item.status] ?? 0) + 1 }), {})
+    const decisionSourceCounts = exported.decisions.reduce((counts, item) => ({ ...counts, [item.source]: (counts[item.source] ?? 0) + 1 }), {})
+    const promotionStatusCounts = exported.promotions.reduce((counts, item) => ({ ...counts, [item.releaseChange?.status ?? 'unknown']: (counts[item.releaseChange?.status ?? 'unknown'] ?? 0) + 1 }), {})
+    const expiresBefore = Date.now() + 30 * 86_400_000
+    const expiringSecretRefCount = exported.secretRefs.filter((item) => item.expiresAt && Date.parse(item.expiresAt) <= expiresBefore).length
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.governance_summary_read', resourceType: 'model_governance', resourceId: null, metadata: { decisionCount: exported.decisions.length, secretRefCount: exported.secretRefs.length, promotionCount: exported.promotions.length, expiringSecretRefCount } })
+    ok(response, { decisionCount: exported.decisions.length, secretRefCount: exported.secretRefs.length, promotionCount: exported.promotions.length, decisionStatusCounts, decisionSourceCounts, promotionStatusCounts, expiringSecretRefCount })
   })
 
   router.add('GET', '/api/admin/model-control/summary', async (_request, response, context) => {
@@ -178,14 +267,14 @@ export const registerModelControlRoutes = (router, options = {}) => {
     const catalog = await repository.exportCatalog()
     const counts = Object.fromEntries(['providers', 'models', 'versions', 'capabilities', 'deployments', 'pricingVersions'].map((key) => [key, catalog[key].length]))
     const statusCounts = catalog.providers.concat(catalog.models, catalog.versions, catalog.deployments, catalog.pricingVersions).reduce((summary, item) => ({ ...summary, [item.status]: (summary[item.status] ?? 0) + 1 }), {})
-    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.summary_read', resourceType: 'model_control_catalog', resourceId: null, metadata: { counts, providerTrafficEnabled: false } })
-    ok(response, { counts, statusCounts, providerTrafficEnabled: false, realProviderApprovalRequired: true })
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.summary_read', resourceType: 'model_control_catalog', resourceId: null, metadata: { counts, providerTrafficEnabled: catalog.providerTrafficEnabled } })
+    ok(response, { counts, statusCounts, providerTrafficEnabled: catalog.providerTrafficEnabled, realProviderApprovalRequired: true })
   })
 
   router.add('GET', '/api/admin/model-control/export', async (_request, response, context) => {
     const actor = requirePermission(context, permissions.read)
     const catalog = await repository.exportCatalog()
-    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.exported', resourceType: 'model_control_catalog', resourceId: null, metadata: { schemaVersion: catalog.schemaVersion, providerCount: catalog.providers.length, providerTrafficEnabled: false } })
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.exported', resourceType: 'model_control_catalog', resourceId: null, metadata: { schemaVersion: catalog.schemaVersion, providerCount: catalog.providers.length, providerTrafficEnabled: catalog.providerTrafficEnabled } })
     ok(response, catalog)
   })
 

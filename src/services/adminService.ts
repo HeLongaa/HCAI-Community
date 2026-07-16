@@ -77,14 +77,23 @@ import type {
   ModelControlListQuery,
   ModelControlStatus,
   ModelControlSummaryDto,
+  ModelGovernanceSummaryDto,
   ModelDeploymentDto,
   ModelDeploymentEnvironment,
   ModelProviderDto,
   ModelRoutePolicyDraft,
+  ModelPromotionDto,
+  ModelPromotionListQuery,
+  ModelPromotionRequest,
+  ModelRouteDecisionDto,
+  ModelRouteDecisionListQuery,
   ModelRoutePolicyDto,
   ModelRoutePreviewResult,
   ModelRouteRevisionDto,
   ModelRouteSummaryDto,
+  ProviderSecretRefDto,
+  ProviderSecretRefListQuery,
+  ProviderSecretRefRequest,
   ModelVersionDto,
   PricingVersionDto,
 } from './contracts'
@@ -174,6 +183,30 @@ export const adminService = {
   },
   async exportModelRouting() {
     return api.get<Record<string, unknown>>('/admin/model-control/routing-export')
+  },
+  async modelRouteDecisions(query?: ModelRouteDecisionListQuery) {
+    const envelope = await api.getEnvelope<ModelRouteDecisionDto[]>(withQuery('/admin/model-control/route-decisions', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async providerSecretRefs(query?: ProviderSecretRefListQuery) {
+    const envelope = await api.getEnvelope<ProviderSecretRefDto[]>(withQuery('/admin/model-control/secret-refs', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async createProviderSecretRef(payload: ProviderSecretRefRequest) {
+    return api.post<ProviderSecretRefDto>('/admin/model-control/secret-refs', payload)
+  },
+  async modelPromotions(query?: ModelPromotionListQuery) {
+    const envelope = await api.getEnvelope<ModelPromotionDto[]>(withQuery('/admin/model-control/promotions', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async requestModelPromotion(payload: ModelPromotionRequest) {
+    return api.post<ModelPromotionDto>('/admin/model-control/promotions', payload)
+  },
+  async exportModelGovernance() {
+    return api.get<Record<string, unknown>>('/admin/model-control/governance-export')
+  },
+  async modelGovernanceSummary() {
+    return api.get<ModelGovernanceSummaryDto>('/admin/model-control/governance-summary')
   },
   async configResources(kind: ConfigResourceKind, query?: ConfigResourceListQuery) {
     const envelope = await api.getEnvelope<ConfigResourceDto[]>(withQuery(`/admin/config-resources/${kind}`, query))

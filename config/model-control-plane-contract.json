@@ -7,7 +7,7 @@
   "entities": ["Provider", "Model", "ModelVersion", "ModelCapability", "ModelDeployment", "PricingVersion"],
   "generationReferences": ["modelVersionId", "modelDeploymentId", "pricingVersionId"],
   "permissions": ["admin:model-control:read", "admin:model-control:manage", "admin:model-control:transition"],
-  "providerTrafficEnabled": false,
+  "trafficEligibilityPolicy": "approved_promotion_only",
   "credentialsAccepted": false,
   "realProviderApprovalRequired": true,
   "allowedModalities": ["image", "chat", "video", "music"],

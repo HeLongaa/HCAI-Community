@@ -5,10 +5,9 @@
 ## Boundaries
 
 - The product remains personal-account only. The catalog has no tenant, organization, team, membership, or invitation ownership.
-- Provider credentials, tokens, endpoint URLs, and raw Provider payloads are not accepted by these APIs.
+- Registry APIs do not accept Provider credentials, tokens, secret endpoint values, or raw Provider payloads. `MODEL-05` separately accepts only `secret://` metadata references.
 - New deployments are always created with `trafficEligible=false`.
-- This work does not register a real Provider adapter and does not authorize network traffic.
-- Traffic-eligible deployment activation must fail until the separate `PROVIDER-APPROVAL` record exists. Ordinary continuation language is not approval.
+- This registry work does not register a real Provider adapter. Production traffic eligibility can change only through an approved `MODEL-05` promotion and is reversed by rollback.
 
 ## Lifecycle
 

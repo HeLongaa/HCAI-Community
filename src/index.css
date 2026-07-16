@@ -213,6 +213,17 @@
 .model-route-history h4, .model-route-history > div { min-height: 40px; display: flex; align-items: center; gap: 8px; margin: 0; border-bottom: 1px solid var(--border); }
 .model-route-history > div { justify-content: space-between; color: var(--muted); font-size: 12px; }
 .model-route-history > div span { min-width: 0; overflow-wrap: anywhere; }
+.model-governance-workbench { display: grid; gap: 12px; min-width: 0; max-width: 100%; padding-top: 14px; border-top: 1px solid var(--border); overflow: hidden; }
+.model-governance-workbench > .chip-row { flex-wrap: wrap; min-width: 0; max-width: 100%; }
+.model-governance-workbench > .settings-panel-header > div { min-width: 0; }
+.model-governance-workbench h3 { margin: 3px 0 0; font-size: 18px; }
+.model-governance-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; align-items: end; }
+.model-governance-list { display: grid; border-top: 1px solid var(--border); }
+.model-governance-list > div:not(.empty-state) { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(120px, .5fr) auto; gap: 12px; align-items: center; min-height: 52px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+.model-governance-list span { min-width: 0; display: grid; gap: 3px; }
+.model-governance-list small { color: var(--muted); overflow-wrap: anywhere; }
+.model-governance-list code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.model-governance-list time { color: var(--muted); font-size: 12px; white-space: nowrap; }
 @media (max-width: 780px) {
   .model-control-toolbar, .model-control-create, .model-tool-section { grid-template-columns: 1fr; }
   .model-control-layout { grid-template-columns: 1fr; }
@@ -221,6 +232,10 @@
   .model-control-gate { align-items: flex-start; flex-wrap: wrap; }
   .model-control-gate span { width: 100%; margin-left: 28px; }
   .model-route-preview { grid-template-columns: 1fr; }
+  .model-governance-form { grid-template-columns: 1fr; }
+  .model-governance-workbench > .settings-panel-header { align-items: flex-start; flex-wrap: wrap; }
+  .model-governance-list > div:not(.empty-state) { grid-template-columns: 1fr; gap: 4px; }
+  .model-governance-list time { white-space: normal; }
 }
 .admin-media-lifecycle-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .admin-media-lifecycle-heading > div, .admin-media-lifecycle-list article > div:first-child { display: grid; gap: 3px; min-width: 0; }

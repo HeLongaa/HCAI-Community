@@ -118,6 +118,9 @@ export const createSeedModelRoutingRepository = ({ modelControl, recordAudit } =
       .filter((policy) => policy.status === 'active' && policy.modality === context.modality && policy.operation === context.operation && policy.environment === context.environment && (!policy.region || policy.region === context.region))
       .sort((left, right) => left.priority - right.priority || left.key.localeCompare(right.key))
       .map(hydrate)),
-    exportAll: async () => ({ schemaVersion: 1, exportedAt: nowIso(), providerTrafficEnabled: false, policies: await Promise.all([...policies.values()].sort((left, right) => left.key.localeCompare(right.key)).map(hydrate)), revisions: clone([...revisions.values()]) }),
+    exportAll: async () => {
+      const exportedPolicies = await Promise.all([...policies.values()].sort((left, right) => left.key.localeCompare(right.key)).map(hydrate))
+      return { schemaVersion: 1, exportedAt: nowIso(), providerTrafficEnabled: exportedPolicies.some((policy) => policy.targets?.some((target) => target.deployment?.environment === 'production' && target.deployment?.trafficEligible)), policies: exportedPolicies, revisions: clone([...revisions.values()]) }
+    },
   }
 }

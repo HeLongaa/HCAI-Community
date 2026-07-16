@@ -136,10 +136,15 @@ export const createPrismaModelRoutingRepository = (client, { recordAudit } = {})
       where: { status: 'active', modality: context.modality, operation: context.operation, environment: context.environment, OR: [{ region: null }, { region: context.region }] },
       include: policyInclude, orderBy: [{ priority: 'asc' }, { key: 'asc' }], take: 100,
     })).map(dto),
-    exportAll: async () => ({
-      schemaVersion: 1, exportedAt: new Date().toISOString(), providerTrafficEnabled: false,
-      policies: (await client.modelRoutePolicy.findMany({ include: policyInclude, orderBy: { key: 'asc' }, take: 1000 })).map(dto),
-      revisions: (await client.modelRoutePolicyRevision.findMany({ orderBy: [{ policyId: 'asc' }, { revisionNumber: 'asc' }], take: 10000 })).map((row) => ({ ...row, createdAt: iso(row.createdAt) })),
-    }),
+    exportAll: async () => {
+      const policies = (await client.modelRoutePolicy.findMany({ include: policyInclude, orderBy: { key: 'asc' }, take: 1000 })).map(dto)
+      return {
+        schemaVersion: 1,
+        exportedAt: new Date().toISOString(),
+        providerTrafficEnabled: policies.some((policy) => policy.targets?.some((target) => target.deployment?.environment === 'production' && target.deployment?.trafficEligible)),
+        policies,
+        revisions: (await client.modelRoutePolicyRevision.findMany({ orderBy: [{ policyId: 'asc' }, { revisionNumber: 'asc' }], take: 10000 })).map((row) => ({ ...row, createdAt: iso(row.createdAt) })),
+      }
+    },
   }
 }

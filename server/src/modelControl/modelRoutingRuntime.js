@@ -210,7 +210,7 @@ export const resolveModelRoute = async ({ policies, context, evaluateCandidate =
         selected: candidate,
         attempts,
         consideredPolicies,
-        providerTrafficEnabled: false,
+        providerTrafficEnabled: true,
       }
     }
     return { status: 'unavailable', reasonCode: attempts.length ? 'all_candidates_blocked' : 'no_route_targets', policy: { id: policy.id, key: policy.key, fallbackMode: policy.fallbackMode, bucket: audience.bucket }, selected: null, attempts, consideredPolicies, providerTrafficEnabled: false }

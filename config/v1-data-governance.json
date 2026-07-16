@@ -497,7 +497,7 @@
     {
       "id": "provider_control_records",
       "classification": "confidential",
-      "prismaModels": ["CreativeProviderControlState", "CreativeProviderCapEvidence", "CreativeProviderCircuitState", "CreativeProviderCircuitEvent", "Provider", "Model", "ModelVersion", "ModelCapability", "ModelDeployment", "PricingVersion", "ModelRoutePolicy", "ModelRouteTarget", "ModelRoutePolicyRevision"],
+      "prismaModels": ["CreativeProviderControlState", "CreativeProviderCapEvidence", "CreativeProviderCircuitState", "CreativeProviderCircuitEvent", "Provider", "Model", "ModelVersion", "ModelCapability", "ModelDeployment", "PricingVersion", "ModelRoutePolicy", "ModelRouteTarget", "ModelRoutePolicyRevision", "ModelRouteDecision", "ProviderSecretRef", "ModelPromotion"],
       "locations": ["postgres"],
       "dataSubjects": ["user", "system", "authorized_operator"],
       "purposes": ["creative_generation", "internal_accounting", "support_operations"],
@@ -1043,7 +1043,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 88,
+    "modelCount": 91,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",

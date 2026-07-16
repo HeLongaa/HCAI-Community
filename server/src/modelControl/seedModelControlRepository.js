@@ -78,6 +78,12 @@ export const createSeedModelControlRepository = ({ recordAudit } = {}) => {
       if (!deployment) return null
       return clone({ ...deployment, modelVersion: detail('version', deployment.modelVersionId) })
     },
+    setPromotionTrafficEligibility: async (id, eligible, actor) => {
+      const deployment = collections.deployments.get(String(id))
+      if (!deployment || deployment.environment !== 'production' || (eligible && deployment.status !== 'active')) throw new HttpError(409, 'PROMOTION_DEPLOYMENT_INELIGIBLE', 'production deployment is not eligible for promotion')
+      Object.assign(deployment, { trafficEligible: Boolean(eligible), updatedByRef: actor, version: deployment.version + 1, updatedAt: nowIso() })
+      return detail('deployment', deployment.id)
+    },
     createProvider: async (input) => create('provider', input),
     updateProvider: async (id, expectedVersion, data) => {
       const row = collections.providers.get(String(id))
@@ -136,7 +142,7 @@ export const createSeedModelControlRepository = ({ recordAudit } = {}) => {
       capabilities: [...collections.capabilities.values()],
       deployments: [...collections.deployments.values()],
       pricingVersions: [...collections.prices.values()],
-      providerTrafficEnabled: false,
+      providerTrafficEnabled: [...collections.deployments.values()].some((deployment) => deployment.environment === 'production' && deployment.trafficEligible),
     }),
   }
 }
