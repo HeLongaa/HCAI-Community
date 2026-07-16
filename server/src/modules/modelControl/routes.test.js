@@ -123,3 +123,78 @@ test('state transitions reject skipped lifecycle states, stale writes, and traff
     (error) => error.code === 'PROVIDER_APPROVAL_REQUIRED',
   )
 })
+
+test('model routing policies are revisioned, permission scoped, concurrency safe, and fail closed', async () => {
+  const { repository, server } = await createServer()
+  try {
+    const denied = await requestJson(server.url, '/api/admin/model-control/routing-policies', {
+      token: moderator,
+      body: { key: 'image-staging', name: 'Image staging', modality: 'image', operation: 'generate', environment: 'staging' },
+    })
+    assert.equal(denied.status, 403)
+
+    const provider = await repository.modelControl.createProvider({ id: 'route-provider', key: 'route-provider', name: 'Route Provider', websiteUrl: null, regions: ['us'], dataProcessingRegions: ['us'], createdByRef: 'ops', updatedByRef: 'ops' })
+    const model = await repository.modelControl.createModel({ id: 'route-model', providerId: provider.id, key: 'route-model', name: 'Route Model', family: 'image', createdByRef: 'ops', updatedByRef: 'ops' })
+    const version = await repository.modelControl.createVersion({ id: 'route-version', modelId: model.id, versionKey: 'v1', releaseDate: null, contextWindow: null, maxOutputUnits: 1, parameterSchema: null, createdByRef: 'ops', updatedByRef: 'ops' })
+    await repository.modelControl.upsertCapability({ id: 'route-capability', modelVersionId: version.id, modality: 'image', operations: ['generate'], inputMimeTypes: [], outputMimeTypes: ['image/png'], constraints: null })
+    const deployment = await repository.modelControl.createDeployment({ id: 'route-deployment', modelVersionId: version.id, key: 'route-staging', environment: 'staging', region: 'us', deploymentRef: 'route-ref', createdByRef: 'ops', updatedByRef: 'ops' })
+
+    const createdPolicy = await requestJson(server.url, '/api/admin/model-control/routing-policies', {
+      token: admin,
+      body: { key: 'image-staging', name: 'Image staging', modality: 'image', operation: 'generate', environment: 'staging', region: 'us', rolloutPercentage: 25, rolloutSeed: 'cohort-v1', fallbackMode: 'ordered', priority: 10 },
+    })
+    assert.equal(createdPolicy.status, 201)
+    const policy = createdPolicy.payload.data
+    assert.equal(policy.revisionCount, 1)
+
+    const targets = await requestJson(server.url, `/api/admin/model-control/routing-policies/${policy.id}/targets`, {
+      method: 'PUT', token: admin,
+      body: { expectedVersion: policy.version, reasonCode: 'initial_targets', targets: [{ modelDeploymentId: deployment.id, role: 'primary', priority: 10, enabled: true }] },
+    })
+    assert.equal(targets.status, 200)
+    assert.equal(targets.payload.data.revisionCount, 2)
+
+    const stale = await requestJson(server.url, `/api/admin/model-control/routing-policies/${policy.id}/targets`, {
+      method: 'PUT', token: admin,
+      body: { expectedVersion: policy.version, reasonCode: 'stale_update', targets: [{ modelDeploymentId: deployment.id, role: 'primary', priority: 10, enabled: true }] },
+    })
+    assert.equal(stale.status, 409)
+    assert.equal(stale.payload.error.code, 'STATE_CONFLICT')
+
+    const activated = await requestJson(server.url, `/api/admin/model-control/routing-policies/${policy.id}/status`, {
+      token: admin, body: { expectedVersion: targets.payload.data.version, status: 'active', reasonCode: 'reviewed' },
+    })
+    assert.equal(activated.status, 200)
+    const immutable = await requestJson(server.url, `/api/admin/model-control/routing-policies/${policy.id}`, {
+      method: 'PATCH', token: admin,
+      body: { expectedVersion: activated.payload.data.version, name: 'Changed', modality: 'image', operation: 'generate', environment: 'staging', region: 'us', audienceRoles: [], rolloutPercentage: 100, rolloutSeed: 'v2', fallbackMode: 'ordered', priority: 10 },
+    })
+    assert.equal(immutable.status, 409)
+    assert.equal(immutable.payload.error.code, 'IMMUTABLE_ROUTE_POLICY')
+
+    const preview = await requestJson(server.url, '/api/admin/model-control/route-preview', {
+      token: moderator,
+      body: { modality: 'image', operation: 'generate', environment: 'staging', region: 'us', subjectKey: 'preview-user', role: 'member' },
+    })
+    assert.equal(preview.status, 200)
+    assert.equal(preview.payload.data.providerTrafficEnabled, false)
+    assert.equal(['no_audience_match', 'all_candidates_blocked'].includes(preview.payload.data.reasonCode), true)
+
+    const disabled = await requestJson(server.url, `/api/admin/model-control/routing-policies/${policy.id}/status`, {
+      token: admin, body: { expectedVersion: activated.payload.data.version, status: 'disabled', reasonCode: 'operator_pause' },
+    })
+    assert.equal(disabled.status, 200)
+    const rolledBack = await requestJson(server.url, `/api/admin/model-control/routing-policies/${policy.id}/rollback`, {
+      token: admin, body: { expectedVersion: disabled.payload.data.version, revisionNumber: 1, reasonCode: 'restore_initial' },
+    })
+    assert.equal(rolledBack.status, 200)
+    assert.equal(rolledBack.payload.data.status, 'disabled')
+    assert.equal(rolledBack.payload.data.targets.length, 0)
+
+    const revisions = await requestJson(server.url, `/api/admin/model-control/routing-policies/${policy.id}/revisions`, { method: 'GET', token: moderator })
+    assert.equal(revisions.status, 200)
+    assert.equal(revisions.payload.data.length, 5)
+  } finally {
+    await server.close()
+  }
+})

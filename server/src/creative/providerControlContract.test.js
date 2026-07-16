@@ -7,6 +7,7 @@ import {
   classifyProviderFailure,
   createProviderCapEvidence,
   evaluateProviderControlSnapshot,
+  evaluateProviderRoutingSnapshot,
   providerCircuitPolicyFor,
   providerCircuitScope,
   validateProviderCapEvidence,
@@ -119,4 +120,12 @@ test('control evaluation requires global provider cap and circuit evidence', () 
     currency: 'USD',
     now,
   }).reasonCode, 'provider_circuit_probe_required')
+})
+
+test('routing availability reuses kill switch and circuit state without budget reservation', () => {
+  const controls = scopes.slice(0, 2).map((scope) => ({ ...scope, enabled: true }))
+  assert.equal(evaluateProviderRoutingSnapshot({ scopes, controls, circuit: { status: 'closed' } }).allowed, true)
+  assert.equal(evaluateProviderRoutingSnapshot({ scopes, controls: controls.map((control, index) => index ? { ...control, enabled: false } : control), circuit: { status: 'closed' } }).reasonCode, 'provider_kill_switch_active')
+  assert.equal(evaluateProviderRoutingSnapshot({ scopes, controls, circuit: { status: 'open' } }).reasonCode, 'provider_circuit_open')
+  assert.equal(evaluateProviderRoutingSnapshot({ scopes, controls, circuit: { status: 'half_open' } }).reasonCode, 'provider_circuit_probe_required')
 })

@@ -152,6 +152,20 @@ export const classifyProviderFailure = (error) => {
   return retryableCategories.has(category) ? category : 'ignored_failure'
 }
 
+export const evaluateProviderRoutingSnapshot = ({ scopes, controls, circuit }) => {
+  const byScope = new Map((controls ?? []).map((control) => [control.scopeKey, control]))
+  const required = scopes.filter((scope) => ['global', 'provider'].includes(scope.scopeType))
+  if (required.some((scope) => !byScope.has(scope.scopeKey))) {
+    return { allowed: false, reasonCode: 'provider_control_state_unknown' }
+  }
+  const blocked = scopes.map((scope) => byScope.get(scope.scopeKey)).find((control) => control?.enabled === false)
+  if (blocked) return { allowed: false, reasonCode: 'provider_kill_switch_active', blockedScopeKey: blocked.scopeKey }
+  if (!circuit) return { allowed: false, reasonCode: 'provider_circuit_state_unknown' }
+  if (circuit.status === 'open') return { allowed: false, reasonCode: 'provider_circuit_open' }
+  if (circuit.status === 'half_open') return { allowed: false, reasonCode: 'provider_circuit_probe_required' }
+  return { allowed: true, reasonCode: null }
+}
+
 export const evaluateProviderControlSnapshot = ({
   scopes,
   controls,

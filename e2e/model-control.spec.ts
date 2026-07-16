@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 import { signInPage } from './helpers'
 
-test('admin builds an offline Provider, model, and version registry without enabling traffic', async ({ page, request }) => {
+test('admin builds an offline model registry and explainable route without enabling traffic', async ({ page, request }) => {
   await signInPage(page, request, 'opsplus')
   await page.goto('/')
   await page.getByTestId('nav-admin').click()
@@ -33,6 +33,23 @@ test('admin builds an offline Provider, model, and version registry without enab
   await panel.getByRole('button', { name: 'New draft' }).click()
   await expect(panel.locator('.model-control-row').filter({ hasText: `v-${suffix}` })).toBeVisible()
   await expect(panel.locator('.model-version-counts')).toContainText('0 deployments')
+  await panel.getByPlaceholder('deployment-key').fill(`route-deployment-${suffix}`)
+  await panel.getByPlaceholder('region').fill('us')
+  await panel.getByPlaceholder('deployment-ref').fill(`offline-ref-${suffix}`)
+  await panel.getByTitle('Create deployment').click()
+  await expect(panel.locator('.model-version-counts')).toContainText('1 deployments')
+
+  await panel.getByRole('button', { name: 'Routing', exact: true }).click()
+  await panel.getByLabel('Route key').fill(`route-${suffix}`)
+  await panel.getByLabel('Route name').fill(`E2E Route ${suffix}`)
+  await panel.getByRole('button', { name: 'New draft' }).click()
+  await expect(panel.locator('.model-control-row').filter({ hasText: `E2E Route ${suffix}` })).toBeVisible()
+  await panel.getByLabel('Primary deployment').selectOption({ label: `route-deployment-${suffix}` })
+  await panel.getByTitle('Save route targets').click()
+  await panel.getByRole('button', { name: 'active', exact: true }).click()
+  await panel.getByTitle('Run route preview').click()
+  await expect(panel.getByTestId('model-route-preview')).toContainText('unavailable')
+  await expect(panel.getByTestId('model-route-preview')).toContainText('all_candidates_blocked')
 
   await page.setViewportSize({ width: 390, height: 844 })
   const layout = await panel.evaluate((element) => {
@@ -56,5 +73,7 @@ test('moderator can inspect the model registry but cannot mutate it', async ({ p
   const panel = page.getByTestId('model-control-panel')
   await expect(panel).toBeVisible()
   await expect(panel.getByRole('button', { name: 'New draft' })).toHaveCount(0)
-  await expect(panel.getByTitle('Export catalog')).toBeVisible()
+  await expect(panel.getByTitle('Export configuration')).toBeVisible()
+  await panel.getByRole('button', { name: 'Routing', exact: true }).click()
+  await expect(panel.getByRole('button', { name: 'New draft' })).toHaveCount(0)
 })

@@ -76,6 +76,11 @@ export const parseModelControlListQuery = (query = {}) => {
     providerId: query.providerId ? safeText(query.providerId, 'providerId', { required: true, maximum: 160 }) : null,
     modelId: query.modelId ? safeText(query.modelId, 'modelId', { required: true, maximum: 160 }) : null,
     modality: query.modality ? parseModality(query.modality) : null,
+    environment: query.environment ? (() => {
+      const environment = String(query.environment)
+      if (!modelDeploymentEnvironments.includes(environment)) throw validationFailed(`environment must be one of: ${modelDeploymentEnvironments.join(', ')}`)
+      return environment
+    })() : null,
     cursor: query.cursor ? safeText(query.cursor, 'cursor', { required: true, maximum: 200 }) : null,
     sort,
     order,

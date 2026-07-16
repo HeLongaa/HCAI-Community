@@ -3,6 +3,7 @@ import { requirePermission } from '../../common/http/auth.js'
 import { readJsonBody } from '../../common/http/request.js'
 import { created, ok } from '../../common/http/responses.js'
 import {
+  assertStatusTransition,
   parseCapabilityUpsert,
   parseDeploymentCreate,
   parseModelControlListQuery,
@@ -11,8 +12,20 @@ import {
   parsePricingCreate,
   parseProviderCreate,
   parseProviderUpdate,
+  parseStatusTransition,
   transitionModelControlResource,
 } from '../../modelControl/modelControlRuntime.js'
+import {
+  assertModelRoutePolicyEditable,
+  parseModelRouteListQuery,
+  parseModelRoutePolicyCreate,
+  parseModelRoutePolicyUpdate,
+  parseModelRoutePreview,
+  parseModelRouteRollback,
+  parseModelRouteTargets,
+  resolveModelRoute,
+} from '../../modelControl/modelRoutingRuntime.js'
+import { buildProviderControlScopes, evaluateProviderRoutingSnapshot, providerCircuitScope } from '../../creative/providerControlContract.js'
 import { repositories } from '../../repositories/index.js'
 
 const permissions = Object.freeze({
@@ -24,6 +37,7 @@ const permissions = Object.freeze({
 export const registerModelControlRoutes = (router, options = {}) => {
   const routeRepositories = options.repositories ?? repositories
   const repository = routeRepositories.modelControl
+  const routingRepository = routeRepositories.modelRouting
   const find = async (type, id, path) => {
     const resource = await repository.find(type, id)
     if (!resource) throw notFound(path)
@@ -41,6 +55,123 @@ export const registerModelControlRoutes = (router, options = {}) => {
     await audit(actor, 'admin.model_control.status_transitioned', type, updated, { previousStatus: resource.status })
     ok(response, updated)
   }
+  const findRoutePolicy = async (id, path) => {
+    const resource = await routingRepository.find(id)
+    if (!resource) throw notFound(path)
+    return resource
+  }
+  const evaluateCandidate = async (target, policy) => {
+    const model = target.deployment?.modelVersion?.model
+    const provider = model?.provider
+    if (!provider) return { allowed: false, reasonCode: 'provider_metadata_missing' }
+    const scopes = buildProviderControlScopes({
+      providerId: provider.key,
+      providerAccountRef: 'default',
+      workspace: policy.modality,
+      modelFamily: model.family ?? model.key,
+    })
+    const circuitScope = providerCircuitScope(scopes)
+    const [controls, circuit] = await Promise.all([
+      Promise.all(scopes.map((scope) => routeRepositories.creativeProviderControls.findControl(scope.scopeKey))),
+      routeRepositories.creativeProviderControls.findCircuit(circuitScope.scopeKey),
+    ])
+    return evaluateProviderRoutingSnapshot({ scopes, controls: controls.filter(Boolean), circuit })
+  }
+
+  router.add('GET', '/api/admin/model-control/routing-summary', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const exported = await routingRepository.exportAll()
+    const statusCounts = exported.policies.reduce((summary, policy) => ({ ...summary, [policy.status]: (summary[policy.status] ?? 0) + 1 }), {})
+    const targetCounts = exported.policies.flatMap((policy) => policy.targets ?? []).reduce((summary, target) => ({ ...summary, [target.role]: (summary[target.role] ?? 0) + 1 }), {})
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_route.summary_read', resourceType: 'model_route_policy', resourceId: null, metadata: { policyCount: exported.policies.length, providerTrafficEnabled: false } })
+    ok(response, { policyCount: exported.policies.length, revisionCount: exported.revisions.length, statusCounts, targetCounts, providerTrafficEnabled: false, automaticFallbackDefault: 'fail_closed' })
+  })
+
+  router.add('GET', '/api/admin/model-control/routing-export', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const exported = await routingRepository.exportAll()
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_route.exported', resourceType: 'model_route_policy', resourceId: null, metadata: { policyCount: exported.policies.length, revisionCount: exported.revisions.length, providerTrafficEnabled: false } })
+    ok(response, exported)
+  })
+
+  router.add('GET', '/api/admin/model-control/routing-policies', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const page = await routingRepository.list(parseModelRouteListQuery(context.query))
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_route.policies_queried', resourceType: 'model_route_policy', resourceId: null, metadata: { resultCount: page.items.length, limit: page.limit } })
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('POST', '/api/admin/model-control/routing-policies', async (request, response, context) => {
+    const actor = requirePermission(context, permissions.manage)
+    const policy = await routingRepository.create(parseModelRoutePolicyCreate((await readJsonBody(request)) ?? {}, actor))
+    await audit(actor, 'admin.model_route.policy_created', 'route_policy', policy, { modality: policy.modality, environment: policy.environment })
+    created(response, policy)
+  })
+
+  router.add('GET', '/api/admin/model-control/routing-policies/:id', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const policy = await findRoutePolicy(context.params.id, `/api/admin/model-control/routing-policies/${context.params.id}`)
+    await audit(actor, 'admin.model_route.policy_read', 'route_policy', policy)
+    ok(response, policy)
+  })
+
+  router.add('PATCH', '/api/admin/model-control/routing-policies/:id', async (request, response, context) => {
+    const actor = requirePermission(context, permissions.manage)
+    const current = await findRoutePolicy(context.params.id, `/api/admin/model-control/routing-policies/${context.params.id}`)
+    const input = parseModelRoutePolicyUpdate((await readJsonBody(request)) ?? {}, actor)
+    assertModelRoutePolicyEditable(current, input.expectedVersion)
+    const policy = await routingRepository.update(current.id, input.expectedVersion, input.data)
+    if (!policy) throw new HttpError(409, 'STATE_CONFLICT', 'model route policy changed before update')
+    await audit(actor, 'admin.model_route.policy_updated', 'route_policy', policy)
+    ok(response, policy)
+  })
+
+  router.add('PUT', '/api/admin/model-control/routing-policies/:id/targets', async (request, response, context) => {
+    const actor = requirePermission(context, permissions.manage)
+    const current = await findRoutePolicy(context.params.id, `/api/admin/model-control/routing-policies/${context.params.id}/targets`)
+    const input = parseModelRouteTargets(current.id, (await readJsonBody(request)) ?? {}, actor)
+    assertModelRoutePolicyEditable(current, input.expectedVersion)
+    const policy = await routingRepository.replaceTargets(current.id, input)
+    if (!policy) throw new HttpError(409, 'STATE_CONFLICT', 'model route policy changed before targets were replaced')
+    await audit(actor, 'admin.model_route.targets_replaced', 'route_policy', policy, { targetCount: policy.targets.length })
+    ok(response, policy)
+  })
+
+  router.add('GET', '/api/admin/model-control/routing-policies/:id/revisions', async (_request, response, context) => {
+    requirePermission(context, permissions.read)
+    await findRoutePolicy(context.params.id, `/api/admin/model-control/routing-policies/${context.params.id}/revisions`)
+    ok(response, await routingRepository.listRevisions(context.params.id))
+  })
+
+  router.add('POST', '/api/admin/model-control/routing-policies/:id/rollback', async (request, response, context) => {
+    const actor = requirePermission(context, permissions.transition)
+    const current = await findRoutePolicy(context.params.id, `/api/admin/model-control/routing-policies/${context.params.id}/rollback`)
+    const input = parseModelRouteRollback((await readJsonBody(request)) ?? {}, actor)
+    assertModelRoutePolicyEditable(current, input.expectedVersion)
+    const policy = await routingRepository.rollback(current.id, input)
+    if (!policy) throw new HttpError(409, 'STATE_CONFLICT', 'model route policy changed before rollback')
+    await audit(actor, 'admin.model_route.policy_rolled_back', 'route_policy', policy, { sourceRevisionNumber: input.revisionNumber })
+    ok(response, policy)
+  })
+
+  router.add('POST', '/api/admin/model-control/routing-policies/:id/status', async (request, response, context) => {
+    const actor = requirePermission(context, permissions.transition)
+    const current = await findRoutePolicy(context.params.id, `/api/admin/model-control/routing-policies/${context.params.id}/status`)
+    const transitionInput = assertStatusTransition(current, parseStatusTransition((await readJsonBody(request)) ?? {}, actor))
+    const policy = await routingRepository.transition(current.id, transitionInput)
+    if (!policy) throw new HttpError(409, 'STATE_CONFLICT', 'model route policy changed before transition')
+    await audit(actor, 'admin.model_route.status_transitioned', 'route_policy', policy, { previousStatus: current.status })
+    ok(response, policy)
+  })
+
+  router.add('POST', '/api/admin/model-control/route-preview', async (request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const input = parseModelRoutePreview((await readJsonBody(request)) ?? {})
+    const policies = await routingRepository.match(input)
+    const result = await resolveModelRoute({ policies, context: input, evaluateCandidate })
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_route.previewed', resourceType: 'model_route_policy', resourceId: result.policy?.id ?? null, metadata: { modality: input.modality, operation: input.operation, environment: input.environment, status: result.status, reasonCode: result.reasonCode, attemptedCount: result.attempts.length, providerTrafficEnabled: false } })
+    ok(response, result)
+  })
 
   router.add('GET', '/api/admin/model-control/summary', async (_request, response, context) => {
     const actor = requirePermission(context, permissions.read)
@@ -140,6 +271,12 @@ export const registerModelControlRoutes = (router, options = {}) => {
     const deployment = await repository.createDeployment(parseDeploymentCreate((await readJsonBody(request)) ?? {}, actor))
     await audit(actor, 'admin.model_control.deployment_created', 'deployment', deployment, { environment: deployment.environment })
     created(response, deployment)
+  })
+  router.add('GET', '/api/admin/model-control/deployments', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const page = await repository.listDeployments(parseModelControlListQuery(context.query))
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.deployments_queried', resourceType: 'model_deployment', resourceId: null, metadata: { resultCount: page.items.length, limit: page.limit } })
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
   })
   router.add('GET', '/api/admin/model-control/deployments/:id', async (_request, response, context) => {
     requirePermission(context, permissions.read)

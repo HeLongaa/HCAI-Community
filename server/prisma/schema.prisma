@@ -180,6 +180,16 @@ enum ModelCapabilityModality {
   music
 }
 
+enum ModelRouteFallbackMode {
+  fail_closed
+  ordered
+}
+
+enum ModelRouteTargetRole {
+  primary
+  backup
+}
+
 enum ChatConversationStatus {
   active
   archived
@@ -1810,10 +1820,77 @@ model ModelDeployment {
   modelVersion ModelVersion       @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
   prices       PricingVersion[]
   generations CreativeGeneration[]
+  routeTargets ModelRouteTarget[]
 
   @@unique([environment, key])
   @@index([modelVersionId, environment, status])
   @@map("model_deployments")
+}
+
+model ModelRoutePolicy {
+  id                String                 @id @default(cuid())
+  key               String                 @unique
+  name              String
+  modality          ModelCapabilityModality
+  operation         String
+  environment       ModelDeploymentEnvironment
+  region            String?
+  audienceRoles     String[]               @default([]) @map("audience_roles")
+  rolloutPercentage Int                    @default(100) @map("rollout_percentage")
+  rolloutSeed       String                 @default("v1") @map("rollout_seed")
+  fallbackMode      ModelRouteFallbackMode @default(fail_closed) @map("fallback_mode")
+  priority          Int                    @default(100)
+  status            ModelControlStatus     @default(draft)
+  version           Int                    @default(1)
+  createdByRef      String                 @map("created_by_ref")
+  updatedByRef      String                 @map("updated_by_ref")
+  archivedByRef     String?                @map("archived_by_ref")
+  archivedAt        DateTime?              @map("archived_at")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+
+  targets   ModelRouteTarget[]
+  revisions ModelRoutePolicyRevision[]
+
+  @@index([status, modality, operation, environment, priority])
+  @@index([status, updatedAt])
+  @@map("model_route_policies")
+}
+
+model ModelRouteTarget {
+  id                String               @id @default(cuid())
+  policyId          String               @map("policy_id")
+  modelDeploymentId String               @map("model_deployment_id")
+  role              ModelRouteTargetRole
+  priority          Int                  @default(100)
+  enabled           Boolean              @default(true)
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+
+  policy     ModelRoutePolicy @relation(fields: [policyId], references: [id], onDelete: Restrict)
+  deployment ModelDeployment  @relation(fields: [modelDeploymentId], references: [id], onDelete: Restrict)
+
+  @@unique([policyId, modelDeploymentId])
+  @@unique([policyId, role, priority])
+  @@index([modelDeploymentId, enabled])
+  @@map("model_route_targets")
+}
+
+model ModelRoutePolicyRevision {
+  id             String   @id @default(cuid())
+  policyId       String   @map("policy_id")
+  revisionNumber Int      @map("revision_number")
+  snapshot       Json
+  snapshotSchemaVersion Int @default(1) @map("snapshot_schema_version")
+  reasonCode     String   @map("reason_code")
+  createdByRef   String   @map("created_by_ref")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  policy ModelRoutePolicy @relation(fields: [policyId], references: [id], onDelete: Restrict)
+
+  @@unique([policyId, revisionNumber])
+  @@index([policyId, createdAt])
+  @@map("model_route_policy_revisions")
 }
 
 model PricingVersion {

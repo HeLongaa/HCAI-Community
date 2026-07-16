@@ -10,6 +10,7 @@ import { createSeedReleaseRepository } from '../releases/seedReleaseRepository.j
 import { createSeedSystemSettingsRepository } from '../settings/seedSystemSettingsRepository.js'
 import { createSeedConfigResourcesRepository } from '../configResources/seedConfigResourcesRepository.js'
 import { createSeedModelControlRepository } from '../modelControl/seedModelControlRepository.js'
+import { createSeedModelRoutingRepository } from '../modelControl/seedModelRoutingRepository.js'
 import { createSeedObservabilityRepository } from '../observability/seedObservabilityRepository.js'
 import {
   appendSeedAuditIntegrity,
@@ -2415,6 +2416,7 @@ export const createSeedRepository = () => {
   const systemSettings = createSeedSystemSettingsRepository({ recordAudit: auditRecorder })
   const configResources = createSeedConfigResourcesRepository({ recordAudit: auditRecorder })
   const modelControl = createSeedModelControlRepository({ recordAudit: auditRecorder })
+  const modelRouting = createSeedModelRoutingRepository({ modelControl, recordAudit: auditRecorder })
   const observability = createSeedObservabilityRepository()
   return {
   chat: createSeedChatRepository({
@@ -2425,6 +2427,7 @@ export const createSeedRepository = () => {
   systemSettings,
   configResources,
   modelControl,
+  modelRouting,
   observability,
   auth: {
     getCurrentUser: () => seedStore.me,

@@ -13,6 +13,7 @@ import { createPrismaReleaseRepository } from '../releases/prismaReleaseReposito
 import { createPrismaSystemSettingsRepository } from '../settings/prismaSystemSettingsRepository.js'
 import { createPrismaConfigResourcesRepository } from '../configResources/prismaConfigResourcesRepository.js'
 import { createPrismaModelControlRepository } from '../modelControl/prismaModelControlRepository.js'
+import { createPrismaModelRoutingRepository } from '../modelControl/prismaModelRoutingRepository.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, hashToken, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
 import {
@@ -224,6 +225,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   const systemSettings = createPrismaSystemSettingsRepository(client, { recordAudit })
   const configResources = createPrismaConfigResourcesRepository(client, { recordAudit })
   const modelControl = createPrismaModelControlRepository(client, { recordAudit })
+  const modelRouting = createPrismaModelRoutingRepository(client, { recordAudit })
   const observability = createPrismaObservabilityRepository(client)
 
   const leaseExpiry = (ttlSeconds) => new Date(Date.now() + Math.max(1, Number(ttlSeconds ?? 300)) * 1000)
@@ -9765,6 +9767,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     systemSettings,
     configResources,
     modelControl,
+    modelRouting,
     observability,
     operationsMetrics,
     authorization,

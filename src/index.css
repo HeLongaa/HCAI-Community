@@ -181,6 +181,7 @@
 .panel.admin-media-governance-panel { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 0; overflow: visible; }
 .admin-tabs { width: 100%; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
 .panel.model-control-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; width: 100%; max-width: 100%; height: auto; min-height: 0; overflow: visible; }
+.model-control-panel > .chip-row { flex-wrap: wrap; max-width: 100%; overflow: visible; }
 .model-control-panel input, .model-control-panel select { width: 100%; min-width: 0; max-width: 100%; }
 .model-control-gate { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 8px 12px; border: 1px solid var(--border); border-left: 3px solid #27845b; background: color-mix(in srgb, #27845b 8%, var(--panel-soft)); }
 .model-control-gate span { margin-left: auto; color: var(--muted); }
@@ -205,6 +206,13 @@
 .model-tool-section { grid-template-columns: minmax(90px, .55fr) repeat(3, minmax(0, 1fr)) auto; padding-top: 12px; border-top: 1px solid var(--border); }
 .model-tool-section h4 { margin: 0; font-size: 14px; }
 .model-version-counts { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: 12px; }
+.model-route-preview { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; min-height: 42px; padding: 8px 10px; border-left: 3px solid #d7a534; background: var(--panel-soft); }
+.model-route-preview strong { text-transform: uppercase; font-size: 12px; }
+.model-route-preview span, .model-route-preview small { min-width: 0; overflow-wrap: anywhere; color: var(--muted); }
+.model-route-history { display: grid; gap: 0; border-top: 1px solid var(--border); }
+.model-route-history h4, .model-route-history > div { min-height: 40px; display: flex; align-items: center; gap: 8px; margin: 0; border-bottom: 1px solid var(--border); }
+.model-route-history > div { justify-content: space-between; color: var(--muted); font-size: 12px; }
+.model-route-history > div span { min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 780px) {
   .model-control-toolbar, .model-control-create, .model-tool-section { grid-template-columns: 1fr; }
   .model-control-layout { grid-template-columns: 1fr; }
@@ -212,6 +220,7 @@
   .model-control-detail { padding-left: 0; }
   .model-control-gate { align-items: flex-start; flex-wrap: wrap; }
   .model-control-gate span { width: 100%; margin-left: 28px; }
+  .model-route-preview { grid-template-columns: 1fr; }
 }
 .admin-media-lifecycle-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .admin-media-lifecycle-heading > div, .admin-media-lifecycle-list article > div:first-child { display: grid; gap: 3px; min-width: 0; }
