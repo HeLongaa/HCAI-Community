@@ -159,6 +159,27 @@ enum CreativeGenerationStatus {
   review_required
 }
 
+enum ModelControlStatus {
+  draft
+  active
+  disabled
+  deprecated
+  archived
+}
+
+enum ModelDeploymentEnvironment {
+  development
+  staging
+  production
+}
+
+enum ModelCapabilityModality {
+  image
+  chat
+  video
+  music
+}
+
 enum ChatConversationStatus {
   active
   archived
@@ -1637,6 +1658,9 @@ model CreativeGeneration {
   policySchemaVersion Int                      @default(1) @map("policy_schema_version")
   providerRequestId   String?                  @map("provider_request_id")
   providerJobId       String?                  @map("provider_job_id")
+  modelVersionId      String?                  @map("model_version_id")
+  modelDeploymentId   String?                  @map("model_deployment_id")
+  pricingVersionId    String?                  @map("pricing_version_id")
   retryOfId           String?                  @map("retry_of_id")
   attemptNumber       Int                      @default(1) @map("attempt_number")
   errorCode           String?                  @map("error_code")
@@ -1658,6 +1682,9 @@ model CreativeGeneration {
   chatTurn          ChatTurn?
   portfolioAssets   ProfilePortfolioAsset[]
   assets            CreativeGenerationAsset[]
+  modelVersion      ModelVersion?                  @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
+  modelDeployment   ModelDeployment?               @relation(fields: [modelDeploymentId], references: [id], onDelete: Restrict)
+  pricingVersion    PricingVersion?                @relation(fields: [pricingVersionId], references: [id], onDelete: Restrict)
 
   @@index([actorId, createdAt])
   @@index([actorHandle, createdAt])
@@ -1665,7 +1692,155 @@ model CreativeGeneration {
   @@index([providerId, createdAt])
   @@index([retryOfId, attemptNumber])
   @@index([status, createdAt])
+  @@index([modelVersionId, createdAt])
+  @@index([modelDeploymentId, createdAt])
+  @@index([pricingVersionId, createdAt])
   @@map("creative_generations")
+}
+
+model Provider {
+  id                    String             @id @default(cuid())
+  key                   String             @unique
+  name                  String
+  status                ModelControlStatus @default(draft)
+  websiteUrl            String?            @map("website_url")
+  regions               String[]           @default([])
+  dataProcessingRegions String[]           @default([]) @map("data_processing_regions")
+  version               Int                @default(1)
+  createdByRef          String             @map("created_by_ref")
+  updatedByRef          String             @map("updated_by_ref")
+  archivedByRef         String?            @map("archived_by_ref")
+  archivedAt            DateTime?          @map("archived_at")
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
+
+  models Model[]
+
+  @@index([status, updatedAt])
+  @@map("model_providers")
+}
+
+model Model {
+  id           String             @id @default(cuid())
+  providerId   String             @map("provider_id")
+  key          String
+  name         String
+  family       String?
+  status       ModelControlStatus @default(draft)
+  version      Int                @default(1)
+  createdByRef String             @map("created_by_ref")
+  updatedByRef String             @map("updated_by_ref")
+  archivedByRef String?           @map("archived_by_ref")
+  archivedAt   DateTime?          @map("archived_at")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  provider Provider       @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  versions ModelVersion[]
+
+  @@unique([providerId, key])
+  @@index([status, updatedAt])
+  @@map("models")
+}
+
+model ModelVersion {
+  id                       String             @id @default(cuid())
+  modelId                  String             @map("model_id")
+  versionKey               String             @map("version_key")
+  status                   ModelControlStatus @default(draft)
+  releaseDate              DateTime?          @map("release_date")
+  deprecationDate          DateTime?          @map("deprecation_date")
+  contextWindow            Int?               @map("context_window")
+  maxOutputUnits           Int?               @map("max_output_units")
+  parameterSchema          Json?              @map("parameter_schema")
+  parameterSchemaSchemaVersion Int            @default(1) @map("parameter_schema_schema_version")
+  version                  Int                @default(1)
+  createdByRef             String             @map("created_by_ref")
+  updatedByRef             String             @map("updated_by_ref")
+  archivedByRef            String?            @map("archived_by_ref")
+  archivedAt               DateTime?          @map("archived_at")
+  createdAt                DateTime           @default(now()) @map("created_at")
+  updatedAt                DateTime           @updatedAt @map("updated_at")
+
+  model        Model              @relation(fields: [modelId], references: [id], onDelete: Restrict)
+  capabilities ModelCapability[]
+  deployments  ModelDeployment[]
+  prices       PricingVersion[]
+  generations  CreativeGeneration[]
+
+  @@unique([modelId, versionKey])
+  @@index([status, updatedAt])
+  @@map("model_versions")
+}
+
+model ModelCapability {
+  id                       String                  @id @default(cuid())
+  modelVersionId           String                  @map("model_version_id")
+  modality                 ModelCapabilityModality
+  operations               String[]                @default([])
+  inputMimeTypes           String[]                @default([]) @map("input_mime_types")
+  outputMimeTypes          String[]                @default([]) @map("output_mime_types")
+  constraints              Json?
+  constraintsSchemaVersion Int                     @default(1) @map("constraints_schema_version")
+  createdAt                DateTime                @default(now()) @map("created_at")
+  updatedAt                DateTime                @updatedAt @map("updated_at")
+
+  modelVersion ModelVersion @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([modelVersionId, modality])
+  @@index([modality, updatedAt])
+  @@map("model_capabilities")
+}
+
+model ModelDeployment {
+  id             String                     @id @default(cuid())
+  modelVersionId String                     @map("model_version_id")
+  key            String
+  environment    ModelDeploymentEnvironment
+  region         String
+  deploymentRef  String                     @map("deployment_ref")
+  status         ModelControlStatus         @default(draft)
+  trafficEligible Boolean                   @default(false) @map("traffic_eligible")
+  version        Int                        @default(1)
+  createdByRef   String                     @map("created_by_ref")
+  updatedByRef   String                     @map("updated_by_ref")
+  createdAt      DateTime                   @default(now()) @map("created_at")
+  updatedAt      DateTime                   @updatedAt @map("updated_at")
+
+  modelVersion ModelVersion       @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
+  prices       PricingVersion[]
+  generations CreativeGeneration[]
+
+  @@unique([environment, key])
+  @@index([modelVersionId, environment, status])
+  @@map("model_deployments")
+}
+
+model PricingVersion {
+  id                String             @id @default(cuid())
+  modelVersionId    String             @map("model_version_id")
+  modelDeploymentId String?            @map("model_deployment_id")
+  versionKey        String             @map("version_key")
+  currency          String
+  unit              String
+  unitPriceMicros   Int                @map("unit_price_micros")
+  status            ModelControlStatus @default(draft)
+  effectiveFrom     DateTime            @map("effective_from")
+  effectiveTo       DateTime?           @map("effective_to")
+  version           Int                @default(1)
+  createdByRef      String             @map("created_by_ref")
+  updatedByRef      String             @map("updated_by_ref")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  modelVersion  ModelVersion       @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
+  deployment    ModelDeployment?   @relation(fields: [modelDeploymentId], references: [id], onDelete: Restrict)
+  generations   CreativeGeneration[]
+
+  @@unique([modelVersionId, versionKey])
+  @@index([modelDeploymentId, status, effectiveFrom])
+  @@index([status, effectiveFrom, effectiveTo])
+  @@map("pricing_versions")
 }
 
 model CreativeGenerationAsset {

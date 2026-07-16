@@ -37,6 +37,7 @@
     { "id": "observability", "domain": "observability-incident", "layer": "transport", "registration": "registerObservabilityRoutes" },
     { "id": "settings", "domain": "config-feature-flags", "layer": "transport", "registration": "registerSettingsRoutes" },
     { "id": "configResources", "domain": "config-feature-flags", "layer": "transport", "registration": "registerConfigResourceRoutes" },
+    { "id": "modelControl", "domain": "model-control-plane", "layer": "transport", "registration": "registerModelControlRoutes" },
     { "id": "operations", "domain": "jobs-automation", "layer": "transport", "registration": "registerOperationRoutes" },
     { "id": "profiles", "domain": "user-profile", "layer": "transport", "registration": "registerProfileRoutes" },
     { "id": "points", "domain": "entitlements-accounting", "layer": "transport", "registration": "registerPointsRoutes" }
@@ -54,6 +55,7 @@
     { "domain": "jobs-automation", "owns": ["jobs", "attempts", "leases", "schedules"] },
     { "domain": "audit-evidence", "owns": ["audit events", "immutable evidence"] },
     { "domain": "observability-incident", "owns": ["sanitized logs", "trace spans", "SLO alerts"] },
-    { "domain": "config-feature-flags", "owns": ["versioned configuration", "feature flags", "reference data", "announcements", "secret references"] }
+    { "domain": "config-feature-flags", "owns": ["versioned configuration", "feature flags", "reference data", "announcements", "secret references"] },
+    { "domain": "model-control-plane", "owns": ["Providers", "models", "model versions", "capabilities", "deployments", "pricing versions"] }
   ]
 }

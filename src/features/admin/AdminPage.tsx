@@ -14,6 +14,7 @@ import { ReleaseControlPanel } from './ReleaseControlPanel'
 import { ObservabilityPanel } from './ObservabilityPanel'
 import { SystemSettingsPanel } from './SystemSettingsPanel'
 import { ConfigurationResourcesPanel } from './ConfigurationResourcesPanel'
+import { ModelControlPanel } from './ModelControlPanel'
 import { AdminMediaLifecyclePanel } from './AdminMediaLifecyclePanel'
 import type {
   AdminPermissionDto,
@@ -2354,7 +2355,14 @@ export function AdminPage({
           />
         </div>
       )}
-      {activeTab !== 'Settings' && <>
+      {activeTab === 'AI config' && (
+        <ModelControlPanel
+          hasPermission={account.hasPermission}
+          isZh={isZh}
+          notify={(message) => simulateAction(message)}
+        />
+      )}
+      {activeTab !== 'Settings' && activeTab !== 'AI config' && <>
       <AdminOverviewPanel t={t} target={overviewTarget} />
       <ReleaseControlPanel
         hasPermission={account.hasPermission}

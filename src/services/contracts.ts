@@ -917,6 +917,7 @@ export type CreateCreativeGenerationRequest = {
   inputAssetIds?: string[]
   parameters?: Record<string, string | number | boolean | Array<string | number | boolean> | null>
   providerId?: string | null
+  modelId?: string | null
 }
 
 export type ApiCreativeAccountingPreview = {
@@ -2598,4 +2599,104 @@ export type ConfigResourceExportDocument = {
   kind: ConfigResourceKind
   exportedAt: string
   items: Array<ConfigResourceDraftRequest & { key: string; expectedVersion: number }>
+}
+
+export type ModelControlStatus = 'draft' | 'active' | 'disabled' | 'deprecated' | 'archived'
+export type ModelCapabilityModality = 'image' | 'chat' | 'video' | 'music'
+export type ModelDeploymentEnvironment = 'development' | 'staging' | 'production'
+export type ModelProviderDto = {
+  id: string
+  key: string
+  name: string
+  status: ModelControlStatus
+  websiteUrl: string | null
+  regions: string[]
+  dataProcessingRegions: string[]
+  modelCount?: number
+  version: number
+  archivedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+export type ModelCatalogModelDto = {
+  id: string
+  providerId: string
+  key: string
+  name: string
+  family: string | null
+  status: ModelControlStatus
+  versionCount?: number
+  version: number
+  provider?: ModelProviderDto | null
+  archivedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+export type ModelCapabilityDto = {
+  id: string
+  modelVersionId: string
+  modality: ModelCapabilityModality
+  operations: string[]
+  inputMimeTypes: string[]
+  outputMimeTypes: string[]
+  constraints: Record<string, unknown> | null
+}
+export type ModelDeploymentDto = {
+  id: string
+  modelVersionId: string
+  key: string
+  environment: ModelDeploymentEnvironment
+  region: string
+  deploymentRef: string
+  status: ModelControlStatus
+  trafficEligible: boolean
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+export type PricingVersionDto = {
+  id: string
+  modelVersionId: string
+  modelDeploymentId: string | null
+  versionKey: string
+  currency: string
+  unit: string
+  unitPriceMicros: number
+  status: ModelControlStatus
+  effectiveFrom: string
+  effectiveTo: string | null
+  version: number
+}
+export type ModelVersionDto = {
+  id: string
+  modelId: string
+  versionKey: string
+  status: ModelControlStatus
+  releaseDate: string | null
+  deprecationDate: string | null
+  contextWindow: number | null
+  maxOutputUnits: number | null
+  parameterSchema: Record<string, unknown> | null
+  version: number
+  model?: ModelCatalogModelDto | null
+  capabilities?: ModelCapabilityDto[]
+  deployments?: ModelDeploymentDto[]
+  prices?: PricingVersionDto[]
+  createdAt: string
+  updatedAt: string
+}
+export type ModelControlSummaryDto = {
+  counts: { providers: number; models: number; versions: number; capabilities: number; deployments: number; pricingVersions: number }
+  statusCounts: Partial<Record<ModelControlStatus, number>>
+  providerTrafficEnabled: false
+  realProviderApprovalRequired: true
+}
+export type ModelControlListQuery = {
+  search?: string | null
+  status?: ModelControlStatus | null
+  providerId?: string | null
+  sort?: 'key' | 'name' | 'status' | 'updatedAt'
+  order?: 'asc' | 'desc'
+  cursor?: string | null
+  limit?: number
 }

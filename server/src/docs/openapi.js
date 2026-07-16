@@ -3058,6 +3058,64 @@ export const openApiDocument = {
         responses: { '200': { description: 'Created draft' }, '400': { description: 'Invalid kind-specific schema' }, '409': { description: 'Kind and key already exist' } },
       },
     },
+    '/admin/model-control/summary': {
+      get: { summary: 'Read normalized model catalog counts and the real-Provider approval state', responses: { '200': { description: 'Catalog summary with Provider traffic disabled' }, '403': { description: 'Requires model control read permission' } } },
+    },
+    '/admin/model-control/export': {
+      get: { summary: 'Export the bounded normalized model catalog without credentials or endpoints', responses: { '200': { description: 'Portable model catalog document' }, '403': { description: 'Requires model control read permission' } } },
+    },
+    '/admin/model-control/providers': {
+      get: { summary: 'List Provider registry entries with filtering, sorting, and cursor pagination', responses: { '200': { description: 'Provider registry page' }, '403': { description: 'Requires model control read permission' } } },
+      post: { summary: 'Create a disabled-by-default Provider registry draft', responses: { '201': { description: 'Provider draft created' }, '409': { description: 'Provider key already exists' } } },
+    },
+    '/admin/model-control/providers/{id}': {
+      get: { summary: 'Read one Provider registry entry', responses: { '200': { description: 'Provider detail' }, '404': { description: 'Provider not found' } } },
+      patch: { summary: 'Update Provider draft metadata using optimistic concurrency', responses: { '200': { description: 'Provider updated' }, '409': { description: 'Version conflict or immutable archive' } } },
+    },
+    '/admin/model-control/providers/{id}/status': {
+      post: { summary: 'Apply an audited Provider lifecycle transition', responses: { '200': { description: 'Provider transitioned' }, '409': { description: 'Invalid transition or version conflict' } } },
+    },
+    '/admin/model-control/models': {
+      get: { summary: 'List normalized models by Provider and lifecycle status', responses: { '200': { description: 'Model registry page' } } },
+      post: { summary: 'Create a model draft under a registered Provider', responses: { '201': { description: 'Model draft created' }, '422': { description: 'Provider not found' } } },
+    },
+    '/admin/model-control/models/{id}': {
+      get: { summary: 'Read one normalized model', responses: { '200': { description: 'Model detail' }, '404': { description: 'Model not found' } } },
+    },
+    '/admin/model-control/models/{id}/status': {
+      post: { summary: 'Apply an audited model lifecycle transition', responses: { '200': { description: 'Model transitioned' }, '409': { description: 'Invalid transition or version conflict' } } },
+    },
+    '/admin/model-control/versions': {
+      get: { summary: 'List normalized model versions with immutable capability, deployment, and price projections', responses: { '200': { description: 'Model version page' }, '403': { description: 'Requires model control read permission' } } },
+      post: { summary: 'Create an immutable-on-activation model version draft', responses: { '201': { description: 'Model version draft created' }, '422': { description: 'Model not found' } } },
+    },
+    '/admin/model-control/versions/{id}': {
+      get: { summary: 'Read a model version with capabilities, deployments, and pricing history', responses: { '200': { description: 'Model version detail' }, '404': { description: 'Model version not found' } } },
+    },
+    '/admin/model-control/versions/{id}/status': {
+      post: { summary: 'Apply an audited model-version lifecycle transition', responses: { '200': { description: 'Model version transitioned' }, '409': { description: 'Invalid transition or version conflict' } } },
+    },
+    '/admin/model-control/versions/{id}/capabilities': {
+      put: { summary: 'Upsert one modality capability while the version is draft', responses: { '200': { description: 'Capability projection updated' }, '409': { description: 'Activated versions are immutable' } } },
+    },
+    '/admin/model-control/deployments': {
+      post: { summary: 'Create a traffic-ineligible environment deployment record', responses: { '201': { description: 'Deployment draft created' }, '422': { description: 'Model version not found' } } },
+    },
+    '/admin/model-control/deployments/{id}': {
+      get: { summary: 'Read one model deployment record', responses: { '200': { description: 'Deployment detail' }, '404': { description: 'Deployment not found' } } },
+    },
+    '/admin/model-control/deployments/{id}/status': {
+      post: { summary: 'Apply a deployment lifecycle transition; traffic-eligible activation requires PROVIDER-APPROVAL', responses: { '200': { description: 'Deployment transitioned' }, '409': { description: 'Approval required, invalid transition, or version conflict' } } },
+    },
+    '/admin/model-control/pricing': {
+      post: { summary: 'Create an additive pricing version without overwriting historical prices', responses: { '201': { description: 'Pricing version draft created' }, '422': { description: 'Version or deployment not found' } } },
+    },
+    '/admin/model-control/pricing/{id}': {
+      get: { summary: 'Read one immutable pricing version', responses: { '200': { description: 'Pricing version detail' }, '404': { description: 'Pricing version not found' } } },
+    },
+    '/admin/model-control/pricing/{id}/status': {
+      post: { summary: 'Apply an audited pricing lifecycle transition', responses: { '200': { description: 'Pricing version transitioned' }, '409': { description: 'Invalid transition or version conflict' } } },
+    },
     '/admin/config-resources/{kind}/bulk-delete': {
       post: { summary: 'Atomically soft-delete up to 100 resources using expected versions', responses: { '200': { description: 'Soft-deleted resources' }, '409': { description: 'At least one resource was stale or unavailable' } } },
     },
