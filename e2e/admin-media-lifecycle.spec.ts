@@ -26,5 +26,5 @@ test('admin filters and transitions owner media lifecycle records', async ({ pag
 
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(panel).toBeVisible()
-  expect(await page.locator('body').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
 })
