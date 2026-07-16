@@ -71,7 +71,9 @@
     "check:deploy": "npm run check:pr && npm run smoke:production",
     "check:deploy:env": "npm run check:pr && npm run smoke:production:env",
     "test:e2e": "playwright test",
-    "test:model-routing": "node scripts/verify-model-routing.mjs && npm --prefix server run db:generate && node --test server/src/modelControl/modelRoutingRuntime.test.js server/src/creative/providerControlContract.test.js server/src/modules/modelControl/routes.test.js"
+    "test:model-routing": "node scripts/verify-model-routing.mjs && npm --prefix server run db:generate && node --test server/src/modelControl/modelRoutingRuntime.test.js server/src/creative/providerControlContract.test.js server/src/modules/modelControl/routes.test.js",
+    "test:ai-generation-runtime": "node scripts/verify-ai-generation-runtime.mjs && npm --prefix server run db:generate && node --test server/src/creative/generationExecutionRuntime.test.js server/src/modules/creative/routes.test.js server/src/modules/admin/routes.test.js",
+    "test:ai-generation-runtime:integration": "npm --prefix server run db:generate && node --test server/src/repositories/prismaGenerationExecution.integration.test.js"
   },
   "dependencies": {
     "lucide-react": "^1.21.0",

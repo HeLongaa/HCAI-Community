@@ -413,11 +413,11 @@
     {
       "id": "creative_generation_records",
       "classification": "restricted",
-      "prismaModels": ["CreativeGeneration"],
+      "prismaModels": ["CreativeGeneration", "CreativeGenerationExecution"],
       "locations": ["postgres"],
       "dataSubjects": ["user", "depicted_third_party"],
       "purposes": ["creative_generation", "safety_moderation", "internal_accounting", "support_operations"],
-      "exampleFields": ["prompt hash", "safe prompt preview", "provider ids", "asset ids", "usage", "quota", "credit", "safety", "policy", "safe error preview"],
+      "exampleFields": ["prompt hash", "safe prompt preview", "provider ids", "asset ids", "usage", "quota", "credit", "safety", "policy", "safe error preview", "idempotency key", "execution payload hash", "execution lease status"],
       "accessRoles": ["user_self", "authorized_service", "creative_operator_allowlisted", "trust_safety_reviewer"],
       "retentionPolicyId": "generation_terminal_365d",
       "exportPolicy": "include_user_generation_history_with_safe_metadata",
@@ -1043,7 +1043,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 87,
+    "modelCount": 88,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",

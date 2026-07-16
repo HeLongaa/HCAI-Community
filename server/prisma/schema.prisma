@@ -159,6 +159,13 @@ enum CreativeGenerationStatus {
   review_required
 }
 
+enum CreativeGenerationExecutionStatus {
+  claimed
+  succeeded
+  failed
+  recovery_required
+}
+
 enum ModelControlStatus {
   draft
   active
@@ -1146,7 +1153,8 @@ model User {
   mediaAssetRelations       MediaAssetRelation[]
   notifications             Notification[]
   mediaScanJobsReviewed     MediaScanJob[]                  @relation("MediaScanJobReviewer")
-  creativeGenerations       CreativeGeneration[]
+  creativeGenerations          CreativeGeneration[]
+  creativeGenerationExecutions CreativeGenerationExecution[]
   creativeQuotaWindows      CreativeQuotaWindow[]
   creativeQuotaReservations CreativeQuotaReservation[]
   creativeCreditLedger      CreativeCreditLedger[]
@@ -1706,6 +1714,31 @@ model CreativeGeneration {
   @@index([modelDeploymentId, createdAt])
   @@index([pricingVersionId, createdAt])
   @@map("creative_generations")
+}
+
+model CreativeGenerationExecution {
+  id             String                            @id @default(cuid())
+  generationId   String                            @unique @map("generation_id")
+  actorId        String                            @map("actor_id")
+  actorHandle    String?                           @map("actor_handle")
+  idempotencyKey String                            @map("idempotency_key")
+  payloadHash    String                            @map("payload_hash")
+  workspace      String
+  mode           String
+  status         CreativeGenerationExecutionStatus @default(claimed)
+  attempt        Int                               @default(1)
+  errorCode      String?                           @map("error_code")
+  leaseExpiresAt DateTime                          @map("lease_expires_at")
+  completedAt    DateTime?                         @map("completed_at")
+  createdAt      DateTime                          @default(now()) @map("created_at")
+  updatedAt      DateTime                          @updatedAt @map("updated_at")
+
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@unique([actorId, idempotencyKey])
+  @@index([status, leaseExpiresAt])
+  @@index([workspace, status, createdAt])
+  @@map("creative_generation_executions")
 }
 
 model Provider {

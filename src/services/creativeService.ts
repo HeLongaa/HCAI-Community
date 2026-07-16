@@ -32,7 +32,10 @@ export const creativeService = {
     return api.get<ApiMediaAsset[]>('/creative/input-assets?limit=24')
   },
   createGeneration(body: CreateCreativeGenerationRequest) {
-    return api.post<ApiCreativeGeneration>('/creative/generations', body)
+    return api.post<ApiCreativeGeneration>('/creative/generations', {
+      ...body,
+      idempotencyKey: body.idempotencyKey ?? `generation:${crypto.randomUUID()}`,
+    })
   },
   async listGenerations(query: UserCreativeGenerationHistoryQuery = {}): Promise<UserCreativeGenerationHistoryPage> {
     const envelope = await api.getEnvelope<ApiUserCreativeGeneration[]>(withQuery('/creative/generations', query))

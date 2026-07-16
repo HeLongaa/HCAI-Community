@@ -12,6 +12,7 @@ import type {
   AdminAccountingRepairResponse,
   AdminCreativeGenerationHistoryPage,
   AdminCreativeGenerationHistoryQuery,
+  AdminCreativeGenerationSummary,
   AdminPointAdjustmentRequest,
   AdminPointAdjustmentResponse,
   AdminPermissionDto,
@@ -346,6 +347,12 @@ export const adminService = {
   },
   async creativeGeneration(id: string) {
     return api.get<AdminCreativeGenerationHistoryPage['items'][number]>(`/admin/creative/generations/${id}`)
+  },
+  async creativeGenerationSummary(query?: AdminCreativeGenerationHistoryQuery) {
+    return api.get<AdminCreativeGenerationSummary>(withQuery('/admin/creative/generations/summary', query))
+  },
+  async exportCreativeGenerations(query?: AdminCreativeGenerationHistoryQuery, format: 'json' | 'csv' = 'csv') {
+    return api.text(withQuery('/admin/creative/generations/export', { ...query, format, limit: 100 }))
   },
   async providerControls(providerId?: string | null) {
     return api.get<AdminProviderControlBundle>(withQuery('/admin/creative/provider-controls', { providerId: providerId ?? null }))

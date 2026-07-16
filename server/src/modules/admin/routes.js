@@ -8,6 +8,9 @@ import {
   parseAdminAccountingReconciliationQuery,
   parseAdminAccountingRepairRequest,
   parseAdminCreativeGenerationListQuery,
+  parseAdminCreativeGenerationExportQuery,
+  parseAdminCreativeExecutionListQuery,
+  parseAdminCreativeExecutionRecoveryRequest,
   parseAdminCreativeGenerationMutationRequest,
   parseAdminOperationsMetricsQuery,
   parseAdminOperationsOverviewQuery,
@@ -593,6 +596,23 @@ const accountingReconciliationExportJson = (page, query) => JSON.stringify({
   issues: page.items,
 }, null, 2)
 
+const creativeGenerationExport = (items, query) => {
+  if (query.format === 'csv') {
+    const columns = ['id', 'actorHandle', 'workspace', 'mode', 'providerId', 'status', 'attemptNumber', 'promptPreview', 'outputAssetCount', 'errorCode', 'createdAt', 'updatedAt']
+    return [
+      columns.join(','),
+      ...items.map((item) => [item.id, item.actorHandle, item.workspace, item.mode, item.providerId, item.status, item.attemptNumber, item.promptPreview, item.outputAssetIds?.length ?? 0, item.errorCode, item.createdAt, item.updatedAt].map(csvCell).join(',')),
+    ].join('\n')
+  }
+  return JSON.stringify({
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    filters: { workspace: query.workspace, mode: query.mode, providerId: query.providerId, status: query.status, reviewRequired: query.reviewRequired, dateFrom: query.dateFrom, dateTo: query.dateTo },
+    count: items.length,
+    items,
+  }, null, 2)
+}
+
 export const registerAdminRoutes = (router, options = {}) => {
   const routeRepositories = options.repositories ?? repositories
   const loadReleaseChange = async (id) => {
@@ -986,6 +1006,40 @@ export const registerAdminRoutes = (router, options = {}) => {
         nextCursor: page.nextCursor,
       },
     })
+  })
+
+  router.add('GET', '/api/admin/creative/generations/summary', async (_request, response, context) => {
+    requirePermission(context, 'admin:audit:read')
+    const query = parseAdminCreativeGenerationListQuery(context.query)
+    ok(response, await routeRepositories.creativeGenerations.summarize(query))
+  })
+
+  router.add('GET', '/api/admin/creative/generations/export', async (_request, response, context) => {
+    requirePermission(context, 'admin:audit:export')
+    const query = parseAdminCreativeGenerationExportQuery(context.query)
+    const page = await routeRepositories.creativeGenerations.list(query)
+    const items = await attachProviderReplayEvidenceToPage(
+      page.items,
+      routeRepositories.creativeProviderReplays,
+      routeRepositories.creativeGenerationMutations,
+      routeRepositories.creativeOutputIngestions,
+      routeRepositories.creativeProviderCosts,
+    )
+    text(response, 200, creativeGenerationExport(items, query), query.format === 'csv' ? 'text/csv; charset=utf-8' : 'application/json; charset=utf-8')
+  })
+
+  router.add('GET', '/api/admin/creative/executions', async (_request, response, context) => {
+    requirePermission(context, 'admin:audit:read')
+    const page = await routeRepositories.creativeGenerationExecutions.list(parseAdminCreativeExecutionListQuery(context.query))
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('POST', '/api/admin/creative/executions/:id/recover', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:creative:retry')
+    const payload = parseAdminCreativeExecutionRecoveryRequest((await readJsonBody(request)) ?? {})
+    const execution = await routeRepositories.creativeGenerationExecutions.resolveRecovery(context.params.id, payload, actor)
+    if (!execution) throw notFound(`/api/admin/creative/executions/${context.params.id}/recover`)
+    ok(response, execution)
   })
 
   router.add('GET', '/api/admin/creative/generations/:id', async (_request, response, context) => {

@@ -911,6 +911,7 @@ export type ChatStreamEvent =
   | { event: `turn.${ChatTurnStatus}`; data: { turnId: string; status: ChatTurnStatus; errorCode: string | null; safetyId?: string | null; moderationDecisionId?: string | null } }
 
 export type CreateCreativeGenerationRequest = {
+  idempotencyKey?: string
   workspace: CreativeWorkspace
   mode: string
   prompt: string
@@ -1517,6 +1518,19 @@ export type AdminCreativeGenerationHistoryQuery = {
   dateTo?: string | null
   cursor?: string | null
   limit?: number | null
+  sort?: 'createdAt' | 'updatedAt' | 'status'
+  direction?: 'asc' | 'desc'
+}
+
+export type AdminCreativeGenerationSummary = {
+  total: number
+  active: number
+  failed: number
+  reviewRequired: number
+  outputAssets: number
+  byStatus: Record<string, number>
+  byWorkspace: Record<string, number>
+  byProvider: Record<string, number>
 }
 
 export type AdminCreativeGenerationHistoryPage = {

@@ -393,13 +393,18 @@ export const parseCreateCreativeGenerationRequest = (body) => {
   if (prompt.length > 4000) {
     throw validationFailed('prompt must be 4000 characters or fewer')
   }
+  const idempotencyKey = optionalText(body, 'idempotencyKey', null)
   const request = {
+    ...(idempotencyKey ? { idempotencyKey } : {}),
     workspace: requireOneOf(body, 'workspace', creativeWorkspaces),
     mode: requireText(body, 'mode'),
     prompt,
     inputAssetIds: optionalStringArray(body, 'inputAssetIds').map((id) => id.trim()).filter(Boolean),
     parameters: optionalCreativeParameters(body),
     providerId: optionalText(body, 'providerId', null),
+  }
+  if (idempotencyKey && !/^[a-zA-Z0-9][a-zA-Z0-9:._-]{7,127}$/.test(idempotencyKey)) {
+    throw validationFailed('idempotencyKey must be 8-128 safe characters')
   }
   if (request.workspace === 'chat' && request.inputAssetIds.length > 0) {
     throw validationFailed('Chat attachments require the streaming turn API')
@@ -932,6 +937,10 @@ export const parseAdminCreativeGenerationListQuery = (query) => {
   if (status && !creativeGenerationStatuses.includes(status)) {
     throw validationFailed(`status must be one of: ${creativeGenerationStatuses.join(', ')}`)
   }
+  const sort = optionalText(query, 'sort', null)
+  const direction = optionalText(query, 'direction', null)
+  if (sort && !['createdAt', 'updatedAt', 'status'].includes(sort)) throw validationFailed('sort must be one of: createdAt, updatedAt, status')
+  if (direction && !['asc', 'desc'].includes(direction)) throw validationFailed('direction must be one of: asc, desc')
   return {
     ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 }),
     actorHandle: optionalText(query, 'userHandle', null) ?? optionalText(query, 'actorHandle', null),
@@ -943,7 +952,39 @@ export const parseAdminCreativeGenerationListQuery = (query) => {
     mediaAssetId: optionalText(query, 'mediaAssetId', null),
     dateFrom: optionalIsoDateText(query, 'dateFrom'),
     dateTo: optionalIsoDateText(query, 'dateTo'),
+    ...(sort ? { sort } : {}),
+    ...(direction ? { direction } : {}),
   }
+}
+
+export const parseAdminCreativeGenerationExportQuery = (query) => {
+  const format = optionalText(query, 'format', 'json')
+  if (!['json', 'csv'].includes(format)) throw validationFailed('format must be one of: json, csv')
+  return { ...parseAdminCreativeGenerationListQuery({ ...query, limit: query.limit ?? '100' }), format }
+}
+
+export const parseAdminCreativeExecutionListQuery = (query) => {
+  const status = optionalText(query, 'status', null)
+  if (status && !['claimed', 'succeeded', 'failed', 'recovery_required'].includes(status)) {
+    throw validationFailed('status must be one of: claimed, succeeded, failed, recovery_required')
+  }
+  const workspace = optionalText(query, 'workspace', null)
+  if (workspace && !creativeWorkspaces.includes(workspace)) {
+    throw validationFailed(`workspace must be one of: ${creativeWorkspaces.join(', ')}`)
+  }
+  return { ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 }), status, workspace }
+}
+
+export const parseAdminCreativeExecutionRecoveryRequest = (body) => {
+  const reasonCode = optionalText(body, 'reasonCode', 'operator_recovery')
+  const errorCode = optionalText(body, 'errorCode', 'CREATIVE_GENERATION_EXECUTION_ABANDONED')
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9:._-]{0,63}$/.test(reasonCode)) {
+    throw validationFailed('reasonCode must be 1-64 safe identifier characters')
+  }
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9:._-]{0,119}$/.test(errorCode)) {
+    throw validationFailed('errorCode must be 1-120 safe identifier characters')
+  }
+  return { reasonCode, errorCode }
 }
 
 export const parseAdminOperationsMetricsQuery = (query) => {

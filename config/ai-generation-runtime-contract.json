@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "taskId": "AI-CORE-01",
+  "scope": "personal_accounts_only",
+  "workspaces": ["image", "chat", "video", "music"],
+  "generationStatuses": ["queued", "running", "completed", "failed", "cancelled", "review_required"],
+  "executionStatuses": ["claimed", "succeeded", "failed", "recovery_required"],
+  "userRoutes": [
+    "POST /api/creative/generations",
+    "GET /api/creative/generations/:id",
+    "POST /api/creative/generations/:id/cancel",
+    "POST /api/creative/generations/:id/retry"
+  ],
+  "adminRoutes": [
+    "GET /api/admin/creative/generations",
+    "GET /api/admin/creative/generations/summary",
+    "GET /api/admin/creative/generations/export",
+    "GET /api/admin/creative/executions",
+    "POST /api/admin/creative/executions/:id/recover"
+  ],
+  "controls": {
+    "createIdempotency": "actor_and_idempotency_key",
+    "concurrency": "unique_claim_before_dispatch",
+    "expiredLease": "fail_closed_operator_recovery",
+    "retry": "new_generation_attempt_with_explicit_confirmation",
+    "providerCallsEnabled": false,
+    "credentialsConfigured": false
+  },
+  "evidence": {
+    "schema": "server/prisma/schema.prisma",
+    "migration": "server/prisma/migrations/0058_creative_generation_execution/migration.sql",
+    "runtime": "server/src/creative/generationExecutionRuntime.js",
+    "routes": "server/src/modules/creative/routes.js",
+    "adminRoutes": "server/src/modules/admin/routes.js",
+    "tests": "server/src/creative/generationExecutionRuntime.test.js",
+    "document": "docs/AI_GENERATION_RUNTIME.md"
+  }
+}
