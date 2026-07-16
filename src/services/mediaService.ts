@@ -2,6 +2,8 @@ import { api, withQuery } from './apiClient'
 import type {
   ApiMediaAsset,
   ApiAdminMediaAsset,
+  AdminMediaAssetBulkResult,
+  AdminMediaAssetExport,
   ApiAssetLibraryItem,
   AssetLibraryQuery,
   AdminMediaAssetQuery,
@@ -59,6 +61,19 @@ export const mediaService = {
   },
   adminAssetAction(id: string, action: 'archive' | 'restore' | 'delete' | 'recover', reason?: string) {
     return api.post<ApiAdminMediaAsset>(`/admin/media/assets/${id}/${action}`, action === 'delete' ? { reason: reason || 'admin_requested' } : undefined)
+  },
+  adminAssetScan(id: string, body: ReviewMediaUploadRequest) {
+    return api.post<ApiAdminMediaAsset>(`/admin/media/assets/${id}/scan`, body)
+  },
+  adminAssetScanRetry(id: string) {
+    return api.post<ApiAdminMediaAsset>(`/admin/media/assets/${id}/scan-retry`)
+  },
+  adminAssetBulkAction(ids: string[], action: 'archive' | 'restore' | 'delete' | 'recover', reason = 'admin_bulk_action') {
+    return api.post<AdminMediaAssetBulkResult>('/admin/media/assets/bulk-actions', { ids, action, reason })
+  },
+  adminAssetExport(query: AdminMediaAssetQuery, format: 'json' | 'csv') {
+    const path = withQuery('/admin/media/assets/export', { ...query, cursor: null, format })
+    return format === 'csv' ? api.text(path) : api.get<AdminMediaAssetExport>(path)
   },
   saveAssetToLibrary(id: string) {
     return api.post<ApiSavedAssetReference>(`/media/assets/${id}/library`)

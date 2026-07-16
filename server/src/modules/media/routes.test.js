@@ -152,10 +152,52 @@ test('admin media lifecycle is permissioned, filterable, paginated, and audited'
     const detail = await requestJson(server.url, `/api/admin/media/assets/${first.id}`, { method: 'GET', token: 'demo-access.opsplus' })
     assert.equal(detail.status, 200)
     assert.equal(detail.payload.data.id, first.id)
+    assert.ok(Array.isArray(detail.payload.data.scanJobs))
+
+    const bulkSource = await completeAndCleanUpload(server, 'demo-access.taskops', { fileName: 'admin-bulk-source.png', contentType: 'image/png', purpose: 'library_asset' })
+    const bulk = await requestJson(server.url, '/api/admin/media/assets/bulk-actions', {
+      body: { ids: [bulkSource.id, 'missing-media-asset'], action: 'archive', reason: 'policy_batch' }, token: 'demo-access.opsplus',
+    })
+    assert.equal(bulk.status, 200)
+    assert.equal(bulk.payload.data.requested, 2)
+    assert.equal(bulk.payload.data.succeeded, 1)
+    assert.equal(bulk.payload.data.failed, 1)
+    assert.ok(bulk.payload.data.results[0].asset.archivedAt)
+    assert.equal(bulk.payload.data.results[1].code, 'NOT_FOUND')
+
+    const exported = await requestJson(server.url, '/api/admin/media/assets/export?format=json&ownerHandle=promptlin', { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(exported.status, 200)
+    assert.equal(exported.payload.data.schemaVersion, 1)
+    assert.ok(exported.payload.data.items.every((item) => !('storageKey' in item) && !('metadata' in item)))
+    const exportDenied = await requestJson(server.url, '/api/admin/media/assets/export?format=json', { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(exportDenied.status, 403)
+    const csvResponse = await fetch(`${server.url}/api/admin/media/assets/export?format=csv&ownerHandle=promptlin`, { headers: { authorization: 'Bearer demo-access.opsplus' } })
+    assert.equal(csvResponse.status, 200)
+    assert.match(csvResponse.headers.get('content-type'), /^text\/csv/)
+    const csv = await csvResponse.text()
+    assert.match(csv, /"ownerHandle"/)
+    assert.equal(csv.includes('storageKey'), false)
 
     const audit = await requestJson(server.url, `/api/admin/audit?resourceType=media_asset&resourceId=${first.id}&limit=100`, { method: 'GET', token: 'demo-access.opsplus' })
     assert.ok(audit.payload.data.some((event) => event.action === 'admin.media.asset.lifecycle.attempted'))
     assert.ok(audit.payload.data.some((event) => event.action === 'admin.media.asset.deleted'))
+    assert.ok(audit.payload.data.some((event) => event.action === 'admin.media.asset.detail_read'))
+  } finally {
+    await server.close()
+  }
+})
+
+test('admin media scan decision uses dedicated management permission and refreshes safe detail', async () => {
+  const server = await createTestServer()
+  try {
+    const upload = await createUpload(server, 'demo-access.promptlin', { fileName: 'admin-scan-source.png', contentType: 'image/png', purpose: 'library_asset' })
+    await requestJson(server.url, `/api/media/uploads/${upload.asset.id}/complete`, { body: {}, token: 'demo-access.promptlin' })
+    const denied = await requestJson(server.url, `/api/admin/media/assets/${upload.asset.id}/scan`, { body: { decision: 'clean' }, token: 'demo-access.promptlin' })
+    assert.equal(denied.status, 403)
+    const reviewed = await requestJson(server.url, `/api/admin/media/assets/${upload.asset.id}/scan`, { body: { decision: 'clean', note: 'admin review' }, token: 'demo-access.opsplus' })
+    assert.equal(reviewed.status, 200)
+    assert.equal(reviewed.payload.data.scanStatus, 'clean')
+    assert.equal('storageKey' in reviewed.payload.data, false)
   } finally {
     await server.close()
   }

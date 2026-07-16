@@ -1,9 +1,9 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { created, ok } from '../../common/http/responses.js'
+import { created, ok, text } from '../../common/http/responses.js'
 import { HttpError, notFound } from '../../common/errors/httpError.js'
 import { requirePermission, requireUser } from '../../common/http/auth.js'
 import { readJsonBody, readJsonBodyWithRaw } from '../../common/http/request.js'
-import { parseAdminMediaAssetQuery, parseAssetLibraryQuery, parseCompleteMediaUploadRequest, parseCreateAssetRelationRequest, parseCreateMediaUploadRequest, parseCreatePortfolioAssetRequest, parseMediaAssetDeleteRequest, parseMediaGovernancePolicyRequest, parseMediaGovernancePolicyRollbackRequest, parseMediaReviewQueueQuery, parseMediaScanAlertActionRequest, parseMediaScanAlertSilenceRequest, parseMediaScanCallbackRequest, parseMediaScanJobArchiveQuery, parseMediaScanJobHistoryQuery, parseMediaScanJobQuery, parseMediaScanRequest, parsePaginationQuery } from '../../contracts/requestParsers.js'
+import { parseAdminMediaAssetBulkActionRequest, parseAdminMediaAssetExportQuery, parseAdminMediaAssetQuery, parseAssetLibraryQuery, parseCompleteMediaUploadRequest, parseCreateAssetRelationRequest, parseCreateMediaUploadRequest, parseCreatePortfolioAssetRequest, parseMediaAssetDeleteRequest, parseMediaGovernancePolicyRequest, parseMediaGovernancePolicyRollbackRequest, parseMediaReviewQueueQuery, parseMediaScanAlertActionRequest, parseMediaScanAlertSilenceRequest, parseMediaScanCallbackRequest, parseMediaScanJobArchiveQuery, parseMediaScanJobHistoryQuery, parseMediaScanJobQuery, parseMediaScanRequest, parsePaginationQuery } from '../../contracts/requestParsers.js'
 import { buildMediaGovernanceConfig } from '../../config/env.js'
 import { repositories } from '../../repositories/index.js'
 
@@ -27,6 +27,12 @@ const signedCallbackPayload = (timestamp, rawBody) => `${timestamp}.${rawBody}`
 
 const expectedCallbackSignature = (secret, timestamp, rawBody) =>
   `sha256=${createHmac('sha256', secret).update(signedCallbackPayload(timestamp, rawBody)).digest('hex')}`
+
+const csvValue = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`
+const adminAssetCsv = (items) => [
+  ['id', 'fileName', 'ownerHandle', 'contentType', 'sizeBytes', 'purpose', 'status', 'scanStatus', 'lifecycle', 'createdAt', 'updatedAt'],
+  ...items.map((item) => [item.id, item.fileName, item.owner.handle, item.contentType, item.sizeBytes, item.purpose, item.status, item.scanStatus, item.deletedAt ? 'deleted' : item.archivedAt ? 'archived' : 'active', item.createdAt, item.updatedAt]),
+].map((row) => row.map(csvValue).join(',')).join('\n')
 
 const recordMediaScanCallbackFailure = async (request, assetId, body, error) => {
   if (!(error instanceof HttpError)) {
@@ -132,20 +138,66 @@ export const registerMediaRoutes = (router) => {
   })
 
   router.add('GET', '/api/admin/media/assets', async (_request, response, context) => {
-    requirePermission(context, 'admin:queue:read')
-    const page = await repositories.media.listAdminAssets(parseAdminMediaAssetQuery(context.query))
+    const actor = requirePermission(context, 'admin:media:read')
+    const query = parseAdminMediaAssetQuery(context.query)
+    const page = await repositories.media.listAdminAssets(query)
+    await repositories.audit.recordAttempt({ actor, action: 'admin.media.assets.queried', resourceType: 'media_asset', resourceId: null, metadata: { resultCount: page.items.length, limit: page.limit, lifecycle: query.lifecycle, searched: Boolean(query.search), ownerFiltered: Boolean(query.ownerHandle) } })
     ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
   })
 
+  router.add('GET', '/api/admin/media/assets/export', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:media:export')
+    const query = parseAdminMediaAssetExportQuery(context.query)
+    const page = await repositories.media.listAdminAssets(query)
+    await repositories.audit.recordAttempt({ actor, action: 'admin.media.assets.exported', resourceType: 'media_asset', resourceId: null, metadata: { format: query.format, count: page.items.length, truncated: Boolean(page.nextCursor) } })
+    if (query.format === 'csv') return text(response, 200, adminAssetCsv(page.items), 'text/csv; charset=utf-8')
+    ok(response, { schemaVersion: 1, exportedAt: new Date().toISOString(), truncated: Boolean(page.nextCursor), items: page.items })
+  })
+
+  router.add('POST', '/api/admin/media/assets/bulk-actions', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:media:manage')
+    const payload = parseAdminMediaAssetBulkActionRequest((await readJsonBody(request)) ?? {})
+    const results = []
+    for (const id of payload.ids) {
+      try {
+        const asset = payload.action === 'delete' || payload.action === 'recover'
+          ? await repositories.media.setAdminAssetDeleted(id, payload.action === 'delete', actor, { reason: payload.reason })
+          : await repositories.media.setAdminAssetArchived(id, payload.action === 'archive', actor)
+        results.push(asset ? { id, status: 'succeeded', asset } : { id, status: 'failed', code: 'NOT_FOUND' })
+      } catch (error) {
+        results.push({ id, status: 'failed', code: error instanceof HttpError ? error.code : 'INTERNAL_ERROR' })
+      }
+    }
+    const succeeded = results.filter((item) => item.status === 'succeeded').length
+    await repositories.audit.recordAttempt({ actor, action: 'admin.media.assets.bulk_action_completed', resourceType: 'media_asset', resourceId: null, metadata: { action: payload.action, requested: payload.ids.length, succeeded, failed: results.length - succeeded, reason: payload.reason } })
+    ok(response, { action: payload.action, requested: payload.ids.length, succeeded, failed: results.length - succeeded, results })
+  })
+
   router.add('GET', '/api/admin/media/assets/:id', async (_request, response, context) => {
-    requirePermission(context, 'admin:queue:read')
+    const actor = requirePermission(context, 'admin:media:read')
     const asset = await repositories.media.getAdminAsset(context.params.id)
     if (!asset) throw notFound(`/api/admin/media/assets/${context.params.id}`)
-    ok(response, asset)
+    const scanJobs = await repositories.media.listScanJobHistory?.(context.params.id, { limit: 20 })
+    await repositories.audit.recordAttempt({ actor, action: 'admin.media.asset.detail_read', resourceType: 'media_asset', resourceId: asset.id, metadata: { relationCount: asset.relations.length, portfolioCount: asset.portfolio.length, scanJobCount: scanJobs?.items?.length ?? 0 } })
+    ok(response, { ...asset, scanJobs: scanJobs?.items ?? [] })
+  })
+
+  router.add('POST', '/api/admin/media/assets/:id/scan', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:media:manage')
+    const asset = await repositories.media.reviewUpload?.(context.params.id, parseMediaScanRequest((await readJsonBody(request)) ?? {}), actor)
+    if (!asset) throw notFound(`/api/admin/media/assets/${context.params.id}/scan`)
+    ok(response, await repositories.media.getAdminAsset(context.params.id))
+  })
+
+  router.add('POST', '/api/admin/media/assets/:id/scan-retry', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:media:manage')
+    const asset = await repositories.media.retryScan?.(context.params.id, actor)
+    if (!asset) throw notFound(`/api/admin/media/assets/${context.params.id}/scan-retry`)
+    ok(response, await repositories.media.getAdminAsset(context.params.id))
   })
 
   router.add('POST', '/api/admin/media/assets/:id/:action', async (request, response, context) => {
-    const actor = requirePermission(context, 'admin:queue:review')
+    const actor = requirePermission(context, 'admin:media:manage')
     const action = context.params.action
     if (!['archive', 'restore', 'delete', 'recover'].includes(action)) throw notFound(`/api/admin/media/assets/${context.params.id}/${action}`)
     const payload = action === 'delete' ? parseMediaAssetDeleteRequest((await readJsonBody(request)) ?? {}) : {}

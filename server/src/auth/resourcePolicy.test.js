@@ -17,7 +17,7 @@ test('every registered personal resource denies unauthorized read and write', ()
 
 test('owner and explicit elevated permissions are action scoped', () => {
   assert.equal(authorizeResource({ resourceType: 'media_asset', action: 'write', actor: owner, resource: { ownerId: owner.id } }).reason, 'owner')
-  const auditor = { ...stranger, permissions: ['admin:queue:read'] }
+  const auditor = { ...stranger, permissions: ['admin:media:read'] }
   assert.equal(authorizeResource({ resourceType: 'media_asset', action: 'read', actor: auditor, resource: { ownerId: owner.id }, allowPublic: false }).reason, 'elevated')
   assert.equal(authorizeResource({ resourceType: 'media_asset', action: 'write', actor: auditor, resource: { ownerId: owner.id } }).allowed, false)
   assert.equal(authorizeResource({ resourceType: 'missing', action: 'read', actor: owner }).allowed, false)

@@ -906,7 +906,23 @@ export const openApiDocument = {
           { name: 'cursor', in: 'query', schema: { type: 'string' } },
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
         ],
-        responses: { '200': { description: 'Safe lifecycle list with owner and portfolio state summaries' }, '403': { description: 'Requires admin queue read permission' } },
+        responses: { '200': { description: 'Safe lifecycle list with owner and portfolio state summaries' }, '403': { description: 'Requires admin media read permission' } },
+      },
+    },
+    '/admin/media/assets/export': {
+      get: {
+        summary: 'Export a bounded filtered safe media asset projection as JSON or CSV',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'format', in: 'query', schema: { type: 'string', enum: ['json', 'csv'], default: 'json' } }],
+        responses: { '200': { description: 'Safe export without storage keys, signed URLs, or raw metadata' }, '403': { description: 'Requires admin media export permission' } },
+      },
+    },
+    '/admin/media/assets/bulk-actions': {
+      post: {
+        summary: 'Apply a bounded audited lifecycle action with per-item outcomes',
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['ids', 'action'], properties: { ids: { type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: { type: 'string' } }, action: { type: 'string', enum: ['archive', 'restore', 'delete', 'recover'] }, reason: { type: 'string' } } } } } },
+        responses: { '200': { description: 'Per-item succeeded and failed outcomes' }, '403': { description: 'Requires admin media manage permission' } },
       },
     },
     '/admin/media/assets/{id}': {
@@ -914,7 +930,23 @@ export const openApiDocument = {
         summary: 'Get a safe administrative media lifecycle detail',
         security: [{ bearerAuth: [] }],
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-        responses: { '200': { description: 'Safe administrative media lifecycle detail' }, '404': { description: 'Asset not found' } },
+        responses: { '200': { description: 'Safe administrative media lifecycle detail with bounded scan history' }, '404': { description: 'Asset not found' } },
+      },
+    },
+    '/admin/media/assets/{id}/scan': {
+      post: {
+        summary: 'Record an administrative clean or reject scan decision',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Updated safe media detail' }, '403': { description: 'Requires admin media manage permission' } },
+      },
+    },
+    '/admin/media/assets/{id}/scan-retry': {
+      post: {
+        summary: 'Request a bounded media scan retry',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Updated safe media detail' }, '403': { description: 'Requires admin media manage permission' } },
       },
     },
     '/admin/media/assets/{id}/{action}': {
@@ -925,7 +957,7 @@ export const openApiDocument = {
           { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'action', in: 'path', required: true, schema: { type: 'string', enum: ['archive', 'restore', 'delete', 'recover'] } },
         ],
-        responses: { '200': { description: 'Updated safe lifecycle detail' }, '403': { description: 'Requires admin queue review permission' }, '409': { description: 'Invalid lifecycle transition' } },
+        responses: { '200': { description: 'Updated safe lifecycle detail' }, '403': { description: 'Requires admin media manage permission' }, '409': { description: 'Invalid lifecycle transition' } },
       },
     },
     '/media/assets/{id}/relations': {

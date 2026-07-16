@@ -533,6 +533,22 @@ export type AdminMediaAssetQuery = AssetLibraryQuery & {
 export type ApiAdminMediaAsset = ApiAssetLibraryItem & {
   owner: { id: string; handle: string }
   portfolio: ApiPortfolioAsset[]
+  scanJobs?: ApiMediaScanJob[]
+}
+
+export type AdminMediaAssetBulkResult = {
+  action: 'archive' | 'restore' | 'delete' | 'recover'
+  requested: number
+  succeeded: number
+  failed: number
+  results: Array<{ id: string; status: 'succeeded'; asset: ApiAdminMediaAsset } | { id: string; status: 'failed'; code: string }>
+}
+
+export type AdminMediaAssetExport = {
+  schemaVersion: 1
+  exportedAt: string
+  truncated: boolean
+  items: ApiAdminMediaAsset[]
 }
 
 export type CreateMediaUploadRequest = {

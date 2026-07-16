@@ -11,6 +11,8 @@ import {
   parseCreativeGenerationHistoryQuery,
   parseGenerationCenterQuery,
   parseAdminAuditListQuery,
+  parseAdminMediaAssetBulkActionRequest,
+  parseAdminMediaAssetExportQuery,
   parseAdminMediaAssetQuery,
   parseAssetLibraryQuery,
   parseAdminCreativeGenerationListQuery,
@@ -627,6 +629,13 @@ test('media lifecycle query parsers validate trash and admin sorting', () => {
   assertValidationError(() => parseAssetLibraryQuery({ lifecycle: 'purged' }), 'lifecycle must be one of: active, archived, deleted, all')
   assertValidationError(() => parseAdminMediaAssetQuery({ sort: 'random' }), 'sort must be one of: created_desc, created_asc, updated_desc, name_asc')
   assertValidationError(() => parseAdminMediaAssetQuery({ status: 'purged' }), 'status must be one of: pending, uploaded, rejected')
+  assert.equal(parseAdminMediaAssetExportQuery({ format: 'csv' }).format, 'csv')
+  assertValidationError(() => parseAdminMediaAssetExportQuery({ format: 'xml' }), 'format must be one of: json, csv')
+  assert.deepEqual(parseAdminMediaAssetBulkActionRequest({ ids: ['asset-1', 'asset-1', 'asset-2'], action: 'archive' }), {
+    ids: ['asset-1', 'asset-2'], action: 'archive', reason: 'admin_bulk_action',
+  })
+  assertValidationError(() => parseAdminMediaAssetBulkActionRequest({ ids: [], action: 'archive' }), 'ids must include 1-50 unique asset ids')
+  assertValidationError(() => parseAdminMediaAssetBulkActionRequest({ ids: ['asset-1'], action: 'purge' }), 'action must be one of: archive, restore, delete, recover')
 })
 
 test('parseCompleteMediaUploadRequest keeps checksum optional', () => {

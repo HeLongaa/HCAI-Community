@@ -18,6 +18,7 @@
     { "id": "library", "routes": ["GET /api/library"], "cursor": true, "filters": ["type", "q"], "sorts": ["createdAt"], "export": false },
     { "id": "mediaAssets", "routes": ["GET /api/media/assets"], "cursor": true, "filters": ["purpose", "status", "q"], "sorts": ["createdAt"], "export": false },
     { "id": "mediaReviewQueue", "routes": ["GET /api/media/review-queue"], "cursor": true, "filters": ["status", "purpose", "q"], "sorts": ["createdAt"], "export": false },
+    { "id": "adminMediaAssets", "routes": ["GET /api/admin/media/assets"], "cursor": true, "filters": ["lifecycle", "ownerHandle", "status", "purpose", "mediaType", "q"], "sorts": ["createdAt", "updatedAt", "fileName"], "export": true, "exportRoutes": ["GET /api/admin/media/assets/export"] },
     { "id": "mediaScanJobs", "routes": ["GET /api/media/scan-jobs"], "cursor": true, "filters": ["status", "provider"], "sorts": ["updatedAt"], "export": true, "exportRoutes": ["GET /api/media/scan-jobs/archive"] },
     { "id": "notifications", "routes": ["GET /api/notifications"], "cursor": true, "filters": ["readState", "type", "resourceType"], "sorts": ["createdAt"], "export": false },
     { "id": "pointsLedger", "routes": ["GET /api/points/ledger"], "cursor": true, "filters": ["userHandle", "status", "q"], "sorts": ["createdAt"], "export": false },
