@@ -523,6 +523,20 @@
       "ownerTasks": ["V1-11", "V1-53", "V1-67", "V1-69"]
     },
     {
+      "id": "provider_legal_review_records",
+      "classification": "restricted",
+      "prismaModels": ["ProviderLegalReview"],
+      "locations": ["postgres", "backup_archive"],
+      "dataSubjects": ["system", "authorized_operator"],
+      "purposes": ["legal_compliance", "support_operations", "creative_generation"],
+      "exampleFields": ["Provider, exact model version, environment and allowed regions", "review version and decision", "individual gate outcomes", "retention days", "source evidence SHA-256", "distinct counsel and product-owner references", "bounded validity", "safe reason code"],
+      "accessRoles": ["authorized_service", "provider_legal_reviewer_allowlisted", "creative_operator_allowlisted", "auditor"],
+      "retentionPolicyId": "audit_event_plus_730d",
+      "exportPolicy": "exclude_contract_bodies_urls_credentials_provider_payloads_and_personal_legal_notes_include_only_scoped_hash_evidence_and_safe_reviewer_references",
+      "deletionPolicy": "retain_immutable_scoped_approval_or_blocking_evidence_until_policy_expiry_then_pseudonymize_reviewer_references",
+      "ownerTasks": ["V1-11", "V1-53", "V1-67", "V1-69"]
+    },
+    {
       "id": "notification_records",
       "classification": "confidential",
       "prismaModels": ["Notification"],
@@ -788,7 +802,7 @@
       "id": "runtime_to_postgres_normalized_provider_evidence",
       "from": "worker_memory",
       "to": "postgres",
-      "dataAssetIds": ["creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "provider_cost_budget_records", "provider_control_records", "ai_evaluation_records", "audit_event_records"],
+      "dataAssetIds": ["creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "provider_cost_budget_records", "provider_control_records", "ai_evaluation_records", "provider_legal_review_records", "audit_event_records"],
       "requiredControls": ["field allowlist", "safe ids and hashes", "redacted previews", "no raw request/response", "idempotency"],
       "destinationPersistence": "retention_policy_applies"
     },
@@ -796,7 +810,7 @@
       "id": "api_to_admin_console",
       "from": "api_memory",
       "to": "admin_console",
-      "dataAssetIds": ["marketplace_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "internal_accounting_invariant_records", "provider_cost_budget_records", "provider_control_records", "ai_evaluation_records", "moderation_review_records", "audit_event_records", "security_event_records"],
+      "dataAssetIds": ["marketplace_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "internal_accounting_invariant_records", "provider_cost_budget_records", "provider_control_records", "ai_evaluation_records", "provider_legal_review_records", "moderation_review_records", "audit_event_records", "security_event_records"],
       "requiredControls": ["RBAC", "purpose-specific allowlist", "redaction", "pagination", "elevated access audit", "no private URL or raw prompt"],
       "destinationPersistence": "none"
     },
@@ -1057,7 +1071,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 100,
+    "modelCount": 101,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",
@@ -1070,6 +1084,7 @@
       "Provider failures use a shared safe taxonomy, bounded Retry-After, deterministic backoff, hash-only failure dedupe, and CAS retry state",
       "Provider output ingestion uses a durable source key, claim lease, allowlisted injected fetch, bounded byte reads, magic-byte MIME validation, SHA-256, deterministic storage, and scan-gated media assets",
       "Provider dispatch uses versioned fail-closed controls, expiring hashed cap evidence, explicit circuit recovery, one-claim probes, two-person review, and low-cardinality operations evidence",
+      "Provider promotion requires current append-only legal evidence scoped to the exact Provider, model version, environment and deployment region, and Release apply revalidates that evidence atomically",
       "Internal accounting uses stable operation keys, same-unit balanced movements, atomic point snapshots, locked quota idempotency, persisted reconciliation issues, and dual-reviewed append-only compensation",
       "Chat has encrypted owner-scoped conversations and messages, idempotent Mock SSE turns, strict owner attachment checks, explicitly selected read-time-authorized product context, identity-free input/output safety evidence, a 512-character unclassified output buffer, explicit stop/disconnect closeout, retention sweeps, restore-deletion tombstones, and a default-disabled staging Provider boundary whose attachment bytes and Provider payloads remain in request memory only",
       "Admin creative serializers redact unsafe identifiers, URLs, and error previews",
@@ -1105,6 +1120,9 @@
       "server/src/creative/providerCostContract.js",
       "server/src/creative/providerControlContract.js",
       "server/src/creative/providerControlPlane.js",
+      "server/src/modelControl/providerLegalRuntime.js",
+      "server/src/modelControl/prismaProviderLegalRepository.js",
+      "server/src/modules/modelControl/routes.js",
       "server/src/creative/chatCapabilityContract.js",
       "server/src/chat/messageCrypto.js",
       "server/src/chat/chatService.js",

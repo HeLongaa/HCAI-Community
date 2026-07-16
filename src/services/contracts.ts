@@ -1850,6 +1850,8 @@ export type ReleaseChangeDto = {
     routePolicyId: string
     routePolicyRevisionId: string
     providerSecretRefId: string
+    evaluationRunId: string | null
+    legalReviewId: string | null
     createdByRef: string
     createdAt: string
   } | null
@@ -2858,12 +2860,14 @@ export type ModelPromotionDto = {
   routePolicyId: string
   routePolicyRevisionId: string
   providerSecretRefId: string
-  evaluationRunId: string
+  evaluationRunId: string | null
+  legalReviewId: string | null
   createdByRef: string
   createdAt: string
   releaseChange: ReleaseChangeDto
   providerSecretRef?: ProviderSecretRefDto
   evaluationRun?: AiEvaluationRunDto
+  legalReview?: ProviderLegalReviewDto
 }
 export type ModelPromotionRequest = {
   modelDeploymentId: string
@@ -2871,6 +2875,7 @@ export type ModelPromotionRequest = {
   routePolicyRevisionId: string
   providerSecretRefId: string
   evaluationRunId: string
+  legalReviewId: string
   artifactVersion: string
   rollbackVersion: string
   summary: string
@@ -3005,6 +3010,38 @@ export type AiEvaluationRunRequest = {
   completedAt?: string
   results: Array<{ caseId: string; scoreBps: number; safetyPassed: boolean; latencyMs?: number | null; outputHash: string }>
 }
+export type ProviderLegalReviewDto = {
+  id: string
+  sourceKey: string
+  scopeKey: string
+  version: number
+  providerId: string
+  modelVersionId: string
+  environment: ModelDeploymentEnvironment
+  decision: 'approved' | 'blocked'
+  allowedRegions: string[]
+  geographyStatus: 'approved' | 'blocked'
+  dpaStatus: 'executed' | 'not_required' | 'blocked'
+  retentionStatus: 'approved' | 'blocked'
+  retentionDays: number
+  trainingStatus: 'opt_out' | 'contractual_no_training' | 'blocked'
+  copyrightStatus: 'approved' | 'blocked'
+  slaStatus: 'approved' | 'blocked'
+  sourceEvidenceHash: string
+  evidenceHash: string
+  counselRef: string
+  productOwnerRef: string
+  reviewedAt: string
+  validFrom: string
+  expiresAt: string
+  reasonCode: string
+  createdByRef: string
+  createdAt: string
+  provider?: ModelProviderDto
+  modelVersion?: ModelVersionDto
+}
+export type ProviderLegalReviewRequest = Omit<ProviderLegalReviewDto, 'id' | 'scopeKey' | 'evidenceHash' | 'createdByRef' | 'createdAt' | 'provider' | 'modelVersion'>
+export type ProviderLegalSummaryDto = { reviewCount: number; scopeCount: number; approvedCount: number; blockedCount: number }
 export type ProviderReadinessGateDto = { id: string; allowed: boolean; reasonCode: string | null; blockedScopeKey?: string | null }
 export type ProviderOperationalReadinessDto = { ready: boolean; reasonCode: string | null; gates: ProviderReadinessGateDto[]; checkedAt: string }
 export type ProviderOperationalPolicyDto = {

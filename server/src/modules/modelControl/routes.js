@@ -51,6 +51,7 @@ import {
   parseEvaluationSuiteCreate,
   parseEvaluationSuiteListQuery,
 } from '../../modelControl/modelEvaluationRuntime.js'
+import { parseProviderLegalReviewCreate, parseProviderLegalReviewListQuery } from '../../modelControl/providerLegalRuntime.js'
 import { repositories } from '../../repositories/index.js'
 
 const permissions = Object.freeze({
@@ -65,6 +66,7 @@ export const registerModelControlRoutes = (router, options = {}) => {
   const routingRepository = routeRepositories.modelRouting
   const governanceRepository = routeRepositories.modelGovernance
   const evaluationRepository = routeRepositories.modelEvaluation
+  const providerLegalRepository = routeRepositories.providerLegal
   const providerOperationsRepository = routeRepositories.providerOperations
   const find = async (type, id, path) => {
     const resource = await repository.find(type, id)
@@ -127,6 +129,47 @@ export const registerModelControlRoutes = (router, options = {}) => {
     const snapshot = await operationalSnapshot(profile)
     return { allowed: snapshot.readiness.ready, reasonCode: snapshot.readiness.reasonCode }
   }
+
+  router.add('GET', '/api/admin/model-control/provider-legal-reviews', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:provider-legal:read')
+    const page = await providerLegalRepository.listReviews(parseProviderLegalReviewListQuery(context.query))
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.provider_legal.reviews_queried', resourceType: 'provider_legal_review', resourceId: null, metadata: { resultCount: page.items.length, limit: page.limit } })
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('POST', '/api/admin/model-control/provider-legal-reviews', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:provider-legal:manage')
+    const review = await providerLegalRepository.createReview(parseProviderLegalReviewCreate((await readJsonBody(request)) ?? {}, actor))
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.provider_legal.review_recorded', resourceType: 'provider_legal_review', resourceId: review.id, metadata: { scopeKey: review.scopeKey, version: review.version, decision: review.decision, providerId: review.providerId, modelVersionId: review.modelVersionId, environment: review.environment, evidenceHash: review.evidenceHash, expiresAt: review.expiresAt } })
+    created(response, review)
+  })
+
+  router.add('GET', '/api/admin/model-control/provider-legal-reviews/:id', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:provider-legal:read')
+    const review = await providerLegalRepository.findReview(context.params.id)
+    if (!review) throw notFound(`/api/admin/model-control/provider-legal-reviews/${context.params.id}`)
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.provider_legal.review_read', resourceType: 'provider_legal_review', resourceId: review.id, metadata: { version: review.version, decision: review.decision, evidenceHash: review.evidenceHash } })
+    ok(response, review)
+  })
+
+  router.add('GET', '/api/admin/model-control/provider-legal-summary', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:provider-legal:read')
+    const exported = await providerLegalRepository.exportAll()
+    const latestByScope = new Map()
+    for (const item of exported.reviews) if (!latestByScope.has(item.scopeKey) || latestByScope.get(item.scopeKey).version < item.version) latestByScope.set(item.scopeKey, item)
+    const current = [...latestByScope.values()]
+    const approvedCount = current.filter((item) => item.decision === 'approved' && Date.parse(item.validFrom) <= Date.now() && Date.parse(item.expiresAt) > Date.now()).length
+    const blockedCount = current.length - approvedCount
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.provider_legal.summary_read', resourceType: 'provider_legal_review', resourceId: null, metadata: { reviewCount: exported.reviews.length, scopeCount: current.length, approvedCount, blockedCount } })
+    ok(response, { reviewCount: exported.reviews.length, scopeCount: current.length, approvedCount, blockedCount })
+  })
+
+  router.add('GET', '/api/admin/model-control/provider-legal-export', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:provider-legal:read')
+    const exported = await providerLegalRepository.exportAll()
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.provider_legal.exported', resourceType: 'provider_legal_review', resourceId: null, metadata: { reviewCount: exported.reviews.length } })
+    ok(response, exported)
+  })
 
   router.add('GET', '/api/admin/model-control/evaluation-suites', async (_request, response, context) => {
     const actor = requirePermission(context, 'admin:model-evaluations:read')

@@ -26,7 +26,7 @@ Maturity has four meanings:
 | User and profile | Partial | Personal profile, public page, portfolio, sessions | Limited role and audit read sides | Account lifecycle, export/deletion, full Admin management |
 | Identity and access | Partial | Email/OAuth login and session revocation | Role permission editing | Permission registry, resource policy, high-risk access controls |
 | Config and feature flags | Contract only | Server-owned availability | Isolated media/points policies | Versioned registry, secret references, rollout controls |
-| Model control plane | Contract only | Safe model/provider metadata | Kill switch, budget evidence, circuits | Governed model catalog and explicit Provider approval |
+| Model control plane | Partial | Safe model/provider metadata | Governed catalog/routing, kill switch, budget evidence, circuits, immutable evaluation and scoped legal review gates | Scoped external Provider approval and real adapter enablement |
 | AI runtime | Partial | Image and Chat runtime; Video/Music fixture lifecycles | Generation inspection, governed mutations, immutable quality/safety evaluation, and regression promotion gates | Unified real-Provider runtime and approved external evidence |
 | Task marketplace | Production capable | Publish through dispute lifecycle | Dispute resolution and escrow evidence | Cancellation, expiry, operational depth |
 | Community | Partial | Posts, comments, likes, conversion, profiles | Generic moderation primitives | Content lifecycle, reporting, appeal, dedicated statistics |
@@ -40,7 +40,7 @@ Maturity has four meanings:
 | Developer platform | Contract only | OpenAPI document | No API key administration | API v1 policy, keys, scopes, usage and deprecation |
 | Search and discovery | Planned | Module-local filters only | No global search | Search ownership, indexing, authorization and operations |
 | Support | Partial | Authenticated support requests | Basic review/audit evidence | Queue ownership, SLA, assignment and reporting |
-| Compliance and data rights | Partial | Policies, consent and request entry points | Consent/support audit evidence | Legal approval, export/deletion execution and receipts |
+| Compliance and data rights | Partial | Policies, consent and request entry points | Consent/support audit evidence plus immutable Provider/model/environment legal review and Release revalidation | Qualified-counsel evidence, export/deletion execution and receipts |
 | Platform engineering and release | Partial | Fail-closed production boundaries | Gates, smoke and rollback docs | Real infrastructure, restore rehearsal, SLO/load/canary evidence |
 
 ## Closure Contract

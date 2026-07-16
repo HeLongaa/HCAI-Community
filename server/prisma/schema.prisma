@@ -1761,6 +1761,7 @@ model Provider {
   models              Model[]
   secretRefs          ProviderSecretRef[]
   operationalPolicies ProviderOperationalPolicy[]
+  legalReviews        ProviderLegalReview[]
 
   @@index([status, updatedAt])
   @@map("model_providers")
@@ -1909,6 +1910,7 @@ model ModelVersion {
   prices       PricingVersion[]
   generations  CreativeGeneration[]
   evaluationRuns AiEvaluationRun[]
+  legalReviews   ProviderLegalReview[]
 
   @@unique([modelId, versionKey])
   @@index([status, updatedAt])
@@ -2088,6 +2090,45 @@ model ProviderSecretRef {
   @@map("provider_secret_refs")
 }
 
+model ProviderLegalReview {
+  id                 String                     @id
+  sourceKey          String                     @unique @map("source_key")
+  scopeKey           String                     @map("scope_key")
+  version            Int
+  providerId         String                     @map("provider_id")
+  modelVersionId     String                     @map("model_version_id")
+  environment        ModelDeploymentEnvironment
+  decision           String
+  allowedRegions     String[]                   @default([]) @map("allowed_regions")
+  geographyStatus    String                     @map("geography_status")
+  dpaStatus          String                     @map("dpa_status")
+  retentionStatus    String                     @map("retention_status")
+  retentionDays      Int                        @map("retention_days")
+  trainingStatus     String                     @map("training_status")
+  copyrightStatus    String                     @map("copyright_status")
+  slaStatus          String                     @map("sla_status")
+  sourceEvidenceHash String                     @map("source_evidence_hash")
+  evidenceHash       String                     @map("evidence_hash")
+  counselRef         String                     @map("counsel_ref")
+  productOwnerRef    String                     @map("product_owner_ref")
+  reviewedAt         DateTime                   @map("reviewed_at")
+  validFrom          DateTime                   @map("valid_from")
+  expiresAt          DateTime                   @map("expires_at")
+  reasonCode         String                     @map("reason_code")
+  createdByRef       String                     @map("created_by_ref")
+  createdAt          DateTime                   @default(now()) @map("created_at")
+
+  provider     Provider         @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  modelVersion ModelVersion     @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
+  promotions   ModelPromotion[]
+
+  @@unique([scopeKey, version])
+  @@index([providerId, environment, createdAt])
+  @@index([modelVersionId, environment, createdAt])
+  @@index([decision, expiresAt])
+  @@map("provider_legal_reviews")
+}
+
 model ModelPromotion {
   id                    String   @id
   releaseChangeId       String   @unique @map("release_change_id")
@@ -2096,6 +2137,7 @@ model ModelPromotion {
   routePolicyRevisionId String   @map("route_policy_revision_id")
   providerSecretRefId   String   @map("provider_secret_ref_id")
   evaluationRunId       String?  @map("evaluation_run_id")
+  legalReviewId         String?  @map("legal_review_id")
   createdByRef          String   @map("created_by_ref")
   createdAt             DateTime @default(now()) @map("created_at")
 
@@ -2105,11 +2147,13 @@ model ModelPromotion {
   routePolicyRevision ModelRoutePolicyRevision @relation(fields: [routePolicyRevisionId], references: [id], onDelete: Restrict)
   providerSecretRef   ProviderSecretRef        @relation(fields: [providerSecretRefId], references: [id], onDelete: Restrict)
   evaluationRun       AiEvaluationRun?         @relation(fields: [evaluationRunId], references: [id], onDelete: Restrict)
+  legalReview         ProviderLegalReview?     @relation(fields: [legalReviewId], references: [id], onDelete: Restrict)
 
   @@index([modelDeploymentId, createdAt])
   @@index([routePolicyId, createdAt])
   @@index([providerSecretRefId, createdAt])
   @@index([evaluationRunId, createdAt])
+  @@index([legalReviewId, createdAt])
   @@map("model_promotions")
 }
 

@@ -3149,6 +3149,19 @@ export const openApiDocument = {
     '/admin/model-control/secret-refs/{id}': {
       get: { summary: 'Read one immutable SecretRef metadata record', responses: { '200': { description: 'SecretRef metadata detail' }, '404': { description: 'SecretRef not found' } } },
     },
+    '/admin/model-control/provider-legal-reviews': {
+      get: { summary: 'List immutable Provider legal reviews by Provider, model version, environment, decision, and cursor', responses: { '200': { description: 'Provider legal review page' }, '403': { description: 'Requires Provider legal read permission' } } },
+      post: { summary: 'Append independently reviewed Provider legal and data-processing evidence', responses: { '201': { description: 'Immutable Provider legal review recorded' }, '403': { description: 'Requires Provider legal management permission' }, '409': { description: 'Version or source evidence conflict' } } },
+    },
+    '/admin/model-control/provider-legal-reviews/{id}': {
+      get: { summary: 'Read one immutable Provider legal review and its safe catalog references', responses: { '200': { description: 'Provider legal review detail' }, '404': { description: 'Review not found' } } },
+    },
+    '/admin/model-control/provider-legal-summary': {
+      get: { summary: 'Summarize current approved and blocked Provider legal scopes', responses: { '200': { description: 'Provider legal readiness summary' } } },
+    },
+    '/admin/model-control/provider-legal-export': {
+      get: { summary: 'Export bounded immutable Provider legal evidence without contract bodies or URLs', responses: { '200': { description: 'Portable Provider legal evidence document' } } },
+    },
     '/admin/model-control/evaluation-suites': {
       get: { summary: 'List immutable versioned AI evaluation suites with modality, operation, search, and cursor filters', responses: { '200': { description: 'Evaluation suite page without raw prompts or expected outputs' }, '403': { description: 'Requires model evaluation read permission' } } },
       post: { summary: 'Append a versioned evaluation suite and hashed case references atomically', responses: { '201': { description: 'Immutable suite and cases appended' }, '400': { description: 'Raw or invalid evidence rejected' }, '409': { description: 'Suite version conflict' } } },
@@ -3178,7 +3191,7 @@ export const openApiDocument = {
     },
     '/admin/model-control/promotions': {
       get: { summary: 'List model promotions and linked release approval state', responses: { '200': { description: 'Promotion page' } } },
-      post: { summary: 'Request staging-to-production model promotion using current passing evaluation evidence and existing release approval control', responses: { '201': { description: 'Promotion pending independent approval' }, '409': { description: 'Route, SecretRef, evaluation, or deployment is not eligible' }, '422': { description: 'Promotion references or scopes mismatch' } } },
+      post: { summary: 'Request staging-to-production model promotion using current evaluation and Provider legal evidence plus release approval control', responses: { '201': { description: 'Promotion pending independent approval' }, '409': { description: 'Route, SecretRef, evaluation, legal review, or deployment is not eligible' }, '422': { description: 'Promotion references or scopes mismatch' } } },
     },
     '/admin/model-control/promotions/{id}': {
       get: { summary: 'Read one promotion with immutable associations and linked release evidence', responses: { '200': { description: 'Promotion detail' }, '404': { description: 'Promotion not found' } } },

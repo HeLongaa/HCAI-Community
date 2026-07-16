@@ -145,6 +145,11 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `POST /api/admin/model-control/evaluation-runs` | Required | `admin:model-evaluations:execute`; immutable scored run | Yes |
 | `GET /api/admin/model-control/evaluation-summary` | Required | `admin:model-evaluations:read`; safe aggregate counts | Yes |
 | `GET /api/admin/model-control/evaluation-export` | Required | `admin:model-evaluations:read`; bounded hash-only export | Yes |
+| `GET /api/admin/model-control/provider-legal-reviews` | Required | `admin:provider-legal:read`; filtered immutable evidence with cursor pagination | Yes |
+| `POST /api/admin/model-control/provider-legal-reviews` | Required | `admin:provider-legal:manage`; protected append-only scoped review | Yes |
+| `GET /api/admin/model-control/provider-legal-reviews/:id` | Required | `admin:provider-legal:read`; safe hash/reference detail only | Yes |
+| `GET /api/admin/model-control/provider-legal-summary` | Required | `admin:provider-legal:read`; current-scope approval and blocking counts | Yes |
+| `GET /api/admin/model-control/provider-legal-export` | Required | `admin:provider-legal:read`; bounded safe evidence without contract bodies or URLs | Yes |
 
 | Route | Auth requirement | Permission requirement | Covered by tests |
 | --- | --- | --- | --- |

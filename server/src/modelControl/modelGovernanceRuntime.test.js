@@ -32,12 +32,13 @@ test('SecretRef parser accepts only metadata references and rejects plaintext ma
 
 test('model promotion parser fixes the environment boundary and rejects extra secret fields', () => {
   const payload = {
-    modelDeploymentId: 'deployment-1', routePolicyId: 'policy-1', routePolicyRevisionId: 'revision-1', providerSecretRefId: 'secret-ref-1', evaluationRunId: 'evaluation-run-1',
+    modelDeploymentId: 'deployment-1', routePolicyId: 'policy-1', routePolicyRevisionId: 'revision-1', providerSecretRefId: 'secret-ref-1', evaluationRunId: 'evaluation-run-1', legalReviewId: 'legal-review-1',
     artifactVersion: 'v2', rollbackVersion: 'v1', summary: 'Promote image route', reasonCode: 'reviewed',
   }
   const parsed = parseModelPromotionRequest(payload, actor)
   assert.equal(parsed.release.sourceEnvironment, 'staging')
   assert.equal(parsed.release.targetEnvironment, 'production')
   assert.equal(parsed.promotion.evaluationRunId, 'evaluation-run-1')
+  assert.equal(parsed.promotion.legalReviewId, 'legal-review-1')
   assert.throws(() => parseModelPromotionRequest({ ...payload, token: 'plaintext' }, actor), /unsupported fields/)
 })

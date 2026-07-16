@@ -1,0 +1,48 @@
+import fs from 'node:fs'
+
+const contract = JSON.parse(fs.readFileSync('config/provider-legal-review-contract.json', 'utf8'))
+const schema = fs.readFileSync('server/prisma/schema.prisma', 'utf8')
+const migration = fs.readFileSync(contract.migration, 'utf8')
+const runtime = fs.readFileSync('server/src/modelControl/providerLegalRuntime.js', 'utf8')
+const routes = fs.readFileSync('server/src/modules/modelControl/routes.js', 'utf8')
+const governance = fs.readFileSync('server/src/modelControl/prismaModelGovernanceRepository.js', 'utf8')
+const release = fs.readFileSync('server/src/releases/prismaReleaseRepository.js', 'utf8')
+const permissions = fs.readFileSync('server/src/auth/permissions.js', 'utf8')
+const panel = fs.readFileSync('src/features/admin/ModelControlPanel.tsx', 'utf8')
+const prismaLegalRepository = fs.readFileSync('server/src/modelControl/prismaProviderLegalRepository.js', 'utf8')
+const openapi = fs.readFileSync('server/src/docs/openapi.js', 'utf8')
+const docs = fs.readFileSync(contract.policyDocument, 'utf8')
+const dataGovernance = JSON.parse(fs.readFileSync('config/v1-data-governance.json', 'utf8'))
+
+const checks = []
+const check = (condition, label) => {
+  if (!condition) throw new Error(`FAIL ${label}`)
+  checks.push(label)
+  console.log(`PASS ${label}`)
+}
+
+check(contract.taskId === 'LEGAL-BASE-01', 'contract owns LEGAL-BASE-01')
+check(contract.scope === 'personal_accounts_only', 'legal review remains personal-account scoped')
+check(contract.operationPolicy === 'immutable_evidence', 'legal review is immutable evidence')
+check(schema.includes('model ProviderLegalReview {'), 'ProviderLegalReview is normalized in Prisma')
+check(schema.includes('legalReviewId') && schema.includes('legalReview         ProviderLegalReview?'), 'ModelPromotion links legal evidence compatibly')
+check(migration.includes('provider_legal_reviews_immutable_guard'), 'database rejects legal evidence mutation and deletion')
+for (const gate of ['geography_status', 'dpa_status', 'retention_status', 'training_status', 'copyright_status', 'sla_status']) check(migration.includes(gate), `${gate} is database constrained`)
+check(runtime.includes('counselRef === productOwnerRef'), 'independent counsel and product-owner references are enforced')
+check(runtime.includes('sourceEvidenceHash') && !runtime.includes('contractBody'), 'runtime accepts hash evidence without contract bodies')
+check(runtime.includes('latestReview.id !== review.id') && runtime.includes('allowedRegions.includes'), 'runtime requires current scope version and approved region')
+for (const resource of ['provider-legal-reviews', 'provider-legal-summary', 'provider-legal-export']) check(routes.includes(`/api/admin/model-control/${resource}`), `${resource} Admin API is registered`)
+check(governance.includes('providerLegal.assertPromotionEvidence'), 'promotion request validates Provider legal evidence')
+check(release.includes('PROMOTION_LEGAL_CHANGED') && release.includes('PROMOTION_LEGAL_EXPIRED') && release.includes('PROMOTION_LEGAL_MISMATCH'), 'release apply revalidates Provider legal evidence')
+check(permissions.includes('admin:provider-legal:read') && permissions.includes('admin:provider-legal:manage'), 'dedicated legal permissions are registered')
+check(panel.includes('provider-legal-gate') && panel.includes('Promotion legal review'), 'Admin Model Control exposes legal evidence and promotion selection')
+for (const label of ['Legal geography status', 'Legal retention status', 'Legal copyright status', 'Legal SLA status']) check(panel.includes(label), `${label} is explicitly entered`)
+check(panel.includes('!promotionDraft.evaluationRunId || !promotionDraft.legalReviewId'), 'promotion UI requires evaluation and legal evidence before submission')
+check(prismaLegalRepository.includes("provider: { select: { id: true, key: true, name: true } }") && !prismaLegalRepository.includes('provider: true'), 'legal API relation projection excludes Provider URLs and configuration')
+check(dataGovernance.dataAssets.some((asset) => asset.id === 'provider_legal_review_records' && asset.prismaModels.includes('ProviderLegalReview')), 'data governance classifies Provider legal evidence')
+check(openapi.includes('/admin/model-control/provider-legal-reviews'), 'OpenAPI documents Provider legal APIs')
+check(docs.includes('must not be populated with invented evidence'), 'policy preserves the external human approval boundary')
+check(!contract.entities.some((entity) => ['Tenant', 'Organization', 'Team', 'Membership', 'Invitation'].includes(entity)), 'forbidden shared-account models are absent')
+check(contract.realProviderCalls === false, 'LEGAL-BASE-01 performs no real Provider call')
+
+console.log(`Provider legal review verified: ${checks.length} checks`)

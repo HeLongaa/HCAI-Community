@@ -92,6 +92,7 @@
     { "method": "POST", "path": "/api/admin/model-control/evaluation-suites", "action": "admin.model_evaluation.suite.create.attempted", "resourceType": "ai_evaluation_suite", "resourceParam": null, "reasonCode": "ai_evaluation_suite_create", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/model-control/evaluation-policies", "action": "admin.model_evaluation.policy.create.attempted", "resourceType": "ai_evaluation_policy", "resourceParam": null, "reasonCode": "ai_evaluation_policy_create", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/model-control/evaluation-runs", "action": "admin.model_evaluation.run.create.attempted", "resourceType": "ai_evaluation_run", "resourceParam": null, "reasonCode": "ai_evaluation_run_create", "mode": "domain_audited", "risk": "critical" },
+    { "method": "POST", "path": "/api/admin/model-control/provider-legal-reviews", "action": "admin.provider_legal.review.create.attempted", "resourceType": "provider_legal_review", "resourceParam": null, "reasonCode": "provider_legal_review_create", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/model-control/promotions", "action": "admin.model_control.promotion.request.attempted", "resourceType": "model_promotion", "resourceParam": null, "reasonCode": "model_promotion_request", "mode": "domain_audited", "risk": "critical" }
   ]
 }
