@@ -12,7 +12,9 @@ test('admin filters and transitions owner media lifecycle records', async ({ pag
   await apiData(request.post(`${apiBaseUrl}/api/media/uploads/${upload.asset.id}/scan`, { headers: authHeaders(admin.accessToken), data: { decision: 'clean', note: 'E2E clean fixture' } }))
 
   await signInPage(page, request, 'opsplus')
+  await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
+  await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByTestId('nav-admin').click()
   const panel = page.getByTestId('admin-media-lifecycle')
   await expect(panel).toBeVisible()
@@ -24,7 +26,6 @@ test('admin filters and transitions owner media lifecycle records', async ({ pag
   await row.getByRole('button', { name: 'Recover' }).click()
   await expect(row).toContainText('Active')
 
-  await page.setViewportSize({ width: 390, height: 844 })
   await expect(panel).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
 })
