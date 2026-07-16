@@ -1218,11 +1218,19 @@ const getSeedAssetLibraryItem = (asset, actor) => {
   const referenced = Boolean(generation || [...creativeGenerationsById.values()].some((item) => item.inputAssetIds?.includes(asset.id)))
   return buildSafeAssetLibraryItem(asset, { generation, relations, referenced })
 }
+const getSeedAdminAsset = (asset) => asset ? {
+  ...buildSafeAssetLibraryItem(asset, {
+    relations: [...mediaAssetRelationsById.values()].filter((relation) => relation.sourceAssetId === asset.id || relation.targetAssetId === asset.id),
+    referenced: [...portfolioAssetsById.values()].some((item) => item.assetId === asset.id),
+  }),
+  owner: { id: asset.ownerId ?? asset.ownerHandle, handle: asset.ownerHandle },
+  portfolio: [...portfolioAssetsById.values()].filter((item) => item.assetId === asset.id).map((item) => serializePortfolioAsset(item, asset)),
+} : null
 const getSeedPublicPortfolio = (handle) => [...portfolioAssetsById.values()]
   .filter((item) => item.ownerHandle === handle && item.status === 'published')
   .filter((item) => {
     const asset = mediaAssetsById.get(item.assetId)
-    return asset && !asset.archivedAt && asset.status === 'uploaded' && asset.metadata?.security?.scanStatus === 'clean'
+    return asset && !asset.archivedAt && !asset.deletedAt && asset.status === 'uploaded' && asset.metadata?.security?.scanStatus === 'clean'
   })
   .sort((left, right) => left.sortOrder - right.sortOrder || right.createdAt.localeCompare(left.createdAt))
   .map((item) => serializePortfolioAsset(item, mediaAssetsById.get(item.assetId)))
@@ -5342,18 +5350,19 @@ export const createSeedRepository = () => {
     },
     findAccessibleCreativeInput: (id, actor) => {
       const asset = mediaAssetsById.get(String(id)) ?? null
-      if (!asset || !canAccessOwnedResource(asset.ownerHandle, actor)) return null
+      if (!asset || asset.archivedAt || asset.deletedAt || !canAccessOwnedResource(asset.ownerHandle, actor)) return null
       return serializeMediaAsset(asset)
     },
     findOwnedChatInput: (id, actor) => {
       const asset = mediaAssetsById.get(String(id)) ?? null
-      return asset?.ownerHandle === actor.handle ? serializeMediaAsset(asset) : null
+      return asset?.ownerHandle === actor.handle && !asset.archivedAt && !asset.deletedAt ? serializeMediaAsset(asset) : null
     },
     listChatInputs: (actor, options = {}) => {
       const allowedPurposes = new Set(['task_attachment', 'library_asset'])
       const allowedTypes = new Set(['text/plain', 'text/markdown', 'application/pdf', 'image/png', 'image/jpeg', 'image/webp'])
       const filtered = [...mediaAssetsById.values()]
         .filter((asset) => asset.ownerHandle === actor.handle)
+        .filter((asset) => !asset.archivedAt && !asset.deletedAt)
         .filter((asset) => asset.status === 'uploaded' && asset.metadata?.security?.scanStatus === 'clean')
         .filter((asset) => allowedPurposes.has(asset.purpose) && allowedTypes.has(asset.contentType))
         .filter((asset) => asset.sizeBytes <= 20 * 1024 * 1024)
@@ -5363,6 +5372,7 @@ export const createSeedRepository = () => {
     listCreativeInputs: (actor, options = {}) => {
       const filtered = [...mediaAssetsById.values()]
         .filter((asset) => asset.ownerHandle === actor.handle)
+        .filter((asset) => !asset.archivedAt && !asset.deletedAt)
         .filter((asset) => asset.status === 'uploaded' && asset.metadata?.security?.scanStatus === 'clean')
         .filter((asset) => ['submission_asset', 'profile_portfolio', 'library_asset'].includes(asset.purpose))
         .filter((asset) => ['image/png', 'image/jpeg', 'image/webp', 'audio/mpeg', 'audio/wav', 'audio/mp4'].includes(asset.contentType))
@@ -5373,7 +5383,7 @@ export const createSeedRepository = () => {
       const search = String(options.search ?? '').trim().toLowerCase()
       const filtered = [...mediaAssetsById.values()]
         .filter((asset) => asset.ownerHandle === actor.handle)
-        .filter((asset) => options.archived === 'all' || (options.archived === 'archived' ? Boolean(asset.archivedAt) : !asset.archivedAt))
+        .filter((asset) => options.lifecycle === 'all' || (options.lifecycle === 'deleted' ? Boolean(asset.deletedAt) : options.lifecycle === 'archived' ? !asset.deletedAt && Boolean(asset.archivedAt) : !asset.deletedAt && !asset.archivedAt))
         .filter((asset) => !options.purpose || asset.purpose === options.purpose)
         .filter((asset) => !options.mediaType || assetMediaType(asset.contentType) === options.mediaType)
         .filter((asset) => !options.workspace || assetEligibleForWorkspace(asset, options.workspace))
@@ -5409,6 +5419,7 @@ export const createSeedRepository = () => {
     setAssetArchived: (id, archived, actor) => {
       const asset = mediaAssetsById.get(String(id)) ?? null
       if (!asset || asset.ownerHandle !== actor.handle) return null
+      if (asset.deletedAt) throw new HttpError(409, 'ASSET_DELETED', 'Deleted assets must be recovered before archive changes')
       const updated = { ...asset, archivedAt: archived ? (asset.archivedAt ?? new Date().toISOString()) : null, updatedAt: new Date().toISOString() }
       mediaAssetsById.set(updated.id, updated)
       if (archived) {
@@ -5421,10 +5432,58 @@ export const createSeedRepository = () => {
       recordAudit(actor, archived ? 'media.asset.archived' : 'media.asset.restored', 'media_asset', updated.id, { referenced: [...creativeGenerationsById.values()].some((item) => item.inputAssetIds?.includes(updated.id) || item.outputAssetIds?.includes(updated.id)) })
       return getSeedAssetLibraryItem(updated, actor)
     },
+    setAssetDeleted: (id, deleted, actor, payload = {}) => {
+      const asset = mediaAssetsById.get(String(id)) ?? null
+      if (!asset || asset.ownerHandle !== actor.handle) return null
+      const updated = { ...asset, deletedAt: deleted ? (asset.deletedAt ?? new Date().toISOString()) : null, deletedByHandle: deleted ? actor.handle : null, deletionReason: deleted ? payload.reason ?? 'user_requested' : null, updatedAt: new Date().toISOString() }
+      mediaAssetsById.set(updated.id, updated)
+      if (deleted) {
+        for (const [portfolioId, item] of portfolioAssetsById.entries()) if (item.assetId === updated.id && item.status === 'published') portfolioAssetsById.set(portfolioId, { ...item, status: 'withdrawn', withdrawnAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+      }
+      recordAudit(actor, deleted ? 'media.asset.deleted' : 'media.asset.recovered', 'media_asset', updated.id, { reason: deleted ? updated.deletionReason : 'owner_recovery' })
+      return getSeedAssetLibraryItem(updated, actor)
+    },
+    listAdminAssets: (options = {}) => {
+      const search = String(options.search ?? '').trim().toLowerCase()
+      const rows = [...mediaAssetsById.values()]
+        .filter((asset) => options.lifecycle === 'all' || (options.lifecycle === 'deleted' ? Boolean(asset.deletedAt) : options.lifecycle === 'archived' ? !asset.deletedAt && Boolean(asset.archivedAt) : !asset.deletedAt && !asset.archivedAt))
+        .filter((asset) => !options.status || asset.status === options.status)
+        .filter((asset) => !options.purpose || asset.purpose === options.purpose)
+        .filter((asset) => !options.mediaType || assetMediaType(asset.contentType) === options.mediaType)
+        .filter((asset) => !options.ownerHandle || asset.ownerHandle === options.ownerHandle)
+        .filter((asset) => !search || [asset.id, asset.fileName, asset.ownerHandle].some((value) => String(value).toLowerCase().includes(search)))
+        .sort((left, right) => options.sort === 'created_asc' ? left.createdAt.localeCompare(right.createdAt) : options.sort === 'name_asc' ? left.fileName.localeCompare(right.fileName) : options.sort === 'updated_desc' ? right.updatedAt.localeCompare(left.updatedAt) : right.createdAt.localeCompare(left.createdAt))
+        .map(getSeedAdminAsset)
+      return paginateByCursor(rows, options)
+    },
+    getAdminAsset: (id) => {
+      const asset = mediaAssetsById.get(String(id)) ?? null
+      if (!asset) return null
+      return getSeedAdminAsset(asset)
+    },
+    setAdminAssetArchived: (id, archived, actor) => {
+      const asset = mediaAssetsById.get(String(id)) ?? null
+      if (!asset) return null
+      if (asset.deletedAt) throw new HttpError(409, 'ASSET_DELETED', 'Deleted assets must be recovered before archive changes')
+      const updated = { ...asset, archivedAt: archived ? (asset.archivedAt ?? new Date().toISOString()) : null, updatedAt: new Date().toISOString() }
+      mediaAssetsById.set(updated.id, updated)
+      if (archived) for (const [portfolioId, item] of portfolioAssetsById.entries()) if (item.assetId === updated.id && item.status === 'published') portfolioAssetsById.set(portfolioId, { ...item, status: 'withdrawn', withdrawnAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+      recordAudit(actor, archived ? 'admin.media.asset.archived' : 'admin.media.asset.restored', 'media_asset', updated.id, { ownerHandle: updated.ownerHandle })
+      return getSeedAdminAsset(updated)
+    },
+    setAdminAssetDeleted: (id, deleted, actor, payload = {}) => {
+      const asset = mediaAssetsById.get(String(id)) ?? null
+      if (!asset) return null
+      const updated = { ...asset, deletedAt: deleted ? (asset.deletedAt ?? new Date().toISOString()) : null, deletedByHandle: deleted ? actor.handle : null, deletionReason: deleted ? payload.reason ?? 'admin_requested' : null, updatedAt: new Date().toISOString() }
+      mediaAssetsById.set(updated.id, updated)
+      if (deleted) for (const [portfolioId, item] of portfolioAssetsById.entries()) if (item.assetId === updated.id && item.status === 'published') portfolioAssetsById.set(portfolioId, { ...item, status: 'withdrawn', withdrawnAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+      recordAudit(actor, deleted ? 'admin.media.asset.deleted' : 'admin.media.asset.recovered', 'media_asset', updated.id, { ownerHandle: updated.ownerHandle, reason: deleted ? updated.deletionReason : 'admin_recovery' })
+      return getSeedAdminAsset(updated)
+    },
     createAssetRelation: (sourceAssetId, payload, actor) => {
       const source = mediaAssetsById.get(String(sourceAssetId)) ?? null
       const target = mediaAssetsById.get(String(payload.targetAssetId)) ?? null
-      if (!source || !target || source.ownerHandle !== actor.handle || target.ownerHandle !== actor.handle) return null
+      if (!source || !target || source.ownerHandle !== actor.handle || target.ownerHandle !== actor.handle || source.deletedAt || target.deletedAt) return null
       if (source.id === target.id) throw new HttpError(409, 'ASSET_RELATION_CYCLE', 'An asset cannot relate to itself')
       if (payload.relationType === 'reused_as_input' && !assetEligibleForWorkspace(source, payload.targetWorkspace)) {
         throw new HttpError(409, 'ASSET_NOT_REUSABLE', 'Asset is not eligible for the target workspace')
@@ -6091,7 +6150,7 @@ export const createSeedRepository = () => {
     },
     createDownload: (id, actor) => {
       const asset = mediaAssetsById.get(String(id)) ?? null
-      if (!asset || !canAccessOwnedResource(asset.ownerHandle, actor) || asset.status !== 'uploaded' || asset.metadata?.security?.scanStatus !== 'clean') {
+      if (!asset || !canAccessOwnedResource(asset.ownerHandle, actor) || asset.status !== 'uploaded' || asset.metadata?.security?.scanStatus !== 'clean' || asset.archivedAt || asset.deletedAt) {
         return null
       }
       recordAudit(actor, 'media.download.signed', 'media_asset', asset.id, {

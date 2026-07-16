@@ -1473,6 +1473,9 @@ model MediaAsset {
   createdAt             DateTime          @default(now()) @map("created_at")
   updatedAt             DateTime          @updatedAt @map("updated_at")
   archivedAt            DateTime?         @map("archived_at")
+  deletedAt             DateTime?         @map("deleted_at")
+  deletedByHandle       String?            @map("deleted_by_handle")
+  deletionReason        String?            @map("deletion_reason")
 
   owner                    User                      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   scanJobs                 MediaScanJob[]
@@ -1483,7 +1486,7 @@ model MediaAsset {
   creativeGenerationAssets CreativeGenerationAsset[]
   chatTurnInputAssets      ChatTurnInputAsset[]
 
-  @@index([ownerId, archivedAt, createdAt])
+  @@index([ownerId, deletedAt, archivedAt, createdAt])
   @@index([purpose])
   @@index([status])
   @@map("media_assets")

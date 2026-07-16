@@ -4,10 +4,10 @@ import { signInPage } from './helpers'
 
 const asset = (overrides: Partial<ApiAssetLibraryItem> = {}): ApiAssetLibraryItem => ({
   id: 'asset-library-image', fileName: 'campaign-variant.png', contentType: 'image/png', mediaType: 'image', sizeBytes: 4096,
-  purpose: 'library_asset', status: 'uploaded', scanStatus: 'clean', archivedAt: null, sourceGeneration: { id: 'generation-image', workspace: 'image', mode: 'image_variation', status: 'completed', createdAt: '2026-07-13T10:00:00.000Z' },
+  purpose: 'library_asset', status: 'uploaded', scanStatus: 'clean', archivedAt: null, deletedAt: null, deletionReason: null, sourceGeneration: { id: 'generation-image', workspace: 'image', mode: 'image_variation', status: 'completed', createdAt: '2026-07-13T10:00:00.000Z' },
   relations: [{ id: 'relation-1', sourceAssetId: 'asset-library-image', targetAssetId: 'asset-library-variant', relationType: 'variant', sourceGenerationId: 'generation-image', targetWorkspace: 'image', role: 'source', createdAt: '2026-07-13T10:01:00.000Z' }],
   referenced: true,
-  actions: { download: { available: true, reason: null }, archive: { available: true, reason: null }, restore: { available: false, reason: 'not_archived' }, reuse: { image: { available: true, reason: null }, video: { available: true, reason: null }, music: { available: false, reason: 'incompatible_asset' }, chat: { available: false, reason: 'incompatible_asset' } } },
+  actions: { download: { available: true, reason: null }, archive: { available: true, reason: null }, restore: { available: false, reason: 'not_archived' }, delete: { available: true, reason: null }, recover: { available: false, reason: 'not_deleted' }, reuse: { image: { available: true, reason: null }, video: { available: true, reason: null }, music: { available: false, reason: 'incompatible_asset' }, chat: { available: false, reason: 'incompatible_asset' } } },
   createdAt: '2026-07-13T10:00:00.000Z', updatedAt: '2026-07-13T10:01:00.000Z', ...overrides,
 })
 
@@ -18,11 +18,23 @@ test('asset library filters, inspects lineage, archives, and prepares cross-stud
   let privateLibrarySaves = 0
   let portfolioDrafts = 0
   await page.route('**/api/media/assets?*', async (route) => {
-    queryLog.push(new URL(route.request().url()).searchParams)
-    await route.fulfill({ json: { data: current.archivedAt ? [] : [current], meta: { pagination: { limit: 24, nextCursor: null } } } })
+    const query = new URL(route.request().url()).searchParams
+    queryLog.push(query)
+    const lifecycle = query.get('lifecycle') ?? 'active'
+    const visible = lifecycle === 'all' || lifecycle === 'deleted' ? lifecycle === 'all' || Boolean(current.deletedAt) : lifecycle === 'archived' ? Boolean(current.archivedAt) && !current.deletedAt : !current.archivedAt && !current.deletedAt
+    await route.fulfill({ json: { data: visible ? [current] : [], meta: { pagination: { limit: 24, nextCursor: null } } } })
   })
   await page.route('**/api/media/assets/asset-library-image/archive', async (route) => {
     current = asset({ archivedAt: '2026-07-13T11:00:00.000Z', actions: { ...current.actions, download: { available: false, reason: 'asset_archived' }, archive: { available: false, reason: 'already_archived' }, restore: { available: true, reason: null } } })
+    await route.fulfill({ json: { data: current } })
+  })
+  await page.route('**/api/media/assets/asset-library-image', async (route) => {
+    if (route.request().method() !== 'DELETE') return route.fallback()
+    current = asset({ deletedAt: '2026-07-13T11:00:00.000Z', deletionReason: 'user_requested', actions: { ...current.actions, download: { available: false, reason: 'asset_deleted' }, archive: { available: false, reason: 'asset_deleted' }, restore: { available: false, reason: 'asset_deleted' }, delete: { available: false, reason: 'already_deleted' }, recover: { available: true, reason: null } } })
+    await route.fulfill({ json: { data: current } })
+  })
+  await page.route('**/api/media/assets/asset-library-image/recover', async (route) => {
+    current = asset()
     await route.fulfill({ json: { data: current } })
   })
   await page.route('**/api/tasks/delivery-targets', async (route) => {
@@ -88,10 +100,39 @@ test('asset library filters, inspects lineage, archives, and prepares cross-stud
 
   await page.getByTestId('nav-assets').click()
   await page.getByRole('button', { name: /campaign-variant.png/ }).click()
+  await page.getByRole('button', { name: 'Delete' }).click()
+  await page.getByRole('button', { name: 'Confirm delete' }).click()
+  await expect(page.getByRole('button', { name: /campaign-variant.png/ })).toHaveCount(0)
+  await page.getByLabel('Lifecycle state').selectOption('deleted')
+  await page.getByRole('button', { name: /campaign-variant.png/ }).click()
+  await expect(page.getByRole('definition').filter({ hasText: 'Trash' })).toBeVisible()
+  await page.getByRole('button', { name: 'Recover' }).click()
+  await page.getByLabel('Lifecycle state').selectOption('active')
+
+  await page.getByRole('button', { name: /campaign-variant.png/ }).click()
   await page.getByRole('button', { name: 'Archive' }).click()
   await expect(page.getByRole('button', { name: /campaign-variant.png/ })).toHaveCount(0)
 
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByTestId('asset-library')).toBeVisible()
   expect(await page.locator('body').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+})
+
+test('asset library prepares a fixture upload and exposes its pending governance state', async ({ page, request }) => {
+  await signInPage(page, request, 'promptlin')
+  const uploaded = asset({
+    id: 'asset-uploaded-file', fileName: 'upload-note.txt', contentType: 'text/plain', mediaType: 'document', status: 'pending', scanStatus: 'pending', sourceGeneration: null, relations: [], referenced: false,
+    actions: { ...asset().actions, download: { available: false, reason: 'asset_not_clean' }, reuse: { image: { available: false, reason: 'asset_not_clean' }, video: { available: false, reason: 'asset_not_clean' }, music: { available: false, reason: 'asset_not_clean' }, chat: { available: false, reason: 'asset_not_clean' } } },
+  })
+  let completed = false
+  await page.route('**/api/media/assets?*', async (route) => route.fulfill({ json: { data: completed ? [uploaded] : [], meta: { pagination: { limit: 24, nextCursor: null } } } }))
+  await page.route('**/api/media/uploads', async (route) => route.fulfill({ status: 201, json: { data: { asset: { id: uploaded.id, fileName: uploaded.fileName, contentType: uploaded.contentType, sizeBytes: uploaded.sizeBytes, purpose: uploaded.purpose, status: 'pending' }, upload: { provider: 'mock', method: 'PUT', url: 'mock://media/upload', headers: {}, expiresAt: '2026-07-16T12:00:00.000Z' } } } }))
+  await page.route('**/api/media/uploads/asset-uploaded-file/complete', async (route) => { completed = true; await route.fulfill({ json: { data: { id: uploaded.id, status: 'uploaded' } } }) })
+
+  await page.goto('/')
+  await page.getByTestId('nav-assets').click()
+  await page.getByLabel('Upload asset').setInputFiles({ name: 'upload-note.txt', mimeType: 'text/plain', buffer: Buffer.from('fixture upload') })
+  await expect(page.getByRole('button', { name: /upload-note.txt/ })).toBeVisible()
+  await page.getByRole('button', { name: /upload-note.txt/ }).click()
+  await expect(page.getByText('pending / pending')).toBeVisible()
 })

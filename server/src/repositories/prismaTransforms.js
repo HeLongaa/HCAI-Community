@@ -204,6 +204,9 @@ export const getMediaAssetDto = (asset) => ({
   purpose: asset.purpose,
   status: asset.status,
   metadata: asset.metadata ?? null,
+  archivedAt: asset.archivedAt?.toISOString() ?? null,
+  deletedAt: asset.deletedAt?.toISOString() ?? null,
+  deletionReason: asset.deletionReason ?? null,
   createdAt: asset.createdAt ? asset.createdAt.toISOString() : '',
   updatedAt: asset.updatedAt ? asset.updatedAt.toISOString() : '',
 })

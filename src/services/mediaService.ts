@@ -1,8 +1,10 @@
 import { api, withQuery } from './apiClient'
 import type {
   ApiMediaAsset,
+  ApiAdminMediaAsset,
   ApiAssetLibraryItem,
   AssetLibraryQuery,
+  AdminMediaAssetQuery,
   ApiMediaGovernanceConfig,
   MediaGovernancePolicyHistoryItem,
   ApiMediaScanAlert,
@@ -40,6 +42,23 @@ export const mediaService = {
   },
   restoreAsset(id: string) {
     return api.post<ApiAssetLibraryItem>(`/media/assets/${id}/restore`)
+  },
+  deleteAsset(id: string) {
+    return api.del<ApiAssetLibraryItem>(`/media/assets/${id}`)
+  },
+  recoverAsset(id: string) {
+    return api.post<ApiAssetLibraryItem>(`/media/assets/${id}/recover`)
+  },
+  async adminAssets(query?: AdminMediaAssetQuery) {
+    const envelope = await api.getEnvelope<ApiAdminMediaAsset[]>(withQuery('/admin/media/assets', query))
+    const pagination = (envelope.meta as ApiPaginationMeta | undefined)?.pagination
+    return { items: envelope.data, limit: pagination?.limit ?? query?.limit ?? envelope.data.length, nextCursor: pagination?.nextCursor ?? null }
+  },
+  adminAsset(id: string) {
+    return api.get<ApiAdminMediaAsset>(`/admin/media/assets/${id}`)
+  },
+  adminAssetAction(id: string, action: 'archive' | 'restore' | 'delete' | 'recover', reason?: string) {
+    return api.post<ApiAdminMediaAsset>(`/admin/media/assets/${id}/${action}`, action === 'delete' ? { reason: reason || 'admin_requested' } : undefined)
   },
   saveAssetToLibrary(id: string) {
     return api.post<ApiSavedAssetReference>(`/media/assets/${id}/library`)

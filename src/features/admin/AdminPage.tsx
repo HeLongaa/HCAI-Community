@@ -14,6 +14,7 @@ import { ReleaseControlPanel } from './ReleaseControlPanel'
 import { ObservabilityPanel } from './ObservabilityPanel'
 import { SystemSettingsPanel } from './SystemSettingsPanel'
 import { ConfigurationResourcesPanel } from './ConfigurationResourcesPanel'
+import { AdminMediaLifecyclePanel } from './AdminMediaLifecyclePanel'
 import type {
   AdminPermissionDto,
   AdminAuditArchiveManifestDto,
@@ -2297,7 +2298,7 @@ export function AdminPage({
           </button>
         }
       />
-      <div className="chip-row">
+      <div className="chip-row admin-tabs">
         {adminTabs.map((item) => (
           <button
             className={activeTab === item ? 'chip active' : 'chip'}
@@ -2504,7 +2505,7 @@ export function AdminPage({
           ))}
         </div>
       </section>
-      <section className="panel">
+      <section className="panel admin-media-governance-panel">
         <SectionHeader
           eyebrow={textFor(t, 'Media governance', '媒体治理')}
           title={textFor(t, 'Upload review queue', '上传审核队列')}
@@ -2519,6 +2520,7 @@ export function AdminPage({
             </>
           }
         />
+        <AdminMediaLifecyclePanel t={t} canRead={canReadQueues} canReview={canReviewQueues}/>
         <div className="admin-detail-panel">
           <div>
             <strong>{textFor(t, 'Governance config', '治理配置')}</strong>

@@ -185,7 +185,12 @@ Notification targets are location hints, not authorization grants. Generation, a
 | `GET /api/media/assets/:id` | Required | Owner only | Yes |
 | `POST /api/media/assets/:id/archive` | Required | Owner only; preserves referenced evidence | Yes |
 | `POST /api/media/assets/:id/restore` | Required | Owner only | Yes |
+| `DELETE /api/media/assets/:id` | Required | Owner only; soft delete revokes download/reuse and withdraws published portfolio records | Yes |
+| `POST /api/media/assets/:id/recover` | Required | Owner only; recovery never republishes portfolio records | Yes |
 | `POST /api/media/assets/:id/relations` | Required | Owner of both assets; governance and cycle checks apply | Yes |
+| `GET /api/admin/media/assets` | Required | `admin:queue:read`; safe projection, filters, sorting, and cursor pagination | Yes |
+| `GET /api/admin/media/assets/:id` | Required | `admin:queue:read`; private storage fields excluded | Yes |
+| `POST /api/admin/media/assets/:id/:action` | Required | `admin:queue:review`; action is archive, restore, delete, or recover and is audited | Yes |
 | `GET /api/admin/permissions` | Required | `admin:audit:read` | Yes |
 | `GET /api/admin/roles` | Required | `admin:audit:read` | Yes |
 | `PUT /api/admin/roles/:role/permissions` | Required | `admin:permissions:manage` | Yes |

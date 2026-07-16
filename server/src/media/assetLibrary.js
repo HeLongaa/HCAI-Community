@@ -12,7 +12,7 @@ export const assetMediaType = (contentType = '') => {
 
 export const assetEligibleForWorkspace = (asset, workspace) => {
   if (!workspace) return true
-  if (asset.status !== 'uploaded' || asset.metadata?.security?.scanStatus !== 'clean' || asset.archivedAt) return false
+  if (asset.status !== 'uploaded' || asset.metadata?.security?.scanStatus !== 'clean' || asset.archivedAt || asset.deletedAt) return false
   if (workspace === 'image') return ['submission_asset', 'profile_portfolio', 'library_asset'].includes(asset.purpose) && imageTypes.has(asset.contentType)
   if (workspace === 'video') return ['submission_asset', 'profile_portfolio', 'library_asset'].includes(asset.purpose) && imageTypes.has(asset.contentType)
   if (workspace === 'music') return false
@@ -32,6 +32,7 @@ const safeRelation = (relation) => ({
 
 export const buildSafeAssetLibraryItem = (asset, { generation = null, relations = [], referenced = false } = {}) => {
   const clean = asset.status === 'uploaded' && asset.metadata?.security?.scanStatus === 'clean'
+  const deleted = Boolean(asset.deletedAt)
   return {
     id: String(asset.id),
     fileName: asset.fileName,
@@ -42,6 +43,8 @@ export const buildSafeAssetLibraryItem = (asset, { generation = null, relations 
     status: asset.status,
     scanStatus: asset.metadata?.security?.scanStatus ?? 'pending',
     archivedAt: asset.archivedAt?.toISOString?.() ?? asset.archivedAt ?? null,
+    deletedAt: asset.deletedAt?.toISOString?.() ?? asset.deletedAt ?? null,
+    deletionReason: asset.deletionReason ?? null,
     sourceGeneration: generation ? {
       id: String(generation.id),
       workspace: generation.workspace,
@@ -52,9 +55,11 @@ export const buildSafeAssetLibraryItem = (asset, { generation = null, relations 
     relations: relations.map(safeRelation),
     referenced,
     actions: {
-      download: { available: clean && !asset.archivedAt, reason: clean ? (asset.archivedAt ? 'asset_archived' : null) : 'asset_not_clean' },
-      archive: { available: !asset.archivedAt, reason: asset.archivedAt ? 'already_archived' : null },
-      restore: { available: Boolean(asset.archivedAt), reason: asset.archivedAt ? null : 'not_archived' },
+      download: { available: clean && !asset.archivedAt && !deleted, reason: deleted ? 'asset_deleted' : clean ? (asset.archivedAt ? 'asset_archived' : null) : 'asset_not_clean' },
+      archive: { available: !asset.archivedAt && !deleted, reason: deleted ? 'asset_deleted' : asset.archivedAt ? 'already_archived' : null },
+      restore: { available: Boolean(asset.archivedAt) && !deleted, reason: deleted ? 'asset_deleted' : asset.archivedAt ? null : 'not_archived' },
+      delete: { available: !deleted, reason: deleted ? 'already_deleted' : null },
+      recover: { available: deleted, reason: deleted ? null : 'not_deleted' },
       reuse: Object.fromEntries(['image', 'video', 'music', 'chat'].map((workspace) => [workspace, {
         available: assetEligibleForWorkspace(asset, workspace),
         reason: assetEligibleForWorkspace(asset, workspace) ? null : asset.archivedAt ? 'asset_archived' : clean ? 'incompatible_asset' : 'asset_not_clean',

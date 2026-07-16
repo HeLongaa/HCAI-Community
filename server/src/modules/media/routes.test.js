@@ -96,6 +96,71 @@ test('unified asset library is owner scoped, safe, filterable, and archive aware
   }
 })
 
+test('owner soft delete revokes access, preserves trash visibility, and supports recovery', async () => {
+  const server = await createTestServer()
+  try {
+    const asset = await completeAndCleanUpload(server, 'demo-access.promptlin', {
+      fileName: 'soft-delete-source.png', contentType: 'image/png', purpose: 'library_asset',
+    })
+    const denied = await requestJson(server.url, `/api/media/assets/${asset.id}`, { method: 'DELETE', token: 'demo-access.taskops' })
+    assert.equal(denied.status, 404)
+
+    const deleted = await requestJson(server.url, `/api/media/assets/${asset.id}`, { method: 'DELETE', token: 'demo-access.promptlin' })
+    assert.equal(deleted.status, 200)
+    assert.ok(deleted.payload.data.deletedAt)
+    assert.equal(deleted.payload.data.actions.download.available, false)
+    assert.equal(deleted.payload.data.actions.download.reason, 'asset_deleted')
+    assert.equal(deleted.payload.data.actions.recover.available, true)
+
+    const download = await requestJson(server.url, `/api/media/assets/${asset.id}/download`, { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(download.status, 404)
+    const active = await requestJson(server.url, '/api/media/assets?search=soft-delete-source', { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(active.payload.data.length, 0)
+    const trash = await requestJson(server.url, '/api/media/assets?lifecycle=deleted&search=soft-delete-source', { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(trash.payload.data.length, 1)
+    const archiveDeleted = await requestJson(server.url, `/api/media/assets/${asset.id}/archive`, { token: 'demo-access.promptlin' })
+    assert.equal(archiveDeleted.status, 409)
+    assert.equal(archiveDeleted.payload.error.code, 'ASSET_DELETED')
+
+    const recovered = await requestJson(server.url, `/api/media/assets/${asset.id}/recover`, { token: 'demo-access.promptlin' })
+    assert.equal(recovered.status, 200)
+    assert.equal(recovered.payload.data.deletedAt, null)
+    assert.equal(recovered.payload.data.actions.download.available, true)
+  } finally {
+    await server.close()
+  }
+})
+
+test('admin media lifecycle is permissioned, filterable, paginated, and audited', async () => {
+  const server = await createTestServer()
+  try {
+    const first = await completeAndCleanUpload(server, 'demo-access.promptlin', { fileName: 'admin-lifecycle-a.png', contentType: 'image/png', purpose: 'library_asset' })
+    await completeAndCleanUpload(server, 'demo-access.taskops', { fileName: 'admin-lifecycle-b.png', contentType: 'image/png', purpose: 'library_asset' })
+
+    const forbidden = await requestJson(server.url, '/api/admin/media/assets', { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(forbidden.status, 403)
+    const page = await requestJson(server.url, '/api/admin/media/assets?ownerHandle=promptlin&lifecycle=all&sort=name_asc&limit=1', { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(page.status, 200)
+    assert.equal(page.payload.data.length, 1)
+    assert.equal(page.payload.data[0].owner.handle, 'promptlin')
+    assert.equal('storageKey' in page.payload.data[0], false)
+
+    const deleted = await requestJson(server.url, `/api/admin/media/assets/${first.id}/delete`, { body: { reason: 'policy_request' }, token: 'demo-access.opsplus' })
+    assert.equal(deleted.status, 200)
+    assert.ok(deleted.payload.data.deletedAt)
+    assert.equal(deleted.payload.data.deletionReason, 'policy_request')
+    const detail = await requestJson(server.url, `/api/admin/media/assets/${first.id}`, { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(detail.status, 200)
+    assert.equal(detail.payload.data.id, first.id)
+
+    const audit = await requestJson(server.url, `/api/admin/audit?resourceType=media_asset&resourceId=${first.id}&limit=100`, { method: 'GET', token: 'demo-access.opsplus' })
+    assert.ok(audit.payload.data.some((event) => event.action === 'admin.media.asset.lifecycle.attempted'))
+    assert.ok(audit.payload.data.some((event) => event.action === 'admin.media.asset.deleted'))
+  } finally {
+    await server.close()
+  }
+})
+
 test('asset lineage is idempotent and rejects ownership bypasses and cycles', async () => {
   const server = await createTestServer()
   try {

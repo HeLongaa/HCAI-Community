@@ -3918,7 +3918,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
 
   const publicPortfolioWhere = {
     status: 'published',
-    asset: { is: { archivedAt: null, status: 'uploaded', metadata: { path: ['security', 'scanStatus'], equals: 'clean' } } },
+    asset: { is: { archivedAt: null, deletedAt: null, status: 'uploaded', metadata: { path: ['security', 'scanStatus'], equals: 'clean' } } },
   }
   const publicProfileDto = (row) => ({
     ...getProfileDto(row),
@@ -7373,14 +7373,14 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         where: { id: String(id) },
         include: { owner: { include: { profile: true } } },
       })
-      if (!asset) return null
+      if (!asset || asset.archivedAt || asset.deletedAt) return null
       const ownerHandle = asset.owner?.profile?.handle ?? asset.owner?.id ?? null
       if (!authorizeResource({ resourceType: 'media_asset', action: 'read', actor, resource: { ownerId: asset.ownerId, ownerHandle }, allowPublic: false }).allowed) return null
       return getMediaAssetDto(asset)
     },
     findOwnedChatInput: async (id, actor) => {
       const asset = await client.mediaAsset.findFirst({
-        where: { id: String(id), ownerId: String(actor.id) },
+        where: { id: String(id), ownerId: String(actor.id), archivedAt: null, deletedAt: null },
       })
       return asset ? getMediaAssetDto(asset) : null
     },
@@ -7391,6 +7391,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       const assets = await client.mediaAsset.findMany({
         where: {
           ownerId: owner.id,
+          archivedAt: null,
+          deletedAt: null,
           status: 'uploaded',
           purpose: { in: ['task_attachment', 'library_asset'] },
           contentType: { in: ['text/plain', 'text/markdown', 'application/pdf', 'image/png', 'image/jpeg', 'image/webp'] },
@@ -7415,6 +7417,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       const assets = await client.mediaAsset.findMany({
         where: {
           ownerId: owner.id,
+          archivedAt: null,
+          deletedAt: null,
           status: 'uploaded',
           purpose: { in: ['submission_asset', 'profile_portfolio', 'library_asset'] },
           contentType: { in: ['image/png', 'image/jpeg', 'image/webp', 'audio/mpeg', 'audio/wav', 'audio/mp4'] },
@@ -7435,7 +7439,10 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       const owner = await findUserByHandle(actor.handle)
       if (!owner) return { items: [], limit: options.limit ?? 24, nextCursor: null }
       const limit = Math.min(Math.max(Number(options.limit ?? 24), 1), 100)
-      const archivedWhere = options.archived === 'all' ? {} : { archivedAt: options.archived === 'archived' ? { not: null } : null }
+      const lifecycleWhere = options.lifecycle === 'all' ? {}
+        : options.lifecycle === 'deleted' ? { deletedAt: { not: null } }
+          : options.lifecycle === 'archived' ? { deletedAt: null, archivedAt: { not: null } }
+            : { deletedAt: null, archivedAt: null }
       const contentTypeWhere = options.mediaType === 'image' ? { startsWith: 'image/' }
         : options.mediaType === 'video' ? { startsWith: 'video/' }
           : options.mediaType === 'audio' ? { startsWith: 'audio/' }
@@ -7459,7 +7466,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         where: {
           ownerId: owner.id,
           AND: [
-            archivedWhere,
+            lifecycleWhere,
             options.purpose ? { purpose: options.purpose } : {},
             contentTypeWhere ? { contentType: contentTypeWhere } : {},
             options.search ? { fileName: { contains: options.search, mode: 'insensitive' } } : {},
@@ -7533,6 +7540,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       if (!owner) return null
       const current = await client.mediaAsset.findFirst({ where: { id: String(id), ownerId: owner.id } })
       if (!current) return null
+      if (current.deletedAt) throw new HttpError(409, 'ASSET_DELETED', 'Deleted assets must be recovered before archive changes')
       const now = new Date()
       const asset = await client.$transaction(async (transaction) => {
         const updated = await transaction.mediaAsset.update({ where: { id: current.id }, data: { archivedAt: archived ? (current.archivedAt ?? now) : null } })
@@ -7544,6 +7552,94 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       await recordAudit({ actor, action: archived ? 'media.asset.archived' : 'media.asset.restored', resourceType: 'media_asset', resourceId: asset.id, metadata: {} })
       return media.getAssetLibraryItem(asset.id, actor)
     },
+    setAssetDeleted: async (id, deleted, actor, payload = {}) => {
+      const owner = await findUserByHandle(actor.handle)
+      if (!owner) return null
+      const current = await client.mediaAsset.findFirst({ where: { id: String(id), ownerId: owner.id } })
+      if (!current) return null
+      const now = new Date()
+      await client.$transaction(async (transaction) => {
+        await transaction.mediaAsset.update({
+          where: { id: current.id },
+          data: deleted
+            ? { deletedAt: current.deletedAt ?? now, deletedByHandle: actor.handle, deletionReason: payload.reason ?? 'user_requested' }
+            : { deletedAt: null, deletedByHandle: null, deletionReason: null },
+        })
+        if (deleted) {
+          await transaction.profilePortfolioAsset.updateMany({ where: { assetId: current.id, status: 'published' }, data: { status: 'withdrawn', withdrawnAt: now } })
+        }
+      })
+      await recordAudit({ actor, action: deleted ? 'media.asset.deleted' : 'media.asset.recovered', resourceType: 'media_asset', resourceId: current.id, metadata: { reason: deleted ? payload.reason ?? 'user_requested' : 'owner_recovery' } })
+      return media.getAssetLibraryItem(current.id, actor)
+    },
+    listAdminAssets: async (options = {}) => {
+      const limit = Math.min(Math.max(Number(options.limit ?? 24), 1), 100)
+      const lifecycleWhere = options.lifecycle === 'all' ? {}
+        : options.lifecycle === 'deleted' ? { deletedAt: { not: null } }
+          : options.lifecycle === 'archived' ? { deletedAt: null, archivedAt: { not: null } }
+            : { deletedAt: null, archivedAt: null }
+      const contentTypeWhere = options.mediaType === 'image' ? { startsWith: 'image/' }
+        : options.mediaType === 'video' ? { startsWith: 'video/' }
+          : options.mediaType === 'audio' ? { startsWith: 'audio/' }
+            : options.mediaType === 'document' ? { not: { startsWith: 'image/' } } : undefined
+      const orderBy = options.sort === 'created_asc' ? [{ createdAt: 'asc' }, { id: 'asc' }]
+        : options.sort === 'updated_desc' ? [{ updatedAt: 'desc' }, { id: 'desc' }]
+          : options.sort === 'name_asc' ? [{ fileName: 'asc' }, { id: 'asc' }]
+            : [{ createdAt: 'desc' }, { id: 'desc' }]
+      const rows = await client.mediaAsset.findMany({
+        where: {
+          AND: [
+            lifecycleWhere,
+            options.status ? { status: options.status } : {},
+            options.purpose ? { purpose: options.purpose } : {},
+            contentTypeWhere ? { contentType: contentTypeWhere } : {},
+            options.search ? { OR: [{ id: { contains: options.search, mode: 'insensitive' } }, { fileName: { contains: options.search, mode: 'insensitive' } }, { owner: { profile: { is: { handle: { contains: options.search, mode: 'insensitive' } } } } }] } : {},
+            options.ownerHandle ? { owner: { profile: { is: { handle: { equals: options.ownerHandle, mode: 'insensitive' } } } } } : {},
+          ],
+        },
+        include: { owner: { select: { id: true, profile: { select: { handle: true } } } }, outgoingRelations: true, incomingRelations: true, portfolioAssets: true },
+        orderBy,
+        take: limit + 1,
+        ...(options.cursor ? { cursor: { id: String(options.cursor) }, skip: 1 } : {}),
+      })
+      const page = rows.slice(0, limit)
+      const items = await Promise.all(page.map(async (asset) => {
+        const generation = await client.creativeGeneration.findFirst({ where: { outputAssetIds: { has: asset.id } } })
+        return {
+          ...buildSafeAssetLibraryItem(asset, { generation, relations: [...asset.outgoingRelations, ...asset.incomingRelations], referenced: Boolean(generation || asset.portfolioAssets.length) }),
+          owner: { id: asset.owner.id, handle: asset.owner.profile?.handle ?? asset.owner.id },
+          portfolio: asset.portfolioAssets.map(getPortfolioAssetDto),
+        }
+      }))
+      return { items, limit, nextCursor: rows.length > limit ? page.at(-1)?.id ?? null : null }
+    },
+    getAdminAsset: async (id) => {
+      const page = await media.listAdminAssets({ lifecycle: 'all', search: String(id), limit: 100, sort: 'created_desc' })
+      return page.items.find((item) => item.id === String(id)) ?? null
+    },
+    setAdminAssetArchived: async (id, archived, actor) => {
+      const current = await client.mediaAsset.findUnique({ where: { id: String(id) }, include: { owner: { include: { profile: true } } } })
+      if (!current) return null
+      if (current.deletedAt) throw new HttpError(409, 'ASSET_DELETED', 'Deleted assets must be recovered before archive changes')
+      const now = new Date()
+      await client.$transaction(async (transaction) => {
+        await transaction.mediaAsset.update({ where: { id: current.id }, data: { archivedAt: archived ? (current.archivedAt ?? now) : null } })
+        if (archived) await transaction.profilePortfolioAsset.updateMany({ where: { assetId: current.id, status: 'published' }, data: { status: 'withdrawn', withdrawnAt: now } })
+      })
+      await recordAudit({ actor, action: archived ? 'admin.media.asset.archived' : 'admin.media.asset.restored', resourceType: 'media_asset', resourceId: current.id, metadata: { ownerHandle: current.owner.profile?.handle ?? current.owner.id } })
+      return media.getAdminAsset(current.id)
+    },
+    setAdminAssetDeleted: async (id, deleted, actor, payload = {}) => {
+      const current = await client.mediaAsset.findUnique({ where: { id: String(id) }, include: { owner: { include: { profile: true } } } })
+      if (!current) return null
+      const now = new Date()
+      await client.$transaction(async (transaction) => {
+        await transaction.mediaAsset.update({ where: { id: current.id }, data: deleted ? { deletedAt: current.deletedAt ?? now, deletedByHandle: actor.handle, deletionReason: payload.reason ?? 'admin_requested' } : { deletedAt: null, deletedByHandle: null, deletionReason: null } })
+        if (deleted) await transaction.profilePortfolioAsset.updateMany({ where: { assetId: current.id, status: 'published' }, data: { status: 'withdrawn', withdrawnAt: now } })
+      })
+      await recordAudit({ actor, action: deleted ? 'admin.media.asset.deleted' : 'admin.media.asset.recovered', resourceType: 'media_asset', resourceId: current.id, metadata: { ownerHandle: current.owner.profile?.handle ?? current.owner.id, reason: deleted ? payload.reason ?? 'admin_requested' : 'admin_recovery' } })
+      return media.getAdminAsset(current.id)
+    },
     createAssetRelation: async (sourceAssetId, payload, actor) => {
       const owner = await findUserByHandle(actor.handle)
       if (!owner) return null
@@ -7551,7 +7647,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         client.mediaAsset.findFirst({ where: { id: String(sourceAssetId), ownerId: owner.id } }),
         client.mediaAsset.findFirst({ where: { id: String(payload.targetAssetId), ownerId: owner.id } }),
       ])
-      if (!source || !target) return null
+      if (!source || !target || source.deletedAt || target.deletedAt) return null
       if (source.id === target.id) throw new HttpError(409, 'ASSET_RELATION_CYCLE', 'An asset cannot relate to itself')
       if (payload.relationType === 'reused_as_input' && !assetEligibleForWorkspace(source, payload.targetWorkspace)) throw new HttpError(409, 'ASSET_NOT_REUSABLE', 'Asset is not eligible for the target workspace')
       if (['parent', 'variant'].includes(payload.relationType)) {
@@ -8335,7 +8431,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       if (ownerHandle !== actor.handle && !hasPermission(actor, 'admin:access')) {
         return null
       }
-      if (asset.status !== 'uploaded' || scanStatus !== 'clean') {
+      if (asset.status !== 'uploaded' || scanStatus !== 'clean' || asset.archivedAt || asset.deletedAt) {
         return null
       }
       await recordAudit({

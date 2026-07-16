@@ -11,6 +11,8 @@ import {
   parseCreativeGenerationHistoryQuery,
   parseGenerationCenterQuery,
   parseAdminAuditListQuery,
+  parseAdminMediaAssetQuery,
+  parseAssetLibraryQuery,
   parseAdminCreativeGenerationListQuery,
   parseAdminReviewListQuery,
   parseEmailLoginRequest,
@@ -611,6 +613,20 @@ test('parseCreateMediaUploadRequest validates upload signing payloads', () => {
     () => parseCreateMediaUploadRequest({ fileName: 'x', contentType: 'text/plain', sizeBytes: 1, purpose: 'unknown' }),
     'purpose must be one of: task_attachment, submission_asset, profile_portfolio, library_asset',
   )
+})
+
+test('media lifecycle query parsers validate trash and admin sorting', () => {
+  assert.equal(parseAssetLibraryQuery({ lifecycle: 'deleted' }).lifecycle, 'deleted')
+  assert.deepEqual(
+    parseAdminMediaAssetQuery({ lifecycle: 'archived', ownerHandle: 'promptlin', status: 'uploaded', sort: 'name_asc', limit: '12' }),
+    {
+      lifecycle: 'archived', ownerHandle: 'promptlin', status: 'uploaded', sort: 'name_asc', limit: 12, cursor: null,
+      purpose: null, mediaType: null, workspace: null, archived: 'all', search: null, dateFrom: null, dateTo: null,
+    },
+  )
+  assertValidationError(() => parseAssetLibraryQuery({ lifecycle: 'purged' }), 'lifecycle must be one of: active, archived, deleted, all')
+  assertValidationError(() => parseAdminMediaAssetQuery({ sort: 'random' }), 'sort must be one of: created_desc, created_asc, updated_desc, name_asc')
+  assertValidationError(() => parseAdminMediaAssetQuery({ status: 'purged' }), 'status must be one of: pending, uploaded, rejected')
 })
 
 test('parseCompleteMediaUploadRequest keeps checksum optional', () => {
