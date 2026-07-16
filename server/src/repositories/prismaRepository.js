@@ -15,6 +15,7 @@ import { createPrismaConfigResourcesRepository } from '../configResources/prisma
 import { createPrismaModelControlRepository } from '../modelControl/prismaModelControlRepository.js'
 import { createPrismaModelRoutingRepository } from '../modelControl/prismaModelRoutingRepository.js'
 import { createPrismaModelGovernanceRepository } from '../modelControl/prismaModelGovernanceRepository.js'
+import { createPrismaProviderOperationsRepository } from '../modelControl/prismaProviderOperationsRepository.js'
 import { createPrismaGenerationExecutionRepository } from '../creative/prismaGenerationExecutionRepository.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, hashToken, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
@@ -229,6 +230,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   const modelControl = createPrismaModelControlRepository(client, { recordAudit })
   const modelRouting = createPrismaModelRoutingRepository(client, { recordAudit })
   const modelGovernance = createPrismaModelGovernanceRepository(client)
+  const providerOperations = createPrismaProviderOperationsRepository(client)
   const creativeGenerationExecutions = createPrismaGenerationExecutionRepository(client, { recordAudit })
   const observability = createPrismaObservabilityRepository(client)
 
@@ -9786,6 +9788,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     modelControl,
     modelRouting,
     modelGovernance,
+    providerOperations,
     observability,
     operationsMetrics,
     authorization,

@@ -100,6 +100,10 @@
     { "model": "ModelRouteDecision", "domain": "model-control-plane", "policy": "append_only", "hardDelete": false },
     { "model": "ProviderSecretRef", "domain": "model-control-plane", "policy": "append_only", "hardDelete": false },
     { "model": "ModelPromotion", "domain": "model-control-plane", "policy": "append_only", "hardDelete": false },
+    { "model": "ProviderOperationalPolicy", "domain": "model-control-plane", "policy": "state_transition", "hardDelete": false },
+    { "model": "ProviderHealthEvidence", "domain": "model-control-plane", "policy": "append_only", "hardDelete": false },
+    { "model": "ProviderRateLimitWindow", "domain": "model-control-plane", "policy": "state_transition", "hardDelete": false },
+    { "model": "ProviderDispatchLease", "domain": "model-control-plane", "policy": "state_transition", "hardDelete": false },
     { "model": "CreativeCreditLedger", "domain": "entitlements-accounting", "policy": "state_transition", "hardDelete": false },
     { "model": "CreativeQuotaWindow", "domain": "entitlements-accounting", "policy": "state_transition", "hardDelete": false },
     { "model": "CreativeQuotaReservation", "domain": "entitlements-accounting", "policy": "state_transition", "hardDelete": false },
@@ -108,6 +112,6 @@
   "protectedFamilies": {
     "accounting": ["PointLedger", "InternalAccountingOperation", "InternalAccountingMovement"],
     "audit": ["AuditEvent", "SecurityEvent", "DomainEventOutbox", "DomainEventConsumerInbox", "DomainEventCompensation"],
-    "evidence": ["AuditArchiveManifest", "MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence", "SystemSettingRevision", "ConfigResourceRevision", "ModelRoutePolicyRevision", "ModelRouteDecision", "ProviderSecretRef", "ModelPromotion"]
+    "evidence": ["AuditArchiveManifest", "MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence", "SystemSettingRevision", "ConfigResourceRevision", "ModelRoutePolicyRevision", "ModelRouteDecision", "ProviderSecretRef", "ModelPromotion", "ProviderHealthEvidence"]
   }
 }

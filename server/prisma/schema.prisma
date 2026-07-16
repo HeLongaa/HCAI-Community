@@ -464,23 +464,23 @@ model ObservabilityLog {
 }
 
 model TraceSpan {
-  id             String   @id
-  traceId        String   @map("trace_id")
-  spanId         String   @unique @map("span_id")
-  parentSpanId   String?  @map("parent_span_id")
-  requestId      String   @map("request_id")
-  service        String
-  module         String
-  operation      String
-  outcome        String
-  startedAt      DateTime @map("started_at")
-  endedAt        DateTime @map("ended_at")
-  durationMs     Int      @map("duration_ms")
-  errorCode      String?  @map("error_code")
-  resourceType   String?  @map("resource_type")
-  resourceId     String?  @map("resource_id")
-  jobId          String?  @map("job_id")
-  eventId        String?  @map("event_id")
+  id           String   @id
+  traceId      String   @map("trace_id")
+  spanId       String   @unique @map("span_id")
+  parentSpanId String?  @map("parent_span_id")
+  requestId    String   @map("request_id")
+  service      String
+  module       String
+  operation    String
+  outcome      String
+  startedAt    DateTime @map("started_at")
+  endedAt      DateTime @map("ended_at")
+  durationMs   Int      @map("duration_ms")
+  errorCode    String?  @map("error_code")
+  resourceType String?  @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  jobId        String?  @map("job_id")
+  eventId      String?  @map("event_id")
 
   @@index([traceId, startedAt])
   @@index([requestId, startedAt])
@@ -491,25 +491,25 @@ model TraceSpan {
 }
 
 model ObservabilityAlert {
-  id               String   @id
-  alertKey         String   @unique @map("alert_key")
-  sloId            String   @map("slo_id")
-  state            String
-  severity         String
-  shortWindowBurn  Float    @map("short_window_burn")
-  longWindowBurn   Float    @map("long_window_burn")
-  threshold        Float
-  owner            String
-  runbook           String
-  version           Int      @default(1)
-  startedAt         DateTime @map("started_at")
-  acknowledgedAt    DateTime? @map("acknowledged_at")
-  acknowledgedBy    String?  @map("acknowledged_by")
-  silencedUntil     DateTime? @map("silenced_until")
-  resolvedAt        DateTime? @map("resolved_at")
-  resolutionNote    String?   @map("resolution_note")
-  createdAt         DateTime   @default(now()) @map("created_at")
-  updatedAt         DateTime   @updatedAt @map("updated_at")
+  id              String    @id
+  alertKey        String    @unique @map("alert_key")
+  sloId           String    @map("slo_id")
+  state           String
+  severity        String
+  shortWindowBurn Float     @map("short_window_burn")
+  longWindowBurn  Float     @map("long_window_burn")
+  threshold       Float
+  owner           String
+  runbook         String
+  version         Int       @default(1)
+  startedAt       DateTime  @map("started_at")
+  acknowledgedAt  DateTime? @map("acknowledged_at")
+  acknowledgedBy  String?   @map("acknowledged_by")
+  silencedUntil   DateTime? @map("silenced_until")
+  resolvedAt      DateTime? @map("resolved_at")
+  resolutionNote  String?   @map("resolution_note")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   @@index([state, updatedAt])
   @@index([sloId, updatedAt])
@@ -676,11 +676,11 @@ model SystemSettingRevision {
   actorRef           String   @map("actor_ref")
   createdAt          DateTime @default(now()) @map("created_at")
 
-  sourceChange       SystemSettingChange      @relation(fields: [sourceChangeId], references: [id], onDelete: Restrict)
-  previousRevision   SystemSettingRevision?   @relation("SystemSettingRevisionChain", fields: [previousRevisionId], references: [id], onDelete: Restrict)
-  nextRevisions      SystemSettingRevision[]  @relation("SystemSettingRevisionChain")
-  currentForSettings SystemSetting[]          @relation("CurrentSystemSettingRevision")
-  rollbackChanges    SystemSettingChange[]    @relation("RollbackTargetRevision")
+  sourceChange       SystemSettingChange     @relation(fields: [sourceChangeId], references: [id], onDelete: Restrict)
+  previousRevision   SystemSettingRevision?  @relation("SystemSettingRevisionChain", fields: [previousRevisionId], references: [id], onDelete: Restrict)
+  nextRevisions      SystemSettingRevision[] @relation("SystemSettingRevisionChain")
+  currentForSettings SystemSetting[]         @relation("CurrentSystemSettingRevision")
+  rollbackChanges    SystemSettingChange[]   @relation("RollbackTargetRevision")
 
   @@unique([settingKey, settingVersion])
   @@index([settingKey, createdAt])
@@ -690,24 +690,24 @@ model SystemSettingRevision {
 }
 
 model ConfigResource {
-  id                String             @id
-  kind              ConfigResourceKind
-  key               String
-  title             String
-  description       String?
-  draftValue        Json               @map("draft_value")
-  draftValueSchemaVersion Int          @default(1) @map("draft_value_schema_version")
-  publishedValue    Json?              @map("published_value")
-  publishedValueSchemaVersion Int      @default(1) @map("published_value_schema_version")
-  publishedVersion  Int                @default(0) @map("published_version")
-  currentRevisionId String?            @map("current_revision_id")
-  version           Int                @default(1)
-  createdByRef      String             @map("created_by_ref")
-  updatedByRef      String             @map("updated_by_ref")
-  deletedByRef      String?            @map("deleted_by_ref")
-  deletedAt         DateTime?          @map("deleted_at")
-  createdAt         DateTime           @default(now()) @map("created_at")
-  updatedAt         DateTime           @updatedAt @map("updated_at")
+  id                          String             @id
+  kind                        ConfigResourceKind
+  key                         String
+  title                       String
+  description                 String?
+  draftValue                  Json               @map("draft_value")
+  draftValueSchemaVersion     Int                @default(1) @map("draft_value_schema_version")
+  publishedValue              Json?              @map("published_value")
+  publishedValueSchemaVersion Int                @default(1) @map("published_value_schema_version")
+  publishedVersion            Int                @default(0) @map("published_version")
+  currentRevisionId           String?            @map("current_revision_id")
+  version                     Int                @default(1)
+  createdByRef                String             @map("created_by_ref")
+  updatedByRef                String             @map("updated_by_ref")
+  deletedByRef                String?            @map("deleted_by_ref")
+  deletedAt                   DateTime?          @map("deleted_at")
+  createdAt                   DateTime           @default(now()) @map("created_at")
+  updatedAt                   DateTime           @updatedAt @map("updated_at")
 
   currentRevision ConfigResourceRevision?  @relation("CurrentConfigResourceRevision", fields: [currentRevisionId], references: [id], onDelete: Restrict)
   revisions       ConfigResourceRevision[] @relation("ConfigResourceRevisions")
@@ -736,9 +736,9 @@ model ConfigResourceRevision {
   reasonCode         String   @map("reason_code")
   createdAt          DateTime @default(now()) @map("created_at")
 
-  resource           ConfigResource           @relation("ConfigResourceRevisions", fields: [resourceId], references: [id], onDelete: Restrict)
-  previousRevision   ConfigResourceRevision?  @relation("ConfigResourceRevisionChain", fields: [previousRevisionId], references: [id], onDelete: Restrict)
-  nextRevisions      ConfigResourceRevision[] @relation("ConfigResourceRevisionChain")
+  resource            ConfigResource           @relation("ConfigResourceRevisions", fields: [resourceId], references: [id], onDelete: Restrict)
+  previousRevision    ConfigResourceRevision?  @relation("ConfigResourceRevisionChain", fields: [previousRevisionId], references: [id], onDelete: Restrict)
+  nextRevisions       ConfigResourceRevision[] @relation("ConfigResourceRevisionChain")
   currentForResources ConfigResource[]         @relation("CurrentConfigResourceRevision")
 
   @@unique([resourceId, resourceVersion])
@@ -748,22 +748,22 @@ model ConfigResourceRevision {
 }
 
 model FeatureFlag {
-  resourceId       String   @id @map("resource_id")
-  key              String   @unique
-  enabled          Boolean
-  payload          Json
-  rules            Json
-  rulesSchemaVersion Int     @default(1) @map("rules_schema_version")
-  rolloutPercentage Int?    @map("rollout_percentage")
-  rolloutSeed      String   @map("rollout_seed")
-  emergencyOff     Boolean  @default(false) @map("emergency_off")
-  emergencyOffByRef String? @map("emergency_off_by_ref")
-  emergencyOffReasonCode String? @map("emergency_off_reason_code")
-  emergencyOffAt   DateTime? @map("emergency_off_at")
-  payloadSchemaVersion Int    @default(1) @map("payload_schema_version")
-  publishedVersion Int      @map("published_version")
-  deletedAt        DateTime? @map("deleted_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  resourceId             String    @id @map("resource_id")
+  key                    String    @unique
+  enabled                Boolean
+  payload                Json
+  rules                  Json
+  rulesSchemaVersion     Int       @default(1) @map("rules_schema_version")
+  rolloutPercentage      Int?      @map("rollout_percentage")
+  rolloutSeed            String    @map("rollout_seed")
+  emergencyOff           Boolean   @default(false) @map("emergency_off")
+  emergencyOffByRef      String?   @map("emergency_off_by_ref")
+  emergencyOffReasonCode String?   @map("emergency_off_reason_code")
+  emergencyOffAt         DateTime? @map("emergency_off_at")
+  payloadSchemaVersion   Int       @default(1) @map("payload_schema_version")
+  publishedVersion       Int       @map("published_version")
+  deletedAt              DateTime? @map("deleted_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
 
   resource ConfigResource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
 
@@ -771,16 +771,16 @@ model FeatureFlag {
 }
 
 model ReferenceDataEntry {
-  resourceId       String   @id @map("resource_id")
-  key              String   @unique
-  label            String
-  value            Json
-  valueSchemaVersion Int      @default(1) @map("value_schema_version")
-  sortOrder        Int      @default(0) @map("sort_order")
-  active           Boolean  @default(true)
-  publishedVersion Int      @map("published_version")
-  deletedAt        DateTime? @map("deleted_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  resourceId         String    @id @map("resource_id")
+  key                String    @unique
+  label              String
+  value              Json
+  valueSchemaVersion Int       @default(1) @map("value_schema_version")
+  sortOrder          Int       @default(0) @map("sort_order")
+  active             Boolean   @default(true)
+  publishedVersion   Int       @map("published_version")
+  deletedAt          DateTime? @map("deleted_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
   resource ConfigResource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
 
@@ -1133,37 +1133,37 @@ model User {
   createdAt   DateTime   @default(now()) @map("created_at")
   updatedAt   DateTime   @updatedAt @map("updated_at")
 
-  profile                   Profile?
-  authAccounts              AuthAccount[]
-  oauthAuthorizationRequests OAuthAuthorizationRequest[]
-  refreshTokens             RefreshToken[]
-  publisherTasks            Task[]                          @relation("TaskPublisher")
-  assigneeTasks             Task[]                          @relation("TaskAssignee")
-  taskProposals             TaskProposal[]
-  taskSubmissions           TaskSubmission[]                @relation("TaskSubmissionSubmitter")
-  reviewedTaskSubmissions   TaskSubmission[]                @relation("TaskSubmissionReviewer")
-  authoredPosts             Post[]
-  comments                  Comment[]
-  postLikes                 PostLike[]
-  libraryItems              LibraryItem[]
-  pointLedger               PointLedger[]
-  internalPointAccount      InternalPointAccount?
-  accountingIssuesReviewed  AccountingReconciliationIssue[] @relation("AccountingIssueReviewer")
-  adminReviews              AdminReview[]                   @relation("AdminReviewReviewer")
-  mediaAssets               MediaAsset[]
-  mediaAssetRelations       MediaAssetRelation[]
-  notifications             Notification[]
-  mediaScanJobsReviewed     MediaScanJob[]                  @relation("MediaScanJobReviewer")
+  profile                      Profile?
+  authAccounts                 AuthAccount[]
+  oauthAuthorizationRequests   OAuthAuthorizationRequest[]
+  refreshTokens                RefreshToken[]
+  publisherTasks               Task[]                          @relation("TaskPublisher")
+  assigneeTasks                Task[]                          @relation("TaskAssignee")
+  taskProposals                TaskProposal[]
+  taskSubmissions              TaskSubmission[]                @relation("TaskSubmissionSubmitter")
+  reviewedTaskSubmissions      TaskSubmission[]                @relation("TaskSubmissionReviewer")
+  authoredPosts                Post[]
+  comments                     Comment[]
+  postLikes                    PostLike[]
+  libraryItems                 LibraryItem[]
+  pointLedger                  PointLedger[]
+  internalPointAccount         InternalPointAccount?
+  accountingIssuesReviewed     AccountingReconciliationIssue[] @relation("AccountingIssueReviewer")
+  adminReviews                 AdminReview[]                   @relation("AdminReviewReviewer")
+  mediaAssets                  MediaAsset[]
+  mediaAssetRelations          MediaAssetRelation[]
+  notifications                Notification[]
+  mediaScanJobsReviewed        MediaScanJob[]                  @relation("MediaScanJobReviewer")
   creativeGenerations          CreativeGeneration[]
   creativeGenerationExecutions CreativeGenerationExecution[]
-  creativeQuotaWindows      CreativeQuotaWindow[]
-  creativeQuotaReservations CreativeQuotaReservation[]
-  creativeCreditLedger      CreativeCreditLedger[]
-  chatConversations         ChatConversation[]
-  chatDeletionTombstones    ChatDeletionTombstone[]
-  taskSubmissionAssets      TaskSubmissionAsset[]
-  creativeGenerationAssets  CreativeGenerationAsset[]
-  chatTurnInputAssets       ChatTurnInputAsset[]
+  creativeQuotaWindows         CreativeQuotaWindow[]
+  creativeQuotaReservations    CreativeQuotaReservation[]
+  creativeCreditLedger         CreativeCreditLedger[]
+  chatConversations            ChatConversation[]
+  chatDeletionTombstones       ChatDeletionTombstone[]
+  taskSubmissionAssets         TaskSubmissionAsset[]
+  creativeGenerationAssets     CreativeGenerationAsset[]
+  chatTurnInputAssets          ChatTurnInputAsset[]
 
   @@map("users")
 }
@@ -1525,8 +1525,8 @@ model MediaAsset {
   updatedAt             DateTime          @updatedAt @map("updated_at")
   archivedAt            DateTime?         @map("archived_at")
   deletedAt             DateTime?         @map("deleted_at")
-  deletedByHandle       String?            @map("deleted_by_handle")
-  deletionReason        String?            @map("deletion_reason")
+  deletedByHandle       String?           @map("deleted_by_handle")
+  deletionReason        String?           @map("deletion_reason")
 
   owner                    User                      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   storageObject            MediaStorageObject?
@@ -1758,27 +1758,123 @@ model Provider {
   createdAt             DateTime           @default(now()) @map("created_at")
   updatedAt             DateTime           @updatedAt @map("updated_at")
 
-  models Model[]
-  secretRefs ProviderSecretRef[]
+  models              Model[]
+  secretRefs          ProviderSecretRef[]
+  operationalPolicies ProviderOperationalPolicy[]
 
   @@index([status, updatedAt])
   @@map("model_providers")
 }
 
+model ProviderOperationalPolicy {
+  id                     String                     @id
+  providerId             String                     @map("provider_id")
+  scopeKey               String                     @unique @map("scope_key")
+  environment            ModelDeploymentEnvironment
+  providerAccountRef     String                     @map("provider_account_ref")
+  secretPurpose          String                     @map("secret_purpose")
+  workspace              ModelCapabilityModality
+  modelFamily            String?                    @map("model_family")
+  currency               String
+  perRequestBudgetMicros BigInt                     @map("per_request_budget_micros")
+  maxRequestsPerMinute   Int                        @map("max_requests_per_minute")
+  maxConcurrentRequests  Int                        @map("max_concurrent_requests")
+  healthTtlSeconds       Int                        @map("health_ttl_seconds")
+  status                 ModelControlStatus         @default(draft)
+  version                Int                        @default(1)
+  reasonCode             String                     @map("reason_code")
+  createdByRef           String                     @map("created_by_ref")
+  updatedByRef           String                     @map("updated_by_ref")
+  createdAt              DateTime                   @default(now()) @map("created_at")
+  updatedAt              DateTime                   @updatedAt @map("updated_at")
+
+  provider       Provider                  @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  healthEvidence ProviderHealthEvidence[]
+  rateWindows    ProviderRateLimitWindow[]
+  dispatchLeases ProviderDispatchLease[]
+
+  @@index([providerId, environment, status])
+  @@index([workspace, environment, status])
+  @@map("provider_operational_policies")
+}
+
+model ProviderHealthEvidence {
+  id                   String   @id
+  policyId             String   @map("policy_id")
+  sourceKey            String   @unique @map("source_key")
+  status               String
+  checkedAt            DateTime @map("checked_at")
+  expiresAt            DateTime @map("expires_at")
+  latencyMs            Int?     @map("latency_ms")
+  successRateBps       Int?     @map("success_rate_bps")
+  sourceType           String   @map("source_type")
+  sourceRefHash        String   @map("source_ref_hash")
+  evidenceHash         String   @map("evidence_hash")
+  details              Json?
+  detailsSchemaVersion Int      @default(1) @map("details_schema_version")
+  createdByRef         String   @map("created_by_ref")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  policy ProviderOperationalPolicy @relation(fields: [policyId], references: [id], onDelete: Restrict)
+
+  @@index([policyId, checkedAt])
+  @@index([status, expiresAt])
+  @@map("provider_health_evidence")
+}
+
+model ProviderRateLimitWindow {
+  id            String   @id
+  policyId      String   @map("policy_id")
+  windowStart   DateTime @map("window_start")
+  windowEnd     DateTime @map("window_end")
+  requestCount  Int      @default(0) @map("request_count")
+  inFlightCount Int      @default(0) @map("in_flight_count")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  policy ProviderOperationalPolicy @relation(fields: [policyId], references: [id], onDelete: Restrict)
+  leases ProviderDispatchLease[]
+
+  @@unique([policyId, windowStart])
+  @@index([windowEnd])
+  @@map("provider_rate_limit_windows")
+}
+
+model ProviderDispatchLease {
+  id             String    @id
+  sourceKey      String    @unique @map("source_key")
+  policyId       String    @map("policy_id")
+  rateWindowId   String    @map("rate_window_id")
+  status         String    @default("active")
+  estimateMicros BigInt    @map("estimate_micros")
+  leaseExpiresAt DateTime  @map("lease_expires_at")
+  releasedAt     DateTime? @map("released_at")
+  reasonCode     String?   @map("reason_code")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  policy     ProviderOperationalPolicy @relation(fields: [policyId], references: [id], onDelete: Restrict)
+  rateWindow ProviderRateLimitWindow   @relation(fields: [rateWindowId], references: [id], onDelete: Restrict)
+
+  @@index([policyId, status, leaseExpiresAt])
+  @@index([rateWindowId, status])
+  @@map("provider_dispatch_leases")
+}
+
 model Model {
-  id           String             @id @default(cuid())
-  providerId   String             @map("provider_id")
-  key          String
-  name         String
-  family       String?
-  status       ModelControlStatus @default(draft)
-  version      Int                @default(1)
-  createdByRef String             @map("created_by_ref")
-  updatedByRef String             @map("updated_by_ref")
-  archivedByRef String?           @map("archived_by_ref")
-  archivedAt   DateTime?          @map("archived_at")
-  createdAt    DateTime           @default(now()) @map("created_at")
-  updatedAt    DateTime           @updatedAt @map("updated_at")
+  id            String             @id @default(cuid())
+  providerId    String             @map("provider_id")
+  key           String
+  name          String
+  family        String?
+  status        ModelControlStatus @default(draft)
+  version       Int                @default(1)
+  createdByRef  String             @map("created_by_ref")
+  updatedByRef  String             @map("updated_by_ref")
+  archivedByRef String?            @map("archived_by_ref")
+  archivedAt    DateTime?          @map("archived_at")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
 
   provider Provider       @relation(fields: [providerId], references: [id], onDelete: Restrict)
   versions ModelVersion[]
@@ -1789,25 +1885,25 @@ model Model {
 }
 
 model ModelVersion {
-  id                       String             @id @default(cuid())
-  modelId                  String             @map("model_id")
-  versionKey               String             @map("version_key")
-  status                   ModelControlStatus @default(draft)
-  releaseDate              DateTime?          @map("release_date")
-  deprecationDate          DateTime?          @map("deprecation_date")
-  contextWindow            Int?               @map("context_window")
-  maxOutputUnits           Int?               @map("max_output_units")
-  parameterSchema          Json?              @map("parameter_schema")
-  parameterSchemaSchemaVersion Int            @default(1) @map("parameter_schema_schema_version")
-  version                  Int                @default(1)
-  createdByRef             String             @map("created_by_ref")
-  updatedByRef             String             @map("updated_by_ref")
-  archivedByRef            String?            @map("archived_by_ref")
-  archivedAt               DateTime?          @map("archived_at")
-  createdAt                DateTime           @default(now()) @map("created_at")
-  updatedAt                DateTime           @updatedAt @map("updated_at")
+  id                           String             @id @default(cuid())
+  modelId                      String             @map("model_id")
+  versionKey                   String             @map("version_key")
+  status                       ModelControlStatus @default(draft)
+  releaseDate                  DateTime?          @map("release_date")
+  deprecationDate              DateTime?          @map("deprecation_date")
+  contextWindow                Int?               @map("context_window")
+  maxOutputUnits               Int?               @map("max_output_units")
+  parameterSchema              Json?              @map("parameter_schema")
+  parameterSchemaSchemaVersion Int                @default(1) @map("parameter_schema_schema_version")
+  version                      Int                @default(1)
+  createdByRef                 String             @map("created_by_ref")
+  updatedByRef                 String             @map("updated_by_ref")
+  archivedByRef                String?            @map("archived_by_ref")
+  archivedAt                   DateTime?          @map("archived_at")
+  createdAt                    DateTime           @default(now()) @map("created_at")
+  updatedAt                    DateTime           @updatedAt @map("updated_at")
 
-  model        Model              @relation(fields: [modelId], references: [id], onDelete: Restrict)
+  model        Model                @relation(fields: [modelId], references: [id], onDelete: Restrict)
   capabilities ModelCapability[]
   deployments  ModelDeployment[]
   prices       PricingVersion[]
@@ -1838,24 +1934,24 @@ model ModelCapability {
 }
 
 model ModelDeployment {
-  id             String                     @id @default(cuid())
-  modelVersionId String                     @map("model_version_id")
-  key            String
-  environment    ModelDeploymentEnvironment
-  region         String
-  deploymentRef  String                     @map("deployment_ref")
-  status         ModelControlStatus         @default(draft)
-  trafficEligible Boolean                   @default(false) @map("traffic_eligible")
-  version        Int                        @default(1)
-  createdByRef   String                     @map("created_by_ref")
-  updatedByRef   String                     @map("updated_by_ref")
-  createdAt      DateTime                   @default(now()) @map("created_at")
-  updatedAt      DateTime                   @updatedAt @map("updated_at")
+  id              String                     @id @default(cuid())
+  modelVersionId  String                     @map("model_version_id")
+  key             String
+  environment     ModelDeploymentEnvironment
+  region          String
+  deploymentRef   String                     @map("deployment_ref")
+  status          ModelControlStatus         @default(draft)
+  trafficEligible Boolean                    @default(false) @map("traffic_eligible")
+  version         Int                        @default(1)
+  createdByRef    String                     @map("created_by_ref")
+  updatedByRef    String                     @map("updated_by_ref")
+  createdAt       DateTime                   @default(now()) @map("created_at")
+  updatedAt       DateTime                   @updatedAt @map("updated_at")
 
-  modelVersion ModelVersion       @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
-  prices       PricingVersion[]
-  generations CreativeGeneration[]
-  routeTargets ModelRouteTarget[]
+  modelVersion   ModelVersion         @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
+  prices         PricingVersion[]
+  generations    CreativeGeneration[]
+  routeTargets   ModelRouteTarget[]
   routeDecisions ModelRouteDecision[]
   promotions     ModelPromotion[]
 
@@ -1865,29 +1961,29 @@ model ModelDeployment {
 }
 
 model ModelRoutePolicy {
-  id                String                 @id @default(cuid())
-  key               String                 @unique
+  id                String                     @id @default(cuid())
+  key               String                     @unique
   name              String
   modality          ModelCapabilityModality
   operation         String
   environment       ModelDeploymentEnvironment
   region            String?
-  audienceRoles     String[]               @default([]) @map("audience_roles")
-  rolloutPercentage Int                    @default(100) @map("rollout_percentage")
-  rolloutSeed       String                 @default("v1") @map("rollout_seed")
-  fallbackMode      ModelRouteFallbackMode @default(fail_closed) @map("fallback_mode")
-  priority          Int                    @default(100)
-  status            ModelControlStatus     @default(draft)
-  version           Int                    @default(1)
-  createdByRef      String                 @map("created_by_ref")
-  updatedByRef      String                 @map("updated_by_ref")
-  archivedByRef     String?                @map("archived_by_ref")
-  archivedAt        DateTime?              @map("archived_at")
-  createdAt         DateTime               @default(now()) @map("created_at")
-  updatedAt         DateTime               @updatedAt @map("updated_at")
+  audienceRoles     String[]                   @default([]) @map("audience_roles")
+  rolloutPercentage Int                        @default(100) @map("rollout_percentage")
+  rolloutSeed       String                     @default("v1") @map("rollout_seed")
+  fallbackMode      ModelRouteFallbackMode     @default(fail_closed) @map("fallback_mode")
+  priority          Int                        @default(100)
+  status            ModelControlStatus         @default(draft)
+  version           Int                        @default(1)
+  createdByRef      String                     @map("created_by_ref")
+  updatedByRef      String                     @map("updated_by_ref")
+  archivedByRef     String?                    @map("archived_by_ref")
+  archivedAt        DateTime?                  @map("archived_at")
+  createdAt         DateTime                   @default(now()) @map("created_at")
+  updatedAt         DateTime                   @updatedAt @map("updated_at")
 
-  targets   ModelRouteTarget[]
-  revisions ModelRoutePolicyRevision[]
+  targets    ModelRouteTarget[]
+  revisions  ModelRoutePolicyRevision[]
   decisions  ModelRouteDecision[]
   promotions ModelPromotion[]
 
@@ -1916,14 +2012,14 @@ model ModelRouteTarget {
 }
 
 model ModelRoutePolicyRevision {
-  id             String   @id @default(cuid())
-  policyId       String   @map("policy_id")
-  revisionNumber Int      @map("revision_number")
-  snapshot       Json
-  snapshotSchemaVersion Int @default(1) @map("snapshot_schema_version")
-  reasonCode     String   @map("reason_code")
-  createdByRef   String   @map("created_by_ref")
-  createdAt      DateTime @default(now()) @map("created_at")
+  id                    String   @id @default(cuid())
+  policyId              String   @map("policy_id")
+  revisionNumber        Int      @map("revision_number")
+  snapshot              Json
+  snapshotSchemaVersion Int      @default(1) @map("snapshot_schema_version")
+  reasonCode            String   @map("reason_code")
+  createdByRef          String   @map("created_by_ref")
+  createdAt             DateTime @default(now()) @map("created_at")
 
   policy     ModelRoutePolicy @relation(fields: [policyId], references: [id], onDelete: Restrict)
   promotions ModelPromotion[]
@@ -1934,25 +2030,25 @@ model ModelRoutePolicyRevision {
 }
 
 model ModelRouteDecision {
-  id                                String                     @id
-  source                            String
-  status                            String
-  reasonCode                        String                     @map("reason_code")
-  modality                          ModelCapabilityModality
-  operation                         String
-  environment                       ModelDeploymentEnvironment
-  region                            String?
-  actorRef                          String                     @map("actor_ref")
-  subjectHash                       String                     @map("subject_hash")
-  policyId                          String?                    @map("policy_id")
-  policyVersion                     Int?                       @map("policy_version")
-  selectedDeploymentId              String?                    @map("selected_deployment_id")
-  consideredPolicies                Json                       @map("considered_policies")
-  consideredPoliciesSchemaVersion   Int                        @default(1) @map("considered_policies_schema_version")
-  attempts                          Json
-  attemptsSchemaVersion             Int                        @default(1) @map("attempts_schema_version")
-  decisionSchemaVersion             Int                        @default(1) @map("decision_schema_version")
-  createdAt                         DateTime                   @default(now()) @map("created_at")
+  id                              String                     @id
+  source                          String
+  status                          String
+  reasonCode                      String                     @map("reason_code")
+  modality                        ModelCapabilityModality
+  operation                       String
+  environment                     ModelDeploymentEnvironment
+  region                          String?
+  actorRef                        String                     @map("actor_ref")
+  subjectHash                     String                     @map("subject_hash")
+  policyId                        String?                    @map("policy_id")
+  policyVersion                   Int?                       @map("policy_version")
+  selectedDeploymentId            String?                    @map("selected_deployment_id")
+  consideredPolicies              Json                       @map("considered_policies")
+  consideredPoliciesSchemaVersion Int                        @default(1) @map("considered_policies_schema_version")
+  attempts                        Json
+  attemptsSchemaVersion           Int                        @default(1) @map("attempts_schema_version")
+  decisionSchemaVersion           Int                        @default(1) @map("decision_schema_version")
+  createdAt                       DateTime                   @default(now()) @map("created_at")
 
   policy             ModelRoutePolicy? @relation(fields: [policyId], references: [id], onDelete: Restrict)
   selectedDeployment ModelDeployment?  @relation(fields: [selectedDeploymentId], references: [id], onDelete: Restrict)
@@ -1979,9 +2075,9 @@ model ProviderSecretRef {
   createdByRef    String                     @map("created_by_ref")
   createdAt       DateTime                   @default(now()) @map("created_at")
 
-  provider    Provider            @relation(fields: [providerId], references: [id], onDelete: Restrict)
-  rotatedFrom ProviderSecretRef?  @relation("ProviderSecretRefRotations", fields: [rotatedFromId], references: [id], onDelete: Restrict)
-  rotatedTo   ProviderSecretRef?  @relation("ProviderSecretRefRotations")
+  provider    Provider           @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  rotatedFrom ProviderSecretRef? @relation("ProviderSecretRefRotations", fields: [rotatedFromId], references: [id], onDelete: Restrict)
+  rotatedTo   ProviderSecretRef? @relation("ProviderSecretRefRotations")
   promotions  ModelPromotion[]
 
   @@unique([secretRef, externalVersion])
@@ -2021,17 +2117,17 @@ model PricingVersion {
   unit              String
   unitPriceMicros   Int                @map("unit_price_micros")
   status            ModelControlStatus @default(draft)
-  effectiveFrom     DateTime            @map("effective_from")
-  effectiveTo       DateTime?           @map("effective_to")
+  effectiveFrom     DateTime           @map("effective_from")
+  effectiveTo       DateTime?          @map("effective_to")
   version           Int                @default(1)
   createdByRef      String             @map("created_by_ref")
   updatedByRef      String             @map("updated_by_ref")
   createdAt         DateTime           @default(now()) @map("created_at")
   updatedAt         DateTime           @updatedAt @map("updated_at")
 
-  modelVersion  ModelVersion       @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
-  deployment    ModelDeployment?   @relation(fields: [modelDeploymentId], references: [id], onDelete: Restrict)
-  generations   CreativeGeneration[]
+  modelVersion ModelVersion         @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
+  deployment   ModelDeployment?     @relation(fields: [modelDeploymentId], references: [id], onDelete: Restrict)
+  generations  CreativeGeneration[]
 
   @@unique([modelVersionId, versionKey])
   @@index([modelDeploymentId, status, effectiveFrom])

@@ -94,6 +94,10 @@ import type {
   ProviderSecretRefDto,
   ProviderSecretRefListQuery,
   ProviderSecretRefRequest,
+  ProviderOperationalPolicyDto,
+  ProviderOperationalPolicyRequest,
+  ProviderHealthEvidenceDto,
+  ProviderOperationsSummaryDto,
   ModelVersionDto,
   PricingVersionDto,
 } from './contracts'
@@ -207,6 +211,25 @@ export const adminService = {
   },
   async modelGovernanceSummary() {
     return api.get<ModelGovernanceSummaryDto>('/admin/model-control/governance-summary')
+  },
+  async providerOperationalPolicies() {
+    const envelope = await api.getEnvelope<ProviderOperationalPolicyDto[]>('/admin/model-control/provider-operations?limit=100')
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async createProviderOperationalPolicy(payload: ProviderOperationalPolicyRequest) {
+    return api.post<ProviderOperationalPolicyDto>('/admin/model-control/provider-operations', payload)
+  },
+  async transitionProviderOperationalPolicy(id: string, expectedVersion: number, status: 'active' | 'disabled', reasonCode: string) {
+    return api.post<ProviderOperationalPolicyDto>(`/admin/model-control/provider-operations/${encodeURIComponent(id)}/status`, { expectedVersion, status, reasonCode })
+  },
+  async recordProviderHealth(id: string, payload: { sourceKey: string; status: ProviderHealthEvidenceDto['status']; checkedAt: string; latencyMs?: number | null; successRateBps?: number | null; sourceType: ProviderHealthEvidenceDto['sourceType']; sourceRef: string; details?: Record<string, unknown> | null }) {
+    return api.post<ProviderHealthEvidenceDto>(`/admin/model-control/provider-operations/${encodeURIComponent(id)}/health`, payload)
+  },
+  async providerOperationsSummary() {
+    return api.get<ProviderOperationsSummaryDto>('/admin/model-control/provider-operations-summary')
+  },
+  async exportProviderOperations() {
+    return api.get<Record<string, unknown>>('/admin/model-control/provider-operations-export')
   },
   async configResources(kind: ConfigResourceKind, query?: ConfigResourceListQuery) {
     const envelope = await api.getEnvelope<ConfigResourceDto[]>(withQuery(`/admin/config-resources/${kind}`, query))
