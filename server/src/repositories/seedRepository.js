@@ -11,6 +11,7 @@ import { createSeedSystemSettingsRepository } from '../settings/seedSystemSettin
 import { createSeedConfigResourcesRepository } from '../configResources/seedConfigResourcesRepository.js'
 import { createSeedModelControlRepository } from '../modelControl/seedModelControlRepository.js'
 import { createSeedModelRoutingRepository } from '../modelControl/seedModelRoutingRepository.js'
+import { createSeedModelGovernanceRepository } from '../modelControl/seedModelGovernanceRepository.js'
 import { createSeedGenerationExecutionRepository } from '../creative/seedGenerationExecutionRepository.js'
 import { createSeedObservabilityRepository } from '../observability/seedObservabilityRepository.js'
 import {
@@ -2414,11 +2415,23 @@ export const createSeedRepository = () => {
   const domainEventConsumers = createSeedDomainEventConsumerRepository({ recordAudit: auditRecorder })
   const jobs = createSeedJobRepository({ recordAudit: auditRecorder })
   const creativeGenerationExecutions = createSeedGenerationExecutionRepository({ recordAudit: auditRecorder })
-  const releaseChanges = createSeedReleaseRepository()
   const systemSettings = createSeedSystemSettingsRepository({ recordAudit: auditRecorder })
   const configResources = createSeedConfigResourcesRepository({ recordAudit: auditRecorder })
   const modelControl = createSeedModelControlRepository({ recordAudit: auditRecorder })
   const modelRouting = createSeedModelRoutingRepository({ modelControl, recordAudit: auditRecorder })
+  let modelGovernance
+  const releaseChanges = createSeedReleaseRepository({
+    onModelPromotionCreated: async (releaseChangeId, promotion) => modelGovernance?.recordPromotion(releaseChangeId, promotion),
+    onModelPromotionTransition: async (promotion, patch, release) => {
+      if (patch.status === 'deployed') await modelGovernance?.validatePromotion(promotion, release)
+      return modelControl.setPromotionTrafficEligibility(
+        promotion.modelDeploymentId,
+        patch.status === 'deployed',
+        patch.appliedByRef ?? patch.rolledBackByRef ?? 'release-control',
+      )
+    },
+  })
+  modelGovernance = createSeedModelGovernanceRepository({ modelControl, modelRouting, releaseChanges })
   const observability = createSeedObservabilityRepository()
   return {
   chat: createSeedChatRepository({
@@ -2430,6 +2443,7 @@ export const createSeedRepository = () => {
   configResources,
   modelControl,
   modelRouting,
+  modelGovernance,
   creativeGenerationExecutions,
   observability,
   auth: {

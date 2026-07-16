@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "taskId": "MODEL-05",
+  "scope": "personal_accounts_only",
+  "migration": "server/prisma/migrations/0059_model_route_decisions_secret_promotion/migration.sql",
+  "policyDocument": "docs/MODEL_ROUTE_GOVERNANCE.md",
+  "entities": ["ModelRouteDecision", "ProviderSecretRef", "ModelPromotion"],
+  "operationPolicy": "append_only",
+  "rawSubjectIdentifiersPersisted": false,
+  "secretMaterialAccepted": false,
+  "secretReferenceScheme": "secret://",
+  "promotionSource": "staging",
+  "promotionTarget": "production",
+  "releaseControlReused": true,
+  "twoPersonApprovalRequired": true,
+  "rollbackDisablesTraffic": true
+}

@@ -540,7 +540,8 @@ model ReleaseChange {
   createdAt         DateTime            @default(now()) @map("created_at")
   updatedAt         DateTime            @updatedAt @map("updated_at")
 
-  evidence ReleaseEvidence[]
+  evidence       ReleaseEvidence[]
+  modelPromotion ModelPromotion?
 
   @@index([status, createdAt])
   @@index([targetEnvironment, createdAt])
@@ -1758,6 +1759,7 @@ model Provider {
   updatedAt             DateTime           @updatedAt @map("updated_at")
 
   models Model[]
+  secretRefs ProviderSecretRef[]
 
   @@index([status, updatedAt])
   @@map("model_providers")
@@ -1854,6 +1856,8 @@ model ModelDeployment {
   prices       PricingVersion[]
   generations CreativeGeneration[]
   routeTargets ModelRouteTarget[]
+  routeDecisions ModelRouteDecision[]
+  promotions     ModelPromotion[]
 
   @@unique([environment, key])
   @@index([modelVersionId, environment, status])
@@ -1884,6 +1888,8 @@ model ModelRoutePolicy {
 
   targets   ModelRouteTarget[]
   revisions ModelRoutePolicyRevision[]
+  decisions  ModelRouteDecision[]
+  promotions ModelPromotion[]
 
   @@index([status, modality, operation, environment, priority])
   @@index([status, updatedAt])
@@ -1919,11 +1925,91 @@ model ModelRoutePolicyRevision {
   createdByRef   String   @map("created_by_ref")
   createdAt      DateTime @default(now()) @map("created_at")
 
-  policy ModelRoutePolicy @relation(fields: [policyId], references: [id], onDelete: Restrict)
+  policy     ModelRoutePolicy @relation(fields: [policyId], references: [id], onDelete: Restrict)
+  promotions ModelPromotion[]
 
   @@unique([policyId, revisionNumber])
   @@index([policyId, createdAt])
   @@map("model_route_policy_revisions")
+}
+
+model ModelRouteDecision {
+  id                                String                     @id
+  source                            String
+  status                            String
+  reasonCode                        String                     @map("reason_code")
+  modality                          ModelCapabilityModality
+  operation                         String
+  environment                       ModelDeploymentEnvironment
+  region                            String?
+  actorRef                          String                     @map("actor_ref")
+  subjectHash                       String                     @map("subject_hash")
+  policyId                          String?                    @map("policy_id")
+  policyVersion                     Int?                       @map("policy_version")
+  selectedDeploymentId              String?                    @map("selected_deployment_id")
+  consideredPolicies                Json                       @map("considered_policies")
+  consideredPoliciesSchemaVersion   Int                        @default(1) @map("considered_policies_schema_version")
+  attempts                          Json
+  attemptsSchemaVersion             Int                        @default(1) @map("attempts_schema_version")
+  decisionSchemaVersion             Int                        @default(1) @map("decision_schema_version")
+  createdAt                         DateTime                   @default(now()) @map("created_at")
+
+  policy             ModelRoutePolicy? @relation(fields: [policyId], references: [id], onDelete: Restrict)
+  selectedDeployment ModelDeployment?  @relation(fields: [selectedDeploymentId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt])
+  @@index([source, status, createdAt])
+  @@index([modality, environment, createdAt])
+  @@index([policyId, createdAt])
+  @@map("model_route_decisions")
+}
+
+model ProviderSecretRef {
+  id              String                     @id
+  providerId      String                     @map("provider_id")
+  environment     ModelDeploymentEnvironment
+  purpose         String
+  secretRef       String                     @map("secret_ref")
+  externalVersion String                     @map("external_version")
+  ownerRef        String                     @map("owner_ref")
+  checksumSha256  String                     @map("checksum_sha256")
+  expiresAt       DateTime?                  @map("expires_at")
+  rotatedFromId   String?                    @unique @map("rotated_from_id")
+  reasonCode      String                     @map("reason_code")
+  createdByRef    String                     @map("created_by_ref")
+  createdAt       DateTime                   @default(now()) @map("created_at")
+
+  provider    Provider            @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  rotatedFrom ProviderSecretRef?  @relation("ProviderSecretRefRotations", fields: [rotatedFromId], references: [id], onDelete: Restrict)
+  rotatedTo   ProviderSecretRef?  @relation("ProviderSecretRefRotations")
+  promotions  ModelPromotion[]
+
+  @@unique([secretRef, externalVersion])
+  @@index([providerId, environment, purpose, createdAt])
+  @@index([expiresAt])
+  @@map("provider_secret_refs")
+}
+
+model ModelPromotion {
+  id                    String   @id
+  releaseChangeId       String   @unique @map("release_change_id")
+  modelDeploymentId     String   @map("model_deployment_id")
+  routePolicyId         String   @map("route_policy_id")
+  routePolicyRevisionId String   @map("route_policy_revision_id")
+  providerSecretRefId   String   @map("provider_secret_ref_id")
+  createdByRef          String   @map("created_by_ref")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  releaseChange       ReleaseChange            @relation(fields: [releaseChangeId], references: [id], onDelete: Restrict)
+  modelDeployment     ModelDeployment          @relation(fields: [modelDeploymentId], references: [id], onDelete: Restrict)
+  routePolicy         ModelRoutePolicy         @relation(fields: [routePolicyId], references: [id], onDelete: Restrict)
+  routePolicyRevision ModelRoutePolicyRevision @relation(fields: [routePolicyRevisionId], references: [id], onDelete: Restrict)
+  providerSecretRef   ProviderSecretRef        @relation(fields: [providerSecretRefId], references: [id], onDelete: Restrict)
+
+  @@index([modelDeploymentId, createdAt])
+  @@index([routePolicyId, createdAt])
+  @@index([providerSecretRefId, createdAt])
+  @@map("model_promotions")
 }
 
 model PricingVersion {

@@ -112,7 +112,7 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `POST /api/admin/model-control/deployments` | Required | `admin:model-control:manage`; traffic disabled by default | Yes |
 | `GET /api/admin/model-control/deployments` | Required | `admin:model-control:read`; status, version, environment, sort, cursor filters | Yes |
 | `GET /api/admin/model-control/deployments/:id` | Required | `admin:model-control:read` | Yes |
-| `POST /api/admin/model-control/deployments/:id/status` | Required | `admin:model-control:transition`; traffic activation requires `PROVIDER-APPROVAL` | Yes |
+| `POST /api/admin/model-control/deployments/:id/status` | Required | `admin:model-control:transition`; lifecycle only, cannot enable traffic | Yes |
 | `POST /api/admin/model-control/pricing` | Required | `admin:model-control:manage`; additive pricing history | Yes |
 | `GET /api/admin/model-control/pricing/:id` | Required | `admin:model-control:read` | Yes |
 | `POST /api/admin/model-control/pricing/:id/status` | Required | `admin:model-control:transition`; audited state machine | Yes |
@@ -126,7 +126,17 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `POST /api/admin/model-control/routing-policies/:id/status` | Required | `admin:model-control:transition`; enabled primary required | Yes |
 | `GET /api/admin/model-control/routing-policies/:id/revisions` | Required | `admin:model-control:read`; immutable snapshots | Yes |
 | `POST /api/admin/model-control/routing-policies/:id/rollback` | Required | `admin:model-control:transition`; restores non-active configuration | Yes |
-| `POST /api/admin/model-control/route-preview` | Required | `admin:model-control:read`; no Provider dispatch or subject persistence | Yes |
+| `POST /api/admin/model-control/route-preview` | Required | `admin:model-control:read`; no Provider dispatch, appends only a subject hash | Yes |
+| `GET /api/admin/model-control/route-decisions` | Required | `admin:model-control:read`; immutable filtered evidence | Yes |
+| `GET /api/admin/model-control/route-decisions/:id` | Required | `admin:model-control:read`; immutable detail | Yes |
+| `GET /api/admin/model-control/secret-refs` | Required | `admin:model-control:read`; metadata references only | Yes |
+| `POST /api/admin/model-control/secret-refs` | Required | `admin:model-control:manage`; append or linked rotation | Yes |
+| `GET /api/admin/model-control/secret-refs/:id` | Required | `admin:model-control:read`; metadata detail only | Yes |
+| `GET /api/admin/model-control/promotions` | Required | `admin:model-control:read`; linked release status | Yes |
+| `POST /api/admin/model-control/promotions` | Required | `admin:releases:manage`; staging-to-production request | Yes |
+| `GET /api/admin/model-control/promotions/:id` | Required | `admin:model-control:read`; immutable associations | Yes |
+| `GET /api/admin/model-control/governance-export` | Required | `admin:model-control:read`; bounded safe evidence | Yes |
+| `GET /api/admin/model-control/governance-summary` | Required | `admin:model-control:read`; safe operational counts | Yes |
 
 | Route | Auth requirement | Permission requirement | Covered by tests |
 | --- | --- | --- | --- |

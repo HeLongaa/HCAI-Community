@@ -48,6 +48,13 @@ export const requestReleaseChange = async ({ payload, actor, repository }) => {
         rollbackVersion: payload.rollbackVersion,
         secretRef: payload.secretRef,
         secretVersion: payload.secretVersion,
+        modelPromotion: payload.modelPromotion ? {
+          id: payload.modelPromotion.id,
+          modelDeploymentId: payload.modelPromotion.modelDeploymentId,
+          routePolicyId: payload.modelPromotion.routePolicyId,
+          routePolicyRevisionId: payload.modelPromotion.routePolicyRevisionId,
+          providerSecretRefId: payload.modelPromotion.providerSecretRefId,
+        } : null,
       },
     }),
   })

@@ -8,9 +8,10 @@
   "fallbackModes": ["fail_closed", "ordered"],
   "defaultFallbackMode": "fail_closed",
   "dimensions": ["modality", "operation", "environment", "region", "audienceRoles", "rolloutPercentage"],
-  "providerTrafficEnabled": false,
+  "trafficEligibilityPolicy": "approved_promotion_only",
   "credentialsAccepted": false,
-  "subjectIdentifiersPersisted": false,
+  "rawSubjectIdentifiersPersisted": false,
+  "subjectHashPersisted": true,
   "providerControlReused": true,
   "realProviderApprovalRequired": true
 }

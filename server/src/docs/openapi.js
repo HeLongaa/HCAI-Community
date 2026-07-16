@@ -3134,7 +3134,33 @@ export const openApiDocument = {
       post: { summary: 'Restore a prior snapshot while keeping traffic disabled until explicit reactivation', responses: { '200': { description: 'Policy restored in its non-active state' }, '404': { description: 'Policy or revision not found' }, '409': { description: 'Active, archived, or stale policy' } } },
     },
     '/admin/model-control/route-preview': {
-      post: { summary: 'Preview deterministic audience routing and Provider control/circuit blocks without dispatch', responses: { '200': { description: 'Explainable selected or unavailable route projection' }, '403': { description: 'Requires model control read permission' } } },
+      post: { summary: 'Preview deterministic audience routing and append a safe decision fact without dispatch', responses: { '200': { description: 'Explainable selected or unavailable route projection with decision ID' }, '403': { description: 'Requires model control read permission' } } },
+    },
+    '/admin/model-control/route-decisions': {
+      get: { summary: 'List immutable route decisions with source, result, modality, environment, policy, sorting, and cursor filters', responses: { '200': { description: 'Safe route decision page without raw subject identifiers' }, '403': { description: 'Requires model control read permission' } } },
+    },
+    '/admin/model-control/route-decisions/{id}': {
+      get: { summary: 'Read one immutable explainable route decision', responses: { '200': { description: 'Route decision detail' }, '404': { description: 'Decision not found' } } },
+    },
+    '/admin/model-control/secret-refs': {
+      get: { summary: 'List immutable external SecretRef metadata with Provider, environment, purpose, sorting, and cursor filters', responses: { '200': { description: 'SecretRef metadata page without secret material' } } },
+      post: { summary: 'Append a secret:// metadata reference or linked rotation', responses: { '201': { description: 'SecretRef metadata appended' }, '400': { description: 'Plaintext, ordinary URL, or invalid metadata rejected' }, '422': { description: 'Provider or rotation source mismatch' } } },
+    },
+    '/admin/model-control/secret-refs/{id}': {
+      get: { summary: 'Read one immutable SecretRef metadata record', responses: { '200': { description: 'SecretRef metadata detail' }, '404': { description: 'SecretRef not found' } } },
+    },
+    '/admin/model-control/promotions': {
+      get: { summary: 'List model promotions and linked release approval state', responses: { '200': { description: 'Promotion page' } } },
+      post: { summary: 'Request staging-to-production model promotion using existing release approval control', responses: { '201': { description: 'Promotion pending independent approval' }, '409': { description: 'Route, SecretRef, or deployment is not eligible' }, '422': { description: 'Promotion references or scopes mismatch' } } },
+    },
+    '/admin/model-control/promotions/{id}': {
+      get: { summary: 'Read one promotion with immutable associations and linked release evidence', responses: { '200': { description: 'Promotion detail' }, '404': { description: 'Promotion not found' } } },
+    },
+    '/admin/model-control/governance-export': {
+      get: { summary: 'Export bounded immutable route decision, SecretRef, and promotion evidence', responses: { '200': { description: 'Versioned governance JSON document without raw subjects or secret material' } } },
+    },
+    '/admin/model-control/governance-summary': {
+      get: { summary: 'Read route decision, SecretRef expiry, and promotion status counts', responses: { '200': { description: 'Model governance operational summary' } } },
     },
     '/admin/model-control/export': {
       get: { summary: 'Export the bounded normalized model catalog without credentials or endpoints', responses: { '200': { description: 'Portable model catalog document' }, '403': { description: 'Requires model control read permission' } } },

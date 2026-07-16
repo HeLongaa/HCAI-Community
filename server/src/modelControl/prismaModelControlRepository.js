@@ -113,6 +113,14 @@ export const createPrismaModelControlRepository = (client, { recordAudit } = {})
       where: { id: String(id) },
       include: { modelVersion: { include: { model: { include: { provider: true } }, capabilities: true } } },
     })),
+    setPromotionTrafficEligibility: async (id, eligible, actor) => {
+      const updated = await client.modelDeployment.updateMany({
+        where: { id: String(id), environment: 'production', ...(eligible ? { status: 'active' } : {}) },
+        data: { trafficEligible: Boolean(eligible), updatedByRef: actor, version: { increment: 1 } },
+      })
+      if (!updated.count) throw new HttpError(409, 'PROMOTION_DEPLOYMENT_INELIGIBLE', 'production deployment is not eligible for promotion')
+      return find('deployment', id)
+    },
     createProvider: async (input) => create('provider', input),
     updateProvider: async (id, expectedVersion, data) => {
       const updated = await client.provider.updateMany({ where: { id: String(id), version: expectedVersion, status: { not: 'archived' } }, data: { ...data, version: { increment: 1 } } })
@@ -153,7 +161,7 @@ export const createPrismaModelControlRepository = (client, { recordAudit } = {})
         client.modelDeployment.findMany({ orderBy: [{ environment: 'asc' }, { key: 'asc' }], take: 10000 }), client.pricingVersion.findMany({ orderBy: [{ modelVersionId: 'asc' }, { effectiveFrom: 'desc' }], take: 10000 }),
       ])
       return {
-        schemaVersion: 1, exportedAt: new Date().toISOString(), providerTrafficEnabled: false,
+        schemaVersion: 1, exportedAt: new Date().toISOString(), providerTrafficEnabled: deployments.some((deployment) => deployment.environment === 'production' && deployment.trafficEligible),
         providers: providers.map(providerDto), models: models.map(modelDto), versions: versions.map(versionDto), capabilities: capabilities.map(capabilityDto), deployments: deployments.map(deploymentDto), pricingVersions: pricingVersions.map(pricingDto),
       }
     },

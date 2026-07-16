@@ -1,11 +1,16 @@
+import { HttpError } from '../common/errors/httpError.js'
+
 const copy = (value) => structuredClone(value)
 
-export const createSeedReleaseRepository = () => {
+export const createSeedReleaseRepository = ({ onModelPromotionCreated, onModelPromotionTransition } = {}) => {
   const records = new Map()
   const order = []
   return {
     create: async (payload) => {
       const now = new Date().toISOString()
+      if (payload.modelPromotion && [...records.values()].some((existing) => existing.modelPromotion?.modelDeploymentId === payload.modelPromotion.modelDeploymentId && ['pending_approval', 'approved', 'deployed'].includes(existing.status))) {
+        throw new HttpError(409, 'PROMOTION_ALREADY_ACTIVE', 'production deployment already has an active or pending promotion')
+      }
       const row = {
         ...payload,
         version: 1,
@@ -19,9 +24,11 @@ export const createSeedReleaseRepository = () => {
         createdAt: now,
         updatedAt: now,
         evidence: [{ ...payload.evidence, releaseChangeId: payload.id, createdAt: now }],
+        modelPromotion: payload.modelPromotion ? { ...payload.modelPromotion, releaseChangeId: payload.id, createdAt: now } : null,
       }
       records.set(row.id, row)
       order.unshift(row.id)
+      if (row.modelPromotion) await onModelPromotionCreated?.(row.id, row.modelPromotion)
       return copy(row)
     },
     find: async (id) => records.has(String(id)) ? copy(records.get(String(id))) : null,
@@ -40,6 +47,10 @@ export const createSeedReleaseRepository = () => {
       const current = records.get(String(id))
       if (!current || current.version !== expectedVersion) return null
       const now = new Date().toISOString()
+      if (current.modelPromotion && ['deployed', 'failed', 'rolled_back'].includes(patch.status)) {
+        if (patch.evidence?.evidence?.deploymentId !== current.modelPromotion.modelDeploymentId) throw new HttpError(422, 'PROMOTION_DEPLOYMENT_MISMATCH', 'model promotion deployment evidence does not match the approved deployment')
+        await onModelPromotionTransition?.(current.modelPromotion, patch, current)
+      }
       const next = {
         ...current,
         ...patch,

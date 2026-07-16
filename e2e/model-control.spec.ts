@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 import { signInPage } from './helpers'
 
-test('admin builds an offline model registry and explainable route without enabling traffic', async ({ page, request }) => {
+test('admin builds a promotion-gated model registry with durable route and SecretRef evidence', async ({ page, request }) => {
   await signInPage(page, request, 'opsplus')
   await page.goto('/')
   await page.getByTestId('nav-admin').click()
@@ -10,7 +10,7 @@ test('admin builds an offline model registry and explainable route without enabl
 
   const panel = page.getByTestId('model-control-panel')
   await expect(panel).toBeVisible()
-  await expect(panel).toContainText('Real Provider traffic disabled')
+  await expect(panel).toContainText('Provider traffic is promotion-gated')
 
   const suffix = Date.now().toString(36)
   await panel.getByLabel('Provider key').fill(`e2e-provider-${suffix}`)
@@ -50,6 +50,20 @@ test('admin builds an offline model registry and explainable route without enabl
   await panel.getByTitle('Run route preview').click()
   await expect(panel.getByTestId('model-route-preview')).toContainText('unavailable')
   await expect(panel.getByTestId('model-route-preview')).toContainText('all_candidates_blocked')
+  const governance = panel.getByTestId('model-governance-workbench')
+  await expect(governance).toContainText('all_candidates_blocked')
+  await expect(governance.locator('code').first()).toHaveText(/^[a-f0-9]{12}$/)
+
+  await governance.getByRole('button', { name: 'SecretRef', exact: true }).click()
+  await governance.getByLabel('SecretRef Provider').selectOption({ label: `E2E Provider ${suffix}` })
+  await governance.getByLabel('SecretRef environment').selectOption('staging')
+  await governance.getByLabel('SecretRef purpose').fill('inference')
+  await governance.getByLabel('SecretRef reference').fill(`secret://e2e/${suffix}`)
+  await governance.getByLabel('SecretRef external version').fill('v1')
+  await governance.getByLabel('SecretRef owner').fill('opsplus')
+  await governance.getByLabel('SecretRef checksum').fill('a'.repeat(64))
+  await governance.getByRole('button', { name: 'Append reference' }).click()
+  await expect(governance).toContainText(`secret://e2e/${suffix}`)
 
   await page.setViewportSize({ width: 390, height: 844 })
   const layout = await panel.evaluate((element) => {
