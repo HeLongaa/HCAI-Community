@@ -68,6 +68,8 @@ import type {
   ConfigResourceRevisionDto,
   ConfigResourceTransitionRequest,
   ConfigResourceExportDocument,
+  FeatureFlagEmergencyResult,
+  FeatureFlagEvaluation,
 } from './contracts'
 import type { Permission, Role } from '../domain/types'
 
@@ -106,6 +108,12 @@ export const adminService = {
   },
   async importConfigResources(kind: ConfigResourceKind, items: ConfigResourceExportDocument['items'], reasonCode: string) {
     return api.post<ConfigResourceDto[]>(`/admin/config-resources/${kind}/import`, { items, reasonCode })
+  },
+  async previewFeatureFlag(id: string, context: { environment: string; userId: string; roles: string[] }) {
+    return api.post<FeatureFlagEvaluation>(`/admin/config-resources/feature_flag/${encodeURIComponent(id)}/preview`, context)
+  },
+  async setFeatureFlagEmergency(id: string, emergencyOff: boolean, payload: ConfigResourceTransitionRequest) {
+    return api.post<FeatureFlagEmergencyResult>(`/admin/config-resources/feature_flag/${encodeURIComponent(id)}/${emergencyOff ? 'emergency-off' : 'emergency-restore'}`, payload)
   },
   async systemSettings(query?: SystemSettingListQuery) {
     const envelope = await api.getEnvelope<SystemSettingDto[]>(withQuery('/admin/settings', query))

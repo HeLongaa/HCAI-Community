@@ -2425,6 +2425,39 @@ export type SystemSettingPublishResult = {
 
 export type ConfigResourceKind = 'feature_flag' | 'reference_data' | 'announcement'
 export type ConfigResourceDeletedFilter = 'active' | 'deleted' | 'all'
+export type FeatureFlagRuleType = 'user' | 'role' | 'environment'
+export type FeatureFlagRule = {
+  id: string
+  type: FeatureFlagRuleType
+  values: string[]
+  enabled: boolean
+  payload?: unknown
+}
+export type FeatureFlagDefinition = {
+  enabled: boolean
+  payload: unknown
+  rules: FeatureFlagRule[]
+  rolloutPercentage: number | null
+  rolloutSeed: string
+}
+export type FeatureFlagEvaluation = {
+  key: string
+  enabled: boolean
+  payload: unknown
+  reason: 'emergency_off' | 'user_rule' | 'role_rule' | 'environment_rule' | 'percentage_rollout' | 'default'
+  ruleId: string | null
+  emergencyOff: boolean
+  publishedVersion?: number
+}
+export type FeatureFlagEmergencyResult = {
+  resource: ConfigResourceDto
+  featureFlag: {
+    emergencyOff: boolean
+    emergencyOffByRef: string | null
+    emergencyOffReasonCode: string | null
+    emergencyOffAt: string | null
+  }
+}
 
 export type ConfigResourceDto = {
   id: string

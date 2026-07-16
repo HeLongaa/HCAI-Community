@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   createConfigResource,
   deleteConfigResource,
+  evaluateFeatureFlag,
   parseConfigResourceListQuery,
   publishConfigResource,
   restoreConfigResource,
@@ -16,13 +17,45 @@ import { createSeedConfigResourcesRepository } from './seedConfigResourcesReposi
 const actor = { id: 'admin-1', handle: 'admin-one' }
 
 test('resource schemas reject cross-domain and unsafe values', () => {
-  assert.deepEqual(validateConfigResourceValue('feature_flag', { enabled: false, payload: { color: 'green' } }), { enabled: false, payload: { color: 'green' } })
+  assert.deepEqual(validateConfigResourceValue('feature_flag', { enabled: false, payload: { color: 'green' } }), {
+    enabled: false, payload: { color: 'green' }, rules: [], rolloutPercentage: null, rolloutSeed: 'v1',
+  })
   assert.throws(() => validateConfigResourceValue('feature_flag', { enabled: true, rollout: 50 }), /unsupported fields/)
+  assert.throws(() => validateConfigResourceValue('feature_flag', { enabled: true, rolloutPercentage: 101 }), /between 0 and 100/)
+  assert.throws(() => validateConfigResourceValue('feature_flag', {
+    enabled: true,
+    rules: [{ id: 'duplicate', type: 'role', values: ['admin'], enabled: true }, { id: 'duplicate', type: 'user', values: ['user-1'], enabled: false }],
+  }), /duplicate ids/)
   assert.deepEqual(validateConfigResourceValue('reference_data', { label: 'China', value: 'CN', sortOrder: 1 }), { label: 'China', value: 'CN', sortOrder: 1, active: true })
   assert.throws(() => validateConfigResourceValue('announcement', { body: 'Maintenance', level: 'urgent' }), /value.level/)
   assert.throws(() => validateConfigResourceValue('announcement', {
     body: 'Maintenance', level: 'warning', startsAt: '2026-07-17T10:00:00Z', endsAt: '2026-07-17T09:00:00Z',
   }), /must be after/)
+})
+
+test('feature flag evaluation has fixed priority, stable rollout, and emergency override', () => {
+  const value = validateConfigResourceValue('feature_flag', {
+    enabled: false,
+    payload: { variant: 'default' },
+    rules: [
+      { id: 'environment-on', type: 'environment', values: ['staging'], enabled: true },
+      { id: 'role-on', type: 'role', values: ['admin'], enabled: true, payload: { variant: 'admin' } },
+      { id: 'user-off', type: 'user', values: ['user-1'], enabled: false },
+    ],
+    rolloutPercentage: 50,
+    rolloutSeed: 'launch-v1',
+  })
+  const context = { environment: 'staging', userId: 'user-1', roles: ['admin'] }
+  assert.deepEqual(evaluateFeatureFlag({ key: 'editor.v2', value, context }), {
+    enabled: false, payload: { variant: 'default' }, reason: 'user_rule', ruleId: 'user-off',
+  })
+  assert.equal(evaluateFeatureFlag({ key: 'editor.v2', value, emergencyOff: true, context }).reason, 'emergency_off')
+
+  const percentageValue = { ...value, rules: [] }
+  const first = evaluateFeatureFlag({ key: 'editor.v2', value: percentageValue, context })
+  assert.deepEqual(evaluateFeatureFlag({ key: 'editor.v2', value: percentageValue, context }), first)
+  assert.equal(evaluateFeatureFlag({ key: 'editor.v2', value: { ...percentageValue, rolloutPercentage: 0 }, context }).enabled, false)
+  assert.equal(evaluateFeatureFlag({ key: 'editor.v2', value: { ...percentageValue, rolloutPercentage: 100 }, context }).enabled, true)
 })
 
 test('list query bounds filters and sorting', () => {

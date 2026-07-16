@@ -1,11 +1,14 @@
 import { HttpError, notFound } from '../../common/errors/httpError.js'
-import { requirePermission } from '../../common/http/auth.js'
+import { requirePermission, requireUser } from '../../common/http/auth.js'
 import { readJsonBody } from '../../common/http/request.js'
 import { ok } from '../../common/http/responses.js'
 import {
   configResourcePolicy,
   createConfigResource,
   deleteConfigResource,
+  evaluateFeatureFlag,
+  evaluatePublishedFeatureFlag,
+  featureFlagContextForActor,
   importConfigResources,
   parseConfigResourceBulkDelete,
   parseConfigResourceKind,
@@ -13,6 +16,7 @@ import {
   publishConfigResource,
   restoreConfigResource,
   rollbackConfigResource,
+  setFeatureFlagEmergency,
   updateConfigResource,
 } from '../../configResources/configResourceRuntime.js'
 import { repositories } from '../../repositories/index.js'
@@ -22,6 +26,7 @@ const actorRef = (actor) => actor?.handle ?? actor?.id ?? 'unknown'
 export const registerConfigResourceRoutes = (router, options = {}) => {
   const routeRepositories = options.repositories ?? repositories
   const repository = routeRepositories.configResources
+  const runtimeEnvironment = String(options.environment ?? process.env.DEPLOYMENT_ENV ?? process.env.NODE_ENV ?? 'development')
 
   const authorize = (context, action) => {
     const kind = parseConfigResourceKind(context.params.kind)
@@ -36,6 +41,45 @@ export const registerConfigResourceRoutes = (router, options = {}) => {
     actor, action, resourceType: resource.kind, resourceId: resource.id,
     metadata: { key: resource.key, version: resource.version, ...(metadata ?? {}) },
   })
+
+  router.add('GET', '/api/feature-flags/:key/evaluate', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const result = await evaluatePublishedFeatureFlag({
+      key: context.params.key,
+      context: featureFlagContextForActor(actor, runtimeEnvironment),
+      repository,
+    })
+    if (!result) throw notFound(`/api/feature-flags/${context.params.key}/evaluate`)
+    await routeRepositories.audit.recordAttempt({
+      actor, action: 'feature_flags.evaluated', resourceType: 'feature_flag', resourceId: result.resourceId,
+      metadata: { key: result.key, enabled: result.enabled, reason: result.reason, publishedVersion: result.publishedVersion, environment: runtimeEnvironment },
+    })
+    const { resourceId: _resourceId, ...publicResult } = result
+    ok(response, publicResult)
+  })
+
+  router.add('POST', '/api/admin/config-resources/feature_flag/:id/preview', async (request, response, context) => {
+    const actor = requirePermission(context, configResourcePolicy.feature_flag.permissions.read)
+    const resource = await findResource('feature_flag', context.params.id, `/api/admin/config-resources/feature_flag/${context.params.id}/preview`)
+    const input = (await readJsonBody(request)) ?? {}
+    const flag = await repository.findPublishedFeatureFlag(resource.key)
+    const result = evaluateFeatureFlag({ key: resource.key, value: resource.draftValue, emergencyOff: Boolean(flag?.emergencyOff), context: input })
+    await audit(actor, 'admin.feature_flags.previewed', resource, { enabled: result.enabled, reason: result.reason, emergencyOff: Boolean(flag?.emergencyOff) })
+    ok(response, { key: resource.key, emergencyOff: Boolean(flag?.emergencyOff), ...result })
+  })
+
+  const emergencyOverride = (emergencyOff) => async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:feature-flags:emergency')
+    const resource = await findResource('feature_flag', context.params.id, `/api/admin/config-resources/feature_flag/${context.params.id}/emergency-${emergencyOff ? 'off' : 'restore'}`)
+    const result = await setFeatureFlagEmergency({ resource, payload: (await readJsonBody(request)) ?? {}, emergencyOff, actor, repository })
+    await audit(actor, emergencyOff ? 'admin.feature_flags.emergency_disabled' : 'admin.feature_flags.emergency_restored', result.resource, {
+      reasonCode: result.reasonCode,
+    })
+    ok(response, result)
+  }
+
+  router.add('POST', '/api/admin/config-resources/feature_flag/:id/emergency-off', emergencyOverride(true))
+  router.add('POST', '/api/admin/config-resources/feature_flag/:id/emergency-restore', emergencyOverride(false))
 
   router.add('GET', '/api/admin/config-resources/:kind', async (_request, response, context) => {
     const { kind, actor } = authorize(context, 'read')

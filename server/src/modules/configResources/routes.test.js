@@ -157,3 +157,65 @@ test('reference data import validates atomically and exports portable versions',
     await server.close()
   }
 })
+
+test('feature flag runtime evaluation isolates callers and emergency override wins immediately', async () => {
+  const repository = createSeedRepository()
+  const server = await createInjectedRouteTestServer(repository, (router) => registerConfigResourceRoutes(router, { repositories: repository, environment: 'staging' }))
+  try {
+    const fixture = {
+      key: 'workspace.rollout-editor', title: 'Rollout editor',
+      value: {
+        enabled: false, payload: { variant: 'control' },
+        rules: [{ id: 'staging-on', type: 'environment', values: ['staging'], enabled: true, payload: { variant: 'candidate' } }],
+        rolloutPercentage: 0, rolloutSeed: 'editor-v1',
+      },
+    }
+    const created = await requestJson(server.url, '/api/admin/config-resources/feature_flag', { token: admin, body: fixture })
+    const id = created.payload.data.id
+    await requestJson(server.url, `/api/admin/config-resources/feature_flag/${id}/publish`, {
+      token: admin, body: { expectedVersion: 1, reasonCode: 'rollout_start' },
+    })
+
+    const anonymous = await requestJson(server.url, `/api/feature-flags/${fixture.key}/evaluate`, { method: 'GET' })
+    assert.equal(anonymous.status, 401)
+    const evaluated = await requestJson(server.url, `/api/feature-flags/${fixture.key}/evaluate`, { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(evaluated.status, 200)
+    assert.equal(evaluated.payload.data.enabled, true)
+    assert.equal(evaluated.payload.data.reason, 'environment_rule')
+    assert.deepEqual(evaluated.payload.data.payload, { variant: 'candidate' })
+
+    const preview = await requestJson(server.url, `/api/admin/config-resources/feature_flag/${id}/preview`, {
+      token: moderator, body: { environment: 'production', userId: 'test-user', roles: ['member'] },
+    })
+    assert.equal(preview.status, 200)
+    assert.equal(preview.payload.data.enabled, false)
+
+    const denied = await requestJson(server.url, `/api/admin/config-resources/feature_flag/${id}/emergency-off`, {
+      token: moderator, body: { expectedVersion: 2, reasonCode: 'incident' },
+    })
+    assert.equal(denied.status, 403)
+    const disabled = await requestJson(server.url, `/api/admin/config-resources/feature_flag/${id}/emergency-off`, {
+      token: admin, body: { expectedVersion: 2, reasonCode: 'incident' },
+    })
+    assert.equal(disabled.status, 200)
+    assert.equal(disabled.payload.data.featureFlag.emergencyOff, true)
+    const offResult = await requestJson(server.url, `/api/feature-flags/${fixture.key}/evaluate`, { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(offResult.payload.data.enabled, false)
+    assert.equal(offResult.payload.data.reason, 'emergency_off')
+
+    const restored = await requestJson(server.url, `/api/admin/config-resources/feature_flag/${id}/emergency-restore`, {
+      token: admin, body: { expectedVersion: 3, reasonCode: 'incident_resolved' },
+    })
+    assert.equal(restored.status, 200)
+    assert.equal(restored.payload.data.featureFlag.emergencyOff, false)
+    const after = await requestJson(server.url, `/api/feature-flags/${fixture.key}/evaluate`, { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(after.payload.data.enabled, true)
+
+    const audit = await repository.audit.list({ limit: 200 })
+    for (const action of ['feature_flags.evaluated', 'admin.feature_flags.previewed', 'admin.feature_flags.emergency_disabled', 'admin.feature_flags.emergency_restored']) {
+      assert.ok(audit.items.some((item) => item.action === action), `missing ${action}`)
+    }
+  } finally {
+    await server.close()
+  }
+})

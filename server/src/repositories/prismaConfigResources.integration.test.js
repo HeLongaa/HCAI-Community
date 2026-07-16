@@ -14,6 +14,7 @@ test('Prisma config resources preserve concurrent publication, atomic audit, imm
     publishConfigResource,
     restoreConfigResource,
     rollbackConfigResource,
+    setFeatureFlagEmergency,
     updateConfigResource,
   } = await import('../configResources/configResourceRuntime.js')
 
@@ -41,8 +42,8 @@ test('Prisma config resources preserve concurrent publication, atomic audit, imm
     const first = concurrent.find((result) => result.status === 'fulfilled').value
     assert.equal(first.resource.publishedVersion, 1)
     assert.equal(first.revision.contentHash.length, 64)
-    assert.deepEqual(await repository.client.featureFlag.findUnique({ where: { resourceId } }).then((row) => ({ enabled: row.enabled, payload: row.payload, publishedVersion: row.publishedVersion })), {
-      enabled: false, payload: {}, publishedVersion: 1,
+    assert.deepEqual(await repository.client.featureFlag.findUnique({ where: { resourceId } }).then((row) => ({ enabled: row.enabled, payload: row.payload, rules: row.rules, rolloutPercentage: row.rolloutPercentage, rolloutSeed: row.rolloutSeed, publishedVersion: row.publishedVersion })), {
+      enabled: false, payload: {}, rules: [], rolloutPercentage: null, rolloutSeed: 'v1', publishedVersion: 1,
     })
 
     const updated = await updateConfigResource({
@@ -66,6 +67,16 @@ test('Prisma config resources preserve concurrent publication, atomic audit, imm
     assert.equal(second.revision.previousRevisionId, first.revision.id)
     assert.equal((await repository.client.featureFlag.findUnique({ where: { resourceId } })).enabled, true)
 
+    const emergencyOff = await setFeatureFlagEmergency({
+      resource: second.resource, payload: { expectedVersion: 4, reasonCode: 'incident' }, emergencyOff: true, actor, repository: resources,
+    })
+    assert.equal(emergencyOff.resource.version, 5)
+    assert.equal(emergencyOff.featureFlag.emergencyOff, true)
+    await assert.rejects(
+      setFeatureFlagEmergency({ resource: second.resource, payload: { expectedVersion: 4, reasonCode: 'stale_restore' }, emergencyOff: false, actor, repository: resources }),
+      /changed before emergency override/,
+    )
+
     await assert.rejects(
       repository.client.configResourceRevision.update({ where: { id: first.revision.id }, data: { eventType: 'tampered' } }),
       /immutable config resource revision cannot be update/,
@@ -76,20 +87,26 @@ test('Prisma config resources preserve concurrent publication, atomic audit, imm
     )
 
     const rolledBack = await rollbackConfigResource({
-      resource: second.resource, actor, repository: resources,
-      payload: { expectedVersion: 4, revisionId: first.revision.id, reasonCode: 'restore_v1' },
+      resource: emergencyOff.resource, actor, repository: resources,
+      payload: { expectedVersion: 5, revisionId: first.revision.id, reasonCode: 'restore_v1' },
     })
     assert.equal(rolledBack.resource.publishedVersion, 3)
     assert.equal(rolledBack.resource.publishedValue.enabled, false)
     assert.equal(rolledBack.revision.eventType, 'rolled_back')
-    assert.equal((await repository.client.featureFlag.findUnique({ where: { resourceId } })).enabled, false)
+    assert.deepEqual(await repository.client.featureFlag.findUnique({ where: { resourceId } }).then((row) => ({ enabled: row.enabled, emergencyOff: row.emergencyOff })), { enabled: false, emergencyOff: true })
 
-    const deleted = await deleteConfigResource({ resource: rolledBack.resource, payload: { expectedVersion: 5, reasonCode: 'retire' }, actor, repository: resources })
+    const emergencyRestored = await setFeatureFlagEmergency({
+      resource: rolledBack.resource, payload: { expectedVersion: 6, reasonCode: 'incident_resolved' }, emergencyOff: false, actor, repository: resources,
+    })
+    assert.equal(emergencyRestored.resource.version, 7)
+    assert.equal(emergencyRestored.featureFlag.emergencyOff, false)
+
+    const deleted = await deleteConfigResource({ resource: emergencyRestored.resource, payload: { expectedVersion: 7, reasonCode: 'retire' }, actor, repository: resources })
     assert.ok(deleted.deletedAt)
     assert.ok((await repository.client.featureFlag.findUnique({ where: { resourceId } })).deletedAt)
-    const restored = await restoreConfigResource({ resource: deleted, payload: { expectedVersion: 6, reasonCode: 'restore' }, actor, repository: resources })
+    const restored = await restoreConfigResource({ resource: deleted, payload: { expectedVersion: 8, reasonCode: 'restore' }, actor, repository: resources })
     assert.equal(restored.deletedAt, null)
-    assert.equal(restored.version, 7)
+    assert.equal(restored.version, 9)
     assert.equal((await repository.client.featureFlag.findUnique({ where: { resourceId } })).deletedAt, null)
 
     const reference = await createConfigResource({

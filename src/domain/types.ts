@@ -44,6 +44,7 @@ export type Permission =
   | 'admin:feature-flags:read'
   | 'admin:feature-flags:manage'
   | 'admin:feature-flags:publish'
+  | 'admin:feature-flags:emergency'
   | 'admin:reference-data:read'
   | 'admin:reference-data:manage'
   | 'admin:reference-data:publish'

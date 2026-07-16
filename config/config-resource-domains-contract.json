@@ -23,12 +23,12 @@
     "controls": ["optimistic_concurrency", "immutable_revisions", "atomic_publish_audit", "bounded_pagination"]
   },
   "featureFlagBoundary": {
-    "included": ["definition", "default_enabled_state", "payload", "version", "publish", "rollback"],
-    "deferredTo": "SET-02",
-    "excluded": ["audience_rules", "percentage_rollout", "runtime_evaluation"]
+    "included": ["definition", "default_enabled_state", "payload", "version", "publish", "rollback", "audience_rules", "percentage_rollout", "runtime_evaluation", "emergency_override"],
+    "completedBy": "SET-02",
+    "excluded": []
   },
   "permissions": {
-    "feature_flag": ["admin:feature-flags:read", "admin:feature-flags:manage", "admin:feature-flags:publish"],
+    "feature_flag": ["admin:feature-flags:read", "admin:feature-flags:manage", "admin:feature-flags:publish", "admin:feature-flags:emergency"],
     "reference_data": ["admin:reference-data:read", "admin:reference-data:manage", "admin:reference-data:publish"],
     "announcement": ["admin:announcements:read", "admin:announcements:manage", "admin:announcements:publish"]
   },

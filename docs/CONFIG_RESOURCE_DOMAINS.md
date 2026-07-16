@@ -5,10 +5,10 @@ CONFIG-02 separates runtime configuration, feature flag definitions, reference d
 ## Domain boundaries
 
 - Runtime configuration remains in `SystemSetting`. It keeps the SET-01 preview, two-person approval, publish, and rollback workflow.
-- Feature flags publish into `FeatureFlag` with a stable key, default enabled state, and opaque product payload.
+- Feature flags publish into `FeatureFlag` with a stable key, default enabled state, opaque product payload, and the SET-02 rollout extension.
 - Reference data publishes into `ReferenceDataEntry` with a label, value, sort order, and active state.
 - Announcements publish into `Announcement` with body, severity level, optional schedule, and active state.
-- Feature flag audience rules, percentage rollout, and runtime evaluation are excluded. SET-02 owns those behaviors.
+- Feature flag audience rules, percentage rollout, runtime evaluation, and emergency override are implemented by SET-02 and documented in `docs/FEATURE_FLAG_ROLLOUT.md`.
 
 Each managed kind has separate read, manage, and publish permissions. A moderator receives read access; an administrator receives all operations.
 
@@ -27,7 +27,13 @@ The database rejects updates and deletes against `config_resource_revisions` unl
 Feature flag:
 
 ```json
-{ "enabled": false, "payload": {} }
+{
+  "enabled": false,
+  "payload": {},
+  "rules": [],
+  "rolloutPercentage": null,
+  "rolloutSeed": "v1"
+}
 ```
 
 Reference data:
