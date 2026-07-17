@@ -22,6 +22,8 @@ export type Permission =
   | 'admin:observability:manage'
   | 'admin:queue:read'
   | 'admin:queue:review'
+  | 'admin:tasks:read'
+  | 'admin:tasks:manage'
   | 'admin:media:read'
   | 'admin:media:manage'
   | 'admin:media:export'

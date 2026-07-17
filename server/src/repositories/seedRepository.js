@@ -18,6 +18,7 @@ import { createSeedProviderLegalRepository } from '../modelControl/seedProviderL
 import { createSeedGenerationExecutionRepository } from '../creative/seedGenerationExecutionRepository.js'
 import { createSeedObservabilityRepository } from '../observability/seedObservabilityRepository.js'
 import { createSeedOAuthAdminRepository } from '../auth/seedOAuthAdminRepository.js'
+import { createSeedTaskAdminRepository } from '../tasks/seedTaskAdminRepository.js'
 import {
   appendSeedAuditIntegrity,
   buildPortableAuditExport,
@@ -757,6 +758,10 @@ const unlinkOAuthAccount = (provider, actor) => {
 }
 
 const getTaskById = (id) => seedStore.taskById.get(Number(id)) ?? null
+const getActiveTaskById = (id) => {
+  const task = getTaskById(id)
+  return task && !task.archivedAt ? task : null
+}
 
 const updateTask = (id, updater, canUpdate = () => true) => {
   const current = getTaskById(id)
@@ -770,12 +775,17 @@ const updateTask = (id, updater, canUpdate = () => true) => {
   if (!next) {
     return null
   }
+  const versionedNext = {
+    ...next,
+    version: (Number(current.version) || 1) + 1,
+    updatedAt: new Date().toISOString(),
+  }
   const index = seedStore.tasks.findIndex((task) => Number(task.id) === Number(id))
   if (index >= 0) {
-    seedStore.tasks[index] = next
+    seedStore.tasks[index] = versionedNext
   }
-  seedStore.taskById.set(Number(id), next)
-  return next
+  seedStore.taskById.set(Number(id), versionedNext)
+  return versionedNext
 }
 
 const postCommentsByPostId = new Map()
@@ -1081,7 +1091,7 @@ const createTaskEscrow = (task, publisherHandle) => {
   return entry
 }
 
-const finalizeTaskEscrow = (task, publisherHandle, decision) => {
+const finalizeTaskEscrow = (task, publisherHandle, decision, reasonCode = 'task_dispute_rejected') => {
   const pointsReward = Number(task.pointsReward) || parsePointsAmount(task.budget)
   const escrow = seedStore.pointsLedger.find((entry) => entry.sourceType === 'task_escrow' && entry.sourceId === String(task.id) && entry.userHandle === publisherHandle)
   if (!escrow) {
@@ -1100,7 +1110,7 @@ const finalizeTaskEscrow = (task, publisherHandle, decision) => {
     kind: 'task_escrow_release',
     sourceType: 'task',
     sourceId: task.id,
-    reasonCode: 'task_dispute_rejected',
+    reasonCode,
     payload: { taskId: String(task.id), publisherHandle, amount: pointsReward },
     movements: [
       { unit: 'points', accountRef: `task:${task.id}:points:escrow`, accountType: 'escrow', amount: -pointsReward },
@@ -2471,6 +2481,14 @@ export const createSeedRepository = () => {
     countAuthMethods: countSeedAuthMethods,
     recordAudit,
   })
+  const taskAdmin = createSeedTaskAdminRepository({
+    tasks: seedStore.tasks,
+    getTask: getTaskById,
+    updateTask,
+    finalizeTaskEscrow,
+    createTaskEscrow,
+    recordAudit,
+  })
   return {
   chat: createSeedChatRepository({
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) =>
@@ -2488,6 +2506,7 @@ export const createSeedRepository = () => {
   creativeGenerationExecutions,
   observability,
   oauthAdmin,
+  taskAdmin,
   auth: {
     getCurrentUser: () => seedStore.me,
     findDemoAccountByAccessToken: (token) => {
@@ -2594,7 +2613,7 @@ export const createSeedRepository = () => {
   },
   tasks: {
     workflow: (id, actor) => {
-      const task = getTaskById(id)
+      const task = getActiveTaskById(id)
       if (!task) return null
       const proposals = taskProposals.filter((entry) => entry.taskId === String(task.id))
       const submissions = taskSubmissions.filter((entry) => entry.taskId === String(task.id))
@@ -2613,12 +2632,14 @@ export const createSeedRepository = () => {
       })
     },
     listDeliveryTargets: (actor) => seedStore.tasks
+      .filter((task) => !task.archivedAt)
       .filter((task) => getHandle(task.assignee) === actor.handle)
       .filter((task) => ['In Progress', 'Rejected'].includes(task.status))
       .map((task) => ({ id: String(task.id), title: task.title, status: task.status, category: task.category })),
     list: (options = {}) => {
       const search = options.search ? options.search.toLowerCase() : null
       const filtered = seedStore.tasks.filter((task) => {
+        if (task.archivedAt) return false
         if (options.status && task.status !== options.status) return false
         if (options.category && task.category !== options.category) return false
         if (search) {
@@ -2630,11 +2651,11 @@ export const createSeedRepository = () => {
       return paginateByCursor(filtered, options)
     },
     findById: (id) => {
-      const task = getTaskById(id)
+      const task = getActiveTaskById(id)
       return task ? serializeTask(task) : null
     },
     findAccessibleChatContext: (id, actor) => {
-      const task = getTaskById(id)
+      const task = getActiveTaskById(id)
       if (!task) return null
       const privateTask = task.visibility === 'private'
       const participant = [getHandle(task.publisher), getHandle(task.assignee)].includes(actor.handle)
@@ -2674,7 +2695,7 @@ export const createSeedRepository = () => {
       return serializeTask(task)
     },
     claim: (id, actor) => {
-      const current = getTaskById(id)
+      const current = getActiveTaskById(id)
       if (!current) return null
       if (current.status !== 'Open' || getHandle(current.assignee) !== null) {
         if (getHandle(current.assignee) === actor.handle && current.status === 'In Progress') {
@@ -2696,7 +2717,7 @@ export const createSeedRepository = () => {
       return task ? serializeTask(task) : null
     },
     createProposal: (id, payload, actor) => {
-      const currentTask = getTaskById(id)
+      const currentTask = getActiveTaskById(id)
       if (!currentTask) return null
       if (currentTask.status !== 'Open') {
         throw new HttpError(409, 'TASK_NOT_OPEN_FOR_PROPOSALS', 'Task is not open for proposals')
@@ -2743,7 +2764,7 @@ export const createSeedRepository = () => {
       return serializeTaskProposal(proposal)
     },
     listProposals: (id, actor, options = {}) => {
-      const task = getTaskById(id)
+      const task = getActiveTaskById(id)
       if (!task) {
         return null
       }
@@ -2765,7 +2786,7 @@ export const createSeedRepository = () => {
         if (proposal.status === expectedStatus) return serializeTaskProposal(proposal)
         throw new HttpError(409, 'TASK_PROPOSAL_ALREADY_DECIDED', 'Proposal already has a different decision')
       }
-      const currentTask = getTaskById(id)
+      const currentTask = getActiveTaskById(id)
       if (!currentTask || currentTask.status !== 'Open') {
         throw new HttpError(409, 'TASK_PROPOSAL_NOT_REVIEWABLE', 'Task is not open for proposal review')
       }
@@ -2819,7 +2840,7 @@ export const createSeedRepository = () => {
       return serializeTaskProposal(proposal)
     },
     submit: (id, payload, actor = null) => {
-      const currentTask = getTaskById(id)
+      const currentTask = getActiveTaskById(id)
       if (currentTask && !canAccessOwnedResource(getHandle(currentTask.assignee), actor)) return null
       if (!currentTask) return null
       const latestSubmission = taskSubmissions.find((entry) =>
@@ -2886,7 +2907,7 @@ export const createSeedRepository = () => {
       return task ? serializeTask(task) : null
     },
     listSubmissions: (id, actor, options = {}) => {
-      const task = getTaskById(id)
+      const task = getActiveTaskById(id)
       if (!task) {
         return null
       }
@@ -2903,7 +2924,7 @@ export const createSeedRepository = () => {
       return paginateByCursor(submissions, options)
     },
     listTimeline: (id, actor, options = {}) => {
-      const task = getTaskById(id)
+      const task = getActiveTaskById(id)
       if (!task) {
         return null
       }
@@ -2946,7 +2967,7 @@ export const createSeedRepository = () => {
       return paginateByCursor(items, options)
     },
     createDispute: (id, payload, actor = null) => {
-      const task = getTaskById(id)
+      const task = getActiveTaskById(id)
       if (!task) {
         return null
       }
@@ -3064,7 +3085,8 @@ export const createSeedRepository = () => {
         .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
         .slice(0, payload.limit)
       for (const submission of staleRows) {
-        const task = getTaskById(submission.taskId)
+        const task = getActiveTaskById(submission.taskId)
+        if (!task) continue
         const staleMetadata = {
           staleAt: new Date().toISOString(),
           olderThanHours: payload.olderThanHours,

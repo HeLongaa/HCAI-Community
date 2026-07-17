@@ -1399,3 +1399,179 @@ test('POST /api/tasks/:id/submissions accepts resubmission after requested chang
     await server.close()
   }
 })
+
+test('task admin list separates read and manage permissions', async () => {
+  const server = await createTestServer()
+  try {
+    const denied = await requestJson(server.url, '/api/admin/tasks', { method: 'GET', token: 'demo-access.taskops' })
+    assert.equal(denied.status, 403)
+    assert.equal(denied.payload.error.code, 'PERMISSION_DENIED')
+
+    const readable = await requestJson(server.url, '/api/admin/tasks?limit=2&sort=title&direction=asc', { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(readable.status, 200)
+    assert.equal(readable.payload.meta.pagination.limit, 2)
+    assert.ok(readable.payload.data.every((task) => Number.isInteger(task.version)))
+
+    const task = readable.payload.data[0]
+    const manageDenied = await requestJson(server.url, `/api/admin/tasks/${task.id}/archive`, {
+      token: 'demo-access.legalpixel',
+      body: { expectedVersion: task.version, reasonCode: 'moderator_attempt' },
+    })
+    assert.equal(manageDenied.status, 403)
+    assert.equal(manageDenied.payload.error.message, 'Missing permission: admin:tasks:manage')
+  } finally {
+    await server.close()
+  }
+})
+
+test('task admin edit uses optimistic versioning and updates the public projection', async () => {
+  const server = await createTestServer()
+  try {
+    const created = await createTask(server, { title: 'Admin editable task' }, 'demo-access.launchteam')
+    const detail = await requestJson(server.url, `/api/admin/tasks/${created.id}`, { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(detail.status, 200)
+
+    const edited = await requestJson(server.url, `/api/admin/tasks/${created.id}`, {
+      method: 'PATCH',
+      token: 'demo-access.opsplus',
+      body: {
+        expectedVersion: detail.payload.data.version,
+        reasonCode: 'fix_task_brief',
+        note: 'Corrected acceptance wording.',
+        title: 'Admin edited task',
+        acceptanceRules: 'Submit the corrected package and evidence.',
+        visibility: 'community',
+      },
+    })
+    assert.equal(edited.status, 200)
+    assert.equal(edited.payload.data.version, detail.payload.data.version + 1)
+    assert.equal(edited.payload.data.title, 'Admin edited task')
+
+    const stale = await requestJson(server.url, `/api/admin/tasks/${created.id}`, {
+      method: 'PATCH',
+      token: 'demo-access.opsplus',
+      body: { expectedVersion: detail.payload.data.version, reasonCode: 'stale_edit', title: 'Should not win' },
+    })
+    assert.equal(stale.status, 409)
+    assert.equal(stale.payload.error.code, 'TASK_VERSION_CONFLICT')
+
+    const publicDetail = await requestJson(server.url, `/api/tasks/${created.id}`, { method: 'GET' })
+    assert.equal(publicDetail.status, 200)
+    assert.equal(publicDetail.payload.data.title, 'Admin edited task')
+    assert.deepEqual(publicDetail.payload.data.requirements, ['Submit the corrected package and evidence.'])
+  } finally {
+    await server.close()
+  }
+})
+
+test('task admin archive hides public tasks and restore makes them visible again', async () => {
+  const server = await createTestServer()
+  try {
+    const created = await createTask(server, { title: 'Archive visibility task' }, 'demo-access.launchteam')
+    const detail = await requestJson(server.url, `/api/admin/tasks/${created.id}`, { method: 'GET', token: 'demo-access.opsplus' })
+    const archived = await requestJson(server.url, `/api/admin/tasks/${created.id}/archive`, {
+      token: 'demo-access.opsplus',
+      body: { expectedVersion: detail.payload.data.version, reasonCode: 'duplicate_listing', note: 'Archive duplicate.' },
+    })
+    assert.equal(archived.status, 200)
+    assert.ok(archived.payload.data.archivedAt)
+
+    const hidden = await requestJson(server.url, `/api/tasks/${created.id}`, { method: 'GET' })
+    assert.equal(hidden.status, 404)
+    const claimHidden = await requestJson(server.url, `/api/tasks/${created.id}/claim`, { token: 'demo-access.promptlin' })
+    assert.equal(claimHidden.status, 404)
+    const proposalHidden = await requestJson(server.url, `/api/tasks/${created.id}/proposals`, { token: 'demo-access.promptlin', body: validProposalBody() })
+    assert.equal(proposalHidden.status, 404)
+
+    const restored = await requestJson(server.url, `/api/admin/tasks/${created.id}/restore`, {
+      token: 'demo-access.opsplus',
+      body: { expectedVersion: archived.payload.data.version, reasonCode: 'duplicate_resolved' },
+    })
+    assert.equal(restored.status, 200)
+    assert.equal(restored.payload.data.archivedAt, null)
+    assert.equal((await requestJson(server.url, `/api/tasks/${created.id}`, { method: 'GET' })).status, 200)
+
+    await requestJson(server.url, `/api/tasks/${created.id}/claim`, { token: 'demo-access.promptlin' })
+    const active = await requestJson(server.url, `/api/admin/tasks/${created.id}`, { method: 'GET', token: 'demo-access.opsplus' })
+    const blocked = await requestJson(server.url, `/api/admin/tasks/${created.id}/archive`, {
+      token: 'demo-access.opsplus',
+      body: { expectedVersion: active.payload.data.version, reasonCode: 'hide_active_work' },
+    })
+    assert.equal(blocked.status, 409)
+    assert.equal(blocked.payload.error.code, 'TASK_ARCHIVE_NOT_ALLOWED')
+  } finally {
+    await server.close()
+  }
+})
+
+test('task admin cancellation releases publisher escrow once', async () => {
+  const server = await createTaskAdminNotificationAndPointsServer()
+  try {
+    const created = await createTask(server, { title: 'Admin cancel escrow task', pointsReward: 345 }, 'demo-access.launchteam')
+    const detail = await requestJson(server.url, `/api/admin/tasks/${created.id}`, { method: 'GET', token: 'demo-access.opsplus' })
+    const cancelled = await requestJson(server.url, `/api/admin/tasks/${created.id}/transitions`, {
+      token: 'demo-access.opsplus',
+      body: { expectedVersion: detail.payload.data.version, action: 'cancel', reasonCode: 'publisher_request', note: 'Publisher verified cancellation.' },
+    })
+    assert.equal(cancelled.status, 200)
+    assert.equal(cancelled.payload.data.status, 'cancelled')
+
+    const ledger = await requestJson(server.url, '/api/points/ledger?limit=100', { method: 'GET', token: 'demo-access.launchteam' })
+    const releases = ledger.payload.data.filter((entry) => entry.sourceType === 'task_escrow_release' && entry.sourceId === String(created.id))
+    assert.equal(releases.length, 1)
+    assert.equal(releases[0].delta, 345)
+
+    const repeated = await requestJson(server.url, `/api/admin/tasks/${created.id}/transitions`, {
+      token: 'demo-access.opsplus',
+      body: { expectedVersion: detail.payload.data.version, action: 'cancel', reasonCode: 'publisher_request' },
+    })
+    assert.equal(repeated.status, 409)
+    assert.equal(repeated.payload.error.code, 'TASK_VERSION_CONFLICT')
+  } finally {
+    await server.close()
+  }
+})
+
+test('task admin bulk disposition previews, partially skips, and replays idempotently', async () => {
+  const server = await createTestServer()
+  try {
+    const first = await createTask(server, { title: 'Bulk archive A' }, 'demo-access.launchteam')
+    const second = await createTask(server, { title: 'Bulk archive B' }, 'demo-access.launchteam')
+    await requestJson(server.url, `/api/tasks/${second.id}/claim`, { token: 'demo-access.promptlin' })
+    const targetIds = [first.id, second.id, 'task-missing-admin-bulk']
+    const preview = await requestJson(server.url, '/api/admin/tasks/bulk/preview', {
+      token: 'demo-access.opsplus',
+      body: { action: 'archive', targetIds },
+    })
+    assert.equal(preview.status, 200)
+    assert.equal(preview.payload.data.eligibleCount, 1)
+    assert.equal(preview.payload.data.skippedCount, 2)
+
+    const body = {
+      action: 'archive',
+      targetIds,
+      targetHash: preview.payload.data.targetHash,
+      confirmationText: preview.payload.data.requiredConfirmationText,
+      idempotencyKey: `task-bulk-${first.id}`,
+      reasonCode: 'duplicate_cleanup',
+      note: 'Archive duplicate task records.',
+    }
+    const executed = await requestJson(server.url, '/api/admin/tasks/bulk', { token: 'demo-access.opsplus', body })
+    assert.equal(executed.status, 200)
+    assert.equal(executed.payload.data.succeededCount, 1)
+    assert.equal(executed.payload.data.skippedCount, 2)
+
+    const replayed = await requestJson(server.url, '/api/admin/tasks/bulk', { token: 'demo-access.opsplus', body })
+    assert.equal(replayed.status, 200)
+    assert.deepEqual(replayed.payload.data, executed.payload.data)
+
+    const conflictingReplay = await requestJson(server.url, '/api/admin/tasks/bulk', {
+      token: 'demo-access.opsplus',
+      body: { ...body, reasonCode: 'different_reason' },
+    })
+    assert.equal(conflictingReplay.status, 409)
+    assert.equal(conflictingReplay.payload.error.code, 'TASK_BULK_IDEMPOTENCY_CONFLICT')
+  } finally {
+    await server.close()
+  }
+})

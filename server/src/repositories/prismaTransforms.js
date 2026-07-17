@@ -607,7 +607,7 @@ export const buildTaskRecord = (task, publisher, assignee) => {
     acceptanceRules: task.requirements?.[0] ?? task.reviewNote ?? task.rights ?? task.description,
     rewardAmount: money.amount == null ? null : String(money.amount),
     rewardCurrency: money.currency,
-    pointsReward: parsePoints(task.points ?? task.budget?.points),
+    pointsReward: parsePoints(task.pointsReward ?? task.points ?? task.budget?.points),
     status: taskStatusValue[task.status] ?? 'open',
     publisherId: publisher.id,
     assigneeId: assignee?.id ?? null,

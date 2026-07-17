@@ -129,6 +129,7 @@ import { safeCreativeCreditMetadata, safeErrorPreview } from '../creative/genera
 import { buildPortableAuditExport } from '../audit/auditIntegrity.js'
 import { createPrismaObservabilityRepository } from '../observability/prismaObservabilityRepository.js'
 import { createPrismaOAuthAdminRepository } from '../auth/prismaOAuthAdminRepository.js'
+import { createPrismaTaskAdminRepository } from '../tasks/prismaTaskAdminRepository.js'
 import {
   buildConsentStatus,
   compliancePolicyManifest,
@@ -937,7 +938,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     })
   }
 
-  const finalizeTaskEscrow = async (transaction, task, publisherId, decision, actor = null) => {
+  const finalizeTaskEscrow = async (transaction, task, publisherId, decision, actor = null, reasonCode = 'task_dispute_rejected') => {
     const pointsReward = Number(task.pointsReward) || 0
     if (!publisherId || pointsReward <= 0) {
       return null
@@ -974,7 +975,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       kind: 'task_escrow_release',
       sourceType: 'task',
       sourceId: task.id,
-      reasonCode: 'task_dispute_rejected',
+      reasonCode,
       payload: { taskId: String(task.id), publisherId, amount: pointsReward },
       movements: [
         { unit: 'points', accountRef: `task:${task.id}:points:escrow`, accountType: 'escrow', amount: -pointsReward },
@@ -1051,6 +1052,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   }
 
   const oauthAdmin = createPrismaOAuthAdminRepository(client, { runSerializableTransaction, recordAudit })
+  const taskAdmin = createPrismaTaskAdminRepository(client, { runSerializableTransaction, recordAudit, createTaskEscrow, finalizeTaskEscrow })
 
   const createSessionForUser = async (user, reason = 'auth.session.created', options = {}) => {
     const accessToken = createAccessToken(user.id)
@@ -2641,7 +2643,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   const tasks = {
     workflow: async (id, actor) => {
       const task = await client.task.findUnique({
-        where: { id: String(id) },
+        where: { id: String(id), archivedAt: null },
         include: {
           publisher: { include: { profile: true } },
           assignee: { include: { profile: true } },
@@ -2673,7 +2675,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       const owner = await findUserByHandle(actor.handle)
       if (!owner) return []
       const rows = await client.task.findMany({
-        where: { assigneeId: owner.id, status: { in: ['in_progress', 'rejected'] } },
+        where: { assigneeId: owner.id, archivedAt: null, status: { in: ['in_progress', 'rejected'] } },
         select: { id: true, title: true, status: true, category: true },
         orderBy: { updatedAt: 'desc' },
       })
@@ -2686,6 +2688,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         : null
       const rows = await client.task.findMany({
         where: {
+          archivedAt: null,
           ...(options.status ? { status: parseTaskStatus(options.status) } : {}),
           ...(options.category ? { category: options.category } : {}),
           ...(options.search ? {
@@ -2712,8 +2715,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       }
     },
     findById: async (id) => {
-      const row = await client.task.findUnique({
-        where: { id: String(id) },
+      const row = await client.task.findFirst({
+        where: { id: String(id), archivedAt: null },
         include: {
           publisher: { include: { profile: true } },
           assignee: { include: { profile: true } },
@@ -2727,6 +2730,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       const row = await client.task.findFirst({
         where: {
           id: String(id),
+          archivedAt: null,
           OR: [
             { visibility: 'public' },
             { publisherId: user.id },
@@ -2808,11 +2812,12 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       const claimed = await client.task.updateMany({
         where: {
           id: String(id),
+          archivedAt: null,
           status: 'open',
           assigneeId: null,
           publisherId: { not: assignee.id },
         },
-        data: { status: 'in_progress', assigneeId: assignee.id },
+        data: { status: 'in_progress', assigneeId: assignee.id, version: { increment: 1 } },
       })
       const row = await client.task.findUnique({
         where: { id: String(id) },
@@ -2840,7 +2845,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
     createProposal: async (id, payload, actor) => {
       const task = await client.task.findUnique({
-        where: { id: String(id) },
+        where: { id: String(id), archivedAt: null },
         include: {
           publisher: { include: { profile: true } },
           assignee: { include: { profile: true } },
@@ -2887,7 +2892,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           const taskDto = getTaskDto(task)
           await transaction.task.update({
             where: { id: String(id) },
-            data: { metadata: { ...taskDto, proposals: proposalCount } },
+            data: { metadata: { ...taskDto, proposals: proposalCount }, version: { increment: 1 } },
           })
           return created
         })
@@ -2921,7 +2926,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
     listProposals: async (id, actor, options = {}) => {
       const task = await client.task.findUnique({
-        where: { id: String(id) },
+        where: { id: String(id), archivedAt: null },
         include: { publisher: { include: { profile: true } } },
       })
       if (!task) {
@@ -2967,7 +2972,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           proposer: { include: { profile: true } },
         },
       })
-      if (!proposal || proposal.taskId !== String(id)) {
+      if (!proposal || proposal.taskId !== String(id) || proposal.task.archivedAt) {
         return null
       }
       const publisherHandle = proposal.task.publisher?.profile?.handle ?? proposal.task.publisher?.id ?? null
@@ -2986,8 +2991,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       const updatedProposal = await client.$transaction(async (transaction) => {
         if (payload.decision === 'accept') {
           const assigned = await transaction.task.updateMany({
-            where: { id: String(id), status: 'open', assigneeId: null },
-            data: { status: 'in_progress', assigneeId: proposal.proposerId },
+            where: { id: String(id), archivedAt: null, status: 'open', assigneeId: null },
+            data: { status: 'in_progress', assigneeId: proposal.proposerId, version: { increment: 1 } },
           })
           if (assigned.count !== 1) {
             throw new HttpError(409, 'TASK_PROPOSAL_NOT_REVIEWABLE', 'Task is not open for proposal review')
@@ -3016,7 +3021,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           const taskDto = getTaskDto(proposal.task)
           await transaction.task.update({
             where: { id: String(id) },
-            data: { metadata: { ...taskDto, status: 'In Progress', assignee: proposal.proposer.profile?.handle ?? proposal.proposer.id } },
+            data: { metadata: { ...taskDto, status: 'In Progress', assignee: proposal.proposer.profile?.handle ?? proposal.proposer.id }, version: { increment: 1 } },
           })
           await transaction.taskProposal.updateMany({
             where: {
@@ -3073,7 +3078,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
     submit: async (id, payload, actor = null) => {
       const task = await client.task.findUnique({
-        where: { id: String(id) },
+        where: { id: String(id), archivedAt: null },
         include: {
           publisher: { include: { profile: true } },
           assignee: { include: { profile: true } },
@@ -3117,12 +3122,14 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         const transitioned = await transaction.task.updateMany({
           where: {
             id: String(id),
+            archivedAt: null,
             status: { in: ['open', 'in_progress', 'rejected'] },
             OR: [{ assigneeId: submitter.id }, { assigneeId: null, publisherId: { not: submitter.id } }],
           },
           data: {
             status: 'pending_review',
             assigneeId: submitter.id,
+            version: { increment: 1 },
             metadata: {
               ...taskDto,
               status: 'Pending Review',
@@ -3188,7 +3195,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
     listSubmissions: async (id, actor, options = {}) => {
       const task = await client.task.findUnique({
-        where: { id: String(id) },
+        where: { id: String(id), archivedAt: null },
         include: {
           publisher: { include: { profile: true } },
           assignee: { include: { profile: true } },
@@ -3229,7 +3236,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
     listTimeline: async (id, actor, options = {}) => {
       const task = await client.task.findUnique({
-        where: { id: String(id) },
+        where: { id: String(id), archivedAt: null },
         include: {
           publisher: { include: { profile: true } },
           assignee: { include: { profile: true } },
@@ -3306,7 +3313,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
     createDispute: async (id, payload, actor = null) => {
       const task = await client.task.findUnique({
-        where: { id: String(id) },
+        where: { id: String(id), archivedAt: null },
         include: {
           publisher: { include: { profile: true } },
           assignee: { include: { profile: true } },
@@ -3373,6 +3380,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           where: { id: submission.id, status: { in: ['rejected', 'stale'] } },
           data: {
             status: 'disputed',
+            version: { increment: 1 },
             metadata: {
               ...submissionMetadata,
               dispute: {
@@ -3386,7 +3394,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           throw new HttpError(409, 'TASK_DISPUTE_ALREADY_OPEN', 'A dispute was opened concurrently')
         }
         const claimedTask = await transaction.task.updateMany({
-          where: { id: String(task.id), status: { in: ['rejected', 'pending_review'] } },
+          where: { id: String(task.id), archivedAt: null, status: { in: ['rejected', 'pending_review'] } },
           data: {
             status: 'disputed',
             metadata: {
@@ -3464,6 +3472,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           where: {
             status: 'pending_review',
             createdAt: { lte: cutoff },
+            task: { archivedAt: null },
             ...(payload.taskId ? { taskId: String(payload.taskId) } : {}),
           },
           include: {
@@ -3543,7 +3552,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
     review: async (id, payload, actor = null) => {
       const task = await client.task.findUnique({
-        where: { id: String(id) },
+        where: { id: String(id), archivedAt: null },
         include: {
           publisher: { include: { profile: true } },
           assignee: { include: { profile: true } },
@@ -3586,6 +3595,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         const acceptanceChecklist = payload.acceptanceChecklist ?? []
         const reviewTaskData = {
           status: taskStatusFromLabel(nextTaskStatus),
+          version: { increment: 1 },
           metadata: {
             ...taskDto,
             reviewNote: payload.reviewNote,
@@ -3594,7 +3604,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           },
         }
         const transitioned = await transaction.task.updateMany({
-          where: { id: String(id), status: 'pending_review' },
+          where: { id: String(id), archivedAt: null, status: 'pending_review' },
           data: reviewTaskData,
         })
         if (transitioned.count !== 1) {
@@ -9560,6 +9570,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             where: { id: disputeTask.id },
             data: {
               status: taskStatusFromLabel(resolvedTaskStatus),
+              version: { increment: 1 },
               metadata: {
                 ...disputeTaskDto,
                 status: resolvedTaskStatus,
@@ -9801,6 +9812,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     providerOperations,
     observability,
     oauthAdmin,
+    taskAdmin,
     operationsMetrics,
     authorization,
     adminReviews,

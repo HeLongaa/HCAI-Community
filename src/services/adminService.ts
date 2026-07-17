@@ -6,6 +6,14 @@ import type {
   AdminOAuthAuthorizationQuery,
   AdminOAuthAuthorizationRequest,
   AdminOAuthProviderControl,
+  AdminTaskBulkAction,
+  AdminTaskBulkPreview,
+  AdminTaskBulkResult,
+  AdminTaskDto,
+  AdminTaskMutationEvidence,
+  AdminTaskQuery,
+  AdminTaskSummary,
+  AdminTaskUpdateRequest,
   AdminAuditArchiveManifestDto,
   AdminAuditArchiveResultDto,
   AdminAuditIntegrityDto,
@@ -123,6 +131,34 @@ import type {
 import type { Permission, Role } from '../domain/types'
 
 export const adminService = {
+  async tasks(query?: AdminTaskQuery) {
+    const envelope = await api.getEnvelope<AdminTaskDto[]>(withQuery('/admin/tasks', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async taskSummary(query?: AdminTaskQuery) {
+    return api.get<AdminTaskSummary>(withQuery('/admin/tasks/summary', query))
+  },
+  async task(id: string) {
+    return api.get<AdminTaskDto>(`/admin/tasks/${encodeURIComponent(id)}`)
+  },
+  async updateTask(id: string, payload: AdminTaskUpdateRequest) {
+    return api.patch<AdminTaskDto>(`/admin/tasks/${encodeURIComponent(id)}`, payload)
+  },
+  async archiveTask(id: string, payload: AdminTaskMutationEvidence) {
+    return api.post<AdminTaskDto>(`/admin/tasks/${encodeURIComponent(id)}/archive`, payload)
+  },
+  async restoreTask(id: string, payload: AdminTaskMutationEvidence) {
+    return api.post<AdminTaskDto>(`/admin/tasks/${encodeURIComponent(id)}/restore`, payload)
+  },
+  async transitionTask(id: string, action: 'publish' | 'cancel', payload: AdminTaskMutationEvidence) {
+    return api.post<AdminTaskDto>(`/admin/tasks/${encodeURIComponent(id)}/transitions`, { ...payload, action })
+  },
+  async previewTaskBulk(action: AdminTaskBulkAction, targetIds: string[]) {
+    return api.post<AdminTaskBulkPreview>('/admin/tasks/bulk/preview', { action, targetIds })
+  },
+  async executeTaskBulk(body: { action: AdminTaskBulkAction; targetIds: string[]; targetHash: string; confirmationText: string; idempotencyKey: string; reasonCode: string; note?: string }) {
+    return api.post<AdminTaskBulkResult>('/admin/tasks/bulk', body)
+  },
   async oauthProviders() {
     return api.get<AdminOAuthProviderControl[]>('/admin/auth/oauth/providers')
   },

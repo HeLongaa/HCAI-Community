@@ -17,7 +17,8 @@
     { "id": "mediaAssets", "model": "MediaAsset", "routeGroup": "admin", "listRoute": "GET /api/admin/media/assets", "detailRoute": "GET /api/admin/media/assets/:id", "exportRoute": "GET /api/admin/media/assets/export", "recoveryRoutes": ["POST /api/admin/media/assets/:id/:action", "POST /api/admin/media/assets/:id/scan", "POST /api/admin/media/assets/:id/scan-retry", "POST /api/admin/media/assets/bulk-actions"] },
     { "id": "securityEvents", "model": "SecurityEvent", "routeGroup": "admin", "listRoute": "GET /api/admin/security/events" },
     { "id": "securityAlerts", "model": "SecurityEvent", "routeGroup": "admin", "listRoute": "GET /api/admin/security/alerts", "exportRoute": "GET /api/admin/security/alerts/:id/export", "recoveryRoutes": ["POST /api/admin/security/alerts/:id/acknowledge", "POST /api/admin/security/alerts/:id/silence", "POST /api/admin/security/alerts/:id/unsilence"] },
-    { "id": "permissions", "model": "Permission", "routeGroup": "admin", "listRoute": "GET /api/admin/permissions", "mutationRoutes": ["PUT /api/admin/roles/:role/permissions"] }
+    { "id": "permissions", "model": "Permission", "routeGroup": "admin", "listRoute": "GET /api/admin/permissions", "mutationRoutes": ["PUT /api/admin/roles/:role/permissions"] },
+    { "id": "tasks", "model": "Task", "routeGroup": "tasks", "listRoute": "GET /api/admin/tasks", "detailRoute": "GET /api/admin/tasks/:id", "mutationRoutes": ["PATCH /api/admin/tasks/:id"], "recoveryRoutes": ["POST /api/admin/tasks/:id/archive", "POST /api/admin/tasks/:id/restore", "POST /api/admin/tasks/:id/transitions", "POST /api/admin/tasks/bulk/preview", "POST /api/admin/tasks/bulk"] }
   ],
   "policyCapabilities": {
     "mutable_crud": ["list", "detail", "create", "update", "softDelete", "hardDeleteWhenAllowed", "export"],

@@ -1139,6 +1139,8 @@ model User {
   refreshTokens                RefreshToken[]
   publisherTasks               Task[]                          @relation("TaskPublisher")
   assigneeTasks                Task[]                          @relation("TaskAssignee")
+  archivedTasks                Task[]                          @relation("TaskArchivedBy")
+  requestedTaskBulkActions     TaskAdminBulkAction[]           @relation("TaskBulkActionRequester")
   taskProposals                TaskProposal[]
   taskSubmissions              TaskSubmission[]                @relation("TaskSubmissionSubmitter")
   reviewedTaskSubmissions      TaskSubmission[]                @relation("TaskSubmissionReviewer")
@@ -1270,6 +1272,11 @@ model Task {
   assigneeId            String?        @map("assignee_id")
   visibility            TaskVisibility
   deadlineAt            DateTime?      @map("deadline_at")
+  version               Int            @default(1)
+  archivedAt            DateTime?      @map("archived_at")
+  archivedById          String?        @map("archived_by_id")
+  archiveReasonCode     String?        @map("archive_reason_code")
+  archiveNote           String?        @map("archive_note")
   createdAt             DateTime       @default(now()) @map("created_at")
   updatedAt             DateTime       @updatedAt @map("updated_at")
   metadata              Json?
@@ -1277,10 +1284,38 @@ model Task {
 
   publisher   User?            @relation("TaskPublisher", fields: [publisherId], references: [id], onDelete: Restrict)
   assignee    User?            @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  archivedBy  User?            @relation("TaskArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
   proposals   TaskProposal[]
   submissions TaskSubmission[]
 
+  @@index([status, updatedAt, id])
+  @@index([category, updatedAt, id])
+  @@index([archivedAt, status, updatedAt])
   @@map("tasks")
+}
+
+model TaskAdminBulkAction {
+  id                  String    @id @default(cuid())
+  idempotencyKey      String    @unique @map("idempotency_key")
+  action              String
+  targetHash          String    @map("target_hash")
+  targetCount         Int       @map("target_count")
+  eligibleCount       Int       @map("eligible_count")
+  skippedCount        Int       @map("skipped_count")
+  status              String
+  reasonCode          String    @map("reason_code")
+  note                String?
+  requestedById       String?   @map("requested_by_id")
+  result              Json
+  resultSchemaVersion Int       @default(1) @map("result_schema_version")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  completedAt         DateTime? @map("completed_at")
+
+  requestedBy User? @relation("TaskBulkActionRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  @@index([createdAt, id])
+  @@index([requestedById, createdAt])
+  @@map("task_admin_bulk_actions")
 }
 
 model TaskProposal {

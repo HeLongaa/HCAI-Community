@@ -17,6 +17,7 @@ import { ConfigurationResourcesPanel } from './ConfigurationResourcesPanel'
 import { ModelControlPanel } from './ModelControlPanel'
 import { AdminMediaLifecyclePanel } from './AdminMediaLifecyclePanel'
 import { OAuthAdminPanel } from './OAuthAdminPanel'
+import { TaskAdminPanel } from './TaskAdminPanel'
 import type {
   AdminPermissionDto,
   AdminAuditArchiveManifestDto,
@@ -2493,6 +2494,13 @@ export function AdminPage({
         isZh={isZh}
         notify={(message) => simulateAction(message)}
       />
+      {activeTab === 'Task review' && (
+        <TaskAdminPanel
+          hasPermission={account.hasPermission}
+          isZh={isZh}
+          notify={(message) => simulateAction(message)}
+        />
+      )}
       {activeTab === 'Access' && (
         <OAuthAdminPanel
           t={t}

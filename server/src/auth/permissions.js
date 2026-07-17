@@ -39,6 +39,8 @@ export const permissionRegistry = Object.freeze([
   definePermission('admin:observability:manage', 'observability-incident-response', 'observability_alert', 'manage', 'critical', admins, { resourceAuthorization: true, description: 'Evaluate and disposition observability alerts' }),
   definePermission('admin:queue:read', 'admin-console', 'admin_review', 'read', 'high', moderators, { description: 'Read administrative review queues' }),
   definePermission('admin:queue:review', 'admin-console', 'admin_review', 'review', 'critical', moderators, { resourceAuthorization: true, description: 'Resolve administrative reviews' }),
+  definePermission('admin:tasks:read', 'task-marketplace', 'task', 'read', 'high', moderators, { description: 'Read task operations projections and lifecycle evidence' }),
+  definePermission('admin:tasks:manage', 'task-marketplace', 'task', 'manage', 'critical', admins, { resourceAuthorization: true, description: 'Edit eligible tasks and apply audited archive or status operations' }),
   definePermission('admin:media:read', 'media-platform', 'media_asset', 'read', 'high', moderators, { description: 'Read owner-safe media asset administration projections' }),
   definePermission('admin:media:manage', 'media-platform', 'media_asset', 'manage', 'critical', moderators, { resourceAuthorization: true, description: 'Review scans and manage media asset lifecycle state' }),
   definePermission('admin:media:export', 'media-platform', 'media_asset', 'export', 'critical', admins, { description: 'Export bounded owner-safe media asset evidence' }),
