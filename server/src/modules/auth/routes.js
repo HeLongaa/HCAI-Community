@@ -35,7 +35,7 @@ import { serializeAccount } from '../../repositories/serializers.js'
 import { recordSecurityEvent } from '../../security/securityEvents.js'
 import { validatePolicyConsent } from '../../compliance/policyManifest.js'
 
-const oauthAccountProviders = ['google', 'apple', 'discord']
+const oauthAccountProviders = ['google', 'github', 'apple', 'discord']
 
 const providerUserIdHint = (providerUserId) => {
   const value = String(providerUserId ?? '')
@@ -139,6 +139,12 @@ const recordAuthFailureAnomaly = async (event, context) => {
 }
 
 export const registerAuthRoutes = (router) => {
+  const getOAuthProviderControl = async (provider) => {
+    if (repositories.oauthAdmin?.getProviderControl) return repositories.oauthAdmin.getProviderControl(provider)
+    const controls = await repositories.oauthAdmin?.listProviderControls?.() ?? []
+    return controls.find((control) => control.provider === provider) ?? null
+  }
+
   const completeOAuthCallback = async ({ provider, query }) => {
     if (!oauthAccountProviders.includes(provider)) {
       throw new HttpError(404, 'NOT_FOUND', 'OAuth provider not found')
@@ -161,6 +167,13 @@ export const registerAuthRoutes = (router) => {
       })
       throw new HttpError(400, 'OAUTH_STATE_INVALID', 'OAuth state is invalid or expired')
     }
+    const providerControl = await getOAuthProviderControl(provider)
+    if (providerControl?.enabled === false) {
+      throw new HttpError(503, 'OAUTH_PROVIDER_DISABLED', 'OAuth provider is disabled by an administrator')
+    }
+    if (authorizationRequest.providerControlVersion !== (providerControl?.version ?? 0)) {
+      throw new HttpError(409, 'OAUTH_CONFIGURATION_CHANGED', 'OAuth provider configuration changed during authorization')
+    }
     if (query.error) {
       const cancelled = query.error === 'access_denied'
       recordSecurityEvent({
@@ -180,6 +193,7 @@ export const registerAuthRoutes = (router) => {
     const profile = await exchangeOAuthCodeForProfile(provider, query.code, {
       statePayload,
       user: query.user,
+      configuration: providerControl,
     })
     if (!profile) {
       recordSecurityEvent({
@@ -265,9 +279,9 @@ export const registerAuthRoutes = (router) => {
   })
 
   router.add('GET', '/api/auth/oauth/providers', async (_request, response) => {
-    const metadata = listOAuthProviderMetadata()
     const controls = await repositories.oauthAdmin?.listProviderControls?.() ?? []
     const controlByProvider = new Map(controls.map((control) => [control.provider, control]))
+    const metadata = listOAuthProviderMetadata(process.env, controlByProvider)
     ok(response, metadata.map((provider) => {
       if (controlByProvider.get(provider.provider)?.enabled !== false) return provider
       return { ...provider, available: false, mode: 'unavailable', authorizationUrl: null }
@@ -301,14 +315,15 @@ export const registerAuthRoutes = (router) => {
     if (!isSupportedOAuthProvider(provider) || !oauthAccountProviders.includes(provider)) {
       throw new HttpError(404, 'NOT_FOUND', 'OAuth provider not found')
     }
-    if (await repositories.oauthAdmin?.isProviderEnabled?.(provider) === false) {
+    const providerControl = await getOAuthProviderControl(provider)
+    if (providerControl?.enabled === false) {
       throw new HttpError(503, 'OAUTH_PROVIDER_DISABLED', 'OAuth provider is disabled by an administrator')
     }
     const payload = parseOAuthStartRequest((await readJsonBody(request)) ?? {})
     const linkUser = payload.linkAccount ? requireUser(context) : null
     const state = createOAuthState({ provider })
     const origin = `${context.url.protocol}//${context.url.host}`
-    const authorization = getOAuthAuthorizationUrl({ provider, state, origin })
+    const authorization = getOAuthAuthorizationUrl({ provider, state, origin, configuration: providerControl })
     if (authorization.mode === 'unavailable' || !authorization.authorizationUrl) {
       throw new HttpError(503, 'OAUTH_PROVIDER_UNAVAILABLE', 'OAuth provider is not configured for this environment')
     }
@@ -318,6 +333,7 @@ export const registerAuthRoutes = (router) => {
       provider,
       redirectTo: normalizeOAuthRedirect(payload.redirectTo),
       linkUserId: linkUser?.id ?? null,
+      providerControlVersion: providerControl?.version ?? 0,
       expiresAt: new Date(statePayload.exp),
     })
     if (!stateCreated) {

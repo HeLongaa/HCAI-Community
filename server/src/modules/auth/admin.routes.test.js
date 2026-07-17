@@ -28,9 +28,9 @@ test('OAuth Admin provider controls enforce permissions, safe projections, CAS, 
       method: 'GET', token: adminToken,
     })
     assert.equal(listed.status, 200)
-    assert.deepEqual(listed.payload.data.map((item) => item.provider), ['google', 'apple', 'discord'])
+    assert.deepEqual(listed.payload.data.map((item) => item.provider), ['google', 'github', 'apple', 'discord'])
     assert.equal(listed.payload.data.every((item) => item.enabled && item.version === 0), true)
-    assert.equal(/clientSecret|privateKey|clientId/.test(JSON.stringify(listed.payload)), false)
+    assert.equal(/clientSecret"|privateKey/.test(JSON.stringify(listed.payload)), false)
 
     const disabled = await requestJson(server.url, '/api/admin/auth/oauth/providers/google/status', {
       token: adminToken,
@@ -64,6 +64,102 @@ test('OAuth Admin provider controls enforce permissions, safe projections, CAS, 
     assert.equal(enabled.status, 200)
     assert.equal(enabled.payload.data.enabled, true)
     assert.equal(enabled.payload.data.version, 2)
+  } finally {
+    await server.close()
+  }
+})
+
+test('OAuth Admin stores GitHub settings without accepting or exposing plaintext secrets', async () => {
+  const repository = createSeedRepository()
+  const server = await createServer(repository)
+  try {
+    const rejected = await requestJson(server.url, '/api/admin/auth/oauth/providers/github/configuration', {
+      method: 'PUT', token: adminToken,
+      body: { clientId: 'github-client', clientSecret: 'plaintext', redirectUri: 'https://app.example.com/api/auth/oauth/github/callback', scopes: ['read:user'], expectedVersion: 0, reasonCode: 'bad_secret' },
+    })
+    assert.equal(rejected.status, 400)
+
+    const configured = await requestJson(server.url, '/api/admin/auth/oauth/providers/github/configuration', {
+      method: 'PUT', token: adminToken,
+      body: {
+        clientId: 'github-client', redirectUri: 'https://app.example.com/api/auth/oauth/github/callback',
+        scopes: ['read:user', 'user:email'], clientSecretRef: 'secret://oauth/github/client-secret', expectedVersion: 0, reasonCode: 'initial_configuration',
+      },
+    })
+    assert.equal(configured.status, 200)
+    assert.equal(configured.payload.data.provider, 'github')
+    assert.equal(configured.payload.data.enabled, false)
+    assert.equal(configured.payload.data.version, 1)
+    assert.equal(configured.payload.data.clientId, 'github-client')
+    assert.equal(configured.payload.data.clientSecretRef, 'secret://oauth/github/client-secret')
+    assert.equal(JSON.stringify(configured.payload).includes('plaintext'), false)
+
+    const stale = await requestJson(server.url, '/api/admin/auth/oauth/providers/github/configuration', {
+      method: 'PUT', token: adminToken,
+      body: {
+        clientId: 'github-client-2', redirectUri: 'https://app.example.com/api/auth/oauth/github/callback',
+        scopes: ['read:user'], clientSecretRef: 'secret://oauth/github/client-secret', expectedVersion: 0, reasonCode: 'stale_configuration',
+      },
+    })
+    assert.equal(stale.status, 409)
+  } finally {
+    await server.close()
+  }
+})
+
+test('OAuth callbacks reject authorization issued before Provider configuration or status changes', async () => {
+  const repository = createSeedRepository()
+  const server = await createServer(repository)
+  const configuration = {
+    clientId: 'github-client',
+    redirectUri: 'http://127.0.0.1:8787/api/auth/oauth/github/callback',
+    scopes: ['read:user', 'user:email'],
+    clientSecretRef: 'secret://oauth/github/client-secret',
+  }
+  try {
+    const listed = await requestJson(server.url, '/api/admin/auth/oauth/providers', {
+      method: 'GET', token: adminToken,
+    })
+    const initialVersion = listed.payload.data.find((item) => item.provider === 'github').version
+    const configured = await requestJson(server.url, '/api/admin/auth/oauth/providers/github/configuration', {
+      method: 'PUT', token: adminToken,
+      body: { ...configuration, expectedVersion: initialVersion, reasonCode: 'initial_configuration' },
+    })
+    const enabled = await requestJson(server.url, '/api/admin/auth/oauth/providers/github/status', {
+      token: adminToken,
+      body: { enabled: true, expectedVersion: configured.payload.data.version, reasonCode: 'configuration_ready' },
+    })
+    assert.equal(enabled.status, 200)
+
+    const configurationStart = await requestJson(server.url, '/api/auth/oauth/github/start', { body: {} })
+    const configurationChanged = await requestJson(server.url, '/api/admin/auth/oauth/providers/github/configuration', {
+      method: 'PUT', token: adminToken,
+      body: { ...configuration, expectedVersion: enabled.payload.data.version, reasonCode: 'rotate_client_metadata' },
+    })
+    assert.equal(configurationChanged.status, 200)
+    const configurationCallbackUrl = new URL(configurationStart.payload.data.authorizationUrl)
+    const rejectedAfterConfiguration = await requestJson(
+      server.url,
+      `${configurationCallbackUrl.pathname}${configurationCallbackUrl.search}`,
+      { method: 'GET' },
+    )
+    assert.equal(rejectedAfterConfiguration.status, 409)
+    assert.equal(rejectedAfterConfiguration.payload.error.code, 'OAUTH_CONFIGURATION_CHANGED')
+
+    const statusStart = await requestJson(server.url, '/api/auth/oauth/github/start', { body: {} })
+    const statusChanged = await requestJson(server.url, '/api/admin/auth/oauth/providers/github/status', {
+      token: adminToken,
+      body: { enabled: true, expectedVersion: configurationChanged.payload.data.version, reasonCode: 'refresh_runtime_status' },
+    })
+    assert.equal(statusChanged.status, 200)
+    const statusCallbackUrl = new URL(statusStart.payload.data.authorizationUrl)
+    const rejectedAfterStatus = await requestJson(
+      server.url,
+      `${statusCallbackUrl.pathname}${statusCallbackUrl.search}`,
+      { method: 'GET' },
+    )
+    assert.equal(rejectedAfterStatus.status, 409)
+    assert.equal(rejectedAfterStatus.payload.error.code, 'OAUTH_CONFIGURATION_CHANGED')
   } finally {
     await server.close()
   }

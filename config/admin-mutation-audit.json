@@ -4,6 +4,7 @@
   "policyDocument": "docs/ADMIN_MUTATION_AUDIT.md",
   "routes": [
     { "method": "POST", "path": "/api/admin/auth/oauth/providers/:provider/status", "action": "admin.auth.oauth_provider.status_change.attempted", "resourceType": "oauth_provider_control", "resourceParam": "provider", "reasonCode": "oauth_provider_status_change", "mode": "domain_audited", "risk": "critical" },
+    { "method": "PUT", "path": "/api/admin/auth/oauth/providers/:provider/configuration", "action": "admin.auth.oauth_provider.configuration_change.attempted", "resourceType": "oauth_provider_control", "resourceParam": "provider", "reasonCode": "oauth_provider_configuration_change", "mode": "domain_audited", "risk": "critical" },
     { "method": "DELETE", "path": "/api/admin/auth/oauth/accounts/:id", "action": "admin.auth.oauth_account.unlink.attempted", "resourceType": "auth_account", "resourceParam": "id", "reasonCode": "oauth_account_unlink", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/auth/oauth/authorization-requests/:id/revoke", "action": "admin.auth.oauth_authorization.revoke.attempted", "resourceType": "oauth_authorization_request", "resourceParam": "id", "reasonCode": "oauth_authorization_revoke", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/observability/slos/evaluate", "action": "admin.observability.slo.evaluate.attempted", "resourceType": "observability_slo", "resourceParam": null, "reasonCode": "observability_slo_evaluate", "mode": "domain_audited", "risk": "critical" },

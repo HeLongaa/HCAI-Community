@@ -30,6 +30,18 @@ test('OAuth Admin controls Provider availability, linked accounts, and pending a
   const panel = page.getByTestId('oauth-admin-panel')
   await expect(panel).toBeVisible()
   await expect(panel.getByTestId('oauth-provider-google')).toContainText('Enabled')
+  const github = panel.getByTestId('oauth-provider-github')
+  await expect(github).toBeVisible()
+  await github.getByLabel('GitHub Client ID').fill('e2e-github-client')
+  await github.getByLabel('GitHub Redirect URI').fill(`${apiBaseUrl}/api/auth/oauth/github/callback`)
+  await github.getByLabel('GitHub scopes').fill('read:user user:email')
+  await github.getByLabel('GitHub SecretRef').fill('secret://oauth/github/client-secret')
+  await github.getByLabel('GitHub reason code').fill('e2e_github_configuration')
+  const configuredResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/auth/oauth/providers/github/configuration') && response.request().method() === 'PUT')
+  await github.getByRole('button', { name: 'Save' }).click()
+  expect((await configuredResponse).status()).toBe(200)
+  await expect(github).toContainText('Disabled')
+  await expect(github).toContainText('Secret missing')
   await expect(panel.getByTestId(`oauth-account-${linkedAccountId}`)).toBeVisible()
   await expect(panel.getByTestId(`oauth-request-${pendingRequestId}`)).toBeVisible()
 
@@ -81,7 +93,10 @@ test('OAuth Admin panel remains bounded on mobile', async ({ page, request }) =>
     return {
       panelWidth: element.getBoundingClientRect().width,
       viewportWidth: window.innerWidth,
-      overflow: descendants.filter((node) => node.scrollWidth > node.clientWidth + 2).map((node) => node.className).slice(0, 10),
+      overflow: descendants
+        .filter((node) => !['INPUT', 'SELECT', 'TEXTAREA'].includes(node.tagName) && node.scrollWidth > node.clientWidth + 2)
+        .map((node) => `${node.tagName.toLowerCase()}[aria-label="${node.getAttribute('aria-label') ?? ''}"]:${node.clientWidth}/${node.scrollWidth}`)
+        .slice(0, 10),
     }
   })
   expect(layout.panelWidth).toBeLessThanOrEqual(layout.viewportWidth)

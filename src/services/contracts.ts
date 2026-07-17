@@ -314,7 +314,7 @@ export type SessionResponse = {
   user: ApiAccount
 }
 
-export type OAuthProvider = 'google' | 'apple' | 'discord' | 'dev'
+export type OAuthProvider = 'google' | 'github' | 'apple' | 'discord' | 'dev'
 
 export type OAuthStartResponse = {
   provider: OAuthProvider
@@ -371,6 +371,12 @@ export type AdminOAuthProviderControl = {
   authorizationUrl: string | null
   callbackMethod: 'GET' | 'POST'
   scopes: string[]
+  clientId: string | null
+  redirectUri: string | null
+  clientSecretRef: string | null
+  secretAvailable: boolean
+  configurationSource: 'admin' | 'environment'
+  configurationUpdatedAt: string | null
   enabled: boolean
   version: number
   reasonCode: string

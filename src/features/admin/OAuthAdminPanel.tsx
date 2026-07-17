@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Ban, Power, RefreshCw, Search, Unlink } from 'lucide-react'
+import { Ban, Power, RefreshCw, Save, Search, Unlink } from 'lucide-react'
 
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { isZhCopy, textFor } from '../../domain/utils'
@@ -17,16 +17,24 @@ type OAuthAdminPanelProps = {
   notify: (message: string) => void
 }
 
-const providers = ['google', 'apple', 'discord']
+const providers = ['google', 'github', 'apple', 'discord']
 const requestStatuses = ['pending', 'consumed', 'revoked', 'expired']
 const defaultReason = 'operator_requested'
 
 const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback
+type OAuthConfigurationDraft = { clientId: string; redirectUri: string; scopes: string; clientSecretRef: string }
+const draftFor = (control: AdminOAuthProviderControl): OAuthConfigurationDraft => ({
+  clientId: control.clientId ?? '',
+  redirectUri: control.redirectUri ?? '',
+  scopes: control.scopes.join(' '),
+  clientSecretRef: control.clientSecretRef ?? `secret://oauth/${control.provider}/client-secret`,
+})
 
 export function OAuthAdminPanel({ t, canRead, canManage, notify }: OAuthAdminPanelProps) {
   const isZh = isZhCopy(t)
   const [providerControls, setProviderControls] = useState<AdminOAuthProviderControl[]>([])
   const [providerReasons, setProviderReasons] = useState<Record<string, string>>({})
+  const [providerDrafts, setProviderDrafts] = useState<Record<string, OAuthConfigurationDraft>>({})
   const [providerBusy, setProviderBusy] = useState<string | null>(null)
   const [providerError, setProviderError] = useState<string | null>(null)
   const [accounts, setAccounts] = useState<AdminOAuthAccount[]>([])
@@ -51,7 +59,9 @@ export function OAuthAdminPanel({ t, canRead, canManage, notify }: OAuthAdminPan
     if (!canRead) return
     setProviderError(null)
     try {
-      setProviderControls(await adminService.oauthProviders())
+      const controls = await adminService.oauthProviders()
+      setProviderControls(controls)
+      setProviderDrafts(Object.fromEntries(controls.map((control) => [control.provider, draftFor(control)])))
     } catch (error) {
       setProviderError(errorMessage(error, isZh ? '无法读取 OAuth Provider 状态。' : 'Could not load OAuth Provider status.'))
     }
@@ -111,6 +121,7 @@ export function OAuthAdminPanel({ t, canRead, canManage, notify }: OAuthAdminPan
     ]).then(([nextProviders, accountPage, requestPage]) => {
       if (cancelled) return
       setProviderControls(nextProviders)
+      setProviderDrafts(Object.fromEntries(nextProviders.map((control) => [control.provider, draftFor(control)])))
       setAccounts(accountPage.items)
       setAccountCursor(accountPage.nextCursor)
       setRequests(requestPage.items)
@@ -148,6 +159,31 @@ export function OAuthAdminPanel({ t, canRead, canManage, notify }: OAuthAdminPan
       notify(textFor(t, `${control.label} OAuth updated.`, `${control.label} OAuth 已更新。`))
     } catch (error) {
       setProviderError(errorMessage(error, isZh ? 'OAuth Provider 状态更新失败。' : 'OAuth Provider update failed.'))
+      await loadProviders()
+    } finally {
+      setProviderBusy(null)
+    }
+  }
+
+  const saveProviderConfiguration = async (control: AdminOAuthProviderControl) => {
+    if (!canManage) return
+    const draft = providerDrafts[control.provider] ?? draftFor(control)
+    setProviderBusy(control.provider)
+    setProviderError(null)
+    try {
+      const updated = await adminService.setOAuthProviderConfiguration(control.provider, {
+        clientId: draft.clientId.trim(),
+        redirectUri: draft.redirectUri.trim(),
+        scopes: draft.scopes.split(/\s+/).filter(Boolean),
+        clientSecretRef: draft.clientSecretRef.trim(),
+        expectedVersion: control.version,
+        reasonCode: providerReasons[control.provider]?.trim() || 'configuration_updated',
+      })
+      setProviderControls((current) => current.map((item) => item.provider === updated.provider ? updated : item))
+      setProviderDrafts((current) => ({ ...current, [updated.provider]: draftFor(updated) }))
+      notify(textFor(t, `${control.label} OAuth configuration saved.`, `${control.label} OAuth 配置已保存。`))
+    } catch (error) {
+      setProviderError(errorMessage(error, isZh ? 'OAuth Provider 配置保存失败。' : 'OAuth Provider configuration failed.'))
       await loadProviders()
     } finally {
       setProviderBusy(null)
@@ -215,6 +251,14 @@ export function OAuthAdminPanel({ t, canRead, canManage, notify }: OAuthAdminPan
             <button className={control.enabled ? 'ghost-button small danger-button' : 'primary-button small'} type="button" onClick={() => void changeProvider(control)} disabled={!canManage || providerBusy === control.provider || (!control.enabled && !control.environmentAvailable)} title={control.enabled ? textFor(t, `Disable ${control.label}`, `停用 ${control.label}`) : textFor(t, `Enable ${control.label}`, `启用 ${control.label}`)}>
               <Power size={16} />{providerBusy === control.provider ? textFor(t, 'Updating', '更新中') : control.enabled ? textFor(t, 'Disable', '停用') : textFor(t, 'Enable', '启用')}
             </button>
+            <div className="oauth-provider-config">
+              <label><span>Client ID</span><input aria-label={`${control.label} Client ID`} value={providerDrafts[control.provider]?.clientId ?? ''} onChange={(event) => setProviderDrafts((current) => ({ ...current, [control.provider]: { ...(current[control.provider] ?? draftFor(control)), clientId: event.target.value } }))} disabled={!canManage} /></label>
+              <label><span>Redirect URI</span><input aria-label={`${control.label} Redirect URI`} value={providerDrafts[control.provider]?.redirectUri ?? ''} onChange={(event) => setProviderDrafts((current) => ({ ...current, [control.provider]: { ...(current[control.provider] ?? draftFor(control)), redirectUri: event.target.value } }))} disabled={!canManage} /></label>
+              <label><span>Scopes</span><input aria-label={`${control.label} scopes`} value={providerDrafts[control.provider]?.scopes ?? ''} onChange={(event) => setProviderDrafts((current) => ({ ...current, [control.provider]: { ...(current[control.provider] ?? draftFor(control)), scopes: event.target.value } }))} disabled={!canManage} /></label>
+              <label><span>SecretRef</span><input aria-label={`${control.label} SecretRef`} value={providerDrafts[control.provider]?.clientSecretRef ?? ''} onChange={(event) => setProviderDrafts((current) => ({ ...current, [control.provider]: { ...(current[control.provider] ?? draftFor(control)), clientSecretRef: event.target.value } }))} disabled={!canManage} /></label>
+              <button className="ghost-button" type="button" onClick={() => void saveProviderConfiguration(control)} disabled={!canManage || providerBusy === control.provider} title={textFor(t, `Save ${control.label} settings`, `保存 ${control.label} 设置`)}><Save size={16} />{textFor(t, 'Save', '保存')}</button>
+              <span className={control.secretAvailable ? 'status-badge success' : 'status-badge warning'}>{control.secretAvailable ? textFor(t, 'Secret mounted', '密钥已挂载') : textFor(t, 'Secret missing', '缺少密钥')}</span>
+            </div>
           </div>
         ))}
       </div>

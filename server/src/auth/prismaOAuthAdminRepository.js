@@ -31,6 +31,7 @@ const pageResult = (rows, query, valueFor, serialize) => {
 
 export const createPrismaOAuthAdminRepository = (client, { runSerializableTransaction, recordAudit }) => ({
   listProviderControls: () => client.oAuthProviderControl.findMany({ orderBy: { provider: 'asc' } }),
+  getProviderControl: (provider) => client.oAuthProviderControl.findUnique({ where: { provider } }),
   isProviderEnabled: async (provider) => (await client.oAuthProviderControl.findUnique({ where: { provider } }))?.enabled ?? true,
   setProviderControl: ({ provider, enabled, expectedVersion, reasonCode }, actor) => runSerializableTransaction(async (transaction) => {
     const current = await transaction.oAuthProviderControl.findUnique({ where: { provider } })
@@ -65,11 +66,58 @@ export const createPrismaOAuthAdminRepository = (client, { runSerializableTransa
     }, transaction)
     return next
   }),
+  setProviderConfiguration: ({ provider, clientId, redirectUri, scopes, clientSecretRef, expectedVersion, reasonCode }, actor) => runSerializableTransaction(async (transaction) => {
+    const current = await transaction.oAuthProviderControl.findUnique({ where: { provider } })
+    if ((current?.version ?? 0) !== expectedVersion) return null
+    const now = new Date()
+    const next = current
+      ? await transaction.oAuthProviderControl.update({
+          where: { id: current.id, version: current.version },
+          data: {
+            clientId,
+            redirectUri,
+            scopes,
+            clientSecretRef,
+            configurationUpdatedAt: now,
+            version: { increment: 1 },
+            reasonCode,
+          },
+        })
+      : await transaction.oAuthProviderControl.create({
+          data: {
+            provider,
+            enabled: false,
+            reasonCode,
+            clientId,
+            redirectUri,
+            scopes,
+            clientSecretRef,
+            configurationUpdatedAt: now,
+            disabledAt: now,
+          },
+        })
+    await recordAudit({
+      actor,
+      action: 'admin.auth.oauth_provider.configuration_changed',
+      resourceType: 'oauth_provider_control',
+      resourceId: next.id,
+      metadata: {
+        provider,
+        scopes,
+        clientIdPresent: true,
+        redirectUriPresent: true,
+        clientSecretRefPresent: true,
+        reasonCode,
+        version: next.version,
+      },
+    }, transaction)
+    return next
+  }),
   listAccounts: async (query) => {
     const cursor = decodeOAuthAdminCursor(query.cursor, query)
     const rows = await client.authAccount.findMany({
       where: {
-        provider: query.provider ? query.provider : { in: ['google', 'apple', 'discord'] },
+        provider: query.provider ? query.provider : { in: ['google', 'github', 'apple', 'discord'] },
         ...(query.search ? {
           user: {
             OR: [
@@ -92,7 +140,7 @@ export const createPrismaOAuthAdminRepository = (client, { runSerializableTransa
       where: { id },
       include: { user: { include: { profile: true } } },
     })
-    if (!account || !['google', 'apple', 'discord'].includes(account.provider)) return null
+    if (!account || !['google', 'github', 'apple', 'discord'].includes(account.provider)) return null
     const methodCount = await transaction.authAccount.count({ where: { userId: account.userId } })
     if (methodCount <= 1) return { blocked: true }
     await transaction.authAccount.delete({ where: { id: account.id } })
