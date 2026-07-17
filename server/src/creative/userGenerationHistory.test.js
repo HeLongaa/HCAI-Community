@@ -59,6 +59,8 @@ test('user generation history projects owner-safe lifecycle and governed output 
     contentType: 'image/png',
     status: 'uploaded',
     scanStatus: 'clean',
+    lineage: [],
+    reuse: null,
     createdAt: '2026-07-12T00:00:30.000Z',
   }])
   assert.equal(value.actions.download.available, true)
@@ -88,6 +90,45 @@ test('user generation history exposes active and retry action eligibility withou
   assert.equal(failed.actions.retry.available, true)
   assert.equal(failed.actions.retry.requiresOriginalRequest, true)
   assert.equal(failed.error.message.includes('sk-private'), false)
+})
+
+test('generation outputs expose only application lineage and server-derived reuse eligibility', async () => {
+  const value = await serializeUserCreativeGeneration(generation(), {
+    actor,
+    mediaRepository: {
+      getAssetLibraryItem: async () => ({
+        id: 'asset-1',
+        fileName: 'derived.png',
+        contentType: 'image/png',
+        status: 'uploaded',
+        scanStatus: 'clean',
+        relations: [{
+          id: 'internal-relation-id',
+          sourceAssetId: 'source-asset',
+          targetAssetId: 'asset-1',
+          relationType: 'reused_as_input',
+          sourceGenerationId: 'generation-1',
+          targetWorkspace: 'image',
+          role: 'input',
+          privateUrl: 'https://private.example/lineage',
+        }],
+        actions: { reuse: { image: { available: true, reason: null }, video: { available: true, reason: null }, music: { available: false, reason: 'incompatible_asset' }, chat: { available: false, reason: 'incompatible_asset' } } },
+        createdAt: '2026-07-12T00:00:30.000Z',
+      }),
+    },
+  })
+
+  assert.deepEqual(value.outputs[0].lineage, [{
+    sourceAssetId: 'source-asset',
+    targetAssetId: 'asset-1',
+    relationType: 'reused_as_input',
+    sourceGenerationId: 'generation-1',
+    targetWorkspace: 'image',
+    role: 'input',
+  }])
+  assert.equal(value.outputs[0].reuse.image.available, true)
+  assert.equal(JSON.stringify(value.outputs[0]).includes('private.example'), false)
+  assert.equal(JSON.stringify(value.outputs[0]).includes('internal-relation-id'), false)
 })
 
 test('Video output stays private until its scan is clean', async () => {

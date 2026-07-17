@@ -13,6 +13,7 @@ import type {
   ApiCreativeAccountingPreview,
   GenerationCenterPage,
   GenerationCenterQuery,
+  GenerationCenterSummary,
   UserCreativeGenerationHistoryPage,
   UserCreativeGenerationHistoryQuery,
 } from './contracts'
@@ -56,6 +57,12 @@ export const creativeService = {
   },
   generationTask(id: string) {
     return api.get<ApiGenerationTask>(`/creative/generation-center/${id}`)
+  },
+  generationCenterSummary(query: GenerationCenterQuery = {}) {
+    return api.get<GenerationCenterSummary>(withQuery('/creative/generation-center/summary', query))
+  },
+  exportGenerationCenter(query: GenerationCenterQuery = {}, format: 'json' | 'csv' = 'json') {
+    return api.text(withQuery('/creative/generation-center/export', { ...query, format, limit: 500 }))
   },
   cancelGeneration(id: string, body: CreativeGenerationMutationRequest) {
     return api.post<ApiCreativeGenerationMutationResponse>(`/creative/generations/${id}/cancel`, body)

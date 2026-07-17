@@ -1563,6 +1563,15 @@ export type ApiUserCreativeGeneration = {
     contentType: string
     status: string
     scanStatus: string
+    lineage: Array<{
+      sourceAssetId: string
+      targetAssetId: string
+      relationType: string
+      sourceGenerationId: string | null
+      targetWorkspace: string | null
+      role: string | null
+    }>
+    reuse: ApiAssetLibraryItem['actions']['reuse'] | null
     createdAt: string | null
   }>
   actions: {
@@ -1639,11 +1648,23 @@ export type GenerationCenterQuery = {
   status?: string | null
   dateFrom?: string | null
   dateTo?: string | null
+  sort?: 'createdAt' | 'updatedAt' | 'status'
+  direction?: 'asc' | 'desc'
 }
 
 export type GenerationCenterPage = {
   items: ApiGenerationTask[]
   nextCursor: string | null
+}
+
+export type GenerationCenterSummary = {
+  total: number
+  active: number
+  failed: number
+  reviewRequired: number
+  outputAssets: number
+  byStatus: Record<string, number>
+  byWorkspace: Record<string, number>
 }
 
 export type CreativeGenerationMutationType = 'cancel' | 'retry' | 'manual_replay'

@@ -9,6 +9,7 @@ import {
   parseCreateChatConversationRequest,
   parseCreateChatTurnRequest,
   parseCreativeGenerationHistoryQuery,
+  parseGenerationCenterExportQuery,
   parseGenerationCenterQuery,
   parseAdminAuditListQuery,
   parseAdminBillingMetricsQuery,
@@ -557,6 +558,8 @@ test('parseGenerationCenterQuery supports cross-workspace date filtering', () =>
     status: null,
     dateFrom: null,
     dateTo: null,
+    sort: 'createdAt',
+    direction: 'desc',
   })
   assert.deepEqual(parseGenerationCenterQuery({
     workspace: 'chat',
@@ -571,6 +574,19 @@ test('parseGenerationCenterQuery supports cross-workspace date filtering', () =>
     status: 'completed',
     dateFrom: '2032-07-12T00:00:00.000Z',
     dateTo: '2032-07-12T23:59:59.000Z',
+    sort: 'createdAt',
+    direction: 'desc',
+  })
+  assert.deepEqual(parseGenerationCenterExportQuery({ format: 'csv', sort: 'status', direction: 'asc' }), {
+    cursor: null,
+    limit: 200,
+    workspace: null,
+    status: null,
+    dateFrom: null,
+    dateTo: null,
+    sort: 'status',
+    direction: 'asc',
+    format: 'csv',
   })
   assertValidationError(
     () => parseGenerationCenterQuery({ dateFrom: 'not-a-date' }),
@@ -580,6 +596,9 @@ test('parseGenerationCenterQuery supports cross-workspace date filtering', () =>
     () => parseGenerationCenterQuery({ dateFrom: '2032-07-13', dateTo: '2032-07-12' }),
     'dateFrom must be before or equal to dateTo',
   )
+  assertValidationError(() => parseGenerationCenterQuery({ sort: 'providerId' }), 'sort must be one of: createdAt, updatedAt, status')
+  assertValidationError(() => parseGenerationCenterQuery({ direction: 'sideways' }), 'direction must be one of: asc, desc')
+  assertValidationError(() => parseGenerationCenterExportQuery({ format: 'xml' }), 'format must be one of: json, csv')
 })
 
 test('parseCreateMediaUploadRequest validates upload signing payloads', () => {

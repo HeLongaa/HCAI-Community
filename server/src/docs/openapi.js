@@ -1031,6 +1031,8 @@ export const openApiDocument = {
           { name: 'lifecycle', in: 'query', schema: { type: 'string', enum: ['active', 'archived', 'deleted', 'all'], default: 'active' } },
           { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
           { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'sort', in: 'query', schema: { type: 'string', enum: ['createdAt', 'updatedAt', 'status'], default: 'createdAt' } },
+          { name: 'direction', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
           { name: 'cursor', in: 'query', schema: { type: 'string' } },
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
         ],
@@ -1757,6 +1759,46 @@ export const openApiDocument = {
         responses: {
           '200': { description: 'Newest-first stable cursor page of unified safe generation tasks' },
           '400': { description: 'Invalid workspace, status, date range, cursor, or limit' },
+          '401': { description: 'Authentication required' },
+        },
+      },
+    },
+    '/creative/generation-center/summary': {
+      get: {
+        summary: 'Summarize the current user generation tasks across all creative workspaces',
+        description: 'Returns owner-scoped status, workspace, review, and output counts without Provider dimensions or protected content.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'workspace', in: 'query', schema: { type: 'string', enum: ['image', 'video', 'music', 'chat'] } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['queued', 'running', 'completed', 'failed', 'cancelled', 'review_required'] } },
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+        ],
+        responses: {
+          '200': { description: 'Safe personal generation summary' },
+          '400': { description: 'Invalid filter' },
+          '401': { description: 'Authentication required' },
+        },
+      },
+    },
+    '/creative/generation-center/export': {
+      get: {
+        summary: 'Export the current user safe generation history',
+        description: 'Returns a bounded JSON or CSV export using the same owner scope and safe projection as the generation center.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'workspace', in: 'query', schema: { type: 'string', enum: ['image', 'video', 'music', 'chat'] } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['queued', 'running', 'completed', 'failed', 'cancelled', 'review_required'] } },
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'sort', in: 'query', schema: { type: 'string', enum: ['createdAt', 'updatedAt', 'status'], default: 'createdAt' } },
+          { name: 'direction', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+          { name: 'format', in: 'query', schema: { type: 'string', enum: ['json', 'csv'], default: 'json' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 500, default: 200 } },
+        ],
+        responses: {
+          '200': { description: 'Bounded owner-safe generation export' },
+          '400': { description: 'Invalid filter, sort, direction, format, or limit' },
           '401': { description: 'Authentication required' },
         },
       },

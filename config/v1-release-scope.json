@@ -65,7 +65,7 @@
     },
     {
       "id": "unified-generation-assets",
-      "evidence": ["server/src/creative/generationService.js", "server/src/creative/generationRecords.js", "server/prisma/migrations/0019_creative_generations/migration.sql"],
+      "evidence": ["server/src/creative/generationService.js", "server/src/creative/generationRecords.js", "server/prisma/migrations/0019_creative_generations/migration.sql", "config/ai-core-cross-module-contract.json", "docs/AI_CORE_CROSS_MODULE_REUSE.md"],
       "completionGates": ["cross-workspace generation history", "asset lineage and reuse", "task delivery and portfolio connection"]
     },
     {
