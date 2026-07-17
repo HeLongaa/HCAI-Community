@@ -15,6 +15,7 @@
   "entities": [
     { "model": "AuditEvent", "domain": "audit-evidence", "policy": "append_only", "hardDelete": false },
     { "model": "AuditArchiveManifest", "domain": "audit-evidence", "policy": "immutable_evidence", "hardDelete": false },
+    { "model": "AuditRetentionDisposition", "domain": "audit-evidence", "policy": "immutable_evidence", "hardDelete": false },
     { "model": "ObservabilityLog", "domain": "observability-incident", "policy": "append_only", "hardDelete": true },
     { "model": "TraceSpan", "domain": "observability-incident", "policy": "append_only", "hardDelete": true },
     { "model": "ObservabilityAlert", "domain": "observability-incident", "policy": "state_transition", "hardDelete": false },
@@ -126,6 +127,6 @@
   "protectedFamilies": {
     "accounting": ["PointLedger", "InternalAccountingOperation", "InternalAccountingMovement"],
     "audit": ["AuditEvent", "SecurityEvent", "DomainEventOutbox", "DomainEventConsumerInbox", "DomainEventCompensation"],
-    "evidence": ["AuditArchiveManifest", "MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence", "SystemSettingRevision", "ConfigResourceRevision", "ModelRoutePolicyRevision", "ModelRouteDecision", "ProviderSecretRef", "ModelPromotion", "ProviderHealthEvidence", "ProviderLegalReview", "EntitlementPlanVersion", "EntitlementGrantEvent"]
+    "evidence": ["AuditArchiveManifest", "AuditRetentionDisposition", "MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence", "SystemSettingRevision", "ConfigResourceRevision", "ModelRoutePolicyRevision", "ModelRouteDecision", "ProviderSecretRef", "ModelPromotion", "ProviderHealthEvidence", "ProviderLegalReview", "EntitlementPlanVersion", "EntitlementGrantEvent"]
   }
 }

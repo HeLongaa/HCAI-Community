@@ -36,6 +36,7 @@ export const permissionRegistry = Object.freeze([
   definePermission('admin:audit:export', 'audit-evidence', 'audit_event', 'export', 'high', admins, { description: 'Export portable verifiable audit evidence' }),
   definePermission('admin:audit:verify', 'audit-evidence', 'audit_event', 'verify', 'critical', admins, { description: 'Verify the immutable audit hash chain' }),
   definePermission('admin:audit:archive', 'audit-evidence', 'audit_archive_manifest', 'create', 'critical', admins, { protected: true, protectionRank: 9, resourceAuthorization: true, description: 'Create immutable audit archive manifests' }),
+  definePermission('admin:audit:retention', 'audit-evidence', 'audit_retention_disposition', 'execute', 'critical', admins, { protected: true, protectionRank: 25, resourceAuthorization: true, description: 'Archive and prune expired audit prefixes under legal-hold controls' }),
   definePermission('admin:observability:read', 'observability-incident-response', 'observability_log', 'read', 'high', moderators, { description: 'Read sanitized application logs, traces, SLOs, and alerts' }),
   definePermission('admin:observability:export', 'observability-incident-response', 'observability_log', 'export', 'critical', admins, { description: 'Export bounded sanitized observability evidence' }),
   definePermission('admin:observability:manage', 'observability-incident-response', 'observability_alert', 'manage', 'critical', admins, { resourceAuthorization: true, description: 'Evaluate and disposition observability alerts' }),

@@ -2375,6 +2375,33 @@ test('GET /api/admin/audit paginates with cursor and filters by action', async (
   }
 })
 
+test('GET /api/admin/audit supports resource, actor, date, and direction filters', async () => {
+  const repository = createSeedRepository()
+  await repository.audit.recordAttempt({
+    actor: null,
+    action: 'integration.system.checked',
+    resourceType: 'integration_resource',
+    resourceId: 'resource-filter-1',
+    metadata: { before: { enabled: false }, after: { enabled: true }, token: 'never-return' },
+  })
+  const server = await createInjectedAdminServer(repository)
+  try {
+    const response = await requestJson(server.url, '/api/admin/audit?actorType=system&resourceType=integration_resource&resourceId=resource-filter-1&dateFrom=2020-01-01&dateTo=2030-01-01&direction=asc', {
+      method: 'GET', token: 'demo-access.opsplus',
+    })
+    assert.equal(response.status, 200)
+    assert.equal(response.payload.data.length, 1)
+    assert.equal(response.payload.data[0].resourceId, 'resource-filter-1')
+    assert.deepEqual(response.payload.data[0].diff.changes, [{ path: 'enabled', before: false, after: true }])
+    assert.equal(JSON.stringify(response.payload.data[0]).includes('never-return'), false)
+
+    const invalid = await requestJson(server.url, '/api/admin/audit?actorType=service', { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(invalid.status, 400)
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/admin/audit allows moderators with audit read permission', async () => {
   const server = await createTestServer()
   try {
@@ -3284,6 +3311,91 @@ test('audit verification and archives use dedicated permissions and audit their 
     })
     assert.equal(accessAudit.status, 200)
     assert.equal(accessAudit.payload.data[0].resourceId, archived.payload.data.manifest.id)
+  } finally {
+    await server.close()
+  }
+})
+
+test('audit retention remains fail-closed and previews policy evidence', async () => {
+  const repository = createSeedRepository()
+  const server = await createInjectedAdminServer(repository, {
+    auditRetentionSource: {
+      AUDIT_RETENTION_DAYS: '30',
+      AUDIT_RETENTION_BATCH_SIZE: '10',
+      AUDIT_RETENTION_MIN_RETAINED: '1',
+      AUDIT_RETENTION_LEGAL_HOLD: 'true',
+      AUDIT_RETENTION_PRUNE_ENABLED: 'false',
+    },
+  })
+  try {
+    const status = await requestJson(server.url, '/api/admin/audit/retention', { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(status.status, 200)
+    assert.equal(status.payload.data.policy.executable, false)
+    assert.equal(status.payload.data.policy.legalHold, true)
+
+    const preview = await requestJson(server.url, '/api/admin/audit/retention/preview', { method: 'POST', token: 'demo-access.opsplus', body: {} })
+    assert.equal(preview.status, 200)
+    assert.equal(preview.payload.data.executable, false)
+
+    const execute = await requestJson(server.url, '/api/admin/audit/retention/execute', {
+      method: 'POST', token: 'demo-access.opsplus', body: { previewId: 'a'.repeat(64), confirmation: 'PRUNE 1 EVENTS THROUGH 1' },
+    })
+    assert.equal(execute.status, 409)
+    assert.equal(execute.payload.error.code, 'AUDIT_RETENTION_DISABLED')
+  } finally {
+    await server.close()
+  }
+})
+
+test('audit retention writes a durable archive before creating immutable prune evidence', async () => {
+  const repository = createSeedRepository()
+  const preview = {
+    schema: 'audit.retention-preview.v1',
+    previewId: 'b'.repeat(64),
+    policyVersion: 'audit-retention-v1-30d',
+    cutoffAt: '2026-06-17T00:00:00.000Z',
+    totalEvents: 3,
+    candidateCount: 1,
+    fromSequence: '1',
+    toSequence: '1',
+    rootHash: 'c'.repeat(64),
+    currentRootHash: 'd'.repeat(64),
+    legalHold: false,
+    pruneEnabled: true,
+    executable: true,
+    confirmation: 'PRUNE 1 EVENTS THROUGH 1',
+  }
+  repository.audit.retentionPreview = async () => ({ preview, candidates: [], artifact: { schema: 'audit.retention-archive.v1', events: [] } })
+  repository.audit.pruneRetention = async ({ actor, archive }) => ({
+    status: 'complete',
+    preview,
+    disposition: {
+      id: 'audit-retention-test', policyVersion: preview.policyVersion, cutoffAt: preview.cutoffAt,
+      fromSequence: '1', toSequence: '1', eventCount: 1, rootHash: preview.rootHash,
+      archiveRef: 'audit-retention://audit-retention-test', archiveChecksumSha256: archive.checksumSha256,
+      archiveBytes: archive.bytes, archiveProvider: archive.provider, actorId: actor.id, createdAt: '2026-07-17T00:00:00.000Z',
+    },
+  })
+  let written = false
+  const server = await createInjectedAdminServer(repository, {
+    auditRetentionSource: {
+      AUDIT_RETENTION_DAYS: '30', AUDIT_RETENTION_BATCH_SIZE: '10', AUDIT_RETENTION_MIN_RETAINED: '1',
+      AUDIT_RETENTION_LEGAL_HOLD: 'false', AUDIT_RETENTION_PRUNE_ENABLED: 'true',
+    },
+    auditArchiveWriter: async (_artifact, options) => {
+      written = true
+      assert.equal(options.storageKey.includes(preview.previewId), true)
+      return { persisted: true, provider: 's3', storageKey: options.storageKey, checksumSha256: 'e'.repeat(64), bytes: 512 }
+    },
+  })
+  try {
+    const result = await requestJson(server.url, '/api/admin/audit/retention/execute', {
+      method: 'POST', token: 'demo-access.opsplus', body: { previewId: preview.previewId, confirmation: preview.confirmation },
+    })
+    assert.equal(result.status, 200)
+    assert.equal(written, true)
+    assert.equal(result.payload.data.disposition.archiveRef, 'audit-retention://audit-retention-test')
+    assert.equal(JSON.stringify(result.payload).includes('storageKey'), false)
   } finally {
     await server.close()
   }

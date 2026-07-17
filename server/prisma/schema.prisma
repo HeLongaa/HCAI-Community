@@ -445,6 +445,25 @@ model AuditArchiveManifest {
   @@map("audit_archive_manifests")
 }
 
+model AuditRetentionDisposition {
+  id                    String   @id
+  policyVersion         String   @map("policy_version")
+  cutoffAt              DateTime @map("cutoff_at")
+  fromSequence          BigInt   @map("from_sequence")
+  toSequence            BigInt   @map("to_sequence")
+  eventCount            Int      @map("event_count")
+  rootHash              String   @map("root_hash")
+  archiveObjectRef      String   @map("archive_object_ref")
+  archiveChecksumSha256 String   @map("archive_checksum_sha256")
+  archiveBytes          Int      @map("archive_bytes")
+  archiveProvider       String   @map("archive_provider")
+  actorId               String?  @map("actor_id")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("audit_retention_dispositions")
+}
+
 model ObservabilityLog {
   id                      String   @id
   timestamp               DateTime @default(now())

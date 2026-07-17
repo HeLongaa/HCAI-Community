@@ -19,6 +19,7 @@ import { AdminMediaLifecyclePanel } from './AdminMediaLifecyclePanel'
 import { OAuthAdminPanel } from './OAuthAdminPanel'
 import { TaskAdminPanel } from './TaskAdminPanel'
 import { EntitlementAdminPanel } from './EntitlementAdminPanel'
+import { AuditRetentionPanel } from './AuditRetentionPanel'
 import type {
   AdminPermissionDto,
   AdminAuditArchiveManifestDto,
@@ -581,6 +582,12 @@ export function AdminPage({
   const [callbackFailureEvents, setCallbackFailureEvents] = useState<AuditEvent[]>([])
   const [auditActionFilter, setAuditActionFilter] = useState('')
   const [auditResourceTypeFilter, setAuditResourceTypeFilter] = useState('')
+  const [auditResourceIdFilter, setAuditResourceIdFilter] = useState('')
+  const [auditActorTypeFilter, setAuditActorTypeFilter] = useState<'all' | 'user' | 'system'>('all')
+  const [auditActorIdFilter, setAuditActorIdFilter] = useState('')
+  const [auditDateFrom, setAuditDateFrom] = useState('')
+  const [auditDateTo, setAuditDateTo] = useState('')
+  const [auditDirection, setAuditDirection] = useState<'asc' | 'desc'>('desc')
   const [securityAlerts, setSecurityAlerts] = useState<AdminSecurityAlertDto[]>([])
   const [handlingSecurityAlertId, setHandlingSecurityAlertId] = useState<string | null>(null)
   const [selectedSecurityAlertId, setSelectedSecurityAlertId] = useState<string | null>(null)
@@ -614,6 +621,7 @@ export function AdminPage({
   const canExportAudit = account.hasPermission('admin:audit:export')
   const canVerifyAudit = account.hasPermission('admin:audit:verify')
   const canArchiveAudit = account.hasPermission('admin:audit:archive')
+  const canExecuteAuditRetention = account.hasPermission('admin:audit:retention')
   const canReadAccounting = account.hasPermission('admin:accounting:read')
   const canScanAccounting = account.hasPermission('admin:accounting:scan')
   const canRepairAccounting = account.hasPermission('admin:accounting:repair')
@@ -690,13 +698,19 @@ export function AdminPage({
     load: () => adminService.audit({
       action: auditActionFilter || null,
       resourceType: auditResourceTypeFilter || null,
+      resourceId: auditResourceIdFilter || null,
+      actorType: auditActorTypeFilter === 'all' ? null : auditActorTypeFilter,
+      actorId: auditActorIdFilter || null,
+      dateFrom: auditDateFrom || null,
+      dateTo: auditDateTo || null,
+      direction: auditDirection,
       limit: 20,
     }),
     onSuccess: (events) => {
       setAuditEvents(events)
     },
     getErrorMessage: () => (isZh ? '无法读取审计日志，请确认已使用管理员账号登录。' : 'Could not load audit log. Sign in as an admin account.'),
-    deps: [auditActionFilter, auditResourceTypeFilter, isZh],
+    deps: [auditActionFilter, auditResourceTypeFilter, auditResourceIdFilter, auditActorTypeFilter, auditActorIdFilter, auditDateFrom, auditDateTo, auditDirection, isZh],
     logLabel: 'admin-service',
   })
   const securityAlertStatus = useAsyncResource<AdminSecurityAlertDto[]>({
@@ -1481,6 +1495,12 @@ export function AdminPage({
   const clearAuditFilters = () => {
     setAuditActionFilter('')
     setAuditResourceTypeFilter('')
+    setAuditResourceIdFilter('')
+    setAuditActorTypeFilter('all')
+    setAuditActorIdFilter('')
+    setAuditDateFrom('')
+    setAuditDateTo('')
+    setAuditDirection('desc')
     setHighlightedAuditEventId(null)
     simulateAction(isZh ? '已清除审计筛选。' : 'Cleared audit filters.')
   }
@@ -2230,6 +2250,12 @@ export function AdminPage({
       const json = await adminService.exportAuditJson({
         action: auditActionFilter || null,
         resourceType: auditResourceTypeFilter || null,
+        resourceId: auditResourceIdFilter || null,
+        actorType: auditActorTypeFilter === 'all' ? null : auditActorTypeFilter,
+        actorId: auditActorIdFilter || null,
+        dateFrom: auditDateFrom || null,
+        dateTo: auditDateTo || null,
+        direction: auditDirection,
         limit: 100,
       })
       const blob = new Blob([json], { type: 'application/json;charset=utf-8' })
@@ -5088,7 +5114,7 @@ export function AdminPage({
           </div>
         )}
       </section>
-      <section className="panel">
+      <section className="panel admin-audit-panel">
         <SectionHeader
           eyebrow={textFor(t, 'Audit', '审计')}
           title={textFor(t, 'Recent privileged actions', '近期高权限操作')}
@@ -5101,7 +5127,8 @@ export function AdminPage({
         <div className="permission-summary">
           <label>
             <span>{textFor(t, 'Action', '动作')}</span>
-            <select
+            <input
+              list="audit-action-options"
               aria-label={textFor(t, 'Audit action filter', '审计动作筛选')}
               value={auditActionFilter}
               onChange={(event) => {
@@ -5109,19 +5136,20 @@ export function AdminPage({
                 setAuditActionFilter(event.target.value)
               }}
               disabled={!canReadAudit}
-            >
-              <option value="">{textFor(t, 'All actions', '全部动作')}</option>
+            />
+            <datalist id="audit-action-options">
               <option value="media.governance_policy.updated">media.governance_policy.updated</option>
               <option value="media.governance_policy.rolled_back">media.governance_policy.rolled_back</option>
               <option value="points.policy.updated">points.policy.updated</option>
               <option value="points.policy.rolled_back">points.policy.rolled_back</option>
               <option value="media.scan.timeout">media.scan.timeout</option>
               <option value="media.scan.callback_denied">media.scan.callback_denied</option>
-            </select>
+            </datalist>
           </label>
           <label>
             <span>{textFor(t, 'Resource type', '资源类型')}</span>
-            <select
+            <input
+              list="audit-resource-options"
               aria-label={textFor(t, 'Audit resource type filter', '审计资源类型筛选')}
               value={auditResourceTypeFilter}
               onChange={(event) => {
@@ -5129,14 +5157,45 @@ export function AdminPage({
                 setAuditResourceTypeFilter(event.target.value)
               }}
               disabled={!canReadAudit}
-            >
-              <option value="">{textFor(t, 'All resources', '全部资源')}</option>
+            />
+            <datalist id="audit-resource-options">
               <option value="media_governance_policy">media_governance_policy</option>
               <option value="point_adjustment_policy">point_adjustment_policy</option>
               <option value="media_asset">media_asset</option>
               <option value="media_scan_alert">media_scan_alert</option>
               <option value="operations_metrics">operations_metrics</option>
               <option value="admin_review">admin_review</option>
+            </datalist>
+          </label>
+          <label>
+            <span>{textFor(t, 'Resource ID', '资源 ID')}</span>
+            <input aria-label={textFor(t, 'Audit resource ID filter', '审计资源 ID 筛选')} value={auditResourceIdFilter} onChange={(event) => setAuditResourceIdFilter(event.target.value)} disabled={!canReadAudit} />
+          </label>
+          <label>
+            <span>{textFor(t, 'Actor type', '操作者类型')}</span>
+            <select aria-label={textFor(t, 'Audit actor type filter', '审计操作者类型筛选')} value={auditActorTypeFilter} onChange={(event) => setAuditActorTypeFilter(event.target.value as typeof auditActorTypeFilter)} disabled={!canReadAudit}>
+              <option value="all">{textFor(t, 'All actors', '全部操作者')}</option>
+              <option value="user">user</option>
+              <option value="system">system</option>
+            </select>
+          </label>
+          <label>
+            <span>{textFor(t, 'Actor ID', '操作者 ID')}</span>
+            <input aria-label={textFor(t, 'Audit actor ID filter', '审计操作者 ID 筛选')} value={auditActorIdFilter} onChange={(event) => setAuditActorIdFilter(event.target.value)} disabled={!canReadAudit} />
+          </label>
+          <label>
+            <span>{textFor(t, 'From', '开始日期')}</span>
+            <input type="date" aria-label={textFor(t, 'Audit start date', '审计开始日期')} value={auditDateFrom} onChange={(event) => setAuditDateFrom(event.target.value)} disabled={!canReadAudit} />
+          </label>
+          <label>
+            <span>{textFor(t, 'To', '结束日期')}</span>
+            <input type="date" aria-label={textFor(t, 'Audit end date', '审计结束日期')} value={auditDateTo} onChange={(event) => setAuditDateTo(event.target.value)} disabled={!canReadAudit} />
+          </label>
+          <label>
+            <span>{textFor(t, 'Order', '排序')}</span>
+            <select aria-label={textFor(t, 'Audit sort direction', '审计排序方向')} value={auditDirection} onChange={(event) => setAuditDirection(event.target.value as typeof auditDirection)} disabled={!canReadAudit}>
+              <option value="desc">{textFor(t, 'Newest first', '最新优先')}</option>
+              <option value="asc">{textFor(t, 'Oldest first', '最早优先')}</option>
             </select>
           </label>
           <button className="ghost-button" type="button" onClick={focusMediaGovernanceAudit} disabled={!canReadAudit}>
@@ -5154,7 +5213,7 @@ export function AdminPage({
             <Archive size={17} />
             {archivingAudit ? textFor(t, 'Archiving', '归档中') : textFor(t, 'Archive evidence', '归档证据')}
           </button>
-          <button className="ghost-button" type="button" onClick={clearAuditFilters} disabled={!canReadAudit || (!auditActionFilter && !auditResourceTypeFilter && !highlightedAuditEventId)}>
+          <button className="ghost-button" type="button" onClick={clearAuditFilters} disabled={!canReadAudit || (!auditActionFilter && !auditResourceTypeFilter && !auditResourceIdFilter && auditActorTypeFilter === 'all' && !auditActorIdFilter && !auditDateFrom && !auditDateTo && auditDirection === 'desc' && !highlightedAuditEventId)}>
             {textFor(t, 'Clear filters', '清除筛选')}
           </button>
         </div>
@@ -5169,6 +5228,17 @@ export function AdminPage({
             {auditIntegrity.rootHash && <code>{auditIntegrity.rootHash.slice(0, 16)}</code>}
           </div>
         )}
+        <AuditRetentionPanel
+          canRead={canReadAudit}
+          canExecute={canExecuteAuditRetention}
+          isZh={isZh}
+          t={t}
+          onChanged={() => {
+            void auditStatus.refresh()
+            void verifyAuditIntegrity()
+          }}
+          notify={simulateAction}
+        />
         <div className="admin-table">
           {auditStatus.loading && (
             <div className="empty-state">
@@ -5195,8 +5265,9 @@ export function AdminPage({
             const metadata = asRecord(event.metadata)
             const expanded = Boolean(expandedAuditEventIds[event.id])
             const diffRows = mediaGovernanceDiffRows(metadata.diff)
+            const projectedDiff = event.diff
             const extraMetadata = metadataEntries(metadata)
-            const hasDetails = Object.keys(metadata).length > 0
+            const hasDetails = Object.keys(metadata).length > 0 || Boolean(projectedDiff)
             const operationsSampleCounts = asRecord(metadata.sampleCounts)
             const operationsSampleCountEntries = Object.entries(operationsSampleCounts)
             return (
@@ -5243,6 +5314,23 @@ export function AdminPage({
                 </div>
                 {expanded && (
                   <div className="audit-detail-panel">
+                    {projectedDiff?.changes?.length ? (
+                      <div className="policy-diff-grid">
+                        {projectedDiff.changes.map((change) => (
+                          <div className="policy-diff-row" key={change.path}>
+                            <strong>{change.path}</strong>
+                            <span>{formatDiffValue(change.before)}</span>
+                            <span aria-hidden="true">-&gt;</span>
+                            <span>{formatDiffValue(change.after)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : projectedDiff?.value != null ? (
+                      <div className="audit-json-block">
+                        <strong>{textFor(t, 'Projected diff', '安全差异')}</strong>
+                        <pre>{formatMetadataJson(projectedDiff.value)}</pre>
+                      </div>
+                    ) : null}
                     {isOperationsMetricsExportAudit(event) ? (
                       <div className="audit-operations-snapshot">
                         <div>

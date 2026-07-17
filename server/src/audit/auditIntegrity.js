@@ -41,7 +41,12 @@ export const buildPortableAuditExport = ({ events, query = {}, exportedAt = new 
     query: {
       action: query.action ?? null,
       resourceType: query.resourceType ?? null,
+      resourceId: query.resourceId ?? null,
+      actorType: query.actorType ?? null,
       actorId: query.actorId ?? null,
+      dateFrom: query.dateFrom ?? null,
+      dateTo: query.dateTo ?? null,
+      direction: query.direction ?? 'desc',
       limit: query.limit ?? events.length,
     },
     count: chainedEvents.length,
@@ -111,13 +116,15 @@ export const appendSeedAuditIntegrity = (event, previous = null) => {
   }
 }
 
-export const verifySeedAuditChain = (events) => {
+export const verifySeedAuditChain = (events, options = {}) => {
   const ordered = [...events].sort((left, right) => Number(left.sequence) - Number(right.sequence))
   const failures = []
-  let previousHash = AUDIT_GENESIS_HASH
+  const anchor = options.anchor ?? null
+  let previousHash = anchor?.rootHash ?? AUDIT_GENESIS_HASH
+  const firstExpectedSequence = Number(anchor?.toSequence ?? 0) + 1
   for (let index = 0; index < ordered.length; index += 1) {
     const event = ordered[index]
-    const expectedSequence = index + 1
+    const expectedSequence = firstExpectedSequence + index
     if (Number(event.sequence) !== expectedSequence) failures.push({ sequence: expectedSequence, reason: 'sequence_mismatch' })
     if ((event.previousHash ?? null) !== previousHash) failures.push({ sequence: expectedSequence, reason: 'previous_hash_mismatch' })
     const expectedHash = sha256(canonicalJson({
@@ -140,8 +147,8 @@ export const verifySeedAuditChain = (events) => {
   }
 }
 
-export const createSeedArchiveManifest = ({ events, actor, objectRef = null }) => {
-  const integrity = verifySeedAuditChain(events)
+export const createSeedArchiveManifest = ({ events, actor, objectRef = null, anchor = null }) => {
+  const integrity = verifySeedAuditChain(events, { anchor })
   if (!integrity.verified) return { integrity, manifest: null }
   const id = `audit-archive-${randomUUID()}`
   return {

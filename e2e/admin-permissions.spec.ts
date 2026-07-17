@@ -92,6 +92,32 @@ test('audit UI verifies the chain and creates an immutable archive manifest', as
   await page.getByRole('button', { name: 'Archive evidence' }).click()
   await archiveResponse
   await expect(page.getByText(/Archives: 1/)).toBeVisible()
+
+  const retention = page.getByTestId('audit-retention-panel')
+  await expect(retention).toBeVisible()
+  await expect(retention.getByText(/Legal hold: ON/)).toBeVisible()
+  const previewResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/audit/retention/preview') && response.request().method() === 'POST')
+  await retention.getByRole('button', { name: 'Preview' }).click()
+  await previewResponse
+  await expect(retention.getByText(/Eligible events: 0/)).toBeVisible()
+})
+
+test('audit search and retention controls remain usable on a mobile viewport', async ({ page, request }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await signInPage(page, request, 'opsplus')
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Toggle navigation' }).click()
+  await page.getByTestId('nav-admin').click()
+
+  const auditPanel = page.locator('.admin-audit-panel')
+  await expect(auditPanel).toBeVisible()
+  const queryResponse = page.waitForResponse((response) => response.url().includes('resourceId=asset-mobile'))
+  await auditPanel.getByLabel('Audit resource ID filter').fill('asset-mobile')
+  await queryResponse
+  await expect(auditPanel.getByLabel('Audit actor type filter')).toBeVisible()
+  await expect(auditPanel.getByTestId('audit-retention-panel')).toBeVisible()
+  const overflow = await auditPanel.evaluate((element) => element.scrollWidth - element.clientWidth)
+  expect(overflow).toBeLessThanOrEqual(1)
 })
 
 test('admin observability UI searches logs, drills into a trace, and exposes SLO controls', async ({ page, request }) => {

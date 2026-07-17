@@ -1480,7 +1480,12 @@ type CreateLibraryItemRequest = {
 type AdminAuditQuery = {
   action?: string
   resourceType?: string
+  resourceId?: string
+  actorType?: 'user' | 'system'
   actorId?: string
+  dateFrom?: string
+  dateTo?: string
+  direction?: 'asc' | 'desc'
   cursor?: string
   limit?: number // 1..100, default 20
 }
@@ -1496,6 +1501,8 @@ It accepts the same filter fields as `GET /admin/audit`, defaults `limit` to `10
 `GET /admin/audit/verify` requires `admin:audit:verify` and returns `complete`, `broken`, or `unverifiable` chain evidence.
 `GET /admin/audit/archives` requires `admin:audit:read`. `POST /admin/audit/archives` requires the protected
 `admin:audit:archive` permission and appends an immutable range/count/object-reference/root-hash manifest without deleting source events.
+
+`GET /admin/audit/retention` requires `admin:audit:read` and returns the fixed policy plus recent immutable dispositions. `POST /admin/audit/retention/preview` requires the same permission and returns a bounded contiguous expired-prefix preview. `POST /admin/audit/retention/execute` requires protected `admin:audit:retention`, a matching SHA-256 preview ID, and the exact confirmation phrase. Execution is fail-closed unless pruning is enabled, legal hold is disabled, and the archive writer confirms durable non-mock storage. The API never returns the archive storage key.
 
 `GET /admin/security/events` requires `admin:audit:read` and returns normalized security events from durable storage when available, or from the in-process fallback collector in local/test mode.
 

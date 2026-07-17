@@ -1,4 +1,5 @@
 import { safeErrorPreview, safeProviderJobIdEvidence } from '../creative/generationRecords.js'
+import { projectAuditDiff, safeAuditMetadata } from '../audit/auditRetention.js'
 import { safeProviderBudgetEvidenceIdentifier } from '../creative/providerBudgetEvents.js'
 import { safeProviderLifecycleEvidenceIdentifier } from './providerLifecycleWiring.js'
 import { sanitizeNotificationMetadata } from './notificationTargets.js'
@@ -851,7 +852,8 @@ export const serializeAuditEvent = (event) => {
               ? safeCreativeAccountingAuditMetadata(event.metadata)
               : mediaAssetLifecycleEvent
                 ? safeMediaAssetLifecycleAuditMetadata(event.metadata)
-                : event.metadata ?? null,
+                : safeAuditMetadata(event.metadata ?? null),
+    diff: projectAuditDiff(event.metadata),
     createdAt: event.createdAt?.toISOString?.() ?? event.createdAt ?? '',
     integrity: event.sequence == null || !event.contentHash ? null : {
       sequence: String(event.sequence),

@@ -17,6 +17,7 @@ export const sanitizeAdminAuditMetadata = sanitize
 
 export const createAdminMutationAuditHook = (repository) => async ({ route, request, context }) => {
   if (!route || !repository?.recordAttempt) throw new Error('ADMIN_AUDIT_UNAVAILABLE')
+  if (route.automaticAttempt === false) return
   const requestId = context.requestId ?? randomUUID()
   const resourceId = route.resourceParam ? context.params?.[route.resourceParam] ?? null : null
   await repository.recordAttempt({

@@ -19,6 +19,7 @@ export const writeJsonArchive = async (payload, options = {}) => {
   if (upload.provider === 'mock') {
     return {
       provider: 'mock',
+      persisted: false,
       storageKey: asset.storageKey,
       url: upload.url,
       bytes,
@@ -36,6 +37,7 @@ export const writeJsonArchive = async (payload, options = {}) => {
   }
   return {
     provider: upload.provider,
+    persisted: true,
     storageKey: asset.storageKey,
     url: upload.url.split('?')[0],
     bytes,

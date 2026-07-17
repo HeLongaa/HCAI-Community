@@ -837,8 +837,23 @@ test('admin list query parsers normalize pagination and filters', () => {
     limit: 20,
     action: null,
     resourceType: null,
+    resourceId: null,
+    actorType: null,
     actorId: null,
+    dateFrom: null,
+    dateTo: null,
+    direction: 'desc',
   })
+  assert.deepEqual(parseAdminAuditListQuery({
+    resourceId: ' asset-1 ', actorType: 'system', actorId: 'worker-1',
+    dateFrom: '2026-07-01', dateTo: '2026-07-17', direction: 'asc',
+  }), {
+    cursor: null, limit: 20, action: null, resourceType: null, resourceId: 'asset-1',
+    actorType: 'system', actorId: 'worker-1', dateFrom: '2026-07-01T00:00:00.000Z',
+    dateTo: '2026-07-17T23:59:59.999Z', direction: 'asc',
+  })
+  assertValidationError(() => parseAdminAuditListQuery({ actorType: 'service' }), 'actorType must be one of: user, system')
+  assertValidationError(() => parseAdminAuditListQuery({ direction: 'sideways' }), 'direction must be one of: asc, desc')
   assert.deepEqual(parseAdminCreativeGenerationListQuery({
     limit: '5',
     cursor: 'gen-1',

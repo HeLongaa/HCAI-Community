@@ -21,6 +21,9 @@ import type {
   AdminAuditArchiveManifestDto,
   AdminAuditArchiveResultDto,
   AdminAuditIntegrityDto,
+  AdminAuditRetentionPreviewDto,
+  AdminAuditRetentionResultDto,
+  AdminAuditRetentionStatusDto,
   AdminAccountingReconciliationPage,
   AdminAccountingReconciliationQuery,
   AdminAccountingIssueDto,
@@ -629,6 +632,15 @@ export const adminService = {
   },
   async archiveAudit(objectRef?: string | null) {
     return api.post<AdminAuditArchiveResultDto>('/admin/audit/archives', objectRef ? { objectRef } : {})
+  },
+  async auditRetentionStatus() {
+    return api.get<AdminAuditRetentionStatusDto>('/admin/audit/retention')
+  },
+  async previewAuditRetention() {
+    return api.post<AdminAuditRetentionPreviewDto>('/admin/audit/retention/preview', {})
+  },
+  async executeAuditRetention(previewId: string, confirmation: string) {
+    return api.post<AdminAuditRetentionResultDto>('/admin/audit/retention/execute', { previewId, confirmation })
   },
   async securityEvents(query?: AdminSecurityEventListQuery) {
     const envelope = await api.getEnvelope<AdminSecurityEventDto[]>(withQuery('/admin/security/events', query))

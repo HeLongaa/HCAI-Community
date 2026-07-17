@@ -131,6 +131,11 @@ import {
 import { sanitizeNotificationMetadata } from './notificationTargets.js'
 import { safeCreativeCreditMetadata, safeErrorPreview } from '../creative/generationRecords.js'
 import { buildPortableAuditExport } from '../audit/auditIntegrity.js'
+import {
+  buildAuditRetentionArtifact,
+  buildAuditRetentionPreview,
+  createRetentionDispositionId,
+} from '../audit/auditRetention.js'
 import { createPrismaObservabilityRepository } from '../observability/prismaObservabilityRepository.js'
 import { createPrismaOAuthAdminRepository } from '../auth/prismaOAuthAdminRepository.js'
 import { createPrismaTaskAdminRepository } from '../tasks/prismaTaskAdminRepository.js'
@@ -8992,10 +8997,16 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
 
   const verifyPersistedAuditChain = async (db) => {
     const rows = await db.$queryRawUnsafe(`
+      WITH anchor AS (
+        SELECT to_sequence, root_hash
+        FROM audit_retention_dispositions
+        ORDER BY to_sequence DESC
+        LIMIT 1
+      )
       SELECT sequence, previous_hash, content_hash,
         audit_event_content_hash(audit_events.*) AS expected_hash,
-        lag(content_hash) OVER (ORDER BY sequence) AS expected_previous_hash,
-        row_number() OVER (ORDER BY sequence) AS expected_sequence
+        lag(content_hash, 1, (SELECT root_hash FROM anchor)) OVER (ORDER BY sequence) AS expected_previous_hash,
+        row_number() OVER (ORDER BY sequence) + COALESCE((SELECT to_sequence FROM anchor), 0) AS expected_sequence
       FROM audit_events
       ORDER BY sequence
     `)
@@ -9015,6 +9026,36 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       rootHash: rows.at(-1)?.content_hash ?? null,
       failures,
     }
+  }
+
+  const buildPrismaRetentionPreview = async (db, policy, now = new Date()) => {
+    const totalEvents = await db.auditEvent.count()
+    const take = Math.min(policy.batchSize, Math.max(0, totalEvents - policy.minimumRetainedEvents))
+    const [events, latest] = await Promise.all([
+      take > 0 ? db.auditEvent.findMany({ orderBy: { sequence: 'asc' }, take }) : [],
+      db.auditEvent.findFirst({ orderBy: { sequence: 'desc' }, select: { contentHash: true } }),
+    ])
+    const result = buildAuditRetentionPreview({
+      events,
+      policy: { ...policy, minimumRetainedEvents: Math.max(0, events.length - take) },
+      now,
+    })
+    result.preview.totalEvents = totalEvents
+    result.preview.currentRootHash = latest?.contentHash ?? null
+    result.preview.previewId = createHash('sha256').update(JSON.stringify({
+      policyVersion: result.preview.policyVersion,
+      cutoffAt: result.preview.cutoffAt,
+      totalEvents,
+      candidateCount: result.preview.candidateCount,
+      fromSequence: result.preview.fromSequence,
+      toSequence: result.preview.toSequence,
+      rootHash: result.preview.rootHash,
+      currentRootHash: result.preview.currentRootHash,
+    })).digest('hex')
+    result.preview.confirmation = result.preview.candidateCount
+      ? `PRUNE ${result.preview.candidateCount} EVENTS THROUGH ${result.preview.toSequence}`
+      : null
+    return result
   }
 
   const audit = {
@@ -9038,9 +9079,15 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         where: {
           ...(options.action ? { action: options.action } : {}),
           ...(options.resourceType ? { resourceType: options.resourceType } : {}),
+          ...(options.resourceId ? { resourceId: options.resourceId } : {}),
+          ...(options.actorType ? { actorType: options.actorType } : {}),
           ...(options.actorId ? { actorId: options.actorId } : {}),
+          ...(options.dateFrom || options.dateTo ? { createdAt: {
+            ...(options.dateFrom ? { gte: new Date(options.dateFrom) } : {}),
+            ...(options.dateTo ? { lte: new Date(options.dateTo) } : {}),
+          } } : {}),
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: options.direction === 'asc' ? 'asc' : 'desc' }, { id: options.direction === 'asc' ? 'asc' : 'desc' }],
         take: limit + 1,
         ...(cursor ? { cursor: { id: cursor.id }, skip: 1 } : {}),
       })
@@ -9098,6 +9145,74 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       fromSequence: String(manifest.fromSequence),
       toSequence: String(manifest.toSequence),
       createdAt: manifest.createdAt.toISOString(),
+    })),
+    retentionPreview: async (policy, now = new Date()) => {
+      const result = await client.$transaction((transaction) => buildPrismaRetentionPreview(transaction, policy, now), { isolationLevel: 'RepeatableRead' })
+      return { ...result, artifact: buildAuditRetentionArtifact(result) }
+    },
+    pruneRetention: async ({ actor, policy, previewId, archive, now = new Date() }) => {
+      if (!archive?.persisted || !archive.storageKey || !archive.checksumSha256 || !archive.bytes) {
+        return { status: 'archive_not_durable', disposition: null }
+      }
+      return client.$transaction(async (transaction) => {
+        await transaction.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext('audit_event_chain_v1'))")
+        const current = await buildPrismaRetentionPreview(transaction, policy, now)
+        if (!current.preview.executable) return { status: 'disabled', preview: current.preview, disposition: null }
+        if (current.preview.previewId !== previewId) return { status: 'preview_mismatch', preview: current.preview, disposition: null }
+        const id = createRetentionDispositionId()
+        const row = await transaction.auditRetentionDisposition.create({
+          data: {
+            id,
+            policyVersion: policy.version,
+            cutoffAt: new Date(current.preview.cutoffAt),
+            fromSequence: BigInt(current.preview.fromSequence),
+            toSequence: BigInt(current.preview.toSequence),
+            eventCount: current.preview.candidateCount,
+            rootHash: current.preview.rootHash,
+            archiveObjectRef: archive.storageKey,
+            archiveChecksumSha256: archive.checksumSha256,
+            archiveBytes: archive.bytes,
+            archiveProvider: archive.provider,
+            actorId: actor?.id ?? null,
+          },
+        })
+        await transaction.$executeRawUnsafe("SET LOCAL app.audit_maintenance = 'on'")
+        await transaction.auditEvent.deleteMany({ where: { sequence: { lte: BigInt(current.preview.toSequence) } } })
+        return {
+          status: 'complete',
+          preview: current.preview,
+          disposition: {
+            id: row.id,
+            policyVersion: row.policyVersion,
+            cutoffAt: row.cutoffAt.toISOString(),
+            fromSequence: String(row.fromSequence),
+            toSequence: String(row.toSequence),
+            eventCount: row.eventCount,
+            rootHash: row.rootHash,
+            archiveRef: `audit-retention://${row.id}`,
+            archiveChecksumSha256: row.archiveChecksumSha256,
+            archiveBytes: row.archiveBytes,
+            archiveProvider: row.archiveProvider,
+            actorId: row.actorId,
+            createdAt: row.createdAt.toISOString(),
+          },
+        }
+      }, { isolationLevel: 'Serializable' })
+    },
+    listRetentionDispositions: async () => (await client.auditRetentionDisposition.findMany({ orderBy: { createdAt: 'desc' }, take: 20 })).map((row) => ({
+      id: row.id,
+      policyVersion: row.policyVersion,
+      cutoffAt: row.cutoffAt.toISOString(),
+      fromSequence: String(row.fromSequence),
+      toSequence: String(row.toSequence),
+      eventCount: row.eventCount,
+      rootHash: row.rootHash,
+      archiveRef: `audit-retention://${row.id}`,
+      archiveChecksumSha256: row.archiveChecksumSha256,
+      archiveBytes: row.archiveBytes,
+      archiveProvider: row.archiveProvider,
+      actorId: row.actorId,
+      createdAt: row.createdAt.toISOString(),
     })),
   }
 

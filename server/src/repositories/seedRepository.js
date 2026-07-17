@@ -29,6 +29,11 @@ import {
   createSeedArchiveManifest,
   verifySeedAuditChain,
 } from '../audit/auditIntegrity.js'
+import {
+  buildAuditRetentionArtifact,
+  buildAuditRetentionPreview,
+  createRetentionDispositionId,
+} from '../audit/auditRetention.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
 import { seedStore } from '../data/seed.js'
@@ -843,6 +848,7 @@ for (const item of seedLibraryItems) {
 
 const auditEvents = []
 const auditArchiveManifests = []
+const auditRetentionDispositions = []
 const policyConsentByUserId = new Map()
 const operationLeaseStore = new Map()
 const safeProviderJobIdPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
@@ -3898,30 +3904,77 @@ export const createSeedRepository = () => {
       const filtered = auditEvents.filter((event) => {
         if (options.action && event.action !== options.action) return false
         if (options.resourceType && event.resourceType !== options.resourceType) return false
+        if (options.resourceId && event.resourceId !== options.resourceId) return false
+        if (options.actorType && event.actorType !== options.actorType) return false
         if (options.actorId && event.actorId !== options.actorId) return false
+        if (options.dateFrom && Date.parse(event.createdAt) < Date.parse(options.dateFrom)) return false
+        if (options.dateTo && Date.parse(event.createdAt) > Date.parse(options.dateTo)) return false
         return true
       })
-      return paginateByCursor(filtered.map(serializeAuditEvent), options)
+      const ordered = options.direction === 'asc' ? [...filtered].reverse() : filtered
+      return paginateByCursor(ordered.map(serializeAuditEvent), options)
     },
-    verify: () => verifySeedAuditChain(auditEvents),
+    verify: () => verifySeedAuditChain(auditEvents, { anchor: auditRetentionDispositions[0] ?? null }),
     export: (options = {}) => {
       const events = auditEvents
         .filter((event) => {
           if (options.action && event.action !== options.action) return false
           if (options.resourceType && event.resourceType !== options.resourceType) return false
+          if (options.resourceId && event.resourceId !== options.resourceId) return false
+          if (options.actorType && event.actorType !== options.actorType) return false
           if (options.actorId && event.actorId !== options.actorId) return false
+          if (options.dateFrom && Date.parse(event.createdAt) < Date.parse(options.dateFrom)) return false
+          if (options.dateTo && Date.parse(event.createdAt) > Date.parse(options.dateTo)) return false
           return true
         })
+        .sort((left, right) => options.direction === 'asc'
+          ? Number(left.sequence) - Number(right.sequence)
+          : Number(right.sequence) - Number(left.sequence))
         .slice(0, options.limit ?? 100)
         .map(serializeAuditEvent)
       return buildPortableAuditExport({ events, query: options })
     },
     archive: ({ actor, objectRef = null } = {}) => {
-      const result = createSeedArchiveManifest({ events: auditEvents, actor, objectRef })
+      const result = createSeedArchiveManifest({ events: auditEvents, actor, objectRef, anchor: auditRetentionDispositions[0] ?? null })
       if (result.manifest) auditArchiveManifests.unshift(result.manifest)
       return result
     },
     listArchives: () => [...auditArchiveManifests],
+    retentionPreview: (policy, now = new Date()) => {
+      const result = buildAuditRetentionPreview({ events: auditEvents, policy, now })
+      return { ...result, artifact: buildAuditRetentionArtifact(result) }
+    },
+    pruneRetention: ({ actor, policy, previewId, archive, now = new Date() }) => {
+      const result = buildAuditRetentionPreview({ events: auditEvents, policy, now })
+      if (!result.preview.executable) return { status: 'disabled', preview: result.preview, disposition: null }
+      if (result.preview.previewId !== previewId) return { status: 'preview_mismatch', preview: result.preview, disposition: null }
+      if (!archive?.persisted || !archive.storageKey || !archive.checksumSha256 || !archive.bytes) {
+        return { status: 'archive_not_durable', preview: result.preview, disposition: null }
+      }
+      const candidateIds = new Set(result.candidates.map((event) => event.id))
+      for (let index = auditEvents.length - 1; index >= 0; index -= 1) {
+        if (candidateIds.has(auditEvents[index].id)) auditEvents.splice(index, 1)
+      }
+      const id = createRetentionDispositionId()
+      const disposition = {
+        id,
+        policyVersion: policy.version,
+        cutoffAt: result.preview.cutoffAt,
+        fromSequence: result.preview.fromSequence,
+        toSequence: result.preview.toSequence,
+        eventCount: result.preview.candidateCount,
+        rootHash: result.preview.rootHash,
+        archiveRef: `audit-retention://${id}`,
+        archiveChecksumSha256: archive.checksumSha256,
+        archiveBytes: archive.bytes,
+        archiveProvider: archive.provider,
+        actorId: actor?.id ?? null,
+        createdAt: now.toISOString(),
+      }
+      auditRetentionDispositions.unshift(disposition)
+      return { status: 'complete', preview: result.preview, disposition }
+    },
+    listRetentionDispositions: () => [...auditRetentionDispositions].slice(0, 20),
   },
   securityEvents: {
     flushPending: flushSecurityEvents,
