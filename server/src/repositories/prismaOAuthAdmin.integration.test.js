@@ -13,8 +13,10 @@ test('Prisma OAuth Admin operations are concurrent, revocable, and preserve sign
 
   const runId = `oauth-admin-${Date.now()}-${randomUUID().slice(0, 8)}`
   const stateHash = createHash('sha256').update(`${runId}:state`).digest('hex')
+  const githubStateHash = createHash('sha256').update(`${runId}:github-state`).digest('hex')
   const userIds = []
   let requestId = null
+  const githubSecretRef = 'secret://oauth/github/client-secret'
 
   try {
     const adminSession = await repository.auth.registerEmailAccount({
@@ -37,6 +39,35 @@ test('Prisma OAuth Admin operations are concurrent, revocable, and preserve sign
       provider: 'google', enabled: true, expectedVersion: current.version, reasonCode: 'integration_enable',
     }, actor)
     assert.equal(enabled.version, current.version + 1)
+
+    const githubConfigurations = await Promise.all([
+      repository.oauthAdmin.setProviderConfiguration({
+        provider: 'github',
+        clientId: `${runId}-github-client`,
+        redirectUri: 'https://app.example.com/api/auth/oauth/github/callback',
+        scopes: ['read:user', 'user:email'],
+        clientSecretRef: githubSecretRef,
+        expectedVersion: 0,
+        reasonCode: 'integration_configuration_a',
+      }, actor),
+      repository.oauthAdmin.setProviderConfiguration({
+        provider: 'github',
+        clientId: `${runId}-github-client-stale`,
+        redirectUri: 'https://app.example.com/api/auth/oauth/github/callback',
+        scopes: ['read:user'],
+        clientSecretRef: githubSecretRef,
+        expectedVersion: 0,
+        reasonCode: 'integration_configuration_b',
+      }, actor),
+    ])
+    assert.equal(githubConfigurations.filter(Boolean).length, 1)
+    const githubControl = await repository.oauthAdmin.getProviderControl('github')
+    assert.equal(githubControl.enabled, false)
+    assert.equal(githubControl.clientId, `${runId}-github-client`)
+    assert.deepEqual(githubControl.scopes, ['read:user', 'user:email'])
+    assert.equal(githubControl.clientSecretRef, githubSecretRef)
+    assert.equal(Object.hasOwn(githubControl, 'clientSecret'), false)
+    assert.equal(JSON.stringify(githubControl).includes('plaintext-github-secret'), false)
 
     await repository.auth.completeOAuthLogin({
       profile: {
@@ -87,11 +118,24 @@ test('Prisma OAuth Admin operations are concurrent, revocable, and preserve sign
     assert.equal((await repository.oauthAdmin.revokeAuthorizationRequest(requestId, 'integration_revoke', actor)).revoked, true)
     assert.equal(await repository.auth.consumeOAuthAuthorizationRequest({ stateHash, provider: 'apple' }), null)
     assert.equal((await repository.oauthAdmin.revokeAuthorizationRequest(requestId, 'integration_repeat', actor)).conflict, true)
+
+    assert.equal(await repository.auth.createOAuthAuthorizationRequest({
+      stateHash: githubStateHash,
+      provider: 'github',
+      providerControlVersion: githubControl.version,
+      redirectTo: '/github-integration-target',
+      expiresAt: new Date(Date.now() + 60_000),
+    }), true)
+    const consumedGithubRequest = await repository.auth.consumeOAuthAuthorizationRequest({
+      stateHash: githubStateHash,
+      provider: 'github',
+    })
+    assert.equal(consumedGithubRequest.providerControlVersion, githubControl.version)
   } finally {
     await repository.client.$transaction(async (transaction) => {
       await transaction.$executeRawUnsafe("SET LOCAL app.audit_maintenance = 'on'")
-      await transaction.oAuthAuthorizationRequest.deleteMany({ where: { stateHash } })
-      await transaction.oAuthProviderControl.deleteMany({ where: { provider: 'google' } })
+      await transaction.oAuthAuthorizationRequest.deleteMany({ where: { stateHash: { in: [stateHash, githubStateHash] } } })
+      await transaction.oAuthProviderControl.deleteMany({ where: { provider: { in: ['google', 'github'] } } })
       await transaction.auditEvent.deleteMany({ where: { actorId: { in: userIds } } })
       await transaction.user.deleteMany({ where: { id: { in: userIds } } })
     })

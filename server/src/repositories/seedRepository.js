@@ -642,7 +642,7 @@ const loginWithPassword = async ({ email, password }) => {
   return issueSession(account)
 }
 
-const createOAuthAuthorizationRequest = async ({ stateHash, provider, redirectTo, linkUserId = null, expiresAt }) => {
+const createOAuthAuthorizationRequest = async ({ stateHash, provider, redirectTo, linkUserId = null, providerControlVersion = 0, expiresAt }) => {
   const retentionCutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
   for (const [key, request] of oauthAuthorizationRequestsByStateHash.entries()) {
     if (new Date(request.expiresAt).getTime() <= retentionCutoff) oauthAuthorizationRequestsByStateHash.delete(key)
@@ -657,6 +657,7 @@ const createOAuthAuthorizationRequest = async ({ stateHash, provider, redirectTo
     provider,
     redirectTo,
     linkUserId,
+    providerControlVersion,
     expiresAt: new Date(expiresAt).toISOString(),
     consumedAt: null,
     revokedAt: null,

@@ -1,10 +1,12 @@
 import { HttpError } from '../common/errors/httpError.js'
 import { validationFailed } from '../common/http/validation.js'
 
-export const oauthAdminProviders = Object.freeze(['google', 'apple', 'discord'])
+export const oauthAdminProviders = Object.freeze(['google', 'github', 'apple', 'discord'])
 export const oauthAuthorizationRequestStatuses = Object.freeze(['pending', 'consumed', 'revoked', 'expired'])
 
 const reasonCodePattern = /^[a-z0-9][a-z0-9._:-]{0,79}$/
+const secretRefPattern = /^secret:\/\/[A-Za-z0-9._~:/-]{1,240}$/
+const scopePattern = /^[A-Za-z0-9:._/-]{1,120}$/
 
 const text = (value, name, maximum = 160) => {
   const normalized = String(value ?? '').trim()
@@ -41,6 +43,35 @@ export const parseOAuthProviderStatusRequest = (raw = {}) => {
   const expectedVersion = Number(raw.expectedVersion)
   if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) throw validationFailed('expectedVersion must be a non-negative integer')
   return { enabled: raw.enabled, expectedVersion, reasonCode: parseOAuthReasonCode(raw.reasonCode) }
+}
+
+export const parseOAuthProviderConfigurationRequest = (provider, raw = {}, source = process.env) => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw validationFailed('payload must be an object')
+  const supported = ['clientId', 'redirectUri', 'scopes', 'clientSecretRef', 'expectedVersion', 'reasonCode']
+  const unsupported = Object.keys(raw).filter((key) => !supported.includes(key))
+  if (unsupported.length) throw validationFailed(`payload contains unsupported fields: ${unsupported.join(', ')}`)
+  const clientId = text(raw.clientId, 'clientId', 255)
+  if (/[\u0000-\u001f\u007f]/.test(clientId)) throw validationFailed('clientId contains invalid characters')
+  const redirectUri = text(raw.redirectUri, 'redirectUri', 2048)
+  try {
+    const parsed = new URL(redirectUri)
+    const local = source.NODE_ENV !== 'production' && ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)
+    if (
+      (parsed.protocol !== 'https:' && !(local && parsed.protocol === 'http:')) ||
+      parsed.username || parsed.password || parsed.search || parsed.hash ||
+      parsed.pathname !== `/api/auth/oauth/${provider}/callback`
+    ) throw new Error('unsafe redirect')
+  } catch {
+    throw validationFailed(`redirectUri must exactly target /api/auth/oauth/${provider}/callback over HTTPS`)
+  }
+  if (!Array.isArray(raw.scopes) || raw.scopes.length < 1 || raw.scopes.length > 10) throw validationFailed('scopes must contain between 1 and 10 entries')
+  const scopes = [...new Set(raw.scopes.map((scope) => text(scope, 'scope', 120)))]
+  if (scopes.length !== raw.scopes.length || scopes.some((scope) => !scopePattern.test(scope))) throw validationFailed('scopes must be unique stable identifiers')
+  const clientSecretRef = text(raw.clientSecretRef, 'clientSecretRef', 249)
+  if (!secretRefPattern.test(clientSecretRef)) throw validationFailed('clientSecretRef must be a secret:// reference')
+  const expectedVersion = Number(raw.expectedVersion)
+  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) throw validationFailed('expectedVersion must be a non-negative integer')
+  return { clientId, redirectUri, scopes, clientSecretRef, expectedVersion, reasonCode: parseOAuthReasonCode(raw.reasonCode) }
 }
 
 export const parseOAuthAuthorizationRevokeRequest = (raw = {}) => {
@@ -126,6 +157,12 @@ export const serializeOAuthProviderControl = (provider, metadata, control) => ({
   authorizationUrl: metadata.authorizationUrl ?? null,
   callbackMethod: provider === 'apple' ? 'POST' : 'GET',
   scopes: String(metadata.scope ?? '').split(/\s+/).filter(Boolean),
+  clientId: control?.clientId ?? metadata.clientId ?? null,
+  redirectUri: control?.redirectUri ?? metadata.redirectUri ?? null,
+  clientSecretRef: control?.clientSecretRef ?? null,
+  secretAvailable: Boolean(metadata.clientSecret || metadata.privateKey),
+  configurationSource: metadata.configurationSource,
+  configurationUpdatedAt: control?.configurationUpdatedAt ? new Date(control.configurationUpdatedAt).toISOString() : null,
   enabled: control?.enabled ?? true,
   version: control?.version ?? 0,
   reasonCode: control?.reasonCode ?? 'compatibility_default_enabled',

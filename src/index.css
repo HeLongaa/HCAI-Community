@@ -7294,6 +7294,10 @@ button.video-history-row.active {
 .oauth-provider-row > div:first-child, .oauth-record-row > div:first-child { display: grid; gap: 3px; min-width: 0; }
 .oauth-provider-row span, .oauth-record-row span { min-width: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .oauth-provider-row input { min-width: 0; width: 100%; }
+.oauth-provider-config { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto auto; gap: 9px; align-items: end; min-width: 0; padding-top: 10px; border-top: 1px solid var(--border); }
+.oauth-provider-config label { display: grid; gap: 5px; min-width: 0; }
+.oauth-provider-config label > span { color: var(--muted); font-size: 12px; }
+.oauth-provider-config > .status-badge { min-height: 36px; align-content: center; }
 .oauth-operation-block { display: grid; gap: 10px; min-width: 0; padding-top: 14px; border-top: 1px solid var(--border); }
 .oauth-block-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .oauth-block-header > span { color: var(--muted); font-size: 12px; }
@@ -7311,6 +7315,8 @@ button.video-history-row.active {
 @media (max-width: 760px) {
   .oauth-provider-row { grid-template-columns: minmax(0, 1fr) auto; }
   .oauth-provider-row input { grid-column: 1 / -1; }
+  .oauth-provider-config { grid-template-columns: minmax(0, 1fr); }
+  .oauth-provider-config > button { width: 100%; }
   .oauth-filter-bar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .oauth-filter-bar .ghost-button { width: 100%; }
   .oauth-record-row, .oauth-request-row { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }

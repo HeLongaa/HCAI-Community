@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "contractId": "auth-01-oauth-hardening",
   "scope": "personal_accounts_only",
-  "providers": ["google", "apple", "discord"],
-  "realProviderCallsApproved": false,
+  "providers": ["google", "github", "apple", "discord"],
+  "realProviderCallsApproved": true,
   "runtime": {
     "productionDevFallback": false,
     "explicitUnavailableMode": true,
@@ -25,7 +25,7 @@
   },
   "pkce": {
     "method": "S256",
-    "providers": ["google", "discord"],
+    "providers": ["google", "github", "discord"],
     "verifierPersisted": false
   },
   "browserCallback": {
@@ -39,5 +39,5 @@
     "auth.oauth.provider_rejected",
     "auth.oauth.verification_failed"
   ],
-  "productionValidation": "deferred_pending_explicit_provider_approval"
+  "productionValidation": "pending_credentials_callback_registration_and_staging_execution"
 }

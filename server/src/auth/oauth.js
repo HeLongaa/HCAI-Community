@@ -3,12 +3,13 @@ import { getAccessTokenKeyRing } from './sessionTokens.js'
 
 const oauthStateTtlMs = 10 * 60 * 1000
 const defaultProviderTimeoutMs = 8_000
-const supportedProviders = ['google', 'apple', 'discord', 'dev']
-const listedProviders = ['google', 'apple', 'discord']
-const pkceProviders = new Set(['google', 'discord'])
+const supportedProviders = ['google', 'github', 'apple', 'discord', 'dev']
+const listedProviders = ['google', 'github', 'apple', 'discord']
+const pkceProviders = new Set(['google', 'github', 'discord'])
 
 const providerNames = {
   google: 'Google',
+  github: 'GitHub',
   apple: 'Apple',
   discord: 'Discord',
   dev: 'Dev OAuth',
@@ -20,6 +21,13 @@ const providerConfigs = {
     tokenUrl: 'https://oauth2.googleapis.com/token',
     userInfoUrl: 'https://openidconnect.googleapis.com/v1/userinfo',
     scope: 'openid email profile',
+  },
+  github: {
+    authorizationUrl: 'https://github.com/login/oauth/authorize',
+    tokenUrl: 'https://github.com/login/oauth/access_token',
+    userInfoUrl: 'https://api.github.com/user',
+    userEmailsUrl: 'https://api.github.com/user/emails',
+    scope: 'read:user user:email',
   },
   discord: {
     authorizationUrl: 'https://discord.com/oauth2/authorize',
@@ -242,37 +250,45 @@ export const readDevOAuthCode = (provider, code) => {
   }
 }
 
-export const getOAuthProviderMetadata = (provider, source = process.env) => {
+export const getOAuthProviderMetadata = (provider, source = process.env, configuration = null) => {
   const normalizedProvider = normalizeOAuthProvider(provider)
   const prefix = `OAUTH_${normalizedProvider.toUpperCase()}`
+  const clientId = configuration?.clientId ?? source[`${prefix}_CLIENT_ID`] ?? null
+  const redirectUri = configuration?.redirectUri ?? source[`${prefix}_REDIRECT_URI`] ?? null
+  const configuredScopes = Array.isArray(configuration?.scopes) && configuration.scopes.length > 0
+    ? configuration.scopes.join(' ')
+    : null
   const credentialsPresent = normalizedProvider === 'apple'
     ? Boolean(
-        source[`${prefix}_CLIENT_ID`] &&
+        clientId &&
         source[`${prefix}_TEAM_ID`] &&
         source[`${prefix}_KEY_ID`] &&
         source[`${prefix}_PRIVATE_KEY`] &&
-        source[`${prefix}_REDIRECT_URI`],
+        redirectUri,
       )
-    : Boolean(source[`${prefix}_CLIENT_ID`] && source[`${prefix}_CLIENT_SECRET`] && source[`${prefix}_REDIRECT_URI`])
-  const configured = credentialsPresent && hasValidRedirectUri(normalizedProvider, source[`${prefix}_REDIRECT_URI`], source)
+    : Boolean(clientId && source[`${prefix}_CLIENT_SECRET`] && redirectUri)
+  const configured = credentialsPresent && hasValidRedirectUri(normalizedProvider, redirectUri, source)
   const mode = configured ? 'external' : isOAuthDevModeEnabled(source) ? 'dev' : 'unavailable'
   return {
     provider: normalizedProvider,
     label: providerNames[normalizedProvider] ?? normalizedProvider,
     configured,
     mode,
-    clientId: source[`${prefix}_CLIENT_ID`] ?? null,
+    clientId,
     clientSecret: source[`${prefix}_CLIENT_SECRET`] ?? null,
     teamId: source[`${prefix}_TEAM_ID`] ?? null,
     keyId: source[`${prefix}_KEY_ID`] ?? null,
     privateKey: source[`${prefix}_PRIVATE_KEY`] ?? null,
-    redirectUri: source[`${prefix}_REDIRECT_URI`] ?? null,
+    redirectUri,
+    secretRef: configuration?.clientSecretRef ?? null,
+    configurationSource: configuration?.clientId ? 'admin' : 'environment',
     ...providerConfigs[normalizedProvider],
+    ...(configuredScopes ? { scope: configuredScopes } : {}),
   }
 }
 
-export const listOAuthProviderMetadata = (source = process.env) => listedProviders.map((provider) => {
-  const metadata = getOAuthProviderMetadata(provider, source)
+export const listOAuthProviderMetadata = (source = process.env, controlByProvider = new Map()) => listedProviders.map((provider) => {
+  const metadata = getOAuthProviderMetadata(provider, source, controlByProvider.get(provider) ?? null)
   return {
     provider: metadata.provider,
     label: metadata.label,
@@ -285,8 +301,8 @@ export const listOAuthProviderMetadata = (source = process.env) => listedProvide
   }
 })
 
-export const getOAuthAuthorizationUrl = ({ provider, state, origin, source = process.env }) => {
-  const metadata = getOAuthProviderMetadata(provider, source)
+export const getOAuthAuthorizationUrl = ({ provider, state, origin, source = process.env, configuration = null }) => {
+  const metadata = getOAuthProviderMetadata(provider, source, configuration)
   const statePayload = verifyOAuthState(state)
   if (metadata.mode === 'unavailable' || !providerConfigs[metadata.provider]) {
     return { mode: 'unavailable', authorizationUrl: null }
@@ -322,7 +338,7 @@ export const getOAuthAuthorizationUrl = ({ provider, state, origin, source = pro
   }
 }
 
-const fetchOAuthJson = async ({ url, options, fetchImpl, source }) => {
+const fetchOAuthJson = async ({ url, options, fetchImpl, source, allowArray = false }) => {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), oauthProviderTimeoutMs(source))
   try {
@@ -331,7 +347,7 @@ const fetchOAuthJson = async ({ url, options, fetchImpl, source }) => {
       return null
     }
     const payload = await response.json()
-    return payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null
+    return payload && typeof payload === 'object' && (allowArray || !Array.isArray(payload)) ? payload : null
   } catch {
     return null
   } finally {
@@ -375,6 +391,23 @@ const fetchOAuthUserInfo = ({ metadata, accessToken, fetchImpl, source }) => fet
     headers: {
       accept: 'application/json',
       authorization: `Bearer ${accessToken}`,
+      'user-agent': 'MuseFlow-OAuth/1.0',
+    },
+  },
+})
+
+const fetchGitHubEmails = ({ metadata, accessToken, fetchImpl, source }) => fetchOAuthJson({
+  url: metadata.userEmailsUrl,
+  fetchImpl,
+  source,
+  allowArray: true,
+  options: {
+    method: 'GET',
+    headers: {
+      accept: 'application/vnd.github+json',
+      authorization: `Bearer ${accessToken}`,
+      'user-agent': 'MuseFlow-OAuth/1.0',
+      'x-github-api-version': '2022-11-28',
     },
   },
 })
@@ -422,6 +455,21 @@ const mapGoogleProfile = (profile) => {
     providerUserId: String(profile.sub),
     email: String(profile.email).trim().toLowerCase(),
     displayName: String(profile.name ?? profile.email.split('@')[0]),
+  })
+}
+
+const mapGitHubProfile = (profile, emails = []) => {
+  const verifiedEmails = Array.isArray(emails) ? emails.filter((entry) => entry?.verified === true && entry?.email) : []
+  const profileEmail = String(profile?.email ?? '').trim().toLowerCase()
+  const selectedEmail = verifiedEmails.find((entry) => String(entry.email).trim().toLowerCase() === profileEmail)?.email
+    ?? verifiedEmails.find((entry) => entry.primary === true)?.email
+    ?? verifiedEmails[0]?.email
+  if (!profile?.id || !selectedEmail) return null
+  return safeProfile({
+    provider: 'github',
+    providerUserId: String(profile.id),
+    email: String(selectedEmail).trim().toLowerCase(),
+    displayName: String(profile.name ?? profile.login ?? selectedEmail.split('@')[0]),
   })
 }
 
@@ -477,7 +525,7 @@ const mapAppleProfile = (claims, metadata, statePayload, userPayload = null) => 
 
 export const exchangeOAuthCodeForProfile = async (provider, code, options = {}) => {
   const normalizedProvider = normalizeOAuthProvider(provider)
-  const metadata = getOAuthProviderMetadata(normalizedProvider, options.source ?? process.env)
+  const metadata = getOAuthProviderMetadata(normalizedProvider, options.source ?? process.env, options.configuration ?? null)
   if (metadata.mode === 'unavailable' || !providerConfigs[normalizedProvider]) {
     return null
   }
@@ -502,6 +550,10 @@ export const exchangeOAuthCodeForProfile = async (provider, code, options = {}) 
     const profile = await fetchOAuthUserInfo({ metadata, accessToken: token.access_token, fetchImpl, source })
     if (normalizedProvider === 'google') {
       return mapGoogleProfile(profile)
+    }
+    if (normalizedProvider === 'github') {
+      const emails = await fetchGitHubEmails({ metadata, accessToken: token.access_token, fetchImpl, source })
+      return mapGitHubProfile(profile, emails)
     }
     if (normalizedProvider === 'discord') {
       return mapDiscordProfile(profile)

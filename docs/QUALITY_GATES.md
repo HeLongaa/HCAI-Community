@@ -222,7 +222,7 @@ For the real environment smoke, configure GitHub Environment variables and secre
 - Guard rails: `RATE_LIMIT_*`, `REQUEST_BODY_*`, `AUTH_FAILURE_*`, `SECURITY_EVENT_MAX_ITEMS`.
 - Metrics exporter: `METRICS_EXPORTER_ENABLED`, `METRICS_EXPORTER_FORMAT`, optional secret `METRICS_EXPORTER_TOKEN`.
 - Worker topology: `API_EMBEDDED_WORKERS_ENABLED`, `MEDIA_SCAN_WORKER_*`, `MEDIA_STORAGE_CLEANUP_*`, `TASK_STALE_SUBMISSION_WORKER_*`, `WORKER_LEASE_*`.
-- OAuth providers: `OAUTH_GOOGLE_*`, `OAUTH_DISCORD_*`, and/or `OAUTH_APPLE_*`.
+- OAuth providers: `OAUTH_GOOGLE_*`, `OAUTH_GITHUB_*`, `OAUTH_DISCORD_*`, and/or `OAUTH_APPLE_*`.
 - Creative provider preflight: keep `CREATIVE_PROVIDER_MODE=mock` or `disabled` and
   `CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=false` in production smoke. Use `CREATIVE_PROVIDER_RUNTIME_ENV=staging`,
   `CREATIVE_PROVIDER_MODE=disabled`, `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED=true`,

@@ -71,7 +71,7 @@ test('listOAuthProviderMetadata returns public provider mode without secrets', (
   const google = providers.find((provider) => provider.provider === 'google')
   const apple = providers.find((provider) => provider.provider === 'apple')
 
-  assert.equal(providers.length, 3)
+  assert.equal(providers.length, 4)
   assert.equal(google.mode, 'external')
   assert.equal(google.available, true)
   assert.equal(google.configured, true)
@@ -90,6 +90,9 @@ test('deployment smoke exposes configured OAuth providers without secret materia
     OAUTH_DISCORD_CLIENT_ID: 'discord-client',
     OAUTH_DISCORD_CLIENT_SECRET: 'discord-secret',
     OAUTH_DISCORD_REDIRECT_URI: 'https://api.example.com/api/auth/oauth/discord/callback',
+    OAUTH_GITHUB_CLIENT_ID: 'github-client',
+    OAUTH_GITHUB_CLIENT_SECRET: 'github-secret',
+    OAUTH_GITHUB_REDIRECT_URI: 'https://api.example.com/api/auth/oauth/github/callback',
     OAUTH_APPLE_CLIENT_ID: 'com.example.app',
     OAUTH_APPLE_TEAM_ID: 'TEAMID123',
     OAUTH_APPLE_KEY_ID: 'APPLEKEY123',
@@ -99,6 +102,7 @@ test('deployment smoke exposes configured OAuth providers without secret materia
 
   assert.deepEqual(providers.map((provider) => [provider.provider, provider.mode]), [
     ['google', 'external'],
+    ['github', 'external'],
     ['apple', 'external'],
     ['discord', 'external'],
   ])
@@ -208,6 +212,33 @@ test('exchangeOAuthCodeForProfile verifies Discord token and user responses', as
   assert.equal(profile.displayName, 'Discord Maker')
 })
 
+test('GitHub OAuth uses PKCE and resolves a verified primary email', async () => {
+  const calls = []
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, options })
+    if (url === 'https://github.com/login/oauth/access_token') return { ok: true, json: async () => ({ access_token: 'github-access' }) }
+    if (url === 'https://api.github.com/user') return { ok: true, json: async () => ({ id: 42, login: 'octomaker', name: 'Octo Maker', email: 'unverified@example.com' }) }
+    return { ok: true, json: async () => ([
+      { email: 'unverified@example.com', verified: false, primary: false },
+      { email: 'Maker@Example.com', verified: true, primary: true },
+    ]) }
+  }
+  const statePayload = verifyOAuthState(createOAuthState({ provider: 'github' }))
+  const profile = await exchangeOAuthCodeForProfile('github', 'github-code', {
+    fetchImpl,
+    source: {
+      OAUTH_GITHUB_CLIENT_ID: 'github-client', OAUTH_GITHUB_CLIENT_SECRET: 'github-secret',
+      OAUTH_GITHUB_REDIRECT_URI: 'https://app.example.com/api/auth/oauth/github/callback',
+    },
+    statePayload,
+  })
+
+  assert.deepEqual(profile, { provider: 'github', providerUserId: '42', email: 'maker@example.com', displayName: 'Octo Maker' })
+  assert.equal(calls[0].options.body.get('code_verifier'), createOAuthPkce(statePayload).verifier)
+  assert.equal(calls[1].options.headers.authorization, 'Bearer github-access')
+  assert.equal(calls[2].options.headers['x-github-api-version'], '2022-11-28')
+})
+
 test('createAppleClientSecret signs an ES256 client secret', () => {
   const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' })
   const clientSecret = createAppleClientSecret({
@@ -283,6 +314,7 @@ test('production OAuth metadata fails closed when credentials are absent or redi
   const absent = listOAuthProviderMetadata({ NODE_ENV: 'production' })
   assert.deepEqual(absent.map((provider) => [provider.provider, provider.mode, provider.available]), [
     ['google', 'unavailable', false],
+    ['github', 'unavailable', false],
     ['apple', 'unavailable', false],
     ['discord', 'unavailable', false],
   ])

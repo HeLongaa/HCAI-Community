@@ -190,11 +190,31 @@ export const openApiDocument = {
         responses: { '200': { description: 'Updated Provider control' }, '403': { description: 'Missing admin:auth:manage' }, '409': { description: 'Stale version or unavailable environment configuration' } },
       },
     },
+    '/admin/auth/oauth/providers/{provider}/configuration': {
+      put: {
+        summary: 'Set non-secret OAuth Provider settings with optimistic version control',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: {
+            type: 'object', required: ['clientId', 'redirectUri', 'scopes', 'clientSecretRef', 'expectedVersion', 'reasonCode'], additionalProperties: false,
+            properties: {
+              clientId: { type: 'string', maxLength: 255 },
+              redirectUri: { type: 'string', format: 'uri', maxLength: 2048 },
+              scopes: { type: 'array', minItems: 1, maxItems: 10, uniqueItems: true, items: { type: 'string', maxLength: 120 } },
+              clientSecretRef: { type: 'string', pattern: '^secret://[A-Za-z0-9._~:/-]{1,240}$' },
+              expectedVersion: { type: 'integer', minimum: 0 },
+              reasonCode: { type: 'string', pattern: '^[a-z0-9][a-z0-9._:-]{0,79}$' },
+            },
+          } } },
+        },
+        responses: { '200': { description: 'Updated non-secret Provider configuration' }, '400': { description: 'Invalid redirect, scope, SecretRef, or plaintext secret field' }, '403': { description: 'Missing admin:auth:manage' }, '409': { description: 'Stale version' } },
+      },
+    },
     '/admin/auth/oauth/accounts': {
       get: {
         summary: 'Query linked OAuth accounts using a masked Provider identity projection',
         parameters: [
-          { name: 'provider', in: 'query', schema: { type: 'string', enum: ['google', 'apple', 'discord'] } },
+          { name: 'provider', in: 'query', schema: { type: 'string', enum: ['google', 'github', 'apple', 'discord'] } },
           { name: 'search', in: 'query', schema: { type: 'string', maxLength: 96 } },
           { name: 'cursor', in: 'query', schema: { type: 'string' } },
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
@@ -214,7 +234,7 @@ export const openApiDocument = {
       get: {
         summary: 'Query safe OAuth authorization request lifecycle projections',
         parameters: [
-          { name: 'provider', in: 'query', schema: { type: 'string', enum: ['google', 'apple', 'discord'] } },
+          { name: 'provider', in: 'query', schema: { type: 'string', enum: ['google', 'github', 'apple', 'discord'] } },
           { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'consumed', 'revoked', 'expired'] } },
           { name: 'cursor', in: 'query', schema: { type: 'string' } },
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
@@ -247,7 +267,7 @@ export const openApiDocument = {
                       items: {
                         type: 'object',
                         properties: {
-                          provider: { type: 'string', enum: ['google', 'apple', 'discord'] },
+                          provider: { type: 'string', enum: ['google', 'github', 'apple', 'discord'] },
                           label: { type: 'string' },
                           configured: { type: 'boolean' },
                           available: { type: 'boolean' },
@@ -282,7 +302,7 @@ export const openApiDocument = {
                       items: {
                         type: 'object',
                         properties: {
-                          provider: { type: 'string', enum: ['google', 'apple', 'discord'] },
+                          provider: { type: 'string', enum: ['google', 'github', 'apple', 'discord'] },
                           linked: { type: 'boolean' },
                           providerUserIdHint: { type: 'string' },
                         },
@@ -301,7 +321,7 @@ export const openApiDocument = {
       delete: {
         summary: 'Unlink an OAuth provider account from the current user',
         parameters: [
-          { name: 'provider', in: 'path', required: true, schema: { type: 'string', enum: ['google', 'apple', 'discord'] } },
+          { name: 'provider', in: 'path', required: true, schema: { type: 'string', enum: ['google', 'github', 'apple', 'discord'] } },
         ],
         responses: {
           '200': { description: 'Provider account unlinked' },
@@ -315,7 +335,7 @@ export const openApiDocument = {
       post: {
         summary: 'Start an OAuth login or account-link flow',
         parameters: [
-          { name: 'provider', in: 'path', required: true, schema: { type: 'string', enum: ['google', 'apple', 'discord'] } },
+          { name: 'provider', in: 'path', required: true, schema: { type: 'string', enum: ['google', 'github', 'apple', 'discord'] } },
         ],
         requestBody: {
           required: false,

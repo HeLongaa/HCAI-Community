@@ -5,6 +5,7 @@ import {
   parseOAuthAuthorizationAdminListQuery,
   parseOAuthAuthorizationRevokeRequest,
   parseOAuthAdminProvider,
+  parseOAuthProviderConfigurationRequest,
   parseOAuthProviderStatusRequest,
   serializeOAuthProviderControl,
 } from '../../auth/oauthAdminOperations.js'
@@ -24,7 +25,7 @@ export const registerOAuthAdminRoutes = (router, options = {}) => {
     const controlByProvider = new Map(controls.map((control) => [control.provider, control]))
     ok(response, oauthAdminProviders.map((provider) => serializeOAuthProviderControl(
       provider,
-      getOAuthProviderMetadata(provider, source),
+      getOAuthProviderMetadata(provider, source, controlByProvider.get(provider) ?? null),
       controlByProvider.get(provider),
     )), { pagination: { limit: oauthAdminProviders.length, nextCursor: null } })
   })
@@ -33,12 +34,23 @@ export const registerOAuthAdminRoutes = (router, options = {}) => {
     const actor = requirePermission(context, 'admin:auth:manage')
     const provider = parseOAuthAdminProvider(context.params.provider)
     const payload = parseOAuthProviderStatusRequest((await readJsonBody(request)) ?? {})
-    const metadata = getOAuthProviderMetadata(provider, source)
+    const current = await routeRepositories.oauthAdmin.getProviderControl(provider)
+    const metadata = getOAuthProviderMetadata(provider, source, current)
     if (payload.enabled && metadata.mode === 'unavailable') {
       throw new HttpError(409, 'OAUTH_PROVIDER_NOT_CONFIGURED', 'OAuth provider is not available in this environment')
     }
     const control = await routeRepositories.oauthAdmin.setProviderControl({ provider, ...payload }, actor)
     if (!control) throw new HttpError(409, 'STATE_CONFLICT', 'OAuth provider control was modified concurrently')
+    ok(response, serializeOAuthProviderControl(provider, metadata, control))
+  })
+
+  router.add('PUT', '/api/admin/auth/oauth/providers/:provider/configuration', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:auth:manage')
+    const provider = parseOAuthAdminProvider(context.params.provider)
+    const payload = parseOAuthProviderConfigurationRequest(provider, (await readJsonBody(request)) ?? {}, source)
+    const control = await routeRepositories.oauthAdmin.setProviderConfiguration({ provider, ...payload }, actor)
+    if (!control) throw new HttpError(409, 'STATE_CONFLICT', 'OAuth provider control was modified concurrently')
+    const metadata = getOAuthProviderMetadata(provider, source, control)
     ok(response, serializeOAuthProviderControl(provider, metadata, control))
   })
 

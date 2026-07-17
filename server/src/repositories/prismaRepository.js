@@ -2340,7 +2340,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       }
       return createSessionForUser(authAccount.user, 'auth.session.created')
     },
-    createOAuthAuthorizationRequest: async ({ stateHash, provider, redirectTo, linkUserId = null, expiresAt }) => {
+    createOAuthAuthorizationRequest: async ({ stateHash, provider, redirectTo, linkUserId = null, providerControlVersion = 0, expiresAt }) => {
       try {
         await client.$transaction(async (transaction) => {
           await transaction.oAuthAuthorizationRequest.deleteMany({
@@ -2352,6 +2352,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
               provider,
               redirectTo,
               linkUserId,
+              providerControlVersion,
               expiresAt: new Date(expiresAt),
             },
           })

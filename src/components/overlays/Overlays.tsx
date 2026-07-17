@@ -580,6 +580,16 @@ const defaultOAuthProviders: OAuthProviderMetadata[] = [
     scopes: ['openid', 'email', 'profile'],
   },
   {
+    provider: 'github',
+    label: 'GitHub',
+    configured: false,
+    available: false,
+    mode: 'unavailable',
+    authorizationUrl: null,
+    callbackMethod: 'GET',
+    scopes: ['read:user', 'user:email'],
+  },
+  {
     provider: 'apple',
     label: 'Apple',
     configured: false,

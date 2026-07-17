@@ -43,6 +43,7 @@ export const createSeedOAuthAdminRepository = ({
   recordAudit,
 }) => ({
   listProviderControls: async () => [...oauthProviderControls.values()].map((control) => ({ ...control })),
+  getProviderControl: async (provider) => oauthProviderControls.get(provider) ?? null,
   isProviderEnabled: async (provider) => oauthProviderControls.get(provider)?.enabled ?? true,
   setProviderControl: async ({ provider, enabled, expectedVersion, reasonCode }, actor) => {
     const current = oauthProviderControls.get(provider) ?? null
@@ -74,6 +75,50 @@ export const createSeedOAuthAdminRepository = ({
       provider,
       previousEnabled: current?.enabled ?? true,
       enabled,
+      reasonCode,
+      version: next.version,
+    })
+    return { ...next }
+  },
+  setProviderConfiguration: async ({ provider, clientId, redirectUri, scopes, clientSecretRef, expectedVersion, reasonCode }, actor) => {
+    const current = oauthProviderControls.get(provider) ?? null
+    if ((current?.version ?? 0) !== expectedVersion) return null
+    const now = new Date().toISOString()
+    const next = current
+      ? {
+          ...current,
+          clientId,
+          redirectUri,
+          scopes: [...scopes],
+          clientSecretRef,
+          configurationUpdatedAt: now,
+          version: current.version + 1,
+          reasonCode,
+          updatedAt: now,
+        }
+      : {
+          id: `oauth-control-${randomUUID()}`,
+          provider,
+          enabled: false,
+          version: 1,
+          reasonCode,
+          clientId,
+          redirectUri,
+          scopes: [...scopes],
+          clientSecretRef,
+          configurationUpdatedAt: now,
+          enabledAt: null,
+          disabledAt: now,
+          createdAt: now,
+          updatedAt: now,
+        }
+    oauthProviderControls.set(provider, next)
+    recordAudit(actor, 'admin.auth.oauth_provider.configuration_changed', 'oauth_provider_control', next.id, {
+      provider,
+      scopes: [...scopes],
+      clientIdPresent: true,
+      redirectUriPresent: true,
+      clientSecretRefPresent: true,
       reasonCode,
       version: next.version,
     })

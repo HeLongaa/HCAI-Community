@@ -7,6 +7,7 @@ import {
   oauthAuthorizationRequestStatus,
   parseOAuthAccountAdminListQuery,
   parseOAuthAuthorizationAdminListQuery,
+  parseOAuthProviderConfigurationRequest,
   parseOAuthProviderStatusRequest,
   serializeOAuthAuthorizationRequest,
   serializeOAuthProviderControl,
@@ -22,9 +23,24 @@ test('OAuth Admin parsers bound filters, ordering, versions, and stable reason c
   assert.deepEqual(parseOAuthProviderStatusRequest({ enabled: false, expectedVersion: 0, reasonCode: 'incident_containment' }), {
     enabled: false, expectedVersion: 0, reasonCode: 'incident_containment',
   })
+  assert.deepEqual(parseOAuthProviderConfigurationRequest('github', {
+    clientId: 'github-client',
+    redirectUri: 'https://app.example.com/api/auth/oauth/github/callback',
+    scopes: ['read:user', 'user:email'],
+    clientSecretRef: 'secret://oauth/github/client-secret',
+    expectedVersion: 0,
+    reasonCode: 'initial_configuration',
+  }), {
+    clientId: 'github-client', redirectUri: 'https://app.example.com/api/auth/oauth/github/callback', scopes: ['read:user', 'user:email'],
+    clientSecretRef: 'secret://oauth/github/client-secret', expectedVersion: 0, reasonCode: 'initial_configuration',
+  })
   assert.throws(() => parseOAuthAccountAdminListQuery({ limit: 101 }), /limit/)
   assert.throws(() => parseOAuthAuthorizationAdminListQuery({ status: 'unknown' }), /status/)
   assert.throws(() => parseOAuthProviderStatusRequest({ enabled: true, expectedVersion: 1, reasonCode: 'Human words' }), /reasonCode/)
+  assert.throws(() => parseOAuthProviderConfigurationRequest('github', { clientId: 'x', clientSecret: 'plaintext' }), /unsupported/)
+  assert.throws(() => parseOAuthProviderConfigurationRequest('github', {
+    clientId: 'x', redirectUri: 'https://evil.example/callback', scopes: ['read:user'], clientSecretRef: 'secret://oauth/github/key', expectedVersion: 0, reasonCode: 'invalid_redirect',
+  }), /redirectUri/)
 })
 
 test('OAuth Admin cursors are query-bound and reject tampering', () => {
@@ -51,9 +67,10 @@ test('OAuth Admin projections expose lifecycle evidence without internal OAuth c
 
   const provider = serializeOAuthProviderControl('google', {
     label: 'Google', configured: true, mode: 'external', authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth', scope: 'openid email profile',
-    clientId: 'must-not-leak', clientSecret: 'must-not-leak',
+    clientId: 'public-client-id', clientSecret: 'must-not-leak', configurationSource: 'environment',
   }, null)
   assert.equal(provider.enabled, true)
   assert.equal(provider.version, 0)
+  assert.equal(provider.clientId, 'public-client-id')
   assert.equal(JSON.stringify(provider).includes('must-not-leak'), false)
 })

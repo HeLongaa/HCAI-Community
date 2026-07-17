@@ -50,6 +50,7 @@ OAuth provider secrets. Configure at least one external provider:
 | Name | Required When | Notes |
 | --- | --- | --- |
 | `OAUTH_GOOGLE_CLIENT_SECRET` | Google OAuth enabled | Paired with Google client id/redirect variables |
+| `OAUTH_GITHUB_CLIENT_SECRET` | GitHub OAuth enabled | Paired with GitHub client id/redirect variables |
 | `OAUTH_DISCORD_CLIENT_SECRET` | Discord OAuth enabled | Paired with Discord client id/redirect variables |
 | `OAUTH_APPLE_PRIVATE_KEY` | Apple OAuth enabled | PEM private key, escaped as needed by GitHub Secrets |
 
@@ -93,13 +94,14 @@ OAuth provider variables. Configure at least one provider:
 | Provider | Variables |
 | --- | --- |
 | Google | `OAUTH_GOOGLE_CLIENT_ID`, `OAUTH_GOOGLE_REDIRECT_URI` |
+| GitHub | `OAUTH_GITHUB_CLIENT_ID`, `OAUTH_GITHUB_REDIRECT_URI` |
 | Discord | `OAUTH_DISCORD_CLIENT_ID`, `OAUTH_DISCORD_REDIRECT_URI` |
 | Apple | `OAUTH_APPLE_CLIENT_ID`, `OAUTH_APPLE_TEAM_ID`, `OAUTH_APPLE_KEY_ID`, `OAUTH_APPLE_REDIRECT_URI` |
 
 Every redirect URI must use HTTPS and exactly end at `/api/auth/oauth/{provider}/callback`. Production never falls back
 to a dev callback when a provider is missing or invalid. Set `OAUTH_DEV_MODE=disabled` as defense in depth and optionally
-set `OAUTH_PROVIDER_TIMEOUT_MS` between `1000` and `15000` (default `8000`). Real credentials and staging callbacks still
-require explicit Provider approval; configuring GitHub variables alone is not approval.
+set `OAUTH_PROVIDER_TIMEOUT_MS` between `1000` and `15000` (default `8000`). Register the same exact URI in the Provider
+console before enabling the Provider in Admin. Admin configuration never replaces the deployment secret.
 
 Creative provider preflight variables:
 

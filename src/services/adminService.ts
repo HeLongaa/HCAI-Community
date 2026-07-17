@@ -193,6 +193,9 @@ export const adminService = {
   async setOAuthProviderStatus(provider: string, payload: { enabled: boolean; expectedVersion: number; reasonCode: string }) {
     return api.post<AdminOAuthProviderControl>(`/admin/auth/oauth/providers/${encodeURIComponent(provider)}/status`, payload)
   },
+  async setOAuthProviderConfiguration(provider: string, payload: { clientId: string; redirectUri: string; scopes: string[]; clientSecretRef: string; expectedVersion: number; reasonCode: string }) {
+    return api.put<AdminOAuthProviderControl>(`/admin/auth/oauth/providers/${encodeURIComponent(provider)}/configuration`, payload)
+  },
   async oauthAccounts(query?: AdminOAuthAccountQuery) {
     const envelope = await api.getEnvelope<AdminOAuthAccount[]>(withQuery('/admin/auth/oauth/accounts', query))
     return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }

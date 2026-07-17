@@ -426,7 +426,7 @@ test('GET /api/auth/oauth/providers returns public provider status', async () =>
     })
 
     assert.equal(status, 200)
-    assert.deepEqual(payload.data.map((provider) => provider.provider), ['google', 'apple', 'discord'])
+    assert.deepEqual(payload.data.map((provider) => provider.provider), ['google', 'github', 'apple', 'discord'])
     assert.equal(payload.data[0].mode, 'dev')
     assert.equal(payload.data[0].label, 'Google')
     assert.equal(payload.data[0].clientSecret, undefined)
