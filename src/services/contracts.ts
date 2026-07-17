@@ -753,6 +753,51 @@ export type AdminMediaAssetExport = {
   items: ApiAdminMediaAsset[]
 }
 
+export type AdminMediaBusinessMetricsQuery = {
+  dateFrom?: string | null
+  dateTo?: string | null
+  purpose?: MediaAssetPurpose | null
+  mediaType?: AssetMediaType | null
+}
+
+export type AdminMediaBusinessMetrics = {
+  schemaVersion: 1
+  window: AdminMediaBusinessMetricsQuery & { generatedAt: string }
+  capacity: {
+    assets: number
+    bytes: number
+    activeAssets: number
+    activeBytes: number
+    archivedAssets: number
+    deletedAssets: number
+    availableBytes: number
+    cleanupPendingBytes: number
+  }
+  byMediaType: Array<{ key: AssetMediaType; assets: number; bytes: number }>
+  byPurpose: Array<{ key: MediaAssetPurpose; assets: number; bytes: number }>
+  storage: { byState: Array<{ key: MediaStorageState | 'legacy'; assets: number; bytes: number }> }
+  scan: {
+    jobs: number
+    completed: number
+    failed: number
+    queued: number
+    retrying: number
+    timedOut: number
+    failurePercent: number
+    averageLatencySeconds: number | null
+    p95LatencySeconds: number | null
+  }
+  backlog: { total: number; queued: number; retrying: number; timedOut: number; oldestAgeHours: number | null }
+}
+
+export type AdminMediaBusinessMetricsExport = {
+  kind: 'media.business-metrics.snapshot'
+  schemaVersion: 1
+  exportedAt: string
+  filters: AdminMediaBusinessMetricsQuery
+  metrics: AdminMediaBusinessMetrics
+}
+
 export type MediaStorageCleanupResult = {
   inspected: number
   deleted: number

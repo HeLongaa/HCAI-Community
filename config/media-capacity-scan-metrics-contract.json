@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "taskId": "MEDIA-04",
+  "schemaChange": false,
+  "sourceModels": ["MediaAsset", "MediaStorageObject", "MediaScanJob"],
+  "permissions": ["admin:media:read", "admin:media:export"],
+  "filters": ["dateFrom", "dateTo", "purpose", "mediaType"],
+  "groups": ["capacity", "byMediaType", "byPurpose", "storage", "scan", "backlog"],
+  "metrics": ["activeBytes", "availableBytes", "cleanupPendingBytes", "failurePercent", "averageLatencySeconds", "p95LatencySeconds", "oldestAgeHours"],
+  "routes": [
+    { "method": "GET", "path": "/api/admin/media/business-metrics", "permission": "admin:media:read" },
+    { "method": "GET", "path": "/api/admin/media/business-metrics/export", "permission": "admin:media:export" }
+  ],
+  "exportKind": "media.business-metrics.snapshot",
+  "forbiddenEvidence": ["storageKey", "checksumSha256", "etag", "ownerHandle", "externalScanId", "rawProviderPayload"],
+  "realProviderCalls": false,
+  "tenantModels": false
+}

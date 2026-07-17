@@ -229,6 +229,42 @@ test('admin media lifecycle is permissioned, filterable, paginated, and audited'
   }
 })
 
+test('admin media business metrics expose safe filtered capacity, scan health, backlog, and export', async () => {
+  const server = await createTestServer()
+  try {
+    await completeAndCleanUpload(server, 'demo-access.promptlin', { fileName: 'metrics-image.png', contentType: 'image/png', sizeBytes: 4096, purpose: 'library_asset' })
+    await completeAndCleanUpload(server, 'demo-access.taskops', { fileName: 'metrics-document.pdf', contentType: 'application/pdf', sizeBytes: 2048, purpose: 'task_attachment' })
+
+    const denied = await requestJson(server.url, '/api/admin/media/business-metrics', { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(denied.status, 403)
+    const metrics = await requestJson(server.url, '/api/admin/media/business-metrics?purpose=library_asset&mediaType=image', { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(metrics.status, 200)
+    assert.equal(metrics.payload.data.schemaVersion, 1)
+    assert.ok(metrics.payload.data.capacity.assets >= 1)
+    assert.ok(metrics.payload.data.capacity.bytes >= 4096)
+    assert.ok(metrics.payload.data.byMediaType.every((entry) => entry.key === 'image'))
+    assert.equal(metrics.payload.data.window.purpose, 'library_asset')
+    assert.equal(metrics.payload.data.window.mediaType, 'image')
+    assert.equal(typeof metrics.payload.data.scan.failurePercent, 'number')
+    assert.equal(typeof metrics.payload.data.backlog.total, 'number')
+
+    const exported = await requestJson(server.url, '/api/admin/media/business-metrics/export?mediaType=image', { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(exported.status, 200)
+    assert.equal(exported.payload.data.kind, 'media.business-metrics.snapshot')
+    assert.equal(exported.payload.data.metrics.schemaVersion, 1)
+    assert.equal(JSON.stringify(exported.payload.data).includes('storageKey'), false)
+    assert.equal(JSON.stringify(exported.payload.data).includes('ownerHandle'), false)
+    const exportDenied = await requestJson(server.url, '/api/admin/media/business-metrics/export', { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(exportDenied.status, 403)
+
+    const audit = await requestJson(server.url, '/api/admin/audit?resourceType=media_metrics&limit=100', { method: 'GET', token: 'demo-access.opsplus' })
+    assert.ok(audit.payload.data.some((event) => event.action === 'admin.media.business_metrics.queried'))
+    assert.ok(audit.payload.data.some((event) => event.action === 'admin.media.business_metrics.exported'))
+  } finally {
+    await server.close()
+  }
+})
+
 test('admin media scan decision uses dedicated management permission and refreshes safe detail', async () => {
   const server = await createTestServer()
   try {

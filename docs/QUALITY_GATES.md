@@ -198,6 +198,10 @@ disclosures, support categories, rights entry points, or legal-publication statu
 Use `docs/OAUTH_SECURITY_AND_STAGING.md` before changing OAuth Provider configuration, callback/session behavior, or
 requesting approval for a real staging validation.
 
+MEDIA-04 capacity and scan statistics must pass `npm run test:media-capacity-scan-metrics`. The gate freezes the
+existing normalized media sources, 366-day filter bound, read/export permissions, safe aggregate projection, audited
+snapshot export, responsive Admin metrics, and the personal-account-only boundary without making a Provider call.
+
 ## GitHub Actions
 
 `.github/workflows/quality-gates.yml` wires these gates into CI:

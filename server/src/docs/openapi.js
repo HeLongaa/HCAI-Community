@@ -1124,6 +1124,32 @@ export const openApiDocument = {
         responses: { '200': { description: 'Safe export without storage keys, signed URLs, or raw metadata' }, '403': { description: 'Requires admin media export permission' } },
       },
     },
+    '/admin/media/business-metrics': {
+      get: {
+        summary: 'Read bounded media capacity, scan latency, failure, and backlog metrics',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'purpose', in: 'query', schema: { type: 'string', enum: ['task_attachment', 'submission_asset', 'profile_portfolio', 'library_asset'] } },
+          { name: 'mediaType', in: 'query', schema: { type: 'string', enum: ['image', 'video', 'audio', 'document'] } },
+        ],
+        responses: { '200': { description: 'Safe aggregate media business metrics without owner, storage-key, or scanner payload data' }, '403': { description: 'Requires admin media read permission' } },
+      },
+    },
+    '/admin/media/business-metrics/export': {
+      get: {
+        summary: 'Export an auditable media business metrics snapshot',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'purpose', in: 'query', schema: { type: 'string' } },
+          { name: 'mediaType', in: 'query', schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: 'Stable media.business-metrics.snapshot JSON artifact' }, '403': { description: 'Requires admin media export permission' } },
+      },
+    },
     '/admin/media/assets/bulk-actions': {
       post: {
         summary: 'Apply a bounded audited lifecycle action with per-item outcomes',

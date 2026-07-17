@@ -18,6 +18,10 @@ test('admin filters and transitions owner media lifecycle records', async ({ pag
   await page.getByTestId('nav-admin').click()
   const panel = page.getByTestId('admin-media-lifecycle')
   await expect(panel).toBeVisible()
+  await expect(panel.getByText('Active capacity')).toBeVisible()
+  await expect(panel.getByText('Scan failures')).toBeVisible()
+  await panel.getByLabel('Admin media type').selectOption('image')
+  await expect(panel.getByText('P95 scan latency')).toBeVisible()
   await panel.getByLabel('Search asset lifecycle').fill('e2e-admin-lifecycle')
   const row = panel.locator('article').filter({ hasText: 'e2e-admin-lifecycle.png' })
   await expect(row).toBeVisible()
@@ -50,6 +54,9 @@ test('admin filters and transitions owner media lifecycle records', async ({ pag
   const download = page.waitForEvent('download')
   await panel.getByRole('button', { name: 'Export media JSON' }).click()
   await expect(await download).toBeTruthy()
+  const metricsDownload = page.waitForEvent('download')
+  await panel.getByRole('button', { name: 'Export media metrics JSON' }).click()
+  await expect((await metricsDownload).suggestedFilename()).toBe('media-business-metrics.json')
 
   await expect(panel).toBeVisible()
   expect(await panel.evaluate((element) => {
