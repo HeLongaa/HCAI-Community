@@ -9,8 +9,12 @@ import type {
   AdminAuthSession,
   AdminAuthSessionQuery,
   AdminUserDto,
+  AdminUserMetrics,
+  AdminUserMetricsExport,
   AdminUserQuery,
   AdminUserStatusResult,
+  AdminUserTag,
+  AdminUserTagColor,
   AdminTaskBulkAction,
   AdminTaskBulkPreview,
   AdminTaskBulkResult,
@@ -240,6 +244,33 @@ export const adminService = {
   },
   async restoreUser(id: string, payload: { expectedVersion: number; reasonCode: string }) {
     return api.post<AdminUserStatusResult>(`/admin/users/${encodeURIComponent(id)}/restore`, payload)
+  },
+  async userMetrics(query?: { dateFrom?: string | null; dateTo?: string | null }) {
+    return api.get<AdminUserMetrics>(withQuery('/admin/users/metrics', query))
+  },
+  async exportUserMetrics(query?: { dateFrom?: string | null; dateTo?: string | null }) {
+    return api.get<AdminUserMetricsExport>(withQuery('/admin/users/metrics/export', query))
+  },
+  async userTags(query?: { status?: 'active' | 'archived' | 'all'; search?: string | null }) {
+    return api.get<AdminUserTag[]>(withQuery('/admin/user-tags', query))
+  },
+  async createUserTag(payload: { key: string; label: string; description?: string | null; color: AdminUserTagColor; reasonCode: string }) {
+    return api.post<AdminUserTag>('/admin/user-tags', payload)
+  },
+  async updateUserTag(id: string, payload: { label: string; description?: string | null; color: AdminUserTagColor; expectedVersion: number; reasonCode: string }) {
+    return api.put<AdminUserTag>(`/admin/user-tags/${encodeURIComponent(id)}`, payload)
+  },
+  async archiveUserTag(id: string, payload: { expectedVersion: number; reasonCode: string }) {
+    return api.post<AdminUserTag>(`/admin/user-tags/${encodeURIComponent(id)}/archive`, payload)
+  },
+  async restoreUserTag(id: string, payload: { expectedVersion: number; reasonCode: string }) {
+    return api.post<AdminUserTag>(`/admin/user-tags/${encodeURIComponent(id)}/restore`, payload)
+  },
+  async assignUserTag(userId: string, tagId: string, payload: { expectedUserVersion: number; reasonCode: string }) {
+    return api.post<{ user: AdminUserDto }>(`/admin/users/${encodeURIComponent(userId)}/tags/${encodeURIComponent(tagId)}/assign`, payload)
+  },
+  async removeUserTag(userId: string, tagId: string, payload: { expectedUserVersion: number; reasonCode: string }) {
+    return api.post<{ user: AdminUserDto }>(`/admin/users/${encodeURIComponent(userId)}/tags/${encodeURIComponent(tagId)}/remove`, payload)
   },
   async modelControlSummary() {
     return api.get<ModelControlSummaryDto>('/admin/model-control/summary')

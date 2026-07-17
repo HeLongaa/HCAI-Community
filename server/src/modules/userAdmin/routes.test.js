@@ -100,3 +100,73 @@ test('User Admin rejects unsupported filters and free-form reasons', async () =>
     await server.close()
   }
 })
+
+test('User lifecycle metrics and tag operations are permissioned versioned and auditable', async () => {
+  const repository = createSeedRepository()
+  const server = await createServer(repository)
+  const adminToken = 'demo-access.opsplus'
+  const moderatorToken = 'demo-access.legalpixel'
+  const targetId = 'demo-user-taskops'
+  try {
+    assert.equal((await requestJson(server.url, '/api/admin/users/metrics', { method: 'GET', token: 'demo-access.taskops' })).status, 403)
+    const metrics = await requestJson(server.url, '/api/admin/users/metrics?dateFrom=2025-01-01T00%3A00%3A00Z&dateTo=2026-12-31T00%3A00%3A00Z', { method: 'GET', token: moderatorToken })
+    assert.equal(metrics.status, 400)
+    const currentMetrics = await requestJson(server.url, '/api/admin/users/metrics', { method: 'GET', token: moderatorToken })
+    assert.equal(currentMetrics.status, 200)
+    assert.equal(typeof currentMetrics.payload.data.totals.accounts, 'number')
+    assert.equal(typeof currentMetrics.payload.data.retention.d7.ratePercent, 'number')
+    assert.equal((await requestJson(server.url, '/api/admin/users/metrics/export', { method: 'GET', token: moderatorToken })).payload.data.kind, 'user.lifecycle-metrics.snapshot')
+
+    assert.equal((await requestJson(server.url, '/api/admin/user-tags', { method: 'POST', token: moderatorToken, body: { key: 'vip', label: 'VIP', color: 'purple', reasonCode: 'test_create' } })).status, 403)
+    const created = await requestJson(server.url, '/api/admin/user-tags', {
+      method: 'POST', token: adminToken, body: { key: 'vip', label: 'VIP account', description: 'Priority lifecycle cohort', color: 'purple', reasonCode: 'test_create' },
+    })
+    assert.equal(created.status, 201)
+    assert.equal(created.payload.data.version, 1)
+    const tagId = created.payload.data.id
+    assert.equal((await requestJson(server.url, '/api/admin/user-tags', { method: 'POST', token: adminToken, body: { key: 'vip', label: 'Duplicate', color: 'blue', reasonCode: 'test_duplicate' } })).payload.error.code, 'USER_TAG_KEY_EXISTS')
+
+    const updated = await requestJson(server.url, `/api/admin/user-tags/${tagId}`, {
+      method: 'PUT', token: adminToken, body: { label: 'VIP', description: 'Priority lifecycle cohort', color: 'pink', expectedVersion: 1, reasonCode: 'test_update' },
+    })
+    assert.equal(updated.status, 200)
+    assert.equal(updated.payload.data.version, 2)
+
+    const target = await requestJson(server.url, `/api/admin/users/${targetId}`, { method: 'GET', token: moderatorToken })
+    const assigned = await requestJson(server.url, `/api/admin/users/${targetId}/tags/${tagId}/assign`, {
+      method: 'POST', token: adminToken, body: { expectedUserVersion: target.payload.data.version, reasonCode: 'test_assign' },
+    })
+    assert.equal(assigned.status, 200)
+    assert.equal(assigned.payload.data.user.tags[0].key, 'vip')
+    const filtered = await requestJson(server.url, '/api/admin/users?tag=vip', { method: 'GET', token: moderatorToken })
+    assert.equal(filtered.payload.data.some((user) => user.id === targetId), true)
+    const listedTags = await requestJson(server.url, '/api/admin/user-tags?status=active', { method: 'GET', token: moderatorToken })
+    assert.equal(listedTags.payload.data.find((tag) => tag.id === tagId).assignmentCount, 1)
+
+    const staleRemove = await requestJson(server.url, `/api/admin/users/${targetId}/tags/${tagId}/remove`, {
+      method: 'POST', token: adminToken, body: { expectedUserVersion: target.payload.data.version, reasonCode: 'test_stale' },
+    })
+    assert.equal(staleRemove.payload.error.code, 'USER_TAG_VERSION_CONFLICT')
+    const removed = await requestJson(server.url, `/api/admin/users/${targetId}/tags/${tagId}/remove`, {
+      method: 'POST', token: adminToken, body: { expectedUserVersion: assigned.payload.data.user.version, reasonCode: 'test_remove' },
+    })
+    assert.equal(removed.status, 200)
+    assert.deepEqual(removed.payload.data.user.tags, [])
+
+    const archived = await requestJson(server.url, `/api/admin/user-tags/${tagId}/archive`, {
+      method: 'POST', token: adminToken, body: { expectedVersion: updated.payload.data.version, reasonCode: 'test_archive' },
+    })
+    assert.ok(archived.payload.data.archivedAt)
+    const restored = await requestJson(server.url, `/api/admin/user-tags/${tagId}/restore`, {
+      method: 'POST', token: adminToken, body: { expectedVersion: archived.payload.data.version, reasonCode: 'test_restore' },
+    })
+    assert.equal(restored.payload.data.archivedAt, null)
+
+    const audits = await repository.audit.list({ limit: 100 })
+    for (const action of ['admin.users.metrics_queried', 'admin.users.metrics_exported', 'admin.user_tag.created', 'admin.user_tag.updated', 'admin.user_tag.assigned', 'admin.user_tag.removed', 'admin.user_tag.archived', 'admin.user_tag.restored']) {
+      assert.ok(audits.items.some((event) => event.action === action), action)
+    }
+  } finally {
+    await server.close()
+  }
+})

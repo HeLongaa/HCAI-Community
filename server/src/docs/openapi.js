@@ -625,6 +625,7 @@ export const openApiDocument = {
         parameters: [
           { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'suspended', 'deleted'] } },
           { name: 'role', in: 'query', schema: { type: 'string', enum: ['member', 'creator', 'publisher', 'moderator', 'admin'] } },
+          { name: 'tag', in: 'query', schema: { type: 'string', maxLength: 64 } },
           { name: 'search', in: 'query', schema: { type: 'string', maxLength: 96 } },
           { name: 'sort', in: 'query', schema: { type: 'string', enum: ['createdAt', 'updatedAt', 'displayName'], default: 'updatedAt' } },
           { name: 'order', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
@@ -632,6 +633,60 @@ export const openApiDocument = {
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
         ],
         responses: { '200': { description: 'Stable user page without credentials or Provider identity values' }, '403': { description: 'Requires admin:users:read' } },
+      },
+    },
+    '/admin/users/metrics': {
+      get: {
+        summary: 'Read bounded user acquisition, activity, retention, role, tag, and lifecycle metrics',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+        ],
+        responses: { '200': { description: 'User lifecycle metric snapshot for a maximum 366-day window' }, '403': { description: 'Requires admin:users:read' } },
+      },
+    },
+    '/admin/users/metrics/export': {
+      get: {
+        summary: 'Export a versioned user lifecycle metric snapshot',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'Versioned JSON user lifecycle metrics artifact' }, '403': { description: 'Requires admin:users:read' } },
+      },
+    },
+    '/admin/user-tags': {
+      get: {
+        summary: 'List active or archived user tag definitions',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'User tag definitions with active assignment counts' }, '403': { description: 'Requires admin:users:read' } },
+      },
+      post: {
+        summary: 'Create a versioned user tag definition',
+        security: [{ bearerAuth: [] }],
+        responses: { '201': { description: 'User tag created' }, '403': { description: 'Requires admin:users:manage' }, '409': { description: 'Tag key already exists' } },
+      },
+    },
+    '/admin/user-tags/{id}': {
+      put: {
+        summary: 'Update mutable user tag presentation fields with optimistic concurrency',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'User tag updated' }, '403': { description: 'Requires admin:users:manage' }, '409': { description: 'Version conflict or archived tag' } },
+      },
+    },
+    '/admin/user-tags/{id}/archive': {
+      post: {
+        summary: 'Soft-archive a user tag without deleting assignment evidence',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'User tag archived' }, '403': { description: 'Requires admin:users:manage' }, '409': { description: 'Version conflict' } },
+      },
+    },
+    '/admin/user-tags/{id}/restore': {
+      post: {
+        summary: 'Restore a soft-archived user tag',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'User tag restored' }, '403': { description: 'Requires admin:users:manage' }, '409': { description: 'Version conflict' } },
       },
     },
     '/admin/users/{id}': {
@@ -658,6 +713,22 @@ export const openApiDocument = {
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['expectedVersion', 'reasonCode'], properties: { expectedVersion: { type: 'integer', minimum: 1 }, reasonCode: { type: 'string', pattern: '^[a-z0-9][a-z0-9._:-]{0,79}$' } } } } } },
         responses: { '200': { description: 'User restored; old sessions remain revoked' }, '403': { description: 'Requires admin:users:manage' }, '409': { description: 'Version conflict or invalid status' } },
+      },
+    },
+    '/admin/users/{id}/tags/{tagId}/assign': {
+      post: {
+        summary: 'Assign an active tag to a personal user with account-version concurrency',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }, { name: 'tagId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Tag assigned and updated user returned' }, '403': { description: 'Requires admin:users:manage' }, '409': { description: 'Version conflict, archived tag, or duplicate assignment' } },
+      },
+    },
+    '/admin/users/{id}/tags/{tagId}/remove': {
+      post: {
+        summary: 'Remove an assigned tag while retaining bounded lifecycle evidence',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }, { name: 'tagId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Tag removed and updated user returned' }, '403': { description: 'Requires admin:users:manage' }, '409': { description: 'Version conflict or tag not assigned' } },
       },
     },
     '/profiles/rankings': {

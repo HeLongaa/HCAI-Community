@@ -18,6 +18,7 @@ test('Prisma User Admin serializes lifecycle changes, revokes sessions, protects
   const operatorHandle = `uao${suffix}`.slice(0, 30)
   const secondAdminHandle = `uas${suffix}`.slice(0, 30)
   const targetHandle = `uat${suffix}`.slice(0, 30)
+  let tagId = null
   const actor = { id: operatorId, handle: operatorHandle, role: 'admin', permissions: ['admin:users:read', 'admin:users:manage'] }
   const secondActor = { id: secondAdminId, handle: secondAdminHandle, role: 'admin', permissions: ['admin:users:read', 'admin:users:manage'] }
 
@@ -46,12 +47,36 @@ test('Prisma User Admin serializes lifecycle changes, revokes sessions, protects
     assert.ok(firstSession?.accessToken)
     assert.ok(secondSession?.refreshToken)
 
-    const page = await repository.userAdmin.list({ status: 'active', role: 'member', search: targetHandle, cursor: null, limit: 20, sort: 'updatedAt', order: 'desc' }, actor)
+    const page = await repository.userAdmin.list({ status: 'active', role: 'member', tag: null, search: targetHandle, cursor: null, limit: 20, sort: 'updatedAt', order: 'desc' }, actor)
     assert.equal(page.items.length, 1)
     assert.equal(page.items[0].id, targetId)
     assert.equal(page.items[0].activeSessionCount, 2)
     assert.deepEqual(page.items[0].authMethods, ['password'])
     assert.equal(JSON.stringify(page.items[0]).includes(`integration-hash-${suffix}`), false)
+
+    const createdTag = await repository.userAdmin.createTag({ key: `cohort.${suffix}`.slice(0, 64).toLowerCase(), label: 'Integration cohort', description: null, color: 'purple', reasonCode: 'integration_create' }, actor)
+    tagId = createdTag.tag.id
+    const targetBeforeTag = await repository.userAdmin.find(targetId, actor)
+    const concurrentAssignments = await Promise.all([
+      repository.userAdmin.assignTag(targetId, tagId, { expectedUserVersion: targetBeforeTag.version, reasonCode: 'integration_assign_a' }, actor),
+      repository.userAdmin.assignTag(targetId, tagId, { expectedUserVersion: targetBeforeTag.version, reasonCode: 'integration_assign_b' }, actor),
+    ])
+    assert.equal(concurrentAssignments.filter((result) => result?.user?.tags?.some((tag) => tag.id === tagId)).length, 1)
+    assert.equal(concurrentAssignments.filter((result) => result?.conflict || result?.alreadyAssigned).length, 1)
+    const tagged = concurrentAssignments.find((result) => result?.user)?.user
+    const taggedPage = await repository.userAdmin.list({ status: null, role: null, tag: createdTag.tag.key, search: null, cursor: null, limit: 20, sort: 'updatedAt', order: 'desc' }, actor)
+    assert.equal(taggedPage.items.some((user) => user.id === targetId), true)
+    const tags = await repository.userAdmin.listTags({ status: 'active', search: createdTag.tag.key }, actor)
+    assert.equal(tags[0].assignmentCount, 1)
+    const metrics = await repository.userAdmin.metrics({ dateFrom: new Date(Date.now() - 60_000).toISOString(), dateTo: new Date(Date.now() + 60_000).toISOString() }, actor)
+    assert.equal(metrics.totals.activeUsers >= 1, true)
+    assert.equal(metrics.tags.some((tag) => tag.id === tagId && tag.users === 1), true)
+    const removedTag = await repository.userAdmin.removeTag(targetId, tagId, { expectedUserVersion: tagged.version, reasonCode: 'integration_remove' }, actor)
+    assert.deepEqual(removedTag.user.tags, [])
+    const archivedTag = await repository.userAdmin.archiveTag(tagId, { expectedVersion: createdTag.tag.version, reasonCode: 'integration_archive' }, actor)
+    assert.ok(archivedTag.tag.archivedAt)
+    const restoredTag = await repository.userAdmin.restoreTag(tagId, { expectedVersion: archivedTag.tag.version, reasonCode: 'integration_restore' }, actor)
+    assert.equal(restoredTag.tag.archivedAt, null)
 
     const initial = await repository.userAdmin.find(targetId, actor)
     const attempts = await Promise.all([
@@ -91,11 +116,14 @@ test('Prisma User Admin serializes lifecycle changes, revokes sessions, protects
     assert.ok(audits.some((event) => event.action === 'admin.user.detail_read'))
     assert.ok(audits.some((event) => event.action === 'admin.user.suspended' && event.resourceId === targetId))
     assert.ok(audits.some((event) => event.action === 'admin.user.restored' && event.resourceId === targetId))
+    assert.ok(audits.some((event) => event.action === 'admin.user_tag.assigned' && event.resourceId === targetId))
+    assert.ok(audits.some((event) => event.action === 'admin.user_tag.removed' && event.resourceId === targetId))
   } finally {
     await repository.client.$transaction(async (transaction) => {
       await transaction.$executeRawUnsafe("SET LOCAL app.audit_maintenance = 'on'")
       await transaction.auditEvent.deleteMany({ where: { OR: [{ actorId: { in: [operatorId, secondAdminId, targetId] } }, { resourceId: { in: [operatorId, secondAdminId, targetId] } }] } })
       await transaction.user.deleteMany({ where: { id: { in: [operatorId, secondAdminId, targetId] } } })
+      if (tagId) await transaction.userTag.deleteMany({ where: { id: tagId } })
     })
     await repository.client.$disconnect()
   }

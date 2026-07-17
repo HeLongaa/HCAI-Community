@@ -1333,8 +1333,46 @@ model User {
   creativeGenerationAssets        CreativeGenerationAsset[]
   chatTurnInputAssets             ChatTurnInputAsset[]
   personalEntitlementGrants       PersonalEntitlementGrant[]
+  tagAssignments                  UserTagAssignment[]
 
   @@map("users")
+}
+
+model UserTag {
+  id          String    @id @default(cuid())
+  key         String    @unique
+  label       String
+  description String?
+  color       String    @default("gray")
+  version     Int       @default(1)
+  archivedAt  DateTime? @map("archived_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  assignments UserTagAssignment[]
+
+  @@index([archivedAt, label, id])
+  @@map("user_tags")
+}
+
+model UserTagAssignment {
+  userId           String    @map("user_id")
+  tagId            String    @map("tag_id")
+  assignedById     String    @map("assigned_by_id")
+  assignReasonCode String    @map("assign_reason_code")
+  assignedAt       DateTime  @default(now()) @map("assigned_at")
+  removedById      String?   @map("removed_by_id")
+  removeReasonCode String?   @map("remove_reason_code")
+  removedAt        DateTime? @map("removed_at")
+  version          Int       @default(1)
+
+  user User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tag  UserTag @relation(fields: [tagId], references: [id], onDelete: Restrict)
+
+  @@id([userId, tagId])
+  @@index([tagId, removedAt, userId])
+  @@index([userId, removedAt, tagId])
+  @@map("user_tag_assignments")
 }
 
 model AuthAccount {

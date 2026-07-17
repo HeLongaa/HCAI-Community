@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "task": "USER-03",
+  "scope": "personal_accounts_only",
+  "dependencies": ["USER-02", "OBS-01"],
+  "models": { "tag": "UserTag", "assignment": "UserTagAssignment", "migration": "0074_user_lifecycle_operations", "tagPolicy": "soft_delete", "assignmentPolicy": "state_transition" },
+  "permissions": { "read": "admin:users:read", "manage": "admin:users:manage" },
+  "routes": [
+    { "method": "GET", "path": "/api/admin/users/metrics", "permission": "admin:users:read" },
+    { "method": "GET", "path": "/api/admin/users/metrics/export", "permission": "admin:users:read" },
+    { "method": "GET", "path": "/api/admin/user-tags", "permission": "admin:users:read" },
+    { "method": "POST", "path": "/api/admin/user-tags", "permission": "admin:users:manage" },
+    { "method": "PUT", "path": "/api/admin/user-tags/:id", "permission": "admin:users:manage" },
+    { "method": "POST", "path": "/api/admin/user-tags/:id/archive", "permission": "admin:users:manage" },
+    { "method": "POST", "path": "/api/admin/user-tags/:id/restore", "permission": "admin:users:manage" },
+    { "method": "POST", "path": "/api/admin/users/:id/tags/:tagId/assign", "permission": "admin:users:manage" },
+    { "method": "POST", "path": "/api/admin/users/:id/tags/:tagId/remove", "permission": "admin:users:manage" }
+  ],
+  "metrics": {
+    "maximumWindowDays": 366,
+    "defaultWindowDays": 30,
+    "facts": ["User.createdAt", "User.role", "User.status", "AuthSession.lastSeenAt", "UserTagAssignment"],
+    "dimensions": ["role", "status", "tag"],
+    "retentionWindowsDays": [1, 7, 30],
+    "rawIdentityDimensionsForbidden": true
+  },
+  "tags": { "keyImmutable": true, "optimisticVersioning": true, "softArchive": true, "reasonCodeOnly": true, "assignmentPreservesRemovalEvidence": true, "deletedUserMutationAllowed": false },
+  "verification": { "focused": "npm run test:user-lifecycle-operations", "integration": "npm run test:user-lifecycle-operations:integration", "e2e": "e2e/user-lifecycle-operations.spec.ts", "full": "CI=1 npm run check:pr" }
+}
