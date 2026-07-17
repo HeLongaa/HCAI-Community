@@ -8,6 +8,7 @@ import type {
   ApiTaskWorkflow,
   ApiTaskDeliveryTarget,
   ApiAcceptanceChecklistItem,
+  ApiTaskLifecycleMutation,
   CreateTaskDisputeRequest,
   CreateTaskProposalRequest,
   CreateTaskRequest,
@@ -53,6 +54,10 @@ const toTask = (task: ApiTask): Task => ({
   resultLinks: task.resultLinks ?? [],
   reviewNote: task.reviewNote ?? '',
   rights: task.rights ?? '',
+  version: task.version ?? 1,
+  cancelledAt: task.cancelledAt ?? null,
+  expiredAt: task.expiredAt ?? null,
+  terminalReasonCode: task.terminalReasonCode ?? null,
 })
 
 export const taskService = {
@@ -85,6 +90,9 @@ export const taskService = {
   async claim(id: string | number) {
     const task = await api.post<ApiTask>(`/tasks/${id}/claim`)
     return toTask(task)
+  },
+  cancel(id: string | number, body: { expectedVersion: number; idempotencyKey: string; reasonCode: string; note?: string }) {
+    return api.post<ApiTaskLifecycleMutation>(`/tasks/${id}/cancel`, body)
   },
   async createProposal(id: string | number, body: CreateTaskProposalRequest) {
     return api.post<ApiTaskProposal>(`/tasks/${id}/proposals`, body)

@@ -324,7 +324,7 @@ export type AdminOAuthAuthorizationQuery = {
   order?: 'asc' | 'desc'
 }
 
-export type AdminTaskStatus = 'draft' | 'open' | 'assigned' | 'in_progress' | 'submitted' | 'pending_review' | 'disputed' | 'completed' | 'rejected' | 'cancelled'
+export type AdminTaskStatus = 'draft' | 'open' | 'assigned' | 'in_progress' | 'submitted' | 'pending_review' | 'disputed' | 'completed' | 'rejected' | 'cancelled' | 'expired'
 
 export type AdminTaskDto = {
   id: string
@@ -347,6 +347,9 @@ export type AdminTaskDto = {
   archivedByHandle: string | null
   archiveReasonCode: string | null
   archiveNote: string | null
+  cancelledAt: string | null
+  expiredAt: string | null
+  terminalReasonCode: string | null
   createdAt: string | null
   updatedAt: string | null
 }
@@ -420,6 +423,26 @@ export type ApiTask = {
   disputeStatus?: string | null
   disputeReason?: string
   disputeReviewId?: string | null
+  version?: number
+  cancelledAt?: string | null
+  expiredAt?: string | null
+  terminalReasonCode?: string | null
+}
+
+export type ApiTaskLifecycleMutation = {
+  id: string
+  taskId: string
+  idempotencyKey: string
+  action: 'user_cancel' | 'expire' | 'release_escrow'
+  source: 'user' | 'worker' | 'admin'
+  previousStatus: string
+  nextStatus: string | null
+  expectedVersion: number | null
+  reasonCode: string
+  note: string | null
+  result: { taskId: string; action: string; outcome: string; status: string; version: number; escrow?: string }
+  createdAt: string
+  completedAt: string | null
 }
 
 export type TaskListQuery = {
@@ -471,7 +494,11 @@ export type ApiTaskWorkflow = {
   disputeStatus: string | null
   latestSubmissionStatus: string | null
   role: 'publisher' | 'assignee' | 'proposer' | 'admin' | 'viewer'
-  actions: Array<'view' | 'propose' | 'claim' | 'review_proposals' | 'submit' | 'review_submission' | 'open_dispute' | 'view_timeline'>
+  actions: Array<'view' | 'propose' | 'claim' | 'review_proposals' | 'submit' | 'review_submission' | 'open_dispute' | 'view_timeline' | 'cancel'>
+  version: number
+  cancelledAt: string | null
+  expiredAt: string | null
+  terminalReasonCode: string | null
 }
 
 export type ApiTaskProposal = {

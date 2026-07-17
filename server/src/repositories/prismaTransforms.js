@@ -11,6 +11,11 @@ const parsePoints = (value) => {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+const parseDateOrNull = (value) => {
+  const timestamp = Date.parse(String(value ?? ''))
+  return Number.isFinite(timestamp) ? new Date(timestamp) : null
+}
+
 const parseMoney = (value) => {
   if (value && typeof value === 'object') {
     return parseMoney(value.money)
@@ -46,6 +51,7 @@ const taskStatusLabel = {
   completed: 'Completed',
   rejected: 'Rejected',
   cancelled: 'Cancelled',
+  expired: 'Expired',
 }
 
 const taskStatusValue = {
@@ -59,6 +65,7 @@ const taskStatusValue = {
   Completed: 'completed',
   Rejected: 'rejected',
   Cancelled: 'cancelled',
+  Expired: 'expired',
   draft: 'draft',
   open: 'open',
   assigned: 'assigned',
@@ -69,6 +76,7 @@ const taskStatusValue = {
   completed: 'completed',
   rejected: 'rejected',
   cancelled: 'cancelled',
+  expired: 'expired',
 }
 
 const buildProfileSummary = (profile) => {
@@ -116,7 +124,15 @@ export const getCommentDto = (comment) => ({
 export const getTaskDto = (task) => {
   const metadata = asObject(task.metadata)
   if (metadata) {
-    return metadata
+    return {
+      ...metadata,
+      status: taskStatusLabel[task.status] ?? task.status,
+      deadline: task.deadlineAt?.toISOString?.() ?? metadata.deadline ?? '',
+      version: task.version ?? 1,
+      cancelledAt: task.cancelledAt?.toISOString?.() ?? null,
+      expiredAt: task.expiredAt?.toISOString?.() ?? null,
+      terminalReasonCode: task.terminalReasonCode ?? null,
+    }
   }
   const publisher = task.publisher ? buildProfileSummary(task.publisher.profile ? task.publisher.profile : task.publisher) : null
   const assignee = task.assignee ? buildProfileSummary(task.assignee.profile ? task.assignee.profile : task.assignee) : null
@@ -141,6 +157,10 @@ export const getTaskDto = (task) => {
     resultLinks: [],
     reviewNote: '',
     rights: '',
+    version: task.version ?? 1,
+    cancelledAt: task.cancelledAt?.toISOString?.() ?? null,
+    expiredAt: task.expiredAt?.toISOString?.() ?? null,
+    terminalReasonCode: task.terminalReasonCode ?? null,
   }
 }
 
@@ -612,7 +632,7 @@ export const buildTaskRecord = (task, publisher, assignee) => {
     publisherId: publisher.id,
     assigneeId: assignee?.id ?? null,
     visibility: task.status === 'Open' || task.status === 'open' ? 'public' : 'community',
-    deadlineAt: null,
+    deadlineAt: parseDateOrNull(task.deadline),
     metadata: task,
   }
 }
@@ -719,6 +739,7 @@ export const buildTaskViewModel = ({
   status,
   budget,
   deadline,
+  deadlineAt = deadline && deadline !== 'TBD' ? deadline : null,
   pointsReward = 0,
   proposals = 0,
   description,
@@ -738,6 +759,7 @@ export const buildTaskViewModel = ({
   status,
   budget,
   deadline,
+  deadlineAt,
   pointsReward,
   proposals,
   description,
@@ -750,6 +772,10 @@ export const buildTaskViewModel = ({
   resultLinks,
   reviewNote,
   rights,
+  version: 1,
+  cancelledAt: null,
+  expiredAt: null,
+  terminalReasonCode: null,
 })
 
 export const taskStatusToLabel = (status) => taskStatusLabel[status] ?? status

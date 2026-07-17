@@ -13,6 +13,7 @@ import type {
   AdminTaskMutationEvidence,
   AdminTaskQuery,
   AdminTaskSummary,
+  ApiTaskLifecycleMutation,
   AdminTaskUpdateRequest,
   AdminAuditArchiveManifestDto,
   AdminAuditArchiveResultDto,
@@ -152,6 +153,16 @@ export const adminService = {
   },
   async transitionTask(id: string, action: 'publish' | 'cancel', payload: AdminTaskMutationEvidence) {
     return api.post<AdminTaskDto>(`/admin/tasks/${encodeURIComponent(id)}/transitions`, { ...payload, action })
+  },
+  async taskLifecycle(id: string) {
+    const envelope = await api.getEnvelope<ApiTaskLifecycleMutation[]>(`/admin/tasks/${encodeURIComponent(id)}/lifecycle`)
+    return envelope.data
+  },
+  async recoverTaskEscrow(id: string, payload: AdminTaskMutationEvidence & { idempotencyKey: string }) {
+    return api.post<ApiTaskLifecycleMutation>(`/admin/tasks/${encodeURIComponent(id)}/recovery`, { ...payload, action: 'release_escrow' })
+  },
+  async sweepExpiredTasks(limit = 50) {
+    return api.post<{ scanned: number; expired: number; mutations: ApiTaskLifecycleMutation[] }>('/admin/tasks/expiry/sweep', { limit })
   },
   async previewTaskBulk(action: AdminTaskBulkAction, targetIds: string[]) {
     return api.post<AdminTaskBulkPreview>('/admin/tasks/bulk/preview', { action, targetIds })

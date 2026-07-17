@@ -42,6 +42,9 @@ const serialize = (row) => ({
   archivedByHandle: handleOf(row.archivedBy),
   archiveReasonCode: row.archiveReasonCode,
   archiveNote: row.archiveNote,
+  cancelledAt: iso(row.cancelledAt),
+  expiredAt: iso(row.expiredAt),
+  terminalReasonCode: row.terminalReasonCode,
   createdAt: iso(row.createdAt),
   updatedAt: iso(row.updatedAt),
 })
@@ -189,7 +192,7 @@ export const createPrismaTaskAdminRepository = (client, {
     if (!target) throw new HttpError(409, 'TASK_ADMIN_TRANSITION_INVALID', `Cannot ${payload.action} a ${normalizeTaskAdminStatus(row.status)} task`)
     const updated = await db.task.updateMany({
       where: { id: row.id, version: payload.expectedVersion, archivedAt: null, status: row.status },
-      data: { status: target, metadata: { ...asObject(row.metadata), status: target === 'open' ? 'Open' : 'Cancelled' }, version: { increment: 1 } },
+      data: { status: target, metadata: { ...asObject(row.metadata), status: target === 'open' ? 'Open' : 'Cancelled' }, ...(target === 'cancelled' ? { cancelledAt: new Date(), terminalReasonCode: payload.reasonCode } : {}), version: { increment: 1 } },
     })
     if (updated.count !== 1) throw new HttpError(409, 'TASK_VERSION_CONFLICT', 'Task changed concurrently')
     if (payload.action === 'cancel') await finalizeTaskEscrow(db, row, row.publisherId, 'reject', actor, 'task_admin_cancelled')
@@ -226,7 +229,7 @@ export const createPrismaTaskAdminRepository = (client, {
         }
         const data = payload.action === 'archive'
           ? { archivedAt: new Date(), archivedById: actor.id, archiveReasonCode: payload.reasonCode, archiveNote: payload.note, version: { increment: 1 } }
-          : { status: 'cancelled', metadata: { ...asObject(row.metadata), status: 'Cancelled' }, version: { increment: 1 } }
+          : { status: 'cancelled', cancelledAt: new Date(), terminalReasonCode: payload.reasonCode, metadata: { ...asObject(row.metadata), status: 'Cancelled' }, version: { increment: 1 } }
         const changed = await db.task.updateMany({ where: { id: row.id, version: row.version, archivedAt: null, status: row.status }, data })
         if (changed.count !== 1) {
           items.push({ id: row.id, status: 'skipped', reason: 'state_changed' })

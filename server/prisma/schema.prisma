@@ -37,6 +37,7 @@ enum TaskStatus {
   completed
   rejected
   cancelled
+  expired
 }
 
 enum TaskVisibility {
@@ -1141,6 +1142,7 @@ model User {
   assigneeTasks                Task[]                          @relation("TaskAssignee")
   archivedTasks                Task[]                          @relation("TaskArchivedBy")
   requestedTaskBulkActions     TaskAdminBulkAction[]           @relation("TaskBulkActionRequester")
+  requestedTaskLifecycleMutations TaskLifecycleMutation[]      @relation("TaskLifecycleMutationRequester")
   taskProposals                TaskProposal[]
   taskSubmissions              TaskSubmission[]                @relation("TaskSubmissionSubmitter")
   reviewedTaskSubmissions      TaskSubmission[]                @relation("TaskSubmissionReviewer")
@@ -1277,6 +1279,9 @@ model Task {
   archivedById          String?        @map("archived_by_id")
   archiveReasonCode     String?        @map("archive_reason_code")
   archiveNote           String?        @map("archive_note")
+  cancelledAt           DateTime?      @map("cancelled_at")
+  expiredAt             DateTime?      @map("expired_at")
+  terminalReasonCode    String?        @map("terminal_reason_code")
   createdAt             DateTime       @default(now()) @map("created_at")
   updatedAt             DateTime       @updatedAt @map("updated_at")
   metadata              Json?
@@ -1287,11 +1292,39 @@ model Task {
   archivedBy  User?            @relation("TaskArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
   proposals   TaskProposal[]
   submissions TaskSubmission[]
+  lifecycleMutations TaskLifecycleMutation[]
 
   @@index([status, updatedAt, id])
   @@index([category, updatedAt, id])
   @@index([archivedAt, status, updatedAt])
+  @@index([status, deadlineAt, archivedAt])
   @@map("tasks")
+}
+
+model TaskLifecycleMutation {
+  id                  String    @id @default(cuid())
+  taskId              String    @map("task_id")
+  idempotencyKey      String    @unique @map("idempotency_key")
+  requestHash         String    @map("request_hash")
+  action              String
+  source              String
+  previousStatus      String    @map("previous_status")
+  nextStatus          String?   @map("next_status")
+  expectedVersion     Int?      @map("expected_version")
+  reasonCode          String    @map("reason_code")
+  note                String?
+  requestedById       String?   @map("requested_by_id")
+  result              Json
+  resultSchemaVersion Int       @default(1) @map("result_schema_version")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  completedAt         DateTime? @map("completed_at")
+
+  task        Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  requestedBy User? @relation("TaskLifecycleMutationRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  @@index([taskId, createdAt, id])
+  @@index([action, createdAt])
+  @@map("task_lifecycle_mutations")
 }
 
 model TaskAdminBulkAction {

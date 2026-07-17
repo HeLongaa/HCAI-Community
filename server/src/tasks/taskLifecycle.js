@@ -23,6 +23,7 @@ export const taskLifecycleActions = ({
   if (taskStatus === 'open' && publisher) actions.push('review_proposals')
   if ((assignee || (taskStatus === 'open' && !publisher && !assigneeHandle)) && ['open', 'in_progress', 'rejected'].includes(taskStatus) && disputeStatus !== 'rejected') actions.push('submit')
   if (publisher && taskStatus === 'pending_review' && submissionStatus === 'pending_review') actions.push('review_submission')
+  if (publisher && ['draft', 'open'].includes(taskStatus)) actions.push('cancel')
   if (submitter && ['rejected', 'stale'].includes(submissionStatus) && disputeStatus !== 'open') actions.push('open_dispute')
   if (publisher || assignee || hasProposal || submitter) actions.push('view_timeline')
 
@@ -34,6 +35,10 @@ export const taskWorkflowDto = (input) => ({
   taskStatus: input.status,
   disputeStatus: input.disputeStatus ?? null,
   latestSubmissionStatus: input.latestSubmissionStatus ?? null,
+  version: Number(input.version) || 1,
+  cancelledAt: input.cancelledAt ?? null,
+  expiredAt: input.expiredAt ?? null,
+  terminalReasonCode: input.terminalReasonCode ?? null,
   role: input.admin
     ? 'admin'
     : input.actorHandle === input.publisherHandle

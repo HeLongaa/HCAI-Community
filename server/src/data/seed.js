@@ -36,6 +36,7 @@ const taskStatusMap = {
   Completed: 'completed',
   Rejected: 'rejected',
   Cancelled: 'cancelled',
+  Expired: 'expired',
 }
 
 const mapTask = (task) => {

@@ -330,6 +330,25 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     }
   }
 
+  const cancelTask = async (task: Task) => {
+    const isZh = locale === 'zh'
+    try {
+      const workflow = workflowStateByTask[String(task.id)] ?? await taskService.workflow(task.id)
+      await taskService.cancel(task.id, {
+        expectedVersion: workflow.version,
+        idempotencyKey: crypto.randomUUID(),
+        reasonCode: 'user_cancelled',
+        note: isZh ? '发布方取消未开始的任务。' : 'Publisher cancelled before fulfillment started.',
+      })
+      await taskStatus.refresh()
+      await refreshWorkflow(task)
+      pushToast(isZh ? `任务已取消：${task.title}` : `Task cancelled: ${task.title}`)
+    } catch (error) {
+      console.info('[task-service]', error)
+      pushToast(isZh ? '取消失败，请刷新任务状态后重试。' : 'Cancellation failed. Refresh the task and try again.')
+    }
+  }
+
   return {
     taskList,
     selectedTask,
@@ -354,5 +373,6 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     rejectTask,
     requestRevisionTask,
     openDisputeTask,
+    cancelTask,
   }
 }

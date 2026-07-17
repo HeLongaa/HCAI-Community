@@ -65,6 +65,9 @@ test('buildEnv allows development without managed token secrets', () => {
     taskStaleSubmissionWorkerIntervalSeconds: 300,
     taskStaleSubmissionOlderThanHours: 72,
     taskStaleSubmissionSweepLimit: 25,
+    taskExpiryWorkerEnabled: false,
+    taskExpiryWorkerIntervalSeconds: 60,
+    taskExpirySweepLimit: 50,
     creativeProviderPollingEnabled: false,
     creativeProviderPollingWorkerEnabled: false,
     creativeProviderPollingMaxAgeSeconds: 3600,
@@ -1130,6 +1133,9 @@ test('buildEnv validates media scanner deployment settings', () => {
     TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS: '45',
     TASK_STALE_SUBMISSION_OLDER_THAN_HOURS: '48',
     TASK_STALE_SUBMISSION_SWEEP_LIMIT: '10',
+    TASK_EXPIRY_WORKER_ENABLED: 'true',
+    TASK_EXPIRY_WORKER_INTERVAL_SECONDS: '30',
+    TASK_EXPIRY_SWEEP_LIMIT: '40',
     MEDIA_SCAN_HISTORY_RETENTION_DAYS: '30',
     MEDIA_SCAN_HISTORY_RETENTION_MAX_PER_ASSET: '8',
     MEDIA_SCAN_ALERT_WINDOW_MINUTES: '20',
@@ -1163,6 +1169,9 @@ test('buildEnv validates media scanner deployment settings', () => {
   assert.equal(env.taskStaleSubmissionWorkerIntervalSeconds, 45)
   assert.equal(env.taskStaleSubmissionOlderThanHours, 48)
   assert.equal(env.taskStaleSubmissionSweepLimit, 10)
+  assert.equal(env.taskExpiryWorkerEnabled, true)
+  assert.equal(env.taskExpiryWorkerIntervalSeconds, 30)
+  assert.equal(env.taskExpirySweepLimit, 40)
   assert.equal(env.creativeProviderPollingEnabled, false)
   assert.equal(env.creativeProviderPollingWorkerEnabled, false)
   assert.equal(env.creativeProviderPollingIntervalSeconds, 60)

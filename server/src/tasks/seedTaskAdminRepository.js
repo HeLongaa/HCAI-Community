@@ -34,6 +34,9 @@ const serialize = (task) => ({
   archivedByHandle: task.archivedByHandle ?? null,
   archiveReasonCode: task.archiveReasonCode ?? null,
   archiveNote: task.archiveNote ?? null,
+  cancelledAt: task.cancelledAt ?? null,
+  expiredAt: task.expiredAt ?? null,
+  terminalReasonCode: task.terminalReasonCode ?? null,
   createdAt: task.createdAt ?? null,
   updatedAt: task.updatedAt ?? null,
 })
@@ -140,7 +143,7 @@ export const createSeedTaskAdminRepository = ({ tasks, getTask, updateTask, fina
       const target = taskAdminTransitionTarget(current.status, payload.action)
       if (!target) throw new HttpError(409, 'TASK_ADMIN_TRANSITION_INVALID', `Cannot ${payload.action} a ${normalizeTaskAdminStatus(current.status)} task`)
       const label = target === 'open' ? 'Open' : 'Cancelled'
-      const updated = updateTask(id, (task) => ({ ...task, status: label }), (task) => (Number(task.version) || 1) === payload.expectedVersion && normalizeTaskAdminStatus(task.status) === normalizeTaskAdminStatus(current.status))
+      const updated = updateTask(id, (task) => ({ ...task, status: label, ...(target === 'cancelled' ? { cancelledAt: nowIso(), terminalReasonCode: payload.reasonCode } : {}) }), (task) => (Number(task.version) || 1) === payload.expectedVersion && normalizeTaskAdminStatus(task.status) === normalizeTaskAdminStatus(current.status))
       if (!updated) throw new HttpError(409, 'TASK_VERSION_CONFLICT', 'Task changed concurrently')
       if (payload.action === 'cancel') finalizeTaskEscrow(current, handleOf(current.publisher), 'reject', 'task_admin_cancelled')
       if (payload.action === 'publish') createTaskEscrow(current, handleOf(current.publisher))
@@ -164,7 +167,7 @@ export const createSeedTaskAdminRepository = ({ tasks, getTask, updateTask, fina
         if (!isTaskAdminBulkEligible(current, payload.action)) return { id: item.id, status: 'skipped', reason: 'state_not_eligible' }
         const updated = updateTask(item.id, (task) => payload.action === 'archive'
           ? { ...task, archivedAt: nowIso(), archivedByHandle: actor.handle, archiveReasonCode: payload.reasonCode, archiveNote: payload.note }
-          : { ...task, status: 'Cancelled' }, (task) => (Number(task.version) || 1) === (Number(current.version) || 1))
+          : { ...task, status: 'Cancelled', cancelledAt: nowIso(), terminalReasonCode: payload.reasonCode }, (task) => (Number(task.version) || 1) === (Number(current.version) || 1))
         if (!updated) return { id: item.id, status: 'skipped', reason: 'state_changed' }
         if (payload.action === 'cancel') finalizeTaskEscrow(current, handleOf(current.publisher), 'reject', 'task_admin_cancelled')
         recordAudit(actor, payload.action === 'archive' ? 'task.admin.archived' : 'task.admin.cancel', 'task', item.id, { reasonCode: payload.reasonCode, note: payload.note, bulk: true, idempotencyKey: payload.idempotencyKey, previousStatus: normalizeTaskAdminStatus(current.status) })

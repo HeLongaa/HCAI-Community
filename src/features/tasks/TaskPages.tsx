@@ -679,6 +679,7 @@ export function MyTasksPage({
   rejectTask = async () => undefined,
   requestRevisionTask = async () => undefined,
   openDisputeTask = async () => undefined,
+  cancelTask = async () => undefined,
   simulateAction,
 }: {
   t: Record<string, string>
@@ -700,6 +701,7 @@ export function MyTasksPage({
   rejectTask?: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
   requestRevisionTask?: (task: Task, options?: { acceptanceChecklist?: ApiAcceptanceChecklistItem[] }) => Promise<void>
   openDisputeTask?: (task: Task) => Promise<void>
+  cancelTask?: (task: Task) => Promise<void>
   simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
@@ -954,6 +956,7 @@ export function MyTasksPage({
   const canReviewSubmission = workflow?.actions.includes('review_submission') ?? false
   const canSubmitWork = workflow?.actions.includes('submit') ?? false
   const canOpenDispute = selectedRole === 'maker' && (workflow?.actions.includes('open_dispute') ?? false)
+  const canCancel = selectedRole === 'publisher' && (workflow?.actions.includes('cancel') ?? false)
   const handleFor = (summary: ApiProfileSummary | { handle: string } | null) =>
     summary?.handle ? `@${summary.handle}` : textFor(t, 'Unknown user', '未知用户')
   const timelineDate = (value: string) => {
@@ -1203,6 +1206,12 @@ export function MyTasksPage({
                   />
                 )}
                 <div className="button-row">
+                  {canCancel && (
+                    <button className="ghost-button" data-testid="cancel-task-button" type="button" onClick={() => void cancelTask(selectedTask)}>
+                      <X size={17} />
+                      {textFor(t, 'Cancel task', '取消任务')}
+                    </button>
+                  )}
                   <button
                     className="primary-button"
                     data-testid="approve-submission-button"
