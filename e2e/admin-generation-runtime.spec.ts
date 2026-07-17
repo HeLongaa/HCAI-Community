@@ -56,7 +56,7 @@ test('admin generation operations expose summary sorting and CSV export', async 
 
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(panel).toBeVisible()
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy()
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0)
   await metrics.scrollIntoViewIfNeeded()
   await page.screenshot({ path: '/tmp/ai-stats-01-admin-mobile.png' })
 })
