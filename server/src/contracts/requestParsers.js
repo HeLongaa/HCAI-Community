@@ -949,6 +949,22 @@ export const parseAdminAccountingReconciliationQuery = (query) => {
   }
 }
 
+export const parseAdminBillingMetricsQuery = (query) => {
+  const unit = optionalText(query, 'unit', null)
+  if (unit && !['points', 'creative_credit', 'quota_unit'].includes(unit)) throw validationFailed('unit must be one of: points, creative_credit, quota_unit')
+  const parseDate = (value, field) => {
+    if (!value) return null
+    const timestamp = Date.parse(String(value))
+    if (!Number.isFinite(timestamp)) throw validationFailed(`${field} must be an ISO 8601 datetime`)
+    return new Date(timestamp).toISOString()
+  }
+  const dateFrom = parseDate(query.dateFrom, 'dateFrom')
+  const dateTo = parseDate(query.dateTo, 'dateTo')
+  if (dateFrom && dateTo && Date.parse(dateFrom) > Date.parse(dateTo)) throw validationFailed('dateFrom must be before or equal to dateTo')
+  if (dateFrom && dateTo && Date.parse(dateTo) - Date.parse(dateFrom) > 366 * 86_400_000) throw validationFailed('metrics window cannot exceed 366 days')
+  return { dateFrom, dateTo, unit, sourceType: optionalText(query, 'sourceType', null) }
+}
+
 export const parseAdminAccountingRepairRequest = (body) => ({
   repairKind: requireOneOf(body, 'repairKind', ['compensation']),
   reasonCode: requireOneOf(body, 'reasonCode', ['repair_missing_movement', 'repair_balance_drift']),

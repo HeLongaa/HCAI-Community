@@ -27,6 +27,10 @@ import type {
   AdminAccountingIssueSummary,
   AdminAccountingRepairRequest,
   AdminAccountingRepairResponse,
+  AdminBillingMetrics,
+  AdminBillingMetricsQuery,
+  AdminBillingPolicyInventory,
+  AdminBillingPolicyPreview,
   AdminCreativeGenerationHistoryPage,
   AdminCreativeGenerationHistoryQuery,
   AdminCreativeGenerationSummary,
@@ -528,6 +532,18 @@ export const adminService = {
   },
   async requestAccountingRepair(id: string, payload: AdminAccountingRepairRequest) {
     return api.post<AdminAccountingRepairResponse>(`/admin/accounting/reconciliation/${id}/repair-requests`, payload)
+  },
+  async billingPolicies() {
+    return api.get<AdminBillingPolicyInventory>('/admin/accounting/policies')
+  },
+  async previewBillingPointPolicy(payload: PointAdjustmentPolicy) {
+    return api.post<AdminBillingPolicyPreview>('/admin/accounting/policies/point-adjustment/preview', payload)
+  },
+  async billingMetrics(query?: AdminBillingMetricsQuery) {
+    return api.get<AdminBillingMetrics>(withQuery('/admin/accounting/business-metrics', query))
+  },
+  async exportBillingMetrics(query?: AdminBillingMetricsQuery) {
+    return api.get<{ kind: 'accounting.business-metrics.snapshot'; metrics: AdminBillingMetrics }>(withQuery('/admin/accounting/business-metrics/export', query))
   },
   async creativeGenerations(query?: AdminCreativeGenerationHistoryQuery): Promise<AdminCreativeGenerationHistoryPage> {
     const envelope = await api.getEnvelope<ApiCreativeGenerationRecord[]>(withQuery('/admin/creative/generations', query))

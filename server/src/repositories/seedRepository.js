@@ -20,6 +20,7 @@ import { createSeedObservabilityRepository } from '../observability/seedObservab
 import { createSeedOAuthAdminRepository } from '../auth/seedOAuthAdminRepository.js'
 import { createSeedTaskAdminRepository } from '../tasks/seedTaskAdminRepository.js'
 import { createSeedTaskLifecycleRecoveryRepository } from '../tasks/seedTaskLifecycleRecoveryRepository.js'
+import { createSeedBillingAdminRepository } from '../accounting/seedBillingAdminRepository.js'
 import { applyPublishedTaskRule } from '../tasks/taskRuleRuntime.js'
 import {
   appendSeedAuditIntegrity,
@@ -1248,6 +1249,7 @@ const adminReviewQueue = seedStore.adminReviewQueue.map((item) => ({ ...item }))
 const adminReviewById = new Map(adminReviewQueue.map((item) => [item.id, item]))
 const editableRolePermissions = new Map(Object.entries(rolePermissions).map(([role, values]) => [role, [...values]]))
 let pointAdjustmentPolicy = null
+let pointAdjustmentPolicyVersion = 0
 let mediaGovernancePolicy = null
 const getSeedMediaGovernancePolicy = () =>
   normalizeMediaGovernancePolicy(mediaGovernancePolicy ?? {}, buildDefaultMediaGovernancePolicy())
@@ -2499,6 +2501,16 @@ export const createSeedRepository = () => {
     finalizeTaskEscrow,
     recordAudit,
   })
+  const billingAdmin = createSeedBillingAdminRepository({
+    operationsByKey: internalAccountingOperationsByKey,
+    movementsByOperationKey: internalAccountingMovementsByOperationKey,
+    issuesByKey: accountingReconciliationIssuesByKey,
+    getPointPolicyState: (fallbackPolicy) => ({
+      version: pointAdjustmentPolicyVersion,
+      updatedAt: null,
+      policy: normalizePointAdjustmentPolicy(pointAdjustmentPolicy ?? fallbackPolicy, fallbackPolicy),
+    }),
+  })
   return {
   chat: createSeedChatRepository({
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) =>
@@ -2518,6 +2530,7 @@ export const createSeedRepository = () => {
   oauthAdmin,
   taskAdmin,
   taskLifecycleRecovery,
+  billingAdmin,
   auth: {
     getCurrentUser: () => seedStore.me,
     findDemoAccountByAccessToken: (token) => {
@@ -3542,6 +3555,7 @@ export const createSeedRepository = () => {
     updateAdjustmentPolicy: (policy, actor, fallbackPolicy) => {
       const previous = normalizePointAdjustmentPolicy(pointAdjustmentPolicy ?? fallbackPolicy, fallbackPolicy)
       pointAdjustmentPolicy = normalizePointAdjustmentPolicy(policy, fallbackPolicy)
+      pointAdjustmentPolicyVersion += 1
       const diff = diffPointAdjustmentPolicy(previous, pointAdjustmentPolicy)
       const audit = recordAudit(actor, 'points.policy.updated', 'point_adjustment_policy', 'default', {
         previous,
@@ -3593,6 +3607,7 @@ export const createSeedRepository = () => {
       const current = normalizePointAdjustmentPolicy(pointAdjustmentPolicy ?? fallbackPolicy, fallbackPolicy)
       const rolledBack = normalizePointAdjustmentPolicy(previous, fallbackPolicy)
       pointAdjustmentPolicy = rolledBack
+      pointAdjustmentPolicyVersion += 1
       const diff = diffPointAdjustmentPolicy(current, rolledBack)
       const audit = recordAudit(actor, 'points.policy.rolled_back', 'point_adjustment_policy', 'default', {
         rollbackEventId: eventId,

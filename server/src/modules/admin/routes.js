@@ -6,6 +6,7 @@ import { readJsonBody } from '../../common/http/request.js'
 import {
   parseAdminAuditListQuery,
   parseAdminAccountingReconciliationQuery,
+  parseAdminBillingMetricsQuery,
   parseAdminAccountingRepairRequest,
   parseAdminCreativeGenerationListQuery,
   parseAdminCreativeGenerationExportQuery,
@@ -43,6 +44,7 @@ import {
 import { repositories } from '../../repositories/index.js'
 import { getProtectedRolePermissions } from '../../auth/permissions.js'
 import { defaultPointAdjustmentPolicy, getDirectLimitForActor } from '../../points/adjustmentPolicy.js'
+import { buildBillingPolicyPreview } from '../../accounting/billingPolicyRuntime.js'
 import { safeCreativeCreditMetadata, safeErrorPreview, safeProviderJobIdEvidence } from '../../creative/generationRecords.js'
 import { providerMoneyAmount } from '../../creative/providerCostContract.js'
 import { createProviderCapEvidence } from '../../creative/providerControlContract.js'
@@ -960,6 +962,45 @@ export const registerAdminRoutes = (router, options = {}) => {
       summary: page.summary,
       generatedAt: page.generatedAt,
     })
+  })
+
+  router.add('GET', '/api/admin/accounting/policies', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:accounting:read')
+    const [pointState, pointHistory] = await Promise.all([
+      routeRepositories.billingAdmin.pointPolicyState(defaultPointAdjustmentPolicy),
+      routeRepositories.points.listAdjustmentPolicyHistory({ limit: 20 }),
+    ])
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.accounting.policies.queried', resourceType: 'billing_policy', resourceId: null, metadata: { pointVersion: pointState.version, pointHistoryCount: pointHistory.items.length, creativeVersion: creativeAccountingPolicyHistory[0]?.version ?? null } })
+    ok(response, {
+      pointAdjustment: { ...pointState, history: pointHistory.items },
+      creative: { activeVersion: creativeAccountingPolicyHistory[0]?.version ?? null, history: creativeAccountingPolicyHistory },
+      boundaries: { internalUnitsOnly: true, withdrawable: false, convertibleToProviderCurrency: false },
+    })
+  })
+
+  router.add('POST', '/api/admin/accounting/policies/point-adjustment/preview', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:accounting:read')
+    const candidate = parsePointAdjustmentPolicyRequest((await readJsonBody(request)) ?? {})
+    const current = await routeRepositories.points.getAdjustmentPolicy(defaultPointAdjustmentPolicy)
+    const preview = buildBillingPolicyPreview({ current, candidate, creativePolicy: creativeAccountingPolicyHistory[0] })
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.accounting.policy_previewed', resourceType: 'billing_policy', resourceId: 'point_adjustment_policy', metadata: { rolesChanged: preview.impact.rolesChanged, reasonCodesAdded: preview.impact.reasonCodesAdded, reasonCodesRemoved: preview.impact.reasonCodesRemoved, creativeRuntimeChanged: false } })
+    ok(response, preview)
+  })
+
+  router.add('GET', '/api/admin/accounting/business-metrics', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:accounting:read')
+    const query = parseAdminBillingMetricsQuery(context.query)
+    const metrics = await routeRepositories.billingAdmin.metrics(query)
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.accounting.business_metrics.queried', resourceType: 'accounting_metrics', resourceId: null, metadata: { unit: query.unit, sourceFiltered: Boolean(query.sourceType), operations: metrics.operations.total, refunds: metrics.refunds.operations, anomalies: metrics.anomalies.total } })
+    ok(response, metrics)
+  })
+
+  router.add('GET', '/api/admin/accounting/business-metrics/export', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:accounting:read')
+    const query = parseAdminBillingMetricsQuery(context.query)
+    const metrics = await routeRepositories.billingAdmin.metrics(query)
+    await routeRepositories.audit.recordAttempt({ actor, action: 'admin.accounting.business_metrics.exported', resourceType: 'accounting_metrics', resourceId: null, metadata: { unit: query.unit, sourceFiltered: Boolean(query.sourceType), operations: metrics.operations.total, refunds: metrics.refunds.operations, anomalies: metrics.anomalies.total } })
+    ok(response, { kind: 'accounting.business-metrics.snapshot', schemaVersion: 1, exportedAt: new Date().toISOString(), filters: query, metrics })
   })
 
   router.add('POST', '/api/admin/accounting/reconciliation/scan', async (_request, response, context) => {

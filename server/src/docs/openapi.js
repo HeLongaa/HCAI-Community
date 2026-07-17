@@ -2761,6 +2761,77 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/accounting/policies': {
+      get: {
+        summary: 'Read point-adjustment and immutable creative accounting policy versions',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Policy inventory with internal-only and non-withdrawable economic boundaries' },
+          '403': { description: 'Requires admin:accounting:read' },
+        },
+      },
+    },
+    '/admin/accounting/policies/point-adjustment/preview': {
+      post: {
+        summary: 'Preview deterministic point-adjustment policy impact without mutating policy state',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['roleLimits', 'reasonCodes', 'approvalTemplates'],
+                properties: {
+                  roleLimits: { type: 'object', additionalProperties: { type: 'integer', minimum: 0 } },
+                  reasonCodes: { type: 'array', items: { type: 'string' } },
+                  approvalTemplates: { type: 'array', items: { type: 'object' } },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Point-policy diff and routing impact; creative accounting policy remains unchanged' },
+          '400': { description: 'Invalid point-adjustment policy candidate' },
+          '403': { description: 'Requires admin:accounting:read' },
+        },
+      },
+    },
+    '/admin/accounting/business-metrics': {
+      get: {
+        summary: 'Read bounded internal accounting consumption, refund, adjustment, and anomaly metrics',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'unit', in: 'query', schema: { type: 'string', enum: ['points', 'creative_credit', 'quota_unit'] } },
+          { name: 'sourceType', in: 'query', schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'Safe aggregate metrics over immutable internal accounting movements and reconciliation issues' },
+          '400': { description: 'Invalid filter or date range exceeds 366 days' },
+          '403': { description: 'Requires admin:accounting:read' },
+        },
+      },
+    },
+    '/admin/accounting/business-metrics/export': {
+      get: {
+        summary: 'Export an auditable internal accounting business-metrics snapshot',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'unit', in: 'query', schema: { type: 'string', enum: ['points', 'creative_credit', 'quota_unit'] } },
+          { name: 'sourceType', in: 'query', schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'Stable accounting.business-metrics.snapshot JSON artifact without provider or actor evidence' },
+          '400': { description: 'Invalid filter or date range exceeds 366 days' },
+          '403': { description: 'Requires admin:accounting:read' },
+        },
+      },
+    },
     '/admin/accounting/reconciliation': {
       get: {
         summary: 'List internal accounting reconciliation issues',
