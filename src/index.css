@@ -11457,6 +11457,22 @@ button.video-history-row.active {
     overflow-wrap: anywhere;
   }
 
+  .admin-media-governance-panel > .section-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .admin-media-governance-panel > .section-header > div {
+    min-width: 0;
+    flex: 1 1 180px;
+  }
+
+  .admin-media-governance-panel > .section-header > .ghost-button {
+    max-width: 100%;
+    flex: 0 1 auto;
+  }
+
   .accounting-reconciliation-panel .admin-row {
     grid-template-columns: 1fr;
   }
