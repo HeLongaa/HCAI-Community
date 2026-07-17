@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "contractId": "dx-01-module-scaffolding-v1",
+  "scope": "personal_accounts_only",
+  "templateRoot": "templates/module",
+  "exampleSpec": "templates/module/module-spec.example.json",
+  "policyDocument": "docs/MODULE_SCAFFOLDING_AND_DOD.md",
+  "generatorCommand": "node scripts/scaffold-module.mjs",
+  "completionCommand": "node scripts/check-module-completion.mjs",
+  "verificationCommand": "npm run test:module-scaffolding",
+  "operationPolicies": [
+    "mutable_crud",
+    "state_transition",
+    "soft_delete",
+    "append_only",
+    "immutable_evidence",
+    "not_applicable"
+  ],
+  "templates": [
+    "server/routes.js.tpl",
+    "server/routes.test.js.tpl",
+    "server/application.js.tpl",
+    "server/domain.js.tpl",
+    "server/repositoryPort.js.tpl",
+    "server/openapi.js.tpl",
+    "frontend/Page.tsx.tpl",
+    "frontend/service.ts.tpl",
+    "frontend/contracts.ts.tpl",
+    "e2e/module.spec.ts.tpl",
+    "docs/module.md.tpl"
+  ],
+  "completionMarkers": [
+    "TODO(DX-SCAFFOLD)",
+    "MODULE_NOT_IMPLEMENTED"
+  ],
+  "forbiddenScopeTokens": [
+    "tenant",
+    "organization",
+    "team",
+    "workspace",
+    "membership",
+    "invitation"
+  ]
+}

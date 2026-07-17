@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "example-notes",
+  "displayName": "Example Notes",
+  "model": "ExampleNote",
+  "domain": "community",
+  "ownerTask": "EXAMPLE-01",
+  "routeSegment": "example-notes",
+  "operationPolicy": "mutable_crud",
+  "permissions": {
+    "read": "example-notes:read",
+    "manage": "example-notes:manage"
+  }
+}
