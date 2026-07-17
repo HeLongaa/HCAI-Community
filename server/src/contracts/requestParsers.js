@@ -16,6 +16,13 @@ import { assertChatGenerationRequest } from '../creative/chatCapabilityContract.
 import { assertImageGenerationRequest } from '../creative/imageCapabilityContract.js'
 import { assertMusicGenerationRequest } from '../creative/musicCapabilityContract.js'
 import { assertVideoGenerationRequest } from '../creative/videoCapabilityContract.js'
+import {
+  taskAdminArchiveStates,
+  taskAdminBulkActions,
+  taskAdminSortFields,
+  taskAdminStatuses,
+  taskAdminTransitionActions,
+} from '../tasks/taskAdminContract.js'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const handlePattern = /^[a-zA-Z0-9_-]{3,32}$/
@@ -1083,6 +1090,90 @@ export const parseTaskListQuery = (query) => ({
   category: optionalText(query, 'category', null),
   search: optionalText(query, 'search', null),
 })
+
+const parseTaskAdminReason = (body, fallback = 'operator_requested') => {
+  const reasonCode = optionalText(body, 'reasonCode', fallback)
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9:._-]{0,63}$/.test(reasonCode)) {
+    throw validationFailed('reasonCode must be 1-64 safe identifier characters')
+  }
+  const expectedVersion = Number(body.expectedVersion)
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+    throw validationFailed('expectedVersion must be a positive integer')
+  }
+  return { expectedVersion, reasonCode, note: optionalText(body, 'note', '').slice(0, 240) }
+}
+
+export const parseAdminTaskListQuery = (query) => {
+  const status = optionalText(query, 'status', null)
+  const archiveState = optionalText(query, 'archiveState', 'active')
+  const sort = optionalText(query, 'sort', 'updatedAt')
+  const direction = optionalText(query, 'direction', 'desc')
+  if (status && !taskAdminStatuses.includes(status)) throw validationFailed(`status must be one of: ${taskAdminStatuses.join(', ')}`)
+  if (!taskAdminArchiveStates.includes(archiveState)) throw validationFailed(`archiveState must be one of: ${taskAdminArchiveStates.join(', ')}`)
+  if (!taskAdminSortFields.includes(sort)) throw validationFailed(`sort must be one of: ${taskAdminSortFields.join(', ')}`)
+  if (!['asc', 'desc'].includes(direction)) throw validationFailed('direction must be one of: asc, desc')
+  return {
+    ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 }),
+    status,
+    archiveState,
+    sort,
+    direction,
+    search: optionalText(query, 'search', null),
+    category: optionalText(query, 'category', null),
+    publisherHandle: optionalText(query, 'publisherHandle', null),
+    assigneeHandle: optionalText(query, 'assigneeHandle', null),
+  }
+}
+
+export const parseAdminTaskUpdateRequest = (body) => {
+  const patch = {}
+  if (body.title !== undefined) patch.title = requireText(body, 'title').slice(0, 160)
+  if (body.category !== undefined) patch.category = requireText(body, 'category').slice(0, 80)
+  if (body.description !== undefined) patch.description = requireText(body, 'description').slice(0, 10_000)
+  if (body.acceptanceRules !== undefined) patch.acceptanceRules = requireText(body, 'acceptanceRules').slice(0, 5_000)
+  if (body.visibility !== undefined) patch.visibility = requireOneOf(body, 'visibility', ['public', 'community', 'invite_only'])
+  if (body.deadlineAt !== undefined) {
+    if (body.deadlineAt === null || body.deadlineAt === '') patch.deadlineAt = null
+    else {
+      const deadlineAt = Date.parse(String(body.deadlineAt))
+      if (!Number.isFinite(deadlineAt)) throw validationFailed('deadlineAt must be an ISO timestamp or null')
+      patch.deadlineAt = new Date(deadlineAt).toISOString()
+    }
+  }
+  if (!Object.keys(patch).length) throw validationFailed('at least one editable task field is required')
+  return { ...parseTaskAdminReason(body), patch }
+}
+
+export const parseAdminTaskEvidenceRequest = (body) => parseTaskAdminReason(body)
+
+export const parseAdminTaskTransitionRequest = (body) => ({
+  ...parseTaskAdminReason(body),
+  action: requireOneOf(body, 'action', taskAdminTransitionActions),
+})
+
+const parseAdminTaskBulkBase = (body) => {
+  const targetIds = [...new Set(requireStringArray(body, 'targetIds').map(String))]
+  if (!targetIds.length || targetIds.length > 50) throw validationFailed('targetIds must include 1-50 unique ids')
+  if (targetIds.some((id) => !safeResourceIdPattern.test(id))) throw validationFailed('targetIds must contain safe task identifiers')
+  return { action: requireOneOf(body, 'action', taskAdminBulkActions), targetIds }
+}
+
+export const parseAdminTaskBulkPreviewRequest = (body) => parseAdminTaskBulkBase(body)
+
+export const parseAdminTaskBulkActionRequest = (body) => {
+  const targetHash = requireText(body, 'targetHash')
+  if (!/^[a-f0-9]{64}$/.test(targetHash)) throw validationFailed('targetHash must be a SHA-256 digest')
+  const reasonCode = optionalText(body, 'reasonCode', 'operator_requested')
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9:._-]{0,63}$/.test(reasonCode)) throw validationFailed('reasonCode must be 1-64 safe identifier characters')
+  return {
+    ...parseAdminTaskBulkBase(body),
+    targetHash,
+    idempotencyKey: requireIdempotencyKey(body),
+    confirmationText: requireText(body, 'confirmationText'),
+    reasonCode,
+    note: optionalText(body, 'note', '').slice(0, 240),
+  }
+}
 
 export const parseTaskChildListQuery = (query) => parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 })
 

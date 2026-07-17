@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "taskId": "TASK-01",
+  "permissions": { "read": "admin:tasks:read", "manage": "admin:tasks:manage" },
+  "routes": [
+    { "method": "GET", "path": "/api/admin/tasks", "permission": "admin:tasks:read" },
+    { "method": "GET", "path": "/api/admin/tasks/summary", "permission": "admin:tasks:read" },
+    { "method": "GET", "path": "/api/admin/tasks/:id", "permission": "admin:tasks:read" },
+    { "method": "PATCH", "path": "/api/admin/tasks/:id", "permission": "admin:tasks:manage" },
+    { "method": "POST", "path": "/api/admin/tasks/:id/archive", "permission": "admin:tasks:manage" },
+    { "method": "POST", "path": "/api/admin/tasks/:id/restore", "permission": "admin:tasks:manage" },
+    { "method": "POST", "path": "/api/admin/tasks/:id/transitions", "permission": "admin:tasks:manage" },
+    { "method": "POST", "path": "/api/admin/tasks/bulk/preview", "permission": "admin:tasks:manage" },
+    { "method": "POST", "path": "/api/admin/tasks/bulk", "permission": "admin:tasks:manage" }
+  ],
+  "mutationPolicy": {
+    "optimisticVersioning": true,
+    "editableStatuses": ["draft", "open"],
+    "transitionActions": ["publish", "cancel"],
+    "archiveEligibleStatuses": ["draft", "open", "completed", "rejected", "cancelled"],
+    "hardDelete": false
+  },
+  "bulkPolicy": {
+    "actions": ["archive", "cancel"],
+    "maxTargets": 50,
+    "previewRequired": true,
+    "confirmationRequired": true,
+    "idempotencyRequired": true,
+    "executionStateRecheck": true
+  },
+  "deferredToTask02": ["automatic_cancellation", "automatic_expiry", "abnormal_recovery"]
+}

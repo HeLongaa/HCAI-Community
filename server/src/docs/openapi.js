@@ -496,6 +496,94 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/tasks': {
+      get: {
+        summary: 'List tasks for administrative operations',
+        parameters: [
+          { name: 'search', in: 'query', schema: { type: 'string' } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'open', 'assigned', 'in_progress', 'submitted', 'pending_review', 'disputed', 'completed', 'rejected', 'cancelled'] } },
+          { name: 'archiveState', in: 'query', schema: { type: 'string', enum: ['active', 'archived', 'all'], default: 'active' } },
+          { name: 'category', in: 'query', schema: { type: 'string' } },
+          { name: 'publisherHandle', in: 'query', schema: { type: 'string' } },
+          { name: 'assigneeHandle', in: 'query', schema: { type: 'string' } },
+          { name: 'sort', in: 'query', schema: { type: 'string', enum: ['createdAt', 'updatedAt', 'deadlineAt', 'status', 'title'], default: 'updatedAt' } },
+          { name: 'direction', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+        ],
+        responses: {
+          '200': { description: 'Owner-safe task operations page with stable cursor metadata' },
+          '403': { description: 'Requires admin:tasks:read' },
+        },
+      },
+    },
+    '/admin/tasks/summary': {
+      get: {
+        summary: 'Summarize task operations by lifecycle and archive state',
+        responses: {
+          '200': { description: 'Total, active, archived, and status counts' },
+          '403': { description: 'Requires admin:tasks:read' },
+        },
+      },
+    },
+    '/admin/tasks/{id}': {
+      get: {
+        summary: 'Read one administrative task projection',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Task detail including version and archive evidence' }, '403': { description: 'Requires admin:tasks:read' }, '404': { description: 'Task not found' } },
+      },
+      patch: {
+        summary: 'Edit bounded fields on a draft or open task',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['expectedVersion', 'reasonCode'], properties: {
+            expectedVersion: { type: 'integer', minimum: 1 }, reasonCode: { type: 'string' }, note: { type: 'string', maxLength: 240 },
+            title: { type: 'string' }, category: { type: 'string' }, description: { type: 'string' }, acceptanceRules: { type: 'string' },
+            visibility: { type: 'string', enum: ['public', 'community', 'invite_only'] }, deadlineAt: { type: ['string', 'null'], format: 'date-time' },
+          } } } },
+        },
+        responses: { '200': { description: 'Updated task with incremented version' }, '403': { description: 'Requires admin:tasks:manage' }, '409': { description: 'Version conflict or task is no longer editable' } },
+      },
+    },
+    '/admin/tasks/{id}/archive': {
+      post: {
+        summary: 'Soft archive an eligible task',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['expectedVersion', 'reasonCode'], properties: { expectedVersion: { type: 'integer', minimum: 1 }, reasonCode: { type: 'string' }, note: { type: 'string', maxLength: 240 } } } } } },
+        responses: { '200': { description: 'Archived task evidence' }, '403': { description: 'Requires admin:tasks:manage' }, '409': { description: 'Version conflict or active fulfillment task' } },
+      },
+    },
+    '/admin/tasks/{id}/restore': {
+      post: {
+        summary: 'Restore a soft archived task',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['expectedVersion', 'reasonCode'], properties: { expectedVersion: { type: 'integer', minimum: 1 }, reasonCode: { type: 'string' }, note: { type: 'string', maxLength: 240 } } } } } },
+        responses: { '200': { description: 'Restored task with incremented version' }, '403': { description: 'Requires admin:tasks:manage' }, '409': { description: 'Version conflict' } },
+      },
+    },
+    '/admin/tasks/{id}/transitions': {
+      post: {
+        summary: 'Apply an explicit administrative task status transition',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['expectedVersion', 'action', 'reasonCode'], properties: { expectedVersion: { type: 'integer', minimum: 1 }, action: { type: 'string', enum: ['publish', 'cancel'] }, reasonCode: { type: 'string' }, note: { type: 'string', maxLength: 240 } } } } } },
+        responses: { '200': { description: 'Transitioned task and accounting evidence' }, '403': { description: 'Requires admin:tasks:manage' }, '409': { description: 'Invalid transition or version conflict' } },
+      },
+    },
+    '/admin/tasks/bulk/preview': {
+      post: {
+        summary: 'Preview bounded task archive or cancellation disposition',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['action', 'targetIds'], properties: { action: { type: 'string', enum: ['archive', 'cancel'] }, targetIds: { type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: { type: 'string' } } } } } } },
+        responses: { '200': { description: 'Eligibility, target hash, and required confirmation phrase' }, '403': { description: 'Requires admin:tasks:manage' } },
+      },
+    },
+    '/admin/tasks/bulk': {
+      post: {
+        summary: 'Execute a previewed idempotent task disposition',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['action', 'targetIds', 'targetHash', 'confirmationText', 'idempotencyKey', 'reasonCode'], properties: { action: { type: 'string', enum: ['archive', 'cancel'] }, targetIds: { type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: { type: 'string' } }, targetHash: { type: 'string', pattern: '^[a-f0-9]{64}$' }, confirmationText: { type: 'string' }, idempotencyKey: { type: 'string' }, reasonCode: { type: 'string' }, note: { type: 'string', maxLength: 240 } } } } } },
+        responses: { '200': { description: 'Stable per-target result including explicit skips' }, '403': { description: 'Requires admin:tasks:manage' }, '409': { description: 'Target hash or idempotency conflict' } },
+      },
+    },
     '/tasks': {
       get: {
         summary: 'List seed-backed tasks',

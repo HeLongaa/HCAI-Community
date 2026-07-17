@@ -7,7 +7,7 @@
   "policyDocument": "docs/DATA_RELATION_AND_JSON_SCHEMA.md",
   "jsonFields": [
     "AuditEvent.metadata", "ObservabilityLog.attributes", "SecurityEvent.details", "SystemSetting.value", "OperationLease.metadata", "AdminReview.metadata",
-    "Profile.portfolio", "Profile.stats", "Profile.metadata", "Task.metadata", "TaskProposal.metadata", "TaskSubmission.metadata",
+    "Profile.portfolio", "Profile.stats", "Profile.metadata", "Task.metadata", "TaskAdminBulkAction.result", "TaskProposal.metadata", "TaskSubmission.metadata",
     "Post.metadata", "LibraryItem.metadata", "InternalAccountingOperation.metadata", "InternalAccountingMovement.metadata",
     "AccountingReconciliationIssue.evidence", "MediaAsset.metadata", "MediaScanJob.metadata", "CreativeGeneration.usage",
     "CreativeGeneration.credit", "CreativeGeneration.quota", "CreativeGeneration.safety", "CreativeGeneration.policy",

@@ -324,6 +324,78 @@ export type AdminOAuthAuthorizationQuery = {
   order?: 'asc' | 'desc'
 }
 
+export type AdminTaskStatus = 'draft' | 'open' | 'assigned' | 'in_progress' | 'submitted' | 'pending_review' | 'disputed' | 'completed' | 'rejected' | 'cancelled'
+
+export type AdminTaskDto = {
+  id: string
+  title: string
+  category: string
+  description: string
+  acceptanceRules: string
+  rewardAmount: string | null
+  rewardCurrency: string | null
+  pointsReward: number
+  status: AdminTaskStatus
+  visibility: 'public' | 'community' | 'invite_only'
+  deadlineAt: string | null
+  publisherHandle: string | null
+  assigneeHandle: string | null
+  proposalCount: number
+  submissionCount: number
+  version: number
+  archivedAt: string | null
+  archivedByHandle: string | null
+  archiveReasonCode: string | null
+  archiveNote: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export type AdminTaskQuery = {
+  search?: string | null
+  status?: AdminTaskStatus | null
+  archiveState?: 'active' | 'archived' | 'all'
+  category?: string | null
+  publisherHandle?: string | null
+  assigneeHandle?: string | null
+  sort?: 'createdAt' | 'updatedAt' | 'deadlineAt' | 'status' | 'title'
+  direction?: 'asc' | 'desc'
+  cursor?: string | null
+  limit?: number
+}
+
+export type AdminTaskSummary = {
+  total: number
+  active: number
+  archived: number
+  byStatus: Partial<Record<AdminTaskStatus, number>>
+}
+
+export type AdminTaskMutationEvidence = {
+  expectedVersion: number
+  reasonCode: string
+  note?: string
+}
+
+export type AdminTaskUpdateRequest = AdminTaskMutationEvidence & Partial<Pick<AdminTaskDto, 'title' | 'category' | 'description' | 'acceptanceRules' | 'visibility' | 'deadlineAt'>>
+export type AdminTaskBulkAction = 'archive' | 'cancel'
+export type AdminTaskBulkPreview = {
+  action: AdminTaskBulkAction
+  targetHash: string
+  targetCount: number
+  eligibleCount: number
+  skippedCount: number
+  requiredConfirmationText: string
+  destructive: boolean
+  items: Array<{ id: string; eligible: boolean; reason: string | null; version?: number }>
+}
+export type AdminTaskBulkResult = Omit<AdminTaskBulkPreview, 'skippedCount'> & {
+  status: 'completed'
+  succeededCount: number
+  skippedCount: number
+  items: Array<{ id: string; status: 'succeeded' | 'skipped'; reason: string | null }>
+}
+
 export type ApiTask = {
   id: string
   title: string

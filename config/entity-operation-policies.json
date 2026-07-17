@@ -53,6 +53,7 @@
     { "model": "RefreshToken", "domain": "identity-access", "policy": "state_transition", "hardDelete": true },
     { "model": "Profile", "domain": "user-profile", "policy": "mutable_crud", "hardDelete": false },
     { "model": "Task", "domain": "task-marketplace", "policy": "state_transition", "hardDelete": false },
+    { "model": "TaskAdminBulkAction", "domain": "task-marketplace", "policy": "immutable_evidence", "hardDelete": false },
     { "model": "TaskProposal", "domain": "task-marketplace", "policy": "state_transition", "hardDelete": false },
     { "model": "TaskSubmission", "domain": "task-marketplace", "policy": "state_transition", "hardDelete": false },
     { "model": "TaskSubmissionAsset", "domain": "task-marketplace", "policy": "immutable_evidence", "hardDelete": false },
