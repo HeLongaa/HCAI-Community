@@ -1,12 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Archive, ArchiveRestore, CheckCircle2, DatabaseZap, Download, LoaderCircle, RefreshCw, RotateCcw, Trash2, Undo2, XCircle } from 'lucide-react'
+import { Activity, Archive, ArchiveRestore, CheckCircle2, DatabaseZap, Download, LoaderCircle, RefreshCw, RotateCcw, Trash2, Undo2, XCircle } from 'lucide-react'
 import { textFor } from '../../domain/utils'
-import type { AdminMediaAssetQuery, ApiAdminMediaAsset, MediaAssetPurpose, MediaStorageState } from '../../services/contracts'
+import type { AdminMediaAssetQuery, AdminMediaBusinessMetrics, AdminMediaBusinessMetricsQuery, ApiAdminMediaAsset, AssetMediaType, MediaAssetPurpose, MediaStorageState } from '../../services/contracts'
 import { mediaService } from '../../services/mediaService'
 
 const purposes: Array<'' | MediaAssetPurpose> = ['', 'task_attachment', 'submission_asset', 'profile_portfolio', 'library_asset']
 const storageStates: Array<'' | MediaStorageState> = ['', 'pending_upload', 'verifying', 'quarantined', 'available', 'cleanup_pending', 'deleting', 'deleted', 'verification_failed']
 type LifecycleAction = 'archive' | 'restore' | 'delete' | 'recover'
+
+const bytesLabel = (bytes: number) => {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${bytes} B`
+}
+
+const latencyLabel = (seconds: number) => seconds >= 60 ? `${(seconds / 60).toFixed(1)} min` : `${seconds.toFixed(1)} sec`
+const startOfDayIso = (value: string) => value ? new Date(`${value}T00:00:00.000Z`).toISOString() : null
+const endOfDayIso = (value: string) => value ? new Date(`${value}T23:59:59.999Z`).toISOString() : null
 
 export function AdminMediaLifecyclePanel({ t, canRead, canReview, canExport }: { t: Record<string, string>; canRead: boolean; canReview: boolean; canExport: boolean }) {
   const [items, setItems] = useState<ApiAdminMediaAsset[]>([])
@@ -19,6 +30,30 @@ export function AdminMediaLifecyclePanel({ t, canRead, canReview, canExport }: {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [metrics, setMetrics] = useState<AdminMediaBusinessMetrics | null>(null)
+  const [metricsLoading, setMetricsLoading] = useState(false)
+  const [metricsError, setMetricsError] = useState<string | null>(null)
+  const [metricsDates, setMetricsDates] = useState({ dateFrom: '', dateTo: '' })
+
+  const metricsQuery = useMemo<AdminMediaBusinessMetricsQuery>(() => ({
+    dateFrom: startOfDayIso(metricsDates.dateFrom),
+    dateTo: endOfDayIso(metricsDates.dateTo),
+    purpose: query.purpose ?? null,
+    mediaType: query.mediaType ?? null,
+  }), [metricsDates.dateFrom, metricsDates.dateTo, query.mediaType, query.purpose])
+
+  const loadMetrics = useCallback(async () => {
+    if (!canRead) return
+    setMetricsLoading(true)
+    setMetricsError(null)
+    try {
+      setMetrics(await mediaService.adminBusinessMetrics(metricsQuery))
+    } catch (cause) {
+      setMetricsError(cause instanceof Error ? cause.message : textFor(t, 'Could not load media metrics.', '无法加载媒体统计。'))
+    } finally {
+      setMetricsLoading(false)
+    }
+  }, [canRead, metricsQuery, t])
 
   const load = useCallback(async (cursor: string | null = null) => {
     if (!canRead) return
@@ -40,6 +75,11 @@ export function AdminMediaLifecyclePanel({ t, canRead, canReview, canExport }: {
     const timer = window.setTimeout(() => void load(), 180)
     return () => window.clearTimeout(timer)
   }, [load])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadMetrics(), 180)
+    return () => window.clearTimeout(timer)
+  }, [loadMetrics])
 
   useEffect(() => {
     if (!focusedId || !canRead) return
@@ -116,6 +156,23 @@ export function AdminMediaLifecyclePanel({ t, canRead, canReview, canExport }: {
     }
   }
 
+  const exportMetrics = async () => {
+    setBusy('export-metrics')
+    try {
+      const exported = await mediaService.adminBusinessMetricsExport(metricsQuery)
+      const url = URL.createObjectURL(new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' }))
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = 'media-business-metrics.json'
+      anchor.click()
+      URL.revokeObjectURL(url)
+    } catch (cause) {
+      setMetricsError(cause instanceof Error ? cause.message : textFor(t, 'Metrics export failed.', '统计导出失败。'))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const runStorageCleanup = async () => {
     setBusy('storage-cleanup')
     setError(null)
@@ -140,13 +197,33 @@ export function AdminMediaLifecyclePanel({ t, canRead, canReview, canExport }: {
       <div className="button-row">
         {canReview && <button className="icon-button" aria-label={textFor(t, 'Run due object cleanup', '执行到期对象清理')} title={textFor(t, 'Run due object cleanup', '执行到期对象清理')} disabled={Boolean(busy)} onClick={() => void runStorageCleanup()} type="button"><DatabaseZap size={16}/></button>}
         {canExport && <><button className="icon-button" aria-label={textFor(t, 'Export media JSON', '导出素材 JSON')} disabled={Boolean(busy)} onClick={() => void exportAssets('json')} type="button"><Download size={16}/></button><button className="ghost-button small" disabled={Boolean(busy)} onClick={() => void exportAssets('csv')} type="button">CSV</button></>}
+        {canExport && <button className="icon-button" aria-label={textFor(t, 'Export media metrics JSON', '导出媒体统计 JSON')} title={textFor(t, 'Export media metrics JSON', '导出媒体统计 JSON')} disabled={Boolean(busy)} onClick={() => void exportMetrics()} type="button"><Activity size={16}/></button>}
         <button className="icon-button" aria-label={textFor(t, 'Refresh asset lifecycle', '刷新素材生命周期')} disabled={!canRead || loading} onClick={() => void load()} type="button"><RefreshCw className={loading ? 'spin' : ''} size={16}/></button>
+      </div>
+    </div>
+    <div className="admin-media-metrics-controls">
+      <input aria-label={textFor(t, 'Media metrics start date', '媒体统计开始日期')} type="date" value={metricsDates.dateFrom} onChange={(event) => setMetricsDates((current) => ({ ...current, dateFrom: event.target.value }))}/>
+      <input aria-label={textFor(t, 'Media metrics end date', '媒体统计结束日期')} type="date" value={metricsDates.dateTo} onChange={(event) => setMetricsDates((current) => ({ ...current, dateTo: event.target.value }))}/>
+      <button className="icon-button" aria-label={textFor(t, 'Refresh media metrics', '刷新媒体统计')} title={textFor(t, 'Refresh media metrics', '刷新媒体统计')} disabled={!canRead || metricsLoading} onClick={() => void loadMetrics()} type="button"><RefreshCw className={metricsLoading ? 'spin' : ''} size={16}/></button>
+    </div>
+    {metricsError && <p className="use-creative-asset-notice error">{metricsError}</p>}
+    <div className="admin-media-metrics" aria-busy={metricsLoading}>
+      <dl className="admin-media-metrics-grid">
+        <div><dt>{textFor(t, 'Active capacity', '活跃容量')}</dt><dd>{metrics ? bytesLabel(metrics.capacity.activeBytes) : '—'}</dd><small>{metrics?.capacity.activeAssets ?? 0} {textFor(t, 'assets', '个素材')}</small></div>
+        <div><dt>{textFor(t, 'Scan failures', '扫描失败')}</dt><dd>{metrics ? `${metrics.scan.failurePercent}%` : '—'}</dd><small>{metrics?.scan.failed ?? 0} / {(metrics?.scan.completed ?? 0) + (metrics?.scan.failed ?? 0)}</small></div>
+        <div><dt>{textFor(t, 'P95 scan latency', '扫描 P95 时延')}</dt><dd>{metrics ? metrics.scan.p95LatencySeconds == null ? textFor(t, 'Unavailable', '不可用') : latencyLabel(metrics.scan.p95LatencySeconds) : '—'}</dd><small>{metrics?.scan.jobs ?? 0} {textFor(t, 'jobs', '个作业')}</small></div>
+        <div><dt>{textFor(t, 'Scan backlog', '扫描积压')}</dt><dd>{metrics?.backlog.total ?? '—'}</dd><small>{metrics?.backlog.timedOut ?? 0} {textFor(t, 'timed out', '个超时')}</small></div>
+      </dl>
+      <div className="admin-media-metrics-breakdown">
+        <div><strong>{textFor(t, 'Media types', '媒体类型')}</strong>{metrics?.byMediaType.map((entry) => <span key={entry.key}>{entry.key}<b>{entry.assets} · {bytesLabel(entry.bytes)}</b></span>)}</div>
+        <div><strong>{textFor(t, 'Storage states', '存储状态')}</strong>{metrics?.storage.byState.slice(0, 5).map((entry) => <span key={entry.key}>{entry.key}<b>{entry.assets} · {bytesLabel(entry.bytes)}</b></span>)}</div>
       </div>
     </div>
     <div className="admin-media-lifecycle-filters">
       <input aria-label={textFor(t, 'Search asset lifecycle', '搜索素材生命周期')} placeholder={textFor(t, 'ID, filename, owner', 'ID、文件名、所有者')} value={query.search ?? ''} onChange={(event) => setQuery((current) => ({ ...current, search: event.target.value || null }))}/>
       <select aria-label={textFor(t, 'Admin asset lifecycle state', '管理端素材生命周期状态')} value={query.lifecycle ?? 'all'} onChange={(event) => setQuery((current) => ({ ...current, lifecycle: event.target.value as AdminMediaAssetQuery['lifecycle'] }))}><option value="all">{textFor(t, 'All states', '全部状态')}</option><option value="active">{textFor(t, 'Active', '使用中')}</option><option value="archived">{textFor(t, 'Archived', '已归档')}</option><option value="deleted">{textFor(t, 'Deleted', '回收站')}</option></select>
       <select aria-label={textFor(t, 'Admin asset purpose', '管理端素材用途')} value={query.purpose ?? ''} onChange={(event) => setQuery((current) => ({ ...current, purpose: event.target.value as MediaAssetPurpose || null }))}>{purposes.map((purpose) => <option key={purpose || 'all'} value={purpose}>{purpose || textFor(t, 'All purposes', '全部用途')}</option>)}</select>
+      <select aria-label={textFor(t, 'Admin media type', '管理端媒体类型')} value={query.mediaType ?? ''} onChange={(event) => setQuery((current) => ({ ...current, mediaType: event.target.value as AssetMediaType || null }))}><option value="">{textFor(t, 'All media types', '全部媒体类型')}</option><option value="image">Image</option><option value="video">Video</option><option value="audio">Audio</option><option value="document">Document</option></select>
       <select aria-label={textFor(t, 'Admin object state', '管理端对象状态')} value={query.storageState ?? ''} onChange={(event) => setQuery((current) => ({ ...current, storageState: event.target.value as MediaStorageState || null }))}>{storageStates.map((state) => <option key={state || 'all'} value={state}>{state || textFor(t, 'All object states', '全部对象状态')}</option>)}</select>
       <select aria-label={textFor(t, 'Admin asset sort', '管理端素材排序')} value={query.sort ?? 'created_desc'} onChange={(event) => setQuery((current) => ({ ...current, sort: event.target.value as AdminMediaAssetQuery['sort'] }))}><option value="created_desc">{textFor(t, 'Newest first', '最新优先')}</option><option value="created_asc">{textFor(t, 'Oldest first', '最早优先')}</option><option value="updated_desc">{textFor(t, 'Recently updated', '最近更新')}</option><option value="name_asc">{textFor(t, 'Filename', '文件名')}</option></select>
     </div>

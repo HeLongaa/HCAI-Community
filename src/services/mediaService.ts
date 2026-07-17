@@ -4,6 +4,9 @@ import type {
   ApiAdminMediaAsset,
   AdminMediaAssetBulkResult,
   AdminMediaAssetExport,
+  AdminMediaBusinessMetrics,
+  AdminMediaBusinessMetricsExport,
+  AdminMediaBusinessMetricsQuery,
   ApiAssetLibraryItem,
   AssetLibraryQuery,
   AdminMediaAssetQuery,
@@ -78,6 +81,12 @@ export const mediaService = {
   adminAssetExport(query: AdminMediaAssetQuery, format: 'json' | 'csv') {
     const path = withQuery('/admin/media/assets/export', { ...query, cursor: null, format })
     return format === 'csv' ? api.text(path) : api.get<AdminMediaAssetExport>(path)
+  },
+  adminBusinessMetrics(query?: AdminMediaBusinessMetricsQuery) {
+    return api.get<AdminMediaBusinessMetrics>(withQuery('/admin/media/business-metrics', query))
+  },
+  adminBusinessMetricsExport(query?: AdminMediaBusinessMetricsQuery) {
+    return api.get<AdminMediaBusinessMetricsExport>(withQuery('/admin/media/business-metrics/export', query))
   },
   saveAssetToLibrary(id: string) {
     return api.post<ApiSavedAssetReference>(`/media/assets/${id}/library`)

@@ -378,6 +378,28 @@ export const parseAdminMediaAssetExportQuery = (query) => {
   return { ...parseAdminMediaAssetQuery({ ...query, limit: query.limit ?? '100' }), format }
 }
 
+export const parseAdminMediaBusinessMetricsQuery = (query) => {
+  const purpose = optionalText(query, 'purpose', null)
+  const mediaType = optionalText(query, 'mediaType', null)
+  if (purpose && !Object.hasOwn(mediaPurposePolicies, purpose)) {
+    throw validationFailed(`purpose must be one of: ${Object.keys(mediaPurposePolicies).join(', ')}`)
+  }
+  if (mediaType && !['image', 'video', 'audio', 'document'].includes(mediaType)) {
+    throw validationFailed('mediaType must be one of: image, video, audio, document')
+  }
+  const parseDate = (value, field) => {
+    if (!value) return null
+    const timestamp = Date.parse(String(value))
+    if (!Number.isFinite(timestamp)) throw validationFailed(`${field} must be an ISO 8601 datetime`)
+    return new Date(timestamp).toISOString()
+  }
+  const dateFrom = parseDate(query.dateFrom, 'dateFrom')
+  const dateTo = parseDate(query.dateTo, 'dateTo')
+  if (dateFrom && dateTo && Date.parse(dateFrom) > Date.parse(dateTo)) throw validationFailed('dateFrom must be before or equal to dateTo')
+  if (dateFrom && dateTo && Date.parse(dateTo) - Date.parse(dateFrom) > 366 * 86_400_000) throw validationFailed('metrics window cannot exceed 366 days')
+  return { dateFrom, dateTo, purpose, mediaType }
+}
+
 export const parseAdminMediaAssetBulkActionRequest = (body) => {
   const ids = [...new Set(requireStringArray(body, 'ids').map((id) => id.trim()).filter(Boolean))]
   if (!ids.length || ids.length > 50) throw validationFailed('ids must include 1-50 unique asset ids')

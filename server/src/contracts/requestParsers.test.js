@@ -14,6 +14,7 @@ import {
   parseAdminMediaAssetBulkActionRequest,
   parseAdminMediaAssetExportQuery,
   parseAdminMediaAssetQuery,
+  parseAdminMediaBusinessMetricsQuery,
   parseAssetLibraryQuery,
   parseAdminCreativeGenerationListQuery,
   parseAdminReviewListQuery,
@@ -638,6 +639,16 @@ test('media lifecycle query parsers validate trash and admin sorting', () => {
   })
   assertValidationError(() => parseAdminMediaAssetBulkActionRequest({ ids: [], action: 'archive' }), 'ids must include 1-50 unique asset ids')
   assertValidationError(() => parseAdminMediaAssetBulkActionRequest({ ids: ['asset-1'], action: 'purge' }), 'action must be one of: archive, restore, delete, recover')
+})
+
+test('media business metrics query parser bounds filters and date windows', () => {
+  assert.deepEqual(parseAdminMediaBusinessMetricsQuery({
+    dateFrom: '2026-07-01T00:00:00Z', dateTo: '2026-07-17T23:59:59Z', purpose: 'library_asset', mediaType: 'image',
+  }), {
+    dateFrom: '2026-07-01T00:00:00.000Z', dateTo: '2026-07-17T23:59:59.000Z', purpose: 'library_asset', mediaType: 'image',
+  })
+  assertValidationError(() => parseAdminMediaBusinessMetricsQuery({ mediaType: 'binary' }), 'mediaType must be one of: image, video, audio, document')
+  assertValidationError(() => parseAdminMediaBusinessMetricsQuery({ dateFrom: '2025-01-01', dateTo: '2026-07-17' }), 'metrics window cannot exceed 366 days')
 })
 
 test('parseCompleteMediaUploadRequest keeps checksum optional', () => {

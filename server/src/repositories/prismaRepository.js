@@ -78,6 +78,7 @@ import { writeJsonArchive } from '../storage/archiveWriter.js'
 import { createPrismaChatRepository } from '../chat/prismaChatRepository.js'
 import { safeProviderOperationMetadata } from '../creative/generationRecords.js'
 import { assetEligibleForWorkspace, assetMediaType, buildSafeAssetLibraryItem } from '../media/assetLibrary.js'
+import { createPrismaMediaBusinessMetricsRepository } from '../media/prismaMediaBusinessMetricsRepository.js'
 import { resolveCreativeDeliveryAssets } from '../creative/deliveryAssets.js'
 import { taskWorkflowDto } from '../tasks/taskLifecycle.js'
 import { applyPublishedTaskRule } from '../tasks/taskRuleRuntime.js'
@@ -7446,6 +7447,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   }
 
   const media = {
+    ...createPrismaMediaBusinessMetricsRepository(client),
     find: async (id) => {
       const asset = await client.mediaAsset.findUnique({ where: { id: String(id) }, include: { storageObject: true } })
       return asset ? getMediaAssetDto(asset) : null

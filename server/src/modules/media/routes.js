@@ -3,7 +3,7 @@ import { created, ok, text } from '../../common/http/responses.js'
 import { HttpError, notFound } from '../../common/errors/httpError.js'
 import { requirePermission, requireUser } from '../../common/http/auth.js'
 import { readJsonBody, readJsonBodyWithRaw } from '../../common/http/request.js'
-import { parseAdminMediaAssetBulkActionRequest, parseAdminMediaAssetExportQuery, parseAdminMediaAssetQuery, parseAssetLibraryQuery, parseCompleteMediaUploadRequest, parseCreateAssetRelationRequest, parseCreateMediaUploadRequest, parseCreatePortfolioAssetRequest, parseMediaAssetDeleteRequest, parseMediaGovernancePolicyRequest, parseMediaGovernancePolicyRollbackRequest, parseMediaReviewQueueQuery, parseMediaScanAlertActionRequest, parseMediaScanAlertSilenceRequest, parseMediaScanCallbackRequest, parseMediaScanJobArchiveQuery, parseMediaScanJobHistoryQuery, parseMediaScanJobQuery, parseMediaScanRequest, parsePaginationQuery } from '../../contracts/requestParsers.js'
+import { parseAdminMediaAssetBulkActionRequest, parseAdminMediaAssetExportQuery, parseAdminMediaAssetQuery, parseAdminMediaBusinessMetricsQuery, parseAssetLibraryQuery, parseCompleteMediaUploadRequest, parseCreateAssetRelationRequest, parseCreateMediaUploadRequest, parseCreatePortfolioAssetRequest, parseMediaAssetDeleteRequest, parseMediaGovernancePolicyRequest, parseMediaGovernancePolicyRollbackRequest, parseMediaReviewQueueQuery, parseMediaScanAlertActionRequest, parseMediaScanAlertSilenceRequest, parseMediaScanCallbackRequest, parseMediaScanJobArchiveQuery, parseMediaScanJobHistoryQuery, parseMediaScanJobQuery, parseMediaScanRequest, parsePaginationQuery } from '../../contracts/requestParsers.js'
 import { buildMediaGovernanceConfig } from '../../config/env.js'
 import { repositories } from '../../repositories/index.js'
 
@@ -143,6 +143,35 @@ export const registerMediaRoutes = (router) => {
     const page = await repositories.media.listAdminAssets(query)
     await repositories.audit.recordAttempt({ actor, action: 'admin.media.assets.queried', resourceType: 'media_asset', resourceId: null, metadata: { resultCount: page.items.length, limit: page.limit, lifecycle: query.lifecycle, searched: Boolean(query.search), ownerFiltered: Boolean(query.ownerHandle) } })
     ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('GET', '/api/admin/media/business-metrics', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:media:read')
+    const query = parseAdminMediaBusinessMetricsQuery(context.query)
+    const metrics = await repositories.media.businessMetrics(query)
+    await repositories.audit.recordAttempt({
+      actor,
+      action: 'admin.media.business_metrics.queried',
+      resourceType: 'media_metrics',
+      resourceId: null,
+      metadata: { purpose: query.purpose, mediaType: query.mediaType, dateFiltered: Boolean(query.dateFrom || query.dateTo), assets: metrics.capacity.assets, scanJobs: metrics.scan.jobs, backlog: metrics.backlog.total },
+    })
+    ok(response, metrics)
+  })
+
+  router.add('GET', '/api/admin/media/business-metrics/export', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:media:export')
+    const query = parseAdminMediaBusinessMetricsQuery(context.query)
+    const metrics = await repositories.media.businessMetrics(query)
+    const exportedAt = new Date().toISOString()
+    await repositories.audit.recordAttempt({
+      actor,
+      action: 'admin.media.business_metrics.exported',
+      resourceType: 'media_metrics',
+      resourceId: null,
+      metadata: { purpose: query.purpose, mediaType: query.mediaType, dateFiltered: Boolean(query.dateFrom || query.dateTo), assets: metrics.capacity.assets, scanJobs: metrics.scan.jobs, backlog: metrics.backlog.total },
+    })
+    ok(response, { kind: 'media.business-metrics.snapshot', schemaVersion: 1, exportedAt, filters: query, metrics })
   })
 
   router.add('GET', '/api/admin/media/assets/export', async (_request, response, context) => {

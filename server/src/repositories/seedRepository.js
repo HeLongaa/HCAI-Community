@@ -83,6 +83,7 @@ import {
   scanMediaAsset,
 } from '../media/scanProvider.js'
 import { dispatchMediaScanAlert } from '../media/alertDispatcher.js'
+import { buildMediaBusinessMetrics } from '../media/mediaBusinessMetrics.js'
 import { writeJsonArchive } from '../storage/archiveWriter.js'
 import { createSeedChatRepository } from '../chat/seedChatRepository.js'
 import { writeStorageObject } from '../storage/objectWriter.js'
@@ -5625,6 +5626,11 @@ export const createSeedRepository = () => {
         .map(getSeedAdminAsset)
       return paginateByCursor(rows, options)
     },
+    businessMetrics: (options = {}) => buildMediaBusinessMetrics({
+      assets: [...mediaAssetsById.values()],
+      jobs: [...mediaAssetsById.values()].map(buildSeedMediaScanJob).filter(Boolean),
+      options,
+    }),
     getAdminAsset: (id) => {
       const asset = mediaAssetsById.get(String(id)) ?? null
       if (!asset) return null
