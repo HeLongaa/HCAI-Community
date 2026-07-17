@@ -31,8 +31,13 @@ test('admin previews billing policy impact and filters safe accounting metrics o
   await panel.getByRole('button', { name: 'Export accounting metrics JSON' }).click()
   await expect((await download).suggestedFilename()).toBe('accounting-business-metrics.json')
 
-  expect(await panel.evaluate((element) => {
+  const layout = await panel.evaluate((element) => {
     const rect = element.getBoundingClientRect()
-    return rect.left >= 0 && rect.right <= document.documentElement.clientWidth && element.scrollWidth <= element.clientWidth
-  })).toBe(true)
+    return {
+      insideViewport: rect.left >= 0 && rect.right <= document.documentElement.clientWidth,
+      noInternalOverflow: element.scrollWidth <= element.clientWidth,
+      geometry: { left: rect.left, right: rect.right, viewport: document.documentElement.clientWidth, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth },
+    }
+  })
+  expect(layout, JSON.stringify(layout.geometry)).toMatchObject({ insideViewport: true, noInternalOverflow: true })
 })

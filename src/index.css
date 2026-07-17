@@ -4649,6 +4649,9 @@ button.video-history-row.active {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   height: auto;
   min-height: 540px;
   overflow: hidden;
@@ -4687,6 +4690,9 @@ button.video-history-row.active {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
   gap: 10px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   align-items: stretch;
 }
 
@@ -4715,6 +4721,12 @@ button.video-history-row.active {
   overflow-wrap: anywhere;
 }
 
+.billing-policy-impact strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .billing-policy-overview > button {
   align-self: stretch;
   min-height: 44px;
@@ -4727,6 +4739,9 @@ button.video-history-row.active {
 
 .billing-metrics-filters {
   grid-template-columns: repeat(4, minmax(120px, 1fr)) auto;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .billing-metrics-filters > label {
