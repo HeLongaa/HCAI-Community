@@ -6,7 +6,7 @@ async function horizontalOverflowSnapshot(page: Page) {
   return page.evaluate(() => {
     const viewportWidth = window.innerWidth
     const documentWidth = document.documentElement.scrollWidth
-    const elements = Array.from(document.querySelectorAll<HTMLElement>('body *'))
+    const elements = documentWidth <= viewportWidth ? [] : Array.from(document.querySelectorAll<HTMLElement>('body *'))
       .map((element) => {
         const bounds = element.getBoundingClientRect()
         return {
