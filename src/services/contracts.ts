@@ -19,6 +19,105 @@ export type ApiPaginationMeta = {
   }
 }
 
+export type EntitlementPlanStatus = 'draft' | 'active' | 'retired'
+export type EntitlementGrantStatus = 'scheduled' | 'active' | 'revoked' | 'expired'
+
+export type EntitlementPlanVersionDto = {
+  id: string
+  planId: string
+  version: number
+  capabilities: Record<string, boolean>
+  quotas: Record<string, number>
+  effectiveAt: string
+  expiresAt: string | null
+  contentHash: string
+  actorRef: string
+  reasonCode: string
+  createdAt: string
+}
+
+export type EntitlementPlanDto = {
+  id: string
+  key: string
+  title: string
+  description: string | null
+  status: EntitlementPlanStatus
+  activeVersionId: string | null
+  activeVersion: EntitlementPlanVersionDto | null
+  versions?: EntitlementPlanVersionDto[]
+  versionCount: number
+  version: number
+  activatedAt: string | null
+  retiredAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type EntitlementGrantEventDto = {
+  id: string
+  grantId: string
+  eventType: string
+  fromStatus: EntitlementGrantStatus | null
+  toStatus: EntitlementGrantStatus
+  actorRef: string
+  reasonCode: string
+  contentHash: string
+  createdAt: string
+}
+
+export type EntitlementGrantDto = {
+  id: string
+  userId: string
+  planVersionId: string
+  status: EntitlementGrantStatus
+  startsAt: string
+  endsAt: string | null
+  version: number
+  reasonCode: string
+  sourceType: string
+  sourceId: string | null
+  revokedAt: string | null
+  createdAt: string
+  updatedAt: string
+  user: { id: string; handle: string; displayName: string } | null
+  planVersion: (EntitlementPlanVersionDto & { plan: Pick<EntitlementPlanDto, 'id' | 'key' | 'title' | 'status'> | null }) | null
+  events: EntitlementGrantEventDto[]
+}
+
+export type EffectiveEntitlementDto = {
+  schemaVersion: number
+  source: 'role_fallback' | 'personal_grant'
+  evaluatedAt: string
+  grant: { id: string; status: EntitlementGrantStatus; startsAt: string; endsAt: string | null; version: number } | null
+  plan: { id: string | null; key: string; title: string; status: EntitlementPlanStatus }
+  planVersion: { id: string | null; version: number; label: string; effectiveAt: string | null; expiresAt: string | null }
+  capabilities: Record<string, boolean>
+  quotas: Record<string, number>
+  boundaries: { personalAccountOnly: true; paymentRequired: false; withdrawable: false }
+}
+
+export type EntitlementDecisionDto = {
+  schemaVersion: number
+  allowed: boolean
+  reasonCode: string | null
+  capability: { key: string; enabled: boolean }
+  quota: { key: string; limit: number; requestedUnits: number; allowed: boolean } | null
+  entitlement: { source: EffectiveEntitlementDto['source']; grantId: string | null; planKey: string; planVersionId: string | null; planVersion: number; policyVersion: string }
+  boundaries: EffectiveEntitlementDto['boundaries']
+}
+
+export type EntitlementListQuery = {
+  status?: EntitlementPlanStatus | EntitlementGrantStatus | null
+  userHandle?: string | null
+  search?: string | null
+  cursor?: string | null
+  sort?: 'updated_desc' | 'updated_asc' | 'key_asc' | 'starts_desc'
+  limit?: number
+}
+
+export type EntitlementPlanSummary = { total: number; draft: number; active: number; retired: number }
+export type EntitlementGrantSummary = Record<EntitlementGrantStatus, number>
+
 export type ApiProfileSummary = {
   handle: string
   name?: { en: string; zh: string }

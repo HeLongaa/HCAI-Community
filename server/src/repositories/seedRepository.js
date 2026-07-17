@@ -21,6 +21,7 @@ import { createSeedOAuthAdminRepository } from '../auth/seedOAuthAdminRepository
 import { createSeedTaskAdminRepository } from '../tasks/seedTaskAdminRepository.js'
 import { createSeedTaskLifecycleRecoveryRepository } from '../tasks/seedTaskLifecycleRecoveryRepository.js'
 import { createSeedBillingAdminRepository } from '../accounting/seedBillingAdminRepository.js'
+import { createSeedEntitlementRepository } from '../entitlements/seedEntitlementRepository.js'
 import { applyPublishedTaskRule } from '../tasks/taskRuleRuntime.js'
 import {
   appendSeedAuditIntegrity,
@@ -2511,6 +2512,7 @@ export const createSeedRepository = () => {
       policy: normalizePointAdjustmentPolicy(pointAdjustmentPolicy ?? fallbackPolicy, fallbackPolicy),
     }),
   })
+  const entitlements = createSeedEntitlementRepository({ getUserByHandle: getAccountByHandle, getUserById: getAccountById, recordAudit })
   return {
   chat: createSeedChatRepository({
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) =>
@@ -2531,6 +2533,7 @@ export const createSeedRepository = () => {
   taskAdmin,
   taskLifecycleRecovery,
   billingAdmin,
+  entitlements,
   auth: {
     getCurrentUser: () => seedStore.me,
     findDemoAccountByAccessToken: (token) => {

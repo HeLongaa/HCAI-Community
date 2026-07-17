@@ -205,8 +205,73 @@ test('creative accounting policy and preview expose separate credits quota and P
     assert.equal(preview.payload.data.quota.weight, 12)
     assert.equal(preview.payload.data.quota.limit, 20)
     assert.equal(preview.payload.data.quota.remaining, 20)
+    assert.equal(preview.payload.data.quota.policyVersion, 'personal-creator-v1')
+    assert.equal(preview.payload.data.entitlement.entitlement.source, 'role_fallback')
     assert.equal(preview.payload.data.providerCost.availability, 'unavailable')
     assert.equal('amount' in preview.payload.data.providerCost, false)
+  } finally {
+    await server.close()
+  }
+})
+
+test('creative accounting preview consumes the active personal entitlement decision', async () => {
+  const repository = createSeedRepository()
+  const now = new Date('2026-07-14T08:00:00.000Z')
+  const adminActor = repository.auth.findDemoAccountByAccessToken('demo-access.opsplus')
+  const plan = await repository.entitlements.createPlan({
+    key: 'personal.creator.limited',
+    title: 'Creator Limited',
+    description: null,
+  }, adminActor)
+  const versioned = await repository.entitlements.appendPlanVersion(plan.id, {
+    expectedPlanVersion: 1,
+    capabilities: {
+      'creative.image.text_to_image': true,
+      'creative.video.music_video': false,
+    },
+    quotas: {
+      'creative.daily.image': 4,
+      'creative.daily.video': 3,
+    },
+    effectiveAt: new Date('2026-07-01T00:00:00.000Z'),
+    expiresAt: null,
+    reasonCode: 'preview_contract',
+  }, adminActor)
+  await repository.entitlements.transitionPlan(plan.id, {
+    status: 'active',
+    planVersionId: versioned.planVersion.id,
+    expectedVersion: 2,
+    reasonCode: 'approved_release',
+  }, adminActor)
+  await repository.entitlements.createGrant({
+    userHandle: 'promptlin',
+    planVersionId: versioned.planVersion.id,
+    startsAt: new Date('2026-07-10T00:00:00.000Z'),
+    endsAt: new Date('2026-08-01T00:00:00.000Z'),
+    reasonCode: 'limited_preview',
+    sourceType: 'admin',
+    sourceId: null,
+  }, adminActor)
+
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+    source: { NODE_ENV: 'test', CREATIVE_PROVIDER_MODE: 'mock', CREATIVE_DAILY_QUOTA: '10' },
+    now,
+  }))
+  try {
+    const preview = await requestJson(server.url, '/api/creative/accounting-policy/preview?workspace=video&mode=music_video', {
+      method: 'GET',
+      token: 'demo-access.promptlin',
+    })
+    assert.equal(preview.status, 200)
+    assert.equal(preview.payload.data.quota.limit, 3)
+    assert.equal(preview.payload.data.quota.weight, 12)
+    assert.equal(preview.payload.data.quota.allowed, false)
+    assert.equal(preview.payload.data.quota.policyVersion, 'personal.creator.limited-v1')
+    assert.equal(preview.payload.data.capability.entitled, false)
+    assert.equal(preview.payload.data.capability.available, false)
+    assert.equal(preview.payload.data.capability.reasonCode, 'capability_not_entitled')
+    assert.equal(preview.payload.data.entitlement.entitlement.source, 'personal_grant')
   } finally {
     await server.close()
   }

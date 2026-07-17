@@ -707,6 +707,87 @@ test('executeCreativeGeneration applies quota before fixture provider work', asy
   assert.equal(fixtureCalls, 0)
 })
 
+test('executeCreativeGeneration rejects a disabled personal entitlement before quota or Provider work', async () => {
+  resetCreativePolicyState()
+  let quotaCalls = 0
+  let entitlementInput = null
+
+  await assert.rejects(
+    executeCreativeGeneration({
+      request,
+      actor: { ...actor, role: 'creator' },
+      source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock', CREATIVE_DAILY_QUOTA: '10' },
+      entitlementRepository: {
+        evaluateForActor: async (_actor, input) => {
+          entitlementInput = input
+          return {
+            allowed: false,
+            reasonCode: 'capability_not_entitled',
+            capability: { key: input.capability, enabled: false },
+            quota: { key: input.quotaKey, limit: 5, requestedUnits: input.units, allowed: true },
+            entitlement: { source: 'personal_grant', planKey: 'personal.creator.limited', policyVersion: 'personal.creator.limited-v2' },
+          }
+        },
+      },
+      quotaRepository: {
+        reserve: async () => {
+          quotaCalls += 1
+          return { reserved: true, quota: {} }
+        },
+      },
+    }),
+    { code: 'CREATIVE_CAPABILITY_NOT_ENTITLED', statusCode: 403 },
+  )
+
+  assert.equal(entitlementInput.capability, 'creative.image.text_to_image')
+  assert.equal(entitlementInput.quotaKey, 'creative.daily.image')
+  assert.equal(entitlementInput.units, 1)
+  assert.equal(entitlementInput.baseQuotaLimit, 20)
+  assert.equal(quotaCalls, 0)
+})
+
+test('executeCreativeGeneration reserves the entitlement quota limit and policy version', async () => {
+  resetCreativePolicyState()
+  let reservation = null
+  const generated = await executeCreativeGeneration({
+    request,
+    actor: { ...actor, role: 'creator' },
+    source: { NODE_ENV: 'development', CREATIVE_PROVIDER_MODE: 'mock', CREATIVE_DAILY_QUOTA: '10' },
+    entitlementRepository: {
+      evaluateForActor: async (_actor, input) => ({
+        allowed: true,
+        reasonCode: null,
+        capability: { key: input.capability, enabled: true },
+        quota: { key: input.quotaKey, limit: 5, requestedUnits: input.units, allowed: true },
+        entitlement: { source: 'personal_grant', planKey: 'personal.creator.pro', policyVersion: 'personal.creator.pro-v3' },
+      }),
+    },
+    quotaRepository: {
+      reserve: async (payload) => {
+        reservation = payload
+        return {
+          reserved: true,
+          quota: {
+            reservationId: 'quota-entitled',
+            policyVersion: payload.policyVersion,
+            limit: payload.limit,
+            used: 0,
+            reserved: payload.costUnits,
+            released: 0,
+            remaining: payload.limit - payload.costUnits,
+          },
+        }
+      },
+    },
+  })
+
+  assert.equal(reservation.limit, 5)
+  assert.equal(reservation.policyVersion, 'personal.creator.pro-v3')
+  assert.equal(generated.quota.limit, 5)
+  assert.equal(generated.usage.entitlement.planKey, 'personal.creator.pro')
+  assert.equal(generated.policy.gates.entitlement, true)
+})
+
 test('executeCreativeGeneration releases pre-provider quota when fixture adapter throws', async () => {
   resetCreativePolicyState()
   const releases = []

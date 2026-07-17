@@ -41,7 +41,8 @@
     { "id": "modelControl", "domain": "model-control-plane", "layer": "transport", "registration": "registerModelControlRoutes" },
     { "id": "operations", "domain": "jobs-automation", "layer": "transport", "registration": "registerOperationRoutes" },
     { "id": "profiles", "domain": "user-profile", "layer": "transport", "registration": "registerProfileRoutes" },
-    { "id": "points", "domain": "entitlements-accounting", "layer": "transport", "registration": "registerPointsRoutes" }
+    { "id": "points", "domain": "entitlements-accounting", "layer": "transport", "registration": "registerPointsRoutes" },
+    { "id": "entitlements", "domain": "entitlements-accounting", "layer": "transport", "registration": "registerEntitlementRoutes" }
   ],
   "ownership": [
     { "domain": "identity-access", "owns": ["credentials", "OAuth authorization requests", "sessions", "roles", "permissions"] },
@@ -50,7 +51,7 @@
     { "domain": "community", "owns": ["posts", "comments", "likes"] },
     { "domain": "media-platform", "owns": ["assets", "lineage", "scan jobs", "download policy"] },
     { "domain": "ai-runtime", "owns": ["generations", "conversations", "provider operations"] },
-    { "domain": "entitlements-accounting", "owns": ["points", "credits", "quota", "reconciliation"] },
+    { "domain": "entitlements-accounting", "owns": ["product entitlements", "personal grants", "points", "credits", "quota", "reconciliation"] },
     { "domain": "notifications-webhooks", "owns": ["notifications", "delivery state"] },
     { "domain": "trust-safety-risk", "owns": ["security events", "risk decisions", "moderation cases"] },
     { "domain": "jobs-automation", "owns": ["jobs", "attempts", "leases", "schedules"] },

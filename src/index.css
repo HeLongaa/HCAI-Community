@@ -4767,6 +4767,312 @@ button.video-history-row.active {
   min-width: 0;
 }
 
+.entitlement-summary,
+.entitlement-admin-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+  overflow: hidden;
+  scroll-margin-top: 72px;
+}
+
+.entitlement-summary > *,
+.entitlement-admin-panel > * {
+  min-width: 0;
+}
+
+.entitlement-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(150px, 0.6fr) minmax(260px, 1fr);
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--border);
+}
+
+.entitlement-summary-grid > div {
+  min-width: 0;
+  padding: 14px;
+  background: var(--panel-soft);
+}
+
+.entitlement-plan-identity {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.entitlement-plan-identity > div,
+.entitlement-capability-count {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.entitlement-plan-identity strong,
+.entitlement-plan-identity span,
+.entitlement-plan-identity small {
+  overflow-wrap: anywhere;
+}
+
+.entitlement-summary-grid span,
+.entitlement-summary-grid small {
+  color: var(--muted);
+}
+
+.entitlement-capability-count strong {
+  font-size: 24px;
+}
+
+.entitlement-quota-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+}
+
+.entitlement-quota-list > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.entitlement-quota-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entitlement-toolbar,
+.entitlement-filter-row {
+  display: flex;
+  min-width: 0;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.entitlement-toolbar > label,
+.entitlement-filter-row > label,
+.entitlement-form-grid label,
+.entitlement-version-form label {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.entitlement-toolbar input,
+.entitlement-filter-row input,
+.entitlement-filter-row select,
+.entitlement-form-grid input,
+.entitlement-form-grid select,
+.entitlement-version-form textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+.entitlement-toolbar > label {
+  width: min(320px, 45%);
+}
+
+.entitlement-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--border);
+}
+
+.entitlement-metrics > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--panel-soft);
+}
+
+.entitlement-metrics span {
+  color: var(--muted);
+  text-transform: capitalize;
+}
+
+.entitlement-metrics strong {
+  font-size: 18px;
+}
+
+.entitlement-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(140px, 1fr)) minmax(120px, auto);
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.entitlement-form-grid .wide {
+  grid-column: span 2;
+}
+
+.entitlement-form-grid.grant-form {
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
+}
+
+.entitlement-master-detail {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.85fr) minmax(380px, 1.15fr);
+  min-height: 360px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.entitlement-master-detail > .admin-table {
+  max-height: 620px;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+}
+
+.entitlement-master-detail .admin-row.compact {
+  width: 100%;
+  grid-template-columns: 78px minmax(120px, 0.8fr) minmax(160px, 1fr);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  text-align: left;
+}
+
+.entitlement-master-detail .admin-row.compact small {
+  grid-column: 2 / -1;
+}
+
+.entitlement-master-detail .admin-row.selected {
+  box-shadow: inset 3px 0 var(--accent);
+  background: var(--hover-bg);
+}
+
+.entitlement-detail {
+  align-content: start;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--panel-soft);
+}
+
+.entitlement-detail > div:first-child,
+.entitlement-version-list > div,
+.entitlement-event-list > div,
+.entitlement-decision {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.entitlement-detail > div:first-child > span:first-child,
+.entitlement-version-list span,
+.entitlement-event-list span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.entitlement-detail small,
+.entitlement-event-list time {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.entitlement-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.entitlement-version-list,
+.entitlement-event-list {
+  display: grid;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--border);
+}
+
+.entitlement-version-list > div,
+.entitlement-event-list > div {
+  padding: 9px 10px;
+  background: var(--panel-strong);
+}
+
+.entitlement-version-list code {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.entitlement-version-form {
+  display: grid;
+  gap: 10px;
+}
+
+.entitlement-version-form textarea {
+  min-height: 96px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.entitlement-evaluate {
+  display: grid;
+  gap: 14px;
+}
+
+.entitlement-decision {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--danger);
+  border-radius: 6px;
+  background: var(--panel-soft);
+}
+
+.entitlement-decision.allowed {
+  border-left-color: var(--accent);
+}
+
+.entitlement-decision > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.entitlement-decision > div:nth-child(2) {
+  flex: 1;
+}
+
+.entitlement-decision span,
+.entitlement-decision small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 .operations-overview {
   display: grid;
   gap: 12px;
@@ -11080,8 +11386,71 @@ button.video-history-row.active {
 
   .billing-policy-overview,
   .billing-metrics-filters,
-  .billing-metrics-dashboard {
+  .billing-metrics-dashboard,
+  .entitlement-summary-grid,
+  .entitlement-master-detail,
+  .entitlement-form-grid,
+  .entitlement-form-grid.grant-form {
     grid-template-columns: 1fr;
+  }
+
+  .entitlement-toolbar,
+  .entitlement-filter-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .entitlement-admin-panel > .section-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .entitlement-admin-panel > .section-header > .button-row {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .entitlement-admin-panel > .section-header > .button-row > button {
+    min-width: 0;
+    flex: 1 1 100px;
+    white-space: normal;
+  }
+
+  .entitlement-toolbar > label {
+    width: 100%;
+  }
+
+  .entitlement-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .entitlement-form-grid .wide {
+    grid-column: auto;
+  }
+
+  .entitlement-master-detail > .admin-table {
+    max-height: 360px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .entitlement-master-detail .admin-row.compact {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .entitlement-master-detail .admin-row.compact > span:nth-of-type(2),
+  .entitlement-master-detail .admin-row.compact small {
+    grid-column: 2;
+  }
+
+  .entitlement-decision {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .entitlement-decision > div:nth-child(3) {
+    grid-column: 2;
   }
 
   .billing-policy-overview > button,

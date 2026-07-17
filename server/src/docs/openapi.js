@@ -1377,6 +1377,143 @@ export const openApiDocument = {
         },
       },
     },
+    '/entitlements/me': {
+      get: {
+        summary: 'Read the current user effective personal entitlement',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Effective personal grant or role-compatible fallback with capabilities, quotas, policy version, and non-monetary boundaries' },
+          '401': { description: 'Authentication required' },
+        },
+      },
+    },
+    '/entitlements/evaluate': {
+      post: {
+        summary: 'Evaluate one capability and optional quota for the current personal account',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['capability'], properties: {
+            capability: { type: 'string', example: 'creative.image.text_to_image' },
+            quotaKey: { type: ['string', 'null'], example: 'creative.daily.image' },
+            units: { type: 'integer', minimum: 1, default: 1 },
+          } } } },
+        },
+        responses: {
+          '200': { description: 'Deterministic entitlement decision with source and policy identity' },
+          '403': { description: 'Cross-account personal evaluation attempted' },
+        },
+      },
+    },
+    '/admin/entitlements/plans': {
+      get: {
+        summary: 'List personal entitlement plans',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'active', 'retired'] } },
+          { name: 'search', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 25 } },
+        ],
+        responses: { '200': { description: 'Bounded plan page and status summary' }, '403': { description: 'Entitlement read permission required' } },
+      },
+      post: {
+        summary: 'Create a draft personal entitlement plan',
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['key', 'title'], properties: {
+          key: { type: 'string', pattern: '^[a-z][a-z0-9_.-]{1,63}$' }, title: { type: 'string', maxLength: 160 }, description: { type: ['string', 'null'], maxLength: 500 },
+        } } } } },
+        responses: { '200': { description: 'Draft plan with CAS version 1' }, '409': { description: 'Plan key already exists' } },
+      },
+    },
+    '/admin/entitlements/plans/export': {
+      get: {
+        summary: 'Export a bounded safe personal entitlement snapshot',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'Secret-free plans and grants snapshot with stable schema version' } },
+      },
+    },
+    '/admin/entitlements/plans/{id}': {
+      get: {
+        summary: 'Read a personal entitlement plan and immutable version history',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Plan detail and version history' }, '404': { description: 'Plan not found' } },
+      },
+    },
+    '/admin/entitlements/plans/{id}/versions': {
+      post: {
+        summary: 'Append an immutable personal entitlement plan version',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['expectedPlanVersion', 'capabilities', 'quotas', 'effectiveAt', 'reasonCode'], properties: {
+          expectedPlanVersion: { type: 'integer', minimum: 1 }, capabilities: { type: 'object', additionalProperties: { type: 'boolean' } }, quotas: { type: 'object', additionalProperties: { type: 'integer', minimum: 0, maximum: 1000000 } }, effectiveAt: { type: 'string', format: 'date-time' }, expiresAt: { type: ['string', 'null'], format: 'date-time' }, reasonCode: { type: 'string' },
+        } } } } },
+        responses: { '200': { description: 'Appended version and incremented plan CAS version' }, '409': { description: 'Stale plan version' } },
+      },
+    },
+    '/admin/entitlements/plans/{id}/transitions': {
+      post: {
+        summary: 'Activate or retire a personal entitlement plan with CAS',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['status', 'expectedVersion', 'reasonCode'], properties: { status: { type: 'string', enum: ['active', 'retired'] }, planVersionId: { type: ['string', 'null'] }, expectedVersion: { type: 'integer', minimum: 1 }, reasonCode: { type: 'string' } } } } } },
+        responses: { '200': { description: 'Transitioned plan projection' }, '409': { description: 'Stale or invalid transition' } },
+      },
+    },
+    '/admin/entitlements/grants': {
+      get: {
+        summary: 'List personal entitlement grants',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['scheduled', 'active', 'revoked', 'expired'] } },
+          { name: 'userHandle', in: 'query', schema: { type: 'string' } },
+          { name: 'search', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 25 } },
+        ],
+        responses: { '200': { description: 'Bounded owner-safe grant page and status summary' } },
+      },
+      post: {
+        summary: 'Assign the active plan version to one personal account',
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['userHandle', 'planVersionId', 'startsAt', 'reasonCode'], properties: { userHandle: { type: 'string' }, planVersionId: { type: 'string' }, startsAt: { type: 'string', format: 'date-time' }, endsAt: { type: ['string', 'null'], format: 'date-time' }, reasonCode: { type: 'string' }, sourceType: { type: 'string', default: 'admin' }, sourceId: { type: ['string', 'null'] } } } } } },
+        responses: { '200': { description: 'Active or scheduled personal grant and immutable granted event' }, '409': { description: 'Inactive plan version or conflicting grant' } },
+      },
+    },
+    '/admin/entitlements/grants/{id}': {
+      get: {
+        summary: 'Read one personal entitlement grant and immutable events',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Grant detail, plan version, safe user identity, and event history' }, '404': { description: 'Grant not found' } },
+      },
+    },
+    '/admin/entitlements/grants/{id}/transitions': {
+      post: {
+        summary: 'Activate, revoke, or expire a personal entitlement grant with CAS',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['status', 'expectedVersion', 'reasonCode'], properties: { status: { type: 'string', enum: ['active', 'revoked', 'expired'] }, expectedVersion: { type: 'integer', minimum: 1 }, reasonCode: { type: 'string' } } } } } },
+        responses: { '200': { description: 'Transitioned grant and appended immutable event' }, '409': { description: 'Stale or invalid transition' } },
+      },
+    },
+    '/admin/entitlements/grants/expiry-sweep': {
+      post: {
+        summary: 'Expire bounded personal grants whose validity windows elapsed',
+        security: [{ bearerAuth: [] }],
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 100, default: 50 }, reasonCode: { type: 'string', default: 'validity_window_elapsed' } } } } } },
+        responses: { '200': { description: 'Inspected and expired counts with transitioned grants' } },
+      },
+    },
+    '/admin/entitlements/evaluate': {
+      post: {
+        summary: 'Evaluate personal entitlement capability and quota for an Admin-selected user',
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['userHandle', 'capability'], properties: { userHandle: { type: 'string' }, capability: { type: 'string' }, quotaKey: { type: ['string', 'null'] }, units: { type: 'integer', minimum: 1, default: 1 } } } } } },
+        responses: { '200': { description: 'Audited deterministic personal entitlement decision' }, '404': { description: 'Personal account not found' } },
+      },
+    },
     '/creative/accounting-policy': {
       get: {
         summary: 'Read the active immutable creative accounting policy',

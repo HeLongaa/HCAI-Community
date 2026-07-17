@@ -397,6 +397,19 @@ enum ConfigResourceKind {
   task_rule
 }
 
+enum EntitlementPlanStatus {
+  draft
+  active
+  retired
+}
+
+enum PersonalEntitlementGrantStatus {
+  scheduled
+  active
+  revoked
+  expired
+}
+
 model AuditEvent {
   id                    String         @id @default(cuid())
   actorType             AuditActorType @map("actor_type")
@@ -831,6 +844,101 @@ model TaskRule {
   @@map("task_rules")
 }
 
+model EntitlementPlan {
+  id              String                @id
+  key             String                @unique
+  title           String
+  description     String?
+  status          EntitlementPlanStatus @default(draft)
+  activeVersionId String?               @map("active_version_id")
+  version         Int                   @default(1)
+  createdByRef    String                @map("created_by_ref")
+  updatedByRef    String                @map("updated_by_ref")
+  activatedAt     DateTime?             @map("activated_at")
+  retiredAt       DateTime?             @map("retired_at")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+
+  activeVersion EntitlementPlanVersion?  @relation("ActiveEntitlementPlanVersion", fields: [activeVersionId], references: [id], onDelete: Restrict)
+  versions      EntitlementPlanVersion[] @relation("EntitlementPlanVersions")
+
+  @@index([status, updatedAt])
+  @@index([activeVersionId])
+  @@map("entitlement_plans")
+}
+
+model EntitlementPlanVersion {
+  id                        String    @id
+  planId                    String    @map("plan_id")
+  version                   Int
+  capabilities              Json
+  capabilitiesSchemaVersion Int       @default(1) @map("capabilities_schema_version")
+  quotas                    Json
+  quotasSchemaVersion       Int       @default(1) @map("quotas_schema_version")
+  effectiveAt               DateTime  @map("effective_at")
+  expiresAt                 DateTime? @map("expires_at")
+  contentHash               String    @map("content_hash")
+  actorRef                  String    @map("actor_ref")
+  reasonCode                String    @map("reason_code")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+
+  plan           EntitlementPlan            @relation("EntitlementPlanVersions", fields: [planId], references: [id], onDelete: Restrict)
+  activeForPlans EntitlementPlan[]          @relation("ActiveEntitlementPlanVersion")
+  grants         PersonalEntitlementGrant[]
+
+  @@unique([planId, version])
+  @@index([planId, effectiveAt])
+  @@index([expiresAt])
+  @@map("entitlement_plan_versions")
+}
+
+model PersonalEntitlementGrant {
+  id            String                         @id
+  userId        String                         @map("user_id")
+  planVersionId String                         @map("plan_version_id")
+  status        PersonalEntitlementGrantStatus @default(scheduled)
+  startsAt      DateTime                       @map("starts_at")
+  endsAt        DateTime?                      @map("ends_at")
+  version       Int                            @default(1)
+  reasonCode    String                         @map("reason_code")
+  sourceType    String                         @default("admin") @map("source_type")
+  sourceId      String?                        @map("source_id")
+  grantedByRef  String                         @map("granted_by_ref")
+  revokedByRef  String?                        @map("revoked_by_ref")
+  revokedAt     DateTime?                      @map("revoked_at")
+  createdAt     DateTime                       @default(now()) @map("created_at")
+  updatedAt     DateTime                       @updatedAt @map("updated_at")
+
+  user        User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  planVersion EntitlementPlanVersion  @relation(fields: [planVersionId], references: [id], onDelete: Restrict)
+  events      EntitlementGrantEvent[]
+
+  @@index([userId, status, startsAt])
+  @@index([planVersionId, status])
+  @@index([endsAt, status])
+  @@map("personal_entitlement_grants")
+}
+
+model EntitlementGrantEvent {
+  id                    String                          @id
+  grantId               String                          @map("grant_id")
+  eventType             String                          @map("event_type")
+  fromStatus            PersonalEntitlementGrantStatus? @map("from_status")
+  toStatus              PersonalEntitlementGrantStatus  @map("to_status")
+  actorRef              String                          @map("actor_ref")
+  reasonCode            String                          @map("reason_code")
+  evidence              Json
+  evidenceSchemaVersion Int                             @default(1) @map("evidence_schema_version")
+  contentHash           String                          @map("content_hash")
+  createdAt             DateTime                        @default(now()) @map("created_at")
+
+  grant PersonalEntitlementGrant @relation(fields: [grantId], references: [id], onDelete: Restrict)
+
+  @@index([grantId, createdAt])
+  @@index([eventType, createdAt])
+  @@map("entitlement_grant_events")
+}
+
 model OperationLease {
   key                   String    @id
   ownerId               String    @map("owner_id")
@@ -1191,6 +1299,7 @@ model User {
   taskSubmissionAssets         TaskSubmissionAsset[]
   creativeGenerationAssets     CreativeGenerationAsset[]
   chatTurnInputAssets          ChatTurnInputAsset[]
+  personalEntitlementGrants    PersonalEntitlementGrant[]
 
   @@map("users")
 }
