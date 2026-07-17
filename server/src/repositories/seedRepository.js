@@ -18,6 +18,7 @@ import { createSeedProviderLegalRepository } from '../modelControl/seedProviderL
 import { createSeedGenerationExecutionRepository } from '../creative/seedGenerationExecutionRepository.js'
 import { createSeedObservabilityRepository } from '../observability/seedObservabilityRepository.js'
 import { createSeedOAuthAdminRepository } from '../auth/seedOAuthAdminRepository.js'
+import { createSeedAuthSessionAdminRepository } from '../auth/seedAuthSessionAdminRepository.js'
 import { createSeedTaskAdminRepository } from '../tasks/seedTaskAdminRepository.js'
 import { createSeedTaskLifecycleRecoveryRepository } from '../tasks/seedTaskLifecycleRecoveryRepository.js'
 import { createSeedBillingAdminRepository } from '../accounting/seedBillingAdminRepository.js'
@@ -127,6 +128,7 @@ import {
 } from '../compliance/policyManifest.js'
 
 const sessionByRefreshToken = new Map()
+const authSessionById = new Map()
 const emailAccountByEmail = new Map()
 const oauthAccountByProviderKey = new Map()
 const oauthAccountMetadataByProviderKey = new Map()
@@ -560,27 +562,68 @@ const buildPointSummary = (entries, userHandle) => {
 
 const getSessionDto = (session) => ({
   id: session.id,
-  familyId: session.familyId,
+  familyId: session.id,
+  clientLabel: session.clientLabel,
+  networkHint: session.networkHash ? session.networkHash.slice(0, 8) : null,
+  status: session.revokedAt ? 'revoked' : session.expiresAt <= new Date() ? 'expired' : 'active',
+  riskStatus: session.riskStatus,
+  riskReasonCode: session.riskReasonCode,
+  riskDetectedAt: session.riskDetectedAt?.toISOString?.() ?? null,
+  reviewedAt: session.reviewedAt?.toISOString?.() ?? null,
+  revokeReasonCode: session.revokeReasonCode,
+  version: session.version,
   createdAt: session.createdAt.toISOString(),
+  lastSeenAt: session.lastSeenAt.toISOString(),
   expiresAt: session.expiresAt.toISOString(),
   revokedAt: session.revokedAt?.toISOString?.() ?? null,
-  reuseDetectedAt: session.reuseDetectedAt?.toISOString?.() ?? null,
+  reuseDetectedAt: session.riskReasonCode === 'refresh_token_reuse' ? session.riskDetectedAt?.toISOString?.() ?? null : null,
   active: !session.revokedAt && session.expiresAt > new Date(),
+  current: false,
 })
 
 const issueSession = (account, options = {}) => {
   const seededAccount = getAccountByHandle(account.handle) ?? account
-  const accessToken = createAccessToken(seededAccount.id, { handle: seededAccount.handle })
+  const now = new Date()
+  const sessionId = options.sessionId ?? options.familyId ?? randomUUID()
+  const expiresAt = futureDate(refreshTokenTtlMs)
+  const existingSession = authSessionById.get(sessionId)
+  const session = existingSession
+    ? {
+        ...existingSession,
+        clientLabel: options.clientContext?.clientLabel ?? existingSession.clientLabel,
+        networkHash: options.clientContext?.networkHash ?? existingSession.networkHash,
+        lastSeenAt: now,
+        expiresAt,
+      }
+    : {
+        id: sessionId,
+        handle: seededAccount.handle,
+        clientLabel: options.clientContext?.clientLabel ?? 'Unknown client',
+        networkHash: options.clientContext?.networkHash ?? null,
+        riskStatus: 'normal',
+        riskReasonCode: null,
+        riskDetectedAt: null,
+        reviewedAt: null,
+        reviewedById: null,
+        revokedAt: null,
+        revokeReasonCode: null,
+        version: 1,
+        createdAt: now,
+        lastSeenAt: now,
+        expiresAt,
+      }
+  authSessionById.set(sessionId, session)
+  const accessToken = createAccessToken(seededAccount.id, { handle: seededAccount.handle, sid: sessionId })
   const refreshToken = createOpaqueToken('hcai_refresh')
   sessionByRefreshToken.set(refreshToken, {
     id: randomUUID(),
-    familyId: options.familyId ?? randomUUID(),
+    familyId: sessionId,
     handle: seededAccount.handle,
-    expiresAt: futureDate(refreshTokenTtlMs),
+    expiresAt,
     revokedAt: null,
     replacedByToken: null,
     reuseDetectedAt: null,
-    createdAt: new Date(),
+    createdAt: now,
   })
   return {
     accessToken,
@@ -589,7 +632,7 @@ const issueSession = (account, options = {}) => {
   }
 }
 
-const registerEmailAccount = async ({ email, password, displayName, handle }, consent = null) => {
+const registerEmailAccount = async ({ email, password, displayName, handle }, consent = null, clientContext = null) => {
   const normalizedEmail = normalizeEmail(email)
   if (
     emailAccountByEmail.has(normalizedEmail) ||
@@ -631,15 +674,15 @@ const registerEmailAccount = async ({ email, password, displayName, handle }, co
       record,
     )
   }
-  return issueSession(account)
+  return issueSession(account, { clientContext })
 }
 
-const loginWithPassword = async ({ email, password }) => {
+const loginWithPassword = async ({ email, password }, clientContext = null) => {
   const account = emailAccountByEmail.get(normalizeEmail(email))
   if (!account || !(await verifyPassword(password, account.passwordHash))) {
     return null
   }
-  return issueSession(account)
+  return issueSession(account, { clientContext })
 }
 
 const createOAuthAuthorizationRequest = async ({ stateHash, provider, redirectTo, linkUserId = null, providerControlVersion = 0, expiresAt }) => {
@@ -682,7 +725,7 @@ const consumeOAuthAuthorizationRequest = async ({ stateHash, provider }) => {
   return { ...request }
 }
 
-const completeOAuthLogin = async ({ profile, linkUserId = null }) => {
+const completeOAuthLogin = async ({ profile, linkUserId = null, clientContext = null }) => {
   const key = oauthKey(profile.provider, profile.providerUserId)
   const linkedHandle = oauthAccountByProviderKey.get(key)
   if (linkUserId) {
@@ -696,12 +739,12 @@ const completeOAuthLogin = async ({ profile, linkUserId = null }) => {
     }
     linkSeedOAuthAccount(key, actor.handle)
     recordAudit(actor, 'auth.oauth.linked', 'auth_account', oauthAuditResourceId(profile.provider, profile.providerUserId), { provider: profile.provider })
-    return issueSession(actor)
+    return issueSession(actor, { clientContext })
   }
 
   if (linkedHandle) {
     const linkedAccount = getAccountByHandle(linkedHandle)
-    return linkedAccount ? issueSession(linkedAccount) : null
+    return linkedAccount ? issueSession(linkedAccount, { clientContext }) : null
   }
 
   const normalizedEmail = normalizeEmail(profile.email)
@@ -713,7 +756,7 @@ const completeOAuthLogin = async ({ profile, linkUserId = null }) => {
     }
     linkSeedOAuthAccount(key, existing.handle)
     recordAudit(existing, 'auth.oauth.linked', 'auth_account', oauthAuditResourceId(profile.provider, profile.providerUserId), { provider: profile.provider })
-    return issueSession(existing)
+    return issueSession(existing, { clientContext })
   }
 
   const handle = makeUniqueHandle(normalizedEmail, profile.provider)
@@ -740,7 +783,7 @@ const completeOAuthLogin = async ({ profile, linkUserId = null }) => {
   seedStore.demoAccountByRefreshToken.set(account.tokens.refreshToken, account)
   linkSeedOAuthAccount(key, account.handle)
   recordAudit(account, 'auth.oauth.registered', 'user', account.id, { provider: profile.provider })
-  return issueSession(account)
+  return issueSession(account, { clientContext })
 }
 
 const listOAuthAccounts = (actor) =>
@@ -2495,6 +2538,13 @@ export const createSeedRepository = () => {
     countAuthMethods: countSeedAuthMethods,
     recordAudit,
   })
+  const authSessionAdmin = createSeedAuthSessionAdminRepository({
+    authSessionById,
+    sessionByRefreshToken,
+    getAccountByHandle,
+    getAccountById,
+    recordAudit,
+  })
   const taskAdmin = createSeedTaskAdminRepository({
     tasks: seedStore.tasks,
     getTask: getTaskById,
@@ -2538,6 +2588,7 @@ export const createSeedRepository = () => {
   creativeGenerationExecutions,
   observability,
   oauthAdmin,
+  authSessionAdmin,
   taskAdmin,
   taskLifecycleRecovery,
   billingAdmin,
@@ -2547,20 +2598,24 @@ export const createSeedRepository = () => {
     findDemoAccountByAccessToken: (token) => {
       const payload = verifyAccessToken(token)
       if (payload) {
+        const session = payload.sid ? authSessionById.get(payload.sid) : null
+        if (!session || session.revokedAt || session.expiresAt <= new Date() || session.riskStatus === 'compromised') return null
+        authSessionById.set(session.id, { ...session, lastSeenAt: new Date() })
         return getAccountById(payload.sub) ?? getAccountByHandle(payload.handle) ?? null
       }
       return seedStore.demoAccountByAccessToken.get(token) ?? null
     },
     findDemoAccountByRefreshToken: (token) => {
       const session = sessionByRefreshToken.get(token)
-      if (session && !session.revokedAt && session.expiresAt > new Date()) {
+      const logicalSession = session ? authSessionById.get(session.familyId) : null
+      if (session && logicalSession && !session.revokedAt && !logicalSession.revokedAt && logicalSession.riskStatus !== 'compromised' && session.expiresAt > new Date()) {
         return getAccountByHandle(session.handle)
       }
       return seedStore.demoAccountByRefreshToken.get(token) ?? null
     },
     findDemoAccountByHandle: (handle) => seedStore.demoAccountByHandle.get(handle) ?? null,
     listDemoAccounts: () => seedStore.demoAccounts,
-    issueSession: (account) => issueSession(account),
+    issueSession: (account, clientContext) => issueSession(account, { clientContext }),
     registerEmailAccount,
     loginWithPassword,
     createOAuthAuthorizationRequest,
@@ -2568,7 +2623,7 @@ export const createSeedRepository = () => {
     completeOAuthLogin,
     listOAuthAccounts,
     unlinkOAuthAccount,
-    rotateSession: (token) => {
+    rotateSession: (token, clientContext) => {
       const session = sessionByRefreshToken.get(token)
       if (session?.revokedAt && session.replacedByToken) {
         const now = new Date()
@@ -2577,51 +2632,83 @@ export const createSeedRepository = () => {
             sessionByRefreshToken.set(refreshToken, { ...candidate, revokedAt: candidate.revokedAt ?? now, reuseDetectedAt: now })
           }
         }
+        const logicalSession = authSessionById.get(session.familyId)
+        if (logicalSession) {
+          authSessionById.set(session.familyId, {
+            ...logicalSession,
+            riskStatus: 'compromised',
+            riskReasonCode: 'refresh_token_reuse',
+            riskDetectedAt: now,
+            revokedAt: logicalSession.revokedAt ?? now,
+            revokeReasonCode: logicalSession.revokeReasonCode ?? 'refresh_token_reuse',
+            version: logicalSession.version + 1,
+            lastSeenAt: now,
+          })
+        }
         recordAudit(getAccountByHandle(session.handle), 'auth.session.reuse_detected', 'auth_session', session.id, { familyId: session.familyId })
         return null
       }
-      const handle = session && !session.revokedAt && session.expiresAt > new Date()
+      const logicalSession = session ? authSessionById.get(session.familyId) : null
+      const handle = session && logicalSession && !session.revokedAt && !logicalSession.revokedAt && logicalSession.riskStatus !== 'compromised' && session.expiresAt > new Date() && logicalSession.expiresAt > new Date()
         ? session.handle
         : seedStore.demoAccountByRefreshToken.get(token)?.handle ?? null
       if (!handle) {
         return null
       }
       const account = getAccountByHandle(handle)
-      const next = account ? issueSession(account, { familyId: session?.familyId }) : null
+      const next = account ? issueSession(account, { sessionId: session?.familyId, clientContext }) : null
       if (session && next) {
         sessionByRefreshToken.set(token, { ...session, revokedAt: new Date(), replacedByToken: next.refreshToken })
       }
       return next
     },
-    revokeSession: (token) => {
+    revokeSession: (token, reasonCode = 'user_logout') => {
       const session = sessionByRefreshToken.get(token)
       if (session) {
-        sessionByRefreshToken.set(token, { ...session, revokedAt: new Date() })
+        const now = new Date()
+        for (const [candidateToken, candidate] of sessionByRefreshToken.entries()) {
+          if (candidate.familyId === session.familyId && !candidate.revokedAt) {
+            sessionByRefreshToken.set(candidateToken, { ...candidate, revokedAt: now })
+          }
+        }
+        const logicalSession = authSessionById.get(session.familyId)
+        if (logicalSession && !logicalSession.revokedAt) {
+          authSessionById.set(session.familyId, { ...logicalSession, revokedAt: now, revokeReasonCode: reasonCode, version: logicalSession.version + 1 })
+        }
       }
       return true
     },
-    listSessions: (actor) =>
-      [...sessionByRefreshToken.values()]
+    listSessions: (actor, currentSessionId = null) =>
+      [...authSessionById.values()]
         .filter((session) => getAccountByHandle(session.handle)?.id === actor.id)
-        .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
-        .map(getSessionDto),
+        .sort((left, right) => right.lastSeenAt.getTime() - left.lastSeenAt.getTime())
+        .map((session) => ({ ...getSessionDto(session), current: session.id === currentSessionId })),
     revokeSessionById: (id, actor) => {
-      for (const [token, session] of sessionByRefreshToken.entries()) {
-        if (session.id === id && getAccountByHandle(session.handle)?.id === actor.id && !session.revokedAt) {
-          sessionByRefreshToken.set(token, { ...session, revokedAt: new Date() })
-          return true
+      const logicalSession = authSessionById.get(id)
+      if (logicalSession && getAccountByHandle(logicalSession.handle)?.id === actor.id && !logicalSession.revokedAt) {
+        const now = new Date()
+        for (const [token, session] of sessionByRefreshToken.entries()) {
+          if (session.familyId === id && !session.revokedAt) sessionByRefreshToken.set(token, { ...session, revokedAt: now })
         }
+        authSessionById.set(id, { ...logicalSession, revokedAt: now, revokeReasonCode: 'user_revoked', version: logicalSession.version + 1 })
+        recordAudit(actor, 'auth.session.revoked', 'auth_session', id, { reasonCode: 'user_revoked' })
+        return true
       }
       return false
     },
     revokeAllSessions: (actor) => {
       let revoked = 0
-      for (const [token, session] of sessionByRefreshToken.entries()) {
+      const now = new Date()
+      for (const [id, session] of authSessionById.entries()) {
         if (getAccountByHandle(session.handle)?.id === actor.id && !session.revokedAt) {
-          sessionByRefreshToken.set(token, { ...session, revokedAt: new Date() })
+          authSessionById.set(id, { ...session, revokedAt: now, revokeReasonCode: 'user_revoked_all', version: session.version + 1 })
           revoked += 1
         }
       }
+      for (const [token, session] of sessionByRefreshToken.entries()) {
+        if (getAccountByHandle(session.handle)?.id === actor.id && !session.revokedAt) sessionByRefreshToken.set(token, { ...session, revokedAt: now })
+      }
+      recordAudit(actor, 'auth.sessions.revoked_all', 'user', actor.id, { reasonCode: 'user_revoked_all', revoked })
       return { revoked }
     },
   },

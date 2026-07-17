@@ -6,6 +6,8 @@ import type {
   AdminOAuthAuthorizationQuery,
   AdminOAuthAuthorizationRequest,
   AdminOAuthProviderControl,
+  AdminAuthSession,
+  AdminAuthSessionQuery,
   AdminTaskBulkAction,
   AdminTaskBulkPreview,
   AdminTaskBulkResult,
@@ -209,6 +211,19 @@ export const adminService = {
   },
   async revokeOAuthAuthorizationRequest(id: string, reasonCode: string) {
     return api.post<{ revoked: true; request: AdminOAuthAuthorizationRequest }>(`/admin/auth/oauth/authorization-requests/${encodeURIComponent(id)}/revoke`, { reasonCode })
+  },
+  async authSessions(query?: AdminAuthSessionQuery) {
+    const envelope = await api.getEnvelope<AdminAuthSession[]>(withQuery('/admin/auth/sessions', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async dispositionAuthSession(id: string, payload: { riskStatus: AdminAuthSession['riskStatus']; expectedVersion: number; reasonCode: string }) {
+    return api.post<{ session: AdminAuthSession }>(`/admin/auth/sessions/${encodeURIComponent(id)}/disposition`, payload)
+  },
+  async revokeAuthSession(id: string, payload: { expectedVersion: number; reasonCode: string }) {
+    return api.post<{ session: AdminAuthSession }>(`/admin/auth/sessions/${encodeURIComponent(id)}/revoke`, payload)
+  },
+  async revokeUserAuthSessions(userId: string, reasonCode: string) {
+    return api.post<{ revoked: number }>(`/admin/auth/users/${encodeURIComponent(userId)}/sessions/revoke`, { reasonCode })
   },
   async modelControlSummary() {
     return api.get<ModelControlSummaryDto>('/admin/model-control/summary')

@@ -301,11 +301,11 @@
     {
       "id": "authentication_credentials_sessions",
       "classification": "restricted",
-      "prismaModels": ["AuthAccount", "OAuthAuthorizationRequest", "OAuthProviderControl", "RefreshToken"],
+      "prismaModels": ["AuthAccount", "OAuthAuthorizationRequest", "OAuthProviderControl", "AuthSession", "RefreshToken"],
       "locations": ["postgres"],
       "dataSubjects": ["user"],
       "purposes": ["account_service", "auth_security"],
-      "exampleFields": ["provider user id", "password hash", "OAuth state hash", "authorization expiry/consumption/revocation", "Provider enabled state and reason code", "token hash", "token family", "expiry", "revocation"],
+      "exampleFields": ["provider user id", "password hash", "OAuth state hash", "authorization expiry/consumption/revocation", "Provider enabled state and reason code", "logical session client class", "keyed network hash", "risk and revocation evidence", "token hash", "token family", "expiry", "revocation"],
       "accessRoles": ["authorized_auth_service", "security_operator_redacted"],
       "retentionPolicyId": "auth_expiry_plus_30d",
       "exportPolicy": "include_provider_names_and_session_summary_only",
@@ -1071,10 +1071,10 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 110,
+    "modelCount": 111,
     "availableCapabilities": [
       "User has an explicit deleted status",
-      "refresh sessions can be revoked and have expiry timestamps",
+      "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",
       "media scan history supports archive-before-prune with 180-day and per-asset defaults",
       "creative generation records store prompt hash and bounded preview instead of a raw prompt field",
       "Provider adapter contracts reject secret-like metadata keys",
@@ -1135,6 +1135,9 @@
       "server/src/media/scanProvider.js",
       "server/src/storage/archiveWriter.js",
       "server/src/modules/auth/routes.js",
+      "server/src/auth/sessionLifecycle.js",
+      "server/src/auth/prismaAuthSessionAdminRepository.js",
+      "server/src/modules/authSessionAdmin/routes.js",
       "server/src/modules/compliance/routes.js",
       "server/src/compliance/policyManifest.js"
     ]

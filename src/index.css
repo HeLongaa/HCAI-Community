@@ -5088,6 +5088,8 @@ button.video-history-row.active {
   gap: 16px;
   height: auto;
   min-height: 0;
+  min-width: 0;
+  max-width: 100%;
   overflow: visible;
 }
 
@@ -5145,6 +5147,23 @@ button.video-history-row.active {
   grid-template-columns: minmax(280px, .9fr) minmax(360px, 1.1fr);
   gap: 16px;
   align-items: start;
+  min-width: 0;
+}
+
+.release-control-grid > *,
+.release-list,
+.release-detail,
+.release-list button.admin-row > span:first-child {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.release-list button.admin-row strong,
+.release-list button.admin-row small,
+.release-detail strong,
+.release-detail small,
+.release-detail p {
+  overflow-wrap: anywhere;
 }
 
 .release-list button.admin-row {
@@ -7290,6 +7309,20 @@ button.video-history-row.active {
 .app-shell.page-admin .mini-player, .app-shell.page-admin .ai-island, .app-shell.page-admin .ai-island-float,
 .app-shell.page-generations .mini-player, .app-shell.page-generations .ai-island, .app-shell.page-generations .ai-island-float { display: none; }
 .oauth-provider-list, .oauth-record-list { display: grid; gap: 8px; min-width: 0; }
+.panel.auth-session-admin-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; width: 100%; max-width: 100%; height: auto; min-width: 0; min-height: 0; overflow: visible; }
+.auth-session-filters { display: grid; grid-template-columns: repeat(2, minmax(120px, 160px)) minmax(180px, 1fr) minmax(100px, 130px) auto; gap: 10px; align-items: end; min-width: 0; }
+.auth-session-filters label { display: grid; gap: 5px; min-width: 0; }
+.auth-session-filters label > span { color: var(--muted); font-size: 12px; }
+.auth-session-admin-list { display: grid; gap: 8px; min-width: 0; }
+.auth-session-admin-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(130px, 0.8fr) auto minmax(150px, 0.8fr) minmax(150px, 0.8fr) minmax(120px, 150px) auto; gap: 10px; align-items: center; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; }
+.auth-session-admin-row > div { min-width: 0; }
+.auth-session-admin-row > div:not(.auth-session-row-actions) { display: grid; gap: 3px; }
+.auth-session-admin-row span { min-width: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.auth-session-admin-row input, .auth-session-admin-row select { min-width: 0; width: 100%; }
+.auth-session-admin-row > div:nth-child(3) { display: flex; flex-wrap: wrap; gap: 5px; }
+.auth-session-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.auth-session-row-actions > * { min-width: 0; }
+.auth-session-row-actions > .icon-button { flex: 0 0 40px; width: 40px; }
 .oauth-provider-row { display: grid; grid-template-columns: minmax(140px, 1fr) auto auto minmax(150px, 240px) auto; gap: 10px; align-items: center; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: rgba(255, 255, 255, 0.03); }
 .oauth-provider-row > div:first-child, .oauth-record-row > div:first-child { display: grid; gap: 3px; min-width: 0; }
 .oauth-provider-row span, .oauth-record-row span { min-width: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
@@ -7313,6 +7346,13 @@ button.video-history-row.active {
 .oauth-request-row { grid-template-columns: minmax(180px, 1.4fr) 90px minmax(150px, 1fr) minmax(150px, 1fr) 36px; }
 
 @media (max-width: 760px) {
+  .auth-session-filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .auth-session-filters .oauth-search-field, .auth-session-filters > button { grid-column: 1 / -1; }
+  .auth-session-filters > button { width: 100%; }
+  .auth-session-admin-row { grid-template-columns: minmax(0, 1fr); align-items: start; max-width: 100%; }
+  .auth-session-admin-row > * { grid-column: 1; max-width: 100%; }
+  .auth-session-row-actions { display: grid; grid-template-columns: 40px 40px minmax(0, 1fr); justify-content: stretch; width: 100%; }
+  .auth-session-row-actions .ghost-button { width: 100%; }
   .oauth-provider-row { grid-template-columns: minmax(0, 1fr) auto; }
   .oauth-provider-row input { grid-column: 1 / -1; }
   .oauth-provider-config { grid-template-columns: minmax(0, 1fr); }

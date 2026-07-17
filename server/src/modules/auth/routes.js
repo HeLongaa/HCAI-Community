@@ -30,6 +30,8 @@ import {
   verifyOAuthState,
 } from '../../auth/oauth.js'
 import { recordAuthFailure } from '../../auth/loginMonitor.js'
+import { buildSessionClientContext } from '../../auth/sessionLifecycle.js'
+import { verifyAccessToken } from '../../auth/sessionTokens.js'
 import { repositories } from '../../repositories/index.js'
 import { serializeAccount } from '../../repositories/serializers.js'
 import { recordSecurityEvent } from '../../security/securityEvents.js'
@@ -145,7 +147,7 @@ export const registerAuthRoutes = (router) => {
     return controls.find((control) => control.provider === provider) ?? null
   }
 
-  const completeOAuthCallback = async ({ provider, query }) => {
+  const completeOAuthCallback = async ({ provider, query, request }) => {
     if (!oauthAccountProviders.includes(provider)) {
       throw new HttpError(404, 'NOT_FOUND', 'OAuth provider not found')
     }
@@ -208,6 +210,7 @@ export const registerAuthRoutes = (router) => {
     const session = await repositories.auth.completeOAuthLogin?.({
       profile,
       linkUserId: authorizationRequest.linkUserId,
+      clientContext: buildSessionClientContext(request),
     })
     if (!session) {
       throw new HttpError(409, 'OAUTH_ACCOUNT_CONFLICT', 'OAuth account is already linked to another user')
@@ -232,7 +235,7 @@ export const registerAuthRoutes = (router) => {
     const body = (await readJsonBody(request)) ?? {}
     if (body.email || body.password) {
       const payload = parseEmailLoginRequest(body)
-      const session = await repositories.auth.loginWithPassword?.(payload)
+      const session = await repositories.auth.loginWithPassword?.(payload, buildSessionClientContext(request))
       if (!session) {
         await recordAuthFailure(request, {
           identity: payload.email,
@@ -259,7 +262,7 @@ export const registerAuthRoutes = (router) => {
       })
       throw new HttpError(401, 'AUTH_FAILED', 'Unknown demo account')
     }
-    const session = repositories.auth.issueSession ? await repositories.auth.issueSession(account) : account
+    const session = repositories.auth.issueSession ? await repositories.auth.issueSession(account, buildSessionClientContext(request)) : account
     sendSession(response, {
       accessToken: session?.accessToken ?? account.tokens.accessToken,
       refreshToken: session?.refreshToken ?? account.tokens.refreshToken,
@@ -271,7 +274,7 @@ export const registerAuthRoutes = (router) => {
     const body = (await readJsonBody(request)) ?? {}
     const consent = validatePolicyConsent(body.policyConsent, 'email_registration')
     const payload = parseRegisterRequest(body)
-    const session = await repositories.auth.registerEmailAccount?.(payload, consent)
+    const session = await repositories.auth.registerEmailAccount?.(payload, consent, buildSessionClientContext(request))
     if (!session) {
       throw new HttpError(409, 'ACCOUNT_EXISTS', 'Email or handle is already registered')
     }
@@ -348,7 +351,7 @@ export const registerAuthRoutes = (router) => {
 
   router.add('GET', '/api/auth/oauth/:provider/callback', async (request, response, context) => {
     const provider = normalizeOAuthProvider(context.params.provider)
-    const payload = await completeOAuthCallback({ provider, query: context.query })
+    const payload = await completeOAuthCallback({ provider, query: context.query, request })
     if (shouldRenderOAuthBridge(request, context.query)) {
       setRefreshTokenCookie(response, payload.refreshToken)
       renderOAuthBridge(response, payload)
@@ -360,7 +363,7 @@ export const registerAuthRoutes = (router) => {
   router.add('POST', '/api/auth/oauth/:provider/callback', async (request, response, context) => {
     const provider = normalizeOAuthProvider(context.params.provider)
     const form = await readFormBody(request)
-    const payload = await completeOAuthCallback({ provider, query: form })
+    const payload = await completeOAuthCallback({ provider, query: form, request })
     if (shouldRenderOAuthBridge(request, form, true)) {
       setRefreshTokenCookie(response, payload.refreshToken)
       renderOAuthBridge(response, payload)
@@ -377,7 +380,7 @@ export const registerAuthRoutes = (router) => {
       requireCookieCsrf(request)
     }
     const token = context.authToken ?? body?.refreshToken ?? cookieRefreshToken
-    const session = token && repositories.auth.rotateSession ? await repositories.auth.rotateSession(token) : null
+    const session = token && repositories.auth.rotateSession ? await repositories.auth.rotateSession(token, buildSessionClientContext(request)) : null
     const account = session ? null : token ? await repositories.auth.findDemoAccountByRefreshToken(token) : null
     if (!session && !account) {
       throw new HttpError(401, 'AUTH_FAILED', 'Invalid refresh token')
@@ -391,7 +394,8 @@ export const registerAuthRoutes = (router) => {
 
   router.add('GET', '/api/auth/sessions', async (_request, response, context) => {
     const actor = requireUser(context)
-    ok(response, await repositories.auth.listSessions(actor))
+    const currentSessionId = verifyAccessToken(context.authToken)?.sid ?? null
+    ok(response, await repositories.auth.listSessions(actor, currentSessionId))
   })
 
   router.add('DELETE', '/api/auth/sessions', async (_request, response, context) => {
@@ -417,7 +421,7 @@ export const registerAuthRoutes = (router) => {
     }
     const token = context.authToken ?? body?.refreshToken ?? cookieRefreshToken
     if (token && repositories.auth.revokeSession) {
-      await repositories.auth.revokeSession(token)
+      await repositories.auth.revokeSession(token, 'user_logout')
     }
     clearRefreshTokenCookie(response)
     ok(response, { revoked: true })

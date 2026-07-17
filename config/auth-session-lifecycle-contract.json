@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "task": "AUTH-02",
+  "scope": "personal_accounts_only",
+  "model": {
+    "logicalSession": "AuthSession",
+    "refreshRotationRow": "RefreshToken",
+    "familyRelation": "RefreshToken.familyId -> AuthSession.id",
+    "migration": "0071_secure_auth_session_lifecycle"
+  },
+  "accessTokens": {
+    "requiredSessionClaim": "sid",
+    "legacyTokenWithoutSid": "reject",
+    "activeSessionRequired": true,
+    "compromisedSessionAllowed": false
+  },
+  "rotation": {
+    "transactionIsolation": "Serializable",
+    "rawTokenPersistence": false,
+    "reuseDisposition": "compromise_and_revoke_logical_session",
+    "oneUserVisibleRowPerLogicalSession": true
+  },
+  "risk": {
+    "statuses": ["normal", "suspicious", "compromised"],
+    "compromisedIsTerminal": true,
+    "compromisedRevokesFamily": true,
+    "optimisticVersioning": true
+  },
+  "privacy": {
+    "persistedClientData": ["coarseClientLabel", "keyedNetworkHash"],
+    "forbiddenPersistedOrProjected": ["rawAccessToken", "rawRefreshToken", "rawIpAddress", "fullUserAgent"],
+    "networkProjection": "first_8_hex_characters"
+  },
+  "permissions": {
+    "read": "admin:auth:read",
+    "manage": "admin:auth:manage"
+  },
+  "adminRoutes": [
+    { "method": "GET", "path": "/api/admin/auth/sessions", "permission": "admin:auth:read" },
+    { "method": "POST", "path": "/api/admin/auth/sessions/:id/disposition", "permission": "admin:auth:manage" },
+    { "method": "POST", "path": "/api/admin/auth/sessions/:id/revoke", "permission": "admin:auth:manage" },
+    { "method": "POST", "path": "/api/admin/auth/users/:userId/sessions/revoke", "permission": "admin:auth:manage" }
+  ],
+  "verification": {
+    "focused": "npm run test:auth-session-lifecycle",
+    "integration": "npm run test:auth-session-lifecycle:integration",
+    "e2e": "e2e/auth-session-lifecycle.spec.ts",
+    "full": "CI=1 npm run check:pr"
+  }
+}

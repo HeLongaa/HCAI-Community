@@ -843,19 +843,19 @@ model Announcement {
 }
 
 model TaskRule {
-  resourceId             String    @id @map("resource_id")
-  key                    String    @unique
-  category               String    @unique
-  acceptanceTemplates    Json      @map("acceptance_templates")
-  acceptanceTemplatesSchemaVersion Int @default(1) @map("acceptance_templates_schema_version")
-  defaultDeadlineHours   Int       @map("default_deadline_hours")
-  minimumDeadlineHours   Int       @map("minimum_deadline_hours")
-  maximumDeadlineHours   Int       @map("maximum_deadline_hours")
-  deadlineRequired       Boolean   @default(true) @map("deadline_required")
-  active                 Boolean   @default(true)
-  publishedVersion       Int       @map("published_version")
-  deletedAt              DateTime? @map("deleted_at")
-  updatedAt              DateTime  @updatedAt @map("updated_at")
+  resourceId                       String    @id @map("resource_id")
+  key                              String    @unique
+  category                         String    @unique
+  acceptanceTemplates              Json      @map("acceptance_templates")
+  acceptanceTemplatesSchemaVersion Int       @default(1) @map("acceptance_templates_schema_version")
+  defaultDeadlineHours             Int       @map("default_deadline_hours")
+  minimumDeadlineHours             Int       @map("minimum_deadline_hours")
+  maximumDeadlineHours             Int       @map("maximum_deadline_hours")
+  deadlineRequired                 Boolean   @default(true) @map("deadline_required")
+  active                           Boolean   @default(true)
+  publishedVersion                 Int       @map("published_version")
+  deletedAt                        DateTime? @map("deleted_at")
+  updatedAt                        DateTime  @updatedAt @map("updated_at")
 
   resource ConfigResource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
 
@@ -1284,41 +1284,43 @@ model User {
   createdAt   DateTime   @default(now()) @map("created_at")
   updatedAt   DateTime   @updatedAt @map("updated_at")
 
-  profile                      Profile?
-  authAccounts                 AuthAccount[]
-  oauthAuthorizationRequests   OAuthAuthorizationRequest[]
-  refreshTokens                RefreshToken[]
-  publisherTasks               Task[]                          @relation("TaskPublisher")
-  assigneeTasks                Task[]                          @relation("TaskAssignee")
-  archivedTasks                Task[]                          @relation("TaskArchivedBy")
-  requestedTaskBulkActions     TaskAdminBulkAction[]           @relation("TaskBulkActionRequester")
-  requestedTaskLifecycleMutations TaskLifecycleMutation[]      @relation("TaskLifecycleMutationRequester")
-  taskProposals                TaskProposal[]
-  taskSubmissions              TaskSubmission[]                @relation("TaskSubmissionSubmitter")
-  reviewedTaskSubmissions      TaskSubmission[]                @relation("TaskSubmissionReviewer")
-  authoredPosts                Post[]
-  comments                     Comment[]
-  postLikes                    PostLike[]
-  libraryItems                 LibraryItem[]
-  pointLedger                  PointLedger[]
-  internalPointAccount         InternalPointAccount?
-  accountingIssuesReviewed     AccountingReconciliationIssue[] @relation("AccountingIssueReviewer")
-  adminReviews                 AdminReview[]                   @relation("AdminReviewReviewer")
-  mediaAssets                  MediaAsset[]
-  mediaAssetRelations          MediaAssetRelation[]
-  notifications                Notification[]
-  mediaScanJobsReviewed        MediaScanJob[]                  @relation("MediaScanJobReviewer")
-  creativeGenerations          CreativeGeneration[]
-  creativeGenerationExecutions CreativeGenerationExecution[]
-  creativeQuotaWindows         CreativeQuotaWindow[]
-  creativeQuotaReservations    CreativeQuotaReservation[]
-  creativeCreditLedger         CreativeCreditLedger[]
-  chatConversations            ChatConversation[]
-  chatDeletionTombstones       ChatDeletionTombstone[]
-  taskSubmissionAssets         TaskSubmissionAsset[]
-  creativeGenerationAssets     CreativeGenerationAsset[]
-  chatTurnInputAssets          ChatTurnInputAsset[]
-  personalEntitlementGrants    PersonalEntitlementGrant[]
+  profile                         Profile?
+  authAccounts                    AuthAccount[]
+  oauthAuthorizationRequests      OAuthAuthorizationRequest[]
+  refreshTokens                   RefreshToken[]
+  authSessions                    AuthSession[]                   @relation("AuthSessionUser")
+  reviewedAuthSessions            AuthSession[]                   @relation("AuthSessionReviewer")
+  publisherTasks                  Task[]                          @relation("TaskPublisher")
+  assigneeTasks                   Task[]                          @relation("TaskAssignee")
+  archivedTasks                   Task[]                          @relation("TaskArchivedBy")
+  requestedTaskBulkActions        TaskAdminBulkAction[]           @relation("TaskBulkActionRequester")
+  requestedTaskLifecycleMutations TaskLifecycleMutation[]         @relation("TaskLifecycleMutationRequester")
+  taskProposals                   TaskProposal[]
+  taskSubmissions                 TaskSubmission[]                @relation("TaskSubmissionSubmitter")
+  reviewedTaskSubmissions         TaskSubmission[]                @relation("TaskSubmissionReviewer")
+  authoredPosts                   Post[]
+  comments                        Comment[]
+  postLikes                       PostLike[]
+  libraryItems                    LibraryItem[]
+  pointLedger                     PointLedger[]
+  internalPointAccount            InternalPointAccount?
+  accountingIssuesReviewed        AccountingReconciliationIssue[] @relation("AccountingIssueReviewer")
+  adminReviews                    AdminReview[]                   @relation("AdminReviewReviewer")
+  mediaAssets                     MediaAsset[]
+  mediaAssetRelations             MediaAssetRelation[]
+  notifications                   Notification[]
+  mediaScanJobsReviewed           MediaScanJob[]                  @relation("MediaScanJobReviewer")
+  creativeGenerations             CreativeGeneration[]
+  creativeGenerationExecutions    CreativeGenerationExecution[]
+  creativeQuotaWindows            CreativeQuotaWindow[]
+  creativeQuotaReservations       CreativeQuotaReservation[]
+  creativeCreditLedger            CreativeCreditLedger[]
+  chatConversations               ChatConversation[]
+  chatDeletionTombstones          ChatDeletionTombstone[]
+  taskSubmissionAssets            TaskSubmissionAsset[]
+  creativeGenerationAssets        CreativeGenerationAsset[]
+  chatTurnInputAssets             ChatTurnInputAsset[]
+  personalEntitlementGrants       PersonalEntitlementGrant[]
 
   @@map("users")
 }
@@ -1340,17 +1342,17 @@ model AuthAccount {
 }
 
 model OAuthAuthorizationRequest {
-  id               String    @id @default(cuid())
-  stateHash        String    @unique @map("state_hash")
-  provider         String
-  redirectTo       String    @map("redirect_to")
-  linkUserId       String?   @map("link_user_id")
-  expiresAt        DateTime  @map("expires_at")
-  consumedAt       DateTime? @map("consumed_at")
-  revokedAt        DateTime? @map("revoked_at")
-  revokeReasonCode String?   @map("revoke_reason_code")
-  providerControlVersion Int @default(0) @map("provider_control_version")
-  createdAt        DateTime  @default(now()) @map("created_at")
+  id                     String    @id @default(cuid())
+  stateHash              String    @unique @map("state_hash")
+  provider               String
+  redirectTo             String    @map("redirect_to")
+  linkUserId             String?   @map("link_user_id")
+  expiresAt              DateTime  @map("expires_at")
+  consumedAt             DateTime? @map("consumed_at")
+  revokedAt              DateTime? @map("revoked_at")
+  revokeReasonCode       String?   @map("revoke_reason_code")
+  providerControlVersion Int       @default(0) @map("provider_control_version")
+  createdAt              DateTime  @default(now()) @map("created_at")
 
   linkUser User? @relation(fields: [linkUserId], references: [id], onDelete: Cascade)
 
@@ -1360,20 +1362,20 @@ model OAuthAuthorizationRequest {
 }
 
 model OAuthProviderControl {
-  id           String    @id @default(cuid())
-  provider     String    @unique
-  enabled      Boolean   @default(true)
-  version      Int       @default(1)
-  reasonCode   String    @map("reason_code")
-  clientId     String?   @map("client_id")
-  redirectUri  String?   @map("redirect_uri")
-  scopes       String[]  @default([])
-  clientSecretRef String? @map("client_secret_ref")
+  id                     String    @id @default(cuid())
+  provider               String    @unique
+  enabled                Boolean   @default(true)
+  version                Int       @default(1)
+  reasonCode             String    @map("reason_code")
+  clientId               String?   @map("client_id")
+  redirectUri            String?   @map("redirect_uri")
+  scopes                 String[]  @default([])
+  clientSecretRef        String?   @map("client_secret_ref")
   configurationUpdatedAt DateTime? @map("configuration_updated_at")
-  enabledAt    DateTime? @map("enabled_at")
-  disabledAt   DateTime? @map("disabled_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  enabledAt              DateTime? @map("enabled_at")
+  disabledAt             DateTime? @map("disabled_at")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
 
   @@map("oauth_provider_controls")
 }
@@ -1390,11 +1392,40 @@ model RefreshToken {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session AuthSession @relation(fields: [familyId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([familyId])
   @@map("refresh_tokens")
+}
+
+model AuthSession {
+  id               String    @id @default(cuid())
+  userId           String    @map("user_id")
+  clientLabel      String    @default("Unknown client") @map("client_label")
+  networkHash      String?   @map("network_hash")
+  riskStatus       String    @default("normal") @map("risk_status")
+  riskReasonCode   String?   @map("risk_reason_code")
+  riskDetectedAt   DateTime? @map("risk_detected_at")
+  reviewedAt       DateTime? @map("reviewed_at")
+  reviewedById     String?   @map("reviewed_by_id")
+  revokedAt        DateTime? @map("revoked_at")
+  revokeReasonCode String?   @map("revoke_reason_code")
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  lastSeenAt       DateTime  @default(now()) @map("last_seen_at")
+  expiresAt        DateTime  @map("expires_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  user          User           @relation("AuthSessionUser", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy    User?          @relation("AuthSessionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  refreshTokens RefreshToken[]
+
+  @@index([userId, lastSeenAt])
+  @@index([riskStatus, revokedAt, lastSeenAt])
+  @@index([expiresAt])
+  @@map("auth_sessions")
 }
 
 model Profile {
@@ -1444,11 +1475,11 @@ model Task {
   metadata              Json?
   metadataSchemaVersion Int            @default(1) @map("metadata_schema_version")
 
-  publisher   User?            @relation("TaskPublisher", fields: [publisherId], references: [id], onDelete: Restrict)
-  assignee    User?            @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  archivedBy  User?            @relation("TaskArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
-  proposals   TaskProposal[]
-  submissions TaskSubmission[]
+  publisher          User?                   @relation("TaskPublisher", fields: [publisherId], references: [id], onDelete: Restrict)
+  assignee           User?                   @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  archivedBy         User?                   @relation("TaskArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
+  proposals          TaskProposal[]
+  submissions        TaskSubmission[]
   lifecycleMutations TaskLifecycleMutation[]
 
   @@index([status, updatedAt, id])
@@ -2147,11 +2178,11 @@ model ModelVersion {
   createdAt                    DateTime           @default(now()) @map("created_at")
   updatedAt                    DateTime           @updatedAt @map("updated_at")
 
-  model        Model                @relation(fields: [modelId], references: [id], onDelete: Restrict)
-  capabilities ModelCapability[]
-  deployments  ModelDeployment[]
-  prices       PricingVersion[]
-  generations  CreativeGeneration[]
+  model          Model                 @relation(fields: [modelId], references: [id], onDelete: Restrict)
+  capabilities   ModelCapability[]
+  deployments    ModelDeployment[]
+  prices         PricingVersion[]
+  generations    CreativeGeneration[]
   evaluationRuns AiEvaluationRun[]
   legalReviews   ProviderLegalReview[]
 
@@ -2401,17 +2432,17 @@ model ModelPromotion {
 }
 
 model AiEvaluationSuite {
-  id            String                    @id
-  suiteKey      String                    @map("suite_key")
-  name          String
-  version       Int
-  modality      ModelCapabilityModality
-  operation     String
-  description   String?
-  contentHash   String                    @map("content_hash")
-  reasonCode    String                    @map("reason_code")
-  createdByRef  String                    @map("created_by_ref")
-  createdAt     DateTime                  @default(now()) @map("created_at")
+  id           String                  @id
+  suiteKey     String                  @map("suite_key")
+  name         String
+  version      Int
+  modality     ModelCapabilityModality
+  operation    String
+  description  String?
+  contentHash  String                  @map("content_hash")
+  reasonCode   String                  @map("reason_code")
+  createdByRef String                  @map("created_by_ref")
+  createdAt    DateTime                @default(now()) @map("created_at")
 
   cases    AiEvaluationCase[]
   policies AiEvaluationPolicy[]
@@ -2471,32 +2502,32 @@ model AiEvaluationPolicy {
 }
 
 model AiEvaluationRun {
-  id                String   @id
-  sourceKey         String   @unique @map("source_key")
-  suiteId           String   @map("suite_id")
-  policyId          String   @map("policy_id")
-  modelVersionId    String   @map("model_version_id")
-  modelDeploymentId String?  @map("model_deployment_id")
-  baselineRunId     String?  @map("baseline_run_id")
-  status            String
-  reasonCodes       String[] @default([]) @map("reason_codes")
-  totalCases        Int      @map("total_cases")
-  passedCases       Int      @map("passed_cases")
-  qualityScoreBps   Int      @map("quality_score_bps")
-  safetyScoreBps    Int      @map("safety_score_bps")
-  regressionDeltaBps Int?    @map("regression_delta_bps")
-  reportHash        String   @map("report_hash")
-  executorRef       String   @map("executor_ref")
-  createdByRef      String   @map("created_by_ref")
-  startedAt         DateTime @map("started_at")
-  completedAt       DateTime @map("completed_at")
-  expiresAt         DateTime @map("expires_at")
-  createdAt         DateTime @default(now()) @map("created_at")
+  id                 String   @id
+  sourceKey          String   @unique @map("source_key")
+  suiteId            String   @map("suite_id")
+  policyId           String   @map("policy_id")
+  modelVersionId     String   @map("model_version_id")
+  modelDeploymentId  String?  @map("model_deployment_id")
+  baselineRunId      String?  @map("baseline_run_id")
+  status             String
+  reasonCodes        String[] @default([]) @map("reason_codes")
+  totalCases         Int      @map("total_cases")
+  passedCases        Int      @map("passed_cases")
+  qualityScoreBps    Int      @map("quality_score_bps")
+  safetyScoreBps     Int      @map("safety_score_bps")
+  regressionDeltaBps Int?     @map("regression_delta_bps")
+  reportHash         String   @map("report_hash")
+  executorRef        String   @map("executor_ref")
+  createdByRef       String   @map("created_by_ref")
+  startedAt          DateTime @map("started_at")
+  completedAt        DateTime @map("completed_at")
+  expiresAt          DateTime @map("expires_at")
+  createdAt          DateTime @default(now()) @map("created_at")
 
-  suite           AiEvaluationSuite       @relation(fields: [suiteId], references: [id], onDelete: Restrict)
-  policy          AiEvaluationPolicy      @relation(fields: [policyId], references: [id], onDelete: Restrict)
-  modelVersion    ModelVersion            @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
-  modelDeployment ModelDeployment?        @relation(fields: [modelDeploymentId], references: [id], onDelete: Restrict)
+  suite           AiEvaluationSuite        @relation(fields: [suiteId], references: [id], onDelete: Restrict)
+  policy          AiEvaluationPolicy       @relation(fields: [policyId], references: [id], onDelete: Restrict)
+  modelVersion    ModelVersion             @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
+  modelDeployment ModelDeployment?         @relation(fields: [modelDeploymentId], references: [id], onDelete: Restrict)
   baselineRun     AiEvaluationRun?         @relation("AiEvaluationRunBaseline", fields: [baselineRunId], references: [id], onDelete: Restrict)
   candidateRuns   AiEvaluationRun[]        @relation("AiEvaluationRunBaseline")
   results         AiEvaluationCaseResult[]
