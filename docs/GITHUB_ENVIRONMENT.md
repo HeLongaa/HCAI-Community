@@ -93,15 +93,15 @@ OAuth provider variables. Configure at least one provider:
 
 | Provider | Variables |
 | --- | --- |
-| Google | `OAUTH_GOOGLE_CLIENT_ID`, `OAUTH_GOOGLE_REDIRECT_URI` |
-| GitHub | `OAUTH_GITHUB_CLIENT_ID`, `OAUTH_GITHUB_REDIRECT_URI` |
+| Google | `OAUTH_GOOGLE_CLIENT_ID`, `OAUTH_GOOGLE_CLIENT_SECRET`, `OAUTH_GOOGLE_REDIRECT_URI` |
+| GitHub | `OAUTH_GITHUB_CLIENT_ID`, `OAUTH_GITHUB_CLIENT_SECRET`, `OAUTH_GITHUB_REDIRECT_URI` |
 | Discord | `OAUTH_DISCORD_CLIENT_ID`, `OAUTH_DISCORD_REDIRECT_URI` |
 | Apple | `OAUTH_APPLE_CLIENT_ID`, `OAUTH_APPLE_TEAM_ID`, `OAUTH_APPLE_KEY_ID`, `OAUTH_APPLE_REDIRECT_URI` |
 
 Every redirect URI must use HTTPS and exactly end at `/api/auth/oauth/{provider}/callback`. Production never falls back
 to a dev callback when a provider is missing or invalid. Set `OAUTH_DEV_MODE=disabled` as defense in depth and optionally
 set `OAUTH_PROVIDER_TIMEOUT_MS` between `1000` and `15000` (default `8000`). Register the same exact URI in the Provider
-console before enabling the Provider in Admin. Admin configuration never replaces the deployment secret.
+console before enabling the Provider in Admin. Admin stores an allowlisted environment SecretRef and never receives the deployment secret itself.
 
 Creative provider preflight variables:
 

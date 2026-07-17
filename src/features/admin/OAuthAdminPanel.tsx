@@ -27,7 +27,7 @@ const draftFor = (control: AdminOAuthProviderControl): OAuthConfigurationDraft =
   clientId: control.clientId ?? '',
   redirectUri: control.redirectUri ?? '',
   scopes: control.scopes.join(' '),
-  clientSecretRef: control.clientSecretRef ?? `secret://oauth/${control.provider}/client-secret`,
+  clientSecretRef: control.clientSecretRef ?? control.expectedClientSecretRef,
 })
 
 export function OAuthAdminPanel({ t, canRead, canManage, notify }: OAuthAdminPanelProps) {

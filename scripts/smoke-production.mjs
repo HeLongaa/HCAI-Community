@@ -88,6 +88,9 @@ const productionFixture = {
   OAUTH_GOOGLE_CLIENT_ID: 'google-client-id',
   OAUTH_GOOGLE_CLIENT_SECRET: 'google-client-secret',
   OAUTH_GOOGLE_REDIRECT_URI: 'https://api.example.com/api/auth/oauth/google/callback',
+  OAUTH_GITHUB_CLIENT_ID: 'github-client-id',
+  OAUTH_GITHUB_CLIENT_SECRET: 'github-client-secret',
+  OAUTH_GITHUB_REDIRECT_URI: 'https://api.example.com/api/auth/oauth/github/callback',
   OAUTH_DISCORD_CLIENT_ID: 'discord-client-id',
   OAUTH_DISCORD_CLIENT_SECRET: 'discord-client-secret',
   OAUTH_DISCORD_REDIRECT_URI: 'https://api.example.com/api/auth/oauth/discord/callback',
@@ -373,6 +376,8 @@ check(checks, 'worker lease renews before expiry', env.workerLeaseRenewIntervalS
 check(checks, 'request body guard enabled', env.requestBodySizeGuardEnabled, 'REQUEST_BODY_SIZE_GUARD_ENABLED must not be false')
 check(checks, 'auth failure monitor enabled', env.authFailureMonitorEnabled, 'AUTH_FAILURE_MONITOR_ENABLED must not be false')
 check(checks, 'external OAuth provider configured', oauthProviders.some((provider) => provider.mode === 'external'), 'At least one OAuth provider should be external in managed smoke')
+check(checks, 'Google OAuth provider configured', oauthProviders.find((provider) => provider.provider === 'google')?.mode === 'external', 'Google OAuth must pass the managed smoke')
+check(checks, 'GitHub OAuth provider configured', oauthProviders.find((provider) => provider.provider === 'github')?.mode === 'external', 'GitHub OAuth must pass the managed smoke')
 
 const failed = checks.filter((item) => !item.pass)
 

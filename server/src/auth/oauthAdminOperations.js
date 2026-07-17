@@ -1,5 +1,6 @@
 import { HttpError } from '../common/errors/httpError.js'
 import { validationFailed } from '../common/http/validation.js'
+import { isAllowedOAuthProviderSecretReference, oauthProviderSecretReference } from './oauth.js'
 
 export const oauthAdminProviders = Object.freeze(['google', 'github', 'apple', 'discord'])
 export const oauthAuthorizationRequestStatuses = Object.freeze(['pending', 'consumed', 'revoked', 'expired'])
@@ -7,6 +8,10 @@ export const oauthAuthorizationRequestStatuses = Object.freeze(['pending', 'cons
 const reasonCodePattern = /^[a-z0-9][a-z0-9._:-]{0,79}$/
 const secretRefPattern = /^secret:\/\/[A-Za-z0-9._~:/-]{1,240}$/
 const scopePattern = /^[A-Za-z0-9:._/-]{1,120}$/
+const requiredProviderScopes = {
+  google: ['openid', 'email'],
+  github: ['read:user', 'user:email'],
+}
 
 const text = (value, name, maximum = 160) => {
   const normalized = String(value ?? '').trim()
@@ -67,8 +72,13 @@ export const parseOAuthProviderConfigurationRequest = (provider, raw = {}, sourc
   if (!Array.isArray(raw.scopes) || raw.scopes.length < 1 || raw.scopes.length > 10) throw validationFailed('scopes must contain between 1 and 10 entries')
   const scopes = [...new Set(raw.scopes.map((scope) => text(scope, 'scope', 120)))]
   if (scopes.length !== raw.scopes.length || scopes.some((scope) => !scopePattern.test(scope))) throw validationFailed('scopes must be unique stable identifiers')
+  const missingScopes = (requiredProviderScopes[provider] ?? []).filter((scope) => !scopes.includes(scope))
+  if (missingScopes.length) throw validationFailed(`${provider} scopes must include: ${missingScopes.join(', ')}`)
   const clientSecretRef = text(raw.clientSecretRef, 'clientSecretRef', 249)
   if (!secretRefPattern.test(clientSecretRef)) throw validationFailed('clientSecretRef must be a secret:// reference')
+  if (!isAllowedOAuthProviderSecretReference(provider, clientSecretRef)) {
+    throw validationFailed(`clientSecretRef must be ${oauthProviderSecretReference(provider)}`)
+  }
   const expectedVersion = Number(raw.expectedVersion)
   if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) throw validationFailed('expectedVersion must be a non-negative integer')
   return { clientId, redirectUri, scopes, clientSecretRef, expectedVersion, reasonCode: parseOAuthReasonCode(raw.reasonCode) }
@@ -160,6 +170,7 @@ export const serializeOAuthProviderControl = (provider, metadata, control) => ({
   clientId: control?.clientId ?? metadata.clientId ?? null,
   redirectUri: control?.redirectUri ?? metadata.redirectUri ?? null,
   clientSecretRef: control?.clientSecretRef ?? null,
+  expectedClientSecretRef: oauthProviderSecretReference(provider),
   secretAvailable: Boolean(metadata.clientSecret || metadata.privateKey),
   configurationSource: metadata.configurationSource,
   configurationUpdatedAt: control?.configurationUpdatedAt ? new Date(control.configurationUpdatedAt).toISOString() : null,

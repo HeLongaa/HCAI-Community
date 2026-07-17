@@ -98,7 +98,7 @@ test('OAuth Admin stores GitHub settings without accepting or exposing plaintext
       method: 'PUT', token: adminToken,
       body: {
         clientId: 'github-client-2', redirectUri: 'https://app.example.com/api/auth/oauth/github/callback',
-        scopes: ['read:user'], clientSecretRef: 'secret://oauth/github/client-secret', expectedVersion: 0, reasonCode: 'stale_configuration',
+        scopes: ['read:user', 'user:email'], clientSecretRef: 'secret://oauth/github/client-secret', expectedVersion: 0, reasonCode: 'stale_configuration',
       },
     })
     assert.equal(stale.status, 409)

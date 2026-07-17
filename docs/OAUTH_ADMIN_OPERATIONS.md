@@ -4,15 +4,15 @@
 
 AUTH-01 provides a personal-account operations control plane for Google, GitHub, Apple, and Discord OAuth. It does not introduce tenants, organizations, teams, workspaces, memberships, or invitations.
 
-Admins can manage client ids, exact redirect URIs, scopes, SecretRef metadata, and enabled state. The database and Admin API never store or return raw client secrets, private keys, access tokens, authorization codes, raw OAuth state, redirect targets, or account-link user identifiers. Actual secrets remain fixed deployment environment variables.
+Admins can manage client ids, exact redirect URIs, scopes, allowlisted SecretRefs, and enabled state. The database and Admin API never store or return raw client secrets, private keys, access tokens, authorization codes, raw OAuth state, redirect targets, or account-link user identifiers. Actual secrets remain fixed deployment environment variables.
 
 ## Provider Configuration
 
-`PUT /api/admin/auth/oauth/providers/{provider}/configuration` validates bounded fields, provider-specific callback paths, HTTPS outside local development, scopes, SecretRef format, and `expectedVersion`. A first configuration creates a disabled control at version `1`; it must be reviewed and explicitly enabled.
+`PUT /api/admin/auth/oauth/providers/{provider}/configuration` validates bounded fields, provider-specific callback paths, HTTPS outside local development, required login scopes, a Provider-specific SecretRef, and `expectedVersion`. Google requires `openid email`; GitHub requires `read:user user:email`. A first configuration creates a disabled control at version `1`; it must be reviewed and explicitly enabled.
 
 Configuration and status changes increment one shared optimistic version. A stale `expectedVersion` returns `STATE_CONFLICT`. Every authorization request pins this version, so any configuration or status change during authorization causes the callback to fail with `OAUTH_CONFIGURATION_CHANGED`. Disabling a Provider rejects new starts and in-flight callbacks.
 
-An absent control remains compatibility-enabled at version `0`. Enabling is rejected with `OAUTH_PROVIDER_NOT_CONFIGURED` when the effective Admin/environment configuration or mounted secret is unavailable. `Secret mounted` means the fixed deployment variable is present; SecretRef alone is never sufficient.
+An absent control remains compatibility-enabled at version `0`. Enabling is rejected with `OAUTH_PROVIDER_NOT_CONFIGURED` when the effective Admin/environment configuration or mounted secret is unavailable. `secret://env/OAUTH_GOOGLE_CLIENT_SECRET` and `secret://env/OAUTH_GITHUB_CLIENT_SECRET` resolve only their matching deployment variables. Cross-Provider references and arbitrary environment-variable references are rejected. `Secret mounted` means the referenced variable is present; SecretRef alone is never sufficient.
 
 Configuration audits record Provider, scopes, field-presence booleans, reason code, and version. They do not record client ids, redirect URIs, SecretRef values, or secret material.
 
@@ -29,7 +29,7 @@ Expired authorization requests remain queryable for 30 days. Creating a new requ
 ## Operator Sequence
 
 1. Register the exact callback in the Google or GitHub Provider console.
-2. Mount the fixed environment secret in the API deployment and restart or roll out the API.
+2. Mount the fixed environment secret in the API deployment and restart or roll out the API. Never paste the secret into Admin.
 3. Save non-secret configuration in Admin using a stable reason code.
 4. Verify **Secret mounted**, **Available**, callback URI, scopes, and audit evidence.
 5. Enable the Provider and execute staging login/link/unlink and negative-flow checks.

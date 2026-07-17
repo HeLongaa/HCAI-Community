@@ -9,9 +9,12 @@ import {
   createOAuthState,
   exchangeOAuthCodeForProfile,
   getOAuthAuthorizationUrl,
+  getOAuthProviderMetadata,
+  isAllowedOAuthProviderSecretReference,
   listOAuthProviderMetadata,
   normalizeOAuthRedirect,
   readDevOAuthCode,
+  resolveOAuthProviderSecret,
   verifyOAuthState,
 } from './oauth.js'
 
@@ -80,6 +83,29 @@ test('listOAuthProviderMetadata returns public provider mode without secrets', (
   assert.equal(apple.mode, 'dev')
   assert.equal(apple.available, true)
   assert.equal(apple.callbackMethod, 'POST')
+})
+
+test('Admin SecretRefs resolve only the provider allowlisted deployment variable', () => {
+  const source = {
+    NODE_ENV: 'production',
+    OAUTH_GOOGLE_CLIENT_SECRET: 'google-secret',
+    OAUTH_GITHUB_CLIENT_SECRET: 'github-secret',
+    DATABASE_URL: 'must-never-resolve',
+  }
+  assert.equal(resolveOAuthProviderSecret('google', 'secret://env/OAUTH_GOOGLE_CLIENT_SECRET', source), 'google-secret')
+  assert.equal(resolveOAuthProviderSecret('google', 'secret://oauth/google/client-secret', source), 'google-secret')
+  assert.equal(resolveOAuthProviderSecret('google', 'secret://env/OAUTH_GITHUB_CLIENT_SECRET', source), null)
+  assert.equal(resolveOAuthProviderSecret('google', 'secret://env/DATABASE_URL', source), null)
+  assert.equal(isAllowedOAuthProviderSecretReference('github', 'secret://env/OAUTH_GITHUB_CLIENT_SECRET'), true)
+
+  const metadata = getOAuthProviderMetadata('google', source, {
+    clientId: 'google-client',
+    redirectUri: 'https://api.example.com/api/auth/oauth/google/callback',
+    scopes: ['openid', 'email', 'profile'],
+    clientSecretRef: 'secret://env/OAUTH_GOOGLE_CLIENT_SECRET',
+  })
+  assert.equal(metadata.mode, 'external')
+  assert.equal(metadata.clientSecret, 'google-secret')
 })
 
 test('deployment smoke exposes configured OAuth providers without secret material', () => {
@@ -236,7 +262,7 @@ test('GitHub OAuth uses PKCE and resolves a verified primary email', async () =>
   assert.deepEqual(profile, { provider: 'github', providerUserId: '42', email: 'maker@example.com', displayName: 'Octo Maker' })
   assert.equal(calls[0].options.body.get('code_verifier'), createOAuthPkce(statePayload).verifier)
   assert.equal(calls[1].options.headers.authorization, 'Bearer github-access')
-  assert.equal(calls[2].options.headers['x-github-api-version'], '2022-11-28')
+  assert.equal(calls[2].options.headers['x-github-api-version'], '2026-03-10')
 })
 
 test('createAppleClientSecret signs an ES256 client secret', () => {

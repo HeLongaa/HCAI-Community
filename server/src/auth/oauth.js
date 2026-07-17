@@ -44,6 +44,20 @@ const providerConfigs = {
   },
 }
 
+const providerSecretEnvironmentKeys = {
+  google: 'OAUTH_GOOGLE_CLIENT_SECRET',
+  github: 'OAUTH_GITHUB_CLIENT_SECRET',
+  discord: 'OAUTH_DISCORD_CLIENT_SECRET',
+  apple: 'OAUTH_APPLE_PRIVATE_KEY',
+}
+
+const legacyProviderSecretReferences = {
+  google: 'secret://oauth/google/client-secret',
+  github: 'secret://oauth/github/client-secret',
+  discord: 'secret://oauth/discord/client-secret',
+  apple: 'secret://oauth/apple/private-key',
+}
+
 const encodeJson = (value) => Buffer.from(JSON.stringify(value)).toString('base64url')
 const decodeJson = (value) => JSON.parse(Buffer.from(value, 'base64url').toString('utf8'))
 
@@ -250,6 +264,28 @@ export const readDevOAuthCode = (provider, code) => {
   }
 }
 
+export const oauthProviderSecretReference = (provider) => {
+  const normalizedProvider = normalizeOAuthProvider(provider)
+  const environmentKey = providerSecretEnvironmentKeys[normalizedProvider]
+  return environmentKey ? `secret://env/${environmentKey}` : null
+}
+
+export const isAllowedOAuthProviderSecretReference = (provider, reference) => {
+  const normalizedProvider = normalizeOAuthProvider(provider)
+  return reference === oauthProviderSecretReference(normalizedProvider)
+    || reference === legacyProviderSecretReferences[normalizedProvider]
+}
+
+export const resolveOAuthProviderSecret = (provider, reference, source = process.env) => {
+  const normalizedProvider = normalizeOAuthProvider(provider)
+  const environmentKey = providerSecretEnvironmentKeys[normalizedProvider]
+  if (!environmentKey || (reference && !isAllowedOAuthProviderSecretReference(normalizedProvider, reference))) {
+    return null
+  }
+  const value = String(source[environmentKey] ?? '').trim()
+  return value || null
+}
+
 export const getOAuthProviderMetadata = (provider, source = process.env, configuration = null) => {
   const normalizedProvider = normalizeOAuthProvider(provider)
   const prefix = `OAUTH_${normalizedProvider.toUpperCase()}`
@@ -258,15 +294,16 @@ export const getOAuthProviderMetadata = (provider, source = process.env, configu
   const configuredScopes = Array.isArray(configuration?.scopes) && configuration.scopes.length > 0
     ? configuration.scopes.join(' ')
     : null
+  const providerSecret = resolveOAuthProviderSecret(normalizedProvider, configuration?.clientSecretRef ?? null, source)
   const credentialsPresent = normalizedProvider === 'apple'
     ? Boolean(
         clientId &&
         source[`${prefix}_TEAM_ID`] &&
         source[`${prefix}_KEY_ID`] &&
-        source[`${prefix}_PRIVATE_KEY`] &&
+        providerSecret &&
         redirectUri,
       )
-    : Boolean(clientId && source[`${prefix}_CLIENT_SECRET`] && redirectUri)
+    : Boolean(clientId && providerSecret && redirectUri)
   const configured = credentialsPresent && hasValidRedirectUri(normalizedProvider, redirectUri, source)
   const mode = configured ? 'external' : isOAuthDevModeEnabled(source) ? 'dev' : 'unavailable'
   return {
@@ -275,10 +312,10 @@ export const getOAuthProviderMetadata = (provider, source = process.env, configu
     configured,
     mode,
     clientId,
-    clientSecret: source[`${prefix}_CLIENT_SECRET`] ?? null,
+    clientSecret: normalizedProvider === 'apple' ? null : providerSecret,
     teamId: source[`${prefix}_TEAM_ID`] ?? null,
     keyId: source[`${prefix}_KEY_ID`] ?? null,
-    privateKey: source[`${prefix}_PRIVATE_KEY`] ?? null,
+    privateKey: normalizedProvider === 'apple' ? providerSecret : null,
     redirectUri,
     secretRef: configuration?.clientSecretRef ?? null,
     configurationSource: configuration?.clientId ? 'admin' : 'environment',
@@ -407,7 +444,7 @@ const fetchGitHubEmails = ({ metadata, accessToken, fetchImpl, source }) => fetc
       accept: 'application/vnd.github+json',
       authorization: `Bearer ${accessToken}`,
       'user-agent': 'MuseFlow-OAuth/1.0',
-      'x-github-api-version': '2022-11-28',
+      'x-github-api-version': '2026-03-10',
     },
   },
 })
