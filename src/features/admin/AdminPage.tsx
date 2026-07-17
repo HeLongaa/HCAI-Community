@@ -18,6 +18,7 @@ import { ModelControlPanel } from './ModelControlPanel'
 import { AdminMediaLifecyclePanel } from './AdminMediaLifecyclePanel'
 import { OAuthAdminPanel } from './OAuthAdminPanel'
 import { TaskAdminPanel } from './TaskAdminPanel'
+import { EntitlementAdminPanel } from './EntitlementAdminPanel'
 import type {
   AdminPermissionDto,
   AdminAuditArchiveManifestDto,
@@ -2575,6 +2576,13 @@ export function AdminPage({
           t={t}
           canRead={account.hasPermission('admin:auth:read')}
           canManage={account.hasPermission('admin:auth:manage')}
+          notify={(message) => simulateAction(message)}
+        />
+      )}
+      {activeTab === 'Finance' && (
+        <EntitlementAdminPanel
+          hasPermission={account.hasPermission}
+          isZh={isZh}
           notify={(message) => simulateAction(message)}
         />
       )}

@@ -9,6 +9,7 @@
     "AuditEvent.metadata", "ObservabilityLog.attributes", "SecurityEvent.details", "SystemSetting.value", "OperationLease.metadata", "AdminReview.metadata",
     "Profile.portfolio", "Profile.stats", "Profile.metadata", "Task.metadata", "TaskAdminBulkAction.result", "TaskLifecycleMutation.result", "TaskProposal.metadata", "TaskSubmission.metadata",
     "Post.metadata", "LibraryItem.metadata", "InternalAccountingOperation.metadata", "InternalAccountingMovement.metadata",
+    "EntitlementPlanVersion.capabilities", "EntitlementPlanVersion.quotas", "EntitlementGrantEvent.evidence",
     "AccountingReconciliationIssue.evidence", "MediaAsset.metadata", "MediaScanJob.metadata", "CreativeGeneration.usage",
     "CreativeGeneration.credit", "CreativeGeneration.quota", "CreativeGeneration.safety", "CreativeGeneration.policy",
     "CreativeProviderOperation.safeMetadata", "ChatTurn.usage", "ChatTurn.productContext", "ChatTurn.safety",

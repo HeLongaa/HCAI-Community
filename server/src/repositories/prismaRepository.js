@@ -134,6 +134,7 @@ import { createPrismaObservabilityRepository } from '../observability/prismaObse
 import { createPrismaOAuthAdminRepository } from '../auth/prismaOAuthAdminRepository.js'
 import { createPrismaTaskAdminRepository } from '../tasks/prismaTaskAdminRepository.js'
 import { createPrismaBillingAdminRepository } from '../accounting/prismaBillingAdminRepository.js'
+import { createPrismaEntitlementRepository } from '../entitlements/prismaEntitlementRepository.js'
 import {
   buildConsentStatus,
   compliancePolicyManifest,
@@ -1060,6 +1061,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   const oauthAdmin = createPrismaOAuthAdminRepository(client, { runSerializableTransaction, recordAudit })
   const taskAdmin = createPrismaTaskAdminRepository(client, { runSerializableTransaction, recordAudit, createTaskEscrow, finalizeTaskEscrow })
   const billingAdmin = createPrismaBillingAdminRepository(client)
+  const entitlements = createPrismaEntitlementRepository(client)
   const taskLifecycleRecovery = createPrismaTaskLifecycleRecoveryRepository(client, { runSerializableTransaction, recordAudit, finalizeTaskEscrow })
 
   const createSessionForUser = async (user, reason = 'auth.session.created', options = {}) => {
@@ -9809,6 +9811,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     creativeQuota,
     accountingReconciliation,
     billingAdmin,
+    entitlements,
     media,
     library,
     audit,

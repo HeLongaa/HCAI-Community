@@ -100,8 +100,10 @@ export const reserveCreativeQuota = async ({
   generationId = null,
   costUnits = 1,
   quotaRepository = null,
+  limit: limitOverride = null,
+  policyVersion: quotaPolicyVersion = policyVersion,
 }) => {
-  const limit = creativeQuotaLimitFor({ actor, source })
+  const limit = limitOverride ?? creativeQuotaLimitFor({ actor, source })
   const window = quotaWindowFor(now)
   const units = Math.max(1, Number.parseInt(String(costUnits ?? 1), 10) || 1)
   if (quotaRepository?.reserve) {
@@ -115,12 +117,12 @@ export const reserveCreativeQuota = async ({
       windowEnd: window.end,
       limit,
       costUnits: units,
-      policyVersion,
+      policyVersion: quotaPolicyVersion,
     }, actor)
     if (!result?.reserved) {
       const quota = result?.quota ?? {}
       throw new HttpError(429, 'CREATIVE_QUOTA_EXCEEDED', 'Creative generation quota exceeded', {
-        policyVersion,
+        policyVersion: quotaPolicyVersion,
         workspace: request.workspace,
         limit,
         used: quota.used ?? 0,
@@ -149,7 +151,7 @@ export const reserveCreativeQuota = async ({
   const nextUsed = used + units
   quotaCounters.set(key, nextUsed)
   return {
-    policyVersion,
+    policyVersion: quotaPolicyVersion,
     scope: 'user_workspace_daily',
     workspace: request.workspace,
     limit,
@@ -182,9 +184,36 @@ export const applyCreativeGenerationPolicy = async ({
   now = new Date(),
   generationId = null,
   quotaRepository = null,
+  entitlementRepository = null,
 }) => {
   const safety = moderateCreativePrompt(request.prompt)
   const usage = estimateCreativeUsage({ request, provider })
+  const baseQuotaLimit = creativeQuotaLimitFor({ actor, source })
+  const entitlement = entitlementRepository?.evaluateForActor
+    ? await entitlementRepository.evaluateForActor(actor, {
+        capability: `creative.${request.workspace}.${request.mode}`,
+        quotaKey: `creative.daily.${request.workspace}`,
+        units: usage.quotaUnits,
+        baseQuotaLimit,
+        at: now,
+      })
+    : null
+  if (entitlement && !entitlement.allowed) {
+    const quotaDenied = entitlement.reasonCode === 'entitlement_quota_too_low'
+    throw new HttpError(
+      quotaDenied ? 429 : 403,
+      quotaDenied ? 'CREATIVE_ENTITLEMENT_QUOTA_EXCEEDED' : 'CREATIVE_CAPABILITY_NOT_ENTITLED',
+      quotaDenied ? 'Creative generation exceeds the entitled quota' : 'Creative capability is not enabled for this personal account',
+      {
+        reasonCode: entitlement.reasonCode,
+        capability: entitlement.capability.key,
+        quotaKey: entitlement.quota?.key ?? null,
+        requestedUnits: entitlement.quota?.requestedUnits ?? usage.quotaUnits,
+        limit: entitlement.quota?.limit ?? null,
+        entitlement: entitlement.entitlement,
+      },
+    )
+  }
   const quota = await reserveCreativeQuota({
     request,
     actor,
@@ -193,6 +222,8 @@ export const applyCreativeGenerationPolicy = async ({
     generationId,
     costUnits: usage.quotaUnits,
     quotaRepository,
+    limit: entitlement?.quota?.limit ?? baseQuotaLimit,
+    policyVersion: entitlement?.entitlement?.policyVersion ?? policyVersion,
   })
 
   return {
@@ -200,6 +231,7 @@ export const applyCreativeGenerationPolicy = async ({
       version: policyVersion,
       enforcedAt: now.toISOString(),
       gates: {
+        entitlement: Boolean(entitlement),
         quota: true,
         credit: true,
         moderation: true,
@@ -207,7 +239,8 @@ export const applyCreativeGenerationPolicy = async ({
       },
     },
     quota,
-    usage,
+    usage: { ...usage, entitlement: entitlement?.entitlement ?? null },
     safety,
+    entitlement,
   }
 }

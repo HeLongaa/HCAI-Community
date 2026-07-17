@@ -107,6 +107,7 @@ export const executeCreativeGeneration = async ({
   source = process.env,
   now = new Date(),
   quotaRepository = null,
+  entitlementRepository = null,
   providerCostRepository = null,
   inputAssetRepository = null,
   inputAssetReader = null,
@@ -150,6 +151,7 @@ export const executeCreativeGeneration = async ({
     now,
     generationId,
     quotaRepository,
+    entitlementRepository,
   })
 
   let generated

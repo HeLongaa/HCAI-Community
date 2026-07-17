@@ -455,11 +455,11 @@
     {
       "id": "creative_accounting_records",
       "classification": "confidential",
-      "prismaModels": ["CreativeCreditLedger", "CreativeQuotaWindow", "CreativeQuotaReservation"],
+      "prismaModels": ["CreativeCreditLedger", "CreativeQuotaWindow", "CreativeQuotaReservation", "EntitlementPlan", "EntitlementPlanVersion", "PersonalEntitlementGrant", "EntitlementGrantEvent"],
       "locations": ["postgres"],
       "dataSubjects": ["user"],
       "purposes": ["creative_generation", "internal_accounting", "support_operations"],
-      "exampleFields": ["credit amount/status", "quota window", "reservation", "settlement/refund/release timestamps", "safe metadata"],
+      "exampleFields": ["credit amount/status", "quota window", "reservation", "personal capability and quota policy", "grant validity and lifecycle", "immutable grant event hash", "settlement/refund/release timestamps", "safe metadata"],
       "accessRoles": ["user_self_summary", "authorized_service", "creative_accounting_operator", "auditor"],
       "retentionPolicyId": "internal_ledger_plus_730d",
       "exportPolicy": "include_user_credit_and_quota_history",
@@ -1071,7 +1071,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 105,
+    "modelCount": 109,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",

@@ -1,8 +1,12 @@
-import { Trophy } from 'lucide-react'
+import { useState } from 'react'
+import { RefreshCw, ShieldCheck, Trophy } from 'lucide-react'
 import type { AsyncResourceState, LedgerEntry, SimulateAction } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { isZhCopy, matchesLanguage, pointText, textFor } from '../../domain/utils'
 import type { ApiPointsSummary } from '../../services/contracts'
+import type { EffectiveEntitlementDto } from '../../services/contracts'
+import { entitlementService } from '../../services/entitlementService'
+import { useAsyncResource } from '../../hooks/useAsyncResource'
 
 export function PointsPage({
   t,
@@ -18,6 +22,14 @@ export function PointsPage({
   simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
+  const [entitlement, setEntitlement] = useState<EffectiveEntitlementDto | null>(null)
+  const entitlementStatus = useAsyncResource({
+    load: entitlementService.me,
+    onSuccess: setEntitlement,
+    getErrorMessage: () => textFor(t, 'Could not load your product access.', '无法读取当前产品权益。'),
+    deps: [isZh],
+    logLabel: 'entitlement-service',
+  })
   const metrics = summary
     ? isZh
       ? [
@@ -71,6 +83,41 @@ export function PointsPage({
           </article>
         ))}
       </div>
+      <section className="panel entitlement-summary" data-testid="personal-entitlement-summary">
+        <SectionHeader
+          eyebrow={textFor(t, 'Product access', '产品权益')}
+          title={entitlement?.plan.title ?? textFor(t, 'Personal access', '个人权益')}
+          action={
+            <button className="icon-button" type="button" title={textFor(t, 'Refresh access', '刷新权益')} aria-label={textFor(t, 'Refresh access', '刷新权益')} onClick={() => void entitlementStatus.refresh()} disabled={entitlementStatus.loading}>
+              <RefreshCw size={16} />
+            </button>
+          }
+        />
+        {entitlementStatus.error && <div className="empty-state compact"><strong>{textFor(t, 'Access unavailable', '权益暂不可用')}</strong><span>{entitlementStatus.error}</span></div>}
+        {!entitlementStatus.error && (
+          <div className="entitlement-summary-grid">
+            <div className="entitlement-plan-identity">
+              <ShieldCheck size={22} />
+              <div>
+                <strong>{entitlementStatus.loading ? textFor(t, 'Loading access', '正在加载权益') : entitlement?.plan.key ?? '-'}</strong>
+                <span>{entitlement?.source === 'personal_grant' ? textFor(t, 'Assigned personal plan', '已分配个人方案') : textFor(t, 'Role-compatible default', '角色默认权益')}</span>
+                <small>{entitlement?.planVersion.label ?? '-'}</small>
+              </div>
+            </div>
+            <div className="entitlement-capability-count">
+              <span>{textFor(t, 'Enabled capabilities', '已启用能力')}</span>
+              <strong>{Object.values(entitlement?.capabilities ?? {}).filter(Boolean).length}</strong>
+              <small>{Object.keys(entitlement?.capabilities ?? {}).length} {textFor(t, 'evaluated', '项已评估')}</small>
+            </div>
+            <div className="entitlement-quota-list">
+              {Object.entries(entitlement?.quotas ?? {}).map(([key, limit]) => (
+                <div key={key}><span>{key.replace('creative.daily.', '')}</span><strong>{limit}</strong></div>
+              ))}
+              {!entitlementStatus.loading && Object.keys(entitlement?.quotas ?? {}).length === 0 && <span>{textFor(t, 'No quota entries', '暂无配额项')}</span>}
+            </div>
+          </div>
+        )}
+      </section>
       <section className="panel">
         <SectionHeader eyebrow={textFor(t, 'Ledger', '积分流水')} title={textFor(t, 'Points history', '积分记录')} />
         {(status.loading || status.error) && (

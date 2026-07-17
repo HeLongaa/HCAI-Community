@@ -118,7 +118,16 @@ export const registerCreativeRoutes = (router, options = {}) => {
     }
     const now = callbackNow()
     const window = quotaWindowFor(now)
-    const limit = creativeQuotaLimitFor({ actor, source: callbackSource })
+    const baseQuotaLimit = creativeQuotaLimitFor({ actor, source: callbackSource })
+    const entitlement = await routeRepositories.entitlements?.evaluateForActor?.(actor, {
+      capability: `creative.${query.workspace}.${query.mode}`,
+      quotaKey: `creative.daily.${query.workspace}`,
+      units: accounting.quotaUnits,
+      baseQuotaLimit,
+      at: now,
+    })
+    const limit = entitlement?.quota?.limit ?? baseQuotaLimit
+    const quotaPolicyVersion = entitlement?.entitlement?.policyVersion ?? creativeAccountingPolicyV1.version
     const currentQuota = await routeRepositories.creativeQuota?.getQuotaWindow?.({
       actorId: actor.id,
       actorHandle: actor.handle,
@@ -127,7 +136,7 @@ export const registerCreativeRoutes = (router, options = {}) => {
       windowStart: window.start,
       windowEnd: window.end,
       limit,
-      policyVersion: creativeAccountingPolicyV1.version,
+      policyVersion: quotaPolicyVersion,
     })
     const registry = createCreativeProviderRegistry(callbackSource)
     const selectedProviderId = query.providerId ?? registry.config.defaultProviderId
@@ -136,7 +145,7 @@ export const registerCreativeRoutes = (router, options = {}) => {
     const modeContract = capability?.modeContracts?.find((candidate) => candidate.id === query.mode) ?? null
     const providerAvailable = Boolean(provider?.enabled && provider?.configured && modeContract?.available !== false)
     const quota = currentQuota ?? {
-      policyVersion: creativeAccountingPolicyV1.version,
+      policyVersion: quotaPolicyVersion,
       scope: 'user_workspace_daily',
       workspace: query.workspace,
       limit,
@@ -162,15 +171,21 @@ export const registerCreativeRoutes = (router, options = {}) => {
       quota: {
         ...quota,
         weight: accounting.quotaUnits,
-        allowed: quota.remaining >= accounting.quotaUnits,
+        allowed: entitlement?.quota?.allowed !== false && quota.remaining >= accounting.quotaUnits,
       },
       capability: {
         providerId: provider?.id ?? selectedProviderId,
-        available: providerAvailable,
-        reasonCode: provider
-          ? (providerAvailable ? null : 'provider_or_mode_unavailable')
-          : 'provider_not_found',
+        entitled: entitlement?.capability?.enabled ?? true,
+        available: providerAvailable && entitlement?.capability?.enabled !== false,
+        reasonCode: !provider
+          ? 'provider_not_found'
+          : !providerAvailable
+            ? 'provider_or_mode_unavailable'
+            : entitlement?.capability?.enabled === false
+              ? 'capability_not_entitled'
+              : null,
       },
+      entitlement: entitlement ?? null,
       providerCost: providerCostAvailability(provider),
       settlement: creativeSettlementSummary(),
     })
@@ -271,6 +286,9 @@ export const registerCreativeRoutes = (router, options = {}) => {
         actor,
         generationId,
         quotaRepository,
+        entitlementRepository: routeRepositories.entitlements,
+        source: options.executionSource ?? process.env,
+        now: callbackNow(),
         inputAssetRepository: routeRepositories.media,
         inputAssetReader: options.inputAssetReader ?? null,
         providerCostRepository: routeRepositories.creativeProviderCosts,

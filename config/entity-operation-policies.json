@@ -68,6 +68,10 @@
     { "model": "InternalAccountingOperation", "domain": "entitlements-accounting", "policy": "append_only", "hardDelete": false },
     { "model": "InternalAccountingMovement", "domain": "entitlements-accounting", "policy": "append_only", "hardDelete": false },
     { "model": "AccountingReconciliationIssue", "domain": "entitlements-accounting", "policy": "state_transition", "hardDelete": false },
+    { "model": "EntitlementPlan", "domain": "entitlements-accounting", "policy": "state_transition", "hardDelete": false },
+    { "model": "EntitlementPlanVersion", "domain": "entitlements-accounting", "policy": "immutable_evidence", "hardDelete": false },
+    { "model": "PersonalEntitlementGrant", "domain": "entitlements-accounting", "policy": "state_transition", "hardDelete": false },
+    { "model": "EntitlementGrantEvent", "domain": "entitlements-accounting", "policy": "immutable_evidence", "hardDelete": false },
     { "model": "MediaAsset", "domain": "media-platform", "policy": "soft_delete", "hardDelete": false },
     { "model": "MediaStorageObject", "domain": "media-platform", "policy": "state_transition", "hardDelete": false },
     { "model": "ProfilePortfolioAsset", "domain": "user-profile", "policy": "state_transition", "hardDelete": false },
@@ -122,6 +126,6 @@
   "protectedFamilies": {
     "accounting": ["PointLedger", "InternalAccountingOperation", "InternalAccountingMovement"],
     "audit": ["AuditEvent", "SecurityEvent", "DomainEventOutbox", "DomainEventConsumerInbox", "DomainEventCompensation"],
-    "evidence": ["AuditArchiveManifest", "MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence", "SystemSettingRevision", "ConfigResourceRevision", "ModelRoutePolicyRevision", "ModelRouteDecision", "ProviderSecretRef", "ModelPromotion", "ProviderHealthEvidence", "ProviderLegalReview"]
+    "evidence": ["AuditArchiveManifest", "MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence", "SystemSettingRevision", "ConfigResourceRevision", "ModelRoutePolicyRevision", "ModelRouteDecision", "ProviderSecretRef", "ModelPromotion", "ProviderHealthEvidence", "ProviderLegalReview", "EntitlementPlanVersion", "EntitlementGrantEvent"]
   }
 }

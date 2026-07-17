@@ -20,6 +20,7 @@ import { registerObservabilityRoutes } from './observability/routes.js'
 import { registerSettingsRoutes } from './settings/routes.js'
 import { registerConfigResourceRoutes } from './configResources/routes.js'
 import { registerModelControlRoutes } from './modelControl/routes.js'
+import { registerEntitlementRoutes } from './entitlements/routes.js'
 
 export const registerModules = (router) => {
   registerHealthRoutes(router)
@@ -44,4 +45,5 @@ export const registerModules = (router) => {
   registerOperationRoutes(router)
   registerProfileRoutes(router)
   registerPointsRoutes(router)
+  registerEntitlementRoutes(router)
 }
