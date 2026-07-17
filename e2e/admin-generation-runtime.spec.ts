@@ -1,6 +1,37 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 import { acceptCurrentPolicies, apiBaseUrl, authHeaders, login, signInPage } from './helpers'
+
+async function horizontalOverflowSnapshot(page: Page) {
+  return page.evaluate(() => {
+    const viewportWidth = window.innerWidth
+    const documentWidth = document.documentElement.scrollWidth
+    const elements = Array.from(document.querySelectorAll<HTMLElement>('body *'))
+      .map((element) => {
+        const bounds = element.getBoundingClientRect()
+        return {
+          tag: element.tagName.toLowerCase(),
+          className: typeof element.className === 'string' ? element.className : '',
+          parentClassName: typeof element.parentElement?.className === 'string' ? element.parentElement.className : '',
+          testId: element.dataset.testid ?? '',
+          ariaLabel: element.getAttribute('aria-label') ?? '',
+          title: element.getAttribute('title') ?? '',
+          text: (element.innerText ?? '').trim().replace(/\s+/g, ' ').slice(0, 80),
+          left: Math.round(bounds.left),
+          right: Math.round(bounds.right),
+          width: Math.round(bounds.width),
+        }
+      })
+      .filter((element) => element.width > 0 && element.right > viewportWidth && element.right <= documentWidth + 1)
+      .sort((left, right) => right.right - left.right)
+      .slice(0, 12)
+
+    return {
+      documentOverflow: documentWidth - viewportWidth,
+      elements,
+    }
+  })
+}
 
 test('admin generation operations expose summary sorting and CSV export', async ({ page, request }) => {
   const owner = await login(request, 'taskops')
@@ -56,7 +87,7 @@ test('admin generation operations expose summary sorting and CSV export', async 
 
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(panel).toBeVisible()
-  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0)
+  await expect.poll(() => horizontalOverflowSnapshot(page)).toEqual({ documentOverflow: 0, elements: [] })
   await metrics.scrollIntoViewIfNeeded()
   await page.screenshot({ path: '/tmp/ai-stats-01-admin-mobile.png' })
 })
