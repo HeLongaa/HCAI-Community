@@ -4662,6 +4662,11 @@ button.video-history-row.active {
   min-height: 40px;
 }
 
+.accounting-reconciliation-panel > .section-header,
+.accounting-reconciliation-panel > .section-header > div:first-child {
+  min-width: 0;
+}
+
 .accounting-reconciliation-panel .admin-table {
   max-height: 560px;
   overflow-y: auto;
@@ -11055,6 +11060,22 @@ button.video-history-row.active {
 
   .accounting-reconciliation-panel .admin-row {
     grid-template-columns: 1fr;
+  }
+
+  .accounting-reconciliation-panel > .section-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .accounting-reconciliation-panel > .section-header > .button-row {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .accounting-reconciliation-panel > .section-header > .button-row > button {
+    min-width: 0;
+    flex: 1 1 140px;
+    white-space: normal;
   }
 
   .billing-policy-overview,
