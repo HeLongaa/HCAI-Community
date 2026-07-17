@@ -384,6 +384,21 @@ export type AdminAuthSessionQuery = {
 
 export type AdminUserStatus = 'active' | 'suspended' | 'deleted'
 
+export type AdminUserTagColor = 'gray' | 'blue' | 'green' | 'yellow' | 'orange' | 'red' | 'purple' | 'pink'
+
+export type AdminUserTag = {
+  id: string
+  key: string
+  label: string
+  description: string | null
+  color: AdminUserTagColor
+  version: number
+  archivedAt: string | null
+  assignmentCount?: number
+  createdAt: string | null
+  updatedAt: string | null
+}
+
 export type AdminUserDto = {
   id: string
   email: string | null
@@ -394,6 +409,7 @@ export type AdminUserDto = {
   version: number
   profile: { visibility: 'public' | 'unlisted' | 'private'; discoverable: boolean; lane: 'maker' | 'publisher' | 'both' } | null
   authMethods: string[]
+  tags: AdminUserTag[]
   activeSessionCount: number
   deletionRequestedAt: string | null
   deletionScheduledAt: string | null
@@ -406,6 +422,7 @@ export type AdminUserDto = {
 export type AdminUserQuery = {
   status?: AdminUserStatus | null
   role?: Role | null
+  tag?: string | null
   search?: string | null
   cursor?: string | null
   limit?: number
@@ -414,6 +431,17 @@ export type AdminUserQuery = {
 }
 
 export type AdminUserStatusResult = { user: AdminUserDto; revokedSessions?: number }
+
+export type AdminUserMetrics = {
+  window: { dateFrom: string; dateTo: string }
+  totals: { accounts: number; currentAccounts: number; newUsers: number; activeUsers: number; taggedUsers: number }
+  roles: Record<Role, number>
+  statuses: Record<AdminUserStatus, number>
+  tags: Array<{ id: string; key: string; label: string; color: AdminUserTagColor; users: number }>
+  retention: Record<'d1' | 'd7' | 'd30', { eligible: number; retained: number; ratePercent: number }>
+}
+
+export type AdminUserMetricsExport = { kind: 'user.lifecycle-metrics.snapshot'; schemaVersion: 1; exportedAt: string; metrics: AdminUserMetrics }
 
 export type RevokeSessionsResponse = {
   revoked: number

@@ -287,11 +287,11 @@
     {
       "id": "identity_account_profile",
       "classification": "confidential",
-      "prismaModels": ["User", "Profile", "ProfilePortfolioAsset"],
+      "prismaModels": ["User", "UserTag", "UserTagAssignment", "Profile", "ProfilePortfolioAsset"],
       "locations": ["postgres"],
       "dataSubjects": ["user"],
       "purposes": ["account_service", "community_participation", "support_operations"],
-      "exampleFields": ["email", "display name", "avatar", "handle", "bio", "skills", "languages", "profile visibility", "discoverability", "activity visibility", "portfolio visibility", "profile version", "account lifecycle version", "suspension timestamp", "bounded suspension reason code", "deletion request timestamp", "deletion schedule", "bounded deletion reason code", "portfolio draft relation", "portfolio lifecycle state"],
+      "exampleFields": ["email", "display name", "avatar", "handle", "bio", "skills", "languages", "profile visibility", "discoverability", "activity visibility", "portfolio visibility", "profile version", "account lifecycle version", "suspension timestamp", "bounded suspension reason code", "deletion request timestamp", "deletion schedule", "bounded deletion reason code", "user tag definition", "tag assignment lifecycle", "portfolio draft relation", "portfolio lifecycle state"],
       "accessRoles": ["user_self", "authorized_service", "support_operator_allowlisted"],
       "retentionPolicyId": "account_deletion_plus_30d",
       "exportPolicy": "include_user_owned_fields",
@@ -1071,7 +1071,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 111,
+    "modelCount": 113,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",

@@ -1,12 +1,18 @@
 import {
+  buildUserLifecycleMetrics,
   decodeUserAdminCursor,
   encodeUserAdminCursor,
   serializeAdminUser,
+  serializeUserTag,
 } from './userAdminLifecycle.js'
 
 const includeAdminUser = (now = new Date()) => ({
   profile: true,
   authAccounts: { select: { provider: true } },
+  tagAssignments: {
+    where: { removedAt: null, tag: { archivedAt: null } },
+    include: { tag: true },
+  },
   _count: {
     select: {
       authSessions: { where: { revokedAt: null, expiresAt: { gt: now }, riskStatus: { not: 'compromised' } } },
@@ -31,6 +37,7 @@ const cursorWhere = (query, cursor) => {
 const queryWhere = (query, cursor) => ({
   ...(query.status ? { status: query.status } : {}),
   ...(query.role ? { role: query.role } : {}),
+  ...(query.tag ? { tagAssignments: { some: { removedAt: null, tag: { key: query.tag, archivedAt: null } } } } : {}),
   ...(query.search ? {
     OR: [
       { id: { contains: query.search, mode: 'insensitive' } },
@@ -61,7 +68,7 @@ export const createPrismaUserAdminRepository = (client, { runSerializableTransac
       action: 'admin.users.queried',
       resourceType: 'user_query',
       resourceId: actor.id,
-      metadata: { status: query.status, role: query.role, searchApplied: Boolean(query.search), sort: query.sort, order: query.order, limit: query.limit },
+      metadata: { status: query.status, role: query.role, tag: query.tag, searchApplied: Boolean(query.search), sort: query.sort, order: query.order, limit: query.limit },
     })
     const value = last?.[query.sort]
     return {
@@ -80,6 +87,127 @@ export const createPrismaUserAdminRepository = (client, { runSerializableTransac
     await recordAudit({ actor, action: 'admin.user.detail_read', resourceType: 'user', resourceId: id, metadata: { status: row.status } })
     return serialize(row)
   },
+
+  metrics: async (query, actor, auditAction = 'admin.users.metrics_queried') => {
+    const from = new Date(query.dateFrom)
+    const to = new Date(query.dateTo)
+    const [users, sessions] = await Promise.all([
+      client.user.findMany({
+        include: {
+          tagAssignments: { where: { removedAt: null }, include: { tag: true } },
+        },
+      }),
+      client.authSession.findMany({
+        where: { lastSeenAt: { gte: from, lt: to } },
+        select: { userId: true, lastSeenAt: true, revokedAt: true, riskStatus: true },
+      }),
+    ])
+    const metrics = buildUserLifecycleMetrics({ users, sessions, query })
+    await recordAudit({ actor, action: auditAction, resourceType: 'user_metrics', resourceId: actor.id, metadata: { dateFrom: query.dateFrom, dateTo: query.dateTo, accounts: metrics.totals.accounts, activeUsers: metrics.totals.activeUsers } })
+    return metrics
+  },
+
+  listTags: async (query, actor) => {
+    const archivedWhere = query.status === 'active' ? { archivedAt: null } : query.status === 'archived' ? { archivedAt: { not: null } } : {}
+    const rows = await client.userTag.findMany({
+      where: {
+        ...archivedWhere,
+        ...(query.search ? { OR: [{ key: { contains: query.search, mode: 'insensitive' } }, { label: { contains: query.search, mode: 'insensitive' } }] } : {}),
+      },
+      include: { _count: { select: { assignments: { where: { removedAt: null } } } } },
+      orderBy: [{ archivedAt: 'asc' }, { label: 'asc' }, { id: 'asc' }],
+    })
+    await recordAudit({ actor, action: 'admin.user_tags.queried', resourceType: 'user_tag_query', resourceId: actor.id, metadata: { status: query.status, searchApplied: Boolean(query.search), count: rows.length } })
+    return rows.map((row) => serializeUserTag(row, { assignmentCount: row._count.assignments }))
+  },
+
+  createTag: async (payload, actor) => {
+    if (await client.userTag.findUnique({ where: { key: payload.key }, select: { id: true } })) return { duplicate: true }
+    const tag = await client.userTag.create({ data: { key: payload.key, label: payload.label, description: payload.description, color: payload.color } })
+    await recordAudit({ actor, action: 'admin.user_tag.created', resourceType: 'user_tag', resourceId: tag.id, metadata: { key: tag.key, color: tag.color, reasonCode: payload.reasonCode, version: tag.version } })
+    return { tag: serializeUserTag(tag, { assignmentCount: 0 }) }
+  },
+
+  updateTag: async (id, payload, actor) => {
+    const current = await client.userTag.findUnique({ where: { id } })
+    if (!current) return null
+    if (current.archivedAt) return { archived: true }
+    const changed = await client.userTag.updateMany({
+      where: { id, version: payload.expectedVersion, archivedAt: null },
+      data: { label: payload.label, description: payload.description, color: payload.color, version: { increment: 1 } },
+    })
+    if (changed.count !== 1) return { conflict: true }
+    const tag = await client.userTag.findUnique({ where: { id }, include: { _count: { select: { assignments: { where: { removedAt: null } } } } } })
+    await recordAudit({ actor, action: 'admin.user_tag.updated', resourceType: 'user_tag', resourceId: id, metadata: { key: tag.key, color: tag.color, reasonCode: payload.reasonCode, previousVersion: current.version, version: tag.version } })
+    return { tag: serializeUserTag(tag, { assignmentCount: tag._count.assignments }) }
+  },
+
+  archiveTag: async (id, payload, actor) => {
+    const current = await client.userTag.findUnique({ where: { id } })
+    if (!current) return null
+    if (current.version !== payload.expectedVersion) return { conflict: true }
+    if (current.archivedAt) return { archived: true }
+    const now = new Date()
+    const changed = await client.userTag.updateMany({ where: { id, version: payload.expectedVersion, archivedAt: null }, data: { archivedAt: now, version: { increment: 1 } } })
+    if (changed.count !== 1) return { conflict: true }
+    const tag = await client.userTag.findUnique({ where: { id }, include: { _count: { select: { assignments: { where: { removedAt: null } } } } } })
+    await recordAudit({ actor, action: 'admin.user_tag.archived', resourceType: 'user_tag', resourceId: id, metadata: { key: tag.key, reasonCode: payload.reasonCode, version: tag.version } })
+    return { tag: serializeUserTag(tag, { assignmentCount: tag._count.assignments }) }
+  },
+
+  restoreTag: async (id, payload, actor) => {
+    const current = await client.userTag.findUnique({ where: { id } })
+    if (!current) return null
+    if (current.version !== payload.expectedVersion) return { conflict: true }
+    if (!current.archivedAt) return { conflict: true }
+    const changed = await client.userTag.updateMany({ where: { id, version: payload.expectedVersion, archivedAt: { not: null } }, data: { archivedAt: null, version: { increment: 1 } } })
+    if (changed.count !== 1) return { conflict: true }
+    const tag = await client.userTag.findUnique({ where: { id }, include: { _count: { select: { assignments: { where: { removedAt: null } } } } } })
+    await recordAudit({ actor, action: 'admin.user_tag.restored', resourceType: 'user_tag', resourceId: id, metadata: { key: tag.key, reasonCode: payload.reasonCode, version: tag.version } })
+    return { tag: serializeUserTag(tag, { assignmentCount: tag._count.assignments }) }
+  },
+
+  assignTag: (id, tagId, payload, actor) => runSerializableTransaction(async (db) => {
+    const [user, tag, assignment] = await Promise.all([
+      db.user.findUnique({ where: { id } }),
+      db.userTag.findUnique({ where: { id: tagId } }),
+      db.userTagAssignment.findUnique({ where: { userId_tagId: { userId: id, tagId } } }),
+    ])
+    if (!user || !tag) return null
+    if (user.accountVersion !== payload.expectedUserVersion) return { conflict: true }
+    if (user.status === 'deleted') return { invalidUserStatus: true }
+    if (tag.archivedAt) return { archived: true }
+    if (assignment && !assignment.removedAt) return { alreadyAssigned: true }
+    const changed = await db.user.updateMany({ where: { id, accountVersion: payload.expectedUserVersion, status: { not: 'deleted' } }, data: { accountVersion: { increment: 1 } } })
+    if (changed.count !== 1) return { conflict: true }
+    const now = new Date()
+    await db.userTagAssignment.upsert({
+      where: { userId_tagId: { userId: id, tagId } },
+      create: { userId: id, tagId, assignedById: actor.id, assignReasonCode: payload.reasonCode, assignedAt: now },
+      update: { assignedById: actor.id, assignReasonCode: payload.reasonCode, assignedAt: now, removedById: null, removeReasonCode: null, removedAt: null, version: { increment: 1 } },
+    })
+    const updated = await db.user.findUnique({ where: { id }, include: includeAdminUser(now) })
+    await recordAudit({ actor, action: 'admin.user_tag.assigned', resourceType: 'user', resourceId: id, metadata: { tagId, tagKey: tag.key, reasonCode: payload.reasonCode, version: updated.accountVersion } }, db)
+    return { user: serialize(updated) }
+  }),
+
+  removeTag: (id, tagId, payload, actor) => runSerializableTransaction(async (db) => {
+    const [user, tag, assignment] = await Promise.all([
+      db.user.findUnique({ where: { id } }),
+      db.userTag.findUnique({ where: { id: tagId } }),
+      db.userTagAssignment.findUnique({ where: { userId_tagId: { userId: id, tagId } } }),
+    ])
+    if (!user || !tag) return null
+    if (user.accountVersion !== payload.expectedUserVersion) return { conflict: true }
+    if (!assignment || assignment.removedAt) return { notAssigned: true }
+    const changed = await db.user.updateMany({ where: { id, accountVersion: payload.expectedUserVersion }, data: { accountVersion: { increment: 1 } } })
+    if (changed.count !== 1) return { conflict: true }
+    const now = new Date()
+    await db.userTagAssignment.update({ where: { userId_tagId: { userId: id, tagId } }, data: { removedById: actor.id, removeReasonCode: payload.reasonCode, removedAt: now, version: { increment: 1 } } })
+    const updated = await db.user.findUnique({ where: { id }, include: includeAdminUser(now) })
+    await recordAudit({ actor, action: 'admin.user_tag.removed', resourceType: 'user', resourceId: id, metadata: { tagId, tagKey: tag.key, reasonCode: payload.reasonCode, version: updated.accountVersion } }, db)
+    return { user: serialize(updated) }
+  }),
 
   suspend: (id, payload, actor) => runSerializableTransaction(async (db) => {
     const current = await db.user.findUnique({ where: { id }, include: includeAdminUser() })
