@@ -869,14 +869,22 @@ const parseGenerationHistoryDate = (query, field) => {
   return new Date(timestamp).toISOString()
 }
 
-export const parseGenerationCenterQuery = (query) => {
+export const parseGenerationCenterQuery = (query, pagination = { defaultLimit: 20, maxLimit: 50 }) => {
   const workspace = optionalText(query, 'workspace', null)
   const status = optionalText(query, 'status', null)
+  const sort = optionalText(query, 'sort', 'createdAt')
+  const direction = optionalText(query, 'direction', 'desc')
   if (workspace && !creativeWorkspaces.includes(workspace)) {
     throw validationFailed(`workspace must be one of: ${creativeWorkspaces.join(', ')}`)
   }
   if (status && !creativeGenerationStatuses.includes(status)) {
     throw validationFailed(`status must be one of: ${creativeGenerationStatuses.join(', ')}`)
+  }
+  if (!['createdAt', 'updatedAt', 'status'].includes(sort)) {
+    throw validationFailed('sort must be one of: createdAt, updatedAt, status')
+  }
+  if (!['asc', 'desc'].includes(direction)) {
+    throw validationFailed('direction must be one of: asc, desc')
   }
   const dateFrom = parseGenerationHistoryDate(query, 'dateFrom')
   const dateTo = parseGenerationHistoryDate(query, 'dateTo')
@@ -884,11 +892,24 @@ export const parseGenerationCenterQuery = (query) => {
     throw validationFailed('dateFrom must be before or equal to dateTo')
   }
   return {
-    ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 50 }),
+    ...parsePaginationQuery(query, pagination),
     workspace,
     status,
     dateFrom,
     dateTo,
+    sort,
+    direction,
+  }
+}
+
+export const parseGenerationCenterExportQuery = (query) => {
+  const format = optionalText(query, 'format', 'json')
+  if (!['json', 'csv'].includes(format)) {
+    throw validationFailed('format must be one of: json, csv')
+  }
+  return {
+    ...parseGenerationCenterQuery(query, { defaultLimit: 200, maxLimit: 500 }),
+    format,
   }
 }
 

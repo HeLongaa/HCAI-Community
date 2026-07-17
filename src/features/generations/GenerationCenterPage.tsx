@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
   ArrowDownToLine,
+  ArrowUpDown,
+  Boxes,
   CalendarDays,
   ChevronRight,
   CircleX,
@@ -22,16 +24,18 @@ import { textFor } from '../../domain/utils'
 import { creativeService } from '../../services/creativeService'
 import { UseCreativeAsset } from '../assets/UseCreativeAsset'
 import { mediaService } from '../../services/mediaService'
-import type { ApiGenerationTask, CreativeWorkspace, GenerationCenterQuery } from '../../services/contracts'
+import type { ApiGenerationTask, CreativeWorkspace, GenerationCenterQuery, GenerationCenterSummary } from '../../services/contracts'
 
 type Filters = {
   workspace: '' | CreativeWorkspace
   status: string
   dateFrom: string
   dateTo: string
+  sort: 'createdAt' | 'updatedAt' | 'status'
+  direction: 'asc' | 'desc'
 }
 
-const emptyFilters: Filters = { workspace: '', status: '', dateFrom: '', dateTo: '' }
+const emptyFilters: Filters = { workspace: '', status: '', dateFrom: '', dateTo: '', sort: 'createdAt', direction: 'desc' }
 const activeStatuses = new Set(['queued', 'running'])
 
 const workspaceIcon = {
@@ -59,6 +63,8 @@ const queryFor = (filters: Filters, cursor: string | null = null): GenerationCen
   status: filters.status || null,
   dateFrom: filters.dateFrom ? `${filters.dateFrom}T00:00:00.000Z` : null,
   dateTo: filters.dateTo ? `${filters.dateTo}T23:59:59.999Z` : null,
+  sort: filters.sort,
+  direction: filters.direction,
 })
 
 const downloadAsset = async (assetId: string) => {
@@ -90,12 +96,14 @@ export function GenerationCenterPage({
   const locale = t.home === '首页' ? 'zh' : 'en'
   const [filters, setFilters] = useState<Filters>(emptyFilters)
   const [items, setItems] = useState<ApiGenerationTask[]>([])
+  const [summary, setSummary] = useState<GenerationCenterSummary | null>(null)
   const [selected, setSelected] = useState<ApiGenerationTask | null>(null)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [actionId, setActionId] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [online, setOnline] = useState(() => navigator.onLine)
 
@@ -116,8 +124,13 @@ export function GenerationCenterPage({
     else setLoading(true)
     setError(null)
     try {
-      const page = await creativeService.listGenerationTasks(queryFor(filters, cursor))
+      const query = queryFor(filters, cursor)
+      const [page, nextSummary] = await Promise.all([
+        creativeService.listGenerationTasks(query),
+        cursor ? Promise.resolve(null) : creativeService.generationCenterSummary(query),
+      ])
       mergeItems(page.items, Boolean(cursor))
+      if (nextSummary) setSummary(nextSummary)
       setNextCursor(page.nextCursor)
       setSelected((current) => {
         if (cursor) return current ?? page.items[0] ?? null
@@ -203,6 +216,26 @@ export function GenerationCenterPage({
     navigateToPage(task.deepLink.page, task.deepLink.workspace)
   }
 
+  const exportHistory = async () => {
+    setExporting(true)
+    setError(null)
+    try {
+      const payload = await creativeService.exportGenerationCenter(queryFor(filters), 'json')
+      const url = URL.createObjectURL(new Blob([payload], { type: 'application/json' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `generation-center-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : textFor(t, 'Could not export generation history.', '无法导出生成历史。'))
+    } finally {
+      setExporting(false)
+    }
+  }
+
   if (!signedIn) {
     return (
       <main className="generation-center-page">
@@ -224,20 +257,33 @@ export function GenerationCenterPage({
           <h1>{textFor(t, 'Generations', '生成任务')}</h1>
           <p>{textFor(t, 'One queue for Image, Chat, Video, and Music.', '统一查看图片、对话、视频和音乐任务。')}</p>
         </div>
-        <button
-          aria-label={textFor(t, 'Refresh generation history', '刷新生成历史')}
-          className="icon-button generation-refresh"
-          disabled={refreshing || !online}
-          title={textFor(t, 'Refresh', '刷新')}
-          type="button"
-          onClick={() => void load(null, true)}
-        >
-          <RefreshCw className={refreshing ? 'spin' : ''} size={17} />
-        </button>
+        <div className="generation-center-header-actions">
+          <button aria-label={textFor(t, 'Export generation history', '导出生成历史')} className="icon-button" disabled={exporting || !online} title={textFor(t, 'Export', '导出')} type="button" onClick={() => void exportHistory()}>
+            {exporting ? <LoaderCircle className="spin" size={17} /> : <ArrowDownToLine size={17} />}
+          </button>
+          <button
+            aria-label={textFor(t, 'Refresh generation history', '刷新生成历史')}
+            className="icon-button generation-refresh"
+            disabled={refreshing || !online}
+            title={textFor(t, 'Refresh', '刷新')}
+            type="button"
+            onClick={() => void load(null, true)}
+          >
+            <RefreshCw className={refreshing ? 'spin' : ''} size={17} />
+          </button>
+        </div>
       </header>
 
       {!online && <div className="generation-center-notice"><AlertTriangle size={15} /> {textFor(t, 'Offline. Showing the last loaded history.', '当前离线，正在显示上次加载的历史。')}</div>}
       {error && <div className="generation-center-notice error"><CircleX size={15} /><span>{error}</span><button aria-label={textFor(t, 'Dismiss error', '关闭错误')} type="button" onClick={() => setError(null)}><X size={15} /></button></div>}
+
+      {summary && <section className="generation-center-summary" aria-label={textFor(t, 'Generation summary', '生成统计')}>
+        <div><span>{textFor(t, 'Total', '总数')}</span><strong>{summary.total}</strong></div>
+        <div><span>{textFor(t, 'Active', '进行中')}</span><strong>{summary.active}</strong></div>
+        <div><span>{textFor(t, 'Failed', '失败')}</span><strong>{summary.failed}</strong></div>
+        <div><span>{textFor(t, 'Review', '待审核')}</span><strong>{summary.reviewRequired}</strong></div>
+        <div><span>{textFor(t, 'Outputs', '产物')}</span><strong>{summary.outputAssets}</strong></div>
+      </section>}
 
       <section className="generation-filter-bar" aria-label={textFor(t, 'Generation filters', '生成任务筛选')}>
         <label>
@@ -250,6 +296,17 @@ export function GenerationCenterPage({
             <option value="music">Music</option>
           </select>
         </label>
+        <label>
+          <span>{textFor(t, 'Sort', '排序')}</span>
+          <select aria-label={textFor(t, 'Generation sort', '生成任务排序')} value={filters.sort} onChange={(event) => setFilters((current) => ({ ...current, sort: event.target.value as Filters['sort'] }))}>
+            <option value="createdAt">{textFor(t, 'Created', '创建时间')}</option>
+            <option value="updatedAt">{textFor(t, 'Updated', '更新时间')}</option>
+            <option value="status">{textFor(t, 'Status', '状态')}</option>
+          </select>
+        </label>
+        <button className="icon-button generation-sort-direction" aria-label={filters.direction === 'desc' ? textFor(t, 'Sort descending', '降序排列') : textFor(t, 'Sort ascending', '升序排列')} title={filters.direction === 'desc' ? textFor(t, 'Descending', '降序') : textFor(t, 'Ascending', '升序')} type="button" onClick={() => setFilters((current) => ({ ...current, direction: current.direction === 'desc' ? 'asc' : 'desc' }))}>
+          <ArrowUpDown size={16}/>
+        </button>
         <label>
           <span>{textFor(t, 'Status', '状态')}</span>
           <select aria-label={textFor(t, 'Status filter', '状态筛选')} value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
@@ -270,7 +327,7 @@ export function GenerationCenterPage({
           <span>{textFor(t, 'To', '结束日期')}</span>
           <span className="generation-date-input"><CalendarDays size={14} /><input aria-label={textFor(t, 'End date', '结束日期')} type="date" value={filters.dateTo} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} /></span>
         </label>
-        <button className="ghost-button generation-clear-filters" onClick={() => setFilters(emptyFilters)} disabled={Object.values(filters).every((value) => !value)} type="button">
+        <button className="ghost-button generation-clear-filters" onClick={() => setFilters(emptyFilters)} disabled={JSON.stringify(filters) === JSON.stringify(emptyFilters)} type="button">
           <X size={15} /> {textFor(t, 'Clear', '清除')}
         </button>
       </section>
@@ -330,8 +387,9 @@ export function GenerationCenterPage({
                 {selected.outputs.length === 0 ? <p>{textFor(t, 'No output asset is available yet.', '暂时没有可用的输出资产。')}</p> : selected.outputs.map((output) => (
                   <div className="generation-output-row" key={output.assetId}>
                     <FileOutput size={16} />
-                    <span><strong>{output.fileName}</strong><small>{output.scanStatus} · {output.contentType}</small></span>
+                    <span><strong>{output.fileName}</strong><small>{output.scanStatus} · {output.contentType} · {output.lineage.length} {textFor(t, 'lineage links', '条谱系关系')}</small></span>
                     <button aria-label={`${textFor(t, 'Download', '下载')} ${output.fileName}`} disabled={!selected.actions.download.available} title={textFor(t, 'Download', '下载')} type="button" onClick={() => void downloadAsset(output.assetId).catch((downloadError) => setError(downloadError instanceof Error ? downloadError.message : 'Download failed'))}><ArrowDownToLine size={15} /></button>
+                    <button aria-label={`${textFor(t, 'Open asset', '打开资产')} ${output.fileName}`} title={textFor(t, 'Open asset library', '打开资产库')} type="button" onClick={() => navigateToPage('assets')}><Boxes size={15}/></button>
                     <UseCreativeAsset t={t} assetId={output.assetId} fileName={output.fileName} available={selected.status === 'completed' && output.status === 'uploaded' && output.scanStatus === 'clean'}/>
                   </div>
                 ))}

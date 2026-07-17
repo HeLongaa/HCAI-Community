@@ -170,6 +170,10 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `GET /api/tasks/delivery-targets` | Required | `task:submit` plus assignee/status scope | Yes |
 | `POST /api/media/assets/:id/library` | Required | Asset owner and current delivery governance | Yes |
 | `POST /api/media/assets/:id/portfolio` | Required | Asset owner and current delivery governance | Yes |
+| `GET /api/creative/generation-center` | Required | Generation owner | Yes |
+| `GET /api/creative/generation-center/summary` | Required | Generation owner aggregate | Yes |
+| `GET /api/creative/generation-center/export` | Required | Generation owner bounded export | Yes |
+| `GET /api/creative/generation-center/:id` | Required | Generation owner | Yes |
 | `GET /api/profiles/me/portfolio` | Required | Profile owner | Yes |
 | `PATCH /api/profiles/me/portfolio/:id` | Required | Profile owner plus lifecycle transition rules | Yes |
 | `GET /api/tasks/:id/submissions` | Required | Resource-level visibility | Yes |

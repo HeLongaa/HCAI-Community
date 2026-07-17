@@ -653,6 +653,8 @@ test('GET generation center unifies owner-scoped workspaces with safe date pagin
   try {
     const denied = await requestJson(server.url, '/api/creative/generation-center', { method: 'GET' })
     assert.equal(denied.status, 401)
+    assert.equal((await requestJson(server.url, '/api/creative/generation-center/summary', { method: 'GET' })).status, 401)
+    assert.equal((await requestJson(server.url, '/api/creative/generation-center/export', { method: 'GET' })).status, 401)
 
     const first = await requestJson(
       server.url,
@@ -690,6 +692,43 @@ test('GET generation center unifies owner-scoped workspaces with safe date pagin
     })
     assert.equal(detail.status, 200)
     assert.equal(detail.payload.data.id, records[0].id)
+
+    const ascending = await requestJson(
+      server.url,
+      '/api/creative/generation-center?dateFrom=2032-08-01T00%3A00%3A00Z&dateTo=2032-08-01T23%3A59%3A59Z&sort=createdAt&direction=asc',
+      { method: 'GET', token: 'demo-access.promptlin' },
+    )
+    assert.deepEqual(ascending.payload.data.map((item) => item.workspace), ['image', 'chat'])
+
+    const summary = await requestJson(server.url, '/api/creative/generation-center/summary?dateFrom=2032-08-01T00%3A00%3A00Z&dateTo=2032-08-02T23%3A59%3A59Z', {
+      method: 'GET', token: 'demo-access.promptlin',
+    })
+    assert.equal(summary.status, 200)
+    assert.equal(summary.payload.data.total, 3)
+    assert.equal(summary.payload.data.active, 1)
+    assert.equal(summary.payload.data.failed, 1)
+    assert.deepEqual(summary.payload.data.byWorkspace, { chat: 1, image: 1, video: 1 })
+    assert.equal('byProvider' in summary.payload.data, false)
+
+    const exported = await requestJson(server.url, '/api/creative/generation-center/export?format=json&sort=status&direction=asc&dateFrom=2032-08-01T00%3A00%3A00Z&dateTo=2032-08-02T23%3A59%3A59Z', {
+      method: 'GET', token: 'demo-access.promptlin',
+    })
+    assert.equal(exported.status, 200)
+    assert.equal(exported.payload.kind, 'creative.generation-center.export')
+    assert.equal(exported.payload.items.length, 3)
+    assert.equal(JSON.stringify(exported.payload).includes('private-provider'), false)
+
+    const csv = await fetch(`${server.url}/api/creative/generation-center/export?format=csv&dateFrom=2032-08-01T00%3A00%3A00Z&dateTo=2032-08-02T23%3A59%3A59Z`, {
+      headers: { authorization: 'Bearer demo-access.promptlin' },
+    })
+    assert.equal(csv.status, 200)
+    assert.match(csv.headers.get('content-type'), /^text\/csv/)
+    assert.match(await csv.text(), /^"id","workspace","mode","status"/)
+
+    const invalidSort = await requestJson(server.url, '/api/creative/generation-center?sort=providerId', {
+      method: 'GET', token: 'demo-access.promptlin',
+    })
+    assert.equal(invalidSort.status, 400)
   } finally {
     await server.close()
   }

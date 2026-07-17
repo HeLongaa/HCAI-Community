@@ -16,21 +16,34 @@ const scanStatusForAsset = (asset) => {
   return security.scanStatus ?? 'pending'
 }
 
+const safeOutputRelation = (relation) => ({
+  sourceAssetId: String(relation.sourceAssetId),
+  targetAssetId: String(relation.targetAssetId),
+  relationType: String(relation.relationType),
+  sourceGenerationId: relation.sourceGenerationId ? String(relation.sourceGenerationId) : null,
+  targetWorkspace: relation.targetWorkspace ? String(relation.targetWorkspace) : null,
+  role: relation.role ? String(relation.role) : null,
+})
+
 const serializeOutputAsset = (asset) => asset
   ? {
-      assetId: String(asset.id),
+      assetId: String(asset.id ?? asset.assetId),
       fileName: String(asset.fileName ?? ''),
       contentType: String(asset.contentType ?? 'application/octet-stream'),
       status: String(asset.status ?? 'pending'),
-      scanStatus: String(scanStatusForAsset(asset)),
+      scanStatus: String(asset.scanStatus ?? scanStatusForAsset(asset)),
+      lineage: (asset.relations ?? []).map(safeOutputRelation),
+      reuse: asset.actions?.reuse ?? null,
       createdAt: asset.createdAt ?? null,
     }
   : null
 
 const outputAssetsForGeneration = async (generation, mediaRepository, actor) => {
   const ids = [...new Set((generation.outputAssetIds ?? []).map(String).filter(Boolean))]
-  const assets = await Promise.all(ids.map((id) =>
-    mediaRepository?.findAccessibleCreativeInput?.(id, actor) ?? null))
+  const assets = await Promise.all(ids.map(async (id) =>
+    await mediaRepository?.getAssetLibraryItem?.(id, actor)
+      ?? await mediaRepository?.findAccessibleCreativeInput?.(id, actor)
+      ?? null))
   return assets.map(serializeOutputAsset).filter(Boolean)
 }
 
@@ -150,3 +163,39 @@ export const serializeUserGenerationTask = async (generation, context) => {
 
 export const serializeUserGenerationTaskPage = async (items, context) =>
   Promise.all((items ?? []).map((item) => serializeUserGenerationTask(item, context)))
+
+export const serializeUserGenerationCenterSummary = (summary = {}) => ({
+  total: Number(summary.total ?? 0),
+  active: Number(summary.active ?? 0),
+  failed: Number(summary.failed ?? 0),
+  reviewRequired: Number(summary.reviewRequired ?? 0),
+  outputAssets: Number(summary.outputAssets ?? 0),
+  byStatus: summary.byStatus ?? {},
+  byWorkspace: summary.byWorkspace ?? {},
+})
+
+const csvValue = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`
+
+export const buildUserGenerationCenterExport = ({ items, query, truncated = false, exportedAt = new Date().toISOString() }) => {
+  if (query.format === 'csv') {
+    return [
+      ['id', 'workspace', 'mode', 'status', 'attempt', 'outputs', 'estimatedCredits', 'reviewRequired', 'createdAt', 'updatedAt'],
+      ...items.map((item) => [item.id, item.workspace, item.mode, item.status, item.attempt.number, item.outputs.length, item.usage.estimatedCredits, item.review.required, item.createdAt, item.updatedAt]),
+    ].map((row) => row.map(csvValue).join(',')).join('\n')
+  }
+  return JSON.stringify({
+    kind: 'creative.generation-center.export',
+    schemaVersion: 1,
+    exportedAt,
+    filters: {
+      workspace: query.workspace,
+      status: query.status,
+      dateFrom: query.dateFrom,
+      dateTo: query.dateTo,
+      sort: query.sort,
+      direction: query.direction,
+    },
+    truncated: Boolean(truncated),
+    items,
+  })
+}

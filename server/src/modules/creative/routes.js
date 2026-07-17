@@ -1,4 +1,4 @@
-import { ok } from '../../common/http/responses.js'
+import { ok, text } from '../../common/http/responses.js'
 import { requireUser } from '../../common/http/auth.js'
 import { readJsonBody, readRawBody } from '../../common/http/request.js'
 import { HttpError, notFound } from '../../common/errors/httpError.js'
@@ -8,6 +8,7 @@ import {
   parseCreativeGenerationRetryRequest,
   parseCreativeGenerationHistoryQuery,
   parseGenerationCenterQuery,
+  parseGenerationCenterExportQuery,
   parsePaginationQuery,
   parseCreativeAccountingPreviewQuery,
 } from '../../contracts/requestParsers.js'
@@ -36,8 +37,10 @@ import {
 } from '../../creative/generationMutationService.js'
 import {
   generationBelongsToActor,
+  buildUserGenerationCenterExport,
   serializeUserCreativeGeneration,
   serializeUserCreativeGenerationPage,
+  serializeUserGenerationCenterSummary,
   serializeUserGenerationTask,
   serializeUserGenerationTaskPage,
 } from '../../creative/userGenerationHistory.js'
@@ -252,6 +255,52 @@ export const registerCreativeRoutes = (router, options = {}) => {
         nextCursor: page.nextCursor,
       },
     })
+  })
+
+  router.add('GET', '/api/creative/generation-center/summary', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const query = parseGenerationCenterQuery(context.query)
+    const summary = await routeRepositories.creativeGenerations.summarize({
+      ...query,
+      actorId: actor.id,
+      actorHandle: actor.handle,
+    })
+    ok(response, serializeUserGenerationCenterSummary(summary))
+  })
+
+  router.add('GET', '/api/creative/generation-center/export', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const query = parseGenerationCenterExportQuery(context.query)
+    const page = await routeRepositories.creativeGenerations.list({
+      ...query,
+      actorId: actor.id,
+      actorHandle: actor.handle,
+    })
+    const items = await serializeUserGenerationTaskPage(page.items, {
+      mediaRepository: routeRepositories.media,
+      actor,
+    })
+    await routeRepositories.audit.recordAttempt({
+      actor,
+      action: 'creative.generation_center.exported',
+      resourceType: 'creative_generation',
+      resourceId: null,
+      metadata: {
+        format: query.format,
+        count: items.length,
+        truncated: Boolean(page.nextCursor),
+        workspace: query.workspace,
+        status: query.status,
+        sort: query.sort,
+        direction: query.direction,
+      },
+    })
+    text(
+      response,
+      200,
+      buildUserGenerationCenterExport({ items, query, truncated: Boolean(page.nextCursor) }),
+      query.format === 'csv' ? 'text/csv; charset=utf-8' : 'application/json; charset=utf-8',
+    )
   })
 
   router.add('GET', '/api/creative/generation-center/:id', async (_request, response, context) => {

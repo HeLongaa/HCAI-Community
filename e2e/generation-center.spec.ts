@@ -51,6 +51,8 @@ test('generation center filters, paginates, inspects, and cancels owner tasks', 
       contentType: 'audio/mpeg',
       status: 'uploaded',
       scanStatus: 'clean',
+      lineage: [],
+      reuse: null,
       createdAt: '2026-07-13T10:00:00.000Z',
     }],
     actions: actions({ download: { available: true, reasonCode: null } }),
@@ -66,6 +68,12 @@ test('generation center filters, paginates, inspects, and cancels owner tasks', 
 
   await page.route('**/api/creative/generation-center/center-running-image', async (route) => {
     await route.fulfill({ json: { data: running } })
+  })
+  await page.route('**/api/creative/generation-center/summary?*', async (route) => {
+    await route.fulfill({ json: { data: { total: 3, active: 1, failed: 1, reviewRequired: 0, outputAssets: 1, byStatus: {}, byWorkspace: {} } } })
+  })
+  await page.route('**/api/creative/generation-center/export?*', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ kind: 'creative.generation-center.export', schemaVersion: 1, items: [running, music, chat] }) })
   })
   await page.route('**/api/creative/generations/center-running-image/cancel', async (route) => {
     running = {
@@ -94,7 +102,12 @@ test('generation center filters, paginates, inspects, and cancels owner tasks', 
   await page.getByTestId('nav-generations').click()
   await expect(page.getByRole('heading', { name: 'Generations' })).toBeVisible()
   await expect(page.getByTestId('generation-task-center-running-image')).toBeVisible()
+  await expect(page.getByLabel('Generation summary').getByText('3', { exact: true })).toBeVisible()
   await expect(page.getByText('private-provider-id')).toHaveCount(0)
+
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export generation history' }).click()
+  expect((await download).suggestedFilename()).toContain('generation-center-')
 
   await page.getByRole('button', { name: 'Load more' }).click()
   await expect(page.getByTestId('generation-task-center-chat')).toBeVisible()
@@ -114,10 +127,14 @@ test('generation center filters, paginates, inspects, and cancels owner tasks', 
 
   await page.getByLabel('Start date').fill('2026-07-01')
   await page.getByLabel('End date').fill('2026-07-13')
+  await page.getByLabel('Generation sort').selectOption('status')
+  await page.getByRole('button', { name: 'Sort descending' }).click()
   await expect.poll(() => queryLog.some((params) =>
     params.get('workspace') === 'chat' &&
     params.get('dateFrom') === '2026-07-01T00:00:00.000Z' &&
-    params.get('dateTo') === '2026-07-13T23:59:59.999Z')).toBe(true)
+    params.get('dateTo') === '2026-07-13T23:59:59.999Z' &&
+    params.get('sort') === 'status' &&
+    params.get('direction') === 'asc')).toBe(true)
 
   await page.goto('/#generations/center-running-image')
   await page.reload()
@@ -125,7 +142,11 @@ test('generation center filters, paginates, inspects, and cancels owner tasks', 
   await expect(page.getByRole('heading', { name: 'image generation task' })).toBeVisible()
 
   await page.setViewportSize({ width: 390, height: 844 })
+  const collapsePlayer = page.getByRole('button', { name: 'Collapse player' })
+  if (await collapsePlayer.isVisible()) await collapsePlayer.click()
   await expect(page.getByTestId('generation-center')).toBeVisible()
   const taskList = page.locator('.generation-task-list')
   expect(await taskList.evaluate((element) => element.scrollWidth >= element.clientWidth)).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path: '/tmp/ai-core-02-generation-center-mobile.png', fullPage: true })
 })

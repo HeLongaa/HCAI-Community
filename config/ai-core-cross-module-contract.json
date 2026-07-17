@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "taskId": "AI-CORE-02",
+  "scope": "personal_accounts_only",
+  "dependencies": ["AI-CORE-01", "TASK-01", "MEDIA-01"],
+  "workspaces": ["image", "chat", "video", "music"],
+  "providerCallsEnabled": false,
+  "userRoutes": [
+    "GET /api/creative/generation-center",
+    "GET /api/creative/generation-center/summary",
+    "GET /api/creative/generation-center/export",
+    "GET /api/creative/generation-center/:id",
+    "GET /api/media/assets",
+    "GET /api/media/assets/:id",
+    "POST /api/media/assets/:id/library",
+    "POST /api/media/assets/:id/portfolio",
+    "GET /api/profiles/me/portfolio",
+    "PATCH /api/profiles/me/portfolio/:id",
+    "GET /api/tasks/delivery-targets",
+    "POST /api/tasks/:id/submissions"
+  ],
+  "adminRoutes": [
+    "GET /api/admin/creative/generations",
+    "GET /api/admin/creative/generations/summary",
+    "GET /api/admin/creative/generations/export",
+    "POST /api/admin/creative/generations/bulk-preview",
+    "POST /api/admin/creative/generations/bulk-actions",
+    "GET /api/admin/media/assets",
+    "GET /api/admin/media/assets/export"
+  ],
+  "query": {
+    "filters": ["workspace", "status", "dateFrom", "dateTo"],
+    "sorts": ["createdAt", "updatedAt", "status"],
+    "directions": ["asc", "desc"],
+    "pagination": "opaque_stable_cursor",
+    "exportFormats": ["json", "csv"],
+    "maximumExportRows": 500
+  },
+  "reuseTargets": ["private_library", "profile_portfolio", "task_submission", "image", "video", "chat"],
+  "controls": {
+    "ownerScope": "repository_enforced",
+    "chatSummary": "protected",
+    "lineage": "application_asset_ids_only",
+    "taskEvidence": "immutable_allowlisted_snapshot",
+    "portfolioPublication": "explicit_owner_transition",
+    "archiveRecovery": "never_automatic_republish",
+    "exportAuditAction": "creative.generation_center.exported",
+    "providerIdentifiersExposed": false,
+    "privateUrlsExposed": false,
+    "rawPromptsExposed": false
+  },
+  "recovery": [
+    "idempotent_create_and_delivery",
+    "generation_cancel_and_retry",
+    "operator_execution_recovery",
+    "asset_archive_restore_and_delete_recover",
+    "portfolio_withdraw_and_restore_to_draft",
+    "task_submission_evidence_retained"
+  ],
+  "evidence": {
+    "runtime": "server/src/creative/userGenerationHistory.js",
+    "delivery": "server/src/creative/deliveryAssets.js",
+    "routes": "server/src/modules/creative/routes.js",
+    "userInterface": "src/features/generations/GenerationCenterPage.tsx",
+    "adminInterface": "src/features/admin/AdminPage.tsx",
+    "document": "docs/AI_CORE_CROSS_MODULE_REUSE.md"
+  }
+}
