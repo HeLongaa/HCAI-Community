@@ -126,6 +126,12 @@ import {
   buildConsentStatus,
   compliancePolicyManifest,
 } from '../compliance/policyManifest.js'
+import {
+  accountStatusDto,
+  deletionSchedule,
+  profilePrivacyDto,
+  projectProfileForViewer,
+} from '../profiles/profileLifecycle.js'
 
 const sessionByRefreshToken = new Map()
 const authSessionById = new Map()
@@ -164,9 +170,25 @@ const internalPointAccountsByHandle = new Map()
 const internalAccountingOperationsByKey = new Map()
 const internalAccountingMovementsByOperationKey = new Map()
 const accountingReconciliationIssuesByKey = new Map()
+const profilePrivacyByHandle = new Map()
+const accountLifecycleById = new Map()
 
 const getAccountByHandle = (handle) => seedStore.demoAccountByHandle.get(handle) ?? null
 const getAccountById = (id) => seedStore.demoAccounts.find((account) => account.id === id) ?? null
+const getSeedProfilePrivacy = (handle) => {
+  const current = profilePrivacyByHandle.get(handle)
+  if (current) return current
+  const created = { visibility: 'public', discoverable: true, showActivity: true, showPortfolio: true, version: 1, updatedAt: new Date().toISOString() }
+  profilePrivacyByHandle.set(handle, created)
+  return created
+}
+const getSeedAccountLifecycle = (account) => {
+  const current = accountLifecycleById.get(account.id)
+  if (current) return current
+  const created = { status: account.status ?? 'active', accountVersion: 1, deletionRequestedAt: null, deletionScheduledAt: null, deletionReasonCode: null }
+  accountLifecycleById.set(account.id, created)
+  return created
+}
 const normalizeEmail = (email) => String(email ?? '').trim().toLowerCase()
 const oauthKey = (provider, providerUserId) => `${provider}:${providerUserId}`
 const oauthAuditResourceId = (provider, providerUserId) => (
@@ -3502,19 +3524,44 @@ export const createSeedRepository = () => {
     list: (options = {}) => {
       const search = options.search ? options.search.toLowerCase() : null
       const filtered = seedStore.profiles.filter((profile) => {
+        const privacy = getSeedProfilePrivacy(profile.handle)
+        const account = getAccountByHandle(profile.handle)
+        if (!account) return false
+        const lifecycle = account ? getSeedAccountLifecycle(account) : null
+        if (privacy.visibility !== 'public' || !privacy.discoverable || lifecycle?.deletionRequestedAt || (account?.status && account.status !== 'active')) return false
         if (options.lane && profile.lane !== options.lane) return false
         if (search) {
           const haystack = `${profile.handle} ${profile.name?.en ?? ''} ${profile.name?.zh ?? ''} ${profile.tags?.join(' ') ?? ''}`.toLowerCase()
           if (!haystack.includes(search)) return false
         }
         return true
-      }).map((profile) => ({ ...serializeProfile(profile), portfolio: getSeedPublicPortfolio(profile.handle) }))
+      }).map((profile) => projectProfileForViewer({
+        profile: { ...getSeedProfilePrivacy(profile.handle), userId: getAccountByHandle(profile.handle)?.id, handle: profile.handle, user: { status: getAccountByHandle(profile.handle)?.status ?? 'active', deletionRequestedAt: getSeedAccountLifecycle(getAccountByHandle(profile.handle)).deletionRequestedAt } },
+        publicProfile: { ...serializeProfile(profile), portfolio: getSeedPublicPortfolio(profile.handle) },
+      }))
       return paginateByCursor(filtered, { ...options, cursorKey: 'handle' })
     },
-    findByHandle: (handle) => {
+    findByHandle: (handle, viewer = null) => {
       const profile = seedStore.profileByHandle.get(handle) ?? null
       if (!profile) return null
-      return { ...serializeProfile(profile), portfolio: getSeedPublicPortfolio(handle) }
+      const account = getAccountByHandle(handle)
+      const privacy = getSeedProfilePrivacy(handle)
+      return projectProfileForViewer({
+        profile: { ...privacy, userId: account?.id, handle, user: { status: account?.status ?? 'active', deletionRequestedAt: account ? getSeedAccountLifecycle(account).deletionRequestedAt : null } },
+        publicProfile: { ...serializeProfile(profile), portfolio: getSeedPublicPortfolio(handle) },
+        viewer,
+      })
+    },
+    getOwn: (actor) => {
+      const profile = seedStore.profileByHandle.get(actor.handle) ?? null
+      const account = getAccountByHandle(actor.handle)
+      if (!profile || !account) return null
+      return {
+        ...serializeProfile(profile),
+        portfolio: getSeedPublicPortfolio(actor.handle),
+        privacy: profilePrivacyDto(getSeedProfilePrivacy(actor.handle)),
+        account: accountStatusDto(getSeedAccountLifecycle(account)),
+      }
     },
     listOwnPortfolio: (actor) => [...portfolioAssetsById.values()]
       .filter((item) => item.ownerHandle === actor.handle)
@@ -3566,39 +3613,90 @@ export const createSeedRepository = () => {
     },
     listRankings: () =>
       seedStore.profiles
+        .filter((profile) => {
+          const privacy = getSeedProfilePrivacy(profile.handle)
+          const account = getAccountByHandle(profile.handle)
+          return Boolean(account) && privacy.visibility === 'public' && privacy.discoverable && !getSeedAccountLifecycle(account).deletionRequestedAt
+        })
         .map(serializeProfile)
         .sort((left, right) => (right.stats?.score ?? 0) - (left.stats?.score ?? 0)),
-    updateCurrent: (user, patch) => {
+    updateOwn: (user, patch) => {
       const current = seedStore.profileByHandle.get(user.handle) ?? null
-      if (!current) {
+      const account = getAccountByHandle(user.handle)
+      if (!current || !account) {
         return null
       }
+      const privacy = getSeedProfilePrivacy(current.handle)
+      if (privacy.version !== patch.expectedVersion) throw new HttpError(409, 'PROFILE_VERSION_CONFLICT', 'Profile was updated by another request')
       const nextHandle = patch.handle ?? current.handle
+      if (nextHandle !== current.handle && getAccountByHandle(nextHandle)) throw new HttpError(409, 'PROFILE_HANDLE_CONFLICT', 'Handle is already in use')
+      const displayName = patch.displayName ?? account.displayName
       const updated = {
         ...current,
-        ...patch,
         handle: nextHandle,
-        name: patch.name ? { ...current.name, ...patch.name } : current.name,
-        role: patch.role ? { ...current.role, ...patch.role } : current.role,
-        bio: patch.bio ?? current.bio,
-        tags: patch.tags ?? current.tags,
-        zhTags: patch.zhTags ?? current.zhTags,
-        categories: patch.categories ?? current.categories,
+        name: patch.displayName !== undefined ? { en: displayName, zh: displayName } : current.name,
+        bio: patch.bio !== undefined ? { en: patch.bio, zh: patch.bio } : current.bio,
+        tags: patch.skills ?? current.tags,
+        zhTags: patch.skills ?? current.zhTags,
         languages: patch.languages ?? current.languages,
-        stats: patch.stats ?? current.stats,
-        badges: patch.badges ?? current.badges,
-        portfolio: patch.portfolio ?? current.portfolio,
-        reviews: patch.reviews ?? current.reviews,
+        lane: patch.lane ?? current.lane,
+      }
+      const nextPrivacy = {
+        ...privacy,
+        ...(patch.visibility !== undefined ? { visibility: patch.visibility } : {}),
+        ...(patch.discoverable !== undefined ? { discoverable: patch.discoverable } : {}),
+        ...(patch.showActivity !== undefined ? { showActivity: patch.showActivity } : {}),
+        ...(patch.showPortfolio !== undefined ? { showPortfolio: patch.showPortfolio } : {}),
+        version: privacy.version + 1,
+        updatedAt: new Date().toISOString(),
       }
       if (nextHandle !== current.handle) {
         seedStore.profileByHandle.delete(current.handle)
+        seedStore.demoAccountByHandle.delete(current.handle)
+        profilePrivacyByHandle.delete(current.handle)
       }
       seedStore.profileByHandle.set(nextHandle, updated)
+      profilePrivacyByHandle.set(nextHandle, nextPrivacy)
+      account.handle = nextHandle
+      account.displayName = displayName
+      account.profile = { ...(account.profile ?? {}), handle: nextHandle, lane: updated.lane }
+      seedStore.demoAccountByHandle.set(nextHandle, account)
       const index = seedStore.profiles.findIndex((entry) => entry.handle === current.handle)
       if (index >= 0) {
         seedStore.profiles[index] = updated
       }
-      return serializeProfile(updated)
+      recordAudit(account, 'profile.updated', 'profile', account.id, { fields: Object.keys(patch).filter((key) => key !== 'expectedVersion' && patch[key] !== undefined).sort(), version: nextPrivacy.version })
+      return {
+        ...serializeProfile(updated), portfolio: getSeedPublicPortfolio(nextHandle),
+        privacy: profilePrivacyDto(nextPrivacy), account: accountStatusDto(getSeedAccountLifecycle(account)),
+      }
+    },
+    getAccountStatus: (actor) => {
+      const account = getAccountByHandle(actor.handle)
+      return account ? accountStatusDto(getSeedAccountLifecycle(account)) : null
+    },
+    requestDeletion: (actor, payload) => {
+      const account = getAccountByHandle(actor.handle)
+      if (!account) return null
+      const current = getSeedAccountLifecycle(account)
+      if (current.accountVersion !== payload.expectedVersion) throw new HttpError(409, 'ACCOUNT_VERSION_CONFLICT', 'Account status was updated by another request')
+      if (current.deletionRequestedAt) throw new HttpError(409, 'ACCOUNT_DELETION_ALREADY_REQUESTED', 'Account deletion is already requested')
+      const now = new Date()
+      const updated = { ...current, accountVersion: current.accountVersion + 1, deletionRequestedAt: now.toISOString(), deletionScheduledAt: deletionSchedule(now).toISOString(), deletionReasonCode: payload.reasonCode }
+      accountLifecycleById.set(account.id, updated)
+      recordAudit(account, 'account.deletion_requested', 'user', account.id, { reasonCode: payload.reasonCode, scheduledAt: updated.deletionScheduledAt, version: updated.accountVersion })
+      return accountStatusDto(updated)
+    },
+    cancelDeletion: (actor, payload) => {
+      const account = getAccountByHandle(actor.handle)
+      if (!account) return null
+      const current = getSeedAccountLifecycle(account)
+      if (current.accountVersion !== payload.expectedVersion) throw new HttpError(409, 'ACCOUNT_VERSION_CONFLICT', 'Account status was updated by another request')
+      if (!current.deletionRequestedAt) throw new HttpError(409, 'ACCOUNT_DELETION_NOT_REQUESTED', 'Account deletion is not requested')
+      const updated = { ...current, accountVersion: current.accountVersion + 1, deletionRequestedAt: null, deletionScheduledAt: null, deletionReasonCode: null }
+      accountLifecycleById.set(account.id, updated)
+      recordAudit(account, 'account.deletion_cancelled', 'user', account.id, { reasonCode: payload.reasonCode, version: updated.accountVersion })
+      return accountStatusDto(updated)
     },
   },
   points: {

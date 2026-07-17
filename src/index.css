@@ -154,7 +154,25 @@
 .use-creative-asset-notice.error { background: color-mix(in srgb, #d64b4b 12%, transparent); color: #ff8e8e; }
 .generation-output-row .use-creative-asset { grid-column: 1 / -1; }
 .asset-library-workbench > .use-creative-asset { grid-column: 2; align-self: start; padding: 0 18px 18px; }
-.portfolio-manager { display: grid; gap: 12px; }
+.panel.portfolio-manager { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; height: auto; min-height: 0; overflow: visible; }
+.profile-owner-settings { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr); gap: 14px; align-items: start; min-width: 0; }
+.panel.profile-settings-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; height: auto; min-height: 0; overflow: visible; }
+.profile-settings-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.profile-settings-panel > header span:first-child { color: var(--muted); font-size: 12px; }
+.profile-settings-panel h2 { margin: 3px 0 0; font-size: 18px; }
+.profile-settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; min-width: 0; max-width: 100%; }
+.profile-settings-grid label { display: grid; gap: 5px; min-width: 0; }
+.profile-settings-grid label > span { color: var(--muted); font-size: 12px; }
+.profile-settings-grid .wide { grid-column: 1 / -1; }
+.profile-settings-grid input, .profile-settings-grid select, .profile-settings-grid textarea { width: 100%; min-width: 0; }
+.profile-settings-grid textarea { min-height: 82px; resize: vertical; }
+.profile-privacy-toggles { display: flex; flex-wrap: wrap; gap: 8px; }
+.profile-privacy-toggles label { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; }
+.profile-privacy-toggles input { width: 16px; height: 16px; }
+.profile-settings-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.profile-settings-actions > span { color: var(--muted); font-size: 12px; }
+.profile-tabs { width: 100%; max-width: 100%; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; }
+.profile-tabs > button { flex: 0 0 auto; }
 .portfolio-manager > header { display: flex; align-items: center; justify-content: space-between; }
 .portfolio-manager > header span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
 .portfolio-manager > header h2 { margin: 3px 0 0; }
@@ -169,6 +187,9 @@
   .use-creative-asset-quick-actions { grid-template-columns: 1fr; }
   .asset-library-workbench > .use-creative-asset { grid-column: 1; }
   .portfolio-manager-list article { align-items: stretch; flex-direction: column; }
+  .profile-owner-settings, .profile-settings-grid { grid-template-columns: minmax(0, 1fr); }
+  .profile-settings-grid .wide { grid-column: 1; }
+  .profile-settings-actions > button { flex: 1 1 140px; }
 }
 
 /* Unified governed asset library */

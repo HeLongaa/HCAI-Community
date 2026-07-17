@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "task": "USER-01",
+  "scope": "personal_accounts_only",
+  "profile": {
+    "migration": "0072_user_profile_privacy_lifecycle",
+    "visibilities": ["public", "unlisted", "private"],
+    "ownerEditableFields": ["displayName", "handle", "bio", "lane", "skills", "languages", "visibility", "discoverable", "showActivity", "showPortfolio"],
+    "trustedFields": ["role", "stats", "badges", "reviews", "portfolio"],
+    "optimisticVersioning": true,
+    "privateDirectRead": "owner_only",
+    "unlistedDirectRead": "public_by_handle",
+    "discoveryEligibility": "active_public_discoverable_without_deletion_request"
+  },
+  "accountDeletion": {
+    "graceDays": 30,
+    "requestCancellable": true,
+    "publicProfileHiddenImmediately": true,
+    "rawFreeTextPersisted": false,
+    "finalDeletionOwnerTask": "LEGAL-02"
+  },
+  "operationPolicies": {
+    "User": "soft_delete",
+    "Profile": "mutable_crud",
+    "ProfilePortfolioAsset": "state_transition"
+  },
+  "routes": [
+    { "method": "GET", "path": "/api/profiles/me" },
+    { "method": "PATCH", "path": "/api/profiles/me" },
+    { "method": "GET", "path": "/api/users/me/account-status" },
+    { "method": "POST", "path": "/api/users/me/account-deletion" },
+    { "method": "DELETE", "path": "/api/users/me/account-deletion" }
+  ],
+  "verification": {
+    "focused": "npm run test:user-profile-privacy",
+    "integration": "npm run test:user-profile-privacy:integration",
+    "e2e": "e2e/profile-privacy.spec.ts",
+    "full": "CI=1 npm run check:pr"
+  }
+}

@@ -174,6 +174,10 @@ export function useAccountState() {
     localStorage.setItem('hcaiUser', JSON.stringify(next))
   }
 
+  const refreshAccount = async (): Promise<void> => {
+    applySession(await authService.me())
+  }
+
   const loginWithPassword = async (email: string, password: string): Promise<void> => {
     await authService.loginWithPassword(email, password)
     applySession(await authService.me())
@@ -246,6 +250,7 @@ export function useAccountState() {
     loginWithOAuthProvider,
     registerWithEmail,
     acceptCurrentPolicies,
+    refreshAccount,
     logout,
   }
 }

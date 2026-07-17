@@ -574,10 +574,48 @@ export const openApiDocument = {
     },
     '/users/me/profile': {
       patch: {
-        summary: 'Update the current user profile',
+        summary: 'Update the current user profile through the strict owner-editable field contract',
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', additionalProperties: false, required: ['expectedVersion'],
+          properties: {
+            displayName: { type: 'string', minLength: 1, maxLength: 120 },
+            handle: { type: 'string', minLength: 3, maxLength: 30, pattern: '^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?$' },
+            bio: { type: 'string', maxLength: 500 },
+            lane: { type: 'string', enum: ['maker', 'publisher', 'both'] },
+            skills: { type: 'array', maxItems: 12, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 40 } },
+            languages: { type: 'array', maxItems: 8, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 40 } },
+            visibility: { type: 'string', enum: ['public', 'unlisted', 'private'] },
+            discoverable: { type: 'boolean' }, showActivity: { type: 'boolean' }, showPortfolio: { type: 'boolean' },
+            expectedVersion: { type: 'integer', minimum: 1 },
+          },
+        } } } },
         responses: {
           '200': { description: 'Updated profile' },
+          '400': { description: 'Unsupported or invalid owner-editable field' },
+          '409': { description: 'Profile version or handle conflict' },
         },
+      },
+    },
+    '/users/me/account-status': {
+      get: {
+        summary: 'Read the current owner account lifecycle and deletion schedule',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'Versioned account lifecycle status' }, '401': { description: 'Authentication required' } },
+      },
+    },
+    '/users/me/account-deletion': {
+      post: {
+        summary: 'Request account deletion after a cancellable 30-day grace period',
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['expectedVersion', 'reasonCode'], properties: { expectedVersion: { type: 'integer', minimum: 1 }, reasonCode: { type: 'string', minLength: 3, maxLength: 64 } } } } } },
+        responses: { '200': { description: 'Deletion requested and public profile hidden immediately' }, '409': { description: 'Account version conflict or request already exists' } },
+      },
+      delete: {
+        summary: 'Cancel a pending account deletion request',
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['expectedVersion', 'reasonCode'], properties: { expectedVersion: { type: 'integer', minimum: 1 }, reasonCode: { type: 'string', minLength: 3, maxLength: 64 } } } } } },
+        responses: { '200': { description: 'Deletion request cancelled' }, '409': { description: 'Account version conflict or no pending request' } },
       },
     },
     '/profiles/rankings': {
@@ -2765,6 +2803,30 @@ export const openApiDocument = {
         responses: { '200': { description: 'Private draft, published, withdrawn, and archived portfolio records' } },
       },
     },
+    '/profiles/me': {
+      get: {
+        summary: 'Read the owner profile including privacy and account lifecycle settings',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'Owner profile and settings' }, '401': { description: 'Authentication required' } },
+      },
+      patch: {
+        summary: 'Update bounded owner-editable profile and privacy fields with optimistic versioning',
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', additionalProperties: false, required: ['expectedVersion'],
+          properties: {
+            displayName: { type: 'string', minLength: 1, maxLength: 120 },
+            handle: { type: 'string', minLength: 3, maxLength: 30, pattern: '^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?$' },
+            bio: { type: 'string', maxLength: 500 }, lane: { type: 'string', enum: ['maker', 'publisher', 'both'] },
+            skills: { type: 'array', maxItems: 12, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 40 } },
+            languages: { type: 'array', maxItems: 8, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 40 } },
+            visibility: { type: 'string', enum: ['public', 'unlisted', 'private'] },
+            discoverable: { type: 'boolean' }, showActivity: { type: 'boolean' }, showPortfolio: { type: 'boolean' }, expectedVersion: { type: 'integer', minimum: 1 },
+          },
+        } } } },
+        responses: { '200': { description: 'Updated owner profile' }, '400': { description: 'Unsupported or invalid owner-editable field' }, '409': { description: 'Profile version or handle conflict' } },
+      },
+    },
     '/profiles/me/portfolio/{id}': {
       patch: {
         summary: 'Edit or explicitly transition an owned portfolio record',
@@ -2791,10 +2853,11 @@ export const openApiDocument = {
     },
     '/profiles/{handle}': {
       get: {
-        summary: 'Get a public profile with only clean active published portfolio assets',
+        summary: 'Get a directly visible profile with privacy redaction and only clean active published portfolio assets',
         parameters: [{ name: 'handle', in: 'path', required: true, schema: { type: 'string' } }],
         responses: {
           '200': { description: 'Profile detail' },
+          '404': { description: 'Missing, inactive, deletion-pending, or private profile' },
         },
       },
     },
