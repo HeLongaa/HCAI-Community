@@ -17,6 +17,9 @@
   ],
   "secretBoundary": {
     "rawSecretsEnvironmentOnly": true,
+    "runtimeSecretRefResolution": "allowlisted_environment_variable",
+    "googleSecretRef": "secret://env/OAUTH_GOOGLE_CLIENT_SECRET",
+    "githubSecretRef": "secret://env/OAUTH_GITHUB_CLIENT_SECRET",
     "adminConfigFields": ["clientId", "redirectUri", "scopes", "clientSecretRef"],
     "forbiddenApiFields": ["clientSecret", "privateKey", "stateHash", "redirectTo", "linkUserId", "token", "secret"]
   },
@@ -29,7 +32,11 @@
   "providerConfiguration": {
     "optimisticVersioning": true,
     "inFlightAuthorizationPinsVersion": true,
-    "secretReferenceScheme": "secret://",
+    "secretReferenceScheme": "secret://env/",
+    "requiredLoginScopes": {
+      "google": ["openid", "email"],
+      "github": ["read:user", "user:email"]
+    },
     "fixedProviderEndpoints": true
   },
   "accountUnlink": {

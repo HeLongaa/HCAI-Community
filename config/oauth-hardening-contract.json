@@ -39,5 +39,5 @@
     "auth.oauth.provider_rejected",
     "auth.oauth.verification_failed"
   ],
-  "productionValidation": "pending_credentials_callback_registration_and_staging_execution"
+  "productionValidation": "implementation_ready_pending_external_credentials_callback_registration_and_staging_execution"
 }

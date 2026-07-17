@@ -37,6 +37,8 @@ add('public OAuth metadata reads provider controls', publicRoutes.includes('list
 add('public OAuth start blocks disabled providers', publicRoutes.includes('getOAuthProviderControl') && publicRoutes.includes('OAUTH_PROVIDER_DISABLED'))
 add('provider status uses optimistic versioning', runtime.includes('expectedVersion must be a non-negative integer') && contract.providerControl.optimisticVersioning)
 add('Provider config validates redirect, scopes, and SecretRef', runtime.includes('parseOAuthProviderConfigurationRequest') && runtime.includes('clientSecretRef must be a secret:// reference') && contract.providerConfiguration.inFlightAuthorizationPinsVersion)
+add('Provider SecretRefs resolve only allowlisted environment variables', runtime.includes('isAllowedOAuthProviderSecretReference') && contract.secretBoundary.runtimeSecretRefResolution === 'allowlisted_environment_variable')
+add('Google and GitHub login scopes cannot be removed', runtime.includes('requiredProviderScopes') && contract.providerConfiguration.requiredLoginScopes.google.includes('openid') && contract.providerConfiguration.requiredLoginScopes.github.includes('user:email'))
 add('account unlink preserves final sign-in method', contract.accountUnlink.preserveFinalSignInMethod && routes.includes('AUTH_ACCOUNT_REQUIRED'))
 add('authorization revocation is pending-only', contract.authorizationRequest.pendingOnlyRevocation && routes.includes('OAUTH_AUTHORIZATION_NOT_PENDING'))
 add('safe projection omits internal authorization context', !/serializeOAuthAuthorizationRequest[\s\S]{0,900}(stateHash|redirectTo|linkUserId)/.test(runtime))

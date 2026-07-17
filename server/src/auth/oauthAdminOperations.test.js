@@ -27,12 +27,12 @@ test('OAuth Admin parsers bound filters, ordering, versions, and stable reason c
     clientId: 'github-client',
     redirectUri: 'https://app.example.com/api/auth/oauth/github/callback',
     scopes: ['read:user', 'user:email'],
-    clientSecretRef: 'secret://oauth/github/client-secret',
+    clientSecretRef: 'secret://env/OAUTH_GITHUB_CLIENT_SECRET',
     expectedVersion: 0,
     reasonCode: 'initial_configuration',
   }), {
     clientId: 'github-client', redirectUri: 'https://app.example.com/api/auth/oauth/github/callback', scopes: ['read:user', 'user:email'],
-    clientSecretRef: 'secret://oauth/github/client-secret', expectedVersion: 0, reasonCode: 'initial_configuration',
+    clientSecretRef: 'secret://env/OAUTH_GITHUB_CLIENT_SECRET', expectedVersion: 0, reasonCode: 'initial_configuration',
   })
   assert.throws(() => parseOAuthAccountAdminListQuery({ limit: 101 }), /limit/)
   assert.throws(() => parseOAuthAuthorizationAdminListQuery({ status: 'unknown' }), /status/)
@@ -41,6 +41,12 @@ test('OAuth Admin parsers bound filters, ordering, versions, and stable reason c
   assert.throws(() => parseOAuthProviderConfigurationRequest('github', {
     clientId: 'x', redirectUri: 'https://evil.example/callback', scopes: ['read:user'], clientSecretRef: 'secret://oauth/github/key', expectedVersion: 0, reasonCode: 'invalid_redirect',
   }), /redirectUri/)
+  assert.throws(() => parseOAuthProviderConfigurationRequest('github', {
+    clientId: 'x', redirectUri: 'https://app.example.com/api/auth/oauth/github/callback', scopes: ['read:user'], clientSecretRef: 'secret://env/OAUTH_GITHUB_CLIENT_SECRET', expectedVersion: 0, reasonCode: 'missing_email_scope',
+  }), /user:email/)
+  assert.throws(() => parseOAuthProviderConfigurationRequest('google', {
+    clientId: 'x', redirectUri: 'https://app.example.com/api/auth/oauth/google/callback', scopes: ['openid', 'email'], clientSecretRef: 'secret://env/DATABASE_URL', expectedVersion: 0, reasonCode: 'wrong_secret_ref',
+  }), /OAUTH_GOOGLE_CLIENT_SECRET/)
 })
 
 test('OAuth Admin cursors are query-bound and reject tampering', () => {

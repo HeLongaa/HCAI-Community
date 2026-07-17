@@ -374,6 +374,7 @@ export type AdminOAuthProviderControl = {
   clientId: string | null
   redirectUri: string | null
   clientSecretRef: string | null
+  expectedClientSecretRef: string
   secretAvailable: boolean
   configurationSource: 'admin' | 'environment'
   configurationUpdatedAt: string | null

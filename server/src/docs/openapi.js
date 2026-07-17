@@ -207,7 +207,7 @@ export const openApiDocument = {
             },
           } } },
         },
-        responses: { '200': { description: 'Updated non-secret Provider configuration' }, '400': { description: 'Invalid redirect, scope, SecretRef, or plaintext secret field' }, '403': { description: 'Missing admin:auth:manage' }, '409': { description: 'Stale version' } },
+        responses: { '200': { description: 'Updated non-secret Provider configuration using an allowlisted secret://env reference' }, '400': { description: 'Invalid redirect, missing Provider login scope, non-allowlisted SecretRef, or plaintext secret field' }, '403': { description: 'Missing admin:auth:manage' }, '409': { description: 'Stale version' } },
       },
     },
     '/admin/auth/oauth/accounts': {
