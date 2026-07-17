@@ -8,6 +8,9 @@ import type {
   AdminOAuthProviderControl,
   AdminAuthSession,
   AdminAuthSessionQuery,
+  AdminUserDto,
+  AdminUserQuery,
+  AdminUserStatusResult,
   AdminTaskBulkAction,
   AdminTaskBulkPreview,
   AdminTaskBulkResult,
@@ -224,6 +227,19 @@ export const adminService = {
   },
   async revokeUserAuthSessions(userId: string, reasonCode: string) {
     return api.post<{ revoked: number }>(`/admin/auth/users/${encodeURIComponent(userId)}/sessions/revoke`, { reasonCode })
+  },
+  async users(query?: AdminUserQuery) {
+    const envelope = await api.getEnvelope<AdminUserDto[]>(withQuery('/admin/users', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async user(id: string) {
+    return api.get<AdminUserDto>(`/admin/users/${encodeURIComponent(id)}`)
+  },
+  async suspendUser(id: string, payload: { expectedVersion: number; reasonCode: string }) {
+    return api.post<AdminUserStatusResult>(`/admin/users/${encodeURIComponent(id)}/suspend`, payload)
+  },
+  async restoreUser(id: string, payload: { expectedVersion: number; reasonCode: string }) {
+    return api.post<AdminUserStatusResult>(`/admin/users/${encodeURIComponent(id)}/restore`, payload)
   },
   async modelControlSummary() {
     return api.get<ModelControlSummaryDto>('/admin/model-control/summary')

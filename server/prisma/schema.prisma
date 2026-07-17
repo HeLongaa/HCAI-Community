@@ -1291,6 +1291,8 @@ model User {
   deletionRequestedAt   DateTime? @map("deletion_requested_at")
   deletionScheduledAt   DateTime? @map("deletion_scheduled_at")
   deletionReasonCode    String?   @map("deletion_reason_code")
+  suspendedAt           DateTime? @map("suspended_at")
+  suspensionReasonCode  String?   @map("suspension_reason_code")
   createdAt   DateTime   @default(now()) @map("created_at")
   updatedAt   DateTime   @updatedAt @map("updated_at")
 

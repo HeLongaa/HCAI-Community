@@ -42,6 +42,8 @@ export type Permission =
   | 'admin:permissions:manage'
   | 'admin:auth:read'
   | 'admin:auth:manage'
+  | 'admin:users:read'
+  | 'admin:users:manage'
   | 'admin:creative:cancel'
   | 'admin:creative:retry'
   | 'admin:creative:replay'

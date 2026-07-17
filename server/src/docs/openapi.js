@@ -618,6 +618,48 @@ export const openApiDocument = {
         responses: { '200': { description: 'Deletion request cancelled' }, '409': { description: 'Account version conflict or no pending request' } },
       },
     },
+    '/admin/users': {
+      get: {
+        summary: 'List bounded personal user lifecycle projections',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'suspended', 'deleted'] } },
+          { name: 'role', in: 'query', schema: { type: 'string', enum: ['member', 'creator', 'publisher', 'moderator', 'admin'] } },
+          { name: 'search', in: 'query', schema: { type: 'string', maxLength: 96 } },
+          { name: 'sort', in: 'query', schema: { type: 'string', enum: ['createdAt', 'updatedAt', 'displayName'], default: 'updatedAt' } },
+          { name: 'order', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string', maxLength: 512 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+        ],
+        responses: { '200': { description: 'Stable user page without credentials or Provider identity values' }, '403': { description: 'Requires admin:users:read' } },
+      },
+    },
+    '/admin/users/{id}': {
+      get: {
+        summary: 'Read one bounded personal user lifecycle projection',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'User identity, profile visibility, auth method names, session count, and lifecycle evidence' }, '403': { description: 'Requires admin:users:read' }, '404': { description: 'User not found' } },
+      },
+    },
+    '/admin/users/{id}/suspend': {
+      post: {
+        summary: 'Suspend a personal user and atomically revoke every active session',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['expectedVersion', 'reasonCode'], properties: { expectedVersion: { type: 'integer', minimum: 1 }, reasonCode: { type: 'string', pattern: '^[a-z0-9][a-z0-9._:-]{0,79}$' } } } } } },
+        responses: { '200': { description: 'User suspended with revoked-session count' }, '403': { description: 'Requires admin:users:manage' }, '409': { description: 'Version conflict, self suspension, final active Admin, or invalid status' } },
+      },
+    },
+    '/admin/users/{id}/restore': {
+      post: {
+        summary: 'Restore a suspended personal user without reactivating old sessions',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['expectedVersion', 'reasonCode'], properties: { expectedVersion: { type: 'integer', minimum: 1 }, reasonCode: { type: 'string', pattern: '^[a-z0-9][a-z0-9._:-]{0,79}$' } } } } } },
+        responses: { '200': { description: 'User restored; old sessions remain revoked' }, '403': { description: 'Requires admin:users:manage' }, '409': { description: 'Version conflict or invalid status' } },
+      },
+    },
     '/profiles/rankings': {
       get: {
         summary: 'List public profile rankings',

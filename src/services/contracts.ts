@@ -382,6 +382,39 @@ export type AdminAuthSessionQuery = {
   order?: 'asc' | 'desc'
 }
 
+export type AdminUserStatus = 'active' | 'suspended' | 'deleted'
+
+export type AdminUserDto = {
+  id: string
+  email: string | null
+  displayName: string
+  handle: string | null
+  role: Role
+  status: AdminUserStatus
+  version: number
+  profile: { visibility: 'public' | 'unlisted' | 'private'; discoverable: boolean; lane: 'maker' | 'publisher' | 'both' } | null
+  authMethods: string[]
+  activeSessionCount: number
+  deletionRequestedAt: string | null
+  deletionScheduledAt: string | null
+  suspendedAt: string | null
+  suspensionReasonCode: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export type AdminUserQuery = {
+  status?: AdminUserStatus | null
+  role?: Role | null
+  search?: string | null
+  cursor?: string | null
+  limit?: number
+  sort?: 'createdAt' | 'updatedAt' | 'displayName'
+  order?: 'asc' | 'desc'
+}
+
+export type AdminUserStatusResult = { user: AdminUserDto; revokedSessions?: number }
+
 export type RevokeSessionsResponse = {
   revoked: number
 }

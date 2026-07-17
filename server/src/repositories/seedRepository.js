@@ -19,6 +19,7 @@ import { createSeedGenerationExecutionRepository } from '../creative/seedGenerat
 import { createSeedObservabilityRepository } from '../observability/seedObservabilityRepository.js'
 import { createSeedOAuthAdminRepository } from '../auth/seedOAuthAdminRepository.js'
 import { createSeedAuthSessionAdminRepository } from '../auth/seedAuthSessionAdminRepository.js'
+import { createSeedUserAdminRepository } from '../users/seedUserAdminRepository.js'
 import { createSeedTaskAdminRepository } from '../tasks/seedTaskAdminRepository.js'
 import { createSeedTaskLifecycleRecoveryRepository } from '../tasks/seedTaskLifecycleRecoveryRepository.js'
 import { createSeedBillingAdminRepository } from '../accounting/seedBillingAdminRepository.js'
@@ -185,7 +186,11 @@ const getSeedProfilePrivacy = (handle) => {
 const getSeedAccountLifecycle = (account) => {
   const current = accountLifecycleById.get(account.id)
   if (current) return current
-  const created = { status: account.status ?? 'active', accountVersion: 1, deletionRequestedAt: null, deletionScheduledAt: null, deletionReasonCode: null }
+  const created = {
+    status: account.status ?? 'active', accountVersion: 1,
+    deletionRequestedAt: null, deletionScheduledAt: null, deletionReasonCode: null,
+    suspendedAt: null, suspensionReasonCode: null, updatedAt: new Date().toISOString(),
+  }
   accountLifecycleById.set(account.id, created)
   return created
 }
@@ -605,6 +610,7 @@ const getSessionDto = (session) => ({
 
 const issueSession = (account, options = {}) => {
   const seededAccount = getAccountByHandle(account.handle) ?? account
+  if (getSeedAccountLifecycle(seededAccount).status !== 'active') return null
   const now = new Date()
   const sessionId = options.sessionId ?? options.familyId ?? randomUUID()
   const expiresAt = futureDate(refreshTokenTtlMs)
@@ -701,7 +707,7 @@ const registerEmailAccount = async ({ email, password, displayName, handle }, co
 
 const loginWithPassword = async ({ email, password }, clientContext = null) => {
   const account = emailAccountByEmail.get(normalizeEmail(email))
-  if (!account || !(await verifyPassword(password, account.passwordHash))) {
+  if (!account || getSeedAccountLifecycle(account).status !== 'active' || !(await verifyPassword(password, account.passwordHash))) {
     return null
   }
   return issueSession(account, { clientContext })
@@ -2567,6 +2573,14 @@ export const createSeedRepository = () => {
     getAccountById,
     recordAudit,
   })
+  const userAdmin = createSeedUserAdminRepository({
+    accounts: seedStore.demoAccounts,
+    getLifecycle: getSeedAccountLifecycle,
+    getPrivacy: getSeedProfilePrivacy,
+    authSessionById,
+    sessionByRefreshToken,
+    recordAudit,
+  })
   const taskAdmin = createSeedTaskAdminRepository({
     tasks: seedStore.tasks,
     getTask: getTaskById,
@@ -2611,6 +2625,7 @@ export const createSeedRepository = () => {
   observability,
   oauthAdmin,
   authSessionAdmin,
+  userAdmin,
   taskAdmin,
   taskLifecycleRecovery,
   billingAdmin,
@@ -2623,19 +2638,26 @@ export const createSeedRepository = () => {
         const session = payload.sid ? authSessionById.get(payload.sid) : null
         if (!session || session.revokedAt || session.expiresAt <= new Date() || session.riskStatus === 'compromised') return null
         authSessionById.set(session.id, { ...session, lastSeenAt: new Date() })
-        return getAccountById(payload.sub) ?? getAccountByHandle(payload.handle) ?? null
+        const account = getAccountById(payload.sub) ?? getAccountByHandle(payload.handle) ?? null
+        return account && getSeedAccountLifecycle(account).status === 'active' ? account : null
       }
-      return seedStore.demoAccountByAccessToken.get(token) ?? null
+      const account = seedStore.demoAccountByAccessToken.get(token) ?? null
+      return account && getSeedAccountLifecycle(account).status === 'active' ? account : null
     },
     findDemoAccountByRefreshToken: (token) => {
       const session = sessionByRefreshToken.get(token)
       const logicalSession = session ? authSessionById.get(session.familyId) : null
       if (session && logicalSession && !session.revokedAt && !logicalSession.revokedAt && logicalSession.riskStatus !== 'compromised' && session.expiresAt > new Date()) {
-        return getAccountByHandle(session.handle)
+        const account = getAccountByHandle(session.handle)
+        return account && getSeedAccountLifecycle(account).status === 'active' ? account : null
       }
-      return seedStore.demoAccountByRefreshToken.get(token) ?? null
+      const account = seedStore.demoAccountByRefreshToken.get(token) ?? null
+      return account && getSeedAccountLifecycle(account).status === 'active' ? account : null
     },
-    findDemoAccountByHandle: (handle) => seedStore.demoAccountByHandle.get(handle) ?? null,
+    findDemoAccountByHandle: (handle) => {
+      const account = seedStore.demoAccountByHandle.get(handle) ?? null
+      return account && getSeedAccountLifecycle(account).status === 'active' ? account : null
+    },
     listDemoAccounts: () => seedStore.demoAccounts,
     issueSession: (account, clientContext) => issueSession(account, { clientContext }),
     registerEmailAccount,
