@@ -55,5 +55,7 @@ test('structured registry separates RBAC from resource authorization', () => {
     'admin:model-evaluations:manage',
     'admin:model-evaluations:execute',
     'admin:provider-legal:manage',
+    'admin:task-rules:manage',
+    'admin:task-rules:publish',
   ])
 })

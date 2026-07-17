@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArchiveRestore, Download, Eye, ListTree, Megaphone, Plus, RefreshCw, RotateCcw, Save, Search, Send, ShieldCheck, ShieldOff, ToggleLeft, Trash2, Upload } from 'lucide-react'
+import { ArchiveRestore, Download, Eye, ListChecks, ListTree, Megaphone, Plus, RefreshCw, RotateCcw, Save, Search, Send, ShieldCheck, ShieldOff, ToggleLeft, Trash2, Upload } from 'lucide-react'
 
 import type { Permission } from '../../domain/types'
 import { adminService } from '../../services/adminService'
@@ -9,12 +9,17 @@ const modes: Array<{ kind: ConfigResourceKind; icon: typeof ToggleLeft; read: Pe
   { kind: 'feature_flag', icon: ToggleLeft, read: 'admin:feature-flags:read', manage: 'admin:feature-flags:manage', publish: 'admin:feature-flags:publish', en: 'Feature flags', zh: '功能开关' },
   { kind: 'reference_data', icon: ListTree, read: 'admin:reference-data:read', manage: 'admin:reference-data:manage', publish: 'admin:reference-data:publish', en: 'Reference data', zh: '字典数据' },
   { kind: 'announcement', icon: Megaphone, read: 'admin:announcements:read', manage: 'admin:announcements:manage', publish: 'admin:announcements:publish', en: 'Announcements', zh: '公告' },
+  { kind: 'task_rule', icon: ListChecks, read: 'admin:task-rules:read', manage: 'admin:task-rules:manage', publish: 'admin:task-rules:publish', en: 'Task rules', zh: '任务规则' },
 ]
 
 const defaults: Record<ConfigResourceKind, Record<string, unknown>> = {
   feature_flag: { enabled: false, payload: {}, rules: [], rolloutPercentage: null, rolloutSeed: 'v1' },
   reference_data: { label: '', value: '', sortOrder: 0, active: true },
   announcement: { body: '', level: 'info', startsAt: null, endsAt: null, active: true },
+  task_rule: {
+    category: 'General', acceptanceTemplates: [], defaultDeadlineHours: 168,
+    minimumDeadlineHours: 24, maximumDeadlineHours: 2160, deadlineRequired: true, active: true,
+  },
 }
 const pretty = (value: unknown) => JSON.stringify(value, null, 2)
 const featureDefinition = (value: Record<string, unknown>): FeatureFlagDefinition => ({

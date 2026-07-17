@@ -71,6 +71,7 @@ test('parseCreateTaskRequest trims required text and applies defaults', () => {
       deadlineAt: null,
       visibility: 'public',
       attachmentIds: ['brief-1'],
+      acceptanceTemplateId: null,
     },
   )
 })

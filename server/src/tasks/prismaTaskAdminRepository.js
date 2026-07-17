@@ -1,4 +1,5 @@
 import { HttpError } from '../common/errors/httpError.js'
+import prismaClientPkg from '@prisma/client'
 import {
   buildTaskAdminBulkPreview,
   hashTaskAdminTargets,
@@ -9,6 +10,8 @@ import {
   taskAdminEditableStatuses,
   taskAdminTransitionTarget,
 } from './taskAdminContract.js'
+
+const { Prisma } = prismaClientPkg
 
 const includeTaskAdminRelations = {
   publisher: { include: { profile: true } },
@@ -124,6 +127,67 @@ export const createPrismaTaskAdminRepository = (client, {
       byStatus[normalizeTaskAdminStatus(group.status)] = group._count._all
     }
     return { total, active, archived, byStatus }
+  },
+
+  businessMetrics: async (options = {}) => {
+    const conditions = [Prisma.sql`TRUE`]
+    if (options.dateFrom) conditions.push(Prisma.sql`t."created_at" >= ${new Date(options.dateFrom)}`)
+    if (options.dateTo) conditions.push(Prisma.sql`t."created_at" <= ${new Date(options.dateTo)}`)
+    if (options.category) conditions.push(Prisma.sql`LOWER(t."category") = LOWER(${options.category})`)
+    const where = Prisma.join(conditions, ' AND ')
+    const [row = {}] = await client.$queryRaw(Prisma.sql`
+      WITH scoped_tasks AS (
+        SELECT t.* FROM "tasks" t WHERE ${where}
+      ), dispute_times AS (
+        SELECT st."id",
+          MIN(opened."created_at") AS "opened_at",
+          MIN(resolved."created_at") AS "resolved_at"
+        FROM scoped_tasks st
+        LEFT JOIN "audit_events" opened ON opened."resource_type" = 'task' AND opened."resource_id" = st."id" AND opened."action" = 'task.dispute.opened'
+        LEFT JOIN "audit_events" resolved ON resolved."resource_type" = 'task' AND resolved."resource_id" = st."id" AND resolved."action" = 'task.dispute.resolved'
+        GROUP BY st."id"
+      )
+      SELECT
+        COUNT(*)::int AS "total",
+        COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM "task_proposals" p WHERE p."task_id" = st."id"))::int AS "with_proposals",
+        COUNT(*) FILTER (WHERE st."assignee_id" IS NOT NULL)::int AS "assigned",
+        COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM "task_submissions" s WHERE s."task_id" = st."id"))::int AS "with_submissions",
+        COUNT(*) FILTER (WHERE st."status" = 'completed')::int AS "completed",
+        COUNT(*) FILTER (WHERE st."status" = 'expired')::int AS "expired",
+        COUNT(*) FILTER (WHERE st."status" = 'cancelled')::int AS "cancelled",
+        COUNT(*) FILTER (WHERE st."deadline_at" IS NOT NULL)::int AS "deadline_configured",
+        COUNT(*) FILTER (WHERE st."deadline_at" < CURRENT_TIMESTAMP AND st."status" IN ('open', 'assigned', 'in_progress', 'rejected'))::int AS "overdue_active",
+        COUNT(*) FILTER (WHERE dt."opened_at" IS NOT NULL)::int AS "disputes_opened",
+        COUNT(*) FILTER (WHERE dt."resolved_at" IS NOT NULL)::int AS "disputes_resolved",
+        AVG(EXTRACT(EPOCH FROM (dt."resolved_at" - dt."opened_at")) / 3600.0) FILTER (WHERE dt."opened_at" IS NOT NULL AND dt."resolved_at" IS NOT NULL) AS "average_dispute_resolution_hours"
+      FROM scoped_tasks st
+      LEFT JOIN dispute_times dt ON dt."id" = st."id"
+    `)
+    const total = Number(row.total ?? 0)
+    const percentage = (value, denominator = total) => denominator > 0 ? Number((Number(value ?? 0) / denominator * 100).toFixed(2)) : 0
+    return {
+      window: { dateFrom: options.dateFrom ?? null, dateTo: options.dateTo ?? null, category: options.category ?? null },
+      funnel: {
+        published: total,
+        withProposals: Number(row.with_proposals ?? 0),
+        assigned: Number(row.assigned ?? 0),
+        withSubmissions: Number(row.with_submissions ?? 0),
+        completed: Number(row.completed ?? 0),
+        proposalConversionPercent: percentage(row.with_proposals),
+        assignmentConversionPercent: percentage(row.assigned),
+        completionConversionPercent: percentage(row.completed),
+      },
+      deadlines: {
+        configured: Number(row.deadline_configured ?? 0), overdueActive: Number(row.overdue_active ?? 0),
+        expired: Number(row.expired ?? 0), cancelled: Number(row.cancelled ?? 0),
+        overduePercent: percentage(row.overdue_active, Number(row.deadline_configured ?? 0)),
+      },
+      disputes: {
+        opened: Number(row.disputes_opened ?? 0), resolved: Number(row.disputes_resolved ?? 0),
+        resolutionPercent: percentage(row.disputes_resolved, Number(row.disputes_opened ?? 0)),
+        averageResolutionHours: row.average_dispute_resolution_hours == null ? null : Number(Number(row.average_dispute_resolution_hours).toFixed(2)),
+      },
+    }
   },
 
   find: async (id) => {

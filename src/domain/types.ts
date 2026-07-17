@@ -25,6 +25,9 @@ export type Permission =
   | 'admin:queue:review'
   | 'admin:tasks:read'
   | 'admin:tasks:manage'
+  | 'admin:task-rules:read'
+  | 'admin:task-rules:manage'
+  | 'admin:task-rules:publish'
   | 'admin:media:read'
   | 'admin:media:manage'
   | 'admin:media:export'
@@ -206,6 +209,7 @@ export type PublishDraft = {
   details: string
   rules: string
   attachmentIds?: string[]
+  acceptanceTemplateId?: string | null
 }
 
 export type LocalizedText = {

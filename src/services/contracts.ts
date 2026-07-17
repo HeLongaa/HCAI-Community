@@ -374,6 +374,18 @@ export type AdminTaskSummary = {
   byStatus: Partial<Record<AdminTaskStatus, number>>
 }
 
+export type TaskBusinessMetricsQuery = { dateFrom?: string | null; dateTo?: string | null; category?: string | null }
+export type TaskBusinessMetrics = {
+  window: { dateFrom: string | null; dateTo: string | null; category: string | null }
+  funnel: {
+    published: number; withProposals: number; assigned: number; withSubmissions: number; completed: number
+    proposalConversionPercent: number; assignmentConversionPercent: number; completionConversionPercent: number
+  }
+  deadlines: { configured: number; overdueActive: number; expired: number; cancelled: number; overduePercent: number }
+  disputes: { opened: number; resolved: number; resolutionPercent: number; averageResolutionHours: number | null }
+}
+export type TaskBusinessMetricsExport = { schemaVersion: 1; kind: 'task.business-metrics.snapshot'; exportedAt: string; metrics: TaskBusinessMetrics }
+
 export type AdminTaskMutationEvidence = {
   expectedVersion: number
   reasonCode: string
@@ -464,6 +476,19 @@ export type CreateTaskRequest = {
   deadlineAt?: string | null
   visibility?: string
   attachmentIds?: string[]
+  acceptanceTemplateId?: string | null
+}
+
+export type TaskRule = {
+  key: string
+  category: string
+  acceptanceTemplates: Array<{ id: string; label: string; body: string }>
+  defaultDeadlineHours: number
+  minimumDeadlineHours: number
+  maximumDeadlineHours: number
+  deadlineRequired: boolean
+  active: boolean
+  publishedVersion: number
 }
 
 export type SubmitTaskRequest = {
@@ -2732,7 +2757,7 @@ export type SystemSettingPublishResult = {
   revision: SystemSettingRevisionDto
 }
 
-export type ConfigResourceKind = 'feature_flag' | 'reference_data' | 'announcement'
+export type ConfigResourceKind = 'feature_flag' | 'reference_data' | 'announcement' | 'task_rule'
 export type ConfigResourceDeletedFilter = 'active' | 'deleted' | 'all'
 export type FeatureFlagRuleType = 'user' | 'role' | 'environment'
 export type FeatureFlagRule = {

@@ -1598,6 +1598,32 @@ test('task admin cancellation releases publisher escrow once', async () => {
   }
 })
 
+test('task business metrics expose filtered funnel deadline and dispute evidence with export', async () => {
+  const server = await createTestServer()
+  try {
+    await createTask(server, { title: 'Metrics prompt task', category: 'Prompt' }, 'demo-access.launchteam')
+    const denied = await requestJson(server.url, '/api/admin/tasks/business-metrics', { method: 'GET', token: 'demo-access.taskops' })
+    assert.equal(denied.status, 403)
+    const metrics = await requestJson(server.url, '/api/admin/tasks/business-metrics?category=Prompt', { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(metrics.status, 200)
+    assert.equal(metrics.payload.data.window.category, 'Prompt')
+    assert.ok(metrics.payload.data.funnel.published >= 1)
+    assert.equal(typeof metrics.payload.data.funnel.proposalConversionPercent, 'number')
+    assert.equal(typeof metrics.payload.data.deadlines.overduePercent, 'number')
+    assert.equal(typeof metrics.payload.data.disputes.resolutionPercent, 'number')
+
+    const exported = await requestJson(server.url, '/api/admin/tasks/business-metrics/export?category=Prompt', { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(exported.status, 200)
+    assert.equal(exported.payload.data.kind, 'task.business-metrics.snapshot')
+    assert.equal(exported.payload.data.metrics.window.category, 'Prompt')
+
+    const invalid = await requestJson(server.url, '/api/admin/tasks/business-metrics?dateFrom=invalid', { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(invalid.status, 400)
+  } finally {
+    await server.close()
+  }
+})
+
 test('task admin bulk disposition previews, partially skips, and replays idempotently', async () => {
   const server = await createTestServer()
   try {

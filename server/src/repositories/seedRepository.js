@@ -20,6 +20,7 @@ import { createSeedObservabilityRepository } from '../observability/seedObservab
 import { createSeedOAuthAdminRepository } from '../auth/seedOAuthAdminRepository.js'
 import { createSeedTaskAdminRepository } from '../tasks/seedTaskAdminRepository.js'
 import { createSeedTaskLifecycleRecoveryRepository } from '../tasks/seedTaskLifecycleRecoveryRepository.js'
+import { applyPublishedTaskRule } from '../tasks/taskRuleRuntime.js'
 import {
   appendSeedAuditIntegrity,
   buildPortableAuditExport,
@@ -2679,21 +2680,23 @@ export const createSeedRepository = () => {
       }
     },
     create: async (payload, actor) => {
+      const governedPayload = await applyPublishedTaskRule({ payload, repository: configResources })
       const id = String(seedStore.tasks.length + 1)
       const task = buildTaskViewModel({
         id: Number(id),
-        title: payload.title,
-        category: payload.category,
+        title: governedPayload.title,
+        category: governedPayload.category,
         status: 'Open',
-        budget: makeBudget(payload),
-        deadline: payload.deadlineAt ?? 'TBD',
-        pointsReward: payload.pointsReward,
+        budget: makeBudget(governedPayload),
+        deadline: governedPayload.deadlineAt ?? 'TBD',
+        pointsReward: governedPayload.pointsReward,
         proposals: 0,
-        description: payload.description,
+        description: governedPayload.description,
         publisher: actor.handle,
         assignee: 'Unassigned',
-        requirements: [payload.acceptanceRules],
-        attachments: payload.attachmentIds ?? [],
+        requirements: [governedPayload.acceptanceRules],
+        attachments: governedPayload.attachmentIds ?? [],
+        taskRule: governedPayload.taskRule,
         privateBrief: '',
         submission: 'No submission yet.',
         resultLinks: [],
@@ -2704,7 +2707,7 @@ export const createSeedRepository = () => {
       seedStore.taskById.set(Number(id), task)
       createTaskEscrow(task, actor.handle)
       await domainEvents.enqueue(taskCreatedEvent({ task: { ...task, status: 'open', category: task.category }, publisherId: actor.id, correlationId: `task-create:${task.id}`, actor }))
-      recordAudit(actor, 'task.created', 'task', task.id, { status: 'open', category: payload.category })
+      recordAudit(actor, 'task.created', 'task', task.id, { status: 'open', category: governedPayload.category, taskRule: governedPayload.taskRule })
       return serializeTask(task)
     },
     claim: (id, actor) => {

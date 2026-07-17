@@ -431,6 +431,8 @@ export const serializeAccount = (account) => ({
   profile: account.profile,
 })
 
+const serializeTaskActor = (actor, fallback = 'Unassigned') => typeof actor === 'string' ? actor : actor?.handle ?? fallback
+
 export const serializeTask = (task) => ({
   id: String(task.id),
   title: task.title,
@@ -440,8 +442,8 @@ export const serializeTask = (task) => ({
   deadline: task.deadline,
   proposals: task.proposals,
   description: task.description,
-  publisher: task.publisher,
-  assignee: task.assignee,
+  publisher: serializeTaskActor(task.publisher, ''),
+  assignee: serializeTaskActor(task.assignee),
   requirements: task.requirements,
   attachments: task.attachments,
   privateBrief: task.privateBrief,

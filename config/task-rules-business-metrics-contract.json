@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "taskId": "TASK-03",
+  "migration": "0067_task_rules_business_metrics",
+  "configKind": "task_rule",
+  "models": ["ConfigResource", "ConfigResourceRevision", "TaskRule"],
+  "permissions": ["admin:task-rules:read", "admin:task-rules:manage", "admin:task-rules:publish", "admin:tasks:read"],
+  "ruleLifecycle": ["draft", "publish", "rollback", "soft_delete", "restore"],
+  "ruleFields": ["category", "acceptanceTemplates", "minimumDeadlineHours", "defaultDeadlineHours", "maximumDeadlineHours", "deadlineRequired", "active"],
+  "creationControls": ["published_category", "published_template", "deadline_default", "deadline_bounds", "rule_version_evidence"],
+  "metrics": {
+    "filters": ["dateFrom", "dateTo", "category"],
+    "groups": ["funnel", "deadlines", "disputes"],
+    "exportKind": "task.business-metrics.snapshot"
+  },
+  "routes": [
+    { "method": "GET", "path": "/api/task-rules", "permission": "authenticated_user" },
+    { "method": "GET", "path": "/api/admin/tasks/business-metrics", "permission": "admin:tasks:read" },
+    { "method": "GET", "path": "/api/admin/tasks/business-metrics/export", "permission": "admin:tasks:read" }
+  ],
+  "realProviderCalls": false,
+  "tenantModels": false
+}

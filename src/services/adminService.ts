@@ -13,6 +13,9 @@ import type {
   AdminTaskMutationEvidence,
   AdminTaskQuery,
   AdminTaskSummary,
+  TaskBusinessMetrics,
+  TaskBusinessMetricsExport,
+  TaskBusinessMetricsQuery,
   ApiTaskLifecycleMutation,
   AdminTaskUpdateRequest,
   AdminAuditArchiveManifestDto,
@@ -138,6 +141,12 @@ export const adminService = {
   },
   async taskSummary(query?: AdminTaskQuery) {
     return api.get<AdminTaskSummary>(withQuery('/admin/tasks/summary', query))
+  },
+  async taskBusinessMetrics(query?: TaskBusinessMetricsQuery) {
+    return api.get<TaskBusinessMetrics>(withQuery('/admin/tasks/business-metrics', query))
+  },
+  async exportTaskBusinessMetrics(query?: TaskBusinessMetricsQuery) {
+    return api.get<TaskBusinessMetricsExport>(withQuery('/admin/tasks/business-metrics/export', query))
   },
   async task(id: string) {
     return api.get<AdminTaskDto>(`/admin/tasks/${encodeURIComponent(id)}`)

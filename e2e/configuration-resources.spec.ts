@@ -86,6 +86,7 @@ test('moderator sees all configuration domains without mutation controls', async
   await expect(panel.getByRole('tab', { name: 'Feature flags' })).toBeVisible()
   await expect(panel.getByRole('tab', { name: 'Reference data' })).toBeVisible()
   await expect(panel.getByRole('tab', { name: 'Announcements' })).toBeVisible()
+  await expect(panel.getByRole('tab', { name: 'Task rules' })).toBeVisible()
   await panel.getByRole('tab', { name: 'Reference data' }).click()
   await expect(panel.getByTitle('Export JSON')).toBeVisible()
   await expect(panel.getByTitle('Import JSON')).toHaveCount(0)

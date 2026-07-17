@@ -41,6 +41,23 @@ export const createSeedConfigResourcesRepository = ({ recordAudit } = {}) => {
         ...override,
       })
     },
+    listPublishedTaskRules: async () => [...resources.values()]
+      .filter((item) => item.kind === 'task_rule' && !item.deletedAt && item.publishedValue?.active)
+      .sort((left, right) => left.publishedValue.category.localeCompare(right.publishedValue.category))
+      .map((item) => clone({
+        resourceId: item.id, key: item.key, ...item.publishedValue,
+        publishedVersion: item.publishedVersion, deletedAt: null, updatedAt: item.updatedAt,
+      })),
+    findPublishedTaskRule: async (category) => {
+      const normalized = String(category).trim().toLowerCase()
+      const resource = [...resources.values()].find((item) => item.kind === 'task_rule'
+        && !item.deletedAt && item.publishedValue
+        && String(item.publishedValue.category).trim().toLowerCase() === normalized)
+      return resource ? clone({
+        resourceId: resource.id, key: resource.key, ...resource.publishedValue,
+        publishedVersion: resource.publishedVersion, deletedAt: null, updatedAt: resource.updatedAt,
+      }) : null
+    },
     setFeatureFlagEmergency: async (id, version, emergencyOff, payload) => {
       const resource = get(id)
       if (!resource || resource.kind !== 'feature_flag' || resource.deletedAt || !resource.publishedValue || resource.version !== version) return null

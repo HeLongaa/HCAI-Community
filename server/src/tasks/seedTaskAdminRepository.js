@@ -94,6 +94,43 @@ export const createSeedTaskAdminRepository = ({ tasks, getTask, updateTask, fina
       }
       return { total: rows.length, active: rows.filter((task) => !task.archivedAt).length, archived: rows.filter((task) => task.archivedAt).length, byStatus }
     },
+    businessMetrics: (options = {}) => {
+      const rows = tasks.filter((task) => {
+        const createdAt = Date.parse(task.createdAt ?? '')
+        if (options.dateFrom && (!Number.isFinite(createdAt) || createdAt < Date.parse(options.dateFrom))) return false
+        if (options.dateTo && (!Number.isFinite(createdAt) || createdAt > Date.parse(options.dateTo))) return false
+        if (options.category && String(task.category).toLowerCase() !== options.category.toLowerCase()) return false
+        return true
+      })
+      const total = rows.length
+      const count = (predicate) => rows.filter(predicate).length
+      const percentage = (value, denominator = total) => denominator > 0 ? Number((value / denominator * 100).toFixed(2)) : 0
+      const withProposals = count((task) => Number(task.proposals) > 0)
+      const assigned = count((task) => handleOf(task.assignee) != null)
+      const withSubmissions = count((task) => task.submission && task.submission !== 'No submission yet.')
+      const completed = count((task) => normalizeTaskAdminStatus(task.status) === 'completed')
+      const deadlineConfigured = count((task) => Boolean(task.deadlineAt ?? (task.deadline !== 'TBD' ? task.deadline : null)))
+      const overdueActive = count((task) => {
+        const deadline = Date.parse(task.deadlineAt ?? task.deadline ?? '')
+        return Number.isFinite(deadline) && deadline < Date.now() && ['open', 'assigned', 'in_progress', 'rejected'].includes(normalizeTaskAdminStatus(task.status))
+      })
+      const disputesOpened = count((task) => Boolean(task.disputeStatus) || normalizeTaskAdminStatus(task.status) === 'disputed')
+      const disputesResolved = count((task) => task.disputeStatus && task.disputeStatus !== 'open')
+      return {
+        window: { dateFrom: options.dateFrom ?? null, dateTo: options.dateTo ?? null, category: options.category ?? null },
+        funnel: {
+          published: total, withProposals, assigned, withSubmissions, completed,
+          proposalConversionPercent: percentage(withProposals), assignmentConversionPercent: percentage(assigned), completionConversionPercent: percentage(completed),
+        },
+        deadlines: {
+          configured: deadlineConfigured, overdueActive,
+          expired: count((task) => normalizeTaskAdminStatus(task.status) === 'expired'),
+          cancelled: count((task) => normalizeTaskAdminStatus(task.status) === 'cancelled'),
+          overduePercent: percentage(overdueActive, deadlineConfigured),
+        },
+        disputes: { opened: disputesOpened, resolved: disputesResolved, resolutionPercent: percentage(disputesResolved, disputesOpened), averageResolutionHours: null },
+      }
+    },
     find: (id) => {
       const task = getTask(id)
       return task ? serialize(task) : null

@@ -526,6 +526,23 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/tasks/business-metrics': {
+      get: {
+        summary: 'Read task conversion, deadline, and dispute metrics',
+        parameters: [
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'category', in: 'query', schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: 'Bounded task business metrics with conversion percentages' }, '403': { description: 'Requires admin:tasks:read' } },
+      },
+    },
+    '/admin/tasks/business-metrics/export': {
+      get: {
+        summary: 'Export a versioned task business metrics snapshot',
+        responses: { '200': { description: 'Portable JSON metrics snapshot' }, '403': { description: 'Requires admin:tasks:read' } },
+      },
+    },
     '/admin/tasks/{id}': {
       get: {
         summary: 'Read one administrative task projection',
@@ -3333,7 +3350,7 @@ export const openApiDocument = {
       get: {
         summary: 'List one independently authorized configuration resource domain',
         parameters: [
-          { name: 'kind', in: 'path', required: true, schema: { type: 'string', enum: ['feature_flag', 'reference_data', 'announcement'] } },
+          { name: 'kind', in: 'path', required: true, schema: { type: 'string', enum: ['feature_flag', 'reference_data', 'announcement', 'task_rule'] } },
           { name: 'search', in: 'query', schema: { type: 'string', maxLength: 96 } },
           { name: 'deleted', in: 'query', schema: { type: 'string', enum: ['active', 'deleted', 'all'], default: 'active' } },
           { name: 'sort', in: 'query', schema: { type: 'string', enum: ['key', 'title', 'updatedAt', 'publishedVersion'], default: 'updatedAt' } },
@@ -3552,6 +3569,9 @@ export const openApiDocument = {
     },
     '/feature-flags/{key}/evaluate': {
       get: { summary: 'Evaluate one published feature flag for the authenticated user and server environment', responses: { '200': { description: 'Deterministic evaluation without raw targeting context' }, '401': { description: 'Authentication required' }, '404': { description: 'Published flag not found' } } },
+    },
+    '/task-rules': {
+      get: { summary: 'List active published task categories, acceptance templates, and deadline bounds', responses: { '200': { description: 'Safe task creation rules for the authenticated personal account' }, '401': { description: 'Authentication required' } } },
     },
     '/admin/config-resources/feature_flag/{id}/preview': {
       post: { summary: 'Preview a feature flag draft against an explicit administrative context', responses: { '200': { description: 'Matched rule summary and effective value' }, '400': { description: 'Invalid preview context' }, '403': { description: 'Requires feature flag read permission' } } },
