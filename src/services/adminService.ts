@@ -34,6 +34,7 @@ import type {
   AdminCreativeGenerationHistoryPage,
   AdminCreativeGenerationHistoryQuery,
   AdminCreativeGenerationSummary,
+  AdminGenerationBusinessMetrics,
   AdminCreativeGenerationBulkAction,
   AdminCreativeGenerationBulkPreview,
   AdminCreativeGenerationBulkResult,
@@ -557,6 +558,12 @@ export const adminService = {
   },
   async creativeGenerationSummary(query?: AdminCreativeGenerationHistoryQuery) {
     return api.get<AdminCreativeGenerationSummary>(withQuery('/admin/creative/generations/summary', query))
+  },
+  async creativeGenerationBusinessMetrics(query?: AdminCreativeGenerationHistoryQuery) {
+    return api.get<AdminGenerationBusinessMetrics>(withQuery('/admin/creative/generations/business-metrics', query))
+  },
+  async exportCreativeGenerationBusinessMetrics(query?: AdminCreativeGenerationHistoryQuery, format: 'json' | 'csv' = 'csv') {
+    return api.text(withQuery('/admin/creative/generations/business-metrics/export', { ...query, format }))
   },
   async exportCreativeGenerations(query?: AdminCreativeGenerationHistoryQuery, format: 'json' | 'csv' = 'csv') {
     return api.text(withQuery('/admin/creative/generations/export', { ...query, format, limit: 100 }))

@@ -108,6 +108,7 @@ import { sanitizeNotificationMetadata } from './notificationTargets.js'
 import { safeCreativeCreditMetadata, safeErrorPreview, safeProviderOperationMetadata } from '../creative/generationRecords.js'
 import { assetEligibleForWorkspace, assetMediaType, buildSafeAssetLibraryItem } from '../media/assetLibrary.js'
 import { resolveCreativeDeliveryAssets } from '../creative/deliveryAssets.js'
+import { buildGenerationBusinessMetrics } from '../creative/generationBusinessMetrics.js'
 import { taskWorkflowDto } from '../tasks/taskLifecycle.js'
 import {
   accountingOperationKey,
@@ -4185,6 +4186,35 @@ export const createSeedRepository = () => {
         byWorkspace: countBy('workspace'),
         byProvider: countBy('providerId'),
       }
+    },
+    businessMetrics: (options = {}) => {
+      const generations = [...creativeGenerationsById.values()]
+        .filter((record) => !options.actorHandle || record.actorHandle === options.actorHandle)
+        .filter((record) => !options.workspace || record.workspace === options.workspace)
+        .filter((record) => !options.mode || record.mode === options.mode)
+        .filter((record) => !options.providerId || record.providerId === options.providerId)
+        .filter((record) => !options.status || record.status === options.status)
+        .filter((record) => options.reviewRequired == null || Boolean(record.safety?.reviewRequired) === options.reviewRequired)
+        .filter((record) => !options.mediaAssetId || (record.outputAssetIds ?? []).includes(options.mediaAssetId))
+        .filter((record) => !options.dateFrom || new Date(record.createdAt).getTime() >= new Date(options.dateFrom).getTime())
+        .filter((record) => !options.dateTo || new Date(record.createdAt).getTime() <= new Date(options.dateTo).getTime())
+      const generationIds = new Set(generations.map((item) => item.id))
+      const outputAssetIds = new Set(generations.flatMap((item) => item.outputAssetIds ?? []).map(String))
+      return buildGenerationBusinessMetrics({
+        generations,
+        costLedgers: [...creativeProviderCostLedgersById.values()].filter((item) => generationIds.has(item.generationId)),
+        reusedAssetIds: [...mediaAssetRelationsById.values()]
+          .filter((item) => item.relationType === 'reused_as_input' && outputAssetIds.has(String(item.sourceAssetId)))
+          .map((item) => item.sourceAssetId),
+        libraryAssetIds: seedLibraryItems
+          .filter((item) => item.sourceType === 'asset' && outputAssetIds.has(String(item.sourceId)))
+          .map((item) => item.sourceId),
+        portfolioAssetIds: [...portfolioAssetsById.values()]
+          .filter((item) => outputAssetIds.has(String(item.assetId)))
+          .map((item) => item.assetId),
+        taskAssetIds: taskSubmissions.flatMap((item) => item.assetIds ?? []).filter((id) => outputAssetIds.has(String(id))),
+        query: options,
+      })
     },
   },
   creativeProviderOperations: {

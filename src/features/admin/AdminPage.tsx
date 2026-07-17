@@ -34,6 +34,7 @@ import type {
   AdminBillingPolicyPreview,
   AdminCreativeGenerationHistoryQuery,
   AdminCreativeGenerationSummary,
+  AdminGenerationBusinessMetrics,
   AdminCreativeGenerationBulkAction,
   AdminCreativeGenerationBulkPreview,
   AdminCreativeGenerationBulkResult,
@@ -515,7 +516,9 @@ export function AdminPage({
   const [generationSort, setGenerationSort] = useState<'createdAt' | 'updatedAt' | 'status'>('createdAt')
   const [generationDirection, setGenerationDirection] = useState<'asc' | 'desc'>('desc')
   const [generationSummary, setGenerationSummary] = useState<AdminCreativeGenerationSummary>({ total: 0, active: 0, failed: 0, reviewRequired: 0, outputAssets: 0, byStatus: {}, byWorkspace: {}, byProvider: {} })
+  const [generationBusinessMetrics, setGenerationBusinessMetrics] = useState<AdminGenerationBusinessMetrics | null>(null)
   const [exportingGenerations, setExportingGenerations] = useState(false)
+  const [exportingGenerationMetrics, setExportingGenerationMetrics] = useState(false)
   const [generationMutationReason, setGenerationMutationReason] = useState('operator_requested')
   const [generationMutationNote, setGenerationMutationNote] = useState('')
   const [generationReplayStatus, setGenerationReplayStatus] = useState<'queued' | 'running' | 'completed' | 'failed' | 'cancelled'>('failed')
@@ -789,14 +792,15 @@ export function AdminPage({
     deps: [canReadAccounting, isZh],
     logLabel: 'admin-service',
   })
-  const generationHistoryStatus = useAsyncResource<{ items: ApiCreativeGenerationRecord[]; nextCursor: string | null; summary: AdminCreativeGenerationSummary }>({
+  const generationHistoryStatus = useAsyncResource<{ items: ApiCreativeGenerationRecord[]; nextCursor: string | null; summary: AdminCreativeGenerationSummary; metrics: AdminGenerationBusinessMetrics | null }>({
     load: () => canReadAudit
-      ? Promise.all([adminService.creativeGenerations(generationQuery), adminService.creativeGenerationSummary(generationQuery)]).then(([page, summary]) => ({ ...page, summary }))
-      : Promise.resolve({ items: [], nextCursor: null, summary: { total: 0, active: 0, failed: 0, reviewRequired: 0, outputAssets: 0, byStatus: {}, byWorkspace: {}, byProvider: {} } }),
-    onSuccess: ({ items, nextCursor, summary }) => {
+      ? Promise.all([adminService.creativeGenerations(generationQuery), adminService.creativeGenerationSummary(generationQuery), adminService.creativeGenerationBusinessMetrics(generationQuery)]).then(([page, summary, metrics]) => ({ ...page, summary, metrics }))
+      : Promise.resolve({ items: [], nextCursor: null, summary: { total: 0, active: 0, failed: 0, reviewRequired: 0, outputAssets: 0, byStatus: {}, byWorkspace: {}, byProvider: {} }, metrics: null }),
+    onSuccess: ({ items, nextCursor, summary, metrics }) => {
       setGenerationRows(items)
       setGenerationNextCursor(nextCursor)
       setGenerationSummary(summary)
+      setGenerationBusinessMetrics(metrics)
       if (selectedGenerationId && !items.some((item) => item.id === selectedGenerationId)) {
         setSelectedGenerationId(null)
         setSelectedGeneration(null)
@@ -1596,6 +1600,25 @@ export function AdminPage({
       simulateAction(isZh ? '导出生成记录失败。' : 'Could not export generation records.')
     } finally {
       setExportingGenerations(false)
+    }
+  }
+
+  const exportGenerationMetrics = async () => {
+    if (!canExportAudit || exportingGenerationMetrics) return
+    setExportingGenerationMetrics(true)
+    try {
+      const csv = await adminService.exportCreativeGenerationBusinessMetrics(generationQuery, 'csv')
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+      link.download = `creative-generation-metrics-${new Date().toISOString().slice(0, 10)}.csv`
+      link.click()
+      URL.revokeObjectURL(link.href)
+      simulateAction(isZh ? '已导出生成业务统计。' : 'Exported generation business metrics.')
+    } catch (error) {
+      console.info('[admin-service]', error)
+      simulateAction(isZh ? '导出生成业务统计失败。' : 'Could not export generation business metrics.')
+    } finally {
+      setExportingGenerationMetrics(false)
     }
   }
 
@@ -3787,6 +3810,9 @@ export function AdminPage({
           title={textFor(t, 'Generation history', '生成历史')}
           action={
             <div className="inline-actions">
+              <button className="icon-button" type="button" onClick={() => void exportGenerationMetrics()} disabled={!canExportAudit || exportingGenerationMetrics} aria-label={textFor(t, 'Export generation metrics CSV', '导出生成统计 CSV')} title={textFor(t, 'Export generation metrics CSV', '导出生成统计 CSV')}>
+                <BarChart3 size={16} />
+              </button>
               <button className="ghost-button" type="button" onClick={() => void exportGenerations()} disabled={!canExportAudit || exportingGenerations} title={textFor(t, 'Export generation records', '导出生成记录')}>
                 <Download size={16} /> {exportingGenerations ? textFor(t, 'Exporting', '导出中') : 'CSV'}
               </button>
@@ -3926,6 +3952,24 @@ export function AdminPage({
             </article>
           ))}
         </div>
+        {generationBusinessMetrics && (
+          <div className="market-dashboard generation-business-metrics" data-testid="generation-business-metrics">
+            {[
+              [textFor(t, 'Success rate', '成功率'), `${generationBusinessMetrics.quality.successRatePercent}%`, `${generationBusinessMetrics.quality.completed}/${generationBusinessMetrics.totals.terminal} ${textFor(t, 'terminal', '终态')}`],
+              [textFor(t, 'P95 latency', 'P95 时延'), generationBusinessMetrics.latency.p95Ms == null ? textFor(t, 'Unavailable', '不可用') : `${Math.round(generationBusinessMetrics.latency.p95Ms / 1000)}s`, `${generationBusinessMetrics.latency.samples} ${textFor(t, 'samples', '样本')}`],
+              [textFor(t, 'Settled credits', '已结算 Credit'), formatMetricNumber(generationBusinessMetrics.internalUnits.settledCredits), `${formatMetricNumber(generationBusinessMetrics.internalUnits.compensatedCredits)} ${textFor(t, 'internally compensated', '内部补偿')}`],
+              [textFor(t, 'Reuse conversion', '复用转化'), `${generationBusinessMetrics.conversion.conversionRatePercent}%`, `${generationBusinessMetrics.conversion.convertedOutputAssets}/${generationBusinessMetrics.conversion.eligibleOutputAssets} ${textFor(t, 'outputs', '输出')}`],
+              [textFor(t, 'Review rate', '复核率'), `${generationBusinessMetrics.quality.reviewRatePercent}%`, `${generationBusinessMetrics.quality.reviewRequired} ${textFor(t, 'gated', '已进入门禁')}`],
+              [textFor(t, 'Provider cost', 'Provider 成本'), generationBusinessMetrics.providerCost.availability === 'available' ? generationBusinessMetrics.providerCost.currencies.map((item) => item.currency).join(', ') : textFor(t, 'Unavailable', '不可用'), generationBusinessMetrics.providerCost.availability === 'available' ? `${generationBusinessMetrics.providerCost.currencies.reduce((sum, item) => sum + item.ledgers, 0)} ${textFor(t, 'ledgers', '台账')}` : textFor(t, 'No cost ledger in this window', '当前窗口无成本台账')],
+            ].map(([label, value, detail]) => (
+              <article className="metric-card" key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+                <small>{detail}</small>
+              </article>
+            ))}
+          </div>
+        )}
         <div className="admin-detail-panel" data-testid="admin-generation-bulk-actions">
           <div>
             <strong>{textFor(t, 'Batch disposition', '批量处置')}</strong>

@@ -1883,6 +1883,73 @@ export type AdminCreativeGenerationSummary = {
   byProvider: Record<string, number>
 }
 
+export type AdminGenerationLatencyMetrics = {
+  samples: number
+  averageMs: number | null
+  p50Ms: number | null
+  p95Ms: number | null
+  maximumMs: number | null
+}
+
+export type AdminGenerationBusinessMetrics = {
+  schemaVersion: 1
+  generatedAt: string
+  window: { dateFrom: string | null; dateTo: string | null }
+  totals: { generations: number; terminal: number; outputAssets: number }
+  quality: {
+    completed: number
+    failed: number
+    cancelled: number
+    reviewRequired: number
+    successRatePercent: number
+    failureRatePercent: number
+    reviewRatePercent: number
+    byStatus: Record<string, number>
+  }
+  latency: AdminGenerationLatencyMetrics
+  internalUnits: {
+    estimatedCredits: number
+    reservedCredits: number
+    settledCredits: number
+    compensatedCredits: number
+    usedQuotaUnits: number
+    releasedQuotaUnits: number
+  }
+  providerCost: {
+    availability: 'available' | 'unavailable'
+    reasonCode: string | null
+    currencies: Array<{
+      currency: string
+      ledgers: number
+      estimateMicros: string
+      reservedMicros: string
+      actualMicros: string
+      settled: number
+      released: number
+      reconciliationRequired: number
+    }>
+  }
+  conversion: {
+    eligibleOutputAssets: number
+    convertedOutputAssets: number
+    reusedAsInput: number
+    savedToLibrary: number
+    addedToPortfolio: number
+    deliveredToTask: number
+    conversionRatePercent: number
+    reuseRatePercent: number
+  }
+  byWorkspace: Array<{
+    workspace: string
+    total: number
+    completed: number
+    failed: number
+    reviewRequired: number
+    successRatePercent: number
+    latency: AdminGenerationLatencyMetrics
+  }>
+}
+
 export type AdminCreativeGenerationHistoryPage = {
   items: ApiCreativeGenerationRecord[]
   nextCursor: string | null

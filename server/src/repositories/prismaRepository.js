@@ -80,6 +80,7 @@ import { safeProviderOperationMetadata } from '../creative/generationRecords.js'
 import { assetEligibleForWorkspace, assetMediaType, buildSafeAssetLibraryItem } from '../media/assetLibrary.js'
 import { createPrismaMediaBusinessMetricsRepository } from '../media/prismaMediaBusinessMetricsRepository.js'
 import { resolveCreativeDeliveryAssets } from '../creative/deliveryAssets.js'
+import { buildGenerationBusinessMetrics } from '../creative/generationBusinessMetrics.js'
 import { taskWorkflowDto } from '../tasks/taskLifecycle.js'
 import { applyPublishedTaskRule } from '../tasks/taskRuleRuntime.js'
 import { createPrismaTaskLifecycleRecoveryRepository } from '../tasks/prismaTaskLifecycleRecoveryRepository.js'
@@ -4971,6 +4972,34 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       ])
       const grouped = (rows, field) => Object.fromEntries(rows.map((row) => [row[field], row._count._all]))
       return { total, active, failed, reviewRequired, outputAssets: assets.reduce((sum, row) => sum + row.outputAssetIds.length, 0), byStatus: grouped(statusGroups, 'status'), byWorkspace: grouped(workspaceGroups, 'workspace'), byProvider: grouped(providerGroups, 'providerId') }
+    },
+    businessMetrics: async (options = {}) => {
+      const generations = await client.creativeGeneration.findMany({ where: creativeGenerationWhere(options) })
+      const generationIds = generations.map((item) => item.id)
+      const outputAssetIds = [...new Set(generations.flatMap((item) => item.outputAssetIds ?? []).map(String))]
+      const loadChunks = async (values, loader) => {
+        const results = []
+        for (let index = 0; index < values.length; index += 500) {
+          results.push(...await loader(values.slice(index, index + 500)))
+        }
+        return results
+      }
+      const [costLedgers, relations, libraryItems, portfolioAssets, taskAssets] = await Promise.all([
+        loadChunks(generationIds, (ids) => client.creativeProviderCostLedger.findMany({ where: { generationId: { in: ids } } })),
+        loadChunks(outputAssetIds, (ids) => client.mediaAssetRelation.findMany({ where: { sourceAssetId: { in: ids }, relationType: 'reused_as_input' }, select: { sourceAssetId: true } })),
+        loadChunks(outputAssetIds, (ids) => client.libraryItem.findMany({ where: { sourceType: 'asset', sourceId: { in: ids } }, select: { sourceId: true } })),
+        loadChunks(outputAssetIds, (ids) => client.profilePortfolioAsset.findMany({ where: { assetId: { in: ids } }, select: { assetId: true } })),
+        loadChunks(outputAssetIds, (ids) => client.taskSubmissionAsset.findMany({ where: { assetId: { in: ids } }, select: { assetId: true } })),
+      ])
+      return buildGenerationBusinessMetrics({
+        generations,
+        costLedgers,
+        reusedAssetIds: relations.map((item) => item.sourceAssetId),
+        libraryAssetIds: libraryItems.map((item) => item.sourceId),
+        portfolioAssetIds: portfolioAssets.map((item) => item.assetId),
+        taskAssetIds: taskAssets.map((item) => item.assetId),
+        query: options,
+      })
     },
   }
 

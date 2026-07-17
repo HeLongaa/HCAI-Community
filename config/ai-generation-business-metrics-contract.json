@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "taskId": "AI-STATS-01",
+  "scope": "personal_accounts_only",
+  "dependencies": ["AI-ADMIN-01", "OBS-01"],
+  "routes": [
+    "GET /api/admin/creative/generations/business-metrics",
+    "GET /api/admin/creative/generations/business-metrics/export"
+  ],
+  "permissions": {
+    "read": "admin:audit:read",
+    "export": "admin:audit:export"
+  },
+  "window": {
+    "defaultDays": 30,
+    "maximumDays": 366,
+    "filters": ["userHandle", "workspace", "mode", "providerId", "status", "reviewRequired", "mediaAssetId", "dateFrom", "dateTo"]
+  },
+  "metrics": [
+    "generation_success_failure_review_rates",
+    "average_p50_p95_maximum_latency",
+    "internal_credit_estimated_reserved_settled_compensated",
+    "internal_quota_used_released",
+    "provider_cost_by_currency_with_explicit_availability",
+    "library_portfolio_task_and_cross_workspace_reuse_conversion",
+    "workspace_breakdown"
+  ],
+  "facts": [
+    "CreativeGeneration",
+    "CreativeProviderCostLedger",
+    "MediaAssetRelation",
+    "LibraryItem",
+    "ProfilePortfolioAsset",
+    "TaskSubmissionAsset"
+  ],
+  "controls": {
+    "lowCardinalityOutput": true,
+    "rawPromptExposed": false,
+    "providerJobIdExposed": false,
+    "userBreakdownExposed": false,
+    "privateUrlExposed": false,
+    "internalCompensationOnly": true,
+    "realMoneyRefund": false,
+    "providerCostUnavailableReason": "no_provider_cost_ledgers",
+    "queryAuditAction": "admin.creative.generation_business_metrics.queried",
+    "exportAuditAction": "admin.creative.generation_business_metrics.exported"
+  },
+  "providerCallsEnabled": false,
+  "evidence": {
+    "runtime": "server/src/creative/generationBusinessMetrics.js",
+    "seed": "server/src/repositories/seedRepository.js",
+    "prisma": "server/src/repositories/prismaRepository.js",
+    "integration": "server/src/repositories/prismaAiStats.integration.test.js",
+    "ui": "src/features/admin/AdminPage.tsx",
+    "documentation": "docs/AI_GENERATION_BUSINESS_METRICS.md"
+  }
+}

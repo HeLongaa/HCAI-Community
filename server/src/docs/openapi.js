@@ -3235,6 +3235,39 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/creative/generations/business-metrics': {
+      get: {
+        summary: 'Read bounded generation quality, latency, cost, review, and reuse conversion metrics',
+        description: 'Aggregates safe low-cardinality personal-account operations facts over a maximum 366-day window. Internal compensation is not a real-money refund.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'userHandle', in: 'query', schema: { type: 'string' } },
+          { name: 'workspace', in: 'query', schema: { type: 'string', enum: ['image', 'video', 'music', 'chat'] } },
+          { name: 'mode', in: 'query', schema: { type: 'string' } },
+          { name: 'providerId', in: 'query', schema: { type: 'string' } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['queued', 'running', 'completed', 'failed', 'cancelled', 'review_required'] } },
+          { name: 'reviewRequired', in: 'query', schema: { type: 'boolean' } },
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+        ],
+        responses: {
+          '200': { description: 'Safe aggregate metrics with explicit Provider-cost availability' },
+          '400': { description: 'Invalid filter or reporting window greater than 366 days' },
+          '403': { description: 'Requires admin:audit:read' },
+        },
+      },
+    },
+    '/admin/creative/generations/business-metrics/export': {
+      get: {
+        summary: 'Export a safe generation business-metrics snapshot',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'format', in: 'query', schema: { type: 'string', enum: ['json', 'csv'], default: 'json' } }],
+        responses: {
+          '200': { description: 'JSON snapshot or workspace-level CSV metrics' },
+          '403': { description: 'Requires admin:audit:export' },
+        },
+      },
+    },
     '/admin/creative/generations/export': {
       get: {
         summary: 'Export a bounded filtered page of safe generation evidence',
