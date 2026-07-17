@@ -2300,6 +2300,28 @@ export type ApiProfile = Omit<MarketplaceProfile, 'id'> & {
   id?: string
 }
 
+export type ProfilePrivacySettings = {
+  visibility: 'public' | 'unlisted' | 'private'
+  discoverable: boolean
+  showActivity: boolean
+  showPortfolio: boolean
+  version: number
+  updatedAt: string | null
+}
+
+export type AccountLifecycleStatus = {
+  status: 'active' | 'suspended' | 'deleted' | 'deletion_requested'
+  version: number
+  deletionRequestedAt: string | null
+  deletionScheduledAt: string | null
+  deletionReasonCode: string | null
+}
+
+export type ApiOwnProfile = ApiProfile & {
+  privacy: ProfilePrivacySettings
+  account: AccountLifecycleStatus
+}
+
 export type ProfileListQuery = {
   lane?: string | null
   search?: string | null

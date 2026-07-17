@@ -216,4 +216,5 @@ export type ProfileViewModel = {
   selectedProfile: MarketplaceProfile
   accountProfile: MarketplaceProfile
   openProfile: (profile: MarketplaceProfile) => void
+  onProfileUpdated: (profile: MarketplaceProfile) => Promise<void> | void
 }

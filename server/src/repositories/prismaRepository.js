@@ -82,6 +82,12 @@ import { createPrismaMediaBusinessMetricsRepository } from '../media/prismaMedia
 import { resolveCreativeDeliveryAssets } from '../creative/deliveryAssets.js'
 import { buildGenerationBusinessMetrics } from '../creative/generationBusinessMetrics.js'
 import { taskWorkflowDto } from '../tasks/taskLifecycle.js'
+import {
+  accountStatusDto,
+  deletionSchedule,
+  profilePrivacyDto,
+  projectProfileForViewer,
+} from '../profiles/profileLifecycle.js'
 import { applyPublishedTaskRule } from '../tasks/taskRuleRuntime.js'
 import { createPrismaTaskLifecycleRecoveryRepository } from '../tasks/prismaTaskLifecycleRecoveryRepository.js'
 import {
@@ -4156,6 +4162,16 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     ...getProfileDto(row),
     portfolio: (row.portfolioAssets ?? []).map(getPortfolioAssetDto),
   })
+  const viewerProfileDto = (row, viewer = null) => projectProfileForViewer({
+    profile: row,
+    publicProfile: publicProfileDto(row),
+    viewer,
+  })
+  const ownProfileDto = (row) => ({
+    ...publicProfileDto(row),
+    privacy: profilePrivacyDto(row),
+    account: accountStatusDto(row.user),
+  })
 
   const profiles = {
     list: async (options = {}) => {
@@ -4165,6 +4181,9 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         : null
       const rows = await client.profile.findMany({
         where: {
+          visibility: 'public',
+          discoverable: true,
+          user: { status: 'active', deletionRequestedAt: null },
           ...(options.lane ? { lane: options.lane } : {}),
           ...(options.search ? {
             OR: [
@@ -4180,17 +4199,24 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       })
       const pageRows = rows.slice(0, limit)
       return {
-        items: pageRows.map(publicProfileDto),
+        items: pageRows.map((row) => viewerProfileDto(row)),
         nextCursor: rows.length > limit && pageRows.length > 0 ? pageRows[pageRows.length - 1].handle : null,
         limit,
       }
     },
-    findByHandle: async (handle) => {
+    findByHandle: async (handle, viewer = null) => {
       const row = await client.profile.findUnique({
         where: { handle },
         include: { user: true, portfolioAssets: { where: publicPortfolioWhere, include: { asset: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }] } },
       })
-      return row ? publicProfileDto(row) : null
+      return row ? viewerProfileDto(row, viewer) : null
+    },
+    getOwn: async (actor) => {
+      const row = await client.profile.findUnique({
+        where: { userId: actor.id },
+        include: { user: true, portfolioAssets: { where: publicPortfolioWhere, include: { asset: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }] } },
+      })
+      return row ? ownProfileDto(row) : null
     },
     listOwnPortfolio: async (actor) => {
       const owner = await findUserByHandle(actor.handle)
@@ -4254,30 +4280,100 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
     listRankings: async () => {
       const rows = await client.profile.findMany({
+        where: { visibility: 'public', discoverable: true, user: { status: 'active', deletionRequestedAt: null } },
         include: { user: true, portfolioAssets: { where: publicPortfolioWhere, include: { asset: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }] } },
         orderBy: { handle: 'asc' },
       })
       return rows
-        .map(publicProfileDto)
+        .map((row) => viewerProfileDto(row))
         .sort((left, right) => (right.stats?.score ?? 0) - (left.stats?.score ?? 0))
     },
-    updateCurrent: async (user, patch) => {
-      const row = await client.profile.update({
-        where: { handle: user.handle },
-        data: {
-          handle: patch.handle ?? undefined,
-          bio: patch.bio ?? undefined,
-          lane: patch.lane ?? undefined,
-          skills: patch.tags ?? undefined,
-          languages: patch.languages ?? undefined,
-          portfolio: patch.portfolio ?? undefined,
-          stats: patch.stats ?? undefined,
-          metadata: patch,
-        },
-        include: { user: true },
-      })
-      return getProfileDto(row)
+    updateOwn: async (actor, patch) => {
+      try {
+        return await client.$transaction(async (tx) => {
+          const current = await tx.profile.findUnique({ where: { userId: actor.id }, include: { user: true } })
+          if (!current) return null
+          const currentDto = getProfileDto(current)
+          const nextHandle = patch.handle ?? current.handle
+          const nextDisplayName = patch.displayName ?? current.user.displayName
+          const metadata = {
+            ...currentDto,
+            handle: nextHandle,
+            lane: patch.lane ?? current.lane,
+            ...(patch.displayName !== undefined ? { name: { en: nextDisplayName, zh: nextDisplayName }, initials: nextDisplayName.slice(0, 2).toUpperCase() } : {}),
+            ...(patch.bio !== undefined ? { bio: { en: patch.bio, zh: patch.bio } } : {}),
+            ...(patch.skills !== undefined ? { tags: patch.skills, zhTags: patch.skills } : {}),
+            ...(patch.languages !== undefined ? { languages: patch.languages } : {}),
+          }
+          const changed = await tx.profile.updateMany({
+            where: { userId: actor.id, version: patch.expectedVersion },
+            data: {
+              handle: patch.handle ?? undefined,
+              bio: patch.bio ?? undefined,
+              lane: patch.lane ?? undefined,
+              skills: patch.skills ?? undefined,
+              languages: patch.languages ?? undefined,
+              visibility: patch.visibility ?? undefined,
+              discoverable: patch.discoverable ?? undefined,
+              showActivity: patch.showActivity ?? undefined,
+              showPortfolio: patch.showPortfolio ?? undefined,
+              metadata,
+              metadataSchemaVersion: 1,
+              version: { increment: 1 },
+            },
+          })
+          if (changed.count !== 1) throw new HttpError(409, 'PROFILE_VERSION_CONFLICT', 'Profile was updated by another request')
+          if (patch.displayName !== undefined) {
+            await tx.user.update({ where: { id: actor.id }, data: { displayName: nextDisplayName } })
+          }
+          const row = await tx.profile.findUnique({
+            where: { userId: actor.id },
+            include: { user: true, portfolioAssets: { where: publicPortfolioWhere, include: { asset: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }] } },
+          })
+          await recordAudit({ actor: { ...actor, handle: nextHandle, displayName: nextDisplayName }, action: 'profile.updated', resourceType: 'profile', resourceId: actor.id, metadata: { fields: Object.keys(patch).filter((key) => key !== 'expectedVersion' && patch[key] !== undefined).sort(), version: row.version } }, tx)
+          return ownProfileDto(row)
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+      } catch (error) {
+        if (error?.code === 'P2002') throw new HttpError(409, 'PROFILE_HANDLE_CONFLICT', 'Handle is already in use')
+        if (error?.code === 'P2034') throw new HttpError(409, 'PROFILE_VERSION_CONFLICT', 'Profile was updated by another request')
+        throw error
+      }
     },
+    getAccountStatus: async (actor) => {
+      const user = await client.user.findUnique({ where: { id: actor.id } })
+      return user ? accountStatusDto(user) : null
+    },
+    requestDeletion: async (actor, payload) => client.$transaction(async (tx) => {
+      const now = new Date()
+      const changed = await tx.user.updateMany({
+        where: { id: actor.id, accountVersion: payload.expectedVersion, deletionRequestedAt: null, status: 'active' },
+        data: { deletionRequestedAt: now, deletionScheduledAt: deletionSchedule(now), deletionReasonCode: payload.reasonCode, accountVersion: { increment: 1 } },
+      })
+      if (changed.count !== 1) {
+        const current = await tx.user.findUnique({ where: { id: actor.id } })
+        if (!current) return null
+        if (current.accountVersion !== payload.expectedVersion) throw new HttpError(409, 'ACCOUNT_VERSION_CONFLICT', 'Account status was updated by another request')
+        throw new HttpError(409, 'ACCOUNT_DELETION_ALREADY_REQUESTED', 'Account deletion is already requested')
+      }
+      const user = await tx.user.findUnique({ where: { id: actor.id } })
+      await recordAudit({ actor, action: 'account.deletion_requested', resourceType: 'user', resourceId: actor.id, metadata: { reasonCode: payload.reasonCode, scheduledAt: user.deletionScheduledAt.toISOString(), version: user.accountVersion } }, tx)
+      return accountStatusDto(user)
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }),
+    cancelDeletion: async (actor, payload) => client.$transaction(async (tx) => {
+      const changed = await tx.user.updateMany({
+        where: { id: actor.id, accountVersion: payload.expectedVersion, deletionRequestedAt: { not: null }, status: 'active' },
+        data: { deletionRequestedAt: null, deletionScheduledAt: null, deletionReasonCode: null, accountVersion: { increment: 1 } },
+      })
+      if (changed.count !== 1) {
+        const current = await tx.user.findUnique({ where: { id: actor.id } })
+        if (!current) return null
+        if (current.accountVersion !== payload.expectedVersion) throw new HttpError(409, 'ACCOUNT_VERSION_CONFLICT', 'Account status was updated by another request')
+        throw new HttpError(409, 'ACCOUNT_DELETION_NOT_REQUESTED', 'Account deletion is not requested')
+      }
+      const user = await tx.user.findUnique({ where: { id: actor.id } })
+      await recordAudit({ actor, action: 'account.deletion_cancelled', resourceType: 'user', resourceId: actor.id, metadata: { reasonCode: payload.reasonCode, version: user.accountVersion } }, tx)
+      return accountStatusDto(user)
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }),
   }
 
   const buildPointSummary = (rows, userHandle) => {

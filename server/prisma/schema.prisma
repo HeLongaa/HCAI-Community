@@ -26,6 +26,12 @@ enum ProfileLane {
   both
 }
 
+enum ProfileVisibility {
+  public
+  unlisted
+  private
+}
+
 enum TaskStatus {
   draft
   open
@@ -1281,6 +1287,10 @@ model User {
   avatarUrl   String?    @map("avatar_url")
   role        UserRole
   status      UserStatus @default(active)
+  accountVersion        Int       @default(1) @map("account_version")
+  deletionRequestedAt   DateTime? @map("deletion_requested_at")
+  deletionScheduledAt   DateTime? @map("deletion_scheduled_at")
+  deletionReasonCode    String?   @map("deletion_reason_code")
   createdAt   DateTime   @default(now()) @map("created_at")
   updatedAt   DateTime   @updatedAt @map("updated_at")
 
@@ -1435,16 +1445,23 @@ model Profile {
   lane                   ProfileLane
   skills                 String[]
   languages              String[]
+  visibility             ProfileVisibility @default(public)
+  discoverable           Boolean     @default(true)
+  showActivity           Boolean     @default(true) @map("show_activity")
+  showPortfolio          Boolean     @default(true) @map("show_portfolio")
+  version                Int         @default(1)
   portfolio              Json?
   portfolioSchemaVersion Int         @default(1) @map("portfolio_schema_version")
   stats                  Json?
   statsSchemaVersion     Int         @default(1) @map("stats_schema_version")
   metadata               Json?
   metadataSchemaVersion  Int         @default(1) @map("metadata_schema_version")
+  updatedAt              DateTime    @updatedAt @map("updated_at")
 
   user            User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   portfolioAssets ProfilePortfolioAsset[]
 
+  @@index([visibility, discoverable, handle])
   @@map("profiles")
 }
 

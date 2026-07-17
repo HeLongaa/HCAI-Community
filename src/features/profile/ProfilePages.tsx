@@ -8,6 +8,7 @@ import { MyTasksPage, StatusBadge } from '../tasks'
 import { marketplaceProfiles, tracks } from '../../data/mockData'
 import { categoryLabel, isZhCopy, localizeText, localizedTasks, pointText, profileTags, textFor } from '../../domain/utils'
 import { PortfolioManager } from './PortfolioManager'
+import { ProfileSettingsPanel } from './ProfileSettingsPanel'
 
 export function PlaylistPage({
   t,
@@ -74,6 +75,7 @@ export function ProfilePage({
   openProfile,
   submitTask,
   simulateAction,
+  onProfileUpdated,
 }: {
   t: Record<string, string>
   profile: MarketplaceProfile
@@ -83,6 +85,7 @@ export function ProfilePage({
   openProfile: (profile: MarketplaceProfile) => void
   submitTask: (task: Task, options?: { assetIds?: string[]; rightsNote?: string }) => Promise<void>
   simulateAction: SimulateAction
+  onProfileUpdated: (profile: MarketplaceProfile) => Promise<void> | void
 }) {
   const isZh = isZhCopy(t)
   const isPersonalCenter = profile.id === personalProfileId
@@ -208,7 +211,7 @@ export function ProfilePage({
           </div>
         </section>
       </section>
-      <div className="chip-row">
+      <div className="chip-row profile-tabs">
         {tabs.map((item) => (
           <button
             className={activeTab === item.key ? 'chip active' : 'chip'}
@@ -224,7 +227,10 @@ export function ProfilePage({
         ))}
       </div>
       {isPersonalCenter && activeTab === 'overview' && (
-        <PortfolioManager t={t}/>
+        <div className="profile-owner-settings">
+          <ProfileSettingsPanel t={t} onUpdated={onProfileUpdated}/>
+          <PortfolioManager t={t}/>
+        </div>
       )}
       {activeTab === 'myTasks' ? (
         <MyTasksPage t={t} tasks={tasks} setPage={setPage} accountHandle={profile.handle} submitTask={submitTask} simulateAction={simulateAction} />

@@ -123,7 +123,7 @@ export function PageRenderer({
   } = community
   const { ledgerItems, pointsSummary, pointsStatus } = rewards
   const { billing, setBilling } = billingState
-  const { selectedProfile, accountProfile, openProfile } = profile
+  const { selectedProfile, accountProfile, openProfile, onProfileUpdated } = profile
   const openModerationAppeal = (moderationDecisionId: string) => {
     setSupportAppeal({ moderationDecisionId })
     navigateToPage('support')
@@ -290,6 +290,7 @@ export function PageRenderer({
           openProfile={openProfile}
           submitTask={submitTask}
           simulateAction={simulateAction}
+          onProfileUpdated={onProfileUpdated}
         />
       )}
       {page === 'terms' && <LegalPage policyId="terms" t={t} setPage={navigateToPage} />}

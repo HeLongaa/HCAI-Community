@@ -1,6 +1,6 @@
 import { api, withQuery } from './apiClient'
 import type { MarketplaceProfile } from '../domain/types'
-import type { ApiPortfolioAsset, ApiProfile, ProfileListQuery } from './contracts'
+import type { AccountLifecycleStatus, ApiOwnProfile, ApiPortfolioAsset, ApiProfile, ProfileListQuery } from './contracts'
 
 const toProfile = (profile: ApiProfile): MarketplaceProfile => ({
   ...profile,
@@ -8,6 +8,35 @@ const toProfile = (profile: ApiProfile): MarketplaceProfile => ({
 })
 
 export const profileService = {
+  async own() {
+    const profile = await api.get<ApiOwnProfile>('/profiles/me')
+    return { ...profile, id: profile.id ?? profile.handle }
+  },
+  async updateOwn(body: {
+    displayName?: string
+    handle?: string
+    bio?: string
+    lane?: 'maker' | 'publisher' | 'both'
+    skills?: string[]
+    languages?: string[]
+    visibility?: 'public' | 'unlisted' | 'private'
+    discoverable?: boolean
+    showActivity?: boolean
+    showPortfolio?: boolean
+    expectedVersion: number
+  }) {
+    const profile = await api.patch<ApiOwnProfile>('/profiles/me', body)
+    return { ...profile, id: profile.id ?? profile.handle }
+  },
+  accountStatus() {
+    return api.get<AccountLifecycleStatus>('/users/me/account-status')
+  },
+  requestAccountDeletion(payload: { expectedVersion: number; reasonCode: string }) {
+    return api.post<AccountLifecycleStatus>('/users/me/account-deletion', payload)
+  },
+  cancelAccountDeletion(payload: { expectedVersion: number; reasonCode: string }) {
+    return api.del<AccountLifecycleStatus>('/users/me/account-deletion', { body: JSON.stringify(payload) })
+  },
   ownPortfolio() {
     return api.get<ApiPortfolioAsset[]>('/profiles/me/portfolio')
   },

@@ -71,6 +71,7 @@ function App() {
     loginWithOAuthProvider,
     registerWithEmail,
     acceptCurrentPolicies,
+    refreshAccount,
     logout,
   } = useAccountState()
   const [imageGeneration, setImageGeneration] = useState<{
@@ -352,6 +353,12 @@ function App() {
     }, 0)
     return () => window.clearTimeout(timer)
   }, [accountProfile, profileList])
+
+  const onProfileUpdated = useCallback(async (profile: MarketplaceProfile) => {
+    setProfileList((current) => [profile, ...current.filter((item) => item.handle !== profile.handle && item.handle !== accountProfile.handle)])
+    setSelectedProfile(profile)
+    await refreshAccount()
+  }, [accountProfile.handle, refreshAccount])
 
   const runImageGeneration = async ({
     prompt: imagePrompt,
@@ -948,7 +955,7 @@ function App() {
         homeDataSources={homeDataSources}
         account={{ accountHandle, permissions, userRole, hasPermission }}
         billing={{ billing, setBilling }}
-        profile={{ selectedProfile, accountProfile, openProfile }}
+        profile={{ selectedProfile, accountProfile, openProfile, onProfileUpdated }}
         admin={{ deepLink: adminDeepLink, clearDeepLink: () => setAdminDeepLink(null), openNotificationResource: openNotificationResource }}
       />
     </AppShell>

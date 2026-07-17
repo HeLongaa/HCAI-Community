@@ -4,8 +4,23 @@ import { requireUser } from '../../common/http/auth.js'
 import { readJsonBody } from '../../common/http/request.js'
 import { parseProfileListQuery, parseUpdatePortfolioAssetRequest } from '../../contracts/requestParsers.js'
 import { repositories } from '../../repositories/index.js'
+import { parseOwnProfileUpdate } from '../../profiles/profileLifecycle.js'
 
 export const registerProfileRoutes = (router) => {
+  router.add('GET', '/api/profiles/me', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const profile = await repositories.profiles.getOwn(actor)
+    if (!profile) throw notFound('/api/profiles/me')
+    ok(response, profile)
+  })
+
+  router.add('PATCH', '/api/profiles/me', async (request, response, context) => {
+    const actor = requireUser(context)
+    const profile = await repositories.profiles.updateOwn(actor, parseOwnProfileUpdate((await readJsonBody(request)) ?? {}))
+    if (!profile) throw notFound('/api/profiles/me')
+    ok(response, profile)
+  })
+
   router.add('GET', '/api/profiles/me/portfolio', async (_request, response, context) => {
     const actor = requireUser(context)
     ok(response, await repositories.profiles.listOwnPortfolio(actor))
@@ -19,7 +34,7 @@ export const registerProfileRoutes = (router) => {
   })
 
   router.add('GET', '/api/profiles/:handle', async (_request, response, context) => {
-    const profile = await repositories.profiles.findByHandle(context.params.handle)
+    const profile = await repositories.profiles.findByHandle(context.params.handle, context.user ?? null)
     if (!profile) {
       throw notFound(`/api/profiles/${context.params.handle}`)
     }
