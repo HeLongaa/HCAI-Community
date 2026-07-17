@@ -4649,6 +4649,9 @@ button.video-history-row.active {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   height: auto;
   min-height: 540px;
   overflow: hidden;
@@ -4657,6 +4660,11 @@ button.video-history-row.active {
 .accounting-reconciliation-panel .permission-summary > button {
   align-self: end;
   min-height: 40px;
+}
+
+.accounting-reconciliation-panel > .section-header,
+.accounting-reconciliation-panel > .section-header > div:first-child {
+  min-width: 0;
 }
 
 .accounting-reconciliation-panel .admin-table {
@@ -4681,6 +4689,82 @@ button.video-history-row.active {
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.billing-policy-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 10px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.billing-policy-overview > div,
+.billing-policy-impact {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.billing-policy-overview span,
+.billing-policy-overview small,
+.billing-policy-impact span,
+.billing-policy-impact small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.billing-policy-overview strong {
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+.billing-policy-impact strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.billing-policy-overview > button {
+  align-self: stretch;
+  min-height: 44px;
+  white-space: normal;
+}
+
+.billing-policy-impact {
+  border-left: 3px solid var(--accent);
+}
+
+.billing-metrics-filters {
+  grid-template-columns: repeat(4, minmax(120px, 1fr)) auto;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.billing-metrics-filters > label {
+  min-width: 0;
+}
+
+.billing-metrics-filters input,
+.billing-metrics-filters select {
+  width: 100%;
+  min-width: 0;
+}
+
+.billing-metrics-filters > button {
+  align-self: end;
+}
+
+.billing-metrics-dashboard .metric-card {
+  min-width: 0;
 }
 
 .operations-overview {
@@ -10976,6 +11060,34 @@ button.video-history-row.active {
 
   .accounting-reconciliation-panel .admin-row {
     grid-template-columns: 1fr;
+  }
+
+  .accounting-reconciliation-panel > .section-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .accounting-reconciliation-panel > .section-header > .button-row {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .accounting-reconciliation-panel > .section-header > .button-row > button {
+    min-width: 0;
+    flex: 1 1 140px;
+    white-space: normal;
+  }
+
+  .billing-policy-overview,
+  .billing-metrics-filters,
+  .billing-metrics-dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .billing-policy-overview > button,
+  .billing-metrics-filters > button {
+    width: 100%;
+    justify-self: stretch;
   }
 
   .admin-row.generation-row .button-row {

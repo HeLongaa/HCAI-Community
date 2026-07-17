@@ -18,6 +18,7 @@ import { registerMediaRoutes } from '../media/routes.js'
 import { registerCreativeRoutes } from '../creative/routes.js'
 import { registerAdminRoutes } from './routes.js'
 import { getProtectedRolePermissions } from '../../auth/permissions.js'
+import { defaultPointAdjustmentPolicy } from '../../points/adjustmentPolicy.js'
 
 const createTestServer = () => createRouteTestServer(registerAdminRoutes)
 const createCreativeAdminServer = () => createRouteTestServer(registerCreativeRoutes, registerAdminRoutes)
@@ -274,6 +275,46 @@ test('GET Admin creative accounting policy history is immutable and permission p
     assert.equal(result.payload.data[0].version, 'creative-policy-v1')
     assert.equal(result.payload.data[0].immutable, true)
     assert.equal(result.payload.data[0].policy.history.repriceHistoricalLedger, false)
+  } finally {
+    await server.close()
+  }
+})
+
+test('Admin billing policies and metrics expose bounded internal-unit evidence', async () => {
+  const repository = createSeedRepository()
+  const server = await createInjectedAdminServer(repository)
+  const candidate = {
+    roleLimits: { member: 0, creator: 0, publisher: 0, moderator: 1500, admin: 5000 },
+    reasonCodes: ['support_credit', 'settlement_fix'],
+    approvalTemplates: ['Reviewed internal ledger impact.'],
+  }
+  try {
+    const denied = await requestJson(server.url, '/api/admin/accounting/business-metrics', { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(denied.status, 403)
+    const policies = await requestJson(server.url, '/api/admin/accounting/policies', { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(policies.status, 200)
+    assert.equal(policies.payload.data.creative.activeVersion, 'creative-policy-v1')
+    assert.equal(policies.payload.data.boundaries.withdrawable, false)
+    assert.equal(policies.payload.data.boundaries.convertibleToProviderCurrency, false)
+
+    const preview = await requestJson(server.url, '/api/admin/accounting/policies/point-adjustment/preview', { token: 'demo-access.legalpixel', body: candidate })
+    assert.equal(preview.status, 200)
+    assert.equal(preview.payload.data.impact.creativeRuntimeChanged, false)
+    assert.ok(preview.payload.data.impact.rolesChanged >= 1)
+    assert.deepEqual(await repository.points.getAdjustmentPolicy(defaultPointAdjustmentPolicy), defaultPointAdjustmentPolicy)
+
+    const metrics = await requestJson(server.url, '/api/admin/accounting/business-metrics?unit=points', { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(metrics.status, 200)
+    assert.equal(metrics.payload.data.schemaVersion, 1)
+    assert.equal(metrics.payload.data.window.unit, 'points')
+    assert.equal(typeof metrics.payload.data.refunds.operations, 'number')
+    assert.equal(typeof metrics.payload.data.anomalies.open, 'number')
+
+    const exported = await requestJson(server.url, '/api/admin/accounting/business-metrics/export', { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(exported.status, 200)
+    assert.equal(exported.payload.data.kind, 'accounting.business-metrics.snapshot')
+    assert.equal(JSON.stringify(exported.payload.data).includes('providerJobId'), false)
+    assert.equal(JSON.stringify(exported.payload.data).includes('actorHandle'), false)
   } finally {
     await server.close()
   }

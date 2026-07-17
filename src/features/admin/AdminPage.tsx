@@ -27,6 +27,10 @@ import type {
   AdminAccountingIssueSummary,
   AdminAccountingReconciliationQuery,
   AdminAccountingUnit,
+  AdminBillingMetrics,
+  AdminBillingMetricsQuery,
+  AdminBillingPolicyInventory,
+  AdminBillingPolicyPreview,
   AdminCreativeGenerationHistoryQuery,
   AdminCreativeGenerationSummary,
   AdminCreativeGenerationBulkAction,
@@ -480,6 +484,15 @@ export function AdminPage({
   const [scanningAccounting, setScanningAccounting] = useState(false)
   const [exportingAccounting, setExportingAccounting] = useState(false)
   const [requestingAccountingRepairId, setRequestingAccountingRepairId] = useState<string | null>(null)
+  const [billingMetrics, setBillingMetrics] = useState<AdminBillingMetrics | null>(null)
+  const [billingPolicies, setBillingPolicies] = useState<AdminBillingPolicyInventory | null>(null)
+  const [billingPreview, setBillingPreview] = useState<AdminBillingPolicyPreview | null>(null)
+  const [billingUnitFilter, setBillingUnitFilter] = useState<AdminAccountingUnit | null>(null)
+  const [billingSourceType, setBillingSourceType] = useState('')
+  const [billingDateFrom, setBillingDateFrom] = useState('')
+  const [billingDateTo, setBillingDateTo] = useState('')
+  const [previewingBillingPolicy, setPreviewingBillingPolicy] = useState(false)
+  const [exportingBillingMetrics, setExportingBillingMetrics] = useState(false)
   const [generationRows, setGenerationRows] = useState<ApiCreativeGenerationRecord[]>([])
   const [providerControls, setProviderControls] = useState<AdminProviderControlBundle>({ controls: [], circuits: [], capEvidence: [] })
   const [providerControlReason, setProviderControlReason] = useState('operator_requested')
@@ -625,6 +638,12 @@ export function AdminPage({
     type: accountingTypeFilter || null,
     limit: 20,
   }
+  const billingMetricsQuery: AdminBillingMetricsQuery = {
+    unit: billingUnitFilter,
+    sourceType: billingSourceType || null,
+    dateFrom: billingDateFrom || null,
+    dateTo: billingDateTo || null,
+  }
   const generationQuery: AdminCreativeGenerationHistoryQuery = {
     userHandle: generationUserHandle || null,
     workspace: generationWorkspace || null,
@@ -753,6 +772,20 @@ export function AdminPage({
     },
     getErrorMessage: () => (isZh ? '无法读取内部对账结果。' : 'Could not load internal accounting reconciliation.'),
     deps: [canReadAccounting, isZh, accountingStatusFilter, accountingUnitFilter, accountingTypeFilter],
+    logLabel: 'admin-service',
+  })
+  const billingMetricsStatus = useAsyncResource<AdminBillingMetrics | null>({
+    load: () => canReadAccounting ? adminService.billingMetrics(billingMetricsQuery) : Promise.resolve(null),
+    onSuccess: setBillingMetrics,
+    getErrorMessage: () => (isZh ? '无法读取账务业务统计。' : 'Could not load accounting business metrics.'),
+    deps: [canReadAccounting, isZh, billingUnitFilter, billingSourceType, billingDateFrom, billingDateTo],
+    logLabel: 'admin-service',
+  })
+  const billingPolicyStatus = useAsyncResource<AdminBillingPolicyInventory | null>({
+    load: () => canReadAccounting ? adminService.billingPolicies() : Promise.resolve(null),
+    onSuccess: setBillingPolicies,
+    getErrorMessage: () => (isZh ? '无法读取账务策略版本。' : 'Could not load accounting policy versions.'),
+    deps: [canReadAccounting, isZh],
     logLabel: 'admin-service',
   })
   const generationHistoryStatus = useAsyncResource<{ items: ApiCreativeGenerationRecord[]; nextCursor: string | null; summary: AdminCreativeGenerationSummary }>({
@@ -2094,6 +2127,42 @@ export function AdminPage({
       simulateAction(isZh ? '内部对账导出失败。' : 'Could not export internal accounting evidence.')
     } finally {
       setExportingAccounting(false)
+    }
+  }
+
+  const previewBillingPolicy = async () => {
+    setPreviewingBillingPolicy(true)
+    try {
+      const roleLimits = Object.fromEntries(pointPolicyRoles.map((role) => [role, Number.parseInt(policyRoleLimits[role] ?? '0', 10)])) as PointAdjustmentPolicy['roleLimits']
+      const candidate: PointAdjustmentPolicy = {
+        roleLimits,
+        reasonCodes: policyReasonCodes.split(',').map((item) => item.trim()).filter(Boolean),
+        approvalTemplates: policyApprovalTemplates.split('\n').map((item) => item.trim()).filter(Boolean),
+      }
+      setBillingPreview(await adminService.previewBillingPointPolicy(candidate))
+    } catch (error) {
+      console.info('[admin-service]', error)
+      simulateAction(isZh ? '账务策略影响预览失败。' : 'Could not preview billing policy impact.')
+    } finally {
+      setPreviewingBillingPolicy(false)
+    }
+  }
+
+  const exportBillingMetrics = async () => {
+    setExportingBillingMetrics(true)
+    try {
+      const artifact = await adminService.exportBillingMetrics(billingMetricsQuery)
+      const url = URL.createObjectURL(new Blob([JSON.stringify(artifact, null, 2)], { type: 'application/json' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'accounting-business-metrics.json'
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.info('[admin-service]', error)
+      simulateAction(isZh ? '账务统计导出失败。' : 'Could not export accounting metrics.')
+    } finally {
+      setExportingBillingMetrics(false)
     }
   }
 
@@ -3472,6 +3541,28 @@ export function AdminPage({
             </div>
           }
         />
+        <div className="billing-policy-overview">
+          <div><span>{textFor(t, 'Point policy version', '积分策略版本')}</span><strong>v{billingPolicies?.pointAdjustment.version ?? 0}</strong><small>{billingPolicies?.pointAdjustment.updatedAt ? formatAuditTime(billingPolicies.pointAdjustment.updatedAt) : textFor(t, 'Default policy', '默认策略')}</small></div>
+          <div><span>{textFor(t, 'Creative policy', '创作计费策略')}</span><strong>{billingPolicies?.creative.activeVersion ?? textFor(t, 'Unavailable', '不可用')}</strong><small>{textFor(t, 'Immutable history', '不可变历史')}</small></div>
+          <div><span>{textFor(t, 'Economic boundary', '经济边界')}</span><strong>{textFor(t, 'Internal units', '内部单位')}</strong><small>{textFor(t, 'Not withdrawable or currency-convertible', '不可提现或兑换货币')}</small></div>
+          <button className="ghost-button small" type="button" onClick={() => void previewBillingPolicy()} disabled={!canReadAccounting || previewingBillingPolicy}>{previewingBillingPolicy ? textFor(t, 'Previewing', '预览中') : textFor(t, 'Preview policy impact', '预览策略影响')}</button>
+        </div>
+        {billingPolicyStatus.error && <div className="empty-state"><strong>{textFor(t, 'Policy versions unavailable', '策略版本不可用')}</strong><span>{billingPolicyStatus.error}</span></div>}
+        {billingPreview && <div className="billing-policy-impact"><strong>{billingPreview.summary}</strong><span>{billingPreview.impact.rolesChanged} {textFor(t, 'role routes changed', '个角色路由变化')} · +{billingPreview.impact.reasonCodesAdded}/-{billingPreview.impact.reasonCodesRemoved} {textFor(t, 'reason codes', '个原因代码')}</span><small>{billingPreview.impact.creativePolicyVersion} · {textFor(t, 'creative runtime unchanged', '创作运行时不变')}</small></div>}
+        <div className="permission-summary billing-metrics-filters">
+          <label><span>{textFor(t, 'Metric unit', '统计单位')}</span><select aria-label={textFor(t, 'Billing metric unit', '账务统计单位')} value={billingUnitFilter ?? ''} onChange={(event) => setBillingUnitFilter(event.target.value ? event.target.value as AdminAccountingUnit : null)}><option value="">{textFor(t, 'All', '全部')}</option><option value="points">points</option><option value="creative_credit">creative_credit</option><option value="quota_unit">quota_unit</option></select></label>
+          <label><span>{textFor(t, 'Source', '来源')}</span><input aria-label={textFor(t, 'Billing metric source', '账务统计来源')} value={billingSourceType} onChange={(event) => setBillingSourceType(event.target.value)} placeholder="generation"/></label>
+          <label><span>{textFor(t, 'From', '开始')}</span><input aria-label={textFor(t, 'Billing metrics start date', '账务统计开始日期')} type="date" value={billingDateFrom} onChange={(event) => setBillingDateFrom(event.target.value)}/></label>
+          <label><span>{textFor(t, 'To', '结束')}</span><input aria-label={textFor(t, 'Billing metrics end date', '账务统计结束日期')} type="date" value={billingDateTo} onChange={(event) => setBillingDateTo(event.target.value)}/></label>
+          <button className="icon-button" type="button" aria-label={textFor(t, 'Export accounting metrics JSON', '导出账务统计 JSON')} title={textFor(t, 'Export accounting metrics JSON', '导出账务统计 JSON')} onClick={() => void exportBillingMetrics()} disabled={!canReadAccounting || exportingBillingMetrics}><Download size={16}/></button>
+        </div>
+        {billingMetricsStatus.error && <div className="empty-state"><strong>{textFor(t, 'Business metrics unavailable', '业务统计不可用')}</strong><span>{billingMetricsStatus.error}</span></div>}
+        <div className="market-dashboard billing-metrics-dashboard">
+          <article className="metric-card highlight"><span>{textFor(t, 'Points consumed', '积分消耗')}</span><strong>{billingMetrics?.consumption.points ?? 0}</strong><small>{billingMetrics?.refunds.points ?? 0} {textFor(t, 'refunded', '已退回')}</small></article>
+          <article className="metric-card highlight"><span>{textFor(t, 'Creative credits', '创作积分')}</span><strong>{billingMetrics?.consumption.creativeCredits ?? 0}</strong><small>{billingMetrics?.refunds.creativeCredits ?? 0} {textFor(t, 'refunded', '已退回')}</small></article>
+          <article className="metric-card highlight"><span>{textFor(t, 'Quota used', '配额消耗')}</span><strong>{billingMetrics?.consumption.quotaUnits ?? 0}</strong><small>{billingMetrics?.refunds.quotaUnits ?? 0} {textFor(t, 'released', '已释放')}</small></article>
+          <article className="metric-card highlight"><span>{textFor(t, 'Open anomalies', '待处理异常')}</span><strong>{billingMetrics?.anomalies.open ?? 0}</strong><small>{billingMetrics?.operations.failed ?? 0} {textFor(t, 'failed operations', '个失败操作')}</small></article>
+        </div>
         <div className="permission-summary">
           <label>
             <span>{textFor(t, 'Status', '状态')}</span>

@@ -2271,6 +2271,45 @@ export type AdminAccountingRepairResponse = {
   review: AdminReviewQueueItemDto
 }
 
+export type AdminBillingMetricsQuery = {
+  dateFrom?: string | null
+  dateTo?: string | null
+  unit?: AdminAccountingUnit | null
+  sourceType?: string | null
+}
+
+export type AdminBillingMetrics = {
+  schemaVersion: 1
+  window: AdminBillingMetricsQuery & { generatedAt: string }
+  operations: { total: number; applied: number; pending: number; compensated: number; failed: number; byKind: Array<{ key: string; count: number }> }
+  consumption: { points: number; creativeCredits: number; quotaUnits: number }
+  refunds: { points: number; creativeCredits: number; quotaUnits: number; operations: number }
+  adjustments: { positivePoints: number; negativePoints: number; netPoints: number; operations: number }
+  anomalies: AdminAccountingIssueSummary & { byUnit: Array<{ key: AdminAccountingUnit; count: number; absoluteDifference: number }> }
+}
+
+export type AdminBillingPolicyInventory = {
+  pointAdjustment: { version: number; updatedAt: string | null; policy: PointAdjustmentPolicy; history: PointAdjustmentPolicyHistoryItem[] }
+  creative: { activeVersion: string | null; history: Array<{ version: string; effectiveAt: string; status: string }> }
+  boundaries: { internalUnitsOnly: true; withdrawable: false; convertibleToProviderCurrency: false }
+}
+
+export type AdminBillingPolicyPreview = {
+  current: PointAdjustmentPolicy
+  candidate: PointAdjustmentPolicy
+  summary: string
+  diff: unknown
+  impact: {
+    roles: Array<{ role: string; currentLimit: number; candidateLimit: number; delta: number; routingChanged: boolean }>
+    rolesChanged: number
+    reasonCodesAdded: number
+    reasonCodesRemoved: number
+    approvalTemplatesChanged: boolean
+    creativeRuntimeChanged: false
+    creativePolicyVersion: string
+  }
+}
+
 export type AdminSecurityEventSource = 'rate_limit' | 'body_size' | 'auth_failure' | string
 
 export type AdminSecurityEventListQuery = {

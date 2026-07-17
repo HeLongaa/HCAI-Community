@@ -11,6 +11,7 @@ import {
   parseCreativeGenerationHistoryQuery,
   parseGenerationCenterQuery,
   parseAdminAuditListQuery,
+  parseAdminBillingMetricsQuery,
   parseAdminMediaAssetBulkActionRequest,
   parseAdminMediaAssetExportQuery,
   parseAdminMediaAssetQuery,
@@ -854,6 +855,14 @@ test('admin list query parsers normalize pagination and filters', () => {
     () => parseAdminCreativeGenerationListQuery({ reviewRequired: 'maybe' }),
     'reviewRequired must be a boolean',
   )
+})
+
+test('billing metrics query parser validates units and bounded windows', () => {
+  assert.deepEqual(parseAdminBillingMetricsQuery({ unit: 'creative_credit', sourceType: 'generation', dateFrom: '2026-07-01', dateTo: '2026-07-17' }), {
+    unit: 'creative_credit', sourceType: 'generation', dateFrom: '2026-07-01T00:00:00.000Z', dateTo: '2026-07-17T00:00:00.000Z',
+  })
+  assertValidationError(() => parseAdminBillingMetricsQuery({ unit: 'usd' }), 'unit must be one of: points, creative_credit, quota_unit')
+  assertValidationError(() => parseAdminBillingMetricsQuery({ dateFrom: '2025-01-01', dateTo: '2026-07-17' }), 'metrics window cannot exceed 366 days')
 })
 
 test('parseTaskChildListQuery reuses shared cursor pagination validation', () => {

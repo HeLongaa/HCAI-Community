@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "taskId": "BILL-02",
+  "schemaChange": false,
+  "sourceModels": [
+    "SystemSetting",
+    "InternalAccountingOperation",
+    "InternalAccountingMovement",
+    "AccountingReconciliationIssue"
+  ],
+  "permissions": ["admin:accounting:read"],
+  "filters": ["dateFrom", "dateTo", "unit", "sourceType"],
+  "maximumWindowDays": 366,
+  "metricGroups": ["operations", "consumption", "refunds", "adjustments", "anomalies"],
+  "consumptionKinds": ["task_escrow_reserve", "consumed", "used"],
+  "refundKinds": ["task_escrow_release", "credit_refund", "quota_release"],
+  "adjustmentKinds": ["compensation", "manual_adjustment", "point_adjustment"],
+  "routes": [
+    { "method": "GET", "path": "/api/admin/accounting/policies", "permission": "admin:accounting:read" },
+    { "method": "POST", "path": "/api/admin/accounting/policies/point-adjustment/preview", "permission": "admin:accounting:read" },
+    { "method": "GET", "path": "/api/admin/accounting/business-metrics", "permission": "admin:accounting:read" },
+    { "method": "GET", "path": "/api/admin/accounting/business-metrics/export", "permission": "admin:accounting:read" }
+  ],
+  "exportKind": "accounting.business-metrics.snapshot",
+  "economicBoundary": {
+    "internalUnitsOnly": true,
+    "withdrawable": false,
+    "convertibleToProviderCurrency": false
+  },
+  "forbiddenEvidence": ["providerJobId", "actorHandle", "accountRef", "payloadHash", "rawProviderPayload"],
+  "realProviderCalls": false,
+  "tenantModels": false
+}

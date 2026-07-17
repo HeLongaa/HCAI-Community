@@ -133,6 +133,7 @@ import { buildPortableAuditExport } from '../audit/auditIntegrity.js'
 import { createPrismaObservabilityRepository } from '../observability/prismaObservabilityRepository.js'
 import { createPrismaOAuthAdminRepository } from '../auth/prismaOAuthAdminRepository.js'
 import { createPrismaTaskAdminRepository } from '../tasks/prismaTaskAdminRepository.js'
+import { createPrismaBillingAdminRepository } from '../accounting/prismaBillingAdminRepository.js'
 import {
   buildConsentStatus,
   compliancePolicyManifest,
@@ -1058,6 +1059,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
 
   const oauthAdmin = createPrismaOAuthAdminRepository(client, { runSerializableTransaction, recordAudit })
   const taskAdmin = createPrismaTaskAdminRepository(client, { runSerializableTransaction, recordAudit, createTaskEscrow, finalizeTaskEscrow })
+  const billingAdmin = createPrismaBillingAdminRepository(client)
   const taskLifecycleRecovery = createPrismaTaskLifecycleRecoveryRepository(client, { runSerializableTransaction, recordAudit, finalizeTaskEscrow })
 
   const createSessionForUser = async (user, reason = 'auth.session.created', options = {}) => {
@@ -4308,7 +4310,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         await transaction.systemSetting.upsert({
           where: { key: 'point_adjustment_policy' },
           create: { key: 'point_adjustment_policy', value: normalized },
-          update: { value: normalized },
+          update: { value: normalized, publishedVersion: { increment: 1 } },
         })
         const audit = await transaction.auditEvent.create({
           data: buildAuditRecord({
@@ -4389,7 +4391,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         await transaction.systemSetting.upsert({
           where: { key: 'point_adjustment_policy' },
           create: { key: 'point_adjustment_policy', value: rolledBack },
-          update: { value: rolledBack },
+          update: { value: rolledBack, publishedVersion: { increment: 1 } },
         })
         const audit = await transaction.auditEvent.create({
           data: buildAuditRecord({
@@ -9806,6 +9808,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     creativeCredits,
     creativeQuota,
     accountingReconciliation,
+    billingAdmin,
     media,
     library,
     audit,
