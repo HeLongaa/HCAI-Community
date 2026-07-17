@@ -11,6 +11,7 @@ export const taskAdminStatuses = Object.freeze([
   'completed',
   'rejected',
   'cancelled',
+  'expired',
 ])
 
 export const taskAdminSortFields = Object.freeze(['createdAt', 'updatedAt', 'deadlineAt', 'status', 'title'])
@@ -18,7 +19,7 @@ export const taskAdminArchiveStates = Object.freeze(['active', 'archived', 'all'
 export const taskAdminBulkActions = Object.freeze(['archive', 'cancel'])
 export const taskAdminTransitionActions = Object.freeze(['publish', 'cancel'])
 export const taskAdminEditableStatuses = Object.freeze(['draft', 'open'])
-export const taskAdminArchiveEligibleStatuses = Object.freeze(['draft', 'open', 'completed', 'rejected', 'cancelled'])
+export const taskAdminArchiveEligibleStatuses = Object.freeze(['draft', 'open', 'completed', 'rejected', 'cancelled', 'expired'])
 
 const statusLabels = Object.freeze({
   Draft: 'draft',
@@ -31,6 +32,7 @@ const statusLabels = Object.freeze({
   Completed: 'completed',
   Rejected: 'rejected',
   Cancelled: 'cancelled',
+  Expired: 'expired',
 })
 
 export const normalizeTaskAdminStatus = (status) => statusLabels[status] ?? status

@@ -104,6 +104,7 @@ export function PageRenderer({
     rejectTask,
     requestRevisionTask,
     openDisputeTask,
+    cancelTask,
   } = tasks
   const {
     postList,
@@ -237,6 +238,7 @@ export function PageRenderer({
           rejectTask={rejectTask}
           requestRevisionTask={requestRevisionTask}
           openDisputeTask={openDisputeTask}
+          cancelTask={cancelTask}
           simulateAction={simulateAction}
         />
       )}

@@ -80,6 +80,7 @@ import { safeProviderOperationMetadata } from '../creative/generationRecords.js'
 import { assetEligibleForWorkspace, assetMediaType, buildSafeAssetLibraryItem } from '../media/assetLibrary.js'
 import { resolveCreativeDeliveryAssets } from '../creative/deliveryAssets.js'
 import { taskWorkflowDto } from '../tasks/taskLifecycle.js'
+import { createPrismaTaskLifecycleRecoveryRepository } from '../tasks/prismaTaskLifecycleRecoveryRepository.js'
 import {
   accountingOperationKey,
   accountingPayloadHash,
@@ -1043,7 +1044,9 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       try {
         return await client.$transaction(operation, { isolationLevel: 'Serializable' })
       } catch (error) {
-        if (error?.code !== 'P2034' || attempt === maxAttempts) {
+        const serializationConflict = error?.code === 'P2034'
+          || (error?.code === 'P2010' && String(error?.meta?.code) === '40001')
+        if (!serializationConflict || attempt === maxAttempts) {
           throw error
         }
       }
@@ -1053,6 +1056,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
 
   const oauthAdmin = createPrismaOAuthAdminRepository(client, { runSerializableTransaction, recordAudit })
   const taskAdmin = createPrismaTaskAdminRepository(client, { runSerializableTransaction, recordAudit, createTaskEscrow, finalizeTaskEscrow })
+  const taskLifecycleRecovery = createPrismaTaskLifecycleRecoveryRepository(client, { runSerializableTransaction, recordAudit, finalizeTaskEscrow })
 
   const createSessionForUser = async (user, reason = 'auth.session.created', options = {}) => {
     const accessToken = createAccessToken(user.id)
@@ -2668,6 +2672,10 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         hasProposal: task.proposals.length > 0,
         latestSubmissionStatus: latestSubmission?.status ?? null,
         latestSubmitterHandle: userHandle(latestSubmission?.submitter),
+        version: task.version,
+        cancelledAt: task.cancelledAt?.toISOString?.() ?? null,
+        expiredAt: task.expiredAt?.toISOString?.() ?? null,
+        terminalReasonCode: task.terminalReasonCode,
         admin: hasPermission(actor, 'admin:access'),
       })
     },
@@ -9813,6 +9821,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     observability,
     oauthAdmin,
     taskAdmin,
+    taskLifecycleRecovery,
     operationsMetrics,
     authorization,
     adminReviews,

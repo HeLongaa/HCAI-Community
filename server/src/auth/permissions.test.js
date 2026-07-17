@@ -4,7 +4,7 @@ import test from 'node:test'
 import { getPermissionsForRole, getProtectedRolePermissions, hasPermission, mergePermissions, permissionById, permissionRegistry, permissions } from './permissions.js'
 
 test('getPermissionsForRole returns the product role defaults', () => {
-  assert.deepEqual(getPermissionsForRole('member'), ['task:create', 'post:create', 'comment:create', 'points:read'])
+  assert.deepEqual(getPermissionsForRole('member'), ['task:create', 'task:cancel', 'post:create', 'comment:create', 'points:read'])
   assert.ok(getPermissionsForRole('creator').includes('task:claim'))
   assert.ok(getPermissionsForRole('publisher').includes('task:review'))
   assert.ok(getPermissionsForRole('moderator').includes('admin:queue:review'))

@@ -23,6 +23,7 @@ import {
   taskAdminStatuses,
   taskAdminTransitionActions,
 } from '../tasks/taskAdminContract.js'
+import { taskRecoveryActions } from '../tasks/taskLifecycleRecoveryContract.js'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const handlePattern = /^[a-zA-Z0-9_-]{3,32}$/
@@ -1150,6 +1151,25 @@ export const parseAdminTaskTransitionRequest = (body) => ({
   ...parseTaskAdminReason(body),
   action: requireOneOf(body, 'action', taskAdminTransitionActions),
 })
+
+export const parseTaskCancellationRequest = (body) => ({
+  ...parseTaskAdminReason(body, 'user_cancelled'),
+  idempotencyKey: requireIdempotencyKey(body),
+})
+
+export const parseAdminTaskRecoveryRequest = (body) => ({
+  ...parseTaskAdminReason(body, 'escrow_reconciliation'),
+  action: requireOneOf(body, 'action', taskRecoveryActions),
+  idempotencyKey: requireIdempotencyKey(body),
+})
+
+export const parseTaskExpirySweepRequest = (body) => {
+  const limit = optionalPositiveInteger(body, 'limit') ?? 50
+  if (limit > 100) throw validationFailed('limit must be between 1 and 100')
+  return { limit, source: 'admin', reasonCode: 'deadline_elapsed' }
+}
+
+export const parseTaskLifecycleListQuery = (query) => parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 })
 
 const parseAdminTaskBulkBase = (body) => {
   const targetIds = [...new Set(requireStringArray(body, 'targetIds').map(String))]

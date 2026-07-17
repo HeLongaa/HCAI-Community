@@ -223,6 +223,72 @@ test('POST /api/tasks/:id/claim assigns the task for creators', async () => {
   }
 })
 
+test('POST /api/tasks/:id/cancel is owner-scoped and idempotently releases escrow', async () => {
+  const server = await createTaskAndPointsServer()
+  try {
+    const task = await createTask(server, { title: 'User cancellation route task', pointsReward: 330 }, 'demo-access.taskops')
+    const body = { expectedVersion: task.version, idempotencyKey: `cancel:${task.id}`, reasonCode: 'user_cancelled', note: 'No longer needed' }
+    const first = await requestJson(server.url, `/api/tasks/${task.id}/cancel`, { body, token: 'demo-access.taskops' })
+    const replay = await requestJson(server.url, `/api/tasks/${task.id}/cancel`, { body, token: 'demo-access.taskops' })
+    assert.equal(first.status, 200)
+    assert.deepEqual(replay.payload.data, first.payload.data)
+    assert.equal(first.payload.data.result.status, 'cancelled')
+
+    const taskAfter = await requestJson(server.url, `/api/tasks/${task.id}`, { method: 'GET' })
+    assert.equal(taskAfter.payload.data.status, 'Cancelled')
+    assert.ok(taskAfter.payload.data.cancelledAt)
+    const ledger = await requestJson(server.url, '/api/points/ledger?limit=20', { method: 'GET', token: 'demo-access.taskops' })
+    assert.equal(ledger.payload.data.filter((entry) => entry.sourceType === 'task_escrow_release' && entry.sourceId === String(task.id)).length, 1)
+
+    const conflict = await requestJson(server.url, `/api/tasks/${task.id}/cancel`, { body: { ...body, reasonCode: 'changed' }, token: 'demo-access.taskops' })
+    assert.equal(conflict.status, 409)
+    assert.equal(conflict.payload.error.code, 'TASK_LIFECYCLE_IDEMPOTENCY_CONFLICT')
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST /api/tasks/:id/cancel rejects non-owners and active fulfillment', async () => {
+  const server = await createTestServer()
+  try {
+    const foreignTask = await createTask(server, {}, 'demo-access.taskops')
+    const foreign = await requestJson(server.url, `/api/tasks/${foreignTask.id}/cancel`, { body: { expectedVersion: foreignTask.version, idempotencyKey: `foreign:${foreignTask.id}`, reasonCode: 'user_cancelled' }, token: 'demo-access.launchteam' })
+    assert.equal(foreign.status, 403)
+    assert.equal(foreign.payload.error.code, 'TASK_CANCEL_NOT_OWNER')
+    await requestJson(server.url, `/api/tasks/${foreignTask.id}/claim`, { token: 'demo-access.promptlin' })
+    const active = await requestJson(server.url, `/api/tasks/${foreignTask.id}/cancel`, { body: { expectedVersion: Number(foreignTask.version) + 1, idempotencyKey: `active:${foreignTask.id}`, reasonCode: 'user_cancelled' }, token: 'demo-access.taskops' })
+    assert.equal(active.status, 409)
+    assert.equal(active.payload.error.code, 'TASK_USER_CANCEL_NOT_ALLOWED')
+  } finally {
+    await server.close()
+  }
+})
+
+test('admin expiry sweep and registered escrow recovery expose lifecycle evidence', async () => {
+  const server = await createTestServer()
+  try {
+    const task = await createTask(server, { deadlineAt: '2026-07-01T00:00:00.000Z' }, 'demo-access.taskops')
+    const sweep = await requestJson(server.url, '/api/admin/tasks/expiry/sweep', { body: { limit: 10 }, token: 'demo-access.opsplus' })
+    assert.equal(sweep.status, 200)
+    assert.ok(sweep.payload.data.expired >= 1)
+    const detail = await requestJson(server.url, `/api/admin/tasks/${task.id}`, { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(detail.payload.data.status, 'expired')
+    assert.ok(detail.payload.data.expiredAt)
+
+    const recoveryBody = { action: 'release_escrow', expectedVersion: detail.payload.data.version, idempotencyKey: `recover:${task.id}`, reasonCode: 'escrow_reconciliation', note: '' }
+    const recovery = await requestJson(server.url, `/api/admin/tasks/${task.id}/recovery`, { body: recoveryBody, token: 'demo-access.opsplus' })
+    const replay = await requestJson(server.url, `/api/admin/tasks/${task.id}/recovery`, { body: recoveryBody, token: 'demo-access.opsplus' })
+    assert.equal(recovery.status, 200)
+    assert.deepEqual(replay.payload.data, recovery.payload.data)
+    const lifecycle = await requestJson(server.url, `/api/admin/tasks/${task.id}/lifecycle`, { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(lifecycle.status, 200)
+    assert.ok(lifecycle.payload.data.some((item) => item.action === 'expire'))
+    assert.ok(lifecycle.payload.data.some((item) => item.action === 'release_escrow'))
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/tasks/:id/workflow returns actor-scoped action eligibility', async () => {
   const server = await createTestServer()
   try {

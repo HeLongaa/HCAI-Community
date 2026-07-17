@@ -729,6 +729,7 @@ function App() {
     rejectTask,
     requestRevisionTask,
     openDisputeTask,
+    cancelTask,
   } = useTaskWorkflows({ locale, pushLedger, pushToast, setPage })
 
   const {
@@ -846,6 +847,11 @@ function App() {
     await openDisputeTask(task)
   }
 
+  const guardedCancelTask = async (task: Task) => {
+    if (!requirePermission('task:cancel', locale === 'zh' ? '请使用任务发布账号取消任务。' : 'Sign in as the task publisher to cancel it.')) return
+    await cancelTask(task)
+  }
+
   const guardedConvertPostToTask = async (post: Post) => {
     if (!requirePermission('task:create', locale === 'zh' ? '请使用可发布任务的账号后再转任务。' : 'Sign in with task creation permission to convert posts.')) return
     await convertPostToTask(post)
@@ -921,6 +927,7 @@ function App() {
           rejectTask: guardedRejectTask,
           requestRevisionTask: guardedRequestRevisionTask,
           openDisputeTask: guardedOpenDisputeTask,
+          cancelTask: guardedCancelTask,
         }}
         community={{
           postList,

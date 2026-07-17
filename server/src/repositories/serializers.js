@@ -452,6 +452,10 @@ export const serializeTask = (task) => ({
   disputeStatus: task.disputeStatus ?? null,
   disputeReason: task.disputeReason ?? '',
   disputeReviewId: task.disputeReviewId ?? null,
+  version: Number(task.version) || 1,
+  cancelledAt: task.cancelledAt ?? null,
+  expiredAt: task.expiredAt ?? null,
+  terminalReasonCode: task.terminalReasonCode ?? null,
 })
 
 export const serializeTaskDetail = serializeTask

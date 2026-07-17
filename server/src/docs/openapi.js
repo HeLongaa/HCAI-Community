@@ -501,7 +501,7 @@ export const openApiDocument = {
         summary: 'List tasks for administrative operations',
         parameters: [
           { name: 'search', in: 'query', schema: { type: 'string' } },
-          { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'open', 'assigned', 'in_progress', 'submitted', 'pending_review', 'disputed', 'completed', 'rejected', 'cancelled'] } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'open', 'assigned', 'in_progress', 'submitted', 'pending_review', 'disputed', 'completed', 'rejected', 'cancelled', 'expired'] } },
           { name: 'archiveState', in: 'query', schema: { type: 'string', enum: ['active', 'archived', 'all'], default: 'active' } },
           { name: 'category', in: 'query', schema: { type: 'string' } },
           { name: 'publisherHandle', in: 'query', schema: { type: 'string' } },
@@ -568,6 +568,29 @@ export const openApiDocument = {
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['expectedVersion', 'action', 'reasonCode'], properties: { expectedVersion: { type: 'integer', minimum: 1 }, action: { type: 'string', enum: ['publish', 'cancel'] }, reasonCode: { type: 'string' }, note: { type: 'string', maxLength: 240 } } } } } },
         responses: { '200': { description: 'Transitioned task and accounting evidence' }, '403': { description: 'Requires admin:tasks:manage' }, '409': { description: 'Invalid transition or version conflict' } },
+      },
+    },
+    '/admin/tasks/{id}/lifecycle': {
+      get: {
+        summary: 'List immutable cancellation, expiry, and recovery evidence for a task',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }, { name: 'cursor', in: 'query', schema: { type: 'string' } }, { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } }],
+        responses: { '200': { description: 'Task lifecycle mutation evidence page' }, '403': { description: 'Requires admin:tasks:read' }, '404': { description: 'Task not found' } },
+      },
+    },
+    '/admin/tasks/{id}/recovery': {
+      post: {
+        summary: 'Run a registered terminal-task escrow reconciliation',
+        description: 'Only the release_escrow action is accepted, and only for cancelled or expired tasks. This endpoint cannot assign an arbitrary task status.',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['action', 'expectedVersion', 'idempotencyKey', 'reasonCode'], properties: { action: { type: 'string', enum: ['release_escrow'] }, expectedVersion: { type: 'integer', minimum: 1 }, idempotencyKey: { type: 'string' }, reasonCode: { type: 'string' }, note: { type: 'string', maxLength: 240 } } } } } },
+        responses: { '200': { description: 'Stable reconciliation evidence' }, '403': { description: 'Requires admin:tasks:manage' }, '409': { description: 'Version, state, or idempotency conflict' } },
+      },
+    },
+    '/admin/tasks/expiry/sweep': {
+      post: {
+        summary: 'Run the registered bounded task expiry sweep',
+        requestBody: { required: false, content: { 'application/json': { schema: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 100, default: 50 } } } } } },
+        responses: { '200': { description: 'Scanned and expired counts with mutation evidence' }, '403': { description: 'Requires admin:tasks:manage' } },
       },
     },
     '/admin/tasks/bulk/preview': {
@@ -660,8 +683,12 @@ export const openApiDocument = {
                     actions: {
                       type: 'array',
                       uniqueItems: true,
-                      items: { type: 'string', enum: ['view', 'propose', 'claim', 'review_proposals', 'submit', 'review_submission', 'open_dispute', 'view_timeline'] },
+                      items: { type: 'string', enum: ['view', 'propose', 'claim', 'review_proposals', 'submit', 'review_submission', 'open_dispute', 'view_timeline', 'cancel'] },
                     },
+                    version: { type: 'integer', minimum: 1 },
+                    cancelledAt: { type: ['string', 'null'], format: 'date-time' },
+                    expiredAt: { type: ['string', 'null'], format: 'date-time' },
+                    terminalReasonCode: { type: ['string', 'null'] },
                   },
                 },
               },
@@ -691,6 +718,15 @@ export const openApiDocument = {
           '403': { description: 'Requires task claim permission' },
           '404': { description: 'Task not found' },
         },
+      },
+    },
+    '/tasks/{id}/cancel': {
+      post: {
+        summary: 'Cancel an owned draft or open task and release escrow',
+        description: 'The transition, immutable idempotency record, escrow release, and audit evidence commit atomically. Replaying the same request returns the prior result.',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['expectedVersion', 'idempotencyKey'], properties: { expectedVersion: { type: 'integer', minimum: 1 }, idempotencyKey: { type: 'string' }, reasonCode: { type: 'string', default: 'user_cancelled' }, note: { type: 'string', maxLength: 240 } } } } } },
+        responses: { '200': { description: 'Stable cancellation mutation evidence' }, '403': { description: 'Requires task:cancel and publisher ownership' }, '409': { description: 'Version, state, or idempotency conflict' } },
       },
     },
     '/tasks/{id}/proposals': {

@@ -2,6 +2,7 @@ export type Locale = 'en' | 'zh'
 export type Role = 'member' | 'contributor' | 'creator' | 'publisher' | 'moderator' | 'admin'
 export type Permission =
   | 'task:create'
+  | 'task:cancel'
   | 'task:propose'
   | 'task:claim'
   | 'task:submit'
@@ -164,6 +165,10 @@ export type Task = {
   resultLinks: string[]
   reviewNote: string
   rights: string
+  version?: number
+  cancelledAt?: string | null
+  expiredAt?: string | null
+  terminalReasonCode?: string | null
 }
 
 export type Post = {

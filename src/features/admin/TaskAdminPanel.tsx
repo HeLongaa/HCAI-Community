@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Archive, ChevronRight, PlayCircle, RefreshCw, RotateCcw, Save, Search, XCircle } from 'lucide-react'
+import { Archive, ChevronRight, PlayCircle, RefreshCw, RotateCcw, Save, Search, TimerReset, Wrench, XCircle } from 'lucide-react'
 import type { Permission } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { adminService } from '../../services/adminService'
@@ -12,9 +12,10 @@ import type {
   AdminTaskQuery,
   AdminTaskSummary,
   AdminTaskStatus,
+  ApiTaskLifecycleMutation,
 } from '../../services/contracts'
 
-const statuses: AdminTaskStatus[] = ['draft', 'open', 'assigned', 'in_progress', 'submitted', 'pending_review', 'disputed', 'completed', 'rejected', 'cancelled']
+const statuses: AdminTaskStatus[] = ['draft', 'open', 'assigned', 'in_progress', 'submitted', 'pending_review', 'disputed', 'completed', 'rejected', 'cancelled', 'expired']
 const editableStatuses: AdminTaskStatus[] = ['draft', 'open']
 
 const errorMessage = (error: unknown) => isApiClientError(error) ? `${error.code}: ${error.message}` : error instanceof Error ? error.message : 'Unknown error'
@@ -47,6 +48,7 @@ export function TaskAdminPanel({
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selected, setSelected] = useState<AdminTaskDto | null>(null)
+  const [lifecycle, setLifecycle] = useState<ApiTaskLifecycleMutation[]>([])
   const [draft, setDraft] = useState<Draft | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [search, setSearch] = useState('')
@@ -104,11 +106,13 @@ export function TaskAdminPanel({
     setSelectedId(task.id)
     setSelected(task)
     setDraft(draftFor(task))
+    setLifecycle([])
     setError(null)
     try {
-      const detail = await adminService.task(task.id)
+      const [detail, evidence] = await Promise.all([adminService.task(task.id), adminService.taskLifecycle(task.id)])
       setSelected(detail)
       setDraft(draftFor(detail))
+      setLifecycle(evidence)
     } catch (loadError) {
       setError(errorMessage(loadError))
     }
@@ -156,6 +160,40 @@ export function TaskAdminPanel({
       () => adminService.transitionTask(selected.id, action, { expectedVersion: selected.version, reasonCode, note }),
       action === 'publish' ? (isZh ? '任务已发布。' : 'Task published.') : (isZh ? '任务已取消。' : 'Task cancelled.'),
     )
+  }
+
+  const recoverEscrow = async () => {
+    if (!selected) return
+    setSaving(true)
+    setError(null)
+    try {
+      const mutation = await adminService.recoverTaskEscrow(selected.id, {
+        expectedVersion: selected.version,
+        idempotencyKey: crypto.randomUUID(),
+        reasonCode,
+        note,
+      })
+      setLifecycle((current) => [mutation, ...current.filter((item) => item.id !== mutation.id)])
+      notify(isZh ? '托管状态已完成受控对账。' : 'Escrow state reconciled through the registered recovery action.')
+    } catch (recoveryError) {
+      setError(errorMessage(recoveryError))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const sweepExpiry = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const result = await adminService.sweepExpiredTasks()
+      notify(isZh ? `到期扫描完成：扫描 ${result.scanned}，过期 ${result.expired}` : `Expiry sweep complete: ${result.scanned} scanned, ${result.expired} expired.`)
+      await load()
+    } catch (sweepError) {
+      setError(errorMessage(sweepError))
+    } finally {
+      setSaving(false)
+    }
   }
 
   const toggleSelection = (id: string) => {
@@ -222,7 +260,7 @@ export function TaskAdminPanel({
       <SectionHeader
         eyebrow={isZh ? '任务运营' : 'Task operations'}
         title={isZh ? '任务管理' : 'Task management'}
-        action={<button className="icon-button" type="button" title={isZh ? '刷新任务' : 'Refresh tasks'} onClick={() => void load()} disabled={loading}><RefreshCw size={16} /></button>}
+        action={<div className="button-row compact-buttons"><button className="icon-button" type="button" title={isZh ? '扫描过期任务' : 'Sweep expired tasks'} onClick={() => void sweepExpiry()} disabled={saving}><TimerReset size={16} /></button><button className="icon-button" type="button" title={isZh ? '刷新任务' : 'Refresh tasks'} onClick={() => void load()} disabled={loading}><RefreshCw size={16} /></button></div>}
       />
 
       <div className="task-admin-metrics">
@@ -230,6 +268,7 @@ export function TaskAdminPanel({
         <div><strong>{summary.active}</strong><span>{isZh ? '有效' : 'Active'}</span></div>
         <div><strong>{summary.archived}</strong><span>{isZh ? '归档' : 'Archived'}</span></div>
         <div><strong>{summary.byStatus.pending_review ?? 0}</strong><span>{isZh ? '待审核' : 'Pending review'}</span></div>
+        <div><strong>{summary.byStatus.expired ?? 0}</strong><span>{isZh ? '已过期' : 'Expired'}</span></div>
       </div>
 
       <div className="task-admin-filters">
@@ -276,10 +315,13 @@ export function TaskAdminPanel({
                 {editableStatuses.includes(selected.status) && !selected.archivedAt && <button className="primary-button" type="button" onClick={() => void saveTask()} disabled={saving}><Save size={16} />{isZh ? '保存' : 'Save'}</button>}
                 {selected.status === 'draft' && !selected.archivedAt && <button className="ghost-button" type="button" onClick={() => void transition('publish')} disabled={saving}><PlayCircle size={16} />{isZh ? '发布' : 'Publish'}</button>}
                 {['draft', 'open'].includes(selected.status) && !selected.archivedAt && <button className="ghost-button danger" type="button" onClick={() => void transition('cancel')} disabled={saving}><XCircle size={16} />{isZh ? '取消任务' : 'Cancel task'}</button>}
-                {['draft', 'open', 'completed', 'rejected', 'cancelled'].includes(selected.status) && <button className="ghost-button" type="button" onClick={() => void archiveOrRestore()} disabled={saving}>{selected.archivedAt ? <RotateCcw size={16} /> : <Archive size={16} />}{selected.archivedAt ? (isZh ? '恢复' : 'Restore') : (isZh ? '归档' : 'Archive')}</button>}
+                {['cancelled', 'expired'].includes(selected.status) && <button className="ghost-button" type="button" onClick={() => void recoverEscrow()} disabled={saving}><Wrench size={16} />{isZh ? '托管对账' : 'Reconcile escrow'}</button>}
+                {['draft', 'open', 'completed', 'rejected', 'cancelled', 'expired'].includes(selected.status) && <button className="ghost-button" type="button" onClick={() => void archiveOrRestore()} disabled={saving}>{selected.archivedAt ? <RotateCcw size={16} /> : <Archive size={16} />}{selected.archivedAt ? (isZh ? '恢复' : 'Restore') : (isZh ? '归档' : 'Archive')}</button>}
               </div>
             </>}
             {selected.archivedAt && <div className="task-admin-archive-evidence"><strong>{selected.archiveReasonCode}</strong><span>{selected.archivedByHandle ?? '-'} · {formatDate(selected.archivedAt)}</span><small>{selected.archiveNote}</small></div>}
+            {(selected.cancelledAt || selected.expiredAt) && <div className="task-admin-archive-evidence"><strong>{selected.terminalReasonCode ?? '-'}</strong><span>{selected.cancelledAt ? (isZh ? '已取消' : 'Cancelled') : (isZh ? '已过期' : 'Expired')} · {formatDate(selected.cancelledAt ?? selected.expiredAt)}</span></div>}
+            {lifecycle.length > 0 && <div className="task-admin-lifecycle"><strong>{isZh ? '生命周期证据' : 'Lifecycle evidence'}</strong>{lifecycle.slice(0, 5).map((item) => <span key={item.id}>{formatDate(item.completedAt)} · {item.action} · {item.result.outcome}</span>)}</div>}
           </>}
         </div>
       </div>

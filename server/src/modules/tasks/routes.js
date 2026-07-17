@@ -18,6 +18,10 @@ import {
   parseAdminTaskListQuery,
   parseAdminTaskTransitionRequest,
   parseAdminTaskUpdateRequest,
+  parseAdminTaskRecoveryRequest,
+  parseTaskCancellationRequest,
+  parseTaskExpirySweepRequest,
+  parseTaskLifecycleListQuery,
 } from '../../contracts/requestParsers.js'
 import { repositories } from '../../repositories/index.js'
 
@@ -66,6 +70,28 @@ export const registerTaskRoutes = (router) => {
     const task = await repositories.taskAdmin.transition(context.params.id, parseAdminTaskTransitionRequest((await readJsonBody(request)) ?? {}), actor)
     if (!task) throw notFound(`/api/admin/tasks/${context.params.id}`)
     ok(response, task)
+  })
+
+  router.add('GET', '/api/admin/tasks/:id/lifecycle', async (_request, response, context) => {
+    requirePermission(context, 'admin:tasks:read')
+    const task = await repositories.taskAdmin.find(context.params.id)
+    if (!task) throw notFound(`/api/admin/tasks/${context.params.id}`)
+    const page = await repositories.taskLifecycleRecovery.list(context.params.id, parseTaskLifecycleListQuery(context.query))
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('POST', '/api/admin/tasks/:id/recovery', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:tasks:manage')
+    const mutation = await repositories.taskLifecycleRecovery.recover(context.params.id, parseAdminTaskRecoveryRequest((await readJsonBody(request)) ?? {}), actor)
+    if (!mutation) throw notFound(`/api/admin/tasks/${context.params.id}`)
+    ok(response, mutation)
+  })
+
+  router.add('POST', '/api/admin/tasks/expiry/sweep', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:tasks:manage')
+    const result = await repositories.taskLifecycleRecovery.sweepExpired({ ...parseTaskExpirySweepRequest((await readJsonBody(request)) ?? {}), actor })
+    await repositories.audit.recordAttempt({ actor, action: 'task.admin.expiry_sweep', resourceType: 'task_lifecycle_mutation', resourceId: null, metadata: { scanned: result.scanned, expired: result.expired } })
+    ok(response, result)
   })
 
   router.add('POST', '/api/admin/tasks/bulk/preview', async (request, response, context) => {
@@ -128,6 +154,13 @@ export const registerTaskRoutes = (router) => {
       throw notFound(`/api/tasks/${context.params.id}`)
     }
     ok(response, task)
+  })
+
+  router.add('POST', '/api/tasks/:id/cancel', async (request, response, context) => {
+    const actor = requirePermission(context, 'task:cancel')
+    const mutation = await repositories.taskLifecycleRecovery.cancel(context.params.id, parseTaskCancellationRequest((await readJsonBody(request)) ?? {}), actor)
+    if (!mutation) throw notFound(`/api/tasks/${context.params.id}`)
+    ok(response, mutation)
   })
 
   router.add('GET', '/api/tasks/:id/proposals', async (_request, response, context) => {

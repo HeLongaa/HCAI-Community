@@ -50,6 +50,21 @@ export const createProductionWorkerJobDefinitions = (repositories, env, options 
       }),
     })
   }
+  if (repositories.taskLifecycleRecovery?.sweepExpired) {
+    jobs.push({
+      id: 'task-expiry-sweep',
+      enabled: env.taskExpiryWorkerEnabled,
+      intervalSeconds: env.taskExpiryWorkerIntervalSeconds,
+      maxAttempts: 3,
+      retryBackoffSeconds: env.taskExpiryWorkerIntervalSeconds,
+      lease: lease('task-expiry-sweep'),
+      run: () => repositories.taskLifecycleRecovery.sweepExpired({
+        limit: env.taskExpirySweepLimit,
+        source: 'worker',
+        reasonCode: 'deadline_elapsed',
+      }),
+    })
+  }
   if (repositories.creativeGenerations?.list && repositories.creativeProviderReplays?.record) {
     jobs.push({
       id: 'creative-provider-polling',

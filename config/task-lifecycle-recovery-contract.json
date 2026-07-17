@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "taskId": "TASK-02",
+  "status": { "terminal": ["cancelled", "expired"], "expiryEligible": ["open", "assigned", "in_progress", "rejected"] },
+  "userCancellation": { "permission": "task:cancel", "ownerScoped": true, "eligibleStatuses": ["draft", "open"], "idempotencyRequired": true, "optimisticVersioning": true },
+  "expiry": { "jobDefinitionId": "task-expiry-sweep", "bounded": true, "defaultLimit": 50, "idempotencyKey": "task-expire:<taskId>:<deadlineAt>" },
+  "recovery": { "permission": "admin:tasks:manage", "actions": ["release_escrow"], "arbitraryStatusMutation": false, "terminalOnly": true },
+  "atomicEffects": ["task_status", "escrow_release", "lifecycle_mutation", "audit_event"],
+  "routes": [
+    { "method": "POST", "path": "/api/tasks/:id/cancel", "permission": "task:cancel" },
+    { "method": "POST", "path": "/api/admin/tasks/expiry/sweep", "permission": "admin:tasks:manage" },
+    { "method": "GET", "path": "/api/admin/tasks/:id/lifecycle", "permission": "admin:tasks:read" },
+    { "method": "POST", "path": "/api/admin/tasks/:id/recovery", "permission": "admin:tasks:manage" }
+  ],
+  "migration": "0066_task_lifecycle_recovery"
+}

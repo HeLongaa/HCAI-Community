@@ -18,7 +18,7 @@
     "optimisticVersioning": true,
     "editableStatuses": ["draft", "open"],
     "transitionActions": ["publish", "cancel"],
-    "archiveEligibleStatuses": ["draft", "open", "completed", "rejected", "cancelled"],
+    "archiveEligibleStatuses": ["draft", "open", "completed", "rejected", "cancelled", "expired"],
     "hardDelete": false
   },
   "bulkPolicy": {
@@ -29,5 +29,5 @@
     "idempotencyRequired": true,
     "executionStateRecheck": true
   },
-  "deferredToTask02": ["automatic_cancellation", "automatic_expiry", "abnormal_recovery"]
+  "deferredToTask02": []
 }

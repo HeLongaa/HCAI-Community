@@ -19,6 +19,7 @@ import { createSeedGenerationExecutionRepository } from '../creative/seedGenerat
 import { createSeedObservabilityRepository } from '../observability/seedObservabilityRepository.js'
 import { createSeedOAuthAdminRepository } from '../auth/seedOAuthAdminRepository.js'
 import { createSeedTaskAdminRepository } from '../tasks/seedTaskAdminRepository.js'
+import { createSeedTaskLifecycleRecoveryRepository } from '../tasks/seedTaskLifecycleRecoveryRepository.js'
 import {
   appendSeedAuditIntegrity,
   buildPortableAuditExport,
@@ -2489,6 +2490,13 @@ export const createSeedRepository = () => {
     createTaskEscrow,
     recordAudit,
   })
+  const taskLifecycleRecovery = createSeedTaskLifecycleRecoveryRepository({
+    tasks: seedStore.tasks,
+    getTask: getTaskById,
+    updateTask,
+    finalizeTaskEscrow,
+    recordAudit,
+  })
   return {
   chat: createSeedChatRepository({
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) =>
@@ -2507,6 +2515,7 @@ export const createSeedRepository = () => {
   observability,
   oauthAdmin,
   taskAdmin,
+  taskLifecycleRecovery,
   auth: {
     getCurrentUser: () => seedStore.me,
     findDemoAccountByAccessToken: (token) => {
@@ -2628,6 +2637,10 @@ export const createSeedRepository = () => {
         hasProposal: proposals.some((entry) => entry.proposerHandle === actor.handle),
         latestSubmissionStatus: latestSubmission?.status ?? null,
         latestSubmitterHandle: latestSubmission?.submitterHandle ?? null,
+        version: task.version,
+        cancelledAt: task.cancelledAt ?? null,
+        expiredAt: task.expiredAt ?? null,
+        terminalReasonCode: task.terminalReasonCode ?? null,
         admin: hasPermission(actor, 'admin:access'),
       })
     },

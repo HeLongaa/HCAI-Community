@@ -104,6 +104,8 @@
     { "method": "POST", "path": "/api/admin/tasks/:id/restore", "action": "task.admin.restored", "resourceType": "task", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/tasks/:id/transitions", "action": "task.admin.transition", "resourceType": "task", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/tasks/bulk/preview", "action": "task.admin.bulk.previewed", "resourceType": "task_admin_bulk_action", "resourceParam": null, "reasonCode": "task_bulk_preview", "mode": "domain_audited", "risk": "high" },
-    { "method": "POST", "path": "/api/admin/tasks/bulk", "action": "task.admin.bulk.completed", "resourceType": "task_admin_bulk_action", "resourceParam": null, "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
+    { "method": "POST", "path": "/api/admin/tasks/bulk", "action": "task.admin.bulk.completed", "resourceType": "task_admin_bulk_action", "resourceParam": null, "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" },
+    { "method": "POST", "path": "/api/admin/tasks/:id/recovery", "action": "task.admin.escrow_recovered", "resourceType": "task", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" },
+    { "method": "POST", "path": "/api/admin/tasks/expiry/sweep", "action": "task.admin.expiry_sweep", "resourceType": "task_lifecycle_mutation", "resourceParam": null, "reasonCode": "deadline_elapsed", "mode": "domain_audited", "risk": "critical" }
   ]
 }

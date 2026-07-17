@@ -19,6 +19,7 @@ const admins = ['admin']
 
 export const permissionRegistry = Object.freeze([
   definePermission('task:create', 'task-marketplace', 'task', 'create', 'medium', ['member', 'publisher', 'admin'], { resourceAuthorization: true, description: 'Create a task owned by the actor' }),
+  definePermission('task:cancel', 'task-marketplace', 'task', 'cancel', 'high', ['member', 'publisher', 'admin'], { resourceAuthorization: true, description: 'Cancel an owned task before fulfillment starts' }),
   definePermission('task:propose', 'task-marketplace', 'task_proposal', 'create', 'medium', creators, { resourceAuthorization: true, description: 'Propose work on an eligible task' }),
   definePermission('task:claim', 'task-marketplace', 'task', 'claim', 'medium', creators, { resourceAuthorization: true, description: 'Claim an eligible task' }),
   definePermission('task:submit', 'task-marketplace', 'task_submission', 'create', 'high', creators, { resourceAuthorization: true, description: 'Submit work for an owned assignment' }),

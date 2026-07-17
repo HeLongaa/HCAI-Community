@@ -315,11 +315,11 @@
     {
       "id": "marketplace_records",
       "classification": "confidential",
-      "prismaModels": ["Task", "TaskAdminBulkAction", "TaskProposal", "TaskSubmission", "TaskSubmissionAsset"],
+      "prismaModels": ["Task", "TaskAdminBulkAction", "TaskLifecycleMutation", "TaskProposal", "TaskSubmission", "TaskSubmissionAsset"],
       "locations": ["postgres"],
       "dataSubjects": ["publisher", "creator", "reviewer"],
       "purposes": ["marketplace_delivery", "internal_accounting", "support_operations"],
-      "exampleFields": ["public/private brief", "proposal", "submission", "asset ids", "rights note", "review note", "reward semantics", "Admin bulk target hash and disposition result"],
+      "exampleFields": ["public/private brief", "proposal", "submission", "asset ids", "rights note", "review note", "reward semantics", "Admin bulk target hash and disposition result", "cancellation, expiry, and escrow recovery evidence"],
       "accessRoles": ["participant", "authorized_service", "task_moderator", "support_operator_allowlisted"],
       "retentionPolicyId": "marketplace_close_plus_730d",
       "exportPolicy": "include_subject_rows_and_counterparty_safe_context",
@@ -1071,7 +1071,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 103,
+    "modelCount": 104,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",

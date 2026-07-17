@@ -202,6 +202,12 @@ test('createProductionWorkerJobDefinitions maps enabled env to repository jobs',
         return { marked: 1 }
       },
     },
+    taskLifecycleRecovery: {
+      sweepExpired: async (payload) => {
+        calls.push(['expiry', payload])
+        return { scanned: 1, expired: 1, mutations: [] }
+      },
+    },
   }
   const env = {
     mediaScanWorkerEnabled: true,
@@ -215,14 +221,19 @@ test('createProductionWorkerJobDefinitions maps enabled env to repository jobs',
     taskStaleSubmissionWorkerIntervalSeconds: 300,
     taskStaleSubmissionOlderThanHours: 48,
     taskStaleSubmissionSweepLimit: 10,
+    taskExpiryWorkerEnabled: true,
+    taskExpiryWorkerIntervalSeconds: 60,
+    taskExpirySweepLimit: 20,
   }
   const definitions = createProductionWorkerJobDefinitions(repositories, env)
-  assert.deepEqual(definitions.map((definition) => definition.id), ['media-scan-sweep', 'media-storage-cleanup', 'task-stale-submission-sweep'])
+  assert.deepEqual(definitions.map((definition) => definition.id), ['media-scan-sweep', 'media-storage-cleanup', 'task-stale-submission-sweep', 'task-expiry-sweep'])
   assert.equal(definitions[0].intervalSeconds, 15)
   assert.equal(definitions[1].intervalSeconds, 300)
   assert.equal(definitions[1].maxAttempts, 3)
   assert.equal(definitions[1].retryBackoffSeconds, 300)
   assert.equal(definitions[2].intervalSeconds, 300)
+  assert.equal(definitions[3].intervalSeconds, 60)
+  assert.equal(definitions[3].maxAttempts, 3)
   assert.deepEqual(definitions[0].lease, {
     key: 'media-scan-sweep',
     ttlSeconds: 120,
@@ -238,14 +249,21 @@ test('createProductionWorkerJobDefinitions maps enabled env to repository jobs',
     ttlSeconds: 120,
     renewIntervalSeconds: 30,
   })
+  assert.deepEqual(definitions[3].lease, {
+    key: 'task-expiry-sweep',
+    ttlSeconds: 120,
+    renewIntervalSeconds: 30,
+  })
 
   assert.deepEqual(await definitions[0].run(), { retried: 0, failed: 0 })
   assert.deepEqual(await definitions[1].run(), { inspected: 1, deleted: 1, failed: 0 })
   assert.deepEqual(await definitions[2].run(), { marked: 1 })
+  assert.deepEqual(await definitions[3].run(), { scanned: 1, expired: 1, mutations: [] })
   assert.deepEqual(calls, [
     ['media', { source: 'worker' }],
     ['cleanup', { limit: 25 }],
     ['tasks', { olderThanHours: 48, limit: 10 }],
+    ['expiry', { limit: 20, source: 'worker', reasonCode: 'deadline_elapsed' }],
   ])
 })
 
