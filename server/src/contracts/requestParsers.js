@@ -202,6 +202,7 @@ export const parseCreateTaskRequest = (body) => ({
   deadlineAt: nullableText(body, 'deadlineAt'),
   visibility: optionalText(body, 'visibility', 'public'),
   attachmentIds: optionalStringArray(body, 'attachmentIds'),
+  acceptanceTemplateId: optionalText(body, 'acceptanceTemplateId', null),
 })
 
 export const parseCreateTaskProposalRequest = (body) => ({
@@ -1124,6 +1125,22 @@ export const parseAdminTaskListQuery = (query) => {
     publisherHandle: optionalText(query, 'publisherHandle', null),
     assigneeHandle: optionalText(query, 'assigneeHandle', null),
   }
+}
+
+export const parseAdminTaskBusinessMetricsQuery = (query) => {
+  const dateFrom = optionalText(query, 'dateFrom', null)
+  const dateTo = optionalText(query, 'dateTo', null)
+  const parseDate = (value, field) => {
+    if (!value) return null
+    const timestamp = Date.parse(value)
+    if (!Number.isFinite(timestamp)) throw validationFailed(`${field} must be an ISO 8601 datetime`)
+    return new Date(timestamp).toISOString()
+  }
+  const from = parseDate(dateFrom, 'dateFrom')
+  const to = parseDate(dateTo, 'dateTo')
+  if (from && to && Date.parse(from) > Date.parse(to)) throw validationFailed('dateFrom must be before or equal to dateTo')
+  if (from && to && Date.parse(to) - Date.parse(from) > 366 * 24 * 60 * 60 * 1000) throw validationFailed('metrics window cannot exceed 366 days')
+  return { dateFrom: from, dateTo: to, category: optionalText(query, 'category', null) }
 }
 
 export const parseAdminTaskUpdateRequest = (body) => {

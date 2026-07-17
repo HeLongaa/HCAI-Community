@@ -88,7 +88,7 @@ For CONFIG-02 or SET-02 schema and repository changes, deploy the complete migra
 FOUNDATION_DATABASE_URL="$DATABASE_URL" npm run test:config-resource-domains:integration
 ```
 
-This verifies concurrent publication, audit rollback atomicity, immutable revisions, all three independent published projections, mirrored soft deletion, restore, versioned rollback, rollout projection persistence, and emergency override concurrency. The test skips when `FOUNDATION_DATABASE_URL` is absent.
+This verifies concurrent publication, audit rollback atomicity, immutable revisions, independent published projections, mirrored soft deletion, restore, versioned rollback, rollout projection persistence, and emergency override concurrency. The test skips when `FOUNDATION_DATABASE_URL` is absent.
 
 Run the SET-02 contract and runtime gate for targeting-rule limits, deterministic evaluation, permission isolation, preview, and immediate shutdown:
 

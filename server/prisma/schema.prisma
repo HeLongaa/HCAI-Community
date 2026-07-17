@@ -394,6 +394,7 @@ enum ConfigResourceKind {
   feature_flag
   reference_data
   announcement
+  task_rule
 }
 
 model AuditEvent {
@@ -715,6 +716,7 @@ model ConfigResource {
   featureFlag     FeatureFlag?
   referenceData   ReferenceDataEntry?
   announcement    Announcement?
+  taskRule        TaskRule?
 
   @@unique([kind, key])
   @@index([kind, deletedAt, updatedAt])
@@ -806,6 +808,27 @@ model Announcement {
 
   @@index([deletedAt, active, startsAt, endsAt])
   @@map("announcements")
+}
+
+model TaskRule {
+  resourceId             String    @id @map("resource_id")
+  key                    String    @unique
+  category               String    @unique
+  acceptanceTemplates    Json      @map("acceptance_templates")
+  acceptanceTemplatesSchemaVersion Int @default(1) @map("acceptance_templates_schema_version")
+  defaultDeadlineHours   Int       @map("default_deadline_hours")
+  minimumDeadlineHours   Int       @map("minimum_deadline_hours")
+  maximumDeadlineHours   Int       @map("maximum_deadline_hours")
+  deadlineRequired       Boolean   @default(true) @map("deadline_required")
+  active                 Boolean   @default(true)
+  publishedVersion       Int       @map("published_version")
+  deletedAt              DateTime? @map("deleted_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  resource ConfigResource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+
+  @@index([deletedAt, active, category])
+  @@map("task_rules")
 }
 
 model OperationLease {

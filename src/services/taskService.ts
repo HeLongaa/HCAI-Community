@@ -19,6 +19,7 @@ import type {
   SweepStaleTaskSubmissionsResponse,
   TaskChildListQuery,
   TaskListQuery,
+  TaskRule,
 } from './contracts'
 
 const budgetText = (budget: ApiTask['budget']) => {
@@ -33,6 +34,12 @@ const pointsText = (budget: ApiTask['budget']) => {
     return budget.includes('pts') ? budget : `${budget}`
   }
   return budget.points == null ? budgetText(budget) : `${budget.points} pts`
+}
+
+const parsePointsReward = (value: string) => {
+  const matches = [...value.matchAll(/\d[\d,]*/g)]
+  const points = matches.at(-1)?.[0]?.replaceAll(',', '') ?? '0'
+  return Number.parseInt(points, 10) || 0
 }
 
 const toTask = (task: ApiTask): Task => ({
@@ -61,6 +68,9 @@ const toTask = (task: ApiTask): Task => ({
 })
 
 export const taskService = {
+  rules() {
+    return api.get<TaskRule[]>('/task-rules')
+  },
   workflow(id: string | number) {
     return api.get<ApiTaskWorkflow>(`/tasks/${id}/workflow`)
   },
@@ -72,17 +82,19 @@ export const taskService = {
     return response.map(toTask)
   },
   async create(draft: PublishDraft) {
+    const deadlineTimestamp = Date.parse(draft.deadline)
     const body: CreateTaskRequest = {
       title: draft.title,
       category: draft.category,
       description: draft.details,
       acceptanceRules: draft.rules,
-      pointsReward: Number.parseInt(draft.reward.replace(/[^\d]/g, ''), 10) || 0,
+      pointsReward: parsePointsReward(draft.reward),
       rewardAmount: null,
       rewardCurrency: null,
-      deadlineAt: draft.deadline,
+      deadlineAt: Number.isFinite(deadlineTimestamp) ? new Date(deadlineTimestamp).toISOString() : null,
       visibility: draft.visibility,
       attachmentIds: draft.attachmentIds ?? [],
+      acceptanceTemplateId: draft.acceptanceTemplateId ?? null,
     }
     const task = await api.post<ApiTask>('/tasks', body)
     return toTask(task)

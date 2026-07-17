@@ -18,7 +18,8 @@ import type { AsyncResourceState, MarketplaceProfile, Page, PublishDraft, Simula
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import type { TaskChildCollection } from '../../hooks/useTaskWorkflows'
 import { uploadMediaFile } from '../../services/mediaUpload'
-import type { ApiAcceptanceChecklistItem, ApiMediaAsset, ApiProfileSummary, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, ApiTaskWorkflow, MediaAssetPurpose } from '../../services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiMediaAsset, ApiProfileSummary, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, ApiTaskWorkflow, MediaAssetPurpose, TaskRule } from '../../services/contracts'
+import { taskService } from '../../services/taskService'
 import {
   categoryLabel,
   findProfile,
@@ -432,11 +433,11 @@ export function PublishPage({
   simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
-  const [draft, setDraft] = useState<PublishDraft>({
+  const [draft, setDraft] = useState<PublishDraft>(() => ({
     title: textFor(t, 'Create a 30-second AI product launch video', '制作一套中文 AI 课程宣传短视频'),
     category: 'Video',
     reward: textFor(t, '$450 / 4,500 pts', '¥2,800 / 2,800 积分'),
-    deadline: textFor(t, '3 days', '4 天'),
+    deadline: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16),
     visibility: 'Public brief + private files',
     details: textFor(
       t,
@@ -448,10 +449,31 @@ export function PublishPage({
       'Submit script, preview link, final MP4, captions, cover prompt, and rights summary.',
       '提交脚本、预览链接、最终 MP4、字幕文件、封面提示词和版权摘要。',
     ),
-  })
+  }))
   const [taskAssets, setTaskAssets] = useState<ApiMediaAsset[]>([])
+  const [publishedRules, setPublishedRules] = useState<TaskRule[]>([])
 
-  type EditablePublishField = Exclude<keyof PublishDraft, 'attachmentIds'>
+  useEffect(() => {
+    let active = true
+    void taskService.rules().then((rules) => {
+      if (!active) return
+      setPublishedRules(rules)
+      setDraft((current) => {
+        const selected = rules.find((rule) => rule.category === current.category) ?? rules[0]
+        return selected && !rules.some((rule) => rule.category === current.category)
+          ? { ...current, category: selected.category, acceptanceTemplateId: null }
+          : current
+      })
+    }).catch(() => {})
+    return () => { active = false }
+  }, [])
+
+  const categoryOptions = publishedRules.length
+    ? publishedRules.map((rule) => rule.category)
+    : ['Music', 'Image', 'Video', 'Voice', 'Prompt', 'Automation']
+  const selectedRule = publishedRules.find((rule) => rule.category === draft.category) ?? null
+
+  type EditablePublishField = Exclude<keyof PublishDraft, 'attachmentIds' | 'acceptanceTemplateId'>
   const updateDraft = (key: EditablePublishField, value: string) => {
     setDraft((current) => ({ ...current, [key]: value }))
   }
@@ -515,8 +537,8 @@ export function PublishPage({
           <div className="form-grid">
             <label>
               {textFor(t, 'Category', '分类')}
-              <select value={draft.category} onChange={(event) => updateDraft('category', event.target.value)}>
-                {['Music', 'Image', 'Video', 'Voice', 'Prompt', 'Automation'].map((item) => (
+              <select value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value, acceptanceTemplateId: null }))}>
+                {categoryOptions.map((item) => (
                   <option key={item} value={item}>{categoryLabel(item, t)}</option>
                 ))}
               </select>
@@ -527,7 +549,7 @@ export function PublishPage({
             </label>
             <label>
               {textFor(t, 'Deadline', '截止时间')}
-              <input value={draft.deadline} onChange={(event) => updateDraft('deadline', event.target.value)} />
+              <input type="datetime-local" value={draft.deadline} onChange={(event) => updateDraft('deadline', event.target.value)} />
             </label>
             <label>
               {textFor(t, 'Visibility', '可见范围')}
@@ -542,6 +564,7 @@ export function PublishPage({
             {textFor(t, 'Requirement details', '需求详情')}
             <span className="ai-field textarea-field">
               <textarea
+                aria-label={textFor(t, 'Requirement details', '需求详情')}
                 className="publish-brief-editor"
                 value={draft.details}
                 onChange={(event) => updateDraft('details', event.target.value)}
@@ -551,8 +574,23 @@ export function PublishPage({
           </label>
           <label>
             {textFor(t, 'Submission and acceptance rules', '提交与验收规则')}
+            {selectedRule && selectedRule.acceptanceTemplates.length > 0 && (
+              <select
+                aria-label={textFor(t, 'Acceptance template', '验收模板')}
+                value={draft.acceptanceTemplateId ?? ''}
+                onChange={(event) => {
+                  const acceptanceTemplateId = event.target.value || null
+                  const template = selectedRule.acceptanceTemplates.find((item) => item.id === acceptanceTemplateId)
+                  setDraft((current) => ({ ...current, acceptanceTemplateId, ...(template ? { rules: template.body } : {}) }))
+                }}
+              >
+                <option value="">{textFor(t, 'Custom acceptance rules', '自定义验收规则')}</option>
+                {selectedRule.acceptanceTemplates.map((template) => <option key={template.id} value={template.id}>{template.label}</option>)}
+              </select>
+            )}
             <span className="ai-field textarea-field">
               <textarea
+                aria-label={textFor(t, 'Submission and acceptance rules', '提交与验收规则')}
                 className="publish-brief-editor"
                 value={draft.rules}
                 onChange={(event) => updateDraft('rules', event.target.value)}

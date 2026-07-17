@@ -6649,6 +6649,11 @@ button.video-history-row.active {
 .task-admin-metrics > div { display: grid; gap: 3px; min-width: 0; padding: 12px; background: var(--surface); }
 .task-admin-metrics strong { font-size: 20px; }
 .task-admin-metrics span { color: var(--muted); font-size: 12px; }
+.task-business-metrics { display: grid; grid-template-columns: repeat(4, minmax(100px, 1fr)) repeat(3, minmax(130px, .8fr)); gap: 10px; align-items: end; min-width: 0; padding-block: 10px; border-block: 1px solid var(--border); }
+.task-business-metrics > div, .task-business-metrics label { display: grid; gap: 4px; min-width: 0; }
+.task-business-metrics strong { font-size: 18px; }
+.task-business-metrics span, .task-business-metrics small, .task-business-metrics label > span { color: var(--muted); font-size: 11px; }
+.task-business-metrics input { width: 100%; min-width: 0; }
 .task-admin-filters { display: grid; grid-template-columns: minmax(180px, 1.6fr) repeat(3, minmax(110px, .7fr)) 36px; gap: 10px; align-items: end; min-width: 0; }
 .task-admin-filters label, .task-admin-reason label, .task-admin-form label { display: grid; gap: 5px; min-width: 0; }
 .task-admin-filters label > span, .task-admin-reason label > span, .task-admin-form label > span { color: var(--muted); font-size: 12px; }
@@ -6691,6 +6696,7 @@ button.video-history-row.active {
 .task-admin-bulk > span, .task-admin-bulk-confirm > span { color: var(--muted); font-size: 12px; }
 
 @media (max-width: 920px) {
+  .task-business-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .task-admin-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .task-admin-filters .icon-button { width: 100%; }
   .task-admin-workspace { grid-template-columns: minmax(0, 1fr); }
@@ -6700,6 +6706,7 @@ button.video-history-row.active {
 @media (max-width: 560px) {
   .task-admin-panel > .section-header { align-items: center; flex-wrap: wrap; }
   .task-admin-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .task-business-metrics { grid-template-columns: minmax(0, 1fr); }
   .task-admin-filters, .task-admin-form, .task-admin-reason { grid-template-columns: minmax(0, 1fr); }
   .task-admin-form .wide { grid-column: auto; }
   .task-admin-row > button { grid-template-columns: minmax(0, 1fr) auto; }

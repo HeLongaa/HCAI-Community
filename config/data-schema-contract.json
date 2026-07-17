@@ -17,7 +17,7 @@
     "CreativeProviderCostLedger.risk", "CreativeCreditLedger.metadata", "Notification.metadata",
     "DomainEventOutbox.payload", "JobRun.input", "JobRun.result", "JobAttempt.result", "ReleaseEvidence.evidence",
     "SystemSettingChange.candidateValue", "SystemSettingChange.diff", "SystemSettingRevision.value",
-    "ConfigResource.draftValue", "ConfigResource.publishedValue", "ConfigResourceRevision.value",
+    "ConfigResource.draftValue", "ConfigResource.publishedValue", "ConfigResourceRevision.value", "TaskRule.acceptanceTemplates",
     "FeatureFlag.payload", "FeatureFlag.rules", "ReferenceDataEntry.value", "ModelVersion.parameterSchema", "ModelCapability.constraints", "ModelRoutePolicyRevision.snapshot",
     "ModelRouteDecision.consideredPolicies", "ModelRouteDecision.attempts", "ProviderHealthEvidence.details"
   ],

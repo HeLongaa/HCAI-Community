@@ -31,6 +31,19 @@ test('resource schemas reject cross-domain and unsafe values', () => {
   assert.throws(() => validateConfigResourceValue('announcement', {
     body: 'Maintenance', level: 'warning', startsAt: '2026-07-17T10:00:00Z', endsAt: '2026-07-17T09:00:00Z',
   }), /must be after/)
+  assert.deepEqual(validateConfigResourceValue('task_rule', {
+    category: 'Video',
+    acceptanceTemplates: [{ id: 'delivery', label: 'Delivery package', body: 'Submit MP4, captions, and rights summary.' }],
+    minimumDeadlineHours: 24, defaultDeadlineHours: 72, maximumDeadlineHours: 720,
+  }), {
+    category: 'Video',
+    acceptanceTemplates: [{ id: 'delivery', label: 'Delivery package', body: 'Submit MP4, captions, and rights summary.' }],
+    minimumDeadlineHours: 24, defaultDeadlineHours: 72, maximumDeadlineHours: 720,
+    deadlineRequired: true, active: true,
+  })
+  assert.throws(() => validateConfigResourceValue('task_rule', {
+    category: 'Video', acceptanceTemplates: [], minimumDeadlineHours: 72, defaultDeadlineHours: 24, maximumDeadlineHours: 720,
+  }), /within the configured minimum/)
 })
 
 test('feature flag evaluation has fixed priority, stable rollout, and emergency override', () => {

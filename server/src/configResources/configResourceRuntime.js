@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { HttpError } from '../common/errors/httpError.js'
 import { validationFailed } from '../common/http/validation.js'
 
-export const configResourceKinds = Object.freeze(['feature_flag', 'reference_data', 'announcement'])
+export const configResourceKinds = Object.freeze(['feature_flag', 'reference_data', 'announcement', 'task_rule'])
 export const configResourcePageLimit = 100
 export const featureFlagRuleLimit = 100
 export const featureFlagRuleTypes = Object.freeze(['user', 'role', 'environment'])
@@ -25,6 +25,12 @@ export const configResourcePolicy = Object.freeze({
     label: 'Announcements',
     permissions: Object.freeze({
       read: 'admin:announcements:read', manage: 'admin:announcements:manage', publish: 'admin:announcements:publish',
+    }),
+  }),
+  task_rule: Object.freeze({
+    label: 'Task rules',
+    permissions: Object.freeze({
+      read: 'admin:task-rules:read', manage: 'admin:task-rules:manage', publish: 'admin:task-rules:publish',
     }),
   }),
 })
@@ -142,10 +148,50 @@ const validateAnnouncement = (raw) => {
   }
 }
 
+const validateTaskRuleTemplate = (raw, index) => {
+  const template = objectValue(raw, `value.acceptanceTemplates[${index}]`)
+  exactFields(template, ['id', 'label', 'body'], `value.acceptanceTemplates[${index}]`)
+  return {
+    id: safeText(template.id, `value.acceptanceTemplates[${index}].id`, { required: true, maximum: 64 }),
+    label: safeText(template.label, `value.acceptanceTemplates[${index}].label`, { required: true, maximum: 120 }),
+    body: safeText(template.body, `value.acceptanceTemplates[${index}].body`, { required: true, maximum: 2000 }),
+  }
+}
+
+const validateTaskRule = (raw) => {
+  const value = objectValue(raw)
+  exactFields(value, ['category', 'acceptanceTemplates', 'defaultDeadlineHours', 'minimumDeadlineHours', 'maximumDeadlineHours', 'deadlineRequired', 'active'])
+  const templates = value.acceptanceTemplates ?? []
+  if (!Array.isArray(templates) || templates.length > 20) throw validationFailed('value.acceptanceTemplates must contain at most 20 templates')
+  const acceptanceTemplates = templates.map(validateTaskRuleTemplate)
+  if (new Set(acceptanceTemplates.map((template) => template.id)).size !== acceptanceTemplates.length) throw validationFailed('value.acceptanceTemplates contains duplicate ids')
+  const integer = (field, fallback) => {
+    const parsed = Number(value[field] ?? fallback)
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 8760) throw validationFailed(`value.${field} must be an integer between 1 and 8760`)
+    return parsed
+  }
+  const minimumDeadlineHours = integer('minimumDeadlineHours', 1)
+  const defaultDeadlineHours = integer('defaultDeadlineHours', 168)
+  const maximumDeadlineHours = integer('maximumDeadlineHours', 2160)
+  if (defaultDeadlineHours < minimumDeadlineHours || defaultDeadlineHours > maximumDeadlineHours) {
+    throw validationFailed('value.defaultDeadlineHours must be within the configured minimum and maximum')
+  }
+  return {
+    category: safeText(value.category, 'value.category', { required: true, maximum: 80 }),
+    acceptanceTemplates,
+    defaultDeadlineHours,
+    minimumDeadlineHours,
+    maximumDeadlineHours,
+    deadlineRequired: value.deadlineRequired == null ? true : booleanValue(value.deadlineRequired, 'value.deadlineRequired'),
+    active: value.active == null ? true : booleanValue(value.active, 'value.active'),
+  }
+}
+
 export const validateConfigResourceValue = (kind, value) => ({
   feature_flag: validateFeatureFlag,
   reference_data: validateReferenceData,
   announcement: validateAnnouncement,
+  task_rule: validateTaskRule,
 })[parseConfigResourceKind(kind)](value)
 
 export const parseFeatureFlagEvaluationContext = (context = {}) => ({

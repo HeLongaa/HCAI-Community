@@ -58,6 +58,12 @@ export const registerConfigResourceRoutes = (router, options = {}) => {
     ok(response, publicResult)
   })
 
+  router.add('GET', '/api/task-rules', async (_request, response, context) => {
+    requireUser(context)
+    const rules = await repository.listPublishedTaskRules()
+    ok(response, rules.map(({ resourceId: _resourceId, deletedAt: _deletedAt, updatedAt: _updatedAt, ...rule }) => rule))
+  })
+
   router.add('POST', '/api/admin/config-resources/feature_flag/:id/preview', async (request, response, context) => {
     const actor = requirePermission(context, configResourcePolicy.feature_flag.permissions.read)
     const resource = await findResource('feature_flag', context.params.id, `/api/admin/config-resources/feature_flag/${context.params.id}/preview`)

@@ -16,6 +16,11 @@ const featureFlagDto = (row) => row ? ({
   deletedAt: row.deletedAt?.toISOString() ?? null,
   updatedAt: row.updatedAt.toISOString(),
 }) : null
+const taskRuleDto = (row) => row ? ({
+  ...row,
+  deletedAt: row.deletedAt?.toISOString() ?? null,
+  updatedAt: row.updatedAt.toISOString(),
+}) : null
 
 export const createPrismaConfigResourcesRepository = (client, { recordAudit } = {}) => ({
   list: async (kind, options) => {
@@ -40,6 +45,12 @@ export const createPrismaConfigResourcesRepository = (client, { recordAudit } = 
   },
   findById: async (id) => resourceDto(await client.configResource.findUnique({ where: { id: String(id) } })),
   findPublishedFeatureFlag: async (key) => featureFlagDto(await client.featureFlag.findUnique({ where: { key: String(key) } })),
+  listPublishedTaskRules: async () => (await client.taskRule.findMany({
+    where: { deletedAt: null, active: true }, orderBy: [{ category: 'asc' }, { key: 'asc' }], take: 100,
+  })).map(taskRuleDto),
+  findPublishedTaskRule: async (category) => taskRuleDto(await client.taskRule.findFirst({
+    where: { category: { equals: String(category), mode: 'insensitive' }, deletedAt: null },
+  })),
   setFeatureFlagEmergency: async (id, version, emergencyOff, payload) => client.$transaction(async (transaction) => {
     const resource = await transaction.configResource.findUnique({ where: { id: String(id) } })
     if (!resource || resource.kind !== 'feature_flag' || resource.deletedAt || resource.version !== version) return null
@@ -123,6 +134,7 @@ export const createPrismaConfigResourcesRepository = (client, { recordAudit } = 
       transaction.featureFlag.updateMany({ where: { resourceId: String(id) }, data: { deletedAt } }),
       transaction.referenceDataEntry.updateMany({ where: { resourceId: String(id) }, data: { deletedAt } }),
       transaction.announcement.updateMany({ where: { resourceId: String(id) }, data: { deletedAt } }),
+      transaction.taskRule.updateMany({ where: { resourceId: String(id) }, data: { deletedAt } }),
     ])
     return resourceDto(await transaction.configResource.findUnique({ where: { id: String(id) } }))
   }),
@@ -136,6 +148,7 @@ export const createPrismaConfigResourcesRepository = (client, { recordAudit } = 
       transaction.featureFlag.updateMany({ where: { resourceId: String(id) }, data: { deletedAt: null } }),
       transaction.referenceDataEntry.updateMany({ where: { resourceId: String(id) }, data: { deletedAt: null } }),
       transaction.announcement.updateMany({ where: { resourceId: String(id) }, data: { deletedAt: null } }),
+      transaction.taskRule.updateMany({ where: { resourceId: String(id) }, data: { deletedAt: null } }),
     ])
     return resourceDto(await transaction.configResource.findUnique({ where: { id: String(id) } }))
   }),
@@ -159,6 +172,7 @@ export const createPrismaConfigResourcesRepository = (client, { recordAudit } = 
       transaction.featureFlag.updateMany({ where: { resourceId: { in: ids } }, data: { deletedAt } }),
       transaction.referenceDataEntry.updateMany({ where: { resourceId: { in: ids } }, data: { deletedAt } }),
       transaction.announcement.updateMany({ where: { resourceId: { in: ids } }, data: { deletedAt } }),
+      transaction.taskRule.updateMany({ where: { resourceId: { in: ids } }, data: { deletedAt } }),
     ])
     const updatedRows = await transaction.configResource.findMany({ where: { id: { in: items.map((item) => item.id) } } })
     return updatedRows.map(resourceDto)
@@ -212,7 +226,7 @@ export const createPrismaConfigResourcesRepository = (client, { recordAudit } = 
               active: snapshot.value.active, publishedVersion: resourceVersion, deletedAt: null,
             },
           })
-        } else {
+        } else if (resource.kind === 'announcement') {
           await transaction.announcement.upsert({
             where: { resourceId: resource.id },
             create: {
@@ -226,6 +240,28 @@ export const createPrismaConfigResourcesRepository = (client, { recordAudit } = 
               startsAt: snapshot.value.startsAt ? new Date(snapshot.value.startsAt) : null,
               endsAt: snapshot.value.endsAt ? new Date(snapshot.value.endsAt) : null,
               active: snapshot.value.active, publishedVersion: resourceVersion, deletedAt: null,
+            },
+          })
+        } else {
+          await transaction.taskRule.upsert({
+            where: { resourceId: resource.id },
+            create: {
+              resourceId: resource.id, key: resource.key, category: snapshot.value.category,
+              acceptanceTemplates: snapshot.value.acceptanceTemplates,
+              acceptanceTemplatesSchemaVersion: 1,
+              defaultDeadlineHours: snapshot.value.defaultDeadlineHours,
+              minimumDeadlineHours: snapshot.value.minimumDeadlineHours,
+              maximumDeadlineHours: snapshot.value.maximumDeadlineHours,
+              deadlineRequired: snapshot.value.deadlineRequired, active: snapshot.value.active,
+              publishedVersion: resourceVersion,
+            },
+            update: {
+              category: snapshot.value.category, acceptanceTemplates: snapshot.value.acceptanceTemplates, acceptanceTemplatesSchemaVersion: 1,
+              defaultDeadlineHours: snapshot.value.defaultDeadlineHours,
+              minimumDeadlineHours: snapshot.value.minimumDeadlineHours,
+              maximumDeadlineHours: snapshot.value.maximumDeadlineHours,
+              deadlineRequired: snapshot.value.deadlineRequired, active: snapshot.value.active,
+              publishedVersion: resourceVersion, deletedAt: null,
             },
           })
         }

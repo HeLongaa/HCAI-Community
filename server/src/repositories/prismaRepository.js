@@ -80,6 +80,7 @@ import { safeProviderOperationMetadata } from '../creative/generationRecords.js'
 import { assetEligibleForWorkspace, assetMediaType, buildSafeAssetLibraryItem } from '../media/assetLibrary.js'
 import { resolveCreativeDeliveryAssets } from '../creative/deliveryAssets.js'
 import { taskWorkflowDto } from '../tasks/taskLifecycle.js'
+import { applyPublishedTaskRule } from '../tasks/taskRuleRuntime.js'
 import { createPrismaTaskLifecycleRecoveryRepository } from '../tasks/prismaTaskLifecycleRecoveryRepository.js'
 import {
   accountingOperationKey,
@@ -2752,6 +2753,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       return row ? { title: row.title, content: [row.description, row.acceptanceRules].filter(Boolean).join('\n') } : null
     },
     create: async (payload, actor) => {
+      const governedPayload = await applyPublishedTaskRule({ payload, repository: configResources })
       const publisher = await client.user.findFirst({
         where: { profile: { handle: actor.handle } },
         include: { profile: true },
@@ -2765,18 +2767,19 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           data: buildTaskRecord(
             {
               id: taskId,
-              title: payload.title,
-              category: payload.category,
+              title: governedPayload.title,
+              category: governedPayload.category,
               status: 'Open',
-              budget: payload.rewardAmount ? `${payload.rewardCurrency ?? '$'}${payload.rewardAmount}` : `${payload.pointsReward} pts`,
-              deadline: payload.deadlineAt ?? 'TBD',
-              pointsReward: payload.pointsReward,
+              budget: governedPayload.rewardAmount ? `${governedPayload.rewardCurrency ?? '$'}${governedPayload.rewardAmount}` : `${governedPayload.pointsReward} pts`,
+              deadline: governedPayload.deadlineAt ?? 'TBD',
+              pointsReward: governedPayload.pointsReward,
               proposals: 0,
-              description: payload.description,
+              description: governedPayload.description,
               publisher: actor.handle,
               assignee: 'Unassigned',
-              requirements: [payload.acceptanceRules],
-              attachments: payload.attachmentIds ?? [],
+              requirements: [governedPayload.acceptanceRules],
+              attachments: governedPayload.attachmentIds ?? [],
+              taskRule: governedPayload.taskRule,
               privateBrief: '',
               submission: 'No submission yet.',
               resultLinks: [],
@@ -2801,7 +2804,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         action: 'task.created',
         resourceType: 'task',
         resourceId: row.id,
-        metadata: { status: 'open', category: payload.category },
+        metadata: { status: 'open', category: governedPayload.category, taskRule: governedPayload.taskRule },
       })
       const reloaded = await client.task.findUnique({
         where: { id: row.id },

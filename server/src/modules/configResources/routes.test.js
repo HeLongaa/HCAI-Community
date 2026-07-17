@@ -12,6 +12,7 @@ const fixtures = {
   feature_flag: { key: 'workspace.new-editor', title: 'New editor', value: { enabled: false, payload: {} } },
   reference_data: { key: 'countries.cn', title: 'China', value: { label: 'China', value: 'CN', sortOrder: 1, active: true } },
   announcement: { key: 'maintenance.july', title: 'Maintenance', value: { body: 'Planned maintenance.', level: 'warning', startsAt: null, endsAt: null, active: true } },
+  task_rule: { key: 'task.video', title: 'Video tasks', value: { category: 'Video', acceptanceTemplates: [{ id: 'delivery', label: 'Delivery', body: 'Submit MP4 and rights summary.' }], minimumDeadlineHours: 24, defaultDeadlineHours: 72, maximumDeadlineHours: 720, deadlineRequired: true, active: true } },
 }
 
 const createServer = async () => {
@@ -58,7 +59,9 @@ test('all managed resource kinds support create, update, publish, history, rollb
         ? { ...fixture, value: { enabled: true, payload: { variant: 'v2' } } }
         : kind === 'reference_data'
           ? { ...fixture, value: { ...fixture.value, label: `${fixture.value.label} v2` } }
-          : { ...fixture, value: { ...fixture.value, body: `${fixture.value.body} Updated.` } }
+          : kind === 'announcement'
+            ? { ...fixture, value: { ...fixture.value, body: `${fixture.value.body} Updated.` } }
+            : { ...fixture, value: { ...fixture.value, defaultDeadlineHours: 96 } }
       const updated = await requestJson(server.url, `/api/admin/config-resources/${kind}/${id}`, {
         method: 'PATCH', token: admin, body: { ...changedFixture, expectedVersion: 2 },
       })
@@ -94,6 +97,25 @@ test('all managed resource kinds support create, update, publish, history, rollb
     for (const action of ['admin.config_resources.created', 'admin.config_resources.updated', 'admin.config_resources.published', 'admin.config_resources.rolled_back', 'admin.config_resources.deleted', 'admin.config_resources.restored']) {
       assert.ok(actions.includes(action), `missing ${action}`)
     }
+  } finally {
+    await server.close()
+  }
+})
+
+test('published task rules expose only active personal-account creation policy', async () => {
+  const { server } = await createServer()
+  try {
+    const created = await requestJson(server.url, '/api/admin/config-resources/task_rule', { token: admin, body: fixtures.task_rule })
+    await requestJson(server.url, `/api/admin/config-resources/task_rule/${created.payload.data.id}/publish`, {
+      token: admin, body: { expectedVersion: 1, reasonCode: 'task_policy_release' },
+    })
+    const anonymous = await requestJson(server.url, '/api/task-rules', { method: 'GET' })
+    assert.equal(anonymous.status, 401)
+    const listed = await requestJson(server.url, '/api/task-rules', { method: 'GET', token: 'demo-access.taskops' })
+    assert.equal(listed.status, 200)
+    assert.deepEqual(listed.payload.data.map((rule) => rule.category), ['Video'])
+    assert.equal(listed.payload.data[0].resourceId, undefined)
+    assert.equal(listed.payload.data[0].publishedVersion, 1)
   } finally {
     await server.close()
   }

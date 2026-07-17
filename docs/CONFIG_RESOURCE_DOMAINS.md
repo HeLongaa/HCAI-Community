@@ -1,6 +1,6 @@
 # Configuration Resource Domains
 
-CONFIG-02 separates runtime configuration, feature flag definitions, reference data, and announcements without introducing tenant or organization scope.
+CONFIG-02 separates runtime configuration, feature flag definitions, reference data, announcements, and task creation rules without introducing tenant or organization scope.
 
 ## Domain boundaries
 
@@ -8,6 +8,7 @@ CONFIG-02 separates runtime configuration, feature flag definitions, reference d
 - Feature flags publish into `FeatureFlag` with a stable key, default enabled state, opaque product payload, and the SET-02 rollout extension.
 - Reference data publishes into `ReferenceDataEntry` with a label, value, sort order, and active state.
 - Announcements publish into `Announcement` with body, severity level, optional schedule, and active state.
+- Task rules publish into `TaskRule` with one category, acceptance templates, deadline bounds, and active state. TASK-03 owns their task-marketplace runtime behavior.
 - Feature flag audience rules, percentage rollout, runtime evaluation, and emergency override are implemented by SET-02 and documented in `docs/FEATURE_FLAG_ROLLOUT.md`.
 
 Each managed kind has separate read, manage, and publish permissions. A moderator receives read access; an administrator receives all operations.
@@ -50,6 +51,20 @@ Announcement:
   "level": "warning",
   "startsAt": "2026-07-18T00:00:00.000Z",
   "endsAt": "2026-07-18T02:00:00.000Z",
+  "active": true
+}
+```
+
+Task rule:
+
+```json
+{
+  "category": "Video",
+  "acceptanceTemplates": [{ "id": "delivery", "label": "Delivery", "body": "Submit MP4 and rights summary." }],
+  "minimumDeadlineHours": 24,
+  "defaultDeadlineHours": 72,
+  "maximumDeadlineHours": 720,
+  "deadlineRequired": true,
   "active": true
 }
 ```

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Archive, ChevronRight, PlayCircle, RefreshCw, RotateCcw, Save, Search, TimerReset, Wrench, XCircle } from 'lucide-react'
+import { Archive, ChevronRight, Download, PlayCircle, RefreshCw, RotateCcw, Save, Search, TimerReset, Wrench, XCircle } from 'lucide-react'
 import type { Permission } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { adminService } from '../../services/adminService'
@@ -13,6 +13,8 @@ import type {
   AdminTaskSummary,
   AdminTaskStatus,
   ApiTaskLifecycleMutation,
+  TaskBusinessMetrics,
+  TaskBusinessMetricsQuery,
 } from '../../services/contracts'
 
 const statuses: AdminTaskStatus[] = ['draft', 'open', 'assigned', 'in_progress', 'submitted', 'pending_review', 'disputed', 'completed', 'rejected', 'cancelled', 'expired']
@@ -21,6 +23,12 @@ const editableStatuses: AdminTaskStatus[] = ['draft', 'open']
 const errorMessage = (error: unknown) => isApiClientError(error) ? `${error.code}: ${error.message}` : error instanceof Error ? error.message : 'Unknown error'
 const formatStatus = (status: string) => status.replaceAll('_', ' ')
 const formatDate = (value: string | null) => value ? new Date(value).toLocaleString() : '-'
+const emptyBusinessMetrics: TaskBusinessMetrics = {
+  window: { dateFrom: null, dateTo: null, category: null },
+  funnel: { published: 0, withProposals: 0, assigned: 0, withSubmissions: 0, completed: 0, proposalConversionPercent: 0, assignmentConversionPercent: 0, completionConversionPercent: 0 },
+  deadlines: { configured: 0, overdueActive: 0, expired: 0, cancelled: 0, overduePercent: 0 },
+  disputes: { opened: 0, resolved: 0, resolutionPercent: 0, averageResolutionHours: null },
+}
 
 type Draft = Pick<AdminTaskDto, 'title' | 'category' | 'description' | 'acceptanceRules' | 'visibility' | 'deadlineAt'>
 const draftFor = (task: AdminTaskDto): Draft => ({
@@ -45,6 +53,10 @@ export function TaskAdminPanel({
   const canManage = hasPermission('admin:tasks:manage')
   const [rows, setRows] = useState<AdminTaskDto[]>([])
   const [summary, setSummary] = useState<AdminTaskSummary>({ total: 0, active: 0, archived: 0, byStatus: {} })
+  const [businessMetrics, setBusinessMetrics] = useState<TaskBusinessMetrics>(emptyBusinessMetrics)
+  const [metricsCategory, setMetricsCategory] = useState('')
+  const [metricsDateFrom, setMetricsDateFrom] = useState('')
+  const [metricsDateTo, setMetricsDateTo] = useState('')
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selected, setSelected] = useState<AdminTaskDto | null>(null)
@@ -75,6 +87,11 @@ export function TaskAdminPanel({
     direction,
     limit: 20,
   }), [archiveState, direction, search, sort, status])
+  const metricsQuery = useMemo<TaskBusinessMetricsQuery>(() => ({
+    category: metricsCategory.trim() || null,
+    dateFrom: metricsDateFrom ? new Date(`${metricsDateFrom}T00:00:00`).toISOString() : null,
+    dateTo: metricsDateTo ? new Date(`${metricsDateTo}T23:59:59.999`).toISOString() : null,
+  }), [metricsCategory, metricsDateFrom, metricsDateTo])
 
   const load = useCallback(async (cursor: string | null = null, append = false) => {
     if (!canRead) return
@@ -101,6 +118,28 @@ export function TaskAdminPanel({
     const timer = window.setTimeout(() => void load(), 0)
     return () => window.clearTimeout(timer)
   }, [load])
+
+  useEffect(() => {
+    if (!canRead) return
+    const timer = window.setTimeout(() => {
+      void adminService.taskBusinessMetrics(metricsQuery).then(setBusinessMetrics).catch((loadError) => setError(errorMessage(loadError)))
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [canRead, metricsQuery])
+
+  const exportMetrics = async () => {
+    try {
+      const document = await adminService.exportTaskBusinessMetrics(metricsQuery)
+      const url = URL.createObjectURL(new Blob([JSON.stringify(document, null, 2)], { type: 'application/json' }))
+      const link = window.document.createElement('a')
+      link.href = url
+      link.download = `task-business-metrics-${new Date().toISOString().slice(0, 10)}.json`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (exportError) {
+      setError(errorMessage(exportError))
+    }
+  }
 
   const selectTask = async (task: AdminTaskDto) => {
     setSelectedId(task.id)
@@ -260,7 +299,7 @@ export function TaskAdminPanel({
       <SectionHeader
         eyebrow={isZh ? '任务运营' : 'Task operations'}
         title={isZh ? '任务管理' : 'Task management'}
-        action={<div className="button-row compact-buttons"><button className="icon-button" type="button" title={isZh ? '扫描过期任务' : 'Sweep expired tasks'} onClick={() => void sweepExpiry()} disabled={saving}><TimerReset size={16} /></button><button className="icon-button" type="button" title={isZh ? '刷新任务' : 'Refresh tasks'} onClick={() => void load()} disabled={loading}><RefreshCw size={16} /></button></div>}
+        action={<div className="button-row compact-buttons"><button className="icon-button" type="button" title={isZh ? '导出业务统计' : 'Export business metrics'} onClick={() => void exportMetrics()}><Download size={16} /></button><button className="icon-button" type="button" title={isZh ? '扫描过期任务' : 'Sweep expired tasks'} onClick={() => void sweepExpiry()} disabled={saving}><TimerReset size={16} /></button><button className="icon-button" type="button" title={isZh ? '刷新任务' : 'Refresh tasks'} onClick={() => void load()} disabled={loading}><RefreshCw size={16} /></button></div>}
       />
 
       <div className="task-admin-metrics">
@@ -269,6 +308,16 @@ export function TaskAdminPanel({
         <div><strong>{summary.archived}</strong><span>{isZh ? '归档' : 'Archived'}</span></div>
         <div><strong>{summary.byStatus.pending_review ?? 0}</strong><span>{isZh ? '待审核' : 'Pending review'}</span></div>
         <div><strong>{summary.byStatus.expired ?? 0}</strong><span>{isZh ? '已过期' : 'Expired'}</span></div>
+      </div>
+
+      <div className="task-business-metrics">
+        <div><strong>{businessMetrics.funnel.proposalConversionPercent}%</strong><span>{isZh ? '提案转化' : 'Proposal conversion'}</span><small>{businessMetrics.funnel.withProposals}/{businessMetrics.funnel.published}</small></div>
+        <div><strong>{businessMetrics.funnel.completionConversionPercent}%</strong><span>{isZh ? '完成转化' : 'Completion conversion'}</span><small>{businessMetrics.funnel.completed}/{businessMetrics.funnel.published}</small></div>
+        <div><strong>{businessMetrics.deadlines.overduePercent}%</strong><span>{isZh ? '逾期占比' : 'Overdue share'}</span><small>{businessMetrics.deadlines.overdueActive}/{businessMetrics.deadlines.configured}</small></div>
+        <div><strong>{businessMetrics.disputes.resolutionPercent}%</strong><span>{isZh ? '争议解决率' : 'Dispute resolution'}</span><small>{businessMetrics.disputes.resolved}/{businessMetrics.disputes.opened}</small></div>
+        <label><span>{isZh ? '统计分类' : 'Metrics category'}</span><input value={metricsCategory} onChange={(event) => setMetricsCategory(event.target.value)} /></label>
+        <label><span>{isZh ? '开始日期' : 'Date from'}</span><input type="date" value={metricsDateFrom} onChange={(event) => setMetricsDateFrom(event.target.value)} /></label>
+        <label><span>{isZh ? '结束日期' : 'Date to'}</span><input type="date" value={metricsDateTo} onChange={(event) => setMetricsDateTo(event.target.value)} /></label>
       </div>
 
       <div className="task-admin-filters">

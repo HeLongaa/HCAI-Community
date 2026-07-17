@@ -16,6 +16,7 @@ import {
   parseAdminTaskBulkPreviewRequest,
   parseAdminTaskEvidenceRequest,
   parseAdminTaskListQuery,
+  parseAdminTaskBusinessMetricsQuery,
   parseAdminTaskTransitionRequest,
   parseAdminTaskUpdateRequest,
   parseAdminTaskRecoveryRequest,
@@ -35,6 +36,29 @@ export const registerTaskRoutes = (router) => {
   router.add('GET', '/api/admin/tasks/summary', async (_request, response, context) => {
     requirePermission(context, 'admin:tasks:read')
     ok(response, await repositories.taskAdmin.summary(parseAdminTaskListQuery(context.query)))
+  })
+
+  router.add('GET', '/api/admin/tasks/business-metrics', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:tasks:read')
+    const query = parseAdminTaskBusinessMetricsQuery(context.query)
+    const metrics = await repositories.taskAdmin.businessMetrics(query)
+    await repositories.audit.recordAttempt({
+      actor, action: 'task.admin.business_metrics_queried', resourceType: 'task_business_metrics', resourceId: null,
+      metadata: { category: query.category, dateFrom: query.dateFrom, dateTo: query.dateTo, published: metrics.funnel.published },
+    })
+    ok(response, metrics)
+  })
+
+  router.add('GET', '/api/admin/tasks/business-metrics/export', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:tasks:read')
+    const query = parseAdminTaskBusinessMetricsQuery(context.query)
+    const metrics = await repositories.taskAdmin.businessMetrics(query)
+    const document = { schemaVersion: 1, kind: 'task.business-metrics.snapshot', exportedAt: new Date().toISOString(), metrics }
+    await repositories.audit.recordAttempt({
+      actor, action: 'task.admin.business_metrics_exported', resourceType: 'task_business_metrics', resourceId: null,
+      metadata: { category: query.category, dateFrom: query.dateFrom, dateTo: query.dateTo, published: metrics.funnel.published },
+    })
+    ok(response, document)
   })
 
   router.add('GET', '/api/admin/tasks/:id', async (_request, response, context) => {
