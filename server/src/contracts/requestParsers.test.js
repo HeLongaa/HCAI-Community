@@ -19,6 +19,8 @@ import {
   parseAdminMediaBusinessMetricsQuery,
   parseAssetLibraryQuery,
   parseAdminCreativeGenerationListQuery,
+  parseAdminCreativeGenerationMetricsExportQuery,
+  parseAdminCreativeGenerationMetricsQuery,
   parseAdminReviewListQuery,
   parseEmailLoginRequest,
   parseCreateMediaUploadRequest,
@@ -882,6 +884,31 @@ test('billing metrics query parser validates units and bounded windows', () => {
   })
   assertValidationError(() => parseAdminBillingMetricsQuery({ unit: 'usd' }), 'unit must be one of: points, creative_credit, quota_unit')
   assertValidationError(() => parseAdminBillingMetricsQuery({ dateFrom: '2025-01-01', dateTo: '2026-07-17' }), 'metrics window cannot exceed 366 days')
+})
+
+test('creative generation metrics parser defaults and bounds its reporting window', () => {
+  const now = new Date('2026-07-17T12:00:00.000Z')
+  assert.deepEqual(parseAdminCreativeGenerationMetricsQuery({ workspace: 'image', reviewRequired: 'false' }, now), {
+    actorHandle: null,
+    workspace: 'image',
+    mode: null,
+    providerId: null,
+    status: null,
+    reviewRequired: false,
+    mediaAssetId: null,
+    dateFrom: '2026-06-17T12:00:00.000Z',
+    dateTo: '2026-07-17T12:00:00.000Z',
+  })
+  assert.equal(parseAdminCreativeGenerationMetricsExportQuery({ format: 'csv' }, now).format, 'csv')
+  assert.equal(parseAdminCreativeGenerationMetricsQuery({ dateTo: '2026-07-17' }, now).dateTo, '2026-07-17T23:59:59.999Z')
+  assertValidationError(
+    () => parseAdminCreativeGenerationMetricsQuery({ dateFrom: '2025-01-01', dateTo: '2026-07-17' }, now),
+    'metrics window cannot exceed 366 days',
+  )
+  assertValidationError(
+    () => parseAdminCreativeGenerationMetricsExportQuery({ format: 'xlsx' }, now),
+    'format must be one of: json, csv',
+  )
 })
 
 test('parseTaskChildListQuery reuses shared cursor pagination validation', () => {

@@ -11433,6 +11433,46 @@ button.video-history-row.active {
     grid-template-columns: 1fr;
   }
 
+  .admin-generation-operations-panel > .section-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .admin-generation-operations-panel > .section-header > div,
+  .admin-generation-operations-panel .inline-actions,
+  .generation-business-metrics .metric-card {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .admin-generation-operations-panel .inline-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .generation-business-metrics .metric-card > * {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .admin-media-governance-panel > .section-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .admin-media-governance-panel > .section-header > div {
+    min-width: 0;
+    flex: 1 1 180px;
+  }
+
+  .admin-media-governance-panel > .section-header > .ghost-button {
+    max-width: 100%;
+    flex: 0 1 auto;
+  }
+
   .accounting-reconciliation-panel .admin-row {
     grid-template-columns: 1fr;
   }

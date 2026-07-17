@@ -280,6 +280,8 @@ Notification targets are location hints, not authorization grants. Generation, a
 | `POST /api/admin/audit/archives` | Required | `admin:audit:archive` | Yes |
 | `GET /api/admin/audit/:id` | Required | `admin:audit:read` | Yes |
 | `GET /api/admin/creative/generations` | Required | `admin:audit:read` | Yes |
+| `GET /api/admin/creative/generations/business-metrics` | Required | `admin:audit:read` | Yes |
+| `GET /api/admin/creative/generations/business-metrics/export` | Required | `admin:audit:export` | Yes |
 | `GET /api/admin/creative/accounting-policy/history` | Required | `admin:audit:read` | Yes |
 | `GET /api/admin/creative/generations/:id` | Required | `admin:audit:read` | Yes |
 | `GET /api/admin/creative/provider-controls` | Required | `admin:creative:provider-control:read` | Yes |

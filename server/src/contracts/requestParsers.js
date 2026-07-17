@@ -1056,6 +1056,36 @@ export const parseAdminCreativeGenerationExportQuery = (query) => {
   return { ...parseAdminCreativeGenerationListQuery({ ...query, limit: query.limit ?? '100' }), format }
 }
 
+export const parseAdminCreativeGenerationMetricsQuery = (query, now = new Date()) => {
+  const parsed = parseAdminCreativeGenerationListQuery({ ...query, limit: '1' })
+  const rawDateTo = String(query.dateTo ?? '').trim()
+  const dateTo = parsed.dateTo
+    ? /^\d{4}-\d{2}-\d{2}$/.test(rawDateTo) ? `${rawDateTo}T23:59:59.999Z` : parsed.dateTo
+    : new Date(now).toISOString()
+  const dateFrom = parsed.dateFrom ?? new Date(Date.parse(dateTo) - 30 * 24 * 60 * 60 * 1000).toISOString()
+  if (Date.parse(dateFrom) > Date.parse(dateTo)) throw validationFailed('dateFrom must be before or equal to dateTo')
+  if (Date.parse(dateTo) - Date.parse(dateFrom) > 366 * 24 * 60 * 60 * 1000) {
+    throw validationFailed('metrics window cannot exceed 366 days')
+  }
+  return {
+    actorHandle: parsed.actorHandle,
+    workspace: parsed.workspace,
+    mode: parsed.mode,
+    providerId: parsed.providerId,
+    status: parsed.status,
+    reviewRequired: parsed.reviewRequired,
+    mediaAssetId: parsed.mediaAssetId,
+    dateFrom,
+    dateTo,
+  }
+}
+
+export const parseAdminCreativeGenerationMetricsExportQuery = (query, now = new Date()) => {
+  const format = optionalText(query, 'format', 'json')
+  if (!['json', 'csv'].includes(format)) throw validationFailed('format must be one of: json, csv')
+  return { ...parseAdminCreativeGenerationMetricsQuery(query, now), format }
+}
+
 export const parseAdminCreativeExecutionListQuery = (query) => {
   const status = optionalText(query, 'status', null)
   if (status && !['claimed', 'succeeded', 'failed', 'recovery_required'].includes(status)) {

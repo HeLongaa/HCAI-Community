@@ -4359,6 +4359,24 @@ test('Admin generation operations expose full summary, stable export, execution 
     assert.equal(summary.payload.data.failed >= 1, true)
     assert.equal(summary.payload.data.byStatus.failed >= 1, true)
 
+    const metrics = await requestJson(server.url, '/api/admin/creative/generations/business-metrics?workspace=image', { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(metrics.status, 200)
+    assert.equal(metrics.payload.data.totals.generations >= 1, true)
+    assert.equal(metrics.payload.data.quality.failed >= 1, true)
+    assert.ok(['available', 'unavailable'].includes(metrics.payload.data.providerCost.availability))
+    assert.equal('byUser' in metrics.payload.data, false)
+    assert.equal(JSON.stringify(metrics.payload.data).includes('Safe export preview'), false)
+
+    const metricsExport = await fetch(`${server.url}/api/admin/creative/generations/business-metrics/export?workspace=image&format=csv`, {
+      headers: { authorization: 'Bearer demo-access.opsplus' },
+    })
+    assert.equal(metricsExport.status, 200)
+    assert.match(metricsExport.headers.get('content-type'), /text\/csv/)
+    assert.match(await metricsExport.text(), /^"workspace","total","completed"/)
+
+    const deniedMetricsExport = await requestJson(server.url, '/api/admin/creative/generations/business-metrics/export', { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(deniedMetricsExport.status, 403)
+
     const exported = await fetch(`${server.url}/api/admin/creative/generations/export?format=csv&sort=status&direction=asc`, {
       headers: { authorization: 'Bearer demo-access.opsplus' },
     })

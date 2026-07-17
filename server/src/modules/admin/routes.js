@@ -10,6 +10,8 @@ import {
   parseAdminAccountingRepairRequest,
   parseAdminCreativeGenerationListQuery,
   parseAdminCreativeGenerationExportQuery,
+  parseAdminCreativeGenerationMetricsQuery,
+  parseAdminCreativeGenerationMetricsExportQuery,
   parseAdminCreativeGenerationBulkActionRequest,
   parseAdminCreativeGenerationBulkPreviewRequest,
   parseAdminCreativeExecutionListQuery,
@@ -58,6 +60,7 @@ import {
   generationBulkActionDefinitions,
   previewCreativeGenerationBulkAction,
 } from '../../creative/generationBulkActionService.js'
+import { generationBusinessMetricsExport } from '../../creative/generationBusinessMetrics.js'
 import {
   requestManualProviderReplay,
   resolveManualProviderReplayReview,
@@ -1060,6 +1063,45 @@ export const registerAdminRoutes = (router, options = {}) => {
     requirePermission(context, 'admin:audit:read')
     const query = parseAdminCreativeGenerationListQuery(context.query)
     ok(response, await routeRepositories.creativeGenerations.summarize(query))
+  })
+
+  router.add('GET', '/api/admin/creative/generations/business-metrics', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:audit:read')
+    const query = parseAdminCreativeGenerationMetricsQuery(context.query)
+    const metrics = await routeRepositories.creativeGenerations.businessMetrics(query)
+    await routeRepositories.audit.recordAttempt({
+      actor,
+      action: 'admin.creative.generation_business_metrics.queried',
+      resourceType: 'creative_generation_metrics',
+      resourceId: null,
+      metadata: {
+        workspace: query.workspace,
+        providerFiltered: Boolean(query.providerId),
+        generations: metrics.totals.generations,
+        completed: metrics.quality.completed,
+        convertedOutputAssets: metrics.conversion.convertedOutputAssets,
+      },
+    })
+    ok(response, metrics)
+  })
+
+  router.add('GET', '/api/admin/creative/generations/business-metrics/export', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:audit:export')
+    const query = parseAdminCreativeGenerationMetricsExportQuery(context.query)
+    const metrics = await routeRepositories.creativeGenerations.businessMetrics(query)
+    await routeRepositories.audit.recordAttempt({
+      actor,
+      action: 'admin.creative.generation_business_metrics.exported',
+      resourceType: 'creative_generation_metrics',
+      resourceId: null,
+      metadata: {
+        format: query.format,
+        workspace: query.workspace,
+        providerFiltered: Boolean(query.providerId),
+        generations: metrics.totals.generations,
+      },
+    })
+    text(response, 200, generationBusinessMetricsExport(metrics, query.format), query.format === 'csv' ? 'text/csv; charset=utf-8' : 'application/json; charset=utf-8')
   })
 
   router.add('GET', '/api/admin/creative/generations/export', async (_request, response, context) => {
