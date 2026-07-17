@@ -77,6 +77,8 @@ import {
   startBreakGlassAccess,
 } from '../../auth/highRiskAccess.js'
 import { buildAdminOperationsOverview, searchAdminOperations } from '../../admin/adminOperationsOverview.js'
+import { buildAuditRetentionPolicy } from '../../audit/auditRetention.js'
+import { writeJsonArchive } from '../../storage/archiveWriter.js'
 import {
   applyReleaseChange,
   approveReleaseChange,
@@ -627,6 +629,8 @@ const creativeGenerationExport = (items, query) => {
 
 export const registerAdminRoutes = (router, options = {}) => {
   const routeRepositories = options.repositories ?? repositories
+  const auditRetentionSource = options.auditRetentionSource ?? process.env
+  const auditArchiveWriter = options.auditArchiveWriter ?? writeJsonArchive
   const loadReleaseChange = async (id) => {
     const change = await routeRepositories.releaseChanges.find(id)
     if (!change) throw notFound(`/api/admin/releases/${id}`)
@@ -884,7 +888,7 @@ export const registerAdminRoutes = (router, options = {}) => {
       action: 'admin.audit.queried',
       resourceType: 'audit_event_collection',
       resourceId: null,
-      metadata: { action: query.action ?? null, resourceType: query.resourceType ?? null, actorId: query.actorId ?? null, limit: query.limit, resultCount: page.items.length },
+      metadata: { action: query.action ?? null, resourceType: query.resourceType ?? null, resourceId: query.resourceId ?? null, actorType: query.actorType ?? null, actorId: query.actorId ?? null, dateFrom: query.dateFrom ?? null, dateTo: query.dateTo ?? null, direction: query.direction, limit: query.limit, resultCount: page.items.length },
     })
     ok(response, page.items, {
       pagination: {
@@ -943,6 +947,76 @@ export const registerAdminRoutes = (router, options = {}) => {
       resourceType: 'audit_archive_manifest',
       resourceId: result.manifest.id,
       metadata: { rootHash: result.manifest.rootHash, eventCount: result.manifest.eventCount, objectRef: result.manifest.objectRef },
+    })
+    ok(response, result)
+  })
+
+  router.add('GET', '/api/admin/audit/retention', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:audit:read')
+    const policy = buildAuditRetentionPolicy(auditRetentionSource)
+    const dispositions = await routeRepositories.audit.listRetentionDispositions()
+    await routeRepositories.audit.recordAttempt({
+      actor,
+      action: 'admin.audit.retention_status_queried',
+      resourceType: 'audit_retention_policy',
+      resourceId: policy.version,
+      metadata: { legalHold: policy.legalHold, pruneEnabled: policy.pruneEnabled, dispositionCount: dispositions.length },
+    })
+    ok(response, { policy, dispositions })
+  })
+
+  router.add('POST', '/api/admin/audit/retention/preview', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:audit:read')
+    const policy = buildAuditRetentionPolicy(auditRetentionSource)
+    await routeRepositories.audit.recordAttempt({
+      actor,
+      action: 'admin.audit.retention_previewed',
+      resourceType: 'audit_retention_policy',
+      resourceId: policy.version,
+      metadata: { legalHold: policy.legalHold, pruneEnabled: policy.pruneEnabled },
+    })
+    const result = await routeRepositories.audit.retentionPreview(policy)
+    ok(response, result.preview)
+  })
+
+  router.add('POST', '/api/admin/audit/retention/execute', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:audit:retention')
+    const policy = buildAuditRetentionPolicy(auditRetentionSource)
+    if (!policy.pruneEnabled || policy.legalHold) {
+      throw new HttpError(409, 'AUDIT_RETENTION_DISABLED', 'audit pruning requires an enabled policy with legal hold disabled')
+    }
+    const payload = (await readJsonBody(request)) ?? {}
+    const previewId = String(payload.previewId ?? '').trim()
+    const confirmation = String(payload.confirmation ?? '').trim()
+    if (!/^[a-f0-9]{64}$/.test(previewId)) throw validationFailed('previewId must be a SHA-256 digest')
+    const prepared = await routeRepositories.audit.retentionPreview(policy)
+    if (prepared.preview.previewId !== previewId) {
+      throw new HttpError(409, 'AUDIT_RETENTION_PREVIEW_STALE', 'audit retention preview changed; review the current candidate set')
+    }
+    if (!prepared.preview.candidateCount) throw new HttpError(409, 'AUDIT_RETENTION_EMPTY', 'no expired audit prefix is eligible for pruning')
+    if (confirmation !== prepared.preview.confirmation) throw validationFailed(`confirmation must equal: ${prepared.preview.confirmation}`)
+    const storageKey = `archives/audit-retention/${prepared.preview.cutoffAt.slice(0, 10)}/${prepared.preview.previewId}.json`
+    const archive = await auditArchiveWriter(prepared.artifact, { storageKey, source: auditRetentionSource })
+    if (!archive.persisted) {
+      throw new HttpError(409, 'AUDIT_RETENTION_ARCHIVE_NOT_DURABLE', 'audit pruning requires a durable archive storage provider')
+    }
+    const result = await routeRepositories.audit.pruneRetention({ actor, policy, previewId, archive })
+    if (result.status === 'preview_mismatch') throw new HttpError(409, 'AUDIT_RETENTION_PREVIEW_STALE', 'audit retention preview changed during archive write')
+    if (result.status !== 'complete' || !result.disposition) {
+      throw new HttpError(409, 'AUDIT_RETENTION_NOT_EXECUTED', 'audit retention could not produce immutable disposition evidence')
+    }
+    await routeRepositories.audit.recordAttempt({
+      actor,
+      action: 'admin.audit.retention_executed',
+      resourceType: 'audit_retention_disposition',
+      resourceId: result.disposition.id,
+      metadata: {
+        policyVersion: result.disposition.policyVersion,
+        fromSequence: result.disposition.fromSequence,
+        toSequence: result.disposition.toSequence,
+        eventCount: result.disposition.eventCount,
+        archiveChecksumSha256: result.disposition.archiveChecksumSha256,
+      },
     })
     ok(response, result)
   })

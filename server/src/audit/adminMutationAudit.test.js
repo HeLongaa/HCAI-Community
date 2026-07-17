@@ -22,3 +22,14 @@ test('mandatory audit failure rejects mutation before handler execution', async 
   const hook = createAdminMutationAuditHook({ recordAttempt: async () => { throw new Error('audit down') } })
   await assert.rejects(() => hook({ route: getAdminMutationClassification('POST', '/api/admin/points/adjustments'), request: { method: 'POST' }, context: { user: { id: 'admin-1' }, params: {}, query: {} } }), /audit down/)
 })
+
+test('retention routes use snapshot-safe domain audit instead of an automatic pre-handler append', async () => {
+  const recorded = []
+  const hook = createAdminMutationAuditHook({ recordAttempt: async (event) => recorded.push(event) })
+  await hook({
+    route: getAdminMutationClassification('POST', '/api/admin/audit/retention/execute'),
+    request: { method: 'POST' },
+    context: { user: { id: 'admin-1' }, params: {}, query: {} },
+  })
+  assert.deepEqual(recorded, [])
+})

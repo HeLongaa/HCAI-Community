@@ -62,7 +62,7 @@ not become public because the post is public.
 | `provider_legal_review_records` | Restricted | PostgreSQL/archive | `ProviderLegalReview` | Created + 730 days; append-only Provider/model/environment/region decisions retain only gate outcomes, SHA-256 evidence and safe internal reviewer references, never contract bodies, URLs, credentials, Provider payloads or personal legal notes |
 | `notification_records` | Confidential | PostgreSQL | `Notification` | Created + 180 days |
 | `moderation_review_records` | Restricted | PostgreSQL | `AdminReview` | Review/appeal close + 730 days |
-| `audit_event_records` | Restricted | PostgreSQL/archive | `AuditEvent`, `AuditArchiveManifest` | Created + 730 days; chained facts and archive manifests are immutable evidence |
+| `audit_event_records` | Restricted | PostgreSQL/archive | `AuditEvent`, `AuditArchiveManifest`, `AuditRetentionDisposition` | Created + 730 days; archive-before-prune, legal hold, retained-prefix checkpoints, and immutable disposition evidence are mandatory |
 | `security_event_records` | Restricted | PostgreSQL | `SecurityEvent` | 365 days; confirmed critical incident 730 days |
 | `raw_generation_inputs` | Restricted | Browser/runtime memory | Prompt, message, attachment, reference, attestation | Zero durable retention unless separately normalized |
 | `raw_provider_payloads` | Restricted | Runtime memory | Provider request/response/callback/poll | Zero durable retention after allowlisted normalization |

@@ -59,7 +59,7 @@
     "test:oauth-admin-operations": "node scripts/verify-oauth-admin-operations.mjs && npm --prefix server run db:generate && node --test server/src/auth/oauthAdminOperations.test.js server/src/modules/auth/admin.routes.test.js",
     "test:oauth-admin-operations:integration": "npm --prefix server run db:generate && node --test server/src/repositories/prismaOAuthAdmin.integration.test.js",
     "test:media-lifecycle:integration": "npm --prefix server run db:generate && node --test server/src/repositories/prismaMediaLifecycle.integration.test.js",
-    "test:audit-integrity": "node scripts/verify-audit-integrity.mjs && npm --prefix server run db:generate && node --test server/src/audit/auditIntegrity.test.js server/src/modules/admin/routes.test.js",
+    "test:audit-integrity": "node scripts/verify-audit-integrity.mjs && npm --prefix server run db:generate && node --test server/src/audit/auditIntegrity.test.js server/src/audit/auditRetention.test.js server/src/modules/admin/routes.test.js",
     "test:audit-integrity:integration": "npm --prefix server run db:generate && node --test server/src/repositories/prismaAuditIntegrity.integration.test.js",
     "test:sim": "node scripts/simulate-features.mjs && node scripts/verify-api-contracts.mjs",
     "test:contracts": "node scripts/verify-api-contracts.mjs",

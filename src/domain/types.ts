@@ -19,6 +19,7 @@ export type Permission =
   | 'admin:audit:export'
   | 'admin:audit:verify'
   | 'admin:audit:archive'
+  | 'admin:audit:retention'
   | 'admin:observability:read'
   | 'admin:observability:export'
   | 'admin:observability:manage'
@@ -267,6 +268,11 @@ export type AuditEvent = {
   resourceType: string
   resourceId: string | null
   metadata: unknown
+  diff?: {
+    source: 'previous_next' | 'before_after' | 'explicit'
+    changes?: Array<{ path: string; before: unknown; after: unknown }>
+    value?: unknown
+  } | null
   createdAt: string
   integrity: {
     sequence: string

@@ -567,15 +567,15 @@
     {
       "id": "audit_event_records",
       "classification": "restricted",
-      "prismaModels": ["AuditEvent", "AuditArchiveManifest", "ReleaseChange", "ReleaseEvidence", "DomainEventOutbox", "DomainEventPublication", "DomainEventAggregateSequence", "DomainEventConsumerInbox", "DomainEventConsumption", "DomainEventConsumptionAttempt", "DomainEventConsumerCursor", "DomainEventCompensation", "DomainEventCompensationState", "DomainEventCompensationAttempt"],
+      "prismaModels": ["AuditEvent", "AuditArchiveManifest", "AuditRetentionDisposition", "ReleaseChange", "ReleaseEvidence", "DomainEventOutbox", "DomainEventPublication", "DomainEventAggregateSequence", "DomainEventConsumerInbox", "DomainEventConsumption", "DomainEventConsumptionAttempt", "DomainEventConsumerCursor", "DomainEventCompensation", "DomainEventCompensationState", "DomainEventCompensationAttempt"],
       "locations": ["postgres", "backup_archive"],
       "dataSubjects": ["user", "staff_role", "system"],
       "purposes": ["auth_security", "safety_moderation", "support_operations", "legal_compliance"],
-      "exampleFields": ["actor", "action", "resource id", "allowlisted metadata", "timestamp", "sequence", "previous hash", "content hash", "archive range", "archive root hash", "object reference", "policy set version", "accepted policy versions", "consent source", "release status", "artifact and rollback version", "SecretRef version", "deployment evidence hash"],
+      "exampleFields": ["actor", "action", "resource id", "allowlisted metadata", "timestamp", "sequence", "previous hash", "content hash", "archive range", "archive root hash", "object reference", "archive checksum", "retention policy version", "retention cutoff", "policy set version", "accepted policy versions", "consent source", "release status", "artifact and rollback version", "SecretRef version", "deployment evidence hash"],
       "accessRoles": ["authorized_service", "auditor", "security_operator", "trust_safety_reviewer_allowlisted"],
       "retentionPolicyId": "audit_event_plus_730d",
       "exportPolicy": "include_subject_action_summary_exclude_other_subjects_and_internal_controls",
-      "deletionPolicy": "pseudonymize_subject_and_retain_allowlisted_evidence_until_expiry",
+      "deletionPolicy": "archive_before_prune_under_legal_hold_and_retain_immutable_checkpoint_evidence",
       "ownerTasks": ["V1-67", "V1-69", "V1-73", "V1-78"]
     },
     {
@@ -1071,7 +1071,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 109,
+    "modelCount": 110,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "refresh sessions can be revoked and have expiry timestamps",

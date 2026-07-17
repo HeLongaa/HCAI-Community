@@ -936,12 +936,29 @@ export const parseProviderControlListQuery = (query) => ({
   workspace: optionalText(query, 'workspace', null),
 })
 
-export const parseAdminAuditListQuery = (query) => ({
-  ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 }),
-  action: optionalText(query, 'action', null),
-  resourceType: optionalText(query, 'resourceType', null),
-  actorId: optionalText(query, 'actorId', null),
-})
+export const parseAdminAuditListQuery = (query) => {
+  const actorType = optionalText(query, 'actorType', null)
+  const direction = optionalText(query, 'direction', 'desc')
+  const dateFrom = optionalIsoDateText(query, 'dateFrom')
+  const parsedDateTo = optionalIsoDateText(query, 'dateTo')
+  const dateTo = parsedDateTo && /^\d{4}-\d{2}-\d{2}$/.test(String(query.dateTo ?? '').trim())
+    ? `${String(query.dateTo).trim()}T23:59:59.999Z`
+    : parsedDateTo
+  if (actorType && !['user', 'system'].includes(actorType)) throw validationFailed('actorType must be one of: user, system')
+  if (!['asc', 'desc'].includes(direction)) throw validationFailed('direction must be one of: asc, desc')
+  if (dateFrom && dateTo && Date.parse(dateFrom) > Date.parse(dateTo)) throw validationFailed('dateFrom must be before or equal to dateTo')
+  return {
+    ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 }),
+    action: optionalText(query, 'action', null),
+    resourceType: optionalText(query, 'resourceType', null),
+    resourceId: optionalText(query, 'resourceId', null),
+    actorType,
+    actorId: optionalText(query, 'actorId', null),
+    dateFrom,
+    dateTo,
+    direction,
+  }
+}
 
 export const parseAdminAccountingReconciliationQuery = (query) => {
   const status = optionalText(query, 'status', null)

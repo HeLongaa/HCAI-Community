@@ -6860,6 +6860,35 @@ button.video-history-row.active {
   border-top: 1px solid var(--border);
 }
 
+.panel.admin-audit-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.admin-audit-panel .permission-summary {
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+}
+
+.admin-audit-panel .permission-summary label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.admin-audit-panel .permission-summary input,
+.admin-audit-panel .permission-summary select {
+  width: 100%;
+  min-width: 0;
+}
+
+.admin-audit-panel .permission-summary > button {
+  min-height: 36px;
+}
+
 .audit-integrity-summary {
   display: flex;
   flex-wrap: wrap;
@@ -6878,6 +6907,70 @@ button.video-history-row.active {
 .audit-integrity-summary.unverifiable { border-left-color: #b7791f; }
 .audit-integrity-summary span { color: var(--muted); }
 .audit-integrity-summary code { margin-left: auto; font-size: 12px; }
+
+.audit-retention-panel {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 18px;
+  padding: 14px 0;
+  border-block: 1px solid var(--border);
+}
+
+.audit-retention-heading,
+.audit-retention-confirmation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.audit-retention-heading > div:first-child,
+.audit-retention-preview,
+.audit-retention-disposition {
+  display: grid;
+  gap: 4px;
+}
+
+.audit-retention-heading span,
+.audit-retention-preview span,
+.audit-retention-disposition span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.audit-retention-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.audit-retention-confirmation input {
+  min-width: min(100%, 320px);
+  flex: 1;
+}
+
+.audit-retention-disposition {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: baseline;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 720px) {
+  .audit-retention-heading,
+  .audit-retention-confirmation {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .audit-retention-disposition {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-audit-panel .permission-summary {
+    grid-template-columns: 1fr;
+  }
+}
 
 .audit-detail-summary,
 .audit-json-block {
@@ -11426,6 +11519,20 @@ button.video-history-row.active {
   .admin-row,
   .ledger-row {
     align-items: flex-start;
+  }
+
+  .admin-row > * {
+    min-width: 0;
+  }
+
+  .admin-row > strong,
+  .admin-row > span,
+  .admin-row > small {
+    overflow-wrap: anywhere;
+  }
+
+  .admin-row > .button-row {
+    flex-wrap: wrap;
   }
 
   .admin-row.generation-row,

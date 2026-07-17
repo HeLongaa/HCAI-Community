@@ -2875,7 +2875,12 @@ export const openApiDocument = {
         parameters: [
           { name: 'action', in: 'query', schema: { type: 'string' } },
           { name: 'resourceType', in: 'query', schema: { type: 'string' } },
+          { name: 'resourceId', in: 'query', schema: { type: 'string' } },
+          { name: 'actorType', in: 'query', schema: { type: 'string', enum: ['user', 'system'] } },
           { name: 'actorId', in: 'query', schema: { type: 'string' } },
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'direction', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
           { name: 'cursor', in: 'query', schema: { type: 'string' } },
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
         ],
@@ -2890,7 +2895,12 @@ export const openApiDocument = {
         parameters: [
           { name: 'action', in: 'query', schema: { type: 'string' } },
           { name: 'resourceType', in: 'query', schema: { type: 'string' } },
+          { name: 'resourceId', in: 'query', schema: { type: 'string' } },
+          { name: 'actorType', in: 'query', schema: { type: 'string', enum: ['user', 'system'] } },
           { name: 'actorId', in: 'query', schema: { type: 'string' } },
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'direction', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 100 } },
         ],
         responses: {
@@ -2926,6 +2936,38 @@ export const openApiDocument = {
           '200': { description: 'Immutable archive manifest and integrity evidence' },
           '403': { description: 'Requires admin:audit:archive' },
           '409': { description: 'Audit chain is broken or unverifiable' },
+        },
+      },
+    },
+    '/admin/audit/retention': {
+      get: {
+        summary: 'Read the fail-closed audit retention policy and immutable disposition history',
+        responses: {
+          '200': { description: 'Retention policy and recent dispositions without storage keys' },
+          '403': { description: 'Requires admin:audit:read' },
+        },
+      },
+    },
+    '/admin/audit/retention/preview': {
+      post: {
+        summary: 'Preview the bounded contiguous expired audit prefix without deleting evidence',
+        responses: {
+          '200': { description: 'Snapshot-bound preview and exact confirmation phrase' },
+          '403': { description: 'Requires admin:audit:read' },
+        },
+      },
+    },
+    '/admin/audit/retention/execute': {
+      post: {
+        summary: 'Archive and prune one expired audit prefix with immutable checkpoint evidence',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['previewId', 'confirmation'], properties: { previewId: { type: 'string' }, confirmation: { type: 'string' } } } } },
+        },
+        responses: {
+          '200': { description: 'Durable archive and immutable retention disposition' },
+          '403': { description: 'Requires protected admin:audit:retention permission' },
+          '409': { description: 'Legal hold, disabled pruning, non-durable storage, empty prefix, or stale preview' },
         },
       },
     },

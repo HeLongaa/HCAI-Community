@@ -2372,7 +2372,12 @@ export type PointPolicyRollbackRequest = {
 export type AdminAuditListQuery = {
   action?: string | null
   resourceType?: string | null
+  resourceId?: string | null
+  actorType?: 'user' | 'system' | null
   actorId?: string | null
+  dateFrom?: string | null
+  dateTo?: string | null
+  direction?: 'asc' | 'desc' | null
   cursor?: string | null
   limit?: number | null
 }
@@ -2400,6 +2405,56 @@ export type AdminAuditArchiveManifestDto = {
 export type AdminAuditArchiveResultDto = {
   integrity: AdminAuditIntegrityDto
   manifest: AdminAuditArchiveManifestDto | null
+}
+export type AdminAuditRetentionPolicyDto = {
+  schema: 'audit.retention-policy.v1'
+  version: string
+  retentionDays: number
+  batchSize: number
+  minimumRetainedEvents: number
+  legalHold: boolean
+  pruneEnabled: boolean
+  executable: boolean
+}
+export type AdminAuditRetentionPreviewDto = {
+  schema: 'audit.retention-preview.v1'
+  previewId: string
+  policyVersion: string
+  cutoffAt: string
+  totalEvents: number
+  candidateCount: number
+  fromSequence: string | null
+  toSequence: string | null
+  rootHash: string | null
+  currentRootHash: string | null
+  legalHold: boolean
+  pruneEnabled: boolean
+  executable: boolean
+  confirmation: string | null
+}
+export type AdminAuditRetentionDispositionDto = {
+  id: string
+  policyVersion: string
+  cutoffAt: string
+  fromSequence: string
+  toSequence: string
+  eventCount: number
+  rootHash: string
+  archiveRef: string
+  archiveChecksumSha256: string
+  archiveBytes: number
+  archiveProvider: string
+  actorId: string | null
+  createdAt: string
+}
+export type AdminAuditRetentionStatusDto = {
+  policy: AdminAuditRetentionPolicyDto
+  dispositions: AdminAuditRetentionDispositionDto[]
+}
+export type AdminAuditRetentionResultDto = {
+  status: 'complete'
+  preview: AdminAuditRetentionPreviewDto
+  disposition: AdminAuditRetentionDispositionDto
 }
 
 export type AdminAccountingUnit = 'points' | 'creative_credit' | 'quota_unit'
