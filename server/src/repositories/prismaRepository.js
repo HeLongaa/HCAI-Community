@@ -145,6 +145,7 @@ import {
 import { createPrismaObservabilityRepository } from '../observability/prismaObservabilityRepository.js'
 import { createPrismaOAuthAdminRepository } from '../auth/prismaOAuthAdminRepository.js'
 import { createPrismaAuthSessionAdminRepository } from '../auth/prismaAuthSessionAdminRepository.js'
+import { createPrismaUserAdminRepository } from '../users/prismaUserAdminRepository.js'
 import { createPrismaTaskAdminRepository } from '../tasks/prismaTaskAdminRepository.js'
 import { createPrismaBillingAdminRepository } from '../accounting/prismaBillingAdminRepository.js'
 import { createPrismaEntitlementRepository } from '../entitlements/prismaEntitlementRepository.js'
@@ -1097,6 +1098,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
 
   const oauthAdmin = createPrismaOAuthAdminRepository(client, { runSerializableTransaction, recordAudit })
   const authSessionAdmin = createPrismaAuthSessionAdminRepository(client, { runSerializableTransaction, recordAudit })
+  const userAdmin = createPrismaUserAdminRepository(client, { runSerializableTransaction, recordAudit })
   const taskAdmin = createPrismaTaskAdminRepository(client, { runSerializableTransaction, recordAudit, createTaskEscrow, finalizeTaskEscrow })
   const billingAdmin = createPrismaBillingAdminRepository(client)
   const entitlements = createPrismaEntitlementRepository(client)
@@ -2259,14 +2261,15 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       }
       const fallback = fallbackRepository.auth?.findDemoAccountByAccessToken?.(token)
       if (fallback) {
-        return fallback
+        const persisted = await client.user.findUnique({ where: { id: fallback.id }, select: { status: true } })
+        return persisted?.status && persisted.status !== 'active' ? null : fallback
       }
       const handle = getHandleFromToken(token, 'demo-access.')
       if (!handle) {
         return null
       }
       const user = await client.user.findFirst({
-        where: { profile: { handle } },
+        where: { status: 'active', profile: { handle } },
         include: { profile: true },
       })
       return user ? mapAccount(user) : null
@@ -2274,7 +2277,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     findDemoAccountByRefreshToken: async (token) => {
       const fallback = fallbackRepository.auth?.findDemoAccountByRefreshToken?.(token)
       if (fallback) {
-        return fallback
+        const persisted = await client.user.findUnique({ where: { id: fallback.id }, select: { status: true } })
+        return persisted?.status && persisted.status !== 'active' ? null : fallback
       }
       const tokenHash = hashToken(token)
       const refreshToken = await client.refreshToken.findFirst({
@@ -2296,10 +2300,11 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     findDemoAccountByHandle: async (handle) => {
       const fallback = fallbackRepository.auth?.findDemoAccountByHandle?.(handle)
       if (fallback) {
-        return fallback
+        const persisted = await client.user.findUnique({ where: { id: fallback.id }, select: { status: true } })
+        return persisted?.status && persisted.status !== 'active' ? null : fallback
       }
       const user = await client.user.findFirst({
-        where: { profile: { handle } },
+        where: { status: 'active', profile: { handle } },
         include: { profile: true },
       })
       return user ? mapAccount(user) : null
@@ -10223,6 +10228,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     observability,
     oauthAdmin,
     authSessionAdmin,
+    userAdmin,
     taskAdmin,
     taskLifecycleRecovery,
     operationsMetrics,

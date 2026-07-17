@@ -28,6 +28,7 @@
     { "id": "oauthAdmin", "domain": "identity-access", "layer": "transport", "registration": "registerOAuthAdminRoutes" },
     { "id": "authSessionAdmin", "domain": "identity-access", "layer": "transport", "registration": "registerAuthSessionAdminRoutes" },
     { "id": "users", "domain": "user-profile", "layer": "transport", "registration": "registerUserRoutes" },
+    { "id": "userAdmin", "domain": "user-profile", "layer": "transport", "registration": "registerUserAdminRoutes" },
     { "id": "tasks", "domain": "task-marketplace", "layer": "transport", "registration": "registerTaskRoutes" },
     { "id": "posts", "domain": "community", "layer": "transport", "registration": "registerPostRoutes" },
     { "id": "library", "domain": "media-platform", "layer": "transport", "registration": "registerLibraryRoutes" },

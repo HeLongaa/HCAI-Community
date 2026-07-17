@@ -6,6 +6,7 @@ import { registerHealthRoutes } from './health/routes.js'
 import { registerMetricsRoutes } from './metrics/routes.js'
 import { registerTaskRoutes } from './tasks/routes.js'
 import { registerUserRoutes } from './users/routes.js'
+import { registerUserAdminRoutes } from './userAdmin/routes.js'
 import { registerProfileRoutes } from './profiles/routes.js'
 import { registerPostRoutes } from './posts/routes.js'
 import { registerLibraryRoutes } from './library/routes.js'
@@ -32,6 +33,7 @@ export const registerModules = (router) => {
   registerOAuthAdminRoutes(router)
   registerAuthSessionAdminRoutes(router)
   registerUserRoutes(router)
+  registerUserAdminRoutes(router)
   registerTaskRoutes(router)
   registerPostRoutes(router)
   registerLibraryRoutes(router)

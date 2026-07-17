@@ -60,5 +60,6 @@ test('structured registry separates RBAC from resource authorization', () => {
     'admin:task-rules:publish',
     'admin:entitlements:manage',
     'admin:entitlements:transition',
+    'admin:users:manage',
   ])
 })

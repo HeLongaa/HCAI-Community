@@ -46,7 +46,7 @@ add('identity governance covers privacy and deletion scheduling', ['profile visi
 add('runbook exists', fs.existsSync(path.join(root, 'docs/USER_PROFILE_PRIVACY.md')))
 add('focused package gate exists', packageJson.scripts['test:user-profile-privacy']?.includes('verify-user-profile-privacy.mjs'))
 add('integration package gate exists', packageJson.scripts['test:user-profile-privacy:integration']?.includes('prismaUserProfilePrivacy.integration.test.js'))
-add('quick gate includes USER-01', packageJson.scripts['precheck:quick'] === 'npm run test:user-profile-privacy' || packageJson.scripts['check:quick']?.includes('npm run test:user-profile-privacy'))
+add('quick gate includes USER-01', packageJson.scripts['precheck:quick']?.includes('npm run test:user-profile-privacy') || packageJson.scripts['check:quick']?.includes('npm run test:user-profile-privacy'))
 
 for (const check of checks) console.log(`${check.pass ? 'PASS' : 'FAIL'} ${check.name}`)
 const failures = checks.filter((check) => !check.pass)

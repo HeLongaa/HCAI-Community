@@ -20,6 +20,7 @@ import { OAuthAdminPanel } from './OAuthAdminPanel'
 import { AuthSessionAdminPanel } from './AuthSessionAdminPanel'
 import { TaskAdminPanel } from './TaskAdminPanel'
 import { EntitlementAdminPanel } from './EntitlementAdminPanel'
+import { UserAdminPanel } from './UserAdminPanel'
 import { AuditRetentionPanel } from './AuditRetentionPanel'
 import type {
   AdminPermissionDto,
@@ -2607,7 +2608,15 @@ export function AdminPage({
           notify={(message) => simulateAction(message)}
         />
       )}
-      {activeTab !== 'Settings' && activeTab !== 'AI config' && <>
+      {activeTab === 'Users' && (
+        <UserAdminPanel
+          t={t}
+          canRead={account.hasPermission('admin:users:read')}
+          canManage={account.hasPermission('admin:users:manage')}
+          notify={(message) => simulateAction(message)}
+        />
+      )}
+      {activeTab !== 'Settings' && activeTab !== 'AI config' && activeTab !== 'Users' && <>
       <AdminOverviewPanel t={t} target={overviewTarget} />
       <ReleaseControlPanel
         hasPermission={account.hasPermission}

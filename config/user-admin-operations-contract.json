@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "task": "USER-02",
+  "scope": "personal_accounts_only",
+  "model": {
+    "entity": "User",
+    "operationPolicy": "soft_delete",
+    "migration": "0073_user_admin_lifecycle",
+    "optimisticVersionField": "accountVersion",
+    "suspensionEvidence": ["suspendedAt", "suspensionReasonCode"]
+  },
+  "permissions": {
+    "read": "admin:users:read",
+    "manage": "admin:users:manage"
+  },
+  "routes": [
+    { "method": "GET", "path": "/api/admin/users", "permission": "admin:users:read" },
+    { "method": "GET", "path": "/api/admin/users/:id", "permission": "admin:users:read" },
+    { "method": "POST", "path": "/api/admin/users/:id/suspend", "permission": "admin:users:manage" },
+    { "method": "POST", "path": "/api/admin/users/:id/restore", "permission": "admin:users:manage" }
+  ],
+  "query": {
+    "filters": ["status", "role", "search"],
+    "sorts": ["createdAt", "updatedAt", "displayName"],
+    "stableCursor": true,
+    "maximumPageSize": 100
+  },
+  "safeguards": {
+    "hardDeleteExposed": false,
+    "roleMutationExposed": false,
+    "selfSuspendAllowed": false,
+    "finalActiveAdminSuspendAllowed": false,
+    "suspendRevokesActiveSessions": true,
+    "restoreReactivatesOldSessions": false,
+    "rawCredentialsProjected": false,
+    "reasonCodeOnly": true
+  },
+  "auditActions": ["admin.users.queried", "admin.user.detail_read", "admin.user.suspended", "admin.user.restored"],
+  "verification": {
+    "focused": "npm run test:user-admin-operations",
+    "integration": "npm run test:user-admin-operations:integration",
+    "e2e": "e2e/user-admin-operations.spec.ts",
+    "full": "CI=1 npm run check:pr"
+  }
+}

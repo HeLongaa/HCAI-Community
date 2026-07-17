@@ -59,6 +59,8 @@ export const permissionRegistry = Object.freeze([
   definePermission('admin:permissions:manage', 'identity-access', 'role_permission', 'manage', 'critical', admins, { protected: true, protectionRank: 1, resourceAuthorization: true, description: 'Manage role permission assignments' }),
   definePermission('admin:auth:read', 'identity-access', 'auth_operation', 'read', 'high', moderators, { description: 'Read secret-free OAuth and logical session operations' }),
   definePermission('admin:auth:manage', 'identity-access', 'auth_operation', 'manage', 'critical', admins, { protected: true, protectionRank: 3, resourceAuthorization: true, description: 'Control OAuth providers and disposition or revoke logical sessions' }),
+  definePermission('admin:users:read', 'user-profile', 'user', 'read', 'high', moderators, { description: 'Read bounded personal user lifecycle projections' }),
+  definePermission('admin:users:manage', 'user-profile', 'user', 'manage', 'critical', admins, { protected: true, protectionRank: 29, resourceAuthorization: true, description: 'Suspend and restore personal users with lifecycle safeguards' }),
   definePermission('admin:creative:cancel', 'ai-runtime', 'creative_generation', 'cancel', 'high', admins, { resourceAuthorization: true, description: 'Cancel eligible creative generations' }),
   definePermission('admin:creative:retry', 'ai-runtime', 'creative_generation', 'retry', 'critical', admins, { resourceAuthorization: true, description: 'Authorize retries for eligible creative generations' }),
   definePermission('admin:creative:replay', 'ai-runtime', 'creative_generation', 'replay', 'critical', admins, { resourceAuthorization: true, description: 'Request and approve safe manual Provider replay' }),

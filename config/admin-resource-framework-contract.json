@@ -18,6 +18,7 @@
     { "id": "securityEvents", "model": "SecurityEvent", "routeGroup": "admin", "listRoute": "GET /api/admin/security/events" },
     { "id": "securityAlerts", "model": "SecurityEvent", "routeGroup": "admin", "listRoute": "GET /api/admin/security/alerts", "exportRoute": "GET /api/admin/security/alerts/:id/export", "recoveryRoutes": ["POST /api/admin/security/alerts/:id/acknowledge", "POST /api/admin/security/alerts/:id/silence", "POST /api/admin/security/alerts/:id/unsilence"] },
     { "id": "permissions", "model": "Permission", "routeGroup": "admin", "listRoute": "GET /api/admin/permissions", "mutationRoutes": ["PUT /api/admin/roles/:role/permissions"] },
+    { "id": "users", "model": "User", "routeGroup": "userAdmin", "listRoute": "GET /api/admin/users", "detailRoute": "GET /api/admin/users/:id", "recoveryRoutes": ["POST /api/admin/users/:id/suspend", "POST /api/admin/users/:id/restore"] },
     { "id": "tasks", "model": "Task", "routeGroup": "tasks", "listRoute": "GET /api/admin/tasks", "detailRoute": "GET /api/admin/tasks/:id", "mutationRoutes": ["PATCH /api/admin/tasks/:id"], "recoveryRoutes": ["POST /api/admin/tasks/:id/archive", "POST /api/admin/tasks/:id/restore", "POST /api/admin/tasks/:id/transitions", "POST /api/admin/tasks/bulk/preview", "POST /api/admin/tasks/bulk"] }
   ],
   "policyCapabilities": {
