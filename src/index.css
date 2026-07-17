@@ -7371,6 +7371,7 @@ button.video-history-row.active {
   .user-admin-panel > .section-header { align-items: center; flex-wrap: wrap; }
   .user-admin-filters, .user-admin-facts { grid-template-columns: minmax(0, 1fr); }
   .user-admin-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .user-admin-row strong, .user-admin-row small { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
   .user-admin-row > svg { display: none; }
   .user-admin-detail-head { align-items: center; }
 }
