@@ -71,8 +71,14 @@ test('email registration and password login work from the login modal', async ({
     response.url().endsWith('/api/auth/sessions') && response.request().method() === 'DELETE',
   )
   await page.getByTestId('revoke-all-sessions').click()
-  expect((await revokeResponse).ok()).toBeTruthy()
-  await expect(page.getByText('Revoked')).toHaveCount(3)
+  const revoked = await revokeResponse
+  expect(revoked.ok()).toBeTruthy()
+  expect((await revoked.json()).data.revoked).toBe(3)
+  const rejectedAccess = await page.evaluate(async () => {
+    const token = localStorage.getItem('hcaiAccessToken')
+    return fetch('/api/me', { headers: token ? { authorization: `Bearer ${token}` } : {} }).then((response) => response.status)
+  })
+  expect(rejectedAccess).toBe(401)
 })
 
 test('dev OAuth provider login works from the login modal', async ({ page }) => {

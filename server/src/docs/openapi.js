@@ -457,14 +457,14 @@ export const openApiDocument = {
     },
     '/auth/sessions': {
       get: {
-        summary: 'List current user refresh-token sessions',
+        summary: 'List one row per logical session for the current user',
         responses: {
-          '200': { description: 'Session list' },
+          '200': { description: 'Logical sessions with coarse client label, bounded network hint, lifecycle, risk, timestamps, version, and current-session marker' },
           '401': { description: 'Authentication required' },
         },
       },
       delete: {
-        summary: 'Revoke all current user refresh-token sessions',
+        summary: 'Revoke all logical sessions for the current user',
         responses: {
           '200': { description: 'Revoked session count' },
           '401': { description: 'Authentication required' },
@@ -473,7 +473,7 @@ export const openApiDocument = {
     },
     '/auth/sessions/{id}': {
       delete: {
-        summary: 'Revoke one current user refresh-token session',
+        summary: 'Revoke one current user logical session and its refresh-token family',
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
         ],
@@ -481,6 +481,78 @@ export const openApiDocument = {
           '200': { description: 'Revocation result' },
           '401': { description: 'Authentication required' },
           '404': { description: 'Session not found' },
+        },
+      },
+    },
+    '/admin/auth/sessions': {
+      get: {
+        summary: 'Query redacted logical authentication sessions',
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'revoked', 'expired'] } },
+          { name: 'riskStatus', in: 'query', schema: { type: 'string', enum: ['normal', 'suspicious', 'compromised'] } },
+          { name: 'search', in: 'query', schema: { type: 'string', maxLength: 96 } },
+          { name: 'cursor', in: 'query', schema: { type: 'string', maxLength: 512 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+          { name: 'sort', in: 'query', schema: { type: 'string', enum: ['createdAt', 'lastSeenAt', 'expiresAt'] } },
+          { name: 'order', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
+        ],
+        responses: {
+          '200': { description: 'Bounded logical session page without raw token, IP address, or full user-agent data' },
+          '403': { description: 'Requires admin:auth:read' },
+        },
+      },
+    },
+    '/admin/auth/sessions/{id}/disposition': {
+      post: {
+        summary: 'Disposition logical session risk using optimistic version control',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', additionalProperties: false, required: ['riskStatus', 'expectedVersion', 'reasonCode'],
+          properties: {
+            riskStatus: { type: 'string', enum: ['normal', 'suspicious', 'compromised'] },
+            expectedVersion: { type: 'integer', minimum: 1 },
+            reasonCode: { type: 'string', pattern: '^[a-z0-9][a-z0-9._:-]{0,79}$' },
+          },
+        } } } },
+        responses: {
+          '200': { description: 'Updated session; compromised disposition atomically revokes the token family' },
+          '403': { description: 'Requires admin:auth:manage' },
+          '404': { description: 'Session not found' },
+          '409': { description: 'Version conflict or compromised terminal-risk evidence' },
+        },
+      },
+    },
+    '/admin/auth/sessions/{id}/revoke': {
+      post: {
+        summary: 'Revoke one active logical session and its refresh-token family',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', additionalProperties: false, required: ['expectedVersion', 'reasonCode'],
+          properties: {
+            expectedVersion: { type: 'integer', minimum: 1 },
+            reasonCode: { type: 'string', pattern: '^[a-z0-9][a-z0-9._:-]{0,79}$' },
+          },
+        } } } },
+        responses: {
+          '200': { description: 'Revoked session projection' },
+          '403': { description: 'Requires admin:auth:manage' },
+          '404': { description: 'Session not found' },
+          '409': { description: 'Version conflict or session is not active' },
+        },
+      },
+    },
+    '/admin/auth/users/{userId}/sessions/revoke': {
+      post: {
+        summary: 'Revoke every active logical session for one user',
+        parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', additionalProperties: false, required: ['reasonCode'],
+          properties: { reasonCode: { type: 'string', pattern: '^[a-z0-9][a-z0-9._:-]{0,79}$' } },
+        } } } },
+        responses: {
+          '200': { description: 'Count of active logical sessions revoked' },
+          '403': { description: 'Requires admin:auth:manage' },
+          '404': { description: 'User not found' },
         },
       },
     },

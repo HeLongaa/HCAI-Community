@@ -347,11 +347,39 @@ export type OAuthSessionResponse = SessionResponse & {
 export type ApiSession = {
   id: string
   familyId: string
+  clientLabel: string
+  networkHint: string | null
+  status: 'active' | 'revoked' | 'expired'
+  riskStatus: 'normal' | 'suspicious' | 'compromised'
+  riskReasonCode: string | null
+  riskDetectedAt: string | null
+  reviewedAt: string | null
+  revokeReasonCode: string | null
+  version: number
   createdAt: string | null
+  lastSeenAt: string | null
   expiresAt: string | null
   revokedAt: string | null
   reuseDetectedAt: string | null
   active: boolean
+  current: boolean
+}
+
+export type AdminAuthSession = Omit<ApiSession, 'createdAt' | 'lastSeenAt' | 'expiresAt'> & {
+  createdAt: string
+  lastSeenAt: string
+  expiresAt: string
+  user: { id: string; handle: string | null; email: string | null; displayName: string; status: string }
+}
+
+export type AdminAuthSessionQuery = {
+  status?: string
+  riskStatus?: string
+  search?: string
+  cursor?: string
+  limit?: number
+  sort?: 'createdAt' | 'lastSeenAt' | 'expiresAt'
+  order?: 'asc' | 'desc'
 }
 
 export type RevokeSessionsResponse = {

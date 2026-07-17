@@ -26,6 +26,7 @@
     { "id": "compliance", "domain": "compliance-data-rights", "layer": "transport", "registration": "registerComplianceRoutes" },
     { "id": "auth", "domain": "identity-access", "layer": "transport", "registration": "registerAuthRoutes" },
     { "id": "oauthAdmin", "domain": "identity-access", "layer": "transport", "registration": "registerOAuthAdminRoutes" },
+    { "id": "authSessionAdmin", "domain": "identity-access", "layer": "transport", "registration": "registerAuthSessionAdminRoutes" },
     { "id": "users", "domain": "user-profile", "layer": "transport", "registration": "registerUserRoutes" },
     { "id": "tasks", "domain": "task-marketplace", "layer": "transport", "registration": "registerTaskRoutes" },
     { "id": "posts", "domain": "community", "layer": "transport", "registration": "registerPostRoutes" },

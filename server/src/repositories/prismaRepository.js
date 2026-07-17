@@ -138,6 +138,7 @@ import {
 } from '../audit/auditRetention.js'
 import { createPrismaObservabilityRepository } from '../observability/prismaObservabilityRepository.js'
 import { createPrismaOAuthAdminRepository } from '../auth/prismaOAuthAdminRepository.js'
+import { createPrismaAuthSessionAdminRepository } from '../auth/prismaAuthSessionAdminRepository.js'
 import { createPrismaTaskAdminRepository } from '../tasks/prismaTaskAdminRepository.js'
 import { createPrismaBillingAdminRepository } from '../accounting/prismaBillingAdminRepository.js'
 import { createPrismaEntitlementRepository } from '../entitlements/prismaEntitlementRepository.js'
@@ -1029,24 +1030,48 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
 
   const getActiveAccessAccount = async (token) => {
     const payload = verifyAccessToken(token)
-    if (!payload) {
+    if (!payload?.sid) {
       return null
     }
-    const user = await client.user.findUnique({
-      where: { id: payload.sub },
-      include: { profile: true },
+    const session = await client.authSession.findFirst({
+      where: {
+        id: payload.sid,
+        userId: payload.sub,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+        riskStatus: { not: 'compromised' },
+      },
+      include: { user: { include: { profile: true } } },
     })
-    return user ? mapAccount(user) : null
+    if (!session?.user || session.user.status !== 'active') return null
+    if (session.lastSeenAt < new Date(Date.now() - 5 * 60 * 1000)) {
+      await client.authSession.updateMany({
+        where: { id: session.id, version: session.version, revokedAt: null },
+        data: { lastSeenAt: new Date() },
+      })
+    }
+    return mapAccount(session.user)
   }
 
   const getSessionDto = (row) => ({
     id: row.id,
-    familyId: row.familyId,
-    createdAt: row.createdAt?.toISOString?.() ?? null,
-    expiresAt: row.expiresAt?.toISOString?.() ?? null,
+    familyId: row.id,
+    clientLabel: row.clientLabel,
+    networkHint: row.networkHash ? row.networkHash.slice(0, 8) : null,
+    status: row.revokedAt ? 'revoked' : row.expiresAt <= new Date() ? 'expired' : 'active',
+    riskStatus: row.riskStatus,
+    riskReasonCode: row.riskReasonCode ?? null,
+    riskDetectedAt: row.riskDetectedAt?.toISOString?.() ?? null,
+    reviewedAt: row.reviewedAt?.toISOString?.() ?? null,
+    revokeReasonCode: row.revokeReasonCode ?? null,
+    version: row.version,
+    createdAt: row.createdAt.toISOString(),
+    lastSeenAt: row.lastSeenAt.toISOString(),
+    expiresAt: row.expiresAt.toISOString(),
     revokedAt: row.revokedAt?.toISOString?.() ?? null,
-    reuseDetectedAt: row.reuseDetectedAt?.toISOString?.() ?? null,
+    reuseDetectedAt: row.riskReasonCode === 'refresh_token_reuse' ? row.riskDetectedAt?.toISOString?.() ?? null : null,
     active: !row.revokedAt && row.expiresAt > new Date(),
+    current: false,
   })
 
   const runSerializableTransaction = async (operation, maxAttempts = 3) => {
@@ -1065,21 +1090,47 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   }
 
   const oauthAdmin = createPrismaOAuthAdminRepository(client, { runSerializableTransaction, recordAudit })
+  const authSessionAdmin = createPrismaAuthSessionAdminRepository(client, { runSerializableTransaction, recordAudit })
   const taskAdmin = createPrismaTaskAdminRepository(client, { runSerializableTransaction, recordAudit, createTaskEscrow, finalizeTaskEscrow })
   const billingAdmin = createPrismaBillingAdminRepository(client)
   const entitlements = createPrismaEntitlementRepository(client)
   const taskLifecycleRecovery = createPrismaTaskLifecycleRecoveryRepository(client, { runSerializableTransaction, recordAudit, finalizeTaskEscrow })
 
   const createSessionForUser = async (user, reason = 'auth.session.created', options = {}) => {
-    const accessToken = createAccessToken(user.id)
+    const now = new Date()
+    const sessionId = options.sessionId ?? randomUUID()
+    const expiresAt = futureDate(refreshTokenTtlMs)
+    const accessToken = createAccessToken(user.id, { sid: sessionId })
     const refreshToken = createOpaqueToken('hcai_refresh')
     const persist = async (db) => {
+      if (options.sessionId) {
+        const updated = await db.authSession.updateMany({
+          where: { id: sessionId, userId: user.id, revokedAt: null, riskStatus: { not: 'compromised' } },
+          data: {
+            clientLabel: options.clientContext?.clientLabel ?? undefined,
+            networkHash: options.clientContext?.networkHash ?? undefined,
+            lastSeenAt: now,
+            expiresAt,
+          },
+        })
+        if (updated.count !== 1) return null
+      } else {
+        await db.authSession.create({
+          data: {
+            id: sessionId,
+            userId: user.id,
+            clientLabel: options.clientContext?.clientLabel ?? 'Unknown client',
+            networkHash: options.clientContext?.networkHash ?? null,
+            expiresAt,
+          },
+        })
+      }
       await db.refreshToken.create({
         data: {
           userId: user.id,
           tokenHash: hashToken(refreshToken),
-          familyId: options.familyId ?? randomUUID(),
-          expiresAt: futureDate(refreshTokenTtlMs),
+          familyId: sessionId,
+          expiresAt,
           revokedAt: null,
         },
       })
@@ -1087,7 +1138,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         actor: mapAccount(user),
         action: reason,
         resourceType: 'auth_session',
-        resourceId: user.id,
+        resourceId: sessionId,
         metadata: { refreshTokenStoredAsHash: true },
       }, db)
       return {
@@ -2221,7 +2272,17 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       }
       const tokenHash = hashToken(token)
       const refreshToken = await client.refreshToken.findFirst({
-        where: { tokenHash, revokedAt: null, expiresAt: { gt: new Date() } },
+        where: {
+          tokenHash,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+          user: { status: 'active' },
+          session: {
+            revokedAt: null,
+            expiresAt: { gt: new Date() },
+            riskStatus: { not: 'compromised' },
+          },
+        },
         include: { user: { include: { profile: true } } },
       })
       return refreshToken ? mapAccount(refreshToken.user) : null
@@ -2244,7 +2305,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       })
       return users.map(mapAccount)
     },
-    issueSession: async (account) => {
+    issueSession: async (account, clientContext = null) => {
       const user = await client.user.findFirst({
         where: { profile: { handle: account.handle } },
         include: { profile: true },
@@ -2252,9 +2313,9 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       if (!user) {
         return null
       }
-      return createSessionForUser(user, 'auth.session.created')
+      return createSessionForUser(user, 'auth.session.created', { clientContext })
     },
-    registerEmailAccount: async ({ email, password, displayName, handle }, consent = null) => {
+    registerEmailAccount: async ({ email, password, displayName, handle }, consent = null, clientContext = null) => {
       const normalizedEmail = normalizeEmail(email)
       const existing = await client.user.findFirst({
         where: {
@@ -2324,9 +2385,9 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         }
         return createdUser
       })
-      return createSessionForUser(user, 'auth.session.created')
+      return createSessionForUser(user, 'auth.session.created', { clientContext })
     },
-    loginWithPassword: async ({ email, password }) => {
+    loginWithPassword: async ({ email, password }, clientContext = null) => {
       const authAccount = await client.authAccount.findUnique({
         where: { provider_providerUserId: { provider: 'email', providerUserId: normalizeEmail(email) } },
         include: { user: { include: { profile: true } } },
@@ -2338,7 +2399,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       ) {
         return null
       }
-      return createSessionForUser(authAccount.user, 'auth.session.created')
+      return createSessionForUser(authAccount.user, 'auth.session.created', { clientContext })
     },
     createOAuthAuthorizationRequest: async ({ stateHash, provider, redirectTo, linkUserId = null, providerControlVersion = 0, expiresAt }) => {
       try {
@@ -2383,7 +2444,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         return transaction.oAuthAuthorizationRequest.findUnique({ where: { stateHash } })
       })
     },
-    completeOAuthLogin: async ({ profile, linkUserId = null }) => {
+    completeOAuthLogin: async ({ profile, linkUserId = null, clientContext = null }) => {
       const normalizedEmail = normalizeEmail(profile.email)
       const providerWhere = {
         provider_providerUserId: oauthKey(profile.provider, profile.providerUserId),
@@ -2423,12 +2484,12 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
               metadata: { provider: profile.provider },
             }, transaction)
           }
-          return createSessionForUser(user, 'auth.session.created', { db: transaction })
+          return createSessionForUser(user, 'auth.session.created', { db: transaction, clientContext })
         }
 
         if (linkedAccount) {
           return linkedAccount.user?.status === 'active'
-            ? createSessionForUser(linkedAccount.user, 'auth.session.created', { db: transaction })
+            ? createSessionForUser(linkedAccount.user, 'auth.session.created', { db: transaction, clientContext })
             : null
         }
 
@@ -2455,7 +2516,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             resourceId: oauthAuditResourceId(profile.provider, profile.providerUserId),
             metadata: { provider: profile.provider },
           }, transaction)
-          return createSessionForUser(existingUser, 'auth.session.created', { db: transaction })
+          return createSessionForUser(existingUser, 'auth.session.created', { db: transaction, clientContext })
         }
 
         const handle = await makeUniqueProfileHandle(normalizedEmail, profile.provider, transaction)
@@ -2493,7 +2554,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           resourceId: user.id,
           metadata: { provider: profile.provider },
         }, transaction)
-          return createSessionForUser(user, 'auth.session.created', { db: transaction })
+          return createSessionForUser(user, 'auth.session.created', { db: transaction, clientContext })
         })
       } catch (error) {
         if (error?.code === 'P2002') {
@@ -2544,79 +2605,168 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         return { unlinked: true }
       })
     },
-    rotateSession: async (token) => {
+    rotateSession: async (token, clientContext = null) => {
       const tokenHash = hashToken(token)
-      const refreshToken = await client.refreshToken.findFirst({
-        where: { tokenHash },
-        include: { user: { include: { profile: true } } },
-      })
-      if (!refreshToken) {
-        return null
-      }
-      if (refreshToken.revokedAt || refreshToken.expiresAt <= new Date()) {
-        if (refreshToken.revokedAt && refreshToken.replacedByTokenHash) {
-          const now = new Date()
-          await client.refreshToken.updateMany({
-            where: { userId: refreshToken.userId, familyId: refreshToken.familyId, revokedAt: null },
-            data: { revokedAt: now, reuseDetectedAt: now },
-          })
-          await recordAudit({
-            actor: mapAccount(refreshToken.user),
-            action: 'auth.session.reuse_detected',
-            resourceType: 'auth_session',
-            resourceId: refreshToken.id,
-            metadata: { familyId: refreshToken.familyId },
-          })
+      return runSerializableTransaction(async (transaction) => {
+        const refreshToken = await transaction.refreshToken.findFirst({
+          where: { tokenHash },
+          include: {
+            user: { include: { profile: true } },
+            session: true,
+          },
+        })
+        if (!refreshToken) return null
+        const now = new Date()
+        if (refreshToken.revokedAt || refreshToken.expiresAt <= now || refreshToken.session.revokedAt || refreshToken.session.expiresAt <= now) {
+          if (refreshToken.revokedAt && refreshToken.replacedByTokenHash) {
+            const compromised = await transaction.authSession.updateMany({
+              where: { id: refreshToken.familyId, riskStatus: { not: 'compromised' } },
+              data: {
+                riskStatus: 'compromised',
+                riskReasonCode: 'refresh_token_reuse',
+                riskDetectedAt: now,
+                revokedAt: refreshToken.session.revokedAt ?? now,
+                revokeReasonCode: refreshToken.session.revokeReasonCode ?? 'refresh_token_reuse',
+                lastSeenAt: now,
+                version: { increment: 1 },
+              },
+            })
+            await transaction.refreshToken.updateMany({
+              where: { familyId: refreshToken.familyId, revokedAt: null },
+              data: { revokedAt: now, reuseDetectedAt: now },
+            })
+            if (compromised.count === 1) {
+              await recordAudit({
+                actor: mapAccount(refreshToken.user),
+                action: 'auth.session.reuse_detected',
+                resourceType: 'auth_session',
+                resourceId: refreshToken.familyId,
+                metadata: { reasonCode: 'refresh_token_reuse' },
+              }, transaction)
+            }
+          }
+          return null
         }
-        return null
-      }
-      const user = refreshToken.user
-      const session = user ? await createSessionForUser(user, 'auth.session.rotated', { familyId: refreshToken.familyId }) : null
-      if (!session) {
-        return null
-      }
-      await client.refreshToken.update({
-        where: { id: refreshToken.id },
-        data: {
-          revokedAt: new Date(),
-          replacedByTokenHash: hashToken(session.refreshToken),
-        },
+        if (refreshToken.session.riskStatus === 'compromised' || refreshToken.user.status !== 'active') return null
+
+        const nextRefreshToken = createOpaqueToken('hcai_refresh')
+        const nextRefreshTokenHash = hashToken(nextRefreshToken)
+        const expiresAt = futureDate(refreshTokenTtlMs)
+        const rotated = await transaction.refreshToken.updateMany({
+          where: { id: refreshToken.id, revokedAt: null, expiresAt: { gt: now } },
+          data: { revokedAt: now, replacedByTokenHash: nextRefreshTokenHash },
+        })
+        if (rotated.count !== 1) throw new Error('AUTH_SESSION_ROTATION_CONFLICT')
+        await transaction.refreshToken.create({
+          data: {
+            userId: refreshToken.userId,
+            tokenHash: nextRefreshTokenHash,
+            familyId: refreshToken.familyId,
+            expiresAt,
+          },
+        })
+        await transaction.authSession.update({
+          where: { id: refreshToken.familyId },
+          data: {
+            clientLabel: clientContext?.clientLabel ?? undefined,
+            networkHash: clientContext?.networkHash ?? undefined,
+            lastSeenAt: now,
+            expiresAt,
+          },
+        })
+        await recordAudit({
+          actor: mapAccount(refreshToken.user),
+          action: 'auth.session.rotated',
+          resourceType: 'auth_session',
+          resourceId: refreshToken.familyId,
+          metadata: { refreshTokenStoredAsHash: true },
+        }, transaction)
+        return {
+          accessToken: createAccessToken(refreshToken.userId, { sid: refreshToken.familyId }),
+          refreshToken: nextRefreshToken,
+          user: mapAccount(refreshToken.user),
+        }
       })
-      return session
     },
-    revokeSession: async (token) => {
-      const refreshToken = await client.refreshToken.findFirst({
-        where: { tokenHash: hashToken(token), revokedAt: null },
+    revokeSession: async (token, reasonCode = 'user_logout') => {
+      return runSerializableTransaction(async (transaction) => {
+        const refreshToken = await transaction.refreshToken.findFirst({
+          where: { tokenHash: hashToken(token) },
+          include: { user: { include: { profile: true } }, session: true },
+        })
+        if (!refreshToken || refreshToken.session.revokedAt) return false
+        const now = new Date()
+        await transaction.authSession.update({
+          where: { id: refreshToken.familyId },
+          data: { revokedAt: now, revokeReasonCode: reasonCode, version: { increment: 1 } },
+        })
+        await transaction.refreshToken.updateMany({
+          where: { familyId: refreshToken.familyId, revokedAt: null },
+          data: { revokedAt: now },
+        })
+        await recordAudit({
+          actor: mapAccount(refreshToken.user),
+          action: 'auth.session.revoked',
+          resourceType: 'auth_session',
+          resourceId: refreshToken.familyId,
+          metadata: { reasonCode },
+        }, transaction)
+        return true
       })
-      if (!refreshToken) {
-        return false
-      }
-      await client.refreshToken.update({
-        where: { id: refreshToken.id },
-        data: { revokedAt: new Date() },
-      })
-      return true
     },
-    listSessions: async (actor) => {
-      const rows = await client.refreshToken.findMany({
+    listSessions: async (actor, currentSessionId = null) => {
+      const rows = await client.authSession.findMany({
         where: { userId: actor.id },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ lastSeenAt: 'desc' }, { id: 'desc' }],
       })
-      return rows.map(getSessionDto)
+      return rows.map((row) => ({ ...getSessionDto(row), current: row.id === currentSessionId }))
     },
     revokeSessionById: async (id, actor) => {
-      const result = await client.refreshToken.updateMany({
-        where: { id, userId: actor.id, revokedAt: null },
-        data: { revokedAt: new Date() },
+      return runSerializableTransaction(async (transaction) => {
+        const session = await transaction.authSession.findFirst({ where: { id, userId: actor.id } })
+        if (!session || session.revokedAt) return false
+        const now = new Date()
+        const result = await transaction.authSession.updateMany({
+          where: { id, userId: actor.id, version: session.version, revokedAt: null },
+          data: { revokedAt: now, revokeReasonCode: 'user_revoked', version: { increment: 1 } },
+        })
+        if (result.count !== 1) return false
+        await transaction.refreshToken.updateMany({ where: { familyId: id, revokedAt: null }, data: { revokedAt: now } })
+        await recordAudit({
+          actor,
+          action: 'auth.session.revoked',
+          resourceType: 'auth_session',
+          resourceId: id,
+          metadata: { reasonCode: 'user_revoked' },
+        }, transaction)
+        return true
       })
-      return result.count > 0
     },
     revokeAllSessions: async (actor) => {
-      const result = await client.refreshToken.updateMany({
-        where: { userId: actor.id, revokedAt: null },
-        data: { revokedAt: new Date() },
+      return runSerializableTransaction(async (transaction) => {
+        const now = new Date()
+        const active = await transaction.authSession.findMany({
+          where: { userId: actor.id, revokedAt: null, expiresAt: { gt: now } },
+          select: { id: true },
+        })
+        if (active.length === 0) return { revoked: 0 }
+        await transaction.authSession.updateMany({
+          where: { id: { in: active.map((session) => session.id) }, revokedAt: null },
+          data: { revokedAt: now, revokeReasonCode: 'user_revoked_all', version: { increment: 1 } },
+        })
+        await transaction.refreshToken.updateMany({
+          where: { familyId: { in: active.map((session) => session.id) }, revokedAt: null },
+          data: { revokedAt: now },
+        })
+        await recordAudit({
+          actor,
+          action: 'auth.sessions.revoked_all',
+          resourceType: 'user',
+          resourceId: actor.id,
+          metadata: { reasonCode: 'user_revoked_all', revoked: active.length },
+        }, transaction)
+        return { revoked: active.length }
       })
-      return { revoked: result.count }
     },
   }
 
@@ -9976,6 +10126,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     providerOperations,
     observability,
     oauthAdmin,
+    authSessionAdmin,
     taskAdmin,
     taskLifecycleRecovery,
     operationsMetrics,

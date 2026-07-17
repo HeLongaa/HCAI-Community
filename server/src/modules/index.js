@@ -1,5 +1,6 @@
 import { registerAuthRoutes } from './auth/routes.js'
 import { registerOAuthAdminRoutes } from './oauthAdmin/routes.js'
+import { registerAuthSessionAdminRoutes } from './authSessionAdmin/routes.js'
 import { registerDocsRoutes } from './docs/routes.js'
 import { registerHealthRoutes } from './health/routes.js'
 import { registerMetricsRoutes } from './metrics/routes.js'
@@ -29,6 +30,7 @@ export const registerModules = (router) => {
   registerComplianceRoutes(router)
   registerAuthRoutes(router)
   registerOAuthAdminRoutes(router)
+  registerAuthSessionAdminRoutes(router)
   registerUserRoutes(router)
   registerTaskRoutes(router)
   registerPostRoutes(router)

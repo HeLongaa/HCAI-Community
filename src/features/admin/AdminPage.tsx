@@ -17,6 +17,7 @@ import { ConfigurationResourcesPanel } from './ConfigurationResourcesPanel'
 import { ModelControlPanel } from './ModelControlPanel'
 import { AdminMediaLifecyclePanel } from './AdminMediaLifecyclePanel'
 import { OAuthAdminPanel } from './OAuthAdminPanel'
+import { AuthSessionAdminPanel } from './AuthSessionAdminPanel'
 import { TaskAdminPanel } from './TaskAdminPanel'
 import { EntitlementAdminPanel } from './EntitlementAdminPanel'
 import { AuditRetentionPanel } from './AuditRetentionPanel'
@@ -2621,12 +2622,20 @@ export function AdminPage({
         />
       )}
       {activeTab === 'Access' && (
-        <OAuthAdminPanel
-          t={t}
-          canRead={account.hasPermission('admin:auth:read')}
-          canManage={account.hasPermission('admin:auth:manage')}
-          notify={(message) => simulateAction(message)}
-        />
+        <div className="admin-settings-stack">
+          <AuthSessionAdminPanel
+            t={t}
+            canRead={account.hasPermission('admin:auth:read')}
+            canManage={account.hasPermission('admin:auth:manage')}
+            notify={(message) => simulateAction(message)}
+          />
+          <OAuthAdminPanel
+            t={t}
+            canRead={account.hasPermission('admin:auth:read')}
+            canManage={account.hasPermission('admin:auth:manage')}
+            notify={(message) => simulateAction(message)}
+          />
+        </div>
       )}
       {activeTab === 'Finance' && (
         <EntitlementAdminPanel
