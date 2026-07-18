@@ -4124,6 +4124,81 @@ export const createSeedRepository = () => {
       return rolledBack
     },
   },
+  billing: {
+    summary: (userHandle) => {
+      const account = getAccountByHandle(userHandle)
+      if (!account) return null
+      const pointRows = seedStore.pointsLedger.filter((entry) => entry.userHandle === userHandle)
+      const creditRows = [...creativeCreditLedgerById.values()].filter((entry) => entry.actorHandle === userHandle)
+      const now = Date.now()
+      const quotaByScope = new Map()
+      for (const window of creativeQuotaWindowsById.values()) {
+        if (window.actorHandle !== userHandle || new Date(window.windowEnd).getTime() < now) continue
+        const key = `${window.workspace}:${window.windowType}`
+        const current = quotaByScope.get(key)
+        if (!current || new Date(window.windowEnd) > new Date(current.windowEnd)) quotaByScope.set(key, window)
+      }
+      const scopes = [...quotaByScope.values()].map((window) => ({
+        id: window.id,
+        workspace: window.workspace,
+        windowType: window.windowType,
+        limit: window.limitUnits,
+        reserved: window.reservedUnits,
+        used: window.usedUnits,
+        released: window.releasedUnits,
+        remaining: Math.max(0, window.limitUnits - window.reservedUnits - window.usedUnits),
+        windowStart: new Date(window.windowStart).toISOString(),
+        windowEnd: new Date(window.windowEnd).toISOString(),
+        policyVersion: window.policyVersion,
+      }))
+      return {
+        schemaVersion: 1,
+        userHandle,
+        points: buildPointSummary(pointRows, userHandle),
+        creativeCredits: {
+          reserved: creditRows.filter((row) => row.status === 'reserved').reduce((sum, row) => sum + row.reservationAmount, 0),
+          settled: creditRows.reduce((sum, row) => sum + row.settledAmount, 0),
+          refunded: creditRows.reduce((sum, row) => sum + row.refundedAmount, 0),
+          transactions: creditRows.length,
+        },
+        quotas: {
+          limit: scopes.reduce((sum, row) => sum + row.limit, 0),
+          reserved: scopes.reduce((sum, row) => sum + row.reserved, 0),
+          used: scopes.reduce((sum, row) => sum + row.used, 0),
+          released: scopes.reduce((sum, row) => sum + row.released, 0),
+          remaining: scopes.reduce((sum, row) => sum + row.remaining, 0),
+          scopes,
+        },
+        generatedAt: new Date().toISOString(),
+      }
+    },
+    listLedger: (userHandle) => {
+      if (!getAccountByHandle(userHandle)) return null
+      return [
+        ...seedStore.pointsLedger.filter((row) => row.userHandle === userHandle).map((row) => ({
+          id: `points:${row.id}`,
+          unit: 'points', status: row.status, amount: Number(row.delta), balanceAfter: Number(row.balanceAfter),
+          sourceType: row.sourceType ?? 'legacy_points', sourceId: row.sourceId ?? null, description: row.description ?? row.sourceType ?? 'Points entry',
+          reasonCode: null, workspace: null, occurredAt: new Date(row.createdAt ?? 0).getTime() > 0 ? new Date(row.createdAt).toISOString() : new Date(0).toISOString(),
+        })),
+        ...[...creativeCreditLedgerById.values()].filter((row) => row.actorHandle === userHandle).map((row) => ({
+          id: `creative_credit:${row.id}`,
+          unit: 'creative_credit', status: row.status,
+          amount: row.status === 'reserved' ? -row.reservationAmount : row.status === 'settled' ? -row.settledAmount : row.refundedAmount,
+          balanceAfter: null, sourceType: 'generation', sourceId: row.generationId,
+          description: `Creative ${row.workspace} ${row.mode}`, reasonCode: row.reasonCode ?? null, workspace: row.workspace,
+          occurredAt: new Date(row.refundedAt ?? row.cancelledAt ?? row.settledAt ?? row.reservedAt).toISOString(),
+        })),
+        ...[...creativeQuotaReservationsById.values()].filter((row) => row.actorHandle === userHandle).map((row) => ({
+          id: `quota_unit:${row.id}`,
+          unit: 'quota_unit', status: row.status, amount: row.status === 'released' ? row.units : -row.units,
+          balanceAfter: null, sourceType: 'generation', sourceId: row.generationId,
+          description: `Creative ${row.workspace} quota`, reasonCode: row.reason ?? null, workspace: row.workspace,
+          occurredAt: new Date(row.releasedAt ?? row.committedAt ?? row.reservedAt).toISOString(),
+        })),
+      ]
+    },
+  },
   accountingReconciliation: {
     scan: (_actor, options = {}) => {
       const report = scanSeedAccounting()

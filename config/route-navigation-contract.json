@@ -16,7 +16,7 @@
     { "id": "media", "module": "media-platform", "prefixes": ["/api/media"], "nav": "assets", "breadcrumb": "Media", "deepLink": "media" },
     { "id": "creative", "module": "ai-runtime", "prefixes": ["/api/creative"], "nav": "studios", "breadcrumb": "Creative", "deepLink": "creative" },
     { "id": "chat", "module": "ai-runtime", "prefixes": ["/api/chat"], "nav": "chat", "breadcrumb": "Chat", "deepLink": "chat" },
-    { "id": "points", "module": "entitlements-accounting", "prefixes": ["/api/points"], "nav": "points", "breadcrumb": "Points", "deepLink": "points" },
+    { "id": "points", "module": "entitlements-accounting", "prefixes": ["/api/points", "/api/billing"], "nav": "points", "breadcrumb": "Billing", "deepLink": "points" },
     { "id": "entitlements", "module": "entitlements-accounting", "prefixes": ["/api/entitlements"], "nav": "points", "breadcrumb": "Entitlements", "deepLink": "entitlements" },
     { "id": "notifications", "module": "notifications-webhooks", "prefixes": ["/api/notifications"], "nav": "notifications", "breadcrumb": "Notifications", "deepLink": "notifications" },
     { "id": "compliance", "module": "compliance-data-rights", "prefixes": ["/api/compliance", "/api/support"], "nav": "support", "breadcrumb": "Support", "deepLink": "support" },

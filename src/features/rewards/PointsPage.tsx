@@ -1,18 +1,16 @@
 import { useState } from 'react'
-import { RefreshCw, ShieldCheck, Trophy } from 'lucide-react'
+import { Download, RefreshCw, ShieldCheck, Trophy } from 'lucide-react'
 import type { AsyncResourceState, LedgerEntry, SimulateAction } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
-import { isZhCopy, matchesLanguage, pointText, textFor } from '../../domain/utils'
-import type { ApiPointsSummary } from '../../services/contracts'
-import type { EffectiveEntitlementDto } from '../../services/contracts'
+import { isZhCopy, pointText, textFor } from '../../domain/utils'
+import type { ApiPointsSummary, EffectiveEntitlementDto, PersonalBillingEntry, PersonalBillingStatus, PersonalBillingSummary, PersonalBillingUnit } from '../../services/contracts'
 import { entitlementService } from '../../services/entitlementService'
+import { billingService } from '../../services/billingService'
 import { useAsyncResource } from '../../hooks/useAsyncResource'
 
 export function PointsPage({
   t,
-  ledger,
   summary,
-  status,
   simulateAction,
 }: {
   t: Record<string, string>
@@ -23,6 +21,13 @@ export function PointsPage({
 }) {
   const isZh = isZhCopy(t)
   const [entitlement, setEntitlement] = useState<EffectiveEntitlementDto | null>(null)
+  const [billingSummary, setBillingSummary] = useState<PersonalBillingSummary | null>(null)
+  const [billingEntries, setBillingEntries] = useState<PersonalBillingEntry[]>([])
+  const [billingUnit, setBillingUnit] = useState<PersonalBillingUnit | ''>('')
+  const [billingStatusFilter, setBillingStatusFilter] = useState<PersonalBillingStatus | ''>('')
+  const [billingSearch, setBillingSearch] = useState('')
+  const [billingDateFrom, setBillingDateFrom] = useState('')
+  const [billingDateTo, setBillingDateTo] = useState('')
   const entitlementStatus = useAsyncResource({
     load: entitlementService.me,
     onSuccess: setEntitlement,
@@ -30,19 +35,45 @@ export function PointsPage({
     deps: [isZh],
     logLabel: 'entitlement-service',
   })
-  const metrics = summary
+  const billingStatus = useAsyncResource({
+    load: async () => {
+      const query = { unit: billingUnit || null, status: billingStatusFilter || null, search: billingSearch || null, dateFrom: billingDateFrom || null, dateTo: billingDateTo || null, sort: 'desc' as const, limit: 100 }
+      const [nextSummary, ledgerPage] = await Promise.all([billingService.summary(), billingService.ledger(query)])
+      return { summary: nextSummary, entries: ledgerPage.items }
+    },
+    onSuccess: ({ summary: nextSummary, entries }) => { setBillingSummary(nextSummary); setBillingEntries(entries) },
+    getErrorMessage: () => textFor(t, 'Could not load billing details.', '无法读取账务明细。'),
+    deps: [isZh, billingUnit, billingStatusFilter, billingSearch, billingDateFrom, billingDateTo],
+    logLabel: 'billing-service',
+  })
+  const effectivePoints = billingSummary?.points ?? summary
+  const metrics = billingSummary
     ? isZh
       ? [
-          ['可用余额', pointText(String(summary.available)), '可立即用于任务加权、兑换和发布托管'],
-          ['冻结托管', pointText(String(summary.frozen)), '已发布任务的待验收奖励托管'],
-          ['待结算', pointText(String(summary.pendingSettlement)), '等待验收或系统确认的正向积分'],
-          ['累计收入', pointText(String(summary.lifetimeEarned)), '历史已结算任务、社区和内容收益'],
+          ['可用积分', pointText(String(billingSummary.points.available)), '可立即使用的已结算积分'],
+          ['冻结与待结算', pointText(String(billingSummary.points.frozen + billingSummary.points.pendingSettlement)), '任务托管与待确认积分'],
+          ['创作 Credit', String(billingSummary.creativeCredits.settled), `${billingSummary.creativeCredits.refunded} 已退款`],
+          ['剩余配额', String(billingSummary.quotas.remaining), `${billingSummary.quotas.used}/${billingSummary.quotas.limit} 已使用`],
         ]
       : [
-          ['Available', pointText(String(summary.available)), 'Ready for boosts, redemptions, and task escrow'],
-          ['Frozen', pointText(String(summary.frozen)), 'Rewards held for posted tasks awaiting review'],
-          ['Pending', pointText(String(summary.pendingSettlement)), 'Positive points waiting for acceptance or system settlement'],
-          ['Lifetime earned', pointText(String(summary.lifetimeEarned)), 'Settled task, community, and library earnings'],
+          ['Available points', pointText(String(billingSummary.points.available)), 'Settled points ready to use'],
+          ['Frozen and pending', pointText(String(billingSummary.points.frozen + billingSummary.points.pendingSettlement)), 'Task escrow and pending settlement'],
+          ['Creative credits', String(billingSummary.creativeCredits.settled), `${billingSummary.creativeCredits.refunded} refunded`],
+          ['Quota remaining', String(billingSummary.quotas.remaining), `${billingSummary.quotas.used}/${billingSummary.quotas.limit} used`],
+        ]
+    : effectivePoints
+    ? isZh
+      ? [
+          ['可用余额', pointText(String(effectivePoints.available)), '可立即用于任务加权、兑换和发布托管'],
+          ['冻结托管', pointText(String(effectivePoints.frozen)), '已发布任务的待验收奖励托管'],
+          ['待结算', pointText(String(effectivePoints.pendingSettlement)), '等待验收或系统确认的正向积分'],
+          ['累计收入', pointText(String(effectivePoints.lifetimeEarned)), '历史已结算任务、社区和内容收益'],
+        ]
+      : [
+          ['Available', pointText(String(effectivePoints.available)), 'Ready for boosts, redemptions, and task escrow'],
+          ['Frozen', pointText(String(effectivePoints.frozen)), 'Rewards held for posted tasks awaiting review'],
+          ['Pending', pointText(String(effectivePoints.pendingSettlement)), 'Positive points waiting for acceptance or system settlement'],
+          ['Lifetime earned', pointText(String(effectivePoints.lifetimeEarned)), 'Settled task, community, and library earnings'],
         ]
     : isZh
     ? [
@@ -68,8 +99,15 @@ export function PointsPage({
         ['Unlock pro templates', '-120'],
         ['Redeem creator badge', '-300'],
       ]
-  const scopedLedger = ledger.filter(([, description]) => matchesLanguage(description, isZh))
-  const visibleLedger = scopedLedger.length ? scopedLedger : ledger
+  const exportBilling = async () => {
+    const csv = await billingService.exportCsv({ unit: billingUnit || null, status: billingStatusFilter || null, search: billingSearch || null, dateFrom: billingDateFrom || null, dateTo: billingDateTo || null, sort: 'desc' })
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'billing-ledger.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="stack">
@@ -118,36 +156,33 @@ export function PointsPage({
           </div>
         )}
       </section>
-      <section className="panel">
-        <SectionHeader eyebrow={textFor(t, 'Ledger', '积分流水')} title={textFor(t, 'Points history', '积分记录')} />
-        {(status.loading || status.error) && (
+      <section className="panel billing-ledger-panel" data-testid="personal-billing-ledger">
+        <SectionHeader eyebrow={textFor(t, 'Billing ledger', '账务流水')} title={textFor(t, 'Points, credits, quota, and refunds', '积分、Credit、配额与退款')} action={<div className="button-row"><button className="icon-button" type="button" title={textFor(t, 'Export CSV', '导出 CSV')} aria-label={textFor(t, 'Export billing CSV', '导出账务 CSV')} onClick={() => void exportBilling()}><Download size={16}/></button><button className="icon-button" type="button" title={textFor(t, 'Refresh billing', '刷新账务')} aria-label={textFor(t, 'Refresh billing', '刷新账务')} onClick={() => void billingStatus.refresh()}><RefreshCw size={16}/></button></div>} />
+        <div className="billing-ledger-filters">
+          <select aria-label={textFor(t, 'Billing unit', '账务单位')} value={billingUnit} onChange={(event) => setBillingUnit(event.target.value as PersonalBillingUnit | '')}><option value="">{textFor(t, 'All units', '全部单位')}</option><option value="points">points</option><option value="creative_credit">creative_credit</option><option value="quota_unit">quota_unit</option></select>
+          <select aria-label={textFor(t, 'Billing status', '账务状态')} value={billingStatusFilter} onChange={(event) => setBillingStatusFilter(event.target.value as PersonalBillingStatus | '')}><option value="">{textFor(t, 'All statuses', '全部状态')}</option>{['pending', 'settled', 'cancelled', 'reserved', 'refunded', 'committed', 'released'].map((value) => <option key={value} value={value}>{value}</option>)}</select>
+          <input aria-label={textFor(t, 'Search billing sources', '搜索账务来源')} placeholder={textFor(t, 'Search source or reason', '搜索来源或原因')} value={billingSearch} onChange={(event) => setBillingSearch(event.target.value)} />
+          <input aria-label={textFor(t, 'Billing from date', '账务开始日期')} type="date" value={billingDateFrom} onChange={(event) => setBillingDateFrom(event.target.value)} />
+          <input aria-label={textFor(t, 'Billing to date', '账务结束日期')} type="date" value={billingDateTo} onChange={(event) => setBillingDateTo(event.target.value)} />
+        </div>
+        {(billingStatus.loading || billingStatus.error) && (
           <div className="empty-state">
             <strong>
-              {status.loading
-                ? textFor(t, 'Syncing points', '正在同步积分')
-                : textFor(t, 'Points API unavailable', '积分 API 暂不可用')}
+              {billingStatus.loading
+                ? textFor(t, 'Syncing billing', '正在同步账务')
+                : textFor(t, 'Billing API unavailable', '账务 API 暂不可用')}
             </strong>
-            <span>
-              {status.loading
-                ? textFor(t, 'Loading the latest points ledger from the API.', '正在从 API 加载最新积分流水。')
-                : status.error}
-            </span>
-            {status.error && (
-              <button className="ghost-button" type="button" onClick={() => void status.refresh()}>
+            <span>{billingStatus.loading ? textFor(t, 'Loading durable accounting facts.', '正在读取持久化账务事实。') : billingStatus.error}</span>
+            {billingStatus.error && (
+              <button className="ghost-button" type="button" onClick={() => void billingStatus.refresh()}>
                 {textFor(t, 'Retry sync', '重试同步')}
               </button>
             )}
           </div>
         )}
         <div className="ledger-table">
-          {visibleLedger.map(([time, desc, delta, balance]) => (
-            <div className="ledger-row" key={`${time}-${desc}`}>
-              <span>{time}</span>
-              <strong>{desc}</strong>
-              <b className={delta.startsWith('+') ? 'positive' : 'negative'}>{delta}</b>
-              <span>{balance}</span>
-            </div>
-          ))}
+          {!billingStatus.loading && !billingStatus.error && billingEntries.map((entry) => <div className="ledger-row billing-ledger-row" key={entry.id}><span>{new Date(entry.occurredAt).toLocaleString()}</span><strong>{entry.description}<small>{entry.sourceType} · {entry.sourceId ?? '-'}</small></strong><b className={entry.amount >= 0 ? 'positive' : 'negative'}>{entry.amount > 0 ? '+' : ''}{entry.amount}</b><span>{entry.unit}<small>{entry.status}</small></span></div>)}
+          {!billingStatus.loading && !billingStatus.error && billingEntries.length === 0 && <div className="empty-state compact"><strong>{textFor(t, 'No matching billing entries', '没有匹配的账务明细')}</strong></div>}
         </div>
       </section>
       <div className="content-grid three">

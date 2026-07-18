@@ -4936,6 +4936,111 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
   }
 
+  const billing = {
+    summary: async (userHandle) => {
+      const user = await findUserByHandle(userHandle)
+      if (!user) return null
+      const [pointRows, creditRows, quotaWindows] = await Promise.all([
+        client.pointLedger.findMany({ where: { userId: user.id }, orderBy: { createdAt: 'desc' } }),
+        client.creativeCreditLedger.findMany({ where: { actorHandle: userHandle } }),
+        client.creativeQuotaWindow.findMany({
+          where: { actorHandle: userHandle, windowEnd: { gte: new Date() } },
+          orderBy: [{ workspace: 'asc' }, { windowEnd: 'desc' }],
+        }),
+      ])
+      const pointSummary = buildPointSummary(pointRows, userHandle)
+      const activeQuotaByScope = new Map()
+      for (const window of quotaWindows) {
+        const key = `${window.workspace}:${window.windowType}`
+        if (!activeQuotaByScope.has(key)) activeQuotaByScope.set(key, window)
+      }
+      const quotaScopes = [...activeQuotaByScope.values()].map((window) => ({
+        id: window.id,
+        workspace: window.workspace,
+        windowType: window.windowType,
+        limit: window.limitUnits,
+        reserved: window.reservedUnits,
+        used: window.usedUnits,
+        released: window.releasedUnits,
+        remaining: Math.max(0, window.limitUnits - window.reservedUnits - window.usedUnits),
+        windowStart: window.windowStart.toISOString(),
+        windowEnd: window.windowEnd.toISOString(),
+        policyVersion: window.policyVersion,
+      }))
+      return {
+        schemaVersion: 1,
+        userHandle,
+        points: pointSummary,
+        creativeCredits: {
+          reserved: creditRows.filter((row) => row.status === 'reserved').reduce((sum, row) => sum + row.reservationAmount, 0),
+          settled: creditRows.reduce((sum, row) => sum + row.settledAmount, 0),
+          refunded: creditRows.reduce((sum, row) => sum + row.refundedAmount, 0),
+          transactions: creditRows.length,
+        },
+        quotas: {
+          limit: quotaScopes.reduce((sum, row) => sum + row.limit, 0),
+          reserved: quotaScopes.reduce((sum, row) => sum + row.reserved, 0),
+          used: quotaScopes.reduce((sum, row) => sum + row.used, 0),
+          released: quotaScopes.reduce((sum, row) => sum + row.released, 0),
+          remaining: quotaScopes.reduce((sum, row) => sum + row.remaining, 0),
+          scopes: quotaScopes,
+        },
+        generatedAt: new Date().toISOString(),
+      }
+    },
+    listLedger: async (userHandle, options = {}) => {
+      const user = await findUserByHandle(userHandle)
+      if (!user) return null
+      const [pointRows, creditRows, quotaRows] = await Promise.all([
+        client.pointLedger.findMany({ where: { userId: user.id }, orderBy: { createdAt: 'desc' }, take: 1001 }),
+        client.creativeCreditLedger.findMany({ where: { actorHandle: userHandle }, orderBy: { createdAt: 'desc' }, take: 1001 }),
+        client.creativeQuotaReservation.findMany({ where: { actorHandle: userHandle }, orderBy: { createdAt: 'desc' }, take: 1001 }),
+      ])
+      const entries = [
+        ...pointRows.map((row) => ({
+          id: `points:${row.id}`,
+          unit: 'points',
+          status: row.status,
+          amount: row.delta,
+          balanceAfter: row.balanceAfter,
+          sourceType: row.sourceType,
+          sourceId: row.sourceId,
+          description: row.description ?? row.sourceType,
+          reasonCode: null,
+          workspace: null,
+          occurredAt: row.createdAt.toISOString(),
+        })),
+        ...creditRows.map((row) => ({
+          id: `creative_credit:${row.id}`,
+          unit: 'creative_credit',
+          status: row.status,
+          amount: row.status === 'reserved' ? -row.reservationAmount : row.status === 'settled' ? -row.settledAmount : row.refundedAmount,
+          balanceAfter: null,
+          sourceType: 'generation',
+          sourceId: row.generationId,
+          description: `Creative ${row.workspace} ${row.mode}`,
+          reasonCode: row.reasonCode,
+          workspace: row.workspace,
+          occurredAt: (row.refundedAt ?? row.cancelledAt ?? row.settledAt ?? row.reservedAt).toISOString(),
+        })),
+        ...quotaRows.map((row) => ({
+          id: `quota_unit:${row.id}`,
+          unit: 'quota_unit',
+          status: row.status,
+          amount: row.status === 'released' ? row.units : -row.units,
+          balanceAfter: null,
+          sourceType: 'generation',
+          sourceId: row.generationId,
+          description: `Creative ${row.workspace} quota`,
+          reasonCode: row.reason,
+          workspace: row.workspace,
+          occurredAt: (row.releasedAt ?? row.committedAt ?? row.reservedAt).toISOString(),
+        })),
+      ]
+      return entries
+    },
+  }
+
   const notifications = {
     list: async (actor, options = {}) => {
       const limit = options.limit ?? 20
@@ -10431,6 +10536,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     posts,
     profiles,
     points,
+    billing,
     notifications,
     providerLifecycleNotifications,
     providerBudgetNotifications,
