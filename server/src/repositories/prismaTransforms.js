@@ -118,6 +118,9 @@ export const getCommentDto = (comment) => ({
   body: comment.body,
   author: comment.author ? buildProfileSummary(comment.author.profile ? comment.author.profile : comment.author) : null,
   parentId: comment.parentId ?? null,
+  moderationState: comment.moderationState ?? 'visible',
+  moderationVersion: comment.moderationVersion ?? 0,
+  moderationUpdatedAt: comment.moderationUpdatedAt?.toISOString?.() ?? null,
   createdAt: comment.createdAt ? comment.createdAt.toISOString() : '',
 })
 
@@ -559,6 +562,9 @@ export const getPostDto = (post) => {
     publishedAt: post.publishedAt?.toISOString?.() ?? null,
     deletedAt: post.deletedAt?.toISOString?.() ?? null,
     deletionReasonCode: post.deletionReasonCode ?? null,
+    moderationState: post.moderationState ?? 'visible',
+    moderationVersion: post.moderationVersion ?? 0,
+    moderationUpdatedAt: post.moderationUpdatedAt?.toISOString?.() ?? null,
   }
 }
 
@@ -570,7 +576,9 @@ export const getPostDetailDto = (post, viewer = null) => {
   const isOwner = Boolean(viewer?.handle && ownerHandle === viewer.handle)
   return {
     ...base,
-    comments: (post.comments ?? []).map(getCommentDto),
+    comments: (post.comments ?? [])
+      .filter((comment) => comment.moderationState !== 'hidden' || canModerate || comment.author?.profile?.handle === viewer?.handle)
+      .map(getCommentDto),
     relatedTasks: metadata.relatedTasks ?? [],
     viewerPermissions: metadata.viewerPermissions ?? {
       canComment: Boolean(viewer),

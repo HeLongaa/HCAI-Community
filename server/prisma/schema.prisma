@@ -83,6 +83,18 @@ enum PostStatus {
   deleted
 }
 
+enum CommunityModerationState {
+  visible
+  hidden
+}
+
+enum CommunityModerationActionType {
+  retain
+  hide
+  uphold
+  restore
+}
+
 enum LedgerStatus {
   pending
   settled
@@ -1397,6 +1409,7 @@ model ModerationCase {
   appeals      ModerationAppeal[]
   safetySignals SafetySignal[]
   queueEvents   ModerationQueueEvent[]
+  communityActions CommunityModerationAction[]
 
   @@index([targetType, targetId, createdAt])
   @@index([affectedUserId, createdAt, id])
@@ -1535,10 +1548,33 @@ model ModerationDecision {
   appeal         ModerationAppeal? @relation("ModerationAppealDecision", fields: [appealId], references: [id], onDelete: Restrict)
   reviewer       User              @relation("ModerationDecisionReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
   appealedBy     ModerationAppeal? @relation("OriginalModerationDecision")
+  communityAction CommunityModerationAction?
 
   @@unique([caseId, stage])
   @@index([reviewerId, createdAt, id])
   @@map("moderation_decisions")
+}
+
+model CommunityModerationAction {
+  id             String                        @id @default(cuid())
+  caseId         String                        @map("case_id")
+  decisionId     String                        @unique @map("decision_id")
+  targetType     ModerationTargetType          @map("target_type")
+  targetId       String                        @map("target_id")
+  action         CommunityModerationActionType
+  fromState      CommunityModerationState      @map("from_state")
+  toState        CommunityModerationState      @map("to_state")
+  reasonCode     String                        @map("reason_code")
+  actorId        String                        @map("actor_id")
+  createdAt      DateTime                      @default(now()) @map("created_at")
+
+  moderationCase ModerationCase     @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  decision       ModerationDecision @relation(fields: [decisionId], references: [id], onDelete: Restrict)
+  actor          User               @relation("CommunityModerationActionActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([caseId, createdAt, id])
+  @@index([targetType, targetId, createdAt, id])
+  @@map("community_moderation_actions")
 }
 
 model ModerationAppeal {
@@ -1602,6 +1638,7 @@ model User {
   submittedModerationEvidence     ModerationEvidence[]            @relation("ModerationEvidenceSubmitter")
   moderationDecisions             ModerationDecision[]            @relation("ModerationDecisionReviewer")
   moderationAppeals               ModerationAppeal[]              @relation("ModerationAppealAppellant")
+  communityModerationActions      CommunityModerationAction[]     @relation("CommunityModerationActionActor")
   safetyRuleVersionsCreated       SafetyRuleVersion[]             @relation("SafetyRuleVersionCreator")
   safetyRuleTransitions           SafetyRuleTransition[]          @relation("SafetyRuleTransitionActor")
   safetySignalsCreated            SafetySignal[]                  @relation("SafetySignalCreator")
@@ -2007,6 +2044,9 @@ model Post {
   publishedAt           DateTime? @map("published_at")
   deletedAt             DateTime? @map("deleted_at")
   deletionReasonCode    String?   @map("deletion_reason_code")
+  moderationState       CommunityModerationState @default(visible) @map("moderation_state")
+  moderationVersion     Int      @default(0) @map("moderation_version")
+  moderationUpdatedAt   DateTime? @map("moderation_updated_at")
   metadata              Json?
   metadataSchemaVersion Int      @default(1) @map("metadata_schema_version")
 
@@ -2014,7 +2054,7 @@ model Post {
   comments Comment[]
   likes    PostLike[]
 
-  @@index([status, createdAt, id])
+  @@index([status, moderationState, createdAt, id])
   @@index([authorId, status, updatedAt, id])
   @@map("posts")
 }
@@ -2025,6 +2065,9 @@ model Comment {
   authorId  String   @map("author_id")
   parentId  String?  @map("parent_id")
   body      String
+  moderationState     CommunityModerationState @default(visible) @map("moderation_state")
+  moderationVersion   Int      @default(0) @map("moderation_version")
+  moderationUpdatedAt DateTime? @map("moderation_updated_at")
   createdAt DateTime @default(now()) @map("created_at")
 
   post    Post      @relation(fields: [postId], references: [id], onDelete: Cascade)

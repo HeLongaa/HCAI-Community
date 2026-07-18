@@ -917,6 +917,9 @@ export const serializePost = (post) => ({
   publishedAt: post.publishedAt ?? null,
   deletedAt: post.deletedAt ?? null,
   deletionReasonCode: post.deletionReasonCode ?? null,
+  moderationState: post.moderationState ?? 'visible',
+  moderationVersion: Number(post.moderationVersion) || 0,
+  moderationUpdatedAt: post.moderationUpdatedAt ?? null,
 })
 
 export const serializePostDetail = (post) => ({

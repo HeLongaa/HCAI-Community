@@ -1,5 +1,6 @@
 const surfaces = new Set([
   'generations', 'image', 'video', 'music', 'chat', 'tasks', 'portfolio', 'admin', 'points', 'assets',
+  'community', 'support',
 ])
 
 const intents = new Set([
@@ -11,7 +12,7 @@ const adminTabs = new Set([
 ])
 
 const mediaStatuses = new Set(['pending', 'scanning', 'review', 'clean', 'rejected', 'all'])
-const idKeys = ['generationId', 'taskId', 'submissionId', 'reviewId', 'assetId']
+const idKeys = ['generationId', 'taskId', 'submissionId', 'reviewId', 'assetId', 'caseId', 'postId', 'commentId']
 
 const safeString = (value, max = 160) => typeof value === 'string' && value.length > 0 && value.length <= max
   ? value
@@ -28,6 +29,7 @@ const defaultSurface = (resourceType) => {
   if (resourceType === 'task') return 'tasks'
   if (resourceType === 'creative_generation') return 'generations'
   if (resourceType === 'media_asset') return 'assets'
+  if (resourceType === 'moderation_case') return 'support'
   if (resourceType === 'admin_review' || resourceType === 'media_scan_alert' || resourceType === 'security_alert') return 'admin'
   if (resourceType === 'point_adjustment_policy' || resourceType === 'media_governance_policy') return 'admin'
   return 'points'
@@ -73,11 +75,11 @@ export const normalizeNotificationTarget = (value, { resourceType, resourceId } 
 export const sanitizeNotificationMetadata = (metadata, resource = {}) => {
   const source = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}
   const safe = {}
-  for (const key of ['sourceKey', 'audience', 'status', 'reasonCode', 'workspace', 'operationType', 'errorCode', 'providerId', 'providerMode', 'providerJobId', 'sourceType', 'nextStatus', 'auditEventId', 'rollbackEventId', 'alertType', 'severity', 'previousSubmissionStatus']) {
+  for (const key of ['sourceKey', 'audience', 'status', 'reasonCode', 'workspace', 'operationType', 'errorCode', 'providerId', 'providerMode', 'providerJobId', 'sourceType', 'nextStatus', 'auditEventId', 'rollbackEventId', 'alertType', 'severity', 'previousSubmissionStatus', 'outcome', 'moderationAction']) {
     const normalized = safeString(source[key])
     if (normalized) safe[key] = normalized
   }
-  for (const key of ['taskId', 'proposalId', 'submissionId', 'adminReviewId', 'reviewId', 'assetId', 'generationId', 'targetGenerationId', 'mutationId', 'mutationType', 'mutationStatus', 'userHandle']) {
+  for (const key of ['taskId', 'proposalId', 'submissionId', 'adminReviewId', 'reviewId', 'assetId', 'generationId', 'targetGenerationId', 'mutationId', 'mutationType', 'mutationStatus', 'userHandle', 'caseId', 'postId', 'commentId']) {
     const normalized = safeString(source[key])
     if (normalized) safe[key] = normalized
   }

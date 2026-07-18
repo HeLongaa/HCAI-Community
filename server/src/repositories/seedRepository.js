@@ -29,6 +29,7 @@ import { createSeedNotificationManagementRepository, isSeedNotificationEnabled }
 import { createSeedNotificationDeliveryRepository } from '../notifications/seedNotificationDeliveryRepository.js'
 import { createSeedModerationCaseRepository } from '../trust/seedModerationCaseRepository.js'
 import { createSeedSafetyOperationsRepository } from '../trust/seedSafetyOperationsRepository.js'
+import { communityModerationTransition } from '../trust/communityModeration.js'
 import { applyPublishedTaskRule } from '../tasks/taskRuleRuntime.js'
 import {
   appendSeedAuditIntegrity,
@@ -900,8 +901,9 @@ const getPostComments = (postId) => ensurePostComments(Number(postId))
 const getPostLikes = (postId) => ensurePostLikes(Number(postId))
 
 const postStatus = (post) => post?.status ?? 'published'
+const postModerationState = (post) => post?.moderationState ?? 'visible'
 const postOwnerHandle = (post) => getHandle(post?.author)
-const canViewPost = (post, viewer) => postStatus(post) === 'published'
+const canViewPost = (post, viewer) => (postStatus(post) === 'published' && postModerationState(post) === 'visible')
   || Boolean(viewer && (postOwnerHandle(post) === viewer.handle || hasPermission(viewer, 'post:moderate')))
 
 const buildViewerPermissions = (viewer, post = null) => ({
@@ -2577,10 +2579,67 @@ export const createSeedRepository = () => {
   modelGovernance = createSeedModelGovernanceRepository({ modelControl, modelRouting, modelEvaluation, providerLegal, releaseChanges })
   const providerOperations = createSeedProviderOperationsRepository({ modelControl })
   const observability = createSeedObservabilityRepository()
+  const moderationCaseTarget = (record, surface = 'support') => ({
+    surface,
+    intent: surface === 'admin' ? 'review' : 'view',
+    caseId: record.id,
+    ...(record.targetType === 'post' ? { postId: record.targetId } : {}),
+    ...(record.targetType === 'comment' ? { commentId: record.targetId } : {}),
+  })
+  const notifyTrustReviewers = (actor, payload) => createNotificationsForHandles(
+    seedStore.demoAccounts
+      .filter((account) => hasPermission(account, 'admin:trust:read') && account.handle !== actor?.handle)
+      .map((account) => account.handle),
+    payload,
+  )
+  const notifyCommunityReportCreated = (record, reporter) => {
+    if (!['post', 'comment'].includes(record.targetType)) return
+    notifyTrustReviewers(reporter, {
+      type: 'community.report_submitted', title: 'Community report requires review', body: `${record.targetType} report was added to the Trust and Safety queue.`,
+      resourceType: 'moderation_case', resourceId: record.id,
+      metadata: { status: 'open', caseId: record.id, reasonCode: 'community_report_submitted', target: moderationCaseTarget(record, 'admin') }, dedupeUnread: true,
+    })
+  }
+  const notifyCommunityAppealCreated = (record, appeal, appellant) => {
+    if (!['post', 'comment'].includes(record.targetType)) return
+    notifyTrustReviewers(appellant, {
+      type: 'community.appeal_submitted', title: 'Community moderation appeal requires review', body: `An affected community author appealed case ${record.id}.`,
+      resourceType: 'moderation_case', resourceId: record.id,
+      metadata: { status: 'appealed', caseId: record.id, reasonCode: appeal.reasonCode, target: moderationCaseTarget(record, 'admin') }, dedupeUnread: true,
+    })
+  }
+  const applyCommunityModerationDecision = (record, decision, reviewer) => {
+    if (!['post', 'comment'].includes(record.targetType)) return
+    const target = record.targetType === 'post'
+      ? getPostById(record.targetId)
+      : [...postCommentsByPostId.values()].flat().find((item) => item.id === record.targetId)
+    if (!target) throw new HttpError(409, 'COMMUNITY_MODERATION_TARGET_MISSING', 'Community moderation target no longer exists')
+    const transition = communityModerationTransition({ targetType: record.targetType, currentState: target.moderationState ?? 'visible', stage: decision.stage, outcome: decision.outcome })
+    const now = new Date().toISOString()
+    target.moderationState = transition.toState
+    target.moderationVersion = (target.moderationVersion ?? 0) + 1
+    target.moderationUpdatedAt = now
+    const action = {
+      id: `community-moderation-${randomUUID()}`, caseId: record.id, decisionId: decision.id, targetType: record.targetType, targetId: record.targetId,
+      action: transition.action, fromState: transition.fromState, toState: transition.toState, reasonCode: decision.reasonCode, actorId: reviewer.id, createdAt: now,
+    }
+    record.communityActions.push(action)
+    recordAudit(reviewer, 'community.content.moderated', record.targetType, record.targetId, { caseId: record.id, decisionId: decision.id, moderationAction: action.action, fromState: action.fromState, toState: action.toState, reasonCode: action.reasonCode })
+    createNotificationsForHandles([record.affectedUser?.handle, record.report?.reporter?.handle], {
+      type: decision.stage === 'appeal' ? 'community.appeal_decided' : 'community.moderation_decided',
+      title: decision.stage === 'appeal' ? 'Community appeal decided' : 'Community report decided',
+      body: action.toState === 'hidden' ? 'Reported community content is no longer publicly visible.' : decision.stage === 'appeal' && action.action === 'restore' ? 'Community content was restored after independent appeal review.' : 'A Trust and Safety decision was recorded for the community report.',
+      resourceType: 'moderation_case', resourceId: record.id,
+      metadata: { status: decision.stage === 'appeal' ? 'closed' : 'resolved', caseId: record.id, reasonCode: decision.reasonCode, outcome: decision.outcome, moderationAction: action.action, target: moderationCaseTarget(record) }, dedupeUnread: true,
+    })
+  }
   const moderationCases = createSeedModerationCaseRepository({
     getUserById: getAccountById,
     recordAudit,
-    resolveTarget: (targetType, targetId) => {
+    onReportCreated: notifyCommunityReportCreated,
+    onAppealCreated: notifyCommunityAppealCreated,
+    onDecisionCreated: applyCommunityModerationDecision,
+    resolveTarget: (targetType, targetId, actor) => {
       if (targetType === 'user') {
         const account = getAccountById(targetId) ?? getAccountByHandle(targetId)
         return account ? { affectedUser: account, contentHash: createHash('sha256').update(`user:${account.id}`).digest('hex') } : null
@@ -2588,12 +2647,15 @@ export const createSeedRepository = () => {
       if (targetType === 'post') {
         const post = getPostById(targetId)
         const account = post ? getAccountByHandle(postOwnerHandle(post)) : null
-        return post && account ? { affectedUser: account, contentHash: createHash('sha256').update(`post:${post.id}:${post.version ?? 1}`).digest('hex') } : null
+        return post && account && canViewPost(post, actor) ? { affectedUser: account, contentHash: createHash('sha256').update(`post:${post.id}:${post.version ?? 1}`).digest('hex') } : null
       }
       if (targetType === 'comment') {
-        const comment = [...postCommentsByPostId.values()].flat().find((item) => item.id === targetId)
+        const match = [...postCommentsByPostId.entries()].map(([postId, comments]) => ({ postId, comment: comments.find((item) => item.id === targetId) })).find((item) => item.comment)
+        const comment = match?.comment ?? null
+        const parentPost = match ? getPostById(match.postId) : null
         const account = comment ? getAccountByHandle(comment.author?.handle) : null
-        return comment && account ? { affectedUser: account, contentHash: createHash('sha256').update(`comment:${comment.id}:${comment.createdAt}`).digest('hex') } : null
+        const actorOwnsComment = account?.id === actor.id
+        return comment && account && parentPost && (actorOwnsComment || (canViewPost(parentPost, actor) && comment.moderationState !== 'hidden')) ? { affectedUser: account, contentHash: createHash('sha256').update(`comment:${comment.id}:${comment.createdAt}`).digest('hex') } : null
       }
       if (targetType === 'media_asset') {
         const asset = mediaAssetsById.get(String(targetId)) ?? null
@@ -3439,7 +3501,7 @@ export const createSeedRepository = () => {
   posts: {
     list: (options = {}) => {
       const filtered = seedStore.posts.filter((post) => {
-        if (postStatus(post) !== 'published') return false
+        if (postStatus(post) !== 'published' || postModerationState(post) === 'hidden') return false
         if (options.category && post.category !== options.category) return false
         if (options.tag && post.tag !== options.tag) return false
         return true
@@ -3462,7 +3524,7 @@ export const createSeedRepository = () => {
       }
       return serializePostDetail({
         ...post,
-        comments: getPostComments(id),
+        comments: getPostComments(id).filter((comment) => comment.moderationState !== 'hidden' || hasPermission(viewer, 'post:moderate') || comment.author?.handle === viewer?.handle),
         relatedTasks: [],
         viewerPermissions: buildViewerPermissions(viewer, post),
       })
@@ -3509,6 +3571,9 @@ export const createSeedRepository = () => {
         publishedAt: payload.status === 'published' ? now : null,
         deletedAt: null,
         deletionReasonCode: null,
+        moderationState: 'visible',
+        moderationVersion: 0,
+        moderationUpdatedAt: null,
       }
       seedStore.posts.push(post)
       seedStore.postById.set(Number(id), post)
@@ -3567,7 +3632,7 @@ export const createSeedRepository = () => {
     },
     comment: (id, payload, actor) => {
       const post = getPostById(id)
-      if (!post || postStatus(post) !== 'published') {
+      if (!post || postStatus(post) !== 'published' || postModerationState(post) === 'hidden') {
         return null
       }
       const author = getAccountByHandle(actor.handle)
@@ -3576,7 +3641,7 @@ export const createSeedRepository = () => {
       }
       const comments = ensurePostComments(Number(id))
       const comment = {
-        id: `comment-${comments.length + 1}`,
+        id: `comment-${randomUUID()}`,
         body: payload.body,
         author: {
           handle: author.handle,
@@ -3586,6 +3651,9 @@ export const createSeedRepository = () => {
           initials: author.displayName.slice(0, 2).toUpperCase(),
         },
         parentId: payload.parentId ?? null,
+        moderationState: 'visible',
+        moderationVersion: 0,
+        moderationUpdatedAt: null,
         createdAt: new Date().toISOString(),
       }
       comments.unshift(comment)
@@ -3603,7 +3671,7 @@ export const createSeedRepository = () => {
     },
     like: (id, actor) => {
       const post = getPostById(id)
-      if (!post || postStatus(post) !== 'published') {
+      if (!post || postStatus(post) !== 'published' || postModerationState(post) === 'hidden') {
         return null
       }
       const likes = getPostLikes(id)
@@ -3623,7 +3691,7 @@ export const createSeedRepository = () => {
     },
     unlike: (id, actor) => {
       const post = getPostById(id)
-      if (!post || postStatus(post) !== 'published') {
+      if (!post || postStatus(post) !== 'published' || postModerationState(post) === 'hidden') {
         return null
       }
       const likes = getPostLikes(id)
@@ -3643,7 +3711,7 @@ export const createSeedRepository = () => {
     },
     convertToTask: (id, payload, actor) => {
       const post = getPostById(id)
-      if (!post || postStatus(post) !== 'published') {
+      if (!post || postStatus(post) !== 'published' || postModerationState(post) === 'hidden') {
         return null
       }
       const ownerHandle = getHandle(post.author)

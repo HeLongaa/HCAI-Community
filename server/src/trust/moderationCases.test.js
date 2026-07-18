@@ -10,6 +10,7 @@ import {
   parseModerationReportRequest,
   priorityForReportCategory,
 } from './moderationCases.js'
+import { communityModerationTransition } from './communityModeration.js'
 import {
   deriveQueueState,
   moderationBulkTargetHash,
@@ -43,6 +44,13 @@ test('moderation case state is derived only from append-only facts', () => {
   assert.equal(moderationCaseState(record).status, 'appealed')
   record.decisions.push({ id: 'decision-2', stage: 'appeal', createdAt: new Date().toISOString() })
   assert.equal(moderationCaseState(record).status, 'closed')
+})
+
+test('community moderation decisions derive hide and independent restore projections', () => {
+  assert.deepEqual(communityModerationTransition({ targetType: 'post', currentState: 'visible', stage: 'original', outcome: 'remove_content' }), { action: 'hide', fromState: 'visible', toState: 'hidden' })
+  assert.deepEqual(communityModerationTransition({ targetType: 'post', currentState: 'hidden', stage: 'appeal', outcome: 'uphold' }), { action: 'uphold', fromState: 'hidden', toState: 'hidden' })
+  assert.deepEqual(communityModerationTransition({ targetType: 'comment', currentState: 'hidden', stage: 'appeal', outcome: 'overturn' }), { action: 'restore', fromState: 'hidden', toState: 'visible' })
+  assert.equal(communityModerationTransition({ targetType: 'user', currentState: 'visible', stage: 'original', outcome: 'warn' }), null)
 })
 
 test('safety operation parsers bound rules, signals, queue transitions, and bulk confirmation targets', () => {

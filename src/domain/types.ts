@@ -208,6 +208,21 @@ export type Post = {
   updatedAt?: string | null
   publishedAt?: string | null
   deletedAt?: string | null
+  moderationState?: 'visible' | 'hidden'
+  moderationVersion?: number
+  moderationUpdatedAt?: string | null
+  comments?: CommunityComment[]
+}
+
+export type CommunityComment = {
+  id: string
+  body: string
+  author: string
+  parentId: string | null
+  moderationState: 'visible' | 'hidden'
+  moderationVersion: number
+  moderationUpdatedAt: string | null
+  createdAt: string
 }
 
 export type CommunityPostDraft = {

@@ -51,6 +51,7 @@
     { "model": "ModerationCase", "domain": "trust-safety-risk", "policy": "append_only", "hardDelete": false },
     { "model": "ModerationEvidence", "domain": "trust-safety-risk", "policy": "append_only", "hardDelete": false },
     { "model": "ModerationDecision", "domain": "trust-safety-risk", "policy": "append_only", "hardDelete": false },
+    { "model": "CommunityModerationAction", "domain": "trust-safety-risk", "policy": "append_only", "hardDelete": false },
     { "model": "ModerationAppeal", "domain": "trust-safety-risk", "policy": "append_only", "hardDelete": false },
     { "model": "SafetyRuleVersion", "domain": "trust-safety-risk", "policy": "immutable_evidence", "hardDelete": false },
     { "model": "SafetyRuleTransition", "domain": "trust-safety-risk", "policy": "append_only", "hardDelete": false },

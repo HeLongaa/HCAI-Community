@@ -8580,6 +8580,61 @@ button.video-history-row.active {
   gap: 8px;
 }
 
+.community-report-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.community-report-head,
+.community-report-fields,
+.comment-with-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.community-report-head {
+  justify-content: space-between;
+}
+
+.community-report-head > div,
+.community-report-fields label {
+  display: grid;
+  gap: 5px;
+}
+
+.community-report-head span,
+.community-report-fields label > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.community-report-fields .wide {
+  flex: 1;
+}
+
+.community-report-fields textarea {
+  min-height: 88px;
+}
+
+.comment-with-actions {
+  justify-content: space-between;
+}
+
+.comment-with-actions > .comment {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .community-report-fields {
+    display: grid;
+  }
+}
+
 .compact-action {
   min-width: 0;
   min-height: 42px;

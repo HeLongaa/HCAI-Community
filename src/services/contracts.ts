@@ -295,6 +295,7 @@ export type ModerationCaseDto = {
   evidence: Array<{ id: string; evidenceType: string; referenceType: string; referenceId: string; contentHash: string; reasonCode: string; submittedBy: ModerationUserSummary | null; createdAt: string }>
   decisions: Array<{ id: string; stage: ModerationDecisionStage; outcome: ModerationDecisionOutcome; reasonCode: string; note: string; reviewer: ModerationUserSummary | null; createdAt: string }>
   appeals: Array<{ id: string; decisionId: string; reasonCode: string; statement?: string; appellant: ModerationUserSummary | null; createdAt: string }>
+  communityActions: Array<{ id: string; decisionId: string; targetType: 'post' | 'comment'; targetId: string; action: 'retain' | 'hide' | 'uphold' | 'restore'; fromState: 'visible' | 'hidden'; toState: 'visible' | 'hidden'; reasonCode: string; actorId: string; createdAt: string }>
 }
 
 export type ModerationCaseMetrics = { total: number; open: number; resolved: number; appealed: number; closed: number; critical: number }
@@ -2283,6 +2284,21 @@ export type ApiPost = {
   publishedAt: string | null
   deletedAt: string | null
   deletionReasonCode: string | null
+  moderationState: 'visible' | 'hidden'
+  moderationVersion: number
+  moderationUpdatedAt: string | null
+  comments?: ApiComment[]
+}
+
+export type ApiComment = {
+  id: string
+  body: string
+  author: ApiProfileSummary | { handle: string } | null
+  parentId: string | null
+  moderationState: 'visible' | 'hidden'
+  moderationVersion: number
+  moderationUpdatedAt: string | null
+  createdAt: string
 }
 
 export type PostListQuery = {

@@ -8,6 +8,7 @@ const includeCase = {
   evidence: { include: { submittedBy: { include: { profile: true } } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
   decisions: { include: { reviewer: { include: { profile: true } } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
   appeals: { include: { appellant: { include: { profile: true } } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+  communityActions: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
 }
 
 const targetModel = {
@@ -18,19 +19,26 @@ const targetModel = {
   creative_generation: 'creativeGeneration',
 }
 
-export const createPrismaModerationCaseRepository = (client, { recordAudit }) => {
+export const createPrismaModerationCaseRepository = (client, {
+  recordAudit,
+  onReportCreated = async () => {},
+  onAppealCreated = async () => {},
+  onDecisionCreated = async () => {},
+}) => {
   const resolveActor = (db, actor) => db.user.findFirst({ where: actor.id ? { id: actor.id } : { profile: { handle: actor.handle } }, include: { profile: true } })
 
-  const resolveTarget = async (db, targetType, targetId) => {
+  const resolveTarget = async (db, targetType, targetId, actor) => {
     if (targetType === 'user') {
       const user = await db.user.findFirst({ where: { OR: [{ id: targetId }, { profile: { handle: targetId } }] }, include: { profile: true } })
       return user ? { affectedUserId: user.id, contentHash: createHash('sha256').update(`user:${user.id}:${user.accountVersion}`).digest('hex') } : null
     }
     const model = targetModel[targetType]
     if (!model) return null
-    const row = await db[model].findUnique({ where: { id: targetId } })
+    const row = await db[model].findUnique({ where: { id: targetId }, ...(targetType === 'comment' ? { include: { post: true } } : {}) })
     if (!row) return null
     const ownerId = row.authorId ?? row.userId ?? row.ownerId ?? null
+    if (targetType === 'post' && ownerId !== actor.id && (row.status !== 'published' || row.moderationState === 'hidden')) return null
+    if (targetType === 'comment' && ownerId !== actor.id && (row.moderationState === 'hidden' || row.post?.status !== 'published' || row.post?.moderationState === 'hidden')) return null
     return { affectedUserId: ownerId, contentHash: createHash('sha256').update(`${targetType}:${targetId}:${row.updatedAt?.toISOString?.() ?? row.createdAt?.toISOString?.() ?? ''}`).digest('hex') }
   }
 
@@ -43,7 +51,7 @@ export const createPrismaModerationCaseRepository = (client, { recordAudit }) =>
     createReport: async (payload, actor) => client.$transaction(async (transaction) => {
       const reporter = await resolveActor(transaction, actor)
       if (!reporter) throw new HttpError(404, 'USER_NOT_FOUND', 'Reporter not found')
-      const target = await resolveTarget(transaction, payload.targetType, payload.targetId)
+      const target = await resolveTarget(transaction, payload.targetType, payload.targetId, reporter)
       if (!target) throw new HttpError(404, 'MODERATION_TARGET_NOT_FOUND', 'Moderation target not found')
       const sourceKey = moderationSourceKey({ actorId: reporter.id, ...payload })
       const duplicate = await transaction.report.findUnique({ where: { sourceKey }, include: { moderationCase: { include: includeCase } } })
@@ -63,6 +71,7 @@ export const createPrismaModerationCaseRepository = (client, { recordAudit }) =>
         include: includeCase,
       })
       await recordAudit({ actor: reporter, action: 'trust.report.created', resourceType: 'moderation_case', resourceId: row.id, metadata: { reportId, targetType: payload.targetType, category: payload.category, priority: payload.priority } }, transaction)
+      await onReportCreated(transaction, row, reporter)
       return { duplicate: false, item: serializeModerationCase(row, { includeStatement: true }) }
     }, { isolationLevel: 'Serializable' }),
     findForUser: async (id, actor) => {
@@ -92,6 +101,7 @@ export const createPrismaModerationCaseRepository = (client, { recordAudit }) =>
       if (Date.now() > new Date(original.createdAt).getTime() + moderationAppealWindowMs) throw new HttpError(409, 'MODERATION_APPEAL_WINDOW_CLOSED', 'The appeal window has closed')
       const appeal = await transaction.moderationAppeal.create({ data: { id: `appeal-${randomUUID()}`, caseId: record.id, decisionId: original.id, appellantId: appellant.id, reasonCode: payload.reasonCode, statement: payload.statement } })
       await recordAudit({ actor: appellant, action: 'trust.appeal.created', resourceType: 'moderation_appeal', resourceId: appeal.id, metadata: { caseId: record.id, decisionId: original.id, reasonCode: appeal.reasonCode } }, transaction)
+      await onAppealCreated(transaction, record, appeal, appellant)
       return serializeModerationCase(await load(transaction, id), { includeStatement: true })
     }, { isolationLevel: 'Serializable' }),
     addEvidence: async (id, payload, actor) => client.$transaction(async (transaction) => {
@@ -119,6 +129,7 @@ export const createPrismaModerationCaseRepository = (client, { recordAudit }) =>
       }
       const decision = await transaction.moderationDecision.create({ data: { id: `decision-${randomUUID()}`, caseId: record.id, appealId: payload.stage === 'appeal' ? appeal.id : null, reviewerId: reviewer.id, stage: payload.stage, outcome: payload.outcome, reasonCode: payload.reasonCode, note: payload.note } })
       await recordAudit({ actor: reviewer, action: 'trust.decision.created', resourceType: 'moderation_decision', resourceId: decision.id, metadata: { caseId: record.id, stage: decision.stage, outcome: decision.outcome, reasonCode: decision.reasonCode } }, transaction)
+      await onDecisionCreated(transaction, record, decision, reviewer)
       return serializeModerationCase(await load(transaction, id), { includeStatement: true })
     }, { isolationLevel: 'Serializable' }),
     findAdmin: async (id) => {

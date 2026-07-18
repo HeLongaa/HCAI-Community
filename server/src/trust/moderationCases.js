@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { HttpError } from '../common/errors/httpError.js'
 import { validationFailed } from '../common/http/validation.js'
+import { serializeCommunityModerationAction } from './communityModeration.js'
 
 export const moderationTargetTypes = Object.freeze(['user', 'post', 'comment', 'media_asset', 'creative_generation'])
 export const moderationReportCategories = Object.freeze(['harassment', 'hate', 'sexual', 'violence', 'self_harm', 'child_safety', 'impersonation', 'spam', 'fraud', 'privacy', 'copyright', 'other'])
@@ -147,6 +148,7 @@ export const serializeModerationCase = (record, { includeStatement = false } = {
     evidence: (record.evidence ?? []).map((item) => ({ id: item.id, evidenceType: item.evidenceType, referenceType: item.referenceType, referenceId: item.referenceId, contentHash: item.contentHash, reasonCode: item.reasonCode, submittedBy: userSummary(item.submittedBy), createdAt: new Date(item.createdAt).toISOString() })),
     decisions: (record.decisions ?? []).map((item) => ({ id: item.id, stage: item.stage, outcome: item.outcome, reasonCode: item.reasonCode, note: item.note, reviewer: userSummary(item.reviewer), createdAt: new Date(item.createdAt).toISOString() })),
     appeals: (record.appeals ?? []).map((item) => ({ id: item.id, decisionId: item.decisionId, reasonCode: item.reasonCode, ...(includeStatement ? { statement: item.statement } : {}), appellant: userSummary(item.appellant), createdAt: new Date(item.createdAt).toISOString() })),
+    communityActions: (record.communityActions ?? []).map(serializeCommunityModerationAction),
   }
 }
 
