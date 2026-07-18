@@ -6,6 +6,11 @@ export const notificationDeliveryStatuses = Object.freeze([
   'queued', 'processing', 'retry_scheduled', 'sent', 'suppressed', 'dead_lettered', 'cancelled',
 ])
 
+export const notificationChannelDefaults = Object.freeze({
+  in_app: Object.freeze({ enabled: true, deliveryRateTargetBps: 9950, failureRateAlertThresholdBps: 50, latencyTargetMs: 60_000, maxAttempts: 1, retryBackoffSeconds: 60 }),
+  email: Object.freeze({ enabled: true, deliveryRateTargetBps: 9500, failureRateAlertThresholdBps: 500, latencyTargetMs: 300_000, maxAttempts: 3, retryBackoffSeconds: 60 }),
+})
+
 const terminalStatuses = new Set(['sent', 'suppressed', 'dead_lettered', 'cancelled'])
 const reasonCodePattern = /^[a-z0-9][a-z0-9._:-]{0,79}$/
 const errorCodePattern = /^[A-Z0-9][A-Z0-9_:-]{0,79}$/
@@ -57,12 +62,138 @@ export const parseNotificationDeliveryTransition = (raw = {}) => {
   return { expectedVersion: integer(raw.expectedVersion, 'expectedVersion', 1, Number.MAX_SAFE_INTEGER), reasonCode }
 }
 
+const parseDate = (value, name, fallback) => {
+  if (value == null || value === '') return fallback
+  const parsed = new Date(String(value))
+  if (!Number.isFinite(parsed.getTime())) throw validationFailed(`${name} must be an ISO date-time`)
+  return parsed
+}
+
+export const parseNotificationDeliveryMetricsQuery = (query = {}, now = new Date()) => {
+  const dateTo = parseDate(query.dateTo, 'dateTo', now)
+  const dateFrom = parseDate(query.dateFrom, 'dateFrom', new Date(dateTo.getTime() - 30 * 24 * 60 * 60 * 1000))
+  if (dateFrom > dateTo) throw validationFailed('dateFrom must not be after dateTo')
+  if (dateTo.getTime() - dateFrom.getTime() > 366 * 24 * 60 * 60 * 1000) throw validationFailed('metrics window cannot exceed 366 days')
+  const channel = optionalText(query.channel, 'channel', 40)
+  if (channel && !notificationDeliveryChannels.includes(channel)) throw validationFailed('channel is invalid')
+  return {
+    dateFrom,
+    dateTo,
+    channel,
+    notificationType: optionalText(query.notificationType, 'notificationType', 120),
+  }
+}
+
+export const parseNotificationChannel = (value) => {
+  const channel = String(value ?? '').trim().toLowerCase()
+  if (!notificationDeliveryChannels.includes(channel)) throw validationFailed('channel is invalid')
+  return channel
+}
+
+export const parseNotificationChannelConfigUpdate = (channelValue, raw = {}) => {
+  const channel = parseNotificationChannel(channelValue)
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw validationFailed('payload must be an object')
+  const supported = ['enabled', 'deliveryRateTargetBps', 'failureRateAlertThresholdBps', 'latencyTargetMs', 'maxAttempts', 'retryBackoffSeconds', 'expectedVersion', 'reasonCode']
+  const unsupported = Object.keys(raw).filter((key) => !supported.includes(key))
+  if (unsupported.length) throw validationFailed(`payload contains unsupported fields: ${unsupported.join(', ')}`)
+  if (typeof raw.enabled !== 'boolean') throw validationFailed('enabled must be a boolean')
+  const reasonCode = optionalText(raw.reasonCode, 'reasonCode', 80)
+  if (!reasonCode || !reasonCodePattern.test(reasonCode)) throw validationFailed('reasonCode must be a stable lowercase identifier')
+  const parsed = {
+    channel,
+    enabled: raw.enabled,
+    deliveryRateTargetBps: integer(raw.deliveryRateTargetBps, 'deliveryRateTargetBps', 0, 10_000),
+    failureRateAlertThresholdBps: integer(raw.failureRateAlertThresholdBps, 'failureRateAlertThresholdBps', 0, 10_000),
+    latencyTargetMs: integer(raw.latencyTargetMs, 'latencyTargetMs', 1, 86_400_000),
+    maxAttempts: integer(raw.maxAttempts, 'maxAttempts', 1, 20),
+    retryBackoffSeconds: integer(raw.retryBackoffSeconds, 'retryBackoffSeconds', 1, 86_400),
+    expectedVersion: integer(raw.expectedVersion, 'expectedVersion', 1, Number.MAX_SAFE_INTEGER),
+    reasonCode,
+  }
+  if (channel === 'in_app' && (!parsed.enabled || parsed.maxAttempts !== 1)) {
+    throw validationFailed('in_app is a required core channel and must remain enabled with maxAttempts=1')
+  }
+  return parsed
+}
+
+export const parseNotificationChannelRollback = (channelValue, raw = {}) => {
+  const channel = parseNotificationChannel(channelValue)
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw validationFailed('payload must be an object')
+  const unsupported = Object.keys(raw).filter((key) => !['revisionNumber', 'expectedVersion', 'reasonCode'].includes(key))
+  if (unsupported.length) throw validationFailed(`payload contains unsupported fields: ${unsupported.join(', ')}`)
+  const reasonCode = optionalText(raw.reasonCode, 'reasonCode', 80)
+  if (!reasonCode || !reasonCodePattern.test(reasonCode)) throw validationFailed('reasonCode must be a stable lowercase identifier')
+  return {
+    channel,
+    revisionNumber: integer(raw.revisionNumber, 'revisionNumber', 1, Number.MAX_SAFE_INTEGER),
+    expectedVersion: integer(raw.expectedVersion, 'expectedVersion', 1, Number.MAX_SAFE_INTEGER),
+    reasonCode,
+  }
+}
+
 export const normalizeDeliveryErrorCode = (value, fallback = 'DELIVERY_FAILED') => {
   const normalized = String(value ?? fallback).trim().toUpperCase().replace(/[^A-Z0-9_:-]/g, '_').slice(0, 80)
   return errorCodePattern.test(normalized) ? normalized : fallback
 }
 
 const iso = (value) => value?.toISOString?.() ?? value ?? null
+
+export const notificationChannelConfigRevisionDto = (row) => ({
+  id: row.id,
+  channel: row.channel,
+  revisionNumber: row.revisionNumber,
+  enabled: row.enabled,
+  deliveryRateTargetBps: row.deliveryRateTargetBps,
+  failureRateAlertThresholdBps: row.failureRateAlertThresholdBps,
+  latencyTargetMs: row.latencyTargetMs,
+  maxAttempts: row.maxAttempts,
+  retryBackoffSeconds: row.retryBackoffSeconds,
+  reasonCode: row.reasonCode,
+  actorRef: row.actorRef,
+  createdAt: iso(row.createdAt),
+})
+
+export const notificationChannelConfigDto = (row, source = process.env) => {
+  const environment = buildNotificationDeliveryConfig(source)
+  const environmentAvailable = row.channel === 'in_app' || environment.email.available
+  return {
+    id: row.id,
+    channel: row.channel,
+    enabled: row.enabled,
+    environmentAvailable,
+    effectiveEnabled: row.enabled && environmentAvailable,
+    deliveryRateTargetBps: row.deliveryRateTargetBps,
+    failureRateAlertThresholdBps: row.failureRateAlertThresholdBps,
+    latencyTargetMs: row.latencyTargetMs,
+    maxAttempts: row.maxAttempts,
+    retryBackoffSeconds: row.retryBackoffSeconds,
+    activeRevisionNumber: row.activeRevisionNumber,
+    version: row.version,
+    reasonCode: row.reasonCode,
+    updatedByRef: row.updatedByRef,
+    createdAt: iso(row.createdAt),
+    updatedAt: iso(row.updatedAt),
+  }
+}
+
+export const defaultNotificationChannelConfigs = (source = process.env, now = new Date()) => {
+  const environment = buildNotificationDeliveryConfig(source)
+  return notificationDeliveryChannels.map((channel) => ({
+    id: `notification-channel-${channel.replace('_', '-')}`,
+    channel,
+    ...notificationChannelDefaults[channel],
+    ...(channel === 'email' ? {
+      maxAttempts: environment.maxAttempts,
+      retryBackoffSeconds: environment.retryBackoffSeconds,
+    } : {}),
+    activeRevisionNumber: 1,
+    version: 1,
+    reasonCode: 'compatibility_default',
+    updatedByRef: 'system',
+    createdAt: now,
+    updatedAt: now,
+  }))
+}
 
 export const notificationDeliveryAttemptDto = (row) => ({
   id: row.id,
@@ -154,6 +285,89 @@ export const buildNotificationDeliveryConfig = (source = process.env) => {
     maxAttempts: positiveInteger(source.NOTIFICATION_DELIVERY_MAX_ATTEMPTS, 3, 20),
     retryBackoffSeconds: positiveInteger(source.NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS, 60, 86400),
     leaseSeconds: positiveInteger(source.NOTIFICATION_DELIVERY_LEASE_SECONDS, 60, 900),
+  }
+}
+
+const rateBps = (value, denominator) => denominator > 0 ? Math.round(value / denominator * 10_000) : 0
+const rounded = (value) => value == null || !Number.isFinite(value) ? null : Math.round(value * 100) / 100
+const percentile = (values, fraction) => values.length ? values[Math.min(values.length - 1, Math.ceil(values.length * fraction) - 1)] : null
+
+const metricGroup = (rows, control = null) => {
+  const sent = rows.filter((row) => row.status === 'sent').length
+  const failed = rows.filter((row) => row.status === 'dead_lettered').length
+  const suppressed = rows.filter((row) => row.status === 'suppressed').length
+  const cancelled = rows.filter((row) => row.status === 'cancelled').length
+  const pending = rows.filter((row) => ['queued', 'processing', 'retry_scheduled'].includes(row.status)).length
+  const terminalEligible = sent + failed
+  const latencies = rows.flatMap((row) => {
+    if (row.status !== 'sent' || !row.sentAt || !row.createdAt) return []
+    const latency = new Date(row.sentAt).getTime() - new Date(row.createdAt).getTime()
+    return Number.isFinite(latency) && latency >= 0 ? [latency] : []
+  }).sort((left, right) => left - right)
+  const deliveryRateBps = rateBps(sent, terminalEligible)
+  const failureRateBps = rateBps(failed, terminalEligible)
+  const p95LatencyMs = percentile(latencies, 0.95)
+  const evaluable = terminalEligible > 0
+  const breaches = control ? {
+    deliveryRate: evaluable && deliveryRateBps < control.deliveryRateTargetBps,
+    failureRate: evaluable && failureRateBps > control.failureRateAlertThresholdBps,
+    latency: p95LatencyMs != null && p95LatencyMs > control.latencyTargetMs,
+  } : { deliveryRate: false, failureRate: false, latency: false }
+  return {
+    total: rows.length,
+    sent,
+    failed,
+    suppressed,
+    cancelled,
+    pending,
+    terminalEligible,
+    deliveryRateBps,
+    failureRateBps,
+    latency: {
+      eligible: latencies.length,
+      averageMs: rounded(latencies.length ? latencies.reduce((sum, value) => sum + value, 0) / latencies.length : null),
+      p50Ms: percentile(latencies, 0.5),
+      p95Ms: p95LatencyMs,
+      maxMs: latencies.length ? latencies.at(-1) : null,
+    },
+    evaluable,
+    breaches: { ...breaches, any: Object.values(breaches).some(Boolean) },
+  }
+}
+
+export const buildNotificationDeliveryBusinessMetrics = ({ rows = [], controls = [], options, source = process.env, now = new Date() }) => {
+  const controlByChannel = new Map(controls.map((control) => [control.channel, notificationChannelConfigDto(control, source)]))
+  const from = options.dateFrom.getTime()
+  const to = options.dateTo.getTime()
+  const scoped = rows.filter((row) => {
+    const createdAt = new Date(row.createdAt).getTime()
+    return createdAt >= from && createdAt <= to
+      && (!options.channel || row.channel === options.channel)
+      && (!options.notificationType || row.notification?.type === options.notificationType)
+  })
+  const byChannel = notificationDeliveryChannels
+    .filter((channel) => !options.channel || channel === options.channel)
+    .map((channel) => ({
+      channel,
+      config: controlByChannel.get(channel) ?? null,
+      ...metricGroup(scoped.filter((row) => row.channel === channel), controlByChannel.get(channel)),
+    }))
+  return {
+    schemaVersion: 1,
+    window: {
+      dateFrom: options.dateFrom.toISOString(),
+      dateTo: options.dateTo.toISOString(),
+      channel: options.channel,
+      notificationType: options.notificationType,
+      generatedAt: now.toISOString(),
+    },
+    overall: metricGroup(scoped),
+    byChannel,
+    thresholdBreaches: byChannel.filter((item) => item.breaches.any).map((item) => item.channel),
+    runtime: {
+      emailEnvironmentAvailable: buildNotificationDeliveryConfig(source).email.available,
+      workerEnabled: buildNotificationDeliveryConfig(source).workerEnabled,
+    },
   }
 }
 

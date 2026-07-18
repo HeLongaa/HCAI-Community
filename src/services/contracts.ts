@@ -2540,12 +2540,52 @@ export type NotificationDelivery = {
 }
 
 export type NotificationDeliveryMetrics = {
+  schemaVersion: 1
+  window: { dateFrom: string; dateTo: string; channel: NotificationDelivery['channel'] | null; notificationType: string | null; generatedAt: string }
+  overall: NotificationDeliveryMetricGroup
+  byChannel: Array<NotificationDeliveryMetricGroup & { channel: NotificationDelivery['channel']; config: NotificationChannelConfig | null }>
+  thresholdBreaches: NotificationDelivery['channel'][]
+  runtime: { emailEnvironmentAvailable: boolean; workerEnabled: boolean }
+}
+
+export type NotificationDeliveryMetricGroup = {
   total: number
-  byStatus: Partial<Record<NotificationDeliveryStatus, number>>
-  byChannel: Partial<Record<NotificationDelivery['channel'], number>>
-  due: number
-  deadLettered: number
-  config: { emailAvailable: boolean; workerEnabled: boolean }
+  sent: number
+  failed: number
+  suppressed: number
+  cancelled: number
+  pending: number
+  terminalEligible: number
+  deliveryRateBps: number
+  failureRateBps: number
+  latency: { eligible: number; averageMs: number | null; p50Ms: number | null; p95Ms: number | null; maxMs: number | null }
+  evaluable: boolean
+  breaches: { deliveryRate: boolean; failureRate: boolean; latency: boolean; any: boolean }
+}
+
+export type NotificationChannelConfig = {
+  id: string
+  channel: NotificationDelivery['channel']
+  enabled: boolean
+  environmentAvailable: boolean
+  effectiveEnabled: boolean
+  deliveryRateTargetBps: number
+  failureRateAlertThresholdBps: number
+  latencyTargetMs: number
+  maxAttempts: number
+  retryBackoffSeconds: number
+  activeRevisionNumber: number
+  version: number
+  reasonCode: string
+  updatedByRef: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type NotificationChannelConfigRevision = Omit<NotificationChannelConfig, 'id' | 'environmentAvailable' | 'effectiveEnabled' | 'activeRevisionNumber' | 'version' | 'updatedByRef' | 'updatedAt'> & {
+  id: string
+  revisionNumber: number
+  actorRef: string
 }
 
 export type NotificationDeliveryListQuery = {
@@ -2557,6 +2597,13 @@ export type NotificationDeliveryListQuery = {
   order?: 'asc' | 'desc'
   cursor?: string | null
   limit?: number
+}
+
+export type NotificationDeliveryMetricsQuery = {
+  dateFrom?: string | null
+  dateTo?: string | null
+  channel?: NotificationDelivery['channel'] | null
+  notificationType?: string | null
 }
 
 export type NotificationTemplateListQuery = {

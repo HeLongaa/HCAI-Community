@@ -13374,7 +13374,164 @@ button.video-history-row.active {
 }
 
 .notification-admin-filters.delivery-filters {
-  grid-template-columns: minmax(220px, 1fr) minmax(150px, 220px) minmax(140px, 190px);
+  grid-template-columns: minmax(220px, 1fr) minmax(150px, 220px) minmax(140px, 190px) 36px;
+}
+
+.delivery-view-tabs {
+  width: min(420px, 100%);
+}
+
+.notification-admin-filters.delivery-metric-filters {
+  grid-template-columns: repeat(2, minmax(145px, 180px)) minmax(130px, 180px) minmax(180px, 1fr) 36px;
+}
+
+.delivery-metric-filters label,
+.channel-config-fields label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.delivery-metric-filters label span,
+.channel-config-fields label span,
+.notification-channel-config header small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.delivery-metric-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-block: 1px solid var(--border);
+}
+
+.delivery-metric-summary > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border-right: 1px solid var(--border);
+}
+
+.delivery-metric-summary > div:last-child {
+  border-right: 0;
+}
+
+.delivery-metric-summary small,
+.delivery-channel-metrics dt {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.delivery-metric-summary strong {
+  font-size: 20px;
+}
+
+.delivery-channel-metrics,
+.notification-channel-configs {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.delivery-channel-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.delivery-channel-metrics > div,
+.notification-channel-config {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.delivery-channel-metrics > div.breached {
+  border-color: var(--warning);
+}
+
+.delivery-channel-metrics header,
+.delivery-channel-metrics header span,
+.notification-channel-config > header,
+.notification-channel-config > header > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.delivery-channel-metrics header,
+.notification-channel-config > header {
+  justify-content: space-between;
+}
+
+.notification-channel-config > header > div {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.delivery-channel-metrics dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.delivery-channel-metrics dl > div {
+  display: grid;
+  gap: 3px;
+}
+
+.delivery-channel-metrics dd {
+  margin: 0;
+  font-size: 13px;
+}
+
+.channel-reason {
+  max-width: 360px;
+}
+
+.channel-config-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.channel-config-fields label:first-child {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.channel-config-history {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--border);
+}
+
+.channel-config-history > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.channel-config-history span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.channel-config-history small {
+  color: var(--text-muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .notification-delivery-layout {
@@ -13693,8 +13850,12 @@ button.video-history-row.active {
   }
 
   .notification-admin-filters.delivery-filters,
+  .notification-admin-filters.delivery-metric-filters,
   .notification-delivery-layout,
-  .delivery-facts {
+  .delivery-facts,
+  .delivery-metric-summary,
+  .delivery-channel-metrics,
+  .channel-config-fields {
     grid-template-columns: 1fr;
   }
 
@@ -13703,6 +13864,7 @@ button.video-history-row.active {
   }
 
   .notification-admin-filters.delivery-filters,
+  .notification-admin-filters.delivery-metric-filters,
   .notification-delivery-layout {
     display: flex;
     flex-direction: column;
@@ -13712,6 +13874,7 @@ button.video-history-row.active {
   }
 
   .notification-admin-filters.delivery-filters > *,
+  .notification-admin-filters.delivery-metric-filters > *,
   .notification-delivery-layout > *,
   .notification-delivery-detail {
     width: 100%;
@@ -13722,6 +13885,15 @@ button.video-history-row.active {
 
   .notification-delivery-list {
     max-height: 320px;
+  }
+
+  .delivery-metric-summary > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .delivery-metric-summary > div:last-child {
+    border-bottom: 0;
   }
 
   .trust-admin-filters,

@@ -539,16 +539,16 @@
     {
       "id": "notification_records",
       "classification": "confidential",
-      "prismaModels": ["Notification", "NotificationTemplate", "NotificationTemplateVersion", "NotificationPreference", "NotificationDelivery", "NotificationDeliveryAttempt"],
+      "prismaModels": ["Notification", "NotificationTemplate", "NotificationTemplateVersion", "NotificationPreference", "NotificationDelivery", "NotificationDeliveryAttempt", "NotificationChannelConfig", "NotificationChannelConfigRevision"],
       "locations": ["postgres"],
       "dataSubjects": ["user"],
       "purposes": ["account_service", "marketplace_delivery", "creative_generation", "support_operations"],
-      "exampleFields": ["type", "title", "body", "deep link", "safe metadata", "read state", "template key and immutable version", "closed variable schema", "personal in-app enabled preference"],
+      "exampleFields": ["type", "title", "body", "deep link", "safe metadata", "read state", "template key and immutable version", "closed variable schema", "personal in-app enabled preference", "channel enablement and bounded delivery thresholds", "immutable channel configuration revision"],
       "accessRoles": ["user_self", "authorized_service", "notification_operator_redacted"],
       "retentionPolicyId": "notification_created_plus_180d",
       "exportPolicy": "include_user_notifications",
       "deletionPolicy": "hard_delete",
-      "ownerTasks": ["V1-68", "V1-67"]
+      "ownerTasks": ["V1-68", "V1-67", "V1-53"]
     },
     {
       "id": "moderation_review_records",
@@ -1071,7 +1071,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 135,
+    "modelCount": 137,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",

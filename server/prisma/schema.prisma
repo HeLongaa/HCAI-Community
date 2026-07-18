@@ -3709,6 +3709,49 @@ model NotificationDeliveryAttempt {
   @@map("notification_delivery_attempts")
 }
 
+model NotificationChannelConfig {
+  id                            String   @id
+  channel                       String   @unique
+  enabled                       Boolean  @default(true)
+  deliveryRateTargetBps         Int      @map("delivery_rate_target_bps")
+  failureRateAlertThresholdBps  Int      @map("failure_rate_alert_threshold_bps")
+  latencyTargetMs               Int      @map("latency_target_ms")
+  maxAttempts                   Int      @map("max_attempts")
+  retryBackoffSeconds           Int      @map("retry_backoff_seconds")
+  activeRevisionNumber          Int      @default(1) @map("active_revision_number")
+  version                       Int      @default(1)
+  reasonCode                    String   @map("reason_code")
+  updatedByRef                  String   @map("updated_by_ref")
+  createdAt                     DateTime @default(now()) @map("created_at")
+  updatedAt                     DateTime @updatedAt @map("updated_at")
+
+  revisions NotificationChannelConfigRevision[]
+
+  @@map("notification_channel_configs")
+}
+
+model NotificationChannelConfigRevision {
+  id                            String   @id @default(cuid())
+  configId                      String   @map("config_id")
+  channel                       String
+  revisionNumber                Int      @map("revision_number")
+  enabled                       Boolean
+  deliveryRateTargetBps         Int      @map("delivery_rate_target_bps")
+  failureRateAlertThresholdBps  Int      @map("failure_rate_alert_threshold_bps")
+  latencyTargetMs               Int      @map("latency_target_ms")
+  maxAttempts                   Int      @map("max_attempts")
+  retryBackoffSeconds           Int      @map("retry_backoff_seconds")
+  reasonCode                    String   @map("reason_code")
+  actorRef                      String   @map("actor_ref")
+  createdAt                     DateTime @default(now()) @map("created_at")
+
+  config NotificationChannelConfig @relation(fields: [configId], references: [id], onDelete: Restrict)
+
+  @@unique([configId, revisionNumber])
+  @@index([channel, revisionNumber])
+  @@map("notification_channel_config_revisions")
+}
+
 model NotificationTemplate {
   id                  String    @id @default(cuid())
   key                 String    @unique

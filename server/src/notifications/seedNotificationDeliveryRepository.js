@@ -1,8 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { HttpError } from '../common/errors/httpError.js'
 import {
+  buildNotificationDeliveryBusinessMetrics,
   buildNotificationDeliveryConfig,
+  defaultNotificationChannelConfigs,
   normalizeDeliveryErrorCode,
+  notificationChannelConfigDto,
+  notificationChannelConfigRevisionDto,
   notificationDeliveryDto,
 } from './notificationDeliveries.js'
 
@@ -16,6 +20,22 @@ export const createSeedNotificationDeliveryRepository = ({
 } = {}) => {
   const deliveries = new Map()
   const attempts = new Map()
+  const channelConfigs = new Map(defaultNotificationChannelConfigs(source).map((row) => [row.channel, row]))
+  const channelRevisions = new Map([...channelConfigs.values()].map((row) => [row.channel, [{
+    id: `notification-channel-revision-${row.channel}`,
+    configId: row.id,
+    channel: row.channel,
+    revisionNumber: 1,
+    enabled: row.enabled,
+    deliveryRateTargetBps: row.deliveryRateTargetBps,
+    failureRateAlertThresholdBps: row.failureRateAlertThresholdBps,
+    latencyTargetMs: row.latencyTargetMs,
+    maxAttempts: row.maxAttempts,
+    retryBackoffSeconds: row.retryBackoffSeconds,
+    reasonCode: row.reasonCode,
+    actorRef: row.updatedByRef,
+    createdAt: row.createdAt,
+  }]]))
   const config = () => buildNotificationDeliveryConfig(source)
   const hydrate = (row) => {
     if (!row) return null
@@ -34,17 +54,45 @@ export const createSeedNotificationDeliveryRepository = ({
     resourceId: row.id,
     metadata: { channel: row.channel, status: row.status, attemptCount: row.attemptCount, version: row.version, ...metadata },
   })
+  const auditChannel = (actor, action, row, metadata = {}) => recordAudit({
+    actor,
+    action,
+    resourceType: 'notification_channel_config',
+    resourceId: row.id,
+    metadata: { channel: row.channel, enabled: row.enabled, activeRevisionNumber: row.activeRevisionNumber, version: row.version, ...metadata },
+  })
+
+  const appendChannelRevision = (row, actor, reasonCode) => {
+    const revision = {
+      id: `notification-channel-revision-${randomUUID()}`,
+      configId: row.id,
+      channel: row.channel,
+      revisionNumber: row.activeRevisionNumber,
+      enabled: row.enabled,
+      deliveryRateTargetBps: row.deliveryRateTargetBps,
+      failureRateAlertThresholdBps: row.failureRateAlertThresholdBps,
+      latencyTargetMs: row.latencyTargetMs,
+      maxAttempts: row.maxAttempts,
+      retryBackoffSeconds: row.retryBackoffSeconds,
+      reasonCode,
+      actorRef: actor?.id ?? 'system',
+      createdAt: row.updatedAt,
+    }
+    channelRevisions.get(row.channel).push(revision)
+    return revision
+  }
 
   const repository = {
     createForNotification(notification, recipient) {
       if (!notification?.id || !recipient?.id) return []
       const now = new Date()
       const emailConfig = config().email
+      const emailControl = channelConfigs.get('email')
       const definitions = [
         { channel: 'in_app', status: 'sent', sentAt: now, maxAttempts: 1, errorCode: null },
-        emailConfig.available && recipient.email
-          ? { channel: 'email', status: 'queued', maxAttempts: config().maxAttempts, errorCode: null }
-          : { channel: 'email', status: 'suppressed', suppressedAt: now, maxAttempts: config().maxAttempts, errorCode: recipient.email ? 'CHANNEL_UNAVAILABLE' : 'RECIPIENT_EMAIL_MISSING' },
+        emailControl.enabled && emailConfig.available && recipient.email
+          ? { channel: 'email', status: 'queued', maxAttempts: emailControl.maxAttempts, errorCode: null }
+          : { channel: 'email', status: 'suppressed', suppressedAt: now, maxAttempts: emailControl.maxAttempts, errorCode: recipient.email ? emailControl.enabled ? 'CHANNEL_UNAVAILABLE' : 'CHANNEL_DISABLED' : 'RECIPIENT_EMAIL_MISSING' },
       ]
       const created = []
       for (const definition of definitions) {
@@ -140,7 +188,7 @@ export const createSeedNotificationDeliveryRepository = ({
       if (attempt) Object.assign(attempt, { status: sent ? 'sent' : result.timedOut ? 'timed_out' : 'failed', responseClass: sent ? 'success' : retryable ? 'retryable' : 'permanent', statusCode: result.statusCode ?? null, errorCode, completedAt: now })
       Object.assign(row, {
         status: sent ? 'sent' : retryable ? 'retry_scheduled' : 'dead_lettered',
-        availableAt: retryable ? new Date(now.getTime() + config().retryBackoffSeconds * 1000) : row.availableAt,
+        availableAt: retryable ? new Date(now.getTime() + (channelConfigs.get(row.channel)?.retryBackoffSeconds ?? config().retryBackoffSeconds) * 1000) : row.availableAt,
         leaseToken: null,
         leaseExpiresAt: null,
         lastErrorCode: errorCode,
@@ -171,11 +219,65 @@ export const createSeedNotificationDeliveryRepository = ({
       await audit(actor, 'notification.delivery.cancelled', row, { reasonCode: payload.reasonCode })
       return dto(row)
     },
-    async metrics() {
-      const rows = [...deliveries.values()]
-      const byStatus = Object.fromEntries([...new Set(rows.map((row) => row.status))].map((status) => [status, rows.filter((row) => row.status === status).length]))
-      const byChannel = Object.fromEntries([...new Set(rows.map((row) => row.channel))].map((channel) => [channel, rows.filter((row) => row.channel === channel).length]))
-      return { total: rows.length, byStatus, byChannel, due: rows.filter((row) => retryableStatuses.has(row.status) && row.availableAt <= new Date()).length, deadLettered: byStatus.dead_lettered ?? 0, config: { emailAvailable: config().email.available, workerEnabled: config().workerEnabled } }
+    async metrics(options) {
+      return buildNotificationDeliveryBusinessMetrics({
+        rows: [...deliveries.values()].map((row) => ({ ...row, notification: getNotificationById?.(row.notificationId) ?? null })),
+        controls: [...channelConfigs.values()],
+        options,
+        source,
+      })
+    },
+    async listChannelConfigs() {
+      return [...channelConfigs.values()].sort((left, right) => left.channel.localeCompare(right.channel)).map((row) => notificationChannelConfigDto(row, source))
+    },
+    async channelConfigHistory(channel) {
+      return (channelRevisions.get(channel) ?? []).slice().sort((left, right) => right.revisionNumber - left.revisionNumber).slice(0, 100).map(notificationChannelConfigRevisionDto)
+    },
+    async updateChannelConfig(payload, actor) {
+      const row = channelConfigs.get(payload.channel)
+      if (!row) return null
+      if (row.version !== payload.expectedVersion) throw new HttpError(409, 'STATE_CONFLICT', 'Notification channel configuration was modified concurrently')
+      const now = new Date()
+      Object.assign(row, {
+        enabled: payload.enabled,
+        deliveryRateTargetBps: payload.deliveryRateTargetBps,
+        failureRateAlertThresholdBps: payload.failureRateAlertThresholdBps,
+        latencyTargetMs: payload.latencyTargetMs,
+        maxAttempts: payload.maxAttempts,
+        retryBackoffSeconds: payload.retryBackoffSeconds,
+        activeRevisionNumber: row.activeRevisionNumber + 1,
+        version: row.version + 1,
+        reasonCode: payload.reasonCode,
+        updatedByRef: actor.id,
+        updatedAt: now,
+      })
+      appendChannelRevision(row, actor, payload.reasonCode)
+      await auditChannel(actor, 'notification.channel.configuration_updated', row, { reasonCode: payload.reasonCode })
+      return notificationChannelConfigDto(row, source)
+    },
+    async rollbackChannelConfig(payload, actor) {
+      const row = channelConfigs.get(payload.channel)
+      if (!row) return null
+      if (row.version !== payload.expectedVersion) throw new HttpError(409, 'STATE_CONFLICT', 'Notification channel configuration was modified concurrently')
+      const target = (channelRevisions.get(payload.channel) ?? []).find((revision) => revision.revisionNumber === payload.revisionNumber)
+      if (!target) throw new HttpError(404, 'NOT_FOUND', 'Notification channel configuration revision not found')
+      const now = new Date()
+      Object.assign(row, {
+        enabled: target.enabled,
+        deliveryRateTargetBps: target.deliveryRateTargetBps,
+        failureRateAlertThresholdBps: target.failureRateAlertThresholdBps,
+        latencyTargetMs: target.latencyTargetMs,
+        maxAttempts: target.maxAttempts,
+        retryBackoffSeconds: target.retryBackoffSeconds,
+        activeRevisionNumber: row.activeRevisionNumber + 1,
+        version: row.version + 1,
+        reasonCode: payload.reasonCode,
+        updatedByRef: actor.id,
+        updatedAt: now,
+      })
+      appendChannelRevision(row, actor, payload.reasonCode)
+      await auditChannel(actor, 'notification.channel.configuration_rolled_back', row, { reasonCode: payload.reasonCode, targetRevisionNumber: payload.revisionNumber })
+      return notificationChannelConfigDto(row, source)
     },
   }
   return repository

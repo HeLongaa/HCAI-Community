@@ -4696,7 +4696,10 @@ export const openApiDocument = {
       },
     },
     '/admin/notifications/deliveries/metrics': {
-      get: { summary: 'Read delivery status, channel, due, DLQ, and runtime availability metrics', responses: { '200': { description: 'Delivery metrics' }, '403': { description: 'Missing admin:notifications:read' } } },
+      get: { summary: 'Read bounded delivery rate, failure rate, latency percentile, and threshold metrics', responses: { '200': { description: 'Aggregate-only notification delivery business metrics' }, '403': { description: 'Missing admin:notifications:read' } } },
+    },
+    '/admin/notifications/deliveries/metrics/export': {
+      get: { summary: 'Export versioned notification delivery business metrics as JSON or CSV', responses: { '200': { description: 'Aggregate-only metrics artifact' }, '403': { description: 'Missing admin:notifications:read' } } },
     },
     '/admin/notifications/deliveries/export': {
       get: { summary: 'Export a bounded filtered delivery inventory as JSON or CSV', responses: { '200': { description: 'Secret-free portable delivery inventory' }, '403': { description: 'Missing admin:notifications:read' } } },
@@ -4709,6 +4712,18 @@ export const openApiDocument = {
     },
     '/admin/notifications/deliveries/{id}/cancel': {
       post: { summary: 'Cancel one queued delivery with CAS and reason evidence', responses: { '200': { description: 'Cancelled delivery' }, '403': { description: 'Missing admin:notifications:manage' }, '409': { description: 'Version conflict or invalid state' } } },
+    },
+    '/admin/notifications/channels': {
+      get: { summary: 'List secret-free notification channel controls and effective environment availability', responses: { '200': { description: 'Channel controls' }, '403': { description: 'Missing admin:notifications:read' } } },
+    },
+    '/admin/notifications/channels/{channel}': {
+      put: { summary: 'Update one channel switch, retry policy, and metric thresholds with CAS', responses: { '200': { description: 'Versioned channel control' }, '403': { description: 'Missing admin:notifications:manage' }, '409': { description: 'Version conflict' } } },
+    },
+    '/admin/notifications/channels/{channel}/history': {
+      get: { summary: 'Read up to 100 immutable channel configuration revisions', responses: { '200': { description: 'Newest-first revision history' }, '403': { description: 'Missing admin:notifications:read' } } },
+    },
+    '/admin/notifications/channels/{channel}/rollback': {
+      post: { summary: 'Roll back by appending a new channel configuration revision with CAS', responses: { '200': { description: 'Rolled-back channel control' }, '403': { description: 'Missing admin:notifications:manage' }, '404': { description: 'Revision not found' }, '409': { description: 'Version conflict' } } },
     },
     '/admin/notifications/templates/metrics': {
       get: { summary: 'Read template lifecycle and preference override metrics', responses: { '200': { description: 'Template and preference metrics' }, '403': { description: 'Missing admin:notifications:read' } } },

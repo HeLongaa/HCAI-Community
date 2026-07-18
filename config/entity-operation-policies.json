@@ -147,11 +147,13 @@
     { "model": "NotificationTemplateVersion", "domain": "notifications-webhooks", "policy": "immutable_evidence", "hardDelete": false },
     { "model": "NotificationPreference", "domain": "notifications-webhooks", "policy": "mutable_crud", "hardDelete": true },
     { "model": "NotificationDelivery", "domain": "notifications-webhooks", "policy": "state_transition", "hardDelete": false },
-    { "model": "NotificationDeliveryAttempt", "domain": "notifications-webhooks", "policy": "state_transition", "hardDelete": false }
+    { "model": "NotificationDeliveryAttempt", "domain": "notifications-webhooks", "policy": "state_transition", "hardDelete": false },
+    { "model": "NotificationChannelConfig", "domain": "notifications-webhooks", "policy": "mutable_crud", "hardDelete": false },
+    { "model": "NotificationChannelConfigRevision", "domain": "notifications-webhooks", "policy": "immutable_evidence", "hardDelete": false }
   ],
   "protectedFamilies": {
     "accounting": ["PointLedger", "InternalAccountingOperation", "InternalAccountingMovement"],
     "audit": ["AuditEvent", "SecurityEvent", "DomainEventOutbox", "DomainEventConsumerInbox", "DomainEventCompensation"],
-    "evidence": ["NotificationTemplateVersion", "AuditArchiveManifest", "AuditRetentionDisposition", "MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence", "SystemSettingRevision", "ConfigResourceRevision", "ModelRoutePolicyRevision", "ModelRouteDecision", "ProviderSecretRef", "ModelPromotion", "ProviderHealthEvidence", "ProviderLegalReview", "EntitlementPlanVersion", "EntitlementGrantEvent", "Report", "ModerationCase", "ModerationEvidence", "ModerationDecision", "ModerationAppeal", "SafetyRuleVersion", "SafetyRuleTransition", "SafetySignal", "ModerationQueueEvent", "ModerationBulkOperation"]
+    "evidence": ["NotificationTemplateVersion", "NotificationChannelConfigRevision", "AuditArchiveManifest", "AuditRetentionDisposition", "MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence", "SystemSettingRevision", "ConfigResourceRevision", "ModelRoutePolicyRevision", "ModelRouteDecision", "ProviderSecretRef", "ModelPromotion", "ProviderHealthEvidence", "ProviderLegalReview", "EntitlementPlanVersion", "EntitlementGrantEvent", "Report", "ModerationCase", "ModerationEvidence", "ModerationDecision", "ModerationAppeal", "SafetyRuleVersion", "SafetyRuleTransition", "SafetySignal", "ModerationQueueEvent", "ModerationBulkOperation"]
   }
 }

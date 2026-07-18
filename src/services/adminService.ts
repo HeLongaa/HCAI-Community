@@ -114,6 +114,9 @@ import type {
   NotificationDelivery,
   NotificationDeliveryListQuery,
   NotificationDeliveryMetrics,
+  NotificationDeliveryMetricsQuery,
+  NotificationChannelConfig,
+  NotificationChannelConfigRevision,
   SystemSettingChangeDto,
   SystemSettingChangeRequest,
   SystemSettingDto,
@@ -922,8 +925,23 @@ export const adminService = {
   async notificationDelivery(id: string) {
     return api.get<NotificationDelivery>(`/admin/notifications/deliveries/${encodeURIComponent(id)}`)
   },
-  async notificationDeliveryMetrics() {
-    return api.get<NotificationDeliveryMetrics>('/admin/notifications/deliveries/metrics')
+  async notificationDeliveryMetrics(query?: NotificationDeliveryMetricsQuery) {
+    return api.get<NotificationDeliveryMetrics>(withQuery('/admin/notifications/deliveries/metrics', query))
+  },
+  async exportNotificationDeliveryMetrics(query?: NotificationDeliveryMetricsQuery) {
+    return api.text(withQuery('/admin/notifications/deliveries/metrics/export', { ...query, format: 'csv' }))
+  },
+  async notificationChannelConfigs() {
+    return api.get<NotificationChannelConfig[]>('/admin/notifications/channels')
+  },
+  async notificationChannelConfigHistory(channel: NotificationChannelConfig['channel']) {
+    return api.get<NotificationChannelConfigRevision[]>(`/admin/notifications/channels/${encodeURIComponent(channel)}/history`)
+  },
+  async updateNotificationChannelConfig(channel: NotificationChannelConfig['channel'], payload: Pick<NotificationChannelConfig, 'enabled' | 'deliveryRateTargetBps' | 'failureRateAlertThresholdBps' | 'latencyTargetMs' | 'maxAttempts' | 'retryBackoffSeconds'> & { expectedVersion: number; reasonCode: string }) {
+    return api.put<NotificationChannelConfig>(`/admin/notifications/channels/${encodeURIComponent(channel)}`, payload)
+  },
+  async rollbackNotificationChannelConfig(channel: NotificationChannelConfig['channel'], payload: { revisionNumber: number; expectedVersion: number; reasonCode: string }) {
+    return api.post<NotificationChannelConfig>(`/admin/notifications/channels/${encodeURIComponent(channel)}/rollback`, payload)
   },
   async retryNotificationDelivery(id: string, payload: { expectedVersion: number; reasonCode: string }) {
     return api.post<NotificationDelivery>(`/admin/notifications/deliveries/${encodeURIComponent(id)}/retry`, payload)
