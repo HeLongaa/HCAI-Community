@@ -333,6 +333,7 @@ export const listOAuthProviderMetadata = (source = process.env, controlByProvide
     available: metadata.mode !== 'unavailable',
     mode: metadata.mode,
     authorizationUrl: metadata.mode === 'unavailable' ? null : metadata.authorizationUrl,
+    callbackUrl: metadata.mode === 'unavailable' ? null : metadata.redirectUri,
     callbackMethod: metadata.provider === 'apple' ? 'POST' : 'GET',
     scopes: metadata.scope.split(' '),
   }

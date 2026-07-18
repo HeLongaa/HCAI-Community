@@ -20,6 +20,23 @@ const failures = []
 
 const fail = (provider, check) => failures.push(`${provider}: ${check}`)
 
+const parseApiOrigin = (value) => {
+  if (!value) return null
+  try {
+    const origin = new URL(value)
+    const loopbackHttp = allowLocal && origin.protocol === 'http:' && ['localhost', '127.0.0.1', '::1'].includes(origin.hostname)
+    if (origin.pathname !== '/' || origin.search || origin.hash || (origin.protocol !== 'https:' && !loopbackHttp)) {
+      throw new Error('invalid origin')
+    }
+    return origin
+  } catch {
+    fail('api', 'API origin must be an HTTPS origin without path, query, or fragment (or loopback HTTP with --allow-local)')
+    return null
+  }
+}
+
+const parsedApiOrigin = parseApiOrigin(apiOrigin)
+
 const validateRedirect = (provider, value) => {
   if (!value) return fail(provider, 'redirect URI is missing')
   try {
@@ -39,24 +56,28 @@ const validateRedirect = (provider, value) => {
   }
 }
 
+const expectedCallback = (provider) => parsedApiOrigin
+  ? new URL(`/api/auth/oauth/${provider}/callback`, parsedApiOrigin).toString()
+  : null
+
 for (const provider of providers) {
   const clientIdPresent = Boolean(String(process.env[provider.clientIdKey] ?? '').trim())
   const secretPresent = Boolean(String(process.env[provider.secretKey] ?? '').trim())
   const redirect = String(process.env[provider.redirectKey] ?? '').trim()
-  if (!clientIdPresent) fail(provider.id, `${provider.clientIdKey} is missing`)
+  // With --api-origin, non-secret configuration may come from the Admin control plane.
+  // The public runtime status below proves that the effective configuration is usable.
+  if (!apiOrigin && !clientIdPresent) fail(provider.id, `${provider.clientIdKey} is missing`)
   if (!secretPresent) fail(provider.id, `${provider.secretKey} is missing`)
-  validateRedirect(provider.id, redirect)
-  console.log(`${provider.id}: client_id=${clientIdPresent ? 'present' : 'missing'} secret=${secretPresent ? 'present' : 'missing'} redirect=${redirect || 'missing'}`)
+  if (!apiOrigin || redirect) validateRedirect(provider.id, redirect)
+  if (parsedApiOrigin && redirect && redirect !== expectedCallback(provider.id)) {
+    fail(provider.id, `${provider.redirectKey} must equal ${expectedCallback(provider.id)}`)
+  }
+  console.log(`${provider.id}: client_id=${clientIdPresent ? 'environment' : apiOrigin ? 'admin/runtime' : 'missing'} secret=${secretPresent ? 'present' : 'missing'} redirect=${redirect || (apiOrigin ? 'admin/runtime' : 'missing')}`)
 }
 
-if (apiOrigin) {
+if (parsedApiOrigin) {
   try {
-    const origin = new URL(apiOrigin)
-    const loopbackHttp = allowLocal && origin.protocol === 'http:' && ['localhost', '127.0.0.1', '::1'].includes(origin.hostname)
-    if (origin.pathname !== '/' || origin.search || origin.hash || (origin.protocol !== 'https:' && !loopbackHttp)) {
-      throw new Error('API origin must be an HTTPS origin without path, query, or fragment')
-    }
-    const response = await fetch(new URL('/api/auth/oauth/providers', origin), {
+    const response = await fetch(new URL('/api/auth/oauth/providers', parsedApiOrigin), {
       headers: { accept: 'application/json' },
       signal: AbortSignal.timeout(8_000),
     })
@@ -69,8 +90,10 @@ if (apiOrigin) {
         fail(provider.id, 'public Provider status is missing')
       } else if (status.mode !== 'external' || status.available !== true) {
         fail(provider.id, `public Provider status is mode=${status.mode ?? 'missing'} available=${String(status.available)}`)
+      } else if (status.callbackUrl !== expectedCallback(provider.id)) {
+        fail(provider.id, `effective callback must equal ${expectedCallback(provider.id)}`)
       } else {
-        console.log(`${provider.id}: public_status=external/available`)
+        console.log(`${provider.id}: public_status=external/available callback=exact`)
       }
     }
   } catch (error) {

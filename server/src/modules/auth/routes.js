@@ -306,7 +306,7 @@ export const registerAuthRoutes = (router) => {
     const metadata = listOAuthProviderMetadata(process.env, controlByProvider)
     ok(response, metadata.map((provider) => {
       if (controlByProvider.get(provider.provider)?.enabled !== false) return provider
-      return { ...provider, available: false, mode: 'unavailable', authorizationUrl: null }
+      return { ...provider, available: false, mode: 'unavailable', authorizationUrl: null, callbackUrl: null }
     }))
   })
 
