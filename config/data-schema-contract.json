@@ -16,6 +16,7 @@
     "CreativeGenerationMutation.safeMetadata", "CreativeGenerationMutation.result", "CreativeProviderReplayLedger.sideEffectPlan",
     "CreativeProviderReplayLedger.sideEffectResult", "CreativeProviderCostLedger.pricingSnapshot", "CreativeProviderCostLedger.usage",
     "CreativeProviderCostLedger.risk", "CreativeCreditLedger.metadata", "Notification.metadata", "NotificationTemplateVersion.variableSchema",
+    "ObservabilityAlertEvent.metadata", "ObservabilityIncidentReview.correctiveActions",
     "DomainEventOutbox.payload", "JobRun.input", "JobRun.result", "JobAttempt.result", "ReleaseEvidence.evidence",
     "SystemSettingChange.candidateValue", "SystemSettingChange.diff", "SystemSettingRevision.value",
     "ConfigResource.draftValue", "ConfigResource.publishedValue", "ConfigResourceRevision.value", "TaskRule.acceptanceTemplates",

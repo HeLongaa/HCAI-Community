@@ -18,6 +18,7 @@ test('Prisma observability persists filtered pages, trace chains, and alert CAS 
   const logIds = [`${runId}-log-1`, `${runId}-log-2`]
   const httpTraceId = 'b'.repeat(32)
   let alertId = null
+  let controlId = null
   let httpLogId = null
 
   const log = (id, spanId, timestamp, level = 'info') => ({
@@ -121,6 +122,13 @@ test('Prisma observability persists filtered pages, trace chains, and alert CAS 
       runbook: 'docs/OBSERVABILITY_SEARCH_AND_TRACE.md', startedAt: now,
     } })
     alertId = createdAlert.id
+    const control = await repository.observability.updateSloControl({
+      sloId: 'api-availability', target: 0.999, shortWindowBurnThreshold: 14.4, longWindowBurnThreshold: 6, latencyThresholdMs: 750,
+      severity: 'critical', owner: 'integration-operations', runbook: 'docs/OBSERVABILITY_INCIDENT_RESPONSE.md', primaryOnCallHandle: 'opsplus', secondaryOnCallHandle: 'legalpixel', escalationMinutes: 15,
+      enabled: true, expectedVersion: 0, reasonCode: 'integration_control',
+    }, { id: runId })
+    assert.equal(control.conflict, false)
+    controlId = control.control.id
     const acknowledged = await repository.observability.transitionAlert(alertId, 'acknowledge', { expectedVersion: 1, note: '', until: null }, { id: runId })
     assert.equal(acknowledged.conflict, false)
     assert.equal(acknowledged.alert.state, 'acknowledged')
@@ -130,8 +138,39 @@ test('Prisma observability persists filtered pages, trace chains, and alert CAS 
     assert.equal(stale.conflict, true)
     assert.equal(stale.alert.state, 'acknowledged')
     assert.equal(stale.alert.version, 2)
+
+    const escalated = await repository.observability.escalateAlert(alertId, { expectedVersion: 2, reasonCode: 'ack_sla_exceeded' }, { id: runId })
+    assert.equal(escalated.alert.escalationLevel, 1)
+    assert.equal(escalated.alert.escalationTarget, 'legalpixel')
+    const resolved = await repository.observability.transitionAlert(alertId, 'resolve', { expectedVersion: 3, note: 'dependency_recovered', until: null }, { id: runId })
+    assert.equal(resolved.alert.state, 'resolved')
+    const resolvedMutation = await repository.observability.transitionAlert(alertId, 'acknowledge', { expectedVersion: 4, note: 'must_not_reopen', until: null }, { id: runId })
+    assert.equal(resolvedMutation.invalidState, true)
+    assert.equal(resolvedMutation.alert.state, 'resolved')
+    const reviewed = await repository.observability.createIncidentReview(alertId, {
+      expectedVersion: 4,
+      summary: 'The dependency incident was mitigated and service recovered.',
+      rootCause: 'An upstream timeout produced sustained API errors.',
+      impact: 'A subset of API requests failed during the incident window.',
+      correctiveActions: ['Add an upstream timeout circuit breaker.'],
+      reasonCode: 'incident_reviewed',
+    }, { id: runId })
+    assert.equal(reviewed.review.correctiveActions.length, 1)
+    const detail = await repository.observability.findAlert(alertId)
+    assert.deepEqual(detail.events.map((item) => item.eventType), ['acknowledged', 'escalated', 'resolved', 'reviewed'])
+    assert.equal(detail.review.correctiveActionsHash.length, 64)
+    assert.equal((await repository.observability.incidentMetrics()).reviewCoverage, 1)
+    await assert.rejects(() => repository.client.observabilityAlertEvent.update({ where: { id: detail.events[0].id }, data: { reasonCode: 'changed' } }), /append-only/)
   } finally {
-    if (alertId) await repository.client.observabilityAlert.deleteMany({ where: { id: alertId } })
+    if (alertId || controlId) await repository.client.$transaction(async (transaction) => {
+      await transaction.$executeRawUnsafe("SET LOCAL app.audit_maintenance = 'on'")
+      if (alertId) {
+        await transaction.observabilityIncidentReview.deleteMany({ where: { alertId } })
+        await transaction.observabilityAlertEvent.deleteMany({ where: { alertId } })
+        await transaction.observabilityAlert.deleteMany({ where: { id: alertId } })
+      }
+      if (controlId) await transaction.observabilitySloControl.deleteMany({ where: { id: controlId } })
+    })
     await repository.client.traceSpan.deleteMany({ where: { traceId: { in: [traceId, httpTraceId] } } })
     if (httpLogId) await repository.client.observabilityLog.deleteMany({ where: { id: httpLogId } })
     await repository.client.observabilityLog.deleteMany({ where: { id: { in: logIds } } })

@@ -91,9 +91,13 @@ import type {
   ReleaseChangeListQuery,
   ReleaseChangeRequest,
   AdminObservabilityAlertDto,
+  AdminObservabilityAlertDetailDto,
+  AdminObservabilityIncidentMetricsDto,
+  AdminObservabilityIncidentReviewDto,
   AdminObservabilityLogDto,
   AdminObservabilityLogPage,
   AdminObservabilityQuery,
+  AdminObservabilitySloControlDto,
   AdminSloSummaryDto,
   AdminTraceDto,
   NotificationTemplate,
@@ -807,12 +811,30 @@ export const adminService = {
   async observabilityAlerts() {
     return api.get<AdminObservabilityAlertDto[]>('/admin/observability/alerts')
   },
+  async observabilityAlert(id: string) {
+    return api.get<AdminObservabilityAlertDetailDto>(`/admin/observability/alerts/${encodeURIComponent(id)}`)
+  },
+  async observabilitySloControls() {
+    return api.get<AdminObservabilitySloControlDto[]>('/admin/observability/slo-controls')
+  },
+  async updateObservabilitySloControl(sloId: string, body: Omit<AdminObservabilitySloControlDto, 'id' | 'sloId' | 'reasonCode' | 'updatedBy' | 'createdAt' | 'updatedAt'> & { expectedVersion: number; reasonCode: string }) {
+    return api.put<AdminObservabilitySloControlDto>(`/admin/observability/slo-controls/${encodeURIComponent(sloId)}`, body)
+  },
+  async observabilityIncidentMetrics() {
+    return api.get<AdminObservabilityIncidentMetricsDto>('/admin/observability/incidents/metrics')
+  },
   async transitionObservabilityAlert(
     id: string,
     action: 'acknowledge' | 'silence' | 'resolve',
     body: { expectedVersion: number; note?: string; until?: string },
   ) {
     return api.post<AdminObservabilityAlertDto>(`/admin/observability/alerts/${id}/${action}`, body)
+  },
+  async escalateObservabilityAlert(id: string, body: { expectedVersion: number; reasonCode: string }) {
+    return api.post<AdminObservabilityAlertDto>(`/admin/observability/alerts/${encodeURIComponent(id)}/escalate`, body)
+  },
+  async reviewObservabilityIncident(id: string, body: { expectedVersion: number; summary: string; rootCause: string; impact: string; correctiveActions: string[]; reasonCode: string }) {
+    return api.post<{ alert: AdminObservabilityAlertDto; review: AdminObservabilityIncidentReviewDto }>(`/admin/observability/alerts/${encodeURIComponent(id)}/review`, body)
   },
   async exportObservabilityLogs(query?: AdminObservabilityQuery) {
     return api.text(withQuery('/admin/observability/logs/export', { ...query, cursor: null, limit: 1000 }))

@@ -136,6 +136,9 @@ test('admin observability UI searches logs, drills into a trace, and exposes SLO
   await expect(panel.getByText('SLO status', { exact: true })).toBeVisible()
   await expect(panel.getByRole('button', { name: 'Evaluate now' })).toBeVisible()
   await expect(panel.getByTitle('Export JSON')).toBeEnabled()
+  await expect(panel.getByTestId('observability-incident-metrics')).toBeVisible()
+  await expect(panel.getByTestId('observability-slo-controls').locator('.observability-control-row')).toHaveCount(2)
+  await expect(panel.getByTitle('Save SLO control')).toHaveCount(2)
 
   const firstLog = panel.locator('.observability-log-row').first()
   await expect(firstLog).toBeVisible()
@@ -150,8 +153,10 @@ test('admin observability UI searches logs, drills into a trace, and exposes SLO
 })
 
 test('moderator observability UI is read-only', async ({ page, request }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
   await signInPage(page, request, 'legalpixel')
   await page.goto('/')
+  await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByTestId('nav-admin').click()
   await page.getByRole('button', { name: 'Observability', exact: true }).click()
 
@@ -159,4 +164,7 @@ test('moderator observability UI is read-only', async ({ page, request }) => {
   await expect(panel).toBeVisible()
   await expect(panel.getByTitle('Export JSON')).toBeDisabled()
   await expect(panel.getByRole('button', { name: 'Evaluate now' })).toHaveCount(0)
+  await expect(panel.getByTestId('observability-slo-controls')).toBeVisible()
+  await expect(panel.getByTitle('Save SLO control')).toHaveCount(0)
+  expect(await panel.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
 })

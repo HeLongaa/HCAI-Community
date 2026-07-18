@@ -2,7 +2,7 @@ import { HttpError, notFound } from '../../common/errors/httpError.js'
 import { requirePermission } from '../../common/http/auth.js'
 import { readJsonBody } from '../../common/http/request.js'
 import { ok, text } from '../../common/http/responses.js'
-import { parseAlertAction, parseObservabilityQuery } from '../../observability/observabilityRuntime.js'
+import { parseAlertAction, parseAlertEscalationRequest, parseIncidentReviewRequest, parseObservabilityQuery, parseSloControlRequest } from '../../observability/observabilityRuntime.js'
 import { repositories } from '../../repositories/index.js'
 
 const traceIdPattern = /^[a-f0-9]{32}$/
@@ -67,6 +67,22 @@ export const registerObservabilityRoutes = (router, options = {}) => {
     ok(response, summary)
   })
 
+  router.add('GET', '/api/admin/observability/slo-controls', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:observability:read')
+    const controls = await routeRepositories.observability.listSloControls()
+    await recordAccess(routeRepositories, actor, 'admin.observability.slo_controls_read', 'observability_slo_control_collection', null, { resultCount: controls.length })
+    ok(response, controls)
+  })
+
+  router.add('PUT', '/api/admin/observability/slo-controls/:sloId', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:observability:manage')
+    const payload = parseSloControlRequest(String(context.params.sloId), (await readJsonBody(request)) ?? {})
+    const result = await routeRepositories.observability.updateSloControl(payload, actor)
+    if (result.conflict) throw new HttpError(409, 'STATE_CONFLICT', 'SLO control was modified concurrently')
+    await recordAccess(routeRepositories, actor, 'admin.observability.slo_control_updated', 'observability_slo_control', payload.sloId, { version: result.control.version, reasonCode: payload.reasonCode, enabled: payload.enabled })
+    ok(response, result.control)
+  })
+
   router.add('POST', '/api/admin/observability/slos/evaluate', async (_request, response, context) => {
     const actor = requirePermission(context, 'admin:observability:manage')
     const result = await routeRepositories.observability.evaluateSlos()
@@ -84,6 +100,21 @@ export const registerObservabilityRoutes = (router, options = {}) => {
     ok(response, alerts)
   })
 
+  router.add('GET', '/api/admin/observability/alerts/:id', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:observability:read')
+    const alert = await routeRepositories.observability.findAlert(context.params.id)
+    if (!alert) throw notFound(`/api/admin/observability/alerts/${context.params.id}`)
+    await recordAccess(routeRepositories, actor, 'admin.observability.alert_detail_read', 'observability_alert', alert.id, { eventCount: alert.events.length, reviewed: Boolean(alert.review) })
+    ok(response, alert)
+  })
+
+  router.add('GET', '/api/admin/observability/incidents/metrics', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:observability:read')
+    const metrics = await routeRepositories.observability.incidentMetrics()
+    await recordAccess(routeRepositories, actor, 'admin.observability.incident_metrics_read', 'observability_incident_metrics', null, { active: metrics.active, criticalActive: metrics.criticalActive })
+    ok(response, metrics)
+  })
+
   const alertActionHandler = (action) => async (request, response, context) => {
       const actor = requirePermission(context, 'admin:observability:manage')
       const payload = parseAlertAction((await readJsonBody(request)) ?? {})
@@ -91,6 +122,7 @@ export const registerObservabilityRoutes = (router, options = {}) => {
       const result = await routeRepositories.observability.transitionAlert(context.params.id, action, payload, actor)
       if (!result) throw notFound(`/api/admin/observability/alerts/${context.params.id}`)
       if (result.conflict) throw new HttpError(409, 'STATE_CONFLICT', 'observability alert was modified concurrently')
+      if (result.invalidState) throw new HttpError(409, 'ALERT_ALREADY_RESOLVED', 'resolved alerts cannot be changed')
       await recordAccess(routeRepositories, actor, `admin.observability.alert_${action}d`, 'observability_alert', result.alert.id, {
         state: result.alert.state,
         version: result.alert.version,
@@ -101,4 +133,27 @@ export const registerObservabilityRoutes = (router, options = {}) => {
   router.add('POST', '/api/admin/observability/alerts/:id/acknowledge', alertActionHandler('acknowledge'))
   router.add('POST', '/api/admin/observability/alerts/:id/silence', alertActionHandler('silence'))
   router.add('POST', '/api/admin/observability/alerts/:id/resolve', alertActionHandler('resolve'))
+
+  router.add('POST', '/api/admin/observability/alerts/:id/escalate', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:observability:manage')
+    const payload = parseAlertEscalationRequest((await readJsonBody(request)) ?? {})
+    const result = await routeRepositories.observability.escalateAlert(context.params.id, payload, actor)
+    if (!result) throw notFound(`/api/admin/observability/alerts/${context.params.id}`)
+    if (result.conflict) throw new HttpError(409, 'STATE_CONFLICT', 'observability alert was modified concurrently')
+    if (result.invalidState) throw new HttpError(409, 'ALERT_ALREADY_RESOLVED', 'resolved alerts cannot be escalated')
+    await recordAccess(routeRepositories, actor, 'admin.observability.alert_escalated', 'observability_alert', result.alert.id, { version: result.alert.version, escalationLevel: result.alert.escalationLevel, escalationTarget: result.alert.escalationTarget, reasonCode: payload.reasonCode })
+    ok(response, result.alert)
+  })
+
+  router.add('POST', '/api/admin/observability/alerts/:id/review', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:observability:manage')
+    const payload = parseIncidentReviewRequest((await readJsonBody(request)) ?? {})
+    const result = await routeRepositories.observability.createIncidentReview(context.params.id, payload, actor)
+    if (!result) throw notFound(`/api/admin/observability/alerts/${context.params.id}`)
+    if (result.conflict) throw new HttpError(409, 'STATE_CONFLICT', 'observability alert was modified concurrently')
+    if (result.invalidState) throw new HttpError(409, 'ALERT_NOT_RESOLVED', 'incident review requires a resolved alert')
+    if (result.exists) throw new HttpError(409, 'INCIDENT_REVIEW_EXISTS', 'incident review already exists')
+    await recordAccess(routeRepositories, actor, 'admin.observability.incident_review_created', 'observability_incident_review', result.review.id, { alertId: result.alert.id, version: result.alert.version, correctiveActionsHash: result.review.correctiveActionsHash })
+    ok(response, { alert: result.alert, review: result.review })
+  })
 }

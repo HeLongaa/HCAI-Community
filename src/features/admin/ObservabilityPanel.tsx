@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Activity, Download, RefreshCw, Search, ShieldAlert } from 'lucide-react'
+import { Activity, BellRing, Download, RefreshCw, Save, Search, ShieldAlert } from 'lucide-react'
 
 import type { Permission } from '../../domain/types'
 import { adminService } from '../../services/adminService'
 import type {
   AdminObservabilityAlertDto,
+  AdminObservabilityAlertDetailDto,
+  AdminObservabilityIncidentMetricsDto,
   AdminObservabilityLevel,
   AdminObservabilityLogDto,
   AdminObservabilityOutcome,
   AdminObservabilityQuery,
+  AdminObservabilitySloControlDto,
   AdminSloSummaryDto,
   AdminTraceDto,
 } from '../../services/contracts'
@@ -31,10 +34,12 @@ const downloadJson = (json: string) => {
   URL.revokeObjectURL(url)
 }
 
-export function ObservabilityPanel({ hasPermission, isZh, notify }: {
+export function ObservabilityPanel({ hasPermission, isZh, notify, initialAlertId = null, onInitialAlertHandled }: {
   hasPermission: (permission: Permission) => boolean
   isZh: boolean
   notify: (message: string) => void
+  initialAlertId?: string | null
+  onInitialAlertHandled?: () => void
 }) {
   const canRead = hasPermission('admin:observability:read')
   const canExport = hasPermission('admin:observability:export')
@@ -51,6 +56,10 @@ export function ObservabilityPanel({ hasPermission, isZh, notify }: {
   const [detailLoading, setDetailLoading] = useState(false)
   const [slos, setSlos] = useState<AdminSloSummaryDto | null>(null)
   const [alerts, setAlerts] = useState<AdminObservabilityAlertDto[]>([])
+  const [controls, setControls] = useState<AdminObservabilitySloControlDto[]>([])
+  const [incidentMetrics, setIncidentMetrics] = useState<AdminObservabilityIncidentMetricsDto | null>(null)
+  const [selectedAlert, setSelectedAlert] = useState<AdminObservabilityAlertDetailDto | null>(null)
+  const [reviewDraft, setReviewDraft] = useState({ summary: '', rootCause: '', impact: '', correctiveActions: '' })
   const [sloLoading, setSloLoading] = useState(false)
   const [sloError, setSloError] = useState<string | null>(null)
   const [mutating, setMutating] = useState<string | null>(null)
@@ -77,12 +86,16 @@ export function ObservabilityPanel({ hasPermission, isZh, notify }: {
     setSloLoading(true)
     setSloError(null)
     try {
-      const [summary, nextAlerts] = await Promise.all([
+      const [summary, nextAlerts, nextControls, nextMetrics] = await Promise.all([
         adminService.observabilitySlos(),
         adminService.observabilityAlerts(),
+        adminService.observabilitySloControls(),
+        adminService.observabilityIncidentMetrics(),
       ])
       setSlos(summary)
       setAlerts(nextAlerts)
+      setControls(nextControls)
+      setIncidentMetrics(nextMetrics)
     } catch (cause) {
       setSloError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -97,6 +110,19 @@ export function ObservabilityPanel({ hasPermission, isZh, notify }: {
     }, 0)
     return () => window.clearTimeout(timer)
   }, [readHealth, readLogs])
+
+  useEffect(() => {
+    if (!canRead || !initialAlertId) return
+    let cancelled = false
+    void adminService.observabilityAlert(initialAlertId).then((alert) => {
+      if (!cancelled) setSelectedAlert(alert)
+    }).catch((cause) => {
+      if (!cancelled) setSloError(cause instanceof Error ? cause.message : String(cause))
+    }).finally(() => {
+      if (!cancelled) onInitialAlertHandled?.()
+    })
+    return () => { cancelled = true }
+  }, [canRead, initialAlertId, onInitialAlertHandled])
 
   const applyFilters = () => {
     const next = {
@@ -145,7 +171,12 @@ export function ObservabilityPanel({ hasPermission, isZh, notify }: {
     try {
       const summary = await adminService.evaluateObservabilitySlos()
       setSlos(summary)
-      setAlerts(await adminService.observabilityAlerts())
+      const [nextAlerts, nextMetrics] = await Promise.all([
+        adminService.observabilityAlerts(),
+        adminService.observabilityIncidentMetrics(),
+      ])
+      setAlerts(nextAlerts)
+      setIncidentMetrics(nextMetrics)
       notify(isZh ? 'SLO 评估已完成。' : 'SLO evaluation completed.')
     } catch (cause) {
       setSloError(cause instanceof Error ? cause.message : String(cause))
@@ -165,7 +196,75 @@ export function ObservabilityPanel({ hasPermission, isZh, notify }: {
         until,
       })
       setAlerts((current) => current.map((item) => item.id === changed.id ? changed : item))
+      if (selectedAlert?.id === changed.id) setSelectedAlert(await adminService.observabilityAlert(changed.id))
       notify(isZh ? `告警已${action === 'acknowledge' ? '确认' : action === 'silence' ? '静默一小时' : '解决'}。` : `Alert ${action}d.`)
+    } catch (cause) {
+      setSloError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setMutating(null)
+    }
+  }
+
+  const inspectAlert = async (id: string) => {
+    setMutating(id)
+    setSloError(null)
+    try {
+      setSelectedAlert(await adminService.observabilityAlert(id))
+      setReviewDraft({ summary: '', rootCause: '', impact: '', correctiveActions: '' })
+    } catch (cause) {
+      setSloError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setMutating(null)
+    }
+  }
+
+  const escalateAlert = async (alert: AdminObservabilityAlertDto) => {
+    setMutating(alert.id)
+    setSloError(null)
+    try {
+      const changed = await adminService.escalateObservabilityAlert(alert.id, { expectedVersion: alert.version, reasonCode: 'operator_escalation' })
+      setAlerts((current) => current.map((item) => item.id === changed.id ? changed : item))
+      setSelectedAlert(await adminService.observabilityAlert(changed.id))
+      setIncidentMetrics(await adminService.observabilityIncidentMetrics())
+      notify(isZh ? '告警已升级到二线值班。' : 'Alert escalated to secondary on-call.')
+    } catch (cause) {
+      setSloError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setMutating(null)
+    }
+  }
+
+  const saveControl = async (control: AdminObservabilitySloControlDto) => {
+    setMutating(control.id)
+    setSloError(null)
+    try {
+      const changed = await adminService.updateObservabilitySloControl(control.sloId, { ...control, expectedVersion: control.version, reasonCode: 'operator_control_update' })
+      setControls((current) => current.map((item) => item.sloId === changed.sloId ? changed : item))
+      notify(isZh ? 'SLO 与值班配置已更新。' : 'SLO and on-call control updated.')
+    } catch (cause) {
+      setSloError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setMutating(null)
+    }
+  }
+
+  const submitReview = async () => {
+    if (!selectedAlert) return
+    setMutating(selectedAlert.id)
+    setSloError(null)
+    try {
+      const result = await adminService.reviewObservabilityIncident(selectedAlert.id, {
+        expectedVersion: selectedAlert.version,
+        summary: reviewDraft.summary,
+        rootCause: reviewDraft.rootCause,
+        impact: reviewDraft.impact,
+        correctiveActions: reviewDraft.correctiveActions.split('\n').map((item) => item.trim()).filter(Boolean),
+        reasonCode: 'incident_reviewed',
+      })
+      setAlerts((current) => current.map((item) => item.id === result.alert.id ? result.alert : item))
+      setSelectedAlert(await adminService.observabilityAlert(result.alert.id))
+      setIncidentMetrics(await adminService.observabilityIncidentMetrics())
+      notify(isZh ? '事故复盘证据已归档。' : 'Incident review evidence archived.')
     } catch (cause) {
       setSloError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -263,16 +362,49 @@ export function ObservabilityPanel({ hasPermission, isZh, notify }: {
       {sloError && <div className="observability-error" role="alert"><strong>{isZh ? 'SLO 暂不可用' : 'SLO unavailable'}</strong><span>{sloError}</span></div>}
       {sloLoading && <div className="empty-state compact"><strong>{isZh ? '正在读取 SLO' : 'Loading SLO status'}</strong></div>}
       {!sloLoading && slos?.status === 'unverifiable' && <div className="observability-unverifiable"><strong>{isZh ? '无法验证' : 'Unverifiable'}</strong><span>{slos.reason}</span></div>}
+      {incidentMetrics && <div className="incident-metrics" data-testid="observability-incident-metrics">
+        <div><small>{isZh ? '活动事故' : 'Active incidents'}</small><strong>{incidentMetrics.active}</strong></div>
+        <div><small>{isZh ? '活动严重事故' : 'Critical active'}</small><strong>{incidentMetrics.criticalActive}</strong></div>
+        <div><small>{isZh ? '已升级' : 'Escalated'}</small><strong>{incidentMetrics.escalated}</strong></div>
+        <div><small>MTTA</small><strong>{incidentMetrics.meanTimeToAcknowledgeMinutes == null ? '-' : `${incidentMetrics.meanTimeToAcknowledgeMinutes.toFixed(1)}m`}</strong></div>
+        <div><small>MTTR</small><strong>{incidentMetrics.meanTimeToRecoveryMinutes == null ? '-' : `${incidentMetrics.meanTimeToRecoveryMinutes.toFixed(1)}m`}</strong></div>
+        <div><small>{isZh ? '复盘覆盖' : 'Review coverage'}</small><strong>{incidentMetrics.reviewCoverage == null ? '-' : `${(incidentMetrics.reviewCoverage * 100).toFixed(0)}%`}</strong></div>
+      </div>}
+      <div className="observability-control-list" data-testid="observability-slo-controls">
+        {controls.map((control) => <div className="observability-control-row" key={control.sloId}>
+          <div><strong>{control.sloId}</strong><small>v{control.version} · {control.enabled ? (isZh ? '启用' : 'enabled') : (isZh ? '停用' : 'disabled')}</small></div>
+          <label><span>{isZh ? '目标' : 'Target'}</span><input type="number" min="0.9" max="0.99999" step="0.0001" value={control.target} disabled={!canManage} onChange={(event) => setControls((current) => current.map((item) => item.sloId === control.sloId ? { ...item, target: Number(event.target.value) } : item))} /></label>
+          <label><span>5m burn</span><input type="number" min="0.1" max="1000" step="0.1" value={control.shortWindowBurnThreshold} disabled={!canManage} onChange={(event) => setControls((current) => current.map((item) => item.sloId === control.sloId ? { ...item, shortWindowBurnThreshold: Number(event.target.value) } : item))} /></label>
+          <label><span>60m burn</span><input type="number" min="0.1" max="1000" step="0.1" value={control.longWindowBurnThreshold} disabled={!canManage} onChange={(event) => setControls((current) => current.map((item) => item.sloId === control.sloId ? { ...item, longWindowBurnThreshold: Number(event.target.value) } : item))} /></label>
+          <label><span>{isZh ? '主值班' : 'Primary'}</span><input value={control.primaryOnCallHandle} disabled={!canManage} onChange={(event) => setControls((current) => current.map((item) => item.sloId === control.sloId ? { ...item, primaryOnCallHandle: event.target.value } : item))} /></label>
+          <label><span>{isZh ? '二线值班' : 'Secondary'}</span><input value={control.secondaryOnCallHandle ?? ''} disabled={!canManage} onChange={(event) => setControls((current) => current.map((item) => item.sloId === control.sloId ? { ...item, secondaryOnCallHandle: event.target.value || null } : item))} /></label>
+          <label><span>{isZh ? '升级分钟' : 'Escalate min'}</span><input type="number" min="1" max="1440" value={control.escalationMinutes} disabled={!canManage} onChange={(event) => setControls((current) => current.map((item) => item.sloId === control.sloId ? { ...item, escalationMinutes: Number(event.target.value) } : item))} /></label>
+          {canManage && <button className="icon-button" type="button" title={isZh ? '保存 SLO 配置' : 'Save SLO control'} aria-label={isZh ? '保存 SLO 配置' : 'Save SLO control'} disabled={mutating === control.id} onClick={() => void saveControl(control)}><Save size={16} /></button>}
+        </div>)}
+      </div>
       <div className="slo-grid">
         {(slos?.slos ?? []).map((slo) => <div className={`slo-item ${slo.firing ? 'firing' : ''}`} key={slo.id}><strong>{slo.id}</strong><span>{formatRate(slo.current)} / {formatRate(slo.target)}</span><small>5m {formatBurn(slo.shortWindowBurn)} · 60m {formatBurn(slo.longWindowBurn)}</small></div>)}
         {!sloLoading && slos?.status !== 'unverifiable' && !(slos?.slos?.length) && <div className="empty-state compact"><span>{isZh ? '暂无可计算请求' : 'No eligible requests yet'}</span></div>}
       </div>
       <div className="observability-alerts">
         {alerts.map((alert) => <div className="observability-alert-row" key={alert.id}>
-          <span className={`observability-alert-state ${alert.state}`}>{alert.state}</span><strong>{alert.sloId}</strong><span>5m {formatBurn(alert.shortWindowBurn)} · 60m {formatBurn(alert.longWindowBurn)}</span><small>v{alert.version} · {formatDate(alert.updatedAt)}</small>
-          {canManage && <div className="button-row"><button className="ghost-button" type="button" disabled={mutating === alert.id || alert.state === 'acknowledged'} onClick={() => void transitionAlert(alert, 'acknowledge')}>{isZh ? '确认' : 'Acknowledge'}</button><button className="ghost-button" type="button" disabled={mutating === alert.id || alert.state === 'silenced'} onClick={() => void transitionAlert(alert, 'silence')}>{isZh ? '静默 1h' : 'Silence 1h'}</button><button className="ghost-button" type="button" disabled={mutating === alert.id || alert.state === 'resolved'} onClick={() => void transitionAlert(alert, 'resolve')}>{isZh ? '解决' : 'Resolve'}</button></div>}
+          <span className={`observability-alert-state ${alert.state}`}>{alert.state}</span><strong>{alert.sloId}</strong><span>5m {formatBurn(alert.shortWindowBurn)} · 60m {formatBurn(alert.longWindowBurn)}</span><small>v{alert.version} · L{alert.escalationLevel} · {formatDate(alert.updatedAt)}</small>
+          <div className="button-row"><button className="ghost-button" type="button" disabled={mutating === alert.id} onClick={() => void inspectAlert(alert.id)}>{isZh ? '详情' : 'Detail'}</button>{canManage && <><button className="ghost-button" type="button" disabled={mutating === alert.id || alert.state === 'acknowledged' || alert.state === 'resolved'} onClick={() => void transitionAlert(alert, 'acknowledge')}>{isZh ? '确认' : 'Acknowledge'}</button><button className="ghost-button" type="button" disabled={mutating === alert.id || alert.state === 'silenced' || alert.state === 'resolved'} onClick={() => void transitionAlert(alert, 'silence')}>{isZh ? '静默 1h' : 'Silence 1h'}</button><button className="icon-button" type="button" title={isZh ? '升级告警' : 'Escalate alert'} aria-label={isZh ? '升级告警' : 'Escalate alert'} disabled={mutating === alert.id || alert.state === 'resolved'} onClick={() => void escalateAlert(alert)}><BellRing size={16} /></button><button className="ghost-button" type="button" disabled={mutating === alert.id || alert.state === 'resolved'} onClick={() => void transitionAlert(alert, 'resolve')}>{isZh ? '解决' : 'Resolve'}</button></>}</div>
         </div>)}
       </div>
+      {selectedAlert && <div className="observability-incident-detail" data-testid="observability-incident-detail">
+        <header><div><small>{selectedAlert.id}</small><h3>{selectedAlert.sloId}</h3></div><span className={`observability-alert-state ${selectedAlert.state}`}>{selectedAlert.state}</span></header>
+        <dl className="observability-metadata"><div><dt>{isZh ? '责任团队' : 'Owner'}</dt><dd>{selectedAlert.owner}</dd></div><div><dt>{isZh ? '升级目标' : 'Escalation target'}</dt><dd>{selectedAlert.escalationTarget ?? '-'}</dd></div><div><dt>{isZh ? '开始' : 'Started'}</dt><dd>{formatDate(selectedAlert.startedAt)}</dd></div><div><dt>{isZh ? '恢复' : 'Recovered'}</dt><dd>{selectedAlert.resolvedAt ? formatDate(selectedAlert.resolvedAt) : '-'}</dd></div></dl>
+        <div className="observability-event-list">{selectedAlert.events.map((event) => <div key={event.id}><span>{event.eventType}</span><strong>{event.reasonCode}</strong><small>{event.actorRef} · {formatDate(event.createdAt)}</small></div>)}</div>
+        {selectedAlert.review && <div className="observability-review"><strong>{isZh ? '事故复盘' : 'Incident review'}</strong><p>{selectedAlert.review.summary}</p><small>{selectedAlert.review.correctiveActions.length} actions · {selectedAlert.review.correctiveActionsHash.slice(0, 12)}</small></div>}
+        {canManage && selectedAlert.state === 'resolved' && !selectedAlert.review && <form className="observability-review-form" onSubmit={(event) => { event.preventDefault(); void submitReview() }}>
+          <label><span>{isZh ? '摘要' : 'Summary'}</span><textarea value={reviewDraft.summary} onChange={(event) => setReviewDraft({ ...reviewDraft, summary: event.target.value })} required minLength={10} /></label>
+          <label><span>{isZh ? '根因' : 'Root cause'}</span><textarea value={reviewDraft.rootCause} onChange={(event) => setReviewDraft({ ...reviewDraft, rootCause: event.target.value })} required minLength={10} /></label>
+          <label><span>{isZh ? '影响' : 'Impact'}</span><textarea value={reviewDraft.impact} onChange={(event) => setReviewDraft({ ...reviewDraft, impact: event.target.value })} required minLength={10} /></label>
+          <label><span>{isZh ? '纠正行动（每行一项）' : 'Corrective actions (one per line)'}</span><textarea value={reviewDraft.correctiveActions} onChange={(event) => setReviewDraft({ ...reviewDraft, correctiveActions: event.target.value })} required minLength={3} /></label>
+          <button className="primary-button" type="button" disabled={mutating === selectedAlert.id} onClick={(event) => event.currentTarget.form?.requestSubmit()}>{isZh ? '归档复盘' : 'Archive review'}</button>
+        </form>}
+      </div>}
     </section>
   )
 }

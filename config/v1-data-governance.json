@@ -623,7 +623,7 @@
     {
       "id": "observability_logs_traces_metrics",
       "classification": "internal",
-      "prismaModels": ["ObservabilityLog", "TraceSpan", "ObservabilityAlert"],
+      "prismaModels": ["ObservabilityLog", "TraceSpan", "ObservabilityAlert", "ObservabilitySloControl", "ObservabilityAlertEvent", "ObservabilityIncidentReview"],
       "locations": ["postgres", "observability"],
       "dataSubjects": ["user", "staff_role", "system"],
       "purposes": ["auth_security", "support_operations"],
@@ -1071,7 +1071,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 131,
+    "modelCount": 134,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",

@@ -128,6 +128,7 @@ export type AdminDeepLink = {
   ledgerUserHandle?: string | null
   policyHistoryEventId?: string | null
   securityAlertId?: string | null
+  observabilityAlertId?: string | null
   mediaStatus?: 'pending' | 'scanning' | 'review' | 'clean' | 'rejected' | 'all' | null
   mediaAssetId?: string | null
 }

@@ -41,3 +41,16 @@ test('admin targets retain only supported drill-down fields', () => {
   assert.deepEqual(target.admin, { tab: 'Security', securityAlertId: 'alert-1' })
   assert.equal(JSON.stringify(target).includes('private.example'), false)
 })
+
+test('observability notifications retain safe incident drill-down metadata', () => {
+  const metadata = sanitizeNotificationMetadata({
+    alertId: 'observability-alert-1',
+    severity: 'critical',
+    escalationLevel: 2,
+    target: { page: 'admin', admin: { tab: 'Observability', observabilityAlertId: 'observability-alert-1' } },
+  }, { resourceType: 'observability_alert', resourceId: 'observability-alert-1' })
+
+  assert.equal(metadata.alertId, 'observability-alert-1')
+  assert.equal(metadata.escalationLevel, 2)
+  assert.deepEqual(metadata.target.admin, { tab: 'Observability', observabilityAlertId: 'observability-alert-1' })
+})

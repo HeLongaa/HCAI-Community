@@ -21,7 +21,7 @@ export type NotificationTargetV1 = {
 const surfaces = new Set<NotificationSurface>(['generations', 'image', 'video', 'music', 'chat', 'tasks', 'portfolio', 'admin', 'points', 'assets', 'community', 'support'])
 const intents = new Set<NotificationTargetV1['intent']>(['view', 'resume', 'review', 'retry', 'resolve-budget', 'view-delivery'])
 const workspaces = new Set<PlaygroundMode>(['image', 'video', 'music', 'chat'])
-const adminTabs = new Set<NonNullable<AdminDeepLink['tab']>>(['Overview', 'Task review', 'Access', 'Security', 'Finance', 'Accounting', 'Generations', 'Submissions', 'Community', 'Audit log', 'Users', 'Tags', 'AI config'])
+const adminTabs = new Set<NonNullable<AdminDeepLink['tab']>>(['Overview', 'Observability', 'Task review', 'Access', 'Security', 'Finance', 'Accounting', 'Generations', 'Submissions', 'Community', 'Audit log', 'Users', 'Tags', 'AI config'])
 const mediaStatuses = new Set<NonNullable<AdminDeepLink['mediaStatus']>>(['pending', 'scanning', 'review', 'clean', 'rejected', 'all'])
 const safeId = (value: unknown) => typeof value === 'string' && value.length > 0 && value.length <= 160 ? value : undefined
 
@@ -30,7 +30,7 @@ const parseAdminTarget = (value: unknown): AdminDeepLink | undefined => {
   const source = value as Record<string, unknown>
   const result: AdminDeepLink = {}
   if (adminTabs.has(source.tab as NonNullable<AdminDeepLink['tab']>)) result.tab = source.tab as NonNullable<AdminDeepLink['tab']>
-  for (const key of ['overviewResourceType', 'overviewResourceId', 'queue', 'reviewId', 'auditEventId', 'ledgerUserHandle', 'policyHistoryEventId', 'securityAlertId', 'mediaAssetId'] as const) {
+  for (const key of ['overviewResourceType', 'overviewResourceId', 'queue', 'reviewId', 'auditEventId', 'ledgerUserHandle', 'policyHistoryEventId', 'securityAlertId', 'observabilityAlertId', 'mediaAssetId'] as const) {
     const normalized = safeId(source[key])
     if (normalized) result[key] = normalized
   }
@@ -75,7 +75,7 @@ export const notificationTargetHash = (target: NotificationTargetV1) => {
   if (workspace) params.set('workspace', workspace)
   for (const key of ['taskId', 'submissionId', 'reviewId', 'assetId', 'caseId', 'postId', 'commentId'] as const) if (target[key]) params.set(key, target[key] as string)
   if (target.surface === 'admin' && target.admin) {
-    for (const key of ['tab', 'overviewResourceType', 'overviewResourceId', 'queue', 'reviewId', 'auditEventId', 'ledgerUserHandle', 'policyHistoryEventId', 'securityAlertId', 'mediaAssetId', 'mediaStatus'] as const) {
+    for (const key of ['tab', 'overviewResourceType', 'overviewResourceId', 'queue', 'reviewId', 'auditEventId', 'ledgerUserHandle', 'policyHistoryEventId', 'securityAlertId', 'observabilityAlertId', 'mediaAssetId', 'mediaStatus'] as const) {
       const value = target.admin[key]
       if (value) params.set(key, value)
     }

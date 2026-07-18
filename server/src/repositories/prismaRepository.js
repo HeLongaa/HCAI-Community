@@ -270,7 +270,17 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   const modelGovernance = createPrismaModelGovernanceRepository(client, { modelEvaluation, providerLegal })
   const providerOperations = createPrismaProviderOperationsRepository(client)
   const creativeGenerationExecutions = createPrismaGenerationExecutionRepository(client, { recordAudit })
-  const observability = createPrismaObservabilityRepository(client)
+  const observability = createPrismaObservabilityRepository(client, {
+    notifyOnCall: (handles, alert, eventType) => createNotificationsForHandles(handles, {
+      type: `observability.alert_${eventType}`,
+      title: eventType === 'escalated' ? 'Observability alert escalated' : 'SLO burn-rate alert firing',
+      body: `${alert.sloId} is ${eventType === 'escalated' ? 'escalated for incident response' : 'outside its configured burn-rate threshold'}.`,
+      resourceType: 'observability_alert',
+      resourceId: alert.id,
+      metadata: { status: alert.state, alertId: alert.id, severity: alert.severity, escalationLevel: alert.escalationLevel ?? 0, target: { page: 'admin', admin: { tab: 'Observability', observabilityAlertId: alert.id } } },
+      dedupeUnread: true,
+    }),
+  })
 
   const leaseExpiry = (ttlSeconds) => new Date(Date.now() + Math.max(1, Number(ttlSeconds ?? 300)) * 1000)
 
