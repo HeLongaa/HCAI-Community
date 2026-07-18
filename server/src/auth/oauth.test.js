@@ -79,6 +79,7 @@ test('listOAuthProviderMetadata returns public provider mode without secrets', (
   assert.equal(google.available, true)
   assert.equal(google.configured, true)
   assert.equal(google.clientSecret, undefined)
+  assert.equal(google.callbackUrl, 'https://app.example.com/api/auth/oauth/google/callback')
   assert.deepEqual(google.scopes, ['openid', 'email', 'profile'])
   assert.equal(apple.mode, 'dev')
   assert.equal(apple.available, true)

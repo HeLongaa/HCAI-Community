@@ -429,6 +429,7 @@ test('GET /api/auth/oauth/providers returns public provider status', async () =>
     assert.deepEqual(payload.data.map((provider) => provider.provider), ['google', 'github', 'apple', 'discord'])
     assert.equal(payload.data[0].mode, 'dev')
     assert.equal(payload.data[0].label, 'Google')
+    assert.equal(payload.data[0].callbackUrl, null)
     assert.equal(payload.data[0].clientSecret, undefined)
     assert.equal(payload.error, undefined)
   } finally {
@@ -471,6 +472,7 @@ test('POST /api/auth/oauth/:provider/start fails closed when provider is unavail
       assert.equal(google.mode, 'unavailable')
       assert.equal(google.available, false)
       assert.equal(google.authorizationUrl, null)
+      assert.equal(google.callbackUrl, null)
       assert.equal(start.status, 503)
       assert.equal(start.payload.error.code, 'OAUTH_PROVIDER_UNAVAILABLE')
     } finally {

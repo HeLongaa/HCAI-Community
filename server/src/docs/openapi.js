@@ -408,7 +408,7 @@ export const openApiDocument = {
         summary: 'List public OAuth provider configuration status',
         responses: {
           '200': {
-            description: 'Provider labels, mode, callback method, and scopes',
+            description: 'Provider labels, mode, effective callback URL, callback method, and scopes',
             content: {
               'application/json': {
                 schema: {
@@ -425,6 +425,7 @@ export const openApiDocument = {
                           available: { type: 'boolean' },
                           mode: { type: 'string', enum: ['dev', 'external', 'unavailable'] },
                           authorizationUrl: { type: ['string', 'null'], format: 'uri' },
+                          callbackUrl: { type: ['string', 'null'], format: 'uri' },
                           callbackMethod: { type: 'string', enum: ['GET', 'POST'] },
                           scopes: { type: 'array', items: { type: 'string' } },
                         },

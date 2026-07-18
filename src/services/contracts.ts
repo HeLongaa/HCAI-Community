@@ -368,6 +368,7 @@ export type OAuthProviderMetadata = {
   available: boolean
   mode: 'dev' | 'external' | 'unavailable'
   authorizationUrl: string | null
+  callbackUrl: string | null
   callbackMethod: 'GET' | 'POST'
   scopes: string[]
 }

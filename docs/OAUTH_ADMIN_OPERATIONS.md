@@ -34,3 +34,5 @@ Expired authorization requests remain queryable for 30 days. Creating a new requ
 4. Verify **Secret mounted**, **Available**, callback URI, scopes, and audit evidence.
 5. Enable the Provider and execute staging login/link/unlink and negative-flow checks.
 6. Disable immediately on credential exposure, callback anomalies, or Provider incident; rotate the mounted secret before re-enabling.
+
+After enablement, `npm run oauth:preflight -- --api-origin=https://<api-origin>` compares the effective Admin/environment callback exposed by the secret-free public Provider metadata with the exact callback derived from that API origin. A callback registered for another host or environment fails preflight.

@@ -52,6 +52,7 @@ test('OAuth Admin provider controls enforce permissions, safe projections, CAS, 
     assert.equal(google.available, false)
     assert.equal(google.mode, 'unavailable')
     assert.equal(google.authorizationUrl, null)
+    assert.equal(google.callbackUrl, null)
 
     const start = await requestJson(server.url, '/api/auth/oauth/google/start', { body: {} })
     assert.equal(start.status, 503)

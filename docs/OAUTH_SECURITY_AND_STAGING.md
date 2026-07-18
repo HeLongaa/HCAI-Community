@@ -46,7 +46,7 @@ Run the preflight in the API deployment environment after mounting credentials a
 npm run oauth:preflight -- --api-origin=https://api.example.com
 ```
 
-The command checks only whether each client id and secret is present; it never prints secret values. It rejects non-HTTPS production callbacks, callback paths that differ from `/api/auth/oauth/{provider}/callback`, query strings, and fragments. With `--api-origin`, it also verifies that the public Provider status reports both Google and GitHub as `external` and available, which covers the Admin enable/disable setting and effective runtime configuration.
+The command never prints secret values. Without `--api-origin`, it checks environment-provided client ids, secrets, and redirect URIs. With `--api-origin`, client ids and redirect URIs may instead come from the Admin control plane; the command still requires each deployment secret, then verifies that public Provider status reports Google and GitHub as `external` and available and that each effective callback exactly equals the callback derived from the supplied API origin. This covers Admin enablement and prevents a valid-looking but wrong-host callback from passing deployment preflight.
 
 For local registration, use dedicated development clients and run:
 
