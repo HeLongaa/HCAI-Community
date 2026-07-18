@@ -32,6 +32,7 @@
     { "id": "userAdmin", "domain": "user-profile", "layer": "transport", "registration": "registerUserAdminRoutes" },
     { "id": "tasks", "domain": "task-marketplace", "layer": "transport", "registration": "registerTaskRoutes" },
     { "id": "posts", "domain": "community", "layer": "transport", "registration": "registerPostRoutes" },
+    { "id": "communityAdmin", "domain": "community", "layer": "transport", "registration": "registerCommunityAdminRoutes" },
     { "id": "library", "domain": "media-platform", "layer": "transport", "registration": "registerLibraryRoutes" },
     { "id": "media", "domain": "media-platform", "layer": "transport", "registration": "registerMediaRoutes" },
     { "id": "creative", "domain": "ai-runtime", "layer": "transport", "registration": "registerCreativeRoutes" },

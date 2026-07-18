@@ -293,6 +293,32 @@ export const openApiDocument = {
         responses: { '200': { description: 'Published post' }, '404': { description: 'Post not owned by actor' }, '409': { description: 'Stale version or post is not a draft' } },
       },
     },
+    '/posts/{id}/restore': {
+      post: {
+        summary: 'Restore an owned soft-deleted post without changing its Trust moderation state',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['expectedVersion'], properties: { expectedVersion: { type: 'integer', minimum: 1 } } } } } },
+        responses: { '200': { description: 'Restored post' }, '404': { description: 'Post not owned by actor' }, '409': { description: 'Stale version or post is not deleted' } },
+      },
+    },
+    '/posts/{id}/comments/{commentId}': {
+      patch: {
+        summary: 'Edit an owned active comment with optimistic concurrency',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['body', 'expectedVersion'], additionalProperties: false, properties: { body: { type: 'string', minLength: 1, maxLength: 10000 }, expectedVersion: { type: 'integer', minimum: 1 } } } } } },
+        responses: { '200': { description: 'Updated comment' }, '404': { description: 'Comment not owned by actor or post mismatch' }, '409': { description: 'Stale version or deleted comment' } },
+      },
+      delete: {
+        summary: 'Soft-delete an owned comment without changing its Trust moderation state',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['expectedVersion'], properties: { expectedVersion: { type: 'integer', minimum: 1 }, reasonCode: { type: 'string', pattern: '^[a-z0-9][a-z0-9._:-]{0,79}$' } } } } } },
+        responses: { '200': { description: 'Soft-deleted comment evidence' }, '404': { description: 'Comment not owned by actor or post mismatch' }, '409': { description: 'Stale version or already deleted' } },
+      },
+    },
+    '/posts/{id}/comments/{commentId}/restore': {
+      post: {
+        summary: 'Restore an owned soft-deleted comment without changing its Trust moderation state',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['expectedVersion'], properties: { expectedVersion: { type: 'integer', minimum: 1 } } } } } },
+        responses: { '200': { description: 'Restored comment' }, '404': { description: 'Comment not owned by actor or post mismatch' }, '409': { description: 'Stale version or comment is not deleted' } },
+      },
+    },
     '/admin/auth/oauth/providers': {
       get: {
         summary: 'List secret-free OAuth Provider controls and environment readiness',
@@ -929,6 +955,28 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/community/posts': {
+      get: { summary: 'List posts for community administration', security: [{ bearerAuth: [] }], parameters: [{ name: 'search', in: 'query', schema: { type: 'string' } }, { name: 'deletionState', in: 'query', schema: { type: 'string', enum: ['active', 'deleted', 'all'] } }, { name: 'moderationState', in: 'query', schema: { type: 'string', enum: ['visible', 'hidden'] } }, { name: 'cursor', in: 'query', schema: { type: 'string' } }, { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } }], responses: { '200': { description: 'Versioned post administration page' }, '403': { description: 'Requires admin:community:read' } } },
+    },
+    '/admin/community/comments': {
+      get: { summary: 'List comments for community administration', security: [{ bearerAuth: [] }], parameters: [{ name: 'search', in: 'query', schema: { type: 'string' } }, { name: 'postId', in: 'query', schema: { type: 'string' } }, { name: 'deletionState', in: 'query', schema: { type: 'string', enum: ['active', 'deleted', 'all'] } }, { name: 'cursor', in: 'query', schema: { type: 'string' } }, { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } }], responses: { '200': { description: 'Versioned comment administration page' }, '403': { description: 'Requires admin:community:read' } } },
+    },
+    '/admin/community/posts/{id}': {
+      get: { summary: 'Read one administrative post projection', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Post detail' }, '404': { description: 'Post not found' } } },
+      patch: { summary: 'Edit a post with optimistic concurrency', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Updated post' }, '409': { description: 'Version conflict' } } },
+    },
+    '/admin/community/comments/{id}': {
+      get: { summary: 'Read one administrative comment projection', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Comment detail' }, '404': { description: 'Comment not found' } } },
+      patch: { summary: 'Edit a comment with optimistic concurrency', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Updated comment' }, '409': { description: 'Version conflict' } } },
+    },
+    '/admin/community/posts/{id}/delete': { post: { summary: 'Soft-delete a post without changing Trust moderation', responses: { '200': { description: 'Deleted post' }, '409': { description: 'Version conflict' } } } },
+    '/admin/community/posts/{id}/restore': { post: { summary: 'Restore a post without changing Trust moderation', responses: { '200': { description: 'Restored post' }, '409': { description: 'Version conflict' } } } },
+    '/admin/community/comments/{id}/delete': { post: { summary: 'Soft-delete a comment without changing Trust moderation', responses: { '200': { description: 'Deleted comment' }, '409': { description: 'Version conflict' } } } },
+    '/admin/community/comments/{id}/restore': { post: { summary: 'Restore a comment without changing Trust moderation', responses: { '200': { description: 'Restored comment' }, '409': { description: 'Version conflict' } } } },
+    '/admin/community/metrics': { get: { summary: 'Read aggregate community interaction and content-health metrics', responses: { '200': { description: 'Metrics without raw content' }, '403': { description: 'Requires admin:community:read' } } } },
+    '/admin/community/metrics/export': { get: { summary: 'Export a versioned aggregate community metrics snapshot', responses: { '200': { description: 'Portable aggregate metrics document' }, '403': { description: 'Requires admin:community:export' } } } },
+    '/admin/community/bulk/preview': { post: { summary: 'Preview bounded post or comment delete/restore operations', responses: { '200': { description: 'Eligibility, target hash, and confirmation phrase' }, '403': { description: 'Requires admin:community:manage' } } } },
+    '/admin/community/bulk': { post: { summary: 'Execute a previewed idempotent community disposition', responses: { '200': { description: 'Stable per-target result' }, '409': { description: 'Target hash or idempotency conflict' } } } },
     '/admin/tasks/summary': {
       get: {
         summary: 'Summarize task operations by lifecycle and archive state',

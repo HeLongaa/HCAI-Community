@@ -531,6 +531,50 @@ export type UnlinkOAuthAccountResponse = {
   unlinked: boolean
 }
 
+export type AdminCommunityTargetType = 'post' | 'comment'
+export type AdminCommunityBulkAction = 'delete' | 'restore'
+export type AdminCommunityContent = {
+  id: string
+  targetType: AdminCommunityTargetType
+  postId?: string
+  parentId?: string | null
+  title?: string
+  body: string
+  category?: string
+  tag?: string
+  solved?: boolean
+  status?: 'draft' | 'published' | 'deleted'
+  moderationState: 'visible' | 'hidden'
+  authorHandle: string | null
+  commentCount?: number
+  likesCount?: number
+  viewsCount?: number
+  version: number
+  deletedAt: string | null
+  deletionReasonCode: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+export type AdminCommunityQuery = {
+  cursor?: string | null; limit?: number; direction?: 'asc' | 'desc'; sort?: string; search?: string | null
+  status?: string | null; deletionState?: 'active' | 'deleted' | 'all'; moderationState?: 'visible' | 'hidden' | null
+  category?: string | null; authorHandle?: string | null; postId?: string | null; dateFrom?: string | null; dateTo?: string | null
+}
+export type AdminCommunityMetrics = {
+  window: { dateFrom: string | null; dateTo: string | null; category: string | null }
+  posts: { total: number; active: number; deleted: number; hidden: number }
+  comments: { total: number; active: number; deleted: number; hidden: number }
+  engagement: { likes: number; views: number; commentsPerActivePost: number }
+  health: { solved: number; unanswered: number }
+  categories: Record<string, number>
+}
+export type AdminCommunityBulkPreview = {
+  targetType: AdminCommunityTargetType; action: AdminCommunityBulkAction; targetHash: string; targetCount: number
+  eligibleCount: number; skippedCount: number; requiredConfirmationText: string; destructive: boolean
+  items: Array<{ id: string; eligible: boolean; reason: string | null; version?: number }>
+}
+export type AdminCommunityBulkResult = AdminCommunityBulkPreview & { status: 'completed'; succeededCount: number; items: Array<{ id: string; status: 'succeeded' | 'skipped'; reason: string | null }> }
+
 export type AdminOAuthProviderControl = {
   provider: Exclude<OAuthProvider, 'dev'>
   label: string

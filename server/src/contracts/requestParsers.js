@@ -304,6 +304,13 @@ export const parseCreateCommentRequest = (body) => ({
   parentId: nullableText(body, 'parentId'),
 })
 
+export const parseUpdateCommentRequest = (body) => ({
+  expectedVersion: parsePostExpectedVersion(body),
+  body: postText(body, 'body', 10_000),
+})
+
+export const parseCommentEvidenceRequest = parseDeletePostRequest
+
 export const parseConvertToTaskRequest = (body) => ({
   rewardAmount: optionalNumber(body, 'rewardAmount'),
   pointsReward: requireNumber(body, 'pointsReward'),

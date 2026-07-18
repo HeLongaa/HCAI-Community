@@ -6,11 +6,13 @@ import {
   parseConvertToTaskRequest,
   parseCreateCommentRequest,
   parseCreatePostRequest,
+  parseCommentEvidenceRequest,
   parseDeletePostRequest,
   parseMyPostListQuery,
   parsePostListQuery,
   parsePublishPostRequest,
   parseUpdatePostRequest,
+  parseUpdateCommentRequest,
 } from '../../contracts/requestParsers.js'
 import { repositories } from '../../repositories/index.js'
 
@@ -68,6 +70,15 @@ export const registerPostRoutes = (router) => {
     ok(response, result.post)
   })
 
+  router.add('POST', '/api/posts/:id/restore', async (request, response, context) => {
+    const actor = requirePermission(context, 'post:create')
+    const result = await repositories.posts.restore(context.params.id, parseDeletePostRequest((await readJsonBody(request)) ?? {}), actor)
+    if (!result) throw notFound(`/api/posts/${context.params.id}`)
+    if (result.conflict) throw new HttpError(409, 'STATE_CONFLICT', 'Post was modified concurrently')
+    if (result.invalidStatus) throw new HttpError(409, 'POST_NOT_DELETED', 'Only deleted posts can be restored')
+    ok(response, result.post)
+  })
+
   router.add('GET', '/api/posts/:id', async (_request, response, context) => {
     const post = await repositories.posts.findById(context.params.id, context.user)
     if (!post) {
@@ -84,6 +95,33 @@ export const registerPostRoutes = (router) => {
       throw notFound(`/api/posts/${context.params.id}`)
     }
     created(response, comment)
+  })
+
+  router.add('PATCH', '/api/posts/:id/comments/:commentId', async (request, response, context) => {
+    const actor = requirePermission(context, 'comment:create')
+    const result = await repositories.posts.updateComment(context.params.id, context.params.commentId, parseUpdateCommentRequest((await readJsonBody(request)) ?? {}), actor)
+    if (!result) throw notFound(`/api/posts/${context.params.id}/comments/${context.params.commentId}`)
+    if (result.conflict) throw new HttpError(409, 'STATE_CONFLICT', 'Comment was modified concurrently')
+    if (result.deleted) throw new HttpError(409, 'COMMENT_DELETED', 'Deleted comments cannot be edited')
+    ok(response, result.comment)
+  })
+
+  router.add('DELETE', '/api/posts/:id/comments/:commentId', async (request, response, context) => {
+    const actor = requirePermission(context, 'comment:create')
+    const result = await repositories.posts.deleteComment(context.params.id, context.params.commentId, parseCommentEvidenceRequest((await readJsonBody(request)) ?? {}), actor)
+    if (!result) throw notFound(`/api/posts/${context.params.id}/comments/${context.params.commentId}`)
+    if (result.conflict) throw new HttpError(409, 'STATE_CONFLICT', 'Comment was modified concurrently')
+    if (result.deleted) throw new HttpError(409, 'COMMENT_ALREADY_DELETED', 'Comment is already deleted')
+    ok(response, result.comment)
+  })
+
+  router.add('POST', '/api/posts/:id/comments/:commentId/restore', async (request, response, context) => {
+    const actor = requirePermission(context, 'comment:create')
+    const result = await repositories.posts.restoreComment(context.params.id, context.params.commentId, parseCommentEvidenceRequest((await readJsonBody(request)) ?? {}), actor)
+    if (!result) throw notFound(`/api/posts/${context.params.id}/comments/${context.params.commentId}`)
+    if (result.conflict) throw new HttpError(409, 'STATE_CONFLICT', 'Comment was modified concurrently')
+    if (result.invalidStatus) throw new HttpError(409, 'COMMENT_NOT_DELETED', 'Only deleted comments can be restored')
+    ok(response, result.comment)
   })
 
   router.add('POST', '/api/posts/:id/like', async (_request, response, context) => {

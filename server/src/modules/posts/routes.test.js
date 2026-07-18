@@ -87,6 +87,33 @@ test('POST /api/posts requires post:create permission', async () => {
   }
 })
 
+test('owners restore posts and edit, delete, and restore comments with CAS', async () => {
+  const server = await createTestServer()
+  try {
+    const post = await createPost(server)
+    const removed = await requestJson(server.url, `/api/posts/${post.id}`, { method: 'DELETE', token: 'demo-access.promptlin', body: { expectedVersion: post.version, reasonCode: 'owner_cleanup' } })
+    assert.equal(removed.status, 200)
+    const restored = await requestJson(server.url, `/api/posts/${post.id}/restore`, { token: 'demo-access.promptlin', body: { expectedVersion: removed.payload.data.version, reasonCode: 'owner_restore' } })
+    assert.equal(restored.status, 200)
+    assert.equal(restored.payload.data.status, 'published')
+
+    const created = await requestJson(server.url, `/api/posts/${post.id}/comments`, { token: 'demo-access.taskops', body: { body: 'Owner lifecycle comment.' } })
+    assert.equal(created.status, 201)
+    const comment = created.payload.data
+    const edited = await requestJson(server.url, `/api/posts/${post.id}/comments/${comment.id}`, { method: 'PATCH', token: 'demo-access.taskops', body: { expectedVersion: comment.version, body: 'Owner edited comment.' } })
+    assert.equal(edited.status, 200)
+    assert.equal(edited.payload.data.version, comment.version + 1)
+    const denied = await requestJson(server.url, `/api/posts/${post.id}/comments/${comment.id}`, { method: 'DELETE', token: 'demo-access.promptlin', body: { expectedVersion: edited.payload.data.version, reasonCode: 'not_owner' } })
+    assert.equal(denied.status, 404)
+    const deleted = await requestJson(server.url, `/api/posts/${post.id}/comments/${comment.id}`, { method: 'DELETE', token: 'demo-access.taskops', body: { expectedVersion: edited.payload.data.version, reasonCode: 'owner_cleanup' } })
+    assert.equal(deleted.status, 200)
+    assert.ok(deleted.payload.data.deletedAt)
+    const commentRestored = await requestJson(server.url, `/api/posts/${post.id}/comments/${comment.id}/restore`, { token: 'demo-access.taskops', body: { expectedVersion: deleted.payload.data.version, reasonCode: 'owner_restore' } })
+    assert.equal(commentRestored.status, 200)
+    assert.equal(commentRestored.payload.data.deletedAt, null)
+  } finally { await server.close() }
+})
+
 test('POST /api/posts returns VALIDATION_FAILED for missing title', async () => {
   const server = await createTestServer()
   try {

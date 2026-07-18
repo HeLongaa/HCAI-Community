@@ -121,6 +121,10 @@ export const getCommentDto = (comment) => ({
   moderationState: comment.moderationState ?? 'visible',
   moderationVersion: comment.moderationVersion ?? 0,
   moderationUpdatedAt: comment.moderationUpdatedAt?.toISOString?.() ?? null,
+  version: comment.version ?? 1,
+  updatedAt: comment.updatedAt?.toISOString?.() ?? comment.createdAt?.toISOString?.() ?? '',
+  deletedAt: comment.deletedAt?.toISOString?.() ?? null,
+  deletionReasonCode: comment.deletionReasonCode ?? null,
   createdAt: comment.createdAt ? comment.createdAt.toISOString() : '',
 })
 
@@ -577,7 +581,7 @@ export const getPostDetailDto = (post, viewer = null) => {
   return {
     ...base,
     comments: (post.comments ?? [])
-      .filter((comment) => comment.moderationState !== 'hidden' || canModerate || comment.author?.profile?.handle === viewer?.handle)
+      .filter((comment) => (!comment.deletedAt && comment.moderationState !== 'hidden') || canModerate || comment.author?.profile?.handle === viewer?.handle)
       .map(getCommentDto),
     relatedTasks: metadata.relatedTasks ?? [],
     viewerPermissions: metadata.viewerPermissions ?? {

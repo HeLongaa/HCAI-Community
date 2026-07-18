@@ -151,6 +151,7 @@ import { createPrismaAuthSessionAdminRepository } from '../auth/prismaAuthSessio
 import { createPrismaAuthRiskAdminRepository } from '../auth/prismaAuthRiskAdminRepository.js'
 import { createPrismaUserAdminRepository } from '../users/prismaUserAdminRepository.js'
 import { createPrismaTaskAdminRepository } from '../tasks/prismaTaskAdminRepository.js'
+import { createPrismaCommunityAdminRepository } from '../community/prismaCommunityAdminRepository.js'
 import { createPrismaBillingAdminRepository } from '../accounting/prismaBillingAdminRepository.js'
 import { createPrismaEntitlementRepository } from '../entitlements/prismaEntitlementRepository.js'
 import { createPrismaNotificationManagementRepository } from '../notifications/prismaNotificationManagementRepository.js'
@@ -1124,6 +1125,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   const authRiskAdmin = createPrismaAuthRiskAdminRepository(client, { runSerializableTransaction, recordAudit })
   const userAdmin = createPrismaUserAdminRepository(client, { runSerializableTransaction, recordAudit })
   const taskAdmin = createPrismaTaskAdminRepository(client, { runSerializableTransaction, recordAudit, createTaskEscrow, finalizeTaskEscrow })
+  const communityAdmin = createPrismaCommunityAdminRepository(client, { runSerializableTransaction, recordAudit })
   const billingAdmin = createPrismaBillingAdminRepository(client)
   const entitlements = createPrismaEntitlementRepository(client)
   const notificationManagement = createPrismaNotificationManagementRepository(client, { runSerializableTransaction, recordAudit })
@@ -4163,6 +4165,17 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       await recordAudit({ actor, action: 'post.deleted', resourceType: 'post', resourceId: current.id, metadata: { version: row.version, reasonCode: payload.reasonCode } })
       return { post: getPostDto(row) }
     },
+    restore: async (id, payload, actor) => {
+      const current = await client.post.findUnique({ where: { id: String(id) }, include: { author: { include: { profile: true } } } })
+      if (!current || current.author?.profile?.handle !== actor.handle) return null
+      if (current.version !== payload.expectedVersion) return { conflict: true }
+      if (current.status !== 'deleted') return { invalidStatus: true }
+      const changed = await client.post.updateMany({ where: { id: current.id, authorId: current.authorId, version: payload.expectedVersion, status: 'deleted' }, data: { status: 'published', deletedAt: null, deletionReasonCode: null, version: { increment: 1 } } })
+      if (!changed.count) return { conflict: true }
+      const row = await client.post.findUnique({ where: { id: current.id }, include: { author: { include: { profile: true } } } })
+      await recordAudit({ actor, action: 'post.restored', resourceType: 'post', resourceId: current.id, metadata: { version: row.version, reasonCode: payload.reasonCode } })
+      return { post: getPostDto(row) }
+    },
     comment: async (id, payload, actor) => {
       const post = await client.post.findUnique({
         where: { id: String(id), status: 'published', moderationState: 'visible' },
@@ -4210,6 +4223,39 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         metadata: { parentId: payload.parentId ?? null },
       })
       return getCommentDto(row)
+    },
+    updateComment: async (id, commentId, payload, actor) => {
+      const current = await client.comment.findUnique({ where: { id: String(commentId) }, include: { author: { include: { profile: true } } } })
+      if (!current || current.postId !== String(id) || current.author?.profile?.handle !== actor.handle) return null
+      if (current.version !== payload.expectedVersion) return { conflict: true }
+      if (current.deletedAt) return { deleted: true }
+      const changed = await client.comment.updateMany({ where: { id: current.id, postId: String(id), authorId: current.authorId, version: payload.expectedVersion, deletedAt: null }, data: { body: payload.body, version: { increment: 1 } } })
+      if (!changed.count) return { conflict: true }
+      const row = await client.comment.findUnique({ where: { id: current.id }, include: { author: { include: { profile: true } } } })
+      await recordAudit({ actor, action: 'comment.updated', resourceType: 'comment', resourceId: current.id, metadata: { version: row.version } })
+      return { comment: getCommentDto(row) }
+    },
+    deleteComment: async (id, commentId, payload, actor) => {
+      const current = await client.comment.findUnique({ where: { id: String(commentId) }, include: { author: { include: { profile: true } } } })
+      if (!current || current.postId !== String(id) || current.author?.profile?.handle !== actor.handle) return null
+      if (current.version !== payload.expectedVersion) return { conflict: true }
+      if (current.deletedAt) return { deleted: true }
+      const changed = await client.comment.updateMany({ where: { id: current.id, postId: String(id), authorId: current.authorId, version: payload.expectedVersion, deletedAt: null }, data: { deletedAt: new Date(), deletionReasonCode: payload.reasonCode, version: { increment: 1 } } })
+      if (!changed.count) return { conflict: true }
+      const row = await client.comment.findUnique({ where: { id: current.id }, include: { author: { include: { profile: true } } } })
+      await recordAudit({ actor, action: 'comment.deleted', resourceType: 'comment', resourceId: current.id, metadata: { version: row.version, reasonCode: payload.reasonCode } })
+      return { comment: getCommentDto(row) }
+    },
+    restoreComment: async (id, commentId, payload, actor) => {
+      const current = await client.comment.findUnique({ where: { id: String(commentId) }, include: { author: { include: { profile: true } } } })
+      if (!current || current.postId !== String(id) || current.author?.profile?.handle !== actor.handle) return null
+      if (current.version !== payload.expectedVersion) return { conflict: true }
+      if (!current.deletedAt) return { invalidStatus: true }
+      const changed = await client.comment.updateMany({ where: { id: current.id, postId: String(id), authorId: current.authorId, version: payload.expectedVersion, deletedAt: { not: null } }, data: { deletedAt: null, deletionReasonCode: null, version: { increment: 1 } } })
+      if (!changed.count) return { conflict: true }
+      const row = await client.comment.findUnique({ where: { id: current.id }, include: { author: { include: { profile: true } } } })
+      await recordAudit({ actor, action: 'comment.restored', resourceType: 'comment', resourceId: current.id, metadata: { version: row.version, reasonCode: payload.reasonCode } })
+      return { comment: getCommentDto(row) }
     },
     like: async (id, actor) => {
       const post = await client.post.findUnique({
@@ -10430,6 +10476,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     authRiskAdmin,
     userAdmin,
     taskAdmin,
+    communityAdmin,
     taskLifecycleRecovery,
     operationsMetrics,
     authorization,

@@ -329,7 +329,7 @@
     {
       "id": "community_content_interactions",
       "classification": "public",
-      "prismaModels": ["Post", "Comment", "PostLike"],
+      "prismaModels": ["Post", "Comment", "PostLike", "CommunityAdminBulkOperation"],
       "locations": ["postgres"],
       "dataSubjects": ["author", "participant"],
       "purposes": ["community_participation", "safety_moderation"],
@@ -1071,7 +1071,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 134,
+    "modelCount": 135,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",

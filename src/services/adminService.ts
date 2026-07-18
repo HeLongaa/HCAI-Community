@@ -6,6 +6,13 @@ import type {
   AdminOAuthAuthorizationQuery,
   AdminOAuthAuthorizationRequest,
   AdminOAuthProviderControl,
+  AdminCommunityBulkAction,
+  AdminCommunityBulkPreview,
+  AdminCommunityBulkResult,
+  AdminCommunityContent,
+  AdminCommunityMetrics,
+  AdminCommunityQuery,
+  AdminCommunityTargetType,
   AdminAuthFailure,
   AdminAuthFailureQuery,
   AdminAuthMetrics,
@@ -211,6 +218,32 @@ export const adminService = {
   },
   async executeTaskBulk(body: { action: AdminTaskBulkAction; targetIds: string[]; targetHash: string; confirmationText: string; idempotencyKey: string; reasonCode: string; note?: string }) {
     return api.post<AdminTaskBulkResult>('/admin/tasks/bulk', body)
+  },
+  async communityContent(targetType: AdminCommunityTargetType, query?: AdminCommunityQuery) {
+    const resource = targetType === 'post' ? 'posts' : 'comments'
+    const envelope = await api.getEnvelope<AdminCommunityContent[]>(withQuery(`/admin/community/${resource}`, query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async communityDetail(targetType: AdminCommunityTargetType, id: string) {
+    return api.get<AdminCommunityContent>(`/admin/community/${targetType === 'post' ? 'posts' : 'comments'}/${encodeURIComponent(id)}`)
+  },
+  async updateCommunityContent(targetType: AdminCommunityTargetType, id: string, payload: Record<string, unknown>) {
+    return api.patch<AdminCommunityContent>(`/admin/community/${targetType === 'post' ? 'posts' : 'comments'}/${encodeURIComponent(id)}`, payload)
+  },
+  async transitionCommunityContent(targetType: AdminCommunityTargetType, id: string, action: AdminCommunityBulkAction, payload: { expectedVersion: number; reasonCode: string; note?: string }) {
+    return api.post<AdminCommunityContent>(`/admin/community/${targetType === 'post' ? 'posts' : 'comments'}/${encodeURIComponent(id)}/${action}`, payload)
+  },
+  async communityMetrics(query?: { dateFrom?: string | null; dateTo?: string | null; category?: string | null }) {
+    return api.get<AdminCommunityMetrics>(withQuery('/admin/community/metrics', query))
+  },
+  async exportCommunityMetrics(query?: { dateFrom?: string | null; dateTo?: string | null; category?: string | null }) {
+    return api.get<{ schemaVersion: 1; kind: 'community.metrics.snapshot'; exportedAt: string; metrics: AdminCommunityMetrics }>(withQuery('/admin/community/metrics/export', query))
+  },
+  async previewCommunityBulk(targetType: AdminCommunityTargetType, action: AdminCommunityBulkAction, targetIds: string[]) {
+    return api.post<AdminCommunityBulkPreview>('/admin/community/bulk/preview', { targetType, action, targetIds })
+  },
+  async executeCommunityBulk(payload: { targetType: AdminCommunityTargetType; action: AdminCommunityBulkAction; targetIds: string[]; targetHash: string; confirmationText: string; idempotencyKey: string; reasonCode: string; note?: string }) {
+    return api.post<AdminCommunityBulkResult>('/admin/community/bulk', payload)
   },
   async oauthProviders() {
     return api.get<AdminOAuthProviderControl[]>('/admin/auth/oauth/providers')

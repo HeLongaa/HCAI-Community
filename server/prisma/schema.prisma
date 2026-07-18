@@ -1689,6 +1689,7 @@ model User {
   assigneeTasks                   Task[]                          @relation("TaskAssignee")
   archivedTasks                   Task[]                          @relation("TaskArchivedBy")
   requestedTaskBulkActions        TaskAdminBulkAction[]           @relation("TaskBulkActionRequester")
+  requestedCommunityBulkOperations CommunityAdminBulkOperation[]  @relation("CommunityBulkOperationRequester")
   requestedTaskLifecycleMutations TaskLifecycleMutation[]         @relation("TaskLifecycleMutationRequester")
   taskProposals                   TaskProposal[]
   taskSubmissions                 TaskSubmission[]                @relation("TaskSubmissionSubmitter")
@@ -2133,6 +2134,10 @@ model Comment {
   authorId  String   @map("author_id")
   parentId  String?  @map("parent_id")
   body      String
+  version             Int      @default(1)
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  deletedAt           DateTime? @map("deleted_at")
+  deletionReasonCode  String?   @map("deletion_reason_code")
   moderationState     CommunityModerationState @default(visible) @map("moderation_state")
   moderationVersion   Int      @default(0) @map("moderation_version")
   moderationUpdatedAt DateTime? @map("moderation_updated_at")
@@ -2143,7 +2148,34 @@ model Comment {
   parent  Comment?  @relation("CommentTree", fields: [parentId], references: [id], onDelete: SetNull)
   replies Comment[] @relation("CommentTree")
 
+  @@index([postId, deletedAt, moderationState, createdAt, id])
+  @@index([authorId, deletedAt, updatedAt, id])
   @@map("comments")
+}
+
+model CommunityAdminBulkOperation {
+  id                  String    @id @default(cuid())
+  idempotencyKey      String    @unique @map("idempotency_key")
+  targetType          String    @map("target_type")
+  action              String
+  targetHash          String    @map("target_hash")
+  targetCount         Int       @map("target_count")
+  eligibleCount       Int       @map("eligible_count")
+  skippedCount        Int       @map("skipped_count")
+  status              String
+  reasonCode          String    @map("reason_code")
+  note                String?
+  requestedById       String?   @map("requested_by_id")
+  result              Json
+  resultSchemaVersion Int       @default(1) @map("result_schema_version")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  completedAt         DateTime? @map("completed_at")
+
+  requestedBy User? @relation("CommunityBulkOperationRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  @@index([targetType, createdAt, id])
+  @@index([requestedById, createdAt, id])
+  @@map("community_admin_bulk_operations")
 }
 
 model PostLike {
