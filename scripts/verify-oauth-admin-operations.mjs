@@ -14,6 +14,7 @@ const publicRoutes = read('server/src/modules/auth/routes.js')
 const runtime = read('server/src/auth/oauthAdminOperations.js')
 const permissions = read('server/src/auth/permissions.js')
 const openapi = read('server/src/docs/openapi.js')
+const preflight = read('scripts/check-oauth-provider-readiness.mjs')
 
 const checks = []
 const add = (name, pass, detail = '') => checks.push({ name, pass: Boolean(pass), detail })
@@ -39,6 +40,8 @@ add('provider status uses optimistic versioning', runtime.includes('expectedVers
 add('Provider config validates redirect, scopes, and SecretRef', runtime.includes('parseOAuthProviderConfigurationRequest') && runtime.includes('clientSecretRef must be a secret:// reference') && contract.providerConfiguration.inFlightAuthorizationPinsVersion)
 add('Provider SecretRefs resolve only allowlisted environment variables', runtime.includes('isAllowedOAuthProviderSecretReference') && contract.secretBoundary.runtimeSecretRefResolution === 'allowlisted_environment_variable')
 add('Google and GitHub login scopes cannot be removed', runtime.includes('requiredProviderScopes') && contract.providerConfiguration.requiredLoginScopes.google.includes('openid') && contract.providerConfiguration.requiredLoginScopes.github.includes('user:email'))
+add('deployment preflight validates both real Provider credentials without printing secrets', contract.deploymentPreflight.secretsArePresenceCheckedOnly && preflight.includes("id: 'google'") && preflight.includes("id: 'github'") && !preflight.includes('console.log(process.env'))
+add('deployment preflight validates exact callbacks and public external availability', contract.deploymentPreflight.requiresExactProviderCallbacks && contract.deploymentPreflight.requiresPublicExternalAvailability && preflight.includes('/api/auth/oauth/${provider}/callback') && preflight.includes("status.mode !== 'external'"))
 add('account unlink preserves final sign-in method', contract.accountUnlink.preserveFinalSignInMethod && routes.includes('AUTH_ACCOUNT_REQUIRED'))
 add('authorization revocation is pending-only', contract.authorizationRequest.pendingOnlyRevocation && routes.includes('OAUTH_AUTHORIZATION_NOT_PENDING'))
 add('safe projection omits internal authorization context', !/serializeOAuthAuthorizationRequest[\s\S]{0,900}(stateHash|redirectTo|linkUserId)/.test(runtime))
