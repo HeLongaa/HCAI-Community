@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "taskId": "DEV-01",
+  "scope": "personal_accounts_only",
+  "defaultEnabled": false,
+  "models": ["DeveloperAccessControl", "ServiceAccount", "ApiKeyCredential"],
+  "migration": "0085_developer_access_credentials",
+  "key": {
+    "prefix": "mfk",
+    "plaintextReturnedOnce": true,
+    "persistedSecret": "sha256_hash_only",
+    "requiredControls": ["closed_scopes", "ip_cidr_allowlist", "expiry", "immediate_revoke", "atomic_rotation", "usage_count"]
+  },
+  "scopes": ["developer:identity:read"],
+  "permissions": ["developer:credentials:manage", "admin:developer:read", "admin:developer:manage"],
+  "personalRoutes": [
+    "GET /api/developer/access-control",
+    "GET /api/developer/service-accounts",
+    "POST /api/developer/service-accounts",
+    "POST /api/developer/service-accounts/:id/transitions",
+    "POST /api/developer/service-accounts/:id/keys",
+    "POST /api/developer/service-accounts/:id/keys/:keyId/rotate",
+    "POST /api/developer/service-accounts/:id/keys/:keyId/revoke",
+    "GET /api/developer/principal"
+  ],
+  "adminRoutes": [
+    "GET /api/admin/developer/access-control",
+    "PUT /api/admin/developer/access-control",
+    "GET /api/admin/developer/service-accounts",
+    "GET /api/admin/developer/service-accounts/export",
+    "GET /api/admin/developer/metrics",
+    "POST /api/admin/developer/service-accounts/:id/revoke",
+    "POST /api/admin/developer/service-accounts/:id/keys/:keyId/revoke"
+  ],
+  "forbiddenProjectionFields": ["secretHash", "plaintextKey_after_issue", "rawClientIp"],
+  "bulkDisposition": "not_applicable_high_risk_immediate_single_target_revoke"
+}

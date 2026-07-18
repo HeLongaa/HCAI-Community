@@ -36,6 +36,9 @@ The executable fallback role defaults live in `server/src/auth/permissions.js`. 
 | `admin:notifications:read` | Read template and delivery lifecycle, versions, metrics, attempts, previews, and bounded exports | Notification template and delivery Admin GET routes | Admin Notifications templates/delivery views |
 | `admin:notifications:manage` | Create/archive templates and retry or cancel delivery state | Notification template mutations and delivery retry/cancel routes | Protected template editor and delivery recovery controls |
 | `admin:notifications:publish` | Publish, roll back, and send preference-aware tests | Notification template publish, rollback, and send-test routes | Protected release controls |
+| `developer:credentials:manage` | Manage actor-owned Service Accounts and one-time API keys | Personal developer access routes | API access page |
+| `admin:developer:read` | Read secret-free developer access controls, Service Accounts, key lifecycle and usage | Developer Admin GET and export routes | Admin Access developer operations panel |
+| `admin:developer:manage` | Enable developer access and immediately revoke Service Accounts or keys | Developer Admin control and revoke routes | Protected developer access controls |
 | `admin:releases:read` | Inspect release changes and deployment evidence | `GET /api/admin/releases`, `GET /api/admin/releases/:id` | Release control panel |
 | `admin:releases:manage` | Request environment promotion, configuration release, or SecretRef rotation | `POST /api/admin/releases` | Release request form |
 | `admin:releases:approve` | Approve or reject a release request using two-person control | `POST /api/admin/releases/:id/approve`, `POST /api/admin/releases/:id/reject` | Release review actions |
@@ -107,6 +110,16 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `DELETE /api/admin/auth/oauth/accounts/:id` | Required | `admin:auth:manage`; final sign-in method preserved | Yes |
 | `GET /api/admin/auth/oauth/authorization-requests` | Required | `admin:auth:read`; safe lifecycle projection | Yes |
 | `POST /api/admin/auth/oauth/authorization-requests/:id/revoke` | Required | `admin:auth:manage`; pending only | Yes |
+| `GET /api/developer/service-accounts` | Required | `developer:credentials:manage`; actor-owned only | Yes |
+| `POST /api/developer/service-accounts` | Required | `developer:credentials:manage`; default-off control | Yes |
+| `POST /api/developer/service-accounts/:id/keys` | Required | `developer:credentials:manage`; plaintext returned once | Yes |
+| `POST /api/developer/service-accounts/:id/keys/:keyId/rotate` | Required | `developer:credentials:manage`; optimistic concurrency | Yes |
+| `POST /api/developer/service-accounts/:id/keys/:keyId/revoke` | Required | `developer:credentials:manage`; immediate revocation | Yes |
+| `GET /api/developer/principal` | API key | `developer:identity:read` API key scope | Yes |
+| `GET /api/admin/developer/service-accounts` | Required | `admin:developer:read`; secret-free projection | Yes |
+| `GET /api/admin/developer/service-accounts/export` | Required | `admin:developer:read`; bounded JSON | Yes |
+| `PUT /api/admin/developer/access-control` | Required | `admin:developer:manage`; optimistic concurrency | Yes |
+| `POST /api/admin/developer/service-accounts/:id/revoke` | Required | `admin:developer:manage`; immediate cascade revoke | Yes |
 | `GET /api/admin/model-control/summary` | Required | `admin:model-control:read`; credential-free readiness summary | Yes |
 | `GET /api/admin/model-control/export` | Required | `admin:model-control:read`; bounded credential-free export | Yes |
 | `GET /api/admin/model-control/providers` | Required | `admin:model-control:read` | Yes |

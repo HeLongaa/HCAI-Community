@@ -8,6 +8,7 @@ import {
   CircleHelp,
   FileText,
   Languages,
+  KeyRound,
   LayoutDashboard,
   ListFilter,
   LogIn,
@@ -119,6 +120,7 @@ export function AppShell({
     { key: 'playground', label: t.playground ?? t.create, icon: WandSparkles },
     { key: 'generations', label: textFor(t, 'Generations', '生成任务'), icon: ListFilter },
     { key: 'assets', label: textFor(t, 'Assets', '资产库'), icon: Boxes },
+    { key: 'api', label: textFor(t, 'API access', 'API 访问'), icon: KeyRound },
     ...(hasPermission('admin:access') ? [{ key: 'admin' as Page, label: t.admin, icon: UsersRound }] : []),
   ]
   const pageLabels = {

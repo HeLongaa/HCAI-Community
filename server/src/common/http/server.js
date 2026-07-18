@@ -65,7 +65,7 @@ export const createServer = (router, context = {}) => {
       })
       const authToken = parseBearerToken(request.headers.authorization)
       requestContext.authToken = authToken
-      requestContext.user = authToken ? (await context.resolveUser?.(authToken)) ?? null : null
+      requestContext.user = authToken ? (await context.resolveUser?.(authToken, request)) ?? null : null
       await router.handle(request, response, requestContext)
     } catch (error) {
       if (error instanceof HttpError) {

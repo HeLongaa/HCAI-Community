@@ -178,6 +178,9 @@
     { "method": "POST", "path": "/api/admin/trust/signals", "action": "trust.signal.recorded", "resourceType": "safety_signal", "resourceParam": null, "reasonCode": "safety_signal_received", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/trust/queue/:id/events", "action": "trust.queue.transitioned", "resourceType": "moderation_case", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/trust/queue/bulk/preview", "action": "trust.queue.bulk_previewed", "resourceType": "moderation_bulk_operation", "resourceParam": null, "reasonCode": "request_reason", "mode": "domain_audited", "risk": "high" },
-    { "method": "POST", "path": "/api/admin/trust/queue/bulk", "action": "trust.queue.bulk_executed", "resourceType": "moderation_bulk_operation", "resourceParam": null, "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
+    { "method": "POST", "path": "/api/admin/trust/queue/bulk", "action": "trust.queue.bulk_executed", "resourceType": "moderation_bulk_operation", "resourceParam": null, "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" },
+    { "method": "PUT", "path": "/api/admin/developer/access-control", "action": "admin.developer_access.control_updated", "resourceType": "developer_access_control", "resourceParam": null, "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" },
+    { "method": "POST", "path": "/api/admin/developer/service-accounts/:id/revoke", "action": "admin.developer_access.service_account_revoked", "resourceType": "service_account", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" },
+    { "method": "POST", "path": "/api/admin/developer/service-accounts/:id/keys/:keyId/revoke", "action": "admin.developer_access.api_key_revoked", "resourceType": "api_key_credential", "resourceParam": "keyId", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
   ]
 }

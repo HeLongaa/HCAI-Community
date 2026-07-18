@@ -1733,8 +1733,72 @@ model User {
   chatTurnInputAssets             ChatTurnInputAsset[]
   personalEntitlementGrants       PersonalEntitlementGrant[]
   tagAssignments                  UserTagAssignment[]
+  serviceAccounts                ServiceAccount[]
 
   @@map("users")
+}
+
+model DeveloperAccessControl {
+  id                        String   @id @default("global")
+  enabled                   Boolean  @default(false)
+  allowedScopes             String[] @default(["developer:identity:read"]) @map("allowed_scopes")
+  maxServiceAccountsPerUser Int      @default(5) @map("max_service_accounts_per_user")
+  maxActiveKeysPerAccount   Int      @default(3) @map("max_active_keys_per_account")
+  defaultKeyTtlDays         Int      @default(90) @map("default_key_ttl_days")
+  version                   Int      @default(1)
+  reasonCode                String   @default("default_disabled") @map("reason_code")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+  createdAt                 DateTime @default(now()) @map("created_at")
+
+  @@map("developer_access_controls")
+}
+
+model ServiceAccount {
+  id               String    @id @default(cuid())
+  ownerUserId      String    @map("owner_user_id")
+  name             String
+  description      String
+  status           String    @default("active")
+  version          Int       @default(1)
+  revokeReasonCode String?   @map("revoke_reason_code")
+  revokedAt        DateTime? @map("revoked_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  owner User               @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  keys  ApiKeyCredential[]
+
+  @@unique([ownerUserId, name])
+  @@index([ownerUserId, status, createdAt, id])
+  @@index([status, createdAt, id])
+  @@map("service_accounts")
+}
+
+model ApiKeyCredential {
+  id                String    @id @default(cuid())
+  serviceAccountId  String    @map("service_account_id")
+  name              String
+  keyPrefix         String    @unique @map("key_prefix")
+  secretHash        String    @map("secret_hash")
+  scopes            String[]  @default([])
+  ipAllowlist       String[]  @default([]) @map("ip_allowlist")
+  status            String    @default("active")
+  version           Int       @default(1)
+  expiresAt         DateTime  @map("expires_at")
+  lastUsedAt        DateTime? @map("last_used_at")
+  lastUsedIpHash    String?   @map("last_used_ip_hash")
+  usageCount        BigInt    @default(0) @map("usage_count")
+  revokeReasonCode  String?   @map("revoke_reason_code")
+  revokedAt         DateTime? @map("revoked_at")
+  replacedById      String?   @map("replaced_by_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  serviceAccount ServiceAccount @relation(fields: [serviceAccountId], references: [id], onDelete: Restrict)
+
+  @@index([serviceAccountId, status, createdAt, id])
+  @@index([status, expiresAt, id])
+  @@map("api_key_credentials")
 }
 
 model UserTag {

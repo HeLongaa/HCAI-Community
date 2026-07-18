@@ -28,6 +28,7 @@ import { createSeedBillingAdminRepository } from '../accounting/seedBillingAdmin
 import { createSeedEntitlementRepository } from '../entitlements/seedEntitlementRepository.js'
 import { createSeedNotificationManagementRepository, isSeedNotificationEnabled } from '../notifications/seedNotificationManagementRepository.js'
 import { createSeedNotificationDeliveryRepository } from '../notifications/seedNotificationDeliveryRepository.js'
+import { createSeedDeveloperAccessRepository } from '../developerAccess/seedDeveloperAccessRepository.js'
 import { createSeedModerationCaseRepository } from '../trust/seedModerationCaseRepository.js'
 import { createSeedSafetyOperationsRepository } from '../trust/seedSafetyOperationsRepository.js'
 import { communityModerationTransition } from '../trust/communityModeration.js'
@@ -2755,6 +2756,10 @@ export const createSeedRepository = () => {
     getRecipientById: getAccountById,
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) => recordAudit(actor, action, resourceType, resourceId, metadata),
   })
+  const developerAccess = createSeedDeveloperAccessRepository({
+    findOwnerById: getAccountById,
+    recordAudit: ({ actor, action, resourceType, resourceId, metadata }) => recordAudit(actor, action, resourceType, resourceId, metadata),
+  })
   return {
   chat: createSeedChatRepository({
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) =>
@@ -2782,6 +2787,7 @@ export const createSeedRepository = () => {
   taskLifecycleRecovery,
   billingAdmin,
   entitlements,
+  developerAccess,
   auth: {
     getCurrentUser: () => seedStore.me,
     findDemoAccountByAccessToken: (token) => {

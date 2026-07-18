@@ -149,7 +149,10 @@
     { "model": "NotificationDelivery", "domain": "notifications-webhooks", "policy": "state_transition", "hardDelete": false },
     { "model": "NotificationDeliveryAttempt", "domain": "notifications-webhooks", "policy": "state_transition", "hardDelete": false },
     { "model": "NotificationChannelConfig", "domain": "notifications-webhooks", "policy": "mutable_crud", "hardDelete": false },
-    { "model": "NotificationChannelConfigRevision", "domain": "notifications-webhooks", "policy": "immutable_evidence", "hardDelete": false }
+    { "model": "NotificationChannelConfigRevision", "domain": "notifications-webhooks", "policy": "immutable_evidence", "hardDelete": false },
+    { "model": "DeveloperAccessControl", "domain": "developer-platform", "policy": "state_transition", "hardDelete": false },
+    { "model": "ServiceAccount", "domain": "developer-platform", "policy": "state_transition", "hardDelete": false },
+    { "model": "ApiKeyCredential", "domain": "developer-platform", "policy": "state_transition", "hardDelete": false }
   ],
   "protectedFamilies": {
     "accounting": ["PointLedger", "InternalAccountingOperation", "InternalAccountingMovement"],
