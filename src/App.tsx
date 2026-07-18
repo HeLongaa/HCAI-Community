@@ -753,7 +753,14 @@ function App() {
     replyToPost,
     convertPostToTask,
     savePostToLibrary,
-  } = useCommunityWorkflows({ locale, publishTask, pushLedger, pushToast, setPage })
+    myPosts,
+    postMutationBusy,
+    refreshMyPosts,
+    createPost,
+    updatePost,
+    publishPost,
+    deletePost,
+  } = useCommunityWorkflows({ locale, publishTask, pushLedger, pushToast, setPage, accountHandle })
   const sourceCopy = {
     loading: locale === 'zh' ? '同步中' : 'Syncing',
     fallback: locale === 'zh' ? '账号不可用' : 'Account unavailable',
@@ -950,6 +957,13 @@ function App() {
           likePost,
           replyToPost,
           libraryItems,
+          myPosts,
+          postMutationBusy,
+          refreshMyPosts,
+          createPost,
+          updatePost,
+          publishPost,
+          deletePost,
         }}
         rewards={{ ledgerItems, pointsSummary, pointsStatus }}
         homeDataSources={homeDataSources}

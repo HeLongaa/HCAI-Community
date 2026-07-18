@@ -77,6 +77,12 @@ enum PostSource {
   asset
 }
 
+enum PostStatus {
+  draft
+  published
+  deleted
+}
+
 enum LedgerStatus {
   pending
   settled
@@ -1704,10 +1710,16 @@ model Post {
   body                  String
   category              String
   tag                   String
+  status                PostStatus @default(published)
+  version               Int      @default(1)
   solved                Boolean  @default(false)
   viewsCount            Int      @default(0) @map("views_count")
   likesCount            Int      @default(0) @map("likes_count")
   createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  publishedAt           DateTime? @map("published_at")
+  deletedAt             DateTime? @map("deleted_at")
+  deletionReasonCode    String?   @map("deletion_reason_code")
   metadata              Json?
   metadataSchemaVersion Int      @default(1) @map("metadata_schema_version")
 
@@ -1715,6 +1727,8 @@ model Post {
   comments Comment[]
   likes    PostLike[]
 
+  @@index([status, createdAt, id])
+  @@index([authorId, status, updatedAt, id])
   @@map("posts")
 }
 

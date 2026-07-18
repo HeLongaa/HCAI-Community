@@ -1,13 +1,15 @@
 import { api, withQuery } from './apiClient'
-import type { InspirationItem, Post, PublishDraft } from '../domain/types'
+import type { CommunityPostDraft, InspirationItem, Post, PublishDraft } from '../domain/types'
 import type {
   ApiLibraryItem,
   ApiPost,
   ConvertToTaskRequest,
   CreateCommentRequest,
+  CreatePostRequest,
   CreateLibraryItemRequest,
   LibraryListQuery,
   PostListQuery,
+  UpdatePostRequest,
 } from './contracts'
 
 const toPost = (post: ApiPost): Post => ({
@@ -23,6 +25,12 @@ const toPost = (post: ApiPost): Post => ({
   solved: post.solved,
   excerpt: post.excerpt,
   body: post.body ?? undefined,
+  status: post.status,
+  version: post.version,
+  createdAt: post.createdAt,
+  updatedAt: post.updatedAt,
+  publishedAt: post.publishedAt,
+  deletedAt: post.deletedAt,
 })
 
 const toLibraryItem = (item: ApiLibraryItem): InspirationItem => ({
@@ -38,6 +46,26 @@ export const communityService = {
   async listPosts(query?: PostListQuery) {
     const items = await api.get<ApiPost[]>(withQuery('/posts', query))
     return items.map(toPost)
+  },
+  async listMyPosts(status: 'all' | 'draft' | 'published' | 'deleted' = 'all') {
+    const items = await api.get<ApiPost[]>(withQuery('/posts/mine', { status }))
+    return items.map(toPost)
+  },
+  async createPost(draft: CommunityPostDraft, status: 'draft' | 'published') {
+    const request: CreatePostRequest = { ...draft, status }
+    return toPost(await api.post<ApiPost>('/posts', request))
+  },
+  async updatePost(post: Post, draft: CommunityPostDraft) {
+    const request: UpdatePostRequest = { ...draft, expectedVersion: post.version ?? 1 }
+    return toPost(await api.patch<ApiPost>(`/posts/${post.id}`, request))
+  },
+  async publishPost(post: Post) {
+    return toPost(await api.post<ApiPost>(`/posts/${post.id}/publish`, { expectedVersion: post.version ?? 1 }))
+  },
+  async deletePost(post: Post) {
+    return toPost(await api.del<ApiPost>(`/posts/${post.id}`, {
+      body: JSON.stringify({ expectedVersion: post.version ?? 1, reasonCode: 'owner_requested' }),
+    }))
   },
   async listLibrary(query?: LibraryListQuery) {
     const items = await api.get<ApiLibraryItem[]>(withQuery('/library', query))

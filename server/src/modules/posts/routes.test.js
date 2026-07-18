@@ -123,6 +123,91 @@ test('POST /api/posts creates a post and returns data envelope', async () => {
   }
 })
 
+test('draft posts are owner-visible but absent from public reads', async () => {
+  const server = await createTestServer()
+  try {
+    const draft = await createPost(server, 'demo-access.promptlin', { status: 'draft', title: 'Private working draft' })
+    assert.equal(draft.status, 'draft')
+    assert.equal(draft.version, 1)
+
+    const publicList = await requestJson(server.url, '/api/posts?limit=100', { method: 'GET' })
+    assert.equal(publicList.payload.data.some((post) => post.id === draft.id), false)
+
+    const publicDetail = await requestJson(server.url, `/api/posts/${draft.id}`, { method: 'GET' })
+    assert.equal(publicDetail.status, 404)
+
+    const ownerDetail = await requestJson(server.url, `/api/posts/${draft.id}`, { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(ownerDetail.status, 200)
+    assert.equal(ownerDetail.payload.data.viewerPermissions.canPublish, true)
+
+    const mine = await requestJson(server.url, '/api/posts/mine?status=draft', { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(mine.status, 200)
+    assert.equal(mine.payload.data.some((post) => post.id === draft.id), true)
+  } finally {
+    await server.close()
+  }
+})
+
+test('post owners can edit and publish drafts with optimistic concurrency', async () => {
+  const server = await createTestServer()
+  try {
+    const draft = await createPost(server, 'demo-access.promptlin', { status: 'draft', title: 'Draft lifecycle' })
+    const updated = await requestJson(server.url, `/api/posts/${draft.id}`, {
+      method: 'PATCH', token: 'demo-access.promptlin', body: { title: 'Ready to publish', expectedVersion: draft.version },
+    })
+    assert.equal(updated.status, 200)
+    assert.equal(updated.payload.data.title, 'Ready to publish')
+    assert.equal(updated.payload.data.version, 2)
+
+    const stale = await requestJson(server.url, `/api/posts/${draft.id}`, {
+      method: 'PATCH', token: 'demo-access.promptlin', body: { title: 'Stale overwrite', expectedVersion: draft.version },
+    })
+    assert.equal(stale.status, 409)
+    assert.equal(stale.payload.error.code, 'STATE_CONFLICT')
+
+    const published = await requestJson(server.url, `/api/posts/${draft.id}/publish`, {
+      token: 'demo-access.promptlin', body: { expectedVersion: updated.payload.data.version },
+    })
+    assert.equal(published.status, 200)
+    assert.equal(published.payload.data.status, 'published')
+    assert.equal(published.payload.data.version, 3)
+    assert.ok(published.payload.data.publishedAt)
+
+    const publicDetail = await requestJson(server.url, `/api/posts/${draft.id}`, { method: 'GET' })
+    assert.equal(publicDetail.status, 200)
+  } finally {
+    await server.close()
+  }
+})
+
+test('post lifecycle mutations hide foreign ownership and soft-delete content', async () => {
+  const server = await createTestServer()
+  try {
+    const post = await createPost(server, 'demo-access.promptlin', { title: 'Owner-only lifecycle' })
+    const foreign = await requestJson(server.url, `/api/posts/${post.id}`, {
+      method: 'PATCH', token: 'demo-access.taskops', body: { title: 'Foreign edit', expectedVersion: post.version },
+    })
+    assert.equal(foreign.status, 404)
+
+    const deleted = await requestJson(server.url, `/api/posts/${post.id}`, {
+      method: 'DELETE', token: 'demo-access.promptlin', body: { expectedVersion: post.version, reasonCode: 'owner_requested' },
+    })
+    assert.equal(deleted.status, 200)
+    assert.equal(deleted.payload.data.status, 'deleted')
+    assert.ok(deleted.payload.data.deletedAt)
+    assert.equal(deleted.payload.data.deletionReasonCode, 'owner_requested')
+
+    const publicDetail = await requestJson(server.url, `/api/posts/${post.id}`, { method: 'GET' })
+    assert.equal(publicDetail.status, 404)
+    const comment = await requestJson(server.url, `/api/posts/${post.id}/comments`, { token: 'demo-access.promptlin', body: validCommentBody() })
+    assert.equal(comment.status, 404)
+    const like = await requestJson(server.url, `/api/posts/${post.id}/like`, { token: 'demo-access.promptlin' })
+    assert.equal(like.status, 404)
+  } finally {
+    await server.close()
+  }
+})
+
 test('POST /api/posts/:id/comments returns AUTH_REQUIRED when missing auth', async () => {
   const server = await createTestServer()
   try {

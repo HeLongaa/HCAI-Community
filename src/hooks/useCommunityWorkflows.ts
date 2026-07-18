@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import type { CommunityView, InspirationItem, Locale, Page, Post, PublishDraft } from '../domain/types'
+import { useEffect, useState } from 'react'
+import type { CommunityPostDraft, CommunityView, InspirationItem, Locale, Page, Post, PublishDraft } from '../domain/types'
 import { inspirationItems, posts } from '../data/mockData'
 import { copy } from '../i18n/copy'
 import { localeFirstPost } from '../domain/utils'
@@ -12,6 +12,7 @@ type CommunityWorkflowOptions = {
   pushLedger: (description: string, delta: string) => void
   pushToast: (message: string) => void
   setPage: (page: Page) => void
+  accountHandle: string | null
 }
 
 function bumpLikeCount(value: string) {
@@ -23,12 +24,14 @@ function bumpLikeCount(value: string) {
   return Number.isFinite(numeric) ? `${numeric + 1}` : value
 }
 
-export function useCommunityWorkflows({ locale, publishTask, pushLedger, pushToast, setPage }: CommunityWorkflowOptions) {
+export function useCommunityWorkflows({ locale, publishTask, pushLedger, pushToast, setPage, accountHandle }: CommunityWorkflowOptions) {
   const [postList, setPostList] = useState<Post[]>(posts)
   const [libraryItems, setLibraryItems] = useState<InspirationItem[]>(inspirationItems)
   const [selectedPost, setSelectedPost] = useState<Post>(() => localeFirstPost(posts, copy.en))
   const [communityFilter, setCommunityFilter] = useState('Hot')
   const [communityView, setCommunityView] = useState<CommunityView>('list')
+  const [myPosts, setMyPosts] = useState<Post[]>([])
+  const [postMutationBusy, setPostMutationBusy] = useState(false)
 
   const communityStatus = useAsyncResource<[Post[], InspirationItem[]]>({
     load: () => Promise.all([communityService.listPosts(), communityService.listLibrary()]),
@@ -41,6 +44,87 @@ export function useCommunityWorkflows({ locale, publishTask, pushLedger, pushToa
     deps: [locale],
     logLabel: 'community-service',
   })
+
+  const refreshMyPosts = async () => {
+    if (!accountHandle) {
+      setMyPosts([])
+      return
+    }
+    setMyPosts(await communityService.listMyPosts())
+  }
+
+  useEffect(() => {
+    if (!accountHandle) return undefined
+    let cancelled = false
+    void communityService.listMyPosts()
+      .then((items) => {
+        if (!cancelled) setMyPosts(items)
+      })
+      .catch((error) => console.info('[community-my-posts]', error))
+    return () => {
+      cancelled = true
+    }
+  }, [accountHandle])
+
+  const replacePost = (items: Post[], post: Post) => items.map((item) => item.id === post.id ? post : item)
+
+  const createPost = async (draft: CommunityPostDraft, status: 'draft' | 'published') => {
+    setPostMutationBusy(true)
+    try {
+      const post = await communityService.createPost(draft, status)
+      setMyPosts((current) => [post, ...current])
+      if (status === 'published') {
+        setPostList((current) => [post, ...current])
+        setSelectedPost(post)
+      }
+      pushToast(locale === 'zh' ? (status === 'draft' ? '草稿已保存。' : '帖子已发布。') : (status === 'draft' ? 'Draft saved.' : 'Post published.'))
+      return post
+    } finally {
+      setPostMutationBusy(false)
+    }
+  }
+
+  const updatePost = async (post: Post, draft: CommunityPostDraft) => {
+    setPostMutationBusy(true)
+    try {
+      const updated = await communityService.updatePost(post, draft)
+      setMyPosts((current) => replacePost(current, updated))
+      setPostList((current) => replacePost(current, updated))
+      if (selectedPost.id === updated.id) setSelectedPost(updated)
+      pushToast(locale === 'zh' ? '帖子已更新。' : 'Post updated.')
+      return updated
+    } finally {
+      setPostMutationBusy(false)
+    }
+  }
+
+  const publishPost = async (post: Post) => {
+    setPostMutationBusy(true)
+    try {
+      const published = await communityService.publishPost(post)
+      setMyPosts((current) => replacePost(current, published))
+      setPostList((current) => [published, ...current.filter((item) => item.id !== published.id)])
+      setSelectedPost(published)
+      pushToast(locale === 'zh' ? '草稿已发布。' : 'Draft published.')
+      return published
+    } finally {
+      setPostMutationBusy(false)
+    }
+  }
+
+  const deletePost = async (post: Post) => {
+    setPostMutationBusy(true)
+    try {
+      const deleted = await communityService.deletePost(post)
+      setMyPosts((current) => replacePost(current, deleted))
+      setPostList((current) => current.filter((item) => item.id !== deleted.id))
+      setSelectedPost((current) => current.id === deleted.id ? postList.find((item) => item.id !== deleted.id) ?? current : current)
+      pushToast(locale === 'zh' ? '帖子已删除。' : 'Post deleted.')
+      return deleted
+    } finally {
+      setPostMutationBusy(false)
+    }
+  }
 
   const likePost = async (post: Post) => {
     const isZh = locale === 'zh'
@@ -142,5 +226,12 @@ export function useCommunityWorkflows({ locale, publishTask, pushLedger, pushToa
     replyToPost,
     convertPostToTask,
     savePostToLibrary,
+    myPosts,
+    postMutationBusy,
+    refreshMyPosts,
+    createPost,
+    updatePost,
+    publishPost,
+    deletePost,
   }
 }

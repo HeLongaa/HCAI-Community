@@ -7328,6 +7328,7 @@ button.video-history-row.active {
 
 .oauth-admin-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; height: auto; min-height: 0; overflow: visible; }
 .app-shell.page-admin .mini-player, .app-shell.page-admin .ai-island, .app-shell.page-admin .ai-island-float,
+.app-shell.page-community .mini-player, .app-shell.page-community .ai-island, .app-shell.page-community .ai-island-float,
 .app-shell.page-generations .mini-player, .app-shell.page-generations .ai-island, .app-shell.page-generations .ai-island-float { display: none; }
 .oauth-provider-list, .oauth-record-list { display: grid; gap: 8px; min-width: 0; }
 .panel.auth-session-admin-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; width: 100%; max-width: 100%; height: auto; min-width: 0; min-height: 0; overflow: visible; }
@@ -7868,6 +7869,113 @@ button.video-history-row.active {
   padding: 0 10px;
 }
 
+.community-author-workspace {
+  display: grid;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.community-author-toolbar,
+.community-editor-actions,
+.community-owned-row,
+.community-owned-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.community-author-toolbar,
+.community-owned-row {
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.community-author-toolbar > div,
+.community-owned-row > div:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.community-author-toolbar span,
+.community-owned-row span,
+.community-post-editor label > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.community-post-editor {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.community-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(140px, .7fr) minmax(140px, .7fr);
+  gap: 10px;
+  min-width: 0;
+}
+
+.community-editor-grid label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.community-editor-grid input,
+.community-editor-grid select,
+.community-editor-grid textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+.community-editor-grid textarea {
+  min-height: 150px;
+  resize: vertical;
+}
+
+.community-editor-wide {
+  grid-column: 1 / -1;
+}
+
+.community-editor-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.community-owned-list {
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+
+.community-owned-row {
+  min-height: 54px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.community-owned-row strong {
+  overflow-wrap: anywhere;
+}
+
+.community-owned-actions {
+  flex: 0 0 auto;
+}
+
+.community-owned-actions .icon-button {
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+}
+
+.community-owned-actions .danger {
+  color: var(--danger);
+}
+
 .community-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -8012,6 +8120,41 @@ button.video-history-row.active {
 
   .topic-tabs {
     justify-content: flex-start;
+  }
+
+  .community-editor-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .community-editor-grid label:first-child,
+  .community-editor-wide {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .community-author-toolbar,
+  .community-owned-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .community-author-toolbar > .primary-button {
+    width: 100%;
+  }
+
+  .community-editor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .community-editor-grid label,
+  .community-editor-grid label:first-child,
+  .community-editor-wide {
+    grid-column: 1;
+  }
+
+  .community-editor-actions > button {
+    flex: 1 1 140px;
   }
 }
 
@@ -8159,6 +8302,47 @@ button.video-history-row.active {
   color: var(--text);
   font-size: 17px;
   line-height: 1.1;
+}
+
+@media (max-width: 640px) {
+  .topic-head {
+    display: none;
+  }
+
+  .topic-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    min-height: 0;
+    padding: 14px;
+  }
+
+  .topic-row:hover {
+    transform: none;
+  }
+
+  .topic-main {
+    grid-column: 1 / -1;
+  }
+
+  .topic-title-button {
+    align-items: start;
+  }
+
+  .topic-title-text,
+  .topic-meta-line {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .topic-stat {
+    min-height: 42px;
+    padding: 7px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    text-align: left;
+  }
 }
 
 .topic-empty {

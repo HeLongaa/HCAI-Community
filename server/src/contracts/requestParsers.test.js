@@ -34,6 +34,9 @@ import {
   parseCreateCommentRequest,
   parseCreateLibraryItemRequest,
   parseCreatePostRequest,
+  parseDeletePostRequest,
+  parseMyPostListQuery,
+  parsePublishPostRequest,
   parseCreatePortfolioAssetRequest,
   parseCreateTaskRequest,
   parseRegisterRequest,
@@ -43,6 +46,7 @@ import {
   parseTaskChildListQuery,
   parseUpdateRolePermissionsRequest,
   parseUpdatePortfolioAssetRequest,
+  parseUpdatePostRequest,
 } from './requestParsers.js'
 
 const assertValidationError = (fn, message) => {
@@ -250,12 +254,32 @@ test('parseCreatePostRequest and parseCreateCommentRequest normalize forum paylo
       category: 'Questions',
       tag: 'Hot',
       excerpt: 'Short',
+      status: 'published',
     },
   )
   assert.deepEqual(parseCreateCommentRequest({ body: ' Reply ', parentId: '' }), {
     body: 'Reply',
     parentId: null,
   })
+})
+
+test('post lifecycle parsers enforce bounded status and optimistic versions', () => {
+  assert.equal(parseCreatePostRequest({
+    title: 'Draft', body: 'Draft body', category: 'Questions', status: 'draft',
+  }).status, 'draft')
+  assert.deepEqual(parseUpdatePostRequest({ title: ' Revised ', expectedVersion: '2' }), {
+    title: 'Revised',
+    expectedVersion: 2,
+  })
+  assert.deepEqual(parsePublishPostRequest({ expectedVersion: 3 }), { expectedVersion: 3 })
+  assert.deepEqual(parseDeletePostRequest({ expectedVersion: 4, reasonCode: 'owner_requested' }), {
+    expectedVersion: 4,
+    reasonCode: 'owner_requested',
+  })
+  assert.equal(parseMyPostListQuery({ status: 'deleted' }).status, 'deleted')
+  assertValidationError(() => parseUpdatePostRequest({ expectedVersion: 1 }), 'at least one editable post field is required')
+  assertValidationError(() => parsePublishPostRequest({ expectedVersion: 0 }), 'expectedVersion must be a positive integer')
+  assertValidationError(() => parseMyPostListQuery({ status: 'private' }), 'status must be one of: all, draft, published, deleted')
 })
 
 test('parseConvertToTaskRequest validates reward and acceptance rules', () => {
