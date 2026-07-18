@@ -3279,6 +3279,19 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/observability/slo-controls': {
+      get: {
+        summary: 'List versioned SLO thresholds and on-call controls',
+        responses: { '200': { description: 'SLO controls with defaults or persisted overrides' }, '403': { description: 'Requires admin:observability:read' } },
+      },
+    },
+    '/admin/observability/slo-controls/{sloId}': {
+      put: {
+        summary: 'Update one SLO threshold and on-call control using optimistic concurrency',
+        parameters: [{ name: 'sloId', in: 'path', required: true, schema: { type: 'string', enum: ['api-availability', 'api-latency'] } }],
+        responses: { '200': { description: 'Updated SLO control' }, '400': { description: 'Invalid threshold, on-call handle, or runbook' }, '403': { description: 'Requires admin:observability:manage' }, '409': { description: 'Control version conflict' } },
+      },
+    },
     '/admin/observability/alerts': {
       get: {
         summary: 'List SLO burn-rate alerts',
@@ -3286,6 +3299,18 @@ export const openApiDocument = {
           '200': { description: 'Current and resolved observability alerts' },
           '403': { description: 'Requires admin:observability:read' },
         },
+      },
+    },
+    '/admin/observability/alerts/{id}': {
+      get: {
+        summary: 'Read an alert with immutable response timeline and incident review',
+        responses: { '200': { description: 'Alert detail, events, and optional review' }, '403': { description: 'Requires admin:observability:read' }, '404': { description: 'Alert not found' } },
+      },
+    },
+    '/admin/observability/incidents/metrics': {
+      get: {
+        summary: 'Read incident response MTTA, MTTR, escalation, and review metrics',
+        responses: { '200': { description: 'Bounded incident response metrics' }, '403': { description: 'Requires admin:observability:read' } },
       },
     },
     '/admin/observability/alerts/{id}/acknowledge': {
@@ -3304,6 +3329,18 @@ export const openApiDocument = {
       post: {
         summary: 'Resolve an observability alert using optimistic concurrency',
         responses: { '200': { description: 'Resolved alert' }, '409': { description: 'Alert version conflict' } },
+      },
+    },
+    '/admin/observability/alerts/{id}/escalate': {
+      post: {
+        summary: 'Escalate an active alert to secondary on-call with immutable evidence',
+        responses: { '200': { description: 'Escalated alert' }, '409': { description: 'Alert version conflict or already resolved' } },
+      },
+    },
+    '/admin/observability/alerts/{id}/review': {
+      post: {
+        summary: 'Archive one immutable review for a resolved incident',
+        responses: { '200': { description: 'Incident review and updated alert' }, '400': { description: 'Invalid review evidence' }, '409': { description: 'Alert is active, stale, or already reviewed' } },
       },
     },
     '/admin/audit': {

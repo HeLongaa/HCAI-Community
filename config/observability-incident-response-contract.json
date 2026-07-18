@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "taskId": "OBS-03",
+  "scope": "personal_accounts_only",
+  "dependencies": ["OBS-02", "NOTIFY-02"],
+  "models": ["ObservabilitySloControl", "ObservabilityAlert", "ObservabilityAlertEvent", "ObservabilityIncidentReview"],
+  "sloIds": ["api-availability", "api-latency"],
+  "alertStates": ["firing", "acknowledged", "silenced", "resolved"],
+  "eventTypes": ["fired", "recovered", "acknowledged", "silenced", "escalated", "resolved", "reviewed"],
+  "routes": [
+    { "method": "GET", "path": "/api/admin/observability/slo-controls", "permission": "admin:observability:read" },
+    { "method": "PUT", "path": "/api/admin/observability/slo-controls/:sloId", "permission": "admin:observability:manage" },
+    { "method": "GET", "path": "/api/admin/observability/alerts", "permission": "admin:observability:read" },
+    { "method": "GET", "path": "/api/admin/observability/alerts/:id", "permission": "admin:observability:read" },
+    { "method": "POST", "path": "/api/admin/observability/alerts/:id/escalate", "permission": "admin:observability:manage" },
+    { "method": "POST", "path": "/api/admin/observability/alerts/:id/review", "permission": "admin:observability:manage" },
+    { "method": "GET", "path": "/api/admin/observability/incidents/metrics", "permission": "admin:observability:read" }
+  ],
+  "invariants": {
+    "thresholdsVersioned": true,
+    "onCallHandlesBounded": true,
+    "alertTransitionsUseCas": true,
+    "eventsAppendOnly": true,
+    "reviewRequiresResolvedAlert": true,
+    "oneReviewPerAlert": true,
+    "reviewCorrectiveActionsHashed": true,
+    "firingAndEscalationNotifyOnCall": true,
+    "rawLogsAndSecretsExcludedFromNotifications": true
+  },
+  "metrics": ["active", "criticalActive", "acknowledged", "silenced", "escalated", "meanTimeToAcknowledgeMinutes", "meanTimeToRecoveryMinutes", "reviewCoverage"]
+}

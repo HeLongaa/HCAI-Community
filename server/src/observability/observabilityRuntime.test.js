@@ -2,9 +2,14 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   buildHttpTelemetry,
+  buildIncidentMetrics,
   buildObservabilityExport,
   buildSloSummary,
+  defaultObservabilitySloControls,
+  parseAlertEscalationRequest,
+  parseIncidentReviewRequest,
   parseObservabilityQuery,
+  parseSloControlRequest,
   verifyObservabilityExport,
 } from './observabilityRuntime.js'
 
@@ -45,6 +50,29 @@ test('SLO summary produces multi-window availability and latency burn alerts', (
   assert.equal(summary.slos.find((item) => item.id === 'api-availability').firing, true)
   assert.equal(summary.slos.find((item) => item.id === 'api-latency').firing, true)
   assert.equal(summary.windows.sixtyMinutes.requests, 100)
+  const relaxed = buildSloSummary(logs, now, defaultObservabilitySloControls.map((control) => ({ ...control, shortWindowBurnThreshold: 1000, longWindowBurnThreshold: 1000 })))
+  assert.equal(relaxed.slos.some((item) => item.firing), false)
+})
+
+test('incident response parsers and metrics keep controls reviews and escalation bounded', () => {
+  const control = parseSloControlRequest('api-availability', {
+    target: 0.999, shortWindowBurnThreshold: 14.4, longWindowBurnThreshold: 6, latencyThresholdMs: 750,
+    severity: 'critical', owner: 'platform-operations', runbook: 'docs/runbook.md', primaryOnCallHandle: 'opsplus', secondaryOnCallHandle: 'legalpixel', escalationMinutes: 15,
+    enabled: true, expectedVersion: 0, reasonCode: 'initial_control',
+  })
+  assert.equal(control.primaryOnCallHandle, 'opsplus')
+  assert.equal(parseAlertEscalationRequest({ expectedVersion: 2, reasonCode: 'sla_exceeded' }).expectedVersion, 2)
+  assert.equal(parseIncidentReviewRequest({ expectedVersion: 3, summary: 'The incident was resolved.', rootCause: 'A dependency timeout caused elevated errors.', impact: 'API requests failed for several minutes.', correctiveActions: ['Add a dependency timeout circuit breaker.'], reasonCode: 'incident_reviewed' }).correctiveActions.length, 1)
+  assert.throws(() => parseSloControlRequest('api-availability', { ...control, target: 1 }), /target must be between/)
+  assert.throws(() => parseIncidentReviewRequest({ expectedVersion: 1, correctiveActions: [] }), /correctiveActions/)
+
+  const startedAt = new Date('2026-07-18T00:00:00.000Z')
+  const metrics = buildIncidentMetrics([
+    { state: 'resolved', severity: 'critical', startedAt, acknowledgedAt: new Date(startedAt.getTime() + 5 * 60_000), resolvedAt: new Date(startedAt.getTime() + 20 * 60_000), escalationLevel: 1 },
+  ], [{ id: 'event-1' }], [{ id: 'review-1' }], new Date('2026-07-18T01:00:00.000Z'))
+  assert.equal(metrics.meanTimeToAcknowledgeMinutes, 5)
+  assert.equal(metrics.meanTimeToRecoveryMinutes, 20)
+  assert.equal(metrics.reviewCoverage, 1)
 })
 
 test('observability export detects record and manifest tampering', () => {

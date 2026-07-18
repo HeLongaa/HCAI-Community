@@ -643,12 +643,80 @@ model ObservabilityAlert {
   silencedUntil   DateTime? @map("silenced_until")
   resolvedAt      DateTime? @map("resolved_at")
   resolutionNote  String?   @map("resolution_note")
+  escalationLevel Int       @default(0) @map("escalation_level")
+  escalatedAt     DateTime?  @map("escalated_at")
+  escalatedBy     String?    @map("escalated_by")
+  escalationTarget String?  @map("escalation_target")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  events ObservabilityAlertEvent[]
+  review ObservabilityIncidentReview?
 
   @@index([state, updatedAt])
   @@index([sloId, updatedAt])
   @@map("observability_alerts")
+}
+
+model ObservabilitySloControl {
+  id                       String   @id
+  sloId                    String   @unique @map("slo_id")
+  target                   Float
+  shortWindowBurnThreshold Float    @map("short_window_burn_threshold")
+  longWindowBurnThreshold  Float    @map("long_window_burn_threshold")
+  latencyThresholdMs       Int      @map("latency_threshold_ms")
+  severity                 String
+  owner                    String
+  runbook                  String
+  primaryOnCallHandle      String   @map("primary_on_call_handle")
+  secondaryOnCallHandle    String?  @map("secondary_on_call_handle")
+  escalationMinutes        Int      @map("escalation_minutes")
+  enabled                  Boolean  @default(true)
+  version                  Int      @default(1)
+  reasonCode               String   @map("reason_code")
+  updatedBy                String   @map("updated_by")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  @@index([enabled, updatedAt])
+  @@map("observability_slo_controls")
+}
+
+model ObservabilityAlertEvent {
+  id                    String   @id
+  alertId               String   @map("alert_id")
+  eventType             String   @map("event_type")
+  fromState             String?  @map("from_state")
+  toState               String?  @map("to_state")
+  reasonCode            String   @map("reason_code")
+  actorRef              String   @map("actor_ref")
+  metadata              Json?
+  metadataSchemaVersion Int      @default(1) @map("metadata_schema_version")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  alert ObservabilityAlert @relation(fields: [alertId], references: [id], onDelete: Restrict)
+
+  @@index([alertId, createdAt, id])
+  @@index([eventType, createdAt])
+  @@map("observability_alert_events")
+}
+
+model ObservabilityIncidentReview {
+  id                     String   @id
+  alertId                String   @unique @map("alert_id")
+  summary                String
+  rootCause              String   @map("root_cause")
+  impact                 String
+  correctiveActions      Json     @map("corrective_actions")
+  correctiveActionsSchemaVersion Int @default(1) @map("corrective_actions_schema_version")
+  correctiveActionsHash  String   @map("corrective_actions_hash")
+  reviewerRef            String   @map("reviewer_ref")
+  createdAt              DateTime @default(now()) @map("created_at")
+
+  alert ObservabilityAlert @relation(fields: [alertId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt])
+  @@map("observability_incident_reviews")
 }
 
 model ReleaseChange {

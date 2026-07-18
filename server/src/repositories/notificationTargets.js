@@ -8,7 +8,7 @@ const intents = new Set([
 ])
 
 const adminTabs = new Set([
-  'Task review', 'Access', 'Security', 'Finance', 'Generations', 'Submissions', 'Community', 'Audit log', 'Users', 'Tags', 'AI config',
+  'Task review', 'Access', 'Security', 'Observability', 'Finance', 'Generations', 'Submissions', 'Community', 'Audit log', 'Users', 'Tags', 'AI config',
 ])
 
 const mediaStatuses = new Set(['pending', 'scanning', 'review', 'clean', 'rejected', 'all'])
@@ -30,7 +30,7 @@ const defaultSurface = (resourceType) => {
   if (resourceType === 'creative_generation') return 'generations'
   if (resourceType === 'media_asset') return 'assets'
   if (resourceType === 'moderation_case') return 'support'
-  if (resourceType === 'admin_review' || resourceType === 'media_scan_alert' || resourceType === 'security_alert') return 'admin'
+  if (resourceType === 'admin_review' || resourceType === 'media_scan_alert' || resourceType === 'security_alert' || resourceType === 'observability_alert') return 'admin'
   if (resourceType === 'point_adjustment_policy' || resourceType === 'media_governance_policy') return 'admin'
   return 'points'
 }
@@ -39,7 +39,7 @@ const sanitizeAdminTarget = (value) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const result = {}
   if (adminTabs.has(value.tab)) result.tab = value.tab
-  for (const key of ['queue', 'reviewId', 'auditEventId', 'ledgerUserHandle', 'policyHistoryEventId', 'securityAlertId', 'mediaAssetId', 'generationId', 'auditSourceKey']) {
+  for (const key of ['queue', 'reviewId', 'auditEventId', 'ledgerUserHandle', 'policyHistoryEventId', 'securityAlertId', 'observabilityAlertId', 'mediaAssetId', 'generationId', 'auditSourceKey']) {
     const normalized = safeString(value[key])
     if (normalized) result[key] = normalized
   }
@@ -75,9 +75,12 @@ export const normalizeNotificationTarget = (value, { resourceType, resourceId } 
 export const sanitizeNotificationMetadata = (metadata, resource = {}) => {
   const source = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}
   const safe = {}
-  for (const key of ['sourceKey', 'audience', 'status', 'reasonCode', 'workspace', 'operationType', 'errorCode', 'providerId', 'providerMode', 'providerJobId', 'sourceType', 'nextStatus', 'auditEventId', 'rollbackEventId', 'alertType', 'severity', 'previousSubmissionStatus', 'outcome', 'moderationAction']) {
+  for (const key of ['sourceKey', 'audience', 'status', 'reasonCode', 'workspace', 'operationType', 'errorCode', 'providerId', 'providerMode', 'providerJobId', 'sourceType', 'nextStatus', 'auditEventId', 'rollbackEventId', 'alertType', 'alertId', 'severity', 'previousSubmissionStatus', 'outcome', 'moderationAction']) {
     const normalized = safeString(source[key])
     if (normalized) safe[key] = normalized
+  }
+  if (Number.isSafeInteger(source.escalationLevel) && source.escalationLevel >= 0 && source.escalationLevel <= 100) {
+    safe.escalationLevel = source.escalationLevel
   }
   for (const key of ['taskId', 'proposalId', 'submissionId', 'adminReviewId', 'reviewId', 'assetId', 'generationId', 'targetGenerationId', 'mutationId', 'mutationType', 'mutationStatus', 'userHandle', 'caseId', 'postId', 'commentId']) {
     const normalized = safeString(source[key])

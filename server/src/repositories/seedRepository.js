@@ -2578,7 +2578,17 @@ export const createSeedRepository = () => {
   })
   modelGovernance = createSeedModelGovernanceRepository({ modelControl, modelRouting, modelEvaluation, providerLegal, releaseChanges })
   const providerOperations = createSeedProviderOperationsRepository({ modelControl })
-  const observability = createSeedObservabilityRepository()
+  const observability = createSeedObservabilityRepository({
+    notifyOnCall: (handles, alert, eventType) => createNotificationsForHandles(handles, {
+      type: `observability.alert_${eventType}`,
+      title: eventType === 'escalated' ? 'Observability alert escalated' : 'SLO burn-rate alert firing',
+      body: `${alert.sloId} is ${eventType === 'escalated' ? 'escalated for incident response' : 'outside its configured burn-rate threshold'}.`,
+      resourceType: 'observability_alert',
+      resourceId: alert.id,
+      metadata: { status: alert.state, alertId: alert.id, severity: alert.severity, escalationLevel: alert.escalationLevel ?? 0, target: { page: 'admin', admin: { tab: 'Observability', observabilityAlertId: alert.id } } },
+      dedupeUnread: true,
+    }),
+  })
   const moderationCaseTarget = (record, surface = 'support') => ({
     surface,
     intent: surface === 'admin' ? 'review' : 'view',

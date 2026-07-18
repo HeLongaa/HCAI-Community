@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Activity, Archive, BarChart3, Bell, Clipboard, Download, PlayCircle, RotateCcw, ShieldAlert, ShieldCheck, Trophy, XCircle } from 'lucide-react'
 import type { AdminDeepLink, AuditEvent, Page, Permission, Role, SimulateAction } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
@@ -598,6 +598,8 @@ export function AdminPage({
   const [handlingSecurityAlertId, setHandlingSecurityAlertId] = useState<string | null>(null)
   const [selectedSecurityAlertId, setSelectedSecurityAlertId] = useState<string | null>(null)
   const [highlightedSecurityAlertId, setHighlightedSecurityAlertId] = useState<string | null>(null)
+  const [observabilityAlertId, setObservabilityAlertId] = useState<string | null>(null)
+  const clearObservabilityAlertId = useCallback(() => setObservabilityAlertId(null), [])
   const [exportingSecurityAlertId, setExportingSecurityAlertId] = useState<string | null>(null)
   const [securityAlertEvents, setSecurityAlertEvents] = useState<AdminSecurityAlertEventDto[]>([])
   const [loadingSecurityAlertEvents, setLoadingSecurityAlertEvents] = useState(false)
@@ -1054,6 +1056,10 @@ export function AdminPage({
         }).finally(() => {
           setLoadingSecurityAlertEvents(false)
         })
+      }
+      if (deepLink.observabilityAlertId) {
+        setActiveTab('Observability')
+        setObservabilityAlertId(deepLink.observabilityAlertId)
       }
       if (deepLink.mediaAssetId) {
         setMediaSearch(deepLink.mediaAssetId)
@@ -2589,6 +2595,8 @@ export function AdminPage({
           hasPermission={account.hasPermission}
           isZh={isZh}
           notify={(message) => simulateAction(message)}
+          initialAlertId={observabilityAlertId}
+          onInitialAlertHandled={clearObservabilityAlertId}
         />
       )}
       {activeTab === 'Settings' && (

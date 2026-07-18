@@ -59,7 +59,7 @@
     { "domain": "trust-safety-risk", "owns": ["security events", "risk decisions", "moderation cases", "community moderation actions", "safety rules", "safety signals", "moderation queue and SLA"] },
     { "domain": "jobs-automation", "owns": ["jobs", "attempts", "leases", "schedules"] },
     { "domain": "audit-evidence", "owns": ["audit events", "immutable evidence"] },
-    { "domain": "observability-incident", "owns": ["sanitized logs", "trace spans", "SLO alerts"] },
+    { "domain": "observability-incident", "owns": ["sanitized logs", "trace spans", "SLO controls", "on-call ownership", "SLO alerts", "incident timelines", "incident reviews"] },
     { "domain": "config-feature-flags", "owns": ["versioned configuration", "feature flags", "reference data", "announcements", "secret references"] },
     { "domain": "model-control-plane", "owns": ["Providers", "models", "model versions", "capabilities", "deployments", "pricing versions", "route policies", "route targets", "route policy revisions"] }
   ]

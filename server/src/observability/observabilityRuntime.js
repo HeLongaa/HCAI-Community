@@ -8,6 +8,12 @@ export const observabilityAlertStates = Object.freeze(['firing', 'acknowledged',
 export const observabilityRetentionDays = 30
 export const observabilityPageLimit = 100
 export const observabilityExportLimit = 1000
+export const observabilitySloIds = Object.freeze(['api-availability', 'api-latency'])
+
+export const defaultObservabilitySloControls = Object.freeze([
+  Object.freeze({ sloId: 'api-availability', target: 0.999, shortWindowBurnThreshold: 14.4, longWindowBurnThreshold: 6, latencyThresholdMs: 750, severity: 'critical', owner: 'platform-operations', runbook: 'docs/OBSERVABILITY_INCIDENT_RESPONSE.md', primaryOnCallHandle: 'opsplus', secondaryOnCallHandle: 'legalpixel', escalationMinutes: 15, enabled: true, version: 0, reasonCode: 'contract_default' }),
+  Object.freeze({ sloId: 'api-latency', target: 0.99, shortWindowBurnThreshold: 14.4, longWindowBurnThreshold: 6, latencyThresholdMs: 750, severity: 'critical', owner: 'platform-operations', runbook: 'docs/OBSERVABILITY_INCIDENT_RESPONSE.md', primaryOnCallHandle: 'opsplus', secondaryOnCallHandle: 'legalpixel', escalationMinutes: 15, enabled: true, version: 0, reasonCode: 'contract_default' }),
+])
 
 const safeIdentifierPattern = /^[a-z0-9][a-z0-9:._/-]{0,191}$/i
 const traceIdPattern = /^[a-f0-9]{32}$/
@@ -159,16 +165,19 @@ const statsForWindow = (logs, since, { latencyThresholdMs = 750 } = {}) => {
 
 const burnRate = (actual, target) => actual == null ? 0 : Math.max(0, (1 - actual) / (1 - target))
 
-export const buildSloSummary = (logs, now = new Date()) => {
+export const buildSloSummary = (logs, now = new Date(), controls = defaultObservabilitySloControls) => {
+  const activeControls = controls.filter((item) => item.enabled !== false && observabilitySloIds.includes(item.sloId))
+  const latencyThresholdMs = activeControls.find((item) => item.sloId === 'api-latency')?.latencyThresholdMs ?? 750
   const windows = {
-    fiveMinutes: statsForWindow(logs, new Date(now.getTime() - 5 * 60 * 1000)),
-    sixtyMinutes: statsForWindow(logs, new Date(now.getTime() - 60 * 60 * 1000)),
-    thirtyDays: statsForWindow(logs, new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)),
+    fiveMinutes: statsForWindow(logs, new Date(now.getTime() - 5 * 60 * 1000), { latencyThresholdMs }),
+    sixtyMinutes: statsForWindow(logs, new Date(now.getTime() - 60 * 60 * 1000), { latencyThresholdMs }),
+    thirtyDays: statsForWindow(logs, new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000), { latencyThresholdMs }),
   }
-  const definitions = [
-    { id: 'api-availability', target: 0.999, selector: (stats) => stats.availability },
-    { id: 'api-latency', target: 0.99, selector: (stats) => stats.latencyWithinTarget },
-  ]
+  const definitions = activeControls.map((control) => ({
+    ...control,
+    id: control.sloId,
+    selector: control.sloId === 'api-availability' ? (stats) => stats.availability : (stats) => stats.latencyWithinTarget,
+  }))
   const slos = definitions.map((definition) => {
     const shortWindowBurn = burnRate(definition.selector(windows.fiveMinutes), definition.target)
     const longWindowBurn = burnRate(definition.selector(windows.sixtyMinutes), definition.target)
@@ -177,10 +186,17 @@ export const buildSloSummary = (logs, now = new Date()) => {
       target: definition.target,
       shortWindowBurn,
       longWindowBurn,
-      firing: windows.sixtyMinutes.requests > 0 && shortWindowBurn >= 14.4 && longWindowBurn >= 6,
+      firing: windows.sixtyMinutes.requests > 0 && shortWindowBurn >= definition.shortWindowBurnThreshold && longWindowBurn >= definition.longWindowBurnThreshold,
       current: definition.selector(windows.thirtyDays),
-      owner: 'platform-operations',
-      runbook: 'docs/OBSERVABILITY_SEARCH_AND_TRACE.md',
+      severity: definition.severity,
+      owner: definition.owner,
+      runbook: definition.runbook,
+      primaryOnCallHandle: definition.primaryOnCallHandle,
+      secondaryOnCallHandle: definition.secondaryOnCallHandle ?? null,
+      escalationMinutes: definition.escalationMinutes,
+      controlVersion: definition.version,
+      shortWindowBurnThreshold: definition.shortWindowBurnThreshold,
+      longWindowBurnThreshold: definition.longWindowBurnThreshold,
     }
   })
   return { generatedAt: now.toISOString(), windows, slos }
@@ -224,4 +240,95 @@ export const parseAlertAction = (payload = {}) => {
   const until = payload.until ? parseDate(payload.until, 'until') : null
   if (until && (until <= new Date() || until.getTime() > Date.now() + 7 * 24 * 60 * 60 * 1000)) throw validationFailed('until must be in the future and within 7 days')
   return { expectedVersion, note, until }
+}
+
+const boundedText = (value, name, minimum, maximum) => {
+  const normalized = String(value ?? '').trim()
+  if (normalized.length < minimum || normalized.length > maximum) throw validationFailed(`${name} must contain between ${minimum} and ${maximum} characters`)
+  if (/[\u0000-\u001f\u007f]/.test(normalized)) throw validationFailed(`${name} contains invalid characters`)
+  return normalized
+}
+
+const stableReason = (value) => {
+  const reasonCode = boundedText(value, 'reasonCode', 1, 80)
+  if (!/^[a-z0-9][a-z0-9._:-]{0,79}$/.test(reasonCode)) throw validationFailed('reasonCode must be a stable lowercase identifier')
+  return reasonCode
+}
+
+const boundedNumber = (value, name, minimum, maximum) => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < minimum || parsed > maximum) throw validationFailed(`${name} must be between ${minimum} and ${maximum}`)
+  return parsed
+}
+
+export const parseSloControlRequest = (sloId, payload = {}) => {
+  if (!observabilitySloIds.includes(sloId)) throw validationFailed(`sloId must be one of: ${observabilitySloIds.join(', ')}`)
+  const expectedVersion = Number(payload.expectedVersion)
+  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) throw validationFailed('expectedVersion must be a non-negative integer')
+  const handle = (value, name, optional = false) => {
+    if (optional && (value == null || value === '')) return null
+    const normalized = boundedText(value, name, 2, 32).toLowerCase()
+    if (!/^[a-z0-9][a-z0-9_-]{1,31}$/.test(normalized)) throw validationFailed(`${name} must be a valid account handle`)
+    return normalized
+  }
+  const severity = String(payload.severity ?? '')
+  if (!['warning', 'high', 'critical'].includes(severity)) throw validationFailed('severity is invalid')
+  if (typeof payload.enabled !== 'boolean') throw validationFailed('enabled must be a boolean')
+  return {
+    sloId,
+    target: boundedNumber(payload.target, 'target', 0.9, 0.99999),
+    shortWindowBurnThreshold: boundedNumber(payload.shortWindowBurnThreshold, 'shortWindowBurnThreshold', 0.1, 1000),
+    longWindowBurnThreshold: boundedNumber(payload.longWindowBurnThreshold, 'longWindowBurnThreshold', 0.1, 1000),
+    latencyThresholdMs: Math.trunc(boundedNumber(payload.latencyThresholdMs, 'latencyThresholdMs', 1, 60_000)),
+    severity,
+    owner: boundedText(payload.owner, 'owner', 2, 120),
+    runbook: boundedText(payload.runbook, 'runbook', 2, 240),
+    primaryOnCallHandle: handle(payload.primaryOnCallHandle, 'primaryOnCallHandle'),
+    secondaryOnCallHandle: handle(payload.secondaryOnCallHandle, 'secondaryOnCallHandle', true),
+    escalationMinutes: Math.trunc(boundedNumber(payload.escalationMinutes, 'escalationMinutes', 1, 1440)),
+    enabled: payload.enabled,
+    expectedVersion,
+    reasonCode: stableReason(payload.reasonCode),
+  }
+}
+
+export const parseAlertEscalationRequest = (payload = {}) => {
+  const expectedVersion = Number(payload.expectedVersion)
+  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) throw validationFailed('expectedVersion must be a positive integer')
+  return { expectedVersion, reasonCode: stableReason(payload.reasonCode) }
+}
+
+export const parseIncidentReviewRequest = (payload = {}) => {
+  if (Number(payload.expectedVersion) < 1 || !Number.isSafeInteger(Number(payload.expectedVersion))) throw validationFailed('expectedVersion must be a positive integer')
+  if (!Array.isArray(payload.correctiveActions) || payload.correctiveActions.length < 1 || payload.correctiveActions.length > 20) throw validationFailed('correctiveActions must contain between 1 and 20 entries')
+  const correctiveActions = payload.correctiveActions.map((item, index) => boundedText(item, `correctiveActions[${index}]`, 3, 240))
+  return {
+    expectedVersion: Number(payload.expectedVersion),
+    summary: boundedText(payload.summary, 'summary', 10, 1000),
+    rootCause: boundedText(payload.rootCause, 'rootCause', 10, 2000),
+    impact: boundedText(payload.impact, 'impact', 10, 2000),
+    correctiveActions,
+    reasonCode: stableReason(payload.reasonCode),
+  }
+}
+
+export const buildIncidentMetrics = (alerts = [], events = [], reviews = [], now = new Date()) => {
+  const active = alerts.filter((item) => item.state !== 'resolved')
+  const durationMinutes = (from, to) => Math.max(0, (new Date(to).getTime() - new Date(from).getTime()) / 60_000)
+  const acknowledged = alerts.filter((item) => item.acknowledgedAt)
+  const resolved = alerts.filter((item) => item.resolvedAt)
+  const average = (values) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null
+  return {
+    generatedAt: now.toISOString(),
+    total: alerts.length,
+    active: active.length,
+    criticalActive: active.filter((item) => item.severity === 'critical').length,
+    acknowledged: active.filter((item) => item.state === 'acknowledged').length,
+    silenced: active.filter((item) => item.state === 'silenced').length,
+    escalated: active.filter((item) => Number(item.escalationLevel) > 0).length,
+    reviewCoverage: resolved.length ? reviews.length / resolved.length : null,
+    meanTimeToAcknowledgeMinutes: average(acknowledged.map((item) => durationMinutes(item.startedAt, item.acknowledgedAt))),
+    meanTimeToRecoveryMinutes: average(resolved.map((item) => durationMinutes(item.startedAt, item.resolvedAt))),
+    eventCount: events.length,
+  }
 }

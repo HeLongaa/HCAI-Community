@@ -3301,6 +3301,11 @@ export type AdminSloDto = {
   current: number | null
   owner: string
   runbook: string
+  severity: string
+  primaryOnCallHandle: string
+  secondaryOnCallHandle: string | null
+  escalationMinutes: number
+  controlVersion: number
 }
 
 export type AdminSloSummaryDto = {
@@ -3334,8 +3339,76 @@ export type AdminObservabilityAlertDto = {
   silencedUntil: string | null
   resolvedAt: string | null
   resolutionNote: string | null
+  escalationLevel: number
+  escalatedAt: string | null
+  escalatedBy: string | null
+  escalationTarget: string | null
   createdAt: string
   updatedAt: string
+}
+
+export type AdminObservabilitySloControlDto = {
+  id: string
+  sloId: string
+  target: number
+  shortWindowBurnThreshold: number
+  longWindowBurnThreshold: number
+  latencyThresholdMs: number
+  severity: 'warning' | 'high' | 'critical'
+  owner: string
+  runbook: string
+  primaryOnCallHandle: string
+  secondaryOnCallHandle: string | null
+  escalationMinutes: number
+  enabled: boolean
+  version: number
+  reasonCode: string
+  updatedBy: string
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export type AdminObservabilityAlertEventDto = {
+  id: string
+  alertId: string
+  eventType: 'fired' | 'recovered' | 'acknowledged' | 'silenced' | 'escalated' | 'resolved' | 'reviewed'
+  fromState: AdminObservabilityAlertState | null
+  toState: AdminObservabilityAlertState | null
+  reasonCode: string
+  actorRef: string
+  metadata: Record<string, unknown> | null
+  createdAt: string
+}
+
+export type AdminObservabilityIncidentReviewDto = {
+  id: string
+  alertId: string
+  summary: string
+  rootCause: string
+  impact: string
+  correctiveActions: string[]
+  correctiveActionsHash: string
+  reviewerRef: string
+  createdAt: string
+}
+
+export type AdminObservabilityAlertDetailDto = AdminObservabilityAlertDto & {
+  events: AdminObservabilityAlertEventDto[]
+  review: AdminObservabilityIncidentReviewDto | null
+}
+
+export type AdminObservabilityIncidentMetricsDto = {
+  generatedAt: string
+  total: number
+  active: number
+  criticalActive: number
+  acknowledged: number
+  silenced: number
+  escalated: number
+  reviewCoverage: number | null
+  meanTimeToAcknowledgeMinutes: number | null
+  meanTimeToRecoveryMinutes: number | null
+  eventCount: number
 }
 
 export type SystemSettingChangeStatus = 'pending_approval' | 'approved' | 'rejected' | 'published'

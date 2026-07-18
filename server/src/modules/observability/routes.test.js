@@ -4,6 +4,7 @@ import { createSeedRepository } from '../../repositories/seedRepository.js'
 import { createInjectedRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
 import { ok } from '../../common/http/responses.js'
 import { registerObservabilityRoutes } from './routes.js'
+import { registerNotificationRoutes } from '../notifications/routes.js'
 
 const registerFixtureRoute = (router) => router.add('GET', '/api/fixture/:id', async (_request, response) => ok(response, { ok: true }))
 
@@ -13,6 +14,7 @@ const createServer = async () => {
     repository,
     registerFixtureRoute,
     (router) => registerObservabilityRoutes(router, { repositories: repository }),
+    registerNotificationRoutes,
   )
   return { repository, server }
 }
@@ -68,10 +70,24 @@ test('SLO evaluation creates versioned alerts and enforces CAS disposition', asy
         resourceType: null, resourceId: null, attributes: null,
       } })
     }
+    const controls = await requestJson(server.url, '/api/admin/observability/slo-controls', { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(controls.status, 200)
+    assert.equal(controls.payload.data.length, 2)
+    const availabilityControl = controls.payload.data.find((item) => item.sloId === 'api-availability')
+    const configured = await requestJson(server.url, '/api/admin/observability/slo-controls/api-availability', {
+      method: 'PUT', token: 'demo-access.opsplus', body: { ...availabilityControl, expectedVersion: availabilityControl.version, reasonCode: 'assign_incident_rotation' },
+    })
+    assert.equal(configured.status, 200)
+    assert.equal(configured.payload.data.version, 1)
+
     const evaluated = await requestJson(server.url, '/api/admin/observability/slos/evaluate', { method: 'POST', token: 'demo-access.opsplus' })
     assert.equal(evaluated.status, 200)
     assert.equal(evaluated.payload.data.alerts.length, 2)
     const alert = evaluated.payload.data.alerts[0]
+
+    const firingInbox = await requestJson(server.url, '/api/notifications?type=observability.alert_fired', { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(firingInbox.status, 200)
+    assert.ok(firingInbox.payload.data.some((item) => item.resourceId === alert.id))
 
     const acknowledged = await requestJson(server.url, `/api/admin/observability/alerts/${alert.id}/acknowledge`, {
       method: 'POST', token: 'demo-access.opsplus', body: { expectedVersion: alert.version, note: 'investigating' },
@@ -83,6 +99,55 @@ test('SLO evaluation creates versioned alerts and enforces CAS disposition', asy
       method: 'POST', token: 'demo-access.opsplus', body: { expectedVersion: alert.version, note: 'stale' },
     })
     assert.equal(stale.status, 409)
+
+    const escalated = await requestJson(server.url, `/api/admin/observability/alerts/${alert.id}/escalate`, {
+      method: 'POST', token: 'demo-access.opsplus', body: { expectedVersion: acknowledged.payload.data.version, reasonCode: 'ack_sla_exceeded' },
+    })
+    assert.equal(escalated.status, 200)
+    assert.equal(escalated.payload.data.escalationLevel, 1)
+    assert.equal(escalated.payload.data.escalationTarget, 'legalpixel')
+
+    const escalationInbox = await requestJson(server.url, '/api/notifications?type=observability.alert_escalated', { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.ok(escalationInbox.payload.data.some((item) => item.resourceId === alert.id))
+
+    const resolved = await requestJson(server.url, `/api/admin/observability/alerts/${alert.id}/resolve`, {
+      method: 'POST', token: 'demo-access.opsplus', body: { expectedVersion: escalated.payload.data.version, note: 'dependency_recovered' },
+    })
+    assert.equal(resolved.status, 200)
+    const resolvedMutation = await requestJson(server.url, `/api/admin/observability/alerts/${alert.id}/acknowledge`, {
+      method: 'POST', token: 'demo-access.opsplus', body: { expectedVersion: resolved.payload.data.version, note: 'must_not_reopen' },
+    })
+    assert.equal(resolvedMutation.status, 409)
+    assert.equal(resolvedMutation.payload.error.code, 'ALERT_ALREADY_RESOLVED')
+    const reviewed = await requestJson(server.url, `/api/admin/observability/alerts/${alert.id}/review`, {
+      method: 'POST', token: 'demo-access.opsplus', body: {
+        expectedVersion: resolved.payload.data.version,
+        summary: 'The dependency incident was mitigated and service recovered.',
+        rootCause: 'An upstream timeout produced sustained API errors.',
+        impact: 'A subset of API requests failed during the incident window.',
+        correctiveActions: ['Add an upstream timeout circuit breaker.', 'Exercise the recovery runbook quarterly.'],
+        reasonCode: 'incident_reviewed',
+      },
+    })
+    assert.equal(reviewed.status, 200)
+    assert.equal(reviewed.payload.data.review.correctiveActions.length, 2)
+
+    const duplicateReview = await requestJson(server.url, `/api/admin/observability/alerts/${alert.id}/review`, {
+      method: 'POST', token: 'demo-access.opsplus', body: {
+        expectedVersion: reviewed.payload.data.alert.version,
+        summary: 'A duplicate incident review must not replace evidence.', rootCause: 'Duplicate review should be rejected.', impact: 'No additional impact is accepted.', correctiveActions: ['Do not overwrite immutable review evidence.'], reasonCode: 'duplicate_review',
+      },
+    })
+    assert.equal(duplicateReview.status, 409)
+
+    const detail = await requestJson(server.url, `/api/admin/observability/alerts/${alert.id}`, { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(detail.status, 200)
+    assert.deepEqual(detail.payload.data.events.map((item) => item.eventType), ['fired', 'acknowledged', 'escalated', 'resolved', 'reviewed'])
+    assert.ok(detail.payload.data.review.correctiveActionsHash)
+
+    const metrics = await requestJson(server.url, '/api/admin/observability/incidents/metrics', { method: 'GET', token: 'demo-access.opsplus' })
+    assert.equal(metrics.status, 200)
+    assert.equal(metrics.payload.data.reviewCoverage > 0, true)
   } finally {
     await server.close()
   }
