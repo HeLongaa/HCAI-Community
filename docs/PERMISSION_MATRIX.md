@@ -24,6 +24,9 @@ The executable fallback role defaults live in `server/src/auth/permissions.js`. 
 | `admin:audit:read` | Read privileged audit events and operations history | `GET /api/admin/audit`, `GET /api/admin/audit/:id`, `GET /api/admin/audit/export`, `GET /api/admin/creative/generations`, `GET /api/admin/creative/generations/:id` | Admin page audit API load, deep-link lookup, JSON export, and creative generation history |
 | `admin:queue:read` | Read admin review queues | `GET /api/admin/reviews`, `GET /api/media/review-queue` | Admin review queue and media governance API loads |
 | `admin:queue:review` | Perform admin review actions | `POST /api/admin/reviews/:id/actions`, `POST /api/media/uploads/:id/scan` | Admin queue and media approve/reject buttons |
+| `admin:trust:read` | Read dedicated moderation cases and append-only facts | Trust Admin list, metrics, export-safe detail routes | Admin Trust & Safety workbench |
+| `admin:trust:review` | Append original decisions, independent appeal decisions, and hash evidence | Trust Admin decision and evidence routes | Moderation fact-chain controls |
+| `admin:trust:export` | Export bounded sanitized moderation evidence | `GET /api/admin/trust/cases/export` | Trust & Safety JSON export |
 | `admin:media:read` | Read safe media administration projections | `GET /api/admin/media/assets`, detail | Admin media lifecycle list and detail workbench |
 | `admin:media:manage` | Review scans and manage media lifecycle state | Admin media scan, retry, single and bulk lifecycle routes | Admin media mutation controls |
 | `admin:media:export` | Export bounded safe media evidence | `GET /api/admin/media/assets/export` | Admin media JSON/CSV export |

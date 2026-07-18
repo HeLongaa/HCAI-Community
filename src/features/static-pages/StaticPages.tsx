@@ -25,10 +25,14 @@ import { complianceService } from '../../services/complianceService'
 import type {
   ApiComplianceManifest,
   ApiSupportRequest,
+  ModerationCaseDto,
+  ModerationReportCategory,
+  ModerationTargetType,
   CompliancePolicyId,
   SupportRelatedResourceType,
   SupportRequestCategory,
 } from '../../services/contracts'
+import { trustService } from '../../services/trustService'
 
 export function PricingPage({
   t,
@@ -380,7 +384,16 @@ const relatedResourceLabels: Record<SupportRelatedResourceType, [string, string]
   media_asset: ['Media asset', '媒体资产'],
   creative_generation: ['Creative generation', '创作生成'],
   moderation_decision: ['Moderation decision', '审核决定'],
+  moderation_case: ['Moderation case', '审核案件'],
 }
+
+const reportCategoryLabels: Record<ModerationReportCategory, [string, string]> = {
+  harassment: ['Harassment', '骚扰'], hate: ['Hate', '仇恨'], sexual: ['Sexual content', '色情内容'], violence: ['Violence', '暴力'], self_harm: ['Self-harm', '自残'], child_safety: ['Child safety', '儿童安全'], impersonation: ['Impersonation', '冒充'], spam: ['Spam', '垃圾内容'], fraud: ['Fraud', '欺诈'], privacy: ['Privacy', '隐私'], copyright: ['Copyright', '版权'], other: ['Other', '其他'],
+}
+
+const reportTargetType = (value: SupportRelatedResourceType): ModerationTargetType | null => value === 'account'
+  ? 'user'
+  : ['post', 'comment', 'media_asset', 'creative_generation'].includes(value) ? value as ModerationTargetType : null
 
 export function SupportPage({
   t,
@@ -400,10 +413,12 @@ export function SupportPage({
   const isZh = isZhCopy(t)
   const [manifest, setManifest] = useState<ApiComplianceManifest | null>(null)
   const [requests, setRequests] = useState<ApiSupportRequest[]>([])
+  const [moderationCases, setModerationCases] = useState<ModerationCaseDto[]>([])
+  const [reportCategory, setReportCategory] = useState<ModerationReportCategory>('other')
   const [category, setCategory] = useState<SupportRequestCategory>(initialAppeal ? 'moderation_appeal' : 'general_support')
   const [subject, setSubject] = useState(initialAppeal ? textFor(t, 'Appeal a Chat safety decision', '申诉对话安全审核决定') : '')
   const [details, setDetails] = useState(initialAppeal ? textFor(t, 'Please review the Chat safety decision linked below and provide the reason for the final outcome.', '请复核下方关联的对话安全审核决定，并说明最终处理结果。') : '')
-  const [relatedResourceType, setRelatedResourceType] = useState<SupportRelatedResourceType>(initialAppeal ? 'moderation_decision' : 'none')
+  const [relatedResourceType, setRelatedResourceType] = useState<SupportRelatedResourceType>(initialAppeal ? 'moderation_case' : 'none')
   const [relatedResourceId, setRelatedResourceId] = useState(initialAppeal?.moderationDecisionId ?? '')
   const [loadingHistory, setLoadingHistory] = useState(signedIn)
   const [submitting, setSubmitting] = useState(false)
@@ -425,8 +440,11 @@ export function SupportPage({
   useEffect(() => {
     if (!signedIn) return
     let active = true
-    complianceService.listSupportRequests({ limit: 10 }).then((page) => {
-      if (active) setRequests(page.items)
+    Promise.all([complianceService.listSupportRequests({ limit: 10 }), trustService.listCases({ limit: 10 })]).then(([page, cases]) => {
+      if (active) {
+        setRequests(page.items)
+        setModerationCases(cases)
+      }
     }).catch((loadError) => {
       console.info('[support-history]', loadError)
     }).finally(() => {
@@ -450,21 +468,28 @@ export function SupportPage({
     }
     setSubmitting(true)
     setError('')
-    complianceService.createSupportRequest({
-      category,
-      subject,
-      details,
-      relatedResourceType,
-      relatedResourceId: relatedResourceType === 'none' ? undefined : relatedResourceId,
-      locale: isZh ? 'zh' : 'en',
-    }).then((request) => {
-      setRequests((current) => [request, ...current])
+    const operation: Promise<{ kind: 'case'; item: ModerationCaseDto } | { kind: 'support'; item: ApiSupportRequest }> = (async () => {
+      if (category === 'content_report') {
+          const targetType = reportTargetType(relatedResourceType)
+          if (!targetType) throw new Error(textFor(t, 'Select a reportable account or content resource.', '请选择可举报的账号或内容资源。'))
+        const result = await trustService.createReport({ targetType, targetId: relatedResourceId, category: reportCategory, subject, statement: details, locale: isZh ? 'zh' : 'en' })
+        return { kind: 'case', item: result.item }
+      }
+      if (category === 'moderation_appeal') {
+        const item = await trustService.getCase(relatedResourceId)
+        return { kind: 'case', item: await trustService.appeal(item.id, { reasonCode: 'support_center_appeal', statement: details, expectedVersion: item.version }) }
+      }
+      return { kind: 'support', item: await complianceService.createSupportRequest({ category, subject, details, relatedResourceType, relatedResourceId: relatedResourceType === 'none' ? undefined : relatedResourceId, locale: isZh ? 'zh' : 'en' }) }
+    })()
+    operation.then((result) => {
+      if (result.kind === 'case') setModerationCases((current) => [result.item, ...current.filter((item) => item.id !== result.item.id)])
+      else setRequests((current) => [result.item, ...current])
       setSubject('')
       setDetails('')
-      setRelatedResourceType('none')
+      setRelatedResourceType(category === 'content_report' ? 'post' : category === 'moderation_appeal' ? 'moderation_case' : 'none')
       setRelatedResourceId('')
       if (initialAppeal) onInitialAppealConsumed?.()
-      simulateAction(isZh ? `支持请求已提交：${request.id}` : `Support request submitted: ${request.id}`)
+      simulateAction(isZh ? `请求已提交：${result.item.id}` : `Request submitted: ${result.item.id}`)
     }).catch((submitError) => {
       console.info('[support-request]', submitError)
       setError(isApiClientError(submitError)
@@ -490,7 +515,11 @@ export function SupportPage({
         {manifest?.supportContract.categories.map((item) => {
           const Icon = supportCategoryIcons[item.id]
           return (
-            <button className={category === item.id ? 'active' : ''} type="button" key={item.id} onClick={() => setCategory(item.id)}>
+            <button className={category === item.id ? 'active' : ''} type="button" key={item.id} onClick={() => {
+              setCategory(item.id)
+              setRelatedResourceType(item.id === 'content_report' ? 'post' : item.id === 'moderation_appeal' ? 'moderation_case' : 'none')
+              setRelatedResourceId('')
+            }}>
               <Icon size={19} />
               <span>{isZh ? item.label.zh : item.label.en}</span>
               <small>{item.initialResponseTarget.replaceAll('_', ' ')}</small>
@@ -512,6 +541,14 @@ export function SupportPage({
             <span>{textFor(t, 'Subject', '主题')}</span>
             <input required minLength={5} maxLength={120} value={subject} onChange={(event) => setSubject(event.target.value)} />
           </label>
+          {category === 'content_report' && (
+            <label>
+              <span>{textFor(t, 'Safety category', '安全分类')}</span>
+              <select value={reportCategory} onChange={(event) => setReportCategory(event.target.value as ModerationReportCategory)}>
+                {(Object.entries(reportCategoryLabels) as Array<[ModerationReportCategory, [string, string]]>).map(([value, label]) => <option value={value} key={value}>{textFor(t, label[0], label[1])}</option>)}
+              </select>
+            </label>
+          )}
           <label>
             <span>{textFor(t, 'Details', '详情')}</span>
             <textarea required minLength={10} maxLength={4000} rows={7} value={details} onChange={(event) => setDetails(event.target.value)} />
@@ -521,7 +558,9 @@ export function SupportPage({
             <label>
               <span>{textFor(t, 'Related resource', '关联资源')}</span>
               <select value={relatedResourceType} onChange={(event) => setRelatedResourceType(event.target.value as SupportRelatedResourceType)}>
-                {(Object.entries(relatedResourceLabels) as Array<[SupportRelatedResourceType, [string, string]]>).map(([value, label]) => (
+                {(Object.entries(relatedResourceLabels) as Array<[SupportRelatedResourceType, [string, string]]>).filter(([value]) => category === 'content_report'
+                  ? ['account', 'post', 'comment', 'media_asset', 'creative_generation'].includes(value)
+                  : category === 'moderation_appeal' ? value === 'moderation_case' : !['moderation_case', 'moderation_decision'].includes(value)).map(([value, label]) => (
                   <option value={value} key={value}>{textFor(t, label[0], label[1])}</option>
                 ))}
               </select>
@@ -586,7 +625,15 @@ export function SupportPage({
           {loadingHistory && <LoaderCircle className="spin" size={18} />}
         </div>
         {!signedIn && <p>{textFor(t, 'Sign in to view requests tied to your account.', '登录后可查看与你账号关联的请求。')}</p>}
-        {signedIn && !loadingHistory && requests.length === 0 && <p>{textFor(t, 'No support requests yet.', '暂无支持请求。')}</p>}
+        {signedIn && !loadingHistory && requests.length === 0 && moderationCases.length === 0 && <p>{textFor(t, 'No support requests yet.', '暂无支持请求。')}</p>}
+        {moderationCases.map((item) => (
+          <article key={item.id}>
+            <div><strong>{item.report?.subject ?? item.id}</strong><span>{textFor(t, 'Trust & Safety case', '信任与安全案件')}</span></div>
+            <code>{item.id}</code>
+            <span className="status-badge">{item.status}</span>
+            <time>{new Date(item.createdAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}</time>
+          </article>
+        ))}
         {requests.map((request) => (
           <article key={request.id}>
             <div>

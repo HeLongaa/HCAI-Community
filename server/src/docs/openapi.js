@@ -123,7 +123,7 @@ export const openApiDocument = {
         },
       },
       post: {
-        summary: 'Create an auditable support, report, appeal, privacy, export, or deletion request',
+        summary: 'Create an auditable general support, privacy, export, or deletion request; reports and appeals use dedicated Trust APIs',
         requestBody: {
           required: true,
           content: {
@@ -153,6 +153,7 @@ export const openApiDocument = {
           '201': { description: 'Support request accepted with a stable tracking id' },
           '400': { description: 'Invalid request or sensitive credential-like content detected' },
           '401': { description: 'Authentication required' },
+          '409': { description: 'Report or appeal must use the dedicated Trust and Safety case API' },
         },
       },
     },
@@ -166,6 +167,40 @@ export const openApiDocument = {
           '404': { description: 'Support request not found for this user' },
         },
       },
+    },
+    '/trust/reports': {
+      post: {
+        summary: 'Create one append-only report and moderation case with target snapshot evidence',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['targetType', 'targetId', 'category', 'subject', 'statement'], additionalProperties: false, properties: { targetType: { type: 'string', enum: ['user', 'post', 'comment', 'media_asset', 'creative_generation'] }, targetId: { type: 'string', minLength: 1, maxLength: 128 }, category: { type: 'string', enum: ['harassment', 'hate', 'sexual', 'violence', 'self_harm', 'child_safety', 'impersonation', 'spam', 'fraud', 'privacy', 'copyright', 'other'] }, subject: { type: 'string', minLength: 5, maxLength: 120 }, statement: { type: 'string', minLength: 10, maxLength: 4000 }, locale: { type: 'string', enum: ['en', 'zh'] }, sourceKey: { type: 'string', minLength: 16, maxLength: 128 } } } } } },
+        responses: { '201': { description: 'Report, case, and initial evidence created atomically' }, '200': { description: 'Idempotent duplicate report' }, '400': { description: 'Invalid or sensitive content' }, '401': { description: 'Authentication required' }, '404': { description: 'Target not found' }, '409': { description: 'sourceKey conflict' } },
+      },
+    },
+    '/trust/cases': {
+      get: { summary: 'List moderation cases reported by or affecting the current user', responses: { '200': { description: 'Owner-scoped derived case states' }, '401': { description: 'Authentication required' } } },
+    },
+    '/trust/cases/{id}': {
+      get: { summary: 'Read one reporter- or affected-user-scoped moderation case fact chain', responses: { '200': { description: 'Moderation case detail' }, '401': { description: 'Authentication required' }, '404': { description: 'Case not found for the current user' } } },
+    },
+    '/trust/cases/{id}/appeals': {
+      post: { summary: 'Append one affected-user appeal within 30 days using optimistic version evidence', responses: { '201': { description: 'Appeal fact appended' }, '403': { description: 'Only affected user may appeal' }, '409': { description: 'Version conflict, missing decision, duplicate appeal, or closed window' } } },
+    },
+    '/admin/trust/cases': {
+      get: { summary: 'List moderation cases with bounded status, priority, target, category, search, sort, and cursor filters', responses: { '200': { description: 'Sanitized moderation case page' }, '403': { description: 'Missing admin:trust:read' } } },
+    },
+    '/admin/trust/cases/metrics': {
+      get: { summary: 'Read derived open, resolved, appealed, closed, and critical case counts', responses: { '200': { description: 'Moderation metrics' }, '403': { description: 'Missing admin:trust:read' } } },
+    },
+    '/admin/trust/cases/export': {
+      get: { summary: 'Export up to 1000 sanitized append-only moderation case fact chains', responses: { '200': { description: 'Portable JSON evidence without report or appeal statements' }, '403': { description: 'Missing admin:trust:export' } } },
+    },
+    '/admin/trust/cases/{id}': {
+      get: { summary: 'Read a complete moderation fact chain for authorized review', responses: { '200': { description: 'Case detail including restricted statements' }, '403': { description: 'Missing admin:trust:read' }, '404': { description: 'Case not found' } } },
+    },
+    '/admin/trust/cases/{id}/evidence': {
+      post: { summary: 'Append hash-addressed moderation evidence without raw payloads', responses: { '201': { description: 'Evidence appended' }, '200': { description: 'Duplicate evidence no-op' }, '403': { description: 'Missing admin:trust:review' } } },
+    },
+    '/admin/trust/cases/{id}/decisions': {
+      post: { summary: 'Append one original or independently reviewed appeal decision using optimistic version evidence', responses: { '201': { description: 'Decision appended' }, '403': { description: 'Missing admin:trust:review' }, '409': { description: 'Version, stage, duplicate, or independent-review conflict' } } },
     },
     '/posts': {
       get: {

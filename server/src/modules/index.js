@@ -23,12 +23,14 @@ import { registerSettingsRoutes } from './settings/routes.js'
 import { registerConfigResourceRoutes } from './configResources/routes.js'
 import { registerModelControlRoutes } from './modelControl/routes.js'
 import { registerEntitlementRoutes } from './entitlements/routes.js'
+import { registerTrustRoutes } from './trust/routes.js'
 
 export const registerModules = (router) => {
   registerHealthRoutes(router)
   registerMetricsRoutes(router)
   registerDocsRoutes(router)
   registerComplianceRoutes(router)
+  registerTrustRoutes(router)
   registerAuthRoutes(router)
   registerOAuthAdminRoutes(router)
   registerAuthSessionAdminRoutes(router)

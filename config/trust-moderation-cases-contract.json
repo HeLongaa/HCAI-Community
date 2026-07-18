@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "task": "TRUST-01",
+  "scope": "personal_accounts_only",
+  "operationPolicy": "append_only",
+  "migration": "0079_trust_moderation_cases",
+  "models": ["Report", "ModerationCase", "ModerationEvidence", "ModerationDecision", "ModerationAppeal"],
+  "permissions": ["admin:trust:read", "admin:trust:review", "admin:trust:export"],
+  "userRoutes": [
+    { "method": "POST", "path": "/api/trust/reports" },
+    { "method": "GET", "path": "/api/trust/cases" },
+    { "method": "GET", "path": "/api/trust/cases/:id" },
+    { "method": "POST", "path": "/api/trust/cases/:id/appeals" }
+  ],
+  "adminRoutes": [
+    { "method": "GET", "path": "/api/admin/trust/cases" },
+    { "method": "GET", "path": "/api/admin/trust/cases/metrics" },
+    { "method": "GET", "path": "/api/admin/trust/cases/export" },
+    { "method": "GET", "path": "/api/admin/trust/cases/:id" },
+    { "method": "POST", "path": "/api/admin/trust/cases/:id/evidence" },
+    { "method": "POST", "path": "/api/admin/trust/cases/:id/decisions" }
+  ],
+  "invariants": {
+    "databaseImmutability": true,
+    "targetExistence": true,
+    "ownerScopedReads": true,
+    "idempotentReports": true,
+    "oneOriginalDecision": true,
+    "oneAppeal": true,
+    "thirtyDayAppealWindow": true,
+    "independentAppealReview": true,
+    "hashOnlyEvidence": true,
+    "genericReviewFallbackRejected": true
+  }
+}

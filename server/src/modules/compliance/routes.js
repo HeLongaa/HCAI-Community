@@ -104,6 +104,9 @@ export const registerComplianceRoutes = (router) => {
   router.add('POST', '/api/support/requests', async (request, response, context) => {
     const actor = requireUser(context)
     const payload = parseSupportRequest((await readJsonBody(request)) ?? {})
+    if (['content_report', 'moderation_appeal'].includes(payload.category)) {
+      throw new HttpError(409, 'DEDICATED_TRUST_ROUTE_REQUIRED', 'Reports and appeals must use the dedicated Trust & Safety case API')
+    }
     created(response, await repositories.support.create(payload, actor))
   })
 

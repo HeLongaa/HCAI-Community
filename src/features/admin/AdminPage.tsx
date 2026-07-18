@@ -23,6 +23,7 @@ import { EntitlementAdminPanel } from './EntitlementAdminPanel'
 import { UserAdminPanel } from './UserAdminPanel'
 import { NotificationAdminPanel } from './NotificationAdminPanel'
 import { AuditRetentionPanel } from './AuditRetentionPanel'
+import { TrustSafetyAdminPanel } from './TrustSafetyAdminPanel'
 import type {
   AdminPermissionDto,
   AdminAuditArchiveManifestDto,
@@ -440,12 +441,13 @@ export function AdminPage({
   onOpenNotificationResource?: (notification: ApiNotification) => void
 }) {
   const isZh = isZhCopy(t)
-  const adminTabs = ['Overview', 'Observability', 'Settings', 'Notifications', 'Task review', 'Access', 'Security', 'Finance', 'Accounting', 'Generations', 'Submissions', 'Community', 'Audit log', 'Users', 'Tags', 'AI config']
+  const adminTabs = ['Overview', 'Observability', 'Settings', 'Notifications', 'Trust & Safety', 'Task review', 'Access', 'Security', 'Finance', 'Accounting', 'Generations', 'Submissions', 'Community', 'Audit log', 'Users', 'Tags', 'AI config']
   const adminTabLabels: Record<string, string> = {
     Overview: textFor(t, 'Overview', '概览'),
     Observability: textFor(t, 'Observability', '可观测性'),
     Settings: textFor(t, 'Settings', '系统设置'),
     Notifications: textFor(t, 'Notifications', '通知'),
+    'Trust & Safety': textFor(t, 'Trust & Safety', '信任与安全'),
     'Task review': textFor(t, 'Task review', '任务审核'),
     Access: textFor(t, 'Access', '权限'),
     Security: textFor(t, 'Security', '安全'),
@@ -2625,7 +2627,10 @@ export function AdminPage({
           notify={(message) => simulateAction(message)}
         />
       )}
-      {activeTab !== 'Settings' && activeTab !== 'AI config' && activeTab !== 'Users' && activeTab !== 'Notifications' && <>
+      {activeTab === 'Trust & Safety' && (
+        <TrustSafetyAdminPanel hasPermission={account.hasPermission} isZh={isZh} notify={(message) => simulateAction(message)} />
+      )}
+      {activeTab !== 'Settings' && activeTab !== 'AI config' && activeTab !== 'Users' && activeTab !== 'Notifications' && activeTab !== 'Trust & Safety' && <>
       <AdminOverviewPanel t={t} target={overviewTarget} />
       <ReleaseControlPanel
         hasPermission={account.hasPermission}

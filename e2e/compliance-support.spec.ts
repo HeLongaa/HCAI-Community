@@ -32,21 +32,21 @@ test('signed-in user can submit and track a content report from support center',
   await page.getByRole('button', { name: /Report content/ }).click()
   await page.getByLabel('Subject').fill('Review a reported community post')
   await page.getByLabel('Details').fill('Please review this post for a possible acceptable-use policy violation.')
-  await page.getByLabel('Related resource').selectOption('post')
-  await page.getByLabel('Resource ID').fill('post-e2e-policy-42')
+  await page.getByLabel('Related resource').selectOption('account')
+  await page.getByLabel('Resource ID').fill('demo-user-admin')
 
   const supportResponse = page.waitForResponse((response) =>
-    response.url().endsWith('/api/support/requests') && response.request().method() === 'POST',
+    response.url().endsWith('/api/trust/reports') && response.request().method() === 'POST',
   )
   await page.getByRole('button', { name: 'Submit request' }).click()
   const response = await supportResponse
   expect(response.ok()).toBeTruthy()
   const payload = await response.json()
-  const requestId = payload.data.id as string
+  const requestId = payload.data.item.id as string
   const requestArticle = page.getByRole('article').filter({ hasText: requestId })
 
   await expect(requestArticle).toBeVisible()
   await expect(requestArticle.getByText('Review a reported community post')).toBeVisible()
   await expect(requestArticle.getByText(requestId)).toBeVisible()
-  await expect(requestArticle.getByText('Submitted')).toBeVisible()
+  await expect(requestArticle.getByText('open')).toBeVisible()
 })

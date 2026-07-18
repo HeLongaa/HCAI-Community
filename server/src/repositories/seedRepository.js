@@ -27,6 +27,7 @@ import { createSeedBillingAdminRepository } from '../accounting/seedBillingAdmin
 import { createSeedEntitlementRepository } from '../entitlements/seedEntitlementRepository.js'
 import { createSeedNotificationManagementRepository, isSeedNotificationEnabled } from '../notifications/seedNotificationManagementRepository.js'
 import { createSeedNotificationDeliveryRepository } from '../notifications/seedNotificationDeliveryRepository.js'
+import { createSeedModerationCaseRepository } from '../trust/seedModerationCaseRepository.js'
 import { applyPublishedTaskRule } from '../tasks/taskRuleRuntime.js'
 import {
   appendSeedAuditIntegrity,
@@ -2575,6 +2576,37 @@ export const createSeedRepository = () => {
   modelGovernance = createSeedModelGovernanceRepository({ modelControl, modelRouting, modelEvaluation, providerLegal, releaseChanges })
   const providerOperations = createSeedProviderOperationsRepository({ modelControl })
   const observability = createSeedObservabilityRepository()
+  const moderationCases = createSeedModerationCaseRepository({
+    getUserById: getAccountById,
+    recordAudit,
+    resolveTarget: (targetType, targetId) => {
+      if (targetType === 'user') {
+        const account = getAccountById(targetId) ?? getAccountByHandle(targetId)
+        return account ? { affectedUser: account, contentHash: createHash('sha256').update(`user:${account.id}`).digest('hex') } : null
+      }
+      if (targetType === 'post') {
+        const post = getPostById(targetId)
+        const account = post ? getAccountByHandle(postOwnerHandle(post)) : null
+        return post && account ? { affectedUser: account, contentHash: createHash('sha256').update(`post:${post.id}:${post.version ?? 1}`).digest('hex') } : null
+      }
+      if (targetType === 'comment') {
+        const comment = [...postCommentsByPostId.values()].flat().find((item) => item.id === targetId)
+        const account = comment ? getAccountByHandle(comment.author?.handle) : null
+        return comment && account ? { affectedUser: account, contentHash: createHash('sha256').update(`comment:${comment.id}:${comment.createdAt}`).digest('hex') } : null
+      }
+      if (targetType === 'media_asset') {
+        const asset = mediaAssetsById.get(String(targetId)) ?? null
+        const account = asset ? getAccountByHandle(asset.ownerHandle) : null
+        return asset && account ? { affectedUser: account, contentHash: createHash('sha256').update(`media_asset:${asset.id}:${asset.updatedAt ?? asset.createdAt ?? ''}`).digest('hex') } : null
+      }
+      if (targetType === 'creative_generation') {
+        const generation = creativeGenerationsById.get(String(targetId)) ?? null
+        const account = generation ? getAccountByHandle(generation.ownerHandle ?? generation.userHandle) : null
+        return generation && account ? { affectedUser: account, contentHash: createHash('sha256').update(`creative_generation:${generation.id}:${generation.updatedAt ?? generation.createdAt ?? ''}`).digest('hex') } : null
+      }
+      return null
+    },
+  })
   const oauthAdmin = createSeedOAuthAdminRepository({
     oauthAccountByProviderKey,
     oauthAccountMetadataByProviderKey,
@@ -7042,6 +7074,7 @@ export const createSeedRepository = () => {
       return serializeAdminReview(reviewed)
     },
   },
+  moderationCases,
   support: {
     create: (payload, actor) => {
       const submittedAt = new Date().toISOString()

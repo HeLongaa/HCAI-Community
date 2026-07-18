@@ -89,19 +89,18 @@ test('support requests are authenticated, owner-scoped, auditable queue records'
     const created = await requestJson(server.url, '/api/support/requests', {
       token: 'demo-access.promptlin',
       body: {
-        category: 'moderation_appeal',
-        subject: 'Review this moderation decision',
-        details: 'I have additional rights context for the referenced generation decision.',
-        relatedResourceType: 'moderation_decision',
-        relatedResourceId: 'decision-demo-42',
+        category: 'general_support',
+        subject: 'Review this account issue',
+        details: 'I have additional context for the referenced account issue.',
+        relatedResourceType: 'account',
+        relatedResourceId: 'demo-user-creator',
         locale: 'en',
       },
     })
     assert.equal(created.status, 201)
     assert.equal(created.payload.data.status, 'Submitted')
-    assert.equal(created.payload.data.category, 'moderation_appeal')
-    assert.equal(created.payload.data.relatedResourceId, 'decision-demo-42')
-    assert.equal(created.payload.data.initialResponseTarget, '5_business_days')
+    assert.equal(created.payload.data.category, 'general_support')
+    assert.equal(created.payload.data.relatedResourceId, 'demo-user-creator')
 
     const ownerList = await requestJson(server.url, '/api/support/requests', {
       method: 'GET',
@@ -145,6 +144,22 @@ test('support request validation rejects secrets and incomplete related resource
     })
     assert.equal(missingResource.status, 400)
     assert.equal(missingResource.payload.error.code, 'VALIDATION_FAILED')
+  } finally {
+    await server.close()
+  }
+})
+
+test('support requests cannot persist reports or appeals in the generic AdminReview queue', async () => {
+  const server = await createTestServer()
+  try {
+    for (const category of ['content_report', 'moderation_appeal']) {
+      const response = await requestJson(server.url, '/api/support/requests', {
+        token: 'demo-access.promptlin',
+        body: { category, subject: 'Dedicated moderation case', details: 'This request must use append-only Trust and Safety facts.', relatedResourceType: category === 'content_report' ? 'post' : 'moderation_decision', relatedResourceId: 'case-or-target-1', locale: 'en' },
+      })
+      assert.equal(response.status, 409)
+      assert.equal(response.payload.error.code, 'DEDICATED_TRUST_ROUTE_REQUIRED')
+    }
   } finally {
     await server.close()
   }

@@ -47,6 +47,11 @@
     { "model": "JobRun", "domain": "jobs-automation", "policy": "state_transition", "hardDelete": false },
     { "model": "JobAttempt", "domain": "jobs-automation", "policy": "state_transition", "hardDelete": false },
     { "model": "AdminReview", "domain": "admin-console", "policy": "state_transition", "hardDelete": false },
+    { "model": "Report", "domain": "trust-safety-risk", "policy": "append_only", "hardDelete": false },
+    { "model": "ModerationCase", "domain": "trust-safety-risk", "policy": "append_only", "hardDelete": false },
+    { "model": "ModerationEvidence", "domain": "trust-safety-risk", "policy": "append_only", "hardDelete": false },
+    { "model": "ModerationDecision", "domain": "trust-safety-risk", "policy": "append_only", "hardDelete": false },
+    { "model": "ModerationAppeal", "domain": "trust-safety-risk", "policy": "append_only", "hardDelete": false },
     { "model": "User", "domain": "user-profile", "policy": "soft_delete", "hardDelete": false },
     { "model": "UserTag", "domain": "user-profile", "policy": "soft_delete", "hardDelete": false },
     { "model": "UserTagAssignment", "domain": "user-profile", "policy": "state_transition", "hardDelete": false },
@@ -137,6 +142,6 @@
   "protectedFamilies": {
     "accounting": ["PointLedger", "InternalAccountingOperation", "InternalAccountingMovement"],
     "audit": ["AuditEvent", "SecurityEvent", "DomainEventOutbox", "DomainEventConsumerInbox", "DomainEventCompensation"],
-    "evidence": ["NotificationTemplateVersion", "AuditArchiveManifest", "AuditRetentionDisposition", "MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence", "SystemSettingRevision", "ConfigResourceRevision", "ModelRoutePolicyRevision", "ModelRouteDecision", "ProviderSecretRef", "ModelPromotion", "ProviderHealthEvidence", "ProviderLegalReview", "EntitlementPlanVersion", "EntitlementGrantEvent"]
+    "evidence": ["NotificationTemplateVersion", "AuditArchiveManifest", "AuditRetentionDisposition", "MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence", "SystemSettingRevision", "ConfigResourceRevision", "ModelRoutePolicyRevision", "ModelRouteDecision", "ProviderSecretRef", "ModelPromotion", "ProviderHealthEvidence", "ProviderLegalReview", "EntitlementPlanVersion", "EntitlementGrantEvent", "Report", "ModerationCase", "ModerationEvidence", "ModerationDecision", "ModerationAppeal"]
   }
 }
