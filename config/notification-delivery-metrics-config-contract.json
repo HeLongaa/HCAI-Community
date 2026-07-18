@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "task": "NOTIFY-03",
+  "scope": "personal_accounts_only",
+  "migration": "0084_notification_delivery_metrics_config",
+  "permissions": { "read": "admin:notifications:read", "manage": "admin:notifications:manage" },
+  "channels": ["in_app", "email"],
+  "metricFilters": ["dateFrom", "dateTo", "channel", "notificationType"],
+  "metricGroups": ["deliveryRateBps", "failureRateBps", "latency", "thresholdBreaches"],
+  "routes": [
+    { "method": "GET", "path": "/api/admin/notifications/deliveries/metrics" },
+    { "method": "GET", "path": "/api/admin/notifications/deliveries/metrics/export" },
+    { "method": "GET", "path": "/api/admin/notifications/channels" },
+    { "method": "GET", "path": "/api/admin/notifications/channels/:channel/history" },
+    { "method": "PUT", "path": "/api/admin/notifications/channels/:channel" },
+    { "method": "POST", "path": "/api/admin/notifications/channels/:channel/rollback" }
+  ],
+  "invariants": {
+    "metricsAggregateOnly": true,
+    "maximumWindowDays": 366,
+    "ratesUseBasisPoints": true,
+    "latencyPercentiles": [50, 95],
+    "inAppAlwaysEnabled": true,
+    "emailRequiresEnvironmentAvailability": true,
+    "optimisticConcurrency": true,
+    "immutableRevisions": true,
+    "rollbackAppendsRevision": true,
+    "secretsEnvironmentOnly": true
+  }
+}

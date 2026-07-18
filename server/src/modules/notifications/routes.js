@@ -11,7 +11,11 @@ import {
   parseUpdateNotificationTemplate,
 } from '../../notifications/notificationTemplates.js'
 import {
+  parseNotificationChannel,
+  parseNotificationChannelConfigUpdate,
+  parseNotificationChannelRollback,
   parseNotificationDeliveryListQuery,
+  parseNotificationDeliveryMetricsQuery,
   parseNotificationDeliveryTransition,
 } from '../../notifications/notificationDeliveries.js'
 import { repositories } from '../../repositories/index.js'
@@ -25,6 +29,11 @@ const templateCsv = (items) => [
 const deliveryCsv = (items) => [
   ['id', 'notification_id', 'notification_type', 'channel', 'status', 'attempt_count', 'max_attempts', 'last_error_code', 'recipient', 'available_at', 'sent_at', 'dead_lettered_at', 'created_at'].map(csvCell).join(','),
   ...items.map((item) => [item.id, item.notificationId, item.notification?.type, item.channel, item.status, item.attemptCount, item.maxAttempts, item.lastErrorCode, item.notification?.recipient?.emailHint, item.availableAt, item.sentAt, item.deadLetteredAt, item.createdAt].map(csvCell).join(',')),
+].join('\n')
+
+const deliveryMetricsCsv = (metrics) => [
+  ['schema_version', 'date_from', 'date_to', 'channel', 'effective_enabled', 'total', 'sent', 'failed', 'suppressed', 'cancelled', 'pending', 'delivery_rate_bps', 'failure_rate_bps', 'latency_eligible', 'average_latency_ms', 'p50_latency_ms', 'p95_latency_ms', 'max_latency_ms', 'delivery_rate_breach', 'failure_rate_breach', 'latency_breach'].map(csvCell).join(','),
+  ...metrics.byChannel.map((item) => [metrics.schemaVersion, metrics.window.dateFrom, metrics.window.dateTo, item.channel, item.config?.effectiveEnabled, item.total, item.sent, item.failed, item.suppressed, item.cancelled, item.pending, item.deliveryRateBps, item.failureRateBps, item.latency.eligible, item.latency.averageMs, item.latency.p50Ms, item.latency.p95Ms, item.latency.maxMs, item.breaches.deliveryRate, item.breaches.failureRate, item.breaches.latency].map(csvCell).join(',')),
 ].join('\n')
 
 const requireTemplate = async (repository, id, path, includeVersions = true) => {
@@ -85,7 +94,38 @@ export const registerNotificationRoutes = (router, options = {}) => {
 
   router.add('GET', '/api/admin/notifications/deliveries/metrics', async (_request, response, context) => {
     requirePermission(context, 'admin:notifications:read')
-    ok(response, await routeRepositories.notificationDeliveries.metrics())
+    ok(response, await routeRepositories.notificationDeliveries.metrics(parseNotificationDeliveryMetricsQuery(context.query)))
+  })
+
+  router.add('GET', '/api/admin/notifications/deliveries/metrics/export', async (_request, response, context) => {
+    requirePermission(context, 'admin:notifications:read')
+    const metrics = await routeRepositories.notificationDeliveries.metrics(parseNotificationDeliveryMetricsQuery(context.query))
+    if (context.query.format === 'csv') return text(response, 200, deliveryMetricsCsv(metrics), 'text/csv; charset=utf-8')
+    ok(response, { kind: 'notification_delivery_business_metrics.v1', exportedAt: new Date().toISOString(), metrics })
+  })
+
+  router.add('GET', '/api/admin/notifications/channels', async (_request, response, context) => {
+    requirePermission(context, 'admin:notifications:read')
+    ok(response, await routeRepositories.notificationDeliveries.listChannelConfigs())
+  })
+
+  router.add('GET', '/api/admin/notifications/channels/:channel/history', async (_request, response, context) => {
+    requirePermission(context, 'admin:notifications:read')
+    ok(response, await routeRepositories.notificationDeliveries.channelConfigHistory(parseNotificationChannel(context.params.channel)))
+  })
+
+  router.add('PUT', '/api/admin/notifications/channels/:channel', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:notifications:manage')
+    const result = await routeRepositories.notificationDeliveries.updateChannelConfig(parseNotificationChannelConfigUpdate(context.params.channel, (await readJsonBody(request)) ?? {}), actor)
+    if (!result) throw notFound(`/api/admin/notifications/channels/${context.params.channel}`)
+    ok(response, result)
+  })
+
+  router.add('POST', '/api/admin/notifications/channels/:channel/rollback', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:notifications:manage')
+    const result = await routeRepositories.notificationDeliveries.rollbackChannelConfig(parseNotificationChannelRollback(context.params.channel, (await readJsonBody(request)) ?? {}), actor)
+    if (!result) throw notFound(`/api/admin/notifications/channels/${context.params.channel}/rollback`)
+    ok(response, result)
   })
 
   router.add('GET', '/api/admin/notifications/deliveries/export', async (_request, response, context) => {

@@ -1,12 +1,41 @@
 import { randomUUID } from 'node:crypto'
+import prismaClientPkg from '@prisma/client'
 import { HttpError } from '../common/errors/httpError.js'
 import {
   buildNotificationDeliveryConfig,
   normalizeDeliveryErrorCode,
+  notificationChannelConfigDto,
+  notificationChannelConfigRevisionDto,
   notificationDeliveryDto,
 } from './notificationDeliveries.js'
 
+const { Prisma } = prismaClientPkg
 const dueStatuses = ['queued', 'retry_scheduled']
+const number = (value) => Number(value ?? 0)
+const decimal = (value) => value == null ? null : Number(Number(value).toFixed(2))
+
+const metricProjection = (row, control = null) => {
+  const sent = number(row.sent)
+  const failed = number(row.failed)
+  const terminalEligible = sent + failed
+  const deliveryRateBps = terminalEligible > 0 ? Math.round(sent / terminalEligible * 10_000) : 0
+  const failureRateBps = terminalEligible > 0 ? Math.round(failed / terminalEligible * 10_000) : 0
+  const p95Ms = decimal(row.p95_latency_ms)
+  const evaluable = terminalEligible > 0
+  const breaches = control ? {
+    deliveryRate: evaluable && deliveryRateBps < control.deliveryRateTargetBps,
+    failureRate: evaluable && failureRateBps > control.failureRateAlertThresholdBps,
+    latency: p95Ms != null && p95Ms > control.latencyTargetMs,
+  } : { deliveryRate: false, failureRate: false, latency: false }
+  return {
+    total: number(row.total), sent, failed,
+    suppressed: number(row.suppressed), cancelled: number(row.cancelled), pending: number(row.pending),
+    terminalEligible, deliveryRateBps, failureRateBps,
+    latency: { eligible: number(row.latency_eligible), averageMs: decimal(row.average_latency_ms), p50Ms: decimal(row.p50_latency_ms), p95Ms, maxMs: decimal(row.max_latency_ms) },
+    evaluable,
+    breaches: { ...breaches, any: Object.values(breaches).some(Boolean) },
+  }
+}
 
 export const createPrismaNotificationDeliveryRepository = (client, {
   runSerializableTransaction,
@@ -29,11 +58,14 @@ export const createPrismaNotificationDeliveryRepository = (client, {
       if (!notification?.id || !recipient?.id) return []
       const now = new Date()
       const deliveryConfig = config()
+      const storedControls = await db.notificationChannelConfig.findMany()
+      const controlByChannel = new Map(storedControls.map((row) => [row.channel, row]))
+      const emailControl = controlByChannel.get('email')
       const definitions = [
         { channel: 'in_app', status: 'sent', sentAt: now, maxAttempts: 1, errorCode: null },
-        deliveryConfig.email.available && recipient.email
-          ? { channel: 'email', status: 'queued', maxAttempts: deliveryConfig.maxAttempts, errorCode: null }
-          : { channel: 'email', status: 'suppressed', suppressedAt: now, maxAttempts: deliveryConfig.maxAttempts, errorCode: recipient.email ? 'CHANNEL_UNAVAILABLE' : 'RECIPIENT_EMAIL_MISSING' },
+        emailControl?.enabled !== false && deliveryConfig.email.available && recipient.email
+          ? { channel: 'email', status: 'queued', maxAttempts: emailControl?.maxAttempts ?? deliveryConfig.maxAttempts, errorCode: null }
+          : { channel: 'email', status: 'suppressed', suppressedAt: now, maxAttempts: emailControl?.maxAttempts ?? deliveryConfig.maxAttempts, errorCode: recipient.email ? emailControl?.enabled === false ? 'CHANNEL_DISABLED' : 'CHANNEL_UNAVAILABLE' : 'RECIPIENT_EMAIL_MISSING' },
       ]
       const rows = []
       for (const definition of definitions) {
@@ -152,9 +184,10 @@ export const createPrismaNotificationDeliveryRepository = (client, {
           errorCode,
           completedAt: now,
         } })
+        const channelControl = await db.notificationChannelConfig.findUnique({ where: { channel: row.channel } })
         await db.notificationDelivery.update({ where: { id: row.id }, data: {
           status: sent ? 'sent' : retryable ? 'retry_scheduled' : 'dead_lettered',
-          ...(retryable ? { availableAt: new Date(now.getTime() + config().retryBackoffSeconds * 1000) } : {}),
+          ...(retryable ? { availableAt: new Date(now.getTime() + (channelControl?.retryBackoffSeconds ?? config().retryBackoffSeconds) * 1000) } : {}),
           leaseToken: null,
           leaseExpiresAt: null,
           lastErrorCode: errorCode,
@@ -194,15 +227,111 @@ export const createPrismaNotificationDeliveryRepository = (client, {
         return notificationDeliveryDto(updated, { includeRecipient: true })
       })
     },
-    async metrics() {
-      const [total, statusGroups, channelGroups, due] = await Promise.all([
-        client.notificationDelivery.count(),
-        client.notificationDelivery.groupBy({ by: ['status'], _count: { _all: true } }),
-        client.notificationDelivery.groupBy({ by: ['channel'], _count: { _all: true } }),
-        client.notificationDelivery.count({ where: { status: { in: dueStatuses }, availableAt: { lte: new Date() } } }),
-      ])
-      const byStatus = Object.fromEntries(statusGroups.map((row) => [row.status, row._count._all]))
-      return { total, byStatus, byChannel: Object.fromEntries(channelGroups.map((row) => [row.channel, row._count._all])), due, deadLettered: byStatus.dead_lettered ?? 0, config: { emailAvailable: config().email.available, workerEnabled: config().workerEnabled } }
+    async metrics(options) {
+      const conditions = [
+        Prisma.sql`nd."created_at" >= ${options.dateFrom}`,
+        Prisma.sql`nd."created_at" <= ${options.dateTo}`,
+      ]
+      if (options.channel) conditions.push(Prisma.sql`nd."channel" = ${options.channel}`)
+      if (options.notificationType) conditions.push(Prisma.sql`n."type" = ${options.notificationType}`)
+      const where = Prisma.join(conditions, ' AND ')
+      const rows = await client.$queryRaw(Prisma.sql`
+        WITH scoped AS (
+          SELECT nd."channel", nd."status"::text AS status,
+            CASE WHEN nd."status" = 'sent' AND nd."sent_at" >= nd."created_at"
+              THEN EXTRACT(EPOCH FROM (nd."sent_at" - nd."created_at")) * 1000 ELSE NULL END AS latency_ms
+          FROM "notification_deliveries" nd
+          JOIN "notifications" n ON n."id" = nd."notification_id"
+          WHERE ${where}
+        ), groups AS (
+          SELECT "channel", COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE status = 'sent')::int AS sent,
+            COUNT(*) FILTER (WHERE status = 'dead_lettered')::int AS failed,
+            COUNT(*) FILTER (WHERE status = 'suppressed')::int AS suppressed,
+            COUNT(*) FILTER (WHERE status = 'cancelled')::int AS cancelled,
+            COUNT(*) FILTER (WHERE status IN ('queued', 'processing', 'retry_scheduled'))::int AS pending,
+            COUNT(latency_ms)::int AS latency_eligible,
+            AVG(latency_ms) AS average_latency_ms,
+            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE latency_ms IS NOT NULL) AS p50_latency_ms,
+            PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE latency_ms IS NOT NULL) AS p95_latency_ms,
+            MAX(latency_ms) AS max_latency_ms
+          FROM scoped GROUP BY "channel"
+        ), overall AS (
+          SELECT NULL::text AS "channel", COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE status = 'sent')::int AS sent,
+            COUNT(*) FILTER (WHERE status = 'dead_lettered')::int AS failed,
+            COUNT(*) FILTER (WHERE status = 'suppressed')::int AS suppressed,
+            COUNT(*) FILTER (WHERE status = 'cancelled')::int AS cancelled,
+            COUNT(*) FILTER (WHERE status IN ('queued', 'processing', 'retry_scheduled'))::int AS pending,
+            COUNT(latency_ms)::int AS latency_eligible,
+            AVG(latency_ms) AS average_latency_ms,
+            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE latency_ms IS NOT NULL) AS p50_latency_ms,
+            PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE latency_ms IS NOT NULL) AS p95_latency_ms,
+            MAX(latency_ms) AS max_latency_ms
+          FROM scoped
+        ) SELECT * FROM overall UNION ALL SELECT * FROM groups ORDER BY "channel" NULLS FIRST`)
+      const controls = await repository.listChannelConfigs()
+      const controlByChannel = new Map(controls.map((row) => [row.channel, row]))
+      const rowByChannel = new Map(rows.filter((row) => row.channel).map((row) => [row.channel, row]))
+      const empty = { total: 0, sent: 0, failed: 0, suppressed: 0, cancelled: 0, pending: 0, latency_eligible: 0, average_latency_ms: null, p50_latency_ms: null, p95_latency_ms: null, max_latency_ms: null }
+      const byChannel = controls
+        .filter((control) => !options.channel || control.channel === options.channel)
+        .map((control) => ({ channel: control.channel, config: control, ...metricProjection(rowByChannel.get(control.channel) ?? empty, control) }))
+      return {
+        schemaVersion: 1,
+        window: { dateFrom: options.dateFrom.toISOString(), dateTo: options.dateTo.toISOString(), channel: options.channel, notificationType: options.notificationType, generatedAt: new Date().toISOString() },
+        overall: metricProjection(rows.find((row) => row.channel == null) ?? empty),
+        byChannel,
+        thresholdBreaches: byChannel.filter((item) => item.breaches.any).map((item) => item.channel),
+        runtime: { emailEnvironmentAvailable: config().email.available, workerEnabled: config().workerEnabled },
+      }
+    },
+    async listChannelConfigs() {
+      const rows = await client.notificationChannelConfig.findMany({ orderBy: { channel: 'asc' } })
+      return rows.map((row) => notificationChannelConfigDto(row, source))
+    },
+    async channelConfigHistory(channel) {
+      const rows = await client.notificationChannelConfigRevision.findMany({ where: { channel }, orderBy: { revisionNumber: 'desc' }, take: 100 })
+      return rows.map(notificationChannelConfigRevisionDto)
+    },
+    async updateChannelConfig(payload, actor) {
+      return runSerializableTransaction(async (db) => {
+        const current = await db.notificationChannelConfig.findUnique({ where: { channel: payload.channel } })
+        if (!current) return null
+        if (current.version !== payload.expectedVersion) throw new HttpError(409, 'STATE_CONFLICT', 'Notification channel configuration was modified concurrently')
+        const revisionNumber = current.activeRevisionNumber + 1
+        const values = {
+          enabled: payload.enabled,
+          deliveryRateTargetBps: payload.deliveryRateTargetBps,
+          failureRateAlertThresholdBps: payload.failureRateAlertThresholdBps,
+          latencyTargetMs: payload.latencyTargetMs,
+          maxAttempts: payload.maxAttempts,
+          retryBackoffSeconds: payload.retryBackoffSeconds,
+        }
+        const changed = await db.notificationChannelConfig.updateMany({ where: { id: current.id, version: payload.expectedVersion }, data: { ...values, activeRevisionNumber: revisionNumber, version: { increment: 1 }, reasonCode: payload.reasonCode, updatedByRef: actor.id } })
+        if (changed.count !== 1) throw new HttpError(409, 'STATE_CONFLICT', 'Notification channel configuration was modified concurrently')
+        await db.notificationChannelConfigRevision.create({ data: { id: `notification-channel-revision-${randomUUID()}`, configId: current.id, channel: current.channel, revisionNumber, ...values, reasonCode: payload.reasonCode, actorRef: actor.id } })
+        const updated = await db.notificationChannelConfig.findUnique({ where: { id: current.id } })
+        await recordAudit({ actor, action: 'notification.channel.configuration_updated', resourceType: 'notification_channel_config', resourceId: updated.id, metadata: { channel: updated.channel, enabled: updated.enabled, activeRevisionNumber: updated.activeRevisionNumber, version: updated.version, reasonCode: payload.reasonCode } }, db)
+        return notificationChannelConfigDto(updated, source)
+      })
+    },
+    async rollbackChannelConfig(payload, actor) {
+      return runSerializableTransaction(async (db) => {
+        const current = await db.notificationChannelConfig.findUnique({ where: { channel: payload.channel } })
+        if (!current) return null
+        if (current.version !== payload.expectedVersion) throw new HttpError(409, 'STATE_CONFLICT', 'Notification channel configuration was modified concurrently')
+        const target = await db.notificationChannelConfigRevision.findUnique({ where: { configId_revisionNumber: { configId: current.id, revisionNumber: payload.revisionNumber } } })
+        if (!target) throw new HttpError(404, 'NOT_FOUND', 'Notification channel configuration revision not found')
+        const revisionNumber = current.activeRevisionNumber + 1
+        const values = { enabled: target.enabled, deliveryRateTargetBps: target.deliveryRateTargetBps, failureRateAlertThresholdBps: target.failureRateAlertThresholdBps, latencyTargetMs: target.latencyTargetMs, maxAttempts: target.maxAttempts, retryBackoffSeconds: target.retryBackoffSeconds }
+        const changed = await db.notificationChannelConfig.updateMany({ where: { id: current.id, version: payload.expectedVersion }, data: { ...values, activeRevisionNumber: revisionNumber, version: { increment: 1 }, reasonCode: payload.reasonCode, updatedByRef: actor.id } })
+        if (changed.count !== 1) throw new HttpError(409, 'STATE_CONFLICT', 'Notification channel configuration was modified concurrently')
+        await db.notificationChannelConfigRevision.create({ data: { id: `notification-channel-revision-${randomUUID()}`, configId: current.id, channel: current.channel, revisionNumber, ...values, reasonCode: payload.reasonCode, actorRef: actor.id } })
+        const updated = await db.notificationChannelConfig.findUnique({ where: { id: current.id } })
+        await recordAudit({ actor, action: 'notification.channel.configuration_rolled_back', resourceType: 'notification_channel_config', resourceId: updated.id, metadata: { channel: updated.channel, enabled: updated.enabled, activeRevisionNumber: updated.activeRevisionNumber, version: updated.version, reasonCode: payload.reasonCode, targetRevisionNumber: payload.revisionNumber } }, db)
+        return notificationChannelConfigDto(updated, source)
+      })
     },
   }
   return repository

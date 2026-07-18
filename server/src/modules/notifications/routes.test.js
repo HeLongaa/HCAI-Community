@@ -810,10 +810,78 @@ test('notification delivery operations expose owner status and recover dead-lett
 
     const metrics = await requestJson(server.url, '/api/admin/notifications/deliveries/metrics', { method: 'GET', token: 'demo-access.legalpixel' })
     assert.equal(metrics.status, 200)
-    assert.ok(metrics.payload.data.total >= 2)
+    assert.ok(metrics.payload.data.overall.total >= 2)
+    assert.equal(metrics.payload.data.schemaVersion, 1)
     const exported = await requestJson(server.url, `/api/admin/notifications/deliveries/export?notificationType=${encodeURIComponent(type)}`, { method: 'GET', token: 'demo-access.legalpixel' })
     assert.equal(exported.status, 200)
     assert.equal(exported.payload.data.items.length, 2)
+  } finally {
+    if (previousEnabled === undefined) delete process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED
+    else process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED = previousEnabled
+    if (previousUrl === undefined) delete process.env.NOTIFICATION_EMAIL_WEBHOOK_URL
+    else process.env.NOTIFICATION_EMAIL_WEBHOOK_URL = previousUrl
+    await server.close()
+  }
+})
+
+test('notification channel controls are versioned, auditable, effective, and rollbackable', async () => {
+  const previousEnabled = process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED
+  const previousUrl = process.env.NOTIFICATION_EMAIL_WEBHOOK_URL
+  process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED = 'true'
+  process.env.NOTIFICATION_EMAIL_WEBHOOK_URL = 'http://127.0.0.1:9876/email'
+  const server = await createTestServer()
+  try {
+    const listed = await requestJson(server.url, '/api/admin/notifications/channels', { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(listed.status, 200)
+    assert.deepEqual(listed.payload.data.map((item) => item.channel), ['email', 'in_app'])
+    const email = listed.payload.data.find((item) => item.channel === 'email')
+    assert.equal(email.effectiveEnabled, true)
+
+    const denied = await requestJson(server.url, '/api/admin/notifications/channels/email', {
+      method: 'PUT', token: 'demo-access.legalpixel', body: { ...email, enabled: false, expectedVersion: email.version, reasonCode: 'provider_maintenance' },
+    })
+    assert.equal(denied.status, 403)
+
+    const disabled = await requestJson(server.url, '/api/admin/notifications/channels/email', {
+      method: 'PUT', token: 'demo-access.opsplus', body: {
+        enabled: false, deliveryRateTargetBps: 9600, failureRateAlertThresholdBps: 400,
+        latencyTargetMs: 240000, maxAttempts: 4, retryBackoffSeconds: 120,
+        expectedVersion: email.version, reasonCode: 'provider_maintenance',
+      },
+    })
+    assert.equal(disabled.status, 200)
+    assert.equal(disabled.payload.data.effectiveEnabled, false)
+
+    const [notification] = await repositories.notifications.createForHandles(['promptlin'], {
+      type: `task.channel_disabled_${Date.now()}`, title: 'Channel disabled', body: 'Channel disabled', resourceType: 'task', resourceId: 'channel-disabled-test',
+    })
+    const deliveries = await repositories.notificationDeliveries.listForNotification(notification.id, { handle: 'promptlin' })
+    const suppressedEmail = deliveries.find((item) => item.channel === 'email')
+    assert.equal(suppressedEmail.status, 'suppressed')
+    assert.equal(suppressedEmail.lastErrorCode, 'CHANNEL_DISABLED')
+
+    const stale = await requestJson(server.url, '/api/admin/notifications/channels/email', {
+      method: 'PUT', token: 'demo-access.opsplus', body: {
+        enabled: true, deliveryRateTargetBps: 9500, failureRateAlertThresholdBps: 500,
+        latencyTargetMs: 300000, maxAttempts: 3, retryBackoffSeconds: 60,
+        expectedVersion: email.version, reasonCode: 'stale_configuration',
+      },
+    })
+    assert.equal(stale.status, 409)
+
+    const history = await requestJson(server.url, '/api/admin/notifications/channels/email/history', { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(history.status, 200)
+    assert.equal(history.payload.data[0].revisionNumber, disabled.payload.data.activeRevisionNumber)
+    const rolledBack = await requestJson(server.url, '/api/admin/notifications/channels/email/rollback', {
+      token: 'demo-access.opsplus', body: { revisionNumber: 1, expectedVersion: disabled.payload.data.version, reasonCode: 'operator_rollback' },
+    })
+    assert.equal(rolledBack.status, 200)
+    assert.equal(rolledBack.payload.data.enabled, true)
+    assert.ok(rolledBack.payload.data.activeRevisionNumber > disabled.payload.data.activeRevisionNumber)
+
+    const exported = await requestJson(server.url, '/api/admin/notifications/deliveries/metrics/export?format=json', { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(exported.status, 200)
+    assert.equal(exported.payload.data.kind, 'notification_delivery_business_metrics.v1')
   } finally {
     if (previousEnabled === undefined) delete process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED
     else process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED = previousEnabled
