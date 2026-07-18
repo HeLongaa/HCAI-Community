@@ -375,6 +375,23 @@ enum JobAttemptStatus {
   cancelled
 }
 
+enum NotificationDeliveryStatus {
+  queued
+  processing
+  retry_scheduled
+  sent
+  suppressed
+  dead_lettered
+  cancelled
+}
+
+enum NotificationDeliveryAttemptStatus {
+  processing
+  sent
+  failed
+  timed_out
+}
+
 enum ReleaseChangeType {
   promotion
   secret_rotation
@@ -3223,10 +3240,63 @@ model Notification {
   createdAt             DateTime  @default(now()) @map("created_at")
 
   recipient User @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  deliveries NotificationDelivery[]
 
   @@index([recipientId, readAt, createdAt])
   @@index([type])
   @@map("notifications")
+}
+
+model NotificationDelivery {
+  id                 String                     @id @default(cuid())
+  notificationId     String                     @map("notification_id")
+  channel            String
+  status             NotificationDeliveryStatus @default(queued)
+  idempotencyKey     String                     @unique @map("idempotency_key")
+  attemptCount       Int                        @default(0) @map("attempt_count")
+  maxAttempts        Int                        @default(3) @map("max_attempts")
+  availableAt        DateTime                   @default(now()) @map("available_at")
+  leaseToken         String?                    @unique @map("lease_token")
+  leaseExpiresAt     DateTime?                  @map("lease_expires_at")
+  lastErrorCode      String?                    @map("last_error_code")
+  providerReceiptHash String?                   @map("provider_receipt_hash")
+  version            Int                        @default(1)
+  sentAt             DateTime?                  @map("sent_at")
+  suppressedAt       DateTime?                  @map("suppressed_at")
+  deadLetteredAt     DateTime?                  @map("dead_lettered_at")
+  cancelledAt        DateTime?                  @map("cancelled_at")
+  createdAt          DateTime                   @default(now()) @map("created_at")
+  updatedAt          DateTime                   @updatedAt @map("updated_at")
+
+  notification Notification                 @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  attempts     NotificationDeliveryAttempt[]
+
+  @@unique([notificationId, channel])
+  @@index([status, availableAt])
+  @@index([channel, createdAt])
+  @@index([leaseExpiresAt])
+  @@map("notification_deliveries")
+}
+
+model NotificationDeliveryAttempt {
+  id                 String                            @id @default(cuid())
+  deliveryId         String                            @map("delivery_id")
+  attemptNumber      Int                               @map("attempt_number")
+  status             NotificationDeliveryAttemptStatus @default(processing)
+  workerId           String                            @map("worker_id")
+  leaseToken         String                            @unique @map("lease_token")
+  responseClass      String?                           @map("response_class")
+  statusCode         Int?                              @map("status_code")
+  errorCode          String?                           @map("error_code")
+  startedAt          DateTime                          @default(now()) @map("started_at")
+  completedAt        DateTime?                         @map("completed_at")
+  createdAt          DateTime                          @default(now()) @map("created_at")
+
+  delivery NotificationDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@unique([deliveryId, attemptNumber])
+  @@index([status, startedAt])
+  @@map("notification_delivery_attempts")
 }
 
 model NotificationTemplate {

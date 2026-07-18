@@ -1,6 +1,7 @@
 import { buildProviderPollingLeaseKey, runProviderPollingWorkerOnce } from '../creative/providerPollingWorker.js'
 import { runVideoProviderLifecycleWorkerOnce } from '../creative/videoProviderLifecycle.js'
 import { runDomainEventPipelineOnce } from '../events/domainEventPipeline.js'
+import { runNotificationDeliveryWorkerOnce } from '../notifications/notificationDeliveryWorker.js'
 
 export const createProductionWorkerJobDefinitions = (repositories, env, options = {}) => {
   const jobs = []
@@ -62,6 +63,22 @@ export const createProductionWorkerJobDefinitions = (repositories, env, options 
         limit: env.taskExpirySweepLimit,
         source: 'worker',
         reasonCode: 'deadline_elapsed',
+      }),
+    })
+  }
+  if (repositories.notificationDeliveries?.claim) {
+    jobs.push({
+      id: 'notification-delivery',
+      enabled: env.notificationDeliveryWorkerEnabled,
+      intervalSeconds: env.notificationDeliveryWorkerIntervalSeconds,
+      maxAttempts: 3,
+      retryBackoffSeconds: env.notificationDeliveryWorkerIntervalSeconds,
+      lease: lease('notification-delivery'),
+      run: () => runNotificationDeliveryWorkerOnce({
+        repositories,
+        source: process.env,
+        limit: env.notificationDeliveryWorkerBatchSize,
+        leaseSeconds: env.notificationDeliveryLeaseSeconds,
       }),
     })
   }

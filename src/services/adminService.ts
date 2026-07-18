@@ -100,6 +100,9 @@ import type {
   NotificationTemplateDraft,
   NotificationTemplateListQuery,
   NotificationTemplateMetrics,
+  NotificationDelivery,
+  NotificationDeliveryListQuery,
+  NotificationDeliveryMetrics,
   SystemSettingChangeDto,
   SystemSettingChangeRequest,
   SystemSettingDto,
@@ -856,5 +859,24 @@ export const adminService = {
   },
   async exportNotificationTemplates(query?: NotificationTemplateListQuery) {
     return api.text(withQuery('/admin/notifications/templates/export', { ...query, cursor: null, limit: 100, format: 'csv' }))
+  },
+  async notificationDeliveries(query?: NotificationDeliveryListQuery) {
+    const envelope = await api.getEnvelope<NotificationDelivery[]>(withQuery('/admin/notifications/deliveries', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async notificationDelivery(id: string) {
+    return api.get<NotificationDelivery>(`/admin/notifications/deliveries/${encodeURIComponent(id)}`)
+  },
+  async notificationDeliveryMetrics() {
+    return api.get<NotificationDeliveryMetrics>('/admin/notifications/deliveries/metrics')
+  },
+  async retryNotificationDelivery(id: string, payload: { expectedVersion: number; reasonCode: string }) {
+    return api.post<NotificationDelivery>(`/admin/notifications/deliveries/${encodeURIComponent(id)}/retry`, payload)
+  },
+  async cancelNotificationDelivery(id: string, payload: { expectedVersion: number; reasonCode: string }) {
+    return api.post<NotificationDelivery>(`/admin/notifications/deliveries/${encodeURIComponent(id)}/cancel`, payload)
+  },
+  async exportNotificationDeliveries(query?: NotificationDeliveryListQuery) {
+    return api.text(withQuery('/admin/notifications/deliveries/export', { ...query, cursor: null, limit: 100, format: 'csv' }))
   },
 }

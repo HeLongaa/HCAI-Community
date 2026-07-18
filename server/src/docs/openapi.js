@@ -4478,6 +4478,17 @@ export const openApiDocument = {
         },
       },
     },
+    '/notifications/{id}/deliveries': {
+      get: {
+        summary: 'List channel delivery state for one current-user notification',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Recipient-scoped in-app and email delivery state without provider secrets or receipts' },
+          '401': { description: 'Authentication required' },
+          '404': { description: 'Notification not found for the current user' },
+        },
+      },
+    },
     '/notifications/read-all': {
       post: {
         summary: 'Mark every current-user notification as read',
@@ -4520,6 +4531,37 @@ export const openApiDocument = {
         summary: 'Create a notification template with immutable draft version 1',
         responses: { '201': { description: 'Template and draft version created' }, '403': { description: 'Missing admin:notifications:manage' }, '409': { description: 'Template key conflict' } },
       },
+    },
+    '/admin/notifications/deliveries': {
+      get: {
+        summary: 'List notification deliveries with bounded filters, sorting, and cursor pagination',
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['queued', 'processing', 'retry_scheduled', 'sent', 'suppressed', 'dead_lettered', 'cancelled'] } },
+          { name: 'channel', in: 'query', schema: { type: 'string', enum: ['in_app', 'email'] } },
+          { name: 'notificationType', in: 'query', schema: { type: 'string', maxLength: 120 } },
+          { name: 'search', in: 'query', schema: { type: 'string', maxLength: 96 } },
+          { name: 'sort', in: 'query', schema: { type: 'string', enum: ['createdAt', 'availableAt', 'updatedAt'] } },
+          { name: 'order', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+        ],
+        responses: { '200': { description: 'Secret-free delivery page with masked recipient evidence' }, '403': { description: 'Missing admin:notifications:read' } },
+      },
+    },
+    '/admin/notifications/deliveries/metrics': {
+      get: { summary: 'Read delivery status, channel, due, DLQ, and runtime availability metrics', responses: { '200': { description: 'Delivery metrics' }, '403': { description: 'Missing admin:notifications:read' } } },
+    },
+    '/admin/notifications/deliveries/export': {
+      get: { summary: 'Export a bounded filtered delivery inventory as JSON or CSV', responses: { '200': { description: 'Secret-free portable delivery inventory' }, '403': { description: 'Missing admin:notifications:read' } } },
+    },
+    '/admin/notifications/deliveries/{id}': {
+      get: { summary: 'Read one delivery and immutable attempt history', responses: { '200': { description: 'Delivery detail' }, '403': { description: 'Missing admin:notifications:read' }, '404': { description: 'Delivery not found' } } },
+    },
+    '/admin/notifications/deliveries/{id}/retry': {
+      post: { summary: 'Retry one dead-lettered delivery with CAS and reason evidence', responses: { '200': { description: 'Delivery scheduled for retry' }, '403': { description: 'Missing admin:notifications:manage' }, '409': { description: 'Version conflict or invalid state' } } },
+    },
+    '/admin/notifications/deliveries/{id}/cancel': {
+      post: { summary: 'Cancel one queued delivery with CAS and reason evidence', responses: { '200': { description: 'Cancelled delivery' }, '403': { description: 'Missing admin:notifications:manage' }, '409': { description: 'Version conflict or invalid state' } } },
     },
     '/admin/notifications/templates/metrics': {
       get: { summary: 'Read template lifecycle and preference override metrics', responses: { '200': { description: 'Template and preference metrics' }, '403': { description: 'Missing admin:notifications:read' } } },

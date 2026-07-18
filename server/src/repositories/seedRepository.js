@@ -26,6 +26,7 @@ import { createSeedTaskLifecycleRecoveryRepository } from '../tasks/seedTaskLife
 import { createSeedBillingAdminRepository } from '../accounting/seedBillingAdminRepository.js'
 import { createSeedEntitlementRepository } from '../entitlements/seedEntitlementRepository.js'
 import { createSeedNotificationManagementRepository, isSeedNotificationEnabled } from '../notifications/seedNotificationManagementRepository.js'
+import { createSeedNotificationDeliveryRepository } from '../notifications/seedNotificationDeliveryRepository.js'
 import { applyPublishedTaskRule } from '../tasks/taskRuleRuntime.js'
 import {
   appendSeedAuditIntegrity,
@@ -1371,6 +1372,7 @@ const getSeedPublicPortfolio = (handle) => [...portfolioAssetsById.values()]
   .sort((left, right) => left.sortOrder - right.sortOrder || right.createdAt.localeCompare(left.createdAt))
   .map((item) => serializePortfolioAsset(item, mediaAssetsById.get(item.assetId)))
 const notifications = []
+let notificationDeliveryRepository = null
 
 const getCursorValue = (item, cursorKey) => item?.[cursorKey] ?? item?.id ?? item?.handle ?? null
 
@@ -1419,6 +1421,9 @@ function createNotificationsForHandles(handles, payload) {
       createdAt: now,
     }))
   notifications.unshift(...created)
+  for (const notification of created) {
+    notificationDeliveryRepository?.createForNotification(notification, getAccountById(notification.recipientId))
+  }
   return created.map(serializeNotification)
 }
 
@@ -2622,6 +2627,11 @@ export const createSeedRepository = () => {
   })
   const entitlements = createSeedEntitlementRepository({ getUserByHandle: getAccountByHandle, getUserById: getAccountById, recordAudit })
   const notificationManagement = createSeedNotificationManagementRepository({ getUserByHandle: getAccountByHandle, recordAudit: auditRecorder })
+  notificationDeliveryRepository = createSeedNotificationDeliveryRepository({
+    getNotificationById: (id) => notifications.find((item) => item.id === String(id)) ?? null,
+    getRecipientById: getAccountById,
+    recordAudit: ({ actor, action, resourceType, resourceId, metadata }) => recordAudit(actor, action, resourceType, resourceId, metadata),
+  })
   return {
   chat: createSeedChatRepository({
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) =>
@@ -2644,6 +2654,7 @@ export const createSeedRepository = () => {
   userAdmin,
   taskAdmin,
   notificationManagement,
+  notificationDeliveries: notificationDeliveryRepository,
   taskLifecycleRecovery,
   billingAdmin,
   entitlements,

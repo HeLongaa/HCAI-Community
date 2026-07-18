@@ -130,7 +130,9 @@
     { "model": "Notification", "domain": "notifications-webhooks", "policy": "state_transition", "hardDelete": false },
     { "model": "NotificationTemplate", "domain": "notifications-webhooks", "policy": "soft_delete", "hardDelete": false },
     { "model": "NotificationTemplateVersion", "domain": "notifications-webhooks", "policy": "immutable_evidence", "hardDelete": false },
-    { "model": "NotificationPreference", "domain": "notifications-webhooks", "policy": "mutable_crud", "hardDelete": true }
+    { "model": "NotificationPreference", "domain": "notifications-webhooks", "policy": "mutable_crud", "hardDelete": true },
+    { "model": "NotificationDelivery", "domain": "notifications-webhooks", "policy": "state_transition", "hardDelete": false },
+    { "model": "NotificationDeliveryAttempt", "domain": "notifications-webhooks", "policy": "state_transition", "hardDelete": false }
   ],
   "protectedFamilies": {
     "accounting": ["PointLedger", "InternalAccountingOperation", "InternalAccountingMovement"],

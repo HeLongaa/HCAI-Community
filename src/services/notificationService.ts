@@ -1,5 +1,5 @@
 import { api, withQuery } from './apiClient'
-import type { ApiNotification, MarkAllNotificationsReadResponse, NotificationListQuery, NotificationPreference } from './contracts'
+import type { ApiNotification, MarkAllNotificationsReadResponse, NotificationDelivery, NotificationListQuery, NotificationPreference } from './contracts'
 
 export const notificationService = {
   async list(query?: NotificationListQuery) {
@@ -16,6 +16,9 @@ export const notificationService = {
   },
   async markAllRead() {
     return api.post<MarkAllNotificationsReadResponse>('/notifications/read-all')
+  },
+  async deliveries(id: string) {
+    return api.get<NotificationDelivery[]>(`/notifications/${encodeURIComponent(id)}/deliveries`)
   },
   async listPreferences() {
     return api.get<NotificationPreference[]>('/notifications/preferences')

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "task": "NOTIFY-02",
+  "scope": "personal_accounts_only",
+  "operationPolicy": "state_transition",
+  "migration": "0078_notification_delivery_operations",
+  "permissions": { "read": "admin:notifications:read", "manage": "admin:notifications:manage" },
+  "channels": ["in_app", "email"],
+  "statuses": ["queued", "processing", "retry_scheduled", "sent", "suppressed", "dead_lettered", "cancelled"],
+  "userRoutes": [{ "method": "GET", "path": "/api/notifications/:id/deliveries" }],
+  "adminRoutes": [
+    { "method": "GET", "path": "/api/admin/notifications/deliveries" },
+    { "method": "GET", "path": "/api/admin/notifications/deliveries/metrics" },
+    { "method": "GET", "path": "/api/admin/notifications/deliveries/export" },
+    { "method": "GET", "path": "/api/admin/notifications/deliveries/:id" },
+    { "method": "POST", "path": "/api/admin/notifications/deliveries/:id/retry" },
+    { "method": "POST", "path": "/api/admin/notifications/deliveries/:id/cancel" }
+  ],
+  "invariants": {
+    "channelDedupe": true,
+    "leaseClaim": true,
+    "attemptHistoryPreserved": true,
+    "boundedRetry": true,
+    "deadLetterRecovery": true,
+    "optimisticConcurrency": true,
+    "secretFreeProjection": true,
+    "externalEmailFailClosed": true
+  }
+}

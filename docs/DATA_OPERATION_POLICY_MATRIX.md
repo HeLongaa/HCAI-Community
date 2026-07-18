@@ -31,7 +31,8 @@ Run `npm run test:data-operation-policies` after any Prisma model or policy chan
 - Configuration: the current setting projection is mutable only through a published change; change requests use an
   explicit state machine and optimistic versions, and published revisions are immutable evidence.
 - Notifications: templates are soft-deleted lifecycle aggregates, published template versions are immutable evidence,
-  and personal delivery preferences are owner-controlled mutable records with optimistic versions.
+  personal delivery preferences are owner-controlled mutable records with optimistic versions, delivery queues use
+  compare-and-set state transitions, and attempt rows preserve a bounded processing-to-terminal lifecycle.
 
 ## Enforcement Boundary
 

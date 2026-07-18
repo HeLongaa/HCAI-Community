@@ -151,6 +151,7 @@ import { createPrismaTaskAdminRepository } from '../tasks/prismaTaskAdminReposit
 import { createPrismaBillingAdminRepository } from '../accounting/prismaBillingAdminRepository.js'
 import { createPrismaEntitlementRepository } from '../entitlements/prismaEntitlementRepository.js'
 import { createPrismaNotificationManagementRepository } from '../notifications/prismaNotificationManagementRepository.js'
+import { createPrismaNotificationDeliveryRepository } from '../notifications/prismaNotificationDeliveryRepository.js'
 import {
   buildConsentStatus,
   compliancePolicyManifest,
@@ -1106,6 +1107,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   const billingAdmin = createPrismaBillingAdminRepository(client)
   const entitlements = createPrismaEntitlementRepository(client)
   const notificationManagement = createPrismaNotificationManagementRepository(client, { runSerializableTransaction, recordAudit })
+  const notificationDeliveries = createPrismaNotificationDeliveryRepository(client, { runSerializableTransaction, recordAudit })
   const taskLifecycleRecovery = createPrismaTaskLifecycleRecoveryRepository(client, { runSerializableTransaction, recordAudit, finalizeTaskEscrow })
 
   const createSessionForUser = async (user, reason = 'auth.session.created', options = {}) => {
@@ -1321,7 +1323,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           return null
         }
       }
-      return db.notification.create({
+      const notification = await db.notification.create({
         data: {
           id: `notification-${Date.now()}-${Math.random().toString(16).slice(2, 8)}-${recipient.id}`,
           recipientId: recipient.id,
@@ -1335,6 +1337,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           templateVersion: payload.templateVersion ?? null,
         },
       })
+      await notificationDeliveries.createForNotification(notification, recipient, db)
+      return notification
     }))).filter(Boolean)
   }
 
@@ -10298,6 +10302,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     billingAdmin,
     entitlements,
     notificationManagement,
+    notificationDeliveries,
     media,
     library,
     audit,

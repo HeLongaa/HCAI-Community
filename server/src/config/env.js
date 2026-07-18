@@ -190,6 +190,12 @@ export const buildEnv = (source = process.env) => {
   const taskStaleSubmissionSweepLimit = positiveInteger(source, 'TASK_STALE_SUBMISSION_SWEEP_LIMIT', 25)
   const taskExpiryWorkerIntervalSeconds = positiveInteger(source, 'TASK_EXPIRY_WORKER_INTERVAL_SECONDS', 60)
   const taskExpirySweepLimit = positiveInteger(source, 'TASK_EXPIRY_SWEEP_LIMIT', 50)
+  const notificationEmailDeliveryEnabled = strictBoolFlag(source, 'NOTIFICATION_EMAIL_DELIVERY_ENABLED', false)
+  const notificationDeliveryWorkerEnabled = strictBoolFlag(source, 'NOTIFICATION_DELIVERY_WORKER_ENABLED', false)
+  const notificationEmailWebhookUrl = getOptionalUrl(source, 'NOTIFICATION_EMAIL_WEBHOOK_URL')
+  const notificationDeliveryWorkerIntervalSeconds = positiveInteger(source, 'NOTIFICATION_DELIVERY_WORKER_INTERVAL_SECONDS', 10)
+  const notificationDeliveryWorkerBatchSize = positiveInteger(source, 'NOTIFICATION_DELIVERY_WORKER_BATCH_SIZE', 25)
+  const notificationDeliveryLeaseSeconds = positiveInteger(source, 'NOTIFICATION_DELIVERY_LEASE_SECONDS', 60)
   const creativeProviderPollingMaxAgeSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_MAX_AGE_SECONDS', 3600)
   const creativeProviderPollingLeaseTtlSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_LEASE_TTL_SECONDS', 300)
   const creativeProviderPollingIntervalSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_INTERVAL_SECONDS', 60)
@@ -246,6 +252,12 @@ export const buildEnv = (source = process.env) => {
   }
   if (Boolean(storagePrivateDownloadBaseUrl) !== Boolean(storagePrivateDownloadSigningSecret)) {
     throw new Error('STORAGE_PRIVATE_DOWNLOAD_BASE_URL and STORAGE_PRIVATE_DOWNLOAD_SIGNING_SECRET must be configured together')
+  }
+  if (notificationEmailDeliveryEnabled && !notificationEmailWebhookUrl) {
+    throw new Error('NOTIFICATION_EMAIL_DELIVERY_ENABLED requires NOTIFICATION_EMAIL_WEBHOOK_URL')
+  }
+  if (notificationDeliveryWorkerEnabled && !notificationEmailDeliveryEnabled) {
+    throw new Error('NOTIFICATION_DELIVERY_WORKER_ENABLED requires NOTIFICATION_EMAIL_DELIVERY_ENABLED=true')
   }
   if (!['manual', 'mock', 'webhook'].includes(mediaScanProvider)) {
     throw new Error('MEDIA_SCAN_PROVIDER must be one of: manual, mock, webhook')
@@ -500,6 +512,12 @@ export const buildEnv = (source = process.env) => {
     taskExpiryWorkerEnabled: boolFlag(source, 'TASK_EXPIRY_WORKER_ENABLED', false),
     taskExpiryWorkerIntervalSeconds,
     taskExpirySweepLimit,
+    notificationEmailDeliveryEnabled,
+    notificationDeliveryWorkerEnabled,
+    notificationDeliveryWorkerIntervalSeconds,
+    notificationDeliveryWorkerBatchSize,
+    notificationDeliveryLeaseSeconds,
+    hasNotificationEmailWebhookUrl: Boolean(notificationEmailWebhookUrl),
     creativeProviderPollingEnabled,
     creativeProviderPollingWorkerEnabled,
     creativeProviderPollingMaxAgeSeconds,
