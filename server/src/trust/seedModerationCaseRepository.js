@@ -9,7 +9,14 @@ import {
 
 const cloneUser = (user) => user ? { id: user.id, handle: user.handle, displayName: user.displayName, profile: user.profile ?? { handle: user.handle } } : null
 
-export const createSeedModerationCaseRepository = ({ resolveTarget, getUserById, recordAudit }) => {
+export const createSeedModerationCaseRepository = ({
+  resolveTarget,
+  getUserById,
+  recordAudit,
+  onReportCreated = () => {},
+  onAppealCreated = () => {},
+  onDecisionCreated = () => {},
+}) => {
   const cases = new Map()
   const reportBySourceKey = new Map()
 
@@ -39,7 +46,7 @@ export const createSeedModerationCaseRepository = ({ resolveTarget, getUserById,
 
   return {
     createReport: (payload, actor) => {
-      const target = resolveTarget(payload.targetType, payload.targetId)
+      const target = resolveTarget(payload.targetType, payload.targetId, actor)
       if (!target) throw new HttpError(404, 'MODERATION_TARGET_NOT_FOUND', 'Moderation target not found')
       const sourceKey = moderationSourceKey({ actorId: actor.id, ...payload })
       const duplicate = reportBySourceKey.get(sourceKey)
@@ -66,10 +73,12 @@ export const createSeedModerationCaseRepository = ({ resolveTarget, getUserById,
         evidence: [{ id: `evidence-${randomUUID()}`, caseId, submittedById: actor.id, submittedBy: reporter, evidenceType: 'target_snapshot', referenceType: payload.targetType, referenceId: payload.targetId, contentHash: target.contentHash, reasonCode: 'report_submitted', createdAt: now }],
         decisions: [],
         appeals: [],
+        communityActions: [],
       }
       cases.set(caseId, record)
       reportBySourceKey.set(sourceKey, record)
       audit(actor, 'trust.report.created', 'moderation_case', caseId, { reportId, targetType: payload.targetType, category: payload.category, priority: payload.priority })
+      onReportCreated(record, reporter)
       return { duplicate: false, item: dto(record, { includeStatement: true }) }
     },
     findForUser: (id, actor) => {
@@ -95,6 +104,7 @@ export const createSeedModerationCaseRepository = ({ resolveTarget, getUserById,
       const appeal = { id: `appeal-${randomUUID()}`, caseId: record.id, decisionId: state.originalDecision.id, appellantId: actor.id, appellant: cloneUser(getUserById(actor.id)) ?? cloneUser(actor), reasonCode: payload.reasonCode, statement: payload.statement, createdAt: new Date().toISOString() }
       record.appeals.push(appeal)
       audit(actor, 'trust.appeal.created', 'moderation_appeal', appeal.id, { caseId: record.id, decisionId: appeal.decisionId, reasonCode: appeal.reasonCode })
+      onAppealCreated(record, appeal, appeal.appellant)
       return dto(record, { includeStatement: true })
     },
     addEvidence: (id, payload, actor) => {
@@ -120,6 +130,7 @@ export const createSeedModerationCaseRepository = ({ resolveTarget, getUserById,
       const decision = { id: `decision-${randomUUID()}`, caseId: record.id, appealId: payload.stage === 'appeal' ? state.appeal.id : null, reviewerId: actor.id, reviewer: cloneUser(getUserById(actor.id)) ?? cloneUser(actor), stage: payload.stage, outcome: payload.outcome, reasonCode: payload.reasonCode, note: payload.note, createdAt: new Date().toISOString() }
       record.decisions.push(decision)
       audit(actor, 'trust.decision.created', 'moderation_decision', decision.id, { caseId: record.id, stage: decision.stage, outcome: decision.outcome, reasonCode: decision.reasonCode })
+      onDecisionCreated(record, decision, decision.reviewer)
       return dto(record, { includeStatement: true })
     },
     findAdmin: (id) => {

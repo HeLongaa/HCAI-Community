@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "task": "COMM-02",
+  "scope": "personal_accounts_only",
+  "operationPolicy": "state_transition",
+  "migration": "0081_community_trust_safety",
+  "models": ["Post", "Comment", "CommunityModerationAction"],
+  "targetTypes": ["post", "comment"],
+  "userRoutes": [
+    { "method": "GET", "path": "/api/posts/:id" },
+    { "method": "POST", "path": "/api/trust/reports" },
+    { "method": "GET", "path": "/api/trust/cases" },
+    { "method": "GET", "path": "/api/trust/cases/:id" },
+    { "method": "POST", "path": "/api/trust/cases/:id/appeals" }
+  ],
+  "adminRoutes": [
+    { "method": "GET", "path": "/api/admin/trust/cases" },
+    { "method": "GET", "path": "/api/admin/trust/cases/:id" },
+    { "method": "POST", "path": "/api/admin/trust/cases/:id/decisions" }
+  ],
+  "notifications": ["community.report_submitted", "community.moderation_decided", "community.appeal_submitted", "community.appeal_decided"],
+  "invariants": {
+    "immutableActionFacts": true,
+    "atomicDecisionProjectionAuditNotification": true,
+    "ownerDeletionNotReversed": true,
+    "postAndCommentVisibility": true,
+    "independentAppealRecovery": true,
+    "reportIdempotency": true,
+    "preferenceAwareNotifications": true,
+    "publicReadsFailClosed": true
+  }
+}

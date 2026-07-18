@@ -31,6 +31,19 @@ const toPost = (post: ApiPost): Post => ({
   updatedAt: post.updatedAt,
   publishedAt: post.publishedAt,
   deletedAt: post.deletedAt,
+  moderationState: post.moderationState,
+  moderationVersion: post.moderationVersion,
+  moderationUpdatedAt: post.moderationUpdatedAt,
+  comments: post.comments?.map((comment) => ({
+    id: comment.id,
+    body: comment.body,
+    author: comment.author?.handle ?? 'unknown',
+    parentId: comment.parentId,
+    moderationState: comment.moderationState,
+    moderationVersion: comment.moderationVersion,
+    moderationUpdatedAt: comment.moderationUpdatedAt,
+    createdAt: comment.createdAt,
+  })),
 })
 
 const toLibraryItem = (item: ApiLibraryItem): InspirationItem => ({
@@ -43,6 +56,9 @@ const toLibraryItem = (item: ApiLibraryItem): InspirationItem => ({
 })
 
 export const communityService = {
+  async getPost(id: string | number) {
+    return toPost(await api.get<ApiPost>(`/posts/${id}`))
+  },
   async listPosts(query?: PostListQuery) {
     const items = await api.get<ApiPost[]>(withQuery('/posts', query))
     return items.map(toPost)

@@ -1,6 +1,6 @@
 import type { AdminDeepLink, NotificationDeepLink, Page, PlaygroundMode } from './types'
 
-export type NotificationSurface = 'generations' | 'image' | 'video' | 'music' | 'chat' | 'tasks' | 'portfolio' | 'admin' | 'points' | 'assets'
+export type NotificationSurface = 'generations' | 'image' | 'video' | 'music' | 'chat' | 'tasks' | 'portfolio' | 'admin' | 'points' | 'assets' | 'community' | 'support'
 export type NotificationTargetV1 = {
   version: 1
   surface: NotificationSurface
@@ -12,10 +12,13 @@ export type NotificationTargetV1 = {
   submissionId?: string
   reviewId?: string
   assetId?: string
+  caseId?: string
+  postId?: string
+  commentId?: string
   admin?: AdminDeepLink
 }
 
-const surfaces = new Set<NotificationSurface>(['generations', 'image', 'video', 'music', 'chat', 'tasks', 'portfolio', 'admin', 'points', 'assets'])
+const surfaces = new Set<NotificationSurface>(['generations', 'image', 'video', 'music', 'chat', 'tasks', 'portfolio', 'admin', 'points', 'assets', 'community', 'support'])
 const intents = new Set<NotificationTargetV1['intent']>(['view', 'resume', 'review', 'retry', 'resolve-budget', 'view-delivery'])
 const workspaces = new Set<PlaygroundMode>(['image', 'video', 'music', 'chat'])
 const adminTabs = new Set<NonNullable<AdminDeepLink['tab']>>(['Overview', 'Task review', 'Access', 'Security', 'Finance', 'Accounting', 'Generations', 'Submissions', 'Community', 'Audit log', 'Users', 'Tags', 'AI config'])
@@ -47,7 +50,7 @@ export const parseNotificationTarget = (value: unknown): NotificationTargetV1 | 
     fallbackSurface: surfaces.has(source.fallbackSurface as NotificationSurface) ? source.fallbackSurface as NotificationSurface : surface,
   }
   if (workspaces.has(source.workspace as PlaygroundMode)) target.workspace = source.workspace as PlaygroundMode
-  for (const key of ['generationId', 'taskId', 'submissionId', 'reviewId', 'assetId'] as const) {
+  for (const key of ['generationId', 'taskId', 'submissionId', 'reviewId', 'assetId', 'caseId', 'postId', 'commentId'] as const) {
     const id = safeId(source[key])
     if (id) target[key] = id
   }
@@ -70,7 +73,7 @@ export const notificationTargetHash = (target: NotificationTargetV1) => {
   const { page, workspace } = pageForSurface(target.surface)
   const params = new URLSearchParams()
   if (workspace) params.set('workspace', workspace)
-  for (const key of ['taskId', 'submissionId', 'reviewId', 'assetId'] as const) if (target[key]) params.set(key, target[key] as string)
+  for (const key of ['taskId', 'submissionId', 'reviewId', 'assetId', 'caseId', 'postId', 'commentId'] as const) if (target[key]) params.set(key, target[key] as string)
   if (target.surface === 'admin' && target.admin) {
     for (const key of ['tab', 'overviewResourceType', 'overviewResourceId', 'queue', 'reviewId', 'auditEventId', 'ledgerUserHandle', 'policyHistoryEventId', 'securityAlertId', 'mediaAssetId', 'mediaStatus'] as const) {
       const value = target.admin[key]

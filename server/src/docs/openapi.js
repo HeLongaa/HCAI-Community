@@ -170,7 +170,7 @@ export const openApiDocument = {
     },
     '/trust/reports': {
       post: {
-        summary: 'Create one append-only report and moderation case with target snapshot evidence',
+        summary: 'Create one append-only report and moderation case with target snapshot evidence and preference-aware reviewer notification',
         requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['targetType', 'targetId', 'category', 'subject', 'statement'], additionalProperties: false, properties: { targetType: { type: 'string', enum: ['user', 'post', 'comment', 'media_asset', 'creative_generation'] }, targetId: { type: 'string', minLength: 1, maxLength: 128 }, category: { type: 'string', enum: ['harassment', 'hate', 'sexual', 'violence', 'self_harm', 'child_safety', 'impersonation', 'spam', 'fraud', 'privacy', 'copyright', 'other'] }, subject: { type: 'string', minLength: 5, maxLength: 120 }, statement: { type: 'string', minLength: 10, maxLength: 4000 }, locale: { type: 'string', enum: ['en', 'zh'] }, sourceKey: { type: 'string', minLength: 16, maxLength: 128 } } } } } },
         responses: { '201': { description: 'Report, case, and initial evidence created atomically' }, '200': { description: 'Idempotent duplicate report' }, '400': { description: 'Invalid or sensitive content' }, '401': { description: 'Authentication required' }, '404': { description: 'Target not found' }, '409': { description: 'sourceKey conflict' } },
       },
@@ -182,7 +182,7 @@ export const openApiDocument = {
       get: { summary: 'Read one reporter- or affected-user-scoped moderation case fact chain', responses: { '200': { description: 'Moderation case detail' }, '401': { description: 'Authentication required' }, '404': { description: 'Case not found for the current user' } } },
     },
     '/trust/cases/{id}/appeals': {
-      post: { summary: 'Append one affected-user appeal within 30 days using optimistic version evidence', responses: { '201': { description: 'Appeal fact appended' }, '403': { description: 'Only affected user may appeal' }, '409': { description: 'Version conflict, missing decision, duplicate appeal, or closed window' } } },
+      post: { summary: 'Append one affected-user appeal within 30 days and notify independent reviewers', responses: { '201': { description: 'Appeal fact appended' }, '403': { description: 'Only affected user may appeal' }, '409': { description: 'Version conflict, missing decision, duplicate appeal, or closed window' } } },
     },
     '/admin/trust/cases': {
       get: { summary: 'List moderation cases with bounded status, priority, target, category, search, sort, and cursor filters', responses: { '200': { description: 'Sanitized moderation case page' }, '403': { description: 'Missing admin:trust:read' } } },
@@ -200,7 +200,7 @@ export const openApiDocument = {
       post: { summary: 'Append hash-addressed moderation evidence without raw payloads', responses: { '201': { description: 'Evidence appended' }, '200': { description: 'Duplicate evidence no-op' }, '403': { description: 'Missing admin:trust:review' } } },
     },
     '/admin/trust/cases/{id}/decisions': {
-      post: { summary: 'Append one original or independently reviewed appeal decision using optimistic version evidence', responses: { '201': { description: 'Decision appended' }, '403': { description: 'Missing admin:trust:review' }, '409': { description: 'Version, stage, duplicate, or independent-review conflict' } } },
+      post: { summary: 'Append a decision, atomically transition community visibility when applicable, and notify participants', responses: { '201': { description: 'Decision, community moderation action, audit, and notifications committed atomically' }, '403': { description: 'Missing admin:trust:review' }, '409': { description: 'Version, target projection, stage, duplicate, or independent-review conflict' } } },
     },
     '/admin/trust/rules': {
       get: { summary: 'List immutable content-safety rule versions and derived rollout states', responses: { '200': { description: 'Rule versions and transition evidence' }, '403': { description: 'Missing admin:trust:read' } } },
@@ -230,7 +230,7 @@ export const openApiDocument = {
     },
     '/posts': {
       get: {
-        summary: 'List published community posts',
+        summary: 'List published community posts whose moderation projection is visible',
         parameters: [
           { name: 'category', in: 'query', schema: { type: 'string' } },
           { name: 'tag', in: 'query', schema: { type: 'string' } },
@@ -238,7 +238,7 @@ export const openApiDocument = {
           { name: 'cursor', in: 'query', schema: { type: 'string' } },
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
         ],
-        responses: { '200': { description: 'Published posts only; drafts and deleted posts are omitted' } },
+        responses: { '200': { description: 'Published and moderation-visible posts only; drafts, deleted, and hidden posts are omitted' } },
       },
       post: {
         summary: 'Create a draft or published community post',
@@ -269,7 +269,7 @@ export const openApiDocument = {
     },
     '/posts/{id}': {
       get: {
-        summary: 'Read a published post or an owner-visible private post',
+        summary: 'Read a visible published post or owner/moderator-visible private or moderation-hidden post',
         responses: { '200': { description: 'Post detail and viewer capabilities' }, '404': { description: 'Post is absent or private to another user' } },
       },
       patch: {

@@ -92,6 +92,7 @@ import { applyPublishedTaskRule } from '../tasks/taskRuleRuntime.js'
 import { createPrismaTaskLifecycleRecoveryRepository } from '../tasks/prismaTaskLifecycleRecoveryRepository.js'
 import { createPrismaModerationCaseRepository } from '../trust/prismaModerationCaseRepository.js'
 import { createPrismaSafetyOperationsRepository } from '../trust/prismaSafetyOperationsRepository.js'
+import { communityModerationTransition } from '../trust/communityModeration.js'
 import {
   accountingOperationKey,
   accountingPayloadHash,
@@ -249,7 +250,12 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   }
 
   const chat = createPrismaChatRepository(client, { recordAudit })
-  const moderationCases = createPrismaModerationCaseRepository(client, { recordAudit })
+  const moderationCases = createPrismaModerationCaseRepository(client, {
+    recordAudit,
+    onReportCreated: (db, record, reporter) => notifyCommunityReportCreated(db, record, reporter),
+    onAppealCreated: (db, record, appeal, appellant) => notifyCommunityAppealCreated(db, record, appeal, appellant),
+    onDecisionCreated: (db, record, decision, reviewer) => applyCommunityModerationDecision(db, record, decision, reviewer),
+  })
   const safetyOperations = createPrismaSafetyOperationsRepository(client, { moderationCases, recordAudit })
   const domainEvents = createPrismaDomainEventRepository(client, { recordAudit })
   const domainEventConsumers = createPrismaDomainEventConsumerRepository(client, { recordAudit })
@@ -1390,6 +1396,89 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       excludeHandle: actor?.handle ?? null,
     })
     return createNotificationsForUsers(db, users, payload)
+  }
+
+  const notifyTrustReviewers = async (db, actor, payload) => {
+    const users = await findUsersByPermissions(db, ['admin:trust:read'], {
+      excludeHandle: actor?.profile?.handle ?? actor?.handle ?? null,
+    })
+    return createNotificationsForUsers(db, users, payload)
+  }
+
+  const moderationCaseTarget = (record, surface = 'support') => ({
+    surface,
+    intent: surface === 'admin' ? 'review' : 'view',
+    caseId: record.id,
+    ...(record.targetType === 'post' ? { postId: record.targetId } : {}),
+    ...(record.targetType === 'comment' ? { commentId: record.targetId } : {}),
+  })
+
+  const notifyCommunityReportCreated = (db, record, reporter) => ['post', 'comment'].includes(record.targetType)
+    ? notifyTrustReviewers(db, reporter, {
+        type: 'community.report_submitted',
+        title: 'Community report requires review',
+        body: `${record.targetType} report was added to the Trust and Safety queue.`,
+        resourceType: 'moderation_case',
+        resourceId: record.id,
+        metadata: { status: 'open', caseId: record.id, reasonCode: 'community_report_submitted', target: moderationCaseTarget(record, 'admin') },
+        dedupeUnread: true,
+      })
+    : []
+
+  const notifyCommunityAppealCreated = (db, record, appeal, appellant) => ['post', 'comment'].includes(record.targetType)
+    ? notifyTrustReviewers(db, appellant, {
+        type: 'community.appeal_submitted',
+        title: 'Community moderation appeal requires review',
+        body: `An affected community author appealed case ${record.id}.`,
+        resourceType: 'moderation_case',
+        resourceId: record.id,
+        metadata: { status: 'appealed', caseId: record.id, reasonCode: appeal.reasonCode, target: moderationCaseTarget(record, 'admin') },
+        dedupeUnread: true,
+      })
+    : []
+
+  const applyCommunityModerationDecision = async (db, record, decision, reviewer) => {
+    if (!['post', 'comment'].includes(record.targetType)) return
+    let action = null
+    if (['post', 'comment'].includes(record.targetType)) {
+      const model = record.targetType === 'post' ? db.post : db.comment
+      const target = await model.findUnique({ where: { id: record.targetId }, select: { moderationState: true, moderationVersion: true } })
+      if (!target) throw new HttpError(409, 'COMMUNITY_MODERATION_TARGET_MISSING', 'Community moderation target no longer exists')
+      const transition = communityModerationTransition({ targetType: record.targetType, currentState: target.moderationState, stage: decision.stage, outcome: decision.outcome })
+      const changed = await model.updateMany({
+        where: { id: record.targetId, moderationVersion: target.moderationVersion },
+        data: { moderationState: transition.toState, moderationVersion: { increment: 1 }, moderationUpdatedAt: new Date() },
+      })
+      if (!changed.count) throw new HttpError(409, 'STATE_CONFLICT', 'Community moderation target was modified concurrently')
+      action = await db.communityModerationAction.create({ data: {
+        id: `community-moderation-${randomUUID()}`,
+        caseId: record.id,
+        decisionId: decision.id,
+        targetType: record.targetType,
+        targetId: record.targetId,
+        action: transition.action,
+        fromState: transition.fromState,
+        toState: transition.toState,
+        reasonCode: decision.reasonCode,
+        actorId: reviewer.id,
+      } })
+      await recordAudit({ actor: reviewer, action: 'community.content.moderated', resourceType: record.targetType, resourceId: record.targetId, metadata: { caseId: record.id, decisionId: decision.id, moderationAction: action.action, fromState: action.fromState, toState: action.toState, reasonCode: action.reasonCode } }, db)
+    }
+
+    const recipients = [record.affectedUser, record.report?.reporter]
+    await createNotificationsForUsers(db, recipients, {
+      type: decision.stage === 'appeal' ? 'community.appeal_decided' : 'community.moderation_decided',
+      title: decision.stage === 'appeal' ? 'Community appeal decided' : 'Community report decided',
+      body: action?.toState === 'hidden'
+        ? 'Reported community content is no longer publicly visible.'
+        : decision.stage === 'appeal' && action?.action === 'restore'
+          ? 'Community content was restored after independent appeal review.'
+          : 'A Trust and Safety decision was recorded for the community report.',
+      resourceType: 'moderation_case',
+      resourceId: record.id,
+      metadata: { status: decision.stage === 'appeal' ? 'closed' : 'resolved', caseId: record.id, reasonCode: decision.reasonCode, outcome: decision.outcome, moderationAction: action?.action ?? 'none', target: moderationCaseTarget(record) },
+      dedupeUnread: true,
+    })
   }
 
   const notifyMediaQueueReaders = notifyAdminQueueReaders
@@ -3906,6 +3995,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       const rows = await client.post.findMany({
         where: {
           status: 'published',
+          moderationState: 'visible',
           ...(options.category ? { category: options.category } : {}),
           ...(options.tag ? { tag: options.tag } : {}),
         },
@@ -3936,7 +4026,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       })
       const ownerHandle = row?.author?.profile?.handle ?? null
       const canModerate = hasPermission(viewer, 'post:moderate')
-      if (!row || (row.status !== 'published' && ownerHandle !== viewer?.handle && !canModerate)) return null
+      if (!row || ((row.status !== 'published' || row.moderationState === 'hidden') && ownerHandle !== viewer?.handle && !canModerate)) return null
       return getPostDetailDto(row, viewer)
     },
     listMine: async (options = {}, actor) => {
@@ -4065,7 +4155,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
     comment: async (id, payload, actor) => {
       const post = await client.post.findUnique({
-        where: { id: String(id), status: 'published' },
+        where: { id: String(id), status: 'published', moderationState: 'visible' },
         include: { author: { include: { profile: true } } },
       })
       if (!post) {
@@ -4113,7 +4203,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
     like: async (id, actor) => {
       const post = await client.post.findUnique({
-        where: { id: String(id), status: 'published' },
+        where: { id: String(id), status: 'published', moderationState: 'visible' },
       })
       if (!post) {
         return null
@@ -4154,7 +4244,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
     unlike: async (id, actor) => {
       const post = await client.post.findUnique({
-        where: { id: String(id), status: 'published' },
+        where: { id: String(id), status: 'published', moderationState: 'visible' },
       })
       if (!post) {
         return null
@@ -4190,7 +4280,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
     convertToTask: async (id, payload, actor) => {
       const post = await client.post.findUnique({
-        where: { id: String(id), status: 'published' },
+        where: { id: String(id), status: 'published', moderationState: 'visible' },
         include: { author: { include: { profile: true } } },
       })
       if (!post) {

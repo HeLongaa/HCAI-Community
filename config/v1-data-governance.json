@@ -333,7 +333,7 @@
       "locations": ["postgres"],
       "dataSubjects": ["author", "participant"],
       "purposes": ["community_participation", "safety_moderation"],
-      "exampleFields": ["post title/body", "comment", "like", "category", "tag", "draft/publication/deletion status", "optimistic version", "publication timestamp", "soft deletion timestamp", "bounded deletion reason code"],
+      "exampleFields": ["post title/body", "comment", "like", "category", "tag", "draft/publication/deletion status", "moderation visibility projection and version", "publication timestamp", "soft deletion timestamp", "bounded deletion reason code"],
       "accessRoles": ["public_reader", "owner", "authorized_service", "community_moderator"],
       "retentionPolicyId": "community_delete_plus_30d",
       "exportPolicy": "include_user_authored_content_and_interactions",
@@ -553,7 +553,7 @@
     {
       "id": "moderation_review_records",
       "classification": "restricted",
-      "prismaModels": ["AdminReview", "Report", "ModerationCase", "ModerationEvidence", "ModerationDecision", "ModerationAppeal", "SafetyRuleVersion", "SafetyRuleTransition", "SafetySignal", "ModerationQueueEvent", "ModerationBulkOperation"],
+      "prismaModels": ["AdminReview", "Report", "ModerationCase", "ModerationEvidence", "ModerationDecision", "ModerationAppeal", "CommunityModerationAction", "SafetyRuleVersion", "SafetyRuleTransition", "SafetySignal", "ModerationQueueEvent", "ModerationBulkOperation"],
       "locations": ["postgres"],
       "dataSubjects": ["user", "reporter", "reviewer", "depicted_third_party"],
       "purposes": ["safety_moderation", "support_operations", "legal_compliance"],
@@ -1071,7 +1071,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 130,
+    "modelCount": 131,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",

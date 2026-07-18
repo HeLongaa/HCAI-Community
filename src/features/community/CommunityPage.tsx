@@ -4,6 +4,7 @@ import {
   BriefcaseBusiness,
   ChevronDown,
   Heart,
+  Flag,
   LoaderCircle,
   MessageCircle,
   Pencil,
@@ -12,11 +13,15 @@ import {
   Save,
   Tags,
   Trash2,
+  X,
 } from 'lucide-react'
 import type { AsyncResourceState, CommunityPostDraft, CommunityView, MarketplaceProfile, Post, SimulateAction } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { visualWorks } from '../../data/mockData'
 import { categoryLabel, findProfile, isZhCopy, localizedPosts, textFor } from '../../domain/utils'
+import { communityService } from '../../services/communityService'
+import { trustService } from '../../services/trustService'
+import type { ModerationReportCategory } from '../../services/contracts'
 
 export function CommunityPage({
   t,
@@ -83,9 +88,17 @@ export function CommunityPage({
   const [editingPost, setEditingPost] = useState<Post | null>(null)
   const [postDraft, setPostDraft] = useState<CommunityPostDraft>(emptyPostDraft)
   const [postEditorError, setPostEditorError] = useState<string | null>(null)
+  const [reportTarget, setReportTarget] = useState<{ targetType: 'post' | 'comment'; targetId: string; label: string } | null>(null)
+  const [reportCategory, setReportCategory] = useState<ModerationReportCategory>('spam')
+  const [reportStatement, setReportStatement] = useState('')
+  const [reportBusy, setReportBusy] = useState(false)
+  const [reportResult, setReportResult] = useState<string | null>(null)
+  const [reportError, setReportError] = useState<string | null>(null)
   const topicTabsRef = useRef<HTMLDivElement | null>(null)
-  const activeSelectedPost =
-    scopedPosts.find((post) => post.id === selectedPost.id) ?? scopedPosts[0] ?? selectedPost
+  const selectedLocalized = localizedPosts([selectedPost], t)[0] ?? selectedPost
+  const activeSelectedPost = selectedPost.id === selectedLocalized.id
+    ? selectedLocalized
+    : scopedPosts.find((post) => post.id === selectedPost.id) ?? scopedPosts[0] ?? selectedPost
   const filteredPosts = scopedPosts.filter((post) => {
     if (communityFilter === 'Hot') return post.votes >= 80 || post.tag === 'Hot' || post.tag === 'Featured'
     if (communityFilter === 'Latest') return true
@@ -169,6 +182,7 @@ export function CommunityPage({
   const showTopicDetail = (post: Post) => {
     setSelectedPost(post)
     setCommunityView('detail')
+    void communityService.getPost(post.id).then(setSelectedPost).catch((error) => console.info('[community-post-detail]', error))
     requestAnimationFrame(() => document.querySelector('.forum-main')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
 
@@ -198,7 +212,46 @@ export function CommunityPage({
       [postKey]: [...(current[postKey] ?? []), { author: 'you', text }],
     }))
     void replyToPost(activeSelectedPost, text)
+      .then(() => communityService.getPost(activeSelectedPost.id))
+      .then(setSelectedPost)
+      .catch((error) => console.info('[community-comment-refresh]', error))
     setReplyDraft('')
+  }
+
+  const openReport = (targetType: 'post' | 'comment', targetId: string, label: string) => {
+    if (!accountHandle) {
+      simulateAction(isZh ? '请先登录后再提交举报。' : 'Sign in before submitting a report.')
+      return
+    }
+    setReportTarget({ targetType, targetId, label })
+    setReportStatement('')
+    setReportResult(null)
+    setReportError(null)
+  }
+
+  const submitReport = async () => {
+    if (!reportTarget || reportStatement.trim().length < 10) {
+      setReportError(isZh ? '请提供至少 10 个字符的举报说明。' : 'Provide at least 10 characters of report context.')
+      return
+    }
+    setReportBusy(true)
+    setReportError(null)
+    try {
+      const result = await trustService.createReport({
+        targetType: reportTarget.targetType,
+        targetId: reportTarget.targetId,
+        category: reportCategory,
+        subject: `${reportTarget.targetType === 'post' ? 'Community post' : 'Community comment'} report`,
+        statement: reportStatement.trim(),
+        locale: isZh ? 'zh' : 'en',
+      })
+      setReportResult(result.item.id)
+      simulateAction(isZh ? `举报已提交：${result.item.id}` : `Report submitted: ${result.item.id}`)
+    } catch (error) {
+      setReportError(error instanceof Error ? error.message : (isZh ? '举报提交失败。' : 'Report submission failed.'))
+    } finally {
+      setReportBusy(false)
+    }
   }
 
   const resetPostEditor = () => {
@@ -412,7 +465,7 @@ export function CommunityPage({
                 </div>
                 <div className="topic-table-body">
                   {visibleTopics.map((post) => (
-                    <article className={activeSelectedPost.id === post.id ? 'topic-row active' : 'topic-row'} key={post.id}>
+                    <article className={activeSelectedPost.id === post.id ? 'topic-row active' : 'topic-row'} key={post.id} data-testid={`community-topic-${post.id}`}>
                       <div className="topic-main">
                         <button
                           className="topic-title-button"
@@ -561,11 +614,30 @@ export function CommunityPage({
                   <Tags size={17} />
                   <span>{isZh ? '入库' : 'Library'}</span>
                 </button>
+                <button className="compact-action" data-testid={`community-report-post-${activeSelectedPost.id}`} type="button" onClick={() => openReport('post', String(activeSelectedPost.id), activeSelectedPost.title)} title={isZh ? '举报帖子' : 'Report post'}>
+                  <Flag size={17} />
+                  <span>{isZh ? '举报' : 'Report'}</span>
+                </button>
                 <button className="compact-action primary" type="button" onClick={submitReply} title={t.reply}>
                   <MessageCircle size={17} />
                   <span>{t.reply}</span>
                 </button>
               </div>
+              {reportTarget && (
+                <section className="community-report-panel" data-testid="community-report-panel">
+                  <div className="community-report-head">
+                    <div><strong>{isZh ? '提交内容举报' : 'Report community content'}</strong><span>{reportTarget.label}</span></div>
+                    <button className="icon-button" type="button" onClick={() => setReportTarget(null)} title={isZh ? '关闭' : 'Close'}><X size={15} /></button>
+                  </div>
+                  <div className="community-report-fields">
+                    <label><span>{isZh ? '类别' : 'Category'}</span><select aria-label="Community report category" value={reportCategory} onChange={(event) => setReportCategory(event.target.value as ModerationReportCategory)}>{(['harassment', 'hate', 'sexual', 'violence', 'self_harm', 'child_safety', 'impersonation', 'spam', 'fraud', 'privacy', 'copyright', 'other'] as ModerationReportCategory[]).map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+                    <label className="wide"><span>{isZh ? '说明' : 'Context'}</span><textarea aria-label="Community report statement" value={reportStatement} onChange={(event) => setReportStatement(event.target.value)} maxLength={4000} /></label>
+                  </div>
+                  {reportError && <div className="inline-error" role="alert">{reportError}</div>}
+                  {reportResult && <div className="inline-success" data-testid="community-report-case-id">{isZh ? '案件' : 'Case'}: {reportResult}</div>}
+                  <button className="primary-button" type="button" onClick={() => void submitReport()} disabled={reportBusy || Boolean(reportResult)}><Flag size={16} />{reportBusy ? (isZh ? '提交中' : 'Submitting') : (isZh ? '提交举报' : 'Submit report')}</button>
+                </section>
+              )}
               <div className="comment-list">
                 <div className="comment-heading">
                   <strong>{isZh ? '回复' : 'Replies'}</strong>
@@ -573,11 +645,16 @@ export function CommunityPage({
                     {activeSelectedPost.replies + (localReplies[String(activeSelectedPost.id)]?.length ?? 0)} {isZh ? '条' : 'total'}
                   </span>
                 </div>
-                <Comment author="iriswood" text={isZh ? '建议补一个验收清单：脚本、成片、字幕、封面、版权授权分别确认。' : 'This workflow is clean. I would add a style-lock prompt for the visual loop.'} />
-                <Comment author="veyn" text={isZh ? '如果要转任务，可以把修改轮次和最终文件格式写成硬性验收项。' : 'The second prompt version gives much better motion consistency.'} />
+                {(activeSelectedPost.comments ?? []).map((comment) => (
+                  <div className="comment-with-actions" key={comment.id} data-testid={`community-comment-${comment.id}`}>
+                    <Comment author={comment.author} text={comment.body} />
+                    <button className="icon-button" data-testid={`community-report-comment-${comment.id}`} type="button" onClick={() => openReport('comment', comment.id, `${isZh ? '回复' : 'Reply'} @${comment.author}`)} title={isZh ? '举报回复' : 'Report reply'}><Flag size={15} /></button>
+                  </div>
+                ))}
                 {(localReplies[String(activeSelectedPost.id)] ?? []).map((reply: { author: string; text: string }, index: number) => (
                   <Comment author={reply.author} text={reply.text} key={`${activeSelectedPost.id}-${index}-${reply.text}`} />
                 ))}
+                {(activeSelectedPost.comments?.length ?? 0) === 0 && (localReplies[String(activeSelectedPost.id)]?.length ?? 0) === 0 && <div className="topic-empty"><span>{isZh ? '暂无回复。' : 'No replies yet.'}</span></div>}
               </div>
               <div className="reply-box">
                 <textarea
