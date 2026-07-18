@@ -208,6 +208,30 @@
   background: var(--border);
 }
 
+.developer-api-contract {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.developer-api-contract > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.developer-api-contract strong {
+  font-size: 15px;
+}
+
+.developer-api-contract span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .developer-metric-strip > div {
   display: grid;
   gap: 3px;
@@ -240,6 +264,10 @@
   }
 
   .developer-metric-strip {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .developer-api-contract {
     grid-template-columns: 1fr 1fr;
   }
 }
@@ -285,6 +313,10 @@
   }
 
   .developer-metric-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .developer-api-contract {
     grid-template-columns: 1fr;
   }
 }

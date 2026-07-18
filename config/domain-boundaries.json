@@ -48,6 +48,7 @@
     { "id": "points", "domain": "entitlements-accounting", "layer": "transport", "registration": "registerPointsRoutes" },
     { "id": "entitlements", "domain": "entitlements-accounting", "layer": "transport", "registration": "registerEntitlementRoutes" }
     ,{ "id": "developerAccess", "domain": "developer-platform", "layer": "transport", "registration": "registerDeveloperAccessRoutes" }
+    ,{ "id": "developerApi", "domain": "developer-platform", "layer": "transport", "registration": "registerDeveloperApiRoutes" }
   ],
   "ownership": [
     { "domain": "identity-access", "owns": ["credentials", "OAuth authorization requests", "sessions", "roles", "permissions"] },
@@ -64,6 +65,6 @@
     { "domain": "observability-incident", "owns": ["sanitized logs", "trace spans", "SLO controls", "on-call ownership", "SLO alerts", "incident timelines", "incident reviews"] },
     { "domain": "config-feature-flags", "owns": ["versioned configuration", "feature flags", "reference data", "announcements", "secret references"] },
     { "domain": "model-control-plane", "owns": ["Providers", "models", "model versions", "capabilities", "deployments", "pricing versions", "route policies", "route targets", "route policy revisions"] },
-    { "domain": "developer-platform", "owns": ["developer access control", "personal service accounts", "hashed API key credentials", "API key usage projections"] }
+    { "domain": "developer-platform", "owns": ["developer access control", "personal service accounts", "hashed API key credentials", "API key usage projections", "public API versions", "idempotency contract", "error registry", "deprecation schedule"] }
   ]
 }

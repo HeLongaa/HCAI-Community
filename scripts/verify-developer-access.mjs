@@ -34,7 +34,7 @@ check('CIDR matching uses ipaddr', () => { assert.match(runtime, /ipaddr\.parseC
 check('OpenAPI documents one-time issue and scoped principal', () => { assert.match(openapi, /plaintext is returned exactly once/); assert.match(openapi, /developer:identity:read/) })
 check('personal UI exposes one-time key handling', () => { assert.match(userUi, /one-time-api-key/); assert.match(userUi, /rotateKey/); assert.match(userUi, /revokeKey/) })
 check('Admin UI exposes control metrics and revocation', () => { assert.match(adminUi, /updateDeveloperAccessControl/); assert.match(adminUi, /developerAccessMetrics/); assert.match(adminUi, /revokeDeveloperServiceAccount/) })
-check('runbook documents no public API v1', () => assert.match(docs, /DEV-02 owns the versioned public API surface/))
+check('runbook assigns public API v1 ownership to DEV-02', () => assert.match(docs, /DEV-02 owns the versioned public API surface/))
 check('runbook documents single-target bulk disposition', () => assert.match(docs, /Bulk revoke is intentionally unavailable/))
 
 let passed = 0

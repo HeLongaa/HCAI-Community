@@ -8,6 +8,7 @@ import type {
   AdminOAuthProviderControl,
   DeveloperAccessControl,
   DeveloperAccessMetrics,
+  DeveloperApiV1Contract,
   DeveloperApiKeyCredential,
   DeveloperServiceAccount,
   DeveloperServiceAccountQuery,
@@ -291,6 +292,9 @@ export const adminService = {
   },
   async developerAccessMetrics() {
     return api.get<DeveloperAccessMetrics>('/admin/developer/metrics')
+  },
+  async developerApiV1Contract() {
+    return api.get<DeveloperApiV1Contract>('/admin/developer/api-contract')
   },
   async exportDeveloperServiceAccounts(query?: DeveloperServiceAccountQuery) {
     return api.get<{ kind: 'developer-access.snapshot'; schemaVersion: 1; exportedAt: string; truncated: boolean; items: DeveloperServiceAccount[] }>(withQuery('/admin/developer/service-accounts/export', query))

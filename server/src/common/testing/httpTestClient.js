@@ -48,5 +48,6 @@ export const requestJson = async (baseUrl, path, { method = 'POST', body, token,
   return {
     status: response.status,
     payload: await response.json(),
+    headers: Object.fromEntries(response.headers),
   }
 }

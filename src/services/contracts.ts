@@ -4312,6 +4312,31 @@ export type DeveloperAccessMetrics = {
   lastUsedAt: string | null
 }
 
+export type DeveloperApiV1Error = {
+  code: string
+  status: number
+  category: string
+  retryable: boolean
+}
+
+export type DeveloperApiV1Contract = {
+  apiVersion: 'v1'
+  basePath: '/api/v1'
+  authentication: { principalType: 'service_account'; scheme: string }
+  routes: Array<{ method: string; path: string; scope: string }>
+  requestId: { requestHeader: string; responseHeader: string; responseEnvelopeField: string }
+  idempotency: {
+    header: string
+    requiredForMethods: string[]
+    minimumLength: number
+    maximumLength: number
+    retentionHours: number
+    conflictCode: string
+  }
+  deprecations: Array<{ method: string; path: string; replacement: string; deprecatedAt: string; sunsetAt: string }>
+  errors: DeveloperApiV1Error[]
+}
+
 export type DeveloperServiceAccountQuery = {
   status?: string | null
   search?: string | null
