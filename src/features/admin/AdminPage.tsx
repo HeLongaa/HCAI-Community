@@ -17,6 +17,7 @@ import { ConfigurationResourcesPanel } from './ConfigurationResourcesPanel'
 import { ModelControlPanel } from './ModelControlPanel'
 import { AdminMediaLifecyclePanel } from './AdminMediaLifecyclePanel'
 import { OAuthAdminPanel } from './OAuthAdminPanel'
+import { CommunityAdminPanel } from './CommunityAdminPanel'
 import { AuthSessionAdminPanel } from './AuthSessionAdminPanel'
 import { TaskAdminPanel } from './TaskAdminPanel'
 import { EntitlementAdminPanel } from './EntitlementAdminPanel'
@@ -2651,6 +2652,9 @@ export function AdminPage({
           isZh={isZh}
           notify={(message) => simulateAction(message)}
         />
+      )}
+      {activeTab === 'Community' && (
+        <CommunityAdminPanel hasPermission={account.hasPermission} isZh={isZh} notify={(message) => simulateAction(message)} />
       )}
       {activeTab === 'Access' && (
         <div className="admin-settings-stack">

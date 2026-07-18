@@ -22,6 +22,7 @@ import { createSeedAuthSessionAdminRepository } from '../auth/seedAuthSessionAdm
 import { createSeedAuthRiskAdminRepository } from '../auth/seedAuthRiskAdminRepository.js'
 import { createSeedUserAdminRepository } from '../users/seedUserAdminRepository.js'
 import { createSeedTaskAdminRepository } from '../tasks/seedTaskAdminRepository.js'
+import { createSeedCommunityAdminRepository } from '../community/seedCommunityAdminRepository.js'
 import { createSeedTaskLifecycleRecoveryRepository } from '../tasks/seedTaskLifecycleRecoveryRepository.js'
 import { createSeedBillingAdminRepository } from '../accounting/seedBillingAdminRepository.js'
 import { createSeedEntitlementRepository } from '../entitlements/seedEntitlementRepository.js'
@@ -881,6 +882,12 @@ const postCommentsByPostId = new Map()
 const postLikeSetsByPostId = new Map()
 
 const getPostById = (id) => seedStore.postById.get(Number(id)) ?? null
+
+const setSeedPost = (post) => {
+  const index = seedStore.posts.findIndex((entry) => Number(entry.id) === Number(post.id))
+  if (index >= 0) seedStore.posts[index] = post
+  seedStore.postById.set(Number(post.id), post)
+}
 
 const ensurePostComments = (postId) => {
   if (!postCommentsByPostId.has(postId)) {
@@ -2718,6 +2725,12 @@ export const createSeedRepository = () => {
     createTaskEscrow,
     recordAudit,
   })
+  const communityAdmin = createSeedCommunityAdminRepository({
+    posts: seedStore.posts,
+    commentsByPostId: postCommentsByPostId,
+    setPost: setSeedPost,
+    recordAudit,
+  })
   const taskLifecycleRecovery = createSeedTaskLifecycleRecoveryRepository({
     tasks: seedStore.tasks,
     getTask: getTaskById,
@@ -2763,6 +2776,7 @@ export const createSeedRepository = () => {
   authRiskAdmin,
   userAdmin,
   taskAdmin,
+  communityAdmin,
   notificationManagement,
   notificationDeliveries: notificationDeliveryRepository,
   taskLifecycleRecovery,
@@ -3534,7 +3548,7 @@ export const createSeedRepository = () => {
       }
       return serializePostDetail({
         ...post,
-        comments: getPostComments(id).filter((comment) => comment.moderationState !== 'hidden' || hasPermission(viewer, 'post:moderate') || comment.author?.handle === viewer?.handle),
+        comments: getPostComments(id).filter((comment) => (!comment.deletedAt && comment.moderationState !== 'hidden') || hasPermission(viewer, 'post:moderate') || comment.author?.handle === viewer?.handle),
         relatedTasks: [],
         viewerPermissions: buildViewerPermissions(viewer, post),
       })
@@ -3640,6 +3654,16 @@ export const createSeedRepository = () => {
       recordAudit(actor, 'post.deleted', 'post', post.id, { version: next.version, reasonCode: payload.reasonCode })
       return { post: serializePost(next) }
     },
+    restore: (id, payload, actor) => {
+      const post = getPostById(id)
+      if (!post || postOwnerHandle(post) !== actor.handle) return null
+      if ((Number(post.version) || 1) !== payload.expectedVersion) return { conflict: true }
+      if (postStatus(post) !== 'deleted') return { invalidStatus: true }
+      const next = { ...post, status: 'published', version: payload.expectedVersion + 1, deletedAt: null, deletionReasonCode: null, updatedAt: new Date().toISOString() }
+      setSeedPost(next)
+      recordAudit(actor, 'post.restored', 'post', post.id, { version: next.version, reasonCode: payload.reasonCode })
+      return { post: serializePost(next) }
+    },
     comment: (id, payload, actor) => {
       const post = getPostById(id)
       if (!post || postStatus(post) !== 'published' || postModerationState(post) === 'hidden') {
@@ -3664,6 +3688,10 @@ export const createSeedRepository = () => {
         moderationState: 'visible',
         moderationVersion: 0,
         moderationUpdatedAt: null,
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        deletedAt: null,
+        deletionReasonCode: null,
         createdAt: new Date().toISOString(),
       }
       comments.unshift(comment)
@@ -3678,6 +3706,33 @@ export const createSeedRepository = () => {
       }
       recordAudit(actor, 'post.commented', 'post', post.id, { parentId: payload.parentId ?? null })
       return comment
+    },
+    updateComment: (id, commentId, payload, actor) => {
+      const comment = getPostComments(id).find((item) => String(item.id) === String(commentId))
+      if (!comment || comment.author?.handle !== actor.handle) return null
+      if ((Number(comment.version) || 1) !== payload.expectedVersion) return { conflict: true }
+      if (comment.deletedAt) return { deleted: true }
+      Object.assign(comment, { body: payload.body, version: payload.expectedVersion + 1, updatedAt: new Date().toISOString() })
+      recordAudit(actor, 'comment.updated', 'comment', comment.id, { version: comment.version })
+      return { comment }
+    },
+    deleteComment: (id, commentId, payload, actor) => {
+      const comment = getPostComments(id).find((item) => String(item.id) === String(commentId))
+      if (!comment || comment.author?.handle !== actor.handle) return null
+      if ((Number(comment.version) || 1) !== payload.expectedVersion) return { conflict: true }
+      if (comment.deletedAt) return { deleted: true }
+      Object.assign(comment, { deletedAt: new Date().toISOString(), deletionReasonCode: payload.reasonCode, version: payload.expectedVersion + 1, updatedAt: new Date().toISOString() })
+      recordAudit(actor, 'comment.deleted', 'comment', comment.id, { version: comment.version, reasonCode: payload.reasonCode })
+      return { comment }
+    },
+    restoreComment: (id, commentId, payload, actor) => {
+      const comment = getPostComments(id).find((item) => String(item.id) === String(commentId))
+      if (!comment || comment.author?.handle !== actor.handle) return null
+      if ((Number(comment.version) || 1) !== payload.expectedVersion) return { conflict: true }
+      if (!comment.deletedAt) return { invalidStatus: true }
+      Object.assign(comment, { deletedAt: null, deletionReasonCode: null, version: payload.expectedVersion + 1, updatedAt: new Date().toISOString() })
+      recordAudit(actor, 'comment.restored', 'comment', comment.id, { version: comment.version, reasonCode: payload.reasonCode })
+      return { comment }
     },
     like: (id, actor) => {
       const post = getPostById(id)

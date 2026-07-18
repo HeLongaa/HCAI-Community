@@ -1,5 +1,6 @@
 export * from './AdminPage'
 export * from './OAuthAdminPanel'
+export * from './CommunityAdminPanel'
 export * from './NotificationAdminPanel'
 export * from './NotificationDeliveryAdminPanel'
 export * from './AuthSessionAdminPanel'

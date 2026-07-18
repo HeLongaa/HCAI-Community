@@ -7288,7 +7288,7 @@ button.video-history-row.active {
   font-size: 13px;
 }
 
-.task-admin-panel { display: grid; gap: 14px; min-width: 0; }
+.panel.task-admin-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; width: 100%; max-width: 100%; height: auto; min-width: 0; min-height: 0; overflow: visible; scroll-margin-top: 76px; }
 .task-admin-panel > .section-header { min-width: 0; }
 .task-admin-panel > .section-header > div:first-child { min-width: 0; }
 .task-admin-metrics { display: grid; grid-template-columns: repeat(5, minmax(100px, 1fr)); gap: 1px; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: var(--border); }

@@ -104,7 +104,7 @@
       "userCapabilities": ["帖子", "评论", "点赞", "转任务", "公开资料"],
       "adminCapabilities": ["通用审核权限与队列"],
       "operationPolicies": ["mutable_crud", "soft_delete", "state_transition"],
-      "evidence": ["server/src/modules/posts/routes.js", "server/src/modules/profiles/routes.js", "src/features/community/CommunityPage.tsx"],
+      "evidence": ["server/src/modules/posts/routes.js", "server/src/modules/communityAdmin/routes.js", "server/src/modules/profiles/routes.js", "src/features/community/CommunityPage.tsx", "src/features/admin/CommunityAdminPanel.tsx"],
       "gapTasks": ["COMMUNITY-01", "TRUST-01"]
     },
     {

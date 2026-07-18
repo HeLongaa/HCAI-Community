@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "task": "COMM-03",
+  "models": ["Post", "Comment", "PostLike", "CommunityAdminBulkOperation"],
+  "permissions": { "read": "admin:community:read", "manage": "admin:community:manage", "export": "admin:community:export" },
+  "softDeleteSeparateFromTrustModeration": true,
+  "optimisticVersioning": true,
+  "bulk": { "actions": ["delete", "restore"], "targetTypes": ["post", "comment"], "previewHash": true, "confirmationBound": true, "idempotent": true, "immutableEvidence": true },
+  "metrics": { "rawContentForbidden": true, "dimensions": ["posts", "comments", "engagement", "health", "categories"] }
+}
