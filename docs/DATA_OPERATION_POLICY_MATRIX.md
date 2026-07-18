@@ -30,6 +30,8 @@ Run `npm run test:data-operation-policies` after any Prisma model or policy chan
   SLO alerts use compare-and-set state transitions and preserve their versioned disposition evidence.
 - Configuration: the current setting projection is mutable only through a published change; change requests use an
   explicit state machine and optimistic versions, and published revisions are immutable evidence.
+- Notifications: templates are soft-deleted lifecycle aggregates, published template versions are immutable evidence,
+  and personal delivery preferences are owner-controlled mutable records with optimistic versions.
 
 ## Enforcement Boundary
 

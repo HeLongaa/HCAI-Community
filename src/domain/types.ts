@@ -44,6 +44,9 @@ export type Permission =
   | 'admin:auth:manage'
   | 'admin:users:read'
   | 'admin:users:manage'
+  | 'admin:notifications:read'
+  | 'admin:notifications:manage'
+  | 'admin:notifications:publish'
   | 'admin:creative:cancel'
   | 'admin:creative:retry'
   | 'admin:creative:replay'
@@ -111,7 +114,7 @@ export type NavigateOptions = {
 }
 
 export type AdminDeepLink = {
-  tab?: 'Overview' | 'Observability' | 'Settings' | 'Task review' | 'Access' | 'Security' | 'Finance' | 'Accounting' | 'Generations' | 'Submissions' | 'Community' | 'Audit log' | 'Users' | 'Tags' | 'AI config'
+  tab?: 'Overview' | 'Observability' | 'Settings' | 'Notifications' | 'Task review' | 'Access' | 'Security' | 'Finance' | 'Accounting' | 'Generations' | 'Submissions' | 'Community' | 'Audit log' | 'Users' | 'Tags' | 'AI config'
   overviewResourceType?: string | null
   overviewResourceId?: string | null
   queue?: string | null

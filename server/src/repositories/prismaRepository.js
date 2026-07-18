@@ -150,6 +150,7 @@ import { createPrismaUserAdminRepository } from '../users/prismaUserAdminReposit
 import { createPrismaTaskAdminRepository } from '../tasks/prismaTaskAdminRepository.js'
 import { createPrismaBillingAdminRepository } from '../accounting/prismaBillingAdminRepository.js'
 import { createPrismaEntitlementRepository } from '../entitlements/prismaEntitlementRepository.js'
+import { createPrismaNotificationManagementRepository } from '../notifications/prismaNotificationManagementRepository.js'
 import {
   buildConsentStatus,
   compliancePolicyManifest,
@@ -1104,6 +1105,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   const taskAdmin = createPrismaTaskAdminRepository(client, { runSerializableTransaction, recordAudit, createTaskEscrow, finalizeTaskEscrow })
   const billingAdmin = createPrismaBillingAdminRepository(client)
   const entitlements = createPrismaEntitlementRepository(client)
+  const notificationManagement = createPrismaNotificationManagementRepository(client, { runSerializableTransaction, recordAudit })
   const taskLifecycleRecovery = createPrismaTaskLifecycleRecoveryRepository(client, { runSerializableTransaction, recordAudit, finalizeTaskEscrow })
 
   const createSessionForUser = async (user, reason = 'auth.session.created', options = {}) => {
@@ -1299,7 +1301,11 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
 
   const createNotificationsForUsers = async (db, users, payload) => {
     const uniqueUsers = [...new Map(users.filter(Boolean).map((user) => [user.id, user])).values()]
-    return (await Promise.all(uniqueUsers.map(async (recipient) => {
+    const preferences = uniqueUsers.length === 0 ? [] : await db.notificationPreference.findMany({
+      where: { userId: { in: uniqueUsers.map((user) => user.id) }, notificationType: payload.type },
+    })
+    const disabledUserIds = new Set(preferences.filter((item) => !item.inAppEnabled).map((item) => item.userId))
+    return (await Promise.all(uniqueUsers.filter((recipient) => !disabledUserIds.has(recipient.id)).map(async (recipient) => {
       if (payload.dedupeUnread) {
         const existing = await db.notification.findFirst({
           where: {
@@ -1325,6 +1331,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           resourceType: payload.resourceType,
           resourceId: payload.resourceId ?? null,
           metadata: sanitizeNotificationMetadata(payload.metadata, payload),
+          templateKey: payload.templateKey ?? null,
+          templateVersion: payload.templateVersion ?? null,
         },
       })
     }))).filter(Boolean)
@@ -10289,6 +10297,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     accountingReconciliation,
     billingAdmin,
     entitlements,
+    notificationManagement,
     media,
     library,
     audit,

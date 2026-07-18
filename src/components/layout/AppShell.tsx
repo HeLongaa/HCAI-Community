@@ -16,6 +16,7 @@ import {
   MessageCircle,
   Moon,
   Search,
+  Settings2,
   ShieldCheck,
   Sparkles,
   Star,
@@ -44,6 +45,7 @@ import { showLocalTestAccounts } from '../../services/runtimeConfig'
 import { DynamicIsland, LoginModal, PolicyConsentModal, SearchPanel, SecurityModal } from '../overlays'
 import { CompassIcon } from '../prototype/PrototypeComponents'
 import { NotificationList } from '../ui/NotificationList'
+import { NotificationPreferences } from '../ui/NotificationPreferences'
 
 type NavItem = {
   key: Page
@@ -96,6 +98,7 @@ export function AppShell({
   } = notifications
   const [securityOpen, setSecurityOpen] = useState(false)
   const [notificationOpen, setNotificationOpen] = useState(false)
+  const [notificationPreferencesOpen, setNotificationPreferencesOpen] = useState(false)
   const isSignedIn = accountReady && accountSource !== 'fallback'
   const consentGateExempt = page === 'terms' || page === 'privacy' || page === 'aup' || page === 'disclosures' || page === 'support'
   const currentTier = roleTier(userRole)
@@ -346,6 +349,15 @@ export function AppShell({
                 <div className="notification-popover-header">
                   <strong>{textFor(t, 'Notifications', '通知')}</strong>
                   <div className="button-row compact-buttons">
+                    <button
+                      className="icon-button"
+                      type="button"
+                      title={textFor(t, 'Notification preferences', '通知偏好')}
+                      aria-label={textFor(t, 'Notification preferences', '通知偏好')}
+                      onClick={() => setNotificationPreferencesOpen((open) => !open)}
+                    >
+                      <Settings2 size={16} />
+                    </button>
                     <button className="ghost-button small" type="button" onClick={() => void refreshNotifications()}>
                       {textFor(t, 'Refresh', '刷新')}
                     </button>
@@ -354,7 +366,9 @@ export function AppShell({
                     </button>
                   </div>
                 </div>
-                <div className="notification-filters" aria-label={textFor(t, 'Notification read state', '通知读取状态')}>
+                {notificationPreferencesOpen ? (
+                  <NotificationPreferences t={t} notifications={notificationItems} />
+                ) : <><div className="notification-filters" aria-label={textFor(t, 'Notification read state', '通知读取状态')}>
                   {(['unread', 'all', 'read'] as const).map((state) => (
                     <button
                       className={notificationReadState === state ? 'chip active' : 'chip'}
@@ -387,6 +401,7 @@ export function AppShell({
                     )
                   }}
                 />
+                </>}
               </div>
             )}
           </div>

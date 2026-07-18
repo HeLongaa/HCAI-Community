@@ -804,6 +804,8 @@ export const serializeNotification = (notification) => ({
   resourceType: notification.resourceType,
   resourceId: notification.resourceId ?? null,
   metadata: sanitizeNotificationMetadata(notification.metadata, notification),
+  templateKey: notification.templateKey ?? null,
+  templateVersion: notification.templateVersion ?? null,
   readAt: notification.readAt ?? null,
   createdAt: notification.createdAt ?? '',
 })

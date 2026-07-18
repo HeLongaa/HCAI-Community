@@ -651,3 +651,117 @@ test('POST /api/notifications/read-all marks only the current user inbox as read
     await server.close()
   }
 })
+
+test('notification template Admin lifecycle publishes, previews, tests, versions, rolls back, and exports', async () => {
+  const server = await createTestServer()
+  const key = `task.template_${Date.now()}_${Math.random().toString(16).slice(2, 7)}`
+  const schema = { required: ['taskTitle'], properties: { taskTitle: { type: 'string', maxLength: 120 } } }
+  try {
+    const denied = await requestJson(server.url, '/api/admin/notifications/templates', {
+      body: { key, name: 'Denied', category: 'task', titleTemplate: '{{taskTitle}}', bodyTemplate: '{{taskTitle}}', variableSchema: schema },
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(denied.status, 403)
+
+    const created = await requestJson(server.url, '/api/admin/notifications/templates', {
+      body: { key, name: 'Task notice', description: 'Lifecycle test', category: 'task', titleTemplate: 'Ready: {{taskTitle}}', bodyTemplate: '{{taskTitle}} is ready.', variableSchema: schema },
+      token: 'demo-access.opsplus',
+    })
+    assert.equal(created.status, 201)
+    assert.equal(created.payload.data.version, 1)
+    assert.equal(created.payload.data.versions[0].status, 'draft')
+    const id = created.payload.data.id
+
+    const preview = await requestJson(server.url, `/api/admin/notifications/templates/${id}/preview`, {
+      body: { versionNumber: 1, variables: { taskTitle: 'Launch visual' } },
+      token: 'demo-access.legalpixel',
+    })
+    assert.equal(preview.status, 200)
+    assert.equal(preview.payload.data.title, 'Ready: Launch visual')
+
+    const published = await requestJson(server.url, `/api/admin/notifications/templates/${id}/publish`, {
+      body: { expectedVersion: 1, reasonCode: 'initial_release' }, token: 'demo-access.opsplus',
+    })
+    assert.equal(published.status, 200)
+    assert.equal(published.payload.data.activeVersionNumber, 1)
+
+    const stale = await requestJson(server.url, `/api/admin/notifications/templates/${id}/publish`, {
+      body: { expectedVersion: 1, reasonCode: 'stale_release' }, token: 'demo-access.opsplus',
+    })
+    assert.equal(stale.status, 409)
+    assert.equal(stale.payload.error.code, 'STATE_CONFLICT')
+
+    const sent = await requestJson(server.url, `/api/admin/notifications/templates/${id}/send-test`, {
+      body: { variables: { taskTitle: 'Launch visual' } }, token: 'demo-access.opsplus',
+    })
+    assert.equal(sent.status, 201)
+    assert.equal(sent.payload.data.templateKey, key)
+    assert.equal(sent.payload.data.templateVersion, 1)
+
+    const updated = await requestJson(server.url, `/api/admin/notifications/templates/${id}`, {
+      method: 'PATCH', token: 'demo-access.opsplus',
+      body: { expectedVersion: 2, name: 'Task notice v2', description: 'Lifecycle test', category: 'task', locale: 'en', titleTemplate: 'Updated: {{taskTitle}}', bodyTemplate: '{{taskTitle}} changed.', variableSchema: schema },
+    })
+    assert.equal(updated.status, 200)
+    assert.equal(updated.payload.data.versions[0].versionNumber, 2)
+
+    const publishV2 = await requestJson(server.url, `/api/admin/notifications/templates/${id}/publish`, {
+      body: { expectedVersion: 3, versionNumber: 2, reasonCode: 'content_reviewed' }, token: 'demo-access.opsplus',
+    })
+    assert.equal(publishV2.status, 200)
+    const rollback = await requestJson(server.url, `/api/admin/notifications/templates/${id}/rollback`, {
+      body: { expectedVersion: 4, versionNumber: 1, reasonCode: 'restore_stable' }, token: 'demo-access.opsplus',
+    })
+    assert.equal(rollback.status, 200)
+    assert.equal(rollback.payload.data.activeVersionNumber, 1)
+
+    const list = await requestJson(server.url, `/api/admin/notifications/templates?search=${encodeURIComponent(key)}&status=published`, { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(list.status, 200)
+    assert.equal(list.payload.data.length, 1)
+    const exported = await requestJson(server.url, `/api/admin/notifications/templates/export?search=${encodeURIComponent(key)}`, { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(exported.status, 200)
+    assert.equal(exported.payload.data.items[0].key, key)
+    const metrics = await requestJson(server.url, '/api/admin/notifications/templates/metrics', { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(metrics.status, 200)
+    assert.ok(metrics.payload.data.published >= 1)
+  } finally {
+    await server.close()
+  }
+})
+
+test('notification preferences use CAS and suppress matching in-app delivery', async () => {
+  const server = await createTestServer()
+  const type = `task.preference_${Date.now()}_${Math.random().toString(16).slice(2, 7)}`
+  try {
+    const disabled = await requestJson(server.url, `/api/notifications/preferences/${encodeURIComponent(type)}`, {
+      method: 'PUT', body: { inAppEnabled: false }, token: 'demo-access.promptlin',
+    })
+    assert.equal(disabled.status, 200)
+    assert.equal(disabled.payload.data.version, 1)
+
+    const stale = await requestJson(server.url, `/api/notifications/preferences/${encodeURIComponent(type)}`, {
+      method: 'PUT', body: { inAppEnabled: true, expectedVersion: 9 }, token: 'demo-access.promptlin',
+    })
+    assert.equal(stale.status, 409)
+
+    const suppressed = await repositories.notifications.createForHandles(['promptlin'], {
+      type, title: 'Suppressed', body: 'Suppressed', resourceType: 'task', resourceId: 'preference-test',
+    })
+    assert.equal(suppressed.length, 0)
+
+    const enabled = await requestJson(server.url, `/api/notifications/preferences/${encodeURIComponent(type)}`, {
+      method: 'PUT', body: { inAppEnabled: true, expectedVersion: 1 }, token: 'demo-access.promptlin',
+    })
+    assert.equal(enabled.status, 200)
+    const delivered = await repositories.notifications.createForHandles(['promptlin'], {
+      type, title: 'Delivered', body: 'Delivered', resourceType: 'task', resourceId: 'preference-test',
+    })
+    assert.equal(delivered.length, 1)
+
+    const preferences = await requestJson(server.url, '/api/notifications/preferences', { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(preferences.status, 200)
+    assert.equal(preferences.payload.data.find((item) => item.notificationType === type).inAppEnabled, true)
+  } finally {
+    await server.close()
+  }
+})

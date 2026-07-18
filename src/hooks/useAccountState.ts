@@ -224,7 +224,7 @@ export function useAccountState() {
     setAccount((current) => {
       const role = typeof nextRole === 'function' ? nextRole(current.role) : nextRole
       const permissions = role === 'admin'
-        ? ['task:create', 'task:propose', 'task:claim', 'task:submit', 'task:review', 'task:moderate', 'post:create', 'post:moderate', 'comment:create', 'points:read', 'points:adjust', 'admin:access', 'admin:audit:read', 'admin:queue:read', 'admin:queue:review', 'admin:permissions:manage', 'admin:auth:read', 'admin:auth:manage', 'admin:users:read', 'admin:users:manage', 'security:alerts:manage'] satisfies Permission[]
+        ? ['task:create', 'task:propose', 'task:claim', 'task:submit', 'task:review', 'task:moderate', 'post:create', 'post:moderate', 'comment:create', 'points:read', 'points:adjust', 'admin:access', 'admin:audit:read', 'admin:queue:read', 'admin:queue:review', 'admin:permissions:manage', 'admin:auth:read', 'admin:auth:manage', 'admin:users:read', 'admin:users:manage', 'admin:notifications:read', 'admin:notifications:manage', 'admin:notifications:publish', 'security:alerts:manage'] satisfies Permission[]
         : current.permissions
       const next = { ...current, role, permissions }
       localStorage.setItem('hcaiUser', JSON.stringify(next))

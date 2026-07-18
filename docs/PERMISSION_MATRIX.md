@@ -30,6 +30,9 @@ The executable fallback role defaults live in `server/src/auth/permissions.js`. 
 | `admin:permissions:manage` | Edit role permission grants and point policy | `PUT /api/admin/roles/:role/permissions`, `PUT /api/admin/points/policy`, `POST /api/admin/points/policy/rollback` | Admin permission matrix edit/save controls; point policy save/rollback |
 | `admin:auth:read` | Read secret-free OAuth Provider controls, linked-account projections, and authorization lifecycle state | OAuth Admin GET routes | Admin Access tab OAuth operations panel |
 | `admin:auth:manage` | Change OAuth Provider availability, safely unlink accounts, and revoke pending authorization requests | OAuth Admin status, unlink, and revoke routes | Protected OAuth mutation controls |
+| `admin:notifications:read` | Read template lifecycle, versions, metrics, previews, and bounded exports | Notification template Admin GET and preview routes | Admin Notifications tab |
+| `admin:notifications:manage` | Create drafts, append versions, archive, and restore templates | Notification template create, patch, delete, and restore routes | Protected template editor controls |
+| `admin:notifications:publish` | Publish, roll back, and send preference-aware tests | Notification template publish, rollback, and send-test routes | Protected release controls |
 | `admin:releases:read` | Inspect release changes and deployment evidence | `GET /api/admin/releases`, `GET /api/admin/releases/:id` | Release control panel |
 | `admin:releases:manage` | Request environment promotion, configuration release, or SecretRef rotation | `POST /api/admin/releases` | Release request form |
 | `admin:releases:approve` | Approve or reject a release request using two-person control | `POST /api/admin/releases/:id/approve`, `POST /api/admin/releases/:id/reject` | Release review actions |
