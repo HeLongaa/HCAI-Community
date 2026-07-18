@@ -365,9 +365,9 @@ addCheck(
 
 addCheck(
   'points',
-  'points ledger and reward redemption are represented',
-  includesAll(app, ['Points history', 'Balance', 'Pending', 'Rank', 'Redeem', 'pointsLedger']),
-  'ledger and redemption cards',
+  'personal billing ledger and reward redemption are represented',
+  includesAll(app, ['Points, credits, quota, and refunds', 'Available points', 'Creative credits', 'Quota remaining', 'Export billing CSV', 'Redeem', 'personal-billing-ledger']),
+  'unified billing summary, source ledger, export, and redemption cards',
 )
 
 addCheck(

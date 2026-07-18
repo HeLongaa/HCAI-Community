@@ -3252,6 +3252,58 @@ export const openApiDocument = {
         },
       },
     },
+    '/billing/summary': {
+      get: {
+        summary: 'Read the current actor personal billing summary',
+        description: 'Projects durable points, frozen and pending balances, creative credits, refunds, and active quota scopes. Provider currency is excluded.',
+        responses: { '200': { description: 'Personal billing summary v1' }, '403': { description: 'Requires points:read' } },
+      },
+    },
+    '/billing/ledger': {
+      get: {
+        summary: 'List the current actor unified internal billing ledger',
+        parameters: [
+          { name: 'unit', in: 'query', schema: { type: 'string', enum: ['points', 'creative_credit', 'quota_unit'] } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'settled', 'cancelled', 'reserved', 'refunded', 'committed', 'released'] } },
+          { name: 'sourceType', in: 'query', schema: { type: 'string' } },
+          { name: 'search', in: 'query', schema: { type: 'string' } },
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'sort', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+        ],
+        responses: { '200': { description: 'Cursor-paginated actor-scoped billing source details' }, '400': { description: 'Invalid filter or window over 366 days' }, '403': { description: 'Requires points:read' } },
+      },
+    },
+    '/billing/ledger/export': {
+      get: {
+        summary: 'Export the current actor unified billing ledger',
+        parameters: [{ name: 'format', in: 'query', schema: { type: 'string', enum: ['json', 'csv'] } }],
+        responses: { '200': { description: 'Up to 1000 actor-scoped entries as personal_billing_ledger.v1 JSON or CSV' }, '403': { description: 'Requires points:read' } },
+      },
+    },
+    '/admin/billing/users/{handle}/summary': {
+      get: {
+        summary: 'Read an Admin-selected user personal billing summary',
+        parameters: [{ name: 'handle', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Selected user billing summary' }, '403': { description: 'Requires admin:accounting:read' }, '404': { description: 'User not found' } },
+      },
+    },
+    '/admin/billing/users/{handle}/ledger': {
+      get: {
+        summary: 'List an Admin-selected user unified billing ledger',
+        parameters: [{ name: 'handle', in: 'path', required: true, schema: { type: 'string' } }, { name: 'cursor', in: 'query', schema: { type: 'string' } }, { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } }],
+        responses: { '200': { description: 'Cursor-paginated selected user source details' }, '403': { description: 'Requires admin:accounting:read' }, '404': { description: 'User not found' } },
+      },
+    },
+    '/admin/billing/users/{handle}/ledger/export': {
+      get: {
+        summary: 'Export an Admin-selected user unified billing ledger',
+        parameters: [{ name: 'handle', in: 'path', required: true, schema: { type: 'string' } }, { name: 'format', in: 'query', schema: { type: 'string', enum: ['json', 'csv'] } }],
+        responses: { '200': { description: 'Selected user billing JSON or CSV export' }, '403': { description: 'Requires admin:accounting:read' }, '404': { description: 'User not found' } },
+      },
+    },
     '/admin/observability/logs': {
       get: {
         summary: 'Search sanitized structured application logs',

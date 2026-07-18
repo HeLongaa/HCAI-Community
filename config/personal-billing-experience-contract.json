@@ -1,0 +1,24 @@
+{
+  "version": "personal-billing-experience-v1",
+  "taskId": "BILL-01",
+  "scope": "personal_accounts_only",
+  "units": ["points", "creative_credit", "quota_unit"],
+  "excluded": ["provider_currency", "fiat_payment", "withdrawal", "invoice"],
+  "userRoutes": [
+    "GET /api/billing/summary",
+    "GET /api/billing/ledger",
+    "GET /api/billing/ledger/export"
+  ],
+  "adminRoutes": [
+    "GET /api/admin/billing/users/:handle/summary",
+    "GET /api/admin/billing/users/:handle/ledger",
+    "GET /api/admin/billing/users/:handle/ledger/export"
+  ],
+  "filters": ["unit", "status", "sourceType", "search", "dateFrom", "dateTo"],
+  "sorts": ["asc", "desc"],
+  "maxWindowDays": 366,
+  "maxPageSize": 100,
+  "maxExportRows": 1000,
+  "sourceFacts": ["PointLedger", "CreativeCreditLedger", "CreativeQuotaWindow", "CreativeQuotaReservation"],
+  "adminControls": ["point adjustment", "point policy version and rollback", "entitlement plan and grant lifecycle", "accounting reconciliation and compensation"]
+}

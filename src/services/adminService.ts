@@ -92,6 +92,9 @@ import type {
   PointAdjustmentPolicyHistoryItem,
   PointAdjustmentPolicy,
   PointsLedgerQuery,
+  PersonalBillingEntry,
+  PersonalBillingQuery,
+  PersonalBillingSummary,
   AuditEventDto,
   UpdateRolePermissionsRequest,
   ReleaseChangeDto,
@@ -809,6 +812,19 @@ export const adminService = {
       entries: envelope.data,
       summary: (envelope.meta as { summary?: ApiPointsSummary } | undefined)?.summary ?? null,
     }
+  },
+  async personalBillingSummary(userHandle: string) {
+    return api.get<PersonalBillingSummary>(`/admin/billing/users/${encodeURIComponent(userHandle)}/summary`)
+  },
+  async personalBillingLedger(userHandle: string, query?: PersonalBillingQuery) {
+    const envelope = await api.getEnvelope<PersonalBillingEntry[]>(withQuery(`/admin/billing/users/${encodeURIComponent(userHandle)}/ledger`, query))
+    return {
+      items: envelope.data,
+      nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null,
+    }
+  },
+  async exportPersonalBillingCsv(userHandle: string, query?: PersonalBillingQuery) {
+    return api.text(withQuery(`/admin/billing/users/${encodeURIComponent(userHandle)}/ledger/export`, { ...query, format: 'csv' }))
   },
   async adjustPoints(payload: AdminPointAdjustmentRequest) {
     return api.post<AdminPointAdjustmentResponse>('/admin/points/adjustments', payload)

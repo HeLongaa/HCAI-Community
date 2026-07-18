@@ -2431,6 +2431,58 @@ export type ApiPointsSummary = {
   lifetimeSpent: number
 }
 
+export type PersonalBillingUnit = 'points' | 'creative_credit' | 'quota_unit'
+export type PersonalBillingStatus = 'pending' | 'settled' | 'cancelled' | 'reserved' | 'refunded' | 'committed' | 'released'
+
+export type PersonalBillingQuotaScope = {
+  id: string
+  workspace: string
+  windowType: string
+  limit: number
+  reserved: number
+  used: number
+  released: number
+  remaining: number
+  windowStart: string
+  windowEnd: string
+  policyVersion: string
+}
+
+export type PersonalBillingSummary = {
+  schemaVersion: 1
+  userHandle: string
+  points: ApiPointsSummary
+  creativeCredits: { reserved: number; settled: number; refunded: number; transactions: number }
+  quotas: { limit: number; reserved: number; used: number; released: number; remaining: number; scopes: PersonalBillingQuotaScope[] }
+  generatedAt: string
+}
+
+export type PersonalBillingEntry = {
+  id: string
+  unit: PersonalBillingUnit
+  status: PersonalBillingStatus
+  amount: number
+  balanceAfter: number | null
+  sourceType: string
+  sourceId: string | null
+  description: string
+  reasonCode: string | null
+  workspace: string | null
+  occurredAt: string
+}
+
+export type PersonalBillingQuery = {
+  unit?: PersonalBillingUnit | null
+  status?: PersonalBillingStatus | null
+  sourceType?: string | null
+  search?: string | null
+  dateFrom?: string | null
+  dateTo?: string | null
+  sort?: 'asc' | 'desc' | null
+  cursor?: string | null
+  limit?: number | null
+}
+
 export type ApiNotification = {
   id: string
   type: string

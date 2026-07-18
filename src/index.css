@@ -4664,6 +4664,50 @@ button.video-history-row.active {
   grid-template-columns: 120px minmax(0, 1fr) 90px 90px;
 }
 
+.billing-ledger-filters {
+  display: grid;
+  grid-template-columns: 150px 150px minmax(180px, 1fr) 150px 150px;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.billing-ledger-filters > * {
+  min-width: 0;
+}
+
+.billing-ledger-row {
+  grid-template-columns: 170px minmax(0, 1fr) 90px 150px;
+}
+
+.billing-ledger-row strong,
+.billing-ledger-row > span:last-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.billing-ledger-row small {
+  color: var(--muted);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.admin-personal-billing {
+  display: grid;
+  gap: 14px;
+  padding-block: 14px;
+  border-block: 1px solid var(--border);
+}
+
+.admin-personal-billing .admin-section-heading input {
+  width: min(220px, 45vw);
+}
+
+.compact-billing-ledger .admin-row.compact {
+  grid-template-columns: 110px minmax(180px, 1fr) 90px minmax(220px, 1.2fr);
+}
+
 .positive {
   color: var(--green);
 }
@@ -11978,6 +12022,10 @@ button.video-history-row.active {
   .admin-row,
   .ledger-row {
     align-items: flex-start;
+  }
+
+  .billing-ledger-filters {
+    grid-template-columns: 1fr;
   }
 
   .admin-row > * {

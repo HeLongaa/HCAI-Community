@@ -74,6 +74,8 @@ import type {
   PointAdjustmentPolicyHistoryItem,
   PointAdjustmentReviewMetadata,
   PointsLedgerQuery,
+  PersonalBillingEntry,
+  PersonalBillingSummary,
 } from '../../services/contracts'
 
 const pointPolicyRoles: Array<keyof PointAdjustmentPolicy['roleLimits']> = ['member', 'creator', 'publisher', 'moderator', 'admin']
@@ -495,6 +497,8 @@ export function AdminPage({
   const [exportingAccounting, setExportingAccounting] = useState(false)
   const [requestingAccountingRepairId, setRequestingAccountingRepairId] = useState<string | null>(null)
   const [billingMetrics, setBillingMetrics] = useState<AdminBillingMetrics | null>(null)
+  const [personalBillingSummary, setPersonalBillingSummary] = useState<PersonalBillingSummary | null>(null)
+  const [personalBillingEntries, setPersonalBillingEntries] = useState<PersonalBillingEntry[]>([])
   const [billingPolicies, setBillingPolicies] = useState<AdminBillingPolicyInventory | null>(null)
   const [billingPreview, setBillingPreview] = useState<AdminBillingPolicyPreview | null>(null)
   const [billingUnitFilter, setBillingUnitFilter] = useState<AdminAccountingUnit | null>(null)
@@ -806,6 +810,18 @@ export function AdminPage({
     onSuccess: setBillingMetrics,
     getErrorMessage: () => (isZh ? '无法读取账务业务统计。' : 'Could not load accounting business metrics.'),
     deps: [canReadAccounting, isZh, billingUnitFilter, billingSourceType, billingDateFrom, billingDateTo],
+    logLabel: 'admin-service',
+  })
+  const personalBillingStatus = useAsyncResource<{ summary: PersonalBillingSummary; items: PersonalBillingEntry[] } | null>({
+    load: () => canReadAccounting && ledgerUserHandle.trim()
+      ? Promise.all([
+          adminService.personalBillingSummary(ledgerUserHandle.trim()),
+          adminService.personalBillingLedger(ledgerUserHandle.trim(), { unit: billingUnitFilter, sourceType: billingSourceType || null, dateFrom: billingDateFrom || null, dateTo: billingDateTo || null, limit: 8, sort: 'desc' }),
+        ]).then(([summary, page]) => ({ summary, items: page.items }))
+      : Promise.resolve(null),
+    onSuccess: (result) => { setPersonalBillingSummary(result?.summary ?? null); setPersonalBillingEntries(result?.items ?? []) },
+    getErrorMessage: () => (isZh ? '无法读取所选用户账务明细。' : 'Could not load selected user billing details.'),
+    deps: [canReadAccounting, isZh, ledgerUserHandle, billingUnitFilter, billingSourceType, billingDateFrom, billingDateTo],
     logLabel: 'admin-service',
   })
   const billingPolicyStatus = useAsyncResource<AdminBillingPolicyInventory | null>({
@@ -2220,6 +2236,21 @@ export function AdminPage({
       simulateAction(isZh ? '账务统计导出失败。' : 'Could not export accounting metrics.')
     } finally {
       setExportingBillingMetrics(false)
+    }
+  }
+
+  const exportPersonalBilling = async () => {
+    try {
+      const csv = await adminService.exportPersonalBillingCsv(ledgerUserHandle.trim(), { unit: billingUnitFilter, sourceType: billingSourceType || null, dateFrom: billingDateFrom || null, dateTo: billingDateTo || null, sort: 'desc' })
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `billing-${ledgerUserHandle.trim() || 'user'}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.info('[admin-service]', error)
+      simulateAction(isZh ? '用户账务导出失败。' : 'Could not export user billing ledger.')
     }
   }
 
@@ -3650,6 +3681,16 @@ export function AdminPage({
         </div>
         {billingPolicyStatus.error && <div className="empty-state"><strong>{textFor(t, 'Policy versions unavailable', '策略版本不可用')}</strong><span>{billingPolicyStatus.error}</span></div>}
         {billingPreview && <div className="billing-policy-impact"><strong>{billingPreview.summary}</strong><span>{billingPreview.impact.rolesChanged} {textFor(t, 'role routes changed', '个角色路由变化')} · +{billingPreview.impact.reasonCodesAdded}/-{billingPreview.impact.reasonCodesRemoved} {textFor(t, 'reason codes', '个原因代码')}</span><small>{billingPreview.impact.creativePolicyVersion} · {textFor(t, 'creative runtime unchanged', '创作运行时不变')}</small></div>}
+        <div className="admin-personal-billing" data-testid="admin-personal-billing">
+          <div className="admin-section-heading"><div><strong>{textFor(t, 'Selected user billing', '所选用户账务')}</strong><small>{textFor(t, 'Points, frozen balances, credits, quota, refunds, and sources', '积分、冻结、Credit、配额、退款与来源')}</small></div><div className="button-row"><input aria-label={textFor(t, 'Billing user handle', '账务用户 Handle')} value={ledgerUserHandle} onChange={(event) => setLedgerUserHandle(event.target.value)} /><button className="icon-button" type="button" title={textFor(t, 'Export user billing CSV', '导出用户账务 CSV')} onClick={() => void exportPersonalBilling()} disabled={!canReadAccounting || !ledgerUserHandle.trim()}><Download size={16}/></button></div></div>
+          {personalBillingStatus.error && <div className="empty-state compact"><strong>{textFor(t, 'User billing unavailable', '用户账务不可用')}</strong><span>{personalBillingStatus.error}</span></div>}
+          <div className="market-dashboard billing-metrics-dashboard">
+            <article className="metric-card highlight"><span>{textFor(t, 'Available points', '可用积分')}</span><strong>{personalBillingSummary?.points.available ?? 0}</strong><small>{personalBillingSummary?.points.frozen ?? 0} {textFor(t, 'frozen', '冻结')}</small></article>
+            <article className="metric-card highlight"><span>{textFor(t, 'Settled credits', '已结算 Credit')}</span><strong>{personalBillingSummary?.creativeCredits.settled ?? 0}</strong><small>{personalBillingSummary?.creativeCredits.refunded ?? 0} {textFor(t, 'refunded', '已退款')}</small></article>
+            <article className="metric-card highlight"><span>{textFor(t, 'Quota remaining', '剩余配额')}</span><strong>{personalBillingSummary?.quotas.remaining ?? 0}</strong><small>{personalBillingSummary?.quotas.used ?? 0}/{personalBillingSummary?.quotas.limit ?? 0} {textFor(t, 'used', '已使用')}</small></article>
+          </div>
+          <div className="admin-table compact-billing-ledger">{personalBillingEntries.map((entry) => <div className="admin-row compact" key={entry.id}><span className={`status ${entry.status}`}>{entry.status}</span><strong>{entry.description}</strong><b className={entry.amount >= 0 ? 'positive' : 'negative'}>{entry.amount > 0 ? '+' : ''}{entry.amount}</b><small>{entry.unit} · {entry.sourceType}/{entry.sourceId ?? '-'}</small></div>)}{!personalBillingStatus.loading && !personalBillingStatus.error && personalBillingEntries.length === 0 && <div className="empty-state compact"><strong>{textFor(t, 'No billing entries', '暂无账务明细')}</strong></div>}</div>
+        </div>
         <div className="permission-summary billing-metrics-filters">
           <label><span>{textFor(t, 'Metric unit', '统计单位')}</span><select aria-label={textFor(t, 'Billing metric unit', '账务统计单位')} value={billingUnitFilter ?? ''} onChange={(event) => setBillingUnitFilter(event.target.value ? event.target.value as AdminAccountingUnit : null)}><option value="">{textFor(t, 'All', '全部')}</option><option value="points">points</option><option value="creative_credit">creative_credit</option><option value="quota_unit">quota_unit</option></select></label>
           <label><span>{textFor(t, 'Source', '来源')}</span><input aria-label={textFor(t, 'Billing metric source', '账务统计来源')} value={billingSourceType} onChange={(event) => setBillingSourceType(event.target.value)} placeholder="generation"/></label>

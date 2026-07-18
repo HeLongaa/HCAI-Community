@@ -460,7 +460,7 @@
       "dataSubjects": ["user"],
       "purposes": ["creative_generation", "internal_accounting", "support_operations"],
       "exampleFields": ["credit amount/status", "quota window", "reservation", "personal capability and quota policy", "grant validity and lifecycle", "immutable grant event hash", "settlement/refund/release timestamps", "safe metadata"],
-      "accessRoles": ["user_self_summary", "authorized_service", "creative_accounting_operator", "auditor"],
+      "accessRoles": ["user_self", "authorized_service", "creative_accounting_operator", "auditor"],
       "retentionPolicyId": "internal_ledger_plus_730d",
       "exportPolicy": "include_user_credit_and_quota_history",
       "deletionPolicy": "anonymize_subject_and_retain_immutable_reconciliation_evidence",
