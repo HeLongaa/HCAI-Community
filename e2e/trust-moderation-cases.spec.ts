@@ -150,3 +150,46 @@ test('Support and Trust Admin surfaces remain bounded at 390px', async ({ browse
     await Promise.all([supportContext.close(), adminContext.close()])
   }
 })
+
+test('Trust operations manages rule rollout, signal queue SLA, and confirmed bulk priority without bulk decisions', async ({ page, request }) => {
+  const reporter = await login(request, 'promptlin')
+  const admin = await login(request, 'opsplus')
+  const suffix = Date.now()
+  const subject = `Safety operations ${suffix}`
+  const report = await apiData<{ item: ModerationCase }>(request.post(`${apiBaseUrl}/api/trust/reports`, {
+    headers: authHeaders(reporter.accessToken),
+    data: { targetType: 'user', targetId: 'demo-user-taskops', category: 'spam', subject, statement: 'A bounded safety signal requires queue triage and SLA evidence.', locale: 'en', sourceKey: `trust-ops-e2e-report-${suffix}` },
+  }))
+  const rule = await apiData<{ id: string }>(request.post(`${apiBaseUrl}/api/admin/trust/rules`, {
+    headers: authHeaders(admin.accessToken),
+    data: { ruleKey: `community.spam.${suffix}`, name: `Community spam ${suffix}`, signalType: 'spam_score', targetType: 'user', category: 'spam', minimumScore: 70, priority: 'high', configHash: 'd'.repeat(64) },
+  }))
+  await apiData(request.post(`${apiBaseUrl}/api/admin/trust/rules/${rule.id}/transitions`, { headers: authHeaders(admin.accessToken), data: { toState: 'active', reasonCode: 'e2e_activation' } }))
+  await apiData(request.post(`${apiBaseUrl}/api/admin/trust/signals`, {
+    headers: authHeaders(admin.accessToken),
+    data: { sourceKey: `trust-ops-e2e-signal-${suffix}`, caseId: report.item.id, ruleVersionId: rule.id, signalType: 'spam_score', severity: 'high', score: 96, contentHash: 'e'.repeat(64), observedAt: new Date().toISOString() },
+  }))
+
+  await signInPage(page, request, 'opsplus')
+  await openTrustPanel(page)
+  const operations = page.getByTestId('trust-safety-operations')
+  await expect(operations).toContainText(subject)
+  const queueRow = operations.getByTestId(`trust-queue-${report.item.id}`)
+  await expect(queueRow).toContainText('high')
+  await queueRow.getByRole('checkbox').check()
+  await operations.getByLabel('Moderation bulk action').selectOption('set_priority')
+  await operations.getByLabel('Moderation bulk priority').selectOption('critical')
+  await operations.getByRole('button', { name: 'Preview', exact: true }).click()
+  const confirmation = operations.getByLabel('Moderation bulk confirmation')
+  await expect(confirmation).toHaveAttribute('placeholder', 'APPLY 1 CASES')
+  await confirmation.fill('APPLY 1 CASES')
+  const bulkResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/trust/queue/bulk') && response.request().method() === 'POST')
+  await operations.getByRole('button', { name: 'Execute', exact: true }).click()
+  expect((await bulkResponse).status()).toBe(201)
+
+  await operations.getByRole('button', { name: 'Rules', exact: true }).click()
+  await expect(operations.getByTestId(`trust-rule-${rule.id}`)).toContainText('active')
+  await operations.getByRole('button', { name: 'Signals', exact: true }).click()
+  await expect(operations).toContainText('spam_score · 96')
+  await expectBounded(page, '[data-testid="trust-safety-operations"]')
+})

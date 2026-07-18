@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "task": "TRUST-02",
+  "scope": "personal_accounts_only",
+  "operationPolicy": "state_transition",
+  "migration": "0080_trust_safety_operations",
+  "models": ["SafetyRuleVersion", "SafetyRuleTransition", "SafetySignal", "ModerationQueueEvent", "ModerationBulkOperation"],
+  "permissions": ["admin:trust:read", "admin:trust:operate", "admin:trust:rules"],
+  "routes": [
+    { "method": "GET", "path": "/api/admin/trust/rules" },
+    { "method": "POST", "path": "/api/admin/trust/rules" },
+    { "method": "POST", "path": "/api/admin/trust/rules/:id/transitions" },
+    { "method": "GET", "path": "/api/admin/trust/signals" },
+    { "method": "POST", "path": "/api/admin/trust/signals" },
+    { "method": "GET", "path": "/api/admin/trust/queue" },
+    { "method": "POST", "path": "/api/admin/trust/queue/:id/events" },
+    { "method": "POST", "path": "/api/admin/trust/queue/bulk/preview" },
+    { "method": "POST", "path": "/api/admin/trust/queue/bulk" },
+    { "method": "GET", "path": "/api/admin/trust/operations/metrics" }
+  ],
+  "invariants": {
+    "versionedRules": true,
+    "canaryAndRollback": true,
+    "singleActiveVersion": true,
+    "idempotentSignals": true,
+    "eventDerivedQueue": true,
+    "priorityBasedSla": true,
+    "previewedIdempotentBulk": true,
+    "bulkDecisionsForbidden": true
+  }
+}

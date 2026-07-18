@@ -164,6 +164,21 @@ enum ModerationDecisionOutcome {
   partially_overturn
 }
 
+enum SafetyRuleState {
+  draft
+  canary
+  active
+  retired
+}
+
+enum ModerationQueueAction {
+  enqueue
+  assign
+  release
+  set_priority
+  escalate
+}
+
 enum MediaAssetPurpose {
   task_attachment
   submission_asset
@@ -1380,11 +1395,110 @@ model ModerationCase {
   evidence     ModerationEvidence[]
   decisions    ModerationDecision[]
   appeals      ModerationAppeal[]
+  safetySignals SafetySignal[]
+  queueEvents   ModerationQueueEvent[]
 
   @@index([targetType, targetId, createdAt])
   @@index([affectedUserId, createdAt, id])
   @@index([priority, createdAt, id])
   @@map("moderation_cases")
+}
+
+model SafetyRuleVersion {
+  id             String                    @id @default(cuid())
+  ruleKey        String                    @map("rule_key")
+  version        Int
+  name           String
+  signalType     String                    @map("signal_type")
+  targetType     ModerationTargetType?     @map("target_type")
+  category       ModerationReportCategory?
+  minimumScore   Int                       @map("minimum_score")
+  priority       ModerationCasePriority
+  configHash     String                    @map("config_hash")
+  createdById    String                    @map("created_by_id")
+  createdBy      User                      @relation("SafetyRuleVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt      DateTime                  @default(now()) @map("created_at")
+  transitions    SafetyRuleTransition[]
+  signals        SafetySignal[]
+
+  @@unique([ruleKey, version])
+  @@index([ruleKey, createdAt, id])
+  @@map("safety_rule_versions")
+}
+
+model SafetyRuleTransition {
+  id             String            @id @default(cuid())
+  ruleVersionId  String            @map("rule_version_id")
+  ruleVersion    SafetyRuleVersion @relation(fields: [ruleVersionId], references: [id], onDelete: Restrict)
+  fromState      SafetyRuleState    @map("from_state")
+  toState        SafetyRuleState    @map("to_state")
+  rolloutPercent Int               @map("rollout_percent")
+  reasonCode     String            @map("reason_code")
+  actorId        String            @map("actor_id")
+  actor          User              @relation("SafetyRuleTransitionActor", fields: [actorId], references: [id], onDelete: Restrict)
+  createdAt      DateTime          @default(now()) @map("created_at")
+
+  @@index([ruleVersionId, createdAt, id])
+  @@index([createdAt, id])
+  @@map("safety_rule_transitions")
+}
+
+model SafetySignal {
+  id             String                     @id @default(cuid())
+  sourceKey      String                     @unique @map("source_key")
+  ruleVersionId  String?                    @map("rule_version_id")
+  ruleVersion    SafetyRuleVersion?         @relation(fields: [ruleVersionId], references: [id], onDelete: Restrict)
+  caseId         String                     @map("case_id")
+  moderationCase ModerationCase             @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  signalType     String                     @map("signal_type")
+  severity       ModerationCasePriority
+  score          Int
+  contentHash    String                     @map("content_hash")
+  observedAt     DateTime                   @map("observed_at")
+  createdById    String                     @map("created_by_id")
+  createdBy      User                       @relation("SafetySignalCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt      DateTime                   @default(now()) @map("created_at")
+
+  @@index([caseId, createdAt, id])
+  @@index([signalType, observedAt, id])
+  @@map("safety_signals")
+}
+
+model ModerationQueueEvent {
+  id             String                    @id @default(cuid())
+  caseId         String                    @map("case_id")
+  moderationCase ModerationCase            @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  action         ModerationQueueAction
+  assigneeId     String?                   @map("assignee_id")
+  assignee       User?                     @relation("ModerationQueueAssignee", fields: [assigneeId], references: [id], onDelete: Restrict)
+  priority       ModerationCasePriority?
+  dueAt          DateTime                  @map("due_at")
+  reasonCode     String                    @map("reason_code")
+  actorId        String                    @map("actor_id")
+  actor          User                      @relation("ModerationQueueActor", fields: [actorId], references: [id], onDelete: Restrict)
+  createdAt      DateTime                  @default(now()) @map("created_at")
+
+  @@index([caseId, createdAt, id])
+  @@index([assigneeId, dueAt, id])
+  @@index([dueAt, id])
+  @@map("moderation_queue_events")
+}
+
+model ModerationBulkOperation {
+  id             String   @id @default(cuid())
+  idempotencyKey String   @unique @map("idempotency_key")
+  requestHash    String   @map("request_hash")
+  targetHash     String   @map("target_hash")
+  action         String
+  targetCount    Int      @map("target_count")
+  result         Json
+  resultSchemaVersion Int @default(1) @map("result_schema_version")
+  actorId        String   @map("actor_id")
+  actor          User     @relation("ModerationBulkOperationActor", fields: [actorId], references: [id], onDelete: Restrict)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([actorId, createdAt, id])
+  @@map("moderation_bulk_operations")
 }
 
 model ModerationEvidence {
@@ -1488,6 +1602,12 @@ model User {
   submittedModerationEvidence     ModerationEvidence[]            @relation("ModerationEvidenceSubmitter")
   moderationDecisions             ModerationDecision[]            @relation("ModerationDecisionReviewer")
   moderationAppeals               ModerationAppeal[]              @relation("ModerationAppealAppellant")
+  safetyRuleVersionsCreated       SafetyRuleVersion[]             @relation("SafetyRuleVersionCreator")
+  safetyRuleTransitions           SafetyRuleTransition[]          @relation("SafetyRuleTransitionActor")
+  safetySignalsCreated            SafetySignal[]                  @relation("SafetySignalCreator")
+  assignedModerationQueueEvents   ModerationQueueEvent[]          @relation("ModerationQueueAssignee")
+  moderationQueueEvents           ModerationQueueEvent[]          @relation("ModerationQueueActor")
+  moderationBulkOperations        ModerationBulkOperation[]       @relation("ModerationBulkOperationActor")
   mediaAssets                     MediaAsset[]
   mediaAssetRelations             MediaAssetRelation[]
   notifications                   Notification[]

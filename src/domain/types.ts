@@ -28,6 +28,8 @@ export type Permission =
   | 'admin:trust:read'
   | 'admin:trust:review'
   | 'admin:trust:export'
+  | 'admin:trust:operate'
+  | 'admin:trust:rules'
   | 'admin:tasks:read'
   | 'admin:tasks:manage'
   | 'admin:task-rules:read'

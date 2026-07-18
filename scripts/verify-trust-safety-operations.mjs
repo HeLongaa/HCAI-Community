@@ -1,0 +1,53 @@
+import fs from 'node:fs'
+import path from 'node:path'
+
+const root = process.cwd()
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8')
+const json = (file) => JSON.parse(read(file))
+const contract = json('config/trust-safety-operations-contract.json')
+const pkg = json('package.json')
+const schema = read('server/prisma/schema.prisma')
+const migration = read(`server/prisma/migrations/${contract.migration}/migration.sql`)
+const domain = read('server/src/trust/safetyOperations.js')
+const seed = read('server/src/trust/seedSafetyOperationsRepository.js')
+const prisma = read('server/src/trust/prismaSafetyOperationsRepository.js')
+const routes = read('server/src/modules/trust/routes.js')
+const permissions = read('server/src/auth/permissions.js')
+const openapi = read('server/src/docs/openapi.js')
+const ui = read('src/features/admin/TrustSafetyOperationsPanel.tsx')
+const policies = json('config/entity-operation-policies.json')
+const resources = json('config/admin-resource-framework-contract.json')
+const lists = json('config/list-query-contract.json')
+const audit = json('config/admin-mutation-audit.json')
+
+const checks = []
+const add = (name, pass) => checks.push({ name, pass: Boolean(pass) })
+add('contract is TRUST-02 personal-account state-transition scope', contract.task === 'TRUST-02' && contract.scope === 'personal_accounts_only' && contract.operationPolicy === 'state_transition')
+for (const model of contract.models) add(`${model} is modeled`, schema.includes(`model ${model}`))
+for (const table of ['safety_rule_versions', 'safety_rule_transitions', 'safety_signals', 'moderation_queue_events', 'moderation_bulk_operations']) add(`${table} is migrated`, migration.includes(`"${table}"`))
+add('all TRUST-02 facts reject updates and deletes', (migration.match(/_immutable BEFORE UPDATE OR DELETE/g) ?? []).length === 5)
+add('rule versions are unique and transitions retain rollout evidence', migration.includes('safety_rule_versions_rule_key_version_key') && migration.includes('rollout_percent'))
+add('signals are source-idempotent and hash-only', migration.includes('safety_signals_source_key_key') && migration.includes('safety_signals_hash_check'))
+add('queue state and SLA are event-derived', domain.includes('deriveQueueState') && domain.includes('moderationSlaHours'))
+add('seed and Prisma support single-active activation and rollback', [seed, prisma].every((source) => source.includes('superseded_by_version') && source.includes('trust.rule.rolled_back')))
+add('bulk operations require preview hash, confirmation, and idempotency', [seed, prisma].every((source) => source.includes('BULK_TARGET_CHANGED') && source.includes('BULK_CONFIRMATION_REQUIRED') && source.includes('IDEMPOTENCY_CONFLICT')))
+add('bulk decisions remain absent', !routes.includes('/api/admin/trust/cases/bulk') && !routes.includes('bulk_decision'))
+for (const route of contract.routes) {
+  add(`${route.method} ${route.path} is implemented`, routes.includes(`router.add('${route.method}', '${route.path}'`))
+  add(`${route.method} ${route.path} is documented`, openapi.includes(`'${route.path.replace('/api', '').replace(/:([A-Za-z]+)/g, '{$1}')}'`))
+}
+for (const permission of contract.permissions) add(`${permission} is registered`, permissions.includes(`'${permission}'`))
+for (const model of contract.models) add(`${model} operation policy is registered`, policies.entities.some((entry) => entry.model === model))
+add('rules, signals, and queue Admin resources are registered', ['safetyRules', 'safetySignals', 'moderationQueue'].every((id) => resources.resources.some((entry) => entry.id === id)))
+add('signals and queue list contracts are registered', ['safetySignals', 'moderationQueue'].every((id) => lists.resources.some((entry) => entry.id === id)))
+for (const route of contract.routes.filter((entry) => entry.method === 'POST')) add(`${route.path} is domain audited`, audit.routes.some((entry) => entry.path === route.path && entry.mode === 'domain_audited'))
+add('Admin UI covers rules, queue, SLA, signals, and confirmed bulk operations', ['Create version', 'Rollback', 'SLA breached', 'Moderation bulk confirmation', 'Signals'].every((marker) => ui.includes(marker)))
+add('runbook exists', fs.existsSync(path.join(root, 'docs/TRUST_SAFETY_OPERATIONS.md')))
+add('focused package gate exists', pkg.scripts['test:trust-safety-operations']?.includes('verify-trust-safety-operations.mjs'))
+add('integration package gate exists', pkg.scripts['test:trust-safety-operations:integration']?.includes('prismaTrustSafetyOperations.integration.test.js'))
+add('quick gate includes TRUST-02', pkg.scripts['precheck:quick']?.includes('test:trust-safety-operations'))
+
+for (const check of checks) console.log(`${check.pass ? 'PASS' : 'FAIL'} ${check.name}`)
+const failures = checks.filter((check) => !check.pass)
+if (failures.length) { console.error(`Trust safety operations verification failed: ${failures.length} check(s)`); process.exitCode = 1 }
+else console.log(`Trust safety operations verified: ${checks.length} checks`)
