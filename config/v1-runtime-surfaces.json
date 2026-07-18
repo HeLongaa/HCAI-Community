@@ -174,7 +174,7 @@
       "id": "server-dev-oauth-fallback",
       "area": "oauth",
       "classification": "development_only",
-      "paths": ["server/src/auth/oauth.js", "server/src/modules/auth/routes.js"],
+      "paths": ["server/src/auth/oauth.js", "server/src/auth/authRiskOperations.js", "server/src/modules/auth/routes.js"],
       "markers": ["mode: 'dev'", "createDevOAuthCode", "Unknown demo account"],
       "productionDisposition": "require_external_oauth_or_explicit_unavailable",
       "ownerTasks": ["V1-39", "V1-48"]

@@ -54,6 +54,8 @@
     { "model": "OAuthAuthorizationRequest", "domain": "identity-access", "policy": "state_transition", "hardDelete": true },
     { "model": "OAuthProviderControl", "domain": "identity-access", "policy": "state_transition", "hardDelete": false },
     { "model": "AuthSession", "domain": "identity-access", "policy": "state_transition", "hardDelete": true },
+    { "model": "AuthRiskPolicy", "domain": "identity-access", "policy": "mutable_crud", "hardDelete": false },
+    { "model": "AuthLoginAttempt", "domain": "identity-access", "policy": "append_only", "hardDelete": false },
     { "model": "RefreshToken", "domain": "identity-access", "policy": "state_transition", "hardDelete": true },
     { "model": "Profile", "domain": "user-profile", "policy": "mutable_crud", "hardDelete": false },
     { "model": "Task", "domain": "task-marketplace", "policy": "state_transition", "hardDelete": false },

@@ -92,7 +92,7 @@ const buildAnomalies = (event, recentEvents, config) => {
 }
 
 export const recordAuthFailure = async (request, failure, options = {}) => {
-  const config = authFailureMonitorConfig(options.source ?? process.env)
+  const config = options.config ?? authFailureMonitorConfig(options.source ?? process.env)
   if (!config.enabled) return []
 
   const monitor = options.monitor ?? defaultAuthFailureMonitor

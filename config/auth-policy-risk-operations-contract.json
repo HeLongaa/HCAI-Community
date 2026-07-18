@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "task": "AUTH-03",
+  "scope": "personal_accounts_only",
+  "models": { "policy": "AuthRiskPolicy", "attemptEvidence": "AuthLoginAttempt", "migration": "0075_auth_policy_risk_operations" },
+  "attemptEvidence": {
+    "operationPolicy": "append_only",
+    "outcomes": ["success", "failure"],
+    "methods": ["email", "demo", "google", "github", "apple", "discord"],
+    "forbiddenFields": ["rawIdentity", "password", "accessToken", "refreshToken", "authorizationCode", "rawIpAddress", "fullUserAgent"],
+    "identityProjection": "masked_hint_and_keyed_hash",
+    "networkProjection": "first_8_hex_characters"
+  },
+  "policy": {
+    "operationPolicy": "mutable_crud",
+    "optimisticVersioning": true,
+    "runtimeFields": ["enabled", "windowSeconds", "ipAccountThreshold", "accountIpThreshold"],
+    "environmentFallbackBeforeFirstAdminVersion": true
+  },
+  "permissions": { "read": "admin:auth:read", "manage": "admin:auth:manage" },
+  "routes": [
+    { "method": "GET", "path": "/api/admin/auth/metrics", "permission": "admin:auth:read" },
+    { "method": "GET", "path": "/api/admin/auth/failures", "permission": "admin:auth:read" },
+    { "method": "GET", "path": "/api/admin/auth/risk-policy", "permission": "admin:auth:read" },
+    { "method": "PUT", "path": "/api/admin/auth/risk-policy", "permission": "admin:auth:manage" }
+  ],
+  "verification": { "focused": "npm run test:auth-policy-risk-operations", "integration": "npm run test:auth-policy-risk-operations:integration", "e2e": "e2e/auth-policy-risk-operations.spec.ts", "full": "CI=1 npm run check:pr" }
+}

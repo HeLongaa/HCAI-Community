@@ -20,6 +20,8 @@
     { "id": "permissions", "model": "Permission", "routeGroup": "admin", "listRoute": "GET /api/admin/permissions", "mutationRoutes": ["PUT /api/admin/roles/:role/permissions"] },
     { "id": "users", "model": "User", "routeGroup": "userAdmin", "listRoute": "GET /api/admin/users", "detailRoute": "GET /api/admin/users/:id", "recoveryRoutes": ["POST /api/admin/users/:id/suspend", "POST /api/admin/users/:id/restore"] },
     { "id": "userTags", "model": "UserTag", "routeGroup": "userAdmin", "listRoute": "GET /api/admin/user-tags", "mutationRoutes": ["POST /api/admin/user-tags", "PUT /api/admin/user-tags/:id"], "recoveryRoutes": ["POST /api/admin/user-tags/:id/archive", "POST /api/admin/user-tags/:id/restore"] },
+    { "id": "authLoginAttempts", "model": "AuthLoginAttempt", "routeGroup": "authSessionAdmin", "listRoute": "GET /api/admin/auth/failures" },
+    { "id": "authRiskPolicy", "model": "AuthRiskPolicy", "routeGroup": "authSessionAdmin", "listRoute": "GET /api/admin/auth/risk-policy", "mutationRoutes": ["PUT /api/admin/auth/risk-policy"] },
     { "id": "tasks", "model": "Task", "routeGroup": "tasks", "listRoute": "GET /api/admin/tasks", "detailRoute": "GET /api/admin/tasks/:id", "mutationRoutes": ["PATCH /api/admin/tasks/:id"], "recoveryRoutes": ["POST /api/admin/tasks/:id/archive", "POST /api/admin/tasks/:id/restore", "POST /api/admin/tasks/:id/transitions", "POST /api/admin/tasks/bulk/preview", "POST /api/admin/tasks/bulk"] }
   ],
   "policyCapabilities": {

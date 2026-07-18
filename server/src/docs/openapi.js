@@ -484,6 +484,49 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/auth/metrics': {
+      get: {
+        summary: 'Read bounded authentication success, failure, method, reason, and session-risk metrics',
+        parameters: [
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+        ],
+        responses: { '200': { description: 'Secret-free authentication metrics' }, '403': { description: 'Requires admin:auth:read' } },
+      },
+    },
+    '/admin/auth/failures': {
+      get: {
+        summary: 'Filter immutable masked authentication failure evidence',
+        parameters: [
+          { name: 'method', in: 'query', schema: { type: 'string', enum: ['email', 'demo', 'google', 'github', 'apple', 'discord'] } },
+          { name: 'reasonCode', in: 'query', schema: { type: 'string', maxLength: 80 } },
+          { name: 'identityHash', in: 'query', schema: { type: 'string', maxLength: 64 } },
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string', maxLength: 512 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+        ],
+        responses: { '200': { description: 'Failure evidence without raw identity, IP, token, or user-agent' }, '403': { description: 'Requires admin:auth:read' } },
+      },
+    },
+    '/admin/auth/risk-policy': {
+      get: {
+        summary: 'Read the effective versioned authentication risk-monitor policy',
+        responses: { '200': { description: 'Authentication risk policy' }, '403': { description: 'Requires admin:auth:read' } },
+      },
+      put: {
+        summary: 'Update authentication risk-monitor thresholds using optimistic version control',
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', additionalProperties: false, required: ['enabled', 'windowSeconds', 'ipAccountThreshold', 'accountIpThreshold', 'expectedVersion', 'reasonCode'],
+          properties: {
+            enabled: { type: 'boolean' }, windowSeconds: { type: 'integer', minimum: 60, maximum: 86400 },
+            ipAccountThreshold: { type: 'integer', minimum: 2, maximum: 100 }, accountIpThreshold: { type: 'integer', minimum: 2, maximum: 100 },
+            expectedVersion: { type: 'integer', minimum: 0 }, reasonCode: { type: 'string', pattern: '^[a-z0-9][a-z0-9._:-]{0,79}$' },
+          },
+        } } } },
+        responses: { '200': { description: 'Updated risk policy' }, '403': { description: 'Requires admin:auth:manage' }, '409': { description: 'Stale policy version' } },
+      },
+    },
     '/admin/auth/sessions': {
       get: {
         summary: 'Query redacted logical authentication sessions',

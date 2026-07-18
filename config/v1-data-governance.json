@@ -301,11 +301,11 @@
     {
       "id": "authentication_credentials_sessions",
       "classification": "restricted",
-      "prismaModels": ["AuthAccount", "OAuthAuthorizationRequest", "OAuthProviderControl", "AuthSession", "RefreshToken"],
+      "prismaModels": ["AuthAccount", "OAuthAuthorizationRequest", "OAuthProviderControl", "AuthSession", "AuthRiskPolicy", "AuthLoginAttempt", "RefreshToken"],
       "locations": ["postgres"],
       "dataSubjects": ["user"],
       "purposes": ["account_service", "auth_security"],
-      "exampleFields": ["provider user id", "password hash", "OAuth state hash", "authorization expiry/consumption/revocation", "Provider enabled state and reason code", "logical session client class", "keyed network hash", "risk and revocation evidence", "token hash", "token family", "expiry", "revocation"],
+      "exampleFields": ["provider user id", "password hash", "OAuth state hash", "authorization expiry/consumption/revocation", "Provider enabled state and reason code", "logical session client class", "keyed network hash", "masked login identity hint", "login outcome and reason", "risk policy thresholds", "risk and revocation evidence", "token hash", "token family", "expiry", "revocation"],
       "accessRoles": ["authorized_auth_service", "security_operator_redacted"],
       "retentionPolicyId": "auth_expiry_plus_30d",
       "exportPolicy": "include_provider_names_and_session_summary_only",
@@ -1071,7 +1071,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 113,
+    "modelCount": 115,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",

@@ -30,6 +30,7 @@ import {
   verifyOAuthState,
 } from '../../auth/oauth.js'
 import { recordAuthFailure } from '../../auth/loginMonitor.js'
+import { createAuthAttemptEvidence } from '../../auth/authRiskOperations.js'
 import { buildSessionClientContext } from '../../auth/sessionLifecycle.js'
 import { verifyAccessToken } from '../../auth/sessionTokens.js'
 import { repositories } from '../../repositories/index.js'
@@ -141,6 +142,22 @@ const recordAuthFailureAnomaly = async (event, context) => {
 }
 
 export const registerAuthRoutes = (router) => {
+  const recordLoginAttempt = async ({ method, outcome, reasonCode, identity, request }) => {
+    await repositories.authRiskAdmin?.recordAttempt?.(createAuthAttemptEvidence({
+      method,
+      outcome,
+      reasonCode,
+      identity,
+      clientContext: buildSessionClientContext(request),
+    }))
+  }
+
+  const authFailureOptions = async (context) => ({
+    config: await repositories.authRiskAdmin?.getRuntimePolicy?.(),
+    monitor: context.authFailureMonitor,
+    onAnomaly: (event) => recordAuthFailureAnomaly(event, context),
+  })
+
   const getOAuthProviderControl = async (provider) => {
     if (repositories.oauthAdmin?.getProviderControl) return repositories.oauthAdmin.getProviderControl(provider)
     const controls = await repositories.oauthAdmin?.listProviderControls?.() ?? []
@@ -185,6 +202,7 @@ export const registerAuthRoutes = (router) => {
         identity: provider,
         details: { provider, reason: cancelled ? 'access_denied' : 'provider_error' },
       })
+      await recordLoginAttempt({ method: provider, outcome: 'failure', reasonCode: cancelled ? 'access_denied' : 'provider_rejected', identity: provider, request })
       throw new HttpError(cancelled ? 400 : 401, cancelled ? 'OAUTH_CANCELLED' : 'OAUTH_FAILED', cancelled
         ? 'OAuth authorization was cancelled'
         : 'OAuth provider response could not be verified')
@@ -205,6 +223,7 @@ export const registerAuthRoutes = (router) => {
         identity: provider,
         details: { provider, reason: 'profile_verification_failed' },
       })
+      await recordLoginAttempt({ method: provider, outcome: 'failure', reasonCode: 'profile_verification_failed', identity: provider, request })
       throw new HttpError(401, 'OAUTH_FAILED', 'OAuth provider response could not be verified')
     }
     const session = await repositories.auth.completeOAuthLogin?.({
@@ -213,8 +232,10 @@ export const registerAuthRoutes = (router) => {
       clientContext: buildSessionClientContext(request),
     })
     if (!session) {
+      await recordLoginAttempt({ method: provider, outcome: 'failure', reasonCode: 'account_conflict', identity: profile.email, request })
       throw new HttpError(409, 'OAUTH_ACCOUNT_CONFLICT', 'OAuth account is already linked to another user')
     }
+    await recordLoginAttempt({ method: provider, outcome: 'success', reasonCode: 'authenticated', identity: profile.email, request })
     return {
       accessToken: session.accessToken,
       refreshToken: session.refreshToken,
@@ -237,15 +258,14 @@ export const registerAuthRoutes = (router) => {
       const payload = parseEmailLoginRequest(body)
       const session = await repositories.auth.loginWithPassword?.(payload, buildSessionClientContext(request))
       if (!session) {
+        await recordLoginAttempt({ method: 'email', outcome: 'failure', reasonCode: 'invalid_email_or_password', identity: payload.email, request })
         await recordAuthFailure(request, {
           identity: payload.email,
           reason: 'invalid_email_or_password',
-        }, {
-          monitor: context.authFailureMonitor,
-          onAnomaly: (event) => recordAuthFailureAnomaly(event, context),
-        })
+        }, await authFailureOptions(context))
         throw new HttpError(401, 'AUTH_FAILED', 'Invalid email or password')
       }
+      await recordLoginAttempt({ method: 'email', outcome: 'success', reasonCode: 'authenticated', identity: payload.email, request })
       sendSession(response, sessionPayload(session))
       return
     }
@@ -253,16 +273,15 @@ export const registerAuthRoutes = (router) => {
     const handle = body.handle ?? 'taskops'
     const account = await repositories.auth.findDemoAccountByHandle(handle)
     if (!account) {
+      await recordLoginAttempt({ method: 'demo', outcome: 'failure', reasonCode: 'unknown_demo_handle', identity: handle, request })
       await recordAuthFailure(request, {
         identity: handle,
         reason: 'unknown_demo_handle',
-      }, {
-        monitor: context.authFailureMonitor,
-        onAnomaly: (event) => recordAuthFailureAnomaly(event, context),
-      })
+      }, await authFailureOptions(context))
       throw new HttpError(401, 'AUTH_FAILED', 'Unknown demo account')
     }
     const session = repositories.auth.issueSession ? await repositories.auth.issueSession(account, buildSessionClientContext(request)) : account
+    await recordLoginAttempt({ method: 'demo', outcome: 'success', reasonCode: 'authenticated', identity: handle, request })
     sendSession(response, {
       accessToken: session?.accessToken ?? account.tokens.accessToken,
       refreshToken: session?.refreshToken ?? account.tokens.refreshToken,
