@@ -63,6 +63,7 @@
     "test:oauth-hardening:integration": "npm --prefix server run db:generate && node --test server/src/repositories/prismaOAuth.integration.test.js",
     "test:oauth-admin-operations": "node scripts/verify-oauth-admin-operations.mjs && npm --prefix server run db:generate && node --test server/src/auth/oauthAdminOperations.test.js server/src/modules/auth/admin.routes.test.js",
     "test:oauth-admin-operations:integration": "npm --prefix server run db:generate && node --test server/src/repositories/prismaOAuthAdmin.integration.test.js",
+    "oauth:preflight": "node scripts/check-oauth-provider-readiness.mjs",
     "test:auth-session-lifecycle": "node scripts/verify-auth-session-lifecycle.mjs && npm --prefix server run db:generate && node --test server/src/auth/sessionLifecycle.test.js server/src/auth/sessionTokens.test.js server/src/modules/auth/routes.test.js server/src/modules/auth/sessionAdmin.routes.test.js",
     "test:auth-session-lifecycle:integration": "npm --prefix server run db:generate && node --test server/src/repositories/prismaAuthSession.integration.test.js",
     "test:auth-policy-risk-operations": "node scripts/verify-auth-policy-risk-operations.mjs && npm --prefix server run db:generate && node --test server/src/auth/authRiskOperations.test.js server/src/auth/loginMonitor.test.js server/src/modules/auth/routes.test.js server/src/modules/auth/sessionAdmin.routes.test.js",

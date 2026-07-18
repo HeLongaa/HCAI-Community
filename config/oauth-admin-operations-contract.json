@@ -39,6 +39,12 @@
     },
     "fixedProviderEndpoints": true
   },
+  "deploymentPreflight": {
+    "command": "npm run oauth:preflight -- --api-origin=https://api.example.com",
+    "secretsArePresenceCheckedOnly": true,
+    "requiresExactProviderCallbacks": true,
+    "requiresPublicExternalAvailability": true
+  },
   "accountUnlink": {
     "preserveFinalSignInMethod": true,
     "auditInSameTransaction": true
