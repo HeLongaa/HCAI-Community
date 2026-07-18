@@ -119,6 +119,51 @@ enum AdminReviewDecision {
   reject
 }
 
+enum ModerationTargetType {
+  user
+  post
+  comment
+  media_asset
+  creative_generation
+}
+
+enum ModerationReportCategory {
+  harassment
+  hate
+  sexual
+  violence
+  self_harm
+  child_safety
+  impersonation
+  spam
+  fraud
+  privacy
+  copyright
+  other
+}
+
+enum ModerationCasePriority {
+  normal
+  high
+  critical
+}
+
+enum ModerationDecisionStage {
+  original
+  appeal
+}
+
+enum ModerationDecisionOutcome {
+  no_action
+  warn
+  restrict_content
+  remove_content
+  suspend_account
+  uphold
+  overturn
+  partially_overturn
+}
+
 enum MediaAssetPurpose {
   task_attachment
   submission_asset
@@ -1303,6 +1348,103 @@ model AdminReview {
   @@map("admin_reviews")
 }
 
+model Report {
+  id         String                   @id @default(cuid())
+  caseId     String                   @unique @map("case_id")
+  reporterId String                   @map("reporter_id")
+  category   ModerationReportCategory
+  subject    String
+  statement  String
+  locale     String                   @default("en")
+  sourceKey  String                   @unique @map("source_key")
+  createdAt  DateTime                 @default(now()) @map("created_at")
+
+  moderationCase ModerationCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  reporter       User           @relation("ModerationReportReporter", fields: [reporterId], references: [id], onDelete: Restrict)
+
+  @@index([reporterId, createdAt, id])
+  @@index([category, createdAt, id])
+  @@map("trust_reports")
+}
+
+model ModerationCase {
+  id             String                 @id @default(cuid())
+  targetType     ModerationTargetType   @map("target_type")
+  targetId       String                 @map("target_id")
+  affectedUserId String?                @map("affected_user_id")
+  priority       ModerationCasePriority @default(normal)
+  createdAt      DateTime               @default(now()) @map("created_at")
+
+  affectedUser User?                @relation("ModerationCaseAffectedUser", fields: [affectedUserId], references: [id], onDelete: Restrict)
+  report       Report?
+  evidence     ModerationEvidence[]
+  decisions    ModerationDecision[]
+  appeals      ModerationAppeal[]
+
+  @@index([targetType, targetId, createdAt])
+  @@index([affectedUserId, createdAt, id])
+  @@index([priority, createdAt, id])
+  @@map("moderation_cases")
+}
+
+model ModerationEvidence {
+  id            String   @id @default(cuid())
+  caseId        String   @map("case_id")
+  submittedById String?  @map("submitted_by_id")
+  evidenceType  String   @map("evidence_type")
+  referenceType String   @map("reference_type")
+  referenceId   String   @map("reference_id")
+  contentHash   String   @map("content_hash")
+  reasonCode    String   @map("reason_code")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  moderationCase ModerationCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  submittedBy    User?          @relation("ModerationEvidenceSubmitter", fields: [submittedById], references: [id], onDelete: Restrict)
+
+  @@unique([caseId, evidenceType, referenceType, referenceId, contentHash])
+  @@index([caseId, createdAt, id])
+  @@map("moderation_evidence")
+}
+
+model ModerationDecision {
+  id         String                    @id @default(cuid())
+  caseId     String                    @map("case_id")
+  appealId   String?                   @unique @map("appeal_id")
+  reviewerId String                    @map("reviewer_id")
+  stage      ModerationDecisionStage
+  outcome    ModerationDecisionOutcome
+  reasonCode String                    @map("reason_code")
+  note       String
+  createdAt  DateTime                  @default(now()) @map("created_at")
+
+  moderationCase ModerationCase    @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  appeal         ModerationAppeal? @relation("ModerationAppealDecision", fields: [appealId], references: [id], onDelete: Restrict)
+  reviewer       User              @relation("ModerationDecisionReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+  appealedBy     ModerationAppeal? @relation("OriginalModerationDecision")
+
+  @@unique([caseId, stage])
+  @@index([reviewerId, createdAt, id])
+  @@map("moderation_decisions")
+}
+
+model ModerationAppeal {
+  id          String   @id @default(cuid())
+  caseId      String   @unique @map("case_id")
+  decisionId  String   @unique @map("decision_id")
+  appellantId String   @map("appellant_id")
+  reasonCode  String   @map("reason_code")
+  statement   String
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  moderationCase   ModerationCase      @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  originalDecision ModerationDecision  @relation("OriginalModerationDecision", fields: [decisionId], references: [id], onDelete: Restrict)
+  appealDecision   ModerationDecision? @relation("ModerationAppealDecision")
+  appellant        User                @relation("ModerationAppealAppellant", fields: [appellantId], references: [id], onDelete: Restrict)
+
+  @@index([appellantId, createdAt, id])
+  @@map("moderation_appeals")
+}
+
 model User {
   id          String     @id @default(cuid())
   email       String?    @unique
@@ -1341,6 +1483,11 @@ model User {
   internalPointAccount            InternalPointAccount?
   accountingIssuesReviewed        AccountingReconciliationIssue[] @relation("AccountingIssueReviewer")
   adminReviews                    AdminReview[]                   @relation("AdminReviewReviewer")
+  moderationReports               Report[]                        @relation("ModerationReportReporter")
+  affectedModerationCases         ModerationCase[]                @relation("ModerationCaseAffectedUser")
+  submittedModerationEvidence     ModerationEvidence[]            @relation("ModerationEvidenceSubmitter")
+  moderationDecisions             ModerationDecision[]            @relation("ModerationDecisionReviewer")
+  moderationAppeals               ModerationAppeal[]              @relation("ModerationAppealAppellant")
   mediaAssets                     MediaAsset[]
   mediaAssetRelations             MediaAssetRelation[]
   notifications                   Notification[]

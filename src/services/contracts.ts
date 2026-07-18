@@ -270,6 +270,35 @@ export type SupportRelatedResourceType =
   | 'media_asset'
   | 'creative_generation'
   | 'moderation_decision'
+  | 'moderation_case'
+
+export type ModerationTargetType = 'user' | 'post' | 'comment' | 'media_asset' | 'creative_generation'
+export type ModerationReportCategory = 'harassment' | 'hate' | 'sexual' | 'violence' | 'self_harm' | 'child_safety' | 'impersonation' | 'spam' | 'fraud' | 'privacy' | 'copyright' | 'other'
+export type ModerationCaseStatus = 'open' | 'resolved' | 'appealed' | 'closed'
+export type ModerationCasePriority = 'normal' | 'high' | 'critical'
+export type ModerationDecisionStage = 'original' | 'appeal'
+export type ModerationDecisionOutcome = 'no_action' | 'warn' | 'restrict_content' | 'remove_content' | 'suspend_account' | 'uphold' | 'overturn' | 'partially_overturn'
+
+export type ModerationUserSummary = { id: string; handle: string | null; displayName: string | null }
+export type ModerationCaseDto = {
+  id: string
+  targetType: ModerationTargetType
+  targetId: string
+  priority: ModerationCasePriority
+  status: ModerationCaseStatus
+  version: number
+  createdAt: string
+  appealDeadline: string | null
+  appealEligible: boolean
+  affectedUser: ModerationUserSummary | null
+  report: { id: string; category: ModerationReportCategory; subject: string; statement?: string; locale: 'en' | 'zh'; reporter: ModerationUserSummary | null; createdAt: string } | null
+  evidence: Array<{ id: string; evidenceType: string; referenceType: string; referenceId: string; contentHash: string; reasonCode: string; submittedBy: ModerationUserSummary | null; createdAt: string }>
+  decisions: Array<{ id: string; stage: ModerationDecisionStage; outcome: ModerationDecisionOutcome; reasonCode: string; note: string; reviewer: ModerationUserSummary | null; createdAt: string }>
+  appeals: Array<{ id: string; decisionId: string; reasonCode: string; statement?: string; appellant: ModerationUserSummary | null; createdAt: string }>
+}
+
+export type ModerationCaseMetrics = { total: number; open: number; resolved: number; appealed: number; closed: number; critical: number }
+export type ModerationCaseQuery = { cursor?: string | null; limit?: number; status?: ModerationCaseStatus | null; targetType?: ModerationTargetType | null; category?: ModerationReportCategory | null; priority?: ModerationCasePriority | null; search?: string | null; sort?: 'createdAt' | 'priority'; order?: 'asc' | 'desc' }
 
 export type CreateSupportRequest = {
   category: SupportRequestCategory

@@ -144,6 +144,6 @@ test('Chat UI stops an active stream and opens a prefilled safety appeal', async
 
   await expect(page.getByRole('heading', { name: 'Support center' })).toBeVisible()
   await expect(page.getByLabel('Subject')).toHaveValue('Appeal a Chat safety decision')
-  await expect(page.getByLabel('Related resource')).toHaveValue('moderation_decision')
+  await expect(page.getByLabel('Related resource')).toHaveValue('moderation_case')
   await expect(page.getByLabel('Resource ID')).toHaveValue(/chat-review-/)
 })

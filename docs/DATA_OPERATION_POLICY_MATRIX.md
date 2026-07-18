@@ -33,6 +33,8 @@ Run `npm run test:data-operation-policies` after any Prisma model or policy chan
 - Notifications: templates are soft-deleted lifecycle aggregates, published template versions are immutable evidence,
   personal delivery preferences are owner-controlled mutable records with optimistic versions, delivery queues use
   compare-and-set state transitions, and attempt rows preserve a bounded processing-to-terminal lifecycle.
+- Trust and Safety: reports, cases, hash-addressed evidence, original decisions, and appeals are append-only facts.
+  Case status and optimistic version are derived from that fact chain; database triggers reject update and delete.
 
 ## Enforcement Boundary
 

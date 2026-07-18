@@ -553,11 +553,11 @@
     {
       "id": "moderation_review_records",
       "classification": "restricted",
-      "prismaModels": ["AdminReview"],
+      "prismaModels": ["AdminReview", "Report", "ModerationCase", "ModerationEvidence", "ModerationDecision", "ModerationAppeal"],
       "locations": ["postgres"],
       "dataSubjects": ["user", "reporter", "reviewer", "depicted_third_party"],
       "purposes": ["safety_moderation", "support_operations", "legal_compliance"],
-      "exampleFields": ["queue", "status", "safe title/note", "decision", "reviewer", "policy metadata", "support category", "related resource id", "response target"],
+      "exampleFields": ["generic queue and support state", "report category and restricted statement", "target reference and affected user", "hash-addressed evidence", "append-only original and appeal decisions", "bounded reason codes", "appeal deadline"],
       "accessRoles": ["authorized_service", "trust_safety_reviewer", "appeal_reviewer", "auditor"],
       "retentionPolicyId": "moderation_close_plus_730d",
       "exportPolicy": "include_decision_and_user_visible_reason_exclude_internal_investigation",
@@ -1071,7 +1071,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 120,
+    "modelCount": 125,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",
@@ -1088,7 +1088,8 @@
       "Internal accounting uses stable operation keys, same-unit balanced movements, atomic point snapshots, locked quota idempotency, persisted reconciliation issues, and dual-reviewed append-only compensation",
       "Chat has encrypted owner-scoped conversations and messages, idempotent Mock SSE turns, strict owner attachment checks, explicitly selected read-time-authorized product context, identity-free input/output safety evidence, a 512-character unclassified output buffer, explicit stop/disconnect closeout, retention sweeps, restore-deletion tombstones, and a default-disabled staging Provider boundary whose attachment bytes and Provider payloads remain in request memory only",
       "Admin creative serializers redact unsafe identifiers, URLs, and error previews",
-      "archive and object writers support mock/S3-compatible boundaries"
+      "archive and object writers support mock/S3-compatible boundaries",
+      "Trust and Safety reports, cases, hash evidence, original decisions and independently reviewed appeals are append-only PostgreSQL facts with owner-scoped reads"
     ],
     "knownGaps": [
       "no account export API or package builder",

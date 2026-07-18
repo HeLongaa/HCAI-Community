@@ -157,6 +157,8 @@
     { "method": "POST", "path": "/api/admin/notifications/templates/:id/restore", "action": "notification.template.restored", "resourceType": "notification_template", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/notifications/templates/:id/send-test", "action": "notification.template.test_sent", "resourceType": "notification_template", "resourceParam": "id", "reasonCode": "template_test", "mode": "automatic", "risk": "high" },
     { "method": "POST", "path": "/api/admin/notifications/deliveries/:id/retry", "action": "notification.delivery.retry_requested", "resourceType": "notification_delivery", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" },
-    { "method": "POST", "path": "/api/admin/notifications/deliveries/:id/cancel", "action": "notification.delivery.cancelled", "resourceType": "notification_delivery", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
+    { "method": "POST", "path": "/api/admin/notifications/deliveries/:id/cancel", "action": "notification.delivery.cancelled", "resourceType": "notification_delivery", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" },
+    { "method": "POST", "path": "/api/admin/trust/cases/:id/evidence", "action": "trust.evidence.created", "resourceType": "moderation_case", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" },
+    { "method": "POST", "path": "/api/admin/trust/cases/:id/decisions", "action": "trust.decision.created", "resourceType": "moderation_decision", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
   ]
 }
