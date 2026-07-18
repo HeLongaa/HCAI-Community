@@ -382,6 +382,48 @@ export type AdminAuthSessionQuery = {
   order?: 'asc' | 'desc'
 }
 
+export type AdminAuthRiskPolicy = {
+  id: 'default'
+  enabled: boolean
+  windowSeconds: number
+  ipAccountThreshold: number
+  accountIpThreshold: number
+  version: number
+  reasonCode: string
+  updatedByRef: string
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export type AdminAuthMetrics = {
+  window: { dateFrom: string; dateTo: string }
+  totals: { attempts: number; successes: number; failures: number; successRatePercent: number; activeSessions: number }
+  methods: Array<{ method: string; successes: number; failures: number }>
+  failureReasons: Array<{ reasonCode: string; count: number }>
+  sessionRisk: Record<'normal' | 'suspicious' | 'compromised', number>
+}
+
+export type AdminAuthFailure = {
+  id: string
+  method: string
+  reasonCode: string
+  identityHash: string | null
+  identityHint: string | null
+  networkHint: string | null
+  clientLabel: string
+  occurredAt: string
+}
+
+export type AdminAuthFailureQuery = {
+  method?: string
+  reasonCode?: string
+  identityHash?: string
+  dateFrom?: string
+  dateTo?: string
+  cursor?: string
+  limit?: number
+}
+
 export type AdminUserStatus = 'active' | 'suspended' | 'deleted'
 
 export type AdminUserTagColor = 'gray' | 'blue' | 'green' | 'yellow' | 'orange' | 'red' | 'purple' | 'pink'

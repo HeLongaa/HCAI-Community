@@ -19,6 +19,7 @@ import { createSeedGenerationExecutionRepository } from '../creative/seedGenerat
 import { createSeedObservabilityRepository } from '../observability/seedObservabilityRepository.js'
 import { createSeedOAuthAdminRepository } from '../auth/seedOAuthAdminRepository.js'
 import { createSeedAuthSessionAdminRepository } from '../auth/seedAuthSessionAdminRepository.js'
+import { createSeedAuthRiskAdminRepository } from '../auth/seedAuthRiskAdminRepository.js'
 import { createSeedUserAdminRepository } from '../users/seedUserAdminRepository.js'
 import { createSeedTaskAdminRepository } from '../tasks/seedTaskAdminRepository.js'
 import { createSeedTaskLifecycleRecoveryRepository } from '../tasks/seedTaskLifecycleRecoveryRepository.js'
@@ -2573,6 +2574,7 @@ export const createSeedRepository = () => {
     getAccountById,
     recordAudit,
   })
+  const authRiskAdmin = createSeedAuthRiskAdminRepository({ authSessionById, recordAudit })
   const userAdmin = createSeedUserAdminRepository({
     accounts: seedStore.demoAccounts,
     getLifecycle: getSeedAccountLifecycle,
@@ -2625,6 +2627,7 @@ export const createSeedRepository = () => {
   observability,
   oauthAdmin,
   authSessionAdmin,
+  authRiskAdmin,
   userAdmin,
   taskAdmin,
   taskLifecycleRecovery,

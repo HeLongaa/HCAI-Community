@@ -7423,6 +7423,26 @@ button.video-history-row.active {
 .auth-session-filters { display: grid; grid-template-columns: repeat(2, minmax(120px, 160px)) minmax(180px, 1fr) minmax(100px, 130px) auto; gap: 10px; align-items: end; min-width: 0; }
 .auth-session-filters label { display: grid; gap: 5px; min-width: 0; }
 .auth-session-filters label > span { color: var(--muted); font-size: 12px; }
+.auth-risk-operations, .auth-failure-block { display: grid; gap: 10px; min-width: 0; padding: 12px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.auth-risk-toolbar { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(130px, 170px) minmax(130px, 170px) 40px; gap: 9px; align-items: end; min-width: 0; }
+.auth-risk-toolbar > div { display: flex; align-items: center; gap: 7px; min-height: 36px; }
+.auth-risk-toolbar label, .auth-risk-policy label, .auth-failure-filters label { display: grid; gap: 4px; min-width: 0; }
+.auth-risk-toolbar label > span, .auth-risk-policy label > span, .auth-failure-filters label > span { color: var(--muted); font-size: 11px; }
+.auth-risk-toolbar input, .auth-risk-policy input, .auth-failure-filters input, .auth-failure-filters select { width: 100%; min-width: 0; }
+.auth-metric-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1px; min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: var(--border); }
+.auth-metric-grid > div { display: grid; gap: 3px; min-width: 0; padding: 10px; background: var(--surface); }
+.auth-metric-grid span { color: var(--muted); font-size: 11px; }
+.auth-metric-grid strong { font-size: 20px; line-height: 1.1; overflow-wrap: anywhere; }
+.auth-metric-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.auth-risk-policy { display: grid; grid-template-columns: minmax(120px, .7fr) repeat(4, minmax(130px, 1fr)) auto auto; gap: 9px; align-items: end; min-width: 0; }
+.auth-policy-toggle { display: flex !important; align-items: center; gap: 7px !important; min-height: 36px; }
+.auth-policy-toggle input { width: auto; }
+.auth-failure-filters { display: grid; grid-template-columns: minmax(130px, .6fr) minmax(180px, 1fr) auto; gap: 9px; align-items: end; min-width: 0; }
+.auth-failure-list { display: grid; gap: 1px; min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: var(--border); }
+.auth-failure-row { display: grid; grid-template-columns: minmax(130px, 1fr) 80px minmax(140px, 1fr) minmax(130px, 1fr) 80px minmax(150px, 1fr); gap: 9px; align-items: center; min-width: 0; padding: 8px 10px; background: var(--surface); }
+.auth-failure-row > * { min-width: 0; overflow-wrap: anywhere; }
+.auth-failure-row span, .auth-failure-row time { color: var(--muted); font-size: 11px; }
+.auth-failure-row code { font-size: 11px; }
 .auth-session-admin-list { display: grid; gap: 8px; min-width: 0; }
 .auth-session-admin-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(130px, 0.8fr) auto minmax(150px, 0.8fr) minmax(150px, 0.8fr) minmax(120px, 150px) auto; gap: 10px; align-items: center; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; }
 .auth-session-admin-row > div { min-width: 0; }
@@ -7456,6 +7476,13 @@ button.video-history-row.active {
 .oauth-request-row { grid-template-columns: minmax(180px, 1.4fr) 90px minmax(150px, 1fr) minmax(150px, 1fr) 36px; }
 
 @media (max-width: 760px) {
+  .auth-risk-toolbar, .auth-risk-policy, .auth-failure-filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .auth-risk-toolbar > div, .auth-risk-policy > button, .auth-risk-policy > .status-badge, .auth-failure-filters > button { grid-column: 1 / -1; }
+  .auth-risk-policy > button, .auth-failure-filters > button { width: 100%; }
+  .auth-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .auth-metric-breakdown { grid-template-columns: minmax(0, 1fr); }
+  .auth-failure-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .auth-failure-row > *:nth-child(n+3) { grid-column: 1 / -1; }
   .auth-session-filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .auth-session-filters .oauth-search-field, .auth-session-filters > button { grid-column: 1 / -1; }
   .auth-session-filters > button { width: 100%; }

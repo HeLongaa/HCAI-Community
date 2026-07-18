@@ -6,6 +6,10 @@ import type {
   AdminOAuthAuthorizationQuery,
   AdminOAuthAuthorizationRequest,
   AdminOAuthProviderControl,
+  AdminAuthFailure,
+  AdminAuthFailureQuery,
+  AdminAuthMetrics,
+  AdminAuthRiskPolicy,
   AdminAuthSession,
   AdminAuthSessionQuery,
   AdminUserDto,
@@ -222,6 +226,19 @@ export const adminService = {
   async authSessions(query?: AdminAuthSessionQuery) {
     const envelope = await api.getEnvelope<AdminAuthSession[]>(withQuery('/admin/auth/sessions', query))
     return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async authMetrics(query?: { dateFrom?: string; dateTo?: string }) {
+    return api.get<AdminAuthMetrics>(withQuery('/admin/auth/metrics', query))
+  },
+  async authFailures(query?: AdminAuthFailureQuery) {
+    const envelope = await api.getEnvelope<AdminAuthFailure[]>(withQuery('/admin/auth/failures', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async authRiskPolicy() {
+    return api.get<AdminAuthRiskPolicy>('/admin/auth/risk-policy')
+  },
+  async updateAuthRiskPolicy(payload: { enabled: boolean; windowSeconds: number; ipAccountThreshold: number; accountIpThreshold: number; expectedVersion: number; reasonCode: string }) {
+    return api.put<AdminAuthRiskPolicy>('/admin/auth/risk-policy', payload)
   },
   async dispositionAuthSession(id: string, payload: { riskStatus: AdminAuthSession['riskStatus']; expectedVersion: number; reasonCode: string }) {
     return api.post<{ session: AdminAuthSession }>(`/admin/auth/sessions/${encodeURIComponent(id)}/disposition`, payload)

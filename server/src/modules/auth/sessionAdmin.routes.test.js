@@ -6,6 +6,7 @@ import { createInjectedRouteTestServer, requestJson } from '../../common/testing
 import { createSeedRepository } from '../../repositories/seedRepository.js'
 import { registerAuthSessionAdminRoutes } from '../authSessionAdmin/routes.js'
 import { registerAuthRoutes } from './routes.js'
+import { createAuthAttemptEvidence } from '../../auth/authRiskOperations.js'
 
 const adminToken = 'demo-access.opsplus'
 
@@ -31,6 +32,37 @@ test('Auth Session Admin query and risk transitions are permissioned, CAS-safe, 
   await repository.auth.issueSession(first.user, { clientLabel: 'Firefox on Linux', networkHash: 'b'.repeat(64) })
   const server = await createServer(repository)
   try {
+    await repository.authRiskAdmin.recordAttempt(createAuthAttemptEvidence({
+      method: 'email', outcome: 'failure', reasonCode: 'invalid_email_or_password', identity: first.user.email, clientContext: { clientLabel: 'Chrome on macOS', networkHash: 'c'.repeat(64) },
+    }))
+
+    const metrics = await requestJson(server.url, '/api/admin/auth/metrics?dateFrom=2026-01-01T00:00:00.000Z&dateTo=2027-01-01T00:00:00.000Z', { method: 'GET', token: adminToken })
+    assert.equal(metrics.status, 200)
+    assert.equal(metrics.payload.data.totals.failures, 1)
+    assert.equal(metrics.payload.data.failureReasons[0].reasonCode, 'invalid_email_or_password')
+
+    const failures = await requestJson(server.url, '/api/admin/auth/failures?method=email&reasonCode=invalid_email_or_password', { method: 'GET', token: adminToken })
+    assert.equal(failures.status, 200)
+    assert.equal(failures.payload.data.length, 1)
+    assert.equal(failures.payload.data[0].identityHint.endsWith('@example.com'), true)
+    assert.equal(JSON.stringify(failures.payload).includes(first.user.email), false)
+    assert.equal(JSON.stringify(failures.payload).includes('c'.repeat(64)), false)
+
+    const initialPolicy = await requestJson(server.url, '/api/admin/auth/risk-policy', { method: 'GET', token: adminToken })
+    assert.equal(initialPolicy.payload.data.version, 0)
+    const updatedPolicy = await requestJson(server.url, '/api/admin/auth/risk-policy', {
+      method: 'PUT', token: adminToken,
+      body: { enabled: true, windowSeconds: 600, ipAccountThreshold: 3, accountIpThreshold: 4, expectedVersion: 0, reasonCode: 'e2e_security_review' },
+    })
+    assert.equal(updatedPolicy.status, 200)
+    assert.equal(updatedPolicy.payload.data.version, 1)
+    assert.equal((await repository.authRiskAdmin.getRuntimePolicy()).windowMs, 600_000)
+    const stalePolicy = await requestJson(server.url, '/api/admin/auth/risk-policy', {
+      method: 'PUT', token: adminToken,
+      body: { enabled: false, windowSeconds: 600, ipAccountThreshold: 3, accountIpThreshold: 4, expectedVersion: 0, reasonCode: 'stale_policy' },
+    })
+    assert.equal(stalePolicy.status, 409)
+
     const denied = await requestJson(server.url, '/api/admin/auth/sessions', {
       method: 'GET', token: 'demo-access.promptlin',
     })

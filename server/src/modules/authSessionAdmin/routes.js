@@ -4,6 +4,11 @@ import {
   parseAuthSessionRevokeRequest,
   parseAuthUserSessionsRevokeRequest,
 } from '../../auth/sessionLifecycle.js'
+import {
+  parseAuthFailureQuery,
+  parseAuthMetricsQuery,
+  parseAuthRiskPolicyUpdate,
+} from '../../auth/authRiskOperations.js'
 import { HttpError, notFound } from '../../common/errors/httpError.js'
 import { requirePermission } from '../../common/http/auth.js'
 import { readJsonBody } from '../../common/http/request.js'
@@ -12,6 +17,31 @@ import { repositories } from '../../repositories/index.js'
 
 export const registerAuthSessionAdminRoutes = (router, options = {}) => {
   const routeRepositories = options.repositories ?? repositories
+
+  router.add('GET', '/api/admin/auth/metrics', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:auth:read')
+    ok(response, await routeRepositories.authRiskAdmin.metrics(parseAuthMetricsQuery(context.query), actor))
+  })
+
+  router.add('GET', '/api/admin/auth/failures', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:auth:read')
+    const query = parseAuthFailureQuery(context.query)
+    const page = await routeRepositories.authRiskAdmin.listFailures(query, actor)
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('GET', '/api/admin/auth/risk-policy', async (_request, response, context) => {
+    requirePermission(context, 'admin:auth:read')
+    ok(response, await routeRepositories.authRiskAdmin.getPolicy())
+  })
+
+  router.add('PUT', '/api/admin/auth/risk-policy', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:auth:manage')
+    const payload = parseAuthRiskPolicyUpdate((await readJsonBody(request)) ?? {})
+    const result = await routeRepositories.authRiskAdmin.updatePolicy(payload, actor)
+    if (result.conflict) throw new HttpError(409, 'STATE_CONFLICT', 'Auth risk policy was modified concurrently')
+    ok(response, result.policy)
+  })
 
   router.add('GET', '/api/admin/auth/sessions', async (_request, response, context) => {
     const actor = requirePermission(context, 'admin:auth:read')

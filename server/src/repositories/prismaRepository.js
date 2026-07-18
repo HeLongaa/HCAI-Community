@@ -145,6 +145,7 @@ import {
 import { createPrismaObservabilityRepository } from '../observability/prismaObservabilityRepository.js'
 import { createPrismaOAuthAdminRepository } from '../auth/prismaOAuthAdminRepository.js'
 import { createPrismaAuthSessionAdminRepository } from '../auth/prismaAuthSessionAdminRepository.js'
+import { createPrismaAuthRiskAdminRepository } from '../auth/prismaAuthRiskAdminRepository.js'
 import { createPrismaUserAdminRepository } from '../users/prismaUserAdminRepository.js'
 import { createPrismaTaskAdminRepository } from '../tasks/prismaTaskAdminRepository.js'
 import { createPrismaBillingAdminRepository } from '../accounting/prismaBillingAdminRepository.js'
@@ -1098,6 +1099,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
 
   const oauthAdmin = createPrismaOAuthAdminRepository(client, { runSerializableTransaction, recordAudit })
   const authSessionAdmin = createPrismaAuthSessionAdminRepository(client, { runSerializableTransaction, recordAudit })
+  const authRiskAdmin = createPrismaAuthRiskAdminRepository(client, { runSerializableTransaction, recordAudit })
   const userAdmin = createPrismaUserAdminRepository(client, { runSerializableTransaction, recordAudit })
   const taskAdmin = createPrismaTaskAdminRepository(client, { runSerializableTransaction, recordAudit, createTaskEscrow, finalizeTaskEscrow })
   const billingAdmin = createPrismaBillingAdminRepository(client)
@@ -10228,6 +10230,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     observability,
     oauthAdmin,
     authSessionAdmin,
+    authRiskAdmin,
     userAdmin,
     taskAdmin,
     taskLifecycleRecovery,

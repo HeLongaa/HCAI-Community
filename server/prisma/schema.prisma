@@ -1478,6 +1478,40 @@ model AuthSession {
   @@map("auth_sessions")
 }
 
+model AuthRiskPolicy {
+  id                       String   @id @default("default")
+  enabled                  Boolean  @default(true)
+  windowSeconds            Int      @default(300) @map("window_seconds")
+  ipAccountThreshold       Int      @default(5) @map("ip_account_threshold")
+  accountIpThreshold       Int      @default(5) @map("account_ip_threshold")
+  version                  Int      @default(1)
+  reasonCode               String   @map("reason_code")
+  updatedByRef             String   @map("updated_by_ref")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  @@map("auth_risk_policies")
+}
+
+model AuthLoginAttempt {
+  id                     String   @id @default(cuid())
+  method                 String
+  outcome                String
+  reasonCode             String   @map("reason_code")
+  identityHash           String?  @map("identity_hash")
+  identityHint           String?  @map("identity_hint")
+  networkHash            String?  @map("network_hash")
+  clientLabel            String   @default("Unknown client") @map("client_label")
+  occurredAt             DateTime @default(now()) @map("occurred_at")
+  evidenceSchemaVersion  Int      @default(1) @map("evidence_schema_version")
+
+  @@index([outcome, occurredAt])
+  @@index([method, occurredAt])
+  @@index([reasonCode, occurredAt])
+  @@index([identityHash, occurredAt])
+  @@map("auth_login_attempts")
+}
+
 model Profile {
   userId                 String      @id @map("user_id")
   handle                 String      @unique
