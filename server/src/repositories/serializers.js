@@ -908,6 +908,13 @@ export const serializePost = (post) => ({
   solved: post.solved,
   excerpt: post.excerpt,
   body: post.body,
+  status: post.status ?? 'published',
+  version: Number(post.version) || 1,
+  createdAt: post.createdAt ?? null,
+  updatedAt: post.updatedAt ?? post.createdAt ?? null,
+  publishedAt: post.publishedAt ?? null,
+  deletedAt: post.deletedAt ?? null,
+  deletionReasonCode: post.deletionReasonCode ?? null,
 })
 
 export const serializePostDetail = (post) => ({

@@ -4,10 +4,16 @@ import {
   BriefcaseBusiness,
   ChevronDown,
   Heart,
+  LoaderCircle,
   MessageCircle,
+  Pencil,
+  Plus,
+  Send,
+  Save,
   Tags,
+  Trash2,
 } from 'lucide-react'
-import type { AsyncResourceState, CommunityView, MarketplaceProfile, Post, SimulateAction } from '../../domain/types'
+import type { AsyncResourceState, CommunityPostDraft, CommunityView, MarketplaceProfile, Post, SimulateAction } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { visualWorks } from '../../data/mockData'
 import { categoryLabel, findProfile, isZhCopy, localizedPosts, textFor } from '../../domain/utils'
@@ -28,6 +34,14 @@ export function CommunityPage({
   setCommunityView,
   status,
   simulateAction,
+  accountHandle,
+  myPosts,
+  postMutationBusy,
+  refreshMyPosts,
+  createPost,
+  updatePost,
+  publishPost,
+  deletePost,
 }: {
   t: Record<string, string>
   posts: Post[]
@@ -44,6 +58,14 @@ export function CommunityPage({
   setCommunityView: (view: CommunityView) => void
   status: AsyncResourceState
   simulateAction: SimulateAction
+  accountHandle: string | null
+  myPosts: Post[]
+  postMutationBusy: boolean
+  refreshMyPosts: () => Promise<void>
+  createPost: (draft: CommunityPostDraft, status: 'draft' | 'published') => Promise<Post>
+  updatePost: (post: Post, draft: CommunityPostDraft) => Promise<Post>
+  publishPost: (post: Post) => Promise<Post>
+  deletePost: (post: Post) => Promise<Post>
 }) {
   const isZh = isZhCopy(t)
   const scopedPosts = localizedPosts(posts, t)
@@ -56,6 +78,11 @@ export function CommunityPage({
   )
   const [localReplies, setLocalReplies] = useState<Record<string, Array<{ author: string; text: string }>>>({})
   const [topicPage, setTopicPage] = useState(1)
+  const emptyPostDraft: CommunityPostDraft = { title: '', body: '', category: 'Questions', tag: '', excerpt: '' }
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editingPost, setEditingPost] = useState<Post | null>(null)
+  const [postDraft, setPostDraft] = useState<CommunityPostDraft>(emptyPostDraft)
+  const [postEditorError, setPostEditorError] = useState<string | null>(null)
   const topicTabsRef = useRef<HTMLDivElement | null>(null)
   const activeSelectedPost =
     scopedPosts.find((post) => post.id === selectedPost.id) ?? scopedPosts[0] ?? selectedPost
@@ -174,12 +201,148 @@ export function CommunityPage({
     setReplyDraft('')
   }
 
+  const resetPostEditor = () => {
+    setEditingPost(null)
+    setPostDraft(emptyPostDraft)
+    setPostEditorError(null)
+    setEditorOpen(false)
+  }
+
+  const openPostEditor = (post?: Post) => {
+    setEditingPost(post ?? null)
+    setPostDraft(post ? {
+      title: post.title,
+      body: post.body ?? '',
+      category: post.category,
+      tag: post.tag,
+      excerpt: post.excerpt,
+    } : emptyPostDraft)
+    setPostEditorError(null)
+    setEditorOpen(true)
+  }
+
+  const submitPost = async (target: 'draft' | 'published') => {
+    if (!postDraft.title.trim() || !postDraft.body.trim() || !postDraft.category.trim()) {
+      setPostEditorError(isZh ? '标题、正文和分类不能为空。' : 'Title, body, and category are required.')
+      return
+    }
+    setPostEditorError(null)
+    try {
+      if (!editingPost) {
+        await createPost(postDraft, target)
+      } else {
+        const updated = await updatePost(editingPost, postDraft)
+        if (target === 'published' && updated.status === 'draft') await publishPost(updated)
+      }
+      resetPostEditor()
+      await refreshMyPosts()
+    } catch (error) {
+      console.info('[community-post-editor]', error)
+      setPostEditorError(isZh ? '保存失败，请刷新后重试。' : 'Save failed. Refresh and try again.')
+    }
+  }
+
+  const removePost = async (post: Post) => {
+    if (!window.confirm(isZh ? `删除“${post.title}”？` : `Delete “${post.title}”?`)) return
+    try {
+      await deletePost(post)
+      if (editingPost?.id === post.id) resetPostEditor()
+    } catch (error) {
+      console.info('[community-post-delete]', error)
+      setPostEditorError(isZh ? '删除失败，请刷新后重试。' : 'Delete failed. Refresh and try again.')
+    }
+  }
+
+  const publishDraftPost = async (post: Post) => {
+    setPostEditorError(null)
+    try {
+      await publishPost(post)
+    } catch (error) {
+      console.info('[community-post-publish]', error)
+      setPostEditorError(isZh ? '发布失败，请刷新后重试。' : 'Publish failed. Refresh and try again.')
+    }
+  }
+
   return (
     <div className="stack">
       <SectionHeader
         eyebrow={textFor(t, 'Forum', '论坛')}
         title={t.communityTitle}
       />
+      <section className="community-author-workspace" data-testid="community-author-workspace">
+        <div className="community-author-toolbar">
+          <div>
+            <strong>{isZh ? '我的内容' : 'My posts'}</strong>
+            <span>{accountHandle ? `@${accountHandle}` : (isZh ? '登录后可创作' : 'Sign in to create')}</span>
+          </div>
+          <button className="primary-button" type="button" disabled={!accountHandle || postMutationBusy} onClick={() => editorOpen ? resetPostEditor() : openPostEditor()}>
+            {editorOpen ? <ChevronDown size={16} /> : <Plus size={16} />}
+            {editorOpen ? (isZh ? '收起' : 'Close') : (isZh ? '新建帖子' : 'New post')}
+          </button>
+        </div>
+        {postEditorError && <div className="inline-error" role="alert">{postEditorError}</div>}
+        {editorOpen && (
+          <div className="community-post-editor">
+            <div className="community-editor-grid">
+              <label>
+                <span>{isZh ? '标题' : 'Title'}</span>
+                <input maxLength={160} value={postDraft.title} onChange={(event) => setPostDraft((current) => ({ ...current, title: event.target.value }))} />
+              </label>
+              <label>
+                <span>{isZh ? '分类' : 'Category'}</span>
+                <select value={postDraft.category} onChange={(event) => setPostDraft((current) => ({ ...current, category: event.target.value }))}>
+                  <option value="Questions">{isZh ? '问答' : 'Questions'}</option>
+                  <option value="Showcase">{isZh ? '作品展示' : 'Showcase'}</option>
+                  <option value="Tutorials">{isZh ? '教程' : 'Tutorials'}</option>
+                  <option value="Collaboration">{isZh ? '协作' : 'Collaboration'}</option>
+                  <option value="Prompts">{isZh ? '提示词' : 'Prompts'}</option>
+                </select>
+              </label>
+              <label>
+                <span>{isZh ? '标签' : 'Tag'}</span>
+                <input maxLength={80} value={postDraft.tag} onChange={(event) => setPostDraft((current) => ({ ...current, tag: event.target.value }))} />
+              </label>
+              <label className="community-editor-wide">
+                <span>{isZh ? '摘要' : 'Excerpt'}</span>
+                <input maxLength={500} value={postDraft.excerpt} onChange={(event) => setPostDraft((current) => ({ ...current, excerpt: event.target.value }))} />
+              </label>
+              <label className="community-editor-wide">
+                <span>{isZh ? '正文' : 'Body'}</span>
+                <textarea maxLength={20000} value={postDraft.body} onChange={(event) => setPostDraft((current) => ({ ...current, body: event.target.value }))} />
+              </label>
+            </div>
+            <div className="community-editor-actions">
+              {!editingPost && (
+                <button className="ghost-button" type="button" disabled={postMutationBusy} onClick={() => void submitPost('draft')}>
+                  {postMutationBusy ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />}
+                  {isZh ? '保存草稿' : 'Save draft'}
+                </button>
+              )}
+              <button className="primary-button" type="button" disabled={postMutationBusy} onClick={() => void submitPost(editingPost?.status === 'published' ? 'draft' : 'published')}>
+                {postMutationBusy ? <LoaderCircle className="spin" size={16} /> : editingPost?.status === 'published' ? <Save size={16} /> : <Send size={16} />}
+                {editingPost?.status === 'published' ? (isZh ? '保存修改' : 'Save changes') : (isZh ? '发布' : 'Publish')}
+              </button>
+            </div>
+          </div>
+        )}
+        {accountHandle && myPosts.length > 0 && (
+          <div className="community-owned-list">
+            {myPosts.map((post) => (
+              <article className="community-owned-row" key={post.id}>
+                <div>
+                  <strong>{post.title}</strong>
+                  <span>{post.status === 'draft' ? (isZh ? '草稿' : 'Draft') : post.status === 'deleted' ? (isZh ? '已删除' : 'Deleted') : (isZh ? '已发布' : 'Published')} · v{post.version ?? 1}</span>
+                </div>
+                <div className="community-owned-actions">
+                  {post.status !== 'deleted' && <button className="icon-button" type="button" disabled={postMutationBusy} onClick={() => openPostEditor(post)} title={isZh ? '编辑' : 'Edit'}><Pencil size={16} /></button>}
+                  {post.status === 'draft' && <button className="icon-button" type="button" disabled={postMutationBusy} onClick={() => void publishDraftPost(post)} title={isZh ? '发布' : 'Publish'}><Send size={16} /></button>}
+                  {post.status !== 'deleted' && <button className="icon-button danger" type="button" disabled={postMutationBusy} onClick={() => void removePost(post)} title={isZh ? '删除' : 'Delete'}><Trash2 size={16} /></button>}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
       <div className="community-strip">
         {[
           [isZh ? '话题总数' : 'Topics', scopedPosts.length, isZh ? '帖子、问答、复盘' : 'Posts and recaps'],

@@ -194,6 +194,20 @@ export type Post = {
   solved: boolean
   excerpt: string
   body?: string
+  status?: 'draft' | 'published' | 'deleted'
+  version?: number
+  createdAt?: string | null
+  updatedAt?: string | null
+  publishedAt?: string | null
+  deletedAt?: string | null
+}
+
+export type CommunityPostDraft = {
+  title: string
+  body: string
+  category: string
+  tag: string
+  excerpt: string
 }
 
 export type InspirationItem = {

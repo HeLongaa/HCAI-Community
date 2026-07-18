@@ -258,6 +258,21 @@ addCheck(
 
 addCheck(
   'community',
+  'community owners can draft, edit, publish, and soft-delete posts',
+  includesAll(app, [
+    'community-author-workspace',
+    'Save draft',
+    'const createPost = async',
+    'const updatePost = async',
+    'const publishPost = async',
+    'const deletePost = async',
+    'communityService.listMyPosts',
+  ]) && includesAll(css, ['.community-post-editor', '.community-owned-row']),
+  'owner lifecycle workspace and API-backed mutations',
+)
+
+addCheck(
+  'community',
   'community topic list is table-style like the reference forum',
   includesAll(app, ['forum-main', 'topic-table', 'topic-head', 'topic-row active', 'topic-title-button', 'topic-stat', 'topic-meta-line']) &&
     includesAll(css, ['.topic-table', 'grid-template-columns: minmax(0, 1fr) 70px 76px 82px 92px', '.topic-title-text', '.topic-meta-line', '.topic-stat']),

@@ -2,7 +2,16 @@ import { created, ok } from '../../common/http/responses.js'
 import { HttpError, notFound } from '../../common/errors/httpError.js'
 import { requirePermission, requireUser } from '../../common/http/auth.js'
 import { readJsonBody } from '../../common/http/request.js'
-import { parseConvertToTaskRequest, parseCreateCommentRequest, parseCreatePostRequest, parsePostListQuery } from '../../contracts/requestParsers.js'
+import {
+  parseConvertToTaskRequest,
+  parseCreateCommentRequest,
+  parseCreatePostRequest,
+  parseDeletePostRequest,
+  parseMyPostListQuery,
+  parsePostListQuery,
+  parsePublishPostRequest,
+  parseUpdatePostRequest,
+} from '../../contracts/requestParsers.js'
 import { repositories } from '../../repositories/index.js'
 
 export const registerPostRoutes = (router) => {
@@ -24,6 +33,39 @@ export const registerPostRoutes = (router) => {
       throw new HttpError(422, 'POST_CREATE_FAILED', 'Post could not be created')
     }
     created(response, post)
+  })
+
+  router.add('GET', '/api/posts/mine', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const page = await repositories.posts.listMine(parseMyPostListQuery(context.query), actor)
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('PATCH', '/api/posts/:id', async (request, response, context) => {
+    const actor = requirePermission(context, 'post:create')
+    const result = await repositories.posts.update(context.params.id, parseUpdatePostRequest((await readJsonBody(request)) ?? {}), actor)
+    if (!result) throw notFound(`/api/posts/${context.params.id}`)
+    if (result.conflict) throw new HttpError(409, 'STATE_CONFLICT', 'Post was modified concurrently')
+    if (result.deleted) throw new HttpError(409, 'POST_DELETED', 'Deleted posts cannot be edited')
+    ok(response, result.post)
+  })
+
+  router.add('POST', '/api/posts/:id/publish', async (request, response, context) => {
+    const actor = requirePermission(context, 'post:create')
+    const result = await repositories.posts.publish(context.params.id, parsePublishPostRequest((await readJsonBody(request)) ?? {}), actor)
+    if (!result) throw notFound(`/api/posts/${context.params.id}`)
+    if (result.conflict) throw new HttpError(409, 'STATE_CONFLICT', 'Post was modified concurrently')
+    if (result.invalidStatus) throw new HttpError(409, 'POST_NOT_DRAFT', 'Only draft posts can be published')
+    ok(response, result.post)
+  })
+
+  router.add('DELETE', '/api/posts/:id', async (request, response, context) => {
+    const actor = requirePermission(context, 'post:create')
+    const result = await repositories.posts.softDelete(context.params.id, parseDeletePostRequest((await readJsonBody(request)) ?? {}), actor)
+    if (!result) throw notFound(`/api/posts/${context.params.id}`)
+    if (result.conflict) throw new HttpError(409, 'STATE_CONFLICT', 'Post was modified concurrently')
+    if (result.deleted) throw new HttpError(409, 'POST_ALREADY_DELETED', 'Post is already deleted')
+    ok(response, result.post)
   })
 
   router.add('GET', '/api/posts/:id', async (_request, response, context) => {

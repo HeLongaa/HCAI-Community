@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "task": "COMM-01",
+  "scope": "personal_accounts_only",
+  "migration": "0076_community_post_lifecycle",
+  "statuses": ["draft", "published", "deleted"],
+  "operationPolicy": "soft_delete",
+  "optimisticVersioning": true,
+  "publicVisibility": "published_only",
+  "ownerCapabilities": ["create", "list_private", "edit", "publish", "delete"],
+  "routes": [
+    { "method": "GET", "path": "/api/posts" },
+    { "method": "POST", "path": "/api/posts" },
+    { "method": "GET", "path": "/api/posts/mine" },
+    { "method": "GET", "path": "/api/posts/:id" },
+    { "method": "PATCH", "path": "/api/posts/:id" },
+    { "method": "POST", "path": "/api/posts/:id/publish" },
+    { "method": "DELETE", "path": "/api/posts/:id" }
+  ],
+  "interactionBoundary": {
+    "commentsPublishedOnly": true,
+    "likesPublishedOnly": true,
+    "taskConversionPublishedOnly": true
+  },
+  "verification": {
+    "focused": "npm run test:community-content-lifecycle",
+    "integration": "npm run test:community-content-lifecycle:integration",
+    "e2e": "e2e/community-content-lifecycle.spec.ts",
+    "full": "CI=1 npm run check:pr"
+  }
+}

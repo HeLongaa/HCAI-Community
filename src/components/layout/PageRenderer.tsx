@@ -120,6 +120,13 @@ export function PageRenderer({
     likePost,
     replyToPost,
     libraryItems,
+    myPosts,
+    postMutationBusy,
+    refreshMyPosts,
+    createPost,
+    updatePost,
+    publishPost,
+    deletePost,
   } = community
   const { ledgerItems, pointsSummary, pointsStatus } = rewards
   const { billing, setBilling } = billingState
@@ -259,6 +266,14 @@ export function PageRenderer({
           setCommunityView={setCommunityView}
           status={communityStatus}
           simulateAction={simulateAction}
+          accountHandle={account.accountHandle}
+          myPosts={myPosts}
+          postMutationBusy={postMutationBusy}
+          refreshMyPosts={refreshMyPosts}
+          createPost={createPost}
+          updatePost={updatePost}
+          publishPost={publishPost}
+          deletePost={deletePost}
         />
       )}
       {page === 'inspiration' && <InspirationPage t={t} items={libraryItems} setPage={navigateToPage} simulateAction={simulateAction} />}

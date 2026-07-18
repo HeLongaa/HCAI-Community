@@ -2239,6 +2239,13 @@ export type ApiPost = {
   solved: boolean
   excerpt: string
   body?: string | null
+  status: 'draft' | 'published' | 'deleted'
+  version: number
+  createdAt: string | null
+  updatedAt: string | null
+  publishedAt: string | null
+  deletedAt: string | null
+  deletionReasonCode: string | null
 }
 
 export type PostListQuery = {
@@ -2255,6 +2262,11 @@ export type CreatePostRequest = {
   category: string
   tag?: string
   excerpt?: string
+  status?: 'draft' | 'published'
+}
+
+export type UpdatePostRequest = Partial<Pick<CreatePostRequest, 'title' | 'body' | 'category' | 'tag' | 'excerpt'>> & {
+  expectedVersion: number
 }
 
 export type CreateCommentRequest = {

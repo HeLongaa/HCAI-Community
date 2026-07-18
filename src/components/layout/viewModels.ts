@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react'
 import type {
   AsyncResourceState,
+  CommunityPostDraft,
   CommunityView,
   InspirationItem,
   LedgerEntry,
@@ -199,6 +200,13 @@ export type CommunityWorkflowViewModel = {
   likePost: (post: Post) => Promise<void>
   replyToPost: (post: Post, replyText?: string) => Promise<void>
   libraryItems: InspirationItem[]
+  myPosts: Post[]
+  postMutationBusy: boolean
+  refreshMyPosts: () => Promise<void>
+  createPost: (draft: CommunityPostDraft, status: 'draft' | 'published') => Promise<Post>
+  updatePost: (post: Post, draft: CommunityPostDraft) => Promise<Post>
+  publishPost: (post: Post) => Promise<Post>
+  deletePost: (post: Post) => Promise<Post>
 }
 
 export type RewardsViewModel = {

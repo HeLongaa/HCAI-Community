@@ -550,6 +550,13 @@ export const getPostDto = (post) => {
     solved: post.solved,
     excerpt: metadata?.excerpt ?? '',
     body: post.body,
+    status: post.status ?? 'published',
+    version: post.version ?? 1,
+    createdAt: post.createdAt?.toISOString?.() ?? null,
+    updatedAt: post.updatedAt?.toISOString?.() ?? post.createdAt?.toISOString?.() ?? null,
+    publishedAt: post.publishedAt?.toISOString?.() ?? null,
+    deletedAt: post.deletedAt?.toISOString?.() ?? null,
+    deletionReasonCode: post.deletionReasonCode ?? null,
   }
 }
 
@@ -557,6 +564,8 @@ export const getPostDetailDto = (post, viewer = null) => {
   const base = getPostDto(post)
   const metadata = asObject(post.metadata) ?? {}
   const canModerate = Array.isArray(viewer?.permissions) && viewer.permissions.includes('post:moderate')
+  const ownerHandle = post.author?.profile?.handle ?? null
+  const isOwner = Boolean(viewer?.handle && ownerHandle === viewer.handle)
   return {
     ...base,
     comments: (post.comments ?? []).map(getCommentDto),
@@ -566,6 +575,9 @@ export const getPostDetailDto = (post, viewer = null) => {
       canLike: Boolean(viewer),
       canConvertToTask: Boolean(viewer),
       canModerate,
+      canEdit: isOwner && post.status !== 'deleted',
+      canDelete: isOwner && post.status !== 'deleted',
+      canPublish: isOwner && post.status === 'draft',
     },
   }
 }

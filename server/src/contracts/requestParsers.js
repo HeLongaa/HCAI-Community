@@ -257,13 +257,47 @@ export const parseReviewTaskRequest = (body) => {
   }
 }
 
+const postText = (body, field, maximum, required = true) => {
+  const value = required ? requireText(body, field) : optionalText(body, field, '')
+  if (value.length > maximum) throw validationFailed(`${field} cannot exceed ${maximum} characters`)
+  return value
+}
+
+const parsePostExpectedVersion = (body) => {
+  const expectedVersion = Number(body?.expectedVersion)
+  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
+    throw validationFailed('expectedVersion must be a positive integer')
+  }
+  return expectedVersion
+}
+
 export const parseCreatePostRequest = (body) => ({
-  title: requireText(body, 'title'),
-  body: requireText(body, 'body'),
-  category: requireText(body, 'category'),
-  tag: optionalText(body, 'tag', ''),
-  excerpt: optionalText(body, 'excerpt'),
+  title: postText(body, 'title', 160),
+  body: postText(body, 'body', 20_000),
+  category: postText(body, 'category', 80),
+  tag: postText(body, 'tag', 80, false),
+  excerpt: postText(body, 'excerpt', 500, false),
+  status: body?.status == null ? 'published' : requireOneOf(body, 'status', ['draft', 'published']),
 })
+
+export const parseUpdatePostRequest = (body) => {
+  const payload = { expectedVersion: parsePostExpectedVersion(body) }
+  if (body?.title !== undefined) payload.title = postText(body, 'title', 160)
+  if (body?.body !== undefined) payload.body = postText(body, 'body', 20_000)
+  if (body?.category !== undefined) payload.category = postText(body, 'category', 80)
+  if (body?.tag !== undefined) payload.tag = postText(body, 'tag', 80, false)
+  if (body?.excerpt !== undefined) payload.excerpt = postText(body, 'excerpt', 500, false)
+  if (Object.keys(payload).length === 1) throw validationFailed('at least one editable post field is required')
+  return payload
+}
+
+export const parsePublishPostRequest = (body) => ({ expectedVersion: parsePostExpectedVersion(body) })
+
+export const parseDeletePostRequest = (body) => {
+  const reasonCode = optionalText(body, 'reasonCode', 'owner_requested')
+  if (!/^[a-z0-9][a-z0-9._:-]{0,79}$/.test(reasonCode)) throw validationFailed('reasonCode must be a stable lowercase identifier')
+  return { expectedVersion: parsePostExpectedVersion(body), reasonCode }
+}
 
 export const parseCreateCommentRequest = (body) => ({
   body: requireText(body, 'body'),
@@ -1332,6 +1366,17 @@ export const parsePostListQuery = (query) => ({
   category: optionalText(query, 'category', null),
   tag: optionalText(query, 'tag', null),
 })
+
+export const parseMyPostListQuery = (query) => {
+  const status = optionalText(query, 'status', 'all')
+  if (!['all', 'draft', 'published', 'deleted'].includes(status)) {
+    throw validationFailed('status must be one of: all, draft, published, deleted')
+  }
+  return {
+    ...parsePaginationQuery(query, { defaultLimit: 20, maxLimit: 100 }),
+    status,
+  }
+}
 
 export const parsePointsLedgerQuery = (query) => {
   const status = optionalText(query, 'status', null)

@@ -895,11 +895,19 @@ const getPostComments = (postId) => ensurePostComments(Number(postId))
 
 const getPostLikes = (postId) => ensurePostLikes(Number(postId))
 
-const buildViewerPermissions = (viewer) => ({
+const postStatus = (post) => post?.status ?? 'published'
+const postOwnerHandle = (post) => getHandle(post?.author)
+const canViewPost = (post, viewer) => postStatus(post) === 'published'
+  || Boolean(viewer && (postOwnerHandle(post) === viewer.handle || hasPermission(viewer, 'post:moderate')))
+
+const buildViewerPermissions = (viewer, post = null) => ({
   canComment: Boolean(viewer),
   canLike: Boolean(viewer),
   canConvertToTask: Boolean(viewer),
   canModerate: hasPermission(viewer, 'post:moderate'),
+  canEdit: Boolean(viewer && post && postOwnerHandle(post) === viewer.handle && postStatus(post) !== 'deleted'),
+  canDelete: Boolean(viewer && post && postOwnerHandle(post) === viewer.handle && postStatus(post) !== 'deleted'),
+  canPublish: Boolean(viewer && post && postOwnerHandle(post) === viewer.handle && postStatus(post) === 'draft'),
 })
 
 const libraryItemsById = new Map()
@@ -3376,6 +3384,7 @@ export const createSeedRepository = () => {
   posts: {
     list: (options = {}) => {
       const filtered = seedStore.posts.filter((post) => {
+        if (postStatus(post) !== 'published') return false
         if (options.category && post.category !== options.category) return false
         if (options.tag && post.tag !== options.tag) return false
         return true
@@ -3393,15 +3402,25 @@ export const createSeedRepository = () => {
     },
     findById: (id, viewer = null) => {
       const post = getPostById(id)
-      if (!post) {
+      if (!post || !canViewPost(post, viewer)) {
         return null
       }
       return serializePostDetail({
         ...post,
         comments: getPostComments(id),
         relatedTasks: [],
-        viewerPermissions: buildViewerPermissions(viewer),
+        viewerPermissions: buildViewerPermissions(viewer, post),
       })
+    },
+    listMine: (options = {}, actor) => {
+      const filtered = seedStore.posts.filter((post) => (
+        postOwnerHandle(post) === actor.handle
+        && (options.status === 'all' || postStatus(post) === options.status)
+      ))
+      const sorted = [...filtered]
+        .sort((left, right) => String(right.updatedAt ?? right.createdAt ?? right.id).localeCompare(String(left.updatedAt ?? left.createdAt ?? left.id)))
+        .map(serializePost)
+      return paginateByCursor(sorted, options)
     },
     create: (payload, actor) => {
       const author = getAccountByHandle(actor.handle)
@@ -3409,6 +3428,7 @@ export const createSeedRepository = () => {
         return null
       }
       const id = String(seedStore.posts.length + 1)
+      const now = new Date().toISOString()
       const post = {
         id,
         title: payload.title,
@@ -3427,15 +3447,72 @@ export const createSeedRepository = () => {
         solved: false,
         excerpt: payload.excerpt ?? payload.body ?? '',
         body: payload.body,
+        status: payload.status,
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+        publishedAt: payload.status === 'published' ? now : null,
+        deletedAt: null,
+        deletionReasonCode: null,
       }
       seedStore.posts.push(post)
       seedStore.postById.set(Number(id), post)
-      recordAudit(actor, 'post.created', 'post', post.id)
+      recordAudit(actor, payload.status === 'draft' ? 'post.draft_created' : 'post.published', 'post', post.id, { status: payload.status, version: 1 })
       return serializePost(post)
+    },
+    update: (id, payload, actor) => {
+      const post = getPostById(id)
+      if (!post || postOwnerHandle(post) !== actor.handle) return null
+      if (postStatus(post) === 'deleted') return { deleted: true }
+      if ((Number(post.version) || 1) !== payload.expectedVersion) return { conflict: true }
+      const next = {
+        ...post,
+        ...Object.fromEntries(Object.entries(payload).filter(([key]) => key !== 'expectedVersion')),
+        version: payload.expectedVersion + 1,
+        updatedAt: new Date().toISOString(),
+      }
+      const index = seedStore.posts.findIndex((entry) => Number(entry.id) === Number(id))
+      if (index >= 0) seedStore.posts[index] = next
+      seedStore.postById.set(Number(id), next)
+      recordAudit(actor, 'post.updated', 'post', post.id, { status: postStatus(next), version: next.version })
+      return { post: serializePost(next) }
+    },
+    publish: (id, payload, actor) => {
+      const post = getPostById(id)
+      if (!post || postOwnerHandle(post) !== actor.handle) return null
+      if ((Number(post.version) || 1) !== payload.expectedVersion) return { conflict: true }
+      if (postStatus(post) !== 'draft') return { invalidStatus: true }
+      const now = new Date().toISOString()
+      const next = { ...post, status: 'published', version: payload.expectedVersion + 1, publishedAt: now, updatedAt: now }
+      const index = seedStore.posts.findIndex((entry) => Number(entry.id) === Number(id))
+      if (index >= 0) seedStore.posts[index] = next
+      seedStore.postById.set(Number(id), next)
+      recordAudit(actor, 'post.published', 'post', post.id, { version: next.version })
+      return { post: serializePost(next) }
+    },
+    softDelete: (id, payload, actor) => {
+      const post = getPostById(id)
+      if (!post || postOwnerHandle(post) !== actor.handle) return null
+      if ((Number(post.version) || 1) !== payload.expectedVersion) return { conflict: true }
+      if (postStatus(post) === 'deleted') return { deleted: true }
+      const now = new Date().toISOString()
+      const next = {
+        ...post,
+        status: 'deleted',
+        version: payload.expectedVersion + 1,
+        deletedAt: now,
+        updatedAt: now,
+        deletionReasonCode: payload.reasonCode,
+      }
+      const index = seedStore.posts.findIndex((entry) => Number(entry.id) === Number(id))
+      if (index >= 0) seedStore.posts[index] = next
+      seedStore.postById.set(Number(id), next)
+      recordAudit(actor, 'post.deleted', 'post', post.id, { version: next.version, reasonCode: payload.reasonCode })
+      return { post: serializePost(next) }
     },
     comment: (id, payload, actor) => {
       const post = getPostById(id)
-      if (!post) {
+      if (!post || postStatus(post) !== 'published') {
         return null
       }
       const author = getAccountByHandle(actor.handle)
@@ -3471,7 +3548,7 @@ export const createSeedRepository = () => {
     },
     like: (id, actor) => {
       const post = getPostById(id)
-      if (!post) {
+      if (!post || postStatus(post) !== 'published') {
         return null
       }
       const likes = getPostLikes(id)
@@ -3491,7 +3568,7 @@ export const createSeedRepository = () => {
     },
     unlike: (id, actor) => {
       const post = getPostById(id)
-      if (!post) {
+      if (!post || postStatus(post) !== 'published') {
         return null
       }
       const likes = getPostLikes(id)
@@ -3511,7 +3588,7 @@ export const createSeedRepository = () => {
     },
     convertToTask: (id, payload, actor) => {
       const post = getPostById(id)
-      if (!post) {
+      if (!post || postStatus(post) !== 'published') {
         return null
       }
       const ownerHandle = getHandle(post.author)

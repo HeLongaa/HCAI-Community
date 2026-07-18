@@ -3889,6 +3889,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         : null
       const rows = await client.post.findMany({
         where: {
+          status: 'published',
           ...(options.category ? { category: options.category } : {}),
           ...(options.tag ? { tag: options.tag } : {}),
         },
@@ -3917,7 +3918,28 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           },
         },
       })
-      return row ? getPostDetailDto(row, viewer) : null
+      const ownerHandle = row?.author?.profile?.handle ?? null
+      const canModerate = hasPermission(viewer, 'post:moderate')
+      if (!row || (row.status !== 'published' && ownerHandle !== viewer?.handle && !canModerate)) return null
+      return getPostDetailDto(row, viewer)
+    },
+    listMine: async (options = {}, actor) => {
+      const user = await client.user.findFirst({ where: { profile: { handle: actor.handle } }, select: { id: true } })
+      if (!user) return { items: [], nextCursor: null, limit: options.limit ?? 20 }
+      const limit = options.limit ?? 20
+      const rows = await client.post.findMany({
+        where: { authorId: user.id, ...(options.status !== 'all' ? { status: options.status } : {}) },
+        include: { author: { include: { profile: true } } },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        take: limit + 1,
+        ...(options.cursor ? { cursor: { id: String(options.cursor) }, skip: 1 } : {}),
+      })
+      const pageRows = rows.slice(0, limit)
+      return {
+        items: pageRows.map(getPostDto),
+        nextCursor: rows.length > limit && pageRows.length ? pageRows[pageRows.length - 1].id : null,
+        limit,
+      }
     },
     create: async (payload, actor) => {
       const author = await client.user.findFirst({
@@ -3934,6 +3956,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           body: payload.body,
           category: payload.category,
           tag: payload.tag ?? '',
+          status: payload.status,
+          publishedAt: payload.status === 'published' ? new Date() : null,
           solved: false,
           viewsCount: 0,
           likesCount: 0,
@@ -3962,15 +3986,70 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       })
       await recordAudit({
         actor,
-        action: 'post.created',
+        action: payload.status === 'draft' ? 'post.draft_created' : 'post.published',
         resourceType: 'post',
         resourceId: row.id,
+        metadata: { status: payload.status, version: row.version },
       })
       return getPostDto(row)
     },
+    update: async (id, payload, actor) => {
+      const current = await client.post.findUnique({ where: { id: String(id) }, include: { author: { include: { profile: true } } } })
+      if (!current || current.author?.profile?.handle !== actor.handle) return null
+      if (current.status === 'deleted') return { deleted: true }
+      if (current.version !== payload.expectedVersion) return { conflict: true }
+      const metadata = asObject(current.metadata) ?? {}
+      const data = Object.fromEntries(Object.entries(payload).filter(([key]) => key !== 'expectedVersion' && ['title', 'body', 'category', 'tag'].includes(key)))
+      if (payload.excerpt !== undefined || payload.tag !== undefined || payload.title !== undefined || payload.body !== undefined || payload.category !== undefined) {
+        data.metadata = {
+          ...metadata,
+          ...(payload.excerpt !== undefined ? { excerpt: payload.excerpt } : {}),
+          ...(payload.tag !== undefined ? { tag: payload.tag } : {}),
+          ...(payload.title !== undefined ? { title: payload.title } : {}),
+          ...(payload.body !== undefined ? { body: payload.body } : {}),
+          ...(payload.category !== undefined ? { category: payload.category } : {}),
+        }
+      }
+      const changed = await client.post.updateMany({
+        where: { id: current.id, authorId: current.authorId, version: payload.expectedVersion, status: { not: 'deleted' } },
+        data: { ...data, version: { increment: 1 } },
+      })
+      if (!changed.count) return { conflict: true }
+      const row = await client.post.findUnique({ where: { id: current.id }, include: { author: { include: { profile: true } } } })
+      await recordAudit({ actor, action: 'post.updated', resourceType: 'post', resourceId: current.id, metadata: { status: row.status, version: row.version } })
+      return { post: getPostDto(row) }
+    },
+    publish: async (id, payload, actor) => {
+      const current = await client.post.findUnique({ where: { id: String(id) }, include: { author: { include: { profile: true } } } })
+      if (!current || current.author?.profile?.handle !== actor.handle) return null
+      if (current.version !== payload.expectedVersion) return { conflict: true }
+      if (current.status !== 'draft') return { invalidStatus: true }
+      const changed = await client.post.updateMany({
+        where: { id: current.id, authorId: current.authorId, version: payload.expectedVersion, status: 'draft' },
+        data: { status: 'published', publishedAt: new Date(), version: { increment: 1 } },
+      })
+      if (!changed.count) return { conflict: true }
+      const row = await client.post.findUnique({ where: { id: current.id }, include: { author: { include: { profile: true } } } })
+      await recordAudit({ actor, action: 'post.published', resourceType: 'post', resourceId: current.id, metadata: { version: row.version } })
+      return { post: getPostDto(row) }
+    },
+    softDelete: async (id, payload, actor) => {
+      const current = await client.post.findUnique({ where: { id: String(id) }, include: { author: { include: { profile: true } } } })
+      if (!current || current.author?.profile?.handle !== actor.handle) return null
+      if (current.version !== payload.expectedVersion) return { conflict: true }
+      if (current.status === 'deleted') return { deleted: true }
+      const changed = await client.post.updateMany({
+        where: { id: current.id, authorId: current.authorId, version: payload.expectedVersion, status: { not: 'deleted' } },
+        data: { status: 'deleted', deletedAt: new Date(), deletionReasonCode: payload.reasonCode, version: { increment: 1 } },
+      })
+      if (!changed.count) return { conflict: true }
+      const row = await client.post.findUnique({ where: { id: current.id }, include: { author: { include: { profile: true } } } })
+      await recordAudit({ actor, action: 'post.deleted', resourceType: 'post', resourceId: current.id, metadata: { version: row.version, reasonCode: payload.reasonCode } })
+      return { post: getPostDto(row) }
+    },
     comment: async (id, payload, actor) => {
       const post = await client.post.findUnique({
-        where: { id: String(id) },
+        where: { id: String(id), status: 'published' },
         include: { author: { include: { profile: true } } },
       })
       if (!post) {
@@ -4018,7 +4097,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
     like: async (id, actor) => {
       const post = await client.post.findUnique({
-        where: { id: String(id) },
+        where: { id: String(id), status: 'published' },
       })
       if (!post) {
         return null
@@ -4059,7 +4138,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
     unlike: async (id, actor) => {
       const post = await client.post.findUnique({
-        where: { id: String(id) },
+        where: { id: String(id), status: 'published' },
       })
       if (!post) {
         return null
@@ -4095,7 +4174,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
     convertToTask: async (id, payload, actor) => {
       const post = await client.post.findUnique({
-        where: { id: String(id) },
+        where: { id: String(id), status: 'published' },
         include: { author: { include: { profile: true } } },
       })
       if (!post) {

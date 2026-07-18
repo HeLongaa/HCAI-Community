@@ -167,6 +167,71 @@ export const openApiDocument = {
         },
       },
     },
+    '/posts': {
+      get: {
+        summary: 'List published community posts',
+        parameters: [
+          { name: 'category', in: 'query', schema: { type: 'string' } },
+          { name: 'tag', in: 'query', schema: { type: 'string' } },
+          { name: 'sort', in: 'query', schema: { type: 'string', enum: ['new', 'hot', 'unanswered', 'solved'] } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+        ],
+        responses: { '200': { description: 'Published posts only; drafts and deleted posts are omitted' } },
+      },
+      post: {
+        summary: 'Create a draft or published community post',
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', required: ['title', 'body', 'category'], additionalProperties: false,
+          properties: {
+            title: { type: 'string', minLength: 1, maxLength: 160 },
+            body: { type: 'string', minLength: 1, maxLength: 20000 },
+            category: { type: 'string', minLength: 1, maxLength: 80 },
+            tag: { type: 'string', maxLength: 80 },
+            excerpt: { type: 'string', maxLength: 500 },
+            status: { type: 'string', enum: ['draft', 'published'], default: 'published' },
+          },
+        } } } },
+        responses: { '201': { description: 'Owner-scoped post created' }, '401': { description: 'Authentication required' }, '403': { description: 'Missing post:create' } },
+      },
+    },
+    '/posts/mine': {
+      get: {
+        summary: 'List posts owned by the current user, including private lifecycle states',
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['all', 'draft', 'published', 'deleted'], default: 'all' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+        ],
+        responses: { '200': { description: 'Owner post page' }, '401': { description: 'Authentication required' } },
+      },
+    },
+    '/posts/{id}': {
+      get: {
+        summary: 'Read a published post or an owner-visible private post',
+        responses: { '200': { description: 'Post detail and viewer capabilities' }, '404': { description: 'Post is absent or private to another user' } },
+      },
+      patch: {
+        summary: 'Edit an owned non-deleted post',
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', required: ['expectedVersion'],
+          properties: { expectedVersion: { type: 'integer', minimum: 1 }, title: { type: 'string', maxLength: 160 }, body: { type: 'string', maxLength: 20000 }, category: { type: 'string', maxLength: 80 }, tag: { type: 'string', maxLength: 80 }, excerpt: { type: 'string', maxLength: 500 } },
+        } } } },
+        responses: { '200': { description: 'Updated post' }, '404': { description: 'Post not owned by actor' }, '409': { description: 'Stale version or deleted post' } },
+      },
+      delete: {
+        summary: 'Soft-delete an owned post',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['expectedVersion'], properties: { expectedVersion: { type: 'integer', minimum: 1 }, reasonCode: { type: 'string', pattern: '^[a-z0-9][a-z0-9._:-]{0,79}$' } } } } } },
+        responses: { '200': { description: 'Soft-deleted post evidence' }, '404': { description: 'Post not owned by actor' }, '409': { description: 'Stale version or already deleted' } },
+      },
+    },
+    '/posts/{id}/publish': {
+      post: {
+        summary: 'Publish an owned draft post',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['expectedVersion'], properties: { expectedVersion: { type: 'integer', minimum: 1 } } } } } },
+        responses: { '200': { description: 'Published post' }, '404': { description: 'Post not owned by actor' }, '409': { description: 'Stale version or post is not a draft' } },
+      },
+    },
     '/admin/auth/oauth/providers': {
       get: {
         summary: 'List secret-free OAuth Provider controls and environment readiness',

@@ -333,7 +333,7 @@
       "locations": ["postgres"],
       "dataSubjects": ["author", "participant"],
       "purposes": ["community_participation", "safety_moderation"],
-      "exampleFields": ["post title/body", "comment", "like", "category", "tag", "publication metadata"],
+      "exampleFields": ["post title/body", "comment", "like", "category", "tag", "draft/publication/deletion status", "optimistic version", "publication timestamp", "soft deletion timestamp", "bounded deletion reason code"],
       "accessRoles": ["public_reader", "owner", "authorized_service", "community_moderator"],
       "retentionPolicyId": "community_delete_plus_30d",
       "exportPolicy": "include_user_authored_content_and_interactions",
