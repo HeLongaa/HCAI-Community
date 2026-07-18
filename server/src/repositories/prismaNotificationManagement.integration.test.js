@@ -5,8 +5,12 @@ import test from 'node:test'
 const databaseUrl = process.env.FOUNDATION_DATABASE_URL
 
 test('Prisma notification templates and preferences preserve CAS, immutable versions, rollback, and delivery suppression', { skip: !databaseUrl }, async () => {
+  const previousEmailEnabled = process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED
+  const previousEmailUrl = process.env.NOTIFICATION_EMAIL_WEBHOOK_URL
   process.env.DATABASE_URL = databaseUrl
   process.env.DEMO_DATABASE_AUTOSEED = 'false'
+  process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED = 'true'
+  process.env.NOTIFICATION_EMAIL_WEBHOOK_URL = 'http://127.0.0.1:9876/email'
   const { createPrismaRepository } = await import('./prismaRepository.js')
   const repository = await createPrismaRepository()
   assert.ok(repository)
@@ -60,6 +64,38 @@ test('Prisma notification templates and preferences preserve CAS, immutable vers
     assert.equal(delivered[0].templateVersion, 1)
     assert.equal(delivered[0].title, 'Ready: Integration task')
 
+    const channels = await repository.notificationDeliveries.listForNotification(delivered[0].id, actor)
+    assert.deepEqual(channels.map((item) => item.channel), ['email', 'in_app'])
+    assert.equal(channels.find((item) => item.channel === 'email').status, 'queued')
+    const competingClaims = await Promise.all([
+      repository.notificationDeliveries.claim({ workerId: 'notify-worker-a', limit: 1 }),
+      repository.notificationDeliveries.claim({ workerId: 'notify-worker-b', limit: 1 }),
+    ])
+    const claims = competingClaims.flat().filter((item) => item.notificationId === delivered[0].id)
+    assert.equal(claims.length, 1)
+    assert.equal(await repository.notificationDeliveries.complete(claims[0].id, 'foreign-lease', { outcome: 'sent' }), null)
+    const dead = await repository.notificationDeliveries.complete(claims[0].id, claims[0].leaseToken, { outcome: 'permanent_failure', errorCode: 'RECIPIENT_REJECTED', statusCode: 422 })
+    assert.equal(dead.status, 'dead_lettered')
+    const retryAttempts = await Promise.allSettled([
+      repository.notificationDeliveries.retry(dead.id, { expectedVersion: dead.version, reasonCode: 'integration_retry_a' }, actor),
+      repository.notificationDeliveries.retry(dead.id, { expectedVersion: dead.version, reasonCode: 'integration_retry_b' }, actor),
+    ])
+    assert.equal(retryAttempts.filter((result) => result.status === 'fulfilled').length, 1)
+    assert.equal(retryAttempts.filter((result) => result.status === 'rejected' && result.reason?.code === 'STATE_CONFLICT').length, 1)
+    const retried = retryAttempts.find((result) => result.status === 'fulfilled').value
+    await repository.notificationDeliveries.cancel(retried.id, { expectedVersion: retried.version, reasonCode: 'integration_cancel' }, actor)
+
+    const [leaseNotification] = await repository.notifications.createForHandles([actor.handle], { type: `${key}.lease`, title: 'Lease recovery', body: 'Lease recovery', resourceType: 'task', resourceId: `${suffix}-lease` })
+    const [firstLease] = await repository.notificationDeliveries.claim({ workerId: 'notify-lease-a', limit: 1, leaseSeconds: 1 })
+    assert.equal(firstLease.notificationId, leaseNotification.id)
+    await repository.client.notificationDelivery.update({ where: { id: firstLease.id }, data: { leaseExpiresAt: new Date(Date.now() - 1_000) } })
+    const [recoveredLease] = await repository.notificationDeliveries.claim({ workerId: 'notify-lease-b', limit: 1, leaseSeconds: 60 })
+    assert.equal(recoveredLease.id, firstLease.id)
+    const leaseDetail = await repository.notificationDeliveries.find(firstLease.id, { detail: true })
+    assert.equal(leaseDetail.attempts[0].status, 'timed_out')
+    assert.equal(leaseDetail.attempts[0].errorCode, 'LEASE_EXPIRED')
+    await repository.notificationDeliveries.complete(recoveredLease.id, recoveredLease.leaseToken, { outcome: 'permanent_failure', errorCode: 'INTEGRATION_CLOSE' })
+
     const audits = await repository.client.auditEvent.findMany({ where: { actorId: actor.id, resourceId: created.id } })
     assert.ok(audits.some((event) => event.action === 'notification.template.published'))
     assert.ok(audits.some((event) => event.action === 'notification.template.rolled_back'))
@@ -73,5 +109,9 @@ test('Prisma notification templates and preferences preserve CAS, immutable vers
       await transaction.user.deleteMany({ where: { id: actor.id } })
     })
     await repository.client.$disconnect()
+    if (previousEmailEnabled === undefined) delete process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED
+    else process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED = previousEmailEnabled
+    if (previousEmailUrl === undefined) delete process.env.NOTIFICATION_EMAIL_WEBHOOK_URL
+    else process.env.NOTIFICATION_EMAIL_WEBHOOK_URL = previousEmailUrl
   }
 })

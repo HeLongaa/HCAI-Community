@@ -539,7 +539,7 @@
     {
       "id": "notification_records",
       "classification": "confidential",
-      "prismaModels": ["Notification", "NotificationTemplate", "NotificationTemplateVersion", "NotificationPreference"],
+      "prismaModels": ["Notification", "NotificationTemplate", "NotificationTemplateVersion", "NotificationPreference", "NotificationDelivery", "NotificationDeliveryAttempt"],
       "locations": ["postgres"],
       "dataSubjects": ["user"],
       "purposes": ["account_service", "marketplace_delivery", "creative_generation", "support_operations"],
@@ -1071,7 +1071,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 118,
+    "modelCount": 120,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",

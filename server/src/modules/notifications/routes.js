@@ -10,12 +10,21 @@ import {
   parseNotificationTemplateTransition,
   parseUpdateNotificationTemplate,
 } from '../../notifications/notificationTemplates.js'
+import {
+  parseNotificationDeliveryListQuery,
+  parseNotificationDeliveryTransition,
+} from '../../notifications/notificationDeliveries.js'
 import { repositories } from '../../repositories/index.js'
 
 const csvCell = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`
 const templateCsv = (items) => [
   ['id', 'key', 'name', 'category', 'status', 'active_version', 'cas_version', 'deleted_at', 'updated_at'].map(csvCell).join(','),
   ...items.map((item) => [item.id, item.key, item.name, item.category, item.status, item.activeVersionNumber, item.version, item.deletedAt, item.updatedAt].map(csvCell).join(',')),
+].join('\n')
+
+const deliveryCsv = (items) => [
+  ['id', 'notification_id', 'notification_type', 'channel', 'status', 'attempt_count', 'max_attempts', 'last_error_code', 'recipient', 'available_at', 'sent_at', 'dead_lettered_at', 'created_at'].map(csvCell).join(','),
+  ...items.map((item) => [item.id, item.notificationId, item.notification?.type, item.channel, item.status, item.attemptCount, item.maxAttempts, item.lastErrorCode, item.notification?.recipient?.emailHint, item.availableAt, item.sentAt, item.deadLetteredAt, item.createdAt].map(csvCell).join(',')),
 ].join('\n')
 
 const requireTemplate = async (repository, id, path, includeVersions = true) => {
@@ -53,6 +62,13 @@ export const registerNotificationRoutes = (router, options = {}) => {
     ok(response, result)
   })
 
+  router.add('GET', '/api/notifications/:id/deliveries', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const result = await routeRepositories.notificationDeliveries.listForNotification(context.params.id, actor)
+    if (!result) throw notFound(`/api/notifications/${context.params.id}/deliveries`)
+    ok(response, result)
+  })
+
   router.add('GET', '/api/notifications/preferences', async (_request, response, context) => {
     const actor = requireUser(context)
     ok(response, await routeRepositories.notificationManagement.listPreferences(actor))
@@ -65,6 +81,46 @@ export const registerNotificationRoutes = (router, options = {}) => {
       ...body,
       notificationType: context.params.type,
     }), actor))
+  })
+
+  router.add('GET', '/api/admin/notifications/deliveries/metrics', async (_request, response, context) => {
+    requirePermission(context, 'admin:notifications:read')
+    ok(response, await routeRepositories.notificationDeliveries.metrics())
+  })
+
+  router.add('GET', '/api/admin/notifications/deliveries/export', async (_request, response, context) => {
+    requirePermission(context, 'admin:notifications:read')
+    const query = parseNotificationDeliveryListQuery({ ...context.query, limit: '100' })
+    const page = await routeRepositories.notificationDeliveries.list(query)
+    if (context.query.format === 'csv') return text(response, 200, deliveryCsv(page.items), 'text/csv; charset=utf-8')
+    ok(response, { exportedAt: new Date().toISOString(), filters: { status: query.status, channel: query.channel, notificationType: query.notificationType, search: query.search }, items: page.items })
+  })
+
+  router.add('GET', '/api/admin/notifications/deliveries', async (_request, response, context) => {
+    requirePermission(context, 'admin:notifications:read')
+    const page = await routeRepositories.notificationDeliveries.list(parseNotificationDeliveryListQuery(context.query))
+    ok(response, page.items, { pagination: { limit: page.limit, nextCursor: page.nextCursor } })
+  })
+
+  router.add('GET', '/api/admin/notifications/deliveries/:id', async (_request, response, context) => {
+    requirePermission(context, 'admin:notifications:read')
+    const delivery = await routeRepositories.notificationDeliveries.find(context.params.id, { detail: true })
+    if (!delivery) throw notFound(`/api/admin/notifications/deliveries/${context.params.id}`)
+    ok(response, delivery)
+  })
+
+  router.add('POST', '/api/admin/notifications/deliveries/:id/retry', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:notifications:manage')
+    const result = await routeRepositories.notificationDeliveries.retry(context.params.id, parseNotificationDeliveryTransition((await readJsonBody(request)) ?? {}), actor)
+    if (!result) throw notFound(`/api/admin/notifications/deliveries/${context.params.id}/retry`)
+    ok(response, result)
+  })
+
+  router.add('POST', '/api/admin/notifications/deliveries/:id/cancel', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:notifications:manage')
+    const result = await routeRepositories.notificationDeliveries.cancel(context.params.id, parseNotificationDeliveryTransition((await readJsonBody(request)) ?? {}), actor)
+    if (!result) throw notFound(`/api/admin/notifications/deliveries/${context.params.id}/cancel`)
+    ok(response, result)
   })
 
   router.add('GET', '/api/admin/notifications/templates/metrics', async (_request, response, context) => {

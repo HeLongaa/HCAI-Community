@@ -2399,6 +2399,68 @@ export type NotificationTemplateMetrics = {
   disabledPreferences: number
 }
 
+export type NotificationDeliveryStatus = 'queued' | 'processing' | 'retry_scheduled' | 'sent' | 'suppressed' | 'dead_lettered' | 'cancelled'
+
+export type NotificationDeliveryAttempt = {
+  id: string
+  attemptNumber: number
+  status: 'processing' | 'sent' | 'failed' | 'timed_out'
+  workerId: string
+  responseClass: string | null
+  statusCode: number | null
+  errorCode: string | null
+  startedAt: string
+  completedAt: string | null
+}
+
+export type NotificationDelivery = {
+  id: string
+  notificationId: string
+  channel: 'in_app' | 'email'
+  status: NotificationDeliveryStatus
+  attemptCount: number
+  maxAttempts: number
+  availableAt: string
+  lastErrorCode: string | null
+  version: number
+  terminal: boolean
+  sentAt: string | null
+  suppressedAt: string | null
+  deadLetteredAt: string | null
+  cancelledAt: string | null
+  createdAt: string
+  updatedAt: string
+  notification?: {
+    id: string
+    type: string
+    title: string
+    resourceType: string
+    resourceId: string | null
+    recipient?: { id: string; handle: string | null; emailHint: string | null }
+  }
+  attempts?: NotificationDeliveryAttempt[]
+}
+
+export type NotificationDeliveryMetrics = {
+  total: number
+  byStatus: Partial<Record<NotificationDeliveryStatus, number>>
+  byChannel: Partial<Record<NotificationDelivery['channel'], number>>
+  due: number
+  deadLettered: number
+  config: { emailAvailable: boolean; workerEnabled: boolean }
+}
+
+export type NotificationDeliveryListQuery = {
+  status?: NotificationDeliveryStatus | null
+  channel?: NotificationDelivery['channel'] | null
+  notificationType?: string | null
+  search?: string | null
+  sort?: 'createdAt' | 'availableAt' | 'updatedAt'
+  order?: 'asc' | 'desc'
+  cursor?: string | null
+  limit?: number
+}
+
 export type NotificationTemplateListQuery = {
   status?: NotificationTemplate['status'] | null
   category?: string | null

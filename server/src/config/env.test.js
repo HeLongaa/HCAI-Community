@@ -68,6 +68,12 @@ test('buildEnv allows development without managed token secrets', () => {
     taskExpiryWorkerEnabled: false,
     taskExpiryWorkerIntervalSeconds: 60,
     taskExpirySweepLimit: 50,
+    notificationEmailDeliveryEnabled: false,
+    notificationDeliveryWorkerEnabled: false,
+    notificationDeliveryWorkerIntervalSeconds: 10,
+    notificationDeliveryWorkerBatchSize: 25,
+    notificationDeliveryLeaseSeconds: 60,
+    hasNotificationEmailWebhookUrl: false,
     creativeProviderPollingEnabled: false,
     creativeProviderPollingWorkerEnabled: false,
     creativeProviderPollingMaxAgeSeconds: 3600,
@@ -180,6 +186,26 @@ test('buildEnv validates worker lease settings', () => {
     }),
     /WORKER_LEASE_RENEW_INTERVAL_SECONDS must be less than WORKER_LEASE_TTL_SECONDS/,
   )
+})
+
+test('buildEnv validates durable notification email delivery gates', () => {
+  const env = buildEnv({
+    NODE_ENV: 'test',
+    NOTIFICATION_EMAIL_DELIVERY_ENABLED: 'true',
+    NOTIFICATION_EMAIL_WEBHOOK_URL: 'https://mailer.example.com/notifications',
+    NOTIFICATION_DELIVERY_WORKER_ENABLED: 'true',
+    NOTIFICATION_DELIVERY_WORKER_INTERVAL_SECONDS: '12',
+    NOTIFICATION_DELIVERY_WORKER_BATCH_SIZE: '40',
+    NOTIFICATION_DELIVERY_LEASE_SECONDS: '75',
+  })
+  assert.equal(env.notificationEmailDeliveryEnabled, true)
+  assert.equal(env.hasNotificationEmailWebhookUrl, true)
+  assert.equal(env.notificationDeliveryWorkerEnabled, true)
+  assert.equal(env.notificationDeliveryWorkerIntervalSeconds, 12)
+  assert.equal(env.notificationDeliveryWorkerBatchSize, 40)
+  assert.equal(env.notificationDeliveryLeaseSeconds, 75)
+  assert.throws(() => buildEnv({ NOTIFICATION_EMAIL_DELIVERY_ENABLED: 'true' }), /requires NOTIFICATION_EMAIL_WEBHOOK_URL/)
+  assert.throws(() => buildEnv({ NOTIFICATION_DELIVERY_WORKER_ENABLED: 'true' }), /requires NOTIFICATION_EMAIL_DELIVERY_ENABLED/)
 })
 
 test('buildEnv validates and exposes Chat retention worker settings', () => {

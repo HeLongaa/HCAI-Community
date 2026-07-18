@@ -765,3 +765,60 @@ test('notification preferences use CAS and suppress matching in-app delivery', a
     await server.close()
   }
 })
+
+test('notification delivery operations expose owner status and recover dead-lettered email with CAS', async () => {
+  const previousEnabled = process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED
+  const previousUrl = process.env.NOTIFICATION_EMAIL_WEBHOOK_URL
+  process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED = 'true'
+  process.env.NOTIFICATION_EMAIL_WEBHOOK_URL = 'http://127.0.0.1:9876/email'
+  const server = await createTestServer()
+  const type = `task.delivery_${Date.now()}_${Math.random().toString(16).slice(2, 7)}`
+  try {
+    const [notification] = await repositories.notifications.createForHandles(['promptlin'], {
+      type, title: 'Delivery lifecycle', body: 'Delivery lifecycle body', resourceType: 'task', resourceId: 'delivery-test',
+    })
+    assert.ok(notification)
+
+    const owner = await requestJson(server.url, `/api/notifications/${notification.id}/deliveries`, { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(owner.status, 200)
+    assert.deepEqual(owner.payload.data.map((item) => item.channel).sort(), ['email', 'in_app'])
+    assert.equal(owner.payload.data.find((item) => item.channel === 'email').status, 'queued')
+
+    const foreign = await requestJson(server.url, `/api/notifications/${notification.id}/deliveries`, { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(foreign.status, 404)
+
+    const [claim] = await repositories.notificationDeliveries.claim({ workerId: 'delivery-route-test', limit: 1 })
+    assert.equal(claim.notificationId, notification.id)
+    const dead = await repositories.notificationDeliveries.complete(claim.id, claim.leaseToken, { outcome: 'permanent_failure', errorCode: 'RECIPIENT_REJECTED', statusCode: 422 })
+    assert.equal(dead.status, 'dead_lettered')
+
+    const listed = await requestJson(server.url, `/api/admin/notifications/deliveries?status=dead_lettered&notificationType=${encodeURIComponent(type)}`, { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(listed.status, 200)
+    assert.equal(listed.payload.data.length, 1)
+    assert.equal(listed.payload.data[0].notification.recipient.emailHint, 'p***@example.com')
+
+    const denied = await requestJson(server.url, `/api/admin/notifications/deliveries/${dead.id}/retry`, { body: { expectedVersion: dead.version, reasonCode: 'operator_retry' }, token: 'demo-access.legalpixel' })
+    assert.equal(denied.status, 403)
+    const retried = await requestJson(server.url, `/api/admin/notifications/deliveries/${dead.id}/retry`, { body: { expectedVersion: dead.version, reasonCode: 'operator_retry' }, token: 'demo-access.opsplus' })
+    assert.equal(retried.status, 200)
+    assert.equal(retried.payload.data.status, 'retry_scheduled')
+    const stale = await requestJson(server.url, `/api/admin/notifications/deliveries/${dead.id}/cancel`, { body: { expectedVersion: dead.version, reasonCode: 'operator_cancel' }, token: 'demo-access.opsplus' })
+    assert.equal(stale.status, 409)
+    const cancelled = await requestJson(server.url, `/api/admin/notifications/deliveries/${dead.id}/cancel`, { body: { expectedVersion: retried.payload.data.version, reasonCode: 'operator_cancel' }, token: 'demo-access.opsplus' })
+    assert.equal(cancelled.status, 200)
+    assert.equal(cancelled.payload.data.status, 'cancelled')
+
+    const metrics = await requestJson(server.url, '/api/admin/notifications/deliveries/metrics', { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(metrics.status, 200)
+    assert.ok(metrics.payload.data.total >= 2)
+    const exported = await requestJson(server.url, `/api/admin/notifications/deliveries/export?notificationType=${encodeURIComponent(type)}`, { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(exported.status, 200)
+    assert.equal(exported.payload.data.items.length, 2)
+  } finally {
+    if (previousEnabled === undefined) delete process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED
+    else process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED = previousEnabled
+    if (previousUrl === undefined) delete process.env.NOTIFICATION_EMAIL_WEBHOOK_URL
+    else process.env.NOTIFICATION_EMAIL_WEBHOOK_URL = previousUrl
+    await server.close()
+  }
+})

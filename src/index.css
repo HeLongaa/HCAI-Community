@@ -13241,6 +13241,149 @@ button.video-history-row.active {
   gap: 2px;
 }
 
+.notification-view-tabs {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  width: min(360px, 100%);
+  height: 38px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.notification-view-tabs button {
+  min-width: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.notification-view-tabs button.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.panel.notification-delivery-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: visible;
+}
+
+.notification-admin-filters.delivery-filters {
+  grid-template-columns: minmax(220px, 1fr) minmax(150px, 220px) minmax(140px, 190px);
+}
+
+.notification-delivery-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, .9fr) minmax(360px, 1.1fr);
+  gap: 14px;
+  min-width: 0;
+}
+
+.notification-delivery-list {
+  align-content: start;
+  max-height: 620px;
+  overflow: auto;
+}
+
+.notification-delivery-list .admin-row.compact {
+  grid-template-columns: minmax(0, 1fr) auto;
+  width: 100%;
+  text-align: left;
+}
+
+.notification-delivery-detail {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.delivery-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.delivery-detail-header > div,
+.delivery-reason {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.delivery-detail-header strong,
+.delivery-detail-header small {
+  overflow-wrap: anywhere;
+}
+
+.delivery-detail-header small,
+.delivery-reason span,
+.delivery-facts dt,
+.delivery-attempt-list small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.delivery-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.delivery-facts > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.delivery-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.delivery-attempt-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.delivery-attempt-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+
+.delivery-attempt-list span,
+.delivery-attempt-list small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 900px) {
   .notification-admin-layout,
   .notification-template-fields,
@@ -13255,5 +13398,37 @@ button.video-history-row.active {
 
   .notification-template-list {
     max-height: 280px;
+  }
+
+  .notification-admin-filters.delivery-filters,
+  .notification-delivery-layout,
+  .delivery-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .panel.notification-delivery-panel {
+    overflow: visible;
+  }
+
+  .notification-admin-filters.delivery-filters,
+  .notification-delivery-layout {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .notification-admin-filters.delivery-filters > *,
+  .notification-delivery-layout > *,
+  .notification-delivery-detail {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .notification-delivery-list {
+    max-height: 320px;
   }
 }

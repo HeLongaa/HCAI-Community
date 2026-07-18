@@ -34,6 +34,13 @@ test('Admin publishes a notification template and the user preference suppresses
   await panel.getByRole('button', { name: 'Send test' }).click()
   expect((await testResponse).status()).toBe(201)
 
+  await page.getByRole('tab', { name: 'Delivery queue' }).click()
+  const deliveryPanel = page.getByTestId('notification-delivery-panel')
+  await expect(deliveryPanel).toBeVisible()
+  await expect(deliveryPanel).toContainText('Email unavailable')
+  await expect(deliveryPanel).toContainText('Ready: Launch visual')
+  await page.getByRole('tab', { name: 'Templates' }).click()
+
   await page.locator('.notification-trigger').click()
   await expect(page.locator('.notification-popover')).toContainText('Ready: Launch visual')
   await page.getByRole('button', { name: 'Notification preferences' }).click()
@@ -74,4 +81,20 @@ test('notification template operations and preferences remain bounded on mobile'
   })
   expect(overflow).toEqual([])
   await panel.screenshot({ path: 'test-results/notification-admin-mobile.png' })
+
+  await page.getByRole('tab', { name: 'Delivery queue' }).click()
+  const deliveryPanel = page.getByTestId('notification-delivery-panel')
+  await expect(deliveryPanel).toBeVisible()
+  const deliveryOverflow = await deliveryPanel.evaluate((element) => {
+    const panelRect = element.getBoundingClientRect()
+    return [...element.querySelectorAll<HTMLElement>('*')]
+      .filter((node) => {
+        const rect = node.getBoundingClientRect()
+        return rect.width > 0 && rect.height > 0 && (rect.left < panelRect.left - 2 || rect.right > panelRect.right + 2)
+      })
+      .map((node) => `${node.tagName}:${Math.round(node.getBoundingClientRect().left)}/${Math.round(node.getBoundingClientRect().right)}`)
+      .slice(0, 10)
+  })
+  expect(deliveryOverflow).toEqual([])
+  await deliveryPanel.screenshot({ path: 'test-results/notification-delivery-mobile.png' })
 })

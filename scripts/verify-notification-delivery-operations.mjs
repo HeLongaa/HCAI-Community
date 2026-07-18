@@ -1,0 +1,58 @@
+import fs from 'node:fs'
+import path from 'node:path'
+
+const root = process.cwd()
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8')
+const json = (file) => JSON.parse(read(file))
+const contract = json('config/notification-delivery-operations-contract.json')
+const packageJson = json('package.json')
+const schema = read('server/prisma/schema.prisma')
+const migration = read(`server/prisma/migrations/${contract.migration}/migration.sql`)
+const routes = read('server/src/modules/notifications/routes.js')
+const domain = read('server/src/notifications/notificationDeliveries.js')
+const seed = read('server/src/notifications/seedNotificationDeliveryRepository.js')
+const prisma = read('server/src/notifications/prismaNotificationDeliveryRepository.js')
+const worker = read('server/src/notifications/notificationDeliveryWorker.js')
+const workerJobs = read('server/src/operations/workerJobs.js')
+const openapi = read('server/src/docs/openapi.js')
+const adminUi = read('src/features/admin/NotificationDeliveryAdminPanel.tsx')
+const services = read('src/services/adminService.ts')
+const policies = json('config/entity-operation-policies.json')
+const listContract = json('config/list-query-contract.json')
+const adminResources = json('config/admin-resource-framework-contract.json')
+const audit = json('config/admin-mutation-audit.json')
+
+const checks = []
+const add = (name, pass) => checks.push({ name, pass: Boolean(pass) })
+add('contract is NOTIFY-02 personal-account scope', contract.task === 'NOTIFY-02' && contract.scope === 'personal_accounts_only')
+for (const model of ['NotificationDelivery', 'NotificationDeliveryAttempt']) add(`${model} is modeled`, schema.includes(`model ${model}`))
+for (const table of ['notification_deliveries', 'notification_delivery_attempts']) add(`${table} is migrated`, migration.includes(`"${table}"`))
+add('migration enforces channel dedupe', migration.includes('notification_deliveries_notification_id_channel_key'))
+add('migration enforces bounded attempts and versions', migration.includes('notification_deliveries_bounds_check') && migration.includes('notification_delivery_attempts_bounds_check'))
+add('domain exposes closed channels and statuses', contract.channels.every((value) => domain.includes(`'${value}'`)) && contract.statuses.every((value) => domain.includes(`'${value}'`)))
+add('email adapter is signed and fail closed', domain.includes('x-notification-signature') && domain.includes('CHANNEL_UNAVAILABLE') && domain.includes('NOTIFICATION_EMAIL_DELIVERY_ENABLED requires'))
+add('seed and Prisma implement leases and CAS recovery', [seed, prisma].every((source) => source.includes('leaseToken') && source.includes('STATE_CONFLICT') && source.includes('dead_lettered')))
+add('attempt history is bounded and closes expired leases', !schema.includes('responseBody') && !schema.includes('responsePayload') && prisma.includes("errorCode: 'LEASE_EXPIRED'"))
+add('worker dispatches only claimed email deliveries', worker.includes("claim.channel === 'email'") && worker.includes('notificationDeliveries.complete'))
+add('production worker registration is explicit', workerJobs.includes("id: 'notification-delivery'") && workerJobs.includes('notificationDeliveryWorkerEnabled'))
+for (const route of [...contract.userRoutes, ...contract.adminRoutes]) {
+  add(`${route.method} ${route.path} is implemented`, routes.includes(`router.add('${route.method}', '${route.path}'`))
+  const documented = route.path.replace('/api', '').replace(/:([A-Za-z]+)/g, '{$1}')
+  add(`${route.method} ${route.path} is documented`, openapi.includes(`'${documented}'`))
+}
+add('Admin UI covers filters metrics detail retry cancel and export', ['notificationDeliveryMetrics', 'retryNotificationDelivery', 'cancelNotificationDelivery', 'exportNotificationDeliveries', 'Delivery queue'].every((marker) => adminUi.includes(marker) || services.includes(marker)))
+add('delivery list contract is registered', listContract.resources.some((resource) => resource.id === 'notificationDeliveries' && resource.export === true))
+add('delivery Admin resource is registered', adminResources.resources.some((resource) => resource.id === 'notificationDeliveries'))
+for (const model of ['NotificationDelivery', 'NotificationDeliveryAttempt']) add(`${model} operation policy is registered`, policies.entities.some((entry) => entry.model === model))
+for (const pathName of ['/api/admin/notifications/deliveries/:id/retry', '/api/admin/notifications/deliveries/:id/cancel']) add(`${pathName} mutation is audited`, audit.routes.some((entry) => entry.path === pathName && entry.mode === 'domain_audited'))
+add('runbook exists', fs.existsSync(path.join(root, 'docs/NOTIFICATION_DELIVERY_OPERATIONS.md')))
+add('focused package gate exists', packageJson.scripts['test:notification-delivery-operations']?.includes('verify-notification-delivery-operations.mjs'))
+add('integration package gate exists', packageJson.scripts['test:notification-delivery-operations:integration']?.includes('prismaNotificationManagement.integration.test.js'))
+add('quick gate includes NOTIFY-02', packageJson.scripts['precheck:quick']?.includes('npm run test:notification-delivery-operations') || packageJson.scripts['check:quick']?.includes('npm run test:notification-delivery-operations'))
+
+for (const check of checks) console.log(`${check.pass ? 'PASS' : 'FAIL'} ${check.name}`)
+const failures = checks.filter((check) => !check.pass)
+if (failures.length) {
+  console.error(`Notification delivery operations verification failed: ${failures.length} check(s)`)
+  process.exitCode = 1
+} else console.log(`Notification delivery operations verified: ${checks.length} checks`)

@@ -3,6 +3,7 @@ import { Archive, Download, Eye, Plus, RefreshCw, RotateCcw, Save, Send, Undo2 }
 import { adminService } from '../../services/adminService'
 import type { NotificationTemplate, NotificationTemplateDraft, NotificationTemplateMetrics } from '../../services/contracts'
 import type { Permission } from '../../domain/types'
+import { NotificationDeliveryAdminPanel } from './NotificationDeliveryAdminPanel'
 
 const emptyDraft: NotificationTemplateDraft & { key: string } = {
   key: '', name: '', description: '', category: 'general', locale: 'en',
@@ -28,6 +29,7 @@ export function NotificationAdminPanel({ hasPermission, isZh, notify }: {
   const [reasonCode, setReasonCode] = useState('operator_requested')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [view, setView] = useState<'templates' | 'deliveries'>('templates')
 
   const canRead = hasPermission('admin:notifications:read')
   const canManage = hasPermission('admin:notifications:manage')
@@ -128,8 +130,12 @@ export function NotificationAdminPanel({ hasPermission, isZh, notify }: {
 
   if (!canRead) return <section className="panel"><div className="empty-state"><strong>{text('Notification operations unavailable', '通知运营不可用')}</strong></div></section>
 
+  const viewTabs = <div className="notification-view-tabs" role="tablist" aria-label={text('Notification operations view', '通知运营视图')}><button type="button" role="tab" aria-selected={view === 'templates'} className={view === 'templates' ? 'active' : ''} onClick={() => setView('templates')}>{text('Templates', '模板')}</button><button type="button" role="tab" aria-selected={view === 'deliveries'} className={view === 'deliveries' ? 'active' : ''} onClick={() => setView('deliveries')}>{text('Delivery queue', '投递队列')}</button></div>
+
+  if (view === 'deliveries') return <>{viewTabs}<NotificationDeliveryAdminPanel canManage={canManage} isZh={isZh} notify={notify} /></>
+
   return (
-    <section className="panel notification-admin-panel" data-testid="notification-admin-panel">
+    <>{viewTabs}<section className="panel notification-admin-panel" data-testid="notification-admin-panel">
       <div className="admin-section-heading">
         <div><strong>{text('Notification templates', '通知模板')}</strong><small>{metrics ? `${metrics.published}/${metrics.total} ${text('published', '已发布')} · ${metrics.disabledPreferences} ${text('disabled preferences', '项关闭偏好')}` : ''}</small></div>
         <div className="button-row">
@@ -173,6 +179,6 @@ export function NotificationAdminPanel({ hasPermission, isZh, notify }: {
           {selected && publishedVersions.length > 0 && <div className="notification-version-list">{publishedVersions.map((version) => <div key={version.id}><span><strong>v{version.versionNumber}</strong><small>{version.status} · {version.reasonCode ?? 'published'}</small></span>{canPublish && version.versionNumber !== selected.activeVersionNumber && <button className="icon-button" type="button" title={text(`Rollback to v${version.versionNumber}`, `回滚到 v${version.versionNumber}`)} onClick={() => void mutate(() => adminService.rollbackNotificationTemplate(selected.id, { expectedVersion: selected.version, versionNumber: version.versionNumber, reasonCode }), text('Template rolled back.', '模板已回滚。'))}><RotateCcw size={15}/></button>}</div>)}</div>}
         </div>
       </div>
-    </section>
+    </section></>
   )
 }
