@@ -299,6 +299,14 @@ export type ModerationCaseDto = {
 
 export type ModerationCaseMetrics = { total: number; open: number; resolved: number; appealed: number; closed: number; critical: number }
 export type ModerationCaseQuery = { cursor?: string | null; limit?: number; status?: ModerationCaseStatus | null; targetType?: ModerationTargetType | null; category?: ModerationReportCategory | null; priority?: ModerationCasePriority | null; search?: string | null; sort?: 'createdAt' | 'priority'; order?: 'asc' | 'desc' }
+export type SafetyRuleState = 'draft' | 'canary' | 'active' | 'retired'
+export type SafetyRuleDto = { id: string; ruleKey: string; version: number; name: string; signalType: string; targetType: ModerationTargetType | null; category: ModerationReportCategory | null; minimumScore: number; priority: ModerationCasePriority; configHash: string; state: SafetyRuleState; rolloutPercent: number; createdBy: ModerationUserSummary | null; createdAt: string; transitions: Array<{ id: string; fromState: SafetyRuleState; toState: SafetyRuleState; rolloutPercent: number; reasonCode: string; actor: ModerationUserSummary | null; createdAt: string }> }
+export type SafetySignalDto = { id: string; sourceKey: string; ruleVersionId: string | null; caseId: string; signalType: string; severity: ModerationCasePriority; score: number; contentHash: string; observedAt: string; createdAt: string }
+export type ModerationQueueItem = { case: ModerationCaseDto; queue: { assignee: ModerationUserSummary | null; priority: ModerationCasePriority; dueAt: string; breached: boolean } }
+export type TrustOperationsMetrics = { rules: { total: number; active: number; canary: number }; signals: { total: number; last24Hours: number }; queue: { total: number; assigned: number; unassigned: number; breached: number } }
+export type ModerationBulkAction = 'assign' | 'release' | 'set_priority'
+export type ModerationBulkPreview = { action: ModerationBulkAction; targetHash: string; targetCount: number; eligibleIds: string[]; eligibleCount: number; skipped: Array<{ id: string; reason: string }>; skippedCount: number; requiredConfirmationText: string }
+export type ModerationBulkResult = { action: ModerationBulkAction; targetHash: string; succeeded: string[]; succeededCount: number; skipped: Array<{ id: string; reason: string }>; skippedCount: number; replayed: boolean }
 
 export type CreateSupportRequest = {
   category: SupportRequestCategory

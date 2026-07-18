@@ -553,7 +553,7 @@
     {
       "id": "moderation_review_records",
       "classification": "restricted",
-      "prismaModels": ["AdminReview", "Report", "ModerationCase", "ModerationEvidence", "ModerationDecision", "ModerationAppeal"],
+      "prismaModels": ["AdminReview", "Report", "ModerationCase", "ModerationEvidence", "ModerationDecision", "ModerationAppeal", "SafetyRuleVersion", "SafetyRuleTransition", "SafetySignal", "ModerationQueueEvent", "ModerationBulkOperation"],
       "locations": ["postgres"],
       "dataSubjects": ["user", "reporter", "reviewer", "depicted_third_party"],
       "purposes": ["safety_moderation", "support_operations", "legal_compliance"],
@@ -1071,7 +1071,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 125,
+    "modelCount": 130,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",

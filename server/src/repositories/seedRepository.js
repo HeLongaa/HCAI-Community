@@ -28,6 +28,7 @@ import { createSeedEntitlementRepository } from '../entitlements/seedEntitlement
 import { createSeedNotificationManagementRepository, isSeedNotificationEnabled } from '../notifications/seedNotificationManagementRepository.js'
 import { createSeedNotificationDeliveryRepository } from '../notifications/seedNotificationDeliveryRepository.js'
 import { createSeedModerationCaseRepository } from '../trust/seedModerationCaseRepository.js'
+import { createSeedSafetyOperationsRepository } from '../trust/seedSafetyOperationsRepository.js'
 import { applyPublishedTaskRule } from '../tasks/taskRuleRuntime.js'
 import {
   appendSeedAuditIntegrity,
@@ -2606,6 +2607,11 @@ export const createSeedRepository = () => {
       }
       return null
     },
+  })
+  const safetyOperations = createSeedSafetyOperationsRepository({
+    moderationCases,
+    getUserById: getAccountById,
+    recordAudit,
   })
   const oauthAdmin = createSeedOAuthAdminRepository({
     oauthAccountByProviderKey,
@@ -7075,6 +7081,7 @@ export const createSeedRepository = () => {
     },
   },
   moderationCases,
+  safetyOperations,
   support: {
     create: (payload, actor) => {
       const submittedAt = new Date().toISOString()

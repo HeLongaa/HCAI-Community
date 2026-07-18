@@ -5,6 +5,7 @@ import { SectionHeader } from '../../components/ui/SectionHeader'
 import type { Permission } from '../../domain/types'
 import type { ModerationCaseDto, ModerationCaseMetrics, ModerationCasePriority, ModerationCaseStatus, ModerationDecisionOutcome, ModerationReportCategory, ModerationTargetType } from '../../services/contracts'
 import { trustService } from '../../services/trustService'
+import { TrustSafetyOperationsPanel } from './TrustSafetyOperationsPanel'
 
 type Props = { hasPermission: (permission: Permission) => boolean; isZh: boolean; notify: (message: string) => void }
 const statuses: ModerationCaseStatus[] = ['open', 'resolved', 'appealed', 'closed']
@@ -18,6 +19,8 @@ export function TrustSafetyAdminPanel({ hasPermission, isZh, notify }: Props) {
   const canRead = hasPermission('admin:trust:read')
   const canReview = hasPermission('admin:trust:review')
   const canExport = hasPermission('admin:trust:export')
+  const canOperate = hasPermission('admin:trust:operate')
+  const canManageRules = hasPermission('admin:trust:rules')
   const [items, setItems] = useState<ModerationCaseDto[]>([])
   const [metrics, setMetrics] = useState<ModerationCaseMetrics | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -135,6 +138,7 @@ export function TrustSafetyAdminPanel({ hasPermission, isZh, notify }: Props) {
   return (
     <section className="panel trust-admin-panel" data-testid="trust-admin-panel">
       <SectionHeader eyebrow="Trust & Safety" title={isZh ? '举报、决定与申诉' : 'Reports, decisions and appeals'} action={<div className="button-row"><button className="icon-button" type="button" onClick={() => void load(false)} title={isZh ? '刷新' : 'Refresh'}><RefreshCw size={17} /></button><button className="ghost-button" type="button" onClick={() => void exportJson()} disabled={!canExport}><Download size={16} />{isZh ? '导出' : 'Export'}</button></div>} />
+      <TrustSafetyOperationsPanel canOperate={canOperate} canManageRules={canManageRules} isZh={isZh} notify={notify} />
       <div className="admin-metric-strip">
         {metrics && Object.entries(metrics).map(([key, value]) => <div key={key}><span>{key}</span><strong>{value}</strong></div>)}
       </div>

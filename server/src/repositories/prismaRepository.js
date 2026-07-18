@@ -91,6 +91,7 @@ import {
 import { applyPublishedTaskRule } from '../tasks/taskRuleRuntime.js'
 import { createPrismaTaskLifecycleRecoveryRepository } from '../tasks/prismaTaskLifecycleRecoveryRepository.js'
 import { createPrismaModerationCaseRepository } from '../trust/prismaModerationCaseRepository.js'
+import { createPrismaSafetyOperationsRepository } from '../trust/prismaSafetyOperationsRepository.js'
 import {
   accountingOperationKey,
   accountingPayloadHash,
@@ -249,6 +250,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
 
   const chat = createPrismaChatRepository(client, { recordAudit })
   const moderationCases = createPrismaModerationCaseRepository(client, { recordAudit })
+  const safetyOperations = createPrismaSafetyOperationsRepository(client, { moderationCases, recordAudit })
   const domainEvents = createPrismaDomainEventRepository(client, { recordAudit })
   const domainEventConsumers = createPrismaDomainEventConsumerRepository(client, { recordAudit })
   const jobs = createPrismaJobRepository(client, { recordAudit })
@@ -10333,6 +10335,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     authorization,
     adminReviews,
     moderationCases,
+    safetyOperations,
     compliance,
     support,
     source: 'prisma',

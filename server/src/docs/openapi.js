@@ -202,6 +202,32 @@ export const openApiDocument = {
     '/admin/trust/cases/{id}/decisions': {
       post: { summary: 'Append one original or independently reviewed appeal decision using optimistic version evidence', responses: { '201': { description: 'Decision appended' }, '403': { description: 'Missing admin:trust:review' }, '409': { description: 'Version, stage, duplicate, or independent-review conflict' } } },
     },
+    '/admin/trust/rules': {
+      get: { summary: 'List immutable content-safety rule versions and derived rollout states', responses: { '200': { description: 'Rule versions and transition evidence' }, '403': { description: 'Missing admin:trust:read' } } },
+      post: { summary: 'Create a new draft content-safety rule version', responses: { '201': { description: 'Immutable rule version created' }, '403': { description: 'Missing admin:trust:rules' }, '409': { description: 'Concurrent version conflict' } } },
+    },
+    '/admin/trust/rules/{id}/transitions': {
+      post: { summary: 'Canary, activate, retire, or roll back a safety rule version', responses: { '201': { description: 'Transition evidence appended' }, '403': { description: 'Missing admin:trust:rules' }, '404': { description: 'Rule version not found' }, '409': { description: 'Invalid transition' } } },
+    },
+    '/admin/trust/signals': {
+      get: { summary: 'List bounded hash-only safety signals by case or signal type', responses: { '200': { description: 'Safety signal page' }, '403': { description: 'Missing admin:trust:read' } } },
+      post: { summary: 'Record an idempotent safety signal and enqueue its moderation case', responses: { '201': { description: 'Signal recorded' }, '200': { description: 'Idempotent signal replay' }, '403': { description: 'Missing admin:trust:operate' }, '409': { description: 'Referenced rule is not live' } } },
+    },
+    '/admin/trust/queue': {
+      get: { summary: 'List event-derived moderation queue state with assignment, priority, and SLA filters', responses: { '200': { description: 'Moderation queue page' }, '403': { description: 'Missing admin:trust:read' } } },
+    },
+    '/admin/trust/queue/{id}/events': {
+      post: { summary: 'Append one assignment, release, priority, or escalation event', responses: { '201': { description: 'Queue transition appended' }, '403': { description: 'Missing admin:trust:operate' }, '404': { description: 'Case or assignee not found' } } },
+    },
+    '/admin/trust/queue/bulk/preview': {
+      post: { summary: 'Preview bounded bulk queue assignment, release, or priority changes', responses: { '200': { description: 'Eligibility, target hash, and confirmation phrase' }, '403': { description: 'Missing admin:trust:operate' } } },
+    },
+    '/admin/trust/queue/bulk': {
+      post: { summary: 'Execute a previewed and idempotent bulk queue change without moderation decisions', responses: { '201': { description: 'Per-case queue transition result' }, '403': { description: 'Missing admin:trust:operate' }, '409': { description: 'Target, confirmation, or idempotency conflict' } } },
+    },
+    '/admin/trust/operations/metrics': {
+      get: { summary: 'Read rule rollout, recent signal, queue assignment, and SLA breach metrics', responses: { '200': { description: 'Trust safety operations metrics' }, '403': { description: 'Missing admin:trust:read' } } },
+    },
     '/posts': {
       get: {
         summary: 'List published community posts',

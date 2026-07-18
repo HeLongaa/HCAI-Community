@@ -8,6 +8,15 @@ import type {
   ModerationDecisionStage,
   ModerationReportCategory,
   ModerationTargetType,
+  ModerationBulkAction,
+  ModerationBulkPreview,
+  ModerationBulkResult,
+  ModerationCasePriority,
+  ModerationQueueItem,
+  SafetyRuleDto,
+  SafetyRuleState,
+  SafetySignalDto,
+  TrustOperationsMetrics,
 } from './contracts'
 
 export const trustService = {
@@ -45,4 +54,13 @@ export const trustService = {
   addEvidence(id: string, payload: { evidenceType: string; referenceType: string; referenceId: string; contentHash: string; reasonCode: string }) {
     return api.post<{ duplicate: boolean; item: ModerationCaseDto }>(`/admin/trust/cases/${encodeURIComponent(id)}/evidence`, payload)
   },
+  listRules() { return api.get<SafetyRuleDto[]>('/admin/trust/rules') },
+  createRule(payload: { ruleKey: string; name: string; signalType: string; targetType?: ModerationTargetType | null; category?: ModerationReportCategory | null; minimumScore: number; priority: ModerationCasePriority; configHash: string }) { return api.post<SafetyRuleDto>('/admin/trust/rules', payload) },
+  transitionRule(id: string, payload: { toState: Exclude<SafetyRuleState, 'draft'>; rolloutPercent?: number; reasonCode: string }) { return api.post<SafetyRuleDto>(`/admin/trust/rules/${encodeURIComponent(id)}/transitions`, payload) },
+  async listSignals(query: { cursor?: string | null; caseId?: string | null; signalType?: string | null; limit?: number } = {}) { const envelope = await api.getEnvelope<SafetySignalDto[]>(withQuery('/admin/trust/signals', query)); return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null } },
+  async listQueue(query: { cursor?: string | null; status?: string | null; priority?: ModerationCasePriority | null; assignment?: 'assigned' | 'unassigned' | null; sla?: 'within' | 'breached' | null; search?: string | null; limit?: number } = {}) { const envelope = await api.getEnvelope<ModerationQueueItem[]>(withQuery('/admin/trust/queue', query)); return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null } },
+  queueEvent(id: string, payload: { action: 'assign' | 'release' | 'set_priority' | 'escalate'; assigneeId?: string | null; priority?: ModerationCasePriority | null; reasonCode: string }) { return api.post<ModerationQueueItem & { event: unknown }>(`/admin/trust/queue/${encodeURIComponent(id)}/events`, payload) },
+  previewBulk(payload: { action: ModerationBulkAction; targetIds: string[]; assigneeId?: string | null; priority?: ModerationCasePriority | null; reasonCode: string }) { return api.post<ModerationBulkPreview>('/admin/trust/queue/bulk/preview', payload) },
+  executeBulk(payload: { action: ModerationBulkAction; targetIds: string[]; assigneeId?: string | null; priority?: ModerationCasePriority | null; reasonCode: string; targetHash: string; confirmationText: string; idempotencyKey: string }) { return api.post<ModerationBulkResult>('/admin/trust/queue/bulk', payload) },
+  operationsMetrics() { return api.get<TrustOperationsMetrics>('/admin/trust/operations/metrics') },
 }

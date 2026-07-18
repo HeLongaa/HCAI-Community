@@ -45,6 +45,8 @@ export const permissionRegistry = Object.freeze([
   definePermission('admin:trust:read', 'trust-safety', 'moderation_case', 'read', 'high', moderators, { description: 'Read moderation cases and append-only evidence' }),
   definePermission('admin:trust:review', 'trust-safety', 'moderation_decision', 'create', 'critical', moderators, { resourceAuthorization: true, description: 'Create moderation and appeal decisions' }),
   definePermission('admin:trust:export', 'trust-safety', 'moderation_case', 'export', 'critical', admins, { description: 'Export sanitized moderation case evidence' }),
+  definePermission('admin:trust:operate', 'trust-safety', 'moderation_queue', 'manage', 'critical', moderators, { resourceAuthorization: true, description: 'Assign and prioritize moderation queue cases without bulk decisions' }),
+  definePermission('admin:trust:rules', 'trust-safety', 'safety_rule', 'manage', 'critical', admins, { resourceAuthorization: true, description: 'Create, canary, activate, retire, and roll back versioned safety rules' }),
   definePermission('admin:tasks:read', 'task-marketplace', 'task', 'read', 'high', moderators, { description: 'Read task operations projections and lifecycle evidence' }),
   definePermission('admin:tasks:manage', 'task-marketplace', 'task', 'manage', 'critical', admins, { resourceAuthorization: true, description: 'Edit eligible tasks and apply audited archive or status operations' }),
   definePermission('admin:task-rules:read', 'task-marketplace', 'task_rule', 'read', 'high', moderators, { description: 'Read versioned task rule drafts and published projections' }),

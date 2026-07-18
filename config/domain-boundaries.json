@@ -56,7 +56,7 @@
     { "domain": "ai-runtime", "owns": ["generations", "conversations", "provider operations"] },
     { "domain": "entitlements-accounting", "owns": ["product entitlements", "personal grants", "points", "credits", "quota", "reconciliation"] },
     { "domain": "notifications-webhooks", "owns": ["notifications", "delivery state"] },
-    { "domain": "trust-safety-risk", "owns": ["security events", "risk decisions", "moderation cases"] },
+    { "domain": "trust-safety-risk", "owns": ["security events", "risk decisions", "moderation cases", "safety rules", "safety signals", "moderation queue and SLA"] },
     { "domain": "jobs-automation", "owns": ["jobs", "attempts", "leases", "schedules"] },
     { "domain": "audit-evidence", "owns": ["audit events", "immutable evidence"] },
     { "domain": "observability-incident", "owns": ["sanitized logs", "trace spans", "SLO alerts"] },
