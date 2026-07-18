@@ -16,6 +16,18 @@ export const requireUser = (context) => {
   if (!context.user) {
     throw new HttpError(401, 'AUTH_REQUIRED', 'Authentication is required')
   }
+  if (context.user.principalType === 'service_account') {
+    throw new HttpError(403, 'API_KEY_SCOPE_REQUIRED', 'API keys may access only explicitly scoped developer endpoints')
+  }
+  return context.user
+}
+
+export const requireApiScope = (context, scope) => {
+  if (!context.user) throw new HttpError(401, 'AUTH_REQUIRED', 'Authentication is required')
+  if (context.user.principalType !== 'service_account') throw new HttpError(403, 'API_KEY_REQUIRED', 'A service account API key is required')
+  if (!Array.isArray(context.user.apiScopes) || !context.user.apiScopes.includes(scope)) {
+    throw new HttpError(403, 'API_KEY_SCOPE_DENIED', `Missing API key scope: ${scope}`)
+  }
   return context.user
 }
 

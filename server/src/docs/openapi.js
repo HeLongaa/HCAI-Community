@@ -7,6 +7,47 @@ export const openApiDocument = {
   },
   servers: [{ url: 'http://127.0.0.1:8787/api' }],
   paths: {
+    '/developer/access-control': {
+      get: { summary: 'Read the default-off developer access control', responses: { '200': { description: 'Safe control limits and allowed scopes' }, '401': { description: 'Authentication required' } } },
+    },
+    '/developer/service-accounts': {
+      get: { summary: 'List actor-owned service accounts and safe API key projections', parameters: [{ name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'revoked'] } }, { name: 'search', in: 'query', schema: { type: 'string' } }, { name: 'cursor', in: 'query', schema: { type: 'string' } }, { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50 } }], responses: { '200': { description: 'Cursor-paged service accounts without secret hashes or plaintext keys' } } },
+      post: { summary: 'Create an actor-owned service account when developer access is enabled', responses: { '200': { description: 'Created service account' }, '503': { description: 'Developer access is disabled' } } },
+    },
+    '/developer/service-accounts/{id}/transitions': {
+      post: { summary: 'Immediately revoke an owned service account and all active keys', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Revoked service account' }, '409': { description: 'Stale version or terminal state' } } },
+    },
+    '/developer/service-accounts/{id}/keys': {
+      post: { summary: 'Issue an API key whose plaintext is returned exactly once', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'One-time plaintext key and safe credential projection' }, '409': { description: 'Active key limit reached' } } },
+    },
+    '/developer/service-accounts/{id}/keys/{keyId}/rotate': {
+      post: { summary: 'Rotate an API key and invalidate the old key atomically', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }, { name: 'keyId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'One-time replacement key' }, '409': { description: 'Stale version or inactive key' } } },
+    },
+    '/developer/service-accounts/{id}/keys/{keyId}/revoke': {
+      post: { summary: 'Immediately revoke an active API key', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }, { name: 'keyId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Revoked safe credential projection' } } },
+    },
+    '/developer/principal': {
+      get: { summary: 'Authenticate a service account API key with developer:identity:read scope', responses: { '200': { description: 'Scoped service account identity' }, '401': { description: 'Invalid, expired, IP-denied, disabled, rotated, or revoked key' }, '403': { description: 'Missing API key scope' } } },
+    },
+    '/admin/developer/access-control': {
+      get: { summary: 'Read developer access control', responses: { '200': { description: 'Control state' }, '403': { description: 'Requires admin:developer:read' } } },
+      put: { summary: 'Version-update developer access enablement and bounded limits', responses: { '200': { description: 'Updated control' }, '403': { description: 'Requires admin:developer:manage' }, '409': { description: 'Stale version' } } },
+    },
+    '/admin/developer/service-accounts': {
+      get: { summary: 'List safe service account and API key lifecycle projections', responses: { '200': { description: 'Cursor-paged account list' }, '403': { description: 'Requires admin:developer:read' } } },
+    },
+    '/admin/developer/service-accounts/export': {
+      get: { summary: 'Export a bounded versioned developer access snapshot', responses: { '200': { description: 'Secret-free JSON snapshot' }, '403': { description: 'Requires admin:developer:read' } } },
+    },
+    '/admin/developer/metrics': {
+      get: { summary: 'Read service account, API key, expiry, and usage aggregates', responses: { '200': { description: 'Safe aggregate metrics' }, '403': { description: 'Requires admin:developer:read' } } },
+    },
+    '/admin/developer/service-accounts/{id}/revoke': {
+      post: { summary: 'Immediately revoke a service account and all active keys', responses: { '200': { description: 'Revoked account' }, '403': { description: 'Requires admin:developer:manage' }, '409': { description: 'Stale version' } } },
+    },
+    '/admin/developer/service-accounts/{id}/keys/{keyId}/revoke': {
+      post: { summary: 'Immediately revoke one API key', responses: { '200': { description: 'Revoked key' }, '403': { description: 'Requires admin:developer:manage' }, '409': { description: 'Stale version' } } },
+    },
     '/auth/login': {
       post: {
         summary: 'Login with email/password or a seeded demo handle',

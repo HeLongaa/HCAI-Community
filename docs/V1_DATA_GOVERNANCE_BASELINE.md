@@ -44,6 +44,7 @@ not become public because the post is public.
 | `operation_leases` | Internal | PostgreSQL | `OperationLease` | Expiry/release + 7 days |
 | `identity_account_profile` | Confidential | PostgreSQL | `User`, `Profile`, `ProfilePortfolioAsset` | Verified deletion + 30 days |
 | `authentication_credentials_sessions` | Restricted | PostgreSQL | `AuthAccount`, `OAuthAuthorizationRequest`, `RefreshToken` | OAuth request expiry; unlink/expiry/revoke + 30 days |
+| `developer_credentials` | Restricted | PostgreSQL | `DeveloperAccessControl`, `ServiceAccount`, `ApiKeyCredential` | Revoke immediately; credential expiry plus 30 days; plaintext keys have zero durable retention |
 | `marketplace_records` | Confidential | PostgreSQL | `Task`, `TaskProposal`, `TaskSubmission` | Terminal task/dispute + 730 days |
 | `community_content_interactions` | Public | PostgreSQL | `Post`, `Comment`, `PostLike` | Delete request + 30 days |
 | `private_library_items` | Confidential | PostgreSQL | `LibraryItem` | Delete request + 30 days |

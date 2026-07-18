@@ -36,7 +36,9 @@
     { "id": "observabilityIncidentReviews", "model": "ObservabilityIncidentReview", "routeGroup": "observability", "listRoute": "GET /api/admin/observability/alerts", "detailRoute": "GET /api/admin/observability/alerts/:id", "mutationRoutes": ["POST /api/admin/observability/alerts/:id/review"] },
     { "id": "safetyRules", "model": "SafetyRuleVersion", "routeGroup": "trust", "listRoute": "GET /api/admin/trust/rules", "mutationRoutes": ["POST /api/admin/trust/rules", "POST /api/admin/trust/rules/:id/transitions"] },
     { "id": "safetySignals", "model": "SafetySignal", "routeGroup": "trust", "listRoute": "GET /api/admin/trust/signals", "mutationRoutes": ["POST /api/admin/trust/signals"] },
-    { "id": "moderationQueue", "model": "ModerationQueueEvent", "routeGroup": "trust", "listRoute": "GET /api/admin/trust/queue", "mutationRoutes": ["POST /api/admin/trust/queue/:id/events", "POST /api/admin/trust/queue/bulk/preview", "POST /api/admin/trust/queue/bulk"] }
+    { "id": "moderationQueue", "model": "ModerationQueueEvent", "routeGroup": "trust", "listRoute": "GET /api/admin/trust/queue", "mutationRoutes": ["POST /api/admin/trust/queue/:id/events", "POST /api/admin/trust/queue/bulk/preview", "POST /api/admin/trust/queue/bulk"] },
+    { "id": "developerServiceAccounts", "model": "ServiceAccount", "routeGroup": "developerAccess", "listRoute": "GET /api/admin/developer/service-accounts", "exportRoute": "GET /api/admin/developer/service-accounts/export", "recoveryRoutes": ["POST /api/admin/developer/service-accounts/:id/revoke", "POST /api/admin/developer/service-accounts/:id/keys/:keyId/revoke"] },
+    { "id": "developerAccessControl", "model": "DeveloperAccessControl", "routeGroup": "developerAccess", "listRoute": "GET /api/admin/developer/access-control", "mutationRoutes": ["PUT /api/admin/developer/access-control"] }
   ],
   "policyCapabilities": {
     "mutable_crud": ["list", "detail", "create", "update", "softDelete", "hardDeleteWhenAllowed", "export"],

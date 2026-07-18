@@ -1,14 +1,17 @@
 import { createRouter } from '../http/router.js'
 import { createServer } from '../http/server.js'
 import { createAdminMutationAuditHook } from '../../audit/adminMutationAudit.js'
+import { resolveApiKeyClientIp } from '../http/clientIp.js'
 
-const createServerWithRepositories = async (repositories, registerRoutes) => {
+const createServerWithRepositories = async (repositories, registerRoutes, { trustProxy = false } = {}) => {
   const router = createRouter()
   for (const registerRoute of registerRoutes) {
     registerRoute(router)
   }
   const server = createServer(router, {
-    resolveUser: (token) => repositories.auth.findDemoAccountByAccessToken(token),
+    resolveUser: async (token, request) => (await repositories.developerAccess.authenticateApiKey(token, {
+      clientIp: resolveApiKeyClientIp(request, { API_KEY_TRUST_PROXY: trustProxy ? 'true' : 'false' }),
+    })) ?? repositories.auth.findDemoAccountByAccessToken(token),
     auditAdminMutation: createAdminMutationAuditHook(repositories.audit),
     onRequestFinished: (input) => repositories.observability.recordHttp(input),
   })
@@ -27,6 +30,9 @@ export const createRouteTestServer = async (...registerRoutes) => {
 
 export const createInjectedRouteTestServer = (repositories, ...registerRoutes) =>
   createServerWithRepositories(repositories, registerRoutes)
+
+export const createInjectedRouteTestServerWithOptions = (repositories, options, ...registerRoutes) =>
+  createServerWithRepositories(repositories, registerRoutes, options)
 
 export const requestJson = async (baseUrl, path, { method = 'POST', body, token, headers = {} } = {}) => {
   const response = await fetch(`${baseUrl}${path}`, {

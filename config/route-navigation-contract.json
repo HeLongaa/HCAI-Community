@@ -21,6 +21,7 @@
     { "id": "notifications", "module": "notifications-webhooks", "prefixes": ["/api/notifications"], "nav": "notifications", "breadcrumb": "Notifications", "deepLink": "notifications" },
     { "id": "compliance", "module": "compliance-data-rights", "prefixes": ["/api/compliance", "/api/support"], "nav": "support", "breadcrumb": "Support", "deepLink": "support" },
     { "id": "trust", "module": "trust-safety-risk", "prefixes": ["/api/trust"], "nav": "support", "breadcrumb": "Trust & Safety", "deepLink": "support" },
+    { "id": "developer", "module": "developer-platform", "prefixes": ["/api/developer"], "nav": "api", "breadcrumb": "Developer access", "deepLink": "api" },
     { "id": "featureFlags", "module": "config-feature-flags", "prefixes": ["/api/feature-flags"], "nav": "runtime", "breadcrumb": "Feature flags", "deepLink": "feature-flags" },
     { "id": "admin", "module": "admin-console", "prefixes": ["/api/admin"], "nav": "admin", "breadcrumb": "Admin", "deepLink": "admin", "requiresPermission": "admin:access" }
   ]

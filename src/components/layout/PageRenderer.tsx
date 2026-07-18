@@ -20,7 +20,8 @@ import { ExplorePage } from '../../features/explore'
 import { InspirationPage } from '../../features/inspiration'
 import { PlaylistPage, ProfilePage } from '../../features/profile'
 import { PointsPage } from '../../features/rewards'
-import { AboutPage, ApiPage, EarnPage, LegalPage, PricingPage, SupportPage } from '../../features/static-pages'
+import { AboutPage, EarnPage, LegalPage, PricingPage, SupportPage } from '../../features/static-pages'
+import { DeveloperAccessPage } from '../../features/developer'
 import { MyTasksPage, PublishPage, TasksPage } from '../../features/tasks'
 import { ChatPage, PlaygroundPage } from '../../features/workspace'
 import { GenerationCenterPage } from '../../features/generations'
@@ -290,7 +291,7 @@ export function PageRenderer({
         />
       )}
       {page === 'pricing' && <PricingPage t={t} billing={billing} setBilling={setBilling} requireAuth={requireAuth} />}
-      {page === 'api' && <ApiPage t={t} requireAuth={requireAuth} simulateAction={simulateAction} />}
+      {page === 'api' && <DeveloperAccessPage t={t} signedIn={Boolean(account.accountHandle)} requireAuth={requireAuth} notify={simulateAction} />}
       {page === 'earn' && <EarnPage t={t} requireAuth={requireAuth} />}
       {page === 'about' && <AboutPage t={t} />}
       {page === 'playlist' && <PlaylistPage t={t} playTrack={playTrack} simulateAction={simulateAction} />}

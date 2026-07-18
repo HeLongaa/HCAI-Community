@@ -17,6 +17,7 @@ import { ConfigurationResourcesPanel } from './ConfigurationResourcesPanel'
 import { ModelControlPanel } from './ModelControlPanel'
 import { AdminMediaLifecyclePanel } from './AdminMediaLifecyclePanel'
 import { OAuthAdminPanel } from './OAuthAdminPanel'
+import { DeveloperAccessAdminPanel } from './DeveloperAccessAdminPanel'
 import { CommunityAdminPanel } from './CommunityAdminPanel'
 import { AuthSessionAdminPanel } from './AuthSessionAdminPanel'
 import { TaskAdminPanel } from './TaskAdminPanel'
@@ -2699,6 +2700,12 @@ export function AdminPage({
             t={t}
             canRead={account.hasPermission('admin:auth:read')}
             canManage={account.hasPermission('admin:auth:manage')}
+            notify={(message) => simulateAction(message)}
+          />
+          <DeveloperAccessAdminPanel
+            t={t}
+            canRead={account.hasPermission('admin:developer:read')}
+            canManage={account.hasPermission('admin:developer:manage')}
             notify={(message) => simulateAction(message)}
           />
         </div>

@@ -4252,3 +4252,72 @@ export type ProviderOperationsSummaryDto = {
   statusCounts: Partial<Record<ModelControlStatus, number>>
   healthCounts: Partial<Record<ProviderHealthEvidenceDto['status'], number>>
 }
+
+export type DeveloperAccessControl = {
+  enabled: boolean
+  allowedScopes: string[]
+  maxServiceAccountsPerUser: number
+  maxActiveKeysPerAccount: number
+  defaultKeyTtlDays: number
+  version: number
+  reasonCode: string
+  updatedAt: string
+}
+
+export type DeveloperApiKeyCredential = {
+  id: string
+  serviceAccountId: string
+  name: string
+  keyPrefix: string
+  displayPrefix: string
+  scopes: string[]
+  ipAllowlist: string[]
+  status: 'active' | 'rotated' | 'revoked' | 'expired'
+  version: number
+  expiresAt: string
+  lastUsedAt: string | null
+  lastUsedIpHint: string | null
+  usageCount: number
+  revokedAt: string | null
+  revokeReasonCode: string | null
+  replacedById: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type DeveloperServiceAccount = {
+  id: string
+  owner?: { id: string; handle: string | null; displayName: string }
+  name: string
+  description: string
+  status: 'active' | 'revoked'
+  version: number
+  revokedAt: string | null
+  revokeReasonCode: string | null
+  createdAt: string
+  updatedAt: string
+  keys: DeveloperApiKeyCredential[]
+}
+
+export type DeveloperKeyIssueResult = {
+  credential: DeveloperApiKeyCredential
+  plaintextKey: string
+  replacedCredentialId?: string
+}
+
+export type DeveloperAccessMetrics = {
+  serviceAccounts: { total: number; byStatus: Record<string, number> }
+  apiKeys: { total: number; expired: number; byStatus: Record<string, number> }
+  usageCount: number
+  lastUsedAt: string | null
+}
+
+export type DeveloperServiceAccountQuery = {
+  status?: string | null
+  search?: string | null
+  ownerHandle?: string | null
+  cursor?: string | null
+  limit?: number
+  sort?: 'createdAt' | 'updatedAt' | 'name'
+  order?: 'asc' | 'desc'
+}

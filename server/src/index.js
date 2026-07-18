@@ -6,13 +6,16 @@ import { registerModules } from './modules/index.js'
 import { startMediaScanWorker } from './media/scanWorker.js'
 import { repositories } from './repositories/index.js'
 import { createAdminMutationAuditHook } from './audit/adminMutationAudit.js'
+import { resolveApiKeyClientIp } from './common/http/clientIp.js'
 
 const main = async () => {
   const router = createRouter()
   registerModules(router)
 
   const server = createServer(router, {
-    resolveUser: (token) => repositories.auth.findDemoAccountByAccessToken(token),
+    resolveUser: async (token, request) => (await repositories.developerAccess.authenticateApiKey(token, {
+      clientIp: resolveApiKeyClientIp(request),
+    })) ?? repositories.auth.findDemoAccountByAccessToken(token),
     auditAdminMutation: createAdminMutationAuditHook(repositories.audit),
     onRequestFinished: (input) => repositories.observability.recordHttp(input),
     rateLimitStore: createRateLimitStore(process.env),

@@ -48,6 +48,7 @@ const expectedAssets = [
   'creative_accounting_records',
   'creative_generation_records',
   'deployment_secrets',
+  'developer_credentials',
   'governance_configuration',
   'identity_account_profile',
   'internal_accounting_invariant_records',

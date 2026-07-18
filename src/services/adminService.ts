@@ -6,6 +6,11 @@ import type {
   AdminOAuthAuthorizationQuery,
   AdminOAuthAuthorizationRequest,
   AdminOAuthProviderControl,
+  DeveloperAccessControl,
+  DeveloperAccessMetrics,
+  DeveloperApiKeyCredential,
+  DeveloperServiceAccount,
+  DeveloperServiceAccountQuery,
   AdminCommunityBulkAction,
   AdminCommunityBulkPreview,
   AdminCommunityBulkResult,
@@ -273,6 +278,28 @@ export const adminService = {
   },
   async revokeOAuthAuthorizationRequest(id: string, reasonCode: string) {
     return api.post<{ revoked: true; request: AdminOAuthAuthorizationRequest }>(`/admin/auth/oauth/authorization-requests/${encodeURIComponent(id)}/revoke`, { reasonCode })
+  },
+  async developerAccessControl() {
+    return api.get<DeveloperAccessControl>('/admin/developer/access-control')
+  },
+  async updateDeveloperAccessControl(payload: Omit<DeveloperAccessControl, 'version' | 'reasonCode' | 'updatedAt'> & { expectedVersion: number; reasonCode: string }) {
+    return api.put<DeveloperAccessControl>('/admin/developer/access-control', payload)
+  },
+  async developerServiceAccounts(query?: DeveloperServiceAccountQuery) {
+    const envelope = await api.getEnvelope<DeveloperServiceAccount[]>(withQuery('/admin/developer/service-accounts', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async developerAccessMetrics() {
+    return api.get<DeveloperAccessMetrics>('/admin/developer/metrics')
+  },
+  async exportDeveloperServiceAccounts(query?: DeveloperServiceAccountQuery) {
+    return api.get<{ kind: 'developer-access.snapshot'; schemaVersion: 1; exportedAt: string; truncated: boolean; items: DeveloperServiceAccount[] }>(withQuery('/admin/developer/service-accounts/export', query))
+  },
+  async revokeDeveloperServiceAccount(id: string, payload: { expectedVersion: number; reasonCode: string }) {
+    return api.post<DeveloperServiceAccount>(`/admin/developer/service-accounts/${encodeURIComponent(id)}/revoke`, payload)
+  },
+  async revokeDeveloperApiKey(accountId: string, keyId: string, payload: { expectedVersion: number; reasonCode: string }) {
+    return api.post<DeveloperApiKeyCredential>(`/admin/developer/service-accounts/${encodeURIComponent(accountId)}/keys/${encodeURIComponent(keyId)}/revoke`, payload)
   },
   async authSessions(query?: AdminAuthSessionQuery) {
     const envelope = await api.getEnvelope<AdminAuthSession[]>(withQuery('/admin/auth/sessions', query))
