@@ -13100,3 +13100,160 @@ button.video-history-row.active {
   overflow: visible;
   gap: 14px;
 }
+
+.notification-preferences {
+  display: grid;
+  max-height: min(440px, 60vh);
+  overflow: auto;
+  border-top: 1px solid var(--border);
+}
+
+.notification-preferences-state {
+  display: grid;
+  min-height: 120px;
+  place-items: center;
+}
+
+.notification-preference-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 42px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.notification-preference-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.panel.notification-admin-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 560px;
+  min-width: 0;
+  overflow: visible;
+}
+
+.notification-admin-filters,
+.notification-template-fields,
+.notification-preview-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 220px);
+  gap: 10px;
+}
+
+.notification-template-fields {
+  grid-template-columns: minmax(180px, 1.4fr) minmax(160px, 1fr) minmax(120px, .7fr) 90px;
+}
+
+.notification-admin-filters > *,
+.notification-template-fields > *,
+.notification-preview-controls > *,
+.notification-template-editor > input,
+.notification-template-editor > textarea {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.notification-admin-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, .72fr) minmax(0, 1.7fr);
+  gap: 16px;
+  min-height: 480px;
+}
+
+.notification-template-list {
+  align-content: start;
+  max-height: 680px;
+  overflow: auto;
+}
+
+.notification-template-list .admin-row {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.notification-template-list .admin-row.compact {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.notification-template-list .admin-row span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.notification-template-editor {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.notification-template-editor textarea {
+  min-height: 82px;
+  resize: vertical;
+}
+
+.notification-template-editor textarea[aria-label*="schema" i],
+.notification-template-editor textarea[aria-label*="模式"] {
+  min-height: 150px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.notification-template-preview {
+  padding: 12px 0;
+  border-block: 1px solid var(--border);
+}
+
+.notification-template-preview p {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+}
+
+.notification-version-list {
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+
+.notification-version-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  border-bottom: 1px solid var(--border);
+}
+
+.notification-version-list span {
+  display: grid;
+  gap: 2px;
+}
+
+@media (max-width: 900px) {
+  .notification-admin-layout,
+  .notification-template-fields,
+  .notification-admin-filters,
+  .notification-preview-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .notification-admin-layout {
+    min-height: 0;
+  }
+
+  .notification-template-list {
+    max-height: 280px;
+  }
+}

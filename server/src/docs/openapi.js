@@ -4487,6 +4487,66 @@ export const openApiDocument = {
         },
       },
     },
+    '/notifications/preferences': {
+      get: {
+        summary: 'List current user in-app notification preference overrides',
+        responses: { '200': { description: 'Type-specific preference overrides; absent types default enabled' }, '401': { description: 'Authentication required' } },
+      },
+    },
+    '/notifications/preferences/{type}': {
+      put: {
+        summary: 'Create or update one current-user in-app notification preference with CAS',
+        parameters: [{ name: 'type', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-z][a-z0-9_.-]{2,79}$' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['inAppEnabled'], additionalProperties: false, properties: { inAppEnabled: { type: 'boolean' }, expectedVersion: { type: ['integer', 'null'], minimum: 1 } } } } } },
+        responses: { '200': { description: 'Updated preference' }, '401': { description: 'Authentication required' }, '409': { description: 'Optimistic version conflict' } },
+      },
+    },
+    '/admin/notifications/templates': {
+      get: {
+        summary: 'List notification templates with bounded filtering, sorting, and cursor pagination',
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'published', 'archived'] } },
+          { name: 'category', in: 'query', schema: { type: 'string', maxLength: 80 } },
+          { name: 'search', in: 'query', schema: { type: 'string', maxLength: 120 } },
+          { name: 'sort', in: 'query', schema: { type: 'string', enum: ['key', 'createdAt', 'updatedAt'] } },
+          { name: 'order', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
+          { name: 'includeDeleted', in: 'query', schema: { type: 'boolean' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+        ],
+        responses: { '200': { description: 'Secret-free template page' }, '403': { description: 'Missing admin:notifications:read' } },
+      },
+      post: {
+        summary: 'Create a notification template with immutable draft version 1',
+        responses: { '201': { description: 'Template and draft version created' }, '403': { description: 'Missing admin:notifications:manage' }, '409': { description: 'Template key conflict' } },
+      },
+    },
+    '/admin/notifications/templates/metrics': {
+      get: { summary: 'Read template lifecycle and preference override metrics', responses: { '200': { description: 'Template and preference metrics' }, '403': { description: 'Missing admin:notifications:read' } } },
+    },
+    '/admin/notifications/templates/export': {
+      get: { summary: 'Export a bounded filtered template inventory as JSON or CSV', responses: { '200': { description: 'Portable template inventory' }, '403': { description: 'Missing admin:notifications:read' } } },
+    },
+    '/admin/notifications/templates/{id}': {
+      get: { summary: 'Read one template and all immutable versions', responses: { '200': { description: 'Template detail' }, '403': { description: 'Missing admin:notifications:read' }, '404': { description: 'Template not found' } } },
+      patch: { summary: 'Update template metadata and append a new draft version with CAS', responses: { '200': { description: 'Updated template with appended draft' }, '403': { description: 'Missing admin:notifications:manage' }, '409': { description: 'Version conflict' } } },
+      delete: { summary: 'Soft-delete a template with CAS and reason evidence', responses: { '200': { description: 'Archived template' }, '403': { description: 'Missing admin:notifications:manage' }, '409': { description: 'Version conflict' } } },
+    },
+    '/admin/notifications/templates/{id}/preview': {
+      post: { summary: 'Validate typed variables and preview a template version', responses: { '200': { description: 'Rendered title and body' }, '400': { description: 'Schema or variable validation failed' }, '403': { description: 'Missing admin:notifications:read' } } },
+    },
+    '/admin/notifications/templates/{id}/publish': {
+      post: { summary: 'Publish one draft template version with CAS', responses: { '200': { description: 'Published template' }, '403': { description: 'Missing admin:notifications:publish' }, '409': { description: 'Version conflict or no draft version' } } },
+    },
+    '/admin/notifications/templates/{id}/rollback': {
+      post: { summary: 'Restore a previously published immutable template version with CAS', responses: { '200': { description: 'Rolled-back template' }, '403': { description: 'Missing admin:notifications:publish' }, '409': { description: 'Version conflict or target was never published' } } },
+    },
+    '/admin/notifications/templates/{id}/restore': {
+      post: { summary: 'Restore a soft-deleted notification template with CAS', responses: { '200': { description: 'Restored template' }, '403': { description: 'Missing admin:notifications:manage' }, '409': { description: 'Version conflict' } } },
+    },
+    '/admin/notifications/templates/{id}/send-test': {
+      post: { summary: 'Render the active version and create a preference-aware in-app test notification', responses: { '201': { description: 'Created notification with template key/version evidence' }, '403': { description: 'Missing admin:notifications:publish' }, '409': { description: 'Template unavailable or preference disabled' } } },
+    },
     '/admin/permissions': {
       get: {
         summary: 'List permission catalog',

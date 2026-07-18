@@ -1327,6 +1327,9 @@ model User {
   mediaAssets                     MediaAsset[]
   mediaAssetRelations             MediaAssetRelation[]
   notifications                   Notification[]
+  notificationPreferences         NotificationPreference[]
+  notificationTemplatesCreated    NotificationTemplate[]        @relation("NotificationTemplateCreator")
+  notificationVersionsCreated     NotificationTemplateVersion[] @relation("NotificationTemplateVersionCreator")
   mediaScanJobsReviewed           MediaScanJob[]                  @relation("MediaScanJobReviewer")
   creativeGenerations             CreativeGeneration[]
   creativeGenerationExecutions    CreativeGenerationExecution[]
@@ -3214,6 +3217,8 @@ model Notification {
   resourceId            String?   @map("resource_id")
   metadata              Json?
   metadataSchemaVersion Int       @default(1) @map("metadata_schema_version")
+  templateKey           String?   @map("template_key")
+  templateVersion       Int?      @map("template_version")
   readAt                DateTime? @map("read_at")
   createdAt             DateTime  @default(now()) @map("created_at")
 
@@ -3222,4 +3227,65 @@ model Notification {
   @@index([recipientId, readAt, createdAt])
   @@index([type])
   @@map("notifications")
+}
+
+model NotificationTemplate {
+  id                  String    @id @default(cuid())
+  key                 String    @unique
+  name                String
+  description         String?
+  category            String
+  status              String    @default("draft")
+  activeVersionNumber Int?      @map("active_version_number")
+  version             Int       @default(1)
+  createdById         String?   @map("created_by_id")
+  deletedAt           DateTime? @map("deleted_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  createdBy User?                         @relation("NotificationTemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  versions  NotificationTemplateVersion[]
+
+  @@index([status, updatedAt])
+  @@index([category, updatedAt])
+  @@map("notification_templates")
+}
+
+model NotificationTemplateVersion {
+  id             String    @id @default(cuid())
+  templateId     String    @map("template_id")
+  versionNumber  Int       @map("version_number")
+  locale         String    @default("en")
+  titleTemplate  String    @map("title_template")
+  bodyTemplate   String    @map("body_template")
+  variableSchema Json      @map("variable_schema")
+  variableSchemaSchemaVersion Int @default(1) @map("variable_schema_schema_version")
+  status         String    @default("draft")
+  createdById    String?   @map("created_by_id")
+  reasonCode     String?   @map("reason_code")
+  publishedAt    DateTime? @map("published_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  template NotificationTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  createdBy User?                @relation("NotificationTemplateVersionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([templateId, versionNumber])
+  @@index([templateId, status, createdAt])
+  @@map("notification_template_versions")
+}
+
+model NotificationPreference {
+  id               String   @id @default(cuid())
+  userId           String   @map("user_id")
+  notificationType String   @map("notification_type")
+  inAppEnabled     Boolean  @default(true) @map("in_app_enabled")
+  version          Int      @default(1)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, notificationType])
+  @@index([userId, updatedAt])
+  @@map("notification_preferences")
 }

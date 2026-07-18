@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "task": "NOTIFY-01",
+  "scope": "personal_accounts_only",
+  "operationPolicy": "mutable_crud",
+  "migration": "0077_notification_templates_preferences",
+  "permissions": { "read": "admin:notifications:read", "manage": "admin:notifications:manage", "publish": "admin:notifications:publish" },
+  "userRoutes": [
+    { "method": "GET", "path": "/api/notifications" },
+    { "method": "GET", "path": "/api/notifications/preferences" },
+    { "method": "PUT", "path": "/api/notifications/preferences/:type" }
+  ],
+  "adminRoutes": [
+    { "method": "GET", "path": "/api/admin/notifications/templates" },
+    { "method": "POST", "path": "/api/admin/notifications/templates" },
+    { "method": "GET", "path": "/api/admin/notifications/templates/metrics" },
+    { "method": "GET", "path": "/api/admin/notifications/templates/export" },
+    { "method": "GET", "path": "/api/admin/notifications/templates/:id" },
+    { "method": "PATCH", "path": "/api/admin/notifications/templates/:id" },
+    { "method": "DELETE", "path": "/api/admin/notifications/templates/:id" },
+    { "method": "POST", "path": "/api/admin/notifications/templates/:id/preview" },
+    { "method": "POST", "path": "/api/admin/notifications/templates/:id/publish" },
+    { "method": "POST", "path": "/api/admin/notifications/templates/:id/rollback" },
+    { "method": "POST", "path": "/api/admin/notifications/templates/:id/restore" },
+    { "method": "POST", "path": "/api/admin/notifications/templates/:id/send-test" }
+  ],
+  "invariants": {
+    "publishedVersionsImmutable": true,
+    "closedVariableSchema": true,
+    "optimisticConcurrency": true,
+    "preferenceAwareInAppDelivery": true,
+    "softDeleteRestore": true,
+    "boundedExport": true,
+    "externalDelivery": false
+  }
+}

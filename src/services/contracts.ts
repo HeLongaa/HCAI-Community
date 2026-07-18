@@ -2341,8 +2341,84 @@ export type ApiNotification = {
   resourceType: string
   resourceId?: string | null
   metadata?: unknown
+  templateKey?: string | null
+  templateVersion?: number | null
   readAt?: string | null
   createdAt: string
+}
+
+export type NotificationPreference = {
+  notificationType: string
+  inAppEnabled: boolean
+  version: number
+  updatedAt: string
+}
+
+export type NotificationVariableSchema = {
+  additionalProperties?: false
+  required: string[]
+  properties: Record<string, { type: 'string' | 'number' | 'boolean'; maxLength?: number }>
+}
+
+export type NotificationTemplateVersion = {
+  id: string
+  templateId: string
+  versionNumber: number
+  locale: string
+  titleTemplate: string
+  bodyTemplate: string
+  variableSchema: NotificationVariableSchema
+  variableSchemaSchemaVersion: number
+  status: 'draft' | 'published' | 'superseded'
+  reasonCode?: string | null
+  publishedAt?: string | null
+  createdAt: string
+}
+
+export type NotificationTemplate = {
+  id: string
+  key: string
+  name: string
+  description?: string | null
+  category: string
+  status: 'draft' | 'published' | 'archived'
+  activeVersionNumber?: number | null
+  version: number
+  deletedAt?: string | null
+  createdAt: string
+  updatedAt: string
+  versions?: NotificationTemplateVersion[]
+}
+
+export type NotificationTemplateMetrics = {
+  total: number
+  published: number
+  drafts: number
+  archived: number
+  preferenceOverrides: number
+  disabledPreferences: number
+}
+
+export type NotificationTemplateListQuery = {
+  status?: NotificationTemplate['status'] | null
+  category?: string | null
+  search?: string | null
+  sort?: 'key' | 'createdAt' | 'updatedAt'
+  order?: 'asc' | 'desc'
+  includeDeleted?: boolean
+  cursor?: string | null
+  limit?: number
+}
+
+export type NotificationTemplateDraft = {
+  key?: string
+  name: string
+  description?: string | null
+  category: string
+  locale: string
+  titleTemplate: string
+  bodyTemplate: string
+  variableSchema: NotificationVariableSchema
 }
 
 export type NotificationListQuery = {

@@ -25,6 +25,7 @@ import { createSeedTaskAdminRepository } from '../tasks/seedTaskAdminRepository.
 import { createSeedTaskLifecycleRecoveryRepository } from '../tasks/seedTaskLifecycleRecoveryRepository.js'
 import { createSeedBillingAdminRepository } from '../accounting/seedBillingAdminRepository.js'
 import { createSeedEntitlementRepository } from '../entitlements/seedEntitlementRepository.js'
+import { createSeedNotificationManagementRepository, isSeedNotificationEnabled } from '../notifications/seedNotificationManagementRepository.js'
 import { applyPublishedTaskRule } from '../tasks/taskRuleRuntime.js'
 import {
   appendSeedAuditIntegrity,
@@ -1394,6 +1395,7 @@ function createNotificationsForHandles(handles, payload) {
   const created = uniqueHandles(handles)
     .map((handle) => getAccountByHandle(handle))
     .filter(Boolean)
+    .filter((recipient) => isSeedNotificationEnabled(recipient.id, payload.type))
     .filter((recipient) => !payload.dedupeUnread || !notifications.some((notification) =>
       notification.recipientHandle === recipient.handle &&
       notification.type === payload.type &&
@@ -1411,6 +1413,8 @@ function createNotificationsForHandles(handles, payload) {
       resourceType: payload.resourceType,
       resourceId: payload.resourceId ?? null,
       metadata: sanitizeNotificationMetadata(payload.metadata, payload),
+      templateKey: payload.templateKey ?? null,
+      templateVersion: payload.templateVersion ?? null,
       readAt: null,
       createdAt: now,
     }))
@@ -2617,6 +2621,7 @@ export const createSeedRepository = () => {
     }),
   })
   const entitlements = createSeedEntitlementRepository({ getUserByHandle: getAccountByHandle, getUserById: getAccountById, recordAudit })
+  const notificationManagement = createSeedNotificationManagementRepository({ getUserByHandle: getAccountByHandle, recordAudit: auditRecorder })
   return {
   chat: createSeedChatRepository({
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) =>
@@ -2638,6 +2643,7 @@ export const createSeedRepository = () => {
   authRiskAdmin,
   userAdmin,
   taskAdmin,
+  notificationManagement,
   taskLifecycleRecovery,
   billingAdmin,
   entitlements,

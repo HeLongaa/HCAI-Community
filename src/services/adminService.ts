@@ -75,6 +75,7 @@ import type {
   AdminSecurityEventDto,
   AdminSecurityEventListQuery,
   ApiLedgerEntry,
+  ApiNotification,
   ApiCreativeGenerationRecord,
   ApiCreativeGenerationMutationResponse,
   AdminManualReplayRequest,
@@ -95,6 +96,10 @@ import type {
   AdminObservabilityQuery,
   AdminSloSummaryDto,
   AdminTraceDto,
+  NotificationTemplate,
+  NotificationTemplateDraft,
+  NotificationTemplateListQuery,
+  NotificationTemplateMetrics,
   SystemSettingChangeDto,
   SystemSettingChangeRequest,
   SystemSettingDto,
@@ -811,5 +816,45 @@ export const adminService = {
   },
   async exportPointLedgerCsv(query?: PointsLedgerQuery) {
     return api.text(withQuery('/admin/points/ledger.csv', query))
+  },
+  async notificationTemplates(query?: NotificationTemplateListQuery) {
+    const envelope = await api.getEnvelope<NotificationTemplate[]>(withQuery('/admin/notifications/templates', query))
+    return {
+      items: envelope.data,
+      nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null,
+    }
+  },
+  async notificationTemplate(id: string) {
+    return api.get<NotificationTemplate>(`/admin/notifications/templates/${id}`)
+  },
+  async notificationTemplateMetrics() {
+    return api.get<NotificationTemplateMetrics>('/admin/notifications/templates/metrics')
+  },
+  async createNotificationTemplate(payload: NotificationTemplateDraft & { key: string }) {
+    return api.post<NotificationTemplate>('/admin/notifications/templates', payload)
+  },
+  async updateNotificationTemplate(id: string, payload: NotificationTemplateDraft & { expectedVersion: number }) {
+    return api.patch<NotificationTemplate>(`/admin/notifications/templates/${id}`, payload)
+  },
+  async previewNotificationTemplate(id: string, versionNumber: number, variables: Record<string, unknown>) {
+    return api.post<{ templateKey: string; templateVersion: number; title: string; body: string }>(`/admin/notifications/templates/${id}/preview`, { versionNumber, variables })
+  },
+  async publishNotificationTemplate(id: string, payload: { expectedVersion: number; versionNumber?: number; reasonCode: string }) {
+    return api.post<NotificationTemplate>(`/admin/notifications/templates/${id}/publish`, payload)
+  },
+  async rollbackNotificationTemplate(id: string, payload: { expectedVersion: number; versionNumber: number; reasonCode: string }) {
+    return api.post<NotificationTemplate>(`/admin/notifications/templates/${id}/rollback`, payload)
+  },
+  async archiveNotificationTemplate(id: string, payload: { expectedVersion: number; reasonCode: string }) {
+    return api.del<NotificationTemplate>(`/admin/notifications/templates/${id}`, { body: JSON.stringify(payload) })
+  },
+  async restoreNotificationTemplate(id: string, payload: { expectedVersion: number; reasonCode: string }) {
+    return api.post<NotificationTemplate>(`/admin/notifications/templates/${id}/restore`, payload)
+  },
+  async sendNotificationTemplateTest(id: string, variables: Record<string, unknown>) {
+    return api.post<ApiNotification>(`/admin/notifications/templates/${id}/send-test`, { variables })
+  },
+  async exportNotificationTemplates(query?: NotificationTemplateListQuery) {
+    return api.text(withQuery('/admin/notifications/templates/export', { ...query, cursor: null, limit: 100, format: 'csv' }))
   },
 }
