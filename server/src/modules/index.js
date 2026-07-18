@@ -26,6 +26,7 @@ import { registerEntitlementRoutes } from './entitlements/routes.js'
 import { registerTrustRoutes } from './trust/routes.js'
 import { registerCommunityAdminRoutes } from './communityAdmin/routes.js'
 import { registerDeveloperAccessRoutes } from './developerAccess/routes.js'
+import { registerDeveloperApiRoutes } from './developerApi/routes.js'
 
 export const registerModules = (router) => {
   registerHealthRoutes(router)
@@ -35,6 +36,7 @@ export const registerModules = (router) => {
   registerTrustRoutes(router)
   registerCommunityAdminRoutes(router)
   registerDeveloperAccessRoutes(router)
+  registerDeveloperApiRoutes(router)
   registerAuthRoutes(router)
   registerOAuthAdminRoutes(router)
   registerAuthSessionAdminRoutes(router)

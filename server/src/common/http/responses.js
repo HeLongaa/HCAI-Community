@@ -31,7 +31,7 @@ export const created = (response, data) => {
   json(response, 201, { data })
 }
 
-export const fail = (response, statusCode, code, message, details) => {
+export const fail = (response, statusCode, code, message, details, meta) => {
   json(response, statusCode, {
     data: null,
     error: {
@@ -39,5 +39,6 @@ export const fail = (response, statusCode, code, message, details) => {
       message,
       ...(details === undefined ? {} : { details }),
     },
+    ...(meta === undefined ? {} : { meta }),
   })
 }

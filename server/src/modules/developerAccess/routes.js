@@ -1,4 +1,5 @@
 import { requireApiScope, requirePermission } from '../../common/http/auth.js'
+import { applyApiDeprecationHeaders } from '../../developerApi/apiV1Contract.js'
 import { HttpError, notFound } from '../../common/errors/httpError.js'
 import { readJsonBody } from '../../common/http/request.js'
 import { ok } from '../../common/http/responses.js'
@@ -83,6 +84,7 @@ export const registerDeveloperAccessRoutes = (router, options = {}) => {
   })
 
   router.add('GET', '/api/developer/principal', async (_request, response, context) => {
+    applyApiDeprecationHeaders(response, '/api/developer/principal', 'GET')
     const principal = requireApiScope(context, 'developer:identity:read')
     ok(response, {
       principalType: principal.principalType,

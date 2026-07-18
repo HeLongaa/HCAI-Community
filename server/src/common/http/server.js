@@ -7,12 +7,16 @@ import { enforceRateLimit } from './rateLimit.js'
 import { fail } from './responses.js'
 import { recordSecurityEvent } from '../../security/securityEvents.js'
 import { createCorrelationContext } from '../../observability/structuredLogging.js'
+import { applyVersionedApiHeaders, parseVersionedApiPath, versionedApiMeta } from './apiVersion.js'
 
 export const createServer = (router, context = {}) => {
   return http.createServer(async (request, response) => {
     const startedAt = new Date()
     const correlation = createCorrelationContext(request.headers)
     response.setHeader('x-request-id', correlation.requestId)
+    const requestPathname = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`).pathname
+    const apiVersion = parseVersionedApiPath(requestPathname)
+    applyVersionedApiHeaders(response, apiVersion)
     const requestContext = {
       ...context,
       requestId: correlation.requestId,
@@ -87,11 +91,11 @@ export const createServer = (router, context = {}) => {
             // Observability hooks must not change the client-facing 413 contract.
           }
         }
-        fail(response, error.statusCode, error.code, error.message, error.details)
+        fail(response, error.statusCode, error.code, error.message, error.details, apiVersion ? versionedApiMeta(requestContext, apiVersion) : undefined)
         return
       }
       console.error(error)
-      fail(response, 500, 'INTERNAL_ERROR', 'Unexpected server error')
+      fail(response, 500, 'INTERNAL_ERROR', 'Unexpected server error', undefined, apiVersion ? versionedApiMeta(requestContext, apiVersion) : undefined)
     }
   })
 }

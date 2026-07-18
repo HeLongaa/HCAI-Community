@@ -116,6 +116,10 @@ Frontend guards are UX helpers only. Backend route guards remain the source of t
 | `POST /api/developer/service-accounts/:id/keys/:keyId/rotate` | Required | `developer:credentials:manage`; optimistic concurrency | Yes |
 | `POST /api/developer/service-accounts/:id/keys/:keyId/revoke` | Required | `developer:credentials:manage`; immediate revocation | Yes |
 | `GET /api/developer/principal` | API key | `developer:identity:read` API key scope | Yes |
+| `GET /api/v1` | API key | `developer:identity:read` API key scope | Yes |
+| `GET /api/v1/principal` | API key | `developer:identity:read` API key scope | Yes |
+| `GET /api/v1/errors` | API key | `developer:identity:read` API key scope | Yes |
+| `GET /api/admin/developer/api-contract` | Required | `admin:developer:read`; secret-free contract projection | Yes |
 | `GET /api/admin/developer/service-accounts` | Required | `admin:developer:read`; secret-free projection | Yes |
 | `GET /api/admin/developer/service-accounts/export` | Required | `admin:developer:read`; bounded JSON | Yes |
 | `PUT /api/admin/developer/access-control` | Required | `admin:developer:manage`; optimistic concurrency | Yes |

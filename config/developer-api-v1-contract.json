@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "contractId": "dev-02-developer-api-v1",
+  "scope": "personal_accounts_only",
+  "basePath": "/api/v1",
+  "versionHeader": "x-api-version",
+  "requestId": {
+    "requestHeader": "x-request-id",
+    "responseHeader": "x-request-id",
+    "responseEnvelopeField": "meta.requestId"
+  },
+  "authentication": {
+    "principalType": "service_account",
+    "scheme": "bearer_api_key",
+    "initialScope": "developer:identity:read"
+  },
+  "routes": [
+    { "method": "GET", "path": "/api/v1", "scope": "developer:identity:read" },
+    { "method": "GET", "path": "/api/v1/principal", "scope": "developer:identity:read" },
+    { "method": "GET", "path": "/api/v1/errors", "scope": "developer:identity:read" },
+    { "method": "GET", "path": "/api/admin/developer/api-contract", "permission": "admin:developer:read" }
+  ],
+  "idempotency": {
+    "header": "idempotency-key",
+    "requiredForMethods": ["POST", "PUT", "PATCH", "DELETE"],
+    "minimumLength": 8,
+    "maximumLength": 128,
+    "scope": ["apiKeyId", "method", "routeTemplate"],
+    "fingerprint": ["method", "routeTemplate", "canonicalBodySha256"],
+    "sameFingerprint": "replay_original_status_headers_and_body",
+    "differentFingerprint": "IDEMPOTENCY_CONFLICT",
+    "retentionHours": 24,
+    "persistenceRequiredBeforeFirstMutationRoute": true
+  },
+  "errors": {
+    "registryRoute": "/api/v1/errors",
+    "stableEnvelope": true,
+    "requestIdIncluded": true,
+    "unknownServerErrorCode": "INTERNAL_ERROR"
+  },
+  "deprecation": {
+    "minimumNoticeDays": 180,
+    "headers": ["Deprecation", "Sunset", "Link"],
+    "legacyRoutes": [
+      {
+        "method": "GET",
+        "path": "/api/developer/principal",
+        "replacement": "/api/v1/principal",
+        "deprecatedAt": "2026-07-19T00:00:00.000Z",
+        "sunsetAt": "2027-01-31T00:00:00.000Z"
+      }
+    ]
+  },
+  "operationPolicy": "not_applicable",
+  "forbiddenModels": ["tenant", "team", "organization", "membership", "invitation"]
+}

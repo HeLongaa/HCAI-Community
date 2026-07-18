@@ -44,6 +44,7 @@ test('Admin and owner complete the Service Account and one-time API key lifecycl
   const adminPanel = page.getByTestId('developer-access-admin')
   await expect(adminPanel).toBeVisible()
   await expect(adminPanel).toContainText('Default off')
+  await expect(adminPanel.getByTestId('developer-api-v1-contract')).toContainText('API v1')
   const enableResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/developer/access-control') && response.request().method() === 'PUT')
   await adminPanel.getByRole('button', { name: 'Enable', exact: true }).click()
   expect((await enableResponse).status()).toBe(200)
@@ -85,6 +86,16 @@ test('Admin and owner complete the Service Account and one-time API key lifecycl
     headers: authHeaders(plaintextKey),
   }))
   expect(principal.serviceAccountId).toBeTruthy()
+
+  const v1Response = await request.get(`${apiBaseUrl}/api/v1/principal`, {
+    headers: { ...authHeaders(plaintextKey), 'x-request-id': `e2e-v1-${suffix}` },
+  })
+  expect(v1Response.status()).toBe(200)
+  expect(v1Response.headers()['x-api-version']).toBe('v1')
+  expect(v1Response.headers()['x-request-id']).toBe(`e2e-v1-${suffix}`)
+  const v1Payload = await v1Response.json()
+  expect(v1Payload.meta).toEqual({ apiVersion: 'v1', requestId: `e2e-v1-${suffix}` })
+  expect(v1Payload.data.serviceAccountId).toBe(principal.serviceAccountId)
 
   ownerPage.on('dialog', (dialog) => dialog.accept())
   const keyRow = account.locator('.developer-key-row').filter({ has: ownerPage.getByText(keyName, { exact: true }) })

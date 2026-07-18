@@ -3,7 +3,7 @@ import { Ban, Download, Power, RefreshCw, Save, Search } from 'lucide-react'
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { textFor } from '../../domain/utils'
 import { adminService } from '../../services/adminService'
-import type { DeveloperAccessControl, DeveloperAccessMetrics, DeveloperApiKeyCredential, DeveloperServiceAccount } from '../../services/contracts'
+import type { DeveloperAccessControl, DeveloperAccessMetrics, DeveloperApiKeyCredential, DeveloperApiV1Contract, DeveloperServiceAccount } from '../../services/contracts'
 
 type Props = { t: Record<string, string>; canRead: boolean; canManage: boolean; notify: (message: string) => void }
 
@@ -11,6 +11,7 @@ export function DeveloperAccessAdminPanel({ t, canRead, canManage, notify }: Pro
   const [control, setControl] = useState<DeveloperAccessControl | null>(null)
   const [accounts, setAccounts] = useState<DeveloperServiceAccount[]>([])
   const [metrics, setMetrics] = useState<DeveloperAccessMetrics | null>(null)
+  const [apiContract, setApiContract] = useState<DeveloperApiV1Contract | null>(null)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [ownerHandle, setOwnerHandle] = useState('')
@@ -21,14 +22,16 @@ export function DeveloperAccessAdminPanel({ t, canRead, canManage, notify }: Pro
     if (!canRead) return
     setError(null)
     try {
-      const [nextControl, page, nextMetrics] = await Promise.all([
+      const [nextControl, page, nextMetrics, nextApiContract] = await Promise.all([
         adminService.developerAccessControl(),
         adminService.developerServiceAccounts({ search: search || null, status: status || null, ownerHandle: ownerHandle || null, limit: 50, sort: 'createdAt', order: 'desc' }),
         adminService.developerAccessMetrics(),
+        adminService.developerApiV1Contract(),
       ])
       setControl(nextControl)
       setAccounts(page.items)
       setMetrics(nextMetrics)
+      setApiContract(nextApiContract)
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : textFor(t, 'Could not load developer access.', '无法读取开发者访问数据。'))
     }
@@ -101,6 +104,12 @@ export function DeveloperAccessAdminPanel({ t, canRead, canManage, notify }: Pro
         <button className="ghost-button" type="button" onClick={() => void saveControl()} disabled={!canManage || busy === 'control'}><Save size={16} />{textFor(t, 'Save limits', '保存限额')}</button>
       </div>}
       {metrics && <div className="developer-metric-strip"><div><strong>{metrics.serviceAccounts.total}</strong><span>{textFor(t, 'service accounts', 'Service Account')}</span></div><div><strong>{metrics.apiKeys.total}</strong><span>{textFor(t, 'API keys', 'API Key')}</span></div><div><strong>{metrics.usageCount}</strong><span>{textFor(t, 'authenticated calls', '认证调用')}</span></div><div><strong>{metrics.apiKeys.expired}</strong><span>{textFor(t, 'expired', '已过期')}</span></div></div>}
+      {apiContract && <div className="developer-api-contract" data-testid="developer-api-v1-contract">
+        <div><strong>API {apiContract.apiVersion}</strong><span>{apiContract.routes.length} {textFor(t, 'stable routes', '条稳定路由')}</span></div>
+        <div><strong>{apiContract.idempotency.retentionHours}h</strong><span>{textFor(t, 'idempotency retention', '幂等保留窗口')}</span></div>
+        <div><strong>{apiContract.errors.length}</strong><span>{textFor(t, 'registered errors', '个已登记错误')}</span></div>
+        <div><strong>{apiContract.deprecations[0] ? new Date(apiContract.deprecations[0].sunsetAt).toLocaleDateString() : textFor(t, 'None', '无')}</strong><span>{textFor(t, 'next legacy sunset', '下一个旧版 Sunset')}</span></div>
+      </div>}
       <div className="developer-admin-filters"><label><span>{textFor(t, 'Owner', 'Owner')}</span><input value={ownerHandle} onChange={(event) => setOwnerHandle(event.target.value)} /></label><label><span>{textFor(t, 'Status', '状态')}</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">{textFor(t, 'All', '全部')}</option><option value="active">active</option><option value="revoked">revoked</option></select></label><label className="grow"><span>{textFor(t, 'Search', '搜索')}</span><input value={search} onChange={(event) => setSearch(event.target.value)} /></label><button className="ghost-button" type="button" onClick={() => void load()}><Search size={16} />{textFor(t, 'Apply', '查询')}</button><button className="ghost-button" type="button" onClick={() => void exportSnapshot()}><Download size={16} />JSON</button></div>
       <div className="developer-admin-list">{accounts.map((account) => <div className="developer-admin-account" key={account.id}><div><strong>{account.name}</strong><span>@{account.owner?.handle ?? account.owner?.displayName} · {account.status} · v{account.version}</span></div><span>{account.keys.length} {textFor(t, 'keys', '个密钥')}</span><button className="icon-button" type="button" title={textFor(t, 'Revoke account', '撤销账号')} onClick={() => void revokeAccount(account)} disabled={!canManage || account.status !== 'active' || busy === account.id}><Ban size={16} /></button>{account.keys.map((key) => <div className="developer-admin-key" key={key.id}><code>{key.displayPrefix}</code><span>{key.status}</span><span>{key.usageCount} uses</span><span>{key.scopes.join(', ')}</span><button className="icon-button" type="button" title={textFor(t, 'Revoke key', '撤销密钥')} onClick={() => void revokeKey(account, key)} disabled={!canManage || key.status !== 'active' || busy === key.id}><Ban size={14} /></button></div>)}</div>)}</div>
     </section>

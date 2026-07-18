@@ -14,7 +14,7 @@ Keys have a closed scope list, optional normalized IPv4/IPv6 CIDR allowlist, exp
 
 CIDR enforcement uses the direct socket address by default. Set `API_KEY_TRUST_PROXY=true` only when the API is behind a trusted reverse proxy that removes any client-supplied `X-Forwarded-For` value and writes the authoritative chain itself. Leaving this flag disabled prevents a caller from bypassing an API key allowlist with a spoofed forwarding header.
 
-The initial scope is `developer:identity:read`, used only by `GET /api/developer/principal`. API key principals are rejected by normal user routes even when the owning user could access those routes. DEV-02 must add each future API v1 scope and route explicitly.
+The initial scope is `developer:identity:read`, used by the stable `GET /api/v1/principal` route and the deprecated compatibility route `GET /api/developer/principal`. API key principals are rejected by normal user routes even when the owning user could access those routes. DEV-02 owns the versioned public API surface and requires each future scope and route to be registered explicitly.
 
 ## Operations
 

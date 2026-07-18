@@ -27,7 +27,37 @@ export const openApiDocument = {
       post: { summary: 'Immediately revoke an active API key', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }, { name: 'keyId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Revoked safe credential projection' } } },
     },
     '/developer/principal': {
-      get: { summary: 'Authenticate a service account API key with developer:identity:read scope', responses: { '200': { description: 'Scoped service account identity' }, '401': { description: 'Invalid, expired, IP-denied, disabled, rotated, or revoked key' }, '403': { description: 'Missing API key scope' } } },
+      get: {
+        summary: 'Authenticate a service account API key with developer:identity:read scope',
+        deprecated: true,
+        description: 'Deprecated on 2026-07-19; migrate to /v1/principal before 2027-01-31.',
+        responses: {
+          '200': { description: 'Scoped service account identity', headers: { Deprecation: { $ref: '#/components/headers/Deprecation' }, Sunset: { $ref: '#/components/headers/Sunset' }, Link: { $ref: '#/components/headers/DeprecationLink' } } },
+          '401': { description: 'Invalid, expired, IP-denied, disabled, rotated, or revoked key' },
+          '403': { description: 'Missing API key scope' },
+        },
+      },
+    },
+    '/v1': {
+      get: {
+        summary: 'Discover the stable developer API v1 contract',
+        security: [{ developerApiKey: [] }],
+        responses: { '200': { description: 'Version, routes, request ID, idempotency and deprecation contract', headers: { 'x-request-id': { $ref: '#/components/headers/RequestId' }, 'x-api-version': { $ref: '#/components/headers/ApiVersion' } } }, '401': { $ref: '#/components/responses/ApiV1Error' }, '403': { $ref: '#/components/responses/ApiV1Error' } },
+      },
+    },
+    '/v1/principal': {
+      get: {
+        summary: 'Read the authenticated service account principal from the stable API v1 boundary',
+        security: [{ developerApiKey: [] }],
+        responses: { '200': { description: 'Versioned principal envelope', headers: { 'x-request-id': { $ref: '#/components/headers/RequestId' }, 'x-api-version': { $ref: '#/components/headers/ApiVersion' } } }, '401': { $ref: '#/components/responses/ApiV1Error' }, '403': { $ref: '#/components/responses/ApiV1Error' } },
+      },
+    },
+    '/v1/errors': {
+      get: {
+        summary: 'Read stable API v1 error codes, categories and retryability',
+        security: [{ developerApiKey: [] }],
+        responses: { '200': { description: 'Stable error registry' }, '401': { $ref: '#/components/responses/ApiV1Error' }, '403': { $ref: '#/components/responses/ApiV1Error' } },
+      },
     },
     '/admin/developer/access-control': {
       get: { summary: 'Read developer access control', responses: { '200': { description: 'Control state' }, '403': { description: 'Requires admin:developer:read' } } },
@@ -41,6 +71,9 @@ export const openApiDocument = {
     },
     '/admin/developer/metrics': {
       get: { summary: 'Read service account, API key, expiry, and usage aggregates', responses: { '200': { description: 'Safe aggregate metrics' }, '403': { description: 'Requires admin:developer:read' } } },
+    },
+    '/admin/developer/api-contract': {
+      get: { summary: 'Read API v1 routes, idempotency policy, error registry and deprecation schedule', responses: { '200': { description: 'Secret-free API contract projection' }, '403': { description: 'Requires admin:developer:read' } } },
     },
     '/admin/developer/service-accounts/{id}/revoke': {
       post: { summary: 'Immediately revoke a service account and all active keys', responses: { '200': { description: 'Revoked account' }, '403': { description: 'Requires admin:developer:manage' }, '409': { description: 'Stale version' } } },
@@ -5029,6 +5062,36 @@ export const openApiDocument = {
           '200': { description: 'Reviewed queue item' },
         },
       },
+    },
+  },
+  components: {
+    securitySchemes: {
+      developerApiKey: { type: 'http', scheme: 'bearer', bearerFormat: 'mfk_<prefix>_<secret>', description: 'Service account API key with an explicitly granted developer scope.' },
+    },
+    parameters: {
+      IdempotencyKey: { name: 'Idempotency-Key', in: 'header', required: true, schema: { type: 'string', minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$' }, description: 'Required by every future unsafe API v1 operation. Reuse with a different request fingerprint returns IDEMPOTENCY_CONFLICT.' },
+      RequestId: { name: 'x-request-id', in: 'header', required: false, schema: { type: 'string', minLength: 1, maxLength: 128 }, description: 'Optional caller request identifier echoed in the response; invalid values are replaced.' },
+    },
+    headers: {
+      RequestId: { description: 'Caller-supplied or server-generated request identifier.', schema: { type: 'string' } },
+      ApiVersion: { description: 'Effective public API version.', schema: { type: 'string', const: 'v1' } },
+      Deprecation: { description: 'RFC 9745 structured deprecation date.', schema: { type: 'string', example: '@1784419200' } },
+      Sunset: { description: 'RFC 8594 date after which the legacy resource may stop responding.', schema: { type: 'string', example: 'Sun, 31 Jan 2027 00:00:00 GMT' } },
+      DeprecationLink: { description: 'Links to deprecation information and the successor version.', schema: { type: 'string' } },
+    },
+    schemas: {
+      ApiV1ErrorEnvelope: {
+        type: 'object',
+        required: ['data', 'error', 'meta'],
+        properties: {
+          data: { type: 'null' },
+          error: { type: 'object', required: ['code', 'message'], properties: { code: { type: 'string' }, message: { type: 'string' }, details: {} } },
+          meta: { type: 'object', required: ['apiVersion', 'requestId'], properties: { apiVersion: { type: 'string', const: 'v1' }, requestId: { type: 'string' } } },
+        },
+      },
+    },
+    responses: {
+      ApiV1Error: { description: 'Stable API v1 error envelope', headers: { 'x-request-id': { $ref: '#/components/headers/RequestId' }, 'x-api-version': { $ref: '#/components/headers/ApiVersion' } }, content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiV1ErrorEnvelope' } } } },
     },
   },
 }
