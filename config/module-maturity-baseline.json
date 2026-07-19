@@ -145,11 +145,11 @@
       "name": "信任安全与风控",
       "maturity": "partial",
       "ownerTask": "TRUST-01",
-      "userCapabilities": ["内容拦截与人工复核", "申诉入口", "登录与速率保护"],
-      "adminCapabilities": ["安全事件", "告警确认静默与导出", "内容审核队列"],
+      "userCapabilities": ["内容拦截与人工复核", "账号与生成限制历史", "账号风控申诉", "登录与生成滥用保护"],
+      "adminCapabilities": ["安全事件", "告警确认静默与导出", "内容审核队列", "账号与生成风控策略", "案件处置与申诉裁决", "风控指标与证据导出"],
       "operationPolicies": ["state_transition", "append_only", "immutable_evidence"],
-      "evidence": ["config/v1-content-safety-policy.json", "server/src/security/alertPolicy.js", "server/src/modules/admin/routes.js"],
-      "gapTasks": ["TRUST-01", "RISK-01"]
+      "evidence": ["config/v1-content-safety-policy.json", "config/account-generation-risk-contract.json", "server/src/security/alertPolicy.js", "server/src/risk/riskOperations.js", "server/src/modules/risk/routes.js", "src/features/admin/RiskAdminPanel.tsx", "src/features/profile/RiskCasePanel.tsx", "docs/ACCOUNT_GENERATION_RISK_CONTROLS.md"],
+      "gapTasks": ["TRUST-01"]
     },
     {
       "id": "jobs-automation",

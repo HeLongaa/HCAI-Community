@@ -141,9 +141,10 @@ const recordAuthFailureAnomaly = async (event, context) => {
   await context.onAuthFailureAnomaly?.(event)
 }
 
-export const registerAuthRoutes = (router) => {
+export const registerAuthRoutes = (router, options = {}) => {
+  const routeRepositories = options.repositories ?? repositories
   const recordLoginAttempt = async ({ method, outcome, reasonCode, identity, request }) => {
-    await repositories.authRiskAdmin?.recordAttempt?.(createAuthAttemptEvidence({
+    await routeRepositories.authRiskAdmin?.recordAttempt?.(createAuthAttemptEvidence({
       method,
       outcome,
       reasonCode,
@@ -153,14 +154,36 @@ export const registerAuthRoutes = (router) => {
   }
 
   const authFailureOptions = async (context) => ({
-    config: await repositories.authRiskAdmin?.getRuntimePolicy?.(),
+    config: await routeRepositories.authRiskAdmin?.getRuntimePolicy?.(),
     monitor: context.authFailureMonitor,
     onAnomaly: (event) => recordAuthFailureAnomaly(event, context),
   })
 
+  const riskRestriction = async ({ account, capability, identityEvidence = null }) => {
+    if (!account?.id || !routeRepositories.risk) return null
+    if (identityEvidence && capability === 'login') {
+      await routeRepositories.risk.evaluateLogin?.({
+        userId: account.id,
+        identityHash: identityEvidence.identityHash,
+        networkHash: identityEvidence.networkHash,
+      })
+    }
+    return routeRepositories.risk.restrictionFor?.(account.id, capability)
+  }
+
+  const throwRiskRestriction = (restriction) => {
+    if (!restriction) return
+    throw new HttpError(
+      restriction.statusCode,
+      restriction.code,
+      restriction.statusCode === 429 ? 'Account generation is temporarily throttled by risk controls' : 'Account access is temporarily restricted by risk controls',
+      { caseId: restriction.case.id, disposition: restriction.case.disposition, expiresAt: restriction.case.expiresAt },
+    )
+  }
+
   const getOAuthProviderControl = async (provider) => {
-    if (repositories.oauthAdmin?.getProviderControl) return repositories.oauthAdmin.getProviderControl(provider)
-    const controls = await repositories.oauthAdmin?.listProviderControls?.() ?? []
+    if (routeRepositories.oauthAdmin?.getProviderControl) return routeRepositories.oauthAdmin.getProviderControl(provider)
+    const controls = await routeRepositories.oauthAdmin?.listProviderControls?.() ?? []
     return controls.find((control) => control.provider === provider) ?? null
   }
 
@@ -172,7 +195,7 @@ export const registerAuthRoutes = (router) => {
     if (!statePayload || statePayload.provider !== provider) {
       throw new HttpError(400, 'OAUTH_STATE_INVALID', 'OAuth state is invalid or expired')
     }
-    const authorizationRequest = await repositories.auth.consumeOAuthAuthorizationRequest?.({
+    const authorizationRequest = await routeRepositories.auth.consumeOAuthAuthorizationRequest?.({
       stateHash: hashOAuthState(query.state),
       provider,
     })
@@ -226,7 +249,7 @@ export const registerAuthRoutes = (router) => {
       await recordLoginAttempt({ method: provider, outcome: 'failure', reasonCode: 'profile_verification_failed', identity: provider, request })
       throw new HttpError(401, 'OAUTH_FAILED', 'OAuth provider response could not be verified')
     }
-    const session = await repositories.auth.completeOAuthLogin?.({
+    const session = await routeRepositories.auth.completeOAuthLogin?.({
       profile,
       linkUserId: authorizationRequest.linkUserId,
       clientContext: buildSessionClientContext(request),
@@ -234,6 +257,13 @@ export const registerAuthRoutes = (router) => {
     if (!session) {
       await recordLoginAttempt({ method: provider, outcome: 'failure', reasonCode: 'account_conflict', identity: profile.email, request })
       throw new HttpError(409, 'OAUTH_ACCOUNT_CONFLICT', 'OAuth account is already linked to another user')
+    }
+    const oauthEvidence = createAuthAttemptEvidence({ method: provider, outcome: 'success', reasonCode: 'authenticated', identity: profile.email, clientContext: buildSessionClientContext(request) })
+    const oauthRestriction = await riskRestriction({ account: session.user, capability: 'login', identityEvidence: oauthEvidence })
+    if (oauthRestriction) {
+      await routeRepositories.auth.revokeSession?.(session.refreshToken, 'risk_account_restricted')
+      await recordLoginAttempt({ method: provider, outcome: 'failure', reasonCode: 'risk_account_restricted', identity: profile.email, request })
+      throwRiskRestriction(oauthRestriction)
     }
     await recordLoginAttempt({ method: provider, outcome: 'success', reasonCode: 'authenticated', identity: profile.email, request })
     return {
@@ -248,7 +278,7 @@ export const registerAuthRoutes = (router) => {
     const actor = requireUser(context)
     ok(response, {
       ...serializeAccount(actor),
-      policyConsent: await repositories.compliance.getConsentStatus(actor),
+      policyConsent: await routeRepositories.compliance.getConsentStatus(actor),
     })
   })
 
@@ -256,8 +286,8 @@ export const registerAuthRoutes = (router) => {
     const body = (await readJsonBody(request)) ?? {}
     if (body.email || body.password) {
       const payload = parseEmailLoginRequest(body)
-      const session = await repositories.auth.loginWithPassword?.(payload, buildSessionClientContext(request))
-      if (!session) {
+      const account = await routeRepositories.auth.verifyPasswordCredentials?.(payload)
+      if (!account) {
         await recordLoginAttempt({ method: 'email', outcome: 'failure', reasonCode: 'invalid_email_or_password', identity: payload.email, request })
         await recordAuthFailure(request, {
           identity: payload.email,
@@ -265,13 +295,20 @@ export const registerAuthRoutes = (router) => {
         }, await authFailureOptions(context))
         throw new HttpError(401, 'AUTH_FAILED', 'Invalid email or password')
       }
+      const evidence = createAuthAttemptEvidence({ method: 'email', outcome: 'success', reasonCode: 'authenticated', identity: payload.email, clientContext: buildSessionClientContext(request) })
+      const restriction = await riskRestriction({ account, capability: 'login', identityEvidence: evidence })
+      if (restriction) {
+        await recordLoginAttempt({ method: 'email', outcome: 'failure', reasonCode: 'risk_account_restricted', identity: payload.email, request })
+        throwRiskRestriction(restriction)
+      }
+      const session = await routeRepositories.auth.issueSession?.(account, buildSessionClientContext(request))
       await recordLoginAttempt({ method: 'email', outcome: 'success', reasonCode: 'authenticated', identity: payload.email, request })
       sendSession(response, sessionPayload(session))
       return
     }
 
     const handle = body.handle ?? 'taskops'
-    const account = await repositories.auth.findDemoAccountByHandle(handle)
+    const account = await routeRepositories.auth.findDemoAccountByHandle(handle)
     if (!account) {
       await recordLoginAttempt({ method: 'demo', outcome: 'failure', reasonCode: 'unknown_demo_handle', identity: handle, request })
       await recordAuthFailure(request, {
@@ -280,7 +317,13 @@ export const registerAuthRoutes = (router) => {
       }, await authFailureOptions(context))
       throw new HttpError(401, 'AUTH_FAILED', 'Unknown demo account')
     }
-    const session = repositories.auth.issueSession ? await repositories.auth.issueSession(account, buildSessionClientContext(request)) : account
+    const demoEvidence = createAuthAttemptEvidence({ method: 'demo', outcome: 'success', reasonCode: 'authenticated', identity: handle, clientContext: buildSessionClientContext(request) })
+    const demoRestriction = await riskRestriction({ account, capability: 'login', identityEvidence: demoEvidence })
+    if (demoRestriction) {
+      await recordLoginAttempt({ method: 'demo', outcome: 'failure', reasonCode: 'risk_account_restricted', identity: handle, request })
+      throwRiskRestriction(demoRestriction)
+    }
+    const session = routeRepositories.auth.issueSession ? await routeRepositories.auth.issueSession(account, buildSessionClientContext(request)) : account
     await recordLoginAttempt({ method: 'demo', outcome: 'success', reasonCode: 'authenticated', identity: handle, request })
     sendSession(response, {
       accessToken: session?.accessToken ?? account.tokens.accessToken,
@@ -293,7 +336,7 @@ export const registerAuthRoutes = (router) => {
     const body = (await readJsonBody(request)) ?? {}
     const consent = validatePolicyConsent(body.policyConsent, 'email_registration')
     const payload = parseRegisterRequest(body)
-    const session = await repositories.auth.registerEmailAccount?.(payload, consent, buildSessionClientContext(request))
+    const session = await routeRepositories.auth.registerEmailAccount?.(payload, consent, buildSessionClientContext(request))
     if (!session) {
       throw new HttpError(409, 'ACCOUNT_EXISTS', 'Email or handle is already registered')
     }
@@ -301,7 +344,7 @@ export const registerAuthRoutes = (router) => {
   })
 
   router.add('GET', '/api/auth/oauth/providers', async (_request, response) => {
-    const controls = await repositories.oauthAdmin?.listProviderControls?.() ?? []
+    const controls = await routeRepositories.oauthAdmin?.listProviderControls?.() ?? []
     const controlByProvider = new Map(controls.map((control) => [control.provider, control]))
     const metadata = listOAuthProviderMetadata(process.env, controlByProvider)
     ok(response, metadata.map((provider) => {
@@ -312,7 +355,7 @@ export const registerAuthRoutes = (router) => {
 
   router.add('GET', '/api/auth/oauth/accounts', async (_request, response, context) => {
     const actor = requireUser(context)
-    const accounts = await repositories.auth.listOAuthAccounts?.(actor) ?? []
+    const accounts = await routeRepositories.auth.listOAuthAccounts?.(actor) ?? []
     ok(response, accounts.map(serializeOAuthAccount))
   })
 
@@ -322,7 +365,7 @@ export const registerAuthRoutes = (router) => {
     if (!oauthAccountProviders.includes(provider)) {
       throw new HttpError(404, 'NOT_FOUND', 'OAuth account not found')
     }
-    const result = await repositories.auth.unlinkOAuthAccount?.(provider, actor)
+    const result = await routeRepositories.auth.unlinkOAuthAccount?.(provider, actor)
     if (!result) {
       throw new HttpError(404, 'NOT_FOUND', 'OAuth account not found')
     }
@@ -350,7 +393,7 @@ export const registerAuthRoutes = (router) => {
       throw new HttpError(503, 'OAUTH_PROVIDER_UNAVAILABLE', 'OAuth provider is not configured for this environment')
     }
     const statePayload = verifyOAuthState(state)
-    const stateCreated = await repositories.auth.createOAuthAuthorizationRequest?.({
+    const stateCreated = await routeRepositories.auth.createOAuthAuthorizationRequest?.({
       stateHash: hashOAuthState(state),
       provider,
       redirectTo: normalizeOAuthRedirect(payload.redirectTo),
@@ -399,32 +442,39 @@ export const registerAuthRoutes = (router) => {
       requireCookieCsrf(request)
     }
     const token = context.authToken ?? body?.refreshToken ?? cookieRefreshToken
-    const session = token && repositories.auth.rotateSession ? await repositories.auth.rotateSession(token, buildSessionClientContext(request)) : null
-    const account = session ? null : token ? await repositories.auth.findDemoAccountByRefreshToken(token) : null
+    const session = token && routeRepositories.auth.rotateSession ? await routeRepositories.auth.rotateSession(token, buildSessionClientContext(request)) : null
+    const account = session ? null : token ? await routeRepositories.auth.findDemoAccountByRefreshToken(token) : null
     if (!session && !account) {
       throw new HttpError(401, 'AUTH_FAILED', 'Invalid refresh token')
+    }
+    const refreshedAccount = session?.user ?? account
+    const restriction = await riskRestriction({ account: refreshedAccount, capability: 'login' })
+    if (restriction) {
+      if (session?.refreshToken) await routeRepositories.auth.revokeSession?.(session.refreshToken, 'risk_account_restricted')
+      clearRefreshTokenCookie(response)
+      throwRiskRestriction(restriction)
     }
     sendSession(response, {
       accessToken: session?.accessToken ?? account.tokens.accessToken,
       refreshToken: session?.refreshToken ?? account.tokens.refreshToken,
-      user: serializeAccount(session?.user ?? account),
+      user: serializeAccount(refreshedAccount),
     })
   })
 
   router.add('GET', '/api/auth/sessions', async (_request, response, context) => {
     const actor = requireUser(context)
     const currentSessionId = verifyAccessToken(context.authToken)?.sid ?? null
-    ok(response, await repositories.auth.listSessions(actor, currentSessionId))
+    ok(response, await routeRepositories.auth.listSessions(actor, currentSessionId))
   })
 
   router.add('DELETE', '/api/auth/sessions', async (_request, response, context) => {
     const actor = requireUser(context)
-    ok(response, await repositories.auth.revokeAllSessions(actor))
+    ok(response, await routeRepositories.auth.revokeAllSessions(actor))
   })
 
   router.add('DELETE', '/api/auth/sessions/:id', async (_request, response, context) => {
     const actor = requireUser(context)
-    const revoked = await repositories.auth.revokeSessionById(context.params.id, actor)
+    const revoked = await routeRepositories.auth.revokeSessionById(context.params.id, actor)
     if (!revoked) {
       throw new HttpError(404, 'NOT_FOUND', 'Session not found')
     }
@@ -439,8 +489,8 @@ export const registerAuthRoutes = (router) => {
       requireCookieCsrf(request)
     }
     const token = context.authToken ?? body?.refreshToken ?? cookieRefreshToken
-    if (token && repositories.auth.revokeSession) {
-      await repositories.auth.revokeSession(token, 'user_logout')
+    if (token && routeRepositories.auth.revokeSession) {
+      await routeRepositories.auth.revokeSession(token, 'user_logout')
     }
     clearRefreshTokenCookie(response)
     ok(response, { revoked: true })

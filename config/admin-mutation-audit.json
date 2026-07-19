@@ -191,5 +191,7 @@
     ,{ "method": "POST", "path": "/api/admin/search/index/sync", "action": "admin.search.index_sync", "resourceType": "search_index", "resourceParam": null, "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
     ,{ "method": "POST", "path": "/api/admin/search/index/rebuild", "action": "admin.search.index_rebuild", "resourceType": "search_index", "resourceParam": null, "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
     ,{ "method": "PUT", "path": "/api/admin/search/ranking-control", "action": "search.ranking_control.updated", "resourceType": "search_ranking_control", "resourceParam": null, "reasonCode": "request_reason", "mode": "domain_audited", "risk": "high" }
+    ,{ "method": "PUT", "path": "/api/admin/risk/policy", "action": "admin.risk.policy.updated", "resourceType": "risk_policy", "resourceParam": null, "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
+    ,{ "method": "POST", "path": "/api/admin/risk/cases/:id/transitions", "action": "admin.risk.case.transitioned", "resourceType": "risk_case", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
   ]
 }

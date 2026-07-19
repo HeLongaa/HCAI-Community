@@ -9,6 +9,7 @@ import { marketplaceProfiles, tracks } from '../../data/mockData'
 import { categoryLabel, isZhCopy, localizeText, localizedTasks, pointText, profileTags, textFor } from '../../domain/utils'
 import { PortfolioManager } from './PortfolioManager'
 import { ProfileSettingsPanel } from './ProfileSettingsPanel'
+import { RiskCasePanel } from './RiskCasePanel'
 
 export function PlaylistPage({
   t,
@@ -229,6 +230,7 @@ export function ProfilePage({
       {isPersonalCenter && activeTab === 'overview' && (
         <div className="profile-owner-settings">
           <ProfileSettingsPanel t={t} onUpdated={onProfileUpdated}/>
+          <RiskCasePanel t={t}/>
           <PortfolioManager t={t}/>
         </div>
       )}

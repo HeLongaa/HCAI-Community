@@ -149,6 +149,7 @@ import { createPrismaObservabilityRepository } from '../observability/prismaObse
 import { createPrismaOAuthAdminRepository } from '../auth/prismaOAuthAdminRepository.js'
 import { createPrismaAuthSessionAdminRepository } from '../auth/prismaAuthSessionAdminRepository.js'
 import { createPrismaAuthRiskAdminRepository } from '../auth/prismaAuthRiskAdminRepository.js'
+import { createPrismaRiskRepository } from '../risk/prismaRiskRepository.js'
 import { createPrismaUserAdminRepository } from '../users/prismaUserAdminRepository.js'
 import { createPrismaTaskAdminRepository } from '../tasks/prismaTaskAdminRepository.js'
 import { createPrismaCommunityAdminRepository } from '../community/prismaCommunityAdminRepository.js'
@@ -1111,6 +1112,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   const oauthAdmin = createPrismaOAuthAdminRepository(client, { runSerializableTransaction, recordAudit })
   const authSessionAdmin = createPrismaAuthSessionAdminRepository(client, { runSerializableTransaction, recordAudit })
   const authRiskAdmin = createPrismaAuthRiskAdminRepository(client, { runSerializableTransaction, recordAudit })
+  const risk = createPrismaRiskRepository(client, { runSerializableTransaction, recordAudit })
   const userAdmin = createPrismaUserAdminRepository(client, { runSerializableTransaction, recordAudit })
   const taskAdmin = createPrismaTaskAdminRepository(client, { runSerializableTransaction, recordAudit, createTaskEscrow, finalizeTaskEscrow })
   const communityAdmin = createPrismaCommunityAdminRepository(client, { runSerializableTransaction, recordAudit })
@@ -2508,7 +2510,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       })
       return createSessionForUser(user, 'auth.session.created', { clientContext })
     },
-    loginWithPassword: async ({ email, password }, clientContext = null) => {
+    verifyPasswordCredentials: async ({ email, password }) => {
       const authAccount = await client.authAccount.findUnique({
         where: { provider_providerUserId: { provider: 'email', providerUserId: normalizeEmail(email) } },
         include: { user: { include: { profile: true } } },
@@ -2520,7 +2522,11 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       ) {
         return null
       }
-      return createSessionForUser(authAccount.user, 'auth.session.created', { clientContext })
+      return mapAccount(authAccount.user)
+    },
+    loginWithPassword: async (payload, clientContext = null) => {
+      const account = await auth.verifyPasswordCredentials(payload)
+      return account ? auth.issueSession(account, clientContext) : null
     },
     createOAuthAuthorizationRequest: async ({ stateHash, provider, redirectTo, linkUserId = null, providerControlVersion = 0, expiresAt }) => {
       try {
@@ -10489,6 +10495,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     oauthAdmin,
     authSessionAdmin,
     authRiskAdmin,
+    risk,
     userAdmin,
     taskAdmin,
     communityAdmin,

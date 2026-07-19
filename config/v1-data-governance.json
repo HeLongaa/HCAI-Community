@@ -329,6 +329,20 @@
       "ownerTasks": ["V1-48", "V1-67"]
     },
     {
+      "id": "account_generation_risk_records",
+      "classification": "restricted",
+      "prismaModels": ["RiskPolicy", "RiskSignal", "RiskCase", "RiskCaseSignal", "RiskDispositionEvent", "RiskAppeal"],
+      "locations": ["postgres"],
+      "dataSubjects": ["user", "security_operator"],
+      "purposes": ["auth_security", "creative_generation", "safety_moderation", "support_operations"],
+      "exampleFields": ["bounded thresholds", "normalized signal type and score", "hash-only source reference", "state-transition disposition", "bounded reason code", "appeal statement hash", "recovery timestamp"],
+      "accessRoles": ["user_self_redacted", "authorized_service", "security_operator_redacted", "appeal_reviewer"],
+      "retentionPolicyId": "security_event_365d",
+      "exportPolicy": "include_normalized_subject_case_and_decision_exclude_raw_identity_prompt_provider_payload_and_network_data",
+      "deletionPolicy": "redact_subject_link_after_retention_and_retain_decision_evidence_under_legal_hold",
+      "ownerTasks": ["V1-67"]
+    },
+    {
       "id": "developer_credentials",
       "classification": "restricted",
       "prismaModels": ["DeveloperAccessControl", "ServiceAccount", "ApiKeyCredential", "WebhookSubscription", "WebhookSigningSecret"],
@@ -764,7 +778,7 @@
       "id": "api_to_postgres",
       "from": "api_memory",
       "to": "postgres",
-      "dataAssetIds": ["governance_configuration", "identity_account_profile", "authentication_credentials_sessions", "developer_credentials", "marketplace_records", "community_content_interactions", "search_index_records", "private_library_items", "internal_points_ledger", "internal_accounting_invariant_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "chat_conversation_messages", "provider_lifecycle_records", "creative_accounting_records", "ai_evaluation_records", "notification_records", "support_ticket_records", "moderation_review_records", "audit_event_records", "security_event_records"],
+      "dataAssetIds": ["governance_configuration", "identity_account_profile", "authentication_credentials_sessions", "account_generation_risk_records", "developer_credentials", "marketplace_records", "community_content_interactions", "search_index_records", "private_library_items", "internal_points_ledger", "internal_accounting_invariant_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "chat_conversation_messages", "provider_lifecycle_records", "creative_accounting_records", "ai_evaluation_records", "notification_records", "support_ticket_records", "moderation_review_records", "audit_event_records", "security_event_records"],
       "requiredControls": ["validated DTO", "field allowlist", "transaction and ownership checks", "encrypted connection", "no secret or raw Provider payload"],
       "destinationPersistence": "retention_policy_applies"
     },
@@ -1129,7 +1143,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 155,
+    "modelCount": 161,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",

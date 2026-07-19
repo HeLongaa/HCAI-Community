@@ -33,7 +33,7 @@ Maturity has four meanings:
 | Media platform | Partial | Private assets, scans, downloads, lineage | Scan queue, policy rollback, alerts | Real storage/scanner rehearsal and cleanup automation |
 | Entitlements and accounting | Production capable | Points, credits, quota, escrow and refunds | Policy, adjustments, reconciliation and compensation | Broader billing statistics and user detail experience |
 | Notifications and webhooks | Partial | Inbox, read state and safe deep links | Limited evidence lookup | Durable delivery jobs, retry/DLQ, webhook subscriptions |
-| Trust, safety and risk | Partial | Policy blocks/review and appeal entry | Security alerts and moderation queues | Unified cases, abuse rules, risk policy and statistics |
+| Trust, safety and risk | Partial | Content review plus account/generation restriction history and appeals | Security alerts, moderation queues, versioned risk policy, case disposition, metrics and export | Remaining TRUST-01 content-safety depth |
 | Jobs and automation | Partial | Existing interval work is durably tracked | Definition/run list, detail, safe cancellation, attempts and lease evidence | Retry, DLQ, Cron, pause/resume and manual rerun controls |
 | Audit and evidence | Partial | Critical flows emit evidence | Search, detail, export and redaction | Shared Admin write middleware, retention and evidence verification |
 | Observability and incident response | Partial | Stable errors and explicit failure | Metrics, Prometheus and security dispositions | Trace correlation, SLOs, dashboards and incident workflow |

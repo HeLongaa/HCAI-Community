@@ -36,6 +36,13 @@ import type {
   AdminAuthRiskPolicy,
   AdminAuthSession,
   AdminAuthSessionQuery,
+  RiskCase,
+  RiskCaseQuery,
+  RiskCaseStatus,
+  RiskDisposition,
+  RiskLevel,
+  RiskMetrics,
+  RiskPolicy,
   AdminUserDto,
   AdminUserMetrics,
   AdminUserMetricsExport,
@@ -364,6 +371,28 @@ export const adminService = {
   },
   async revokeUserAuthSessions(userId: string, reasonCode: string) {
     return api.post<{ revoked: number }>(`/admin/auth/users/${encodeURIComponent(userId)}/sessions/revoke`, { reasonCode })
+  },
+  async riskCases(query?: RiskCaseQuery) {
+    const envelope = await api.getEnvelope<RiskCase[]>(withQuery('/admin/risk/cases', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  riskCase(id: string) {
+    return api.get<RiskCase>(`/admin/risk/cases/${encodeURIComponent(id)}`)
+  },
+  riskPolicy() {
+    return api.get<RiskPolicy>('/admin/risk/policy')
+  },
+  updateRiskPolicy(payload: Omit<RiskPolicy, 'id' | 'version' | 'updatedByRef' | 'createdAt' | 'updatedAt'> & { expectedVersion: number }) {
+    return api.put<RiskPolicy>('/admin/risk/policy', payload)
+  },
+  transitionRiskCase(id: string, payload: { toStatus: RiskCaseStatus; disposition: RiskDisposition; riskLevel: RiskLevel; reasonCode: string; expectedVersion: number; restrictionSeconds?: number; appealDecision?: 'approved' | 'rejected' }) {
+    return api.post<RiskCase>(`/admin/risk/cases/${encodeURIComponent(id)}/transitions`, payload)
+  },
+  riskMetrics(query?: { dateFrom?: string; dateTo?: string }) {
+    return api.get<RiskMetrics>(withQuery('/admin/risk/metrics', query))
+  },
+  exportRiskCases(query?: RiskCaseQuery) {
+    return api.get<{ generatedAt: string; truncated: boolean; filters: Record<string, unknown>; cases: RiskCase[] }>(withQuery('/admin/risk/cases/export', query))
   },
   async users(query?: AdminUserQuery) {
     const envelope = await api.getEnvelope<AdminUserDto[]>(withQuery('/admin/users', query))

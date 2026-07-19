@@ -20,6 +20,7 @@ import { createSeedObservabilityRepository } from '../observability/seedObservab
 import { createSeedOAuthAdminRepository } from '../auth/seedOAuthAdminRepository.js'
 import { createSeedAuthSessionAdminRepository } from '../auth/seedAuthSessionAdminRepository.js'
 import { createSeedAuthRiskAdminRepository } from '../auth/seedAuthRiskAdminRepository.js'
+import { createSeedRiskRepository } from '../risk/seedRiskRepository.js'
 import { createSeedUserAdminRepository } from '../users/seedUserAdminRepository.js'
 import { createSeedTaskAdminRepository } from '../tasks/seedTaskAdminRepository.js'
 import { createSeedCommunityAdminRepository } from '../community/seedCommunityAdminRepository.js'
@@ -717,12 +718,17 @@ const registerEmailAccount = async ({ email, password, displayName, handle }, co
   return issueSession(account, { clientContext })
 }
 
-const loginWithPassword = async ({ email, password }, clientContext = null) => {
+const verifyPasswordCredentials = async ({ email, password }) => {
   const account = emailAccountByEmail.get(normalizeEmail(email))
   if (!account || getSeedAccountLifecycle(account).status !== 'active' || !(await verifyPassword(password, account.passwordHash))) {
     return null
   }
-  return issueSession(account, { clientContext })
+  return account
+}
+
+const loginWithPassword = async (payload, clientContext = null) => {
+  const account = await verifyPasswordCredentials(payload)
+  return account ? issueSession(account, { clientContext }) : null
 }
 
 const createOAuthAuthorizationRequest = async ({ stateHash, provider, redirectTo, linkUserId = null, providerControlVersion = 0, expiresAt }) => {
@@ -2705,6 +2711,7 @@ export const createSeedRepository = () => {
     recordAudit,
   })
   const authRiskAdmin = createSeedAuthRiskAdminRepository({ authSessionById, recordAudit })
+  const risk = createSeedRiskRepository({ getAccountById, creativeGenerationsById, authRiskAdmin, recordAudit })
   const userAdmin = createSeedUserAdminRepository({
     accounts: seedStore.demoAccounts,
     getLifecycle: getSeedAccountLifecycle,
@@ -2793,6 +2800,7 @@ export const createSeedRepository = () => {
   oauthAdmin,
   authSessionAdmin,
   authRiskAdmin,
+  risk,
   userAdmin,
   taskAdmin,
   communityAdmin,
@@ -2835,6 +2843,7 @@ export const createSeedRepository = () => {
     listDemoAccounts: () => seedStore.demoAccounts,
     issueSession: (account, clientContext) => issueSession(account, { clientContext }),
     registerEmailAccount,
+    verifyPasswordCredentials,
     loginWithPassword,
     createOAuthAuthorizationRequest,
     consumeOAuthAuthorizationRequest,

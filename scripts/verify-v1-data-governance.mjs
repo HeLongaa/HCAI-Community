@@ -39,6 +39,7 @@ const expectedPurposes = [
   'support_operations',
 ]
 const expectedAssets = [
+  'account_generation_risk_records',
   'ai_evaluation_records',
   'audit_event_records',
   'authentication_credentials_sessions',

@@ -14585,6 +14585,72 @@ button.video-history-row.active {
   grid-column: 1 / -1;
 }
 
+.panel.risk-admin-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.risk-admin-panel > *,
+.risk-admin-panel .admin-section-heading,
+.risk-admin-panel .admin-section-heading > div,
+.risk-admin-panel .admin-detail-panel,
+.risk-admin-panel .admin-table,
+.risk-admin-panel .admin-row {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.risk-admin-panel .admin-section-heading strong,
+.risk-admin-panel .admin-section-heading small,
+.risk-admin-panel .admin-row > * {
+  overflow-wrap: anywhere;
+}
+
+.risk-admin-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--border);
+}
+
+.risk-admin-metrics > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px;
+  background: var(--surface);
+}
+
+.risk-admin-metrics span {
+  color: var(--text-muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.risk-admin-metrics strong {
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.risk-admin-policy {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
 @media (max-width: 900px) {
   .notification-admin-layout,
   .notification-template-fields,
@@ -14654,6 +14720,10 @@ button.video-history-row.active {
   .trust-ops-filters,
   .trust-rule-form {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .risk-admin-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .trust-admin-filters > *,

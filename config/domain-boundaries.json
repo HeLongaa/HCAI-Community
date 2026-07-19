@@ -52,6 +52,7 @@
     ,{ "id": "webhooks", "domain": "notifications-webhooks", "layer": "transport", "registration": "registerWebhookRoutes" }
     ,{ "id": "supportAdmin", "domain": "support", "layer": "transport", "registration": "registerSupportAdminRoutes" }
     ,{ "id": "search", "domain": "search-discovery", "layer": "transport", "registration": "registerSearchRoutes" }
+    ,{ "id": "risk", "domain": "trust-safety-risk", "layer": "transport", "registration": "registerRiskRoutes" }
   ],
   "ownership": [
     { "domain": "identity-access", "owns": ["credentials", "OAuth authorization requests", "sessions", "roles", "permissions"] },
