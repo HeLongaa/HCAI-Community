@@ -63,7 +63,7 @@
     "test:oauth-hardening:integration": "npm --prefix server run db:generate && node --test server/src/repositories/prismaOAuth.integration.test.js",
     "test:oauth-admin-operations": "node scripts/verify-oauth-admin-operations.mjs && npm --prefix server run db:generate && node --test scripts/check-oauth-provider-readiness.test.mjs server/src/auth/oauthAdminOperations.test.js server/src/modules/auth/admin.routes.test.js",
     "test:oauth-admin-operations:integration": "npm --prefix server run db:generate && node --test server/src/repositories/prismaOAuthAdmin.integration.test.js",
-    "oauth:preflight": "node scripts/check-oauth-provider-readiness.mjs",
+    "oauth:preflight": "node --env-file-if-exists=server/.env scripts/check-oauth-provider-readiness.mjs",
     "chat:openai:preflight": "node --env-file-if-exists=server/.env scripts/check-openai-chat-readiness.mjs --profile=env --mode=preflight",
     "chat:openai:live-smoke": "node --env-file-if-exists=server/.env scripts/check-openai-chat-readiness.mjs --profile=env --mode=live",
     "chat:openai:acceptance": "node --env-file-if-exists=server/.env scripts/check-openai-chat-readiness.mjs --profile=env --mode=acceptance",
