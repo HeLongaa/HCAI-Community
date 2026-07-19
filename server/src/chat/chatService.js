@@ -463,7 +463,9 @@ export const createChatService = ({
       let errorCode = null
       let outputEvidence = null
       let reviewId = dispatch.safety?.reviewId ?? null
-      let providerUsage = dispatch.providerUsage ?? null
+      const inputProviderUsage = dispatch.providerUsage ?? null
+      let streamProviderUsage = null
+      let outputProviderUsage = null
       const maximumBuffer = chatCapabilityContract.safety.maximumUnclassifiedBufferCharacters
       const persistAndEmit = async (text) => {
         if (!text) return
@@ -493,7 +495,7 @@ export const createChatService = ({
           productContext: dispatch.productContext,
           final,
         })
-        providerUsage = mergeProviderUsage(providerUsage, decision.providerUsage)
+        outputProviderUsage = mergeProviderUsage(outputProviderUsage, decision.providerUsage)
         outputEvidence = buildChatSafetyEvidence(decision, { stage: 'output', text: candidate, classifiedAt: now() })
         if (decision.classified && decision.disposition === 'allow') {
           const release = pendingContent
@@ -535,7 +537,7 @@ export const createChatService = ({
             break
           }
           if (event.type === 'usage') {
-            providerUsage = mergeProviderUsage(providerUsage, event.usage)
+            streamProviderUsage = mergeProviderUsage(streamProviderUsage, event.usage)
             continue
           }
           if (event.type !== 'content.delta' || (event.safety && (!event.safety.classified || !event.safety.allowed))) {
@@ -547,7 +549,7 @@ export const createChatService = ({
           while (characters.length > 0 && terminalStatus === 'completed') {
             const capacity = maximumBuffer - [...pendingContent].length
             pendingContent += characters.splice(0, capacity).join('')
-            if (!await classifyPending(false)) break
+            if ([...pendingContent].length >= maximumBuffer && !await classifyPending(false)) break
           }
           if (terminalStatus !== 'completed') break
         }
@@ -557,11 +559,18 @@ export const createChatService = ({
         terminalStatus = signal.aborted ? (signal.reason === 'stop' ? 'stopped' : 'interrupted') : 'failed'
         errorCode = signal.aborted ? null : (error?.code ?? 'CHAT_STREAM_FAILED')
       }
-      const usage = providerUsage ?? {
-        inputTokens: dispatch.context.estimatedInputTokens,
-        outputTokens: Buffer.byteLength(content, 'utf8'),
-        metered: false,
-      }
+      const combinedProviderUsage = mergeProviderUsage(inputProviderUsage, streamProviderUsage, outputProviderUsage)
+      const providerUsageComplete = terminalStatus === 'completed' &&
+        inputProviderUsage?.metered === true &&
+        streamProviderUsage?.metered === true &&
+        outputProviderUsage?.metered === true
+      const usage = combinedProviderUsage
+        ? { ...combinedProviderUsage, metered: providerUsageComplete }
+        : {
+            inputTokens: dispatch.context.estimatedInputTokens,
+            outputTokens: Buffer.byteLength(content, 'utf8'),
+            metered: false,
+          }
       const safety = {
         ...(dispatch.safety ?? {}),
         output: outputEvidence ?? (terminalStatus === 'blocked'

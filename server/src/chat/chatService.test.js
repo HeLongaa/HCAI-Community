@@ -294,6 +294,39 @@ test('Chat service checks Provider controls before classification and settles co
   assert.equal(controlResults[0].error, null)
 })
 
+test('Chat service reconciles incomplete Provider usage after a stopped stream', async () => {
+  const planner = (payload) => assertOpenAIChatBudgetAllowsDispatch(buildOpenAIChatProviderCostMetadata(payload))
+  async function* stoppedProviderStream() {
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    yield { type: 'content.delta', text: 'must not persist', safety: { classified: true, allowed: true } }
+  }
+  const runtime = setup({
+    generationProvider: { id: 'openai-gpt-5-6-terra', mode: 'openai_chat', label: 'OpenAI GPT-5.6 Terra' },
+    providerCostPlanner: planner,
+    providerControlPlane: {
+      assertDispatchAllowed: async () => ({ allowed: true }),
+      recordResult: async () => {},
+    },
+    streamAdapter: stoppedProviderStream,
+    inputSafetyClassifier: async () => ({
+      classified: true,
+      disposition: 'allow',
+      reasonCodes: ['SAFETY_ALLOWED_BASELINE'],
+      source: 'production_classifier',
+      usage: { inputTokens: 10, outputTokens: 1, metered: true },
+    }),
+  })
+  const conversation = await runtime.service.createConversation({ mode: 'assistant' }, actor)
+  const prepared = await runtime.service.prepareTurn(conversation.id, input(), actor)
+  await runtime.service.stopTurn(prepared.turn.id, actor)
+  const stopped = await runtime.service.streamPreparedTurn(prepared, actor, () => {}, new AbortController().signal)
+  assert.equal(stopped.status, 'stopped')
+  assert.deepEqual(stopped.usage, { inputTokens: 10, outputTokens: 1, metered: false })
+  const ledger = await runtime.repositories.creativeProviderCosts.findForGeneration(stopped.generationId)
+  assert.equal(ledger.status, 'reconciliation_required')
+  assert.equal(ledger.reasonCode, 'actual_cost_missing')
+})
+
 test('Chat service routes input review evidence without generation dispatch', async () => {
   const { repositories, service } = setup({
     inputSafetyClassifier: async () => ({
@@ -359,9 +392,38 @@ test('Chat service blocks a full unclassified output buffer without releasing co
   assert.equal(events.includes('content.delta'), false)
 })
 
+test('Chat service batches short Provider deltas into one final output safety classification', async () => {
+  async function* shortDeltaStream() {
+    yield { type: 'content.delta', text: 'staging ', safety: { classified: true, allowed: true } }
+    yield { type: 'content.delta', text: 'stream ', safety: { classified: true, allowed: true } }
+    yield { type: 'content.delta', text: 'ready', safety: { classified: true, allowed: true } }
+  }
+  let outputClassifications = 0
+  const { service } = setup({
+    streamAdapter: shortDeltaStream,
+    outputSafetyClassifier: async () => {
+      outputClassifications += 1
+      return {
+        classified: true,
+        disposition: 'allow',
+        reasonCodes: ['SAFETY_ALLOWED_BASELINE'],
+        source: 'injected_fixture',
+      }
+    },
+  })
+  const conversation = await service.createConversation({ mode: 'assistant' }, actor)
+  const prepared = await service.prepareTurn(conversation.id, input(), actor)
+  const events = []
+  const completed = await service.streamPreparedTurn(prepared, actor, (event, data) => events.push({ event, data }), new AbortController().signal)
+  assert.equal(completed.status, 'completed')
+  assert.equal(completed.messages[1].content, 'staging stream ready')
+  assert.equal(outputClassifications, 1)
+  assert.deepEqual(events.filter((event) => event.event === 'content.delta').map((event) => event.data.text), ['staging stream ready'])
+})
+
 test('Chat service preserves only classified partial output when a later segment needs review', async () => {
   async function* reviewStream() {
-    yield { type: 'content.delta', text: 'safe', safety: { classified: true, allowed: true } }
+    yield { type: 'content.delta', text: 's'.repeat(512), safety: { classified: true, allowed: true } }
     yield { type: 'content.delta', text: ' review', safety: { classified: true, allowed: true } }
   }
   const { repositories, service } = setup({
@@ -374,12 +436,12 @@ test('Chat service preserves only classified partial output when a later segment
     }),
   })
   const conversation = await service.createConversation({ mode: 'assistant' }, actor)
-  const prepared = await service.prepareTurn(conversation.id, input(), actor)
+  const prepared = await service.prepareTurn(conversation.id, input({ parameters: { maxOutputTokens: 1024, responseFormat: 'text' } }), actor)
   const events = []
   const blocked = await service.streamPreparedTurn(prepared, actor, (event, data) => events.push({ event, data }), new AbortController().signal)
   assert.equal(blocked.status, 'blocked')
   assert.equal(blocked.errorCode, 'CHAT_STREAM_REVIEW_REQUIRED')
-  assert.equal(blocked.messages[1].content, 'safe')
+  assert.equal(blocked.messages[1].content, 's'.repeat(512))
   const review = repositories.adminReviews.find(blocked.safety.reviewId)
   assert.equal(review.metadata.chatTurnId, blocked.id)
   assert.equal(events.at(-1).data.moderationDecisionId, blocked.safety.reviewId)

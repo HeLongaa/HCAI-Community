@@ -8,6 +8,8 @@ production-smoke path remains `CHAT_PROVIDER_MODE=mock`.
 - Fixed OpenAI `https://api.openai.com/v1/responses` mapping for `gpt-5.6-terra`.
 - Streaming SSE projection with an event allowlist, explicit completion, refusal/failure mapping, response MIME checks,
   timeout/abort cleanup, `store=false`, and `background=false`.
+- Output safety classification uses the frozen 512-character unclassified buffer instead of one paid classification per
+  Provider delta; only complete input, generation, and output usage is settled, while stopped/partial usage reconciles.
 - Structured input and output safety decisions using a closed JSON schema and application policy reason codes.
 - Bounded signed S3 attachment reads with exact-size, strict UTF-8, and magic-MIME validation.
 - In-memory text, image data URL, and PDF data URL Provider inputs; no attachment bytes or raw Provider payloads are
@@ -52,8 +54,10 @@ The dedicated readiness commands are:
 
 ```bash
 npm run test:chat-openai-readiness
+npm run test:chat-openai-readiness:integration
 npm run chat:openai:preflight
 CHAT_OPENAI_LIVE_SMOKE_CONFIRMATION=real-staging-call npm run chat:openai:live-smoke
+CHAT_OPENAI_LIVE_SMOKE_CONFIRMATION=real-staging-acceptance npm run chat:openai:acceptance
 ```
 
 `preflight` parses all staging gates and reports only low-cardinality safe metadata. It does not construct a client or
@@ -65,3 +69,8 @@ The live gate also requires a Chat-specific approval decision and reference, a n
 hours, the dedicated `chat-staging` environment, exactly four maximum Provider calls, a Provider-side cap no greater
 than USD 5, an app-side smoke budget no greater than USD 0.25, named token-rotation/kill-switch/rollback owners, and an
 explicit production no-go statement. Missing approval metadata exits before constructing the Provider client.
+
+The full `acceptance` mode allows exactly five calls: input classification, one short streamed completion, final output
+classification, a second input classification, and a streamed request aborted through the application stop path. It
+also proves encrypted history, one bounded text attachment, one explicit product-context reference, complete usage
+settlement, and reconciliation of incomplete stopped usage through the actual Chat service and Provider control plane.
