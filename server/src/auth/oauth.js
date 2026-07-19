@@ -376,24 +376,63 @@ export const getOAuthAuthorizationUrl = ({ provider, state, origin, source = pro
   }
 }
 
-const fetchOAuthJson = async ({ url, options, fetchImpl, source, allowArray = false }) => {
+const safeProviderErrorCode = (value) => {
+  const normalized = String(value ?? '').trim()
+  return /^[A-Za-z0-9_.-]{1,80}$/.test(normalized) ? normalized : null
+}
+
+const reportOAuthDiagnostic = (onDiagnostic, diagnostic) => {
+  if (typeof onDiagnostic !== 'function') return
+  try {
+    onDiagnostic(diagnostic)
+  } catch {
+    // Diagnostics must never affect authentication behavior.
+  }
+}
+
+const fetchOAuthJson = async ({ url, options, fetchImpl, source, provider, stage, onDiagnostic, allowArray = false }) => {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), oauthProviderTimeoutMs(source))
   try {
     const response = await fetchImpl(url, { ...options, signal: controller.signal })
     if (!response?.ok) {
+      let providerError = null
+      try {
+        const payload = await response?.json?.()
+        providerError = safeProviderErrorCode(payload?.error)
+      } catch {
+        // A provider error body is optional and must not be retained.
+      }
+      reportOAuthDiagnostic(onDiagnostic, {
+        provider,
+        stage,
+        category: 'http_error',
+        status: Number.isInteger(response?.status) ? response.status : null,
+        providerError,
+      })
       return null
     }
     const payload = await response.json()
-    return payload && typeof payload === 'object' && (allowArray || !Array.isArray(payload)) ? payload : null
-  } catch {
+    if (!payload || typeof payload !== 'object' || (!allowArray && Array.isArray(payload))) {
+      reportOAuthDiagnostic(onDiagnostic, { provider, stage, category: 'invalid_json_shape', status: response.status ?? null, providerError: null })
+      return null
+    }
+    return payload
+  } catch (error) {
+    reportOAuthDiagnostic(onDiagnostic, {
+      provider,
+      stage,
+      category: controller.signal.aborted || error?.name === 'AbortError' ? 'timeout' : 'network_error',
+      status: null,
+      providerError: null,
+    })
     return null
   } finally {
     clearTimeout(timeout)
   }
 }
 
-const postOAuthTokenRequest = async ({ metadata, code, fetchImpl, statePayload, source }) => {
+const postOAuthTokenRequest = async ({ metadata, code, fetchImpl, statePayload, source, onDiagnostic }) => {
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
@@ -409,6 +448,9 @@ const postOAuthTokenRequest = async ({ metadata, code, fetchImpl, statePayload, 
     url: metadata.tokenUrl,
     fetchImpl,
     source,
+    provider: metadata.provider,
+    stage: 'token_exchange',
+    onDiagnostic,
     options: {
       method: 'POST',
       headers: {
@@ -420,10 +462,13 @@ const postOAuthTokenRequest = async ({ metadata, code, fetchImpl, statePayload, 
   })
 }
 
-const fetchOAuthUserInfo = ({ metadata, accessToken, fetchImpl, source }) => fetchOAuthJson({
+const fetchOAuthUserInfo = ({ metadata, accessToken, fetchImpl, source, onDiagnostic }) => fetchOAuthJson({
   url: metadata.userInfoUrl,
   fetchImpl,
   source,
+  provider: metadata.provider,
+  stage: 'userinfo',
+  onDiagnostic,
   options: {
     method: 'GET',
     headers: {
@@ -434,10 +479,13 @@ const fetchOAuthUserInfo = ({ metadata, accessToken, fetchImpl, source }) => fet
   },
 })
 
-const fetchGitHubEmails = ({ metadata, accessToken, fetchImpl, source }) => fetchOAuthJson({
+const fetchGitHubEmails = ({ metadata, accessToken, fetchImpl, source, onDiagnostic }) => fetchOAuthJson({
   url: metadata.userEmailsUrl,
   fetchImpl,
   source,
+  provider: metadata.provider,
+  stage: 'verified_email',
+  onDiagnostic,
   allowArray: true,
   options: {
     method: 'GET',
@@ -450,10 +498,13 @@ const fetchGitHubEmails = ({ metadata, accessToken, fetchImpl, source }) => fetc
   },
 })
 
-const fetchAppleJwks = ({ metadata, fetchImpl, source }) => fetchOAuthJson({
+const fetchAppleJwks = ({ metadata, fetchImpl, source, onDiagnostic }) => fetchOAuthJson({
   url: metadata.jwksUrl,
   fetchImpl,
   source,
+  provider: metadata.provider,
+  stage: 'jwks',
+  onDiagnostic,
   options: {
     method: 'GET',
     headers: { accept: 'application/json' },
@@ -572,29 +623,39 @@ export const exchangeOAuthCodeForProfile = async (provider, code, options = {}) 
   }
   const fetchImpl = options.fetchImpl ?? fetch
   const source = options.source ?? process.env
+  const onDiagnostic = options.onDiagnostic
   try {
-    const token = await postOAuthTokenRequest({ metadata, code, fetchImpl, statePayload: options.statePayload, source })
+    const token = await postOAuthTokenRequest({ metadata, code, fetchImpl, statePayload: options.statePayload, source, onDiagnostic })
     if (!token?.access_token && normalizedProvider !== 'apple') {
+      if (token) reportOAuthDiagnostic(onDiagnostic, { provider: normalizedProvider, stage: 'token_exchange', category: 'missing_token', status: null, providerError: null })
       return null
     }
     if (normalizedProvider === 'apple') {
       if (!token?.id_token) {
         return null
       }
-      const jwks = await fetchAppleJwks({ metadata, fetchImpl, source })
+      const jwks = await fetchAppleJwks({ metadata, fetchImpl, source, onDiagnostic })
       const claims = verifyRs256Jwt(token.id_token, jwks)
-      return claims ? mapAppleProfile(claims, metadata, options.statePayload, options.user) : null
+      const profile = claims ? mapAppleProfile(claims, metadata, options.statePayload, options.user) : null
+      if (!profile && token && jwks) reportOAuthDiagnostic(onDiagnostic, { provider: normalizedProvider, stage: 'profile_verification', category: 'invalid_profile', status: null, providerError: null })
+      return profile
     }
-    const profile = await fetchOAuthUserInfo({ metadata, accessToken: token.access_token, fetchImpl, source })
+    const profile = await fetchOAuthUserInfo({ metadata, accessToken: token.access_token, fetchImpl, source, onDiagnostic })
     if (normalizedProvider === 'google') {
-      return mapGoogleProfile(profile)
+      const mapped = mapGoogleProfile(profile)
+      if (!mapped && profile) reportOAuthDiagnostic(onDiagnostic, { provider: normalizedProvider, stage: 'profile_verification', category: 'invalid_profile', status: null, providerError: null })
+      return mapped
     }
     if (normalizedProvider === 'github') {
-      const emails = await fetchGitHubEmails({ metadata, accessToken: token.access_token, fetchImpl, source })
-      return mapGitHubProfile(profile, emails)
+      const emails = await fetchGitHubEmails({ metadata, accessToken: token.access_token, fetchImpl, source, onDiagnostic })
+      const mapped = mapGitHubProfile(profile, emails)
+      if (!mapped && profile && emails) reportOAuthDiagnostic(onDiagnostic, { provider: normalizedProvider, stage: 'profile_verification', category: 'invalid_profile', status: null, providerError: null })
+      return mapped
     }
     if (normalizedProvider === 'discord') {
-      return mapDiscordProfile(profile)
+      const mapped = mapDiscordProfile(profile)
+      if (!mapped && profile) reportOAuthDiagnostic(onDiagnostic, { provider: normalizedProvider, stage: 'profile_verification', category: 'invalid_profile', status: null, providerError: null })
+      return mapped
     }
     return null
   } catch {

@@ -381,6 +381,35 @@ test('OAuth provider failures and timeouts return a closed verification result',
   assert.equal(aborted, null)
 })
 
+test('OAuth provider diagnostics expose only bounded failure metadata', async () => {
+  const diagnostics = []
+  const secretValues = ['auth-code-secret', 'client-secret-value', 'provider-body-secret']
+  const profile = await exchangeOAuthCodeForProfile('google', secretValues[0], {
+    onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    statePayload: verifyOAuthState(createOAuthState({ provider: 'google' })),
+    source: {
+      OAUTH_GOOGLE_CLIENT_ID: 'google-client',
+      OAUTH_GOOGLE_CLIENT_SECRET: secretValues[1],
+      OAUTH_GOOGLE_REDIRECT_URI: 'https://app.example.com/api/auth/oauth/google/callback',
+    },
+    fetchImpl: async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: 'invalid_client', error_description: secretValues[2] }),
+    }),
+  })
+
+  assert.equal(profile, null)
+  assert.deepEqual(diagnostics, [{
+    provider: 'google',
+    stage: 'token_exchange',
+    category: 'http_error',
+    status: 401,
+    providerError: 'invalid_client',
+  }])
+  assert.equal(secretValues.some((value) => JSON.stringify(diagnostics).includes(value)), false)
+})
+
 test('OAuth profile mapping rejects unverified email evidence', async () => {
   const statePayload = verifyOAuthState(createOAuthState({ provider: 'google' }))
   const profile = await exchangeOAuthCodeForProfile('google', 'auth-code', {
