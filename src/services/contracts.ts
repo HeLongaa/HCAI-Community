@@ -516,6 +516,94 @@ export type AdminAuthSessionQuery = {
   order?: 'asc' | 'desc'
 }
 
+export type RiskCaseStatus = 'open' | 'restricted' | 'appealed' | 'recovered' | 'closed'
+export type RiskDisposition = 'monitor' | 'generation_throttled' | 'generation_blocked' | 'account_restricted' | 'cleared'
+export type RiskLevel = 'low' | 'medium' | 'high' | 'critical'
+
+export type RiskSignal = {
+  id: string
+  signalType: 'auth_spray' | 'account_takeover' | 'generation_burst' | 'safety_rejection_burst' | 'generation_cost_spike'
+  severity: RiskLevel
+  score: number
+  reasonCode: string
+  sourceType: string
+  evidence: Record<string, unknown>
+  occurredAt: string
+}
+
+export type RiskAppeal = {
+  id: string
+  status: 'pending' | 'approved' | 'rejected'
+  reasonCode: string
+  statementPreview: string | null
+  decisionReasonCode: string | null
+  decidedAt: string | null
+  createdAt: string
+}
+
+export type RiskDispositionEvent = {
+  id: string
+  fromStatus: RiskCaseStatus | null
+  toStatus: RiskCaseStatus
+  disposition: RiskDisposition
+  reasonCode: string
+  actorType: 'system' | 'user' | 'admin'
+  createdAt: string
+}
+
+export type RiskCase = {
+  id: string
+  status: RiskCaseStatus
+  disposition: RiskDisposition
+  riskLevel: RiskLevel
+  reasonCode: string
+  version: number
+  openedAt: string
+  expiresAt: string | null
+  recoveredAt: string | null
+  closedAt: string | null
+  updatedAt: string
+  user?: { id: string; handle: string | null; displayName: string } | null
+  signals: RiskSignal[]
+  appeals: RiskAppeal[]
+  events: RiskDispositionEvent[]
+}
+
+export type RiskCaseQuery = {
+  status?: RiskCaseStatus
+  disposition?: RiskDisposition
+  riskLevel?: RiskLevel
+  userId?: string
+  dateFrom?: string
+  dateTo?: string
+  cursor?: string
+  limit?: number
+}
+
+export type RiskPolicy = {
+  id: string
+  enabled: boolean
+  generationWindowSeconds: number
+  generationCountThreshold: number
+  safetyRejectionThreshold: number
+  generationCostMicrosThreshold: number
+  restrictionSeconds: number
+  version: number
+  reasonCode: string
+  updatedByRef: string
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export type RiskMetrics = {
+  window: { dateFrom: string; dateTo: string }
+  byStatus: Partial<Record<RiskCaseStatus, number>>
+  byDisposition: Partial<Record<RiskDisposition, number>>
+  byRiskLevel: Partial<Record<RiskLevel, number>>
+  signals: Partial<Record<RiskSignal['signalType'], number>>
+  pendingAppeals: number
+}
+
 export type AdminAuthRiskPolicy = {
   id: 'default'
   enabled: boolean

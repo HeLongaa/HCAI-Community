@@ -1798,6 +1798,11 @@ model User {
   refreshTokens                   RefreshToken[]
   authSessions                    AuthSession[]                   @relation("AuthSessionUser")
   reviewedAuthSessions            AuthSession[]                   @relation("AuthSessionReviewer")
+  riskSignals                     RiskSignal[]                    @relation("RiskSignalUser")
+  riskCases                       RiskCase[]                      @relation("RiskCaseUser")
+  riskDispositionEvents           RiskDispositionEvent[]         @relation("RiskDispositionActor")
+  riskAppeals                     RiskAppeal[]                    @relation("RiskAppealAppellant")
+  decidedRiskAppeals              RiskAppeal[]                    @relation("RiskAppealDecider")
   publisherTasks                  Task[]                          @relation("TaskPublisher")
   assigneeTasks                   Task[]                          @relation("TaskAssignee")
   archivedTasks                   Task[]                          @relation("TaskArchivedBy")
@@ -2337,6 +2342,129 @@ model AuthLoginAttempt {
   @@index([reasonCode, occurredAt])
   @@index([identityHash, occurredAt])
   @@map("auth_login_attempts")
+}
+
+model RiskPolicy {
+  id                             String   @id @default("default")
+  enabled                        Boolean  @default(true)
+  generationWindowSeconds        Int      @default(300) @map("generation_window_seconds")
+  generationCountThreshold       Int      @default(20) @map("generation_count_threshold")
+  safetyRejectionThreshold       Int      @default(3) @map("safety_rejection_threshold")
+  generationCostMicrosThreshold  Int      @default(5000000) @map("generation_cost_micros_threshold")
+  restrictionSeconds             Int      @default(3600) @map("restriction_seconds")
+  version                        Int      @default(1)
+  reasonCode                     String   @map("reason_code")
+  updatedByRef                   String   @map("updated_by_ref")
+  createdAt                      DateTime @default(now()) @map("created_at")
+  updatedAt                      DateTime @updatedAt @map("updated_at")
+
+  @@map("risk_policies")
+}
+
+model RiskSignal {
+  id                    String   @id @default(cuid())
+  userId                String?  @map("user_id")
+  signalType            String   @map("signal_type")
+  severity              String
+  score                 Int
+  reasonCode            String   @map("reason_code")
+  sourceType            String   @map("source_type")
+  sourceRefHash         String?  @map("source_ref_hash")
+  dedupeKey             String   @unique @map("dedupe_key")
+  evidence              Json
+  evidenceSchemaVersion Int      @default(1) @map("evidence_schema_version")
+  occurredAt            DateTime @default(now()) @map("occurred_at")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  user  User?            @relation("RiskSignalUser", fields: [userId], references: [id], onDelete: SetNull)
+  cases RiskCaseSignal[]
+
+  @@index([userId, occurredAt])
+  @@index([signalType, severity, occurredAt])
+  @@index([reasonCode, occurredAt])
+  @@map("risk_signals")
+}
+
+model RiskCase {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  status      String
+  disposition String
+  riskLevel   String    @map("risk_level")
+  reasonCode  String    @map("reason_code")
+  version     Int       @default(1)
+  openedAt    DateTime  @default(now()) @map("opened_at")
+  expiresAt   DateTime? @map("expires_at")
+  recoveredAt DateTime? @map("recovered_at")
+  closedAt    DateTime? @map("closed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  user    User                   @relation("RiskCaseUser", fields: [userId], references: [id], onDelete: Restrict)
+  signals RiskCaseSignal[]
+  events  RiskDispositionEvent[]
+  appeals RiskAppeal[]
+
+  @@index([userId, status, updatedAt])
+  @@index([status, disposition, riskLevel, updatedAt])
+  @@index([expiresAt])
+  @@map("risk_cases")
+}
+
+model RiskCaseSignal {
+  caseId   String   @map("case_id")
+  signalId String   @map("signal_id")
+  linkedAt DateTime @default(now()) @map("linked_at")
+
+  riskCase RiskCase   @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  signal   RiskSignal @relation(fields: [signalId], references: [id], onDelete: Restrict)
+
+  @@id([caseId, signalId])
+  @@index([signalId])
+  @@map("risk_case_signals")
+}
+
+model RiskDispositionEvent {
+  id                    String   @id @default(cuid())
+  caseId                String   @map("case_id")
+  fromStatus            String?  @map("from_status")
+  toStatus              String   @map("to_status")
+  disposition           String
+  reasonCode            String   @map("reason_code")
+  actorType              String   @map("actor_type")
+  actorId                String?  @map("actor_id")
+  evidence               Json?
+  evidenceSchemaVersion Int      @default(1) @map("evidence_schema_version")
+  createdAt              DateTime @default(now()) @map("created_at")
+
+  riskCase RiskCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  actor    User?    @relation("RiskDispositionActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([caseId, createdAt])
+  @@index([toStatus, disposition, createdAt])
+  @@map("risk_disposition_events")
+}
+
+model RiskAppeal {
+  id                 String    @id @default(cuid())
+  caseId             String    @map("case_id")
+  appellantId        String    @map("appellant_id")
+  status             String    @default("pending")
+  reasonCode         String    @map("reason_code")
+  statementHash      String    @map("statement_hash")
+  statementPreview   String?   @map("statement_preview")
+  decisionReasonCode String?   @map("decision_reason_code")
+  decidedById        String?   @map("decided_by_id")
+  decidedAt          DateTime? @map("decided_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  riskCase   RiskCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  appellant User     @relation("RiskAppealAppellant", fields: [appellantId], references: [id], onDelete: Restrict)
+  decidedBy User?    @relation("RiskAppealDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@index([caseId, status, createdAt])
+  @@index([appellantId, createdAt])
+  @@map("risk_appeals")
 }
 
 model Profile {

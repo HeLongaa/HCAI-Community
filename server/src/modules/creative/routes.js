@@ -598,6 +598,19 @@ export const registerCreativeRoutes = (router, options = {}) => {
 
   router.add('POST', '/api/creative/generations', async (request, response, context) => {
     const actor = requireUser(context)
+    let restriction = await routeRepositories.risk?.restrictionFor?.(actor.id, 'generation', callbackNow())
+    if (!restriction) {
+      await routeRepositories.risk?.evaluateGeneration?.({ actor, now: callbackNow() })
+      restriction = await routeRepositories.risk?.restrictionFor?.(actor.id, 'generation', callbackNow())
+    }
+    if (restriction) {
+      throw new HttpError(
+        restriction.statusCode,
+        restriction.code,
+        restriction.statusCode === 429 ? 'Generation is temporarily throttled by risk controls' : 'Generation is blocked by risk controls',
+        { caseId: restriction.case.id, disposition: restriction.case.disposition, expiresAt: restriction.case.expiresAt },
+      )
+    }
     const payload = parseCreateCreativeGenerationRequest((await readJsonBody(request)) ?? {})
     const executionRepository = routeRepositories.creativeGenerationExecutions
     if (!executionRepository?.claim) {

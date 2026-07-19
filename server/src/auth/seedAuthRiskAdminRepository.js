@@ -18,6 +18,22 @@ export const createSeedAuthRiskAdminRepository = ({ authSessionById, recordAudit
       attempts.push(row)
       return row
     },
+    riskSnapshot: async ({ identityHash, networkHash, since }) => {
+      const selected = attempts.filter((attempt) => attempt.outcome === 'failure' && attempt.occurredAt >= since)
+      const identityFailures = identityHash ? selected.filter((attempt) => attempt.identityHash === identityHash).length : 0
+      const distinctIdentities = new Set(networkHash ? selected.filter((attempt) => attempt.networkHash === networkHash).map((attempt) => attempt.identityHash).filter(Boolean) : [])
+      const distinctNetworks = new Set(identityHash ? selected.filter((attempt) => attempt.identityHash === identityHash).map((attempt) => attempt.networkHash).filter(Boolean) : [])
+      const ipAccountThreshold = policy.ipAccountThreshold ?? 5
+      const accountIpThreshold = policy.accountIpThreshold ?? 5
+      return {
+        identityFailureCount: identityFailures,
+        distinctIdentityCount: distinctIdentities.size,
+        distinctNetworkCount: distinctNetworks.size,
+        spray: distinctIdentities.size >= ipAccountThreshold,
+        takeover: identityFailures >= accountIpThreshold || distinctNetworks.size >= accountIpThreshold,
+        thresholds: { ipAccountThreshold, accountIpThreshold },
+      }
+    },
     getPolicy: async () => serializeAuthRiskPolicy(policy),
     getRuntimePolicy: async () => policy.version > 0 ? runtimeAuthRiskPolicy(policy) : null,
     updatePolicy: async (payload, actor) => {

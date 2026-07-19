@@ -21,7 +21,8 @@
     "SystemSettingChange.candidateValue", "SystemSettingChange.diff", "SystemSettingRevision.value",
     "ConfigResource.draftValue", "ConfigResource.publishedValue", "ConfigResourceRevision.value", "TaskRule.acceptanceTemplates",
     "FeatureFlag.payload", "FeatureFlag.rules", "ReferenceDataEntry.value", "ModelVersion.parameterSchema", "ModelCapability.constraints", "ModelRoutePolicyRevision.snapshot",
-    "ModelRouteDecision.consideredPolicies", "ModelRouteDecision.attempts", "ProviderHealthEvidence.details", "SearchDocument.target"
+    "ModelRouteDecision.consideredPolicies", "ModelRouteDecision.attempts", "ProviderHealthEvidence.details", "SearchDocument.target",
+    "RiskSignal.evidence", "RiskDispositionEvent.evidence"
   ],
   "normalizedReferences": [
     { "legacy": "TaskSubmission.assetIds", "model": "TaskSubmissionAsset", "table": "task_submission_assets", "target": "MediaAsset", "mode": "dual_write" },

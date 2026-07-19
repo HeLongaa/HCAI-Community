@@ -165,7 +165,7 @@ const appShell = read('src/components/layout/AppShell.tsx')
 const baselineDoc = read('docs/V1_COMPLIANCE_AND_SUPPORT_BASELINE.md')
 
 addCheck('registration validates policy consent before account creation', authRoutes.includes("validatePolicyConsent(body.policyConsent, 'email_registration')"))
-addCheck('current user response includes consent status', authRoutes.includes('repositories.compliance.getConsentStatus(actor)'))
+addCheck('current user response includes consent status', authRoutes.includes('routeRepositories.compliance.getConsentStatus(actor)'))
 addCheck('policy version mismatches fail explicitly', policyLoader.includes("'POLICY_VERSION_MISMATCH'"))
 addCheck('consent status compares exact current versions', policyLoader.includes('missingPolicyIds') && policyLoader.includes('outdatedPolicyIds'))
 addCheck('seed repository records immutable consent audits', seedRepository.includes('policyConsentByUserId') && seedRepository.includes('consentContract.recordAction'))

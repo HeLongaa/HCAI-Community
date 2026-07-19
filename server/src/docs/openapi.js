@@ -348,6 +348,34 @@ export const openApiDocument = {
     '/admin/support/metrics': {
       get: { summary: 'Read support volume, assignment, first-response, resolution, and SLA metrics', responses: { '200': { description: 'Support operational metrics' }, '403': { description: 'Missing admin:support:read' } } },
     },
+    '/risk/cases': {
+      get: { summary: 'List current-user account and generation risk cases with normalized signals and appeals', responses: { '200': { description: 'Owner-scoped risk case page' }, '401': { description: 'Authentication required' } } },
+    },
+    '/risk/cases/{id}': {
+      get: { summary: 'Read one owner-scoped account or generation risk case', responses: { '200': { description: 'Risk case and append-only fact chain' }, '404': { description: 'Risk case not found for current user' } } },
+    },
+    '/risk/cases/{id}/appeals': {
+      post: { summary: 'Submit a hash-only appeal and move an active restriction to appealed state', responses: { '201': { description: 'Appeal submitted without persisting its raw statement' }, '409': { description: 'Pending appeal or invalid case state' } } },
+    },
+    '/admin/risk/policy': {
+      get: { summary: 'Read versioned account and generation risk thresholds', responses: { '200': { description: 'Current risk policy' }, '403': { description: 'Missing admin:risk:read' } } },
+      put: { summary: 'Update risk thresholds using optimistic concurrency and audit evidence', responses: { '200': { description: 'Updated risk policy' }, '403': { description: 'Missing admin:risk:manage' }, '409': { description: 'Stale expectedVersion' } } },
+    },
+    '/admin/risk/cases': {
+      get: { summary: 'List normalized risk cases by state, disposition, level, user, and date window', responses: { '200': { description: 'Cursor-paged risk cases' }, '403': { description: 'Missing admin:risk:read' } } },
+    },
+    '/admin/risk/cases/export': {
+      get: { summary: 'Export up to 100 normalized risk cases without credentials, raw prompts, IPs, or Provider payloads', responses: { '200': { description: 'Bounded JSON risk evidence' }, '403': { description: 'Missing admin:risk:export' } } },
+    },
+    '/admin/risk/cases/{id}': {
+      get: { summary: 'Read one normalized risk case and append-only signal, appeal, and disposition facts', responses: { '200': { description: 'Risk case detail' }, '403': { description: 'Missing admin:risk:read' }, '404': { description: 'Risk case not found' } } },
+    },
+    '/admin/risk/cases/{id}/transitions': {
+      post: { summary: 'Apply a CAS-protected restriction, recovery, closure, or appeal decision', responses: { '200': { description: 'Transitioned risk case' }, '403': { description: 'Missing admin:risk:manage' }, '409': { description: 'Stale version, invalid transition, or missing appeal decision' } } },
+    },
+    '/admin/risk/metrics': {
+      get: { summary: 'Read case, disposition, risk-level, signal, and pending-appeal counts', responses: { '200': { description: 'Bounded risk operations metrics' }, '403': { description: 'Missing admin:risk:read' } } },
+    },
     '/trust/reports': {
       post: {
         summary: 'Create one append-only report and moderation case with target snapshot evidence and preference-aware reviewer notification',

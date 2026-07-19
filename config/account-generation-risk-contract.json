@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "task": "RISK-01",
+  "scope": "personal_accounts_only",
+  "models": {
+    "policy": "RiskPolicy",
+    "signal": "RiskSignal",
+    "case": "RiskCase",
+    "caseSignal": "RiskCaseSignal",
+    "dispositionEvent": "RiskDispositionEvent",
+    "appeal": "RiskAppeal",
+    "migration": "0090_account_generation_risk_controls"
+  },
+  "signals": ["auth_spray", "account_takeover", "generation_burst", "safety_rejection_burst", "generation_cost_spike"],
+  "dispositions": ["monitor", "generation_throttled", "generation_blocked", "account_restricted", "cleared"],
+  "states": ["open", "restricted", "appealed", "recovered", "closed"],
+  "privacy": {
+    "forbiddenFields": ["password", "rawIdentity", "rawIpAddress", "rawPrompt", "providerPayload", "accessToken", "refreshToken", "authorizationCode"],
+    "sourceEvidence": "sha256_hash_and_normalized_counts",
+    "appealEvidence": "sha256_hash_and_reason_code"
+  },
+  "permissions": ["admin:risk:read", "admin:risk:manage", "admin:risk:export"],
+  "routes": [
+    { "method": "GET", "path": "/api/risk/cases" },
+    { "method": "GET", "path": "/api/risk/cases/:id" },
+    { "method": "POST", "path": "/api/risk/cases/:id/appeals" },
+    { "method": "GET", "path": "/api/admin/risk/policy" },
+    { "method": "PUT", "path": "/api/admin/risk/policy" },
+    { "method": "GET", "path": "/api/admin/risk/cases" },
+    { "method": "GET", "path": "/api/admin/risk/cases/export" },
+    { "method": "GET", "path": "/api/admin/risk/cases/:id" },
+    { "method": "POST", "path": "/api/admin/risk/cases/:id/transitions" },
+    { "method": "GET", "path": "/api/admin/risk/metrics" }
+  ],
+  "invariants": {
+    "stateTransitionCases": true,
+    "appendOnlySignalsEventsAppeals": true,
+    "optimisticPolicyAndCaseVersions": true,
+    "ownerScopedAppeals": true,
+    "explicitDispositionBlockingOnly": true,
+    "loginAndGenerationEnforcement": true,
+    "boundedAdminExport": true
+  }
+}

@@ -28,6 +28,7 @@ import { UserAdminPanel } from './UserAdminPanel'
 import { NotificationAdminPanel } from './NotificationAdminPanel'
 import { AuditRetentionPanel } from './AuditRetentionPanel'
 import { TrustSafetyAdminPanel } from './TrustSafetyAdminPanel'
+import { RiskAdminPanel } from './RiskAdminPanel'
 import type {
   AdminPermissionDto,
   AdminAuditArchiveManifestDto,
@@ -2675,7 +2676,16 @@ export function AdminPage({
         <SupportAdminPanel isZh={isZh} canRead={account.hasPermission('admin:support:read')} canManage={account.hasPermission('admin:support:manage')} notify={(message) => simulateAction(message)} />
       )}
       {activeTab === 'Trust & Safety' && (
-        <TrustSafetyAdminPanel hasPermission={account.hasPermission} isZh={isZh} notify={(message) => simulateAction(message)} />
+        <div className="admin-settings-stack">
+          <RiskAdminPanel
+            t={t}
+            canRead={account.hasPermission('admin:risk:read')}
+            canManage={account.hasPermission('admin:risk:manage')}
+            canExport={account.hasPermission('admin:risk:export')}
+            notify={(message) => simulateAction(message)}
+          />
+          <TrustSafetyAdminPanel hasPermission={account.hasPermission} isZh={isZh} notify={(message) => simulateAction(message)} />
+        </div>
       )}
       {activeTab !== 'Settings' && activeTab !== 'AI config' && activeTab !== 'Users' && activeTab !== 'Notifications' && activeTab !== 'Support' && activeTab !== 'Trust & Safety' && <>
       <AdminOverviewPanel t={t} target={overviewTarget} />
