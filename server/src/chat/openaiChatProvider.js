@@ -324,8 +324,12 @@ const requestProvider = async ({ config, fetchImpl, mapped, signal }) => {
     clearTimeout(timeout)
     signal?.removeEventListener('abort', onAbort)
   }
-  signal?.addEventListener('abort', onAbort, { once: true })
+  if (signal?.aborted) onAbort()
+  else signal?.addEventListener('abort', onAbort, { once: true })
   try {
+    if (controller.signal.aborted) {
+      throw runtimeError(504, 'CHAT_PROVIDER_TIMEOUT', 'Chat Provider request timed out or was aborted', 'request_aborted')
+    }
     const response = await fetchImpl(`${config.baseUrl}${mapped.pathname}`, {
       method: mapped.method,
       headers: { accept: mapped.body.stream ? 'text/event-stream' : 'application/json', authorization: `Bearer ${config.token}`, 'content-type': 'application/json' },
