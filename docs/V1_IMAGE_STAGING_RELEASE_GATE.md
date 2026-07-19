@@ -1,83 +1,95 @@
 # V1 Image Staging Release Gate
 
-This document is the V1-19 execution contract for Image staging acceptance. The machine-readable companion is
+This is the V1-19 execution contract for OpenAI GPT Image 2 staging acceptance. The machine-readable source is
 `config/v1-image-staging-gate.json`.
 
-Current decision: **fixture readiness is complete; real staging external calls and production enablement are no-go**.
+Current decision: **fixture readiness and application wiring are complete; guarded real staging calls are explicitly
+approved; credentialed acceptance is pending; production enablement remains no-go**.
 
-The primary staging target is OpenAI GPT Image 2. Replicate FLUX 1.1 Pro remains a separately approved backup and is
-not an automatic fallback. Ordinary continuation language is not approval for either Provider.
+OpenAI documents `gpt-image-2` for both `/v1/images/generations` and `/v1/images/edits`. The Image API returns base64
+output, edit multipart uses `image[]`, and `input_fidelity` must be omitted because GPT Image 2 always uses high-fidelity
+image inputs. Organization verification may still be required for the staging project.
 
-## What Can Run Now
+Official references reviewed on 2026-07-20:
 
-- `npm run test:v1-image-staging` verifies the scenario, approval, budget, and evidence contract.
-- `npm run smoke:creative-staging` runs Replicate foundation fixtures and the OpenAI Image client metadata preflight.
-- `openai-image-client` proves the OpenAI adapter and client boundary are implemented, the deployment credential is
-  present as a boolean, Provider/app caps are bounded, the product route remains disabled, and network calls remain off.
-- Existing unit, route, repository, and browser tests cover fixture success, failure, timeout, review, cancel,
-  over-budget, provider-cap block, kill-switch, and rollback behavior.
+- https://developers.openai.com/api/docs/guides/image-generation
+- https://developers.openai.com/api/docs/models/gpt-image-2
+- https://developers.openai.com/api/docs/pricing
 
-No command above constructs a real OpenAI request, calls a Provider, fetches Provider output, sends a callback, starts
-polling, or enables a production Provider.
+## Delivered Boundary
 
-## Required Scenario Evidence
+- The product route registers the real adapter only when `NODE_ENV=production`, runtime is `staging`, both client and
+  network switches are true, `staging-only` is confirmed, and the deployment token exists.
+- Text-to-image and image-to-image use the real application route, policy, quota, credit, Provider controls, output
+  ingestion, media scan, private download, lineage, and cost ledger paths.
+- Provider moderation branches on `error.code=moderation_blocked` and retains only the public stage and allowlisted
+  coarse categories.
+- Complete Provider usage settles actual token cost. Missing edit modality detail produces
+  `reconciliation_required`; estimated cost is never copied into actual cost.
+- Provider credentials, raw prompts, base64 output, raw error bodies, private URLs, classifier scores, and internal
+  labels are excluded from acceptance summaries.
+- Production remains denied even when staging gates are enabled.
 
-| Scenario | Fixture evidence | Real staging evidence |
-| --- | --- | --- |
-| Success and governed output | Covered | Pending explicit approval |
-| Safe Provider failure | Covered | Pending explicit approval |
-| Timeout and retry classification | Covered | Pending explicit approval |
-| Policy review and download gate | Covered | Pending explicit approval |
-| Cancellation and accounting closeout | Covered | Pending explicit approval |
-| App budget rejection | Covered | Pending explicit approval |
-| Provider-side cap rejection | Covered | Pending explicit approval |
-| App/provider kill switch | Covered | Pending rehearsal |
-| Rollback to disabled product route | Covered | Pending rehearsal |
+## Commands
 
-V1-19 cannot be marked Done from fixture evidence alone.
+```bash
+npm run test:v1-image-staging
+npm run test:image-openai-readiness
+npm run test:image-openai-readiness:integration
+npm run image:openai:preflight
+npm run image:openai:acceptance
+```
 
-## OpenAI Metadata Preflight
+`test:image-openai-readiness` and fixture preflight make no real Provider call. `image:openai:acceptance` requires
+`--profile=env` internally and is the only command in this package authorized to perform the two-call acceptance.
 
-Use a dedicated staging GitHub Environment and select `CREATIVE_STAGING_SMOKE_MODE=openai-image-client`.
+## Required Environment
 
-Required secret:
+Runtime and credential:
 
-- `CREATIVE_OPENAI_IMAGE_API_TOKEN`: dedicated staging token; never print or store its value in Git, Notion, logs, or
-  screenshots.
-
-Required variables:
-
+- `NODE_ENV=production`
 - `CREATIVE_PROVIDER_RUNTIME_ENV=staging`
-- `CREATIVE_PROVIDER_MODE=disabled`
 - `CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED=true`
-- `CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED=false`
+- `CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED=true`
 - `CREATIVE_OPENAI_IMAGE_CONFIRMATION=staging-only`
-- `CREATIVE_OPENAI_IMAGE_DAILY_BUDGET_USD`: greater than zero and no more than `8`
-- `CREATIVE_OPENAI_IMAGE_DAILY_SPEND_USD`: zero or a reconciled value no greater than the app cap
-- `CREATIVE_OPENAI_IMAGE_PROVIDER_CAP_CONFIRMED=true`
-- `CREATIVE_OPENAI_IMAGE_PROVIDER_CAP_USD`: greater than zero and no more than `8`
+- `CREATIVE_OPENAI_IMAGE_API_TOKEN` as a dedicated staging secret
+- `MEDIA_SCAN_PROVIDER=mock` for synchronous acceptance output scanning
+
+Short-lived approval envelope:
+
+- `CREATIVE_OPENAI_IMAGE_ACCEPTANCE_CONFIRMATION=real-staging-acceptance`
+- `CREATIVE_OPENAI_IMAGE_APPROVAL_DECISION=go-for-image-staging-acceptance`
+- non-empty approver, approval reference, branch/PR, token rotation owner, kill-switch owner, and rollback owner
+- grant timestamp within the prior 24 hours and expiry within the next 24 hours
+- `CREATIVE_OPENAI_IMAGE_STAGING_ENVIRONMENT=image-staging`
+- `CREATIVE_OPENAI_IMAGE_MAX_CALLS=2`
+- Provider cap above zero and at most USD `1`
+- app budget above zero and at most USD `0.25`
+- daily budget above zero and no greater than the app budget
 - `CREATIVE_OPENAI_IMAGE_PRODUCTION_NO_GO=true`
 
-The metadata preflight must fail if the network flag is true. It is not the external-call rehearsal.
+See `server/.env.example` for exact variable names. Never commit or write the token to Notion, logs, screenshots, or
+test output.
 
-## External-Call Approval
+## Acceptance Matrix
 
-Before one real staging call, the Chinese Notion record and explicit user approval must name:
+The credentialed command performs exactly two Provider requests:
 
-- approver, timestamp, and expiry of no more than 24 hours;
-- OpenAI GPT Image 2, dedicated staging environment, branch or PR, and exactly one maximum Provider call;
-- Provider-side cap, app-side per-job cap of no more than USD `0.25`, and app daily cap of no more than USD `8`;
-- token rotation owner, kill-switch owner, rollback owner, and production no-go;
-- successful metadata preflight workflow URL and current deployment gate evidence.
+1. low-quality 1024x1024 text-to-image generation;
+2. low-quality 1024x1024 image-to-image edit using an owned, clean staging PNG.
 
-The first approved request should use one text-to-image output at medium quality. Image edit modes require their own
-input-rights and staging-asset evidence. Replicate backup testing requires a separate approval record.
+It also submits a locally blocked violence prompt and proves that application moderation prevents a third Provider
+dispatch. Success requires two completed generations, two private clean persisted assets, edit lineage, settled credit,
+committed quota, Provider cost closeout, and a secret-free summary.
+
+The current GPT Image 2 pricing snapshot uses text input USD `5`/1M tokens, image input USD `8`/1M tokens, and image
+output USD `30`/1M tokens. The acceptance estimate table is low/medium/high USD `0.006/0.053/0.211` for 1024x1024 and
+USD `0.005/0.041/0.165` for 1024x1536 or 1536x1024. Recheck official pricing before a later production decision.
 
 ## Closeout
 
-After an approved rehearsal, record only safe evidence: generation id, media asset id, status, timestamps, dimensions,
-byte count, checksum presence, scan/review state, estimated/actual cost, cap result, workflow URL, and rollback result.
-Do not record the token, raw prompt, raw request/response, base64 bytes, Provider error body, or private download URL.
+Record only low-cardinality evidence: generation/media identifiers, statuses, timestamps, dimensions, byte count,
+checksum presence, scan state, ledger state, safe moderation stage/category, workflow URL, and rollback result.
 
-V1-19 is Done only after the required real staging scenarios, cost/cap reconciliation, kill-switch rehearsal, rollback
-rehearsal, production go/no-go decision, complete quality gate, and Notion evidence all pass.
+V1-19 remains In Progress until the real environment token is mounted, optional organization verification is resolved,
+the two-call command passes, quality gates pass, the PR is merged, and Notion contains the safe acceptance evidence.

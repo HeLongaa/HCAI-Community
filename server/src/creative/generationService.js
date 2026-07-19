@@ -28,6 +28,7 @@ import { assertVideoGenerationRequest } from './videoCapabilityContract.js'
 import {
   assertOpenAIImageBudgetAllowsDispatch,
   buildOpenAIImageProviderCostMetadata,
+  preserveOpenAIImageOutputBytes,
   readOpenAIImageOutputBytes,
 } from './openaiImageProvider.js'
 import { attachImageOutputLineage, resolveImageGenerationInputs } from './imageInputAssets.js'
@@ -205,7 +206,14 @@ export const executeCreativeGeneration = async ({
     if (generationIdOverride) {
       generated = { ...generated, id: generationId }
     }
+    const generationBeforeImageLineage = generated
     generated = attachImageOutputLineage(generated, resolvedInputAssets)
+    if (generated !== generationBeforeImageLineage) {
+      for (const output of generated.outputs) {
+        const sourceOutput = generationBeforeImageLineage.outputs.find((candidate) => candidate.id === output.id)
+        if (sourceOutput) preserveOpenAIImageOutputBytes(sourceOutput, output)
+      }
+    }
     generated = attachVideoOutputLineage(generated, resolvedInputAssets)
     assertCreativeProviderAdapterContract(generated, { request, provider })
   } catch (error) {
