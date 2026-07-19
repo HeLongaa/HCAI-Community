@@ -4,6 +4,7 @@ import { SectionHeader } from '../../components/ui/SectionHeader'
 import { textFor } from '../../domain/utils'
 import { developerService } from '../../services/developerService'
 import type { DeveloperAccessControl, DeveloperApiKeyCredential, DeveloperServiceAccount } from '../../services/contracts'
+import { WebhookDeveloperPanel } from './WebhookDeveloperPanel'
 
 type Props = {
   t: Record<string, string>
@@ -173,6 +174,7 @@ export function DeveloperAccessPage({ t, signedIn, requireAuth, notify }: Props)
           {!loading && !accounts.length && <div className="empty-state"><strong>{textFor(t, 'No service accounts', '暂无 Service Account')}</strong></div>}
         </div>
       </section>
+      <WebhookDeveloperPanel t={t} notify={notify} />
     </div>
   )
 }

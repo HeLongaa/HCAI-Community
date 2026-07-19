@@ -196,6 +196,11 @@ export const buildEnv = (source = process.env) => {
   const notificationDeliveryWorkerIntervalSeconds = positiveInteger(source, 'NOTIFICATION_DELIVERY_WORKER_INTERVAL_SECONDS', 10)
   const notificationDeliveryWorkerBatchSize = positiveInteger(source, 'NOTIFICATION_DELIVERY_WORKER_BATCH_SIZE', 25)
   const notificationDeliveryLeaseSeconds = positiveInteger(source, 'NOTIFICATION_DELIVERY_LEASE_SECONDS', 60)
+  const webhookDeliveryWorkerEnabled = strictBoolFlag(source, 'WEBHOOK_DELIVERY_WORKER_ENABLED', false)
+  const webhookDeliveryWorkerIntervalSeconds = positiveInteger(source, 'WEBHOOK_DELIVERY_WORKER_INTERVAL_SECONDS', 10)
+  const webhookDeliveryWorkerBatchSize = positiveInteger(source, 'WEBHOOK_DELIVERY_WORKER_BATCH_SIZE', 25)
+  const webhookDeliveryLeaseSeconds = positiveInteger(source, 'WEBHOOK_DELIVERY_LEASE_SECONDS', 60)
+  const hasWebhookSecretEncryptionKey = Boolean(String(source.WEBHOOK_SECRET_ENCRYPTION_KEY ?? source.WEBHOOK_SECRET_ENCRYPTION_KEYS ?? '').trim())
   const creativeProviderPollingMaxAgeSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_MAX_AGE_SECONDS', 3600)
   const creativeProviderPollingLeaseTtlSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_LEASE_TTL_SECONDS', 300)
   const creativeProviderPollingIntervalSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_INTERVAL_SECONDS', 60)
@@ -258,6 +263,9 @@ export const buildEnv = (source = process.env) => {
   }
   if (notificationDeliveryWorkerEnabled && !notificationEmailDeliveryEnabled) {
     throw new Error('NOTIFICATION_DELIVERY_WORKER_ENABLED requires NOTIFICATION_EMAIL_DELIVERY_ENABLED=true')
+  }
+  if (webhookDeliveryWorkerEnabled && !hasWebhookSecretEncryptionKey) {
+    throw new Error('WEBHOOK_DELIVERY_WORKER_ENABLED requires WEBHOOK_SECRET_ENCRYPTION_KEY or WEBHOOK_SECRET_ENCRYPTION_KEYS')
   }
   if (!['manual', 'mock', 'webhook'].includes(mediaScanProvider)) {
     throw new Error('MEDIA_SCAN_PROVIDER must be one of: manual, mock, webhook')
@@ -518,6 +526,11 @@ export const buildEnv = (source = process.env) => {
     notificationDeliveryWorkerBatchSize,
     notificationDeliveryLeaseSeconds,
     hasNotificationEmailWebhookUrl: Boolean(notificationEmailWebhookUrl),
+    webhookDeliveryWorkerEnabled,
+    webhookDeliveryWorkerIntervalSeconds,
+    webhookDeliveryWorkerBatchSize,
+    webhookDeliveryLeaseSeconds,
+    hasWebhookSecretEncryptionKey,
     creativeProviderPollingEnabled,
     creativeProviderPollingWorkerEnabled,
     creativeProviderPollingMaxAgeSeconds,

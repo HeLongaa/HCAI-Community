@@ -4,7 +4,7 @@ import test from 'node:test'
 import { getPermissionsForRole, getProtectedRolePermissions, hasPermission, mergePermissions, permissionById, permissionRegistry, permissions } from './permissions.js'
 
 test('getPermissionsForRole returns the product role defaults', () => {
-  assert.deepEqual(getPermissionsForRole('member'), ['task:create', 'task:cancel', 'post:create', 'comment:create', 'points:read', 'entitlements:read', 'developer:credentials:manage'])
+  assert.deepEqual(getPermissionsForRole('member'), ['task:create', 'task:cancel', 'post:create', 'comment:create', 'points:read', 'entitlements:read', 'developer:credentials:manage', 'developer:webhooks:manage'])
   assert.ok(getPermissionsForRole('creator').includes('task:claim'))
   assert.ok(getPermissionsForRole('publisher').includes('task:review'))
   assert.ok(getPermissionsForRole('moderator').includes('admin:queue:review'))
@@ -64,5 +64,6 @@ test('structured registry separates RBAC from resource authorization', () => {
     'admin:notifications:manage',
     'admin:notifications:publish',
     'admin:developer:manage',
+    'admin:webhooks:manage',
   ])
 })

@@ -259,11 +259,11 @@
     {
       "id": "governance_configuration",
       "classification": "internal",
-      "prismaModels": ["Permission", "RolePermission", "SystemSetting", "SystemSettingChange", "SystemSettingRevision", "ConfigResource", "ConfigResourceRevision", "FeatureFlag", "ReferenceDataEntry", "Announcement"],
+      "prismaModels": ["Permission", "RolePermission", "SystemSetting", "SystemSettingChange", "SystemSettingRevision", "ConfigResource", "ConfigResourceRevision", "FeatureFlag", "ReferenceDataEntry", "Announcement", "WebhookControl"],
       "locations": ["postgres"],
       "dataSubjects": ["staff_role", "system"],
       "purposes": ["auth_security", "support_operations"],
-      "exampleFields": ["permission id", "role mapping", "non-secret setting value"],
+      "exampleFields": ["permission id", "role mapping", "non-secret setting value", "global webhook enablement and bounded delivery policy"],
       "accessRoles": ["authorized_service", "admin_permission_manager", "security_operator"],
       "retentionPolicyId": "configuration_superseded_plus_365d",
       "exportPolicy": "exclude_system_configuration",
@@ -315,14 +315,14 @@
     {
       "id": "developer_credentials",
       "classification": "restricted",
-      "prismaModels": ["DeveloperAccessControl", "ServiceAccount", "ApiKeyCredential"],
+      "prismaModels": ["DeveloperAccessControl", "ServiceAccount", "ApiKeyCredential", "WebhookSubscription", "WebhookSigningSecret"],
       "locations": ["postgres"],
       "dataSubjects": ["user", "service_account"],
       "purposes": ["account_service", "auth_security", "support_operations"],
-      "exampleFields": ["service account owner", "key display prefix", "SHA-256 secret hash", "closed scopes", "IP/CIDR allowlist", "expiry", "last-used timestamp", "hashed IP hint", "usage count", "rotation and revocation evidence"],
+      "exampleFields": ["service account owner", "key display prefix", "SHA-256 secret hash", "closed scopes", "IP/CIDR allowlist", "expiry", "last-used timestamp", "hashed IP hint", "usage count", "webhook endpoint and event allowlist", "AES-256-GCM signing secret ciphertext", "signing-key rotation and revocation evidence"],
       "accessRoles": ["user_self", "authorized_auth_service", "security_operator_redacted"],
       "retentionPolicyId": "auth_expiry_plus_30d",
-      "exportPolicy": "safe_projection_without_secret_hash_or_plaintext_key",
+      "exportPolicy": "safe_projection_without_secret_hash_ciphertext_or_plaintext_key",
       "deletionPolicy": "revoke_immediately_then_hard_delete_after_account_retention",
       "ownerTasks": ["V1-48", "V1-67"]
     },
@@ -553,14 +553,14 @@
     {
       "id": "notification_records",
       "classification": "confidential",
-      "prismaModels": ["Notification", "NotificationTemplate", "NotificationTemplateVersion", "NotificationPreference", "NotificationDelivery", "NotificationDeliveryAttempt", "NotificationChannelConfig", "NotificationChannelConfigRevision"],
+      "prismaModels": ["Notification", "NotificationTemplate", "NotificationTemplateVersion", "NotificationPreference", "NotificationDelivery", "NotificationDeliveryAttempt", "NotificationChannelConfig", "NotificationChannelConfigRevision", "WebhookDelivery", "WebhookDeliveryAttempt", "WebhookDeliveryReplay"],
       "locations": ["postgres"],
       "dataSubjects": ["user"],
       "purposes": ["account_service", "marketplace_delivery", "creative_generation", "support_operations"],
-      "exampleFields": ["type", "title", "body", "deep link", "safe metadata", "read state", "template key and immutable version", "closed variable schema", "personal in-app enabled preference", "channel enablement and bounded delivery thresholds", "immutable channel configuration revision"],
+      "exampleFields": ["type", "title", "body", "deep link", "safe metadata", "read state", "template key and immutable version", "closed variable schema", "personal in-app enabled preference", "channel enablement and bounded delivery thresholds", "immutable channel configuration revision", "webhook event id and version", "delivery status and bounded attempts", "DLQ replay idempotency evidence"],
       "accessRoles": ["user_self", "authorized_service", "notification_operator_redacted"],
       "retentionPolicyId": "notification_created_plus_180d",
-      "exportPolicy": "include_user_notifications",
+      "exportPolicy": "include_user_notifications_and_webhook_delivery_summaries_without_signing_material",
       "deletionPolicy": "hard_delete",
       "ownerTasks": ["V1-68", "V1-67", "V1-53"]
     },
@@ -1085,7 +1085,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 140,
+    "modelCount": 146,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",

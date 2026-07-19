@@ -8,7 +8,10 @@ export const runDomainEventPipelineOnce = async ({ repositories, workerId = 'dom
     repository: repositories.domainEvents,
     workerId,
     limit,
-    publisher: (event) => repositories.domainEventConsumers.receive(event),
+    publisher: async (event) => {
+      await repositories.domainEventConsumers.receive(event)
+      await repositories.webhooks?.receive?.(event)
+    },
   })
   const consumptions = await processDomainEventConsumerBatch({ repository: repositories.domainEventConsumers, handlers: domainEventConsumerHandlers, workerId, limit })
   const compensations = await processDomainEventCompensationBatch({ repository: repositories.domainEventConsumers, handlers: domainEventConsumerHandlers, workerId, limit })

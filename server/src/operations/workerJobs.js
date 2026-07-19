@@ -2,6 +2,7 @@ import { buildProviderPollingLeaseKey, runProviderPollingWorkerOnce } from '../c
 import { runVideoProviderLifecycleWorkerOnce } from '../creative/videoProviderLifecycle.js'
 import { runDomainEventPipelineOnce } from '../events/domainEventPipeline.js'
 import { runNotificationDeliveryWorkerOnce } from '../notifications/notificationDeliveryWorker.js'
+import { runWebhookDeliveryWorkerOnce } from '../webhooks/webhookDeliveryWorker.js'
 
 export const createProductionWorkerJobDefinitions = (repositories, env, options = {}) => {
   const jobs = []
@@ -79,6 +80,22 @@ export const createProductionWorkerJobDefinitions = (repositories, env, options 
         source: process.env,
         limit: env.notificationDeliveryWorkerBatchSize,
         leaseSeconds: env.notificationDeliveryLeaseSeconds,
+      }),
+    })
+  }
+  if (repositories.webhooks?.claim) {
+    jobs.push({
+      id: 'webhook-delivery',
+      enabled: env.webhookDeliveryWorkerEnabled,
+      intervalSeconds: env.webhookDeliveryWorkerIntervalSeconds,
+      maxAttempts: 3,
+      retryBackoffSeconds: env.webhookDeliveryWorkerIntervalSeconds,
+      lease: lease('webhook-delivery'),
+      run: () => runWebhookDeliveryWorkerOnce({
+        repositories,
+        source: process.env,
+        limit: env.webhookDeliveryWorkerBatchSize,
+        leaseSeconds: env.webhookDeliveryLeaseSeconds,
       }),
     })
   }

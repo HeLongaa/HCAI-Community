@@ -4346,3 +4346,105 @@ export type DeveloperServiceAccountQuery = {
   sort?: 'createdAt' | 'updatedAt' | 'name'
   order?: 'asc' | 'desc'
 }
+
+export type WebhookControl = {
+  enabled: boolean
+  maxSubscriptionsPerUser: number
+  maxEventTypesPerSubscription: number
+  defaultMaxAttempts: number
+  baseRetrySeconds: number
+  timeoutSeconds: number
+  secretEncryptionAvailable: boolean
+  version: number
+  reasonCode: string
+  updatedAt: string
+}
+
+export type WebhookEventDefinition = {
+  key: string
+  type: string
+  version: number
+  aggregateType: string
+  description: string
+}
+
+export type WebhookSubscription = {
+  id: string
+  owner?: { id: string; handle: string | null; displayName: string }
+  name: string
+  endpointUrl: string
+  eventTypes: string[]
+  status: 'active' | 'disabled' | 'deleted'
+  maxAttempts: number
+  signingSecretHint: string | null
+  version: number
+  disabledAt: string | null
+  deletedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type WebhookIssueResult = { subscription: WebhookSubscription; signingSecret: string }
+
+export type WebhookDeliveryAttempt = {
+  id: string
+  attemptNumber: number
+  status: 'processing' | 'succeeded' | 'failed'
+  responseClass: string | null
+  statusCode: number | null
+  errorCode: string | null
+  durationMs: number | null
+  startedAt: string
+  completedAt: string | null
+}
+
+export type WebhookDelivery = {
+  id: string
+  subscriptionId: string
+  subscriptionName?: string
+  owner?: { id: string; handle: string | null; displayName: string }
+  eventId: string
+  eventType: string
+  status: 'queued' | 'processing' | 'retry_scheduled' | 'succeeded' | 'dead_lettered' | 'cancelled'
+  attemptCount: number
+  maxAttempts: number
+  replayCount: number
+  availableAt: string
+  lastErrorCode: string | null
+  lastStatusCode: number | null
+  deliveredAt: string | null
+  deadLetteredAt: string | null
+  version: number
+  createdAt: string
+  updatedAt: string
+  attempts: WebhookDeliveryAttempt[]
+}
+
+export type WebhookSubscriptionQuery = {
+  status?: string | null
+  eventType?: string | null
+  search?: string | null
+  ownerHandle?: string | null
+  cursor?: string | null
+  limit?: number
+  sort?: 'createdAt' | 'updatedAt' | 'name'
+  order?: 'asc' | 'desc'
+}
+
+export type WebhookDeliveryQuery = {
+  status?: string | null
+  eventType?: string | null
+  subscriptionId?: string | null
+  search?: string | null
+  ownerHandle?: string | null
+  cursor?: string | null
+  limit?: number
+  sort?: 'createdAt' | 'availableAt'
+  order?: 'asc' | 'desc'
+}
+
+export type WebhookMetrics = {
+  subscriptions: { total: number; active: number }
+  deliveries: { total: number; queued: number; succeeded: number; deadLettered: number }
+  attempts: number
+}

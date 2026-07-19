@@ -464,6 +464,33 @@ enum NotificationDeliveryAttemptStatus {
   timed_out
 }
 
+enum WebhookSubscriptionStatus {
+  active
+  disabled
+  deleted
+}
+
+enum WebhookSigningSecretStatus {
+  active
+  retired
+  revoked
+}
+
+enum WebhookDeliveryStatus {
+  queued
+  processing
+  retry_scheduled
+  succeeded
+  dead_lettered
+  cancelled
+}
+
+enum WebhookDeliveryAttemptStatus {
+  processing
+  succeeded
+  failed
+}
+
 enum ReleaseChangeType {
   promotion
   secret_rotation
@@ -1163,6 +1190,7 @@ model DomainEventOutbox {
 
   publication   DomainEventPublication?
   inboxReceipts DomainEventConsumerInbox[]
+  webhookDeliveries WebhookDelivery[]
 
   @@unique([aggregateType, aggregateId, aggregateSequence])
   @@index([eventType, occurredAt])
@@ -1734,6 +1762,8 @@ model User {
   personalEntitlementGrants       PersonalEntitlementGrant[]
   tagAssignments                  UserTagAssignment[]
   serviceAccounts                ServiceAccount[]
+  webhookSubscriptions           WebhookSubscription[]
+  webhookDeliveryReplays         WebhookDeliveryReplay[]
 
   @@map("users")
 }
@@ -1799,6 +1829,142 @@ model ApiKeyCredential {
   @@index([serviceAccountId, status, createdAt, id])
   @@index([status, expiresAt, id])
   @@map("api_key_credentials")
+}
+
+model WebhookControl {
+  id                           String   @id @default("global")
+  enabled                      Boolean  @default(false)
+  maxSubscriptionsPerUser      Int      @default(5) @map("max_subscriptions_per_user")
+  maxEventTypesPerSubscription Int      @default(1) @map("max_event_types_per_subscription")
+  defaultMaxAttempts           Int      @default(5) @map("default_max_attempts")
+  baseRetrySeconds             Int      @default(30) @map("base_retry_seconds")
+  timeoutSeconds               Int      @default(10) @map("timeout_seconds")
+  version                      Int      @default(1)
+  reasonCode                   String   @default("default_disabled") @map("reason_code")
+  createdAt                    DateTime @default(now()) @map("created_at")
+  updatedAt                    DateTime @updatedAt @map("updated_at")
+
+  @@map("webhook_controls")
+}
+
+model WebhookSubscription {
+  id           String                    @id @default(cuid())
+  ownerUserId  String                    @map("owner_user_id")
+  name         String
+  endpointUrl  String                    @map("endpoint_url") @db.Text
+  eventTypes   String[]                  @default([]) @map("event_types")
+  status       WebhookSubscriptionStatus @default(active)
+  maxAttempts  Int                       @default(5) @map("max_attempts")
+  version      Int                       @default(1)
+  disabledAt   DateTime?                 @map("disabled_at")
+  deletedAt    DateTime?                 @map("deleted_at")
+  createdAt    DateTime                  @default(now()) @map("created_at")
+  updatedAt    DateTime                  @updatedAt @map("updated_at")
+
+  owner          User                   @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  signingSecrets WebhookSigningSecret[]
+  deliveries     WebhookDelivery[]
+
+  @@unique([ownerUserId, name])
+  @@index([ownerUserId, status, updatedAt, id])
+  @@index([status, updatedAt, id])
+  @@map("webhook_subscriptions")
+}
+
+model WebhookSigningSecret {
+  id              String                     @id @default(cuid())
+  subscriptionId  String                     @map("subscription_id")
+  keyId           String                     @unique @map("key_id")
+  secretHint      String                     @map("secret_hint")
+  secretHash      String                     @map("secret_hash")
+  ciphertext      String                     @db.Text
+  encryptionKeyId String                     @map("encryption_key_id")
+  encryptionIv    String                     @map("encryption_iv")
+  encryptionTag   String                     @map("encryption_tag")
+  status          WebhookSigningSecretStatus @default(active)
+  retiredAt       DateTime?                  @map("retired_at")
+  revokedAt       DateTime?                  @map("revoked_at")
+  createdAt       DateTime                   @default(now()) @map("created_at")
+
+  subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+  deliveries   WebhookDelivery[]
+
+  @@index([subscriptionId, status, createdAt])
+  @@map("webhook_signing_secrets")
+}
+
+model WebhookDelivery {
+  id               String                @id @default(cuid())
+  subscriptionId   String                @map("subscription_id")
+  eventId          String                @map("event_id")
+  signingSecretId  String                @map("signing_secret_id")
+  eventType        String                @map("event_type")
+  eventVersion     Int                   @map("event_version")
+  status           WebhookDeliveryStatus @default(queued)
+  attemptCount     Int                   @default(0) @map("attempt_count")
+  maxAttempts      Int                   @map("max_attempts")
+  replayCount      Int                   @default(0) @map("replay_count")
+  availableAt      DateTime              @default(now()) @map("available_at")
+  leaseToken       String?               @unique @map("lease_token")
+  leaseExpiresAt   DateTime?             @map("lease_expires_at")
+  lastErrorCode    String?               @map("last_error_code")
+  lastStatusCode   Int?                  @map("last_status_code")
+  deliveredAt      DateTime?             @map("delivered_at")
+  deadLetteredAt   DateTime?             @map("dead_lettered_at")
+  version          Int                   @default(1)
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+
+  subscription  WebhookSubscription  @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+  event         DomainEventOutbox     @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  signingSecret WebhookSigningSecret  @relation(fields: [signingSecretId], references: [id], onDelete: Restrict)
+  attempts      WebhookDeliveryAttempt[]
+  replays       WebhookDeliveryReplay[]
+
+  @@unique([subscriptionId, eventId])
+  @@index([status, availableAt, id])
+  @@index([subscriptionId, createdAt, id])
+  @@index([eventType, createdAt, id])
+  @@index([leaseExpiresAt])
+  @@map("webhook_deliveries")
+}
+
+model WebhookDeliveryAttempt {
+  id            String                       @id @default(cuid())
+  deliveryId    String                       @map("delivery_id")
+  attemptNumber Int                          @map("attempt_number")
+  status        WebhookDeliveryAttemptStatus @default(processing)
+  workerId      String                       @map("worker_id")
+  leaseToken    String                       @unique @map("lease_token")
+  responseClass String?                      @map("response_class")
+  statusCode    Int?                         @map("status_code")
+  errorCode     String?                      @map("error_code")
+  durationMs    Int?                         @map("duration_ms")
+  startedAt     DateTime                     @default(now()) @map("started_at")
+  completedAt   DateTime?                    @map("completed_at")
+  createdAt     DateTime                     @default(now()) @map("created_at")
+
+  delivery WebhookDelivery @relation(fields: [deliveryId], references: [id], onDelete: Restrict)
+
+  @@unique([deliveryId, attemptNumber])
+  @@index([status, startedAt])
+  @@map("webhook_delivery_attempts")
+}
+
+model WebhookDeliveryReplay {
+  id             String   @id @default(cuid())
+  deliveryId     String   @map("delivery_id")
+  requestedById  String   @map("requested_by_id")
+  idempotencyKey String   @unique @map("idempotency_key")
+  reasonCode     String   @map("reason_code")
+  requestedAt    DateTime @default(now()) @map("requested_at")
+
+  delivery    WebhookDelivery @relation(fields: [deliveryId], references: [id], onDelete: Restrict)
+  requestedBy User            @relation(fields: [requestedById], references: [id], onDelete: Restrict)
+
+  @@index([deliveryId, requestedAt])
+  @@index([requestedById, requestedAt])
+  @@map("webhook_delivery_replays")
 }
 
 model UserTag {
