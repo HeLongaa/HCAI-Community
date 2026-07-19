@@ -30,6 +30,7 @@ import { createSeedNotificationManagementRepository, isSeedNotificationEnabled }
 import { createSeedNotificationDeliveryRepository } from '../notifications/seedNotificationDeliveryRepository.js'
 import { createSeedDeveloperAccessRepository } from '../developerAccess/seedDeveloperAccessRepository.js'
 import { createSeedWebhookRepository } from '../webhooks/seedWebhookRepository.js'
+import { createSeedSupportRepository } from '../support/seedSupportRepository.js'
 import { createSeedModerationCaseRepository } from '../trust/seedModerationCaseRepository.js'
 import { createSeedSafetyOperationsRepository } from '../trust/seedSafetyOperationsRepository.js'
 import { communityModerationTransition } from '../trust/communityModeration.js'
@@ -973,23 +974,6 @@ const recordAudit = (actor, action, resourceType, resourceId = null, metadata = 
   }, auditEvents[0] ?? null)
   auditEvents.unshift(event)
   return event
-}
-
-const serializeSupportRequest = (review) => {
-  const metadata = review?.metadata ?? {}
-  return {
-    id: String(review.id),
-    status: review.status,
-    category: metadata.category,
-    categoryLabel: metadata.categoryLabel,
-    subject: review.title,
-    details: review.note,
-    relatedResourceType: metadata.relatedResourceType,
-    relatedResourceId: metadata.relatedResourceId ?? null,
-    initialResponseTarget: metadata.initialResponseTarget,
-    implementationOwner: metadata.implementationOwner,
-    submittedAt: metadata.submittedAt,
-  }
 }
 
 const leaseExpiry = (ttlSeconds) => new Date(Date.now() + Math.max(1, Number(ttlSeconds ?? 300)) * 1000)
@@ -2765,6 +2749,20 @@ export const createSeedRepository = () => {
     findOwnerById: getAccountById,
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) => recordAudit(actor, action, resourceType, resourceId, metadata),
   })
+  const support = createSeedSupportRepository({
+    getUserById: getAccountById,
+    recordAudit: ({ actor, action, resourceType, resourceId, metadata }) => recordAudit(actor, action, resourceType, resourceId, metadata),
+    notifyRequester: (requester, ticket, type) => createNotificationsForHandles([requester.handle], {
+      type,
+      title: type === 'support.message_added' ? 'Support replied' : `Support ticket ${ticket.status.replaceAll('_', ' ')}`,
+      body: type === 'support.message_added' ? `A support operator replied to "${ticket.subject}".` : `Your support request "${ticket.subject}" was updated.`,
+      resourceType: 'support_ticket', resourceId: ticket.id,
+      metadata: { status: ticket.status, ticketId: ticket.id, target: { page: 'support', supportTicketId: ticket.id } },
+    }),
+    caseExists: (caseType, caseId) => caseType === 'admin_review'
+      ? adminReviewById.has(caseId)
+      : Boolean(moderationCases.findAdmin(caseId)),
+  })
   return {
   chat: createSeedChatRepository({
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) =>
@@ -2794,6 +2792,7 @@ export const createSeedRepository = () => {
   entitlements,
   developerAccess,
   webhooks,
+  support,
   auth: {
     getCurrentUser: () => seedStore.me,
     findDemoAccountByAccessToken: (token) => {
@@ -7302,51 +7301,6 @@ export const createSeedRepository = () => {
   },
   moderationCases,
   safetyOperations,
-  support: {
-    create: (payload, actor) => {
-      const submittedAt = new Date().toISOString()
-      const review = {
-        id: `support-${randomUUID()}`,
-        queue: compliancePolicyManifest.supportContract.queue,
-        status: compliancePolicyManifest.supportContract.requestStatus,
-        title: payload.subject,
-        owner: actor.handle,
-        note: payload.details,
-        metadata: {
-          kind: 'support_request',
-          category: payload.category,
-          categoryLabel: payload.categoryLabel,
-          relatedResourceType: payload.relatedResourceType,
-          relatedResourceId: payload.relatedResourceId,
-          initialResponseTarget: payload.initialResponseTarget,
-          implementationOwner: payload.implementationOwner,
-          locale: payload.locale,
-          submittedAt,
-        },
-      }
-      adminReviewQueue.unshift(review)
-      adminReviewById.set(review.id, review)
-      recordAudit(actor, compliancePolicyManifest.supportContract.requestAction, 'support_request', review.id, {
-        category: payload.category,
-        relatedResourceType: payload.relatedResourceType,
-        relatedResourceId: payload.relatedResourceId,
-        implementationOwner: payload.implementationOwner,
-      })
-      return serializeSupportRequest(review)
-    },
-    find: (id, actor) => {
-      const review = adminReviewById.get(String(id)) ?? null
-      return review?.queue === compliancePolicyManifest.supportContract.queue && review.owner === actor.handle
-        ? serializeSupportRequest(review)
-        : null
-    },
-    list: (actor, options = {}) => {
-      const rows = adminReviewQueue
-        .filter((review) => review.queue === compliancePolicyManifest.supportContract.queue && review.owner === actor.handle)
-        .map(serializeSupportRequest)
-      return paginateByCursor(rows, options)
-    },
-  },
   library: {
     list: (options = {}) => {
       const search = options.search ? options.search.toLowerCase() : null

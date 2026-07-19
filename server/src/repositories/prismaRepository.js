@@ -158,6 +158,7 @@ import { createPrismaNotificationManagementRepository } from '../notifications/p
 import { createPrismaNotificationDeliveryRepository } from '../notifications/prismaNotificationDeliveryRepository.js'
 import { createPrismaDeveloperAccessRepository } from '../developerAccess/prismaDeveloperAccessRepository.js'
 import { createPrismaWebhookRepository } from '../webhooks/prismaWebhookRepository.js'
+import { createPrismaSupportRepository } from '../support/prismaSupportRepository.js'
 import {
   buildConsentStatus,
   compliancePolicyManifest,
@@ -178,23 +179,6 @@ const oauthAuditResourceId = (provider, providerUserId) => (
 )
 
 const asObject = (value) => (value && typeof value === 'object' && !Array.isArray(value) ? value : null)
-
-const getSupportRequestDto = (review) => {
-  const metadata = asObject(review?.metadata) ?? {}
-  return {
-    id: String(review.id),
-    status: review.status,
-    category: metadata.category,
-    categoryLabel: metadata.categoryLabel,
-    subject: review.title,
-    details: review.note,
-    relatedResourceType: metadata.relatedResourceType,
-    relatedResourceId: metadata.relatedResourceId ?? null,
-    initialResponseTarget: metadata.initialResponseTarget,
-    implementationOwner: metadata.implementationOwner,
-    submittedAt: metadata.submittedAt ?? review.createdAt?.toISOString?.() ?? null,
-  }
-}
 
 const createClient = async () => {
   const connectionString = process.env.DATABASE_URL
@@ -1135,6 +1119,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   const taskLifecycleRecovery = createPrismaTaskLifecycleRecoveryRepository(client, { runSerializableTransaction, recordAudit, finalizeTaskEscrow })
   const developerAccess = createPrismaDeveloperAccessRepository(client, { runSerializableTransaction, recordAudit })
   const webhooks = createPrismaWebhookRepository(client, { runSerializableTransaction, recordAudit })
+  const support = createPrismaSupportRepository(client, { runSerializableTransaction, recordAudit, notificationDeliveries })
 
   const createSessionForUser = async (user, reason = 'auth.session.created', options = {}) => {
     const now = new Date()
@@ -10446,89 +10431,6 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         return updated
       })
       return getAdminReviewDto(row)
-    },
-  }
-
-  const support = {
-    create: async (payload, actor) => {
-      const submittedAt = new Date().toISOString()
-      const review = await client.$transaction(async (transaction) => {
-        const row = await transaction.adminReview.create({
-          data: {
-            queue: compliancePolicyManifest.supportContract.queue,
-            status: compliancePolicyManifest.supportContract.requestStatus,
-            title: payload.subject,
-            owner: actor.handle,
-            note: payload.details,
-            metadata: {
-              kind: 'support_request',
-              category: payload.category,
-              categoryLabel: payload.categoryLabel,
-              relatedResourceType: payload.relatedResourceType,
-              relatedResourceId: payload.relatedResourceId,
-              initialResponseTarget: payload.initialResponseTarget,
-              implementationOwner: payload.implementationOwner,
-              locale: payload.locale,
-              submittedAt,
-            },
-          },
-        })
-        await transaction.auditEvent.create({
-          data: buildAuditRecord({
-            actorType: 'user',
-            actorId: actor.id,
-            action: compliancePolicyManifest.supportContract.requestAction,
-            resourceType: 'support_request',
-            resourceId: row.id,
-            metadata: {
-              category: payload.category,
-              relatedResourceType: payload.relatedResourceType,
-              relatedResourceId: payload.relatedResourceId,
-              implementationOwner: payload.implementationOwner,
-            },
-          }),
-        })
-        return row
-      })
-      return getSupportRequestDto(review)
-    },
-    find: async (id, actor) => {
-      const row = await client.adminReview.findFirst({
-        where: {
-          id: String(id),
-          queue: compliancePolicyManifest.supportContract.queue,
-          owner: actor.handle,
-        },
-      })
-      return row ? getSupportRequestDto(row) : null
-    },
-    list: async (actor, options = {}) => {
-      const limit = options.limit ?? 20
-      const cursor = options.cursor
-        ? await client.adminReview.findFirst({
-          where: {
-            id: String(options.cursor),
-            queue: compliancePolicyManifest.supportContract.queue,
-            owner: actor.handle,
-          },
-          select: { id: true },
-        })
-        : null
-      const rows = await client.adminReview.findMany({
-        where: {
-          queue: compliancePolicyManifest.supportContract.queue,
-          owner: actor.handle,
-        },
-        orderBy: { createdAt: 'desc' },
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor.id }, skip: 1 } : {}),
-      })
-      const pageRows = rows.slice(0, limit)
-      return {
-        items: pageRows.map(getSupportRequestDto),
-        nextCursor: rows.length > limit && pageRows.length > 0 ? pageRows[pageRows.length - 1].id : null,
-        limit,
-      }
     },
   }
 

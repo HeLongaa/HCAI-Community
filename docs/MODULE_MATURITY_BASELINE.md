@@ -39,7 +39,7 @@ Maturity has four meanings:
 | Observability and incident response | Partial | Stable errors and explicit failure | Metrics, Prometheus and security dispositions | Trace correlation, SLOs, dashboards and incident workflow |
 | Developer platform | Contract only | OpenAPI document | No API key administration | API v1 policy, keys, scopes, usage and deprecation |
 | Search and discovery | Planned | Module-local filters only | No global search | Search ownership, indexing, authorization and operations |
-| Support | Partial | Authenticated support requests | Basic review/audit evidence | Queue ownership, SLA, assignment and reporting |
+| Support | Production capable | Owner-scoped requests, tracking and replies | Search, assignment, priority, SLA, lifecycle, replies, metrics and typed case links | None in current personal-account scope |
 | Compliance and data rights | Partial | Policies, consent and request entry points | Consent/support audit evidence plus immutable Provider/model/environment legal review and Release revalidation | Qualified-counsel evidence, export/deletion execution and receipts |
 | Platform engineering and release | Partial | Fail-closed production boundaries | Gates, smoke and rollback docs | Real infrastructure, restore rehearsal, SLO/load/canary evidence |
 

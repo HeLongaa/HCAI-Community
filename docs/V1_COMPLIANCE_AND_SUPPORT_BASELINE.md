@@ -57,7 +57,7 @@ Authenticated users can create and track six request categories through `/suppor
 | Data export | 30 calendar days | V1-67 |
 | Account deletion | 30 calendar days | V1-67 |
 
-Targets are operational goals, not guaranteed resolution times. Each request is stored as an owner-scoped `AdminReview` in the `support` queue and receives a stable tracking id. An allowlisted audit event stores category and stable resource references, but not the free-form request body.
+Targets are operational goals, not guaranteed resolution times. Each request is stored as an owner-scoped `SupportTicket` and receives a stable tracking id, dedicated message history, assignment state, and first-response/resolution deadlines. Reports and appeals remain Trust & Safety cases; `AdminReview` is not reused for support. Allowlisted audit events store category, state, SLA, and stable resource references, but not free-form request or message bodies.
 
 The request parser rejects credential-like content including Authorization headers, bearer tokens, API keys, passwords, private signed URL signatures, and secret query parameters. Users are instructed not to submit payment data, government identifiers, raw Provider payloads, or unnecessary sensitive media.
 

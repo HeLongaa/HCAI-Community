@@ -74,7 +74,7 @@ test('policy consent requires auth and exact current required versions', async (
   }
 })
 
-test('support requests are authenticated, owner-scoped, auditable queue records', async () => {
+test('support tickets are authenticated, owner-scoped, versioned, and message-capable', async () => {
   const server = await createTestServer()
   try {
     const unauthorized = await requestJson(server.url, '/api/support/requests', {
@@ -98,7 +98,9 @@ test('support requests are authenticated, owner-scoped, auditable queue records'
       },
     })
     assert.equal(created.status, 201)
-    assert.equal(created.payload.data.status, 'Submitted')
+    assert.equal(created.payload.data.status, 'open')
+    assert.equal(created.payload.data.version, 1)
+    assert.equal(created.payload.data.slaState, 'on_track')
     assert.equal(created.payload.data.category, 'general_support')
     assert.equal(created.payload.data.relatedResourceId, 'demo-user-creator')
 
@@ -114,6 +116,20 @@ test('support requests are authenticated, owner-scoped, auditable queue records'
       token: 'demo-access.taskops',
     })
     assert.equal(otherUser.status, 404)
+
+    const replied = await requestJson(server.url, `/api/support/requests/${created.payload.data.id}/messages`, {
+      token: 'demo-access.promptlin',
+      body: { message: 'Here is a safe follow-up with more context.', expectedVersion: 1 },
+    })
+    assert.equal(replied.status, 201)
+    assert.equal(replied.payload.data.version, 2)
+    assert.equal(replied.payload.data.messages.at(-1).authorType, 'requester')
+
+    const stale = await requestJson(server.url, `/api/support/requests/${created.payload.data.id}/messages`, {
+      token: 'demo-access.promptlin',
+      body: { message: 'This stale response must not append.', expectedVersion: 1 },
+    })
+    assert.equal(stale.status, 409)
   } finally {
     await server.close()
   }

@@ -28,7 +28,12 @@ for (const module of manifest.modules) {
     nonEmptyStrings(module.operationPolicies) && module.operationPolicies.every((policy) => manifest.operationPolicies.includes(policy)),
     module.operationPolicies?.join(', '),
   )
-  addCheck(`${module.id} has owned gaps`, nonEmptyStrings(module.gapTasks), module.gapTasks?.join(', '))
+  const hasValidGapList = Array.isArray(module.gapTasks) && module.gapTasks.every((value) => typeof value === 'string' && value.trim())
+  addCheck(
+    `${module.id} has owned gaps or is production capable`,
+    hasValidGapList && (module.maturity === 'production_capable' || module.gapTasks.length > 0),
+    module.gapTasks?.join(', ') || 'none',
+  )
   addCheck(`${module.id} evidence exists`, nonEmptyStrings(module.evidence) && module.evidence.every((file) => fs.existsSync(path.join(root, file))), module.evidence?.join(', '))
 }
 

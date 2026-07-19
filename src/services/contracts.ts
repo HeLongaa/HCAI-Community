@@ -320,7 +320,8 @@ export type CreateSupportRequest = {
 
 export type ApiSupportRequest = {
   id: string
-  status: string
+  status: SupportTicketStatus
+  priority: SupportTicketPriority
   category: SupportRequestCategory
   categoryLabel: LocalizedText
   subject: string
@@ -329,8 +330,32 @@ export type ApiSupportRequest = {
   relatedResourceId: string | null
   initialResponseTarget: string
   implementationOwner: string
+  requester: SupportUserSummary | null
+  assignedTo: SupportUserSummary | null
+  firstResponseDueAt: string
+  resolutionDueAt: string
+  firstRespondedAt: string | null
+  resolvedAt: string | null
+  closedAt: string | null
+  slaState: SupportSlaState
+  version: number
+  createdAt: string
+  updatedAt: string
+  messages?: SupportTicketMessage[]
+  caseLinks?: SupportTicketCaseLink[]
   submittedAt: string
 }
+
+export type SupportTicketStatus = 'open' | 'in_progress' | 'waiting_on_user' | 'resolved' | 'closed'
+export type SupportTicketPriority = 'normal' | 'urgent'
+export type SupportSlaState = 'on_track' | 'due_soon' | 'breached' | 'met'
+export type SupportUserSummary = { id: string; handle: string | null; displayName: string | null }
+export type SupportTicketMessage = { id: string; authorType: 'requester' | 'operator' | 'system'; author: SupportUserSummary | null; body: string; createdAt: string }
+export type SupportTicketCaseLink = { id: string; caseType: 'admin_review' | 'moderation_case'; caseId: string; createdAt: string }
+export type AdminSupportTicketQuery = { cursor?: string | null; limit?: number; status?: SupportTicketStatus | null; priority?: SupportTicketPriority | null; category?: string | null; assigneeUserId?: string | null; requesterHandle?: string | null; search?: string | null; slaState?: SupportSlaState | null; sort?: 'createdAt' | 'updatedAt' | 'firstResponseDueAt' | 'resolutionDueAt' | 'priority'; order?: 'asc' | 'desc' }
+export type AdminSupportTicketPage = { items: ApiSupportRequest[]; nextCursor: string | null }
+export type AdminSupportMetrics = { generatedAt: string; total: number; open: number; unassigned: number; breached: number; dueSoon: number; resolved: number; averageFirstResponseMinutes: number | null; byStatus: Record<SupportTicketStatus, number> }
+export type AdminSupportTicketUpdate = { status?: SupportTicketStatus; priority?: SupportTicketPriority; assigneeUserId?: string | null; expectedVersion: number; reasonCode: string }
 
 export type ApiSupportRequestList = {
   items: ApiSupportRequest[]

@@ -131,6 +131,25 @@ enum AdminReviewDecision {
   reject
 }
 
+enum SupportTicketStatus {
+  open
+  in_progress
+  waiting_on_user
+  resolved
+  closed
+}
+
+enum SupportTicketPriority {
+  normal
+  urgent
+}
+
+enum SupportMessageAuthorType {
+  requester
+  operator
+  system
+}
+
 enum ModerationTargetType {
   user
   post
@@ -1471,6 +1490,72 @@ model AdminReview {
   @@map("admin_reviews")
 }
 
+model SupportTicket {
+  id                    String                @id @default(cuid())
+  requesterId           String                @map("requester_id")
+  category              String
+  status                SupportTicketStatus   @default(open)
+  priority              SupportTicketPriority @default(normal)
+  subject               String
+  details               String
+  relatedResourceType   String                @default("none") @map("related_resource_type")
+  relatedResourceId     String?               @map("related_resource_id")
+  locale                String                @default("en")
+  assignedToId          String?               @map("assigned_to_id")
+  firstResponseDueAt    DateTime              @map("first_response_due_at")
+  resolutionDueAt       DateTime              @map("resolution_due_at")
+  firstRespondedAt      DateTime?             @map("first_responded_at")
+  resolvedAt            DateTime?             @map("resolved_at")
+  closedAt              DateTime?             @map("closed_at")
+  version               Int                   @default(1)
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+
+  requester User                    @relation("SupportTicketRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  assignedTo User?                  @relation("SupportTicketAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  messages   SupportTicketMessage[]
+  caseLinks  SupportTicketCaseLink[]
+
+  @@index([requesterId, createdAt, id])
+  @@index([status, priority, firstResponseDueAt, id])
+  @@index([assignedToId, status, updatedAt, id])
+  @@index([category, status, createdAt, id])
+  @@map("support_tickets")
+}
+
+model SupportTicketMessage {
+  id         String                   @id @default(cuid())
+  ticketId   String                   @map("ticket_id")
+  authorId   String?                  @map("author_id")
+  authorType SupportMessageAuthorType @map("author_type")
+  body       String
+  createdAt  DateTime                 @default(now()) @map("created_at")
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  author User?         @relation("SupportTicketMessageAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt, id])
+  @@index([authorId, createdAt, id])
+  @@map("support_ticket_messages")
+}
+
+model SupportTicketCaseLink {
+  id          String   @id @default(cuid())
+  ticketId    String   @map("ticket_id")
+  caseType    String   @map("case_type")
+  caseId      String   @map("case_id")
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  createdBy User          @relation("SupportTicketCaseLinkCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([ticketId, caseType, caseId])
+  @@index([caseType, caseId])
+  @@index([createdById, createdAt, id])
+  @@map("support_ticket_case_links")
+}
+
 model Report {
   id         String                   @id @default(cuid())
   caseId     String                   @unique @map("case_id")
@@ -1730,6 +1815,10 @@ model User {
   internalPointAccount            InternalPointAccount?
   accountingIssuesReviewed        AccountingReconciliationIssue[] @relation("AccountingIssueReviewer")
   adminReviews                    AdminReview[]                   @relation("AdminReviewReviewer")
+  requestedSupportTickets         SupportTicket[]                 @relation("SupportTicketRequester")
+  assignedSupportTickets          SupportTicket[]                 @relation("SupportTicketAssignee")
+  supportTicketMessages           SupportTicketMessage[]          @relation("SupportTicketMessageAuthor")
+  supportTicketCaseLinksCreated   SupportTicketCaseLink[]         @relation("SupportTicketCaseLinkCreator")
   moderationReports               Report[]                        @relation("ModerationReportReporter")
   affectedModerationCases         ModerationCase[]                @relation("ModerationCaseAffectedUser")
   submittedModerationEvidence     ModerationEvidence[]            @relation("ModerationEvidenceSubmitter")

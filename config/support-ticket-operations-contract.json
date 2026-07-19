@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "taskIds": ["SUPPORT-01", "SUPPORT-02"],
+  "models": ["SupportTicket", "SupportTicketMessage", "SupportTicketCaseLink"],
+  "legacyModel": "AdminReview",
+  "statuses": ["open", "in_progress", "waiting_on_user", "resolved", "closed"],
+  "priorities": ["normal", "urgent"],
+  "slaStates": ["on_track", "due_soon", "breached", "met"],
+  "permissions": ["admin:support:read", "admin:support:manage"],
+  "userRoutes": ["GET /api/support/requests", "POST /api/support/requests", "GET /api/support/requests/:id", "POST /api/support/requests/:id/messages"],
+  "adminRoutes": ["GET /api/admin/support/tickets", "GET /api/admin/support/tickets/:id", "PATCH /api/admin/support/tickets/:id", "POST /api/admin/support/tickets/:id/messages", "POST /api/admin/support/tickets/:id/case-links", "GET /api/admin/support/metrics"],
+  "listQuery": { "filters": ["status", "priority", "category", "assigneeUserId", "requesterHandle", "search", "slaState"], "sorts": ["createdAt", "updatedAt", "firstResponseDueAt", "resolutionDueAt", "priority"], "cursor": true, "maximumLimit": 100 },
+  "security": { "ownerIsolation": true, "optimisticVersioning": true, "sensitiveContentRejected": true, "auditOmitsFreeText": true, "caseLinksDoNotMergeLifecycle": true, "hardDelete": false }
+}

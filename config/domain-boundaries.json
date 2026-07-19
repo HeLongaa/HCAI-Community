@@ -50,6 +50,7 @@
     ,{ "id": "developerAccess", "domain": "developer-platform", "layer": "transport", "registration": "registerDeveloperAccessRoutes" }
     ,{ "id": "developerApi", "domain": "developer-platform", "layer": "transport", "registration": "registerDeveloperApiRoutes" }
     ,{ "id": "webhooks", "domain": "notifications-webhooks", "layer": "transport", "registration": "registerWebhookRoutes" }
+    ,{ "id": "supportAdmin", "domain": "support", "layer": "transport", "registration": "registerSupportAdminRoutes" }
   ],
   "ownership": [
     { "domain": "identity-access", "owns": ["credentials", "OAuth authorization requests", "sessions", "roles", "permissions"] },
@@ -67,5 +68,6 @@
     { "domain": "config-feature-flags", "owns": ["versioned configuration", "feature flags", "reference data", "announcements", "secret references"] },
     { "domain": "model-control-plane", "owns": ["Providers", "models", "model versions", "capabilities", "deployments", "pricing versions", "route policies", "route targets", "route policy revisions"] },
     { "domain": "developer-platform", "owns": ["developer access control", "personal service accounts", "hashed API key credentials", "API key usage projections", "public API versions", "idempotency contract", "error registry", "deprecation schedule"] }
+    ,{ "domain": "support", "owns": ["support tickets", "support messages", "assignment", "support SLA", "typed case links"] }
   ]
 }

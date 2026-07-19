@@ -19,6 +19,7 @@ import { AdminMediaLifecyclePanel } from './AdminMediaLifecyclePanel'
 import { OAuthAdminPanel } from './OAuthAdminPanel'
 import { DeveloperAccessAdminPanel } from './DeveloperAccessAdminPanel'
 import { WebhookAdminPanel } from './WebhookAdminPanel'
+import { SupportAdminPanel } from './SupportAdminPanel'
 import { CommunityAdminPanel } from './CommunityAdminPanel'
 import { AuthSessionAdminPanel } from './AuthSessionAdminPanel'
 import { TaskAdminPanel } from './TaskAdminPanel'
@@ -446,12 +447,13 @@ export function AdminPage({
   onOpenNotificationResource?: (notification: ApiNotification) => void
 }) {
   const isZh = isZhCopy(t)
-  const adminTabs = ['Overview', 'Observability', 'Settings', 'Notifications', 'Trust & Safety', 'Task review', 'Access', 'Security', 'Finance', 'Accounting', 'Generations', 'Submissions', 'Community', 'Audit log', 'Users', 'Tags', 'AI config']
+  const adminTabs = ['Overview', 'Observability', 'Settings', 'Notifications', 'Support', 'Trust & Safety', 'Task review', 'Access', 'Security', 'Finance', 'Accounting', 'Generations', 'Submissions', 'Community', 'Audit log', 'Users', 'Tags', 'AI config']
   const adminTabLabels: Record<string, string> = {
     Overview: textFor(t, 'Overview', '概览'),
     Observability: textFor(t, 'Observability', '可观测性'),
     Settings: textFor(t, 'Settings', '系统设置'),
     Notifications: textFor(t, 'Notifications', '通知'),
+    Support: textFor(t, 'Support', '支持'),
     'Trust & Safety': textFor(t, 'Trust & Safety', '信任与安全'),
     'Task review': textFor(t, 'Task review', '任务审核'),
     Access: textFor(t, 'Access', '权限'),
@@ -2669,10 +2671,13 @@ export function AdminPage({
           notify={(message) => simulateAction(message)}
         />
       )}
+      {activeTab === 'Support' && (
+        <SupportAdminPanel isZh={isZh} canRead={account.hasPermission('admin:support:read')} canManage={account.hasPermission('admin:support:manage')} notify={(message) => simulateAction(message)} />
+      )}
       {activeTab === 'Trust & Safety' && (
         <TrustSafetyAdminPanel hasPermission={account.hasPermission} isZh={isZh} notify={(message) => simulateAction(message)} />
       )}
-      {activeTab !== 'Settings' && activeTab !== 'AI config' && activeTab !== 'Users' && activeTab !== 'Notifications' && activeTab !== 'Trust & Safety' && <>
+      {activeTab !== 'Settings' && activeTab !== 'AI config' && activeTab !== 'Users' && activeTab !== 'Notifications' && activeTab !== 'Support' && activeTab !== 'Trust & Safety' && <>
       <AdminOverviewPanel t={t} target={overviewTarget} />
       <ReleaseControlPanel
         hasPermission={account.hasPermission}
