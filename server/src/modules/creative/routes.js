@@ -53,6 +53,11 @@ import {
   providerCostAvailability,
 } from '../../creative/accountingPolicy.js'
 import { createCreativeProviderRegistry } from '../../creative/providerRegistry.js'
+import { createProviderControlPlane } from '../../creative/providerControlPlane.js'
+import {
+  createOpenAIImageGeneration,
+  createOpenAIImageHttpClient,
+} from '../../creative/openaiImageProvider.js'
 import { quotaWindowFor } from '../../creative/policy.js'
 import {
   assertGenerationExecutionClaim,
@@ -100,10 +105,32 @@ const sanitizeGenerationRecordForResponse = (generationRecord) => generationReco
 
 export const registerCreativeRoutes = (router, options = {}) => {
   const executeGeneration = options.executeCreativeGeneration ?? executeCreativeGeneration
-  const fixtureAdapters = options.fixtureAdapters ?? {}
+  const routeRepositories = options.repositories ?? repositories
+  const executionSource = options.executionSource ?? process.env
+  const runtimeRegistry = createCreativeProviderRegistry(executionSource)
+  const openAIImageProvider = runtimeRegistry.providers.find((provider) => provider.id === 'openai-gpt-image-2')
+  const openAIImageClient = openAIImageProvider?.enabled && openAIImageProvider?.configured
+    ? options.openAIImageClient ?? createOpenAIImageHttpClient({
+        source: executionSource,
+        fetchImpl: options.openAIImageFetchImpl ?? globalThis.fetch,
+      })
+    : null
+  const runtimeAdapters = openAIImageClient
+    ? {
+        'openai-gpt-image-2': (context) => createOpenAIImageGeneration({
+          ...context,
+          client: openAIImageClient,
+        }),
+      }
+    : {}
+  const fixtureAdapters = { ...runtimeAdapters, ...(options.fixtureAdapters ?? {}) }
   const providerMutationAdapters = options.providerMutationAdapters ?? {}
   const providerOutputFetcher = options.providerOutputFetcher ?? null
-  const routeRepositories = options.repositories ?? repositories
+  const providerControlPlane = options.providerControlPlane ?? (
+    openAIImageClient && routeRepositories.creativeProviderControls
+      ? createProviderControlPlane({ repository: routeRepositories.creativeProviderControls })
+      : null
+  )
   const callbackSource = options.source ?? process.env
   const callbackNow = () => typeof options.now === 'function' ? options.now() : options.now ?? new Date()
 
@@ -336,12 +363,12 @@ export const registerCreativeRoutes = (router, options = {}) => {
         generationId,
         quotaRepository,
         entitlementRepository: routeRepositories.entitlements,
-        source: options.executionSource ?? process.env,
+        source: executionSource,
         now: callbackNow(),
         inputAssetRepository: routeRepositories.media,
         inputAssetReader: options.inputAssetReader ?? null,
         providerCostRepository: routeRepositories.creativeProviderCosts,
-        providerControlPlane: options.providerControlPlane ?? null,
+        providerControlPlane,
         fixtureAdapters,
       })
       if (creditRepository?.reserve) {

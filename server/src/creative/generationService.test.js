@@ -420,6 +420,12 @@ test('OpenAI Provider cost reservation and settlement execute once for a repeate
           client: {
             generateImage: async () => projectOpenAIImageGenerationResponse({
               data: [{ b64_json: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }],
+              usage: {
+                input_tokens: 20,
+                input_tokens_details: { image_tokens: 0, text_tokens: 20 },
+                output_tokens: 100,
+                total_tokens: 120,
+              },
             }),
           },
         })
@@ -435,7 +441,7 @@ test('OpenAI Provider cost reservation and settlement execute once for a repeate
   assert.equal(fixtureCalls, 1)
   assert.equal(ledger.status, 'settled')
   assert.equal(ledger.estimateMicros, '53000')
-  assert.equal(ledger.actualMicros, '53000')
+  assert.equal(ledger.actualMicros, '3100')
 })
 
 test('getCreativeProviderCatalog exposes Replicate staging shell as unavailable safe metadata', () => {

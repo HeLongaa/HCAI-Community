@@ -6,12 +6,14 @@
   "backupProviderId": "replicate-flux-1-1-pro",
   "decision": {
     "fixtureReadiness": "ready",
-    "externalCall": "no_go_pending_explicit_approval",
+    "externalCall": "go_for_guarded_staging_acceptance",
+    "approvalStatus": "explicit_user_approval_recorded",
+    "credentialedAcceptance": "pending_environment_token",
     "productionEnablement": "no_go",
     "ordinaryContinuationIsApproval": false
   },
   "limits": {
-    "maximumCallsPerApproval": 1,
+    "maximumCallsPerApproval": 2,
     "maximumApprovalHours": 24,
     "perJobUsdCap": 0.25,
     "dailyUsdCap": 8
@@ -20,8 +22,8 @@
     {
       "id": "success",
       "fixtureStatus": "covered",
-      "realStagingStatus": "pending",
-      "evidence": ["server/src/creative/openaiImageProvider.test.js", "server/src/modules/creative/routes.test.js"]
+      "realStagingStatus": "pending_credentialed_acceptance",
+      "evidence": ["server/src/creative/openaiImageProvider.test.js", "server/src/creative/openaiImageStagingAcceptance.test.js", "server/src/modules/creative/routes.test.js"]
     },
     {
       "id": "provider_failure",
@@ -89,6 +91,9 @@
   ],
   "commands": {
     "contract": "npm run test:v1-image-staging",
+    "readiness": "npm run test:image-openai-readiness",
+    "preflight": "npm run image:openai:preflight",
+    "acceptance": "npm run image:openai:acceptance",
     "fixtureSmoke": "npm run smoke:creative-staging",
     "environmentSmoke": "npm run smoke:creative-staging:env",
     "deploymentGate": "npm run check:deploy"

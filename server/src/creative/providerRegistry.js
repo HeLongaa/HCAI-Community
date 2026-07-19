@@ -70,12 +70,13 @@ const buildOpenAIImageProvider = (source) => {
   const credentialConfigured = Boolean(String(source.CREATIVE_OPENAI_IMAGE_API_TOKEN ?? '').trim())
   const stagingRuntime = source.NODE_ENV === 'production' &&
     String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? '').trim().toLowerCase() === 'staging'
+  const runtimeEnabled = stagingRuntime && stagingConfirmed && credentialConfigured && clientRequested && networkRequested
   return {
     id: 'openai-gpt-image-2',
     label: 'OpenAI GPT Image 2',
     mode: 'openai_image',
-    enabled: false,
-    configured: false,
+    enabled: runtimeEnabled,
+    configured: runtimeEnabled,
     default: false,
     fixtureInjectable: true,
     capabilities: [imageCapabilityForProvider('openai-gpt-image-2')],
@@ -88,8 +89,8 @@ const buildOpenAIImageProvider = (source) => {
       approvalRequired: true,
       adapterImplemented: true,
       httpClientImplemented: true,
-      httpClientEnabled: stagingRuntime && stagingConfirmed && credentialConfigured && clientRequested,
-      networkCallsEnabled: stagingRuntime && stagingConfirmed && credentialConfigured && clientRequested && networkRequested,
+      httpClientEnabled: runtimeEnabled,
+      networkCallsEnabled: runtimeEnabled,
       synchronousOutput: true,
       callbackImplemented: false,
       callbackEnabled: false,

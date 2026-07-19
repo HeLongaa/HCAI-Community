@@ -77,7 +77,7 @@ test('OpenAI Image edit request uses fixed multipart fields and compiled strengt
   const mapped = buildOpenAIImageEditRequest(editRequest, files)
 
   assert.equal(mapped.pathname, '/images/edits')
-  assert.deepEqual([...mapped.formData.keys()], ['model', 'prompt', 'image', 'mask', 'size', 'quality', 'n', 'output_format'])
+  assert.deepEqual([...mapped.formData.keys()], ['model', 'prompt', 'image[]', 'mask', 'size', 'quality', 'n', 'output_format'])
   assert.match(String(mapped.formData.get('prompt')), /Change intensity: 60%/)
   assert.equal(String(mapped.formData.get('prompt')).includes('strength'), false)
   assert.deepEqual(mapped.safeFields.inputRoles, ['source', 'mask'])
@@ -86,15 +86,31 @@ test('OpenAI Image edit request uses fixed multipart fields and compiled strengt
 
 test('OpenAI Image response strictly validates one canonical PNG and safe usage', async () => {
   const result = await projectOpenAIImageGenerationResponse({
+    background: 'opaque',
     created: 1_725_000_000,
     data: [{ b64_json: pngBase64 }],
-    usage: { input_tokens: 20, output_tokens: 100, total_tokens: 120 },
+    output_format: 'png',
+    quality: 'medium',
+    size: '1024x1024',
+    usage: {
+      input_tokens: 20,
+      input_tokens_details: { image_tokens: 0, text_tokens: 20 },
+      output_tokens: 100,
+      output_tokens_details: { image_tokens: 100, text_tokens: 0 },
+      total_tokens: 120,
+    },
   })
   assert.equal(result.output.contentType, 'image/png')
   assert.equal(result.output.extension, 'png')
   assert.equal(result.output.sizeBytes, Buffer.from(pngBase64, 'base64').byteLength)
   assert.match(result.output.sha256, /^[a-f0-9]{64}$/)
-  assert.deepEqual(result.usage, { input_tokens: 20, output_tokens: 100, total_tokens: 120 })
+  assert.deepEqual(result.usage, {
+    input_tokens: 20,
+    output_tokens: 100,
+    total_tokens: 120,
+    input_tokens_details: { image_tokens: 0, text_tokens: 20 },
+    output_tokens_details: { image_tokens: 100, text_tokens: 0 },
+  })
   await assert.rejects(
     projectOpenAIImageGenerationResponse({ data: [{ b64_json: pngBase64, url: 'https://private.example/output.png' }] }),
     (error) => error.code === 'CREATIVE_PROVIDER_HTTP_RESPONSE_INVALID' &&
@@ -135,7 +151,15 @@ test('OpenAI Image HTTP client uses deployment secret internally with injected f
     },
     fetchImpl: async (url, options) => {
       calls.push({ url, options })
-      return new Response(JSON.stringify({ data: [{ b64_json: pngBase64 }] }), { status: 200 })
+      return new Response(JSON.stringify({
+        data: [{ b64_json: pngBase64 }],
+        usage: {
+          input_tokens: 20,
+          input_tokens_details: { image_tokens: 0, text_tokens: 20 },
+          output_tokens: 100,
+          total_tokens: 120,
+        },
+      }), { status: 200 })
     },
   })
   const result = await client.generateImage(request)
@@ -170,9 +194,43 @@ test('OpenAI Image HTTP errors expose only safe shared taxonomy evidence', async
   )
 })
 
+test('OpenAI Image moderation errors retain only allowlisted coarse evidence', async () => {
+  const client = createOpenAIImageHttpClient({
+    source: {
+      NODE_ENV: 'production',
+      CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+      CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED: 'true',
+      CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED: 'true',
+      CREATIVE_OPENAI_IMAGE_CONFIRMATION: 'staging-only',
+      CREATIVE_OPENAI_IMAGE_API_TOKEN: 'openai-fixture-token',
+    },
+    fetchImpl: async () => new Response(JSON.stringify({
+      error: {
+        type: 'image_generation_user_error',
+        code: 'moderation_blocked',
+        message: 'private prompt and classifier payload must not survive',
+        moderation_details: {
+          moderation_stage: 'input',
+          categories: ['violence', 'private_classifier_label', 'violence'],
+          scores: { violence: 0.99 },
+        },
+      },
+    }), { status: 400 }),
+  })
+  await assert.rejects(
+    client.generateImage(request),
+    (error) => error.code === 'CREATIVE_PROVIDER_MODERATION_BLOCKED' &&
+      error.details.providerCategory === 'content_policy' &&
+      error.details.moderationStage === 'input' &&
+      JSON.stringify(error.details.moderationCategories) === JSON.stringify(['violence']) &&
+      JSON.stringify(error).includes('private prompt') === false &&
+      JSON.stringify(error).includes('scores') === false,
+  )
+})
+
 test('OpenAI Image cost metadata enforces quality pricing and daily cap', () => {
   const metadata = buildOpenAIImageProviderCostMetadata({ request, source, now: new Date('2026-07-12T00:00:00.000Z') })
-  assert.equal(metadata.estimate.amount, 0.053)
+  assert.equal(metadata.estimate.amount, 0.041)
   assert.equal(metadata.budget.status, 'within_budget')
   assert.doesNotThrow(() => assertOpenAIImageBudgetAllowsDispatch(metadata))
   assert.throws(
@@ -193,7 +251,15 @@ test('OpenAI Image adapter returns contract-safe output with non-serializable in
     now: new Date('2026-07-12T00:00:00.000Z'),
     generationId: 'gen-openai-fixture-1',
     client: {
-      generateImage: async () => projectOpenAIImageGenerationResponse({ data: [{ b64_json: pngBase64 }] }),
+      generateImage: async () => projectOpenAIImageGenerationResponse({
+        data: [{ b64_json: pngBase64 }],
+        usage: {
+          input_tokens: 20,
+          input_tokens_details: { image_tokens: 0, text_tokens: 20 },
+          output_tokens: 100,
+          total_tokens: 120,
+        },
+      }),
     },
   })
   assert.equal(generation.status, 'completed')
@@ -202,7 +268,22 @@ test('OpenAI Image adapter returns contract-safe output with non-serializable in
   assert.equal(readOpenAIImageOutputBytes(generation.outputs[0]).sha256.length, 64)
   assert.equal(JSON.stringify(generation).includes(pngBase64), false)
   assert.equal(JSON.stringify(generation).includes('openai-fixture-token'), false)
-  assert.equal(generation.usage.providerCost.actual.amount, 0.053)
+  assert.equal(generation.usage.providerCost.actual.amount, 0.0031)
+})
+
+test('OpenAI Image edit cost reconciles when Provider usage lacks input modality details', async () => {
+  const metadata = buildOpenAIImageProviderCostMetadata({
+    request: { ...request, mode: 'image_to_image', inputAssetIds: ['source'] },
+    result: {
+      output: { contentType: 'image/png' },
+      usage: { input_tokens: 20, output_tokens: 100, total_tokens: 120 },
+    },
+    source,
+    now: new Date('2026-07-12T00:00:00.000Z'),
+  })
+  assert.equal(metadata.actual.amount, null)
+  assert.equal(metadata.risk.reconciliationRequired, true)
+  assert.deepEqual(metadata.risk.reasonCodes, ['provider_usage_incomplete'])
 })
 
 test('OpenAI Image adapter maps client failures without leaking Provider content', async () => {

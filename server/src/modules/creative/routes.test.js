@@ -841,7 +841,7 @@ test('POST /api/creative/generations persists an injected OpenAI Image fixture w
     assert.equal(payload.data.outputs[0].source.persistedMediaAssetId, payload.data.outputs[0].storage.mediaAssetId)
     assert.equal(payload.data.usage.providerCost.ledger.status, 'settled')
     assert.equal(payload.data.usage.providerCost.estimate.amount, 0.053)
-    assert.equal(payload.data.usage.providerCost.actual.amount, 0.053)
+    assert.equal(payload.data.usage.providerCost.actual.amount, 0.0031)
     assert.equal(payload.data.credit.status, 'settled')
     assert.equal(payload.data.quota.used, 1)
     const serialized = JSON.stringify(payload.data)

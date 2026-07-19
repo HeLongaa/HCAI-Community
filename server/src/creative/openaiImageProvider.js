@@ -36,11 +36,20 @@ const styleInstructions = Object.freeze({
   logo_concept: 'Compose as an original logo concept without imitating existing trademarks.',
 })
 
-const qualityPricesUsd = Object.freeze({
-  low: 0.013,
-  medium: 0.053,
-  high: 0.2,
+const outputPricesUsdBySize = Object.freeze({
+  '1024x1024': Object.freeze({ low: 0.006, medium: 0.053, high: 0.211 }),
+  '1024x1536': Object.freeze({ low: 0.005, medium: 0.041, high: 0.165 }),
+  '1536x1024': Object.freeze({ low: 0.005, medium: 0.041, high: 0.165 }),
 })
+
+const tokenPricesUsdPerMillion = Object.freeze({
+  inputText: 5,
+  inputImage: 8,
+  outputImage: 30,
+})
+
+const moderationStages = new Set(['input', 'output', 'unknown'])
+const moderationCategories = new Set(['harassment', 'self-harm', 'sexual', 'violence'])
 
 const isRecord = (value) => value && typeof value === 'object' && !Array.isArray(value)
 const stableHash = (value) => createHash('sha256').update(JSON.stringify(value ?? null)).digest('hex')
@@ -102,7 +111,7 @@ export const buildOpenAIImageGenerationRequest = (request) => {
   if (!aspectRatioSizes[aspectRatio]) {
     throw providerRequestError('OpenAI Image aspect ratio is unsupported', 'aspect_ratio_unsupported')
   }
-  if (!Object.hasOwn(qualityPricesUsd, quality)) {
+  if (!Object.hasOwn(outputPricesUsdBySize[aspectRatioSizes[aspectRatio]], quality)) {
     throw providerRequestError('OpenAI Image quality is unsupported', 'quality_unsupported')
   }
   if (outputCount !== 1 || outputFormat !== 'png') {
@@ -204,14 +213,14 @@ export const buildOpenAIImageEditRequest = (request, inputFiles) => {
   const aspectRatio = parameters.aspectRatio ?? '1:1'
   const quality = parameters.quality ?? 'medium'
   if (!aspectRatioSizes[aspectRatio]) throw providerRequestError('OpenAI Image aspect ratio is unsupported', 'aspect_ratio_unsupported')
-  if (!Object.hasOwn(qualityPricesUsd, quality)) throw providerRequestError('OpenAI Image quality is unsupported', 'quality_unsupported')
+  if (!Object.hasOwn(outputPricesUsdBySize[aspectRatioSizes[aspectRatio]], quality)) throw providerRequestError('OpenAI Image quality is unsupported', 'quality_unsupported')
   if ((parameters.outputCount ?? 1) !== 1 || (parameters.outputFormat ?? 'png') !== 'png') {
     throw providerRequestError('OpenAI Image output contract is unsupported', 'output_contract_unsupported')
   }
   const formData = new FormData()
   formData.append('model', modelId)
   formData.append('prompt', compileOpenAIImageEditPrompt(request))
-  formData.append('image', new Blob([source.body], { type: source.contentType }), `source.${source.extension}`)
+  formData.append('image[]', new Blob([source.body], { type: source.contentType }), `source.${source.extension}`)
   if (mask) formData.append('mask', new Blob([mask.body], { type: mask.contentType }), 'mask.png')
   formData.append('size', aspectRatioSizes[aspectRatio])
   formData.append('quality', quality)
@@ -255,7 +264,7 @@ const projectUsage = (usage) => {
   if (!isRecord(usage)) throw providerResponseError('usage_invalid')
   assertExactKeys(
     usage,
-    ['input_tokens', 'output_tokens', 'total_tokens'],
+    ['input_tokens', 'input_tokens_details', 'output_tokens', 'output_tokens_details', 'total_tokens'],
     providerResponseError,
     'usage_fields_unsupported',
   )
@@ -265,12 +274,51 @@ const projectUsage = (usage) => {
     if (!Number.isSafeInteger(usage[key]) || usage[key] < 0) throw providerResponseError('usage_value_invalid')
     projected[key] = usage[key]
   }
+  if (usage.input_tokens_details != null) {
+    if (!isRecord(usage.input_tokens_details)) throw providerResponseError('usage_input_details_invalid')
+    assertExactKeys(
+      usage.input_tokens_details,
+      ['image_tokens', 'text_tokens'],
+      providerResponseError,
+      'usage_input_details_fields_unsupported',
+    )
+    const details = {}
+    for (const key of ['image_tokens', 'text_tokens']) {
+      if (!Number.isSafeInteger(usage.input_tokens_details[key]) || usage.input_tokens_details[key] < 0) {
+        throw providerResponseError('usage_input_details_value_invalid')
+      }
+      details[key] = usage.input_tokens_details[key]
+    }
+    projected.input_tokens_details = Object.freeze(details)
+  }
+  if (usage.output_tokens_details != null) {
+    if (!isRecord(usage.output_tokens_details)) throw providerResponseError('usage_output_details_invalid')
+    assertExactKeys(
+      usage.output_tokens_details,
+      ['image_tokens', 'text_tokens'],
+      providerResponseError,
+      'usage_output_details_fields_unsupported',
+    )
+    const details = {}
+    for (const key of ['image_tokens', 'text_tokens']) {
+      if (!Number.isSafeInteger(usage.output_tokens_details[key]) || usage.output_tokens_details[key] < 0) {
+        throw providerResponseError('usage_output_details_value_invalid')
+      }
+      details[key] = usage.output_tokens_details[key]
+    }
+    projected.output_tokens_details = Object.freeze(details)
+  }
   return Object.freeze(projected)
 }
 
 export const projectOpenAIImageGenerationResponse = async (payload) => {
   if (!isRecord(payload)) throw providerResponseError('response_not_object')
-  assertExactKeys(payload, ['created', 'data', 'usage'], providerResponseError, 'response_fields_unsupported')
+  assertExactKeys(
+    payload,
+    ['background', 'created', 'data', 'output_format', 'quality', 'size', 'usage'],
+    providerResponseError,
+    'response_fields_unsupported',
+  )
   if (!Array.isArray(payload.data) || payload.data.length !== 1 || !isRecord(payload.data[0])) {
     throw providerResponseError('output_count_invalid')
   }
@@ -284,6 +332,10 @@ export const projectOpenAIImageGenerationResponse = async (payload) => {
   if (created != null && (!Number.isSafeInteger(created) || created < 0)) {
     throw providerResponseError('created_invalid')
   }
+  if (payload.output_format != null && payload.output_format !== 'png') throw providerResponseError('output_format_invalid')
+  if (payload.quality != null && !['low', 'medium', 'high'].includes(payload.quality)) throw providerResponseError('quality_invalid')
+  if (payload.size != null && !Object.hasOwn(outputPricesUsdBySize, payload.size)) throw providerResponseError('size_invalid')
+  if (payload.background != null && payload.background !== 'opaque') throw providerResponseError('background_invalid')
   return Object.freeze({
     created,
     usage: projectUsage(payload.usage),
@@ -323,9 +375,39 @@ const readBoundedResponseText = async (response) => {
   return Buffer.concat(chunks, bytes).toString('utf8')
 }
 
-const providerHttpError = (response) => {
+const safeModerationEvidence = (payload) => {
+  if (payload?.error?.code !== 'moderation_blocked') return null
+  const details = isRecord(payload.error.moderation_details) ? payload.error.moderation_details : {}
+  const stage = moderationStages.has(details.moderation_stage) ? details.moderation_stage : 'unknown'
+  const categories = Array.isArray(details.categories)
+    ? [...new Set(details.categories.filter((category) => moderationCategories.has(category)))].sort()
+    : []
+  return Object.freeze({ stage, categories: Object.freeze(categories) })
+}
+
+const parseProviderErrorPayload = (text) => {
+  try {
+    const payload = JSON.parse(text)
+    return isRecord(payload) ? payload : null
+  } catch {
+    return null
+  }
+}
+
+const providerHttpError = (response, responseText) => {
   const retryAfterSeconds = parseProviderRetryAfter(response.headers?.get?.('retry-after'))
   const status = response.status
+  const moderation = safeModerationEvidence(parseProviderErrorPayload(responseText))
+  if (moderation) {
+    return new HttpError(422, 'CREATIVE_PROVIDER_MODERATION_BLOCKED', 'Creative Provider rejected the request under its content policy', {
+      providerId,
+      providerStatus: status,
+      providerCategory: 'content_policy',
+      retryable: false,
+      moderationStage: moderation.stage,
+      moderationCategories: moderation.categories,
+    })
+  }
   const category = status === 429
     ? 'rate_limit'
     : [408, 504].includes(status)
@@ -378,41 +460,41 @@ export const createOpenAIImageHttpClient = ({
   }
 
   const execute = async (providerRequest) => {
+    try {
+      const response = await fetchImpl(`${baseUrl}${providerRequest.pathname}`, {
+        method: providerRequest.method,
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${apiToken}`,
+          ...(providerRequest.serializedBody ? { 'content-type': 'application/json' } : {}),
+        },
+        body: providerRequest.serializedBody ?? providerRequest.formData,
+        signal: AbortSignal.timeout(requestTimeoutMs),
+      })
+      const text = await readBoundedResponseText(response)
+      if (!response.ok) throw providerHttpError(response, text)
+      let payload
       try {
-        const response = await fetchImpl(`${baseUrl}${providerRequest.pathname}`, {
-          method: providerRequest.method,
-          headers: {
-            accept: 'application/json',
-            authorization: `Bearer ${apiToken}`,
-            ...(providerRequest.serializedBody ? { 'content-type': 'application/json' } : {}),
-          },
-          body: providerRequest.serializedBody ?? providerRequest.formData,
-          signal: AbortSignal.timeout(requestTimeoutMs),
-        })
-        const text = await readBoundedResponseText(response)
-        if (!response.ok) throw providerHttpError(response)
-        let payload
-        try {
-          payload = JSON.parse(text)
-        } catch {
-          throw providerResponseError('response_json_invalid')
-        }
-        return projectOpenAIImageGenerationResponse(payload)
-      } catch (error) {
-        if (error instanceof HttpError) throw error
-        if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
-          throw new HttpError(504, 'CREATIVE_PROVIDER_TIMEOUT', 'Creative Provider HTTP request timed out', {
-            providerId,
-            providerCategory: 'timeout',
-            retryable: true,
-          })
-        }
-        throw new HttpError(502, 'CREATIVE_PROVIDER_HTTP_FAILED', 'Creative Provider HTTP request failed', {
+        payload = JSON.parse(text)
+      } catch {
+        throw providerResponseError('response_json_invalid')
+      }
+      return projectOpenAIImageGenerationResponse(payload)
+    } catch (error) {
+      if (error instanceof HttpError) throw error
+      if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+        throw new HttpError(504, 'CREATIVE_PROVIDER_TIMEOUT', 'Creative Provider HTTP request timed out', {
           providerId,
-          providerCategory: 'provider_5xx',
+          providerCategory: 'timeout',
           retryable: true,
         })
       }
+      throw new HttpError(502, 'CREATIVE_PROVIDER_HTTP_FAILED', 'Creative Provider HTTP request failed', {
+        providerId,
+        providerCategory: 'provider_5xx',
+        retryable: true,
+      })
+    }
   }
   return Object.freeze({
     providerId,
@@ -428,6 +510,27 @@ const budgetStatus = ({ estimateAmount, dailyCapAmount, spentAmount, thresholdPe
   return projectedSpend >= dailyCapAmount * (thresholdPercent / 100) ? 'threshold_exceeded' : 'within_budget'
 }
 
+const calculateActualAmount = (request, usage) => {
+  if (!usage || !Number.isSafeInteger(usage.output_tokens)) return null
+  const details = usage.input_tokens_details
+  let textInputTokens = null
+  let imageInputTokens = null
+  if (details && Number.isSafeInteger(details.text_tokens) && Number.isSafeInteger(details.image_tokens)) {
+    textInputTokens = details.text_tokens
+    imageInputTokens = details.image_tokens
+    if (Number.isSafeInteger(usage.input_tokens) && textInputTokens + imageInputTokens !== usage.input_tokens) return null
+  } else if (request.mode === 'text_to_image' && Number.isSafeInteger(usage.input_tokens)) {
+    textInputTokens = usage.input_tokens
+    imageInputTokens = 0
+  }
+  if (textInputTokens == null || imageInputTokens == null) return null
+  if (Number.isSafeInteger(usage.total_tokens) && usage.total_tokens !== usage.input_tokens + usage.output_tokens) return null
+  const actualMicros = textInputTokens * tokenPricesUsdPerMillion.inputText +
+    imageInputTokens * tokenPricesUsdPerMillion.inputImage +
+    usage.output_tokens * tokenPricesUsdPerMillion.outputImage
+  return actualMicros / 1_000_000
+}
+
 export const buildOpenAIImageProviderCostMetadata = ({
   request,
   result = null,
@@ -435,19 +538,20 @@ export const buildOpenAIImageProviderCostMetadata = ({
   now = new Date(),
 } = {}) => {
   const quality = request.parameters?.quality ?? 'medium'
-  const estimateAmount = qualityPricesUsd[quality] ?? null
+  const size = aspectRatioSizes[request.parameters?.aspectRatio ?? '1:1'] ?? null
+  const estimateAmount = outputPricesUsdBySize[size]?.[quality] ?? null
   const dailyCapAmount = numberOrNull(source.CREATIVE_OPENAI_IMAGE_DAILY_BUDGET_USD)
   const spentAmount = numberOrNull(source.CREATIVE_OPENAI_IMAGE_DAILY_SPEND_USD) ?? 0
   const thresholdPercent = numberOrNull(source.CREATIVE_OPENAI_IMAGE_BUDGET_THRESHOLD_PERCENT) ?? 80
   const status = estimateAmount == null
     ? 'unknown_estimate'
     : budgetStatus({ estimateAmount, dailyCapAmount, spentAmount, thresholdPercent })
-  const actualAmount = result?.output ? estimateAmount : null
+  const actualAmount = result?.output ? calculateActualAmount(request, result.usage) : null
   const nowIso = now.toISOString()
   return {
     schemaVersion: 'provider-cost-v1',
     providerId: providerCostId,
-    providerAccountRef: 'staging',
+    providerAccountRef: String(source.CREATIVE_OPENAI_IMAGE_PROVIDER_ACCOUNT_REF ?? 'staging').trim() || 'staging',
     model: {
       providerModelId: modelId,
       providerModelVersion: null,
@@ -472,14 +576,14 @@ export const buildOpenAIImageProviderCostMetadata = ({
     estimate: {
       currency: 'USD',
       amount: estimateAmount,
-      source: 'quality_price_table',
+      source: 'official_output_price_table',
       confidence: estimateAmount == null ? 'unknown' : 'estimated',
       calculatedAt: nowIso,
     },
     actual: {
       currency: 'USD',
       amount: actualAmount,
-      source: actualAmount == null ? 'not_calculated' : 'pricing_snapshot_calculation',
+      source: actualAmount == null ? 'not_calculated' : 'provider_usage_calculation',
       confidence: actualAmount == null ? 'unknown' : 'calculated',
       settledAt: actualAmount == null ? null : nowIso,
     },
@@ -494,7 +598,7 @@ export const buildOpenAIImageProviderCostMetadata = ({
     },
     risk: {
       reconciliationRequired: actualAmount == null,
-      reasonCodes: actualAmount == null ? ['actual_cost_pending'] : [],
+      reasonCodes: actualAmount == null ? ['provider_usage_incomplete'] : [],
     },
   }
 }
@@ -530,6 +634,15 @@ const safeParameters = (request) => Object.fromEntries(
 
 const failedGeneration = ({ request, provider, actor, error, now, generationId }) => {
   const failure = safeProviderFailure(error)
+  const moderation = error?.details?.providerCategory === 'content_policy'
+    ? {
+        provider: 'openai',
+        stage: moderationStages.has(error.details.moderationStage) ? error.details.moderationStage : 'unknown',
+        categories: Array.isArray(error.details.moderationCategories)
+          ? error.details.moderationCategories.filter((category) => moderationCategories.has(category))
+          : [],
+      }
+    : null
   return {
     id: generationId,
     workspace: request.workspace,
@@ -549,7 +662,11 @@ const failedGeneration = ({ request, provider, actor, error, now, generationId }
       providerUsageUnit: 'image',
       providerCost: buildOpenAIImageProviderCostMetadata({ request, now }),
     },
-    safety: { moderationRequired: false, reviewRequired: false },
+    safety: {
+      moderationRequired: Boolean(moderation),
+      reviewRequired: false,
+      ...(moderation ? { providerModeration: moderation } : {}),
+    },
     createdBy: { id: actor.id, handle: actor.handle },
     createdAt: now.toISOString(),
     errorCode: failure.code,
@@ -625,6 +742,11 @@ export const createOpenAIImageGeneration = async ({
 
 export const readOpenAIImageOutputBytes = (output) => imageBytesByOutput.get(output) ?? null
 
+export const preserveOpenAIImageOutputBytes = (sourceOutput, targetOutput) => {
+  const bytes = imageBytesByOutput.get(sourceOutput)
+  if (bytes && targetOutput && sourceOutput !== targetOutput) imageBytesByOutput.set(targetOutput, bytes)
+}
+
 export const openAIImageProviderContract = Object.freeze({
   providerId,
   modelId,
@@ -638,5 +760,6 @@ export const openAIImageProviderContract = Object.freeze({
   inputTotalMaxBytes,
   requestTimeoutMs,
   aspectRatioSizes,
-  qualityPricesUsd,
+  outputPricesUsdBySize,
+  tokenPricesUsdPerMillion,
 })
