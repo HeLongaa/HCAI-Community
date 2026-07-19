@@ -7,6 +7,9 @@ import { startMediaScanWorker } from './media/scanWorker.js'
 import { repositories } from './repositories/index.js'
 import { createAdminMutationAuditHook } from './audit/adminMutationAudit.js'
 import { resolveApiKeyClientIp } from './common/http/clientIp.js'
+import { configureEnvironmentProxy } from './common/http/environmentProxy.js'
+
+configureEnvironmentProxy()
 
 const main = async () => {
   const router = createRouter()

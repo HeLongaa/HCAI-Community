@@ -3,6 +3,9 @@ import { createProviderPollingStatusClients } from './creative/providerStatusCli
 import { startWorkerJobs } from './operations/worker.js'
 import { createProductionWorkerJobDefinitions } from './operations/workerJobs.js'
 import { repositories } from './repositories/index.js'
+import { configureEnvironmentProxy } from './common/http/environmentProxy.js'
+
+configureEnvironmentProxy()
 
 const providerStatusClients = createProviderPollingStatusClients()
 const worker = startWorkerJobs(createProductionWorkerJobDefinitions(repositories, env, {

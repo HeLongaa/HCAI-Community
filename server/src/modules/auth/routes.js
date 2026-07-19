@@ -237,6 +237,16 @@ export const registerAuthRoutes = (router, options = {}) => {
       statePayload,
       user: query.user,
       configuration: providerControl,
+      onDiagnostic: (diagnostic) => {
+        recordSecurityEvent({
+          type: 'auth.oauth.provider_failure',
+          severity: 'warning',
+          source: 'oauth_callback',
+          identity: provider,
+          details: diagnostic,
+        })
+        console.warn('[oauth-provider]', JSON.stringify(diagnostic))
+      },
     })
     if (!profile) {
       recordSecurityEvent({

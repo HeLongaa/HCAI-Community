@@ -59,7 +59,7 @@
     "test:config-resource-domains:integration": "npm --prefix server run db:generate && node --test server/src/repositories/prismaConfigResources.integration.test.js",
     "test:feature-flag-rollout": "node scripts/verify-feature-flag-rollout.mjs && npm --prefix server run db:generate && node --test server/src/configResources/configResourceRuntime.test.js server/src/modules/configResources/routes.test.js",
     "test:model-control-plane": "node scripts/verify-model-control-plane.mjs && npm --prefix server run db:generate && node --test server/src/modules/modelControl/routes.test.js",
-    "test:oauth-hardening": "node scripts/verify-oauth-hardening.mjs && npm --prefix server run db:generate && node --test server/src/auth/oauth.test.js server/src/modules/auth/routes.test.js server/src/repositories/prismaOAuth.integration.test.js",
+    "test:oauth-hardening": "node scripts/verify-oauth-hardening.mjs && npm --prefix server run db:generate && node --test server/src/auth/oauth.test.js server/src/common/http/environmentProxy.test.js server/src/modules/auth/routes.test.js server/src/repositories/prismaOAuth.integration.test.js",
     "test:oauth-hardening:integration": "npm --prefix server run db:generate && node --test server/src/repositories/prismaOAuth.integration.test.js",
     "test:oauth-admin-operations": "node scripts/verify-oauth-admin-operations.mjs && npm --prefix server run db:generate && node --test scripts/check-oauth-provider-readiness.test.mjs server/src/auth/oauthAdminOperations.test.js server/src/modules/auth/admin.routes.test.js",
     "test:oauth-admin-operations:integration": "npm --prefix server run db:generate && node --test server/src/repositories/prismaOAuthAdmin.integration.test.js",
