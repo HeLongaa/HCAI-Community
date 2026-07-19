@@ -13,7 +13,7 @@ V1-78 deliberately reuses two governed append/review models instead of adding a 
 
 - Exact policy consent is an immutable `AuditEvent` with action `compliance.policy_consent.recorded`, resource type
   `policy_consent`, and allowlisted policy-set version, policy versions, acceptance time, source, and locale metadata.
-- Support, report, appeal, privacy, export, and deletion requests are owner-scoped `AdminReview` rows in the `support`
+- General support, privacy, export, and deletion requests are owner-scoped `SupportTicket` rows with dedicated messages, assignment, SLA, and typed case links. Reports and appeals use Trust & Safety cases; `AdminReview` remains reserved for approval and dispute workflows.
   queue. Free-form request details remain in the governed review row and are excluded from audit metadata.
 
 Email registration writes the account and consent audit in one Prisma transaction. OAuth and existing accounts read

@@ -9,6 +9,7 @@ import {
   FileWarning,
   Flag,
   LoaderCircle,
+  MessageSquareReply,
   RefreshCcw,
   Scale,
   Send,
@@ -422,6 +423,10 @@ export function SupportPage({
   const [relatedResourceId, setRelatedResourceId] = useState(initialAppeal?.moderationDecisionId ?? '')
   const [loadingHistory, setLoadingHistory] = useState(signedIn)
   const [submitting, setSubmitting] = useState(false)
+  const [replyingTo, setReplyingTo] = useState<string | null>(null)
+  const [replyBody, setReplyBody] = useState('')
+  const [sendingReply, setSendingReply] = useState(false)
+  const [replyError, setReplyError] = useState('')
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -496,6 +501,28 @@ export function SupportPage({
         ? submitError.message
         : textFor(t, 'Could not submit this request.', '无法提交此请求。'))
     }).finally(() => setSubmitting(false))
+  }
+
+  const submitReply = (request: ApiSupportRequest) => {
+    const message = replyBody.trim()
+    if (!message || sendingReply) return
+    setSendingReply(true)
+    setReplyError('')
+    complianceService.addSupportMessage(request.id, {
+      message,
+      expectedVersion: request.version,
+      reasonCode: 'requester_follow_up',
+    }).then((updated) => {
+      setRequests((current) => current.map((item) => item.id === updated.id ? updated : item))
+      setReplyingTo(null)
+      setReplyBody('')
+      simulateAction(textFor(t, 'Reply sent to support.', '回复已发送给支持团队。'))
+    }).catch((replyFailure) => {
+      console.info('[support-reply]', replyFailure)
+      setReplyError(isApiClientError(replyFailure)
+        ? replyFailure.message
+        : textFor(t, 'Could not send this reply.', '无法发送此回复。'))
+    }).finally(() => setSendingReply(false))
   }
 
   return (
@@ -643,6 +670,50 @@ export function SupportPage({
             <code>{request.id}</code>
             <span className="status-badge">{request.status}</span>
             <time>{new Date(request.submittedAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}</time>
+            <button
+              className="icon-button small"
+              type="button"
+              title={textFor(t, 'Reply to support', '回复支持团队')}
+              aria-label={textFor(t, 'Reply to support', '回复支持团队')}
+              disabled={request.status === 'closed'}
+              onClick={() => {
+                setReplyingTo((current) => current === request.id ? null : request.id)
+                setReplyBody('')
+                setReplyError('')
+              }}
+            >
+              <MessageSquareReply size={16} />
+            </button>
+            {replyingTo === request.id && (
+              <form className="support-user-reply" onSubmit={(event) => { event.preventDefault(); submitReply(request) }}>
+                {Boolean(request.messages?.length) && (
+                  <div className="support-user-thread">
+                    {request.messages?.map((message) => (
+                      <p key={message.id}>
+                        <strong>{message.authorType === 'operator' ? textFor(t, 'Support', '支持团队') : textFor(t, 'You', '你')}</strong>
+                        <span>{message.body}</span>
+                      </p>
+                    ))}
+                  </div>
+                )}
+                <label>
+                  <span>{textFor(t, 'Your reply', '你的回复')}</span>
+                  <textarea
+                    required
+                    maxLength={4000}
+                    rows={3}
+                    value={replyBody}
+                    onChange={(event) => setReplyBody(event.target.value)}
+                    placeholder={textFor(t, 'Add information for the support team', '向支持团队补充信息')}
+                  />
+                </label>
+                <button className="primary-button small" type="submit" disabled={sendingReply || !replyBody.trim()} onClick={(event) => { event.preventDefault(); submitReply(request) }}>
+                  <Send size={15} />
+                  {sendingReply ? textFor(t, 'Sending...', '发送中...') : textFor(t, 'Send reply', '发送回复')}
+                </button>
+                {replyError && <div className="auth-error" role="alert">{replyError}</div>}
+              </form>
+            )}
           </article>
         ))}
       </section>

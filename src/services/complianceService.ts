@@ -40,4 +40,7 @@ export const complianceService = {
   getSupportRequest(id: string) {
     return api.get<ApiSupportRequest>(`/support/requests/${encodeURIComponent(id)}`)
   },
+  addSupportMessage(id: string, payload: { message: string; expectedVersion: number; reasonCode?: string }) {
+    return api.post<ApiSupportRequest>(`/support/requests/${encodeURIComponent(id)}/messages`, payload)
+  },
 }

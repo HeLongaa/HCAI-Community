@@ -209,13 +209,13 @@
     {
       "id": "support",
       "name": "支持服务",
-      "maturity": "partial",
+      "maturity": "production_capable",
       "ownerTask": "SUPPORT-01",
-      "userCapabilities": ["提交并查看个人支持请求"],
-      "adminCapabilities": ["通过审核与审计基础设施处理证据"],
-      "operationPolicies": ["state_transition", "append_only"],
-      "evidence": ["server/src/modules/compliance/routes.js", "e2e/compliance-support.spec.ts", "docs/V1_COMPLIANCE_AND_SUPPORT_BASELINE.md"],
-      "gapTasks": ["SUPPORT-01"]
+      "userCapabilities": ["提交、查看并回复个人支持请求"],
+      "adminCapabilities": ["专用工单检索", "分派与优先级", "状态与消息", "SLA 指标", "审核案件安全关联"],
+      "operationPolicies": ["mutable_crud", "append_only"],
+      "evidence": ["server/src/modules/compliance/routes.js", "server/src/modules/supportAdmin/routes.js", "src/features/admin/SupportAdminPanel.tsx", "e2e/compliance-support.spec.ts", "docs/SUPPORT_TICKET_OPERATIONS.md"],
+      "gapTasks": []
     },
     {
       "id": "compliance-data-rights",

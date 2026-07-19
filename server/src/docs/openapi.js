@@ -289,6 +289,29 @@ export const openApiDocument = {
         },
       },
     },
+    '/support/requests/{id}/messages': {
+      post: {
+        summary: 'Append a requester message to an owned non-closed support ticket',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['message', 'expectedVersion'], additionalProperties: false, properties: { message: { type: 'string', minLength: 1, maxLength: 4000 }, expectedVersion: { type: 'integer', minimum: 1 }, reasonCode: { type: 'string', pattern: '^[a-z0-9][a-z0-9._:-]{0,79}$' } } } } } },
+        responses: { '201': { description: 'Requester message appended' }, '400': { description: 'Invalid or sensitive credential-like content' }, '404': { description: 'Ticket not owned by current user' }, '409': { description: 'Closed ticket or stale version' } },
+      },
+    },
+    '/admin/support/tickets': {
+      get: { summary: 'Search support tickets by lifecycle, assignment, requester, SLA, category, and priority with cursor pagination', responses: { '200': { description: 'Bounded ticket summaries' }, '403': { description: 'Missing admin:support:read' } } },
+    },
+    '/admin/support/tickets/{id}': {
+      get: { summary: 'Read one support ticket with append-only messages and typed case links', responses: { '200': { description: 'Support ticket detail' }, '403': { description: 'Missing admin:support:read' }, '404': { description: 'Ticket not found' } } },
+      patch: { summary: 'Assign, prioritize, or transition one support ticket using optimistic version control', responses: { '200': { description: 'Updated support ticket' }, '403': { description: 'Missing admin:support:manage' }, '409': { description: 'Stale version or invalid transition' }, '422': { description: 'Assignee is not an active support operator' } } },
+    },
+    '/admin/support/tickets/{id}/messages': {
+      post: { summary: 'Append an operator response, record first response, and notify the requester', responses: { '201': { description: 'Operator response appended' }, '403': { description: 'Missing admin:support:manage' }, '409': { description: 'Closed ticket or stale version' } } },
+    },
+    '/admin/support/tickets/{id}/case-links': {
+      post: { summary: 'Link an existing Admin review or Trust and Safety case without merging lifecycles', responses: { '201': { description: 'Typed case link appended' }, '403': { description: 'Missing admin:support:manage' }, '409': { description: 'Duplicate link or stale version' }, '422': { description: 'Linked case does not exist' } } },
+    },
+    '/admin/support/metrics': {
+      get: { summary: 'Read support volume, assignment, first-response, resolution, and SLA metrics', responses: { '200': { description: 'Support operational metrics' }, '403': { description: 'Missing admin:support:read' } } },
+    },
     '/trust/reports': {
       post: {
         summary: 'Create one append-only report and moderation case with target snapshot evidence and preference-aware reviewer notification',

@@ -57,6 +57,54 @@
   --workspace-tab-active-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
 }
 
+.support-admin-workspace { min-width: 0; }
+.support-admin-workspace > .panel { display: grid; grid-template-columns: minmax(0, 1fr); height: auto; min-height: 0; overflow: visible; }
+.support-admin-workspace .panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; min-width: 0; }
+.support-admin-workspace .panel-heading h2 { margin: 3px 0 0; font-size: 20px; }
+.support-metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-block: 12px; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; }
+.support-metrics > div { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; min-width: 0; padding: 11px; border-right: 1px solid var(--border); }
+.support-metrics > div:last-child { border-right: 0; }
+.support-metrics svg { grid-row: 1 / span 2; color: var(--muted); }
+.support-metrics strong { font-size: 19px; line-height: 1; }
+.support-metrics span { color: var(--muted); font-size: 11px; }
+.support-filter-row { display: grid; grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(130px, .35fr)); gap: 8px; min-width: 0; margin-bottom: 10px; }
+.support-filter-row label { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.support-filter-row input, .support-filter-row select, .support-detail-controls input, .support-detail-controls select, .support-case-link input, .support-case-link select { width: 100%; min-width: 0; }
+.support-ticket-list { display: grid; max-height: 460px; overflow: auto; border-block: 1px solid var(--border); }
+.support-ticket-list .admin-list-row { display: grid; grid-template-columns: minmax(180px, 1.5fr) minmax(90px, .5fr) minmax(90px, .5fr) minmax(150px, .8fr); gap: 10px; align-items: center; width: 100%; min-width: 0; padding: 10px 4px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; color: var(--text); text-align: left; }
+.support-ticket-list .admin-list-row:hover, .support-ticket-list .admin-list-row.active { background: var(--surface-raised); }
+.support-ticket-list .admin-list-row > span:first-child { display: grid; gap: 2px; min-width: 0; }
+.support-ticket-list strong, .support-ticket-list small, .support-ticket-list time { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.support-ticket-list small, .support-ticket-list time { color: var(--muted); font-size: 11px; }
+.support-ticket-detail > p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.support-detail-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-block: 12px; }
+.support-detail-controls label { display: grid; gap: 5px; min-width: 0; }
+.support-detail-controls label > span { color: var(--muted); font-size: 11px; }
+.support-detail-controls .inline-actions { display: grid; grid-template-columns: minmax(0, 1fr) 38px; gap: 6px; }
+.support-message-thread { display: grid; gap: 0; max-height: 320px; overflow: auto; border-block: 1px solid var(--border); }
+.support-message-thread article { padding: 10px 2px; border-bottom: 1px solid var(--border); }
+.support-message-thread header { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; }
+.support-message-thread time { color: var(--muted); }
+.support-message-thread p { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.support-compose { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; margin-top: 10px; }
+.support-compose textarea { width: 100%; min-width: 0; resize: vertical; }
+.support-case-link { display: grid; grid-template-columns: auto minmax(130px, .35fr) minmax(180px, 1fr) auto; gap: 8px; align-items: center; margin-top: 12px; }
+
+@media (max-width: 880px) {
+  .support-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .support-metrics > div { border-bottom: 1px solid var(--border); }
+  .support-filter-row, .support-detail-controls { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 560px) {
+  .support-metrics { grid-template-columns: minmax(0, 1fr); }
+  .support-metrics > div { border-right: 0; }
+  .support-ticket-list .admin-list-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .support-ticket-list .admin-list-row time { grid-column: 1 / -1; }
+  .support-compose, .support-case-link { grid-template-columns: minmax(0, 1fr); }
+  .support-case-link svg { display: none; }
+}
+
 .developer-access-heading,
 .developer-account-header,
 .developer-key-row,
@@ -13374,7 +13422,7 @@ button.video-history-row.active {
 
 .support-history > article {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(150px, auto) auto minmax(150px, auto);
+  grid-template-columns: minmax(0, 1fr) minmax(150px, auto) auto minmax(150px, auto) 32px;
   gap: 16px;
   align-items: center;
   min-height: 68px;
@@ -13404,6 +13452,56 @@ button.video-history-row.active {
 
 .support-history time {
   text-align: right;
+}
+
+.support-user-reply {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  width: 100%;
+  padding: 0 0 12px;
+}
+
+.support-user-reply label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.support-user-reply label > span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.support-user-reply textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+}
+
+.support-user-thread,
+.support-user-reply .auth-error {
+  grid-column: 1 / -1;
+}
+
+.support-user-thread {
+  display: grid;
+  gap: 6px;
+  padding-top: 4px;
+}
+
+.support-user-thread p {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  margin: 0;
+}
+
+.support-user-thread span {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 @media (max-width: 1080px) {
@@ -13575,6 +13673,14 @@ button.video-history-row.active {
 
   .support-history time {
     text-align: left;
+  }
+
+  .support-user-reply {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .support-user-reply .primary-button {
+    justify-self: start;
   }
 }
 

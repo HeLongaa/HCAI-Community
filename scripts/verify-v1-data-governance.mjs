@@ -69,6 +69,7 @@ const expectedAssets = [
   'raw_generation_inputs',
   'raw_provider_payloads',
   'security_event_records',
+  'support_ticket_records',
   'user_export_packages',
 ]
 const expectedNodes = [

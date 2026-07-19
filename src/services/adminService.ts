@@ -1,6 +1,11 @@
 import { api, apiEnvelope, apiRequest, withQuery } from './apiClient'
 import type {
   AdminAuditListQuery,
+  AdminSupportMetrics,
+  AdminSupportTicketPage,
+  AdminSupportTicketQuery,
+  AdminSupportTicketUpdate,
+  ApiSupportRequest,
   AdminOAuthAccount,
   AdminOAuthAccountQuery,
   AdminOAuthAuthorizationQuery,
@@ -681,6 +686,25 @@ export const adminService = {
   async updateRolePermissions(role: Role, permissions: Permission[]) {
     const body: UpdateRolePermissionsRequest = { permissions }
     return api.put<AdminRolePermissionDto>(`/admin/roles/${role}/permissions`, body)
+  },
+  async supportTickets(query?: AdminSupportTicketQuery): Promise<AdminSupportTicketPage> {
+    const envelope = await api.getEnvelope<ApiSupportRequest[]>(withQuery('/admin/support/tickets', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  async supportTicket(id: string) {
+    return api.get<ApiSupportRequest>(`/admin/support/tickets/${encodeURIComponent(id)}`)
+  },
+  async updateSupportTicket(id: string, payload: AdminSupportTicketUpdate) {
+    return api.patch<ApiSupportRequest>(`/admin/support/tickets/${encodeURIComponent(id)}`, payload)
+  },
+  async addSupportMessage(id: string, payload: { message: string; expectedVersion: number; reasonCode: string }) {
+    return api.post<ApiSupportRequest>(`/admin/support/tickets/${encodeURIComponent(id)}/messages`, payload)
+  },
+  async linkSupportCase(id: string, payload: { caseType: 'admin_review' | 'moderation_case'; caseId: string; expectedVersion: number; reasonCode: string }) {
+    return api.post<ApiSupportRequest>(`/admin/support/tickets/${encodeURIComponent(id)}/case-links`, payload)
+  },
+  async supportMetrics() {
+    return api.get<AdminSupportMetrics>('/admin/support/metrics')
   },
   async reviews(query?: AdminReviewListQuery) {
     return api.get<AdminReviewQueueItemDto[]>(withQuery('/admin/reviews', query))

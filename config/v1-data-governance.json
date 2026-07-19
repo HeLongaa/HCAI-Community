@@ -191,6 +191,14 @@
       "exceptions": []
     },
     {
+      "id": "support_close_plus_730d",
+      "trigger": "support_ticket_closed",
+      "maximumDaysAfterTrigger": 730,
+      "action": "redact_request_and_message_bodies_then_delete",
+      "fieldOverrides": { "support_message_body": 365 },
+      "exceptions": ["active_legal_hold", "open_privacy_or_data_rights_request"]
+    },
+    {
       "id": "moderation_close_plus_730d",
       "trigger": "review_or_appeal_closed",
       "maximumDaysAfterTrigger": 730,
@@ -565,13 +573,27 @@
       "ownerTasks": ["V1-68", "V1-67", "V1-53"]
     },
     {
+      "id": "support_ticket_records",
+      "classification": "restricted",
+      "prismaModels": ["SupportTicket", "SupportTicketMessage", "SupportTicketCaseLink"],
+      "locations": ["postgres"],
+      "dataSubjects": ["user", "support_operator"],
+      "purposes": ["support_operations", "legal_compliance"],
+      "exampleFields": ["request category and subject", "restricted request details", "assignment and priority", "state and version", "first-response and resolution SLA", "append-only requester and operator messages", "typed moderation or review case links"],
+      "accessRoles": ["user_self", "authorized_service", "support_operator_allowlisted", "auditor_redacted"],
+      "retentionPolicyId": "support_close_plus_730d",
+      "exportPolicy": "include_user_visible_ticket_and_messages_exclude_internal_operator_evidence_for_other_subjects",
+      "deletionPolicy": "redact_subject_details_and_message_bodies_after_retention_or_account_deletion_unless_legal_hold",
+      "ownerTasks": ["V1-67", "V1-78"]
+    },
+    {
       "id": "moderation_review_records",
       "classification": "restricted",
       "prismaModels": ["AdminReview", "Report", "ModerationCase", "ModerationEvidence", "ModerationDecision", "ModerationAppeal", "CommunityModerationAction", "SafetyRuleVersion", "SafetyRuleTransition", "SafetySignal", "ModerationQueueEvent", "ModerationBulkOperation"],
       "locations": ["postgres"],
       "dataSubjects": ["user", "reporter", "reviewer", "depicted_third_party"],
-      "purposes": ["safety_moderation", "support_operations", "legal_compliance"],
-      "exampleFields": ["generic queue and support state", "report category and restricted statement", "target reference and affected user", "hash-addressed evidence", "append-only original and appeal decisions", "bounded reason codes", "appeal deadline"],
+      "purposes": ["safety_moderation", "legal_compliance"],
+      "exampleFields": ["generic review queue state", "report category and restricted statement", "target reference and affected user", "hash-addressed evidence", "append-only original and appeal decisions", "bounded reason codes", "appeal deadline"],
       "accessRoles": ["authorized_service", "trust_safety_reviewer", "appeal_reviewer", "auditor"],
       "retentionPolicyId": "moderation_close_plus_730d",
       "exportPolicy": "include_decision_and_user_visible_reason_exclude_internal_investigation",
@@ -720,7 +742,7 @@
       "id": "api_to_postgres",
       "from": "api_memory",
       "to": "postgres",
-      "dataAssetIds": ["governance_configuration", "identity_account_profile", "authentication_credentials_sessions", "developer_credentials", "marketplace_records", "community_content_interactions", "private_library_items", "internal_points_ledger", "internal_accounting_invariant_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "chat_conversation_messages", "provider_lifecycle_records", "creative_accounting_records", "ai_evaluation_records", "notification_records", "moderation_review_records", "audit_event_records", "security_event_records"],
+      "dataAssetIds": ["governance_configuration", "identity_account_profile", "authentication_credentials_sessions", "developer_credentials", "marketplace_records", "community_content_interactions", "private_library_items", "internal_points_ledger", "internal_accounting_invariant_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "chat_conversation_messages", "provider_lifecycle_records", "creative_accounting_records", "ai_evaluation_records", "notification_records", "support_ticket_records", "moderation_review_records", "audit_event_records", "security_event_records"],
       "requiredControls": ["validated DTO", "field allowlist", "transaction and ownership checks", "encrypted connection", "no secret or raw Provider payload"],
       "destinationPersistence": "retention_policy_applies"
     },
@@ -824,7 +846,7 @@
       "id": "api_to_admin_console",
       "from": "api_memory",
       "to": "admin_console",
-      "dataAssetIds": ["marketplace_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "internal_accounting_invariant_records", "provider_cost_budget_records", "provider_control_records", "ai_evaluation_records", "provider_legal_review_records", "moderation_review_records", "audit_event_records", "security_event_records"],
+      "dataAssetIds": ["marketplace_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "provider_lifecycle_records", "creative_accounting_records", "internal_accounting_invariant_records", "provider_cost_budget_records", "provider_control_records", "ai_evaluation_records", "provider_legal_review_records", "support_ticket_records", "moderation_review_records", "audit_event_records", "security_event_records"],
       "requiredControls": ["RBAC", "purpose-specific allowlist", "redaction", "pagination", "elevated access audit", "no private URL or raw prompt"],
       "destinationPersistence": "none"
     },
@@ -1085,7 +1107,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 146,
+    "modelCount": 149,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",

@@ -409,10 +409,10 @@
     { "providerId": "google-lyria-3-pro-preview", "modality": "music", "role": "backup_candidate_preview", "dataCategories": ["prompt", "lyrics", "reference_audio", "generation_settings"], "productionApproved": false }
   ],
   "supportContract": {
-    "recordModel": "AdminReview",
-    "queue": "support",
-    "requestStatus": "Submitted",
-    "requestAction": "support.request.submitted",
+    "recordModel": "SupportTicket",
+    "queue": "support_tickets",
+    "requestStatus": "open",
+    "requestAction": "support.ticket.created",
     "authenticationRequired": true,
     "allowedRelatedResourceTypes": ["none", "account", "task", "post", "comment", "media_asset", "creative_generation", "moderation_decision"],
     "forbiddenFields": ["password", "access token", "refresh token", "API key", "Authorization header", "payment data", "government identifier", "private signed URL", "raw Provider payload", "raw secret"],

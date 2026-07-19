@@ -185,5 +185,8 @@
     ,{ "method": "PUT", "path": "/api/admin/developer/webhooks/control", "action": "admin.webhook.control_updated", "resourceType": "webhook_control", "resourceParam": null, "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
     ,{ "method": "POST", "path": "/api/admin/developer/webhooks/:id/disable", "action": "admin.webhook.disabled", "resourceType": "webhook_subscription", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
     ,{ "method": "POST", "path": "/api/admin/developer/webhook-deliveries/:id/replay", "action": "admin.webhook.delivery_replayed", "resourceType": "webhook_delivery", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
+    ,{ "method": "PATCH", "path": "/api/admin/support/tickets/:id", "action": "admin.support.ticket_updated", "resourceType": "support_ticket", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
+    ,{ "method": "POST", "path": "/api/admin/support/tickets/:id/messages", "action": "admin.support.message_added", "resourceType": "support_ticket", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
+    ,{ "method": "POST", "path": "/api/admin/support/tickets/:id/case-links", "action": "admin.support.case_linked", "resourceType": "support_ticket", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
   ]
 }

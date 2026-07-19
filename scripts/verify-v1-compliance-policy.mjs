@@ -112,9 +112,9 @@ for (const modality of ['image', 'chat', 'video', 'music']) {
   addCheck(`${modality} has primary and backup disclosures`, manifest.providerDisclosures.filter((item) => item.modality === modality).length === 2)
 }
 
-addCheck('support storage reuses governed AdminReview', manifest.supportContract.recordModel === 'AdminReview', manifest.supportContract.recordModel)
+addCheck('support storage uses dedicated SupportTicket lifecycle', manifest.supportContract.recordModel === 'SupportTicket', manifest.supportContract.recordModel)
 addCheck('support requests require authentication', manifest.supportContract.authenticationRequired === true)
-addCheck('support queue and action are stable', manifest.supportContract.queue === 'support' && manifest.supportContract.requestAction === 'support.request.submitted')
+addCheck('support queue and action are stable', manifest.supportContract.queue === 'support_tickets' && manifest.supportContract.requestAction === 'support.ticket.created')
 addCheck('all support categories are present', sameMembers(manifest.supportContract.categories.map((item) => item.id), expectedSupportCategories))
 addCheck('support category ids are unique', unique(manifest.supportContract.categories.map((item) => item.id)))
 addCheck('related resource types are allowlisted', sameMembers(manifest.supportContract.allowedRelatedResourceTypes, expectedRelatedResources))
@@ -130,7 +130,8 @@ addCheck('safety policy hands user-facing publication to V1-78', safetyPolicy.im
 
 const moderationAsset = governance.dataAssets.find((asset) => asset.id === 'moderation_review_records')
 const auditAsset = governance.dataAssets.find((asset) => asset.id === 'audit_event_records')
-addCheck('support records remain in the governed moderation asset', moderationAsset?.prismaModels.includes('AdminReview') && moderationAsset.ownerTasks.includes('V1-78'))
+const supportAsset = governance.dataAssets.find((asset) => asset.id === 'support_ticket_records')
+addCheck('support records have a dedicated governed asset', ['SupportTicket', 'SupportTicketMessage', 'SupportTicketCaseLink'].every((model) => supportAsset?.prismaModels.includes(model)) && supportAsset.ownerTasks.includes('V1-78'))
 addCheck('consent records remain in the governed audit asset', auditAsset?.prismaModels.includes('AuditEvent') && auditAsset.ownerTasks.includes('V1-78'))
 addCheck('governance records implemented policy consent', governance.runtimeStatus.policyConsentImplemented === true)
 addCheck('governance records implemented support entry points', governance.runtimeStatus.supportEntryPointsImplemented === true)
@@ -151,6 +152,7 @@ for (const evidencePath of evidencePaths) {
 
 const authRoutes = read('server/src/modules/auth/routes.js')
 const complianceRoutes = read('server/src/modules/compliance/routes.js')
+const supportOperations = read('server/src/support/supportOperations.js')
 const policyLoader = read('server/src/compliance/policyManifest.js')
 const seedRepository = read('server/src/repositories/seedRepository.js')
 const prismaRepository = read('server/src/repositories/prismaRepository.js')
@@ -170,7 +172,7 @@ addCheck('seed repository records immutable consent audits', seedRepository.incl
 addCheck('Prisma repository reads consent from AuditEvent', prismaRepository.includes('client.auditEvent.findFirst') && prismaRepository.includes('consentContract.recordResourceType'))
 addCheck('Prisma support creation is transactional', prismaRepository.includes('const support =') && prismaRepository.includes('transaction.adminReview.create') && prismaRepository.includes('transaction.auditEvent.create'))
 addCheck('support free text is excluded from audit metadata', !/requestAction[\s\S]{0,500}metadata:\s*\{[\s\S]{0,300}(details|note)/.test(prismaRepository))
-addCheck('support parser rejects credential-like content', complianceRoutes.includes('sensitiveSupportPattern') && complianceRoutes.includes("'SENSITIVE_SUPPORT_CONTENT'"))
+addCheck('support parser rejects credential-like content', supportOperations.includes('sensitiveSupportPattern') && supportOperations.includes("'SENSITIVE_SUPPORT_CONTENT'"))
 addCheck('support routes enforce authentication', (complianceRoutes.match(/requireUser\(context\)/g) ?? []).length >= 5)
 
 for (const route of ['/compliance/policies', '/compliance/consent', '/support/requests', '/support/requests/{id}']) {
