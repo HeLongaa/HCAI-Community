@@ -198,13 +198,13 @@
     {
       "id": "search-discovery",
       "name": "搜索与发现",
-      "maturity": "planned",
+      "maturity": "partial",
       "ownerTask": "SEARCH-01",
-      "userCapabilities": ["模块内有限筛选"],
-      "adminCapabilities": ["无统一全局搜索"],
-      "operationPolicies": ["not_applicable"],
-      "evidence": ["server/src/contracts/requestParsers.js", "src/features/explore/ExplorePages.tsx"],
-      "gapTasks": ["SEARCH-01", "ADMIN-03"]
+      "userCapabilities": ["权限感知的任务、社区、用户与素材统一搜索 API", "查询绑定游标分页"],
+      "adminCapabilities": ["索引状态与延迟", "同步失败恢复", "分批索引重建"],
+      "operationPolicies": ["mutable_crud", "state_transition"],
+      "evidence": ["config/search-index-contract.json", "server/src/search/prismaSearchRepository.js", "server/src/modules/search/routes.js", "server/prisma/migrations/0088_permission_aware_search_index/migration.sql", "docs/SEARCH_INDEX_AND_SYNC.md"],
+      "gapTasks": ["SEARCH-02"]
     },
     {
       "id": "support",

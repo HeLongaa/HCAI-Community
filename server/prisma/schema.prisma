@@ -2093,6 +2093,64 @@ model UserTagAssignment {
   @@map("user_tag_assignments")
 }
 
+model SearchDocument {
+  id              String   @id
+  resourceType    String   @map("resource_type")
+  sourceId        String   @map("source_id")
+  ownerId         String?  @map("owner_id")
+  isPublic        Boolean  @default(false) @map("is_public")
+  title           String
+  summary         String
+  keywords        String[] @default([])
+  lifecycle       String?
+  target          Json
+  targetSchemaVersion Int @default(1) @map("target_schema_version")
+  sourceVersion   Int      @default(1) @map("source_version")
+  sourceUpdatedAt DateTime @map("source_updated_at")
+  indexedAt       DateTime @default(now()) @map("indexed_at")
+  syncLatencyMs   Int      @default(0) @map("sync_latency_ms")
+  searchVector    Unsupported("tsvector")? @map("search_vector")
+
+  grants SearchDocumentGrant[]
+
+  @@unique([resourceType, sourceId])
+  @@index([resourceType, indexedAt, id])
+  @@index([isPublic, resourceType, indexedAt])
+  @@index([ownerId, resourceType, indexedAt])
+  @@map("search_documents")
+}
+
+model SearchDocumentGrant {
+  documentId String @map("document_id")
+  subjectType String @map("subject_type")
+  subjectId   String @map("subject_id")
+
+  document SearchDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@id([documentId, subjectType, subjectId])
+  @@index([subjectType, subjectId, documentId])
+  @@map("search_document_grants")
+}
+
+model SearchSyncQueue {
+  id              String   @id @default(cuid())
+  resourceType    String   @map("resource_type")
+  sourceId        String   @map("source_id")
+  status          String   @default("pending")
+  attempts        Int      @default(0)
+  availableAt     DateTime @default(now()) @map("available_at")
+  claimedAt       DateTime? @map("claimed_at")
+  claimedBy       String?  @map("claimed_by")
+  lastErrorCode   String?  @map("last_error_code")
+  sourceUpdatedAt DateTime @default(now()) @map("source_updated_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([resourceType, sourceId])
+  @@index([status, availableAt, updatedAt])
+  @@map("search_sync_queue")
+}
+
 model AuthAccount {
   id             String   @id @default(cuid())
   userId         String   @map("user_id")

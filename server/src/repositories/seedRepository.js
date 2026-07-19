@@ -143,6 +143,8 @@ import {
   profilePrivacyDto,
   projectProfileForViewer,
 } from '../profiles/profileLifecycle.js'
+import { createSeedSearchRepository } from '../search/seedSearchRepository.js'
+import { searchResourceTypes } from '../search/searchContract.js'
 
 const sessionByRefreshToken = new Map()
 const authSessionById = new Map()
@@ -2582,6 +2584,14 @@ export const createSeedRepository = () => {
       dedupeUnread: true,
     }),
   })
+  const search = createSeedSearchRepository({
+    seedStore,
+    mediaAssetsById,
+    portfolioAssetsById,
+    getProfilePrivacy: getSeedProfilePrivacy,
+    getAccountLifecycle: getSeedAccountLifecycle,
+    searchResourceTypes,
+  })
   const moderationCaseTarget = (record, surface = 'support') => ({
     surface,
     intent: surface === 'admin' ? 'review' : 'view',
@@ -2779,6 +2789,7 @@ export const createSeedRepository = () => {
   providerOperations,
   creativeGenerationExecutions,
   observability,
+  search,
   oauthAdmin,
   authSessionAdmin,
   authRiskAdmin,

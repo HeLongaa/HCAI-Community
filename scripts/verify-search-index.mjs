@@ -1,0 +1,42 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { parseServerRoutes } from './route-contract-utils.mjs'
+
+const root = process.cwd()
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8')
+const contract = JSON.parse(read('config/search-index-contract.json'))
+const schema = read('server/prisma/schema.prisma')
+const migration = read('server/prisma/migrations/0088_permission_aware_search_index/migration.sql')
+const repository = read('server/src/search/prismaSearchRepository.js')
+const seedRepository = read('server/src/search/seedSearchRepository.js')
+const routes = new Set(parseServerRoutes(root, 'server/src/modules').map((route) => route.key))
+const permissions = read('server/src/auth/permissions.js')
+const worker = read('server/src/operations/workerJobs.js')
+const openapi = read('server/src/docs/openapi.js')
+const checks = []
+const add = (name, pass, detail = '') => checks.push({ name, pass: Boolean(pass), detail })
+
+add('contract is personal-account scoped', contract.scope === 'personal_accounts_only', contract.scope)
+for (const model of contract.models) add(`${model} has a dedicated Prisma model`, schema.includes(`model ${model} {`), model)
+for (const route of [...contract.publicRoutes, ...contract.adminRoutes]) add(`${route} exists`, routes.has(route), route)
+for (const permission of contract.permissions) add(`${permission} is registered`, permissions.includes(`'${permission}'`), permission)
+for (const type of contract.resourceTypes) add(`${type} has a source projector`, repository.includes(`${type}:`) || repository.includes(`resourceType: '${type}'`), type)
+add('full-text query uses a GIN-backed tsvector', migration.includes('USING GIN ("search_vector")') && repository.includes('websearch_to_tsquery'))
+add('source changes enqueue atomically through database triggers', ['tasks', 'posts', 'profiles', 'users', 'media_assets', 'profile_portfolio_assets'].every((table) => migration.includes(`ON "${table}"`)))
+add('task participant authorization changes also enqueue', migration.includes('ON "task_proposals"') && migration.includes('ON "task_submissions"'))
+add('profile privacy changes enqueue related public assets', migration.includes('enqueue_search_profile_assets') && migration.includes('search_profile_assets_changed'))
+add('authorization is applied in SQL before ordering and pagination', repository.indexOf('search_document_grants') < repository.indexOf('ORDER BY "score"') && repository.indexOf('ORDER BY "score"') < repository.indexOf('LIMIT ${options.limit + 1}'))
+for (const subject of contract.authorizationSubjects) add(`${subject} grant is supported`, repository.includes(`'${subject}'`), subject)
+add('seed runtime mirrors authorization filtering', seedRepository.includes('accessible(document, actor)') && seedRepository.includes('actorCan(actor, document.permission)'))
+add('sync uses claim state and compare-and-set source timestamps', repository.includes("status: 'processing'") && repository.includes('sourceUpdatedAt: candidate.sourceUpdatedAt'))
+add('rebuild repairs both live sources and stale documents', repository.includes('rebuildSources') && repository.includes('FROM "search_documents" d'))
+add('production worker drains the search queue', worker.includes("id: 'search-index-sync'") && worker.includes('searchIndexWorkerBatchSize'))
+add('target index lag is bounded to 30 seconds', contract.targetIndexLagSeconds === 30)
+add('status reports measured queue-to-index latency', schema.includes('syncLatencyMs') && repository.includes('averageSyncLatencyMs') && repository.includes('withinTarget'))
+add('OpenAPI documents search and recovery operations', ['/search', '/admin/search/index/status', '/admin/search/index/rebuild'].every((route) => openapi.includes(`'${route}'`)))
+add('tenant and organization models remain absent', !/model (Tenant|Team|Organization|Membership|Invitation)\s*\{/.test(schema))
+
+for (const check of checks) console.log(`${check.pass ? 'PASS' : 'FAIL'} ${check.name}${check.detail ? ` (${check.detail})` : ''}`)
+const failures = checks.filter((check) => !check.pass)
+if (failures.length) { console.error(`Search index contract failed: ${failures.length} check(s)`); process.exitCode = 1 }
+else console.log(`Search index contract verified: ${checks.length} checks`)

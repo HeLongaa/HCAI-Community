@@ -55,6 +55,9 @@ test('buildEnv allows development without managed token secrets', () => {
     domainEventWorkerEnabled: true,
     domainEventWorkerIntervalSeconds: 5,
     domainEventWorkerBatchSize: 50,
+    searchIndexWorkerEnabled: true,
+    searchIndexWorkerIntervalSeconds: 5,
+    searchIndexWorkerBatchSize: 100,
     mediaScanWorkerEnabled: false,
     mediaScanWorkerIntervalSeconds: 60,
     mediaStorageCleanupWorkerEnabled: false,
@@ -944,6 +947,26 @@ test('buildEnv validates and exposes domain event worker settings', () => {
   assert.equal(env.domainEventWorkerEnabled, false)
   assert.equal(env.domainEventWorkerIntervalSeconds, 15)
   assert.equal(env.domainEventWorkerBatchSize, 20)
+})
+
+test('buildEnv validates and exposes search index worker settings', () => {
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', SEARCH_INDEX_WORKER_INTERVAL_SECONDS: '0' }),
+    /SEARCH_INDEX_WORKER_INTERVAL_SECONDS must be a positive integer/,
+  )
+  assert.throws(
+    () => buildEnv({ NODE_ENV: 'development', SEARCH_INDEX_WORKER_BATCH_SIZE: '0' }),
+    /SEARCH_INDEX_WORKER_BATCH_SIZE must be a positive integer/,
+  )
+  const env = buildEnv({
+    NODE_ENV: 'development',
+    SEARCH_INDEX_WORKER_ENABLED: 'false',
+    SEARCH_INDEX_WORKER_INTERVAL_SECONDS: '12',
+    SEARCH_INDEX_WORKER_BATCH_SIZE: '75',
+  })
+  assert.equal(env.searchIndexWorkerEnabled, false)
+  assert.equal(env.searchIndexWorkerIntervalSeconds, 12)
+  assert.equal(env.searchIndexWorkerBatchSize, 75)
 })
 
 test('buildEnv validates and exposes creative provider alert settings without enabling delivery', () => {

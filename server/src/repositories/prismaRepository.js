@@ -159,6 +159,7 @@ import { createPrismaNotificationDeliveryRepository } from '../notifications/pri
 import { createPrismaDeveloperAccessRepository } from '../developerAccess/prismaDeveloperAccessRepository.js'
 import { createPrismaWebhookRepository } from '../webhooks/prismaWebhookRepository.js'
 import { createPrismaSupportRepository } from '../support/prismaSupportRepository.js'
+import { createPrismaSearchRepository } from '../search/prismaSearchRepository.js'
 import {
   buildConsentStatus,
   compliancePolicyManifest,
@@ -268,6 +269,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       dedupeUnread: true,
     }),
   })
+  const search = createPrismaSearchRepository(client, { recordAudit })
 
   const leaseExpiry = (ttlSeconds) => new Date(Date.now() + Math.max(1, Number(ttlSeconds ?? 300)) * 1000)
 
@@ -10483,6 +10485,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     providerLegal,
     providerOperations,
     observability,
+    search,
     oauthAdmin,
     authSessionAdmin,
     authRiskAdmin,

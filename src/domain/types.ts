@@ -62,6 +62,8 @@ export type Permission =
   | 'admin:webhooks:read'
   | 'admin:webhooks:manage'
   | 'admin:support:read'
+  | 'admin:search:read'
+  | 'admin:search:manage'
   | 'admin:support:manage'
   | 'admin:creative:cancel'
   | 'admin:creative:retry'

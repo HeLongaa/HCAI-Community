@@ -29,6 +29,7 @@ import { registerDeveloperAccessRoutes } from './developerAccess/routes.js'
 import { registerDeveloperApiRoutes } from './developerApi/routes.js'
 import { registerWebhookRoutes } from './webhooks/routes.js'
 import { registerSupportAdminRoutes } from './supportAdmin/routes.js'
+import { registerSearchRoutes } from './search/routes.js'
 
 export const registerModules = (router) => {
   registerHealthRoutes(router)
@@ -41,6 +42,7 @@ export const registerModules = (router) => {
   registerDeveloperApiRoutes(router)
   registerWebhookRoutes(router)
   registerSupportAdminRoutes(router)
+  registerSearchRoutes(router)
   registerAuthRoutes(router)
   registerOAuthAdminRoutes(router)
   registerAuthSessionAdminRoutes(router)
