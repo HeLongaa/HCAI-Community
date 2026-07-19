@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { getPermissionsForRole } from '../auth/permissions.js'
+import { searchQueryFingerprint } from '../search/searchContract.js'
 
 const databaseUrl = process.env.FOUNDATION_DATABASE_URL
 
@@ -26,7 +27,8 @@ test('Prisma search index synchronizes four resources and filters private rows b
   let taskId = null
   let assetId = null
   let portfolioId = null
-  const options = (query, types) => ({ query, types, limit: 20, cursor: null })
+  let queryEventId = null
+  const options = (query, types, sort = 'relevance') => ({ query, types, sort, limit: 20, cursor: null })
 
   try {
     taskId = `search-task-${suffix}`
@@ -41,7 +43,23 @@ test('Prisma search index synchronizes four resources and filters private rows b
     assert.equal((await repository.search.search(admin, options(needle, ['task']))).items[0].id, taskId)
     await repository.client.task.update({ where: { id: taskId }, data: { visibility: 'public' } })
     await repository.search.processQueue({ limit: 100, workerId: 'integration-task-b' })
-    assert.equal((await repository.search.search(null, options(needle, ['task']))).items[0].id, taskId)
+    const publicTaskPage = await repository.search.search(null, options(needle, ['task'], 'popular'))
+    assert.equal(publicTaskPage.items[0].id, taskId)
+    queryEventId = await repository.search.recordQuery(null, { ...options(needle, ['task'], 'popular'), queryFingerprint: searchQueryFingerprint(needle) }, publicTaskPage, 12)
+    await repository.search.recordClick(queryEventId, { resourceType: 'task', sourceId: taskId, position: 1 })
+    const diagnostics = await repository.search.diagnostics(24)
+    assert.equal(diagnostics.queries >= 1, true)
+    assert.equal(diagnostics.popularResults.some((item) => item.documentId === `search:task:${taskId}`), true)
+    const ranking = await repository.search.rankingControl()
+    const updatedRanking = await repository.search.updateRankingControl(admin, {
+      relevanceWeight: 95, recencyWeight: 20, popularityWeight: 25, zeroResultAlertRateBps: 2400,
+      expectedVersion: ranking.version, reasonCode: 'integration_quality_tuning',
+    })
+    assert.equal(updatedRanking.version, ranking.version + 1)
+    await assert.rejects(repository.search.updateRankingControl(admin, {
+      relevanceWeight: 95, recencyWeight: 20, popularityWeight: 25, zeroResultAlertRateBps: 2400,
+      expectedVersion: ranking.version, reasonCode: 'integration_stale_tuning',
+    }), /version is stale/)
 
     const draft = await repository.posts.create({
       title: needle, body: `${needle} private body`, category: 'Integration', tag: 'search', excerpt: needle, status: 'draft',
@@ -118,6 +136,8 @@ test('Prisma search index synchronizes four resources and filters private rows b
   } finally {
     await repository.client.$transaction(async (transaction) => {
       await transaction.$executeRawUnsafe("SET LOCAL app.audit_maintenance = 'on'")
+      if (queryEventId) await transaction.searchQueryEvent.deleteMany({ where: { id: queryEventId } })
+      await transaction.searchRankingControl.update({ where: { id: 'default' }, data: { relevanceWeight: 100, recencyWeight: 15, popularityWeight: 20, zeroResultAlertRateBps: 2500, reasonCode: 'integration_reset', updatedByRef: null, version: { increment: 1 } } })
       await transaction.searchDocument.deleteMany({ where: { OR: [{ ownerId: owner.id }, { ownerId: stranger.id }] } })
       await transaction.searchSyncQueue.deleteMany({ where: { sourceId: { in: [taskId ?? '__none__', postId ?? '__none__', assetId ?? '__none__', owner.id, stranger.id] } } })
       if (portfolioId) await transaction.profilePortfolioAsset.deleteMany({ where: { id: portfolioId } })

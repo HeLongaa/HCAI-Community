@@ -2,16 +2,31 @@
   "schemaVersion": 1,
   "scope": "personal_accounts_only",
   "resourceTypes": ["task", "community", "user", "asset"],
-  "models": ["SearchDocument", "SearchDocumentGrant", "SearchSyncQueue"],
-  "publicRoutes": ["GET /api/search"],
+  "models": ["SearchDocument", "SearchDocumentGrant", "SearchSyncQueue", "SearchQueryEvent", "SearchClickEvent", "SearchRankingControl"],
+  "publicRoutes": ["GET /api/search", "POST /api/search/events/:id/clicks"],
   "adminRoutes": [
     "GET /api/admin/search/index/status",
     "POST /api/admin/search/index/sync",
-    "POST /api/admin/search/index/rebuild"
+    "POST /api/admin/search/index/rebuild",
+    "GET /api/admin/search/diagnostics",
+    "GET /api/admin/search/diagnostics/export",
+    "GET /api/admin/search/ranking-control",
+    "PUT /api/admin/search/ranking-control"
   ],
   "permissions": ["admin:search:read", "admin:search:manage"],
   "authorizationSubjects": ["authenticated", "user", "permission"],
   "maximumSearchPageSize": 50,
   "maximumSyncBatchSize": 500,
-  "targetIndexLagSeconds": 30
+  "targetIndexLagSeconds": 30,
+  "sorts": ["relevance", "recent", "popular"],
+  "analytics": {
+    "rawQueryStored": false,
+    "fingerprint": "HMAC-SHA256",
+    "clickMustReferenceReturnedDocument": true,
+    "maximumClickAgeHours": 24
+  },
+  "rankingControl": {
+    "optimisticConcurrency": true,
+    "audited": true
+  }
 }

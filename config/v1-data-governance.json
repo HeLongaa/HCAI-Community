@@ -373,11 +373,11 @@
     {
       "id": "search_index_records",
       "classification": "restricted",
-      "prismaModels": ["SearchDocument", "SearchDocumentGrant", "SearchSyncQueue"],
+      "prismaModels": ["SearchDocument", "SearchDocumentGrant", "SearchSyncQueue", "SearchQueryEvent", "SearchClickEvent", "SearchRankingControl"],
       "locations": ["postgres"],
       "dataSubjects": ["user", "system"],
       "purposes": ["account_service", "community_participation", "marketplace_delivery", "media_delivery", "support_operations"],
-      "exampleFields": ["source type and id", "bounded title and summary projection", "owner and permission grants", "public visibility", "source version", "sync latency and queue state"],
+      "exampleFields": ["source type and id", "bounded title and summary projection", "owner and permission grants", "public visibility", "source version", "sync latency and queue state", "HMAC query fingerprint without raw query text", "query length and aggregate result evidence", "returned document ids and validated click position", "versioned ranking weights and alert threshold"],
       "accessRoles": ["authorized_service", "owner_or_granted_reader", "search_operator"],
       "retentionPolicyId": "search_index_source_change_plus_7d",
       "exportPolicy": "exclude_derived_search_index_and_queue_state",
@@ -1129,7 +1129,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 152,
+    "modelCount": 155,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",

@@ -423,7 +423,8 @@ addCheck(
     'personalProfileId',
     'MyTasksPage t={t} tasks={tasks}',
     'openProfile={openProfile}',
-    'Search result opened',
+    'profileService.findByHandle',
+    'openProfile(await profileService.findByHandle',
     'openProfile(profile)',
     'openProfile(item)',
     'openProfile={openProfile}',
@@ -589,8 +590,11 @@ addCheck(
   'search and login controls provide visible API feedback',
   includesAll(app, [
     "const [query, setQuery] = useState('')",
-    'Search result opened',
-    'Search result played',
+    'searchService.search',
+    'searchService.recordClick',
+    'Opened search result',
+    'No results',
+    'Search unavailable',
     'close()',
     'listOAuthProviders()',
     'oauthErrorCopy',
@@ -599,7 +603,7 @@ addCheck(
     'Redirecting to ${provider.label}',
     'oauth-mode-badge',
   ]),
-  'search tags/results and OAuth providers expose status and react',
+  'permission-aware search loading/error/empty/click states and OAuth Provider status react',
 )
 
 addCheck(

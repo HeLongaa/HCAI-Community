@@ -40,7 +40,7 @@
       "area": "player-search",
       "classification": "explicit_unavailable",
       "paths": ["src/hooks/usePlayerState.ts", "src/components/overlays/Overlays.tsx"],
-      "markers": ["useState<Track>(tracks[0])", "tracks.filter", "marketplaceProfiles"],
+      "markers": ["useState<Track>(tracks[0])", "tracks.findIndex", "tracks[(trackIndex + 1) % tracks.length]"],
       "productionDisposition": "explicit_unavailable_until_governed_asset_catalog_api_is_approved",
       "ownerTasks": ["V1-32", "V1-33", "V1-35", "V1-36", "V1-39"]
     },

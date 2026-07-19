@@ -20,12 +20,20 @@ export type ApiPaginationMeta = {
 }
 
 export type SearchResourceType = 'task' | 'community' | 'user' | 'asset'
+export type SearchSort = 'relevance' | 'recent' | 'popular'
 
 export type SearchQuery = {
   q: string
   types?: SearchResourceType[] | string
   cursor?: string | null
   limit?: number
+  sort?: SearchSort
+}
+
+export type SearchPage = {
+  items: ApiSearchResult[]
+  nextCursor: string | null
+  searchEventId: string | null
 }
 
 export type ApiSearchResult = {
@@ -53,6 +61,32 @@ export type ApiSearchSyncResult = {
   succeeded: number
   failed: number
   items: Array<{ resourceType: SearchResourceType; sourceId: string; status: 'succeeded' | 'failed'; action?: 'upserted' | 'deleted'; errorCode?: string }>
+}
+
+export type ApiSearchRankingControl = {
+  relevanceWeight: number
+  recencyWeight: number
+  popularityWeight: number
+  zeroResultAlertRateBps: number
+  version: number
+  reasonCode: string
+  updatedByRef: string | null
+  updatedAt: string
+}
+
+export type ApiSearchDiagnostics = {
+  generatedAt: string
+  windowHours: number
+  queries: number
+  zeroResults: number
+  clickedQueries: number
+  zeroResultRateBps: number
+  clickThroughRateBps: number
+  zeroResultAlerting: boolean
+  latencyMs: { average: number; p95: number; maximum: number }
+  popularResults: Array<{ documentId: string; resourceType: SearchResourceType; clicks: number }>
+  ranking: ApiSearchRankingControl
+  index: ApiSearchIndexStatus
 }
 
 export type EntitlementPlanStatus = 'draft' | 'active' | 'retired'

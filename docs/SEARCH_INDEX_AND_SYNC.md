@@ -33,6 +33,14 @@ The target steady-state indexing lag is at most 30 seconds. Each document record
 
 Admins with `admin:search:manage` can drain pending/failed work with `POST /api/admin/search/index/sync` or enqueue a bounded rebuild with `POST /api/admin/search/index/rebuild`. Rebuilds enqueue both current source rows and existing documents so deleted or orphaned projections are repaired. Each request is bounded to 500 processed rows and records sanitized audit evidence with resource types, reason code, counts, and outcomes.
 
+## Discovery quality and diagnostics
+
+User discovery supports `relevance`, `recent`, and `popular` ordering across task, community, user, and asset projections. Authorization remains inside the SQL match CTE before ranking, ordering, or pagination. Relevance ordering combines full-text relevance, a bounded 90-day recency signal, and logarithmic validated click popularity using the current versioned Admin ranking control.
+
+First-page searches create restricted diagnostic evidence without storing the raw query. The service stores an HMAC-SHA256 query fingerprint, query length, selected types and sort, actor class, result count, duration, and returned document IDs. `POST /api/search/events/:id/clicks` accepts a click only for a document returned by that event within 24 hours and is idempotent per event/document.
+
+Admins with `admin:search:read` can inspect or export bounded quality windows through `/api/admin/search/diagnostics`, including zero-result rate, click-through rate, P95 latency, popular result IDs, ranking state, and index health. Admins with `admin:search:manage` can update relevance, recency, popularity, and zero-result alert controls through version-based optimistic concurrency; every successful update records audit evidence.
+
 Run focused verification with:
 
 ```bash
