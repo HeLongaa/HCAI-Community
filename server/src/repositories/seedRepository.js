@@ -29,6 +29,7 @@ import { createSeedEntitlementRepository } from '../entitlements/seedEntitlement
 import { createSeedNotificationManagementRepository, isSeedNotificationEnabled } from '../notifications/seedNotificationManagementRepository.js'
 import { createSeedNotificationDeliveryRepository } from '../notifications/seedNotificationDeliveryRepository.js'
 import { createSeedDeveloperAccessRepository } from '../developerAccess/seedDeveloperAccessRepository.js'
+import { createSeedWebhookRepository } from '../webhooks/seedWebhookRepository.js'
 import { createSeedModerationCaseRepository } from '../trust/seedModerationCaseRepository.js'
 import { createSeedSafetyOperationsRepository } from '../trust/seedSafetyOperationsRepository.js'
 import { communityModerationTransition } from '../trust/communityModeration.js'
@@ -2760,6 +2761,10 @@ export const createSeedRepository = () => {
     findOwnerById: getAccountById,
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) => recordAudit(actor, action, resourceType, resourceId, metadata),
   })
+  const webhooks = createSeedWebhookRepository({
+    findOwnerById: getAccountById,
+    recordAudit: ({ actor, action, resourceType, resourceId, metadata }) => recordAudit(actor, action, resourceType, resourceId, metadata),
+  })
   return {
   chat: createSeedChatRepository({
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) =>
@@ -2788,6 +2793,7 @@ export const createSeedRepository = () => {
   billingAdmin,
   entitlements,
   developerAccess,
+  webhooks,
   auth: {
     getCurrentUser: () => seedStore.me,
     findDemoAccountByAccessToken: (token) => {

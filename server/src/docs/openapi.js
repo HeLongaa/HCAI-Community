@@ -26,6 +26,34 @@ export const openApiDocument = {
     '/developer/service-accounts/{id}/keys/{keyId}/revoke': {
       post: { summary: 'Immediately revoke an active API key', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }, { name: 'keyId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Revoked safe credential projection' } } },
     },
+    '/developer/webhooks/control': {
+      get: { summary: 'Read webhook availability, limits, retry policy, and secret-encryption readiness', responses: { '200': { description: 'Secret-free webhook control' } } },
+    },
+    '/developer/webhooks/events': {
+      get: { summary: 'List versioned domain events eligible for personal webhook subscriptions', responses: { '200': { description: 'Bounded event catalog' } } },
+    },
+    '/developer/webhooks': {
+      get: { summary: 'List actor-owned webhook subscriptions', responses: { '200': { description: 'Cursor-paged secret-free subscriptions' } } },
+      post: { summary: 'Create an actor-owned webhook subscription and return its signing secret once', responses: { '201': { description: 'Subscription and one-time signing secret' }, '409': { description: 'Name or subscription limit conflict' }, '503': { description: 'Webhooks disabled or encryption unavailable' } } },
+    },
+    '/developer/webhooks/{id}/configuration': {
+      put: { summary: 'Update endpoint, events, name, and retry limit with optimistic concurrency', responses: { '200': { description: 'Updated subscription' }, '409': { description: 'Stale version or deleted subscription' } } },
+    },
+    '/developer/webhooks/{id}/transitions': {
+      post: { summary: 'Enable or disable an owned webhook subscription', responses: { '200': { description: 'Transitioned subscription' }, '409': { description: 'Stale version or invalid state' } } },
+    },
+    '/developer/webhooks/{id}/rotate-secret': {
+      post: { summary: 'Rotate an owned webhook signing secret and return the replacement once', responses: { '200': { description: 'Subscription and one-time replacement secret' }, '409': { description: 'Stale version or deleted subscription' } } },
+    },
+    '/developer/webhooks/{id}': {
+      delete: { summary: 'Soft-delete an owned webhook subscription and cancel pending delivery', responses: { '200': { description: 'Deleted subscription evidence' } } },
+    },
+    '/developer/webhook-deliveries': {
+      get: { summary: 'List actor-owned webhook delivery and attempt evidence', responses: { '200': { description: 'Cursor-paged secret-free delivery evidence' } } },
+    },
+    '/developer/webhook-deliveries/{id}/replay': {
+      post: { summary: 'Idempotently replay an owned dead-lettered delivery', responses: { '200': { description: 'Queued replay' }, '409': { description: 'Stale version, reused idempotency key, or replay not allowed' } } },
+    },
     '/developer/principal': {
       get: {
         summary: 'Authenticate a service account API key with developer:identity:read scope',
@@ -80,6 +108,25 @@ export const openApiDocument = {
     },
     '/admin/developer/service-accounts/{id}/keys/{keyId}/revoke': {
       post: { summary: 'Immediately revoke one API key', responses: { '200': { description: 'Revoked key' }, '403': { description: 'Requires admin:developer:manage' }, '409': { description: 'Stale version' } } },
+    },
+    '/admin/developer/webhooks/control': {
+      get: { summary: 'Read webhook control and encryption readiness', responses: { '200': { description: 'Webhook control' }, '403': { description: 'Requires admin:webhooks:read' } } },
+      put: { summary: 'Enable or disable webhooks and update bounded delivery policy', responses: { '200': { description: 'Updated webhook control' }, '403': { description: 'Requires admin:webhooks:manage' }, '409': { description: 'Stale version' }, '503': { description: 'Encryption unavailable' } } },
+    },
+    '/admin/developer/webhooks': {
+      get: { summary: 'Query all secret-free webhook subscriptions by owner, status, event, and search', responses: { '200': { description: 'Cursor-paged subscription operations' }, '403': { description: 'Requires admin:webhooks:read' } } },
+    },
+    '/admin/developer/webhooks/{id}/disable': {
+      post: { summary: 'Immediately disable a webhook subscription and cancel pending delivery', responses: { '200': { description: 'Disabled subscription' }, '403': { description: 'Requires admin:webhooks:manage' }, '409': { description: 'Stale version or invalid state' } } },
+    },
+    '/admin/developer/webhook-deliveries': {
+      get: { summary: 'Query delivery attempts, retries, success, and DLQ evidence', responses: { '200': { description: 'Cursor-paged delivery operations' }, '403': { description: 'Requires admin:webhooks:read' } } },
+    },
+    '/admin/developer/webhook-deliveries/{id}/replay': {
+      post: { summary: 'Idempotently replay a dead-lettered webhook delivery', responses: { '200': { description: 'Queued replay' }, '403': { description: 'Requires admin:webhooks:manage' }, '409': { description: 'Stale version or replay not allowed' } } },
+    },
+    '/admin/developer/webhooks/metrics': {
+      get: { summary: 'Read aggregate subscription, delivery, attempt, retry, and DLQ metrics', responses: { '200': { description: 'Webhook operations metrics' }, '403': { description: 'Requires admin:webhooks:read' } } },
     },
     '/auth/login': {
       post: {

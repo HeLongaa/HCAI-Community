@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "taskId": "WEBHOOK-01",
+  "migration": "server/prisma/migrations/0086_webhook_subscriptions_delivery/migration.sql",
+  "policyDocument": "docs/WEBHOOK_SUBSCRIPTIONS_AND_DELIVERY.md",
+  "requiredModels": ["WebhookControl", "WebhookSubscription", "WebhookSigningSecret", "WebhookDelivery", "WebhookDeliveryAttempt", "WebhookDeliveryReplay"],
+  "requiredPermissions": ["developer:webhooks:manage", "admin:webhooks:read", "admin:webhooks:manage"],
+  "requiredHeaders": ["x-museflow-delivery", "x-museflow-event", "x-museflow-event-version", "x-museflow-attempt", "x-museflow-timestamp", "x-museflow-signature", "idempotency-key"],
+  "requiredStatuses": ["queued", "processing", "retry_scheduled", "succeeded", "dead_lettered", "cancelled"],
+  "requiredUserRoutes": [
+    "GET /api/developer/webhooks/control", "GET /api/developer/webhooks/events", "GET /api/developer/webhooks", "POST /api/developer/webhooks",
+    "PUT /api/developer/webhooks/:id/configuration", "POST /api/developer/webhooks/:id/transitions", "POST /api/developer/webhooks/:id/rotate-secret",
+    "DELETE /api/developer/webhooks/:id", "GET /api/developer/webhook-deliveries", "POST /api/developer/webhook-deliveries/:id/replay"
+  ],
+  "requiredAdminRoutes": [
+    "GET /api/admin/developer/webhooks/control", "PUT /api/admin/developer/webhooks/control", "GET /api/admin/developer/webhooks",
+    "POST /api/admin/developer/webhooks/:id/disable", "GET /api/admin/developer/webhook-deliveries",
+    "POST /api/admin/developer/webhook-deliveries/:id/replay", "GET /api/admin/developer/webhooks/metrics"
+  ]
+}

@@ -182,5 +182,8 @@
     { "method": "PUT", "path": "/api/admin/developer/access-control", "action": "admin.developer_access.control_updated", "resourceType": "developer_access_control", "resourceParam": null, "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/developer/service-accounts/:id/revoke", "action": "admin.developer_access.service_account_revoked", "resourceType": "service_account", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" },
     { "method": "POST", "path": "/api/admin/developer/service-accounts/:id/keys/:keyId/revoke", "action": "admin.developer_access.api_key_revoked", "resourceType": "api_key_credential", "resourceParam": "keyId", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
+    ,{ "method": "PUT", "path": "/api/admin/developer/webhooks/control", "action": "admin.webhook.control_updated", "resourceType": "webhook_control", "resourceParam": null, "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
+    ,{ "method": "POST", "path": "/api/admin/developer/webhooks/:id/disable", "action": "admin.webhook.disabled", "resourceType": "webhook_subscription", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
+    ,{ "method": "POST", "path": "/api/admin/developer/webhook-deliveries/:id/replay", "action": "admin.webhook.delivery_replayed", "resourceType": "webhook_delivery", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
   ]
 }

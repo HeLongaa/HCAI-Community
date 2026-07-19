@@ -18,6 +18,7 @@ import { ModelControlPanel } from './ModelControlPanel'
 import { AdminMediaLifecyclePanel } from './AdminMediaLifecyclePanel'
 import { OAuthAdminPanel } from './OAuthAdminPanel'
 import { DeveloperAccessAdminPanel } from './DeveloperAccessAdminPanel'
+import { WebhookAdminPanel } from './WebhookAdminPanel'
 import { CommunityAdminPanel } from './CommunityAdminPanel'
 import { AuthSessionAdminPanel } from './AuthSessionAdminPanel'
 import { TaskAdminPanel } from './TaskAdminPanel'
@@ -2706,6 +2707,12 @@ export function AdminPage({
             t={t}
             canRead={account.hasPermission('admin:developer:read')}
             canManage={account.hasPermission('admin:developer:manage')}
+            notify={(message) => simulateAction(message)}
+          />
+          <WebhookAdminPanel
+            t={t}
+            canRead={account.hasPermission('admin:webhooks:read')}
+            canManage={account.hasPermission('admin:webhooks:manage')}
             notify={(message) => simulateAction(message)}
           />
         </div>

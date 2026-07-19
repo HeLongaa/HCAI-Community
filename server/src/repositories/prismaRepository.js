@@ -157,6 +157,7 @@ import { createPrismaEntitlementRepository } from '../entitlements/prismaEntitle
 import { createPrismaNotificationManagementRepository } from '../notifications/prismaNotificationManagementRepository.js'
 import { createPrismaNotificationDeliveryRepository } from '../notifications/prismaNotificationDeliveryRepository.js'
 import { createPrismaDeveloperAccessRepository } from '../developerAccess/prismaDeveloperAccessRepository.js'
+import { createPrismaWebhookRepository } from '../webhooks/prismaWebhookRepository.js'
 import {
   buildConsentStatus,
   compliancePolicyManifest,
@@ -1133,6 +1134,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   const notificationDeliveries = createPrismaNotificationDeliveryRepository(client, { runSerializableTransaction, recordAudit })
   const taskLifecycleRecovery = createPrismaTaskLifecycleRecoveryRepository(client, { runSerializableTransaction, recordAudit, finalizeTaskEscrow })
   const developerAccess = createPrismaDeveloperAccessRepository(client, { runSerializableTransaction, recordAudit })
+  const webhooks = createPrismaWebhookRepository(client, { runSerializableTransaction, recordAudit })
 
   const createSessionForUser = async (user, reason = 'auth.session.created', options = {}) => {
     const now = new Date()
@@ -10587,6 +10589,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     communityAdmin,
     taskLifecycleRecovery,
     developerAccess,
+    webhooks,
     operationsMetrics,
     authorization,
     adminReviews,

@@ -102,6 +102,7 @@ export function AppShell({
   const [notificationPreferencesOpen, setNotificationPreferencesOpen] = useState(false)
   const isSignedIn = accountReady && accountSource !== 'fallback'
   const consentGateExempt = page === 'terms' || page === 'privacy' || page === 'aup' || page === 'disclosures' || page === 'support'
+  const showDynamicIsland = !consentGateExempt && page !== 'api' && page !== 'admin'
   const currentTier = roleTier(userRole)
   const currentTierMark = currentTier.charAt(0)
   const accountSourceLabel = !accountReady
@@ -502,7 +503,7 @@ export function AppShell({
           simulateAction={simulateAction}
         />
       )}
-      {!consentGateExempt && (
+      {showDynamicIsland && (
         <DynamicIsland
           t={t}
           locale={locale}

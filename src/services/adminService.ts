@@ -12,6 +12,12 @@ import type {
   DeveloperApiKeyCredential,
   DeveloperServiceAccount,
   DeveloperServiceAccountQuery,
+  WebhookControl,
+  WebhookDelivery,
+  WebhookDeliveryQuery,
+  WebhookMetrics,
+  WebhookSubscription,
+  WebhookSubscriptionQuery,
   AdminCommunityBulkAction,
   AdminCommunityBulkPreview,
   AdminCommunityBulkResult,
@@ -304,6 +310,29 @@ export const adminService = {
   },
   async revokeDeveloperApiKey(accountId: string, keyId: string, payload: { expectedVersion: number; reasonCode: string }) {
     return api.post<DeveloperApiKeyCredential>(`/admin/developer/service-accounts/${encodeURIComponent(accountId)}/keys/${encodeURIComponent(keyId)}/revoke`, payload)
+  },
+  webhookControl() {
+    return api.get<WebhookControl>('/admin/developer/webhooks/control')
+  },
+  updateWebhookControl(payload: Omit<WebhookControl, 'version' | 'reasonCode' | 'updatedAt' | 'secretEncryptionAvailable'> & { expectedVersion: number; reasonCode: string }) {
+    return api.put<WebhookControl>('/admin/developer/webhooks/control', payload)
+  },
+  async webhooks(query?: WebhookSubscriptionQuery) {
+    const envelope = await api.getEnvelope<WebhookSubscription[]>(withQuery('/admin/developer/webhooks', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  disableWebhook(id: string, payload: { expectedVersion: number; reasonCode: string }) {
+    return api.post<WebhookSubscription>(`/admin/developer/webhooks/${encodeURIComponent(id)}/disable`, payload)
+  },
+  async webhookDeliveries(query?: WebhookDeliveryQuery) {
+    const envelope = await api.getEnvelope<WebhookDelivery[]>(withQuery('/admin/developer/webhook-deliveries', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  replayWebhookDelivery(id: string, payload: { expectedVersion: number; reasonCode: string; idempotencyKey: string }) {
+    return api.post<WebhookDelivery>(`/admin/developer/webhook-deliveries/${encodeURIComponent(id)}/replay`, payload)
+  },
+  webhookMetrics() {
+    return api.get<WebhookMetrics>('/admin/developer/webhooks/metrics')
   },
   async authSessions(query?: AdminAuthSessionQuery) {
     const envelope = await api.getEnvelope<AdminAuthSession[]>(withQuery('/admin/auth/sessions', query))

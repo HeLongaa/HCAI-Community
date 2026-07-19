@@ -152,11 +152,17 @@
     { "model": "NotificationChannelConfigRevision", "domain": "notifications-webhooks", "policy": "immutable_evidence", "hardDelete": false },
     { "model": "DeveloperAccessControl", "domain": "developer-platform", "policy": "state_transition", "hardDelete": false },
     { "model": "ServiceAccount", "domain": "developer-platform", "policy": "state_transition", "hardDelete": false },
-    { "model": "ApiKeyCredential", "domain": "developer-platform", "policy": "state_transition", "hardDelete": false }
+    { "model": "ApiKeyCredential", "domain": "developer-platform", "policy": "state_transition", "hardDelete": false },
+    { "model": "WebhookControl", "domain": "notifications-webhooks", "policy": "state_transition", "hardDelete": false },
+    { "model": "WebhookSubscription", "domain": "notifications-webhooks", "policy": "state_transition", "hardDelete": false },
+    { "model": "WebhookSigningSecret", "domain": "notifications-webhooks", "policy": "state_transition", "hardDelete": false },
+    { "model": "WebhookDelivery", "domain": "notifications-webhooks", "policy": "state_transition", "hardDelete": false },
+    { "model": "WebhookDeliveryAttempt", "domain": "notifications-webhooks", "policy": "state_transition", "hardDelete": false },
+    { "model": "WebhookDeliveryReplay", "domain": "notifications-webhooks", "policy": "immutable_evidence", "hardDelete": false }
   ],
   "protectedFamilies": {
     "accounting": ["PointLedger", "InternalAccountingOperation", "InternalAccountingMovement"],
     "audit": ["AuditEvent", "SecurityEvent", "DomainEventOutbox", "DomainEventConsumerInbox", "DomainEventCompensation"],
-    "evidence": ["NotificationTemplateVersion", "NotificationChannelConfigRevision", "AuditArchiveManifest", "AuditRetentionDisposition", "MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence", "SystemSettingRevision", "ConfigResourceRevision", "ModelRoutePolicyRevision", "ModelRouteDecision", "ProviderSecretRef", "ModelPromotion", "ProviderHealthEvidence", "ProviderLegalReview", "EntitlementPlanVersion", "EntitlementGrantEvent", "Report", "ModerationCase", "ModerationEvidence", "ModerationDecision", "ModerationAppeal", "SafetyRuleVersion", "SafetyRuleTransition", "SafetySignal", "ModerationQueueEvent", "ModerationBulkOperation"]
+    "evidence": ["NotificationTemplateVersion", "NotificationChannelConfigRevision", "WebhookDeliveryReplay", "AuditArchiveManifest", "AuditRetentionDisposition", "MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence", "SystemSettingRevision", "ConfigResourceRevision", "ModelRoutePolicyRevision", "ModelRouteDecision", "ProviderSecretRef", "ModelPromotion", "ProviderHealthEvidence", "ProviderLegalReview", "EntitlementPlanVersion", "EntitlementGrantEvent", "Report", "ModerationCase", "ModerationEvidence", "ModerationDecision", "ModerationAppeal", "SafetyRuleVersion", "SafetyRuleTransition", "SafetySignal", "ModerationQueueEvent", "ModerationBulkOperation"]
   }
 }

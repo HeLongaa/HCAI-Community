@@ -40,11 +40,11 @@ not become public because the post is public.
 
 | Asset id | Class | Primary persistence | Prisma models or runtime form | Default retention |
 | --- | --- | --- | --- | --- |
-| `governance_configuration` | Internal | PostgreSQL | `Permission`, `RolePermission`, `SystemSetting`, `SystemSettingChange`, `SystemSettingRevision` | Superseded history 365 days |
+| `governance_configuration` | Internal | PostgreSQL | `Permission`, `RolePermission`, `SystemSetting`, `SystemSettingChange`, `SystemSettingRevision`, `WebhookControl` | Superseded history 365 days |
 | `operation_leases` | Internal | PostgreSQL | `OperationLease` | Expiry/release + 7 days |
 | `identity_account_profile` | Confidential | PostgreSQL | `User`, `Profile`, `ProfilePortfolioAsset` | Verified deletion + 30 days |
 | `authentication_credentials_sessions` | Restricted | PostgreSQL | `AuthAccount`, `OAuthAuthorizationRequest`, `RefreshToken` | OAuth request expiry; unlink/expiry/revoke + 30 days |
-| `developer_credentials` | Restricted | PostgreSQL | `DeveloperAccessControl`, `ServiceAccount`, `ApiKeyCredential` | Revoke immediately; credential expiry plus 30 days; plaintext keys have zero durable retention |
+| `developer_credentials` | Restricted | PostgreSQL | `DeveloperAccessControl`, `ServiceAccount`, `ApiKeyCredential`, `WebhookSubscription`, `WebhookSigningSecret` | Revoke immediately; credential expiry plus 30 days; plaintext API and webhook signing keys have zero durable retention |
 | `marketplace_records` | Confidential | PostgreSQL | `Task`, `TaskProposal`, `TaskSubmission` | Terminal task/dispute + 730 days |
 | `community_content_interactions` | Public | PostgreSQL | `Post`, `Comment`, `PostLike` | Delete request + 30 days |
 | `private_library_items` | Confidential | PostgreSQL | `LibraryItem` | Delete request + 30 days |
@@ -61,7 +61,7 @@ not become public because the post is public.
 | `provider_control_records` | Confidential | PostgreSQL | `CreativeProviderControlState`, `CreativeProviderCapEvidence`, `CreativeProviderCircuitState`, `CreativeProviderCircuitEvent` | Control/circuit reconciliation + 730 days; evidence and probe tokens are hash-only |
 | `ai_evaluation_records` | Restricted | PostgreSQL/archive | `AiEvaluationSuite`, `AiEvaluationCase`, `AiEvaluationPolicy`, `AiEvaluationRun`, `AiEvaluationCaseResult` | Created + 730 days; raw prompts/outputs are forbidden and only hashes, bounded scores, safety outcomes, and regression evidence persist |
 | `provider_legal_review_records` | Restricted | PostgreSQL/archive | `ProviderLegalReview` | Created + 730 days; append-only Provider/model/environment/region decisions retain only gate outcomes, SHA-256 evidence and safe internal reviewer references, never contract bodies, URLs, credentials, Provider payloads or personal legal notes |
-| `notification_records` | Confidential | PostgreSQL | `Notification` | Created + 180 days |
+| `notification_records` | Confidential | PostgreSQL | `Notification`, `NotificationDelivery`, `WebhookDelivery`, `WebhookDeliveryAttempt`, `WebhookDeliveryReplay` | Created + 180 days; exports omit signing material and retain only owner-visible delivery summaries |
 | `moderation_review_records` | Restricted | PostgreSQL | `AdminReview` | Review/appeal close + 730 days |
 | `audit_event_records` | Restricted | PostgreSQL/archive | `AuditEvent`, `AuditArchiveManifest`, `AuditRetentionDisposition` | Created + 730 days; archive-before-prune, legal hold, retained-prefix checkpoints, and immutable disposition evidence are mandatory |
 | `security_event_records` | Restricted | PostgreSQL | `SecurityEvent` | 365 days; confirmed critical incident 730 days |

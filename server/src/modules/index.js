@@ -27,6 +27,7 @@ import { registerTrustRoutes } from './trust/routes.js'
 import { registerCommunityAdminRoutes } from './communityAdmin/routes.js'
 import { registerDeveloperAccessRoutes } from './developerAccess/routes.js'
 import { registerDeveloperApiRoutes } from './developerApi/routes.js'
+import { registerWebhookRoutes } from './webhooks/routes.js'
 
 export const registerModules = (router) => {
   registerHealthRoutes(router)
@@ -37,6 +38,7 @@ export const registerModules = (router) => {
   registerCommunityAdminRoutes(router)
   registerDeveloperAccessRoutes(router)
   registerDeveloperApiRoutes(router)
+  registerWebhookRoutes(router)
   registerAuthRoutes(router)
   registerOAuthAdminRoutes(router)
   registerAuthSessionAdminRoutes(router)

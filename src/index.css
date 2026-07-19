@@ -321,6 +321,192 @@
   }
 }
 
+.webhook-developer,
+.webhook-admin-panel {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.panel.webhook-admin-panel {
+  grid-template-columns: minmax(0, 1fr);
+  height: auto;
+  min-height: 0;
+}
+
+.webhook-view-toggle {
+  width: fit-content;
+}
+
+.webhook-form,
+.webhook-admin-filters,
+.webhook-control-grid {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.webhook-form label,
+.webhook-admin-filters label,
+.webhook-control-grid label,
+.webhook-delivery-filter label {
+  display: grid;
+  gap: 6px;
+  min-width: 130px;
+}
+
+.webhook-form .grow {
+  flex: 1 1 300px;
+}
+
+.webhook-form input,
+.webhook-admin-filters input,
+.webhook-admin-filters select,
+.webhook-control-grid input,
+.webhook-delivery-filter select {
+  width: 100%;
+  min-width: 0;
+}
+
+.webhook-event-scope {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.webhook-event-scope label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-soft);
+}
+
+.webhook-subscription-list,
+.webhook-delivery-list,
+.webhook-admin-list {
+  display: grid;
+  gap: 8px;
+}
+
+.webhook-subscription-row,
+.webhook-delivery-row,
+.webhook-admin-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.webhook-row-main,
+.webhook-delivery-row > div:first-child,
+.webhook-admin-row > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.webhook-row-main code,
+.webhook-delivery-row code,
+.webhook-admin-row code {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webhook-row-main span,
+.webhook-delivery-row span,
+.webhook-admin-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.webhook-control-grid > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+}
+
+.webhook-metrics {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.webhook-admin-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  min-width: 0;
+}
+
+.webhook-admin-columns > div,
+.webhook-admin-list,
+.webhook-admin-row,
+.webhook-admin-row > div:first-child {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.webhook-admin-columns h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+@media (max-width: 900px) {
+  .webhook-admin-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .webhook-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .webhook-form,
+  .webhook-admin-filters,
+  .webhook-control-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .webhook-form label,
+  .webhook-admin-filters label,
+  .webhook-control-grid label {
+    min-width: 0;
+  }
+
+  .webhook-subscription-row,
+  .webhook-delivery-row,
+  .webhook-admin-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .webhook-control-grid > div:first-child {
+    margin-right: 0;
+    flex-wrap: wrap;
+  }
+
+  .webhook-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .observability-panel { display: grid; gap: 14px; }
 .observability-header,
 .observability-health-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

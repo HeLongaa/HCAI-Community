@@ -59,6 +59,10 @@
     { "id": "safetySignals", "routes": ["GET /api/admin/trust/signals"], "cursor": true, "filters": ["caseId", "signalType"], "sorts": ["createdAt"], "export": false },
     { "id": "moderationQueue", "routes": ["GET /api/admin/trust/queue", "GET /api/admin/trust/operations/metrics"], "cursor": true, "filters": ["status", "priority", "assignment", "sla", "search"], "sorts": ["createdAt", "dueAt"], "export": false },
     { "id": "personalServiceAccounts", "routes": ["GET /api/developer/service-accounts"], "cursor": true, "filters": ["status", "search"], "sorts": ["createdAt", "updatedAt", "name"], "export": false },
-    { "id": "adminServiceAccounts", "routes": ["GET /api/admin/developer/service-accounts", "GET /api/admin/developer/metrics"], "cursor": true, "filters": ["status", "search", "ownerHandle"], "sorts": ["createdAt", "updatedAt", "name"], "export": true, "exportRoutes": ["GET /api/admin/developer/service-accounts/export"] }
+    { "id": "adminServiceAccounts", "routes": ["GET /api/admin/developer/service-accounts", "GET /api/admin/developer/metrics"], "cursor": true, "filters": ["status", "search", "ownerHandle"], "sorts": ["createdAt", "updatedAt", "name"], "export": true, "exportRoutes": ["GET /api/admin/developer/service-accounts/export"] },
+    { "id": "personalWebhookSubscriptions", "routes": ["GET /api/developer/webhooks"], "cursor": true, "filters": ["status", "eventType", "search"], "sorts": ["createdAt", "updatedAt", "name"], "export": false },
+    { "id": "personalWebhookDeliveries", "routes": ["GET /api/developer/webhook-deliveries"], "cursor": true, "filters": ["status", "eventType", "subscriptionId", "search"], "sorts": ["createdAt", "availableAt"], "export": false },
+    { "id": "adminWebhookSubscriptions", "routes": ["GET /api/admin/developer/webhooks", "GET /api/admin/developer/webhooks/metrics"], "cursor": true, "filters": ["status", "eventType", "search", "ownerHandle"], "sorts": ["createdAt", "updatedAt", "name"], "export": false },
+    { "id": "adminWebhookDeliveries", "routes": ["GET /api/admin/developer/webhook-deliveries"], "cursor": true, "filters": ["status", "eventType", "subscriptionId", "search", "ownerHandle"], "sorts": ["createdAt", "availableAt"], "export": false }
   ]
 }
