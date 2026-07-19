@@ -267,6 +267,31 @@ test('createProductionWorkerJobDefinitions maps enabled env to repository jobs',
   ])
 })
 
+test('createProductionWorkerJobDefinitions wires bounded search index synchronization', async () => {
+  const calls = []
+  const repositories = {
+    search: {
+      processQueue: async (payload) => {
+        calls.push(payload)
+        return { processed: 4, succeeded: 4, failed: 0 }
+      },
+    },
+  }
+  const env = {
+    workerLeaseTtlSeconds: 120,
+    workerLeaseRenewIntervalSeconds: 30,
+    searchIndexWorkerEnabled: true,
+    searchIndexWorkerIntervalSeconds: 9,
+    searchIndexWorkerBatchSize: 40,
+  }
+  const [definition] = createProductionWorkerJobDefinitions(repositories, env)
+  assert.equal(definition.id, 'search-index-sync')
+  assert.equal(definition.intervalSeconds, 9)
+  assert.deepEqual(definition.lease, { key: 'search-index-sync', ttlSeconds: 120, renewIntervalSeconds: 30 })
+  assert.deepEqual(await definition.run(), { processed: 4, succeeded: 4, failed: 0 })
+  assert.deepEqual(calls, [{ limit: 40, workerId: 'search-index-worker' }])
+})
+
 test('createProductionWorkerJobDefinitions wires creative provider polling disabled by default', async () => {
   const repositories = {
     creativeGenerations: {

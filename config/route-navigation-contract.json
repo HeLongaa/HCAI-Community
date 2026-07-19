@@ -23,6 +23,7 @@
     { "id": "trust", "module": "trust-safety-risk", "prefixes": ["/api/trust"], "nav": "support", "breadcrumb": "Trust & Safety", "deepLink": "support" },
     { "id": "developer", "module": "developer-platform", "prefixes": ["/api/developer", "/api/v1"], "nav": "api", "breadcrumb": "Developer access", "deepLink": "api" },
     { "id": "featureFlags", "module": "config-feature-flags", "prefixes": ["/api/feature-flags"], "nav": "runtime", "breadcrumb": "Feature flags", "deepLink": "feature-flags" },
+    { "id": "search", "module": "search-discovery", "prefixes": ["/api/search"], "nav": "explore", "breadcrumb": "Search", "deepLink": "search" },
     { "id": "admin", "module": "admin-console", "prefixes": ["/api/admin"], "nav": "admin", "breadcrumb": "Admin", "deepLink": "admin", "requiresPermission": "admin:access" }
   ]
 }

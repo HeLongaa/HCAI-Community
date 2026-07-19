@@ -17,3 +17,5 @@ Migration `0041` backfills only IDs that resolve to an existing `MediaAsset`. Hi
 Provider IDs are external identifiers. Audit/source/resource IDs are polymorphic evidence. Operation and idempotency keys are correlation identifiers. These families are registered in `config/data-schema-contract.json` instead of receiving misleading foreign keys.
 
 Tenant, organization, team, membership, invitation, and tenant-style workspace entities are explicitly out of scope.
+
+Search result navigation targets use `SearchDocument.target` with `targetSchemaVersion`. The value is a rebuildable bounded projection containing only page and resource identifiers.

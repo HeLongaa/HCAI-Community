@@ -51,6 +51,7 @@
     ,{ "id": "developerApi", "domain": "developer-platform", "layer": "transport", "registration": "registerDeveloperApiRoutes" }
     ,{ "id": "webhooks", "domain": "notifications-webhooks", "layer": "transport", "registration": "registerWebhookRoutes" }
     ,{ "id": "supportAdmin", "domain": "support", "layer": "transport", "registration": "registerSupportAdminRoutes" }
+    ,{ "id": "search", "domain": "search-discovery", "layer": "transport", "registration": "registerSearchRoutes" }
   ],
   "ownership": [
     { "domain": "identity-access", "owns": ["credentials", "OAuth authorization requests", "sessions", "roles", "permissions"] },

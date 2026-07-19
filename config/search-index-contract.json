@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "scope": "personal_accounts_only",
+  "resourceTypes": ["task", "community", "user", "asset"],
+  "models": ["SearchDocument", "SearchDocumentGrant", "SearchSyncQueue"],
+  "publicRoutes": ["GET /api/search"],
+  "adminRoutes": [
+    "GET /api/admin/search/index/status",
+    "POST /api/admin/search/index/sync",
+    "POST /api/admin/search/index/rebuild"
+  ],
+  "permissions": ["admin:search:read", "admin:search:manage"],
+  "authorizationSubjects": ["authenticated", "user", "permission"],
+  "maximumSearchPageSize": 50,
+  "maximumSyncBatchSize": 500,
+  "targetIndexLagSeconds": 30
+}

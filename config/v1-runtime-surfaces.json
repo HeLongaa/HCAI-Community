@@ -129,7 +129,7 @@
       "id": "server-seed-repository-fallback",
       "area": "persistence",
       "classification": "development_only",
-      "paths": ["server/src/repositories/index.js", "server/src/repositories/runtimePolicy.js", "server/src/repositories/seedRepository.js", "server/src/data/seed.js"],
+      "paths": ["server/src/repositories/index.js", "server/src/repositories/runtimePolicy.js", "server/src/repositories/seedRepository.js", "server/src/search/seedSearchRepository.js", "server/src/data/seed.js"],
       "markers": ["assertProductionPersistence", "PRODUCTION_DATABASE_REQUIRED", "createSeedRepository", "demoAccounts"],
       "productionDisposition": "production_requires_postgresql_and_never_loads_seed_repository",
       "ownerTasks": ["V1-39", "V1-49"]

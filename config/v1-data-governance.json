@@ -127,6 +127,14 @@
       "exceptions": ["content_required_for_active_report_or_appeal"]
     },
     {
+      "id": "search_index_source_change_plus_7d",
+      "trigger": "source_changed_deleted_or_access_revoked",
+      "maximumDaysAfterTrigger": 7,
+      "action": "refresh_or_delete_projection_then_prune_queue_evidence",
+      "fieldOverrides": { "searchable_projection": 1 },
+      "exceptions": ["active_sync_failure_investigation"]
+    },
+    {
       "id": "private_library_delete_plus_30d",
       "trigger": "item_or_account_deletion_accepted",
       "maximumDaysAfterTrigger": 30,
@@ -361,6 +369,20 @@
       "exportPolicy": "include_user_authored_content_and_interactions",
       "deletionPolicy": "delete_user_content_or_anonymize_thread_structure_when_required",
       "ownerTasks": ["V1-66", "V1-67"]
+    },
+    {
+      "id": "search_index_records",
+      "classification": "restricted",
+      "prismaModels": ["SearchDocument", "SearchDocumentGrant", "SearchSyncQueue"],
+      "locations": ["postgres"],
+      "dataSubjects": ["user", "system"],
+      "purposes": ["account_service", "community_participation", "marketplace_delivery", "media_delivery", "support_operations"],
+      "exampleFields": ["source type and id", "bounded title and summary projection", "owner and permission grants", "public visibility", "source version", "sync latency and queue state"],
+      "accessRoles": ["authorized_service", "owner_or_granted_reader", "search_operator"],
+      "retentionPolicyId": "search_index_source_change_plus_7d",
+      "exportPolicy": "exclude_derived_search_index_and_queue_state",
+      "deletionPolicy": "remove_searchable_projection_within_1d_and_prune_queue_evidence_within_7d",
+      "ownerTasks": ["V1-39", "V1-67"]
     },
     {
       "id": "private_library_items",
@@ -742,7 +764,7 @@
       "id": "api_to_postgres",
       "from": "api_memory",
       "to": "postgres",
-      "dataAssetIds": ["governance_configuration", "identity_account_profile", "authentication_credentials_sessions", "developer_credentials", "marketplace_records", "community_content_interactions", "private_library_items", "internal_points_ledger", "internal_accounting_invariant_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "chat_conversation_messages", "provider_lifecycle_records", "creative_accounting_records", "ai_evaluation_records", "notification_records", "support_ticket_records", "moderation_review_records", "audit_event_records", "security_event_records"],
+      "dataAssetIds": ["governance_configuration", "identity_account_profile", "authentication_credentials_sessions", "developer_credentials", "marketplace_records", "community_content_interactions", "search_index_records", "private_library_items", "internal_points_ledger", "internal_accounting_invariant_records", "media_asset_metadata", "media_scan_safety_records", "creative_generation_records", "chat_conversation_messages", "provider_lifecycle_records", "creative_accounting_records", "ai_evaluation_records", "notification_records", "support_ticket_records", "moderation_review_records", "audit_event_records", "security_event_records"],
       "requiredControls": ["validated DTO", "field allowlist", "transaction and ownership checks", "encrypted connection", "no secret or raw Provider payload"],
       "destinationPersistence": "retention_policy_applies"
     },
@@ -1107,7 +1129,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 149,
+    "modelCount": 152,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",

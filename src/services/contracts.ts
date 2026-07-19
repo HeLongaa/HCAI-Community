@@ -19,6 +19,42 @@ export type ApiPaginationMeta = {
   }
 }
 
+export type SearchResourceType = 'task' | 'community' | 'user' | 'asset'
+
+export type SearchQuery = {
+  q: string
+  types?: SearchResourceType[] | string
+  cursor?: string | null
+  limit?: number
+}
+
+export type ApiSearchResult = {
+  type: SearchResourceType
+  id: string
+  title: string
+  summary: string
+  lifecycle: string | null
+  target: Record<string, unknown>
+  updatedAt: string
+  indexedAt: string
+  score: number
+}
+
+export type ApiSearchIndexStatus = {
+  generatedAt: string
+  documents: Record<string, { count: number; lastIndexedAt: string | null; averageSyncLatencyMs: number; maximumSyncLatencyMs: number; withinTarget: boolean }>
+  queue: Record<string, { count: number; oldestSourceUpdatedAt: string | null }>
+  lagSeconds: number
+}
+
+export type ApiSearchSyncResult = {
+  requested: number
+  processed: number
+  succeeded: number
+  failed: number
+  items: Array<{ resourceType: SearchResourceType; sourceId: string; status: 'succeeded' | 'failed'; action?: 'upserted' | 'deleted'; errorCode?: string }>
+}
+
 export type EntitlementPlanStatus = 'draft' | 'active' | 'retired'
 export type EntitlementGrantStatus = 'scheduled' | 'active' | 'revoked' | 'expired'
 

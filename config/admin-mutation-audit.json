@@ -188,5 +188,7 @@
     ,{ "method": "PATCH", "path": "/api/admin/support/tickets/:id", "action": "admin.support.ticket_updated", "resourceType": "support_ticket", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
     ,{ "method": "POST", "path": "/api/admin/support/tickets/:id/messages", "action": "admin.support.message_added", "resourceType": "support_ticket", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
     ,{ "method": "POST", "path": "/api/admin/support/tickets/:id/case-links", "action": "admin.support.case_linked", "resourceType": "support_ticket", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
+    ,{ "method": "POST", "path": "/api/admin/search/index/sync", "action": "admin.search.index_sync", "resourceType": "search_index", "resourceParam": null, "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
+    ,{ "method": "POST", "path": "/api/admin/search/index/rebuild", "action": "admin.search.index_rebuild", "resourceType": "search_index", "resourceParam": null, "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
   ]
 }

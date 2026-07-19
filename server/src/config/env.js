@@ -185,6 +185,8 @@ export const buildEnv = (source = process.env) => {
   const workerLeaseRenewIntervalSeconds = positiveInteger(source, 'WORKER_LEASE_RENEW_INTERVAL_SECONDS', 60)
   const domainEventWorkerIntervalSeconds = positiveInteger(source, 'DOMAIN_EVENT_WORKER_INTERVAL_SECONDS', 5)
   const domainEventWorkerBatchSize = positiveInteger(source, 'DOMAIN_EVENT_WORKER_BATCH_SIZE', 50)
+  const searchIndexWorkerIntervalSeconds = positiveInteger(source, 'SEARCH_INDEX_WORKER_INTERVAL_SECONDS', 5)
+  const searchIndexWorkerBatchSize = positiveInteger(source, 'SEARCH_INDEX_WORKER_BATCH_SIZE', 100)
   const taskStaleSubmissionWorkerIntervalSeconds = positiveInteger(source, 'TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS', 300)
   const taskStaleSubmissionOlderThanHours = positiveInteger(source, 'TASK_STALE_SUBMISSION_OLDER_THAN_HOURS', 72)
   const taskStaleSubmissionSweepLimit = positiveInteger(source, 'TASK_STALE_SUBMISSION_SWEEP_LIMIT', 25)
@@ -507,6 +509,9 @@ export const buildEnv = (source = process.env) => {
     domainEventWorkerEnabled: boolFlag(source, 'DOMAIN_EVENT_WORKER_ENABLED', true),
     domainEventWorkerIntervalSeconds,
     domainEventWorkerBatchSize,
+    searchIndexWorkerEnabled: strictBoolFlag(source, 'SEARCH_INDEX_WORKER_ENABLED', true),
+    searchIndexWorkerIntervalSeconds,
+    searchIndexWorkerBatchSize,
     mediaScanWorkerEnabled: boolFlag(source, 'MEDIA_SCAN_WORKER_ENABLED', false),
     mediaScanWorkerIntervalSeconds,
     mediaStorageCleanupWorkerEnabled: boolFlag(source, 'MEDIA_STORAGE_CLEANUP_WORKER_ENABLED', false),

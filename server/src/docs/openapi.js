@@ -7,6 +7,28 @@ export const openApiDocument = {
   },
   servers: [{ url: 'http://127.0.0.1:8787/api' }],
   paths: {
+    '/search': {
+      get: {
+        summary: 'Search permission-aware task, community, user, and asset documents',
+        description: 'Authorization grants are applied before ranking and cursor pagination. Anonymous callers receive only public documents.',
+        parameters: [
+          { name: 'q', in: 'query', required: true, schema: { type: 'string', minLength: 2, maxLength: 120 } },
+          { name: 'types', in: 'query', schema: { type: 'string', example: 'task,community,user,asset' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string', maxLength: 300 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 } },
+        ],
+        responses: { '200': { description: 'Permission-filtered ranked result page' }, '400': { description: 'Invalid query, type, limit, or query-bound cursor' } },
+      },
+    },
+    '/admin/search/index/status': {
+      get: { summary: 'Read search document counts, synchronization queue state, and source lag', responses: { '200': { description: 'Secret-free search index status' }, '403': { description: 'Requires admin:search:read' } } },
+    },
+    '/admin/search/index/sync': {
+      post: { summary: 'Process a bounded batch of pending or failed search synchronization rows', responses: { '200': { description: 'Processed outcomes and remaining status' }, '403': { description: 'Requires admin:search:manage' } } },
+    },
+    '/admin/search/index/rebuild': {
+      post: { summary: 'Enqueue current sources and stale documents for bounded search index rebuild', responses: { '200': { description: 'Enqueue, processing, and remaining status evidence' }, '403': { description: 'Requires admin:search:manage' } } },
+    },
     '/developer/access-control': {
       get: { summary: 'Read the default-off developer access control', responses: { '200': { description: 'Safe control limits and allowed scopes' }, '401': { description: 'Authentication required' } } },
     },

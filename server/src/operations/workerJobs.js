@@ -20,6 +20,15 @@ export const createProductionWorkerJobDefinitions = (repositories, env, options 
       run: () => runDomainEventPipelineOnce({ repositories, limit: env.domainEventWorkerBatchSize }),
     })
   }
+  if (repositories.search?.processQueue) {
+    jobs.push({
+      id: 'search-index-sync',
+      enabled: env.searchIndexWorkerEnabled,
+      intervalSeconds: env.searchIndexWorkerIntervalSeconds,
+      lease: lease('search-index-sync'),
+      run: () => repositories.search.processQueue({ limit: env.searchIndexWorkerBatchSize, workerId: 'search-index-worker' }),
+    })
+  }
   if (repositories.media?.sweepScanJobs) {
     jobs.push({
       id: 'media-scan-sweep',

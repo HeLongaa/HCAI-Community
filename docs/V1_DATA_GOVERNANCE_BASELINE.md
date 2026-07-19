@@ -12,7 +12,7 @@ production.
 
 The data inventory and implementation contract are frozen. The complete runtime is not implemented.
 
-- All 101 Prisma models are assigned exactly once to a governed data asset.
+- All 152 Prisma models are assigned exactly once to a governed data asset.
 - Six non-Prisma asset classes cover raw generation inputs, raw Provider payloads, observability, backups, export
   packages, and deployment secrets.
 - Unknown data is `restricted`; unknown flows and processors are denied.
@@ -47,6 +47,7 @@ not become public because the post is public.
 | `developer_credentials` | Restricted | PostgreSQL | `DeveloperAccessControl`, `ServiceAccount`, `ApiKeyCredential`, `WebhookSubscription`, `WebhookSigningSecret` | Revoke immediately; credential expiry plus 30 days; plaintext API and webhook signing keys have zero durable retention |
 | `marketplace_records` | Confidential | PostgreSQL | `Task`, `TaskProposal`, `TaskSubmission` | Terminal task/dispute + 730 days |
 | `community_content_interactions` | Public | PostgreSQL | `Post`, `Comment`, `PostLike` | Delete request + 30 days |
+| `search_index_records` | Restricted | PostgreSQL | `SearchDocument`, `SearchDocumentGrant`, `SearchSyncQueue` | Searchable projection refresh/delete within 1 day; failed queue evidence within 7 days |
 | `private_library_items` | Confidential | PostgreSQL | `LibraryItem` | Delete request + 30 days |
 | `internal_points_ledger` | Confidential | PostgreSQL | `PointLedger`, `InternalPointAccount` | Terminal entry/account close + 730 days |
 | `media_asset_metadata` | Confidential | PostgreSQL | `MediaAsset`, `MediaStorageObject`, `MediaAssetRelation` | Delete/reject/abandon + 30 days; object state and verification evidence stay server-owned; V1-09 output metadata excludes Provider URLs; V1-36 lineage stores application asset ids only |

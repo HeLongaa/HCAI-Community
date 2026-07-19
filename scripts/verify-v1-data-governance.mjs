@@ -68,6 +68,7 @@ const expectedAssets = [
   'provider_lifecycle_records',
   'raw_generation_inputs',
   'raw_provider_payloads',
+  'search_index_records',
   'security_event_records',
   'support_ticket_records',
   'user_export_packages',
