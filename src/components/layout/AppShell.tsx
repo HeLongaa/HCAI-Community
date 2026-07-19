@@ -184,7 +184,7 @@ export function AppShell({
           <span>{t.brand}</span>
         </button>
 
-        <button className="search-trigger" type="button" onClick={() => setSearchOpen(true)} aria-label={t.search}>
+        <button className="search-trigger" data-testid="discovery-search-trigger" type="button" onClick={() => setSearchOpen(true)} aria-label={t.search}>
           <Search size={18} />
           <span>{t.search}</span>
           <kbd>Ctrl K</kbd>

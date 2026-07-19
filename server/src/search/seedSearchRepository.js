@@ -1,4 +1,6 @@
-import { decodeSearchCursor, encodeSearchCursor, searchResultDto } from './searchContract.js'
+import { randomUUID } from 'node:crypto'
+import { HttpError } from '../common/errors/httpError.js'
+import { decodeSearchCursor, encodeSearchCursor, searchDocumentId, searchRankingControlDto, searchResultDto } from './searchContract.js'
 
 const value = (input) => String(input ?? '').trim()
 const lower = (input) => value(input).toLowerCase()
@@ -84,20 +86,95 @@ const scoreDocument = (document, query) => {
   return title === normalized ? 5 : title.includes(normalized) ? 3 : 1
 }
 
-export const createSeedSearchRepository = (dependencies) => ({
+export const createSeedSearchRepository = (dependencies) => {
+  const queryEvents = []
+  const clickEvents = []
+  let ranking = {
+    id: 'default', relevanceWeight: 100, recencyWeight: 15, popularityWeight: 20,
+    zeroResultAlertRateBps: 2500, version: 0, reasonCode: 'search_02_default',
+    updatedByRef: null, updatedAt: new Date(),
+  }
+  const popularity = (document) => clickEvents.filter((event) => event.documentId === searchDocumentId(document.resourceType, document.sourceId)).length
+  const recency = (document) => Math.max(0, 1 - (Date.now() - new Date(document.sourceUpdatedAt).getTime()) / (90 * 24 * 60 * 60 * 1000))
+  const weightedScore = (document) => ranking.relevanceWeight * document.score + ranking.recencyWeight * recency(document) + ranking.popularityWeight * Math.log1p(popularity(document))
+  const status = () => {
+    const documents = buildDocuments(dependencies)
+    const counts = Object.fromEntries(dependencies.searchResourceTypes.map((type) => [type, {
+      count: documents.filter((document) => document.resourceType === type).length,
+      lastIndexedAt: new Date().toISOString(), averageSyncLatencyMs: 0, maximumSyncLatencyMs: 0, withinTarget: true,
+    }]))
+    return { generatedAt: new Date().toISOString(), documents: counts, queue: {}, lagSeconds: 0 }
+  }
+  return {
   async search(actor, options) {
-    const offset = decodeSearchCursor(options.cursor, options)
+    const normalizedOptions = { ...options, sort: options.sort ?? 'relevance' }
+    const offset = decodeSearchCursor(options.cursor, normalizedOptions)
     const documents = buildDocuments(dependencies)
       .filter((document) => options.types.includes(document.resourceType) && accessible(document, actor))
       .map((document) => ({ ...document, score: scoreDocument(document, options.query) }))
       .filter((document) => document.score > 0)
-      .sort((left, right) => right.score - left.score || String(right.sourceUpdatedAt).localeCompare(String(left.sourceUpdatedAt)) || left.sourceId.localeCompare(right.sourceId))
+      .map((document) => ({ ...document, weightedScore: weightedScore(document), popularity: popularity(document) }))
+      .sort((left, right) => normalizedOptions.sort === 'recent'
+        ? String(right.sourceUpdatedAt).localeCompare(String(left.sourceUpdatedAt)) || right.weightedScore - left.weightedScore || left.sourceId.localeCompare(right.sourceId)
+        : normalizedOptions.sort === 'popular'
+          ? right.popularity - left.popularity || right.weightedScore - left.weightedScore || left.sourceId.localeCompare(right.sourceId)
+          : right.weightedScore - left.weightedScore || String(right.sourceUpdatedAt).localeCompare(String(left.sourceUpdatedAt)) || left.sourceId.localeCompare(right.sourceId))
     const rows = documents.slice(offset, offset + options.limit + 1)
     return {
       items: rows.slice(0, options.limit).map(searchResultDto),
       limit: options.limit,
-      nextCursor: rows.length > options.limit ? encodeSearchCursor({ ...options, offset: offset + options.limit }) : null,
+      nextCursor: rows.length > options.limit ? encodeSearchCursor({ ...normalizedOptions, offset: offset + options.limit }) : null,
     }
+  },
+  async recordQuery(actor, options, page, durationMs) {
+    const row = {
+      id: randomUUID(), queryFingerprint: options.queryFingerprint, queryLength: options.query.length,
+      resourceTypes: options.types, sort: options.sort, actorClass: actor ? 'authenticated' : 'anonymous',
+      resultCount: page.items.length, hasNextPage: Boolean(page.nextCursor), durationMs: Math.max(0, Math.round(durationMs)),
+      resultDocumentIds: page.items.map((item) => searchDocumentId(item.type, item.id)), createdAt: new Date(),
+    }
+    queryEvents.push(row)
+    return row.id
+  },
+  async recordClick(queryEventId, payload) {
+    const documentId = searchDocumentId(payload.resourceType, payload.sourceId)
+    const query = queryEvents.find((event) => event.id === queryEventId && Date.now() - event.createdAt.getTime() <= 24 * 60 * 60 * 1000 && event.resultDocumentIds.includes(documentId))
+    if (!query || query.resultDocumentIds[payload.position - 1] !== documentId) throw new HttpError(404, 'SEARCH_EVENT_NOT_FOUND', 'Search event or returned result was not found')
+    const existing = clickEvents.find((event) => event.queryEventId === queryEventId && event.documentId === documentId)
+    if (existing) return { recorded: true, id: existing.id }
+    const row = { id: randomUUID(), queryEventId, documentId, resourceType: payload.resourceType, position: payload.position, createdAt: new Date() }
+    clickEvents.push(row)
+    return { recorded: true, id: row.id }
+  },
+  async diagnostics(windowHours = 24) {
+    const since = Date.now() - windowHours * 60 * 60 * 1000
+    const queries = queryEvents.filter((event) => event.createdAt.getTime() >= since)
+    const clicks = clickEvents.filter((event) => event.createdAt.getTime() >= since)
+    const clickedQueries = new Set(clicks.map((event) => event.queryEventId)).size
+    const zeroResults = queries.filter((event) => event.resultCount === 0).length
+    const durations = queries.map((event) => event.durationMs).sort((a, b) => a - b)
+    const popular = new Map()
+    for (const event of clicks) popular.set(`${event.documentId}:${event.resourceType}`, (popular.get(`${event.documentId}:${event.resourceType}`) ?? 0) + 1)
+    const popularResults = [...popular.entries()].map(([key, count]) => {
+      const split = key.lastIndexOf(':')
+      return { documentId: key.slice(0, split), resourceType: key.slice(split + 1), clicks: count }
+    }).sort((a, b) => b.clicks - a.clicks || a.documentId.localeCompare(b.documentId)).slice(0, 10)
+    const zeroResultRateBps = queries.length ? Math.round((zeroResults * 10_000) / queries.length) : 0
+    return {
+      generatedAt: new Date().toISOString(), windowHours, queries: queries.length, zeroResults, clickedQueries,
+      zeroResultRateBps, clickThroughRateBps: queries.length ? Math.round((clickedQueries * 10_000) / queries.length) : 0,
+      zeroResultAlerting: queries.length > 0 && zeroResultRateBps >= ranking.zeroResultAlertRateBps,
+      latencyMs: { average: durations.length ? Math.round(durations.reduce((sum, item) => sum + item, 0) / durations.length) : 0, p95: durations.length ? durations[Math.ceil(durations.length * 0.95) - 1] : 0, maximum: durations.at(-1) ?? 0 },
+      popularResults, ranking: searchRankingControlDto(ranking), index: status(),
+    }
+  },
+  async rankingControl() {
+    return searchRankingControlDto(ranking)
+  },
+  async updateRankingControl(actor, payload) {
+    if (ranking.version !== payload.expectedVersion) throw new HttpError(409, 'VERSION_CONFLICT', 'Search ranking control version is stale')
+    ranking = { ...ranking, ...payload, version: ranking.version + 1, updatedByRef: actor.id, updatedAt: new Date() }
+    return searchRankingControlDto(ranking)
   },
   async processQueue({ limit = 100 } = {}) {
     return { requested: limit, processed: 0, succeeded: 0, failed: 0, items: [] }
@@ -107,14 +184,7 @@ export const createSeedSearchRepository = (dependencies) => ({
     return { types, enqueued: documents.length, reasonCode, requestedBy: actor?.id ?? null }
   },
   async status() {
-    const documents = buildDocuments(dependencies)
-    const counts = Object.fromEntries(dependencies.searchResourceTypes.map((type) => [type, {
-      count: documents.filter((document) => document.resourceType === type).length,
-      lastIndexedAt: new Date().toISOString(),
-      averageSyncLatencyMs: 0,
-      maximumSyncLatencyMs: 0,
-      withinTarget: true,
-    }]))
-    return { generatedAt: new Date().toISOString(), documents: counts, queue: {}, lagSeconds: 0 }
+    return status()
   },
-})
+  }
+}

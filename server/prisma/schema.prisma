@@ -2151,6 +2151,57 @@ model SearchSyncQueue {
   @@map("search_sync_queue")
 }
 
+model SearchQueryEvent {
+  id                String   @id
+  queryFingerprint  String   @map("query_fingerprint")
+  queryLength       Int      @map("query_length")
+  resourceTypes     String[] @map("resource_types")
+  sort              String
+  actorClass        String   @map("actor_class")
+  resultCount       Int      @map("result_count")
+  hasNextPage       Boolean  @default(false) @map("has_next_page")
+  durationMs        Int      @map("duration_ms")
+  resultDocumentIds String[] @default([]) @map("result_document_ids")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  clicks SearchClickEvent[]
+
+  @@index([createdAt])
+  @@index([resultCount, createdAt])
+  @@index([queryFingerprint, createdAt])
+  @@map("search_query_events")
+}
+
+model SearchClickEvent {
+  id           String   @id
+  queryEventId String   @map("query_event_id")
+  documentId   String   @map("document_id")
+  resourceType String   @map("resource_type")
+  position     Int
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  queryEvent SearchQueryEvent @relation(fields: [queryEventId], references: [id], onDelete: Cascade)
+
+  @@unique([queryEventId, documentId])
+  @@index([documentId, createdAt])
+  @@index([resourceType, createdAt])
+  @@map("search_click_events")
+}
+
+model SearchRankingControl {
+  id                     String   @id
+  relevanceWeight        Int      @default(100) @map("relevance_weight")
+  recencyWeight          Int      @default(15) @map("recency_weight")
+  popularityWeight       Int      @default(20) @map("popularity_weight")
+  zeroResultAlertRateBps Int      @default(2500) @map("zero_result_alert_rate_bps")
+  version                Int      @default(0)
+  reasonCode             String   @map("reason_code")
+  updatedByRef           String?  @map("updated_by_ref")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  @@map("search_ranking_controls")
+}
+
 model AuthAccount {
   id             String   @id @default(cuid())
   userId         String   @map("user_id")

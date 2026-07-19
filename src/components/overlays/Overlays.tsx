@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import {
   AlertTriangle,
   Bot,
@@ -8,8 +8,10 @@ import {
   Copy,
   Download,
   Flag,
+  FileText,
   Globe2,
   Heart,
+  Image,
   ListPlus,
   ListMusic,
   LoaderCircle,
@@ -26,7 +28,6 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
-  Star,
   Trophy,
   UserRound,
   UsersRound,
@@ -35,12 +36,14 @@ import {
   X,
 } from 'lucide-react'
 import type { Locale, MarketplaceProfile, Page, SimulateAction, Track } from '../../domain/types'
-import { marketplaceProfiles, tracks } from '../../data/mockData'
-import { findProfile, isZhCopy, localizeText, textFor } from '../../domain/utils'
+import { tracks } from '../../data/mockData'
+import { isZhCopy, localizeText, textFor } from '../../domain/utils'
 import { authService } from '../../services/authService'
 import { complianceService, policyConsentRequest } from '../../services/complianceService'
 import { isApiClientError } from '../../services/apiClient'
-import type { ApiComplianceManifest, ApiPolicyConsentStatus, ApiSession, OAuthAccountLink, OAuthProvider, OAuthProviderMetadata, RegisterRequest } from '../../services/contracts'
+import { profileService } from '../../services/profileService'
+import { searchService } from '../../services/searchService'
+import type { ApiComplianceManifest, ApiPolicyConsentStatus, ApiSearchResult, ApiSession, OAuthAccountLink, OAuthProvider, OAuthProviderMetadata, RegisterRequest, SearchResourceType, SearchSort } from '../../services/contracts'
 import { showLocalTestAccounts } from '../../services/runtimeConfig'
 import type { OAuthLoginResult } from '../../hooks/useAccountState'
 
@@ -477,7 +480,6 @@ export function DynamicIsland({
 export function SearchPanel({
   t,
   close,
-  playTrack,
   setPage,
   openProfile,
   simulateAction,
@@ -491,77 +493,113 @@ export function SearchPanel({
 }) {
   const isZh = isZhCopy(t)
   const [query, setQuery] = useState('')
+  const [type, setType] = useState<SearchResourceType | 'all'>('all')
+  const [sort, setSort] = useState<SearchSort>('relevance')
+  const [results, setResults] = useState<Array<{ item: ApiSearchResult; searchEventId: string | null }>>([])
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [searched, setSearched] = useState(false)
 
-  const results = useMemo(() => {
-    if (!query.trim()) return tracks.slice(0, 3)
-    return tracks.filter((track) => `${track.title} ${track.artist}`.toLowerCase().includes(query.toLowerCase())).concat(tracks.slice(0, 2))
-  }, [query])
+  const runSearch = useCallback(async (cursor: string | null = null, append = false) => {
+    const normalized = query.trim()
+    if (normalized.length < 2) {
+      setResults([])
+      setNextCursor(null)
+      setSearched(false)
+      return
+    }
+    setLoading(true)
+    setError(null)
+    try {
+      const page = await searchService.search({ q: normalized, types: type === 'all' ? undefined : [type], sort, limit: 20, cursor })
+      const hits = page.items.map((item) => ({ item, searchEventId: page.searchEventId }))
+      setResults((current) => append ? [...current, ...hits] : hits)
+      setNextCursor(page.nextCursor)
+      setSearched(true)
+    } catch (searchError) {
+      if (!append) setResults([])
+      setNextCursor(null)
+      setSearched(true)
+      setError(searchError instanceof Error ? searchError.message : textFor(t, 'Search unavailable.', '搜索暂不可用。'))
+    } finally {
+      setLoading(false)
+    }
+  }, [query, sort, t, type])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void runSearch(), 300)
+    return () => window.clearTimeout(timer)
+  }, [runSearch])
+
+  const openResult = async (hit: { item: ApiSearchResult; searchEventId: string | null }, position: number) => {
+    if (hit.searchEventId) void searchService.recordClick(hit.searchEventId, { resourceType: hit.item.type, sourceId: hit.item.id, position }).catch(() => {})
+    const target = hit.item.target
+    try {
+      if (target.page === 'profile' && typeof target.handle === 'string') {
+        openProfile(await profileService.findByHandle(target.handle))
+      } else if (target.page === 'tasks' || target.page === 'community' || target.page === 'profile') {
+        setPage(target.page)
+      }
+      simulateAction(isZh ? `已打开搜索结果：${hit.item.title}` : `Opened search result: ${hit.item.title}`)
+      close()
+    } catch (navigationError) {
+      setError(navigationError instanceof Error ? navigationError.message : textFor(t, 'Result unavailable.', '结果暂不可用。'))
+    }
+  }
+
+  const resultIcon = (resourceType: SearchResourceType) => resourceType === 'task'
+    ? <BriefcaseBusiness size={18} />
+    : resourceType === 'community'
+      ? <MessageCircle size={18} />
+      : resourceType === 'user'
+        ? <UserRound size={18} />
+        : <Image size={18} />
 
   return (
     <div className="search-backdrop" onClick={close}>
       <section className="search-panel" role="dialog" aria-modal="true" aria-label={t.search} onClick={(event) => event.stopPropagation()}>
         <div className="search-input">
           <Search size={18} />
-          <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t.search} />
+          <input data-testid="discovery-search-input" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t.search} />
           <button type="button" onClick={close} aria-label="Close search">
             <X size={17} />
           </button>
         </div>
+        <div className="search-controls">
+          <div className="segmented-control" aria-label={textFor(t, 'Result type', '结果类型')}>
+            {(['all', 'task', 'community', 'user', 'asset'] as const).map((item) => (
+              <button type="button" key={item} className={type === item ? 'active' : ''} onClick={() => setType(item)}>
+                {item === 'all' ? textFor(t, 'All', '全部') : item === 'task' ? textFor(t, 'Tasks', '任务') : item === 'community' ? textFor(t, 'Community', '社区') : item === 'user' ? textFor(t, 'Users', '用户') : textFor(t, 'Assets', '素材')}
+              </button>
+            ))}
+          </div>
+          <select aria-label={textFor(t, 'Sort results', '结果排序')} value={sort} onChange={(event) => setSort(event.target.value as SearchSort)}>
+            <option value="relevance">{textFor(t, 'Relevant', '相关')}</option>
+            <option value="recent">{textFor(t, 'Recent', '最新')}</option>
+            <option value="popular">{textFor(t, 'Popular', '热门')}</option>
+          </select>
+        </div>
         <div className="search-results">
-          <button
-            type="button"
-            className="search-result"
-            onClick={() => {
-              setPage('playlist')
-              simulateAction(isZh ? '已打开搜索结果：Top 50 播放列表' : 'Search result opened: Top 50 playlist')
-              close()
-            }}
-          >
-            <ListMusic size={18} />
-            <span>
-              <strong>Top 50</strong>
-              <small>@musicgpt · {textFor(t, 'Playlist', '播放列表')} · 50K {textFor(t, 'likes', '点赞')}</small>
-            </span>
-            <Star size={16} />
-          </button>
-          {results.map((track) => (
+          {loading && results.length === 0 && <div className="search-state"><LoaderCircle className="spin" size={19} /></div>}
+          {error && <div className="empty-state compact"><AlertTriangle size={18} /><strong>{textFor(t, 'Search unavailable', '搜索不可用')}</strong><span>{error}</span></div>}
+          {!error && searched && !loading && results.length === 0 && <div className="empty-state compact"><FileText size={18} /><strong>{textFor(t, 'No results', '没有结果')}</strong></div>}
+          {results.map((hit, index) => (
             <button
               type="button"
               className="search-result"
-              key={track.id}
-              onClick={() => {
-                playTrack(track)
-                simulateAction(isZh ? `已播放搜索结果：${track.title}` : `Search result played: ${track.title}`)
-                close()
-              }}
+              key={`${hit.item.type}:${hit.item.id}`}
+              onClick={() => void openResult(hit, index + 1)}
             >
-              <img src={track.cover} alt="" />
+              {resultIcon(hit.item.type)}
               <span>
-                <strong>{track.title}</strong>
-                <small>
-                  @{track.artist} · {track.plays} {textFor(t, 'plays', '播放')}
-                </small>
+                <strong>{hit.item.title}</strong>
+                <small>{hit.item.summary || hit.item.lifecycle || hit.item.type}</small>
               </span>
-              <Download size={16} />
+              <ChevronRight size={16} />
             </button>
           ))}
-          <button
-            type="button"
-            className="search-result"
-            onClick={() => {
-              const profile = isZh ? findProfile('coursecn') ?? marketplaceProfiles[0] : findProfile('iriswood') ?? marketplaceProfiles[0]
-              openProfile(profile)
-              simulateAction(isZh ? `已打开搜索结果：${localizeText(profile.name, t)} 用户主页` : `Search result opened: ${localizeText(profile.name, t)} profile`)
-              close()
-            }}
-          >
-            <UserRound size={18} />
-            <span>
-              <strong>{isZh ? '中文课程组' : 'Iris Wood'}</strong>
-              <small>@{isZh ? 'coursecn' : 'iriswood'} · {textFor(t, 'public profile', '公开主页')}</small>
-            </span>
-            <Star size={16} />
-          </button>
+          {nextCursor && <button className="ghost-button search-load-more" type="button" onClick={() => void runSearch(nextCursor, true)} disabled={loading}>{loading ? <LoaderCircle className="spin" size={16} /> : textFor(t, 'Load more', '加载更多')}</button>}
         </div>
       </section>
     </div>

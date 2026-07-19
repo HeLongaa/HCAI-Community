@@ -21,6 +21,7 @@ test('Admin operations overview loads and global search opens a durable deep lin
   await page.goto('/')
   await page.getByTestId('nav-admin').click()
   await expect(page.getByTestId('admin-operations-overview')).toBeVisible()
+  await expect(page.getByTestId('admin-search-diagnostics')).toBeVisible()
 
   await page.getByTestId('admin-global-search-input').fill('promptlin')
   const searchResponse = page.waitForResponse((response) => response.url().includes('/api/admin/search?') && response.status() === 200)

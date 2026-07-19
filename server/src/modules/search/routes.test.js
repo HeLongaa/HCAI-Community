@@ -63,3 +63,40 @@ test('search validates cursors and protects Admin synchronization operations', a
     assert.equal(rebuild.payload.data.rebuild.types.length, 2)
   } finally { await server.close() }
 })
+
+test('search records privacy-safe query and validated click diagnostics with versioned ranking controls', async () => {
+  const server = await createServer()
+  try {
+    const found = await requestJson(server.url, '/api/search?q=task&types=task&sort=popular&limit=10', { method: 'GET' })
+    assert.equal(found.status, 200)
+    assert.equal(typeof found.payload.meta.searchEventId, 'string')
+    assert.equal(found.payload.meta.sort, 'popular')
+    const result = found.payload.data[0]
+    const clicked = await requestJson(server.url, `/api/search/events/${found.payload.meta.searchEventId}/clicks`, {
+      body: { resourceType: result.type, sourceId: result.id, position: 1 },
+    })
+    assert.equal(clicked.status, 200)
+    assert.equal(clicked.payload.data.recorded, true)
+    const rejected = await requestJson(server.url, `/api/search/events/${found.payload.meta.searchEventId}/clicks`, {
+      body: { resourceType: 'task', sourceId: 'not-returned', position: 1 },
+    })
+    assert.equal(rejected.status, 404)
+
+    const denied = await requestJson(server.url, '/api/admin/search/diagnostics?windowHours=24', { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(denied.status, 403)
+    const diagnostics = await requestJson(server.url, '/api/admin/search/diagnostics?windowHours=24', { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(diagnostics.status, 200)
+    assert.equal(diagnostics.payload.data.queries, 1)
+    assert.equal(diagnostics.payload.data.clickedQueries, 1)
+    assert.equal(diagnostics.payload.data.popularResults[0].clicks, 1)
+
+    const current = await requestJson(server.url, '/api/admin/search/ranking-control', { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(current.status, 200)
+    const updateBody = { relevanceWeight: 90, recencyWeight: 25, popularityWeight: 30, zeroResultAlertRateBps: 2000, expectedVersion: current.payload.data.version, reasonCode: 'route_quality_tuning' }
+    const updated = await requestJson(server.url, '/api/admin/search/ranking-control', { method: 'PUT', token: 'demo-access.opsplus', body: updateBody })
+    assert.equal(updated.status, 200)
+    assert.equal(updated.payload.data.version, current.payload.data.version + 1)
+    const stale = await requestJson(server.url, '/api/admin/search/ranking-control', { method: 'PUT', token: 'demo-access.opsplus', body: updateBody })
+    assert.equal(stale.status, 409)
+  } finally { await server.close() }
+})

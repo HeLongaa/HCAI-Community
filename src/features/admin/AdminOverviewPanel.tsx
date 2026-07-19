@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Activity, AlertTriangle, ArrowUpRight, ListChecks, RefreshCw, RotateCcw, Search } from 'lucide-react'
+import { Activity, AlertTriangle, ArrowUpRight, Download, ListChecks, RefreshCw, RotateCcw, Save, Search, SlidersHorizontal } from 'lucide-react'
 
 import { textFor } from '../../domain/utils'
 import { adminService } from '../../services/adminService'
+import { searchService } from '../../services/searchService'
 import type {
   AdminGlobalSearchResultDto,
   AdminGlobalSearchType,
   AdminOperationsOverviewDto,
   AdminOperationsQueueItemDto,
+  ApiSearchDiagnostics,
+  ApiSearchRankingControl,
 } from '../../services/contracts'
 
 type SearchScope = 'all' | 'work' | 'platform' | 'security'
@@ -81,6 +84,12 @@ export function AdminOverviewPanel({
   const [searchNextCursor, setSearchNextCursor] = useState<string | null>(null)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [hasSearched, setHasSearched] = useState(false)
+  const [diagnosticsWindow, setDiagnosticsWindow] = useState(24)
+  const [diagnostics, setDiagnostics] = useState<ApiSearchDiagnostics | null>(null)
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(true)
+  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null)
+  const [rankingDraft, setRankingDraft] = useState<ApiSearchRankingControl | null>(null)
+  const [rankingSaving, setRankingSaving] = useState(false)
 
   const loadOverview = useCallback(async () => {
     setOverviewLoading(true)
@@ -93,6 +102,20 @@ export function AdminOverviewPanel({
       setOverviewLoading(false)
     }
   }, [t, windowMinutes])
+
+  const loadDiagnostics = useCallback(async () => {
+    setDiagnosticsLoading(true)
+    setDiagnosticsError(null)
+    try {
+      const next = await searchService.diagnostics(diagnosticsWindow)
+      setDiagnostics(next)
+      setRankingDraft(next.ranking)
+    } catch (error) {
+      setDiagnosticsError(error instanceof Error ? error.message : textFor(t, 'Search diagnostics unavailable.', '搜索诊断暂不可用。'))
+    } finally {
+      setDiagnosticsLoading(false)
+    }
+  }, [diagnosticsWindow, t])
 
   const runSearch = useCallback(async (
     nextQuery: string,
@@ -130,6 +153,47 @@ export function AdminOverviewPanel({
     const timer = window.setTimeout(() => void loadOverview(), 0)
     return () => window.clearTimeout(timer)
   }, [loadOverview])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadDiagnostics(), 0)
+    return () => window.clearTimeout(timer)
+  }, [loadDiagnostics])
+
+  const saveRanking = async () => {
+    if (!rankingDraft) return
+    setRankingSaving(true)
+    setDiagnosticsError(null)
+    try {
+      const updated = await searchService.updateRankingControl({
+        relevanceWeight: rankingDraft.relevanceWeight,
+        recencyWeight: rankingDraft.recencyWeight,
+        popularityWeight: rankingDraft.popularityWeight,
+        zeroResultAlertRateBps: rankingDraft.zeroResultAlertRateBps,
+        expectedVersion: rankingDraft.version,
+        reasonCode: 'admin_search_tuning',
+      })
+      setRankingDraft(updated)
+      await loadDiagnostics()
+    } catch (error) {
+      setDiagnosticsError(error instanceof Error ? error.message : textFor(t, 'Ranking update failed.', '排序配置更新失败。'))
+    } finally {
+      setRankingSaving(false)
+    }
+  }
+
+  const exportDiagnostics = async () => {
+    try {
+      const payload = await searchService.exportDiagnostics(diagnosticsWindow)
+      const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }))
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `search-diagnostics-${payload.exportedAt.slice(0, 10)}.json`
+      anchor.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      setDiagnosticsError(error instanceof Error ? error.message : textFor(t, 'Diagnostics export failed.', '诊断导出失败。'))
+    }
+  }
 
   useEffect(() => {
     const resourceType = target?.resourceType as AdminGlobalSearchType | undefined
@@ -209,6 +273,42 @@ export function AdminOverviewPanel({
         <QueueList title={textFor(t, 'Active alerts', '活动告警')} items={overview?.alerts ?? []} empty={textFor(t, 'No active alerts.', '暂无活动告警。')} onOpen={openQueueItem} />
         <QueueList title={textFor(t, 'Recovery queue', '恢复队列')} items={overview?.recoveryItems ?? []} empty={textFor(t, 'No recovery work.', '暂无恢复工作。')} onOpen={openQueueItem} />
       </div>
+
+      <section className="admin-search-diagnostics" data-testid="admin-search-diagnostics">
+        <header>
+          <div><SlidersHorizontal size={18} /><span><strong>{textFor(t, 'Search quality', '搜索质量')}</strong><small>{diagnostics?.generatedAt ? formatTimestamp(diagnostics.generatedAt) : '-'}</small></span></div>
+          <div className="admin-overview-actions">
+            <select aria-label={textFor(t, 'Diagnostics window', '诊断时间窗口')} value={diagnosticsWindow} onChange={(event) => setDiagnosticsWindow(Number(event.target.value))}>
+              <option value={24}>24h</option><option value={72}>72h</option><option value={168}>7d</option>
+            </select>
+            <button className="icon-button" type="button" title={textFor(t, 'Export diagnostics', '导出诊断')} aria-label={textFor(t, 'Export diagnostics', '导出诊断')} onClick={() => void exportDiagnostics()}><Download size={16} /></button>
+            <button className="icon-button" type="button" title={textFor(t, 'Refresh diagnostics', '刷新诊断')} aria-label={textFor(t, 'Refresh diagnostics', '刷新诊断')} onClick={() => void loadDiagnostics()} disabled={diagnosticsLoading}><RefreshCw size={16} /></button>
+          </div>
+        </header>
+        {diagnosticsError && <div className="empty-state compact"><AlertTriangle size={17} /><strong>{textFor(t, 'Diagnostics unavailable', '诊断不可用')}</strong><span>{diagnosticsError}</span></div>}
+        <div className="admin-search-quality-metrics" aria-busy={diagnosticsLoading}>
+          <div><strong>{diagnosticsLoading ? '-' : diagnostics?.queries ?? 0}</strong><span>{textFor(t, 'Queries', '查询数')}</span></div>
+          <div className={diagnostics?.zeroResultAlerting ? 'danger' : ''}><strong>{diagnosticsLoading ? '-' : `${((diagnostics?.zeroResultRateBps ?? 0) / 100).toFixed(1)}%`}</strong><span>{textFor(t, 'Zero results', '零结果率')}</span></div>
+          <div><strong>{diagnosticsLoading ? '-' : `${((diagnostics?.clickThroughRateBps ?? 0) / 100).toFixed(1)}%`}</strong><span>CTR</span></div>
+          <div><strong>{diagnosticsLoading ? '-' : `${diagnostics?.latencyMs.p95 ?? 0} ms`}</strong><span>P95</span></div>
+          <div><strong>{diagnosticsLoading ? '-' : `${diagnostics?.index.lagSeconds ?? 0}s`}</strong><span>{textFor(t, 'Index lag', '索引延迟')}</span></div>
+        </div>
+        <div className="admin-search-diagnostics-grid">
+          <div className="admin-search-popular">
+            <strong>{textFor(t, 'Popular results', '热门结果')}</strong>
+            {(diagnostics?.popularResults.length ?? 0) === 0 ? <small>{textFor(t, 'No clicks in this window.', '当前窗口暂无点击。')}</small> : diagnostics?.popularResults.map((item) => <div key={item.documentId}><code>{item.documentId}</code><span>{item.clicks}</span></div>)}
+          </div>
+          {rankingDraft && <div className="admin-search-ranking">
+            {([
+              ['relevanceWeight', textFor(t, 'Relevance', '相关性')],
+              ['recencyWeight', textFor(t, 'Recency', '时效性')],
+              ['popularityWeight', textFor(t, 'Popularity', '热度')],
+            ] as const).map(([key, label]) => <label key={key}><span>{label}</span><input type="number" min={0} max={100} value={rankingDraft[key]} onChange={(event) => setRankingDraft({ ...rankingDraft, [key]: Number(event.target.value) })} /></label>)}
+            <label><span>{textFor(t, 'Zero-result alert (%)', '零结果告警 (%)')}</span><input type="number" min={0} max={100} step={0.1} value={rankingDraft.zeroResultAlertRateBps / 100} onChange={(event) => setRankingDraft({ ...rankingDraft, zeroResultAlertRateBps: Math.round(Number(event.target.value) * 100) })} /></label>
+            <button className="primary-button" type="button" onClick={() => void saveRanking()} disabled={rankingSaving}><Save size={16} />{rankingSaving ? textFor(t, 'Saving', '保存中') : textFor(t, 'Save ranking', '保存排序')}</button>
+          </div>}
+        </div>
+      </section>
 
       <div className="admin-global-search">
         <div className="admin-global-search-heading">
