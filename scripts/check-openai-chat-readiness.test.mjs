@@ -34,7 +34,7 @@ test('environment preflight fails closed when the credential is absent', async (
 test('live smoke cannot use fixture credentials', async () => {
   await assert.rejects(
     run(process.execPath, [script.pathname, '--profile=fixture', '--mode=live']),
-    (error) => error.code === 1 && /live smoke requires --profile=env/.test(error.stderr),
+    (error) => error.code === 1 && /require --profile=env/.test(error.stderr),
   )
 })
 
