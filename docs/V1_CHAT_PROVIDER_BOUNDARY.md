@@ -47,3 +47,21 @@ Any partial or inconsistent configuration fails closed. The base URL cannot be r
 All V1-24 tests use local `Response` fixtures or injected `fetch`. No validation command requires a Provider token and no
 real network request was made. A first Chat staging call requires a new explicit go/no-go package; the existing Image
 rehearsal approval scope does not cover Chat.
+
+The dedicated readiness commands are:
+
+```bash
+npm run test:chat-openai-readiness
+npm run chat:openai:preflight
+CHAT_OPENAI_LIVE_SMOKE_CONFIRMATION=real-staging-call npm run chat:openai:live-smoke
+```
+
+`preflight` parses all staging gates and reports only low-cardinality safe metadata. It does not construct a client or
+make a network request. `live-smoke` additionally requires the one-run confirmation value and performs minimal input
+safety, streaming, output safety, and abort acceptance. It never prints prompts, generated text, credentials, raw
+Provider responses, or account data. The live command remains blocked until a dedicated staging token is mounted.
+
+The live gate also requires a Chat-specific approval decision and reference, a named approver, an expiry within 24
+hours, the dedicated `chat-staging` environment, exactly four maximum Provider calls, a Provider-side cap no greater
+than USD 5, an app-side smoke budget no greater than USD 0.25, named token-rotation/kill-switch/rollback owners, and an
+explicit production no-go statement. Missing approval metadata exits before constructing the Provider client.

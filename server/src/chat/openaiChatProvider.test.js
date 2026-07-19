@@ -247,3 +247,21 @@ test('OpenAI Chat client cancels the remaining response body after a terminal ev
   for await (const _event of client.stream({ request, context })) void _event
   assert.equal(cancelled, true)
 })
+
+test('OpenAI Chat client rejects a pre-aborted request before Provider dispatch', async () => {
+  let dispatched = false
+  const client = createOpenAIChatClient({
+    source,
+    fetchImpl: async () => {
+      dispatched = true
+      return sseResponse({ type: 'response.completed', response: {} })
+    },
+  })
+  const controller = new AbortController()
+  controller.abort('user-stop')
+  await assert.rejects(
+    async () => { for await (const _event of client.stream({ request, context, signal: controller.signal })) void _event },
+    (error) => error.code === 'CHAT_PROVIDER_TIMEOUT' && error.details.reasonCode === 'request_aborted',
+  )
+  assert.equal(dispatched, false)
+})
