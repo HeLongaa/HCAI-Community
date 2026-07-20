@@ -22,11 +22,14 @@ test('Image Studio consumes the capability contract and sends only allowed param
   await expect(page.getByText('Source image')).toBeVisible()
   await expect(page.getByText(/Change strength 70%/)).toBeVisible()
   await page.getByRole('button', { name: 'Text to Image', exact: true }).click()
+  await page.getByLabel('Image quality').selectOption('high')
 
   const generationResponse = page.waitForResponse((response) =>
     response.url().endsWith('/api/creative/generations') && response.request().method() === 'POST',
   )
-  await page.getByRole('button', { name: 'Generate images' }).click()
+  const generateButton = page.getByRole('button', { name: 'Generate images' })
+  await generateButton.focus()
+  await page.keyboard.press('Enter')
   const response = await generationResponse
   expect(response.ok()).toBeTruthy()
   const generationId = ((await response.json()) as { data: { id: string } }).data.id
@@ -37,6 +40,7 @@ test('Image Studio consumes the capability contract and sends only allowed param
     parameters: {
       aspectRatio: '1:1',
       stylePreset: 'none',
+      quality: 'high',
     },
   })
   expect(response.request().postDataJSON().parameters).not.toHaveProperty('controls')
@@ -199,6 +203,16 @@ test('Image Studio renders active lifecycle controls and refresh-safe retry degr
   await expect(page.getByLabel('Source image').locator('option[value="asset-ui-audio"]')).toHaveCount(0)
 
   await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.getByRole('textbox', { name: 'Image prompt' })).toBeVisible()
+  await expect(page.getByLabel('Image quality')).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Image generation status' })).toHaveAttribute('aria-live', 'polite')
   await expect(page.locator('.image-generation-history')).toBeVisible()
-  expect(await page.locator('.image-history-table').evaluate((element) => element.scrollWidth >= element.clientWidth)).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  for (const selector of ['.composer', '.provider-status-panel', '.image-generation-history']) {
+    const box = await page.locator(selector).boundingBox()
+    expect(box, `${selector} must have layout bounds`).not.toBeNull()
+    expect(box!.x, `${selector} starts inside viewport`).toBeGreaterThanOrEqual(0)
+    expect(box!.x + box!.width, `${selector} ends inside viewport`).toBeLessThanOrEqual(390.5)
+  }
+  expect(await page.locator('.image-history-table').evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
 })

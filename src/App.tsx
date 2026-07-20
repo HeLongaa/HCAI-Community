@@ -365,9 +365,10 @@ function App() {
     mode,
     stylePreset,
     aspectRatio,
+    quality,
     strength,
     inputAssetIds,
-  }: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; strength: number; inputAssetIds: string[] }) => {
+  }: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; quality: string; strength: number; inputAssetIds: string[] }) => {
     const trimmedPrompt = imagePrompt.trim()
     if (!trimmedPrompt) {
       pushToast(locale === 'zh' ? '请先填写图片提示词。' : 'Add an image prompt first.')
@@ -395,6 +396,7 @@ function App() {
         parameters: Object.fromEntries([
           ['aspectRatio', aspectRatio],
           ['stylePreset', stylePreset],
+          ['quality', quality],
           ['strength', strength],
         ].filter(([key]) => modeContract.parameters.includes(String(key)))),
         providerId: provider.id,

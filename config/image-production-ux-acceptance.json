@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "taskId": "AI-IMG-02",
+  "productionDecision": "no_go",
+  "provider": {
+    "id": "openai-gpt-image-2",
+    "stagingMode": "openai_staging",
+    "rollbackMode": "disabled",
+    "disabledErrorCode": "CREATIVE_PROVIDER_HTTP_CLIENT_DISABLED",
+    "silentMockFallbackAllowed": false
+  },
+  "limits": {
+    "maximumOutputsPerRequest": 1,
+    "maximumPromptCharacters": 2000,
+    "perJobUsdCap": 0.25,
+    "dailyUsdCap": 8
+  },
+  "quality": {
+    "options": ["low", "medium", "high"],
+    "default": "medium",
+    "apiRequestEvidenceRequired": true
+  },
+  "reliability": {
+    "concurrentDuplicateDispatchAllowed": false,
+    "idempotentReplayRequired": true,
+    "expiredLeaseRecoveryRequired": true,
+    "timeoutMustFailClosed": true
+  },
+  "mobile": {
+    "viewport": { "width": 390, "height": 844 },
+    "pageHorizontalOverflowAllowed": false,
+    "historyOwnsHorizontalScroll": true
+  },
+  "accessibility": {
+    "namedPromptRequired": true,
+    "namedQualityControlRequired": true,
+    "liveStatusRequired": true,
+    "keyboardGenerateRequired": true
+  },
+  "evidence": [
+    "server/src/creative/imageProductionAcceptance.test.js",
+    "server/src/creative/generationExecutionRuntime.test.js",
+    "server/src/creative/providerErrorPolicy.test.js",
+    "e2e/image-capability.spec.ts",
+    "docs/V1_IMAGE_PRODUCTION_ACCEPTANCE.md"
+  ]
+}

@@ -1,5 +1,9 @@
 # V1 Image Capability Contract
 
+AI-IMG-02 adds the production UX engineering acceptance layer documented in
+`docs/V1_IMAGE_PRODUCTION_ACCEPTANCE.md`, including quality controls, limits, concurrency and recovery, mobile and
+keyboard accessibility, and fail-closed rollback. This evidence does not change the production Provider no-go decision.
+
 This document closes V1-15. The executable source of truth is
 `server/src/creative/imageCapabilityContract.js`; its public projection is returned inside each Image capability from
 `GET /api/creative/providers` under contract version `image-capability-v1`.

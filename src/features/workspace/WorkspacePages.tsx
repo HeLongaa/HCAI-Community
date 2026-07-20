@@ -90,7 +90,7 @@ export function PlaygroundPage({
   imageProviderCatalogState: 'loading' | 'ready' | 'error'
   imageInputAssets: ApiMediaAsset[]
   uploadImageInput: (file: File) => Promise<void>
-  runImageGeneration: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; strength: number; inputAssetIds: string[] }) => Promise<void>
+  runImageGeneration: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; quality: string; strength: number; inputAssetIds: string[] }) => Promise<void>
   musicWorkflow: MusicGenerationWorkflow
   videoWorkflow: VideoGenerationWorkflow
   signedIn: boolean
@@ -263,7 +263,7 @@ function StudioPage({
     providerId: string | null
     inputAssets: ApiMediaAsset[]
     uploadInput: (file: File) => Promise<void>
-    onGenerate: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; strength: number; inputAssetIds: string[] }) => Promise<void>
+    onGenerate: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; quality: string; strength: number; inputAssetIds: string[] }) => Promise<void>
   }
 }) {
   const isZh = isZhCopy(t)
@@ -274,6 +274,7 @@ function StudioPage({
   const [activeImageMode, setActiveImageMode] = useState('text_to_image')
   const [sourceAssetId, setSourceAssetId] = useState('')
   const [maskAssetId, setMaskAssetId] = useState('')
+  const [quality, setQuality] = useState('medium')
   const [strength, setStrength] = useState(0.7)
   const [uploadingInput, setUploadingInput] = useState(false)
   useEffect(() => {
@@ -295,6 +296,10 @@ function StudioPage({
   const displayedControls = providerGeneration
     ? (parameterDefinitions?.aspectRatio?.options?.map(String) ?? controls)
     : controls
+  const displayedQualities = parameterDefinitions?.quality?.options?.map(String) ?? ['low', 'medium', 'high']
+  const selectedQuality = displayedQualities.includes(quality)
+    ? quality
+    : (String(parameterDefinitions?.quality?.default ?? displayedQualities[0] ?? 'medium'))
   const selectableImageModes = providerGeneration?.capability?.modeContracts?.filter((modeContract) => modeContract.available) ?? []
   const selectedImageMode = selectableImageModes.some((modeContract) => modeContract.id === activeImageMode)
     ? activeImageMode
@@ -341,6 +346,7 @@ function StudioPage({
         mode: selectedImageMode,
         stylePreset: selectedOption,
         aspectRatio: activeControls.find((control) => displayedControls.includes(control)) ?? displayedControls[0] ?? '1:1',
+        quality: selectedQuality,
         strength,
         inputAssetIds,
       })
@@ -413,8 +419,13 @@ function StudioPage({
           <p>{subtitle}</p>
         </div>
       </section>
-      <section className="composer">
-        <textarea value={draftPrompt} onChange={(event) => setDraftPrompt(event.target.value)} />
+      <section className="composer" aria-label={textFor(t, 'Image generation controls', '图片生成控件')}>
+        <textarea
+          aria-label={textFor(t, 'Image prompt', '图片提示词')}
+          maxLength={providerGeneration?.capability?.maxPromptCharacters ?? 2000}
+          value={draftPrompt}
+          onChange={(event) => setDraftPrompt(event.target.value)}
+        />
         {providerGeneration && (
           <div className="chip-row image-mode-row">
             {(providerGeneration.capability?.modeContracts ?? []).map((modeContract) => {
@@ -508,6 +519,16 @@ function StudioPage({
           ))}
           </div>
         )}
+        {providerGeneration && activeModeContract?.parameters.includes('quality') && (
+          <label className="image-quality-control">
+            <span>{textFor(t, 'Image quality', '图片质量')}</span>
+            <select aria-label={textFor(t, 'Image quality', '图片质量')} value={selectedQuality} onChange={(event) => setQuality(event.target.value)}>
+              {displayedQualities.map((value) => (
+                <option value={value} key={value}>{textFor(t, `${value[0].toUpperCase()}${value.slice(1)} quality`, `${value === 'low' ? '低' : value === 'high' ? '高' : '中'}质量`)}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="button-row">
           {providerGeneration && <CreativeCostPreview t={t} workspace="image" mode={activeImageMode} providerId={providerGeneration.providerId} />}
           <button
@@ -564,7 +585,7 @@ function StudioPage({
           )}
         </div>
         {providerGeneration && (
-          <div className="provider-status-panel">
+          <div className="provider-status-panel" role="status" aria-live="polite" aria-label={textFor(t, 'Image generation status', '图片生成状态')}>
             <div>
               <span className={`status-dot ${lifecycleActive || providerGeneration.state.status === 'loading' ? 'loading' : selectedStatus === 'completed' ? 'done' : selectedStatus === 'failed' || selectedStatus === 'cancelled' ? 'error' : ''}`} />
               <strong>
@@ -621,7 +642,7 @@ function StudioPage({
       </section>
 
       {providerGeneration && (
-        <section className="image-generation-history">
+        <section className="image-generation-history" aria-label={textFor(t, 'Image generation history', '图片生成历史')}>
           <div className="image-history-header">
             <div>
               <span className="eyebrow">{textFor(t, 'Generation history', '生成历史')}</span>
@@ -631,6 +652,7 @@ function StudioPage({
               className="icon-button"
               type="button"
               title={textFor(t, 'Refresh history', '刷新历史')}
+              aria-label={textFor(t, 'Refresh history', '刷新历史')}
               onClick={() => void providerGeneration.refreshHistory()}
               disabled={providerGeneration.history.status === 'loading'}
             >
