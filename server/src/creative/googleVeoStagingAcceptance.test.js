@@ -29,6 +29,7 @@ const source = {
 }
 
 test('Google Veo staging acceptance completes one application-level call without retaining Provider payloads', async () => {
+  const startedAt = performance.now()
   const calls = []
   const fetchImpl = async (url, init = {}) => {
     calls.push({ url: String(url), authorization: init.headers?.authorization ?? init.headers?.Authorization ?? null })
@@ -49,6 +50,7 @@ test('Google Veo staging acceptance completes one application-level call without
     now: new Date(),
     sleepImpl: async () => {},
   })
+  assert.ok(performance.now() - startedAt < 5000, 'fixture acceptance must complete within 5 seconds')
   assert.equal(result.providerCalls, 1)
   assert.equal(result.lifecycleCompleted, true)
   assert.equal(result.outputScanPassed, true)

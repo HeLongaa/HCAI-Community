@@ -1,5 +1,13 @@
 # Quality Gates
 
+## Video Production UX Acceptance
+
+AI-VIDEO-02 engineering acceptance is defined by `config/video-production-ux-acceptance.json` and
+`docs/V1_VIDEO_PRODUCTION_ACCEPTANCE.md`. `npm run test:video-production-ux-acceptance` proves bounded fixture latency,
+duration/output/spend limits, private preview and clean download, lifecycle failure recovery, staging rollback without
+automatic fallback, and 390x844 keyboard/mobile accessibility. Production remains `no_go` pending AI-VIDEO-01
+credentialed acceptance and scoped approval evidence.
+
 ## Image Production UX Acceptance
 
 AI-IMG-02 engineering acceptance is defined by `config/image-production-ux-acceptance.json` and

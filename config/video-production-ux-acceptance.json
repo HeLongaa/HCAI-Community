@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "taskId": "AI-VIDEO-02",
+  "productionDecision": "no_go",
+  "provider": {
+    "id": "google-veo-3-1-fast",
+    "rollbackMode": "disabled",
+    "disabledErrorCode": "CREATIVE_PROVIDER_HTTP_CLIENT_DISABLED",
+    "automaticFailoverAllowed": false,
+    "silentMockFallbackAllowed": false
+  },
+  "latency": {
+    "fixtureAcceptanceMaximumMs": 5000,
+    "lifecycleTimeoutSeconds": 900,
+    "maximumStatusAttempts": 3
+  },
+  "limits": {
+    "maximumOutputsPerRequest": 1,
+    "maximumDurationSeconds": 8,
+    "perJobUsdCap": 1.2,
+    "dailyUsdCap": 20,
+    "monthlyUsdCap": 500
+  },
+  "release": {
+    "privateUntilScanClean": true,
+    "privatePreviewRequired": true,
+    "cleanDownloadRequired": true
+  },
+  "recovery": {
+    "providerFailureCloseoutRequired": true,
+    "timeoutCompensationRequired": true,
+    "partialReplayRequired": true,
+    "cancellationIdempotencyRequired": true
+  },
+  "mobile": {
+    "viewport": { "width": 390, "height": 844 },
+    "pageHorizontalOverflowAllowed": false,
+    "historyOwnsHorizontalScroll": true
+  },
+  "accessibility": {
+    "namedPromptRequired": true,
+    "liveStatusRequired": true,
+    "namedPreviewRequired": true,
+    "namedDownloadRequired": true,
+    "keyboardGenerateRequired": true
+  },
+  "evidence": [
+    "server/src/creative/videoProductionAcceptance.test.js",
+    "server/src/creative/googleVeoStagingAcceptance.test.js",
+    "server/src/creative/videoProviderLifecycle.test.js",
+    "e2e/video-capability.spec.ts",
+    "docs/V1_VIDEO_PRODUCTION_ACCEPTANCE.md"
+  ]
+}

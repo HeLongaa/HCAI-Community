@@ -61,7 +61,9 @@ test('Video Studio uses capability parameters and labels disabled Provider shell
   const generationResponse = page.waitForResponse((response) =>
     response.url().endsWith('/api/creative/generations') && response.request().method() === 'POST',
   )
-  await page.getByRole('button', { name: 'Generate video' }).click()
+  const generateButton = page.getByRole('button', { name: 'Generate video' })
+  await generateButton.focus()
+  await page.keyboard.press('Enter')
   const response = await generationResponse
   expect(response.ok()).toBeTruthy()
   expect(response.request().postDataJSON()).toMatchObject({
@@ -202,6 +204,8 @@ test('Video Studio preserves input roles and handles lifecycle, private preview,
   await page.getByRole('button', { name: 'Private preview' }).click()
   await expect(page.getByTestId('private-video-preview')).toBeVisible()
   await expect(page.getByTestId('private-video-preview')).toHaveAttribute('src', /^data:video\/mp4/)
+  await expect(page.getByTestId('private-video-preview')).toHaveAccessibleName('Private video preview')
+  await expect(page.getByRole('button', { name: 'Download output' })).toBeEnabled()
 
   await page.getByRole('tab', { name: 'Music Video' }).click()
   await page.getByLabel('Reference image (optional)').selectOption('image-clean')
@@ -221,6 +225,14 @@ test('Video Studio preserves input roles and handles lifecycle, private preview,
 
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.locator('.video-workbench')).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Video generation status' })).toHaveAttribute('aria-live', 'polite')
   await expect(page.locator('.video-history-table')).toBeVisible()
-  expect(await page.locator('.video-history-table').evaluate((element) => element.scrollWidth >= element.clientWidth)).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  for (const selector of ['.video-controls', '.video-preview-panel', '.video-history']) {
+    const box = await page.locator(selector).boundingBox()
+    expect(box, `${selector} must have layout bounds`).not.toBeNull()
+    expect(box!.x, `${selector} starts inside viewport`).toBeGreaterThanOrEqual(0)
+    expect(box!.x + box!.width, `${selector} ends inside viewport`).toBeLessThanOrEqual(390.5)
+  }
+  expect(await page.locator('.video-history-table').evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
 })
