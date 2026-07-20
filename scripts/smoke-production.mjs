@@ -302,24 +302,24 @@ check(
     videoCapabilityContract.models.backup.providerId === 'runway-gen-4-5' &&
     videoCapabilityContract.models.backup.enabled === false &&
     videoCapabilityContract.runtime.providerAdapterImplemented === true &&
-    videoCapabilityContract.runtime.providerAdapterRegistered === false &&
-    videoCapabilityContract.runtime.fixtureAdapterOnly === true &&
+    videoCapabilityContract.runtime.providerAdapterRegistered === true &&
+    videoCapabilityContract.runtime.fixtureAdapterOnly === false &&
     videoCapabilityContract.runtime.governedInputResolverImplemented === true &&
     videoCapabilityContract.runtime.inputBytesReaderImplemented === true &&
     videoCapabilityContract.runtime.lifecycleProjectionImplemented === true &&
     videoCapabilityContract.runtime.providerOperationPersistenceImplemented === true &&
-    videoCapabilityContract.runtime.providerHttpClientImplemented === false &&
+    videoCapabilityContract.runtime.providerHttpClientImplemented === true &&
     videoCapabilityContract.runtime.providerLifecycleRegistered === true &&
     videoCapabilityContract.runtime.providerLifecycleEnabled === false &&
     env.creativeGoogleVeoLifecycleEnabled === false &&
     env.creativeGoogleVeoLifecycleWorkerEnabled === false &&
-    videoCapabilityContract.runtime.fixtureStatusReaderOnly === true &&
+    videoCapabilityContract.runtime.fixtureStatusReaderOnly === false &&
     videoCapabilityContract.runtime.outputIngestionImplemented === true &&
     videoCapabilityContract.runtime.providerCostCloseoutImplemented === true &&
     videoCapabilityContract.runtime.automaticFailoverAllowed === false &&
-    videoCapabilityContract.runtime.realProviderCallsApproved === false &&
+    videoCapabilityContract.runtime.realProviderCallsApproved === true &&
     videoCapabilityContract.runtime.productionEnablementApproved === false,
-  'V1-27 registers a disabled fixture lifecycle without enabling Provider traffic',
+  'AI-VIDEO-01 registers guarded staging support without enabling Provider traffic by default',
 )
 check(
   checks,

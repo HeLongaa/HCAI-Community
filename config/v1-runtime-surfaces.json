@@ -210,9 +210,9 @@
       "id": "server-video-capability-contract",
       "area": "video-provider",
       "classification": "production_capable",
-      "paths": ["server/src/creative/videoCapabilityContract.js", "server/src/creative/videoInputAssets.js", "server/src/creative/googleVeoProvider.js", "server/src/creative/videoProviderLifecycle.js", "server/src/creative/providerRegistry.js", "server/src/creative/generationService.js", "server/src/creative/providerOutputFetcher.js", "server/src/creative/providerReplayIntegration.js", "server/src/repositories/seedRepository.js", "server/src/repositories/prismaRepository.js", "server/prisma/migrations/0030_video_provider_operations/migration.sql"],
-      "markers": ["video-capability-v1", "video-provider-operation-v1", "video-provider-lifecycle-v1", "CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED", "fixtureStatusReaderOnly"],
-      "productionDisposition": "retain_safe_operation_persistence_and_the_registered_but_disabled_fixture_lifecycle_while_http_clients_real_status_reads_callbacks_provider_credentials_and_production_enablement_remain_disabled",
+      "paths": ["server/src/creative/videoCapabilityContract.js", "server/src/creative/videoInputAssets.js", "server/src/creative/googleVeoProvider.js", "server/src/creative/googleVeoStagingAcceptance.js", "server/src/creative/videoProviderLifecycle.js", "server/src/creative/providerRegistry.js", "server/src/creative/generationService.js", "server/src/creative/providerOutputFetcher.js", "server/src/creative/providerReplayIntegration.js", "server/src/repositories/seedRepository.js", "server/src/repositories/prismaRepository.js", "server/prisma/migrations/0030_video_provider_operations/migration.sql"],
+      "markers": ["video-capability-v1", "video-provider-operation-v1", "video-provider-lifecycle-v2", "CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED", "createGoogleVeoHttpClient"],
+      "productionDisposition": "retain_guarded_video_staging_runtime_and_keep_all_veo_network_gates_credentials_and_production_enablement_disabled_outside_explicit_acceptance",
       "ownerTasks": ["V1-25", "V1-26", "V1-27", "V1-28", "V1-29", "V1-39"]
     },
     {

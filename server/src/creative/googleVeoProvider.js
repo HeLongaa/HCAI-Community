@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
 
+import { fileTypeFromBuffer } from 'file-type'
+
 import { HttpError } from '../common/errors/httpError.js'
 import { buildProviderLifecycleReplay } from './providerLifecycleReplay.js'
 import { safeProviderFailure } from './providerAdapterContract.js'
@@ -10,11 +12,11 @@ import {
 } from './videoInputAssets.js'
 
 const providerId = 'google-veo-3-1-fast'
-const modelId = 'veo-3.1-fast'
+const modelId = 'veo-3.1-fast-generate-001'
 const providerMode = 'google_video'
-const providerAccountRef = 'staging'
+const defaultProviderAccountRef = 'staging'
 const budgetScope = 'staging:google:video'
-const unitPriceUsd = 0.1
+const unitPriceUsd = 0.08
 const perJobCapUsd = 1.2
 const dailyCapUsd = 20
 const monthlyCapUsd = 500
@@ -25,6 +27,14 @@ const operationKeys = new Set(['id', 'state', 'output', 'error', 'usage'])
 const outputKeys = new Set(['uri', 'contentType'])
 const errorKeys = new Set(['code', 'message'])
 const usageKeys = new Set(['generatedSeconds', 'actualCostUsd'])
+const googleOperationNamePattern = /^projects\/[a-z][a-z0-9-]{4,62}\/(?:locations)\/us-central1\/publishers\/google\/models\/veo-3\.1-fast-generate-001\/operations\/[a-zA-Z0-9._-]{8,160}$/
+const projectIdPattern = /^[a-z][a-z0-9-]{4,62}$/
+const outputGcsUriPattern = /^gs:\/\/[a-z0-9][a-z0-9._-]{1,221}[a-z0-9]\/(?:[^?#\s]+\/)?$/
+const requestTimeoutMs = 60_000
+const statusTimeoutMs = 30_000
+const outputTimeoutMs = 120_000
+const responseBodyMaxBytes = 256 * 1024
+const outputMaxBytes = 250 * 1024 * 1024
 
 const stableHash = (value) => createHash('sha256').update(JSON.stringify(value ?? null)).digest('hex')
 const numberOrNull = (value) => {
@@ -58,6 +68,8 @@ const safeErrorText = (value) => String(value ?? '')
   .replace(/\s+/g, ' ')
   .trim()
   .slice(0, 240)
+
+const validOperationId = (value) => safeIdentifierPattern.test(value) || googleOperationNamePattern.test(value)
 
 const safeParameters = (request) => Object.fromEntries(
   ['aspectRatio', 'durationSeconds', 'motionPreset', 'outputFormat']
@@ -159,7 +171,7 @@ export const projectGoogleVeoOperation = (payload) => {
   exactKeys(payload, operationKeys, 'operation_invalid')
   const id = String(payload.id ?? '').trim()
   const state = String(payload.state ?? '').trim().toLowerCase()
-  if (!safeIdentifierPattern.test(id)) throw operationError('operation_id_invalid')
+  if (!validOperationId(id)) throw operationError('operation_id_invalid')
   if (!operationStates.has(state)) throw operationError('operation_state_invalid')
   return Object.freeze({
     id,
@@ -192,6 +204,7 @@ export const buildGoogleVeoProviderCostMetadata = ({
   now = new Date(),
 } = {}) => {
   const durationSeconds = request.parameters?.durationSeconds ?? 8
+  const providerAccountRef = String(source.CREATIVE_GOOGLE_VEO_PROVIDER_ACCOUNT_REF ?? defaultProviderAccountRef).trim() || defaultProviderAccountRef
   const estimateAmount = Number((durationSeconds * unitPriceUsd).toFixed(6))
   const configuredDailyCap = numberOrNull(source.CREATIVE_GOOGLE_VEO_DAILY_BUDGET_USD)
   const dailyCapAmount = configuredDailyCap == null ? dailyCapUsd : Math.min(configuredDailyCap, dailyCapUsd)
@@ -475,8 +488,206 @@ export const createGoogleVeoGeneration = async ({
   }
 }
 
+const enabledFlag = (source, key) => String(source[key] ?? '').trim().toLowerCase() === 'true'
+
+const assertGoogleVeoHttpRuntime = (source) => {
+  const runtimeEnv = String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? '').trim().toLowerCase()
+  const confirmed = String(source.CREATIVE_GOOGLE_VEO_CONFIRMATION ?? '').trim().toLowerCase() === 'staging-only'
+  if (
+    source.NODE_ENV !== 'production' ||
+    runtimeEnv !== 'staging' ||
+    !enabledFlag(source, 'CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED') ||
+    !enabledFlag(source, 'CREATIVE_GOOGLE_VEO_NETWORK_CALLS_ENABLED') ||
+    !confirmed
+  ) {
+    throw new HttpError(503, 'CREATIVE_PROVIDER_HTTP_CLIENT_DISABLED', `Creative Provider HTTP client is disabled: ${providerId}`)
+  }
+}
+
+const readBoundedText = async (response) => {
+  const text = await response.text()
+  if (Buffer.byteLength(text) > responseBodyMaxBytes) throw operationError('http_response_too_large')
+  return text
+}
+
+const parseJsonResponse = async (response) => {
+  const text = await readBoundedText(response)
+  let payload
+  try {
+    payload = text ? JSON.parse(text) : {}
+  } catch {
+    throw operationError('http_response_json_invalid')
+  }
+  if (!response.ok) {
+    const status = Number(response.status)
+    const category = status === 429 ? 'rate_limit' : status >= 500 ? 'provider_5xx' : 'provider_rejected'
+    throw new HttpError(status === 429 ? 429 : status >= 500 ? 503 : 422, 'CREATIVE_PROVIDER_HTTP_FAILED', 'Creative Provider HTTP request failed', {
+      providerId,
+      providerStatus: status,
+      providerCategory: category,
+      retryable: status === 429 || status >= 500,
+    })
+  }
+  return payload
+}
+
+const executeJson = async ({ fetchImpl, accessToken, url, body, timeoutMs }) => {
+  try {
+    const response = await fetchImpl(url, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        authorization: `Bearer ${accessToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+    return await parseJsonResponse(response)
+  } catch (error) {
+    if (error instanceof HttpError) throw error
+    if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+      throw new HttpError(504, 'CREATIVE_PROVIDER_TIMEOUT', 'Creative Provider HTTP request timed out', {
+        providerId,
+        providerCategory: 'timeout',
+        retryable: true,
+      })
+    }
+    throw new HttpError(502, 'CREATIVE_PROVIDER_HTTP_FAILED', 'Creative Provider HTTP request failed', {
+      providerId,
+      providerCategory: 'provider_5xx',
+      retryable: true,
+    })
+  }
+}
+
+export const buildGoogleVeoHttpRequestBody = (providerRequest, outputGcsUri) => Object.freeze({
+  instances: [Object.freeze({
+    prompt: providerRequest.instance.prompt,
+    ...(providerRequest.instance.image
+      ? {
+          image: Object.freeze({
+            bytesBase64Encoded: providerRequest.instance.image.bytesBase64,
+            mimeType: providerRequest.instance.image.mimeType,
+          }),
+        }
+      : {}),
+  })],
+  parameters: Object.freeze({
+    aspectRatio: providerRequest.parameters.aspectRatio,
+    durationSeconds: providerRequest.parameters.durationSeconds,
+    resolution: '720p',
+    sampleCount: 1,
+    generateAudio: false,
+    storageUri: outputGcsUri,
+  }),
+})
+
+export const projectGoogleVeoHttpOperation = (payload, { durationSeconds = null } = {}) => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw operationError('http_operation_invalid')
+  const id = String(payload.name ?? '').trim()
+  if (!googleOperationNamePattern.test(id)) throw operationError('http_operation_name_invalid')
+  if (payload.done !== true) return projectGoogleVeoOperation({ id, state: payload.done === false ? 'running' : 'queued' })
+  if (payload.error) {
+    const rpcCode = Number(payload.error.code)
+    return projectGoogleVeoOperation({
+      id,
+      state: rpcCode === 1 ? 'cancelled' : 'failed',
+      ...(rpcCode === 1 ? {} : { error: { code: `GOOGLE_RPC_${Number.isInteger(rpcCode) ? rpcCode : 'UNKNOWN'}`, message: safeErrorText(payload.error.message) || 'Google Veo operation failed' } }),
+    })
+  }
+  const videos = payload.response?.videos
+  if (Number(payload.response?.raiMediaFilteredCount ?? 0) > 0 && (!Array.isArray(videos) || videos.length === 0)) {
+    return projectGoogleVeoOperation({ id, state: 'failed', error: { code: 'MODERATION_BLOCKED', message: 'Google Veo output was blocked by safety policy' } })
+  }
+  if (!Array.isArray(videos) || videos.length !== 1) throw operationError('http_output_count_invalid')
+  const video = videos[0]
+  const generatedSeconds = [4, 6, 8].includes(durationSeconds) ? durationSeconds : null
+  return projectGoogleVeoOperation({
+    id,
+    state: 'succeeded',
+    output: { uri: video.gcsUri, contentType: video.mimeType },
+    ...(generatedSeconds == null ? {} : { usage: { generatedSeconds, actualCostUsd: null } }),
+  })
+}
+
+const parseGcsUri = (value) => {
+  const uri = String(value ?? '').trim()
+  if (!/^gs:\/\/[a-z0-9][a-z0-9._-]{1,221}[a-z0-9]\/[^?#\s]+$/.test(uri)) throw operationError('output_gcs_uri_invalid')
+  const slash = uri.indexOf('/', 5)
+  return { bucket: uri.slice(5, slash), object: uri.slice(slash + 1) }
+}
+
+const readBoundedOutput = async (response) => {
+  const declared = Number(response.headers?.get?.('content-length'))
+  if (Number.isFinite(declared) && declared > outputMaxBytes) throw new HttpError(413, 'CREATIVE_PROVIDER_OUTPUT_TOO_LARGE', 'Creative Provider output exceeds the size limit')
+  const buffer = Buffer.from(await response.arrayBuffer())
+  if (buffer.length === 0 || buffer.length > outputMaxBytes) throw new HttpError(buffer.length > outputMaxBytes ? 413 : 502, 'CREATIVE_PROVIDER_OUTPUT_INVALID', 'Creative Provider output failed validation')
+  return buffer
+}
+
+export const createGoogleVeoHttpClient = ({ source = process.env, fetchImpl = globalThis.fetch } = {}) => {
+  assertGoogleVeoHttpRuntime(source)
+  if (typeof fetchImpl !== 'function') throw new HttpError(500, 'CREATIVE_PROVIDER_HTTP_CLIENT_INVALID', 'Creative Provider HTTP client requires a fetch implementation')
+  const accessToken = String(source.CREATIVE_GOOGLE_VEO_ACCESS_TOKEN ?? '').trim()
+  const projectId = String(source.CREATIVE_GOOGLE_VEO_PROJECT_ID ?? '').trim()
+  const location = String(source.CREATIVE_GOOGLE_VEO_LOCATION ?? 'us-central1').trim().toLowerCase()
+  const outputGcsUri = String(source.CREATIVE_GOOGLE_VEO_OUTPUT_GCS_URI ?? '').trim()
+  if (!accessToken) throw new HttpError(503, 'CREATIVE_PROVIDER_SECRET_MISSING', `Creative Provider deployment secret is missing: ${providerId}`)
+  if (!projectIdPattern.test(projectId) || location !== 'us-central1' || !outputGcsUriPattern.test(outputGcsUri)) {
+    throw new HttpError(503, 'CREATIVE_PROVIDER_CONFIGURATION_INVALID', `Creative Provider configuration is invalid: ${providerId}`)
+  }
+  const modelBase = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}`
+  const durations = new Map()
+  const createVideo = async (providerRequest) => {
+    const payload = await executeJson({
+      fetchImpl,
+      accessToken,
+      url: `${modelBase}:predictLongRunning`,
+      body: buildGoogleVeoHttpRequestBody(providerRequest, outputGcsUri),
+      timeoutMs: requestTimeoutMs,
+    })
+    const projection = projectGoogleVeoHttpOperation(payload)
+    durations.set(projection.id, providerRequest.parameters.durationSeconds)
+    return projection
+  }
+  const getOperation = async (operationName) => projectGoogleVeoHttpOperation(await executeJson({
+    fetchImpl,
+    accessToken,
+    url: `${modelBase}:fetchPredictOperation`,
+    body: { operationName },
+    timeoutMs: statusTimeoutMs,
+  }), { durationSeconds: durations.get(operationName) })
+  const cancelOperation = async (operationName) => {
+    if (!googleOperationNamePattern.test(operationName)) throw operationError('operation_id_invalid')
+    await executeJson({
+      fetchImpl,
+      accessToken,
+      url: `https://${location}-aiplatform.googleapis.com/v1/${operationName}:cancel`,
+      body: {},
+      timeoutMs: statusTimeoutMs,
+    })
+    return projectGoogleVeoOperation({ id: operationName, state: 'cancelled' })
+  }
+  const fetchOutput = async ({ url, workspace, declaredContentType }) => {
+    if (workspace !== 'video' || declaredContentType !== 'video/mp4') throw operationError('output_contract_invalid')
+    const { bucket, object } = parseGcsUri(url)
+    const response = await fetchImpl(`https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(object)}?alt=media`, {
+      headers: { accept: 'video/mp4', authorization: `Bearer ${accessToken}` },
+      redirect: 'error',
+      signal: AbortSignal.timeout(outputTimeoutMs),
+    })
+    if (!response.ok) throw new HttpError(502, 'CREATIVE_PROVIDER_OUTPUT_FETCH_FAILED', 'Creative Provider output could not be fetched')
+    const body = await readBoundedOutput(response)
+    const detected = await fileTypeFromBuffer(body)
+    if (detected?.mime !== 'video/mp4') throw new HttpError(422, 'CREATIVE_PROVIDER_OUTPUT_TYPE_MISMATCH', 'Creative Provider output type did not match')
+    return { body, contentType: 'video/mp4', extension: 'mp4', sizeBytes: body.length, sha256: createHash('sha256').update(body).digest('hex') }
+  }
+  return Object.freeze({ providerId, createVideo, getOperation, cancelOperation, fetchOutput })
+}
+
 export const googleVeoProviderContract = Object.freeze({
-  schemaVersion: 'google-veo-fixture-boundary-v1',
+  schemaVersion: 'google-veo-staging-boundary-v2',
   providerId,
   providerMode,
   modelId,
@@ -484,7 +695,7 @@ export const googleVeoProviderContract = Object.freeze({
   perJobCapUsd,
   dailyCapUsd,
   monthlyCapUsd,
-  httpClientImplemented: false,
+  httpClientImplemented: true,
   networkCallsEnabled: false,
-  lifecycleRegistered: false,
+  lifecycleRegistered: true,
 })

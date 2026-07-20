@@ -131,17 +131,29 @@ const buildChatProvider = ({ id, label, mode, role }) => ({
   },
 })
 
-const buildVideoProvider = ({ id, label, mode, role }) => ({
-  id,
-  label,
-  mode,
-  enabled: false,
-  configured: false,
-  default: false,
-  fixtureInjectable: role === 'primary',
-  capabilities: [videoCapabilityForProvider(id)],
-  safeMetadata: {
-    externalCredentialsConfigured: false,
+const buildVideoProvider = ({ id, label, mode, role, source }) => {
+  const credentialConfigured = role === 'primary' && Boolean(String(source.CREATIVE_GOOGLE_VEO_ACCESS_TOKEN ?? '').trim())
+  const configurationComplete = role === 'primary' && [
+    source.CREATIVE_GOOGLE_VEO_PROJECT_ID,
+    source.CREATIVE_GOOGLE_VEO_OUTPUT_GCS_URI,
+  ].every((value) => Boolean(String(value ?? '').trim()))
+  const stagingRuntime = source.NODE_ENV === 'production' &&
+    String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? '').trim().toLowerCase() === 'staging'
+  const stagingConfirmed = String(source.CREATIVE_GOOGLE_VEO_CONFIRMATION ?? '').trim().toLowerCase() === 'staging-only'
+  const runtimeEnabled = role === 'primary' && stagingRuntime && stagingConfirmed && credentialConfigured && configurationComplete &&
+    enabledFlag(source, 'CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED') &&
+    enabledFlag(source, 'CREATIVE_GOOGLE_VEO_NETWORK_CALLS_ENABLED')
+  return {
+    id,
+    label,
+    mode,
+    enabled: runtimeEnabled,
+    configured: runtimeEnabled,
+    default: false,
+    fixtureInjectable: role === 'primary',
+    capabilities: [videoCapabilityForProvider(id)],
+    safeMetadata: {
+    externalCredentialsConfigured: credentialConfigured,
     persistsOutputs: true,
     costMetered: true,
     asynchronous: true,
@@ -150,26 +162,30 @@ const buildVideoProvider = ({ id, label, mode, role }) => ({
     approvalRequired: true,
     role,
     adapterImplemented: role === 'primary',
-    adapterRegistered: false,
-    fixtureAdapterOnly: role === 'primary',
+    adapterRegistered: runtimeEnabled,
+    fixtureAdapterOnly: role === 'primary' && !runtimeEnabled,
     inputResolverImplemented: role === 'primary',
     inputBytesReaderImplemented: role === 'primary',
     requestMapperImplemented: role === 'primary',
     lifecycleProjectionImplemented: role === 'primary',
     operationStatePersistenceImplemented: role === 'primary',
     lifecycleRegistered: role === 'primary',
-    lifecycleEnabled: false,
-    fixtureStatusReaderOnly: role === 'primary',
+    lifecycleEnabled: runtimeEnabled && enabledFlag(source, 'CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED'),
+    fixtureStatusReaderOnly: false,
     outputIngestionImplemented: role === 'primary',
     providerCostCloseoutImplemented: role === 'primary',
-    httpClientImplemented: false,
-    networkCallsEnabled: false,
+    httpClientImplemented: role === 'primary',
+    httpClientEnabled: runtimeEnabled,
+    networkCallsEnabled: runtimeEnabled,
     callbackEnabled: false,
-    pollingEnabled: false,
+    pollingEnabled: runtimeEnabled && enabledFlag(source, 'CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED'),
+    mutationClientImplemented: role === 'primary',
+    outputFetchClientImplemented: role === 'primary',
     automaticFailoverAllowed: false,
     c2paExpected: role === 'primary',
-  },
-})
+    },
+  }
+}
 
 const buildMusicProvider = ({ id, label, mode, role }) => ({
   id,
@@ -234,12 +250,14 @@ export const createCreativeProviderRegistry = (source = process.env) => {
         label: 'Google Veo 3.1 Fast',
         mode: 'google_video',
         role: 'primary',
+        source,
       }),
       buildVideoProvider({
         id: 'runway-gen-4-5',
         label: 'Runway Gen-4.5',
         mode: 'runway_video',
         role: 'backup',
+        source,
       }),
       buildMusicProvider({
         id: 'elevenlabs-music-v2-enterprise',

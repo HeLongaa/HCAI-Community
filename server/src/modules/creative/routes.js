@@ -58,6 +58,10 @@ import {
   createOpenAIImageGeneration,
   createOpenAIImageHttpClient,
 } from '../../creative/openaiImageProvider.js'
+import {
+  createGoogleVeoGeneration,
+  createGoogleVeoHttpClient,
+} from '../../creative/googleVeoProvider.js'
 import { quotaWindowFor } from '../../creative/policy.js'
 import {
   assertGenerationExecutionClaim,
@@ -115,19 +119,48 @@ export const registerCreativeRoutes = (router, options = {}) => {
         fetchImpl: options.openAIImageFetchImpl ?? globalThis.fetch,
       })
     : null
-  const runtimeAdapters = openAIImageClient
-    ? {
+  const googleVeoProvider = runtimeRegistry.providers.find((provider) => provider.id === 'google-veo-3-1-fast')
+  const googleVeoClient = googleVeoProvider?.enabled && googleVeoProvider?.configured
+    ? options.googleVeoClient ?? createGoogleVeoHttpClient({
+        source: executionSource,
+        fetchImpl: options.googleVeoFetchImpl ?? globalThis.fetch,
+      })
+    : null
+  const runtimeAdapters = {
+    ...(openAIImageClient
+      ? {
         'openai-gpt-image-2': (context) => createOpenAIImageGeneration({
           ...context,
           client: openAIImageClient,
         }),
-      }
-    : {}
+        }
+      : {}),
+    ...(googleVeoClient
+      ? {
+          'google-veo-3-1-fast': (context) => createGoogleVeoGeneration({
+            ...context,
+            client: googleVeoClient,
+          }),
+        }
+      : {}),
+  }
   const fixtureAdapters = { ...runtimeAdapters, ...(options.fixtureAdapters ?? {}) }
-  const providerMutationAdapters = options.providerMutationAdapters ?? {}
-  const providerOutputFetcher = options.providerOutputFetcher ?? null
+  const providerMutationAdapters = {
+    ...(googleVeoClient
+      ? {
+          'google-veo-3-1-fast': {
+            cancel: async ({ providerJobId }) => {
+              await googleVeoClient.cancelOperation(providerJobId)
+              return { cancelled: true, chargeConfirmed: false, providerStatus: 'cancelled' }
+            },
+          },
+        }
+      : {}),
+    ...(options.providerMutationAdapters ?? {}),
+  }
+  const providerOutputFetcher = options.providerOutputFetcher ?? googleVeoClient?.fetchOutput ?? null
   const providerControlPlane = options.providerControlPlane ?? (
-    openAIImageClient && routeRepositories.creativeProviderControls
+    (openAIImageClient || googleVeoClient) && routeRepositories.creativeProviderControls
       ? createProviderControlPlane({ repository: routeRepositories.creativeProviderControls })
       : null
   )

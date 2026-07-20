@@ -134,7 +134,13 @@ export const buildEnv = (source = process.env) => {
   const creativeProviderPollingWorkerEnabled = strictBoolFlag(source, 'CREATIVE_PROVIDER_POLLING_WORKER_ENABLED', false)
   const creativeGoogleVeoLifecycleEnabled = strictBoolFlag(source, 'CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED', false)
   const creativeGoogleVeoLifecycleWorkerEnabled = strictBoolFlag(source, 'CREATIVE_GOOGLE_VEO_LIFECYCLE_WORKER_ENABLED', false)
+  const creativeGoogleVeoHttpClientEnabled = strictBoolFlag(source, 'CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED', false)
+  const creativeGoogleVeoNetworkCallsEnabled = strictBoolFlag(source, 'CREATIVE_GOOGLE_VEO_NETWORK_CALLS_ENABLED', false)
   const creativeGoogleVeoConfirmation = String(source.CREATIVE_GOOGLE_VEO_CONFIRMATION ?? '').trim().toLowerCase()
+  const hasCreativeGoogleVeoAccessToken = Boolean(String(source.CREATIVE_GOOGLE_VEO_ACCESS_TOKEN ?? '').trim())
+  const creativeGoogleVeoProjectId = String(source.CREATIVE_GOOGLE_VEO_PROJECT_ID ?? '').trim()
+  const creativeGoogleVeoLocation = String(source.CREATIVE_GOOGLE_VEO_LOCATION ?? 'us-central1').trim().toLowerCase()
+  const creativeGoogleVeoOutputGcsUri = String(source.CREATIVE_GOOGLE_VEO_OUTPUT_GCS_URI ?? '').trim()
   const mediaScanRequestAdapter = getMediaScanRequestAdapter(source)
   const rateLimitStore = getRateLimitStore(source)
   const rateLimitRedisUrl = getRedisUrl(source)
@@ -398,6 +404,19 @@ export const buildEnv = (source = process.env) => {
   if (creativeGoogleVeoLifecycleWorkerEnabled && !creativeGoogleVeoLifecycleEnabled) {
     throw new Error('CREATIVE_GOOGLE_VEO_LIFECYCLE_WORKER_ENABLED requires CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED=true')
   }
+  if (creativeGoogleVeoNetworkCallsEnabled && !creativeGoogleVeoHttpClientEnabled) {
+    throw new Error('CREATIVE_GOOGLE_VEO_NETWORK_CALLS_ENABLED requires CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED=true')
+  }
+  if (creativeGoogleVeoHttpClientEnabled) {
+    if (nodeEnv !== 'production') throw new Error('CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED requires NODE_ENV=production')
+    if (creativeProviderRuntimeEnv !== 'staging') throw new Error('CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
+    if (!creativeGoogleVeoNetworkCallsEnabled) throw new Error('CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED requires CREATIVE_GOOGLE_VEO_NETWORK_CALLS_ENABLED=true')
+    if (creativeGoogleVeoConfirmation !== 'staging-only') throw new Error('CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED requires CREATIVE_GOOGLE_VEO_CONFIRMATION=staging-only')
+    if (!hasCreativeGoogleVeoAccessToken) throw new Error('CREATIVE_GOOGLE_VEO_ACCESS_TOKEN is required when the Veo HTTP client is enabled')
+    if (!/^[a-z][a-z0-9-]{4,62}$/.test(creativeGoogleVeoProjectId)) throw new Error('CREATIVE_GOOGLE_VEO_PROJECT_ID is invalid')
+    if (creativeGoogleVeoLocation !== 'us-central1') throw new Error('CREATIVE_GOOGLE_VEO_LOCATION must be us-central1')
+    if (!/^gs:\/\/[a-z0-9][a-z0-9._-]{1,221}[a-z0-9]\/(?:[^?#\s]+\/)?$/.test(creativeGoogleVeoOutputGcsUri)) throw new Error('CREATIVE_GOOGLE_VEO_OUTPUT_GCS_URI must be a gs:// prefix ending in /')
+  }
   if (creativeGoogleVeoLifecycleEnabled) {
     if (nodeEnv !== 'production') {
       throw new Error('CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED requires NODE_ENV=production')
@@ -405,8 +424,11 @@ export const buildEnv = (source = process.env) => {
     if (creativeProviderRuntimeEnv !== 'staging') {
       throw new Error('CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
     }
-    if (creativeGoogleVeoConfirmation !== 'fixture-only') {
-      throw new Error('CREATIVE_GOOGLE_VEO_CONFIRMATION must be fixture-only when lifecycle is enabled')
+    if (!['fixture-only', 'staging-only'].includes(creativeGoogleVeoConfirmation)) {
+      throw new Error('CREATIVE_GOOGLE_VEO_CONFIRMATION must be fixture-only or staging-only when lifecycle is enabled')
+    }
+    if (creativeGoogleVeoConfirmation === 'staging-only' && !creativeGoogleVeoHttpClientEnabled) {
+      throw new Error('real Veo lifecycle requires CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED=true')
     }
     if (creativeGoogleVeoPollIntervalSeconds >= creativeGoogleVeoTimeoutSeconds) {
       throw new Error('CREATIVE_GOOGLE_VEO_POLL_INTERVAL_SECONDS must be less than CREATIVE_GOOGLE_VEO_TIMEOUT_SECONDS')
@@ -545,6 +567,12 @@ export const buildEnv = (source = process.env) => {
     creativeProviderPollingRequireCreditReservation: boolFlag(source, 'CREATIVE_PROVIDER_POLLING_REQUIRE_CREDIT_RESERVATION', false),
     creativeGoogleVeoLifecycleEnabled,
     creativeGoogleVeoLifecycleWorkerEnabled,
+    creativeGoogleVeoHttpClientEnabled,
+    creativeGoogleVeoNetworkCallsEnabled,
+    hasCreativeGoogleVeoAccessToken,
+    creativeGoogleVeoProjectId,
+    creativeGoogleVeoLocation,
+    creativeGoogleVeoOutputGcsUri,
     creativeGoogleVeoPollIntervalSeconds,
     creativeGoogleVeoTimeoutSeconds,
     creativeGoogleVeoMaxStatusAttempts,

@@ -1,14 +1,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { safeProviderJobIdEvidence } from './generationRecords.js'
+
 import {
   assertGoogleVeoBudgetAllowsDispatch,
   buildGoogleVeoGenerationRequest,
+  buildGoogleVeoHttpRequestBody,
   buildGoogleVeoLifecycleReplay,
   buildGoogleVeoProviderCostMetadata,
   createGoogleVeoGeneration,
+  createGoogleVeoHttpClient,
   mapGoogleVeoOperationToCreativeGeneration,
   projectGoogleVeoOperation,
+  projectGoogleVeoHttpOperation,
 } from './googleVeoProvider.js'
 
 const actor = { id: 'video-user-1', handle: 'director' }
@@ -25,7 +30,7 @@ const request = (overrides = {}) => ({
 
 test('buildGoogleVeoGenerationRequest freezes one 720p MP4 request shape', () => {
   const text = buildGoogleVeoGenerationRequest(request())
-  assert.equal(text.model, 'veo-3.1-fast')
+  assert.equal(text.model, 'veo-3.1-fast-generate-001')
   assert.equal(text.operation, 'predict_long_running')
   assert.deepEqual(text.parameters, {
     aspectRatio: '16:9',
@@ -87,8 +92,12 @@ test('Google Veo cost metadata uses generated seconds and enforces frozen caps',
   })
   assert.equal(cost.estimate.billingUnit, 'generated_seconds')
   assert.equal(cost.estimate.quantity, 8)
-  assert.equal(cost.estimate.unitPrice, 0.1)
-  assert.equal(cost.estimate.amount, 0.8)
+  assert.equal(cost.estimate.unitPrice, 0.08)
+  assert.equal(cost.estimate.amount, 0.64)
+  assert.equal(buildGoogleVeoProviderCostMetadata({
+    request: request(),
+    source: { CREATIVE_GOOGLE_VEO_PROVIDER_ACCOUNT_REF: 'video-staging-account' },
+  }).providerAccountRef, 'video-staging-account')
   assert.equal(cost.budget.perJobCapAmount, 1.2)
   assert.equal(cost.budget.dailyCapAmount, 20)
   assert.equal(cost.budget.monthlyCapAmount, 500)
@@ -99,6 +108,81 @@ test('Google Veo cost metadata uses generated seconds and enforces frozen caps',
     source: { CREATIVE_GOOGLE_VEO_DAILY_SPEND_USD: '19.50' },
   })
   assert.throws(() => assertGoogleVeoBudgetAllowsDispatch(overBudget), { code: 'CREATIVE_PROVIDER_BUDGET_EXCEEDED' })
+})
+
+const realOperationName = 'projects/video-staging-123/locations/us-central1/publishers/google/models/veo-3.1-fast-generate-001/operations/operation-12345678'
+const realSource = {
+  NODE_ENV: 'production',
+  CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+  CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED: 'true',
+  CREATIVE_GOOGLE_VEO_NETWORK_CALLS_ENABLED: 'true',
+  CREATIVE_GOOGLE_VEO_CONFIRMATION: 'staging-only',
+  CREATIVE_GOOGLE_VEO_ACCESS_TOKEN: 'veo-test-access-token',
+  CREATIVE_GOOGLE_VEO_PROJECT_ID: 'video-staging-123',
+  CREATIVE_GOOGLE_VEO_LOCATION: 'us-central1',
+  CREATIVE_GOOGLE_VEO_OUTPUT_GCS_URI: 'gs://video-staging-output/veo/',
+}
+
+test('buildGoogleVeoHttpRequestBody maps the closed request to the official Vertex shape', () => {
+  const providerRequest = buildGoogleVeoGenerationRequest(request())
+  assert.deepEqual(buildGoogleVeoHttpRequestBody(providerRequest, realSource.CREATIVE_GOOGLE_VEO_OUTPUT_GCS_URI), {
+    instances: [{ prompt: request().prompt }],
+    parameters: {
+      aspectRatio: '16:9',
+      durationSeconds: 8,
+      resolution: '720p',
+      sampleCount: 1,
+      generateAudio: false,
+      storageUri: 'gs://video-staging-output/veo/',
+    },
+  })
+})
+
+test('projectGoogleVeoHttpOperation accepts official long-running responses and blocks extensions', () => {
+  assert.equal(projectGoogleVeoHttpOperation({ name: realOperationName }).state, 'queued')
+  assert.equal(projectGoogleVeoHttpOperation({ name: realOperationName, done: false }).state, 'running')
+  const completed = projectGoogleVeoHttpOperation({
+    name: realOperationName,
+    done: true,
+    response: { raiMediaFilteredCount: 0, videos: [{ gcsUri: 'gs://video-staging-output/veo/sample_0.mp4', mimeType: 'video/mp4' }] },
+  }, { durationSeconds: 8 })
+  assert.equal(completed.state, 'succeeded')
+  assert.equal(completed.usage.generatedSeconds, 8)
+  assert.throws(() => projectGoogleVeoHttpOperation({ name: 'operations/unsafe' }), { code: 'CREATIVE_VIDEO_PROVIDER_RESPONSE_INVALID' })
+})
+
+test('Google Veo operation resources remain pollable while unsafe Provider URLs are folded', () => {
+  assert.equal(safeProviderJobIdEvidence(realOperationName), realOperationName)
+  assert.match(safeProviderJobIdEvidence('https://provider.example/operation?token=secret'), /^redacted_[a-f0-9]{16}$/)
+})
+
+test('createGoogleVeoHttpClient gates and maps create, status, cancel, and private output reads', async () => {
+  assert.throws(() => createGoogleVeoHttpClient({ source: {} }), { code: 'CREATIVE_PROVIDER_HTTP_CLIENT_DISABLED' })
+  const calls = []
+  const mp4 = Buffer.from('00000018667479706d703432000000006d70343269736f6d', 'hex')
+  const fetchImpl = async (url, init = {}) => {
+    calls.push({ url: String(url), init })
+    if (String(url).includes(':predictLongRunning')) return new Response(JSON.stringify({ name: realOperationName }), { status: 200 })
+    if (String(url).includes(':fetchPredictOperation')) return new Response(JSON.stringify({
+      name: realOperationName,
+      done: true,
+      response: { videos: [{ gcsUri: 'gs://video-staging-output/veo/sample_0.mp4', mimeType: 'video/mp4' }] },
+    }), { status: 200 })
+    if (String(url).includes(':cancel')) return new Response('{}', { status: 200 })
+    return new Response(mp4, { status: 200, headers: { 'content-type': 'video/mp4' } })
+  }
+  const client = createGoogleVeoHttpClient({ source: realSource, fetchImpl })
+  const queued = await client.createVideo(buildGoogleVeoGenerationRequest(request()))
+  assert.equal(queued.id, realOperationName)
+  const status = await client.getOperation(realOperationName)
+  assert.equal(status.state, 'succeeded')
+  assert.equal(status.usage.generatedSeconds, 8)
+  const cancelled = await client.cancelOperation(realOperationName)
+  assert.equal(cancelled.state, 'cancelled')
+  const fetched = await client.fetchOutput({ url: 'gs://video-staging-output/veo/sample_0.mp4', workspace: 'video', declaredContentType: 'video/mp4' })
+  assert.equal(fetched.contentType, 'video/mp4')
+  assert.equal(calls.length, 4)
+  assert.equal(JSON.stringify(calls).includes(realSource.CREATIVE_GOOGLE_VEO_ACCESS_TOKEN), true)
 })
 
 test('mapGoogleVeoOperationToCreativeGeneration projects terminal output without raw payload retention', () => {
@@ -185,7 +269,7 @@ test('createGoogleVeoGeneration requires an injected fixture client and returns 
       },
     },
   })
-  assert.equal(providerRequest.safeFields.model, 'veo-3.1-fast')
+  assert.equal(providerRequest.safeFields.model, 'veo-3.1-fast-generate-001')
   assert.equal(generation.status, 'queued')
   assert.equal(generation.providerJobId, 'veo-job-dispatch')
   assert.deepEqual(generation.outputs, [])

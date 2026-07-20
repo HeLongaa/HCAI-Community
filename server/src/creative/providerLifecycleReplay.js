@@ -1,6 +1,5 @@
-import { createHash } from 'node:crypto'
-
 import { HttpError } from '../common/errors/httpError.js'
+import { safeProviderJobIdEvidence } from './generationRecords.js'
 
 export const terminalGenerationStatuses = Object.freeze(['completed', 'failed', 'cancelled', 'review_required'])
 
@@ -16,21 +15,6 @@ export const emptyLifecycleReplayActions = Object.freeze({
 })
 
 const hasOutputs = (generation) => Array.isArray(generation?.outputs) && generation.outputs.length > 0
-const safeProviderJobIdPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
-
-const stableHash = (value) =>
-  createHash('sha256')
-    .update(JSON.stringify(value ?? null))
-    .digest('hex')
-
-const safeProviderJobIdEvidence = (value) => {
-  if (value == null || value === '') return null
-  const normalized = String(value).trim()
-  return safeProviderJobIdPattern.test(normalized)
-    ? normalized
-    : `redacted_${stableHash(value).slice(0, 16)}`
-}
-
 const sideEffectActionsFor = (generation) => {
   const completedWithOutputs = ['completed', 'review_required'].includes(generation.status) && hasOutputs(generation)
   return {

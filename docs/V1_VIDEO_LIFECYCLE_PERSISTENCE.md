@@ -1,12 +1,12 @@
 # V1 Video Lifecycle Persistence
 
-V1-27 closes the fixture-only asynchronous Video lifecycle. Its sources of truth are
+V1-27 and AI-VIDEO-01 close the asynchronous Video lifecycle. Their sources of truth are
 `server/src/creative/videoProviderLifecycle.js`, the shared Provider replay/output/accounting services, and Prisma
 migration `0030_video_provider_operations`.
 
-Current decision: **the lifecycle is registered in the worker topology but disabled by default**. It accepts only an
-injected fixture `getOperation` or `cancelOperation` function. There is no Veo HTTP client, token, real status read,
-callback, external mutation, or production Provider path.
+Current decision: **the lifecycle and guarded Vertex client are registered but disabled by default**. Fixture injection
+remains supported. Real status, cancellation, and private GCS reads require the complete staging runtime envelope;
+there is no production Provider path.
 
 ## Safe Operation State
 
@@ -24,9 +24,10 @@ raw error. Terminal operation records follow the restricted Provider lifecycle r
 ## Lifecycle Execution
 
 - Dispatch keeps both generation and operation `queued`; the first running projection changes them to `running`.
-- Polling is enabled only by independent staging `CREATIVE_GOOGLE_VEO_LIFECYCLE_*` switches plus the literal
-  `fixture-only` confirmation.
-- Status clients are injected. Missing clients fail closed and no network implementation is registered.
+- Polling is enabled only by independent staging `CREATIVE_GOOGLE_VEO_LIFECYCLE_*` switches and either the fixture or
+  real staging confirmation. Real staging also requires the HTTP/network gates and credentials.
+- Missing clients fail closed. The dedicated worker constructs the Vertex client only when the real lifecycle worker
+  gate is enabled.
 - Job mismatches, unknown fields, duplicate/stale transitions, and replay conflicts fail before side effects.
 - Status failures have a bounded attempt budget; timeout and exhaustion produce safe terminal failure projections.
 - Each worker item is isolated so one invalid operation cannot terminate the sweep.
@@ -53,5 +54,5 @@ enablement remain separate approval-gated work owned by later acceptance and rel
 V1-29 records and executes the fixture-only staging matrix in `config/v1-video-staging-gate.json`. It covers direct
 Provider failure with reported cost, timeout, bounded status exhaustion, cancellation, partial replay, ordered inputs,
 scan/review private release, safe owner errors, internal operations evidence, and shutdown/rollback boundaries. The gate
-uses injected clients only and verifies that no default Video network client is registered. Real staging and production
-remain separately approval-gated.
+retains fixture coverage and verifies that the real client remains default-off. Real staging requires credentials and
+the acceptance envelope; production remains separately prohibited.

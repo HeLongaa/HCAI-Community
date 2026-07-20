@@ -3,10 +3,9 @@
 V1-25 freezes the Video product and Provider contract. The executable source of truth is
 `server/src/creative/videoCapabilityContract.js`.
 
-Current decision: **the contract, governed input resolver, deterministic Mock projection, and fixture-only Google Veo
-request/lifecycle boundary are implemented. Google Veo 3.1 Fast and Runway Gen-4.5 remain disabled catalog shells.
-No Video adapter is registered on the product path, and no HTTP client, credential, Provider state store, lifecycle
-worker, automatic failover, real call, or production enablement is approved**.
+Current decision: **the contract, governed input resolver, deterministic Mock projection, and guarded Google Veo
+request/lifecycle boundary are implemented. The real adapter registers only when every staging gate is satisfied.
+Runway, automatic failover, and production enablement remain disabled**.
 
 The Mock path produces a deterministic governed placeholder artifact for testing and accounting. It is not a real MP4
 render and must remain visibly classified as Mock until the later Video product workflow is implemented.
@@ -15,7 +14,7 @@ render and must remain visibly classified as Mock until the later Video product 
 
 | Role | Provider | Model | Current state |
 | --- | --- | --- | --- |
-| Primary | Google | Veo 3.1 Fast (`veo-3.1-fast`) | Disabled shell; fixture mapper/projection present, HTTP client absent |
+| Primary | Google | Veo 3.1 Fast (`veo-3.1-fast-generate-001`) | Guarded staging REST adapter; disabled by default |
 | Backup | Runway | Gen-4.5 (`gen-4.5`) | Disabled; no-training and retention terms required |
 
 Both Provider projections declare only text-to-video and image-to-video support. Music video is an application-owned
@@ -28,7 +27,7 @@ composition workflow and must not be represented as a native Provider capability
 - `music_video`: one governed audio track and an optional governed reference image.
 - Duplicate asset ids are rejected.
 - Ownership, purpose, upload, scanner, exact byte size, magic MIME, and lineage validation are implemented before the
-  fixture adapter boundary. Real dispatch remains unavailable.
+  Provider boundary. Real dispatch remains unavailable without the complete staging envelope.
 
 ## Parameters And Output
 
@@ -70,5 +69,5 @@ V1-28 implements the application-API Video workspace with capability-driven cont
 owner-scoped history, application polling/mutations, scanner-aware private preview, refresh-safe retry guidance, and
 explicit Mock/fixture/unavailable labels. V1-29 freezes and executes the 13-scenario fixture acceptance matrix in
 `config/v1-video-staging-gate.json`, including request mapping, ordered inputs, lifecycle, accounting, private release,
-failure handling, operational evidence, and rollback. Real staging evidence remains pending. Ordinary continuation
-language is never approval for a real Video Provider request.
+failure handling, operational evidence, and rollback. AI-VIDEO-01 adds the guarded Vertex/GCS client and application
+acceptance; real staging evidence remains pending credentials and the short-lived acceptance envelope.

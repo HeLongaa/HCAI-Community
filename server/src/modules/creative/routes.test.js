@@ -332,7 +332,7 @@ test('GET /api/creative/providers lists safe provider capability metadata', asyn
     assert.equal(veo.safeMetadata.adapterImplemented, true)
     assert.equal(veo.safeMetadata.adapterRegistered, false)
     assert.equal(veo.safeMetadata.fixtureAdapterOnly, true)
-    assert.equal(veo.safeMetadata.httpClientImplemented, false)
+    assert.equal(veo.safeMetadata.httpClientImplemented, true)
     assert.equal(veo.safeMetadata.networkCallsEnabled, false)
     assert.equal(veo.safeMetadata.lifecycleRegistered, true)
     assert.equal(veo.safeMetadata.lifecycleEnabled, false)
