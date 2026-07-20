@@ -123,7 +123,7 @@ import {
   hasProviderBudgetNotificationSourceKey,
 } from './providerBudgetNotificationWiring.js'
 import { sanitizeNotificationMetadata } from './notificationTargets.js'
-import { safeCreativeCreditMetadata, safeErrorPreview, safeProviderOperationMetadata } from '../creative/generationRecords.js'
+import { safeCreativeCreditMetadata, safeErrorPreview, safeProviderJobIdEvidence, safeProviderOperationMetadata } from '../creative/generationRecords.js'
 import { assetEligibleForWorkspace, assetMediaType, buildSafeAssetLibraryItem } from '../media/assetLibrary.js'
 import { resolveCreativeDeliveryAssets } from '../creative/deliveryAssets.js'
 import { buildGenerationBusinessMetrics } from '../creative/generationBusinessMetrics.js'
@@ -956,18 +956,8 @@ const auditArchiveManifests = []
 const auditRetentionDispositions = []
 const policyConsentByUserId = new Map()
 const operationLeaseStore = new Map()
-const safeProviderJobIdPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
-
 const stableHash = (value) =>
   createHash('sha256').update(JSON.stringify(value ?? null)).digest('hex')
-
-const safeProviderJobIdEvidence = (value) => {
-  if (value == null || value === '') return null
-  const normalized = String(value).trim()
-  return safeProviderJobIdPattern.test(normalized)
-    ? normalized
-    : `redacted_${stableHash(value).slice(0, 16)}`
-}
 
 const recordAudit = (actor, action, resourceType, resourceId = null, metadata = null) => {
   const event = appendSeedAuditIntegrity({

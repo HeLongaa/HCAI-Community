@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "taskId": "V1-29",
-  "title": "Video fixture-only staging acceptance gate",
+  "title": "Google Veo guarded staging acceptance gate",
   "primaryProviderId": "google-veo-3-1-fast",
   "backupProviderId": "runway-gen-4-5",
   "decision": {
     "fixtureAcceptance": "ready",
-    "externalCall": "no_go_pending_explicit_approval",
+    "externalCall": "approved_with_runtime_gates",
     "productionEnablement": "no_go",
-    "fixtureOnly": true,
+    "fixtureOnly": false,
     "ordinaryContinuationIsApproval": false
   },
   "limits": {
@@ -22,8 +22,8 @@
     "fixtureStatusAttempts": 3
   },
   "runtimeBoundary": {
-    "injectedClientsOnly": true,
-    "providerHttpClientImplemented": false,
+    "injectedClientsOnly": false,
+    "providerHttpClientImplemented": true,
     "providerCredentialsConfigured": false,
     "providerNetworkCallsEnabled": false,
     "providerLifecycleEnabledByDefault": false,
@@ -34,7 +34,7 @@
     {
       "id": "request_mapping",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_approval_required",
+      "realStagingStatus": "not_run_credentials_required",
       "evidence": [
         {
           "path": "server/src/creative/googleVeoProvider.test.js",
@@ -45,7 +45,7 @@
     {
       "id": "ordered_inputs",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_approval_required",
+      "realStagingStatus": "not_run_credentials_required",
       "evidence": [
         {
           "path": "server/src/creative/videoInputAssets.test.js",
@@ -60,7 +60,7 @@
     {
       "id": "queued_running",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_approval_required",
+      "realStagingStatus": "not_run_credentials_required",
       "evidence": [
         {
           "path": "server/src/creative/videoProviderLifecycle.test.js",
@@ -71,7 +71,7 @@
     {
       "id": "success_accounting",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_approval_required",
+      "realStagingStatus": "not_run_credentials_required",
       "evidence": [
         {
           "path": "server/src/creative/videoProviderLifecycle.test.js",
@@ -82,7 +82,7 @@
     {
       "id": "provider_failure",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_approval_required",
+      "realStagingStatus": "not_run_credentials_required",
       "evidence": [
         {
           "path": "server/src/creative/videoProviderLifecycle.test.js",
@@ -93,7 +93,7 @@
     {
       "id": "timeout",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_approval_required",
+      "realStagingStatus": "not_run_credentials_required",
       "evidence": [
         {
           "path": "server/src/creative/videoProviderLifecycle.test.js",
@@ -104,7 +104,7 @@
     {
       "id": "retry_exhaustion",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_approval_required",
+      "realStagingStatus": "not_run_credentials_required",
       "evidence": [
         {
           "path": "server/src/creative/videoProviderLifecycle.test.js",
@@ -115,7 +115,7 @@
     {
       "id": "cancellation",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_approval_required",
+      "realStagingStatus": "not_run_credentials_required",
       "evidence": [
         {
           "path": "server/src/creative/videoProviderLifecycle.test.js",
@@ -130,7 +130,7 @@
     {
       "id": "partial_replay",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_approval_required",
+      "realStagingStatus": "not_run_credentials_required",
       "evidence": [
         {
           "path": "server/src/creative/videoProviderLifecycle.test.js",
@@ -141,7 +141,7 @@
     {
       "id": "scan_review_private_release",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_approval_required",
+      "realStagingStatus": "not_run_credentials_required",
       "evidence": [
         {
           "path": "server/src/creative/userGenerationHistory.test.js",
@@ -156,7 +156,7 @@
     {
       "id": "user_visible_failure",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_approval_required",
+      "realStagingStatus": "not_run_credentials_required",
       "evidence": [
         {
           "path": "server/src/creative/userGenerationHistory.test.js",
@@ -171,7 +171,7 @@
     {
       "id": "operational_evidence",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_approval_required",
+      "realStagingStatus": "not_run_credentials_required",
       "evidence": [
         {
           "path": "server/src/repositories/providerLifecycleWiring.test.js",
@@ -186,7 +186,7 @@
     {
       "id": "kill_switch_and_rollback",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_approval_required",
+      "realStagingStatus": "not_run_credentials_required",
       "evidence": [
         {
           "path": "server/src/config/env.test.js",
@@ -217,6 +217,9 @@
   ],
   "commands": {
     "contractAndFixtures": "npm run test:v1-video-staging",
+    "providerReadiness": "npm run test:video-google-readiness",
+    "realPreflight": "npm run video:google:preflight",
+    "realAcceptance": "npm run video:google:acceptance",
     "productionSmoke": "npm run smoke:production",
     "pullRequestGate": "CI=1 npm run check:pr"
   },
@@ -224,6 +227,7 @@
     "docs/V1_VIDEO_STAGING_ACCEPTANCE.md",
     "docs/V1_VIDEO_CAPABILITY_CONTRACT.md",
     "docs/V1_VIDEO_LIFECYCLE_PERSISTENCE.md",
+    "scripts/check-google-veo-readiness.mjs",
     "docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md"
   ]
 }

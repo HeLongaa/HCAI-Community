@@ -100,7 +100,7 @@ test('getCreativeProviderCatalog exposes safe mock provider capabilities', () =>
   assert.equal(veo.safeMetadata.lifecycleProjectionImplemented, true)
   assert.equal(veo.safeMetadata.lifecycleRegistered, true)
   assert.equal(veo.safeMetadata.lifecycleEnabled, false)
-  assert.equal(veo.safeMetadata.httpClientImplemented, false)
+  assert.equal(veo.safeMetadata.httpClientImplemented, true)
   assert.equal(veo.safeMetadata.networkCallsEnabled, false)
   assert.equal(veo.safeMetadata.c2paExpected, true)
   assert.deepEqual(veo.capabilities[0].modes, ['text_to_video', 'image_to_video'])
@@ -295,7 +295,7 @@ test('executeCreativeGeneration runs the governed Veo fixture boundary and reser
   assert.deepEqual(controlCalls.map(([type]) => type), ['assert', 'result'])
   assert.equal(controlCalls[0][1].providerId, 'google-veo-3-1-fast')
   assert.equal(controlCalls[0][1].workspace, 'video')
-  assert.equal(controlCalls[0][1].estimateMicros, '800000')
+  assert.equal(controlCalls[0][1].estimateMicros, '640000')
   assert.equal(JSON.stringify(generated).includes(png.toString('base64')), false)
 })
 

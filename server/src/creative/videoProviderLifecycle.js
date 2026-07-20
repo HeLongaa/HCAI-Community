@@ -11,7 +11,7 @@ import {
 const providerId = 'google-veo-3-1-fast'
 const providerMode = 'google_video'
 const terminalOperationStatuses = new Set(['completed', 'failed', 'cancelled', 'timed_out'])
-const safeIdentifierPattern = /^[a-z0-9][a-z0-9:._-]{0,96}$/i
+const safeIdentifierPattern = /^(?:[a-z0-9][a-z0-9:._-]{0,96}|projects\/[a-z][a-z0-9-]{4,62}\/locations\/us-central1\/publishers\/google\/models\/veo-3\.1-fast-generate-001\/operations\/[a-zA-Z0-9._-]{8,160})$/i
 
 const stableHash = (value) => createHash('sha256').update(JSON.stringify(value ?? null)).digest('hex')
 const boolFlag = (source, envKey, camelKey) => {
@@ -78,7 +78,7 @@ export const buildVideoProviderOperationDispatch = ({
     sideEffectsComplete: false,
     safeMetadata: {
       schemaVersion: 'video-provider-operation-v1',
-      modelId: 'veo-3.1-fast',
+      modelId: 'veo-3.1-fast-generate-001',
       workspace: 'video',
       mode: generation.mode,
       inputAssetCount: generation.inputAssetIds?.length ?? 0,
@@ -161,7 +161,7 @@ const applyProjectedOperation = async ({
   now,
   fetchOutput,
   statusOverride = null,
-  sourceType = 'video_fixture_polling',
+  sourceType = 'video_provider_polling',
 }) => {
   const replay = buildGoogleVeoLifecycleReplay({
     currentRecord: generation,
@@ -256,7 +256,7 @@ export const pollVideoProviderOperationOnce = async ({
       now,
       fetchOutput,
       statusOverride: 'timed_out',
-      sourceType: 'video_fixture_timeout',
+      sourceType: 'video_provider_timeout',
     })
     return { polled: false, timedOut: true, failed: !result.applied.execution?.completed, ...result }
   }
@@ -280,7 +280,7 @@ export const pollVideoProviderOperationOnce = async ({
         source,
         now,
         fetchOutput,
-        sourceType: 'video_fixture_retry_exhausted',
+        sourceType: 'video_provider_retry_exhausted',
       })
       return { polled: true, retryExhausted: true, failed: !result.applied.execution?.completed, failure, ...result }
     }
@@ -411,17 +411,17 @@ export const cancelVideoProviderOperation = async ({
     source,
     now,
     fetchOutput: null,
-    sourceType: 'video_fixture_cancellation',
+    sourceType: 'video_provider_cancellation',
   })
   return { cancelled: true, duplicate: false, ...result }
 }
 
 export const videoProviderLifecycleContract = Object.freeze({
-  schemaVersion: 'video-provider-lifecycle-v1',
+  schemaVersion: 'video-provider-lifecycle-v2',
   providerId,
   providerMode,
   terminalOperationStatuses: [...terminalOperationStatuses],
-  fixtureStatusClientOnly: true,
-  httpClientImplemented: false,
+  fixtureStatusClientOnly: false,
+  httpClientImplemented: true,
   networkCallsEnabled: false,
 })

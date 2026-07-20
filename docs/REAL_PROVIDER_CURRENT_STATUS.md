@@ -75,10 +75,12 @@ generation. No browser code calls a Provider URL, and no Provider runtime, crede
 production switch is enabled by this UI work.
 
 V1-29 adds `config/v1-video-staging-gate.json`, `scripts/verify-v1-video-staging-gate.mjs`, and
-`docs/V1_VIDEO_STAGING_ACCEPTANCE.md`. The gate validates 13 concrete fixture scenarios and executes selected request,
-input, lifecycle, accounting, private-release, failure, worker, and operations tests. It also proves the Veo boundary
-still requires injected clients and defines no fetch path. This completes fixture acceptance only; no real staging call,
-credential, paid traffic, callback, default status client, automatic Runway routing, or production approval exists.
+`docs/V1_VIDEO_STAGING_ACCEPTANCE.md`. AI-VIDEO-01 extends that gate with the guarded Vertex REST boundary for stable
+`veo-3.1-fast-generate-001`: create, fetch-operation, best-effort cancel, authenticated private GCS download, worker
+wiring, strict long-operation projection, current USD 0.08/second 720p no-audio pricing, and a one-call/four-second
+application acceptance harness. All network and lifecycle switches remain false by default. Real staging evidence is
+blocked by the Google Cloud project, short-lived access token, private GCS prefix, and approval envelope; automatic
+Runway routing and production enablement remain prohibited.
 
 V1-30 adds `server/src/creative/musicCapabilityContract.js`. It freezes instrumental and lyrics-to-song modes,
 closed duration/genre/mood/tempo/language/MP3 parameters, a three-minute maximum, application-owned asynchronous state,

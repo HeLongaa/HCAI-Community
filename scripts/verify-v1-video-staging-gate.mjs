@@ -45,9 +45,9 @@ addCheck('manifest is owned by V1-29', manifest.taskId === 'V1-29', manifest.tas
 addCheck('Google Veo 3.1 Fast is the primary target', manifest.primaryProviderId === 'google-veo-3-1-fast', manifest.primaryProviderId)
 addCheck('Runway remains a separately controlled backup', manifest.backupProviderId === 'runway-gen-4-5', manifest.backupProviderId)
 addCheck('fixture acceptance is ready', manifest.decision.fixtureAcceptance === 'ready', manifest.decision.fixtureAcceptance)
-addCheck('external calls remain no-go before approval', manifest.decision.externalCall === 'no_go_pending_explicit_approval', manifest.decision.externalCall)
+addCheck('external calls require guarded staging runtime', manifest.decision.externalCall === 'approved_with_runtime_gates', manifest.decision.externalCall)
 addCheck('production enablement remains no-go', manifest.decision.productionEnablement === 'no_go', manifest.decision.productionEnablement)
-addCheck('the gate is fixture-only', manifest.decision.fixtureOnly === true, String(manifest.decision.fixtureOnly))
+addCheck('the gate includes a real staging adapter', manifest.decision.fixtureOnly === false, String(manifest.decision.fixtureOnly))
 addCheck('ordinary continuation is not approval', manifest.decision.ordinaryContinuationIsApproval === false, String(manifest.decision.ordinaryContinuationIsApproval))
 
 addCheck('one call is the maximum per future approval', manifest.limits.maximumCallsPerApproval === 1, String(manifest.limits.maximumCallsPerApproval))
@@ -60,8 +60,8 @@ addCheck('long-job timeout remains 900 seconds', manifest.limits.lifecycleTimeou
 addCheck('fixture status retries are bounded', manifest.limits.fixtureStatusAttempts === 3, String(manifest.limits.fixtureStatusAttempts))
 
 for (const [key, expected] of Object.entries({
-  injectedClientsOnly: true,
-  providerHttpClientImplemented: false,
+  injectedClientsOnly: false,
+  providerHttpClientImplemented: true,
   providerCredentialsConfigured: false,
   providerNetworkCallsEnabled: false,
   providerLifecycleEnabledByDefault: false,
@@ -76,7 +76,7 @@ addCheck('all V1-29 scenarios are enumerated', sameMembers(scenarioIds, expected
 addCheck('scenario ids are unique', new Set(scenarioIds).size === scenarioIds.length, `${scenarioIds.length} scenarios`)
 for (const scenario of manifest.requiredScenarios) {
   addCheck(`${scenario.id} has fixture coverage`, scenario.fixtureStatus === 'covered', scenario.fixtureStatus)
-  addCheck(`${scenario.id} real staging remains approval-gated`, scenario.realStagingStatus === 'not_run_approval_required', scenario.realStagingStatus)
+  addCheck(`${scenario.id} real staging awaits credentials`, scenario.realStagingStatus === 'not_run_credentials_required', scenario.realStagingStatus)
   addCheck(`${scenario.id} has evidence`, Array.isArray(scenario.evidence) && scenario.evidence.length > 0, `${scenario.evidence?.length ?? 0} source(s)`)
   for (const evidence of scenario.evidence ?? []) {
     const filePath = path.join(root, evidence.path)
@@ -98,6 +98,7 @@ for (const document of manifest.documents) {
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
 const command = packageJson.scripts['test:v1-video-staging'] ?? ''
 addCheck('package exposes the V1-29 gate command', command.includes('verify-v1-video-staging-gate.mjs'), command)
+addCheck('package exposes Google Veo readiness', packageJson.scripts['test:video-google-readiness']?.includes('check-google-veo-readiness.mjs'), packageJson.scripts['test:video-google-readiness'])
 for (const fixture of [
   'googleVeoProvider.test.js',
   'videoInputAssets.test.js',
@@ -114,10 +115,10 @@ addCheck('PR gate still includes browser acceptance', packageJson.scripts['check
 const veoSource = fs.readFileSync(path.join(root, 'server/src/creative/googleVeoProvider.js'), 'utf8')
 const lifecycleSource = fs.readFileSync(path.join(root, 'server/src/creative/videoProviderLifecycle.js'), 'utf8')
 const workerSource = fs.readFileSync(path.join(root, 'server/src/operations/workerJobs.js'), 'utf8')
-addCheck('Veo adapter requires an injected client', veoSource.includes('Google Veo client must be injected; no default network client is registered'))
-addCheck('Veo adapter does not define fetch calls', !/\bfetch\s*\(/.test(veoSource))
+addCheck('Veo adapter retains injected-client support', veoSource.includes('Google Veo client must be injected; no default network client is registered'))
+addCheck('Veo guarded HTTP client is implemented', veoSource.includes('createGoogleVeoHttpClient'))
 addCheck('Video lifecycle does not define fetch calls', !/\bfetch\s*\(/.test(lifecycleSource))
-addCheck('Video lifecycle contract declares network disabled', lifecycleSource.includes('networkCallsEnabled: false'))
+addCheck('Video lifecycle contract declares HTTP support', lifecycleSource.includes('httpClientImplemented: true'))
 addCheck('worker receives only an injected Video status client', workerSource.includes('statusClient: options.videoProviderStatusClient ?? null'))
 
 const failed = checks.filter((item) => !item.pass)

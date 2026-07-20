@@ -6,7 +6,7 @@ export const promptPreview = (prompt) => String(prompt ?? '').replace(/\s+/g, ' 
 
 export const sha256 = (value) => createHash('sha256').update(String(value ?? '')).digest('hex')
 
-const safeProviderJobIdPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
+const safeProviderJobIdPattern = /^(?:[a-z0-9][a-z0-9:_-]{0,96}|projects\/[a-z][a-z0-9-]{4,62}\/locations\/us-central1\/publishers\/google\/models\/veo-3\.1-fast-generate-001\/operations\/[a-zA-Z0-9._-]{8,160})$/i
 
 const stableEvidenceHash = (value) =>
   createHash('sha256').update(JSON.stringify(value ?? null)).digest('hex')

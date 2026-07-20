@@ -91,6 +91,12 @@ test('buildEnv allows development without managed token secrets', () => {
     creativeProviderPollingRequireCreditReservation: false,
     creativeGoogleVeoLifecycleEnabled: false,
     creativeGoogleVeoLifecycleWorkerEnabled: false,
+    creativeGoogleVeoHttpClientEnabled: false,
+    creativeGoogleVeoNetworkCallsEnabled: false,
+    hasCreativeGoogleVeoAccessToken: false,
+    creativeGoogleVeoProjectId: '',
+    creativeGoogleVeoLocation: 'us-central1',
+    creativeGoogleVeoOutputGcsUri: '',
     creativeGoogleVeoPollIntervalSeconds: 15,
     creativeGoogleVeoTimeoutSeconds: 900,
     creativeGoogleVeoMaxStatusAttempts: 20,
@@ -321,6 +327,31 @@ test('buildEnv keeps the fixture-only Veo lifecycle behind independent staging s
       CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED: 'true',
     }),
     /CREATIVE_GOOGLE_VEO_CONFIRMATION must be fixture-only/,
+  )
+})
+
+test('buildEnv enables real Veo staging only behind complete HTTP, credential, and GCS gates', () => {
+  const env = buildEnv({
+    NODE_ENV: 'production',
+    ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED: 'true',
+    CREATIVE_GOOGLE_VEO_NETWORK_CALLS_ENABLED: 'true',
+    CREATIVE_GOOGLE_VEO_CONFIRMATION: 'staging-only',
+    CREATIVE_GOOGLE_VEO_ACCESS_TOKEN: 'veo-fixture-access-token',
+    CREATIVE_GOOGLE_VEO_PROJECT_ID: 'video-staging-123',
+    CREATIVE_GOOGLE_VEO_LOCATION: 'us-central1',
+    CREATIVE_GOOGLE_VEO_OUTPUT_GCS_URI: 'gs://video-staging-output/veo/',
+    CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED: 'true',
+    CREATIVE_GOOGLE_VEO_LIFECYCLE_WORKER_ENABLED: 'true',
+  })
+  assert.equal(env.creativeGoogleVeoHttpClientEnabled, true)
+  assert.equal(env.creativeGoogleVeoNetworkCallsEnabled, true)
+  assert.equal(env.hasCreativeGoogleVeoAccessToken, true)
+  assert.equal(env.creativeGoogleVeoLifecycleWorkerEnabled, true)
+  assert.throws(
+    () => buildEnv({ CREATIVE_GOOGLE_VEO_NETWORK_CALLS_ENABLED: 'true' }),
+    /requires CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED=true/,
   )
 })
 

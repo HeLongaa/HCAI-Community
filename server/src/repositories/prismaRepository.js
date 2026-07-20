@@ -76,7 +76,7 @@ import { dispatchMediaScanAlert } from '../media/alertDispatcher.js'
 import { writeStorageObject } from '../storage/objectWriter.js'
 import { writeJsonArchive } from '../storage/archiveWriter.js'
 import { createPrismaChatRepository } from '../chat/prismaChatRepository.js'
-import { safeProviderOperationMetadata } from '../creative/generationRecords.js'
+import { safeProviderJobIdEvidence, safeProviderOperationMetadata } from '../creative/generationRecords.js'
 import { assetEligibleForWorkspace, assetMediaType, buildSafeAssetLibraryItem } from '../media/assetLibrary.js'
 import { createPrismaMediaBusinessMetricsRepository } from '../media/prismaMediaBusinessMetricsRepository.js'
 import { resolveCreativeDeliveryAssets } from '../creative/deliveryAssets.js'
@@ -101,18 +101,8 @@ import {
 } from '../accounting/internalAccounting.js'
 
 const { Prisma, PrismaClient } = prismaClientPkg
-const safeProviderJobIdPattern = /^[a-z0-9][a-z0-9:_-]{0,96}$/i
-
 const stableHash = (value) =>
   createHash('sha256').update(JSON.stringify(value ?? null)).digest('hex')
-
-const safeProviderJobIdEvidence = (value) => {
-  if (value == null || value === '') return null
-  const normalized = String(value).trim()
-  return safeProviderJobIdPattern.test(normalized)
-    ? normalized
-    : `redacted_${stableHash(value).slice(0, 16)}`
-}
 
 import {
   applySecurityAlertDispositions,
