@@ -344,7 +344,7 @@ export function VideoStudioPage({
         </section>
 
         <section className="video-preview-panel" aria-label={textFor(t, 'Video preview', '视频预览')}>
-          <div className="video-preview-toolbar">
+          <div className="video-preview-toolbar" role="status" aria-live="polite" aria-label={textFor(t, 'Video generation status', '视频生成状态')}>
             <div>
               <span className={`status-dot ${statusTone(selectedGeneration?.status ?? null)}`} />
               <strong>{labelForStatus(selectedGeneration?.status ?? null, isZh)}</strong>
@@ -354,7 +354,7 @@ export function VideoStudioPage({
 
           <div className={`video-preview-stage ratio-${aspectRatio.replace(':', '-')}`}>
             {workflow.preview.status === 'ready' && workflow.preview.url ? (
-              <video controls src={workflow.preview.url} data-testid="private-video-preview" />
+              <video controls src={workflow.preview.url} data-testid="private-video-preview" aria-label={textFor(t, 'Private video preview', '私有视频预览')} />
             ) : (
               <>
                 <img src={mockVisual} alt="" />
@@ -408,7 +408,7 @@ export function VideoStudioPage({
               </button>
             )}
             {selectedOutput && (
-              <button className="icon-button" type="button" title={textFor(t, 'Download output', '下载输出')} disabled={actionBusy || !selectedGeneration?.actions.download.available} onClick={() => void workflow.downloadAsset(selectedOutput.assetId)}>
+              <button className="icon-button" type="button" title={textFor(t, 'Download output', '下载输出')} aria-label={textFor(t, 'Download output', '下载输出')} disabled={actionBusy || !selectedGeneration?.actions.download.available} onClick={() => void workflow.downloadAsset(selectedOutput.assetId)}>
                 <Download size={16} />
               </button>
             )}
@@ -427,13 +427,13 @@ export function VideoStudioPage({
         </section>
       </div>
 
-      <section className="video-history">
+      <section className="video-history" aria-label={textFor(t, 'Video generation history', '视频生成历史')}>
         <div className="video-history-header">
           <div>
             <span className="eyebrow">{textFor(t, 'Generation history', '生成历史')}</span>
             <h2>{textFor(t, 'Video jobs', '视频任务')}</h2>
           </div>
-          <button className="icon-button" type="button" title={textFor(t, 'Refresh history', '刷新历史')} disabled={workflow.history.status === 'loading'} onClick={() => void workflow.refreshHistory()}>
+          <button className="icon-button" type="button" title={textFor(t, 'Refresh history', '刷新历史')} aria-label={textFor(t, 'Refresh history', '刷新历史')} disabled={workflow.history.status === 'loading'} onClick={() => void workflow.refreshHistory()}>
             <RefreshCcw size={17} />
           </button>
         </div>
