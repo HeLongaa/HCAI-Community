@@ -6,6 +6,24 @@ Use GitHub **Secrets** for credentials, signing secrets, tokens, private keys, a
 
 For the deployment sequence, process topology, staging rehearsal, and rollback boundary that use these values, see `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md`.
 
+## RELEASE-01 Isolated Rehearsal
+
+The `infrastructure-rehearsal` workflow job uses a protected GitHub Environment and dedicated resources only. Configure:
+
+| Kind | Name | Requirement |
+| --- | --- | --- |
+| Variable | `RELEASE_REHEARSAL_CONFIRMATION` | Exact value `release-01-isolated-rehearsal` |
+| Secret | `RELEASE_REHEARSAL_DATABASE_URL` | Dedicated PostgreSQL source database whose name contains `rehearsal` |
+| Secret | `RELEASE_REHEARSAL_RESTORE_DATABASE_URL` | Different dedicated PostgreSQL restore database whose name contains `rehearsal` |
+| Secret | `RELEASE_REHEARSAL_REDIS_URL` | Dedicated Redis-compatible endpoint or database |
+| Variable | `RELEASE_REHEARSAL_REDIS_RECOVERY_COMMAND_JSON` | JSON argv using an allowlisted executable; target arguments must contain `rehearsal` and credentials must come from the environment |
+| Variable | `RELEASE_REHEARSAL_PRIMARY_BUCKET` | Dedicated S3 bucket whose name contains `rehearsal` |
+| Variable | `RELEASE_REHEARSAL_BACKUP_BUCKET` | Different dedicated S3 bucket whose name contains `rehearsal` |
+
+The job reuses the S3 endpoint, region, and credential secrets below. Require an environment reviewer before execution.
+Do not configure live application database names, production Redis keys, or a production media prefix. See
+`docs/RELEASE_INFRASTRUCTURE_REHEARSAL.md` for exact isolation and evidence rules.
+
 ## Required Secrets
 
 At least one auth secret is required:

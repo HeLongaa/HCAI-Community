@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "taskId": "RELEASE-01",
+  "scope": "isolated_release_rehearsal",
+  "policyDocument": "docs/RELEASE_INFRASTRUCTURE_REHEARSAL.md",
+  "composeFile": "infra/release-rehearsal.compose.yml",
+  "evidenceDirectory": ".artifacts/release-infrastructure",
+  "dependencies": ["INFRA-01", "RELEASE-00", "MEDIA-03", "AUTH-02", "OBS-03"],
+  "profiles": ["local", "env"],
+  "confirmation": "release-01-isolated-rehearsal",
+  "isolation": {
+    "databaseNameIncludes": "rehearsal",
+    "bucketNameIncludes": "rehearsal",
+    "redisRecoveryTargetIncludes": "rehearsal",
+    "objectPrefix": "release-01-rehearsal/",
+    "redisPrefix": "newchat:release-01-rehearsal",
+    "sourceAndRestoreDatabasesMustDiffer": true
+  },
+  "services": {
+    "postgres": {
+      "image": "postgres:16-alpine",
+      "migrationCommand": "prisma migrate deploy",
+      "backupFormat": "pg_dump custom",
+      "restoreCommand": "pg_restore --clean --if-exists",
+      "requiredChecks": ["all_migrations_applied", "permissions_seeded", "marker_restored", "backup_checksum_verified"]
+    },
+    "redis": {
+      "image": "redis:7-alpine",
+      "persistence": "appendonly yes",
+      "requiredChecks": ["ping", "marker_written", "service_restarted", "marker_restored"]
+    },
+    "objectStorage": {
+      "image": "minio/minio:RELEASE.2025-09-07T16-13-09Z",
+      "clientImage": "minio/mc:RELEASE.2025-08-13T08-35-41Z",
+      "requiredBuckets": ["newchat-release-primary", "newchat-release-backup"],
+      "requiredChecks": ["database_backup_uploaded", "backup_download_checksum_verified", "marker_deleted", "marker_restored"]
+    }
+  },
+  "objectives": {
+    "overallRtoSeconds": 900,
+    "databaseRestoreRtoSeconds": 600,
+    "redisRecoveryRtoSeconds": 120,
+    "objectRestoreRtoSeconds": 300,
+    "rpoSeconds": 300,
+    "maximumEvidenceBytes": 1048576
+  },
+  "evidence": {
+    "schemaVersion": "release-infrastructure-rehearsal-evidence-v1",
+    "requiredSections": ["run", "targets", "database", "redis", "objectStorage", "checks", "result", "receiptHash"],
+    "forbiddenFields": ["password", "secret", "token", "authorization", "databaseUrl", "redisUrl", "accessKeyId", "secretAccessKey"],
+    "receiptHashAlgorithm": "sha256",
+    "mustFailClosed": true
+  },
+  "commands": {
+    "verify": "npm run test:release-infrastructure",
+    "localRehearsal": "npm run release:infrastructure:rehearse",
+    "environmentPreflight": "npm run release:infrastructure:preflight",
+    "environmentRehearsal": "npm run release:infrastructure:rehearse:env"
+  }
+}
