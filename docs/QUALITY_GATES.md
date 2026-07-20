@@ -1,5 +1,13 @@
 # Quality Gates
 
+## Image Production UX Acceptance
+
+AI-IMG-02 engineering acceptance is defined by `config/image-production-ux-acceptance.json` and
+`docs/V1_IMAGE_PRODUCTION_ACCEPTANCE.md`. `npm run test:image-production-ux-acceptance` proves closed quality and limit
+mapping, budget fail-closed behavior, concurrent duplicate suppression and recovery, staging rollback without Mock
+fallback, and 390x844 keyboard/mobile accessibility. Production remains `no_go` pending AI-IMG-01 credentialed
+acceptance and scoped approval evidence.
+
 ## Chat Production UX Acceptance
 
 AI-CHAT-02 engineering acceptance is defined by `config/chat-production-ux-acceptance.json` and

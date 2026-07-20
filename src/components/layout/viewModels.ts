@@ -153,7 +153,7 @@ export type WorkspaceViewModel = {
   imageProviderCatalogState: 'loading' | 'ready' | 'error'
   imageInputAssets: ApiMediaAsset[]
   uploadImageInput: (file: File) => Promise<void>
-  runImageGeneration: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; strength: number; inputAssetIds: string[] }) => Promise<void>
+  runImageGeneration: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; quality: string; strength: number; inputAssetIds: string[] }) => Promise<void>
   musicWorkflow: MusicGenerationWorkflow
   videoWorkflow: VideoGenerationWorkflow
   playgroundWorkspace: PlaygroundMode

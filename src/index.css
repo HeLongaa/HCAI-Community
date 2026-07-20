@@ -3399,6 +3399,20 @@ kbd {
   min-width: 0;
 }
 
+.image-quality-control {
+  width: min(240px, 100%);
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.image-quality-control select {
+  width: 100%;
+  min-width: 0;
+}
+
 .visual-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
