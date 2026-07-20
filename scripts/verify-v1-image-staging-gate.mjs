@@ -41,7 +41,7 @@ addCheck('OpenAI GPT Image 2 is the primary staging target', manifest.primaryPro
 addCheck('fixture readiness is recorded', manifest.decision.fixtureReadiness === 'ready', manifest.decision.fixtureReadiness)
 addCheck('guarded staging calls reflect explicit approval', manifest.decision.externalCall === 'go_for_guarded_staging_acceptance', manifest.decision.externalCall)
 addCheck('explicit user approval is recorded', manifest.decision.approvalStatus === 'explicit_user_approval_recorded', manifest.decision.approvalStatus)
-addCheck('credentialed acceptance remains pending', manifest.decision.credentialedAcceptance === 'pending_environment_token', manifest.decision.credentialedAcceptance)
+addCheck('credentialed acceptance records the HCAI Router pass', manifest.decision.credentialedAcceptance === 'passed_hcai_router', manifest.decision.credentialedAcceptance)
 addCheck('production enablement remains no-go', manifest.decision.productionEnablement === 'no_go', manifest.decision.productionEnablement)
 addCheck('ordinary continuation is not approval', manifest.decision.ordinaryContinuationIsApproval === false, String(manifest.decision.ordinaryContinuationIsApproval))
 addCheck('two calls are the maximum per approval', manifest.limits.maximumCallsPerApproval === 2, String(manifest.limits.maximumCallsPerApproval))
@@ -54,7 +54,7 @@ addCheck('all V1-19 scenarios are enumerated', sameMembers(scenarioIds, expected
 addCheck('scenario ids are unique', new Set(scenarioIds).size === scenarioIds.length, `${scenarioIds.length} scenarios`)
 for (const scenario of manifest.requiredScenarios) {
   addCheck(`${scenario.id} has fixture coverage`, scenario.fixtureStatus === 'covered', scenario.fixtureStatus)
-  addCheck(`${scenario.id} has a valid real staging disposition`, ['pending', 'pending_credentialed_acceptance'].includes(scenario.realStagingStatus), scenario.realStagingStatus)
+  addCheck(`${scenario.id} has a valid real staging disposition`, ['pending', 'pending_credentialed_acceptance', 'blocked_router_token_validation', 'passed'].includes(scenario.realStagingStatus), scenario.realStagingStatus)
   addCheck(`${scenario.id} has at least one evidence source`, Array.isArray(scenario.evidence) && scenario.evidence.length > 0, `${scenario.evidence?.length ?? 0} source(s)`)
   for (const evidence of scenario.evidence ?? []) {
     addCheck(`${scenario.id} evidence exists: ${evidence}`, fs.existsSync(path.join(root, evidence)), evidence)

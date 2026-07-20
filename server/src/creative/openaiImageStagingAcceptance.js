@@ -221,7 +221,7 @@ export const runOpenAIImageStagingAcceptance = async ({
     return Object.freeze({
       schemaVersion: 'openai-image-staging-acceptance-v1',
       providerId: 'openai-gpt-image-2',
-      modelId: 'gpt-image-2',
+      modelId: String(source.CREATIVE_OPENAI_IMAGE_MODEL ?? 'gpt-image-2').trim(),
       providerCalls,
       textToImageCompleted: true,
       imageToImageCompleted: true,

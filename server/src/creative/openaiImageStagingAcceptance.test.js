@@ -15,6 +15,8 @@ const source = Object.freeze({
   CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED: 'true',
   CREATIVE_OPENAI_IMAGE_CONFIRMATION: 'staging-only',
   CREATIVE_OPENAI_IMAGE_API_TOKEN: fixtureToken,
+  CREATIVE_OPENAI_IMAGE_BASE_URL: 'https://router.hctopup.com/v1',
+  CREATIVE_OPENAI_IMAGE_MODEL: 'gpt-image-2',
   CREATIVE_OPENAI_IMAGE_DAILY_BUDGET_USD: '1',
   CREATIVE_OPENAI_IMAGE_PROVIDER_CAP_USD: '1',
   CREATIVE_OPENAI_IMAGE_APP_BUDGET_USD: '1',
@@ -84,8 +86,8 @@ test('OpenAI Image staging acceptance covers generation edit moderation storage 
     productionNoGo: true,
   })
   assert.equal(calls.length, 2)
-  assert.equal(calls[0].url, 'https://api.openai.com/v1/images/generations')
-  assert.equal(calls[1].url, 'https://api.openai.com/v1/images/edits')
+  assert.equal(calls[0].url, 'https://router.hctopup.com/v1/images/generations')
+  assert.equal(calls[1].url, 'https://router.hctopup.com/v1/images/edits')
   assert.equal(calls.every((call) => call.options.headers.authorization === `Bearer ${fixtureToken}`), true)
   assert.equal(calls[1].options.body instanceof FormData, true)
   assert.equal(calls[1].options.body.has('image[]'), true)

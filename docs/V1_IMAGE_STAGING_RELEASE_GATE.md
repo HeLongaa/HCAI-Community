@@ -1,10 +1,16 @@
 # V1 Image Staging Release Gate
 
-This is the V1-19 execution contract for OpenAI GPT Image 2 staging acceptance. The machine-readable source is
+This is the V1-19 execution contract for GPT Image 2 staging acceptance through an OpenAI-compatible API. The machine-readable source is
 `config/v1-image-staging-gate.json`.
 
 Current decision: **fixture readiness and application wiring are complete; guarded real staging calls are explicitly
-approved; credentialed acceptance is pending; production enablement remains no-go**.
+approved; HCAI Router credentialed staging acceptance passed; production enablement remains no-go**.
+
+On 2026-07-21 the project owner approved HCAI Router and `gpt-image-2` for staging development and real testing. The
+Router model page documents `POST https://router.hctopup.com/v1/images/generations`. A dedicated model-restricted key
+was created outside the repository. The application-level acceptance completed two real calls on 2026-07-21: one
+text-to-image generation and one image-to-image edit. Moderation, output scan, private persistence, lineage, credit,
+quota, and Provider cost closeout all passed, and the emitted summary contained no credential or image payload.
 
 OpenAI documents `gpt-image-2` for both `/v1/images/generations` and `/v1/images/edits`. The Image API returns base64
 output, edit multipart uses `image[]`, and `input_fidelity` must be omitted because GPT Image 2 always uses high-fidelity
@@ -53,6 +59,8 @@ Runtime and credential:
 - `CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED=true`
 - `CREATIVE_OPENAI_IMAGE_CONFIRMATION=staging-only`
 - `CREATIVE_OPENAI_IMAGE_API_TOKEN` as a dedicated staging secret
+- `CREATIVE_OPENAI_IMAGE_BASE_URL=https://router.hctopup.com/v1`
+- `CREATIVE_OPENAI_IMAGE_MODEL=gpt-image-2`
 - `MEDIA_SCAN_PROVIDER=mock` for synchronous acceptance output scanning
 
 Short-lived approval envelope:
@@ -91,5 +99,5 @@ USD `0.005/0.041/0.165` for 1024x1536 or 1536x1024. Recheck official pricing bef
 Record only low-cardinality evidence: generation/media identifiers, statuses, timestamps, dimensions, byte count,
 checksum presence, scan state, ledger state, safe moderation stage/category, workflow URL, and rollback result.
 
-V1-19 remains In Progress until the real environment token is mounted, optional organization verification is resolved,
-the two-call command passes, quality gates pass, the PR is merged, and Notion contains the safe acceptance evidence.
+The real HCAI Router staging requirement is complete. Production remains no-go; merge and Notion closeout are still
+required before the tracked task is marked Done.

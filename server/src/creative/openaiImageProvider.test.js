@@ -126,6 +126,21 @@ test('OpenAI Image response strictly validates one canonical PNG and safe usage'
   )
 })
 
+test('OpenAI Image response accepts safe OpenAI-compatible router metadata without retaining revised prompts', async () => {
+  const result = await projectOpenAIImageGenerationResponse({
+    background: 'auto',
+    created: 1_725_000_000,
+    data: [{ b64_json: pngBase64, revised_prompt: 'Provider-rewritten private prompt' }],
+    model: 'gpt-image-2',
+    output_format: 'png',
+    quality: 'auto',
+    size: '1254x1254',
+  })
+
+  assert.equal(result.output.contentType, 'image/png')
+  assert.equal(JSON.stringify(result).includes('Provider-rewritten private prompt'), false)
+})
+
 test('OpenAI Image HTTP client is disabled unless all staging network gates are explicit', () => {
   let fetchCalls = 0
   assert.throws(
@@ -169,6 +184,55 @@ test('OpenAI Image HTTP client uses deployment secret internally with injected f
   assert.equal(result.output.contentType, 'image/png')
   assert.equal(JSON.stringify(client).includes('openai-fixture-token'), false)
   assert.equal(JSON.stringify(result).includes('openai-fixture-token'), false)
+})
+
+test('OpenAI Image HTTP client supports an HTTPS OpenAI-compatible router and configured model', async () => {
+  const calls = []
+  const client = createOpenAIImageHttpClient({
+    source: {
+      NODE_ENV: 'production',
+      CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+      CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED: 'true',
+      CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED: 'true',
+      CREATIVE_OPENAI_IMAGE_CONFIRMATION: 'staging-only',
+      CREATIVE_OPENAI_IMAGE_API_TOKEN: 'router-fixture-token',
+      CREATIVE_OPENAI_IMAGE_BASE_URL: 'https://router.hctopup.com/v1/',
+      CREATIVE_OPENAI_IMAGE_MODEL: 'gpt-image-2',
+    },
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options })
+      return new Response(JSON.stringify({ data: [{ b64_json: pngBase64 }] }), { status: 200 })
+    },
+  })
+
+  await client.generateImage(request)
+  assert.equal(calls[0].url, 'https://router.hctopup.com/v1/images/generations')
+  assert.equal(JSON.parse(calls[0].options.body).model, 'gpt-image-2')
+})
+
+test('OpenAI Image HTTP client rejects unsafe router configuration before dispatch', () => {
+  const enabledSource = {
+    NODE_ENV: 'production',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED: 'true',
+    CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED: 'true',
+    CREATIVE_OPENAI_IMAGE_CONFIRMATION: 'staging-only',
+    CREATIVE_OPENAI_IMAGE_API_TOKEN: 'router-fixture-token',
+  }
+  assert.throws(
+    () => createOpenAIImageHttpClient({
+      source: { ...enabledSource, CREATIVE_OPENAI_IMAGE_BASE_URL: 'http://router.hctopup.com/v1' },
+      fetchImpl: async () => {},
+    }),
+    (error) => error.code === 'CREATIVE_PROVIDER_CONFIGURATION_INVALID' && error.details.reasonCode === 'base_url_invalid',
+  )
+  assert.throws(
+    () => createOpenAIImageHttpClient({
+      source: { ...enabledSource, CREATIVE_OPENAI_IMAGE_MODEL: '../unsafe model' },
+      fetchImpl: async () => {},
+    }),
+    (error) => error.code === 'CREATIVE_PROVIDER_CONFIGURATION_INVALID' && error.details.reasonCode === 'model_id_invalid',
+  )
 })
 
 test('OpenAI Image HTTP errors expose only safe shared taxonomy evidence', async () => {

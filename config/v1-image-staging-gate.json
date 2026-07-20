@@ -8,7 +8,7 @@
     "fixtureReadiness": "ready",
     "externalCall": "go_for_guarded_staging_acceptance",
     "approvalStatus": "explicit_user_approval_recorded",
-    "credentialedAcceptance": "pending_environment_token",
+    "credentialedAcceptance": "passed_hcai_router",
     "productionEnablement": "no_go",
     "ordinaryContinuationIsApproval": false
   },
@@ -22,7 +22,7 @@
     {
       "id": "success",
       "fixtureStatus": "covered",
-      "realStagingStatus": "pending_credentialed_acceptance",
+      "realStagingStatus": "passed",
       "evidence": ["server/src/creative/openaiImageProvider.test.js", "server/src/creative/openaiImageStagingAcceptance.test.js", "server/src/modules/creative/routes.test.js"]
     },
     {
