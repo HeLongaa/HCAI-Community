@@ -127,7 +127,7 @@ function App() {
       window.removeEventListener('popstate', restoreAdminTarget)
     }
   }, [])
-  const { ledgerItems, pointsSummary, pointsStatus, pushToast, pushLedger, simulateAction } = useAppFeedback(locale, `${accountSource}:${accountHandle}`)
+  const { ledgerItems, pointsSummary, pointsStatus, toasts, pushToast, pushLedger, simulateAction, dismissToast } = useAppFeedback(locale, `${accountSource}:${accountHandle}`)
   const requireAuth = useCallback(() => setLoginOpen(true), [])
   const musicWorkflow = useMusicGenerationWorkflow({
     enabled: accountSource !== 'fallback',
@@ -900,7 +900,7 @@ function App() {
       theme={{ themeMode, setThemeMode }}
       chrome={{ sidebarCollapsed, setSidebarCollapsed, searchOpen, setSearchOpen, loginOpen, setLoginOpen }}
       player={{ activeTrack, playing, setPlaying, playTrack }}
-      feedback={{ pushToast, simulateAction }}
+      feedback={{ toasts, pushToast, simulateAction, dismissToast }}
       notifications={{
         items: notifications,
         loading: notificationsLoading,
@@ -912,7 +912,6 @@ function App() {
         markAllRead: markAllNotificationsRead,
         openResource: openNotificationResource,
       }}
-      requireAuth={requireAuth}
     >
       <PageRenderer
         t={t}

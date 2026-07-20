@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Download, RefreshCw, ShieldCheck, Trophy } from 'lucide-react'
-import type { AsyncResourceState, LedgerEntry, SimulateAction } from '../../domain/types'
+import type { AsyncResourceState, LedgerEntry } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { isZhCopy, pointText, textFor } from '../../domain/utils'
 import type { ApiPointsSummary, EffectiveEntitlementDto, PersonalBillingEntry, PersonalBillingStatus, PersonalBillingSummary, PersonalBillingUnit } from '../../services/contracts'
@@ -11,13 +11,11 @@ import { useAsyncResource } from '../../hooks/useAsyncResource'
 export function PointsPage({
   t,
   summary,
-  simulateAction,
 }: {
   t: Record<string, string>
   ledger: LedgerEntry[]
   summary: ApiPointsSummary | null
   status: AsyncResourceState
-  simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
   const [entitlement, setEntitlement] = useState<EffectiveEntitlementDto | null>(null)
@@ -194,14 +192,10 @@ export function PointsPage({
             <button
               className="ghost-button"
               type="button"
-              onClick={() =>
-                simulateAction(isZh ? `已兑换：${item}` : `Redeemed: ${item}`, {
-                  description: `Redeemed reward: ${item}`,
-                  delta: cost,
-                })
-              }
+              disabled
+              title={textFor(t, 'Redemption is not available yet', '兑换功能暂未开放')}
             >
-              {textFor(t, 'Redeem', '兑换')}
+              {textFor(t, `Unavailable · ${cost}`, `暂未开放 · ${cost}`)}
             </button>
           </article>
         ))}

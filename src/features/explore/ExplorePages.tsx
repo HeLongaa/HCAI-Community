@@ -104,7 +104,7 @@ function RadioCarousel({ t, playTrack }: { t: Record<string, string>; playTrack:
       {radioStations.map((station, index) => (
         <article className="radio-card" key={station.title}>
           <img src={station.image} alt="" />
-          <button type="button" onClick={() => playTrack(tracks[index % tracks.length])}>
+          <button type="button" disabled={!tracks[index % tracks.length]?.audioUrl} onClick={() => playTrack(tracks[index % tracks.length])} title={textFor(t, 'Public playback is not available', '公共播放暂未开放')}>
             <Play size={17} fill="currentColor" />
             {textFor(t, 'Live', '直播')}
           </button>
@@ -136,14 +136,14 @@ function TrackCard({
   const [menuOpen, setMenuOpen] = useState(false)
   return (
     <article className="track-card">
-      <button className="track-play" type="button" onClick={() => playTrack(track)}>
+      <button className="track-play" type="button" disabled={!track.audioUrl} onClick={() => playTrack(track)} title={textFor(t, 'Public playback is not available', '公共播放暂未开放')}>
         <img src={track.cover} alt="" />
         <span>
           <Play size={18} fill="currentColor" />
         </span>
       </button>
       <div className="track-meta">
-        <button type="button" onClick={() => playTrack(track)}>
+        <button type="button" disabled={!track.audioUrl} onClick={() => playTrack(track)}>
           {track.title}
         </button>
         <span>
@@ -154,12 +154,12 @@ function TrackCard({
         </span>
       </div>
       <div className="more-wrap">
-        <button className="icon-button small" type="button" onClick={() => setMenuOpen((open) => !open)}>
+        <button className="icon-button small" type="button" disabled={!track.audioUrl} onClick={() => setMenuOpen((open) => !open)} title={textFor(t, 'Track actions are not available', '歌曲操作暂未开放')}>
           <MoreHorizontal size={17} />
         </button>
         {menuOpen && (
           <div className="floating-menu">
-            <button type="button" onClick={() => playTrack(track)}>
+            <button type="button" disabled={!track.audioUrl} onClick={() => playTrack(track)}>
               <Play size={15} />
               {textFor(t, 'Play', '播放')}
             </button>
@@ -185,7 +185,7 @@ function TrackCard({
 export function TrackRow({ t, track, playTrack }: { t: Record<string, string>; track: Track; playTrack: (track: Track) => void }) {
   return (
     <div className="track-row">
-      <button type="button" onClick={() => playTrack(track)}>
+      <button type="button" disabled={!track.audioUrl} onClick={() => playTrack(track)} title={textFor(t, 'Public playback is not available', '公共播放暂未开放')}>
         <img src={track.cover} alt="" />
         <Play size={14} fill="currentColor" />
       </button>

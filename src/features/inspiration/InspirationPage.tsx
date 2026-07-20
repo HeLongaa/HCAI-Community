@@ -46,12 +46,14 @@ export function InspirationPage({
     simulateAction(isZh ? `已打开灵感详情：${item.title}` : `Opened inspiration detail: ${item.title}`)
   }
   const transferToTask = (item: InspirationItem) => {
-    simulateAction(isZh ? `已将灵感转成任务草稿：${item.title}` : `Converted inspiration to task draft: ${item.title}`)
+    window.sessionStorage.setItem('hcaiInspirationTaskDraft', JSON.stringify({
+      title: item.title,
+      category: item.type,
+      details: item.text,
+      source: item.source,
+    }))
+    simulateAction(isZh ? `已创建任务草稿：${item.title}` : `Task draft prepared: ${item.title}`)
     setPage('publish')
-  }
-  const transferToWorkbench = (item: InspirationItem) => {
-    simulateAction(isZh ? `已将灵感发送到创作工作台：${item.title}` : `Sent inspiration to workspace: ${item.title}`)
-    setPage('playground')
   }
 
   if (activeItem) {
@@ -78,9 +80,9 @@ export function InspirationPage({
             {t.backToParent}
           </button>
           <div className="button-row">
-            <button className="ghost-button" type="button" onClick={() => transferToWorkbench(activeItem)}>
+            <button className="ghost-button" type="button" disabled title={textFor(t, 'Workspace transfer is not available yet', '发送到工作台暂未开放')}>
               <LayoutDashboard size={17} />
-              {textFor(t, 'To workspace', '转工作台')}
+              {textFor(t, 'Workspace transfer unavailable', '转工作台暂不可用')}
             </button>
             <button className="primary-button" type="button" onClick={() => transferToTask(activeItem)}>
               <Plus size={17} />
@@ -157,19 +159,9 @@ export function InspirationPage({
               <span className="library-save-count">{item.saves} {textFor(t, 'saves', '收藏')}</span>
             </div>
             <div className="library-card-actions">
-              <button
-                className="ghost-button"
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  simulateAction(isZh ? `已收藏灵感：${item.title}` : `Saved inspiration: ${item.title}`, {
-                    description: `Saved inspiration item: ${item.title}`,
-                    delta: '+10',
-                  })
-                }}
-              >
+              <button className="ghost-button" type="button" disabled title={textFor(t, 'Saving is not available for this item', '此灵感暂不支持收藏')}>
                 <Bookmark size={17} />
-                {textFor(t, 'Save', '收藏')}
+                {textFor(t, 'Save unavailable', '收藏暂不可用')}
               </button>
               <button
                 className="ghost-button"

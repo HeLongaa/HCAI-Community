@@ -201,7 +201,7 @@ addCheck(
     '推荐接单用户',
     'Category match',
     'Chinese ready',
-    'Invited @',
+    'Invite unavailable',
   ]) &&
     includesAll(css, ['.match-panel', '.match-card', '.match-card-top', '.compact-buttons']),
   'front-end matching cards update from draft content and can invite/view profile',
@@ -358,8 +358,8 @@ addCheck(
     "workspace: 'image'",
     "'text_to_image' | 'image_to_image' | 'image_edit' | 'image_variation'",
     'image-generation-history',
-    '!providerGeneration && results.map',
-  ]),
+    'providerGeneration.onGenerate',
+  ]) && !app.includes('!providerGeneration && results.map'),
   'typed generation/history services, lifecycle UI, governed download contract, and no Image demo result fallback',
 )
 
@@ -375,10 +375,10 @@ addCheck(
   'inspiration library supports detail pages and conversion actions',
   includesAll(app, [
     'Opened inspiration detail',
-    'Converted inspiration to task draft',
-    'Sent inspiration to workspace',
+    'hcaiInspirationTaskDraft',
+    'Task draft prepared',
+    'Workspace transfer unavailable',
     "setPage('publish')",
-    "setPage('playground')",
     'library-save-count',
     'library-detail',
   ]) &&
@@ -392,9 +392,10 @@ addCheck(
 
 addCheck(
   'points',
-  'point ledger updates during simulated flows',
-  includesAll(app, ['const pushLedger = (description: string, delta: string)', 'setLedgerItems((current)', 'Published task:', 'Submitted proposal draft:', 'Submitted deliverable:', 'Accepted task:']),
-  'ledger update flow',
+  'point ledger updates only after real service-backed flows',
+  includesAll(app, ['const pushLedger = useCallback((description: string, delta: string)', 'setLedgerItems((current)', 'Published task:', 'Submitted proposal draft:', 'Submitted deliverable:', 'Accepted task:', 'const simulateAction: SimulateAction = (message)']) &&
+    !app.includes('if (ledger) {'),
+  'service-backed ledger update flow without simulated ledger mutations',
 )
 
 addCheck(
@@ -489,9 +490,8 @@ addCheck(
     "setPage('tasks')",
     "setPage('community')",
     "setPage('inspiration')",
-    "setPage('playground')",
   ]),
-  'publish/tasks/community/inspiration/playground transitions',
+  'publish/tasks/community/inspiration transitions',
 )
 
 addCheck(
@@ -558,10 +558,10 @@ addCheck(
 
 addCheck(
   'interaction feedback',
-  'all buttons declare explicit click handlers',
+  'buttons without click handlers are explicitly unavailable',
   !/<button(?![\s\S]*?>[\s\S]*?<\/button>)[\s\S]*?>/.test('') &&
-    [...app.matchAll(/<button[\s\S]*?>/g)].every((match) => match[0].includes('onClick')),
-  'button tags should include onClick for visible feedback',
+    [...app.matchAll(/<button[\s\S]*?>/g)].every((match) => match[0].includes('onClick') || match[0].includes('disabled')),
+  'button tags should include onClick or an honest disabled state',
 )
 
 addCheck(
@@ -654,11 +654,10 @@ addCheck(
 
 addCheck(
   'feedback',
-  'interactive flows keep local simulation feedback without a fixed toast',
-  includesAll(app, ['const pushToast = (message: string)', "console.info('[simulation]', message)", 'simulateAction={simulateAction}']) &&
-    !includesAll(app, ['role="status"', 'Ready to test the AI task workflow.']) &&
-    !css.includes('.toast'),
-  'simulation feedback remains wired without the removed toast UI',
+  'interactive flows render accessible global feedback',
+  includesAll(app, ['function ToastViewport', 'data-testid="app-toast"', 'aria-live="polite"', 'simulateAction={simulateAction}', '<ToastViewport toasts={toasts} dismiss={dismissToast} />']) &&
+    includesAll(css, ['.toast-viewport', '.app-toast', '@keyframes toast-enter']),
+  'global feedback is visible, dismissible, and announced to assistive technology',
 )
 
 addCheck(

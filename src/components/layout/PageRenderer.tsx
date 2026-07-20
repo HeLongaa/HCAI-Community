@@ -278,7 +278,7 @@ export function PageRenderer({
         />
       )}
       {page === 'inspiration' && <InspirationPage t={t} items={libraryItems} setPage={navigateToPage} simulateAction={simulateAction} />}
-      {page === 'points' && <PointsPage t={t} ledger={ledgerItems} summary={pointsSummary} status={pointsStatus} simulateAction={simulateAction} />}
+      {page === 'points' && <PointsPage t={t} ledger={ledgerItems} summary={pointsSummary} status={pointsStatus} />}
       {page === 'admin' && (
         <AdminPage
           t={t}
@@ -294,7 +294,7 @@ export function PageRenderer({
       {page === 'api' && <DeveloperAccessPage t={t} signedIn={Boolean(account.accountHandle)} requireAuth={requireAuth} notify={simulateAction} />}
       {page === 'earn' && <EarnPage t={t} requireAuth={requireAuth} />}
       {page === 'about' && <AboutPage t={t} />}
-      {page === 'playlist' && <PlaylistPage t={t} playTrack={playTrack} simulateAction={simulateAction} />}
+      {page === 'playlist' && <PlaylistPage t={t} playTrack={playTrack} />}
       {page === 'profile' && (
         <ProfilePage
           key={selectedProfile.id}

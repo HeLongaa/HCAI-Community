@@ -109,11 +109,9 @@ export function PricingPage({
 export function ApiPage({
   t,
   requireAuth,
-  simulateAction,
 }: {
   t: Record<string, string>
   requireAuth: () => void
-  simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
   const features = isZh
@@ -143,16 +141,10 @@ export function ApiPage({
               <BadgeDollarSign size={17} />
               {textFor(t, '$20 credit', '¥140 测试额度')}
             </button>
-            <button
-              className="ghost-button"
-              type="button"
-              onClick={() =>
-                simulateAction(isZh ? '已打开 API 文档目录：音乐、图片、视频、对话接口' : 'API docs opened: music, image, video, and chat endpoints')
-              }
-            >
+            <a className="ghost-button" href="/api/openapi.json" target="_blank" rel="noreferrer">
               <Code2 size={17} />
               {t.docs}
-            </button>
+            </a>
           </div>
         </div>
         <pre className="code-card">{`await museflow.generate({
@@ -169,7 +161,6 @@ export function ApiPage({
             key={feature}
             onClick={() => {
               setSelectedFeature(feature)
-              simulateAction(isZh ? `已选择 API 能力：${feature}` : `API capability selected: ${feature}`)
             }}
           >
             <Code2 size={19} />

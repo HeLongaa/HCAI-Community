@@ -28,7 +28,7 @@ This document records every known demo, mock, catalog, seed, fixture, and fallba
 | `frontend-runtime-source-labels` | Shell exposes API, stored, fallback, and mock classifications | Retain until blockers close, then show only real/unavailable states | V1-02, V1-39 |
 | `frontend-mockdata-root` | Vite production resolution replaces the shared demo module with explicit unavailable records; bundle guard rejects known demo markers | Retain only for development/tests | V1-39 |
 
-All 14 direct frontend imports of `src/data/mockData.ts` are checked exactly. Adding, removing, or moving one requires updating the machine inventory in the same pull request.
+All 13 direct frontend imports of `src/data/mockData.ts` are checked exactly. Adding, removing, or moving one requires updating the machine inventory in the same pull request.
 
 ## Server Inventory
 

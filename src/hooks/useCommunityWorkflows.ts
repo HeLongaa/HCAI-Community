@@ -10,7 +10,7 @@ type CommunityWorkflowOptions = {
   locale: Locale
   publishTask: (draft: PublishDraft) => Promise<void>
   pushLedger: (description: string, delta: string) => void
-  pushToast: (message: string) => void
+  pushToast: (message: string, tone?: 'info' | 'success' | 'warning' | 'error') => void
   setPage: (page: Page) => void
   accountHandle: string | null
 }
@@ -141,7 +141,7 @@ export function useCommunityWorkflows({ locale, publishTask, pushLedger, pushToa
       pushToast(isZh ? `已点赞帖子：${post.title}` : `Post liked: ${post.title}`)
     } catch (error) {
       console.info('[community-service]', error)
-      pushToast(isZh ? '点赞失败，已保留本地状态。' : 'Like failed. Local state kept.')
+      pushToast(isZh ? '点赞失败，未更新帖子状态。' : 'Like failed. The post was not updated.', 'error')
     }
   }
 
@@ -157,18 +157,11 @@ export function useCommunityWorkflows({ locale, publishTask, pushLedger, pushToa
       setPostList((current) => current.map((item) => (item.id === post.id ? updated : item)))
       setSelectedPost(updated)
       pushLedger(isZh ? `回复社区帖子：${post.title}` : `Replied to community post: ${post.title}`, '+15')
-      pushToast(
-        replyText
-          ? isZh
-            ? `已发表回复：${replyText.slice(0, 28)}`
-            : `Reply posted: ${replyText.slice(0, 28)}`
-          : isZh
-            ? `已模拟回复：${post.title}`
-            : `Reply simulated: ${post.title}`,
-      )
+      pushToast(isZh ? `已发表回复：${replyText?.slice(0, 28)}` : `Reply posted: ${replyText?.slice(0, 28)}`, 'success')
     } catch (error) {
       console.info('[community-service]', error)
-      pushToast(isZh ? '回复失败，已保留本地状态。' : 'Reply failed. Local state kept.')
+      pushToast(isZh ? '回复失败，内容未发布。' : 'Reply failed. Nothing was posted.', 'error')
+      throw error
     }
   }
 
