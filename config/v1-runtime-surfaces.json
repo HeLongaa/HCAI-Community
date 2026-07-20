@@ -22,7 +22,7 @@
       "area": "community-library",
       "classification": "production_capable",
       "paths": ["src/hooks/useCommunityWorkflows.ts", "src/features/community/CommunityPage.tsx"],
-      "markers": ["no local substitute is shown", "visualWorks", "Reply simulated"],
+      "markers": ["no local substitute is shown", "visualWorks", "Nothing was posted."],
       "productionDisposition": "production_bundle_uses_api_data_or_explicit_unavailable_catalog",
       "ownerTasks": ["V1-39", "V1-66"]
     },
