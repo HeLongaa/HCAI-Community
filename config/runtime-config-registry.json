@@ -22,7 +22,8 @@
         }
       },
       "defaultValue": { "refreshTtlDays": 30, "sameSite": "Lax" },
-      "publishStrategy": "reviewed_version"
+      "publishStrategy": "reviewed_version",
+      "applyMode": "restart_required"
     },
     {
       "key": "media.scan",
@@ -39,7 +40,8 @@
         }
       },
       "defaultValue": { "provider": "manual", "maxAttempts": 3, "timeoutSeconds": 900 },
-      "publishStrategy": "reviewed_version"
+      "publishStrategy": "reviewed_version",
+      "applyMode": "restart_required"
     },
     {
       "key": "jobs.worker",
@@ -55,7 +57,8 @@
         }
       },
       "defaultValue": { "leaseTtlSeconds": 300, "renewIntervalSeconds": 60 },
-      "publishStrategy": "reviewed_version"
+      "publishStrategy": "reviewed_version",
+      "applyMode": "restart_required"
     },
     {
       "key": "storage.objects",
@@ -72,7 +75,139 @@
         }
       },
       "defaultValue": { "driver": "mock", "bucketRef": null },
-      "publishStrategy": "reviewed_version"
+      "publishStrategy": "reviewed_version",
+      "applyMode": "restart_required"
+    },
+    {
+      "key": "ai.image",
+      "domain": "ai-runtime",
+      "scope": "environment",
+      "valueType": "object",
+      "schemaVersion": 1,
+      "schema": {
+        "required": ["enabled", "baseUrl", "model", "apiTokenRef", "providerAccountRef", "dailyBudgetUsd", "budgetThresholdPercent"],
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "provider": { "type": "string", "enum": ["openai-compatible"] },
+          "baseUrl": { "type": "string", "pattern": "^https://[^?#]{3,300}$" },
+          "model": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$" },
+          "apiTokenRef": { "type": "string", "pattern": "^secretref://env/[a-z0-9][a-z0-9-]{2,120}$" },
+          "providerAccountRef": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,96}$" },
+          "dailyBudgetUsd": { "type": "integer", "minimum": 1, "maximum": 100000 },
+          "budgetThresholdPercent": { "type": "integer", "minimum": 1, "maximum": 100 }
+        }
+      },
+      "defaultValue": { "enabled": false, "provider": "openai-compatible", "baseUrl": "https://api.openai.com/v1", "model": "gpt-image-2", "apiTokenRef": "secretref://env/creative-openai-image-api-token", "providerAccountRef": "staging", "dailyBudgetUsd": 8, "budgetThresholdPercent": 80 },
+      "publishStrategy": "reviewed_version",
+      "applyMode": "restart_required"
+    },
+    {
+      "key": "ai.chat",
+      "domain": "ai-runtime",
+      "scope": "environment",
+      "valueType": "object",
+      "schemaVersion": 1,
+      "schema": {
+        "required": ["enabled", "baseUrl", "model", "apiTokenRef", "attachmentBytesEnabled"],
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "provider": { "type": "string", "enum": ["openai-compatible"] },
+          "baseUrl": { "type": "string", "pattern": "^https://[^?#]{3,300}$" },
+          "model": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$" },
+          "apiTokenRef": { "type": "string", "pattern": "^secretref://env/[a-z0-9][a-z0-9-]{2,120}$" },
+          "attachmentBytesEnabled": { "type": "boolean" }
+        }
+      },
+      "defaultValue": { "enabled": false, "provider": "openai-compatible", "baseUrl": "https://api.openai.com/v1", "model": "gpt-5.6-terra", "apiTokenRef": "secretref://env/chat-openai-api-token", "attachmentBytesEnabled": false },
+      "publishStrategy": "reviewed_version",
+      "applyMode": "restart_required"
+    },
+    {
+      "key": "ai.video",
+      "domain": "ai-runtime",
+      "scope": "environment",
+      "valueType": "object",
+      "schemaVersion": 1,
+      "schema": {
+        "required": ["enabled", "model", "projectId", "location", "outputGcsUri", "accessTokenRef"],
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "provider": { "type": "string", "enum": ["google-vertex"] },
+          "model": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$" },
+          "projectId": { "type": "string", "pattern": "^[a-z][a-z0-9-]{4,62}$" },
+          "location": { "type": "string", "pattern": "^[a-z0-9-]{2,40}$" },
+          "outputGcsUri": { "type": "string", "pattern": "^gs://[^?# ]{3,500}/$" },
+          "accessTokenRef": { "type": "string", "pattern": "^secretref://env/[a-z0-9][a-z0-9-]{2,120}$" }
+        }
+      },
+      "defaultValue": { "enabled": false, "provider": "google-vertex", "model": "veo-3.1-fast-generate-001", "projectId": "staging-project", "location": "us-central1", "outputGcsUri": "gs://staging-private/video/", "accessTokenRef": "secretref://env/creative-google-veo-access-token" },
+      "publishStrategy": "reviewed_version",
+      "applyMode": "restart_required"
+    },
+    {
+      "key": "ai.music",
+      "domain": "ai-runtime",
+      "scope": "environment",
+      "valueType": "object",
+      "schemaVersion": 1,
+      "schema": {
+        "required": ["enabled", "baseUrl", "model", "apiKeyRef", "providerAccountRef", "enterpriseRightsConfirmed", "trainingOptOutConfirmed", "licenseId", "termsVersion"],
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "provider": { "type": "string", "enum": ["elevenlabs"] },
+          "baseUrl": { "type": "string", "pattern": "^https://[^?#]{3,300}$" },
+          "model": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$" },
+          "apiKeyRef": { "type": "string", "pattern": "^secretref://env/[a-z0-9][a-z0-9-]{2,120}$" },
+          "providerAccountRef": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,96}$" },
+          "enterpriseRightsConfirmed": { "type": "boolean" },
+          "trainingOptOutConfirmed": { "type": "boolean" },
+          "licenseId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$" },
+          "termsVersion": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" }
+        }
+      },
+      "defaultValue": { "enabled": false, "provider": "elevenlabs", "baseUrl": "https://api.elevenlabs.io", "model": "music_v2", "apiKeyRef": "secretref://env/creative-elevenlabs-music-api-key", "providerAccountRef": "staging", "enterpriseRightsConfirmed": false, "trainingOptOutConfirmed": false, "licenseId": "staging-license", "termsVersion": "v1" },
+      "publishStrategy": "reviewed_version",
+      "applyMode": "restart_required"
+    },
+    {
+      "key": "runtime.ai",
+      "domain": "ai-runtime",
+      "scope": "environment",
+      "valueType": "object",
+      "schemaVersion": 1,
+      "schema": {
+        "required": ["overrides"],
+        "properties": {
+          "overrides": {
+            "type": "object",
+            "propertyNames": { "pattern": "^[A-Z][A-Z0-9_]{1,100}$" },
+            "additionalProperties": { "type": ["string", "integer", "boolean", "null"] }
+          }
+        }
+      },
+      "defaultValue": { "overrides": {} },
+      "publishStrategy": "reviewed_version",
+      "applyMode": "restart_required"
+    },
+    {
+      "key": "runtime.system",
+      "domain": "platform-runtime",
+      "scope": "environment",
+      "valueType": "object",
+      "schemaVersion": 1,
+      "schema": {
+        "required": ["overrides"],
+        "properties": {
+          "overrides": {
+            "type": "object",
+            "propertyNames": { "pattern": "^[A-Z][A-Z0-9_]{1,100}$" },
+            "additionalProperties": { "type": ["string", "integer", "boolean", "null"] }
+          }
+        }
+      },
+      "defaultValue": { "overrides": {} },
+      "publishStrategy": "reviewed_version",
+      "applyMode": "restart_required"
     }
   ]
 }

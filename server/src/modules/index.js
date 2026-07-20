@@ -33,7 +33,8 @@ import { registerSearchRoutes } from './search/routes.js'
 import { registerRiskRoutes } from './risk/routes.js'
 import { registerDataRightsRoutes } from './dataRights/routes.js'
 
-export const registerModules = (router) => {
+export const registerModules = (router, options = {}) => {
+  const source = options.source ?? process.env
   registerHealthRoutes(router)
   registerMetricsRoutes(router)
   registerDocsRoutes(router)
@@ -47,7 +48,7 @@ export const registerModules = (router) => {
   registerSearchRoutes(router)
   registerRiskRoutes(router)
   registerDataRightsRoutes(router)
-  registerAuthRoutes(router)
+  registerAuthRoutes(router, { source, repositories: options.repositories })
   registerOAuthAdminRoutes(router)
   registerAuthSessionAdminRoutes(router)
   registerUserRoutes(router)
@@ -56,8 +57,8 @@ export const registerModules = (router) => {
   registerPostRoutes(router)
   registerLibraryRoutes(router)
   registerMediaRoutes(router)
-  registerCreativeRoutes(router)
-  registerChatRoutes(router)
+  registerCreativeRoutes(router, { executionSource: source, repositories: options.repositories })
+  registerChatRoutes(router, { source, repositories: options.repositories })
   registerNotificationRoutes(router)
   registerAdminRoutes(router)
   registerObservabilityRoutes(router)

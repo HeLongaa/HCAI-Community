@@ -2,8 +2,8 @@ import { HttpError } from '../common/errors/httpError.js'
 import { parseProviderRetryAfter } from '../creative/providerErrorPolicy.js'
 
 const providerId = 'openai-gpt-5-6-terra'
-const modelId = 'gpt-5.6-terra'
-const baseUrl = 'https://api.openai.com/v1'
+const defaultModelId = 'gpt-5.6-terra'
+const defaultBaseUrl = 'https://api.openai.com/v1'
 const responsePath = '/responses'
 const maximumRequestBytes = 42 * 1024 * 1024
 const maximumErrorBytes = 8 * 1024
@@ -61,6 +61,8 @@ const runtimeError = (status, code, message, reasonCode, details = {}) => new Ht
 const parseFlag = (source, key) => String(source[key] ?? '').trim().toLowerCase() === 'true'
 
 export const buildOpenAIChatRuntimeConfig = (source = process.env) => {
+  const providerType = String(source.CHAT_PROVIDER_TYPE ?? 'openai-compatible').trim().toLowerCase()
+  if (providerType !== 'openai-compatible') throw new Error('CHAT_PROVIDER_TYPE must be openai-compatible')
   const mode = String(source.CHAT_PROVIDER_MODE ?? (source.NODE_ENV === 'production' ? 'disabled' : 'mock')).trim().toLowerCase()
   const runtimeEnv = String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? source.DEPLOYMENT_ENV ?? source.NODE_ENV ?? 'development').trim().toLowerCase()
   const clientEnabled = parseFlag(source, 'CHAT_OPENAI_HTTP_CLIENT_ENABLED')
@@ -69,7 +71,16 @@ export const buildOpenAIChatRuntimeConfig = (source = process.env) => {
   const attachmentBytesEnabled = parseFlag(source, 'CHAT_ATTACHMENT_BYTES_ENABLED')
   const confirmation = String(source.CHAT_OPENAI_CONFIRMATION ?? '').trim().toLowerCase()
   const token = String(source.CHAT_OPENAI_API_TOKEN ?? '').trim()
-  const configuredBaseUrl = String(source.CHAT_OPENAI_BASE_URL ?? baseUrl).replace(/\/+$/, '')
+  const configuredModelId = String(source.CHAT_OPENAI_MODEL ?? defaultModelId).trim()
+  let configuredBaseUrl
+  try {
+    const url = new URL(String(source.CHAT_OPENAI_BASE_URL ?? defaultBaseUrl).trim())
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error('unsafe')
+    configuredBaseUrl = url.toString().replace(/\/+$/, '')
+  } catch {
+    throw new Error('CHAT_OPENAI_BASE_URL must be a safe HTTPS URL')
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/.test(configuredModelId)) throw new Error('CHAT_OPENAI_MODEL is invalid')
   if (!['mock', 'disabled', 'openai_staging'].includes(mode)) {
     throw new Error('CHAT_PROVIDER_MODE must be one of: mock, disabled, openai_staging')
   }
@@ -81,9 +92,6 @@ export const buildOpenAIChatRuntimeConfig = (source = process.env) => {
   }
   if (attachmentBytesEnabled && !networkCallsEnabled) {
     throw new Error('CHAT_ATTACHMENT_BYTES_ENABLED requires CHAT_OPENAI_NETWORK_CALLS_ENABLED=true')
-  }
-  if (configuredBaseUrl !== baseUrl) {
-    throw new Error(`CHAT_OPENAI_BASE_URL must be ${baseUrl}`)
   }
   if (clientEnabled || networkCallsEnabled || safetyClassifierEnabled || attachmentBytesEnabled || mode === 'openai_staging') {
     if (source.NODE_ENV !== 'production') throw new Error('OpenAI Chat runtime requires NODE_ENV=production')
@@ -99,6 +107,7 @@ export const buildOpenAIChatRuntimeConfig = (source = process.env) => {
     throw new Error('Production product runtime requires CHAT_PROVIDER_MODE=disabled until a Provider is explicitly approved')
   }
   return Object.freeze({
+    providerType,
     mode,
     runtimeEnv,
     clientEnabled,
@@ -106,7 +115,8 @@ export const buildOpenAIChatRuntimeConfig = (source = process.env) => {
     safetyClassifierEnabled,
     attachmentBytesEnabled,
     token,
-    baseUrl,
+    baseUrl: configuredBaseUrl,
+    modelId: configuredModelId,
   })
 }
 
@@ -141,7 +151,7 @@ export const buildOpenAIChatProviderCostMetadata = ({ request, context, usage = 
     providerId: 'openai',
     providerAccountRef: 'staging',
     model: {
-      providerModelId: modelId,
+      providerModelId: defaultModelId,
       providerModelVersion: null,
       displayName: 'OpenAI GPT-5.6 Terra',
       family: 'chat',
@@ -211,7 +221,7 @@ const compileInstructions = (context) => {
   ].filter(Boolean).join('\n\n')
 }
 
-export const buildOpenAIChatRequest = ({ request, context }) => {
+export const buildOpenAIChatRequest = ({ request, context }, { modelId = defaultModelId } = {}) => {
   if (request?.workspace !== 'chat' || !['assistant', 'prompt_assist', 'storyboard'].includes(request.mode)) {
     throw runtimeError(422, 'CHAT_PROVIDER_REQUEST_INVALID', 'OpenAI Chat mode is unsupported', 'mode_unsupported')
   }
@@ -253,7 +263,7 @@ const classifierSchema = Object.freeze({
   },
 })
 
-export const buildOpenAIChatSafetyRequest = (payload) => {
+export const buildOpenAIChatSafetyRequest = (payload, { modelId = defaultModelId } = {}) => {
   const content = [{ type: 'input_text', text: String(payload.text ?? '') }]
   for (const attachment of payload.attachments ?? []) {
     if (attachment.providerInput?.kind === 'image') content.push(attachmentContent(attachment))
@@ -373,7 +383,7 @@ export const createOpenAIChatClient = ({ source = process.env, fetchImpl = fetch
   }
   return Object.freeze({
     async *stream({ request, context, signal }) {
-      const { response, cleanup } = await requestProvider({ config, fetchImpl, mapped: buildOpenAIChatRequest({ request, context }), signal })
+      const { response, cleanup } = await requestProvider({ config, fetchImpl, mapped: buildOpenAIChatRequest({ request, context }, { modelId: config.modelId }), signal })
       let reader = null
       try {
         if (!response.body) throw runtimeError(502, 'CHAT_PROVIDER_STREAM_INVALID', 'Chat Provider stream body is unavailable', 'stream_body_missing')
@@ -416,7 +426,7 @@ export const createOpenAIChatClient = ({ source = process.env, fetchImpl = fetch
     },
     async classify(payload, signal) {
       if (!config.safetyClassifierEnabled) throw runtimeError(503, 'CHAT_SAFETY_CLASSIFIER_DISABLED', 'Chat safety classifier is disabled', 'classifier_disabled')
-      const { response, cleanup } = await requestProvider({ config, fetchImpl, mapped: buildOpenAIChatSafetyRequest(payload), signal })
+      const { response, cleanup } = await requestProvider({ config, fetchImpl, mapped: buildOpenAIChatSafetyRequest(payload, { modelId: config.modelId }), signal })
       try {
         const text = await response.text()
         if (Buffer.byteLength(text) > maximumErrorBytes * 16) throw runtimeError(502, 'CHAT_SAFETY_RESPONSE_INVALID', 'Chat safety response failed validation', 'response_too_large')

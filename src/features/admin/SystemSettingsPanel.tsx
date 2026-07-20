@@ -14,6 +14,18 @@ import type {
 const statuses: Array<SystemSettingChangeStatus | ''> = ['', 'pending_approval', 'approved', 'rejected', 'published']
 const formatStatus = (value: string) => value.replaceAll('_', ' ')
 const pretty = (value: unknown) => JSON.stringify(value, null, 2)
+const settingNames: Record<string, { zh: string; en: string }> = {
+  'ai.image': { zh: '图片生成', en: 'Image generation' },
+  'ai.chat': { zh: 'AI 对话', en: 'AI chat' },
+  'ai.video': { zh: '视频生成', en: 'Video generation' },
+  'ai.music': { zh: '音乐生成', en: 'Music generation' },
+  'auth.session': { zh: '登录与会话', en: 'Login and sessions' },
+  'media.scan': { zh: '文件安全扫描', en: 'Media scanning' },
+  'jobs.worker': { zh: '后台任务', en: 'Background jobs' },
+  'storage.objects': { zh: '文件存储', en: 'Object storage' },
+  'runtime.ai': { zh: 'AI 高级设置', en: 'Advanced AI settings' },
+  'runtime.system': { zh: '系统高级设置', en: 'Advanced system settings' },
+}
 
 export function SystemSettingsPanel({ hasPermission, isZh, notify }: {
   hasPermission: (permission: Permission) => boolean
@@ -205,7 +217,7 @@ export function SystemSettingsPanel({ hasPermission, isZh, notify }: {
         <div className="admin-table settings-list">
           {settings.map((item) => (
             <button className={`admin-row compact ${selectedSetting?.key === item.key ? 'selected' : ''}`} type="button" key={item.key} onClick={() => { setSelectedKey(item.key); setDraft(pretty(item.value)); setPreview(null) }}>
-              <span><strong>{item.key}</strong><small>{item.domain} · {item.scope}</small></span>
+              <span><strong>{settingNames[item.key]?.[isZh ? 'zh' : 'en'] ?? item.key}</strong><small>{item.key} · {item.applyMode === 'hot' ? (isZh ? '即时生效' : 'hot apply') : (isZh ? '发布后重启生效' : 'restart required')}</small></span>
               <span className={`status ${item.source}`}>v{item.publishedVersion}</span>
               {Boolean(item.pendingChanges) && <small>{item.pendingChanges} {isZh ? '待处理' : 'pending'}</small>}
             </button>
@@ -214,7 +226,8 @@ export function SystemSettingsPanel({ hasPermission, isZh, notify }: {
         </div>
 
         {selectedSetting && <div className="settings-editor">
-          <div className="settings-editor-heading"><span><strong>{selectedSetting.key}</strong><small>{selectedSetting.source} · schema v{selectedSetting.valueSchemaVersion}</small></span><code>v{selectedSetting.publishedVersion}</code></div>
+          <div className="settings-editor-heading"><span><strong>{settingNames[selectedSetting.key]?.[isZh ? 'zh' : 'en'] ?? selectedSetting.key}</strong><small>{selectedSetting.key} · {selectedSetting.source} · schema v{selectedSetting.valueSchemaVersion} · {selectedSetting.applyMode === 'hot' ? (isZh ? '即时生效' : 'hot apply') : (isZh ? '发布后重启服务生效' : 'service restart required')}</small></span><code>v{selectedSetting.publishedVersion}</code></div>
+          {selectedSetting.key.startsWith('ai.') && <p className="settings-runtime-note">{isZh ? 'Provider、接口地址、模型和密钥引用均保存在此配置；密钥本身不会写入数据库。' : 'Provider, endpoint, model, and secret reference are stored here; the secret value is never stored in the database.'}</p>}
           <textarea aria-label={isZh ? '设置 JSON' : 'Setting JSON'} value={draft} onChange={(event) => { setDraft(event.target.value); setPreview(null) }} readOnly={!hasPermission('admin:settings:manage')} spellCheck={false} />
           <div className="settings-action-fields"><input aria-label={isZh ? '原因代码' : 'Reason code'} value={reasonCode} onChange={(event) => setReasonCode(event.target.value)} disabled={!hasPermission('admin:settings:manage')} /><input aria-label={isZh ? '说明' : 'Note'} value={note} onChange={(event) => setNote(event.target.value)} placeholder={isZh ? '变更说明' : 'Change note'} disabled={!hasPermission('admin:settings:manage')} /></div>
           {hasPermission('admin:settings:manage') && <div className="button-row"><button className="ghost-button" type="button" onClick={previewDraft} disabled={loading}><Eye size={16} />{isZh ? '预览' : 'Preview'}</button><button className="primary-button" type="button" onClick={submitDraft} disabled={loading || !preview?.changed}><Send size={16} />{isZh ? '提交审批' : 'Request change'}</button></div>}

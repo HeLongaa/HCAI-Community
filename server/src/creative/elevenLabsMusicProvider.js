@@ -9,10 +9,10 @@ import { assertMusicGenerationRequest, musicCapabilityContract } from './musicCa
 
 const providerId = 'elevenlabs-music-v2-enterprise'
 const providerMode = 'elevenlabs_music'
-const modelId = 'music_v2'
+const defaultModelId = 'music_v2'
 const defaultProviderAccountRef = 'staging'
 const budgetScope = 'staging:elevenlabs:music'
-const baseUrl = 'https://api.elevenlabs.io'
+const defaultBaseUrl = 'https://api.elevenlabs.io'
 const pathname = '/v1/music'
 const unitPriceUsd = musicCapabilityContract.cost.primaryPublicBaselineUsdPerMinute
 const perJobCapUsd = musicCapabilityContract.cost.perJobUsdCap
@@ -24,6 +24,7 @@ const requestTimeoutMs = 300_000
 const thresholdPercentDefault = 80
 const musicBytesByOutput = new WeakMap()
 const safeIdentifierPattern = /^[a-z0-9][a-z0-9:._-]{0,127}$/i
+const musicModelIdFor = (source = {}) => String(source.CREATIVE_ELEVENLABS_MUSIC_MODEL ?? defaultModelId).trim()
 const responseKeys = new Set(['requestId', 'body', 'contentType', 'usage', 'license'])
 const usageKeys = new Set(['generatedSeconds', 'actualCostUsd'])
 const licenseKeys = new Set([
@@ -96,7 +97,7 @@ const compiledPrompt = (request, parameters) => {
   return direction.join('\n')
 }
 
-export const buildElevenLabsMusicRequest = (request) => {
+export const buildElevenLabsMusicRequest = (request, { modelId = defaultModelId } = {}) => {
   try {
     assertMusicGenerationRequest(request)
   } catch (error) {
@@ -239,7 +240,7 @@ export const buildElevenLabsMusicCostMetadata = ({
     providerId,
     providerAccountRef,
     model: Object.freeze({
-      providerModelId: modelId,
+      providerModelId: musicModelIdFor(source),
       providerModelVersion: null,
       displayName: 'ElevenLabs Music v2 Enterprise',
       family: 'music',
@@ -357,6 +358,8 @@ const stagingLicense = (source) => ({
 })
 
 export const createElevenLabsMusicHttpClient = ({ source = process.env, fetchImpl = globalThis.fetch } = {}) => {
+  const providerType = String(source.CREATIVE_ELEVENLABS_MUSIC_PROVIDER_TYPE ?? 'elevenlabs').trim().toLowerCase()
+  if (providerType !== 'elevenlabs') throw new HttpError(503, 'CREATIVE_PROVIDER_CONFIGURATION_INVALID', `Creative Provider type is unsupported: ${providerId}`)
   const enabled = (key) => String(source[key] ?? '').trim().toLowerCase() === 'true'
   const ready = source.NODE_ENV === 'production' &&
     String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? '').trim().toLowerCase() === 'staging' &&
@@ -370,8 +373,20 @@ export const createElevenLabsMusicHttpClient = ({ source = process.env, fetchImp
   if (!apiKey) throw new HttpError(503, 'CREATIVE_PROVIDER_SECRET_MISSING', `Creative Provider deployment secret is missing: ${providerId}`)
   const license = stagingLicense(source)
   projectLicense(license)
+  const modelId = musicModelIdFor(source)
+  if (!safeIdentifierPattern.test(modelId)) throw new HttpError(503, 'CREATIVE_PROVIDER_CONFIGURATION_INVALID', 'Music Provider model configuration is invalid', { providerId, reasonCode: 'model_id_invalid' })
+  let baseUrl
+  try {
+    const url = new URL(String(source.CREATIVE_ELEVENLABS_MUSIC_BASE_URL ?? defaultBaseUrl).trim())
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error('unsafe')
+    baseUrl = url.toString().replace(/\/+$/, '')
+  } catch {
+    throw new HttpError(503, 'CREATIVE_PROVIDER_CONFIGURATION_INVALID', 'Music Provider base URL configuration is invalid', { providerId, reasonCode: 'base_url_invalid' })
+  }
   if (typeof fetchImpl !== 'function') throw new HttpError(500, 'CREATIVE_PROVIDER_HTTP_CLIENT_INVALID', 'Music Provider HTTP client requires fetch')
   return Object.freeze({
+    providerType,
+    modelId,
     compose: async (providerRequest) => {
       try {
         const response = await fetchImpl(`${baseUrl}${providerRequest.pathname}?output_format=${encodeURIComponent(providerRequest.outputFormat)}`, {
@@ -472,7 +487,7 @@ const completedGeneration = ({ request, provider, actor, response, source, now, 
     },
     source: {
       kind: 'elevenlabs_music_fixture_response',
-      modelId,
+      modelId: musicModelIdFor(source),
       providerRequestId: response.requestId,
       outputIndex: 0,
       workspace: 'music',
@@ -519,7 +534,7 @@ export const createElevenLabsMusicGeneration = async ({
   }
   const providerCost = buildElevenLabsMusicCostMetadata({ request, source, now })
   assertElevenLabsMusicBudgetAllowsDispatch(providerCost)
-  const providerRequest = buildElevenLabsMusicRequest(request)
+  const providerRequest = buildElevenLabsMusicRequest(request, { modelId: client.modelId ?? defaultModelId })
   try {
     const response = await projectElevenLabsMusicResponse(await client.compose(providerRequest), {
       expectedDurationSeconds: request.parameters?.durationSeconds ?? 60,
@@ -536,7 +551,7 @@ export const elevenLabsMusicProviderContract = Object.freeze({
   schemaVersion: 'elevenlabs-music-staging-boundary-v1',
   providerId,
   providerMode,
-  modelId,
+  modelId: defaultModelId,
   fixtureOnly: false,
   providerAdapterImplemented: true,
   providerAdapterRegistered: true,

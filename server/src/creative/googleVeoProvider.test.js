@@ -185,6 +185,24 @@ test('createGoogleVeoHttpClient gates and maps create, status, cancel, and priva
   assert.equal(JSON.stringify(calls).includes(realSource.CREATIVE_GOOGLE_VEO_ACCESS_TOKEN), true)
 })
 
+test('Google Veo HTTP client uses the database-configurable model safely', async () => {
+  const configuredModel = 'veo-3.2-fast-generate-001'
+  const operationName = `projects/video-staging-123/locations/us-central1/publishers/google/models/${configuredModel}/operations/operation-12345678`
+  const calls = []
+  const client = createGoogleVeoHttpClient({
+    source: { ...realSource, CREATIVE_GOOGLE_VEO_MODEL: configuredModel },
+    fetchImpl: async (url) => {
+      calls.push(String(url))
+      return new Response(JSON.stringify({ name: operationName, done: false }), { status: 200, headers: { 'content-type': 'application/json' } })
+    },
+  })
+  const providerRequest = buildGoogleVeoGenerationRequest({ workspace: 'video', mode: 'text_to_video', prompt: 'test', inputAssetIds: [], parameters: {} }, [], { modelId: configuredModel })
+  const operation = await client.createVideo(providerRequest)
+  assert.equal(client.modelId, configuredModel)
+  assert.equal(operation.id, operationName)
+  assert.match(calls[0], new RegExp(`/models/${configuredModel}:predictLongRunning$`))
+})
+
 test('mapGoogleVeoOperationToCreativeGeneration projects terminal output without raw payload retention', () => {
   const generation = mapGoogleVeoOperationToCreativeGeneration({
     request: request({ mode: 'image_to_video', inputAssetIds: ['source-image'] }),

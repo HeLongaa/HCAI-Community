@@ -27,6 +27,7 @@ export const createPrismaSystemSettingsRepository = (client, { recordAudit } = {
       publishedVersion: row?.publishedVersion ?? 0,
       currentRevisionId: row?.currentRevisionId ?? null,
       source: row ? 'published' : 'default',
+      applyMode: entry.applyMode ?? 'restart_required',
       updatedAt: row?.updatedAt.toISOString() ?? null,
     }
   }
@@ -57,6 +58,7 @@ export const createPrismaSystemSettingsRepository = (client, { recordAudit } = {
           value: row?.value ?? entry.defaultValue, valueSchemaVersion: row?.valueSchemaVersion ?? entry.schemaVersion,
           publishedVersion: row?.publishedVersion ?? 0, currentRevisionId: row?.currentRevisionId ?? null,
           source: row ? 'published' : 'default', updatedAt: row?.updatedAt.toISOString() ?? null,
+          applyMode: entry.applyMode ?? 'restart_required',
           pendingChanges: pendingByKey.get(entry.key) ?? 0,
         }
       })

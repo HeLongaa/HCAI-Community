@@ -476,6 +476,10 @@ export const createOpenAIImageHttpClient = ({
   source = process.env,
   fetchImpl = globalThis.fetch,
 } = {}) => {
+  const providerType = String(source.CREATIVE_OPENAI_IMAGE_PROVIDER_TYPE ?? 'openai-compatible').trim().toLowerCase()
+  if (providerType !== 'openai-compatible') {
+    throw new HttpError(503, 'CREATIVE_PROVIDER_CONFIGURATION_INVALID', `Creative Provider type is unsupported: ${providerId}`)
+  }
   const runtimeEnv = String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? '').trim().toLowerCase()
   const clientEnabled = String(source.CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED ?? '').trim().toLowerCase() === 'true'
   const networkEnabled = String(source.CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED ?? '').trim().toLowerCase() === 'true'
