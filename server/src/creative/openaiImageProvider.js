@@ -8,8 +8,8 @@ import { parseProviderRetryAfter } from './providerErrorPolicy.js'
 
 const providerId = 'openai-gpt-image-2'
 const providerCostId = 'openai'
-const modelId = 'gpt-image-2'
-const baseUrl = 'https://api.openai.com/v1'
+const defaultModelId = 'gpt-image-2'
+const defaultBaseUrl = 'https://api.openai.com/v1'
 const pathname = '/images/generations'
 const editPathname = '/images/edits'
 const requestBodyMaxBytes = 16 * 1024
@@ -58,6 +58,31 @@ const numberOrNull = (value) => {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
 }
 
+const resolveOpenAIImageModelId = (source = {}) => {
+  const value = String(source.CREATIVE_OPENAI_IMAGE_MODEL ?? defaultModelId).trim()
+  if (!/^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/.test(value)) {
+    throw new HttpError(503, 'CREATIVE_PROVIDER_CONFIGURATION_INVALID', 'Creative Provider model configuration is invalid', {
+      providerId,
+      reasonCode: 'model_id_invalid',
+    })
+  }
+  return value
+}
+
+const resolveOpenAIImageBaseUrl = (source = {}) => {
+  const value = String(source.CREATIVE_OPENAI_IMAGE_BASE_URL ?? defaultBaseUrl).trim()
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error('unsafe URL')
+    return url.toString().replace(/\/$/, '')
+  } catch {
+    throw new HttpError(503, 'CREATIVE_PROVIDER_CONFIGURATION_INVALID', 'Creative Provider base URL configuration is invalid', {
+      providerId,
+      reasonCode: 'base_url_invalid',
+    })
+  }
+}
+
 const providerRequestError = (message, reasonCode) =>
   new HttpError(422, 'CREATIVE_PROVIDER_HTTP_REQUEST_INVALID', message, {
     providerId,
@@ -89,7 +114,7 @@ export const compileOpenAIImagePrompt = (prompt, stylePreset = 'none') => {
   return instruction ? `${instruction}\n\n${normalizedPrompt}` : normalizedPrompt
 }
 
-export const buildOpenAIImageGenerationRequest = (request) => {
+export const buildOpenAIImageGenerationRequest = (request, { modelId = defaultModelId } = {}) => {
   if (request?.workspace !== 'image' || request?.mode !== 'text_to_image') {
     throw providerRequestError('OpenAI Image adapter only supports text_to_image', 'mode_unsupported')
   }
@@ -203,7 +228,7 @@ export const readOpenAIImageInputFiles = async (resolvedInputAssets, inputAssetR
   return Object.freeze(files)
 }
 
-export const buildOpenAIImageEditRequest = (request, inputFiles) => {
+export const buildOpenAIImageEditRequest = (request, inputFiles, { modelId = defaultModelId } = {}) => {
   const { parameters } = assertOpenAIEditParameters(request)
   const source = inputFiles.find((file) => file.role === 'source')
   const mask = inputFiles.find((file) => file.role === 'mask')
@@ -315,14 +340,18 @@ export const projectOpenAIImageGenerationResponse = async (payload) => {
   if (!isRecord(payload)) throw providerResponseError('response_not_object')
   assertExactKeys(
     payload,
-    ['background', 'created', 'data', 'output_format', 'quality', 'size', 'usage'],
+    ['background', 'created', 'data', 'model', 'output_format', 'quality', 'size', 'usage'],
     providerResponseError,
     'response_fields_unsupported',
   )
   if (!Array.isArray(payload.data) || payload.data.length !== 1 || !isRecord(payload.data[0])) {
     throw providerResponseError('output_count_invalid')
   }
-  assertExactKeys(payload.data[0], ['b64_json'], providerResponseError, 'output_fields_unsupported')
+  assertExactKeys(payload.data[0], ['b64_json', 'revised_prompt'], providerResponseError, 'output_fields_unsupported')
+  if (payload.data[0].revised_prompt != null && (
+    typeof payload.data[0].revised_prompt !== 'string' ||
+    payload.data[0].revised_prompt.length > 4000
+  )) throw providerResponseError('revised_prompt_invalid')
   const body = decodeCanonicalBase64(payload.data[0].b64_json)
   const detected = await fileTypeFromBuffer(body)
   if (detected?.mime !== 'image/png' || detected.ext !== 'png') {
@@ -333,9 +362,12 @@ export const projectOpenAIImageGenerationResponse = async (payload) => {
     throw providerResponseError('created_invalid')
   }
   if (payload.output_format != null && payload.output_format !== 'png') throw providerResponseError('output_format_invalid')
-  if (payload.quality != null && !['low', 'medium', 'high'].includes(payload.quality)) throw providerResponseError('quality_invalid')
-  if (payload.size != null && !Object.hasOwn(outputPricesUsdBySize, payload.size)) throw providerResponseError('size_invalid')
-  if (payload.background != null && payload.background !== 'opaque') throw providerResponseError('background_invalid')
+  if (payload.model != null && (typeof payload.model !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/.test(payload.model))) {
+    throw providerResponseError('model_invalid')
+  }
+  if (payload.quality != null && !['auto', 'standard', 'low', 'medium', 'high'].includes(payload.quality)) throw providerResponseError('quality_invalid')
+  if (payload.size != null && !/^(?:auto|[1-9][0-9]{1,3}x[1-9][0-9]{1,3})$/.test(payload.size)) throw providerResponseError('size_invalid')
+  if (payload.background != null && !['auto', 'opaque', 'transparent'].includes(payload.background)) throw providerResponseError('background_invalid')
   return Object.freeze({
     created,
     usage: projectUsage(payload.usage),
@@ -458,6 +490,8 @@ export const createOpenAIImageHttpClient = ({
   if (typeof fetchImpl !== 'function') {
     throw new HttpError(500, 'CREATIVE_PROVIDER_HTTP_CLIENT_INVALID', 'Creative Provider HTTP client requires a fetch implementation')
   }
+  const baseUrl = resolveOpenAIImageBaseUrl(source)
+  const modelId = resolveOpenAIImageModelId(source)
 
   const execute = async (providerRequest) => {
     try {
@@ -498,8 +532,8 @@ export const createOpenAIImageHttpClient = ({
   }
   return Object.freeze({
     providerId,
-    generateImage: async (request) => execute(buildOpenAIImageGenerationRequest(request)),
-    editImage: async (request, inputFiles) => execute(buildOpenAIImageEditRequest(request, inputFiles)),
+    generateImage: async (request) => execute(buildOpenAIImageGenerationRequest(request, { modelId })),
+    editImage: async (request, inputFiles) => execute(buildOpenAIImageEditRequest(request, inputFiles, { modelId })),
   })
 }
 
@@ -548,12 +582,13 @@ export const buildOpenAIImageProviderCostMetadata = ({
     : budgetStatus({ estimateAmount, dailyCapAmount, spentAmount, thresholdPercent })
   const actualAmount = result?.output ? calculateActualAmount(request, result.usage) : null
   const nowIso = now.toISOString()
+  const configuredModelId = resolveOpenAIImageModelId(source)
   return {
     schemaVersion: 'provider-cost-v1',
     providerId: providerCostId,
     providerAccountRef: String(source.CREATIVE_OPENAI_IMAGE_PROVIDER_ACCOUNT_REF ?? 'staging').trim() || 'staging',
     model: {
-      providerModelId: modelId,
+      providerModelId: configuredModelId,
       providerModelVersion: null,
       displayName: 'OpenAI GPT Image 2',
       family: 'image',
@@ -690,6 +725,7 @@ export const createOpenAIImageGeneration = async ({
     throw new Error('OpenAI Image client must be injected; no default network client is registered')
   }
   const providerCost = buildOpenAIImageProviderCostMetadata({ request, source, now })
+  const configuredModelId = resolveOpenAIImageModelId(source)
   assertOpenAIImageBudgetAllowsDispatch(providerCost)
   try {
     const result = request.mode === 'text_to_image'
@@ -705,7 +741,7 @@ export const createOpenAIImageGeneration = async ({
       storage: { persisted: false, provider: 'openai' },
       source: {
         kind: 'openai_image_generation',
-        modelId,
+        modelId: configuredModelId,
         outputIndex: 0,
         workspace: request.workspace,
       },
@@ -749,8 +785,8 @@ export const preserveOpenAIImageOutputBytes = (sourceOutput, targetOutput) => {
 
 export const openAIImageProviderContract = Object.freeze({
   providerId,
-  modelId,
-  baseUrl,
+  modelId: defaultModelId,
+  baseUrl: defaultBaseUrl,
   pathname,
   editPathname,
   requestBodyMaxBytes,
