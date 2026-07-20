@@ -187,17 +187,31 @@ const buildVideoProvider = ({ id, label, mode, role, source }) => {
   }
 }
 
-const buildMusicProvider = ({ id, label, mode, role }) => ({
+const buildMusicProvider = ({ id, label, mode, role, source }) => {
+  const credentialConfigured = role === 'primary' && Boolean(String(source.CREATIVE_ELEVENLABS_MUSIC_API_KEY ?? '').trim())
+  const evidenceConfigured = role === 'primary' && [
+    source.CREATIVE_ELEVENLABS_MUSIC_LICENSE_ID,
+    source.CREATIVE_ELEVENLABS_MUSIC_TERMS_VERSION,
+  ].every((value) => Boolean(String(value ?? '').trim()))
+  const runtimeEnabled = role === 'primary' && source.NODE_ENV === 'production' &&
+    String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? '').trim().toLowerCase() === 'staging' &&
+    String(source.CREATIVE_ELEVENLABS_MUSIC_CONFIRMATION ?? '').trim().toLowerCase() === 'staging-only' &&
+    credentialConfigured && evidenceConfigured &&
+    enabledFlag(source, 'CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED') &&
+    enabledFlag(source, 'CREATIVE_ELEVENLABS_MUSIC_NETWORK_CALLS_ENABLED') &&
+    enabledFlag(source, 'CREATIVE_ELEVENLABS_MUSIC_ENTERPRISE_RIGHTS_CONFIRMED') &&
+    enabledFlag(source, 'CREATIVE_ELEVENLABS_MUSIC_TRAINING_OPT_OUT_CONFIRMED')
+  return {
   id,
   label,
   mode,
-  enabled: false,
-  configured: false,
+  enabled: runtimeEnabled,
+  configured: runtimeEnabled,
   default: false,
   fixtureInjectable: role === 'primary',
   capabilities: [musicCapabilityForProvider(id)],
   safeMetadata: {
-    externalCredentialsConfigured: false,
+    externalCredentialsConfigured: credentialConfigured,
     persistsOutputs: true,
     costMetered: true,
     asynchronousApplicationJob: true,
@@ -206,10 +220,11 @@ const buildMusicProvider = ({ id, label, mode, role }) => ({
     approvalRequired: true,
     role,
     adapterImplemented: role === 'primary',
-    adapterRegistered: false,
-    fixtureAdapterOnly: role === 'primary',
-    httpClientImplemented: false,
-    networkCallsEnabled: false,
+    adapterRegistered: runtimeEnabled,
+    fixtureAdapterOnly: role === 'primary' && !runtimeEnabled,
+    httpClientImplemented: role === 'primary',
+    httpClientEnabled: runtimeEnabled,
+    networkCallsEnabled: runtimeEnabled,
     lifecycleImplemented: false,
     lifecycleEnabled: false,
     outputIngestionImplemented: role === 'primary',
@@ -221,7 +236,8 @@ const buildMusicProvider = ({ id, label, mode, role }) => ({
     enterpriseMusicContractRequired: role === 'primary',
     previewRiskAcceptanceRequired: role === 'backup',
   },
-})
+  }
+}
 
 export const createCreativeProviderRegistry = (source = process.env) => {
   const config = buildCreativeProviderConfig(source)
@@ -264,12 +280,14 @@ export const createCreativeProviderRegistry = (source = process.env) => {
         label: 'ElevenLabs Music v2 Enterprise',
         mode: 'elevenlabs_music',
         role: 'primary',
+        source,
       }),
       buildMusicProvider({
         id: 'google-lyria-3-pro-preview',
         label: 'Google Lyria 3 Pro Preview',
         mode: 'google_music',
         role: 'backup',
+        source,
       }),
       ...providerShells,
     ],

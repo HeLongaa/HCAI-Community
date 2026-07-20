@@ -101,6 +101,12 @@ test('buildEnv allows development without managed token secrets', () => {
     creativeGoogleVeoTimeoutSeconds: 900,
     creativeGoogleVeoMaxStatusAttempts: 20,
     creativeGoogleVeoSweepLimit: 10,
+    creativeElevenLabsMusicHttpClientEnabled: false,
+    creativeElevenLabsMusicNetworkCallsEnabled: false,
+    hasCreativeElevenLabsMusicApiKey: false,
+    creativeElevenLabsMusicRightsConfirmed: false,
+    creativeElevenLabsMusicTrainingOptOutConfirmed: false,
+    hasCreativeElevenLabsMusicLicenseEvidence: false,
     chatRetentionWorkerEnabled: false,
     chatRetentionWorkerIntervalSeconds: 3600,
     chatRetentionSweepLimit: 100,
@@ -352,6 +358,27 @@ test('buildEnv enables real Veo staging only behind complete HTTP, credential, a
   assert.throws(
     () => buildEnv({ CREATIVE_GOOGLE_VEO_NETWORK_CALLS_ENABLED: 'true' }),
     /requires CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED=true/,
+  )
+})
+
+test('buildEnv enables ElevenLabs Music staging only with rights and license evidence', () => {
+  const env = buildEnv({
+    NODE_ENV: 'production', ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED: 'true',
+    CREATIVE_ELEVENLABS_MUSIC_NETWORK_CALLS_ENABLED: 'true',
+    CREATIVE_ELEVENLABS_MUSIC_CONFIRMATION: 'staging-only',
+    CREATIVE_ELEVENLABS_MUSIC_API_KEY: 'fixture-key',
+    CREATIVE_ELEVENLABS_MUSIC_ENTERPRISE_RIGHTS_CONFIRMED: 'true',
+    CREATIVE_ELEVENLABS_MUSIC_TRAINING_OPT_OUT_CONFIRMED: 'true',
+    CREATIVE_ELEVENLABS_MUSIC_LICENSE_ID: 'order-1',
+    CREATIVE_ELEVENLABS_MUSIC_TERMS_VERSION: 'terms-1',
+  })
+  assert.equal(env.creativeElevenLabsMusicHttpClientEnabled, true)
+  assert.equal(env.hasCreativeElevenLabsMusicLicenseEvidence, true)
+  assert.throws(
+    () => buildEnv({ CREATIVE_ELEVENLABS_MUSIC_NETWORK_CALLS_ENABLED: 'true' }),
+    /requires CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED=true/,
   )
 })
 

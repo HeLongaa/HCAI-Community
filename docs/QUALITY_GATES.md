@@ -65,12 +65,11 @@ request/input/lifecycle/accounting/release/operations tests, and fails if a defa
 real-call approval, automatic failover, or production enablement is implied.
 
 The Music capability contract freezes instrumental and lyrics-to-song request shapes, Provider mode projections,
-three-minute MP3 output, rights/license gates, application lifecycle, and budget limits. The ElevenLabs adapter tests
-exercise closed fixture request mapping, exact MP3 byte/MIME checks, safe failures, generated-minute costs, frozen caps,
-mandatory fixture license evidence, application-owned persistence, private MP3 ingestion, scan gating, and durable cost
-closeout. Music Studio now consumes application capability/history/mutation/media APIs, restores owner history, submits
-closed instrumental/lyrics parameters, and gates private playback/download on clean MP3 output. Reference audio, remix,
-voice cloning, TTS, product registration, HTTP, credentials, Provider lifecycle, and real traffic remain unavailable.
+three-minute MP3 output, rights/license gates, application lifecycle, and budget limits. `npm run
+test:music-elevenlabs-readiness` covers closed request mapping, official Music v2 HTTP shape, bounded MP3 validation,
+safe failures, generated-minute costs, staging license evidence, private ingestion, scanning, and accounting. Use
+`npm run music:elevenlabs:preflight` before any deployment and `npm run music:elevenlabs:acceptance` only with the
+short-lived one-call approval envelope. Reference audio, remix, voice/TTS, Lyria failover, and production remain disabled.
 
 Use this before handing off small frontend, contract, or documentation changes.
 
@@ -150,13 +149,12 @@ Includes:
   labels Mock/fixture/unavailable runtimes; the V1-29 matrix executes 13 request, lifecycle, accounting, release, failure,
   operations, and rollback scenarios, while adapter product registration, HTTP, lifecycle runtime, real calls,
   production, and failover remain disabled
-- Music capability version, disabled ElevenLabs Enterprise/Lyria Preview decisions, instrumental and lyrics-to-song
+- Music capability version, guarded ElevenLabs staging and disabled Lyria Preview decisions, instrumental and lyrics-to-song
   modes, three-minute private MP3 output, rights/license metadata, application lifecycle, and USD budget limits; the
-  injected ElevenLabs fixture adapter validates requests, MP3 bytes, safe errors, generated-minute cost, and license
-  evidence, and the fixture path persists owner-scoped private MP3 assets with scan gating and durable cost closeout
+  ElevenLabs adapter validates requests, bounded MP3 bytes, safe errors, generated-minute cost, and license evidence;
+  the application acceptance persists owner-scoped private MP3 assets with scan gating and durable cost closeout
   while Music Studio consumes only application capability/history/mutation/media APIs and gates private MP3 playback;
-  product registration, HTTP clients, credentials, Provider lifecycle, real calls, voice/TTS adjacency, production, and
-  failover remain unimplemented or disabled
+  all staging HTTP/credential/rights gates are disabled by default, and voice/TTS adjacency, production, and failover remain unavailable
 - external OAuth provider metadata validation
 - OAuth hardening validation: `npm run test:oauth-hardening` proves production fail-closed behavior, hashed single-use
   state, PKCE, bounded Provider failures, cookie-based callback recovery, transactional account lifecycle, governance,

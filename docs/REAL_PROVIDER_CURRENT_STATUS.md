@@ -2,7 +2,7 @@
 
 This is the first decision page to read before starting any real-provider work. It compresses the current provider readiness state into one handoff: what is usable now, what is fixture-only, what remains deferred, and what requires explicit approval.
 
-Current decision: **the repository is provider-ready, not real-provider-connected**. Mock-provider generation, durable accounting, owner-scoped Image lifecycle history, Admin generation history, internal mutation controls, Provider budget observability, the V1-11 fail-closed Provider control plane, the V1-12 shared error/durable retry policy, a fixture-only OpenAI GPT Image 2 adapter, a default-disabled OpenAI Chat staging boundary, the executable Video contract/lifecycle package, and the V1-32 fail-closed Music contract, fixture adapter, application persistence, MP3 ingestion, and cost closeout are available. All unapproved Provider HTTP clients, callback APIs, and workers remain off by default. Real paid-provider calls, real Provider webhook delivery, external Provider alert delivery, enabled real polling, real Provider mutation clients, real cap readers/probes, and production paid-provider enablement remain no-go.
+Current decision: **the repository has guarded real-Provider staging runtimes, not production Provider enablement**. OpenAI Chat/Image, Google Veo, and ElevenLabs Music boundaries are default-disabled and require dedicated staging, credentials, approval, control-plane, budget, and modality-specific governance gates. Real paid acceptance requires an explicit short-lived envelope; production paid-provider enablement remains no-go.
 
 V1-04 now records conditional implementation-planning decisions for all four modalities in
 `docs/V1_PROVIDER_DECISION_MATRIX.md` and `config/v1-provider-matrix.json`. These selections define primary/backup
@@ -88,24 +88,24 @@ private scanner-gated output, license metadata, rights/safety/data requirements,
 ElevenLabs Music v2 Enterprise and Google Lyria 3 Pro Preview are catalog-only disabled shells. Reference audio, remix,
 voice cloning, and TTS are explicitly unavailable.
 
-V1-31 adds `server/src/creative/elevenLabsMusicProvider.js` as an injected fixture-only boundary. It maps the two Music
-modes to a closed `music_v2` request, validates exact MP3 bytes/MIME and generated duration, projects safe errors,
-generated-minute costs, frozen budget caps, and mandatory `fixture_only` Enterprise license evidence. The adapter is
-not registered with product dispatch and retains no output bytes, raw payloads, Provider URLs, or credentials. No Music
-HTTP client, credential, lifecycle, real call, automatic backup, or production enablement exists.
+`server/src/creative/elevenLabsMusicProvider.js` maps both Music modes to official `music_v2`, validates bounded MP3
+bytes/MIME, `song-id`, duration, safe errors, generated-minute cost, and mandatory Enterprise license evidence. Its
+HTTP runtime uses `POST /v1/music` only after all dedicated staging, network, credential, rights, opt-out, evidence,
+control-plane, and budget gates pass; output bytes and credentials never enter serializable state.
 
 V1-32 wires the injected Music fixture through the shared application-owned generation path. It reserves and settles
 generated-minute Provider cost, persists owner-scoped generation history, keeps MP3 bytes only in a process-local
 WeakMap, fails closed after serialization, and ingests clean fixture MP3 output into private scanner-gated media assets.
-The ElevenLabs adapter remains unregistered for product dispatch, and no Music HTTP client, credential, Provider
-lifecycle, real call, automatic backup, or production enablement exists.
+The ElevenLabs adapter is registered only in an explicitly gated staging process. A one-call 30-second acceptance
+harness covers application dispatch, private MP3 ingestion, scanning, license evidence, credits, quota, and cost
+closeout. Automatic backup and production enablement remain unavailable.
 
 V1-33 replaces the local Music workspace simulation with `src/features/workspace/MusicStudioPage.tsx` and
 `src/hooks/useMusicGenerationWorkflow.ts`. The UI derives modes and parameters from the application capability catalog,
 creates and lists owner-scoped Music jobs, polls application generation detail, performs owner cancel/retry mutations,
 and uses private media download contracts for clean MP3 playback and download. Mock execution is labeled as Mock;
-ElevenLabs is fixture-only and unavailable for product generation. The browser never calls a Provider endpoint, and no
-Music credential, HTTP client, real traffic, lifecycle worker, automatic Lyria routing, or production switch is enabled.
+The browser never calls ElevenLabs directly. Application-side staging dispatch is possible only behind the guarded
+runtime; no automatic Lyria routing or production switch is enabled.
 
 V1-44 freezes the corresponding four-modality content safety baseline in
 `docs/V1_CONTENT_SAFETY_POLICY_MATRIX.md` and `config/v1-content-safety-policy.json`. It defines 20 risk categories,

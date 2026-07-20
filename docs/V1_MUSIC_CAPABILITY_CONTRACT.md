@@ -3,17 +3,16 @@
 V1-30 freezes the Music product and Provider contract. The executable source of truth is
 `server/src/creative/musicCapabilityContract.js`.
 
-Current decision: **the contract, injected fixture-only ElevenLabs adapter, application-owned persistence, MP3 ingestion,
-and cost closeout are implemented, but every real Music Provider path remains unavailable**. ElevenLabs Music v2
-Enterprise and Google Lyria 3 Pro Preview remain disabled catalog shells. There is no Music SDK, HTTP client,
-credential, product registration, Provider lifecycle worker, real call, automatic backup, or production enablement.
+Current decision: **ElevenLabs Music v2 has a guarded staging HTTP runtime, while production remains unavailable**.
+The runtime is synchronous, registered only when every dedicated staging, network, credential, Enterprise-rights,
+training-opt-out, license-evidence, control-plane, and budget gate passes. Google Lyria remains a disabled shell.
 
 ## Product Modes
 
 - `instrumental`: create one instrumental track from a music brief.
 - `lyrics_to_song`: create one song from a music brief plus required lyrics and language.
 - Reference audio, remix, voice cloning, and text-to-speech are not V1-30 Music capabilities.
-- Music Studio consumes the application capability catalog, generation history/detail, lifecycle mutation, and private media download APIs. Mock remains the only product runtime; ElevenLabs and Lyria remain unavailable.
+- Music Studio consumes application APIs only. ElevenLabs can be selected in a dedicated gated staging process; Mock remains the default and Lyria remains unavailable.
 
 ## Parameters And Output
 
@@ -54,12 +53,13 @@ Provider spend remains separate from product credits: USD 0.60 per job, USD 10 d
 day. A current estimate, Provider cap evidence, control-plane approval, and durable reservation are required before any
 future dispatch.
 
-## V1-31 Fixture Boundary
+## Guarded Staging Boundary
 
-`server/src/creative/elevenLabsMusicProvider.js` implements the governed fixture boundary:
+`server/src/creative/elevenLabsMusicProvider.js` implements fixture injection and the governed staging boundary:
 
 - Instrumental and lyrics-to-song requests map to a closed `music_v2` compose shape with one MP3 output.
-- Only an explicitly injected `compose` client can run; there is no default client or network construction path.
+- `createElevenLabsMusicHttpClient` calls official `POST /v1/music` with explicit `music_v2` and `mp3_48000_192`.
+- Network construction requires production process semantics in a dedicated staging runtime plus independent HTTP/network switches, API key, Enterprise rights, training opt-out, license ID, and terms version.
 - Responses reject unknown fields, invalid IDs, non-MP3 MIME or bytes, duration mismatches, and incomplete license
   evidence.
 - Generation projections retain safe output hashes, generated-minute cost metadata, and `fixture_only` license evidence,
@@ -81,7 +81,6 @@ V1-32 adds application-owned Music fixture persistence:
   private media asset, scan/review-gated download URL, and owner-scoped generation history without persisting Provider
   URLs or raw payloads.
 
-V1-33 connects Music Studio to application APIs and owner history, including lifecycle polling, cancel/retry, governed
-private MP3 playback/download, lyrics parameters, and explicit runtime labels. The ElevenLabs adapter remains
-unregistered, while HTTP, credentials, real Provider traffic, automatic Lyria failover, and production enablement stay
-absent until separate approval.
+`scripts/check-elevenlabs-music-readiness.mjs` validates preflight and a one-call, 30-second application acceptance.
+The acceptance verifies moderation, private MP3 ingestion, synchronous scanning, verified staging license evidence,
+credits, quota, Provider cost closeout, and production no-go. Automatic Lyria failover and production remain prohibited.

@@ -4,19 +4,23 @@ import { fileTypeFromBuffer } from 'file-type'
 
 import { HttpError } from '../common/errors/httpError.js'
 import { safeProviderFailure } from './providerAdapterContract.js'
+import { parseProviderRetryAfter } from './providerErrorPolicy.js'
 import { assertMusicGenerationRequest, musicCapabilityContract } from './musicCapabilityContract.js'
 
 const providerId = 'elevenlabs-music-v2-enterprise'
 const providerMode = 'elevenlabs_music'
 const modelId = 'music_v2'
-const providerAccountRef = 'fixture'
-const budgetScope = 'fixture:elevenlabs:music'
+const defaultProviderAccountRef = 'staging'
+const budgetScope = 'staging:elevenlabs:music'
+const baseUrl = 'https://api.elevenlabs.io'
+const pathname = '/v1/music'
 const unitPriceUsd = musicCapabilityContract.cost.primaryPublicBaselineUsdPerMinute
 const perJobCapUsd = musicCapabilityContract.cost.perJobUsdCap
 const dailyCapUsd = musicCapabilityContract.cost.dailyUsdCap
 const monthlyCapUsd = musicCapabilityContract.cost.monthlyUsdCap
 const maximumJobsPerDay = musicCapabilityContract.cost.maximumJobsPerDay
 const outputMaxBytes = 16 * 1024 * 1024
+const requestTimeoutMs = 300_000
 const thresholdPercentDefault = 80
 const musicBytesByOutput = new WeakMap()
 const safeIdentifierPattern = /^[a-z0-9][a-z0-9:._-]{0,127}$/i
@@ -124,7 +128,10 @@ export const buildElevenLabsMusicRequest = (request) => {
   })
   return Object.freeze({
     body,
-    outputFormat: 'mp3_44100_128',
+    method: 'POST',
+    pathname,
+    serializedBody: JSON.stringify(body),
+    outputFormat: 'mp3_48000_192',
     safeFields: Object.freeze({
       model: modelId,
       mode: request.mode,
@@ -160,7 +167,7 @@ const projectLicense = (value) => {
   }
   if (value.attributionRequired !== false) throw providerResponseError('license_attribution_invalid')
   if (value.trainingOptOutApplied !== true) throw providerResponseError('license_training_opt_out_missing')
-  if (value.evidenceStatus !== 'fixture_only') throw providerResponseError('license_evidence_status_invalid')
+  if (!['fixture_only', 'verified_staging'].includes(value.evidenceStatus)) throw providerResponseError('license_evidence_status_invalid')
   return Object.freeze({
     schemaVersion: 'music-license-v1',
     providerId,
@@ -171,7 +178,7 @@ const projectLicense = (value) => {
     resaleAndStreamingAllowed: true,
     attributionRequired: false,
     trainingOptOutApplied: true,
-    evidenceStatus: 'fixture_only',
+    evidenceStatus: value.evidenceStatus,
   })
 }
 
@@ -225,6 +232,7 @@ export const buildElevenLabsMusicCostMetadata = ({
     ? thresholdPercentDefault
     : boundedPercent(configuredThreshold)
   const actualAmount = response?.usage?.actualCostUsd ?? null
+  const providerAccountRef = String(source.CREATIVE_ELEVENLABS_MUSIC_PROVIDER_ACCOUNT_REF ?? defaultProviderAccountRef).trim() || defaultProviderAccountRef
   const nowIso = now.toISOString()
   return Object.freeze({
     schemaVersion: 'provider-cost-v1',
@@ -289,6 +297,109 @@ export const buildElevenLabsMusicCostMetadata = ({
       reconciliationRequired: Boolean(response) && actualAmount == null,
       reasonCodes: Boolean(response) && actualAmount == null ? ['actual_cost_pending'] : [],
     }),
+  })
+}
+
+const readBoundedBody = async (response) => {
+  const declared = Number.parseInt(response.headers?.get?.('content-length') ?? '', 10)
+  if (Number.isFinite(declared) && declared > outputMaxBytes) throw providerResponseError('output_bytes_too_large')
+  if (!response.body?.getReader) {
+    const body = Buffer.from(await response.arrayBuffer())
+    if (body.length === 0) throw providerResponseError('output_bytes_empty')
+    if (body.length > outputMaxBytes) throw providerResponseError('output_bytes_too_large')
+    return body
+  }
+  const reader = response.body.getReader()
+  const chunks = []
+  let size = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > outputMaxBytes) {
+      await reader.cancel().catch(() => {})
+      throw providerResponseError('output_bytes_too_large')
+    }
+    chunks.push(Buffer.from(value))
+  }
+  const body = Buffer.concat(chunks, size)
+  if (body.length === 0) throw providerResponseError('output_bytes_empty')
+  return body
+}
+
+const providerHttpError = (response) => {
+  const status = response.status
+  const retryAfterSeconds = parseProviderRetryAfter(response.headers?.get?.('retry-after'))
+  const category = status === 429 ? 'rate_limit'
+    : [408, 504].includes(status) ? 'timeout'
+      : [401, 403].includes(status) ? 'auth_configuration'
+        : status >= 500 ? 'provider_5xx' : 'provider_rejected'
+  return new HttpError(
+    category === 'rate_limit' ? 429 : category === 'timeout' ? 504 : category === 'provider_rejected' ? 422 : 503,
+    category === 'rate_limit' ? 'CREATIVE_PROVIDER_RATE_LIMITED'
+      : category === 'timeout' ? 'CREATIVE_PROVIDER_TIMEOUT'
+        : category === 'auth_configuration' ? 'CREATIVE_PROVIDER_AUTH_FAILED'
+          : category === 'provider_5xx' ? 'CREATIVE_PROVIDER_HTTP_FAILED' : 'CREATIVE_PROVIDER_REJECTED',
+    'Music Provider HTTP request failed',
+    { providerId, providerStatus: status, providerCategory: category, retryable: ['rate_limit', 'timeout', 'provider_5xx'].includes(category), ...(retryAfterSeconds == null ? {} : { retryAfterSeconds }) },
+  )
+}
+
+const stagingLicense = (source) => ({
+  licenseId: String(source.CREATIVE_ELEVENLABS_MUSIC_LICENSE_ID ?? '').trim(),
+  termsVersion: String(source.CREATIVE_ELEVENLABS_MUSIC_TERMS_VERSION ?? '').trim(),
+  rightsBasis: 'enterprise_music_contract',
+  commercialUseAllowed: true,
+  resaleAndStreamingAllowed: true,
+  attributionRequired: false,
+  trainingOptOutApplied: true,
+  evidenceStatus: 'verified_staging',
+})
+
+export const createElevenLabsMusicHttpClient = ({ source = process.env, fetchImpl = globalThis.fetch } = {}) => {
+  const enabled = (key) => String(source[key] ?? '').trim().toLowerCase() === 'true'
+  const ready = source.NODE_ENV === 'production' &&
+    String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? '').trim().toLowerCase() === 'staging' &&
+    String(source.CREATIVE_ELEVENLABS_MUSIC_CONFIRMATION ?? '').trim().toLowerCase() === 'staging-only' &&
+    enabled('CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED') &&
+    enabled('CREATIVE_ELEVENLABS_MUSIC_NETWORK_CALLS_ENABLED') &&
+    enabled('CREATIVE_ELEVENLABS_MUSIC_ENTERPRISE_RIGHTS_CONFIRMED') &&
+    enabled('CREATIVE_ELEVENLABS_MUSIC_TRAINING_OPT_OUT_CONFIRMED')
+  if (!ready) throw new HttpError(503, 'CREATIVE_PROVIDER_HTTP_CLIENT_DISABLED', `Creative Provider HTTP client is disabled: ${providerId}`)
+  const apiKey = String(source.CREATIVE_ELEVENLABS_MUSIC_API_KEY ?? '').trim()
+  if (!apiKey) throw new HttpError(503, 'CREATIVE_PROVIDER_SECRET_MISSING', `Creative Provider deployment secret is missing: ${providerId}`)
+  const license = stagingLicense(source)
+  projectLicense(license)
+  if (typeof fetchImpl !== 'function') throw new HttpError(500, 'CREATIVE_PROVIDER_HTTP_CLIENT_INVALID', 'Music Provider HTTP client requires fetch')
+  return Object.freeze({
+    compose: async (providerRequest) => {
+      try {
+        const response = await fetchImpl(`${baseUrl}${providerRequest.pathname}?output_format=${encodeURIComponent(providerRequest.outputFormat)}`, {
+          method: providerRequest.method,
+          headers: { accept: 'audio/mpeg', 'content-type': 'application/json', 'xi-api-key': apiKey },
+          body: providerRequest.serializedBody,
+          signal: AbortSignal.timeout(requestTimeoutMs),
+        })
+        if (!response.ok) throw providerHttpError(response)
+        const requestId = String(response.headers?.get?.('song-id') ?? '').trim()
+        return {
+          requestId,
+          body: await readBoundedBody(response),
+          contentType: String(response.headers?.get?.('content-type') ?? '').split(';')[0].trim().toLowerCase(),
+          usage: {
+            generatedSeconds: providerRequest.body.music_length_ms / 1000,
+            actualCostUsd: Number(((providerRequest.body.music_length_ms / 60_000) * unitPriceUsd).toFixed(6)),
+          },
+          license,
+        }
+      } catch (error) {
+        if (error instanceof HttpError) throw error
+        if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+          throw new HttpError(504, 'CREATIVE_PROVIDER_TIMEOUT', 'Music Provider HTTP request timed out', { providerId, providerCategory: 'timeout', retryable: true })
+        }
+        throw new HttpError(502, 'CREATIVE_PROVIDER_HTTP_FAILED', 'Music Provider HTTP request failed', { providerId, providerCategory: 'provider_5xx', retryable: true })
+      }
+    },
   })
 }
 
@@ -422,17 +533,17 @@ export const createElevenLabsMusicGeneration = async ({
 export const readElevenLabsMusicOutputBytes = (output) => musicBytesByOutput.get(output) ?? null
 
 export const elevenLabsMusicProviderContract = Object.freeze({
-  schemaVersion: 'elevenlabs-music-fixture-boundary-v1',
+  schemaVersion: 'elevenlabs-music-staging-boundary-v1',
   providerId,
   providerMode,
   modelId,
-  fixtureOnly: true,
+  fixtureOnly: false,
   providerAdapterImplemented: true,
-  providerAdapterRegistered: false,
-  httpClientImplemented: false,
-  credentialsImplemented: false,
-  networkCallsEnabled: false,
+  providerAdapterRegistered: true,
+  httpClientImplemented: true,
+  credentialsImplemented: true,
+  networkCallsEnabled: true,
   lifecycleRegistered: false,
-  outputIngestionImplemented: false,
+  outputIngestionImplemented: true,
   productionEnablementApproved: false,
 })
