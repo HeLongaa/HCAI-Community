@@ -62,6 +62,10 @@ import {
   createGoogleVeoGeneration,
   createGoogleVeoHttpClient,
 } from '../../creative/googleVeoProvider.js'
+import {
+  createElevenLabsMusicGeneration,
+  createElevenLabsMusicHttpClient,
+} from '../../creative/elevenLabsMusicProvider.js'
 import { quotaWindowFor } from '../../creative/policy.js'
 import {
   assertGenerationExecutionClaim,
@@ -126,6 +130,13 @@ export const registerCreativeRoutes = (router, options = {}) => {
         fetchImpl: options.googleVeoFetchImpl ?? globalThis.fetch,
       })
     : null
+  const elevenLabsMusicProvider = runtimeRegistry.providers.find((provider) => provider.id === 'elevenlabs-music-v2-enterprise')
+  const elevenLabsMusicClient = elevenLabsMusicProvider?.enabled && elevenLabsMusicProvider?.configured
+    ? options.elevenLabsMusicClient ?? createElevenLabsMusicHttpClient({
+        source: executionSource,
+        fetchImpl: options.elevenLabsMusicFetchImpl ?? globalThis.fetch,
+      })
+    : null
   const runtimeAdapters = {
     ...(openAIImageClient
       ? {
@@ -140,6 +151,14 @@ export const registerCreativeRoutes = (router, options = {}) => {
           'google-veo-3-1-fast': (context) => createGoogleVeoGeneration({
             ...context,
             client: googleVeoClient,
+          }),
+        }
+      : {}),
+    ...(elevenLabsMusicClient
+      ? {
+          'elevenlabs-music-v2-enterprise': (context) => createElevenLabsMusicGeneration({
+            ...context,
+            client: elevenLabsMusicClient,
           }),
         }
       : {}),
@@ -160,7 +179,7 @@ export const registerCreativeRoutes = (router, options = {}) => {
   }
   const providerOutputFetcher = options.providerOutputFetcher ?? googleVeoClient?.fetchOutput ?? null
   const providerControlPlane = options.providerControlPlane ?? (
-    (openAIImageClient || googleVeoClient) && routeRepositories.creativeProviderControls
+    (openAIImageClient || googleVeoClient || elevenLabsMusicClient) && routeRepositories.creativeProviderControls
       ? createProviderControlPlane({ repository: routeRepositories.creativeProviderControls })
       : null
   )

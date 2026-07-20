@@ -117,7 +117,7 @@ test('getCreativeProviderCatalog exposes safe mock provider capabilities', () =>
   assert.equal(eleven.safeMetadata.adapterImplemented, true)
   assert.equal(eleven.safeMetadata.adapterRegistered, false)
   assert.equal(eleven.safeMetadata.fixtureAdapterOnly, true)
-  assert.equal(eleven.safeMetadata.httpClientImplemented, false)
+  assert.equal(eleven.safeMetadata.httpClientImplemented, true)
   assert.equal(eleven.safeMetadata.outputIngestionImplemented, true)
   assert.equal(eleven.safeMetadata.providerCostCloseoutImplemented, true)
   assert.equal(eleven.safeMetadata.enterpriseMusicContractRequired, true)
@@ -125,6 +125,21 @@ test('getCreativeProviderCatalog exposes safe mock provider capabilities', () =>
   assert.equal(lyria.safeMetadata.previewRiskAcceptanceRequired, true)
   assert.equal(lyria.safeMetadata.automaticFailoverAllowed, false)
   assert.deepEqual(lyria.capabilities[0].modes, ['instrumental'])
+})
+
+test('getCreativeProviderCatalog enables ElevenLabs only behind complete staging evidence', () => {
+  const source = {
+    NODE_ENV: 'production', ACCESS_TOKEN_SECRET: 'catalog-access-secret-at-least-32-bytes', CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED: 'true', CREATIVE_ELEVENLABS_MUSIC_NETWORK_CALLS_ENABLED: 'true', CREATIVE_ELEVENLABS_MUSIC_CONFIRMATION: 'staging-only',
+    CREATIVE_ELEVENLABS_MUSIC_API_KEY: 'catalog-secret', CREATIVE_ELEVENLABS_MUSIC_ENTERPRISE_RIGHTS_CONFIRMED: 'true', CREATIVE_ELEVENLABS_MUSIC_TRAINING_OPT_OUT_CONFIRMED: 'true',
+    CREATIVE_ELEVENLABS_MUSIC_LICENSE_ID: 'order-1', CREATIVE_ELEVENLABS_MUSIC_TERMS_VERSION: 'terms-1',
+  }
+  const provider = getCreativeProviderCatalog(source).providers.find((item) => item.id === 'elevenlabs-music-v2-enterprise')
+  assert.equal(provider.enabled, true)
+  assert.equal(provider.configured, true)
+  assert.equal(provider.safeMetadata.httpClientEnabled, true)
+  assert.equal(provider.safeMetadata.networkCallsEnabled, true)
+  assert.equal(JSON.stringify(provider).includes('catalog-secret'), false)
 })
 
 test('executeCreativeGeneration runs the ElevenLabs Music fixture and settles generated-minute cost', async () => {

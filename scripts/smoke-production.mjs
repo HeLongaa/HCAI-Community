@@ -332,10 +332,10 @@ check(
     musicCapabilityContract.models.backup.enabled === false &&
     musicCapabilityContract.models.backup.suppliedLyricsSupportConfirmed === false &&
     musicCapabilityContract.runtime.providerAdapterImplemented === true &&
-    musicCapabilityContract.runtime.providerAdapterRegistered === false &&
-    musicCapabilityContract.runtime.fixtureAdapterOnly === true &&
-    musicCapabilityContract.runtime.providerHttpClientImplemented === false &&
-    musicCapabilityContract.runtime.providerCredentialsImplemented === false &&
+    musicCapabilityContract.runtime.providerAdapterRegistered === true &&
+    musicCapabilityContract.runtime.fixtureAdapterOnly === false &&
+    musicCapabilityContract.runtime.providerHttpClientImplemented === true &&
+    musicCapabilityContract.runtime.providerCredentialsImplemented === true &&
     musicCapabilityContract.runtime.providerResponseValidationImplemented === true &&
     musicCapabilityContract.runtime.licenseMetadataProjectionImplemented === true &&
     musicCapabilityContract.runtime.providerCostMetadataImplemented === true &&
@@ -345,12 +345,12 @@ check(
     musicCapabilityContract.runtime.outputIngestionImplemented === true &&
     musicCapabilityContract.runtime.providerCostCloseoutImplemented === true &&
     musicCapabilityContract.runtime.automaticFailoverAllowed === false &&
-    musicCapabilityContract.runtime.realProviderCallsApproved === false &&
+    musicCapabilityContract.runtime.realProviderCallsApproved === true &&
     musicCapabilityContract.runtime.productionEnablementApproved === false &&
     musicCapabilityContract.productBoundary.referenceAudioSupported === false &&
     musicCapabilityContract.productBoundary.voiceCloningSupported === false &&
     musicCapabilityContract.productBoundary.textToSpeechSupported === false,
-  'V1-32 adds application-owned Music persistence, MP3 ingestion, and cost closeout without enabling HTTP, credentials, Provider traffic, Provider lifecycle, failover, production, or adjacent voice products',
+  'AI-MUSIC-01 registers guarded staging support while all Music network gates, credentials, Lyria failover, and production enablement remain disabled by default',
 )
 check(checks, 'media alert channel configured', hasAny(env.hasMediaScanAlertWebhookUrl, env.hasMediaScanAlertSlackWebhookUrl, env.mediaScanAlertEmailRecipientCount > 0), 'At least one media alert channel must be configured')
 check(checks, 'security alert channel configured', hasAny(env.hasSecurityAlertWebhookUrl, env.hasSecurityAlertSlackWebhookUrl, env.securityAlertEmailRecipientCount > 0), 'At least one security alert channel must be configured')

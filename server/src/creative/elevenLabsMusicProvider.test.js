@@ -7,6 +7,7 @@ import {
   buildElevenLabsMusicCostMetadata,
   buildElevenLabsMusicRequest,
   createElevenLabsMusicGeneration,
+  createElevenLabsMusicHttpClient,
   elevenLabsMusicProviderContract,
   projectElevenLabsMusicResponse,
 } from './elevenLabsMusicProvider.js'
@@ -60,13 +61,13 @@ const response = (overrides = {}) => ({
   ...overrides,
 })
 
-test('ElevenLabs Music boundary remains fixture-only and unregistered', () => {
-  assert.equal(elevenLabsMusicProviderContract.fixtureOnly, true)
+test('ElevenLabs Music boundary exposes guarded staging support without production approval', () => {
+  assert.equal(elevenLabsMusicProviderContract.fixtureOnly, false)
   assert.equal(elevenLabsMusicProviderContract.providerAdapterImplemented, true)
-  assert.equal(elevenLabsMusicProviderContract.providerAdapterRegistered, false)
-  assert.equal(elevenLabsMusicProviderContract.httpClientImplemented, false)
-  assert.equal(elevenLabsMusicProviderContract.credentialsImplemented, false)
-  assert.equal(elevenLabsMusicProviderContract.networkCallsEnabled, false)
+  assert.equal(elevenLabsMusicProviderContract.providerAdapterRegistered, true)
+  assert.equal(elevenLabsMusicProviderContract.httpClientImplemented, true)
+  assert.equal(elevenLabsMusicProviderContract.credentialsImplemented, true)
+  assert.equal(elevenLabsMusicProviderContract.networkCallsEnabled, true)
   assert.equal(elevenLabsMusicProviderContract.productionEnablementApproved, false)
 })
 
@@ -75,7 +76,7 @@ test('buildElevenLabsMusicRequest maps closed instrumental and lyrics requests w
   assert.equal(instrumental.body.model_id, 'music_v2')
   assert.equal(instrumental.body.music_length_ms, 60_000)
   assert.equal(instrumental.body.force_instrumental, true)
-  assert.equal(instrumental.outputFormat, 'mp3_44100_128')
+  assert.equal(instrumental.outputFormat, 'mp3_48000_192')
   assert.equal(instrumental.safeFields.durationSeconds, 60)
   assert.equal(JSON.stringify(instrumental.safeFields).includes(request().prompt), false)
 
@@ -102,6 +103,53 @@ test('buildElevenLabsMusicRequest maps closed instrumental and lyrics requests w
     (error) => error.code === 'CREATIVE_MUSIC_PROVIDER_REQUEST_INVALID' &&
       error.details.reasonCode === 'application_contract_invalid',
   )
+})
+
+const stagingSource = (overrides = {}) => ({
+  NODE_ENV: 'production',
+  CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+  CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED: 'true',
+  CREATIVE_ELEVENLABS_MUSIC_NETWORK_CALLS_ENABLED: 'true',
+  CREATIVE_ELEVENLABS_MUSIC_CONFIRMATION: 'staging-only',
+  CREATIVE_ELEVENLABS_MUSIC_API_KEY: 'music-staging-secret',
+  CREATIVE_ELEVENLABS_MUSIC_ENTERPRISE_RIGHTS_CONFIRMED: 'true',
+  CREATIVE_ELEVENLABS_MUSIC_TRAINING_OPT_OUT_CONFIRMED: 'true',
+  CREATIVE_ELEVENLABS_MUSIC_LICENSE_ID: 'enterprise-order-1',
+  CREATIVE_ELEVENLABS_MUSIC_TERMS_VERSION: 'music-terms-2026-05',
+  ...overrides,
+})
+
+test('ElevenLabs Music HTTP client sends one bounded v2 request and projects safe evidence', async () => {
+  let captured
+  const client = createElevenLabsMusicHttpClient({
+    source: stagingSource(),
+    fetchImpl: async (url, init) => {
+      captured = { url, init }
+      return new Response(mp3Bytes(), { status: 200, headers: { 'content-type': 'audio/mpeg', 'song-id': 'song-staging-1' } })
+    },
+  })
+  const projected = await projectElevenLabsMusicResponse(await client.compose(buildElevenLabsMusicRequest(request())), { expectedDurationSeconds: 60 })
+  assert.equal(captured.url, 'https://api.elevenlabs.io/v1/music?output_format=mp3_48000_192')
+  assert.equal(captured.init.headers['xi-api-key'], 'music-staging-secret')
+  assert.equal(JSON.parse(captured.init.body).model_id, 'music_v2')
+  assert.equal(projected.requestId, 'song-staging-1')
+  assert.equal(projected.license.evidenceStatus, 'verified_staging')
+  assert.equal(projected.usage.actualCostUsd, 0.15)
+})
+
+test('ElevenLabs Music HTTP client fails closed without rights evidence and redacts Provider failures', async () => {
+  assert.throws(() => createElevenLabsMusicHttpClient({ source: stagingSource({ CREATIVE_ELEVENLABS_MUSIC_ENTERPRISE_RIGHTS_CONFIRMED: 'false' }) }), { code: 'CREATIVE_PROVIDER_HTTP_CLIENT_DISABLED' })
+  const client = createElevenLabsMusicHttpClient({
+    source: stagingSource(),
+    fetchImpl: async () => new Response('secret-provider-body', { status: 429, headers: { 'retry-after': '3' } }),
+  })
+  await assert.rejects(client.compose(buildElevenLabsMusicRequest(request())), (error) => {
+    assert.equal(error.code, 'CREATIVE_PROVIDER_RATE_LIMITED')
+    assert.equal(error.details.retryAfterSeconds, 3)
+    assert.equal(JSON.stringify(error).includes('secret-provider-body'), false)
+    assert.equal(JSON.stringify(error).includes('music-staging-secret'), false)
+    return true
+  })
 })
 
 test('projectElevenLabsMusicResponse accepts one strict MP3 and required fixture license evidence', async () => {

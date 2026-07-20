@@ -219,9 +219,9 @@
       "id": "server-music-capability-contract",
       "area": "music-provider",
       "classification": "production_capable",
-      "paths": ["server/src/creative/musicCapabilityContract.js", "server/src/creative/elevenLabsMusicProvider.js", "server/src/creative/providerRegistry.js", "server/src/creative/generationService.js", "server/src/contracts/requestParsers.js"],
-      "markers": ["music-capability-v1", "elevenlabs-music-fixture-boundary-v1", "elevenlabs-music-v2-enterprise", "google-lyria-3-pro-preview", "assertMusicGenerationRequest", "readElevenLabsMusicOutputBytes", "applicationLifecyclePersistenceImplemented", "client must be injected; no default network client is registered"],
-      "productionDisposition": "retain_the_fail_closed_contract_fixture_only_elevenlabs_adapter_application_persistence_mp3_ingestion_and_cost_closeout_and_keep_product_registration_http_credentials_provider_lifecycle_real_calls_failover_and_production_enablement_unimplemented_until_approved",
+      "paths": ["server/src/creative/musicCapabilityContract.js", "server/src/creative/elevenLabsMusicProvider.js", "server/src/creative/elevenLabsMusicStagingAcceptance.js", "server/src/creative/providerRegistry.js", "server/src/creative/generationService.js", "server/src/contracts/requestParsers.js", "scripts/check-elevenlabs-music-readiness.mjs"],
+      "markers": ["music-capability-v1", "elevenlabs-music-staging-boundary-v1", "elevenlabs-music-v2-enterprise", "music_v2", "CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED", "createElevenLabsMusicHttpClient", "readElevenLabsMusicOutputBytes", "applicationLifecyclePersistenceImplemented"],
+      "productionDisposition": "retain_guarded_elevenlabs_music_staging_runtime_and_keep_network_credentials_enterprise_rights_evidence_and_production_enablement_fail_closed_outside_explicit_acceptance",
       "ownerTasks": ["V1-30", "V1-31", "V1-32", "V1-33", "V1-34", "V1-39"]
     },
     {

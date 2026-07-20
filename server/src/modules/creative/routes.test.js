@@ -351,7 +351,7 @@ test('GET /api/creative/providers lists safe provider capability metadata', asyn
     assert.equal(eleven.safeMetadata.adapterImplemented, true)
     assert.equal(eleven.safeMetadata.adapterRegistered, false)
     assert.equal(eleven.safeMetadata.fixtureAdapterOnly, true)
-    assert.equal(eleven.safeMetadata.httpClientImplemented, false)
+    assert.equal(eleven.safeMetadata.httpClientImplemented, true)
     assert.equal(eleven.safeMetadata.networkCallsEnabled, false)
     assert.equal(eleven.safeMetadata.outputIngestionImplemented, true)
     assert.equal(eleven.safeMetadata.providerCostCloseoutImplemented, true)

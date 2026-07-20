@@ -141,6 +141,14 @@ export const buildEnv = (source = process.env) => {
   const creativeGoogleVeoProjectId = String(source.CREATIVE_GOOGLE_VEO_PROJECT_ID ?? '').trim()
   const creativeGoogleVeoLocation = String(source.CREATIVE_GOOGLE_VEO_LOCATION ?? 'us-central1').trim().toLowerCase()
   const creativeGoogleVeoOutputGcsUri = String(source.CREATIVE_GOOGLE_VEO_OUTPUT_GCS_URI ?? '').trim()
+  const creativeElevenLabsMusicHttpClientEnabled = strictBoolFlag(source, 'CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED', false)
+  const creativeElevenLabsMusicNetworkCallsEnabled = strictBoolFlag(source, 'CREATIVE_ELEVENLABS_MUSIC_NETWORK_CALLS_ENABLED', false)
+  const creativeElevenLabsMusicConfirmation = String(source.CREATIVE_ELEVENLABS_MUSIC_CONFIRMATION ?? '').trim().toLowerCase()
+  const hasCreativeElevenLabsMusicApiKey = Boolean(String(source.CREATIVE_ELEVENLABS_MUSIC_API_KEY ?? '').trim())
+  const creativeElevenLabsMusicRightsConfirmed = strictBoolFlag(source, 'CREATIVE_ELEVENLABS_MUSIC_ENTERPRISE_RIGHTS_CONFIRMED', false)
+  const creativeElevenLabsMusicTrainingOptOutConfirmed = strictBoolFlag(source, 'CREATIVE_ELEVENLABS_MUSIC_TRAINING_OPT_OUT_CONFIRMED', false)
+  const hasCreativeElevenLabsMusicLicenseEvidence = [source.CREATIVE_ELEVENLABS_MUSIC_LICENSE_ID, source.CREATIVE_ELEVENLABS_MUSIC_TERMS_VERSION]
+    .every((value) => Boolean(String(value ?? '').trim()))
   const mediaScanRequestAdapter = getMediaScanRequestAdapter(source)
   const rateLimitStore = getRateLimitStore(source)
   const rateLimitRedisUrl = getRedisUrl(source)
@@ -434,6 +442,19 @@ export const buildEnv = (source = process.env) => {
       throw new Error('CREATIVE_GOOGLE_VEO_POLL_INTERVAL_SECONDS must be less than CREATIVE_GOOGLE_VEO_TIMEOUT_SECONDS')
     }
   }
+  if (creativeElevenLabsMusicNetworkCallsEnabled && !creativeElevenLabsMusicHttpClientEnabled) {
+    throw new Error('CREATIVE_ELEVENLABS_MUSIC_NETWORK_CALLS_ENABLED requires CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED=true')
+  }
+  if (creativeElevenLabsMusicHttpClientEnabled) {
+    if (nodeEnv !== 'production') throw new Error('CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED requires NODE_ENV=production')
+    if (creativeProviderRuntimeEnv !== 'staging') throw new Error('CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
+    if (!creativeElevenLabsMusicNetworkCallsEnabled) throw new Error('CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED requires CREATIVE_ELEVENLABS_MUSIC_NETWORK_CALLS_ENABLED=true')
+    if (creativeElevenLabsMusicConfirmation !== 'staging-only') throw new Error('CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED requires CREATIVE_ELEVENLABS_MUSIC_CONFIRMATION=staging-only')
+    if (!hasCreativeElevenLabsMusicApiKey) throw new Error('CREATIVE_ELEVENLABS_MUSIC_API_KEY is required when the Music HTTP client is enabled')
+    if (!creativeElevenLabsMusicRightsConfirmed || !creativeElevenLabsMusicTrainingOptOutConfirmed || !hasCreativeElevenLabsMusicLicenseEvidence) {
+      throw new Error('ElevenLabs Music staging requires verified Enterprise rights, training opt-out, license ID, and terms version')
+    }
+  }
   if (mediaScanProvider === 'webhook' && !String(source.MEDIA_SCAN_WEBHOOK_SECRET ?? '').trim()) {
     throw new Error('MEDIA_SCAN_WEBHOOK_SECRET is required when MEDIA_SCAN_PROVIDER=webhook')
   }
@@ -577,6 +598,12 @@ export const buildEnv = (source = process.env) => {
     creativeGoogleVeoTimeoutSeconds,
     creativeGoogleVeoMaxStatusAttempts,
     creativeGoogleVeoSweepLimit,
+    creativeElevenLabsMusicHttpClientEnabled,
+    creativeElevenLabsMusicNetworkCallsEnabled,
+    hasCreativeElevenLabsMusicApiKey,
+    creativeElevenLabsMusicRightsConfirmed,
+    creativeElevenLabsMusicTrainingOptOutConfirmed,
+    hasCreativeElevenLabsMusicLicenseEvidence,
     chatRetentionWorkerEnabled: boolFlag(source, 'CHAT_RETENTION_WORKER_ENABLED', false),
     chatRetentionWorkerIntervalSeconds,
     chatRetentionSweepLimit,
