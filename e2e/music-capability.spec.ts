@@ -81,9 +81,13 @@ test('Music Studio submits capability parameters and keeps real Provider shells 
   await expect(page.locator('.runtime-badge', { hasText: 'Mock' })).toBeVisible()
   await expect(page.getByRole('tab', { name: 'Instrumental' })).toBeEnabled()
   await expect(page.getByRole('tab', { name: 'Lyrics to Song' })).toBeEnabled()
+  await expect(page.getByLabel('Music output quality')).toHaveValue('mp3_48000_192')
+  await expect(page.locator('.video-rights-check')).toContainText('not requesting artist imitation')
 
   await page.getByLabel(/rights to this prompt/).check()
-  await page.getByRole('button', { name: 'Generate music' }).click()
+  const generateButton = page.getByRole('button', { name: 'Generate music' })
+  await generateButton.focus()
+  await page.keyboard.press('Enter')
   await expect(page.locator('.music-history-row').filter({ hasText: 'Late-night focus track' })).toBeVisible()
   expect(submitted).toMatchObject({
     workspace: 'music',
@@ -179,6 +183,8 @@ test('Music Studio restores lifecycle, gates private audio, and submits lyrics s
   await page.getByRole('button', { name: 'Private player' }).click()
   await expect(page.getByTestId('private-music-player')).toBeVisible()
   await expect(page.getByTestId('private-music-player')).toHaveAttribute('src', /^data:audio\/mpeg/)
+  await expect(page.getByTestId('private-music-player')).toHaveAccessibleName('Private music player')
+  await expect(page.getByRole('button', { name: 'Download output' })).toBeEnabled()
   await page.getByRole('button', { name: 'Use in Video' }).click()
   await expect(page.getByRole('heading', { name: 'Video Studio' })).toBeVisible()
   await page.getByRole('button', { name: 'Music', exact: true }).click()
@@ -200,6 +206,14 @@ test('Music Studio restores lifecycle, gates private audio, and submits lyrics s
 
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.locator('.video-workbench')).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Music generation status' })).toHaveAttribute('aria-live', 'polite')
   await expect(page.locator('.video-history-table')).toBeVisible()
-  expect(await page.locator('.video-history-table').evaluate((element) => element.scrollWidth >= element.clientWidth)).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  for (const selector of ['.video-controls', '.video-preview-panel', '.video-history']) {
+    const box = await page.locator(selector).boundingBox()
+    expect(box, `${selector} must have layout bounds`).not.toBeNull()
+    expect(box!.x, `${selector} starts inside viewport`).toBeGreaterThanOrEqual(0)
+    expect(box!.x + box!.width, `${selector} ends inside viewport`).toBeLessThanOrEqual(390.5)
+  }
+  expect(await page.locator('.video-history-table').evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
 })

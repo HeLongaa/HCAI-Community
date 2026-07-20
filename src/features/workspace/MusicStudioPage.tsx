@@ -110,6 +110,9 @@ export function MusicStudioPage({
   const availableModes = modeContracts.filter((contract) => contract.available)
   const mode = availableModes.some((contract) => contract.id === modeChoice) ? modeChoice : availableModes[0]?.id ?? ''
   const activeMode = modeContractFor(modeContracts, mode)
+  const outputQualityProfile = typeof capability?.output?.qualityProfile === 'string'
+    ? capability.output.qualityProfile
+    : 'mp3_48000_192'
   const classification = providerClassification(selectedProvider, isZh)
   const providerAvailable = Boolean(selectedProvider?.enabled && selectedProvider.configured && activeMode?.available)
   const selectedGeneration = workflow.history.selected
@@ -244,7 +247,9 @@ export function MusicStudioPage({
             )}
             <label>
               <span>{textFor(t, 'Output', '输出')}</span>
-              <select value="mp3" disabled><option value="mp3">MP3</option></select>
+              <select aria-label={textFor(t, 'Music output quality', '音乐输出质量')} value={outputQualityProfile} disabled>
+                <option value={outputQualityProfile}>{textFor(t, 'MP3 · 48 kHz · 192 kbps', 'MP3 · 48 kHz · 192 kbps')}</option>
+              </select>
             </label>
           </div>
 
@@ -268,7 +273,7 @@ export function MusicStudioPage({
         </section>
 
         <section className="video-preview-panel" aria-label={textFor(t, 'Music player', '音乐播放器')}>
-          <div className="video-preview-toolbar">
+          <div className="video-preview-toolbar" role="status" aria-live="polite" aria-label={textFor(t, 'Music generation status', '音乐生成状态')}>
             <div>
               <span className={`status-dot ${statusTone(selectedGeneration?.status ?? null)}`} />
               <strong>{labelForStatus(selectedGeneration?.status ?? null, isZh)}</strong>
@@ -278,7 +283,7 @@ export function MusicStudioPage({
 
           <div className="music-preview-stage">
             {workflow.preview.status === 'ready' && workflow.preview.url ? (
-              <audio controls src={workflow.preview.url} data-testid="private-music-player" />
+              <audio controls src={workflow.preview.url} data-testid="private-music-player" aria-label={textFor(t, 'Private music player', '私有音乐播放器')} />
             ) : (
               <div className="music-preview-empty">
                 {workflow.preview.status === 'loading' ? <LoaderCircle className="spin" size={34} /> : <Music2 size={34} />}
@@ -312,7 +317,7 @@ export function MusicStudioPage({
               </button>
             )}
             {selectedOutput && (
-              <button className="icon-button" type="button" title={textFor(t, 'Download output', '下载输出')} disabled={actionBusy || !selectedGeneration?.actions.download.available} onClick={() => void workflow.downloadAsset(selectedOutput.assetId)}>
+              <button className="icon-button" type="button" title={textFor(t, 'Download output', '下载输出')} aria-label={textFor(t, 'Download output', '下载输出')} disabled={actionBusy || !selectedGeneration?.actions.download.available} onClick={() => void workflow.downloadAsset(selectedOutput.assetId)}>
                 <Download size={16} />
               </button>
             )}
@@ -336,13 +341,13 @@ export function MusicStudioPage({
         </section>
       </div>
 
-      <section className="video-history">
+      <section className="video-history" aria-label={textFor(t, 'Music generation history', '音乐生成历史')}>
         <div className="video-history-header">
           <div>
             <span className="eyebrow">{textFor(t, 'Generation history', '生成历史')}</span>
             <h2>{textFor(t, 'Music jobs', '音乐任务')}</h2>
           </div>
-          <button className="icon-button" type="button" title={textFor(t, 'Refresh history', '刷新历史')} disabled={workflow.history.status === 'loading'} onClick={() => void workflow.refreshHistory()}>
+          <button className="icon-button" type="button" title={textFor(t, 'Refresh history', '刷新历史')} aria-label={textFor(t, 'Refresh history', '刷新历史')} disabled={workflow.history.status === 'loading'} onClick={() => void workflow.refreshHistory()}>
             <RefreshCcw size={17} />
           </button>
         </div>

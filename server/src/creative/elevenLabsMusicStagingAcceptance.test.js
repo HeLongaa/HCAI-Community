@@ -11,6 +11,7 @@ const source = {
 }
 
 test('ElevenLabs Music staging acceptance closes one governed application call', async () => {
+  const startedAt = performance.now()
   const previous = process.env.MEDIA_SCAN_PROVIDER
   process.env.MEDIA_SCAN_PROVIDER = 'mock'
   let result
@@ -20,6 +21,7 @@ test('ElevenLabs Music staging acceptance closes one governed application call',
     if (previous == null) delete process.env.MEDIA_SCAN_PROVIDER
     else process.env.MEDIA_SCAN_PROVIDER = previous
   }
+  assert.ok(performance.now() - startedAt < 5000, 'fixture acceptance must complete within 5 seconds')
   assert.equal(result.providerCalls, 1)
   assert.equal(result.outputPersisted, true)
   assert.equal(result.licenseVerified, true)
