@@ -170,11 +170,11 @@ addCheck(
   governance.policyStatus,
 )
 addCheck(
-  'inventory is complete without claiming runtime completion',
+  'inventory tracks implemented account rights without claiming production completion',
   governance.runtimeStatus.inventoryComplete === true &&
     governance.runtimeStatus.retentionAutomationComplete === false &&
-    governance.runtimeStatus.accountExportImplemented === false &&
-    governance.runtimeStatus.accountDeletionImplemented === false &&
+    governance.runtimeStatus.accountExportImplemented === true &&
+    governance.runtimeStatus.accountDeletionImplemented === true &&
     governance.runtimeStatus.providerDeletionAutomationImplemented === false &&
     governance.runtimeStatus.backupDeletionRehearsed === false,
   JSON.stringify(governance.runtimeStatus),
@@ -401,7 +401,7 @@ for (const asset of governance.dataAssets) {
       Boolean(asset.exportPolicy) &&
       Boolean(asset.deletionPolicy) &&
       nonEmptyArray(asset.ownerTasks) &&
-      asset.ownerTasks.every((taskId) => /^V1-\d+$/.test(taskId)),
+      asset.ownerTasks.every((taskId) => /^(?:V1|LEGAL)-\d+$/.test(taskId)),
     `${asset.retentionPolicyId}/${asset.exportPolicy}/${asset.deletionPolicy}`,
   )
   addCheck(

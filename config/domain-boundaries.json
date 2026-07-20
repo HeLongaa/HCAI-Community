@@ -24,6 +24,7 @@
     { "id": "metrics", "domain": "observability-incident", "layer": "transport", "registration": "registerMetricsRoutes" },
     { "id": "docs", "domain": "developer-platform", "layer": "transport", "registration": "registerDocsRoutes" },
     { "id": "compliance", "domain": "compliance-data-rights", "layer": "transport", "registration": "registerComplianceRoutes" },
+    { "id": "dataRights", "domain": "compliance-data-rights", "layer": "transport", "registration": "registerDataRightsRoutes" },
     { "id": "trust", "domain": "trust-safety-risk", "layer": "transport", "registration": "registerTrustRoutes" },
     { "id": "auth", "domain": "identity-access", "layer": "transport", "registration": "registerAuthRoutes" },
     { "id": "oauthAdmin", "domain": "identity-access", "layer": "transport", "registration": "registerOAuthAdminRoutes" },

@@ -7,8 +7,8 @@
   "runtimeStatus": {
     "inventoryComplete": true,
     "retentionAutomationComplete": false,
-    "accountExportImplemented": false,
-    "accountDeletionImplemented": false,
+    "accountExportImplemented": true,
+    "accountDeletionImplemented": true,
     "providerDeletionAutomationImplemented": false,
     "backupDeletionRehearsed": false,
     "policyConsentImplemented": true,
@@ -303,16 +303,16 @@
     {
       "id": "identity_account_profile",
       "classification": "confidential",
-      "prismaModels": ["User", "UserTag", "UserTagAssignment", "Profile", "ProfilePortfolioAsset"],
+      "prismaModels": ["User", "UserTag", "UserTagAssignment", "Profile", "ProfilePortfolioAsset", "DataRightsRequest", "DataRightsEvent", "DataRightsExportArtifact", "DataRightsDeletionReceipt", "DataRightsBackupExpiryReceipt"],
       "locations": ["postgres"],
       "dataSubjects": ["user"],
-      "purposes": ["account_service", "community_participation", "support_operations"],
-      "exampleFields": ["email", "display name", "avatar", "handle", "bio", "skills", "languages", "profile visibility", "discoverability", "activity visibility", "portfolio visibility", "profile version", "account lifecycle version", "suspension timestamp", "bounded suspension reason code", "deletion request timestamp", "deletion schedule", "bounded deletion reason code", "user tag definition", "tag assignment lifecycle", "portfolio draft relation", "portfolio lifecycle state"],
-      "accessRoles": ["user_self", "authorized_service", "support_operator_allowlisted"],
+      "purposes": ["account_service", "community_participation", "support_operations", "legal_compliance"],
+      "exampleFields": ["email", "display name", "avatar", "handle", "bio", "skills", "languages", "profile visibility", "discoverability", "activity visibility", "portfolio visibility", "profile version", "account lifecycle version", "suspension timestamp", "bounded suspension reason code", "deletion request timestamp", "deletion schedule", "bounded deletion reason code", "user tag definition", "tag assignment lifecycle", "portfolio draft relation", "portfolio lifecycle state", "hashed data rights subject reference", "export checksum", "deletion domain receipt", "backup expiry evidence hash"],
+      "accessRoles": ["user_self", "authorized_service", "support_operator_allowlisted", "data_rights_operator_allowlisted"],
       "retentionPolicyId": "account_deletion_plus_30d",
       "exportPolicy": "include_user_owned_fields",
       "deletionPolicy": "disable_immediately_delete_profile_and_tombstone_shared_identity",
-      "ownerTasks": ["V1-37", "V1-67"]
+      "ownerTasks": ["V1-37", "V1-67", "LEGAL-02"]
     },
     {
       "id": "authentication_credentials_sessions",
@@ -1143,7 +1143,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 161,
+    "modelCount": 166,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",
@@ -1161,11 +1161,12 @@
       "Chat has encrypted owner-scoped conversations and messages, idempotent Mock SSE turns, strict owner attachment checks, explicitly selected read-time-authorized product context, identity-free input/output safety evidence, a 512-character unclassified output buffer, explicit stop/disconnect closeout, retention sweeps, restore-deletion tombstones, and a default-disabled staging Provider boundary whose attachment bytes and Provider payloads remain in request memory only",
       "Admin creative serializers redact unsafe identifiers, URLs, and error previews",
       "archive and object writers support mock/S3-compatible boundaries",
-      "Trust and Safety reports, cases, hash evidence, original decisions and independently reviewed appeals are append-only PostgreSQL facts with owner-scoped reads"
+      "Trust and Safety reports, cases, hash evidence, original decisions and independently reviewed appeals are append-only PostgreSQL facts with owner-scoped reads",
+      "personal-account data rights requests enforce recent identity, bounded secret-free exports, 30-day deletion grace, 15-domain primary deletion, immutable evidence, and three-class backup expiry completion"
     ],
     "knownGaps": [
-      "no account export API or package builder",
-      "no account deletion propagation orchestrator",
+      "no production object-storage acceptance for account export packages",
+      "no production backup expiry and restore-negative deletion rehearsal",
       "no field-level retention sweeper outside media scan history",
       "no Provider deletion request/receipt ledger",
       "no backup expiry and restore deletion rehearsal evidence",
@@ -1212,7 +1213,10 @@
       "server/src/auth/prismaAuthSessionAdminRepository.js",
       "server/src/modules/authSessionAdmin/routes.js",
       "server/src/modules/compliance/routes.js",
-      "server/src/compliance/policyManifest.js"
+      "server/src/compliance/policyManifest.js",
+      "server/src/dataRights/dataRightsLifecycle.js",
+      "server/src/dataRights/prismaDataRightsRepository.js",
+      "server/src/modules/dataRights/routes.js"
     ]
   },
   "implementationHandoff": [

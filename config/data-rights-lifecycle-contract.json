@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "taskId": "LEGAL-02",
+  "scope": "personal_accounts_only",
+  "dependencies": ["USER-02", "MEDIA-03", "AUDIT-01"],
+  "permissions": ["admin:data-rights:read", "admin:data-rights:manage"],
+  "models": ["DataRightsRequest", "DataRightsEvent", "DataRightsExportArtifact", "DataRightsDeletionReceipt", "DataRightsBackupExpiryReceipt"],
+  "routes": [
+    "POST /api/users/me/data-rights/requests",
+    "GET /api/users/me/data-rights/requests",
+    "GET /api/users/me/data-rights/requests/:id",
+    "DELETE /api/users/me/data-rights/requests/:id",
+    "GET /api/users/me/data-rights/requests/:id/export",
+    "GET /api/admin/data-rights/requests",
+    "GET /api/admin/data-rights/metrics",
+    "GET /api/admin/data-rights/requests/:id",
+    "POST /api/admin/data-rights/requests/:id/process",
+    "POST /api/admin/data-rights/requests/:id/backup-receipts"
+  ],
+  "requestTypes": ["data_export", "account_deletion"],
+  "statuses": ["identity_verified", "processing", "primary_completed", "completed", "cancelled", "blocked"],
+  "identity": {
+    "method": "authenticated_session_and_handle_confirmation",
+    "maximumSessionAgeSeconds": 900,
+    "accountVersionRequired": true
+  },
+  "export": {
+    "maximumPackageBytes": 5242880,
+    "downloadTtlSeconds": 900,
+    "artifactExpiryDays": 7,
+    "maximumRequestsPer30Days": 3,
+    "rawSecretsAllowed": false
+  },
+  "deletion": {
+    "graceDays": 30,
+    "backupExpiryDaysAfterPrimary": 35,
+    "completionRequiresBackupReceipt": true,
+    "requiredBackupClasses": ["primary_database", "object_storage", "audit_archive"],
+    "domains": [
+      "identity",
+      "sessions",
+      "profile",
+      "community",
+      "tasks",
+      "media",
+      "creative",
+      "chat",
+      "developer_access",
+      "webhooks",
+      "notifications",
+      "support",
+      "billing",
+      "audit",
+      "safety"
+    ],
+    "retainedMinimalDomains": ["support", "billing", "audit", "safety"]
+  },
+  "evidence": {
+    "requestEventsAppendOnly": true,
+    "artifactsImmutable": true,
+    "deletionReceiptsImmutable": true,
+    "backupReceiptsImmutable": true,
+    "rawSubjectIdentifiersAllowed": false,
+    "maintenanceBypassRequiresTransactionSetting": "app.data_rights_maintenance=on"
+  },
+  "productionReadiness": {
+    "engineeringLifecycleImplemented": true,
+    "productionBackupExpiryRehearsed": false,
+    "releaseDependency": "RELEASE-01"
+  }
+}

@@ -199,6 +199,11 @@ import type {
   ProviderLegalReviewDto,
   ProviderLegalReviewRequest,
   ProviderLegalSummaryDto,
+  DataRightsBackupClass,
+  DataRightsMetricsDto,
+  DataRightsRequestDto,
+  DataRightsRequestType,
+  DataRightsStatus,
   ModelVersionDto,
   PricingVersionDto,
 } from './contracts'
@@ -400,6 +405,21 @@ export const adminService = {
   },
   async user(id: string) {
     return api.get<AdminUserDto>(`/admin/users/${encodeURIComponent(id)}`)
+  },
+  dataRightsRequests(query?: { status?: DataRightsStatus | null; requestType?: DataRightsRequestType | null; limit?: number }) {
+    return api.get<DataRightsRequestDto[]>(withQuery('/admin/data-rights/requests', query))
+  },
+  dataRightsRequest(id: string) {
+    return api.get<DataRightsRequestDto>(`/admin/data-rights/requests/${encodeURIComponent(id)}`)
+  },
+  dataRightsMetrics() {
+    return api.get<DataRightsMetricsDto>('/admin/data-rights/metrics')
+  },
+  processDataRightsRequest(id: string, payload: { expectedVersion: number; reasonCode: string }) {
+    return api.post<DataRightsRequestDto>(`/admin/data-rights/requests/${encodeURIComponent(id)}/process`, payload)
+  },
+  recordDataRightsBackupReceipt(id: string, payload: { backupClass: DataRightsBackupClass; objectRefHash: string; evidenceHash: string; expiredAt: string; verifiedByRef: string }) {
+    return api.post<DataRightsRequestDto>(`/admin/data-rights/requests/${encodeURIComponent(id)}/backup-receipts`, payload)
   },
   async suspendUser(id: string, payload: { expectedVersion: number; reasonCode: string }) {
     return api.post<AdminUserStatusResult>(`/admin/users/${encodeURIComponent(id)}/suspend`, payload)

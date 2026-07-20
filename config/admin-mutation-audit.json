@@ -193,5 +193,7 @@
     ,{ "method": "PUT", "path": "/api/admin/search/ranking-control", "action": "search.ranking_control.updated", "resourceType": "search_ranking_control", "resourceParam": null, "reasonCode": "request_reason", "mode": "domain_audited", "risk": "high" }
     ,{ "method": "PUT", "path": "/api/admin/risk/policy", "action": "admin.risk.policy.updated", "resourceType": "risk_policy", "resourceParam": null, "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
     ,{ "method": "POST", "path": "/api/admin/risk/cases/:id/transitions", "action": "admin.risk.case.transitioned", "resourceType": "risk_case", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
+    ,{ "method": "POST", "path": "/api/admin/data-rights/requests/:id/process", "action": "admin.data_rights.processed", "resourceType": "data_rights_request", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
+    ,{ "method": "POST", "path": "/api/admin/data-rights/requests/:id/backup-receipts", "action": "admin.data_rights.backup_expiry_recorded", "resourceType": "data_rights_request", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
   ]
 }

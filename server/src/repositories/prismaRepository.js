@@ -150,6 +150,7 @@ import { createPrismaNotificationDeliveryRepository } from '../notifications/pri
 import { createPrismaDeveloperAccessRepository } from '../developerAccess/prismaDeveloperAccessRepository.js'
 import { createPrismaWebhookRepository } from '../webhooks/prismaWebhookRepository.js'
 import { createPrismaSupportRepository } from '../support/prismaSupportRepository.js'
+import { createPrismaDataRightsRepository } from '../dataRights/prismaDataRightsRepository.js'
 import { createPrismaSearchRepository } from '../search/prismaSearchRepository.js'
 import {
   buildConsentStatus,
@@ -1114,6 +1115,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   const developerAccess = createPrismaDeveloperAccessRepository(client, { runSerializableTransaction, recordAudit })
   const webhooks = createPrismaWebhookRepository(client, { runSerializableTransaction, recordAudit })
   const support = createPrismaSupportRepository(client, { runSerializableTransaction, recordAudit, notificationDeliveries })
+  const dataRights = createPrismaDataRightsRepository(client, { runSerializableTransaction, recordAudit })
 
   const createSessionForUser = async (user, reason = 'auth.session.created', options = {}) => {
     const now = new Date()
@@ -10499,6 +10501,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     safetyOperations,
     compliance,
     support,
+    dataRights,
     source: 'prisma',
   }
 }

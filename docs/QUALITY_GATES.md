@@ -228,6 +228,15 @@ disclosures, support categories, rights entry points, or legal-publication statu
 Use `docs/OAUTH_SECURITY_AND_STAGING.md` before changing OAuth Provider configuration, callback/session behavior, or
 requesting approval for a real staging validation.
 
+LEGAL-02 data export and deletion changes must pass `npm run test:data-rights-lifecycle`. The gate freezes recent-session
+and exact-handle identity verification, the three-request rolling limit, 5 MiB secret-free exports, decrypted owned Chat
+content, seven-day artifacts, fixed 15-minute private downloads, the 30-day deletion grace period, all 15 primary deletion
+domains, and final completion only after three immutable backup-expiry receipts at least 35 days after primary deletion.
+Run `FOUNDATION_DATABASE_URL="$DATABASE_URL" npm run test:data-rights-lifecycle:integration` for PostgreSQL deletion and
+trigger evidence, plus `npm run test:data-rights-lifecycle:e2e` for the owner/Admin workflow and 390px layout. These gates
+prove engineering behavior only; production backup expiry remains blocked until RELEASE-01 infrastructure and rehearsal
+evidence exist.
+
 MEDIA-04 capacity and scan statistics must pass `npm run test:media-capacity-scan-metrics`. The gate freezes the
 existing normalized media sources, 366-day filter bound, read/export permissions, safe aggregate projection, audited
 snapshot export, responsive Admin metrics, and the personal-account-only boundary without making a Provider call.

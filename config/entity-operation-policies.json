@@ -51,7 +51,7 @@
     { "model": "JobAttempt", "domain": "jobs-automation", "policy": "state_transition", "hardDelete": false },
     { "model": "AdminReview", "domain": "admin-console", "policy": "state_transition", "hardDelete": false },
     { "model": "SupportTicket", "domain": "support", "policy": "mutable_crud", "hardDelete": false },
-    { "model": "SupportTicketMessage", "domain": "support", "policy": "append_only", "hardDelete": false },
+    { "model": "SupportTicketMessage", "domain": "support", "policy": "state_transition", "hardDelete": false },
     { "model": "SupportTicketCaseLink", "domain": "support", "policy": "append_only", "hardDelete": false },
     { "model": "Report", "domain": "trust-safety-risk", "policy": "append_only", "hardDelete": false },
     { "model": "ModerationCase", "domain": "trust-safety-risk", "policy": "append_only", "hardDelete": false },
@@ -71,6 +71,11 @@
     { "model": "RiskDispositionEvent", "domain": "trust-safety-risk", "policy": "append_only", "hardDelete": false },
     { "model": "RiskAppeal", "domain": "trust-safety-risk", "policy": "append_only", "hardDelete": false },
     { "model": "User", "domain": "user-profile", "policy": "soft_delete", "hardDelete": false },
+    { "model": "DataRightsRequest", "domain": "compliance-data-rights", "policy": "state_transition", "hardDelete": false },
+    { "model": "DataRightsEvent", "domain": "compliance-data-rights", "policy": "immutable_evidence", "hardDelete": false },
+    { "model": "DataRightsExportArtifact", "domain": "compliance-data-rights", "policy": "immutable_evidence", "hardDelete": false },
+    { "model": "DataRightsDeletionReceipt", "domain": "compliance-data-rights", "policy": "immutable_evidence", "hardDelete": false },
+    { "model": "DataRightsBackupExpiryReceipt", "domain": "compliance-data-rights", "policy": "immutable_evidence", "hardDelete": false },
     { "model": "UserTag", "domain": "user-profile", "policy": "soft_delete", "hardDelete": false },
     { "model": "UserTagAssignment", "domain": "user-profile", "policy": "state_transition", "hardDelete": false },
     { "model": "SearchDocument", "domain": "search-discovery", "policy": "mutable_crud", "hardDelete": true },
@@ -178,6 +183,6 @@
   "protectedFamilies": {
     "accounting": ["PointLedger", "InternalAccountingOperation", "InternalAccountingMovement"],
     "audit": ["AuditEvent", "SecurityEvent", "DomainEventOutbox", "DomainEventConsumerInbox", "DomainEventCompensation"],
-    "evidence": ["NotificationTemplateVersion", "NotificationChannelConfigRevision", "WebhookDeliveryReplay", "AuditArchiveManifest", "AuditRetentionDisposition", "MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence", "SystemSettingRevision", "ConfigResourceRevision", "ModelRoutePolicyRevision", "ModelRouteDecision", "ProviderSecretRef", "ModelPromotion", "ProviderHealthEvidence", "ProviderLegalReview", "EntitlementPlanVersion", "EntitlementGrantEvent", "Report", "ModerationCase", "ModerationEvidence", "ModerationDecision", "ModerationAppeal", "SafetyRuleVersion", "SafetyRuleTransition", "SafetySignal", "ModerationQueueEvent", "ModerationBulkOperation"]
+    "evidence": ["NotificationTemplateVersion", "NotificationChannelConfigRevision", "WebhookDeliveryReplay", "AuditArchiveManifest", "AuditRetentionDisposition", "MediaAssetRelation", "TaskSubmissionAsset", "CreativeGenerationAsset", "ChatTurnInputAsset", "CreativeProviderCapEvidence", "CreativeProviderCircuitEvent", "CreativeProviderReplayLedger", "ReleaseEvidence", "SystemSettingRevision", "ConfigResourceRevision", "ModelRoutePolicyRevision", "ModelRouteDecision", "ProviderSecretRef", "ModelPromotion", "ProviderHealthEvidence", "ProviderLegalReview", "EntitlementPlanVersion", "EntitlementGrantEvent", "DataRightsEvent", "DataRightsExportArtifact", "DataRightsDeletionReceipt", "DataRightsBackupExpiryReceipt", "Report", "ModerationCase", "ModerationEvidence", "ModerationDecision", "ModerationAppeal", "SafetyRuleVersion", "SafetyRuleTransition", "SafetySignal", "ModerationQueueEvent", "ModerationBulkOperation"]
   }
 }

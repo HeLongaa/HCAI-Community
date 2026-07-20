@@ -10,6 +10,8 @@ type OwnProfile = {
   account: { status: string; version: number; deletionScheduledAt: string | null }
 }
 
+type DataRightsRequest = { id: string; version: number; status: string; requestType: string }
+
 test('personal profile privacy and account deletion request remain owner-controlled', async ({ page, request }) => {
   const session = await signInPage(page, request, 'legalpixel')
   await page.goto('/')
@@ -40,16 +42,17 @@ test('personal profile privacy and account deletion request remain owner-control
   expect(redacted.stats).toEqual({})
   expect(redacted.portfolio).toEqual([])
 
-  page.on('dialog', (dialog) => dialog.accept())
-  const deletionResponse = page.waitForResponse((response) => response.url().endsWith('/api/users/me/account-deletion') && response.request().method() === 'POST')
+  await panel.getByLabel('Data rights identity confirmation').fill('legalpixel')
+  const deletionResponse = page.waitForResponse((response) => response.url().endsWith('/api/users/me/data-rights/requests') && response.request().method() === 'POST')
   await panel.getByRole('button', { name: 'Request deletion' }).click()
-  expect((await deletionResponse).status()).toBe(200)
+  const createdDeletion = (await (await deletionResponse).json() as { data: DataRightsRequest }).data
+  expect(createdDeletion.requestType).toBe('account_deletion')
   await expect(panel).toContainText('deletion_requested')
   const requested = await apiData<OwnProfile['account']>(request.get(`${apiBaseUrl}/api/users/me/account-status`, { headers: authHeaders(session.accessToken) }))
   expect(requested.deletionScheduledAt).toBeTruthy()
 
-  const cancelResponse = page.waitForResponse((response) => response.url().endsWith('/api/users/me/account-deletion') && response.request().method() === 'DELETE')
-  await panel.getByRole('button', { name: 'Cancel deletion' }).click()
+  const cancelResponse = page.waitForResponse((response) => response.url().endsWith(`/api/users/me/data-rights/requests/${createdDeletion.id}`) && response.request().method() === 'DELETE')
+  await panel.getByRole('button', { name: 'Cancel request' }).click()
   expect((await cancelResponse).status()).toBe(200)
   await expect(panel).toContainText('active')
 

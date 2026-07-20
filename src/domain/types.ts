@@ -57,6 +57,8 @@ export type Permission =
   | 'admin:auth:manage'
   | 'admin:users:read'
   | 'admin:users:manage'
+  | 'admin:data-rights:read'
+  | 'admin:data-rights:manage'
   | 'admin:notifications:read'
   | 'admin:notifications:manage'
   | 'admin:notifications:publish'
