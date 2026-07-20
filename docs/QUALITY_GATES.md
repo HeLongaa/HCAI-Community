@@ -1,5 +1,13 @@
 # Quality Gates
 
+## Chat Production UX Acceptance
+
+AI-CHAT-02 engineering acceptance is defined by `config/chat-production-ux-acceptance.json` and
+`docs/V1_CHAT_PRODUCTION_ACCEPTANCE.md`. `npm run test:chat-production-ux-acceptance` proves the 100-message fail-closed
+boundary before Provider dispatch, 20 isolated concurrent fixture conversations with accounting closure, explicit
+`openai_staging -> disabled` rollback without Mock fallback, and 390x844 keyboard/mobile accessibility. The contract
+remains `no_go` until AI-CHAT-01 Provider approval and real acceptance evidence are complete.
+
 ## Unified Generation Center
 
 V1-35 adds an owner-scoped safe projection across Image, Chat, Video, and Music generation records. Quality gates require workspace/status/date filters, stable newest-first cursor pagination, cross-user denial, Provider/private metadata exclusion, server-derived action eligibility, protected Chat summaries, governed output handling, offline/loading/error/empty recovery, workspace deep links, and desktop/mobile keyboard-accessible UI. The focused API and Playwright suites are documented in `docs/V1_UNIFIED_GENERATION_CENTER.md`; the feature must also pass the complete PR and production smoke gates.

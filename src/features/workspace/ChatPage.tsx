@@ -547,13 +547,13 @@ export function ChatPage({
             <span className="eyebrow">{textFor(t, 'Chat workspace', '对话工作台')}</span>
             <h2>{selectedConversation?.title ?? t.chatTitle}</h2>
           </div>
-          <span className={`chat-connection-status ${isStreaming ? 'streaming' : ''}`}>
+          <span className={`chat-connection-status ${isStreaming ? 'streaming' : ''}`} role="status" aria-live="polite">
             {isStreaming && <LoaderCircle className="spin" size={14} />}
             {isStreaming ? textFor(t, 'Streaming', '生成中') : textFor(t, 'Mock provider', 'Mock Provider')}
           </span>
         </header>
 
-        <div className="chat-messages" aria-live="polite" aria-busy={isStreaming}>
+        <div className="chat-messages" role="log" aria-label={textFor(t, 'Chat messages', '对话消息列表')} aria-live="polite" aria-busy={isStreaming}>
           {loadingMessages && <div className="chat-loading centered"><LoaderCircle className="spin" size={20} /> {textFor(t, 'Recovering messages...', '正在恢复消息...')}</div>}
           {!loadingMessages && messages.length === 0 && (
             <div className="chat-welcome">
@@ -622,6 +622,8 @@ export function ChatPage({
 
         <div className="chat-composer">
           <textarea
+            aria-label={textFor(t, 'Chat message', '对话消息')}
+            aria-describedby="chat-composer-count"
             value={draft}
             maxLength={4000}
             onChange={(event) => setDraft(event.target.value)}
@@ -637,7 +639,7 @@ export function ChatPage({
           />
           <CreativeCostPreview t={t} workspace="chat" mode={mode} />
           <div className="chat-composer-footer">
-            <span>{draft.length}/4000</span>
+            <span id="chat-composer-count">{draft.length}/4000</span>
             {isStreaming ? (
               <button className="primary-button danger" type="button" disabled={!activeTurnId || stopping} onClick={() => void stopGeneration()}>
                 {stopping ? <LoaderCircle className="spin" size={16} /> : <Square size={15} />}

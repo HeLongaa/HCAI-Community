@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "taskId": "AI-CHAT-02",
+  "productionDecision": "no_go",
+  "context": {
+    "maximumMessages": 100,
+    "overflowBehavior": "reject_before_provider_dispatch"
+  },
+  "load": {
+    "isolatedConversations": 20,
+    "fixtureMaximumElapsedMs": 5000,
+    "crossConversationContentAllowed": false,
+    "accountingClosureRequired": true
+  },
+  "mobile": {
+    "viewport": { "width": 390, "height": 844 },
+    "horizontalOverflowAllowed": false
+  },
+  "accessibility": {
+    "namedComposerRequired": true,
+    "liveMessageRegionRequired": true,
+    "keyboardSendRequired": true,
+    "focusVisibleSendPathRequired": true
+  },
+  "rollback": {
+    "fromMode": "openai_staging",
+    "toMode": "disabled",
+    "disabledErrorCode": "CHAT_PROVIDER_DISABLED",
+    "silentMockFallbackAllowed": false
+  },
+  "evidence": [
+    "server/src/chat/chatProductionAcceptance.test.js",
+    "e2e/chat-streaming.spec.ts",
+    "docs/V1_CHAT_PRODUCTION_ACCEPTANCE.md"
+  ]
+}
