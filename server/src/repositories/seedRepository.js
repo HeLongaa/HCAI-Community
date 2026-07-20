@@ -32,6 +32,7 @@ import { createSeedNotificationDeliveryRepository } from '../notifications/seedN
 import { createSeedDeveloperAccessRepository } from '../developerAccess/seedDeveloperAccessRepository.js'
 import { createSeedWebhookRepository } from '../webhooks/seedWebhookRepository.js'
 import { createSeedSupportRepository } from '../support/seedSupportRepository.js'
+import { createSeedDataRightsRepository } from '../dataRights/seedDataRightsRepository.js'
 import { createSeedModerationCaseRepository } from '../trust/seedModerationCaseRepository.js'
 import { createSeedSafetyOperationsRepository } from '../trust/seedSafetyOperationsRepository.js'
 import { communityModerationTransition } from '../trust/communityModeration.js'
@@ -2770,6 +2771,44 @@ export const createSeedRepository = () => {
       ? adminReviewById.has(caseId)
       : Boolean(moderationCases.findAdmin(caseId)),
   })
+  const dataRights = createSeedDataRightsRepository({
+    accountForActor: async (actor) => {
+      const account = getAccountById(actor.id) ?? getAccountByHandle(actor.handle)
+      return account ? { ...account, ...getSeedAccountLifecycle(account) } : null
+    },
+    snapshotForActor: async (actor) => {
+      const account = getAccountById(actor.id) ?? getAccountByHandle(actor.handle)
+      const profile = account ? seedStore.profileByHandle.get(account.handle) ?? null : null
+      return {
+        account: account ? { id: account.id, handle: account.handle, displayName: account.displayName, role: account.role, status: getSeedAccountLifecycle(account).status } : null,
+        profile: profile ? serializeProfile(profile) : null,
+        tasks: seedStore.tasks.filter((item) => [item.publisher, item.assignee].includes(account?.handle)),
+        posts: seedStore.posts.filter((item) => item.ownerHandle === account?.handle || item.authorHandle === account?.handle),
+        library: seedLibraryItems.filter((item) => item.ownerHandle === account?.handle).map(serializeLibraryItem),
+        points: seedStore.pointsLedger.filter((item) => item.userHandle === account?.handle).map(serializeLedgerEntry),
+        notifications: notifications.filter((item) => item.recipientId === account?.id).map(serializeNotification),
+      }
+    },
+    scheduleDeletion: async (actor, payload) => {
+      const account = getAccountById(actor.id) ?? getAccountByHandle(actor.handle)
+      const current = getSeedAccountLifecycle(account)
+      accountLifecycleById.set(account.id, { ...current, accountVersion: current.accountVersion + 1, deletionRequestedAt: new Date().toISOString(), deletionScheduledAt: deletionSchedule(new Date()).toISOString(), deletionReasonCode: payload.reasonCode })
+    },
+    cancelDeletion: async (actor) => {
+      const account = getAccountById(actor.id) ?? getAccountByHandle(actor.handle)
+      const current = getSeedAccountLifecycle(account)
+      accountLifecycleById.set(account.id, { ...current, accountVersion: current.accountVersion + 1, deletionRequestedAt: null, deletionScheduledAt: null, deletionReasonCode: null })
+    },
+    applyDeletion: async (request, _plan, now) => {
+      const account = getAccountById(request.subjectId)
+      const lifecycle = getSeedAccountLifecycle(account)
+      accountLifecycleById.set(account.id, { ...lifecycle, status: 'deleted', accountVersion: lifecycle.accountVersion + 1, deletionRequestedAt: null, deletionScheduledAt: null, deletionReasonCode: request.reasonCode, updatedAt: now.toISOString() })
+      const profile = seedStore.profileByHandle.get(account.handle)
+      if (profile) seedStore.profileByHandle.set(account.handle, { ...profile, name: { en: 'Deleted user', zh: '已删除用户' }, bio: { en: '', zh: '' }, tags: [], zhTags: [], languages: [] })
+      return { identity: 1, sessions: 1, profile: profile ? 1 : 0, tasks: seedStore.tasks.filter((item) => [item.publisher, item.assignee].includes(account.handle)).length, community: seedStore.posts.filter((item) => item.ownerHandle === account.handle || item.authorHandle === account.handle).length, notifications: notifications.filter((item) => item.recipientId === account.id).length, billing: seedStore.pointsLedger.filter((item) => item.userHandle === account.handle).length }
+    },
+    recordAudit: ({ actor, action, resourceType, resourceId, metadata }) => recordAudit(actor, action, resourceType, resourceId, metadata),
+  })
   return {
   chat: createSeedChatRepository({
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) =>
@@ -2802,6 +2841,7 @@ export const createSeedRepository = () => {
   developerAccess,
   webhooks,
   support,
+  dataRights,
   auth: {
     getCurrentUser: () => seedStore.me,
     findDemoAccountByAccessToken: (token) => {

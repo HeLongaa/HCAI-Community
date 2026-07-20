@@ -1507,6 +1507,7 @@ model SupportTicket {
   firstRespondedAt      DateTime?             @map("first_responded_at")
   resolvedAt            DateTime?             @map("resolved_at")
   closedAt              DateTime?             @map("closed_at")
+  dataRightsRedactedAt  DateTime?             @map("data_rights_redacted_at")
   version               Int                   @default(1)
   createdAt             DateTime              @default(now()) @map("created_at")
   updatedAt             DateTime              @updatedAt @map("updated_at")
@@ -1520,6 +1521,7 @@ model SupportTicket {
   @@index([status, priority, firstResponseDueAt, id])
   @@index([assignedToId, status, updatedAt, id])
   @@index([category, status, createdAt, id])
+  @@index([dataRightsRedactedAt])
   @@map("support_tickets")
 }
 
@@ -1529,6 +1531,7 @@ model SupportTicketMessage {
   authorId   String?                  @map("author_id")
   authorType SupportMessageAuthorType @map("author_type")
   body       String
+  dataRightsRedactedAt DateTime?               @map("data_rights_redacted_at")
   createdAt  DateTime                 @default(now()) @map("created_at")
 
   ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
@@ -1536,6 +1539,7 @@ model SupportTicketMessage {
 
   @@index([ticketId, createdAt, id])
   @@index([authorId, createdAt, id])
+  @@index([dataRightsRedactedAt])
   @@map("support_ticket_messages")
 }
 
@@ -1554,6 +1558,107 @@ model SupportTicketCaseLink {
   @@index([caseType, caseId])
   @@index([createdById, createdAt, id])
   @@map("support_ticket_case_links")
+}
+
+model DataRightsRequest {
+  id                    String    @id @default(cuid())
+  subjectId             String    @map("subject_id")
+  subjectRef            String    @map("subject_ref")
+  requestType           String    @map("request_type")
+  status                String    @default("identity_verified")
+  reasonCode            String    @map("reason_code")
+  identityMethod        String    @map("identity_method")
+  identityVerifiedAt    DateTime  @map("identity_verified_at")
+  dueAt                 DateTime  @map("due_at")
+  primaryCompletedAt    DateTime? @map("primary_completed_at")
+  completedAt           DateTime? @map("completed_at")
+  cancelledAt           DateTime? @map("cancelled_at")
+  blockedReasonCode     String?   @map("blocked_reason_code")
+  version               Int       @default(1)
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  subject          User                        @relation("DataRightsRequestSubject", fields: [subjectId], references: [id], onDelete: Restrict)
+  events           DataRightsEvent[]
+  artifact         DataRightsExportArtifact?
+  deletionReceipts DataRightsDeletionReceipt[]
+  backupReceipts   DataRightsBackupExpiryReceipt[]
+
+  @@index([subjectId, createdAt, id])
+  @@index([requestType, status, dueAt, id])
+  @@index([status, updatedAt, id])
+  @@map("data_rights_requests")
+}
+
+model DataRightsEvent {
+  id                    String   @id @default(cuid())
+  requestId             String   @map("request_id")
+  sequence              Int
+  eventType             String   @map("event_type")
+  actorRef              String   @map("actor_ref")
+  reasonCode            String   @map("reason_code")
+  fromStatus            String?  @map("from_status")
+  toStatus              String?  @map("to_status")
+  evidenceHash          String   @map("evidence_hash")
+  metadata              Json?
+  metadataSchemaVersion Int      @default(1) @map("metadata_schema_version")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  request DataRightsRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+
+  @@unique([requestId, sequence])
+  @@index([eventType, createdAt, id])
+  @@map("data_rights_events")
+}
+
+model DataRightsExportArtifact {
+  id             String   @id @default(cuid())
+  requestId      String   @unique @map("request_id")
+  storageKey     String   @map("storage_key")
+  checksumSha256 String   @map("checksum_sha256")
+  sizeBytes      Int      @map("size_bytes")
+  expiresAt      DateTime @map("expires_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  request DataRightsRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+
+  @@index([expiresAt])
+  @@map("data_rights_export_artifacts")
+}
+
+model DataRightsDeletionReceipt {
+  id                 String    @id @default(cuid())
+  requestId          String    @map("request_id")
+  domain             String
+  disposition        String
+  recordCount        Int       @map("record_count")
+  legalBasisCode     String    @map("legal_basis_code")
+  retentionExpiresAt DateTime? @map("retention_expires_at")
+  evidenceHash       String    @map("evidence_hash")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  request DataRightsRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+
+  @@unique([requestId, domain])
+  @@index([disposition, createdAt, id])
+  @@map("data_rights_deletion_receipts")
+}
+
+model DataRightsBackupExpiryReceipt {
+  id            String   @id @default(cuid())
+  requestId     String   @map("request_id")
+  backupClass   String   @map("backup_class")
+  objectRefHash String   @map("object_ref_hash")
+  evidenceHash  String   @map("evidence_hash")
+  expiredAt     DateTime @map("expired_at")
+  verifiedByRef String   @map("verified_by_ref")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  request DataRightsRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+
+  @@unique([requestId, backupClass])
+  @@index([expiredAt, id])
+  @@map("data_rights_backup_expiry_receipts")
 }
 
 model Report {
@@ -1823,6 +1928,7 @@ model User {
   requestedSupportTickets         SupportTicket[]                 @relation("SupportTicketRequester")
   assignedSupportTickets          SupportTicket[]                 @relation("SupportTicketAssignee")
   supportTicketMessages           SupportTicketMessage[]          @relation("SupportTicketMessageAuthor")
+  dataRightsRequests              DataRightsRequest[]              @relation("DataRightsRequestSubject")
   supportTicketCaseLinksCreated   SupportTicketCaseLink[]         @relation("SupportTicketCaseLinkCreator")
   moderationReports               Report[]                        @relation("ModerationReportReporter")
   affectedModerationCases         ModerationCase[]                @relation("ModerationCaseAffectedUser")

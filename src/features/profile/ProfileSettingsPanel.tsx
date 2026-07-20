@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Eye, EyeOff, LoaderCircle, Save, Trash2, Undo2 } from 'lucide-react'
+import { Download, Eye, EyeOff, FileArchive, LoaderCircle, Save, ShieldCheck, Trash2, Undo2 } from 'lucide-react'
 
 import type { MarketplaceProfile } from '../../domain/types'
 import { isZhCopy, localizeText, textFor } from '../../domain/utils'
-import type { ApiOwnProfile } from '../../services/contracts'
+import type { ApiOwnProfile, DataRightsRequestDto, DataRightsRequestType } from '../../services/contracts'
 import { profileService } from '../../services/profileService'
 
 type Draft = {
@@ -43,16 +43,19 @@ export function ProfileSettingsPanel({ t, onUpdated }: {
   const [profile, setProfile] = useState<ApiOwnProfile | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState<'save' | 'delete' | 'cancel' | null>(null)
+  const [requests, setRequests] = useState<DataRightsRequestDto[]>([])
+  const [identityConfirmation, setIdentityConfirmation] = useState('')
+  const [busy, setBusy] = useState<'save' | 'export' | 'delete' | 'legacy-cancel' | `cancel:${string}` | `download:${string}` | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
     let active = true
-    profileService.own()
-      .then((result) => {
+    Promise.all([profileService.own(), profileService.dataRightsRequests()])
+      .then(([result, rightsRequests]) => {
         if (!active) return
         setProfile(result)
         setDraft(draftFor(result, t))
+        setRequests(rightsRequests)
       })
       .catch((cause) => active && setError(errorMessage(cause, textFor(t, 'Could not load profile settings.', '无法加载资料设置。'))))
       .finally(() => active && setLoading(false))
@@ -87,36 +90,89 @@ export function ProfileSettingsPanel({ t, onUpdated }: {
     }
   }
 
-  const requestDeletion = async () => {
-    if (!profile || !window.confirm(textFor(t, 'Schedule this account for deletion?', '确认提交账号删除申请？'))) return
-    setBusy('delete')
+  const createRightsRequest = async (requestType: DataRightsRequestType) => {
+    if (!profile || identityConfirmation.trim().toLowerCase() !== profile.handle.toLowerCase()) return
+    setBusy(requestType === 'data_export' ? 'export' : 'delete')
     setError('')
     try {
-      const account = await profileService.requestAccountDeletion({ expectedVersion: profile.account.version, reasonCode: 'owner_requested' })
-      setProfile({ ...profile, account })
+      const created = await profileService.createDataRightsRequest({
+        requestType,
+        identityConfirmation,
+        reasonCode: 'owner_requested',
+        expectedAccountVersion: profile.account.version,
+      })
+      setRequests((current) => [created, ...current])
+      setIdentityConfirmation('')
+      if (requestType === 'account_deletion') {
+        const account = await profileService.accountStatus()
+        setProfile((current) => current ? { ...current, account } : current)
+      }
     } catch (cause) {
-      setError(errorMessage(cause, textFor(t, 'Could not request account deletion.', '无法提交账号删除申请。')))
+      setError(errorMessage(cause, textFor(t, 'Could not create the data rights request.', '无法创建数据权利请求。')))
     } finally {
       setBusy(null)
     }
   }
 
-  const cancelDeletion = async () => {
+  const cancelRightsRequest = async (request: DataRightsRequestDto) => {
     if (!profile) return
-    setBusy('cancel')
+    setBusy(`cancel:${request.id}`)
+    setError('')
+    try {
+      const cancelled = await profileService.cancelDataRightsRequest(request.id, { expectedVersion: request.version, reasonCode: 'owner_cancelled' })
+      setRequests((current) => current.map((item) => item.id === cancelled.id ? cancelled : item))
+      if (request.requestType === 'account_deletion') {
+        const account = await profileService.accountStatus()
+        setProfile((current) => current ? { ...current, account } : current)
+      }
+    } catch (cause) {
+      setError(errorMessage(cause, textFor(t, 'Could not cancel the data rights request.', '无法取消数据权利请求。')))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const cancelLegacyDeletion = async () => {
+    if (!profile) return
+    setBusy('legacy-cancel')
     setError('')
     try {
       const account = await profileService.cancelAccountDeletion({ expectedVersion: profile.account.version, reasonCode: 'owner_cancelled' })
       setProfile({ ...profile, account })
     } catch (cause) {
-      setError(errorMessage(cause, textFor(t, 'Could not cancel account deletion.', '无法取消账号删除申请。')))
-    } finally {
-      setBusy(null)
-    }
+      setError(errorMessage(cause, textFor(t, 'Could not cancel the legacy deletion request.', '无法取消旧版删除申请。')))
+    } finally { setBusy(null) }
+  }
+
+  const downloadExport = async (request: DataRightsRequestDto) => {
+    setBusy(`download:${request.id}`)
+    setError('')
+    try {
+      const result = await profileService.dataRightsExport(request.id)
+      const anchor = document.createElement('a')
+      if (result.package) {
+        const url = URL.createObjectURL(new Blob([JSON.stringify(result.package, null, 2)], { type: 'application/json' }))
+        anchor.href = url
+        anchor.download = `data-export-${request.id}.json`
+        anchor.click()
+        URL.revokeObjectURL(url)
+      } else {
+        anchor.href = result.download.url
+        anchor.rel = 'noopener noreferrer'
+        anchor.click()
+      }
+    } catch (cause) {
+      setError(errorMessage(cause, textFor(t, 'Could not download the data export.', '无法下载数据导出。')))
+    } finally { setBusy(null) }
   }
 
   if (loading) return <section className="panel profile-settings-panel"><LoaderCircle className="spin" size={18}/></section>
   if (!profile || !draft) return <section className="panel profile-settings-panel"><div className="inline-alert error">{error}</div></section>
+
+  const identityMatches = identityConfirmation.trim().toLowerCase() === profile.handle.toLowerCase()
+  const activeDeletion = requests.find((request) => request.requestType === 'account_deletion' && ['identity_verified', 'processing', 'primary_completed', 'blocked'].includes(request.status))
+  const legacyDeletion = profile.account.status === 'deletion_requested' && !activeDeletion
+  const formatDate = (value: string | null) => value ? new Date(value).toLocaleString(isZh ? 'zh-CN' : 'en-US') : '-'
 
   return <section className="panel profile-settings-panel" data-testid="profile-settings-panel">
     <header>
@@ -140,10 +196,26 @@ export function ProfileSettingsPanel({ t, onUpdated }: {
     </div>
     <div className="profile-settings-actions">
       <button className="primary-button" type="button" onClick={() => void save()} disabled={Boolean(busy)}><Save size={16}/>{busy === 'save' ? textFor(t, 'Saving', '保存中') : textFor(t, 'Save', '保存')}</button>
-      {profile.account.status === 'deletion_requested' ? <>
-        <span>{new Date(profile.account.deletionScheduledAt ?? '').toLocaleDateString(isZh ? 'zh-CN' : 'en-US')}</span>
-        <button className="ghost-button" type="button" onClick={() => void cancelDeletion()} disabled={Boolean(busy)}><Undo2 size={16}/>{textFor(t, 'Cancel deletion', '取消删除')}</button>
-      </> : <button className="ghost-button danger-button" type="button" onClick={() => void requestDeletion()} disabled={Boolean(busy)}><Trash2 size={16}/>{textFor(t, 'Request deletion', '申请删除')}</button>}
     </div>
+    <section className="profile-data-rights" data-testid="profile-data-rights">
+      <header><div><span>{textFor(t, 'Privacy rights', '隐私权利')}</span><h3>{textFor(t, 'Export and deletion', '导出与删除')}</h3></div><ShieldCheck size={19}/></header>
+      <label><span>{textFor(t, `Confirm handle: ${profile.handle}`, `确认用户名：${profile.handle}`)}</span><input aria-label={textFor(t, 'Data rights identity confirmation', '数据权利身份确认')} value={identityConfirmation} onChange={(event) => setIdentityConfirmation(event.target.value)} autoComplete="off" /></label>
+      <div className="profile-data-rights-actions">
+        <button className="ghost-button" type="button" disabled={Boolean(busy) || !identityMatches} onClick={() => void createRightsRequest('data_export')}><FileArchive size={16}/>{busy === 'export' ? textFor(t, 'Requesting', '申请中') : textFor(t, 'Request export', '申请导出')}</button>
+        <button className="ghost-button danger-button" type="button" disabled={Boolean(busy) || !identityMatches || Boolean(activeDeletion)} onClick={() => void createRightsRequest('account_deletion')}><Trash2 size={16}/>{busy === 'delete' ? textFor(t, 'Requesting', '申请中') : textFor(t, 'Request deletion', '申请删除')}</button>
+      </div>
+      {legacyDeletion && <div className="data-rights-legacy"><span>{textFor(t, 'Legacy deletion request', '旧版删除申请')} · {formatDate(profile.account.deletionScheduledAt)}</span><button className="ghost-button" type="button" disabled={Boolean(busy)} onClick={() => void cancelLegacyDeletion()}><Undo2 size={16}/>{textFor(t, 'Cancel legacy request', '取消旧版申请')}</button></div>}
+      <div className="data-rights-history">
+        {requests.length === 0 && <p>{textFor(t, 'No data rights requests.', '暂无数据权利请求。')}</p>}
+        {requests.map((request) => <article key={request.id}>
+          <div><strong>{request.requestType.replaceAll('_', ' ')}</strong><span className={`status-badge ${request.status === 'completed' ? 'success' : request.status === 'blocked' ? 'danger' : ''}`}>{request.status.replaceAll('_', ' ')}</span></div>
+          <small>{textFor(t, 'Due', '到期')} {formatDate(request.dueAt)} · v{request.version}</small>
+          <div>
+            {request.requestType === 'data_export' && request.status === 'completed' && request.artifact && <button className="icon-button" type="button" title={textFor(t, 'Download export', '下载导出')} aria-label={textFor(t, 'Download export', '下载导出')} disabled={Boolean(busy)} onClick={() => void downloadExport(request)}><Download size={16}/></button>}
+            {['identity_verified', 'blocked'].includes(request.status) && <button className="icon-button" type="button" title={textFor(t, 'Cancel request', '取消请求')} aria-label={textFor(t, 'Cancel request', '取消请求')} disabled={Boolean(busy)} onClick={() => void cancelRightsRequest(request)}><Undo2 size={16}/></button>}
+          </div>
+        </article>)}
+      </div>
+    </section>
   </section>
 }

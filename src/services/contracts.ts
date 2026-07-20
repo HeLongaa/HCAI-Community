@@ -2955,6 +2955,94 @@ export type ApiOwnProfile = ApiProfile & {
   account: AccountLifecycleStatus
 }
 
+export type DataRightsRequestType = 'data_export' | 'account_deletion'
+export type DataRightsStatus = 'identity_verified' | 'processing' | 'primary_completed' | 'completed' | 'cancelled' | 'blocked'
+export type DataRightsBackupClass = 'primary_database' | 'object_storage' | 'audit_archive'
+
+export type DataRightsEventDto = {
+  id: string
+  requestId: string
+  sequence: number
+  eventType: string
+  actorRef: string
+  reasonCode: string
+  fromStatus: DataRightsStatus | null
+  toStatus: DataRightsStatus | null
+  evidenceHash: string
+  metadata: Record<string, unknown> | null
+  createdAt: string
+}
+
+export type DataRightsExportArtifactDto = {
+  id: string
+  requestId: string
+  storageKey: string
+  checksumSha256: string
+  sizeBytes: number
+  expiresAt: string
+  createdAt: string
+}
+
+export type DataRightsDeletionReceiptDto = {
+  id: string
+  requestId: string
+  domain: string
+  disposition: 'erased' | 'anonymized' | 'retained_minimal'
+  recordCount: number
+  legalBasisCode: string
+  retentionExpiresAt: string | null
+  evidenceHash: string
+  createdAt: string
+}
+
+export type DataRightsBackupReceiptDto = {
+  id: string
+  requestId: string
+  backupClass: DataRightsBackupClass
+  objectRefHash: string
+  evidenceHash: string
+  expiredAt: string
+  verifiedByRef: string
+  createdAt: string
+}
+
+export type DataRightsRequestDto = {
+  id: string
+  subjectRef: string
+  requestType: DataRightsRequestType
+  status: DataRightsStatus
+  reasonCode: string
+  identityMethod: string
+  identityVerifiedAt: string
+  dueAt: string
+  primaryCompletedAt: string | null
+  completedAt: string | null
+  cancelledAt: string | null
+  blockedReasonCode: string | null
+  version: number
+  createdAt: string
+  updatedAt: string
+  artifact: DataRightsExportArtifactDto | null
+  events: DataRightsEventDto[]
+  deletionReceipts: DataRightsDeletionReceiptDto[]
+  backupReceipts: DataRightsBackupReceiptDto[]
+}
+
+export type DataRightsMetricsDto = {
+  total: number
+  active: number
+  completed: number
+  overdue: number
+  byType: Record<DataRightsRequestType, number>
+  byStatus: Partial<Record<DataRightsStatus, number>>
+}
+
+export type DataRightsExportDownloadDto = {
+  artifact: DataRightsExportArtifactDto
+  download: { provider: string; method: 'GET'; url: string; headers: Record<string, string>; expiresAt: string }
+  package?: Record<string, unknown>
+}
+
 export type ProfileListQuery = {
   lane?: string | null
   search?: string | null

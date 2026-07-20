@@ -1,6 +1,6 @@
 import { api, withQuery } from './apiClient'
 import type { MarketplaceProfile } from '../domain/types'
-import type { AccountLifecycleStatus, ApiOwnProfile, ApiPortfolioAsset, ApiProfile, ProfileListQuery } from './contracts'
+import type { AccountLifecycleStatus, ApiOwnProfile, ApiPortfolioAsset, ApiProfile, DataRightsExportDownloadDto, DataRightsRequestDto, DataRightsRequestType, ProfileListQuery } from './contracts'
 
 const toProfile = (profile: ApiProfile): MarketplaceProfile => ({
   ...profile,
@@ -36,6 +36,18 @@ export const profileService = {
   },
   cancelAccountDeletion(payload: { expectedVersion: number; reasonCode: string }) {
     return api.del<AccountLifecycleStatus>('/users/me/account-deletion', { body: JSON.stringify(payload) })
+  },
+  dataRightsRequests() {
+    return api.get<DataRightsRequestDto[]>('/users/me/data-rights/requests')
+  },
+  createDataRightsRequest(payload: { requestType: DataRightsRequestType; identityConfirmation: string; reasonCode: string; expectedAccountVersion: number }) {
+    return api.post<DataRightsRequestDto>('/users/me/data-rights/requests', payload)
+  },
+  cancelDataRightsRequest(id: string, payload: { expectedVersion: number; reasonCode: string }) {
+    return api.del<DataRightsRequestDto>(`/users/me/data-rights/requests/${encodeURIComponent(id)}`, { body: JSON.stringify(payload) })
+  },
+  dataRightsExport(id: string) {
+    return api.get<DataRightsExportDownloadDto>(`/users/me/data-rights/requests/${encodeURIComponent(id)}/export`)
   },
   ownPortfolio() {
     return api.get<ApiPortfolioAsset[]>('/profiles/me/portfolio')

@@ -31,6 +31,7 @@ import { registerWebhookRoutes } from './webhooks/routes.js'
 import { registerSupportAdminRoutes } from './supportAdmin/routes.js'
 import { registerSearchRoutes } from './search/routes.js'
 import { registerRiskRoutes } from './risk/routes.js'
+import { registerDataRightsRoutes } from './dataRights/routes.js'
 
 export const registerModules = (router) => {
   registerHealthRoutes(router)
@@ -45,6 +46,7 @@ export const registerModules = (router) => {
   registerSupportAdminRoutes(router)
   registerSearchRoutes(router)
   registerRiskRoutes(router)
+  registerDataRightsRoutes(router)
   registerAuthRoutes(router)
   registerOAuthAdminRoutes(router)
   registerAuthSessionAdminRoutes(router)

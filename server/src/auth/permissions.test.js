@@ -67,5 +67,6 @@ test('structured registry separates RBAC from resource authorization', () => {
     'admin:webhooks:manage',
     'admin:support:manage',
     'admin:search:manage',
+    'admin:data-rights:manage',
   ])
 })

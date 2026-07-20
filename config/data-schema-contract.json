@@ -6,7 +6,7 @@
   "migration": "server/prisma/migrations/0041_core_relations_json_versions/migration.sql",
   "policyDocument": "docs/DATA_RELATION_AND_JSON_SCHEMA.md",
   "jsonFields": [
-    "AuditEvent.metadata", "ObservabilityLog.attributes", "SecurityEvent.details", "SystemSetting.value", "OperationLease.metadata", "AdminReview.metadata",
+    "AuditEvent.metadata", "ObservabilityLog.attributes", "SecurityEvent.details", "SystemSetting.value", "OperationLease.metadata", "AdminReview.metadata", "DataRightsEvent.metadata",
     "Profile.portfolio", "Profile.stats", "Profile.metadata", "Task.metadata", "TaskAdminBulkAction.result", "TaskLifecycleMutation.result", "ModerationBulkOperation.result", "CommunityAdminBulkOperation.result", "TaskProposal.metadata", "TaskSubmission.metadata",
     "Post.metadata", "LibraryItem.metadata", "InternalAccountingOperation.metadata", "InternalAccountingMovement.metadata",
     "EntitlementPlanVersion.capabilities", "EntitlementPlanVersion.quotas", "EntitlementGrantEvent.evidence",

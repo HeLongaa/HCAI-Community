@@ -1022,6 +1022,83 @@ export const openApiDocument = {
         responses: { '200': { description: 'Deletion request cancelled' }, '409': { description: 'Account version conflict or no pending request' } },
       },
     },
+    '/users/me/data-rights/requests': {
+      get: {
+        summary: 'List data export and account deletion requests owned by the authenticated personal account',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'Owner-scoped data rights requests with immutable evidence summaries' }, '401': { description: 'Authentication required' } },
+      },
+      post: {
+        summary: 'Create a data rights request after recent-session and exact-handle identity verification',
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['requestType', 'identityConfirmation', 'reasonCode', 'expectedAccountVersion'], properties: { requestType: { type: 'string', enum: ['data_export', 'account_deletion'] }, identityConfirmation: { type: 'string', minLength: 3, maxLength: 120 }, reasonCode: { type: 'string', minLength: 3, maxLength: 64 }, expectedAccountVersion: { type: 'integer', minimum: 1 } } } } } },
+        responses: { '201': { description: 'Identity-verified request created' }, '401': { description: 'Recent authentication required' }, '403': { description: 'Identity confirmation mismatch' }, '409': { description: 'Account version conflict or duplicate active request' }, '429': { description: 'Three-request rolling limit reached' } },
+      },
+    },
+    '/users/me/data-rights/requests/{id}': {
+      get: {
+        summary: 'Read one owned data rights request and its evidence timeline',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Owned data rights request' }, '404': { description: 'Request not found for this owner' } },
+      },
+      delete: {
+        summary: 'Cancel an eligible owned data rights request',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['expectedVersion', 'reasonCode'], properties: { expectedVersion: { type: 'integer', minimum: 1 }, reasonCode: { type: 'string', minLength: 3, maxLength: 64 } } } } } },
+        responses: { '200': { description: 'Request cancelled with account schedule cleared when applicable' }, '404': { description: 'Request not found for this owner' }, '409': { description: 'Version or lifecycle conflict' } },
+      },
+    },
+    '/users/me/data-rights/requests/{id}/export': {
+      get: {
+        summary: 'Issue a private 15-minute download for a completed unexpired owned export',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Immutable export artifact and private download contract' }, '404': { description: 'Completed export not found for this owner' }, '410': { description: 'Export artifact expired' } },
+      },
+    },
+    '/admin/data-rights/requests': {
+      get: {
+        summary: 'List the bounded data rights operations queue',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'status', in: 'query', schema: { type: 'string', enum: ['identity_verified', 'processing', 'primary_completed', 'completed', 'cancelled', 'blocked'] } }, { name: 'requestType', in: 'query', schema: { type: 'string', enum: ['data_export', 'account_deletion'] } }, { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 } }],
+        responses: { '200': { description: 'Data rights request queue' }, '403': { description: 'Requires admin:data-rights:read' } },
+      },
+    },
+    '/admin/data-rights/metrics': {
+      get: {
+        summary: 'Read data rights queue, completion, and overdue metrics',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'Data rights lifecycle metrics' }, '403': { description: 'Requires admin:data-rights:read' } },
+      },
+    },
+    '/admin/data-rights/requests/{id}': {
+      get: {
+        summary: 'Read one data rights request and its immutable evidence',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Data rights request detail' }, '403': { description: 'Requires admin:data-rights:read' }, '404': { description: 'Request not found' } },
+      },
+    },
+    '/admin/data-rights/requests/{id}/process': {
+      post: {
+        summary: 'Generate an export or execute primary deletion after the 30-day grace period',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['expectedVersion', 'reasonCode'], properties: { expectedVersion: { type: 'integer', minimum: 1 }, reasonCode: { type: 'string', minLength: 3, maxLength: 64 } } } } } },
+        responses: { '200': { description: 'Request processed with immutable artifact or deletion receipts' }, '403': { description: 'Requires admin:data-rights:manage' }, '409': { description: 'Version, lifecycle, or deletion grace-period conflict' } },
+      },
+    },
+    '/admin/data-rights/requests/{id}/backup-receipts': {
+      post: {
+        summary: 'Record one immutable backup-expiry receipt and complete deletion after all required classes',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['backupClass', 'objectRefHash', 'evidenceHash', 'expiredAt', 'verifiedByRef'], properties: { backupClass: { type: 'string', enum: ['primary_database', 'object_storage', 'audit_archive'] }, objectRefHash: { type: 'string', pattern: '^[a-f0-9]{64}$' }, evidenceHash: { type: 'string', pattern: '^[a-f0-9]{64}$' }, expiredAt: { type: 'string', format: 'date-time' }, verifiedByRef: { type: 'string', minLength: 3, maxLength: 64 } } } } } },
+        responses: { '201': { description: 'Backup expiry evidence recorded' }, '403': { description: 'Requires admin:data-rights:manage' }, '409': { description: 'Primary deletion incomplete, expiry pending, or duplicate backup class' } },
+      },
+    },
     '/admin/users': {
       get: {
         summary: 'List bounded personal user lifecycle projections',

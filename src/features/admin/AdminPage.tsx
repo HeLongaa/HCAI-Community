@@ -21,6 +21,7 @@ import { DeveloperAccessAdminPanel } from './DeveloperAccessAdminPanel'
 import { WebhookAdminPanel } from './WebhookAdminPanel'
 import { SupportAdminPanel } from './SupportAdminPanel'
 import { CommunityAdminPanel } from './CommunityAdminPanel'
+import { DataRightsAdminPanel } from './DataRightsAdminPanel'
 import { AuthSessionAdminPanel } from './AuthSessionAdminPanel'
 import { TaskAdminPanel } from './TaskAdminPanel'
 import { EntitlementAdminPanel } from './EntitlementAdminPanel'
@@ -2658,12 +2659,20 @@ export function AdminPage({
         />
       )}
       {activeTab === 'Users' && (
-        <UserAdminPanel
-          t={t}
-          canRead={account.hasPermission('admin:users:read')}
-          canManage={account.hasPermission('admin:users:manage')}
-          notify={(message) => simulateAction(message)}
-        />
+        <div className="admin-settings-stack">
+          <UserAdminPanel
+            t={t}
+            canRead={account.hasPermission('admin:users:read')}
+            canManage={account.hasPermission('admin:users:manage')}
+            notify={(message) => simulateAction(message)}
+          />
+          <DataRightsAdminPanel
+            isZh={isZh}
+            canRead={account.hasPermission('admin:data-rights:read')}
+            canManage={account.hasPermission('admin:data-rights:manage')}
+            notify={(message) => simulateAction(message)}
+          />
+        </div>
       )}
       {activeTab === 'Notifications' && (
         <NotificationAdminPanel
