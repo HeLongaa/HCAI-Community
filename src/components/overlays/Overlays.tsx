@@ -1,18 +1,14 @@
-import { useCallback, useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import {
   AlertTriangle,
   Bot,
   BriefcaseBusiness,
   ChevronDown,
   ChevronRight,
-  Copy,
-  Download,
-  Flag,
   FileText,
   Globe2,
   Heart,
   Image,
-  ListPlus,
   ListMusic,
   LoaderCircle,
   MonitorCheck,
@@ -23,15 +19,12 @@ import {
   Play,
   RefreshCcw,
   Search,
-  Share2,
   ShieldCheck,
-  Shuffle,
   SkipBack,
   SkipForward,
   Trophy,
   UserRound,
   UsersRound,
-  Volume2,
   WandSparkles,
   X,
 } from 'lucide-react'
@@ -64,7 +57,6 @@ export function DynamicIsland({
   playTrack,
   playing,
   setPlaying,
-  requireAuth,
   simulateAction,
 }: {
   t: Record<string, string>
@@ -75,15 +67,11 @@ export function DynamicIsland({
   playTrack: (track: Track) => void
   playing: boolean
   setPlaying: (playing: boolean) => void
-  requireAuth: () => void
   simulateAction: SimulateAction
 }) {
   const [open, setOpen] = useState(false)
   const [minimized, setMinimized] = useState(false)
   const [query, setQuery] = useState('')
-  const [shuffleOn, setShuffleOn] = useState(false)
-  const [repeatOn, setRepeatOn] = useState(false)
-  const [volume, setVolume] = useState(72)
   const [moreOpen, setMoreOpen] = useState(false)
   const isZh = locale === 'zh'
   const pageGuide: Partial<Record<Page, [string, string]>> = {
@@ -173,10 +161,7 @@ export function DynamicIsland({
     setPage(action.page)
     setOpen(false)
     setMoreOpen(false)
-    simulateAction(
-      isZh ? `灵动岛已跳转：${action.label}` : `Dynamic island routed: ${action.label}`,
-      { description: `Dynamic island guide: ${action.label}`, delta: '+1' },
-    )
+    simulateAction(isZh ? `灵动岛已跳转：${action.label}` : `Dynamic island routed: ${action.label}`)
   }
 
   if (minimized) {
@@ -221,35 +206,19 @@ export function DynamicIsland({
           {currentLyricLine}
         </div>
         <div className="music-island-controls" onClick={(event) => event.stopPropagation()}>
-          <button
-            className={shuffleOn ? 'active' : ''}
-            type="button"
-            onClick={() => {
-              setShuffleOn((current) => !current)
-              simulateAction(shuffleOn ? (isZh ? '已关闭随机播放' : 'Shuffle disabled') : isZh ? '已开启随机播放' : 'Shuffle enabled')
-            }}
-            aria-label={isZh ? '随机播放' : 'Shuffle'}
-          >
-            <Shuffle size={17} />
+          <button type="button" disabled title={textFor(t, 'Shuffle is not available', '随机播放暂未开放')} aria-label={isZh ? '随机播放暂未开放' : 'Shuffle unavailable'}>
+            <RefreshCcw size={17} />
           </button>
-          <button type="button" onClick={() => playTrack(previousTrack)} aria-label={isZh ? '上一首' : 'Previous track'}>
+          <button type="button" disabled={!previousTrack.audioUrl} onClick={() => playTrack(previousTrack)} aria-label={isZh ? '上一首' : 'Previous track'}>
             <SkipBack size={17} fill="currentColor" />
           </button>
           <button className="music-play-button" type="button" onClick={() => setPlaying(!playing)} aria-label={playing ? textFor(t, 'Pause', '暂停') : textFor(t, 'Play', '播放')}>
             {playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
           </button>
-          <button type="button" onClick={() => playTrack(nextTrack)} aria-label={isZh ? '下一首' : 'Next track'}>
+          <button type="button" disabled={!nextTrack.audioUrl} onClick={() => playTrack(nextTrack)} aria-label={isZh ? '下一首' : 'Next track'}>
             <SkipForward size={17} fill="currentColor" />
           </button>
-          <button
-            className={repeatOn ? 'active' : ''}
-            type="button"
-            onClick={() => {
-              setRepeatOn((current) => !current)
-              simulateAction(repeatOn ? (isZh ? '已关闭循环播放' : 'Repeat disabled') : isZh ? '已开启循环播放' : 'Repeat enabled')
-            }}
-            aria-label={isZh ? '循环播放' : 'Repeat'}
-          >
+          <button type="button" disabled title={textFor(t, 'Repeat is not available', '循环播放暂未开放')} aria-label={isZh ? '循环播放暂未开放' : 'Repeat unavailable'}>
             <RefreshCcw size={17} />
           </button>
         </div>
@@ -298,36 +267,9 @@ export function DynamicIsland({
           >
             <MoreHorizontal size={17} />
           </button>
-          <button type="button" onClick={() => simulateAction(isZh ? '已切换播放模式' : 'Playback mode toggled')} title={textFor(t, 'Playback mode', '播放模式')}>
+          <button type="button" disabled title={textFor(t, 'Playback modes are not available', '播放模式暂未开放')}>
             <RefreshCcw size={16} />
           </button>
-          <label
-            className="music-volume-control"
-            style={{ '--volume-level': `${volume}%` } as CSSProperties}
-            title={textFor(t, 'Volume', '音量')}
-            aria-label={textFor(t, 'Volume', '音量')}
-          >
-            <Volume2 size={16} />
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={volume}
-              onInput={(event) => setVolume(Number(event.currentTarget.value))}
-              onChange={(event) => setVolume(Number(event.currentTarget.value))}
-              onMouseUp={(event) => {
-                const value = Number(event.currentTarget.value)
-                setVolume(value)
-                simulateAction(isZh ? `音量 ${value}%` : `Volume ${value}%`)
-              }}
-              onTouchEnd={(event) => {
-                const value = Number(event.currentTarget.value)
-                setVolume(value)
-                simulateAction(isZh ? `音量 ${value}%` : `Volume ${value}%`)
-              }}
-              aria-valuetext={`${volume}%`}
-            />
-          </label>
           <button type="button" onClick={() => {
             setMoreOpen(false)
             setOpen(false)
@@ -343,68 +285,25 @@ export function DynamicIsland({
         </div>
         {moreOpen && (
           <div className="music-more-menu" role="menu" aria-label={textFor(t, 'More actions', '更多操作')}>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMoreOpen(false)
-                requireAuth()
-              }}
-            >
-              <Download size={16} />
-              <span>{textFor(t, 'Free download', '免费下载')}</span>
-              <ChevronRight size={15} />
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMoreOpen(false)
-                simulateAction(isZh ? '已添加到队列' : 'Added to queue')
-              }}
-            >
-              <ListPlus size={16} />
-              <span>{textFor(t, 'Add to queue', '添加到队列')}</span>
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMoreOpen(false)
-                simulateAction(isZh ? '已复制歌曲链接' : 'Track link copied')
-              }}
-            >
-              <Copy size={16} />
-              <span>{textFor(t, 'Copy', '复制')}</span>
-              <ChevronRight size={15} />
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMoreOpen(false)
-                requireAuth()
-              }}
-            >
-              <Flag size={16} />
-              <span>{textFor(t, 'Report', '举报')}</span>
-            </button>
+            <button type="button" role="menuitem" disabled>{textFor(t, 'Download unavailable', '下载暂未开放')}</button>
+            <button type="button" role="menuitem" disabled>{textFor(t, 'Queue unavailable', '队列暂未开放')}</button>
+            <button type="button" role="menuitem" disabled>{textFor(t, 'Track link unavailable', '歌曲链接暂未开放')}</button>
+            <button type="button" role="menuitem" disabled>{textFor(t, 'Reporting unavailable', '举报暂未开放')}</button>
           </div>
         )}
         <div className="music-share-row">
-          <button type="button" onClick={requireAuth} title={textFor(t, 'Like', '喜欢')}>
+          <button type="button" disabled title={textFor(t, 'Likes are not available', '点赞暂未开放')}>
             <Heart size={18} />
           </button>
-          <button className="music-share-button" type="button" onClick={requireAuth} title={t.share}>
-            <Share2 size={16} />
-            <span>{t.share}</span>
+          <button className="music-share-button" type="button" disabled title={textFor(t, 'Sharing is not available', '分享暂未开放')}>
+            <span>{textFor(t, 'Share unavailable', '分享暂未开放')}</span>
           </button>
         </div>
       </div>
       <div className="island-expanded" onClick={(event) => event.stopPropagation()}>
         <div className="music-expanded-grid">
           <div className="music-comment-stream" aria-label={textFor(t, 'Comments', '评论')}>
-            <button className="music-add-comment" type="button" onClick={requireAuth}>
+            <button className="music-add-comment" type="button" disabled title={textFor(t, 'Comments are not available', '评论暂未开放')}>
               <span><UserRound size={22} /></span>
               <strong>{textFor(t, 'Add a comment...', '添加评论...')}</strong>
             </button>
@@ -415,7 +314,7 @@ export function DynamicIsland({
                   <strong>Damienhartsfi...</strong>
                   <time>3h</time>
                   <p>{textFor(t, 'I like this song I like it', '我喜欢这首歌，真的喜欢')}</p>
-                  <button type="button" onClick={requireAuth}><Heart size={16} /> {textFor(t, 'Reply', '回复')}</button>
+                  <button type="button" disabled><Heart size={16} /> {textFor(t, 'Reply unavailable', '回复暂未开放')}</button>
                 </div>
               </article>
               <article>
@@ -424,7 +323,7 @@ export function DynamicIsland({
                   <strong>Rylaiflor</strong>
                   <time>3d</time>
                   <p>🎧☀️🕺</p>
-                  <button type="button" onClick={requireAuth}><Heart size={16} /> {textFor(t, 'Reply', '回复')}</button>
+                  <button type="button" disabled><Heart size={16} /> {textFor(t, 'Reply unavailable', '回复暂未开放')}</button>
                 </div>
               </article>
               <article>
@@ -433,7 +332,7 @@ export function DynamicIsland({
                   <strong>Sitwsmusic</strong>
                   <time>1w</time>
                   <p>{textFor(t, 'The bassline is clean. This one belongs in the next playlist.', '贝斯线很干净，这首应该进下一轮歌单。')}</p>
-                  <button type="button" onClick={requireAuth}><Heart size={16} /> {textFor(t, 'Reply', '回复')}</button>
+                  <button type="button" disabled><Heart size={16} /> {textFor(t, 'Reply unavailable', '回复暂未开放')}</button>
                 </div>
               </article>
             </div>

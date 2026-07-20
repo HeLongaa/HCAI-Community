@@ -173,6 +173,7 @@ export type Track = {
   cover: string
   prompt: string
   lyrics: string[]
+  audioUrl?: string
 }
 
 export type Work = {

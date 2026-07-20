@@ -14,15 +14,10 @@ import { RiskCasePanel } from './RiskCasePanel'
 export function PlaylistPage({
   t,
   playTrack,
-  simulateAction,
 }: {
   t: Record<string, string>
   playTrack: (track: Track) => void
-  simulateAction: SimulateAction
 }) {
-  const isZh = isZhCopy(t)
-  const [liked, setLiked] = useState(false)
-
   return (
     <div className="stack">
       <section className="playlist-header">
@@ -32,28 +27,13 @@ export function PlaylistPage({
           <h1>Top 100</h1>
           <p>{textFor(t, 'Discover the top tracks, covers, and creator-made AI songs across every mood.', '发现不同情绪下最受欢迎的曲目、翻唱和创作者 AI 歌曲。')}</p>
           <div className="button-row">
-            <button className="primary-button" type="button" onClick={() => playTrack(tracks[0])}>
+            <button className="primary-button" type="button" disabled={!tracks[0]?.audioUrl} onClick={() => playTrack(tracks[0])} title={textFor(t, 'Public playback is not available', '公共播放暂未开放')}>
               <Play size={17} fill="currentColor" />
               {textFor(t, 'Play', '播放')}
             </button>
-            <button
-              className={liked ? 'ghost-button active' : 'ghost-button'}
-              type="button"
-              onClick={() => {
-                setLiked((current) => !current)
-                simulateAction(
-                  liked
-                    ? isZh
-                      ? '已取消收藏播放列表 Top 100'
-                      : 'Playlist removed from liked: Top 100'
-                    : isZh
-                      ? '已收藏播放列表 Top 100'
-                      : 'Playlist liked: Top 100',
-                )
-              }}
-            >
+            <button className="ghost-button" type="button" disabled title={textFor(t, 'Playlist likes are not available', '歌单收藏暂未开放')}>
               <Heart size={17} />
-              {liked ? '98.1K' : '98K'}
+              {textFor(t, 'Unavailable', '暂未开放')}
             </button>
           </div>
         </div>
@@ -140,19 +120,15 @@ export function ProfilePage({
               ))}
             </div>
             <div className="quick-action-row">
-            <button
+            {!isPersonalCenter && <button
               className="primary-button"
               type="button"
-              onClick={() =>
-                simulateAction(
-                  isZh ? `已模拟关注 @${profile.handle}` : `Followed @${profile.handle} in the front-end mock`,
-                    { description: `Followed profile: @${profile.handle}`, delta: '+1' },
-                  )
-                }
-              >
+              disabled
+              title={textFor(t, 'Following is not available yet', '关注功能暂未开放')}
+            >
                 <UserRound size={17} />
-                {t.follow}
-              </button>
+                {textFor(t, 'Following unavailable', '关注暂未开放')}
+              </button>}
               <button
                 className="ghost-button"
                 type="button"
@@ -161,13 +137,9 @@ export function ProfilePage({
                 <Trophy size={17} />
                 {t.points}
               </button>
-              <button
-                className="ghost-button"
-                type="button"
-                onClick={() => simulateAction(isZh ? `已复制用户主页链接：@${profile.handle}` : `Profile link copied: @${profile.handle}`)}
-              >
+              <button className="ghost-button" type="button" disabled title={textFor(t, 'Profile deep links are not available yet', '个人主页深链接暂未开放')}>
                 <Share2 size={17} />
-                {t.share}
+                {textFor(t, 'Share unavailable', '分享暂未开放')}
               </button>
             </div>
           </div>

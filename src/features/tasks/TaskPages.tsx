@@ -175,7 +175,7 @@ export function TasksPage({
               {visibleTasks.length === 0 && (
                 <div className="empty-state">
                   <strong>{textFor(t, 'No tasks in this category', '当前分类暂无任务')}</strong>
-                  <span>{textFor(t, 'Publish a simulated task or switch to another category.', '可以发布一个中文模拟任务，或切换到其他分类继续测试。')}</span>
+                  <span>{textFor(t, 'Publish a task or switch to another category.', '可以发布一个任务，或切换到其他分类继续浏览。')}</span>
                 </div>
               )}
             </div>
@@ -433,23 +433,33 @@ export function PublishPage({
   simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
-  const [draft, setDraft] = useState<PublishDraft>(() => ({
-    title: textFor(t, 'Create a 30-second AI product launch video', '制作一套中文 AI 课程宣传短视频'),
-    category: 'Video',
-    reward: textFor(t, '$450 / 4,500 pts', '¥2,800 / 2,800 积分'),
-    deadline: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16),
-    visibility: 'Public brief + private files',
-    details: textFor(
-      t,
-      'Need a polished vertical video with product shots, captions, music, and fast edits.',
-      '需要 3 条中文竖版短视频，包含课程卖点、字幕、AI 配音和封面建议。',
-    ),
-    rules: textFor(
-      t,
-      'Submit script, preview link, final MP4, captions, cover prompt, and rights summary.',
-      '提交脚本、预览链接、最终 MP4、字幕文件、封面提示词和版权摘要。',
-    ),
-  }))
+  const [draft, setDraft] = useState<PublishDraft>(() => {
+    let inspiration: { title?: string; category?: string; details?: string; source?: string } | null = null
+    try {
+      const raw = window.sessionStorage.getItem('hcaiInspirationTaskDraft')
+      if (raw) inspiration = JSON.parse(raw)
+      window.sessionStorage.removeItem('hcaiInspirationTaskDraft')
+    } catch {
+      window.sessionStorage.removeItem('hcaiInspirationTaskDraft')
+    }
+    return {
+      title: inspiration?.title ?? textFor(t, 'Create a 30-second AI product launch video', '制作一套中文 AI 课程宣传短视频'),
+      category: inspiration?.category ?? 'Video',
+      reward: textFor(t, '$450 / 4,500 pts', '¥2,800 / 2,800 积分'),
+      deadline: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16),
+      visibility: 'Public brief + private files',
+      details: inspiration?.details ?? textFor(
+        t,
+        'Need a polished vertical video with product shots, captions, music, and fast edits.',
+        '需要 3 条中文竖版短视频，包含课程卖点、字幕、AI 配音和封面建议。',
+      ),
+      rules: textFor(
+        t,
+        'Submit script, preview link, final MP4, captions, cover prompt, and rights summary.',
+        '提交脚本、预览链接、最终 MP4、字幕文件、封面提示词和版权摘要。',
+      ) + (inspiration?.source ? textFor(t, `\n\nSource: ${inspiration.source}`, `\n\n来源：${inspiration.source}`) : ''),
+    }
+  })
   const [taskAssets, setTaskAssets] = useState<ApiMediaAsset[]>([])
   const [publishedRules, setPublishedRules] = useState<TaskRule[]>([])
 
@@ -496,22 +506,18 @@ export function PublishPage({
       ),
     }
     updateDraft(key, suggestions[key])
-    simulateAction(
-      isZh
-        ? `AI 已补全${publishFieldLabel(key, t)}`
-        : `AI filled: ${publishFieldLabel(key, t)}`,
-    )
+    simulateAction(isZh ? `已应用${publishFieldLabel(key, t)}模板` : `Template applied: ${publishFieldLabel(key, t)}`)
   }
-  const aiButtonLabel = (key: EditablePublishField) =>
+  const templateButtonLabel = (key: EditablePublishField) =>
     isZh
-      ? `用 AI 补全${publishFieldLabel(key, t)}`
-      : `Use AI for ${publishFieldLabel(key, t)}`
+      ? `应用${publishFieldLabel(key, t)}模板`
+      : `Apply template for ${publishFieldLabel(key, t)}`
   const renderAiButton = (key: EditablePublishField) => (
     <button
-      aria-label={aiButtonLabel(key)}
+      aria-label={templateButtonLabel(key)}
       className="icon-button ai-field-button"
       onClick={() => improveDraftField(key)}
-      title={aiButtonLabel(key)}
+      title={templateButtonLabel(key)}
       type="button"
     >
       <Sparkles size={16} />
@@ -670,20 +676,9 @@ export function PublishPage({
                         <UserRound size={16} />
                         {textFor(t, 'Profile', '主页')}
                       </button>
-                      <button
-                        className="primary-button"
-                        type="button"
-                        onClick={() =>
-                          simulateAction(
-                            isZh
-                              ? `已邀请 @${profile.handle} 查看需求：${draft.title}`
-                              : `Invited @${profile.handle} to review: ${draft.title}`,
-                            { description: `Invited maker: @${profile.handle}`, delta: '+2' },
-                          )
-                        }
-                      >
+                      <button className="primary-button" type="button" disabled title={textFor(t, 'Direct invitations are not available yet', '定向邀请暂未开放')}>
                         <Send size={16} />
-                        {textFor(t, 'Invite', '邀请')}
+                        {textFor(t, 'Invite unavailable', '邀请暂未开放')}
                       </button>
                     </div>
                   </article>

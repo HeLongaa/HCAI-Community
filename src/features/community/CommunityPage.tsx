@@ -192,7 +192,7 @@ export function CommunityPage({
       openProfile(profile)
       return
     }
-    simulateAction(isZh ? `暂无 @${author} 的公开主页资料` : `No public profile mock is available for @${author}`)
+    simulateAction(isZh ? `暂无 @${author} 的公开主页资料` : `No public profile is available for @${author}`)
   }
 
   const backToTopicList = () => {
@@ -206,16 +206,18 @@ export function CommunityPage({
       simulateAction(isZh ? '请先输入回复内容' : 'Please enter a reply first')
       return
     }
-    const postKey = String(activeSelectedPost.id)
-    setLocalReplies((current) => ({
-      ...current,
-      [postKey]: [...(current[postKey] ?? []), { author: 'you', text }],
-    }))
     void replyToPost(activeSelectedPost, text)
-      .then(() => communityService.getPost(activeSelectedPost.id))
+      .then(() => {
+        const postKey = String(activeSelectedPost.id)
+        setLocalReplies((current) => ({
+          ...current,
+          [postKey]: [...(current[postKey] ?? []), { author: 'you', text }],
+        }))
+        setReplyDraft('')
+        return communityService.getPost(activeSelectedPost.id)
+      })
       .then(setSelectedPost)
       .catch((error) => console.info('[community-comment-refresh]', error))
-    setReplyDraft('')
   }
 
   const openReport = (targetType: 'post' | 'comment', targetId: string, label: string) => {

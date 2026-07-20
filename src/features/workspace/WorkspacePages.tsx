@@ -15,8 +15,7 @@ import {
   Upload,
   Video,
 } from 'lucide-react'
-import type { InspirationItem, Page, PlaygroundMode, SimulateAction, Task, Work } from '../../domain/types'
-import { visualWorks } from '../../data/mockData'
+import type { InspirationItem, Page, PlaygroundMode, SimulateAction, Task } from '../../domain/types'
 import { isZhCopy, textFor } from '../../domain/utils'
 import type { VideoGenerationWorkflow } from '../../hooks/useVideoGenerationWorkflow'
 import type { MusicGenerationWorkflow } from '../../hooks/useMusicGenerationWorkflow'
@@ -160,8 +159,6 @@ export function PlaygroundPage({
           primaryAction={textFor(t, 'Generate images', '生成图片')}
           options={['none', 'poster', 'avatar', 'product_visual', 'logo_concept']}
           controls={['1:1', '16:9', '4:5', '9:16']}
-          results={visualWorks.filter((item) => item.type === 'Image')}
-          requireAuth={requireAuth}
           simulateAction={simulateAction}
           providerGeneration={{
             state: imageGeneration,
@@ -181,6 +178,7 @@ export function PlaygroundPage({
             providerAvailable: Boolean(imageProvider?.enabled && imageProvider.configured),
             providerId: imageProvider?.id ?? null,
             onGenerate: runImageGeneration,
+            openAssetLibrary: () => setPage('assets'),
           }}
         />
       )}
@@ -221,8 +219,6 @@ function StudioPage({
   primaryAction,
   options,
   controls,
-  results,
-  requireAuth,
   simulateAction,
   extraAction,
   extraActionLabel,
@@ -237,12 +233,10 @@ function StudioPage({
   primaryAction: string
   options: string[]
   controls: string[]
-  results: Work[]
-  requireAuth: () => void
   simulateAction: SimulateAction
   extraAction?: () => void
   extraActionLabel?: string
-  providerGeneration?: {
+  providerGeneration: {
     state: ImageGenerationState
     history: ImageGenerationHistoryState
     action: {
@@ -264,12 +258,12 @@ function StudioPage({
     inputAssets: ApiMediaAsset[]
     uploadInput: (file: File) => Promise<void>
     onGenerate: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; quality: string; strength: number; inputAssetIds: string[] }) => Promise<void>
+    openAssetLibrary: () => void
   }
 }) {
   const isZh = isZhCopy(t)
   const [activeOption, setActiveOption] = useState(options[0])
   const [activeControls, setActiveControls] = useState<string[]>([controls[0]])
-  const [renderState, setRenderState] = useState<'idle' | 'loading' | 'done'>('idle')
   const [draftPrompt, setDraftPrompt] = useState(prompt)
   const [activeImageMode, setActiveImageMode] = useState('text_to_image')
   const [sourceAssetId, setSourceAssetId] = useState('')
@@ -337,27 +331,18 @@ function StudioPage({
   }
 
   const runStudioGenerate = () => {
-    if (providerGeneration) {
-      const inputAssetIds = selectedImageMode === 'image_edit'
-        ? [sourceAssetId, maskAssetId].filter(Boolean)
-        : selectedImageMode === 'text_to_image' ? [] : [sourceAssetId].filter(Boolean)
-      void providerGeneration.onGenerate({
-        prompt: draftPrompt,
-        mode: selectedImageMode,
-        stylePreset: selectedOption,
-        aspectRatio: activeControls.find((control) => displayedControls.includes(control)) ?? displayedControls[0] ?? '1:1',
-        quality: selectedQuality,
-        strength,
-        inputAssetIds,
-      })
-      return
-    }
-    setRenderState('loading')
-    simulateAction(isZh ? `已开始模拟生成：${activeOption}` : `Generation started: ${activeOption}`)
-    window.setTimeout(() => {
-      setRenderState('done')
-      simulateAction(isZh ? `生成完成：${activeOption} 已加入结果区` : `Generated: ${activeOption} added to results`)
-    }, 800)
+    const inputAssetIds = selectedImageMode === 'image_edit'
+      ? [sourceAssetId, maskAssetId].filter(Boolean)
+      : selectedImageMode === 'text_to_image' ? [] : [sourceAssetId].filter(Boolean)
+    void providerGeneration.onGenerate({
+      prompt: draftPrompt,
+      mode: selectedImageMode,
+      stylePreset: selectedOption,
+      aspectRatio: activeControls.find((control) => displayedControls.includes(control)) ?? displayedControls[0] ?? '1:1',
+      quality: selectedQuality,
+      strength,
+      inputAssetIds,
+    })
   }
 
   const selectedGeneration = providerGeneration?.history.selected ?? null
@@ -369,7 +354,7 @@ function StudioPage({
     ? 'loading'
     : selectedStatus === 'completed' || selectedStatus === 'review_required' || providerGeneration?.state.status === 'done'
       ? 'done'
-      : renderState
+      : 'idle'
   const immediateResult = providerGeneration?.state.result ?? null
   const generatedOutput = immediateResult && immediateResult.id === selectedGeneration?.id
     ? immediateResult.outputs[0] ?? null
@@ -724,7 +709,7 @@ function StudioPage({
               </span>
             </div>
             <div className="card-actions">
-              <button type="button" title={textFor(t, 'Open asset details', '打开资产详情')} onClick={() => simulateAction(isZh ? `已读取资产：${generatedAssetId}` : `Opened asset: ${generatedAssetId}`)}>
+              <button type="button" title={textFor(t, 'Open asset library', '打开资产库')} onClick={providerGeneration.openAssetLibrary}>
                 <FileText size={16} />
               </button>
               <button
@@ -735,37 +720,13 @@ function StudioPage({
               >
                 <Download size={16} />
               </button>
-              <button type="button" title={textFor(t, 'Share output', '分享输出')} onClick={requireAuth}>
+              <button type="button" title={textFor(t, 'Output sharing is not available yet', '输出分享暂未开放')} disabled>
                 <Share2 size={16} />
               </button>
             </div>
             <UseCreativeAsset t={t} assetId={generatedAssetId} fileName={historyOutput?.fileName ?? undefined} available={scanStatus === 'clean' && selectedStatus === 'completed'}/>
           </article>
         )}
-        {!providerGeneration && results.map((work) => (
-          <article className="visual-card" key={work.title}>
-            <img src={work.image} alt="" />
-            <div>
-              <strong>{work.title}</strong>
-              <span>
-                {work.creator} · {work.views}
-                {' '}
-                {textFor(t, 'views', '浏览')}
-              </span>
-            </div>
-            <div className="card-actions">
-              <button type="button" onClick={() => simulateAction(isZh ? `已重新混合：${work.title}` : `Remixed: ${work.title}`)}>
-                <RefreshCcw size={16} />
-              </button>
-              <button type="button" onClick={requireAuth}>
-                <Download size={16} />
-              </button>
-              <button type="button" onClick={requireAuth}>
-                <Share2 size={16} />
-              </button>
-            </div>
-          </article>
-        ))}
       </section>
     </div>
   )

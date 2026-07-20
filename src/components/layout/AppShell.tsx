@@ -47,6 +47,7 @@ import { DynamicIsland, LoginModal, PolicyConsentModal, SearchPanel, SecurityMod
 import { CompassIcon } from '../prototype/PrototypeComponents'
 import { NotificationList } from '../ui/NotificationList'
 import { NotificationPreferences } from '../ui/NotificationPreferences'
+import { ToastViewport } from '../ui/ToastViewport'
 
 type NavItem = {
   key: Page
@@ -64,7 +65,6 @@ type AppShellProps = {
   player: PlayerViewModel
   feedback: FeedbackViewModel
   notifications: NotificationCenterViewModel
-  requireAuth: () => void
 }
 
 export function AppShell({
@@ -77,7 +77,6 @@ export function AppShell({
   player,
   feedback,
   notifications,
-  requireAuth,
 }: AppShellProps) {
   const { t, locale, switchLocale } = app
   const { page, parentPage, navigatePrimary, navigateToPage, navigateBackToParent } = navigation
@@ -85,7 +84,7 @@ export function AppShell({
   const { themeMode, setThemeMode } = theme
   const { sidebarCollapsed, setSidebarCollapsed, searchOpen, setSearchOpen, loginOpen, setLoginOpen } = chrome
   const { activeTrack, playing, setPlaying, playTrack } = player
-  const { pushToast, simulateAction } = feedback
+  const { toasts, pushToast, simulateAction, dismissToast } = feedback
   const {
     items: notificationItems,
     loading: notificationsLoading,
@@ -102,7 +101,7 @@ export function AppShell({
   const [notificationPreferencesOpen, setNotificationPreferencesOpen] = useState(false)
   const isSignedIn = accountReady && accountSource !== 'fallback'
   const consentGateExempt = page === 'terms' || page === 'privacy' || page === 'aup' || page === 'disclosures' || page === 'support'
-  const showDynamicIsland = !consentGateExempt && page !== 'api' && page !== 'admin'
+  const showDynamicIsland = Boolean(activeTrack.audioUrl) && !consentGateExempt && page !== 'api' && page !== 'admin'
   const currentTier = roleTier(userRole)
   const currentTierMark = currentTier.charAt(0)
   const accountSourceLabel = !accountReady
@@ -513,10 +512,10 @@ export function AppShell({
           playTrack={playTrack}
           playing={playing}
           setPlaying={setPlaying}
-          requireAuth={requireAuth}
           simulateAction={simulateAction}
         />
       )}
+      <ToastViewport toasts={toasts} dismiss={dismissToast} />
     </div>
   )
 }

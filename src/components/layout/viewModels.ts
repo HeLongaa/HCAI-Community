@@ -23,6 +23,7 @@ import type { TaskChildCollection } from '../../hooks/useTaskWorkflows'
 import type { OAuthLoginResult } from '../../hooks/useAccountState'
 import type { MusicGenerationWorkflow } from '../../hooks/useMusicGenerationWorkflow'
 import type { VideoGenerationWorkflow } from '../../hooks/useVideoGenerationWorkflow'
+import type { AppToast, AppToastTone } from '../../hooks/useAppFeedback'
 import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiNotification, ApiPointsSummary, ApiPolicyConsentStatus, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, ApiTaskWorkflow, ApiUserCreativeGeneration, NotificationListQuery, OAuthProvider, RegisterRequest } from '../../services/contracts'
 
 export type AppCopyViewModel = {
@@ -92,8 +93,10 @@ export type PlayerViewModel = {
 }
 
 export type FeedbackViewModel = {
-  pushToast: (message: string) => void
+  toasts: AppToast[]
+  pushToast: (message: string, tone?: AppToastTone) => void
   simulateAction: SimulateAction
+  dismissToast: (id: number) => void
 }
 
 export type NotificationCenterViewModel = {
