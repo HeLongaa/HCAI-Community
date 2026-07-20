@@ -1,5 +1,13 @@
 # Quality Gates
 
+## Music Production UX Acceptance
+
+AI-MUSIC-02 engineering acceptance is defined by `config/music-production-ux-acceptance.json` and
+`docs/V1_MUSIC_PRODUCTION_ACCEPTANCE.md`. `npm run test:music-production-ux-acceptance` proves the fixed 48 kHz/192 kbps
+MP3 quality profile, rights and license gates, private clean playback/download, bounded fixture latency and spend,
+fail-closed rollback without Lyria or Mock fallback, and 390x844 keyboard/mobile accessibility. Production remains
+`no_go` pending AI-MUSIC-01 credentialed acceptance and scoped legal approval evidence.
+
 ## Video Production UX Acceptance
 
 AI-VIDEO-02 engineering acceptance is defined by `config/video-production-ux-acceptance.json` and

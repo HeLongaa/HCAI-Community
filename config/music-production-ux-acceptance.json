@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "taskId": "AI-MUSIC-02",
+  "productionDecision": "no_go",
+  "provider": {
+    "id": "elevenlabs-music-v2-enterprise",
+    "rollbackMode": "disabled",
+    "disabledErrorCode": "CREATIVE_PROVIDER_HTTP_CLIENT_DISABLED",
+    "automaticFailoverAllowed": false,
+    "silentMockFallbackAllowed": false
+  },
+  "quality": {
+    "profile": "mp3_48000_192",
+    "contentType": "audio/mpeg",
+    "sampleRateHz": 48000,
+    "bitrateKbps": 192,
+    "maximumOutputsPerRequest": 1,
+    "privateUntilScanClean": true
+  },
+  "latency": {
+    "fixtureAcceptanceMaximumMs": 5000,
+    "lifecycleTimeoutSeconds": 900,
+    "maximumAttempts": 1
+  },
+  "limits": {
+    "maximumDurationSeconds": 180,
+    "perJobUsdCap": 0.6,
+    "dailyUsdCap": 10,
+    "monthlyUsdCap": 250,
+    "maximumJobsPerDay": 20
+  },
+  "rights": {
+    "userAttestationRequired": true,
+    "copyrightedLyricsCheckRequired": true,
+    "artistImitationCheckRequired": true,
+    "licenseMetadataRequired": true,
+    "trainingOptOutRequired": true
+  },
+  "release": {
+    "privatePlayerRequired": true,
+    "cleanDownloadRequired": true,
+    "reportAndTakedownPathRequired": true
+  },
+  "mobile": {
+    "viewport": { "width": 390, "height": 844 },
+    "pageHorizontalOverflowAllowed": false,
+    "historyOwnsHorizontalScroll": true
+  },
+  "accessibility": {
+    "namedPromptRequired": true,
+    "namedQualityRequired": true,
+    "namedRightsRequired": true,
+    "liveStatusRequired": true,
+    "namedPlayerRequired": true,
+    "namedDownloadRequired": true,
+    "keyboardGenerateRequired": true
+  },
+  "evidence": [
+    "server/src/creative/musicProductionAcceptance.test.js",
+    "server/src/creative/elevenLabsMusicStagingAcceptance.test.js",
+    "server/src/creative/elevenLabsMusicProvider.test.js",
+    "e2e/music-capability.spec.ts",
+    "docs/V1_MUSIC_PRODUCTION_ACCEPTANCE.md"
+  ]
+}

@@ -1,5 +1,10 @@
 # V1 Music Capability Contract
 
+AI-MUSIC-02 adds the production UX engineering acceptance layer documented in
+`docs/V1_MUSIC_PRODUCTION_ACCEPTANCE.md`, including a fixed 48 kHz/192 kbps MP3 quality profile, rights disclosure,
+private playback/download, limits, mobile and keyboard accessibility, and fail-closed rollback. This evidence does not
+change the production Provider no-go decision.
+
 V1-30 freezes the Music product and Provider contract. The executable source of truth is
 `server/src/creative/musicCapabilityContract.js`.
 
