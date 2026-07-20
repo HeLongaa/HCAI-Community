@@ -113,14 +113,37 @@ test('Chat UI creates, streams, recovers, grounds, and deletes a conversation', 
   await expect(page.locator('.chat-message.user').last()).toContainText('Create a concise launch checklist for this task.')
   await expect(page.locator('.chat-message.assistant').last()).toContainText('Mock assistant response')
 
+  await page.setViewportSize({ width: 390, height: 844 })
+  const composer = page.getByRole('textbox', { name: 'Chat message' })
+  const messageLog = page.getByRole('log', { name: 'Chat messages' })
+  await expect(composer).toBeVisible()
+  await expect(messageLog).toHaveAttribute('aria-live', 'polite')
+  await expect(messageLog).toHaveAttribute('aria-busy', 'false')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  for (const selector of ['[data-testid="chat-workspace"]', '.chat-main-panel', '.chat-context-panel']) {
+    const box = await page.locator(selector).boundingBox()
+    expect(box, `${selector} must have layout bounds`).not.toBeNull()
+    expect(box!.x, `${selector} starts inside viewport`).toBeGreaterThanOrEqual(0)
+    expect(box!.x + box!.width, `${selector} ends inside viewport`).toBeLessThanOrEqual(390.5)
+  }
+
+  await composer.fill('Send this message with the keyboard.')
+  const keyboardStream = page.waitForRequest((candidate) =>
+    candidate.url().includes('/api/chat/conversations/') && candidate.url().endsWith('/turns/stream'),
+  )
+  await page.keyboard.press('Enter')
+  expect((await keyboardStream).postDataJSON()).toMatchObject({ message: 'Send this message with the keyboard.' })
+  await expect(page.locator('.chat-message.assistant').last()).toContainText('Mock assistant response: Send this message with the keyboard.')
+
+  await composer.fill('Focus path check')
+  await composer.focus()
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeFocused()
+  await composer.fill('')
+
   page.once('dialog', (dialog) => dialog.accept())
   await page.locator('.chat-conversation-row').first().getByTitle('Delete conversation').click()
   await expect(page.locator('.chat-conversation-row').filter({ hasText: 'Create a concise launch checklist' })).toHaveCount(0)
-
-  await page.setViewportSize({ width: 390, height: 844 })
-  await expect(page.getByTestId('chat-workspace')).toBeVisible()
-  await expect(page.locator('.chat-main-panel')).toBeVisible()
-  await expect(page.locator('.chat-context-panel')).toBeVisible()
 })
 
 test('Chat UI stops an active stream and opens a prefilled safety appeal', async ({ page, request }) => {

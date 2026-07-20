@@ -1,5 +1,9 @@
 # V1-23 Chat Production UI
 
+AI-CHAT-02 adds the production UX engineering acceptance layer documented in
+`docs/V1_CHAT_PRODUCTION_ACCEPTANCE.md`, including long-context, concurrent fixture load, mobile overflow, keyboard,
+live-region, and fail-closed rollback evidence. This evidence does not change the production Provider no-go decision.
+
 ## Outcome
 
 V1-23 replaces the visible local Chat reply simulation with the typed Chat API. The UI now creates and deletes durable
