@@ -1,7 +1,10 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 
 export const accessTokenTtlMs = 15 * 60 * 1000
-export const refreshTokenTtlMs = 30 * 24 * 60 * 60 * 1000
+const configuredRefreshTokenTtlDays = Number.parseInt(process.env.AUTH_REFRESH_TOKEN_TTL_DAYS ?? '30', 10)
+export const refreshTokenTtlMs = (Number.isInteger(configuredRefreshTokenTtlDays) && configuredRefreshTokenTtlDays >= 1 && configuredRefreshTokenTtlDays <= 365
+  ? configuredRefreshTokenTtlDays
+  : 30) * 24 * 60 * 60 * 1000
 
 const devAccessTokenSecret = 'hcai-dev-access-token-secret'
 

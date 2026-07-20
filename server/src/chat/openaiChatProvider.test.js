@@ -55,6 +55,7 @@ test('OpenAI Chat request fixes model state and excludes application ids', () =>
 
 test('OpenAI Chat runtime gates require explicit staging-only configuration', () => {
   assert.deepEqual(buildOpenAIChatRuntimeConfig({}), {
+    providerType: 'openai-compatible',
     mode: 'mock',
     runtimeEnv: 'development',
     clientEnabled: false,
@@ -63,6 +64,7 @@ test('OpenAI Chat runtime gates require explicit staging-only configuration', ()
     attachmentBytesEnabled: false,
     token: '',
     baseUrl: 'https://api.openai.com/v1',
+    modelId: 'gpt-5.6-terra',
   })
   assert.equal(buildOpenAIChatRuntimeConfig({ NODE_ENV: 'production' }).mode, 'disabled')
   assert.throws(
@@ -82,9 +84,13 @@ test('OpenAI Chat runtime gates require explicit staging-only configuration', ()
     /CHAT_OPENAI_HTTP_CLIENT_ENABLED=true/,
   )
   assert.throws(
-    () => buildOpenAIChatRuntimeConfig({ CHAT_OPENAI_BASE_URL: 'https://example.com/v1' }),
-    /CHAT_OPENAI_BASE_URL must be https:\/\/api\.openai\.com\/v1/,
+    () => buildOpenAIChatRuntimeConfig({ CHAT_OPENAI_BASE_URL: 'http://example.com/v1' }),
+    /safe HTTPS URL/,
   )
+  const router = buildOpenAIChatRuntimeConfig({ CHAT_OPENAI_BASE_URL: 'https://router.example/v1', CHAT_OPENAI_MODEL: 'router-chat' })
+  assert.equal(router.baseUrl, 'https://router.example/v1')
+  assert.equal(router.modelId, 'router-chat')
+  assert.equal(buildOpenAIChatRequest({ request, context }, { modelId: router.modelId }).body.model, 'router-chat')
 })
 
 test('OpenAI Chat cost planning uses bounded token estimates and enforces the per-turn cap', () => {

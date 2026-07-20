@@ -3850,6 +3850,7 @@ export type SystemSettingDto = {
   publishedVersion: number
   currentRevisionId: string | null
   source: 'default' | 'published'
+  applyMode?: 'hot' | 'restart_required'
   updatedAt: string | null
   pendingChanges?: number
 }

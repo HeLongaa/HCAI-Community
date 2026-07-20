@@ -31,6 +31,7 @@ export const createSeedSystemSettingsRepository = ({ recordAudit } = {}) => {
       publishedVersion: current?.publishedVersion ?? 0,
       currentRevisionId: current?.currentRevisionId ?? null,
       source: current ? 'published' : 'default',
+      applyMode: entry.applyMode ?? 'restart_required',
       updatedAt: current?.updatedAt ?? null,
     }
   }

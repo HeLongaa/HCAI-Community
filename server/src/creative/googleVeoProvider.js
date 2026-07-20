@@ -12,7 +12,7 @@ import {
 } from './videoInputAssets.js'
 
 const providerId = 'google-veo-3-1-fast'
-const modelId = 'veo-3.1-fast-generate-001'
+const defaultModelId = 'veo-3.1-fast-generate-001'
 const providerMode = 'google_video'
 const defaultProviderAccountRef = 'staging'
 const budgetScope = 'staging:google:video'
@@ -27,7 +27,7 @@ const operationKeys = new Set(['id', 'state', 'output', 'error', 'usage'])
 const outputKeys = new Set(['uri', 'contentType'])
 const errorKeys = new Set(['code', 'message'])
 const usageKeys = new Set(['generatedSeconds', 'actualCostUsd'])
-const googleOperationNamePattern = /^projects\/[a-z][a-z0-9-]{4,62}\/(?:locations)\/us-central1\/publishers\/google\/models\/veo-3\.1-fast-generate-001\/operations\/[a-zA-Z0-9._-]{8,160}$/
+const googleModelIdPattern = /^[a-z0-9][a-z0-9._-]{2,96}$/
 const projectIdPattern = /^[a-z][a-z0-9-]{4,62}$/
 const outputGcsUriPattern = /^gs:\/\/[a-z0-9][a-z0-9._-]{1,221}[a-z0-9]\/(?:[^?#\s]+\/)?$/
 const requestTimeoutMs = 60_000
@@ -69,7 +69,11 @@ const safeErrorText = (value) => String(value ?? '')
   .trim()
   .slice(0, 240)
 
-const validOperationId = (value) => safeIdentifierPattern.test(value) || googleOperationNamePattern.test(value)
+const googleOperationNamePatternFor = (modelId = defaultModelId) => new RegExp(
+  `^projects/[a-z][a-z0-9-]{4,62}/locations/us-central1/publishers/google/models/${modelId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/operations/[a-zA-Z0-9._-]{8,160}$`,
+)
+const modelIdFor = (source = process.env) => String(source.CREATIVE_GOOGLE_VEO_MODEL ?? defaultModelId).trim() || defaultModelId
+const validOperationId = (value, modelId = defaultModelId) => safeIdentifierPattern.test(value) || googleOperationNamePatternFor(modelId).test(value)
 
 const safeParameters = (request) => Object.fromEntries(
   ['aspectRatio', 'durationSeconds', 'motionPreset', 'outputFormat']
@@ -77,7 +81,8 @@ const safeParameters = (request) => Object.fromEntries(
     .map((key) => [key, request.parameters[key]]),
 )
 
-export const buildGoogleVeoGenerationRequest = (request, inputFiles = []) => {
+export const buildGoogleVeoGenerationRequest = (request, inputFiles = [], { modelId = defaultModelId } = {}) => {
+  if (!googleModelIdPattern.test(modelId)) throw requestError('model_id_invalid')
   if (request?.workspace !== 'video' || !['text_to_video', 'image_to_video'].includes(request?.mode)) {
     throw requestError('mode_unsupported')
   }
@@ -167,11 +172,11 @@ const normalizeUsage = (value) => {
   return Object.freeze({ generatedSeconds, actualCostUsd })
 }
 
-export const projectGoogleVeoOperation = (payload) => {
+export const projectGoogleVeoOperation = (payload, { modelId = defaultModelId } = {}) => {
   exactKeys(payload, operationKeys, 'operation_invalid')
   const id = String(payload.id ?? '').trim()
   const state = String(payload.state ?? '').trim().toLowerCase()
-  if (!validOperationId(id)) throw operationError('operation_id_invalid')
+  if (!validOperationId(id, modelId)) throw operationError('operation_id_invalid')
   if (!operationStates.has(state)) throw operationError('operation_state_invalid')
   return Object.freeze({
     id,
@@ -203,6 +208,7 @@ export const buildGoogleVeoProviderCostMetadata = ({
   source = process.env,
   now = new Date(),
 } = {}) => {
+  const modelId = modelIdFor(source)
   const durationSeconds = request.parameters?.durationSeconds ?? 8
   const providerAccountRef = String(source.CREATIVE_GOOGLE_VEO_PROVIDER_ACCOUNT_REF ?? defaultProviderAccountRef).trim() || defaultProviderAccountRef
   const estimateAmount = Number((durationSeconds * unitPriceUsd).toFixed(6))
@@ -312,7 +318,8 @@ export const mapGoogleVeoOperationToCreativeGeneration = ({
   generationId,
   resolvedInputAssets = null,
 }) => {
-  const projected = projectGoogleVeoOperation(operation)
+  const modelId = modelIdFor(source)
+  const projected = projectGoogleVeoOperation(operation, { modelId })
   const status = generationStatusFor(projected.state)
   const outputDigest = projected.output ? stableHash(projected.output) : null
   const outputs = projected.output
@@ -469,9 +476,10 @@ export const createGoogleVeoGeneration = async ({
   const providerCost = buildGoogleVeoProviderCostMetadata({ request, source, now })
   assertGoogleVeoBudgetAllowsDispatch(providerCost)
   const inputFiles = await readVideoGenerationInputFiles(resolvedInputAssets, inputAssetReader)
-  const providerRequest = buildGoogleVeoGenerationRequest(request, inputFiles)
+  const modelId = client.modelId ?? modelIdFor(source)
+  const providerRequest = buildGoogleVeoGenerationRequest(request, inputFiles, { modelId })
   try {
-    const operation = projectGoogleVeoOperation(await client.createVideo(providerRequest))
+    const operation = projectGoogleVeoOperation(await client.createVideo(providerRequest), { modelId })
     if (!['queued', 'running'].includes(operation.state)) throw operationError('dispatch_result_must_be_non_terminal')
     return mapGoogleVeoOperationToCreativeGeneration({
       request,
@@ -583,22 +591,22 @@ export const buildGoogleVeoHttpRequestBody = (providerRequest, outputGcsUri) => 
   }),
 })
 
-export const projectGoogleVeoHttpOperation = (payload, { durationSeconds = null } = {}) => {
+export const projectGoogleVeoHttpOperation = (payload, { durationSeconds = null, modelId = defaultModelId } = {}) => {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw operationError('http_operation_invalid')
   const id = String(payload.name ?? '').trim()
-  if (!googleOperationNamePattern.test(id)) throw operationError('http_operation_name_invalid')
-  if (payload.done !== true) return projectGoogleVeoOperation({ id, state: payload.done === false ? 'running' : 'queued' })
+  if (!googleOperationNamePatternFor(modelId).test(id)) throw operationError('http_operation_name_invalid')
+  if (payload.done !== true) return projectGoogleVeoOperation({ id, state: payload.done === false ? 'running' : 'queued' }, { modelId })
   if (payload.error) {
     const rpcCode = Number(payload.error.code)
     return projectGoogleVeoOperation({
       id,
       state: rpcCode === 1 ? 'cancelled' : 'failed',
       ...(rpcCode === 1 ? {} : { error: { code: `GOOGLE_RPC_${Number.isInteger(rpcCode) ? rpcCode : 'UNKNOWN'}`, message: safeErrorText(payload.error.message) || 'Google Veo operation failed' } }),
-    })
+    }, { modelId })
   }
   const videos = payload.response?.videos
   if (Number(payload.response?.raiMediaFilteredCount ?? 0) > 0 && (!Array.isArray(videos) || videos.length === 0)) {
-    return projectGoogleVeoOperation({ id, state: 'failed', error: { code: 'MODERATION_BLOCKED', message: 'Google Veo output was blocked by safety policy' } })
+    return projectGoogleVeoOperation({ id, state: 'failed', error: { code: 'MODERATION_BLOCKED', message: 'Google Veo output was blocked by safety policy' } }, { modelId })
   }
   if (!Array.isArray(videos) || videos.length !== 1) throw operationError('http_output_count_invalid')
   const video = videos[0]
@@ -608,7 +616,7 @@ export const projectGoogleVeoHttpOperation = (payload, { durationSeconds = null 
     state: 'succeeded',
     output: { uri: video.gcsUri, contentType: video.mimeType },
     ...(generatedSeconds == null ? {} : { usage: { generatedSeconds, actualCostUsd: null } }),
-  })
+  }, { modelId })
 }
 
 const parseGcsUri = (value) => {
@@ -628,13 +636,16 @@ const readBoundedOutput = async (response) => {
 
 export const createGoogleVeoHttpClient = ({ source = process.env, fetchImpl = globalThis.fetch } = {}) => {
   assertGoogleVeoHttpRuntime(source)
+  const providerType = String(source.CREATIVE_GOOGLE_VEO_PROVIDER_TYPE ?? 'google-vertex').trim().toLowerCase()
+  if (providerType !== 'google-vertex') throw new HttpError(503, 'CREATIVE_PROVIDER_CONFIGURATION_INVALID', `Creative Provider type is unsupported: ${providerId}`)
   if (typeof fetchImpl !== 'function') throw new HttpError(500, 'CREATIVE_PROVIDER_HTTP_CLIENT_INVALID', 'Creative Provider HTTP client requires a fetch implementation')
   const accessToken = String(source.CREATIVE_GOOGLE_VEO_ACCESS_TOKEN ?? '').trim()
   const projectId = String(source.CREATIVE_GOOGLE_VEO_PROJECT_ID ?? '').trim()
   const location = String(source.CREATIVE_GOOGLE_VEO_LOCATION ?? 'us-central1').trim().toLowerCase()
   const outputGcsUri = String(source.CREATIVE_GOOGLE_VEO_OUTPUT_GCS_URI ?? '').trim()
+  const modelId = modelIdFor(source)
   if (!accessToken) throw new HttpError(503, 'CREATIVE_PROVIDER_SECRET_MISSING', `Creative Provider deployment secret is missing: ${providerId}`)
-  if (!projectIdPattern.test(projectId) || location !== 'us-central1' || !outputGcsUriPattern.test(outputGcsUri)) {
+  if (!projectIdPattern.test(projectId) || location !== 'us-central1' || !outputGcsUriPattern.test(outputGcsUri) || !googleModelIdPattern.test(modelId)) {
     throw new HttpError(503, 'CREATIVE_PROVIDER_CONFIGURATION_INVALID', `Creative Provider configuration is invalid: ${providerId}`)
   }
   const modelBase = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}`
@@ -647,7 +658,7 @@ export const createGoogleVeoHttpClient = ({ source = process.env, fetchImpl = gl
       body: buildGoogleVeoHttpRequestBody(providerRequest, outputGcsUri),
       timeoutMs: requestTimeoutMs,
     })
-    const projection = projectGoogleVeoHttpOperation(payload)
+    const projection = projectGoogleVeoHttpOperation(payload, { modelId })
     durations.set(projection.id, providerRequest.parameters.durationSeconds)
     return projection
   }
@@ -657,9 +668,9 @@ export const createGoogleVeoHttpClient = ({ source = process.env, fetchImpl = gl
     url: `${modelBase}:fetchPredictOperation`,
     body: { operationName },
     timeoutMs: statusTimeoutMs,
-  }), { durationSeconds: durations.get(operationName) })
+  }), { durationSeconds: durations.get(operationName), modelId })
   const cancelOperation = async (operationName) => {
-    if (!googleOperationNamePattern.test(operationName)) throw operationError('operation_id_invalid')
+    if (!googleOperationNamePatternFor(modelId).test(operationName)) throw operationError('operation_id_invalid')
     await executeJson({
       fetchImpl,
       accessToken,
@@ -667,7 +678,7 @@ export const createGoogleVeoHttpClient = ({ source = process.env, fetchImpl = gl
       body: {},
       timeoutMs: statusTimeoutMs,
     })
-    return projectGoogleVeoOperation({ id: operationName, state: 'cancelled' })
+    return projectGoogleVeoOperation({ id: operationName, state: 'cancelled' }, { modelId })
   }
   const fetchOutput = async ({ url, workspace, declaredContentType }) => {
     if (workspace !== 'video' || declaredContentType !== 'video/mp4') throw operationError('output_contract_invalid')
@@ -683,14 +694,14 @@ export const createGoogleVeoHttpClient = ({ source = process.env, fetchImpl = gl
     if (detected?.mime !== 'video/mp4') throw new HttpError(422, 'CREATIVE_PROVIDER_OUTPUT_TYPE_MISMATCH', 'Creative Provider output type did not match')
     return { body, contentType: 'video/mp4', extension: 'mp4', sizeBytes: body.length, sha256: createHash('sha256').update(body).digest('hex') }
   }
-  return Object.freeze({ providerId, createVideo, getOperation, cancelOperation, fetchOutput })
+  return Object.freeze({ providerId, providerType, modelId, createVideo, getOperation, cancelOperation, fetchOutput })
 }
 
 export const googleVeoProviderContract = Object.freeze({
   schemaVersion: 'google-veo-staging-boundary-v2',
   providerId,
   providerMode,
-  modelId,
+  modelId: defaultModelId,
   unitPriceUsd,
   perJobCapUsd,
   dailyCapUsd,

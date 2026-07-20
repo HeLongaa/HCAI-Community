@@ -46,8 +46,16 @@ const validateSchemaValue = (value, schema, path) => {
       if (!(key in value)) throw validationFailed(`${path}.${key} is required`)
     }
     for (const [key, child] of Object.entries(value)) {
-      if (!schema.properties[key]) throw validationFailed(`${path}.${key} is not allowed`)
-      validateSchemaValue(child, schema.properties[key], `${path}.${key}`)
+      const childSchema = schema.properties[key] ?? schema.additionalProperties
+      if (!childSchema || childSchema === false) throw validationFailed(`${path}.${key} is not allowed`)
+      validateSchemaValue(child, childSchema, `${path}.${key}`)
+    }
+  } else if (value && typeof value === 'object' && !Array.isArray(value) && schema.additionalProperties) {
+    for (const [key, child] of Object.entries(value)) {
+      if (schema.propertyNames?.pattern && !(new RegExp(schema.propertyNames.pattern)).test(key)) {
+        throw validationFailed(`${path}.${key} has an invalid key`)
+      }
+      validateSchemaValue(child, schema.additionalProperties, `${path}.${key}`)
     }
   }
 }
