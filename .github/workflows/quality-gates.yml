@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       smoke_profile:
-        description: Run fixture, real environment, or creative staging smoke
+        description: Run fixture, real environment, creative staging, or isolated infrastructure rehearsal
         required: true
         default: fixture
         type: choice
@@ -17,6 +17,7 @@ on:
           - fixture
           - env
           - creative-staging
+          - infrastructure-rehearsal
       environment:
         description: GitHub Environment used for real environment smoke
         required: false
@@ -182,3 +183,58 @@ jobs:
       - name: Run creative staging smoke
         if: inputs.smoke_profile == 'creative-staging'
         run: npm run smoke:creative-staging:env
+
+  infrastructure-rehearsal:
+    name: Isolated Infrastructure Rehearsal
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.smoke_profile == 'infrastructure-rehearsal'
+    environment: ${{ inputs.environment }}
+    env:
+      RELEASE_REHEARSAL_CONFIRMATION: ${{ vars.RELEASE_REHEARSAL_CONFIRMATION }}
+      RELEASE_REHEARSAL_DATABASE_URL: ${{ secrets.RELEASE_REHEARSAL_DATABASE_URL }}
+      RELEASE_REHEARSAL_RESTORE_DATABASE_URL: ${{ secrets.RELEASE_REHEARSAL_RESTORE_DATABASE_URL }}
+      RELEASE_REHEARSAL_REDIS_URL: ${{ secrets.RELEASE_REHEARSAL_REDIS_URL }}
+      RELEASE_REHEARSAL_REDIS_RECOVERY_COMMAND_JSON: ${{ vars.RELEASE_REHEARSAL_REDIS_RECOVERY_COMMAND_JSON }}
+      STORAGE_ENDPOINT: ${{ vars.STORAGE_ENDPOINT }}
+      STORAGE_REGION: ${{ vars.STORAGE_REGION }}
+      STORAGE_ACCESS_KEY_ID: ${{ secrets.STORAGE_ACCESS_KEY_ID }}
+      STORAGE_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_SECRET_ACCESS_KEY }}
+      STORAGE_SESSION_TOKEN: ${{ secrets.STORAGE_SESSION_TOKEN }}
+      RELEASE_REHEARSAL_PRIMARY_BUCKET: ${{ vars.RELEASE_REHEARSAL_PRIMARY_BUCKET }}
+      RELEASE_REHEARSAL_BACKUP_BUCKET: ${{ vars.RELEASE_REHEARSAL_BACKUP_BUCKET }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm --prefix server ci
+
+      - name: Install PostgreSQL client tools
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Verify isolated rehearsal configuration
+        run: npm run release:infrastructure:preflight
+
+      - name: Execute isolated PostgreSQL, Redis, and S3 rehearsal
+        run: npm run release:infrastructure:rehearse:env
+
+      - name: Upload sanitized rehearsal evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-infrastructure-rehearsal
+          path: .artifacts/release-infrastructure/latest.json
+          if-no-files-found: error
+          retention-days: 30

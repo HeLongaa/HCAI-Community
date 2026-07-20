@@ -46,6 +46,15 @@ Confirm:
 
 ## Database And Migration
 
+Before the first target-environment release, complete the isolated infrastructure rehearsal described in `docs/RELEASE_INFRASTRUCTURE_REHEARSAL.md`:
+
+```bash
+npm run release:infrastructure:preflight
+npm run release:infrastructure:rehearse:env
+```
+
+Both database names must contain `rehearsal` and must differ. Attach the sanitized SHA-256-bound evidence receipt to the release change. Local Docker evidence is useful engineering proof but does not replace this target-environment receipt.
+
 Before switching traffic:
 
 1. Back up the target database.

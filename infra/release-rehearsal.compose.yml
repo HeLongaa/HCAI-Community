@@ -1,0 +1,64 @@
+name: newchat-release-rehearsal
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: release
+      POSTGRES_PASSWORD: release-local-only
+      POSTGRES_DB: newchat_release_rehearsal
+    ports:
+      - "${RELEASE_POSTGRES_PORT:-55491}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U release -d newchat_release_rehearsal"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    volumes:
+      - release-postgres:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "always"]
+    ports:
+      - "${RELEASE_REDIS_PORT:-56391}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    volumes:
+      - release-redis:/data
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: release-access
+      MINIO_ROOT_PASSWORD: release-secret-local-only
+    ports:
+      - "${RELEASE_MINIO_PORT:-59091}:9000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    volumes:
+      - release-minio:/data
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mc alias set local http://minio:9000 release-access release-secret-local-only &&
+        mc mb --ignore-existing local/newchat-release-primary &&
+        mc mb --ignore-existing local/newchat-release-backup
+
+volumes:
+  release-postgres:
+  release-redis:
+  release-minio:

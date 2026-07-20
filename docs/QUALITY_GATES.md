@@ -1,5 +1,17 @@
 # Quality Gates
 
+## Release Infrastructure Rehearsal
+
+RELEASE-01 contract and evidence controls must pass `npm run test:release-infrastructure`. The local integration command
+`npm run release:infrastructure:rehearse` then proves all Prisma migrations, permission seeds, custom-format PostgreSQL
+backup through S3, checksum-bound restore into a separate database, Redis AOF recovery across a real service restart,
+and primary/backup object deletion recovery. Sanitized evidence is bounded, recursively secret-free, SHA-256 receipt
+bound, and evaluated against the RTO/RPO targets in `config/release-infrastructure-rehearsal-contract.json`.
+
+Local Docker evidence does not complete production release readiness. The protected target environment must first pass
+`npm run release:infrastructure:preflight`, then `npm run release:infrastructure:rehearse:env` against dedicated resources
+whose database names include `rehearsal`. See `docs/RELEASE_INFRASTRUCTURE_REHEARSAL.md`.
+
 ## Music Production UX Acceptance
 
 AI-MUSIC-02 engineering acceptance is defined by `config/music-production-ux-acceptance.json` and
@@ -64,6 +76,7 @@ Includes:
 - `npm run test:v1-image-staging`
 - `npm run test:v1-video-staging`
 - `npm run test:sim`
+- `npm run test:release-infrastructure`
 - API contract drift check through `scripts/verify-api-contracts.mjs`
 
 The V1 scope contract checks the frozen included domains, all four required real-provider modalities, explicit
@@ -249,6 +262,7 @@ snapshot export, responsive Admin metrics, and the personal-account-only boundar
 - Manual `workflow_dispatch` with `smoke_profile=fixture` runs the same fixture gate.
 - Manual `workflow_dispatch` with `smoke_profile=env` runs `npm run smoke:production:env` against a selected GitHub Environment.
 - Manual `workflow_dispatch` with `smoke_profile=creative-staging` runs `npm run smoke:creative-staging:env` against a selected dedicated staging GitHub Environment.
+- Manual `workflow_dispatch` with `smoke_profile=infrastructure-rehearsal` runs the fail-closed preflight and isolated PostgreSQL/Redis/S3 recovery rehearsal, then retains only sanitized evidence.
 
 For the real environment smoke, configure GitHub Environment variables and secrets by category. The detailed checklist lives in `docs/GITHUB_ENVIRONMENT.md`.
 
