@@ -158,7 +158,8 @@ const staticCandidateBlock = (target, policy, context) => {
   const capability = version?.capabilities?.find((item) => item.modality === context.modality)
   if (!target.enabled) return 'target_disabled'
   if (!deployment || deployment.status !== 'active') return 'deployment_inactive'
-  if (!deployment.trafficEligible) return 'provider_approval_required'
+  if (context.environment === 'production' && !deployment.trafficEligible) return 'provider_approval_required'
+  if (context.environment !== 'production' && !deployment.runtimeEnabled) return 'deployment_runtime_disabled'
   if (deployment.environment !== context.environment) return 'deployment_environment_mismatch'
   if (policy.region && deployment.region !== policy.region) return 'deployment_region_mismatch'
   if (context.region && deployment.region !== context.region) return 'request_region_mismatch'

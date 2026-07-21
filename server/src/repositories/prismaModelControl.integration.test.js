@@ -23,8 +23,14 @@ test('Prisma model control preserves activated versions, additive pricing, and g
     ids.version = version.id
     const capability = await repository.modelControl.upsertCapability({ id: `${runId}-capability`, modelVersionId: version.id, modality: 'image', operations: ['generate'], inputMimeTypes: [], outputMimeTypes: ['image/png'], constraints: { maxOutputs: 4 } })
     ids.capability = capability.id
-    const deployment = await repository.modelControl.createDeployment({ id: `${runId}-deployment`, modelVersionId: version.id, key: `${runId}-staging`, environment: 'staging', region: 'us', deploymentRef: `${runId}-deployment-ref`, createdByRef: actorRef, updatedByRef: actorRef })
+    const deployment = await repository.modelControl.createDeployment({
+      id: `${runId}-deployment`, modelVersionId: version.id, key: `${runId}-staging`, environment: 'staging', region: 'us', deploymentRef: `${runId}-deployment-ref`,
+      adapterType: 'openai_image', providerModelId: 'gpt-image-2', endpointUrl: 'https://router.example/v1', secretPurpose: 'inference', runtimeConfig: {}, runtimeEnabled: true,
+      createdByRef: actorRef, updatedByRef: actorRef,
+    })
     ids.deployment = deployment.id
+    assert.equal(deployment.adapterType, 'openai_image')
+    assert.equal(deployment.runtimeEnabled, true)
     const routePolicy = await repository.modelRouting.create({ id: `${runId}-route`, key: `${runId}-route`, name: 'Image staging route', modality: 'image', operation: 'generate', environment: 'staging', region: 'us', audienceRoles: [], rolloutPercentage: 100, rolloutSeed: 'v1', fallbackMode: 'ordered', priority: 10, createdByRef: actorRef, updatedByRef: actorRef })
     ids.routePolicy = routePolicy.id
     const routeWithTargets = await repository.modelRouting.replaceTargets(routePolicy.id, { expectedVersion: 1, actorRef, reasonCode: 'integration_targets', targets: [{ id: `${runId}-target`, policyId: routePolicy.id, modelDeploymentId: deployment.id, role: 'primary', priority: 10, enabled: true }] })
@@ -45,10 +51,13 @@ test('Prisma model control preserves activated versions, additive pricing, and g
     const rolledBackRoute = await repository.modelRouting.rollback(routePolicy.id, { expectedVersion: disabledRoute.version, revisionNumber: 2, reasonCode: 'integration_rollback', actorRef })
     assert.equal(rolledBackRoute.status, 'disabled')
     assert.equal(rolledBackRoute.targets.length, 1)
-    const priceV1 = await repository.modelControl.createPricing({ id: `${runId}-price-v1`, modelVersionId: version.id, modelDeploymentId: deployment.id, versionKey: 'usd-v1', currency: 'USD', unit: 'image', unitPriceMicros: 10000, effectiveFrom: '2026-07-01T00:00:00.000Z', effectiveTo: null, createdByRef: actorRef, updatedByRef: actorRef })
+    await repository.modelControl.createPricing({ id: `${runId}-price-global`, modelVersionId: version.id, modelDeploymentId: null, versionKey: 'usd-global', currency: 'USD', unit: 'image', unitPriceMicros: 9000, status: 'active', effectiveFrom: '2026-07-01T00:00:00.000Z', effectiveTo: null, createdByRef: actorRef, updatedByRef: actorRef })
+    const priceV1 = await repository.modelControl.createPricing({ id: `${runId}-price-v1`, modelVersionId: version.id, modelDeploymentId: deployment.id, versionKey: 'usd-v1', currency: 'USD', unit: 'image', unitPriceMicros: 10000, status: 'active', effectiveFrom: '2026-07-01T00:00:00.000Z', effectiveTo: null, createdByRef: actorRef, updatedByRef: actorRef })
     ids.priceV1 = priceV1.id
     const priceV2 = await repository.modelControl.createPricing({ id: `${runId}-price-v2`, modelVersionId: version.id, modelDeploymentId: deployment.id, versionKey: 'usd-v2', currency: 'USD', unit: 'image', unitPriceMicros: 12000, effectiveFrom: '2026-08-01T00:00:00.000Z', effectiveTo: null, createdByRef: actorRef, updatedByRef: actorRef })
     ids.priceV2 = priceV2.id
+    const runtimePrice = await repository.modelControl.findRuntimePricing({ modelVersionId: version.id, modelDeploymentId: deployment.id, now: new Date('2026-07-21T00:00:00.000Z') })
+    assert.equal(runtimePrice.id, priceV1.id)
 
     const activated = await repository.modelControl.transition('version', version.id, { expectedVersion: 1, status: 'active', reasonCode: 'integration_reviewed', actorRef })
     assert.equal(activated.status, 'active')

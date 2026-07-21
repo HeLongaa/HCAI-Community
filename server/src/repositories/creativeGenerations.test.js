@@ -19,6 +19,9 @@ test('seed creative generation repository records lifecycle and output assets', 
     mode: 'text_to_image',
     providerId: 'mock',
     providerMode: 'mock',
+    modelVersionId: 'model-version-runtime-1',
+    modelDeploymentId: 'model-deployment-runtime-1',
+    pricingVersionId: 'pricing-runtime-1',
     status: 'queued',
     promptHash: 'a'.repeat(64),
     promptPreview: 'A durable generation test',
@@ -33,6 +36,9 @@ test('seed creative generation repository records lifecycle and output assets', 
   assert.equal(created.status, 'queued')
   assert.equal(created.promptHash.length, 64)
   assert.equal(created.promptPreview, 'A durable generation test')
+  assert.equal(created.modelVersionId, 'model-version-runtime-1')
+  assert.equal(created.modelDeploymentId, 'model-deployment-runtime-1')
+  assert.equal(created.pricingVersionId, 'pricing-runtime-1')
 
   const running = await repository.creativeGenerations.markRunning(id, {}, actor)
   assert.equal(running.status, 'running')

@@ -11,24 +11,25 @@ import { createChatService } from '../../chat/chatService.js'
 import { createChatRuntime } from '../../chat/chatRuntime.js'
 import { requireChatMessageCodec } from '../../chat/messageCrypto.js'
 import { createProviderControlPlane } from '../../creative/providerControlPlane.js'
+import { resolveModelRuntimeDeployment } from '../../modelControl/modelRuntimeResolver.js'
 import { repositories } from '../../repositories/index.js'
 
 export const registerChatRoutes = (router, options = {}) => {
   const routeRepositories = options.repositories ?? repositories
   const source = options.source ?? process.env
   const runtime = options.runtime ?? createChatRuntime({ source, fetchImpl: options.fetchImpl })
-  const getService = () => createChatService({
+  const getService = (requestRuntime = runtime) => createChatService({
     repository: routeRepositories.chat,
     creativeRepositories: routeRepositories,
     codec: options.codec ?? requireChatMessageCodec(source),
     executeGeneration: options.executeGeneration,
-    streamAdapter: options.streamAdapter ?? runtime.streamAdapter,
-    inputSafetyClassifier: options.inputSafetyClassifier ?? runtime.inputSafetyClassifier,
-    outputSafetyClassifier: options.outputSafetyClassifier ?? runtime.outputSafetyClassifier,
-    attachmentObjectReader: options.attachmentObjectReader ?? runtime.attachmentObjectReader,
-    generationProvider: options.generationProvider ?? runtime.generationProvider,
-    providerCostPlanner: options.providerCostPlanner ?? runtime.providerCostPlanner,
-    providerControlPlane: options.providerControlPlane ?? (runtime.generationProvider
+    streamAdapter: options.streamAdapter ?? requestRuntime.streamAdapter,
+    inputSafetyClassifier: options.inputSafetyClassifier ?? requestRuntime.inputSafetyClassifier,
+    outputSafetyClassifier: options.outputSafetyClassifier ?? requestRuntime.outputSafetyClassifier,
+    attachmentObjectReader: options.attachmentObjectReader ?? requestRuntime.attachmentObjectReader,
+    generationProvider: options.generationProvider ?? requestRuntime.generationProvider,
+    providerCostPlanner: options.providerCostPlanner ?? requestRuntime.providerCostPlanner,
+    providerControlPlane: options.providerControlPlane ?? (requestRuntime.generationProvider
       ? createProviderControlPlane({ repository: routeRepositories.creativeProviderControls })
       : null),
     coordinator: options.coordinator,
@@ -72,7 +73,18 @@ export const registerChatRoutes = (router, options = {}) => {
 
   router.add('POST', '/api/chat/conversations/:id/turns/stream', async (request, response, context) => {
     const actor = requireUser(context)
-    const service = getService()
+    const routed = await resolveModelRuntimeDeployment({
+      repositories: routeRepositories,
+      modality: 'chat',
+      operation: 'generate',
+      environment: String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? 'staging').trim().toLowerCase(),
+      region: String(source.CREATIVE_PROVIDER_REGION ?? 'us').trim().toLowerCase() || null,
+      actor,
+      baseSource: source,
+      now: typeof options.now === 'function' ? options.now() : options.now ?? new Date(),
+    })
+    const routedRuntime = routed ? createChatRuntime({ source: routed.runtimeSource, fetchImpl: options.fetchImpl }) : runtime
+    const service = getService(routed ? { ...routedRuntime, generationProvider: { ...routedRuntime.generationProvider, modelVersionId: routed.modelVersionId, modelDeploymentId: routed.deploymentId, pricingVersionId: routed.pricingVersionId, modelRouteDecisionId: routed.decisionId } } : runtime)
     const payload = parseCreateChatTurnRequest(await readJsonBody(request))
     const prepared = await service.prepareTurn(context.params.id, payload, actor)
     openEventStream(response)

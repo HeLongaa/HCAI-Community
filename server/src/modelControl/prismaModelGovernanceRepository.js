@@ -65,6 +65,10 @@ export const createPrismaModelGovernanceRepository = (client, { modelEvaluation,
     } catch (error) { return conflict(error) }
   },
   findSecretRef: async (id) => secretRefDto(await client.providerSecretRef.findUnique({ where: { id: String(id) } })),
+  findCurrentSecretRef: async ({ providerId, environment, purpose, now = new Date() }) => secretRefDto(await client.providerSecretRef.findFirst({
+    where: { providerId, environment, purpose, rotatedTo: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+    orderBy: { createdAt: 'desc' },
+  })),
   listSecretRefs: async (options) => {
     const pageCursor = options.cursor ? await client.providerSecretRef.findUnique({ where: { id: options.cursor }, select: { id: true } }) : null
     return page(await client.providerSecretRef.findMany({

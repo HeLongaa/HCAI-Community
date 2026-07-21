@@ -4,10 +4,10 @@ import test from 'node:test'
 import { modelRouteBucket, parseModelRoutePolicyCreate, parseModelRouteTargets, resolveModelRoute } from './modelRoutingRuntime.js'
 
 const actor = { id: 'admin-1', handle: 'ops' }
-const candidate = ({ id, role, priority, trafficEligible = true }) => ({
+const candidate = ({ id, role, priority, trafficEligible = true, runtimeEnabled = true }) => ({
   id: `target-${id}`, modelDeploymentId: `deployment-${id}`, role, priority, enabled: true,
   deployment: {
-    id: `deployment-${id}`, key: `${id}-staging`, status: 'active', trafficEligible, environment: 'staging', region: 'us',
+    id: `deployment-${id}`, key: `${id}-staging`, status: 'active', trafficEligible, runtimeEnabled, environment: 'staging', region: 'us',
     modelVersion: {
       id: `version-${id}`, status: 'active', capabilities: [{ modality: 'image', operations: ['generate'] }],
       model: { key: `model-${id}`, family: 'image', status: 'active', provider: { key: `provider-${id}`, status: 'active' } },
@@ -49,13 +49,13 @@ test('fail-closed policy never silently tries a backup', async () => {
   assert.equal(result.attempts[0].role, 'primary')
 })
 
-test('traffic eligibility and audience rollout fail closed before Provider evaluation', async () => {
+test('runtime eligibility and audience rollout fail closed before Provider evaluation', async () => {
   let gateCalls = 0
   const ineligible = await resolveModelRoute({
-    policies: [policy({ targets: [candidate({ id: 'primary', role: 'primary', priority: 1, trafficEligible: false })] })], context,
+    policies: [policy({ targets: [candidate({ id: 'primary', role: 'primary', priority: 1, runtimeEnabled: false })] })], context,
     evaluateCandidate: async () => { gateCalls += 1; return { allowed: true } },
   })
-  assert.equal(ineligible.attempts[0].reasonCode, 'provider_approval_required')
+  assert.equal(ineligible.attempts[0].reasonCode, 'deployment_runtime_disabled')
   assert.equal(gateCalls, 0)
   const audienceMiss = await resolveModelRoute({ policies: [policy({ audienceRoles: ['admin'] })], context })
   assert.equal(audienceMiss.reasonCode, 'no_audience_match')

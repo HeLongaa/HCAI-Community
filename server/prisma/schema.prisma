@@ -3414,6 +3414,13 @@ model ModelDeployment {
   environment     ModelDeploymentEnvironment
   region          String
   deploymentRef   String                     @map("deployment_ref")
+  adapterType     String?                    @map("adapter_type")
+  providerModelId String?                    @map("provider_model_id")
+  endpointUrl     String?                    @map("endpoint_url")
+  secretPurpose   String?                    @map("secret_purpose")
+  runtimeConfig   Json?                      @map("runtime_config")
+  runtimeConfigSchemaVersion Int             @default(1) @map("runtime_config_schema_version")
+  runtimeEnabled  Boolean                    @default(false) @map("runtime_enabled")
   status          ModelControlStatus         @default(draft)
   trafficEligible Boolean                    @default(false) @map("traffic_eligible")
   version         Int                        @default(1)
@@ -3432,6 +3439,7 @@ model ModelDeployment {
 
   @@unique([environment, key])
   @@index([modelVersionId, environment, status])
+  @@index([environment, runtimeEnabled, status])
   @@map("model_deployments")
 }
 

@@ -54,6 +54,7 @@ import {
 } from '../../creative/accountingPolicy.js'
 import { createCreativeProviderRegistry } from '../../creative/providerRegistry.js'
 import { createProviderControlPlane } from '../../creative/providerControlPlane.js'
+import { resolveModelRuntimeDeployment } from '../../modelControl/modelRuntimeResolver.js'
 import {
   createOpenAIImageGeneration,
   createOpenAIImageHttpClient,
@@ -111,6 +112,12 @@ const sanitizeGenerationRecordForResponse = (generationRecord) => generationReco
     }
   : generationRecord
 
+export const resolveCreativeProviderControlPlane = ({ configured = null, repositories: routeRepositories, routed = false }) => configured ?? (
+  routed && routeRepositories?.creativeProviderControls
+    ? createProviderControlPlane({ repository: routeRepositories.creativeProviderControls })
+    : null
+)
+
 export const registerCreativeRoutes = (router, options = {}) => {
   const executeGeneration = options.executeCreativeGeneration ?? executeCreativeGeneration
   const routeRepositories = options.repositories ?? repositories
@@ -164,6 +171,21 @@ export const registerCreativeRoutes = (router, options = {}) => {
       : {}),
   }
   const fixtureAdapters = { ...runtimeAdapters, ...(options.fixtureAdapters ?? {}) }
+  const adapterForModelRuntime = (resolved) => {
+    if (resolved.adapterType === 'openai_image') {
+      const client = createOpenAIImageHttpClient({ source: resolved.runtimeSource, fetchImpl: options.openAIImageFetchImpl ?? globalThis.fetch })
+      return (context) => createOpenAIImageGeneration({ ...context, client })
+    }
+    if (resolved.adapterType === 'google_video') {
+      const client = createGoogleVeoHttpClient({ source: resolved.runtimeSource, fetchImpl: options.googleVeoFetchImpl ?? globalThis.fetch })
+      return (context) => createGoogleVeoGeneration({ ...context, client })
+    }
+    if (resolved.adapterType === 'elevenlabs_music') {
+      const client = createElevenLabsMusicHttpClient({ source: resolved.runtimeSource, fetchImpl: options.elevenLabsMusicFetchImpl ?? globalThis.fetch })
+      return (context) => createElevenLabsMusicGeneration({ ...context, client })
+    }
+    throw new HttpError(503, 'MODEL_RUNTIME_ADAPTER_UNSUPPORTED', 'The selected model deployment has no supported creative adapter')
+  }
   const providerMutationAdapters = {
     ...(googleVeoClient
       ? {
@@ -409,20 +431,39 @@ export const registerCreativeRoutes = (router, options = {}) => {
     let quotaFinalized = false
     let creditFinalized = false
     try {
+      const routed = await resolveModelRuntimeDeployment({
+        repositories: routeRepositories,
+        modality: generationPayload.workspace,
+        operation: 'generate',
+        environment: String(executionSource.CREATIVE_PROVIDER_RUNTIME_ENV ?? 'staging').trim().toLowerCase(),
+        region: String(executionSource.CREATIVE_PROVIDER_REGION ?? 'us').trim().toLowerCase() || null,
+        actor,
+        baseSource: executionSource,
+        now: callbackNow(),
+      })
+      const routedRequest = routed ? { ...generationPayload, providerId: routed.providerId } : generationPayload
+      const routedSource = routed?.runtimeSource ?? executionSource
+      const routedAdapters = routed ? { ...fixtureAdapters, [routed.providerId]: adapterForModelRuntime(routed) } : fixtureAdapters
+      const requestProviderControlPlane = resolveCreativeProviderControlPlane({
+        configured: providerControlPlane,
+        repositories: routeRepositories,
+        routed: Boolean(routed),
+      })
       generation = await executeGeneration({
-        request: generationPayload,
+        request: routedRequest,
         actor,
         generationId,
         quotaRepository,
         entitlementRepository: routeRepositories.entitlements,
-        source: executionSource,
+        source: routedSource,
         now: callbackNow(),
         inputAssetRepository: routeRepositories.media,
         inputAssetReader: options.inputAssetReader ?? null,
         providerCostRepository: routeRepositories.creativeProviderCosts,
-        providerControlPlane,
-        fixtureAdapters,
+        providerControlPlane: requestProviderControlPlane,
+        fixtureAdapters: routedAdapters,
       })
+      if (routed) generation = { ...generation, modelVersionId: routed.modelVersionId, modelDeploymentId: routed.deploymentId, pricingVersionId: routed.pricingVersionId, modelRouteDecisionId: routed.decisionId }
       if (creditRepository?.reserve) {
         const reservedCredit = await creditRepository.reserve({
           generationId: generation.id,

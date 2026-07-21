@@ -185,6 +185,9 @@ export const createChatService = ({
           ...generated,
           status: 'running',
           provider: { ...generationProvider },
+          modelVersionId: generationProvider.modelVersionId ?? null,
+          modelDeploymentId: generationProvider.modelDeploymentId ?? null,
+          pricingVersionId: generationProvider.pricingVersionId ?? null,
           outputs: [],
           usage: { ...generated.usage, metered: false },
         }

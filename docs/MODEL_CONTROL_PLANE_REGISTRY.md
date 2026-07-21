@@ -5,9 +5,10 @@
 ## Boundaries
 
 - The product remains personal-account only. The catalog has no tenant, organization, team, membership, or invitation ownership.
-- Registry APIs do not accept Provider credentials, tokens, secret endpoint values, or raw Provider payloads. `MODEL-05` separately accepts only `secret://` metadata references.
+- Registry APIs do not accept Provider credentials, tokens, or raw Provider payloads. Deployment endpoints must be safe HTTPS URLs, and `MODEL-05` accepts only `secret://` metadata references.
 - New deployments are always created with `trafficEligible=false`.
-- This registry work does not register a real Provider adapter. Production traffic eligibility can change only through an approved `MODEL-05` promotion and is reversed by rollback.
+- A deployment may name one allowlisted adapter, Provider model ID, SecretRef purpose, safe endpoint, and non-sensitive runtime parameters. Historical deployments remain runtime-disabled until explicitly configured.
+- Staging dispatch requires an active Route, active Deployment, `runtimeEnabled=true`, a current SecretRef, and a resolvable deployment secret. Production traffic eligibility can change only through an approved `MODEL-05` promotion and is reversed by rollback.
 
 ## Lifecycle
 
@@ -25,11 +26,11 @@ Model capabilities can change only while their model version is `draft`. Once ac
 
 ## Generation Evidence
 
-`CreativeGeneration` now has nullable foreign keys to `ModelVersion`, `ModelDeployment`, and `PricingVersion`. Existing history remains readable. `AI-CORE-01` will require these references for future real-Provider generation dispatch; it must not invent associations for legacy mock records.
+`CreativeGeneration` has nullable foreign keys to `ModelVersion`, `ModelDeployment`, and `PricingVersion`. Model-routed image, chat, video, and music dispatch locks these references when the generation record is created. Existing legacy and mock history remains readable without invented associations.
 
 ## Operations
 
-The Admin model-control workbench supports credential-free list, filter, sort, pagination, detail, creation, lifecycle transitions, summary, and export. Dedicated read, manage, and transition permissions separate inspection from mutation. Every route records safe audit evidence without deployment references or credentials.
+The Admin model-control workbench supports credential-free list, filter, sort, pagination, detail, deployment runtime configuration, lifecycle transitions, summary, and export. It displays the configured adapter, endpoint, Provider model ID, runtime state, and version. Dedicated read, manage, and transition permissions separate inspection from mutation. Every route records safe audit evidence without credentials.
 
 Run:
 
