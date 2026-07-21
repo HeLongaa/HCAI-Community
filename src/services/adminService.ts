@@ -487,7 +487,7 @@ export const adminService = {
   async upsertModelCapability(id: string, payload: Omit<ModelCapabilityDto, 'id' | 'modelVersionId'>) {
     return api.put<ModelCapabilityDto>(`/admin/model-control/versions/${encodeURIComponent(id)}/capabilities`, payload)
   },
-  async createModelDeployment(payload: { modelVersionId: string; key: string; environment: string; region: string; deploymentRef: string }) {
+  async createModelDeployment(payload: { modelVersionId: string; key: string; environment: string; region: string; deploymentRef: string; adapterType?: string | null; providerModelId?: string | null; endpointUrl?: string | null; secretPurpose?: string | null; runtimeConfig?: Record<string, unknown> | null; runtimeEnabled?: boolean }) {
     return api.post<ModelDeploymentDto>('/admin/model-control/deployments', payload)
   },
   async modelDeployments(query?: ModelControlListQuery & { environment?: string | null }) {

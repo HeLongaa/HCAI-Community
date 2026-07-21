@@ -6,6 +6,7 @@ import { validationFailed } from '../common/http/validation.js'
 export const modelControlStatuses = Object.freeze(['draft', 'active', 'disabled', 'deprecated', 'archived'])
 export const modelDeploymentEnvironments = Object.freeze(['development', 'staging', 'production'])
 export const modelCapabilityModalities = Object.freeze(['image', 'chat', 'video', 'music'])
+export const modelDeploymentAdapterTypes = Object.freeze(['openai_image', 'openai_chat', 'google_video', 'elevenlabs_music'])
 export const modelControlPageLimit = 100
 
 const allowedTransitions = Object.freeze({
@@ -60,6 +61,31 @@ const optionalIsoDate = (value, name) => {
   return new Date(timestamp).toISOString()
 }
 const actorRef = (actor) => actor?.handle ?? actor?.id ?? 'unknown'
+const sensitiveRuntimeKey = /(secret|password|token|api.?key|private.?key|credential|authorization)/i
+const assertSafeRuntimeConfig = (value, path = 'runtimeConfig') => {
+  if (value == null) return null
+  const object = objectValue(value, path)
+  for (const [key, child] of Object.entries(object)) {
+    if (sensitiveRuntimeKey.test(key)) throw validationFailed(`${path}.${key} cannot contain credentials`)
+    if (child != null && typeof child === 'object') {
+      if (Array.isArray(child)) {
+        if (child.length > 20 || child.some((item) => item != null && typeof item === 'object')) throw validationFailed(`${path}.${key} contains unsupported values`)
+      } else assertSafeRuntimeConfig(child, `${path}.${key}`)
+    } else if (!['string', 'number', 'boolean'].includes(typeof child) && child !== null) throw validationFailed(`${path}.${key} contains an unsupported value`)
+  }
+  return object
+}
+const safeEndpointUrl = (value) => {
+  const endpointUrl = safeText(value, 'endpointUrl', { maximum: 500 }) || null
+  if (!endpointUrl) return null
+  try {
+    const url = new URL(endpointUrl)
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error('unsafe')
+    return url.toString().replace(/\/+$/, '')
+  } catch {
+    throw validationFailed('endpointUrl must be a safe HTTPS URL without credentials, query, or hash')
+  }
+}
 
 export const parseModelControlListQuery = (query = {}) => {
   const limit = query.limit == null || query.limit === '' ? 20 : Number.parseInt(String(query.limit), 10)
@@ -175,9 +201,23 @@ export const parseCapabilityUpsert = (modelVersionId, raw = {}) => {
 
 export const parseDeploymentCreate = (raw = {}, actor) => {
   const payload = objectValue(raw)
-  exactFields(payload, ['modelVersionId', 'key', 'environment', 'region', 'deploymentRef'])
+  exactFields(payload, ['modelVersionId', 'key', 'environment', 'region', 'deploymentRef', 'adapterType', 'providerModelId', 'endpointUrl', 'secretPurpose', 'runtimeConfig', 'runtimeEnabled'])
   const environment = String(payload.environment ?? '')
   if (!modelDeploymentEnvironments.includes(environment)) throw validationFailed(`environment must be one of: ${modelDeploymentEnvironments.join(', ')}`)
+  const adapterType = safeText(payload.adapterType, 'adapterType', { maximum: 80 }) || null
+  if (adapterType && !modelDeploymentAdapterTypes.includes(adapterType)) throw validationFailed(`adapterType must be one of: ${modelDeploymentAdapterTypes.join(', ')}`)
+  const providerModelId = safeText(payload.providerModelId, 'providerModelId', { maximum: 160 }) || null
+  if (providerModelId && !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,159}$/.test(providerModelId)) throw validationFailed('providerModelId contains unsupported characters')
+  const secretPurpose = safeText(payload.secretPurpose, 'secretPurpose', { maximum: 80 }) || null
+  if (secretPurpose && !/^[a-z0-9][a-z0-9._/-]{0,79}$/.test(secretPurpose)) throw validationFailed('secretPurpose contains unsupported characters')
+  if (payload.runtimeEnabled != null && typeof payload.runtimeEnabled !== 'boolean') throw validationFailed('runtimeEnabled must be a boolean')
+  const runtimeEnabled = payload.runtimeEnabled ?? false
+  if (runtimeEnabled && (!adapterType || !providerModelId || !secretPurpose)) throw validationFailed('runtimeEnabled requires adapterType, providerModelId, and secretPurpose')
+  const endpointUrl = safeEndpointUrl(payload.endpointUrl)
+  const runtimeConfig = assertSafeRuntimeConfig(payload.runtimeConfig)
+  if (runtimeEnabled && ['openai_image', 'openai_chat', 'elevenlabs_music'].includes(adapterType) && !endpointUrl) throw validationFailed('runtimeEnabled requires endpointUrl for the selected adapter')
+  if (runtimeEnabled && adapterType === 'google_video' && !['projectId', 'location', 'outputGcsUri'].every((key) => typeof runtimeConfig?.[key] === 'string' && runtimeConfig[key].trim())) throw validationFailed('google_video runtimeConfig requires projectId, location, and outputGcsUri')
+  if (runtimeEnabled && adapterType === 'elevenlabs_music' && !['licenseId', 'termsVersion'].every((key) => typeof runtimeConfig?.[key] === 'string' && runtimeConfig[key].trim())) throw validationFailed('elevenlabs_music runtimeConfig requires licenseId and termsVersion')
   return {
     id: `model-deployment-${randomUUID()}`,
     modelVersionId: safeText(payload.modelVersionId, 'modelVersionId', { required: true, maximum: 160 }),
@@ -185,6 +225,13 @@ export const parseDeploymentCreate = (raw = {}, actor) => {
     environment,
     region: safeText(payload.region, 'region', { required: true, maximum: 80 }),
     deploymentRef: safeText(payload.deploymentRef, 'deploymentRef', { required: true, maximum: 300 }),
+    adapterType,
+    providerModelId,
+    endpointUrl,
+    secretPurpose,
+    runtimeConfig,
+    runtimeConfigSchemaVersion: 1,
+    runtimeEnabled,
     createdByRef: actorRef(actor),
     updatedByRef: actorRef(actor),
   }

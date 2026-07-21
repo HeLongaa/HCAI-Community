@@ -113,6 +113,10 @@ export const createPrismaModelControlRepository = (client, { recordAudit } = {})
       where: { id: String(id) },
       include: { modelVersion: { include: { model: { include: { provider: true } }, capabilities: true } } },
     })),
+    findRuntimePricing: async ({ modelVersionId, modelDeploymentId, now = new Date() }) => pricingDto(await client.pricingVersion.findFirst({
+      where: { modelVersionId, status: 'active', effectiveFrom: { lte: now }, AND: [{ OR: [{ modelDeploymentId }, { modelDeploymentId: null }] }, { OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] }] },
+      orderBy: [{ modelDeploymentId: { sort: 'desc', nulls: 'last' } }, { effectiveFrom: 'desc' }],
+    })),
     setPromotionTrafficEligibility: async (id, eligible, actor) => {
       const updated = await client.modelDeployment.updateMany({
         where: { id: String(id), environment: 'production', ...(eligible ? { status: 'active' } : {}) },

@@ -4089,6 +4089,13 @@ export type ModelDeploymentDto = {
   environment: ModelDeploymentEnvironment
   region: string
   deploymentRef: string
+  adapterType: 'openai_image' | 'openai_chat' | 'google_video' | 'elevenlabs_music' | null
+  providerModelId: string | null
+  endpointUrl: string | null
+  secretPurpose: string | null
+  runtimeConfig: Record<string, unknown> | null
+  runtimeConfigSchemaVersion: number
+  runtimeEnabled: boolean
   status: ModelControlStatus
   trafficEligible: boolean
   version: number

@@ -78,6 +78,10 @@ export const createSeedModelControlRepository = ({ recordAudit } = {}) => {
       if (!deployment) return null
       return clone({ ...deployment, modelVersion: detail('version', deployment.modelVersionId) })
     },
+    findRuntimePricing: async ({ modelVersionId, modelDeploymentId, now = new Date() }) => clone([...collections.prices.values()]
+      .filter((item) => item.modelVersionId === modelVersionId && item.status === 'active' && (!item.modelDeploymentId || item.modelDeploymentId === modelDeploymentId))
+      .filter((item) => Date.parse(item.effectiveFrom) <= now.getTime() && (!item.effectiveTo || Date.parse(item.effectiveTo) > now.getTime()))
+      .sort((left, right) => Number(Boolean(right.modelDeploymentId)) - Number(Boolean(left.modelDeploymentId)) || Date.parse(right.effectiveFrom) - Date.parse(left.effectiveFrom))[0] ?? null),
     setPromotionTrafficEligibility: async (id, eligible, actor) => {
       const deployment = collections.deployments.get(String(id))
       if (!deployment || deployment.environment !== 'production' || (eligible && deployment.status !== 'active')) throw new HttpError(409, 'PROMOTION_DEPLOYMENT_INELIGIBLE', 'production deployment is not eligible for promotion')

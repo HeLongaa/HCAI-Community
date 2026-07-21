@@ -14,7 +14,7 @@ import { repositories } from '../../repositories/index.js'
 import { createSeedRepository } from '../../repositories/seedRepository.js'
 import { sha256 } from '../../creative/generationRecords.js'
 import { registerMediaRoutes } from '../media/routes.js'
-import { registerCreativeRoutes } from './routes.js'
+import { registerCreativeRoutes, resolveCreativeProviderControlPlane } from './routes.js'
 
 const providerOutputPng = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
@@ -1424,6 +1424,17 @@ test('POST /api/creative/generations validates request payloads', async () => {
   } finally {
     await server.close()
   }
+})
+
+test('model-routed creative requests create Provider controls without a startup client', () => {
+  const controlPlane = resolveCreativeProviderControlPlane({
+    repositories: { creativeProviderControls: {} },
+    routed: true,
+  })
+
+  assert.equal(typeof controlPlane.assertDispatchAllowed, 'function')
+  assert.equal(typeof controlPlane.recordResult, 'function')
+  assert.equal(resolveCreativeProviderControlPlane({ repositories: { creativeProviderControls: {} }, routed: false }), null)
 })
 
 test('POST /api/creative/generations persists mock provider output through media governance', async () => {

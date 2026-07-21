@@ -41,6 +41,9 @@ export const createSeedModelGovernanceRepository = ({ modelControl, modelRouting
       return copy(row)
     },
     findSecretRef: async (id) => copy(secretRefs.get(String(id)) ?? null),
+    findCurrentSecretRef: async ({ providerId, environment, purpose, now = new Date() }) => copy([...secretRefs.values()]
+      .filter((row) => row.providerId === providerId && row.environment === environment && row.purpose === purpose)
+      .find((row) => ![...secretRefs.values()].some((candidate) => candidate.rotatedFromId === row.id) && (!row.expiresAt || Date.parse(row.expiresAt) > now.getTime())) ?? null),
     listSecretRefs: async (options) => paginate(sorted(secretRefs, options.sort, options.order)
       .filter((row) => !options.providerId || row.providerId === options.providerId)
       .filter((row) => !options.environment || row.environment === options.environment)
