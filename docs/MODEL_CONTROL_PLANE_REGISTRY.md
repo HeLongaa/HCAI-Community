@@ -8,6 +8,7 @@
 - Registry APIs do not accept Provider credentials, tokens, or raw Provider payloads. Deployment endpoints must be safe HTTPS URLs, and `MODEL-05` accepts only `secret://` metadata references.
 - New deployments are always created with `trafficEligible=false`.
 - A deployment may name one allowlisted adapter, Provider model ID, SecretRef purpose, safe endpoint, and non-sensitive runtime parameters. Historical deployments remain runtime-disabled until explicitly configured.
+- Chat deployments may select `responses` or `chat_completions` plus `json_schema` or strict `text` safety output. These values are stored in `runtimeConfig`; credentials remain SecretRef-only.
 - Staging dispatch requires an active Route, active Deployment, `runtimeEnabled=true`, a current SecretRef, and a resolvable deployment secret. Production traffic eligibility can change only through an approved `MODEL-05` promotion and is reversed by rollback.
 
 ## Lifecycle

@@ -30,9 +30,17 @@ const validateDeployment = (target, context) => {
   const deployment = target.deployment
   const provider = deployment?.modelVersion?.model?.provider
   if (!deployment || !provider) return { allowed: false, reasonCode: 'deployment_metadata_missing' }
+  if (provider.status !== 'active') return { allowed: false, reasonCode: 'provider_inactive' }
+  if (deployment.modelVersion?.model?.status !== 'active') return { allowed: false, reasonCode: 'model_inactive' }
+  if (deployment.modelVersion?.status !== 'active') return { allowed: false, reasonCode: 'model_version_inactive' }
+  if (deployment.status !== 'active') return { allowed: false, reasonCode: 'deployment_inactive' }
+  if (!deployment.runtimeEnabled) return { allowed: false, reasonCode: 'deployment_runtime_disabled' }
+  if (deployment.environment !== context.environment) return { allowed: false, reasonCode: 'deployment_environment_mismatch' }
   if (deployment.adapterType !== adapterForModality[context.modality]) return { allowed: false, reasonCode: 'deployment_adapter_mismatch' }
   if (!providerIdForAdapter[deployment.adapterType]) return { allowed: false, reasonCode: 'deployment_adapter_unsupported' }
   if (!deployment.providerModelId || !deployment.secretPurpose) return { allowed: false, reasonCode: 'deployment_runtime_config_incomplete' }
+  const capability = deployment.modelVersion?.capabilities?.find((item) => item.modality === context.modality)
+  if (!capability?.operations?.includes(context.operation)) return { allowed: false, reasonCode: 'deployment_capability_missing' }
   if (['openai_image', 'openai_chat', 'elevenlabs_music'].includes(deployment.adapterType) && !safeEndpoint(deployment.endpointUrl)) return { allowed: false, reasonCode: 'deployment_endpoint_invalid' }
   return { allowed: true, reasonCode: null, deployment, provider }
 }
@@ -57,6 +65,8 @@ const sourceFor = ({ deployment, credential, baseSource }) => {
     CHAT_PROVIDER_TYPE: 'openai-compatible', CHAT_PROVIDER_MODE: deployment.runtimeEnabled ? 'openai_staging' : 'disabled',
     CHAT_OPENAI_BASE_URL: deployment.endpointUrl, CHAT_OPENAI_MODEL: deployment.providerModelId, CHAT_OPENAI_API_TOKEN: credential,
     CHAT_OPENAI_HTTP_CLIENT_ENABLED: enabled, CHAT_OPENAI_NETWORK_CALLS_ENABLED: enabled, CHAT_OPENAI_SAFETY_CLASSIFIER_ENABLED: enabled,
+    CHAT_OPENAI_API_DIALECT: deployment.runtimeConfig?.apiDialect ?? 'responses',
+    CHAT_OPENAI_SAFETY_RESPONSE_FORMAT: deployment.runtimeConfig?.safetyResponseFormat ?? 'json_schema',
     CHAT_OPENAI_CONFIRMATION: deployment.runtimeEnabled ? 'staging-only' : '',
   })
   if (deployment.adapterType === 'google_video') Object.assign(source, {

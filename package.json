@@ -74,7 +74,7 @@
     "test:chat-openai-readiness": "node --test scripts/check-openai-chat-readiness.test.mjs server/src/chat/openaiChatProvider.test.js server/src/chat/openaiChatStagingAcceptance.test.js server/src/chat/chatRuntime.test.js",
     "test:chat-production-ux-acceptance:server": "node scripts/verify-chat-production-ux-acceptance.mjs && node --test server/src/chat/chatProductionAcceptance.test.js",
     "test:chat-production-ux-acceptance": "node scripts/verify-chat-production-ux-acceptance.mjs && node --test server/src/chat/chatProductionAcceptance.test.js && playwright test e2e/chat-streaming.spec.ts",
-    "test:chat-openai-readiness:integration": "npm --prefix server run db:generate && CHAT_DATABASE_INTEGRATION_ENABLED=true node --env-file-if-exists=server/.env --test server/src/repositories/prismaChat.integration.test.js",
+    "test:chat-openai-readiness:integration": "npm --prefix server run db:generate && CHAT_DATABASE_INTEGRATION_ENABLED=true node --env-file-if-exists=server/.env --test server/src/repositories/prismaChat.integration.test.js server/src/repositories/prismaOpenAIChatRuntime.integration.test.js",
     "image:openai:preflight": "node --env-file-if-exists=server/.env scripts/check-openai-image-readiness.mjs --profile=env --mode=preflight",
     "image:openai:acceptance": "node --env-file-if-exists=server/.env scripts/check-openai-image-readiness.mjs --profile=env --mode=acceptance",
     "test:image-openai-readiness": "npm --prefix server run db:generate && node --test scripts/check-openai-image-readiness.test.mjs server/src/creative/openaiImageProvider.test.js server/src/creative/openaiImageStagingAcceptance.test.js server/src/creative/generationService.test.js server/src/modules/creative/routes.test.js",

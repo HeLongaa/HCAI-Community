@@ -215,6 +215,12 @@ export const parseDeploymentCreate = (raw = {}, actor) => {
   if (runtimeEnabled && (!adapterType || !providerModelId || !secretPurpose)) throw validationFailed('runtimeEnabled requires adapterType, providerModelId, and secretPurpose')
   const endpointUrl = safeEndpointUrl(payload.endpointUrl)
   const runtimeConfig = assertSafeRuntimeConfig(payload.runtimeConfig)
+  if (adapterType === 'openai_chat' && runtimeConfig?.safetyResponseFormat != null && !['json_schema', 'text'].includes(runtimeConfig.safetyResponseFormat)) {
+    throw validationFailed('openai_chat runtimeConfig.safetyResponseFormat must be one of: json_schema, text')
+  }
+  if (adapterType === 'openai_chat' && runtimeConfig?.apiDialect != null && !['responses', 'chat_completions'].includes(runtimeConfig.apiDialect)) {
+    throw validationFailed('openai_chat runtimeConfig.apiDialect must be one of: responses, chat_completions')
+  }
   if (runtimeEnabled && ['openai_image', 'openai_chat', 'elevenlabs_music'].includes(adapterType) && !endpointUrl) throw validationFailed('runtimeEnabled requires endpointUrl for the selected adapter')
   if (runtimeEnabled && adapterType === 'google_video' && !['projectId', 'location', 'outputGcsUri'].every((key) => typeof runtimeConfig?.[key] === 'string' && runtimeConfig[key].trim())) throw validationFailed('google_video runtimeConfig requires projectId, location, and outputGcsUri')
   if (runtimeEnabled && adapterType === 'elevenlabs_music' && !['licenseId', 'termsVersion'].every((key) => typeof runtimeConfig?.[key] === 'string' && runtimeConfig[key].trim())) throw validationFailed('elevenlabs_music runtimeConfig requires licenseId and termsVersion')

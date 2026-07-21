@@ -31,6 +31,29 @@ test('environment preflight fails closed when the credential is absent', async (
   )
 })
 
+test('environment preflight accepts a safe OpenAI-compatible Router without exposing its token', async () => {
+  const token = 'router-chat-readiness-secret'
+  const { stdout, stderr } = await run(process.execPath, [script.pathname, '--profile=env', '--mode=preflight'], {
+    env: {
+      NODE_ENV: 'production',
+      CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+      CHAT_PROVIDER_TYPE: 'openai-compatible',
+      CHAT_PROVIDER_MODE: 'openai_staging',
+      CHAT_OPENAI_BASE_URL: 'https://router.example/v1',
+      CHAT_OPENAI_MODEL: 'gpt-5.6-terra',
+      CHAT_OPENAI_HTTP_CLIENT_ENABLED: 'true',
+      CHAT_OPENAI_NETWORK_CALLS_ENABLED: 'true',
+      CHAT_OPENAI_SAFETY_CLASSIFIER_ENABLED: 'true',
+      CHAT_OPENAI_CONFIRMATION: 'staging-only',
+      CHAT_OPENAI_API_TOKEN: token,
+    },
+  })
+  assert.equal(stderr, '')
+  assert.match(stdout, /PASS base URL is a safe OpenAI-compatible HTTPS endpoint/)
+  assert.match(stdout, /"modelId": "gpt-5.6-terra"/)
+  assert.doesNotMatch(stdout, new RegExp(token))
+})
+
 test('live smoke cannot use fixture credentials', async () => {
   await assert.rejects(
     run(process.execPath, [script.pathname, '--profile=fixture', '--mode=live']),

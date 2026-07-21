@@ -5,12 +5,14 @@ production-smoke path remains `CHAT_PROVIDER_MODE=mock`.
 
 ## Implemented
 
-- Fixed OpenAI `https://api.openai.com/v1/responses` mapping for `gpt-5.6-terra`.
+- Database-selected OpenAI-compatible endpoint and model mapping for `gpt-5.6-terra`.
+- Deployment-selectable `responses` and `chat_completions` API dialects; HCAI Router staging uses `chat_completions`.
 - Streaming SSE projection with an event allowlist, explicit completion, refusal/failure mapping, response MIME checks,
   timeout/abort cleanup, `store=false`, and `background=false`.
 - Output safety classification uses the frozen 512-character unclassified buffer instead of one paid classification per
   Provider delta; only complete input, generation, and output usage is settled, while stopped/partial usage reconciles.
-- Structured input and output safety decisions using a closed JSON schema and application policy reason codes.
+- Structured or strict-text JSON safety decisions using closed application policy reason codes. Text mode changes only
+  the Provider request format; malformed or unknown decisions still fail closed.
 - Bounded signed S3 attachment reads with exact-size, strict UTF-8, and magic-MIME validation.
 - In-memory text, image data URL, and PDF data URL Provider inputs; no attachment bytes or raw Provider payloads are
   persisted.
@@ -30,15 +32,17 @@ Every OpenAI Chat gate must be explicit:
 - `CHAT_OPENAI_NETWORK_CALLS_ENABLED=true`
 - `CHAT_OPENAI_SAFETY_CLASSIFIER_ENABLED=true`
 - `CHAT_OPENAI_CONFIRMATION=staging-only`
+- `CHAT_OPENAI_API_DIALECT=responses|chat_completions`
+- `CHAT_OPENAI_SAFETY_RESPONSE_FORMAT=json_schema|text`
 - `CHAT_OPENAI_API_TOKEN` configured only in the approved staging secret store
 - `CHAT_ATTACHMENT_BYTES_ENABLED=true` only when attachment transfer is approved
 - Provider global/provider controls, cap evidence, and circuit state allow dispatch
 
-Any partial or inconsistent configuration fails closed. The base URL cannot be redirected to another host.
+Any partial or inconsistent configuration fails closed. The configured endpoint must be safe HTTPS and redirects are rejected.
 
 ## Still Disabled
 
-- Real Chat Provider calls under ordinary development, CI, production smoke, or ordinary continuation language.
+- Real Chat Provider calls under ordinary development, CI, production smoke, or production product traffic.
 - Production Chat Provider enablement.
 - Anthropic backup client and automatic failover.
 - Tools, user-defined tools, background jobs, and Provider-owned conversation state.
@@ -46,9 +50,8 @@ Any partial or inconsistent configuration fails closed. The base URL cannot be r
 
 ## Validation
 
-All V1-24 tests use local `Response` fixtures or injected `fetch`. No validation command requires a Provider token and no
-real network request was made. A first Chat staging call requires a new explicit go/no-go package; the existing Image
-rehearsal approval scope does not cover Chat.
+Automated tests use local `Response` fixtures or injected `fetch` and require no Provider token. Credentialed staging
+acceptance is a separate explicit command and never runs in ordinary CI.
 
 The dedicated readiness commands are:
 
@@ -64,6 +67,10 @@ CHAT_OPENAI_LIVE_SMOKE_CONFIRMATION=real-staging-acceptance npm run chat:openai:
 make a network request. `live-smoke` additionally requires the one-run confirmation value and performs minimal input
 safety, streaming, output safety, and abort acceptance. It never prints prompts, generated text, credentials, raw
 Provider responses, or account data. The live command remains blocked until a dedicated staging token is mounted.
+
+HCAI Router was accepted with a dedicated `gpt-5.6-terra`-only key, `chat_completions`, and strict text JSON safety.
+The five-call application acceptance proved streaming, stop, encrypted history, text attachment, product context,
+input/output safety, metered completion settlement, and stopped-cost reconciliation while production remained disabled.
 
 The live gate also requires a Chat-specific approval decision and reference, a named approver, an expiry within 24
 hours, the dedicated `chat-staging` environment, exactly four maximum Provider calls, a Provider-side cap no greater

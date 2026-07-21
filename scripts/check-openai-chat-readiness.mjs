@@ -42,13 +42,15 @@ try {
 
 const summary = {
   providerId: 'openai-gpt-5-6-terra',
-  modelId: 'gpt-5.6-terra',
+  modelId: config.modelId,
   mode: config.mode,
   runtimeEnv: config.runtimeEnv,
   clientEnabled: config.clientEnabled,
   networkCallsEnabled: config.networkCallsEnabled,
   safetyClassifierEnabled: config.safetyClassifierEnabled,
   attachmentBytesEnabled: config.attachmentBytesEnabled,
+  apiDialect: config.apiDialect,
+  safetyResponseFormat: config.safetyResponseFormat,
   credentialConfigured: Boolean(config.token),
   productionDenied: true,
   live: null,
@@ -71,7 +73,8 @@ check('OpenAI staging mode is explicit', config.mode === 'openai_staging', 'mode
 check('HTTP client and network gates are enabled', config.clientEnabled && config.networkCallsEnabled, 'client=true network=true')
 check('safety classifier gate is enabled', config.safetyClassifierEnabled, 'classifier=true')
 check('credential is present without exposing its value', Boolean(config.token), 'credentialConfigured=true')
-check('base URL is fixed to the official API', config.baseUrl === 'https://api.openai.com/v1', 'baseUrl=official')
+check('base URL is a safe OpenAI-compatible HTTPS endpoint', config.baseUrl.startsWith('https://'), 'baseUrl=safe-https')
+check('configured model is available to the runtime', Boolean(config.modelId), 'modelConfigured=true')
 check('production enablement remains denied', source.CREATIVE_PROVIDER_RUNTIME_ENV === 'staging', 'productionDenied=true')
 
 const request = {
