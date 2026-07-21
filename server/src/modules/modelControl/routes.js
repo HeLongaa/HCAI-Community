@@ -52,6 +52,7 @@ import {
   parseEvaluationSuiteListQuery,
 } from '../../modelControl/modelEvaluationRuntime.js'
 import { parseProviderLegalReviewCreate, parseProviderLegalReviewListQuery } from '../../modelControl/providerLegalRuntime.js'
+import { resolveModelRuntimeReadiness } from '../../modelControl/modelRuntimeResolver.js'
 import { repositories } from '../../repositories/index.js'
 
 const permissions = Object.freeze({
@@ -526,6 +527,26 @@ export const registerModelControlRoutes = (router, options = {}) => {
     const statusCounts = catalog.providers.concat(catalog.models, catalog.versions, catalog.deployments, catalog.pricingVersions).reduce((summary, item) => ({ ...summary, [item.status]: (summary[item.status] ?? 0) + 1 }), {})
     await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.summary_read', resourceType: 'model_control_catalog', resourceId: null, metadata: { counts, providerTrafficEnabled: catalog.providerTrafficEnabled } })
     ok(response, { counts, statusCounts, providerTrafficEnabled: catalog.providerTrafficEnabled, realProviderApprovalRequired: true })
+  })
+
+  router.add('GET', '/api/admin/model-control/chat-production-readiness', async (_request, response, context) => {
+    const actor = requirePermission(context, permissions.read)
+    const readiness = await resolveModelRuntimeReadiness({
+      repositories: routeRepositories,
+      modality: 'chat',
+      operation: 'generate',
+      environment: 'production',
+      region: context.query.region || null,
+      role: 'member',
+    })
+    await routeRepositories.audit.recordAttempt({
+      actor,
+      action: 'admin.model_control.chat_production_readiness_read',
+      resourceType: 'model_runtime_readiness',
+      resourceId: readiness.checks?.deployment?.id ?? null,
+      metadata: { decision: readiness.decision, reasonCode: readiness.reasonCode, blockerCodes: readiness.blockerCodes },
+    })
+    ok(response, readiness)
   })
 
   router.add('GET', '/api/admin/model-control/export', async (_request, response, context) => {

@@ -1,4 +1,5 @@
 import { HttpError } from '../common/errors/httpError.js'
+import { readProductionRuntimeApproval } from '../common/runtime/productionApproval.js'
 import { parseProviderRetryAfter } from '../creative/providerErrorPolicy.js'
 
 const providerId = 'openai-gpt-5-6-terra'
@@ -75,6 +76,7 @@ export const buildOpenAIChatRuntimeConfig = (source = process.env) => {
   const configuredModelId = String(source.CHAT_OPENAI_MODEL ?? defaultModelId).trim()
   const apiDialect = String(source.CHAT_OPENAI_API_DIALECT ?? 'responses').trim().toLowerCase()
   const safetyResponseFormat = String(source.CHAT_OPENAI_SAFETY_RESPONSE_FORMAT ?? 'json_schema').trim().toLowerCase()
+  const productionApproval = readProductionRuntimeApproval(source)
   let configuredBaseUrl
   try {
     const url = new URL(String(source.CHAT_OPENAI_BASE_URL ?? defaultBaseUrl).trim())
@@ -90,8 +92,8 @@ export const buildOpenAIChatRuntimeConfig = (source = process.env) => {
   if (!['json_schema', 'text'].includes(safetyResponseFormat)) {
     throw new Error('CHAT_OPENAI_SAFETY_RESPONSE_FORMAT must be one of: json_schema, text')
   }
-  if (!['mock', 'disabled', 'openai_staging'].includes(mode)) {
-    throw new Error('CHAT_PROVIDER_MODE must be one of: mock, disabled, openai_staging')
+  if (!['mock', 'disabled', 'openai_staging', 'openai_production'].includes(mode)) {
+    throw new Error('CHAT_PROVIDER_MODE must be one of: mock, disabled, openai_staging, openai_production')
   }
   if (networkCallsEnabled && !clientEnabled) {
     throw new Error('CHAT_OPENAI_NETWORK_CALLS_ENABLED requires CHAT_OPENAI_HTTP_CLIENT_ENABLED=true')
@@ -102,18 +104,25 @@ export const buildOpenAIChatRuntimeConfig = (source = process.env) => {
   if (attachmentBytesEnabled && !networkCallsEnabled) {
     throw new Error('CHAT_ATTACHMENT_BYTES_ENABLED requires CHAT_OPENAI_NETWORK_CALLS_ENABLED=true')
   }
-  if (clientEnabled || networkCallsEnabled || safetyClassifierEnabled || attachmentBytesEnabled || mode === 'openai_staging') {
+  if (clientEnabled || networkCallsEnabled || safetyClassifierEnabled || attachmentBytesEnabled || ['openai_staging', 'openai_production'].includes(mode)) {
     if (source.NODE_ENV !== 'production') throw new Error('OpenAI Chat runtime requires NODE_ENV=production')
-    if (runtimeEnv !== 'staging') throw new Error('OpenAI Chat runtime requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
-    if (mode !== 'openai_staging') throw new Error('OpenAI Chat runtime requires CHAT_PROVIDER_MODE=openai_staging')
-    if (confirmation !== 'staging-only') throw new Error('OpenAI Chat runtime requires CHAT_OPENAI_CONFIRMATION=staging-only')
+    if (mode === 'openai_staging' && runtimeEnv !== 'staging') throw new Error('OpenAI Chat staging runtime requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
+    if (mode === 'openai_staging' && confirmation !== 'staging-only') throw new Error('OpenAI Chat staging runtime requires CHAT_OPENAI_CONFIRMATION=staging-only')
+    if (mode === 'openai_production') {
+      if (runtimeEnv !== 'production') throw new Error('OpenAI Chat production runtime requires CREATIVE_PROVIDER_RUNTIME_ENV=production')
+      if (confirmation !== 'database-approved') throw new Error('OpenAI Chat production runtime requires CHAT_OPENAI_CONFIRMATION=database-approved')
+      if (productionApproval?.environment !== 'production' || !productionApproval.decisionId || !productionApproval.routePolicyId || !productionApproval.deploymentId || !productionApproval.secretRefId) {
+        throw new Error('OpenAI Chat production runtime requires database-approved routing evidence')
+      }
+    }
+    if (!['openai_staging', 'openai_production'].includes(mode)) throw new Error('OpenAI Chat network runtime requires an approved Provider mode')
     if (!token) throw new Error('CHAT_OPENAI_API_TOKEN is required for the OpenAI Chat runtime')
     if (!clientEnabled || !networkCallsEnabled || !safetyClassifierEnabled) {
       throw new Error('OpenAI Chat runtime requires HTTP client, network calls, and safety classifier to be enabled')
     }
   }
-  if (source.NODE_ENV === 'production' && runtimeEnv === 'production' && mode !== 'disabled') {
-    throw new Error('Production product runtime requires CHAT_PROVIDER_MODE=disabled until a Provider is explicitly approved')
+  if (source.NODE_ENV === 'production' && runtimeEnv === 'production' && !['disabled', 'openai_production'].includes(mode)) {
+    throw new Error('Production product runtime requires CHAT_PROVIDER_MODE=disabled or database-approved openai_production')
   }
   return Object.freeze({
     providerType,
@@ -128,6 +137,7 @@ export const buildOpenAIChatRuntimeConfig = (source = process.env) => {
     modelId: configuredModelId,
     apiDialect,
     safetyResponseFormat,
+    productionApproved: mode === 'openai_production',
   })
 }
 

@@ -4580,6 +4580,9 @@ export const openApiDocument = {
     '/admin/model-control/summary': {
       get: { summary: 'Read normalized model catalog counts and the real-Provider approval state', responses: { '200': { description: 'Catalog summary with Provider traffic disabled' }, '403': { description: 'Requires model control read permission' } } },
     },
+    '/admin/model-control/chat-production-readiness': {
+      get: { summary: 'Read secret-free Chat production readiness and blocker codes', responses: { '200': { description: 'Chat production readiness' }, '403': { description: 'Requires model control read permission' } } },
+    },
     '/admin/model-control/routing-summary': {
       get: { summary: 'Read route-policy, revision, and primary/backup target counts', responses: { '200': { description: 'Credential-free routing summary' }, '403': { description: 'Requires model control read permission' } } },
     },

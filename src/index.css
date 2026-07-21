@@ -811,6 +811,10 @@
 .model-control-panel input, .model-control-panel select { width: 100%; min-width: 0; max-width: 100%; }
 .model-control-gate { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 8px 12px; border: 1px solid var(--border); border-left: 3px solid #27845b; background: color-mix(in srgb, #27845b 8%, var(--panel-soft)); }
 .model-control-gate span { margin-left: auto; color: var(--muted); }
+.model-control-gate[data-status="no_go"] { border-left-color: #b45309; background: color-mix(in srgb, #b45309 8%, var(--panel-soft)); }
+.model-control-gate .chat-production-checks { flex-basis: 100%; margin-left: 28px; color: var(--muted); overflow-wrap: anywhere; }
+.model-control-gate .chat-production-actions { display: flex; flex: 1 1 100%; align-items: center; justify-content: flex-end; gap: 8px; margin-left: 28px; }
+.model-control-gate .chat-production-actions input { width: min(360px, 100%); }
 .model-control-toolbar, .model-control-create, .model-tool-section { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: end; }
 .model-control-toolbar label { display: grid; gap: 6px; }
 .model-control-toolbar label > span { color: var(--muted); font-size: 12px; }

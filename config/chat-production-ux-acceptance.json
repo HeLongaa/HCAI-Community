@@ -2,6 +2,14 @@
   "schemaVersion": 1,
   "taskId": "AI-CHAT-02",
   "productionDecision": "no_go",
+  "productionApproval": {
+    "runtimeMode": "openai_production",
+    "confirmation": "database-approved",
+    "readinessEndpoint": "/api/admin/model-control/chat-production-readiness",
+    "requiredChecks": ["route", "deployment", "traffic_eligibility", "secret_ref", "promotion", "evaluation", "legal", "rate_limit", "concurrency_limit", "budget", "health", "circuit"],
+    "environmentApprovalAllowed": false,
+    "secretMaterialReturned": false
+  },
   "context": {
     "maximumMessages": 100,
     "overflowBehavior": "reject_before_provider_dispatch"
@@ -31,6 +39,10 @@
   "evidence": [
     "server/src/chat/chatProductionAcceptance.test.js",
     "e2e/chat-streaming.spec.ts",
-    "docs/V1_CHAT_PRODUCTION_ACCEPTANCE.md"
+    "docs/V1_CHAT_PRODUCTION_ACCEPTANCE.md",
+    "server/src/modelControl/modelRuntimeResolver.test.js",
+    "server/src/modules/modelControl/routes.test.js",
+    "server/src/chat/chatService.test.js",
+    "server/src/repositories/prismaOpenAIChatProduction.integration.test.js"
   ]
 }

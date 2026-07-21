@@ -4139,6 +4139,39 @@ export type ModelControlSummaryDto = {
   providerTrafficEnabled: boolean
   realProviderApprovalRequired: true
 }
+export type ChatProductionReadinessDto = {
+  checkedAt: string
+  modality: 'chat'
+  operation: 'generate'
+  environment: 'production'
+  region: string | null
+  decision: 'ready' | 'no_go'
+  ready: boolean
+  reasonCode: string | null
+  blockerCodes: string[]
+  checks: null | {
+    route: null | { id: string; key: string; status: ModelControlStatus; version: number; region: string | null }
+    deployment: null | { id: string; key: string; status: ModelControlStatus; environment: ModelDeploymentEnvironment; runtimeEnabled: boolean; trafficEligible: boolean; adapterType: string | null; providerModelId: string | null }
+    provider: null | { id: string; key: string; status: ModelControlStatus }
+    model: null | { id: string; key: string; status: ModelControlStatus }
+    modelVersion: null | { id: string; versionKey: string | null; status: ModelControlStatus }
+    secretRef: null | { id: string; externalVersion: string | null; ownerRef: string | null; expiresAt: string | null }
+    promotion: null | { id: string; releaseChangeId: string; status: ReleaseChangeStatus | null; providerSecretRefId: string }
+    evaluation: null | { id: string; status: string; expiresAt: string | null }
+    legal: null | { id: string; decision: string; expiresAt: string | null; current: boolean }
+    operational: null | {
+      profile: null | { id: string; status: ModelControlStatus; currency: string; perRequestBudgetMicros: string; maxRequestsPerMinute: number; maxConcurrentRequests: number; version: number }
+      budget: null | { currency: string; capMicros: string; remainingMicros: string | null; expiresAt: string }
+      circuit: null | { id: string; status: string; version: number; openedAt: string | null }
+      health: null | { id: string; status: string; checkedAt: string; expiresAt: string }
+      rate: null | { requestCount: number; inFlightCount: number; windowStart?: string; windowEnd?: string }
+      cost: null | { currency: string; actualMicros: string; reservedMicros: string }
+      readiness: { ready: boolean; reasonCode: string | null; checkedAt: string; gates: Array<{ id: string; allowed: boolean; reasonCode: string | null }> }
+    }
+  }
+  attempts: ModelRoutePreviewResult['attempts']
+  consideredPolicies: ModelRoutePreviewResult['consideredPolicies']
+}
 export type ModelControlListQuery = {
   search?: string | null
   status?: ModelControlStatus | null

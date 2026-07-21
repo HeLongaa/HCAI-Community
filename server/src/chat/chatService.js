@@ -74,6 +74,7 @@ export const createChatService = ({
   generationProvider = null,
   providerCostPlanner = null,
   providerControlPlane = null,
+  providerOperationsGuard = null,
   coordinator = chatStreamCoordinator,
   source = process.env,
   now = () => new Date(),
@@ -115,26 +116,32 @@ export const createChatService = ({
 
   const closeProviderCost = async (state, usage, actor) => {
     if (!state?.payload || state.closed) return
-    const providerCosts = creativeRepositories.creativeProviderCosts
-    const actual = providerCostPlanner?.({ request: state.request, context: state.context, usage, now: now() })
-    const actualMicros = toProviderMoneyMicros(actual?.actual?.amount)
-    if (actualMicros != null && providerCosts?.settle) {
-      await providerCosts.settle(state.payload.sourceKey, {
-        actualMicros: actualMicros.toString(),
-        actualCurrency: actual.actual.currency,
-        usage: actual.usage,
-        risk: actual.risk,
-        settledAt: now().toISOString(),
-      }, actor)
-    } else if (providerCosts?.reconcile) {
-      await providerCosts.reconcile(state.payload.sourceKey, {
-        reasonCode: 'actual_cost_missing',
-        usage: actual?.usage ?? null,
-        risk: actual?.risk ?? null,
-        reconciliationAt: now().toISOString(),
-      }, actor)
+    try {
+      const providerCosts = creativeRepositories.creativeProviderCosts
+      const actual = providerCostPlanner?.({ request: state.request, context: state.context, usage, now: now() })
+      const actualMicros = toProviderMoneyMicros(actual?.actual?.amount)
+      if (actualMicros != null && providerCosts?.settle) {
+        await providerCosts.settle(state.payload.sourceKey, {
+          actualMicros: actualMicros.toString(),
+          actualCurrency: actual.actual.currency,
+          usage: actual.usage,
+          risk: actual.risk,
+          settledAt: now().toISOString(),
+        }, actor)
+      } else if (providerCosts?.reconcile) {
+        await providerCosts.reconcile(state.payload.sourceKey, {
+          reasonCode: 'actual_cost_missing',
+          usage: actual?.usage ?? null,
+          risk: actual?.risk ?? null,
+          reconciliationAt: now().toISOString(),
+        }, actor)
+      }
+    } finally {
+      if (state.operationalLease?.id && providerOperationsGuard?.release) {
+        await providerOperationsGuard.release({ id: state.operationalLease.id, reasonCode: 'chat_dispatch_closed', actor, now: now() })
+      }
+      state.closed = true
     }
-    state.closed = true
   }
 
   const closeGeneration = async (state, status, usage, actor) => {
@@ -274,9 +281,31 @@ export const createChatService = ({
       await repository.markTurn(turn.id, actor.id, { status: 'failed', errorCode: error.code, at: now() }, actor)
       throw error
     }
+    let operationalLease = null
     try {
       const metadata = providerCostPlanner({ request, context, usage: null, now: now() })
-      const payload = buildProviderCostReservation({ generationId: `chat_${turn.id}`, providerCost: metadata, workspace: 'chat', mode: request.mode, now: now() })
+      let payload = buildProviderCostReservation({ generationId: `chat_${turn.id}`, providerCost: metadata, workspace: 'chat', mode: request.mode, now: now() })
+      if (providerOperationsGuard?.acquire) {
+        const operational = await providerOperationsGuard.acquire({
+          sourceKey: `provider-operations:chat_${turn.id}`,
+          estimateMicros: payload.estimateMicros,
+          actor,
+          now: now(),
+        })
+        operationalLease = operational.lease
+        const operationalBudget = operational.snapshot?.budget
+        const policyId = operational.snapshot?.profile?.id
+        if (operationalBudget && policyId) {
+          const capMicros = BigInt(operationalBudget.capMicros)
+          const remainingMicros = BigInt(operationalBudget.remainingMicros ?? operationalBudget.capMicros)
+          payload = {
+            ...payload,
+            budgetScope: `provider-operations:${policyId}`,
+            capMicros: capMicros.toString(),
+            openingSpentMicros: (capMicros - remainingMicros).toString(),
+          }
+        }
+      }
       await providerControlPlane.assertDispatchAllowed({
         providerId: metadata.providerId,
         providerAccountRef: metadata.providerAccountRef,
@@ -295,6 +324,7 @@ export const createChatService = ({
         metadata,
         payload,
         reservation,
+        operationalLease,
         request,
         context,
         closed: false,
@@ -307,6 +337,9 @@ export const createChatService = ({
         },
       }
     } catch (error) {
+      if (operationalLease?.id && providerOperationsGuard?.release) {
+        await providerOperationsGuard.release({ id: operationalLease.id, reasonCode: 'chat_dispatch_preparation_failed', actor, now: now() })
+      }
       await repository.markTurn(turn.id, actor.id, { status: 'failed', errorCode: error?.code ?? 'CHAT_PROVIDER_CONTROL_UNAVAILABLE', at: now() }, actor)
       throw error
     }

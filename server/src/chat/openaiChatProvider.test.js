@@ -10,6 +10,7 @@ import {
   createOpenAIChatClient,
   projectOpenAIChatSafetyResponse,
 } from './openaiChatProvider.js'
+import { attachProductionRuntimeApproval } from '../common/runtime/productionApproval.js'
 
 const source = {
   NODE_ENV: 'production',
@@ -68,6 +69,7 @@ test('OpenAI Chat runtime gates require explicit staging-only configuration', ()
     modelId: 'gpt-5.6-terra',
     apiDialect: 'responses',
     safetyResponseFormat: 'json_schema',
+    productionApproved: false,
   })
   assert.equal(buildOpenAIChatRuntimeConfig({ NODE_ENV: 'production' }).mode, 'disabled')
   assert.throws(
@@ -102,6 +104,30 @@ test('OpenAI Chat runtime gates require explicit staging-only configuration', ()
     () => buildOpenAIChatRuntimeConfig({ CHAT_OPENAI_API_DIALECT: 'legacy' }),
     /must be one of: responses, chat_completions/,
   )
+})
+
+test('OpenAI Chat production runtime requires non-enumerable database routing approval', () => {
+  const productionSource = {
+    ...source,
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'production',
+    CHAT_PROVIDER_MODE: 'openai_production',
+    CHAT_OPENAI_CONFIRMATION: 'database-approved',
+  }
+  assert.throws(
+    () => buildOpenAIChatRuntimeConfig(productionSource),
+    /database-approved routing evidence/,
+  )
+  const approvedSource = attachProductionRuntimeApproval({ ...productionSource }, {
+    environment: 'production',
+    decisionId: 'decision-1',
+    routePolicyId: 'route-1',
+    deploymentId: 'deployment-1',
+    secretRefId: 'secret-1',
+  })
+  const config = buildOpenAIChatRuntimeConfig(approvedSource)
+  assert.equal(config.mode, 'openai_production')
+  assert.equal(config.productionApproved, true)
+  assert.equal(JSON.stringify(approvedSource).includes('decision-1'), false)
 })
 
 test('OpenAI Chat Completions dialect maps messages, attachments, endpoint, and token limit', () => {

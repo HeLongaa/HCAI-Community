@@ -1,4 +1,5 @@
 import { requireUser } from '../../common/http/auth.js'
+import { HttpError } from '../../common/errors/httpError.js'
 import { closeEventStream, openEventStream, writeEvent } from '../../common/http/eventStream.js'
 import { created, ok } from '../../common/http/responses.js'
 import { readJsonBody } from '../../common/http/request.js'
@@ -12,6 +13,7 @@ import { createChatRuntime } from '../../chat/chatRuntime.js'
 import { requireChatMessageCodec } from '../../chat/messageCrypto.js'
 import { createProviderControlPlane } from '../../creative/providerControlPlane.js'
 import { resolveModelRuntimeDeployment } from '../../modelControl/modelRuntimeResolver.js'
+import { acquireProviderOperationalLease } from '../../modelControl/providerOperationsService.js'
 import { repositories } from '../../repositories/index.js'
 
 export const registerChatRoutes = (router, options = {}) => {
@@ -32,6 +34,7 @@ export const registerChatRoutes = (router, options = {}) => {
     providerControlPlane: options.providerControlPlane ?? (requestRuntime.generationProvider
       ? createProviderControlPlane({ repository: routeRepositories.creativeProviderControls })
       : null),
+    providerOperationsGuard: options.providerOperationsGuard ?? requestRuntime.providerOperationsGuard ?? null,
     coordinator: options.coordinator,
     source,
     now: options.now,
@@ -84,7 +87,36 @@ export const registerChatRoutes = (router, options = {}) => {
       now: typeof options.now === 'function' ? options.now() : options.now ?? new Date(),
     })
     const routedRuntime = routed ? createChatRuntime({ source: routed.runtimeSource, fetchImpl: options.fetchImpl }) : runtime
-    const service = getService(routed ? { ...routedRuntime, generationProvider: { ...routedRuntime.generationProvider, modelVersionId: routed.modelVersionId, modelDeploymentId: routed.deploymentId, pricingVersionId: routed.pricingVersionId, modelRouteDecisionId: routed.decisionId } } : runtime)
+    const providerOperationsGuard = routed?.environment === 'production' ? {
+      acquire: async ({ sourceKey, estimateMicros, now }) => {
+        const secretRef = await routeRepositories.modelGovernance.findCurrentSecretRef({
+          providerId: routed.modelProviderId,
+          environment: routed.environment,
+          purpose: routed.secretPurpose,
+          now,
+        })
+        if (!secretRef || secretRef.id !== routed.secretRefId) {
+          throw new HttpError(503, 'MODEL_RUNTIME_ROUTE_UNAVAILABLE', 'Production SecretRef changed before dispatch', { reasonCode: 'production_secret_unapproved' })
+        }
+        return acquireProviderOperationalLease({
+          repositories: routeRepositories,
+          sourceKey,
+          estimateMicros,
+          now,
+          provider: { id: routed.modelProviderId, key: routed.providerKey },
+          deployment: { id: routed.deploymentId, environment: routed.environment },
+          secretRef,
+          workspace: 'chat',
+          modelFamily: routed.modelFamily,
+        })
+      },
+      release: ({ id, reasonCode, now }) => routeRepositories.providerOperations.releaseLease({ id, reasonCode, now }),
+    } : null
+    const service = getService(routed ? {
+      ...routedRuntime,
+      providerOperationsGuard,
+      generationProvider: { ...routedRuntime.generationProvider, modelVersionId: routed.modelVersionId, modelDeploymentId: routed.deploymentId, pricingVersionId: routed.pricingVersionId, modelRouteDecisionId: routed.decisionId },
+    } : runtime)
     const payload = parseCreateChatTurnRequest(await readJsonBody(request))
     const prepared = await service.prepareTurn(context.params.id, payload, actor)
     openEventStream(response)

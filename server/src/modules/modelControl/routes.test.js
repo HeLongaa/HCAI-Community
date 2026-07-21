@@ -26,6 +26,12 @@ test('model control routes isolate read and mutation permissions', async () => {
     assert.equal(member.status, 403)
     const readable = await requestJson(server.url, '/api/admin/model-control/providers', { method: 'GET', token: moderator })
     assert.equal(readable.status, 200)
+    const deniedReadiness = await requestJson(server.url, '/api/admin/model-control/chat-production-readiness', { method: 'GET', token: 'demo-access.promptlin' })
+    assert.equal(deniedReadiness.status, 403)
+    const readiness = await requestJson(server.url, '/api/admin/model-control/chat-production-readiness', { method: 'GET', token: moderator })
+    assert.equal(readiness.status, 200)
+    assert.equal(readiness.payload.data.decision, 'no_go')
+    assert.deepEqual(readiness.payload.data.blockerCodes, ['no_active_route_policy'])
     const deniedCreate = await requestJson(server.url, '/api/admin/model-control/providers', { token: moderator, body: { key: 'openai', name: 'OpenAI' } })
     assert.equal(deniedCreate.status, 403)
   } finally {

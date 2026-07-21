@@ -22,7 +22,7 @@ export const createChatRuntime = ({ source = process.env, fetchImpl = fetch } = 
     ? createChatStorageObjectReader({ source, fetchImpl })
     : async () => { throw new HttpError(503, 'CHAT_ATTACHMENT_BYTES_DISABLED', 'Chat attachment byte reading is disabled') }
   return Object.freeze({
-    mode: 'openai_staging',
+    mode: config.mode,
     generationProvider: Object.freeze({ id: 'openai-gpt-5-6-terra', mode: 'openai_chat', label: 'OpenAI GPT-5.6 Terra' }),
     providerCostPlanner: (payload) => assertOpenAIChatBudgetAllowsDispatch(buildOpenAIChatProviderCostMetadata(payload)),
     streamAdapter: (payload) => client.stream(payload),

@@ -108,6 +108,11 @@ export const createPrismaModelGovernanceRepository = (client, { modelEvaluation,
   },
   findPromotion: async (id) => promotionDto(await client.modelPromotion.findUnique({ where: { id: String(id) }, include: promotionInclude })),
   findPromotionByReleaseChange: async (releaseChangeId) => promotionDto(await client.modelPromotion.findUnique({ where: { releaseChangeId: String(releaseChangeId) }, include: promotionInclude })),
+  findDeployedPromotionForDeployment: async (modelDeploymentId) => promotionDto(await client.modelPromotion.findFirst({
+    where: { modelDeploymentId: String(modelDeploymentId), releaseChange: { status: 'deployed' } },
+    include: promotionInclude,
+    orderBy: { createdAt: 'desc' },
+  })),
   listPromotions: async (options) => {
     const pageCursor = options.cursor ? await client.modelPromotion.findUnique({ where: { id: options.cursor }, select: { id: true } }) : null
     return page(await client.modelPromotion.findMany({
