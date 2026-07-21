@@ -64,6 +64,55 @@ test('active route fails closed when SecretRef cannot be resolved', async () => 
   )
 })
 
+test('inactive or runtime-disabled deployment is rejected before credential resolution', async () => {
+  for (const blockedDeployment of [
+    { ...deployment, status: 'disabled' },
+    { ...deployment, runtimeEnabled: false },
+  ]) {
+    const blockedPolicy = {
+      ...policy,
+      targets: [{ ...policy.targets[0], deployment: blockedDeployment }],
+    }
+    let secretLookups = 0
+    const repositories = repositoriesFor({ policies: [blockedPolicy] })
+    repositories.modelGovernance.findCurrentSecretRef = async () => { secretLookups += 1; return null }
+    await assert.rejects(
+      resolveModelRuntimeDeployment({ repositories, modality: 'image', environment: 'staging', region: 'us', actor, baseSource: {} }),
+      (error) => error.code === 'MODEL_RUNTIME_ROUTE_UNAVAILABLE',
+    )
+    assert.equal(secretLookups, 0)
+  }
+})
+
 test('no active route preserves compatibility without pretending a model-control selection', async () => {
   assert.equal(await resolveModelRuntimeDeployment({ repositories: repositoriesFor({ policies: [] }), modality: 'image', actor, baseSource: {} }), null)
+})
+
+test('chat deployment maps database safety response format into runtime configuration', async () => {
+  const chatDeployment = {
+    ...deployment,
+    id: 'deployment-chat',
+    adapterType: 'openai_chat',
+    providerModelId: 'gpt-5.6-terra',
+    runtimeConfig: { apiDialect: 'chat_completions', safetyResponseFormat: 'text' },
+    modelVersion: {
+      ...deployment.modelVersion,
+      id: 'version-chat',
+      capabilities: [{ modality: 'chat', operations: ['generate'] }],
+    },
+  }
+  const chatPolicy = {
+    ...policy,
+    id: 'policy-chat',
+    modality: 'chat',
+    targets: [{ id: 'target-chat', modelDeploymentId: chatDeployment.id, role: 'primary', priority: 1, enabled: true, deployment: chatDeployment }],
+  }
+  const resolved = await resolveModelRuntimeDeployment({
+    repositories: repositoriesFor({ policies: [chatPolicy] }),
+    modality: 'chat',
+    actor,
+    baseSource: { NODE_ENV: 'production', CREATIVE_PROVIDER_RUNTIME_ENV: 'staging', ROUTER_IMAGE_TOKEN: 'deployment-secret' },
+  })
+  assert.equal(resolved.runtimeSource.CHAT_OPENAI_SAFETY_RESPONSE_FORMAT, 'text')
+  assert.equal(resolved.runtimeSource.CHAT_OPENAI_API_DIALECT, 'chat_completions')
 })

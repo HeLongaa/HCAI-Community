@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   buildOpenAIChatRequest,
+  buildOpenAIChatSafetyRequest,
   buildOpenAIChatProviderCostMetadata,
   buildOpenAIChatRuntimeConfig,
   assertOpenAIChatBudgetAllowsDispatch,
@@ -65,6 +66,8 @@ test('OpenAI Chat runtime gates require explicit staging-only configuration', ()
     token: '',
     baseUrl: 'https://api.openai.com/v1',
     modelId: 'gpt-5.6-terra',
+    apiDialect: 'responses',
+    safetyResponseFormat: 'json_schema',
   })
   assert.equal(buildOpenAIChatRuntimeConfig({ NODE_ENV: 'production' }).mode, 'disabled')
   assert.throws(
@@ -91,6 +94,30 @@ test('OpenAI Chat runtime gates require explicit staging-only configuration', ()
   assert.equal(router.baseUrl, 'https://router.example/v1')
   assert.equal(router.modelId, 'router-chat')
   assert.equal(buildOpenAIChatRequest({ request, context }, { modelId: router.modelId }).body.model, 'router-chat')
+  assert.throws(
+    () => buildOpenAIChatRuntimeConfig({ CHAT_OPENAI_SAFETY_RESPONSE_FORMAT: 'json_object' }),
+    /must be one of: json_schema, text/,
+  )
+  assert.throws(
+    () => buildOpenAIChatRuntimeConfig({ CHAT_OPENAI_API_DIALECT: 'legacy' }),
+    /must be one of: responses, chat_completions/,
+  )
+})
+
+test('OpenAI Chat Completions dialect maps messages, attachments, endpoint, and token limit', () => {
+  const mapped = buildOpenAIChatRequest({
+    request,
+    context: {
+      ...context,
+      attachments: [{ fileName: 'brief.txt', providerInput: { kind: 'text', text: 'Attachment body.' } }],
+    },
+  }, { modelId: 'gpt-5.6-terra', apiDialect: 'chat_completions' })
+  assert.equal(mapped.pathname, '/chat/completions')
+  assert.equal(mapped.body.max_tokens, 512)
+  assert.equal(mapped.body.stream_options.include_usage, true)
+  assert.equal(mapped.body.messages[0].role, 'system')
+  assert.equal(mapped.body.messages[1].content[1].type, 'text')
+  assert.equal('input' in mapped.body, false)
 })
 
 test('OpenAI Chat cost planning uses bounded token estimates and enforces the per-turn cap', () => {
@@ -136,6 +163,28 @@ test('OpenAI Chat client maps classified deltas and metered usage without leakin
   assert.equal(calls[0].options.headers.authorization, 'Bearer openai-chat-fixture-token')
   assert.equal(JSON.stringify(client).includes('openai-chat-fixture-token'), false)
   assert.equal(JSON.stringify(events).includes('openai-chat-fixture-token'), false)
+})
+
+test('OpenAI Chat Completions client maps streamed deltas, finish, and usage', async () => {
+  const calls = []
+  const client = createOpenAIChatClient({
+    source: { ...source, CHAT_OPENAI_API_DIALECT: 'chat_completions', CHAT_OPENAI_SAFETY_RESPONSE_FORMAT: 'text' },
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options })
+      return sseResponse(
+        { choices: [{ delta: { content: 'Safe answer' }, finish_reason: null }] },
+        { choices: [{ delta: {}, finish_reason: 'stop' }] },
+        { choices: [], usage: { prompt_tokens: 12, completion_tokens: 3 } },
+      )
+    },
+  })
+  const events = []
+  for await (const event of client.stream({ request, context })) events.push(event)
+  assert.equal(calls[0].url, 'https://api.openai.com/v1/chat/completions')
+  assert.deepEqual(events, [
+    { type: 'content.delta', text: 'Safe answer' },
+    { type: 'usage', usage: { inputTokens: 12, outputTokens: 3, metered: true } },
+  ])
 })
 
 test('OpenAI Chat client maps refusal and provider failures to safe errors', async () => {
@@ -204,6 +253,46 @@ test('OpenAI Chat safety client uses structured output and production evidence s
     source: 'production_classifier',
     usage: { inputTokens: 18, outputTokens: 4, metered: true },
   })
+})
+
+test('OpenAI Chat safety text mode changes only the Provider format and keeps strict decision validation', async () => {
+  const mapped = buildOpenAIChatSafetyRequest({ text: 'A benign request.', attachments: [] }, {
+    modelId: 'gpt-5.6-terra',
+    safetyResponseFormat: 'text',
+  })
+  assert.deepEqual(mapped.body.text, { format: { type: 'text' } })
+  assert.match(mapped.body.instructions, /Return only a JSON object/)
+  assert.match(mapped.body.instructions, /reasonCodes must be exactly \["SAFETY_ALLOWED_BASELINE"\]/)
+
+  const client = createOpenAIChatClient({
+    source: { ...source, CHAT_OPENAI_SAFETY_RESPONSE_FORMAT: 'text' },
+    fetchImpl: async (_url, options) => {
+      assert.equal(JSON.parse(options.body).text.format.type, 'text')
+      return new Response(JSON.stringify({
+        output_text: JSON.stringify({ disposition: 'allow', reasonCodes: ['SAFETY_ALLOWED_BASELINE'] }),
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    },
+  })
+  assert.equal((await client.classify({ text: 'A benign request.', attachments: [] })).disposition, 'allow')
+})
+
+test('OpenAI Chat Completions safety keeps strict JSON validation and maps usage', async () => {
+  const client = createOpenAIChatClient({
+    source: { ...source, CHAT_OPENAI_API_DIALECT: 'chat_completions', CHAT_OPENAI_SAFETY_RESPONSE_FORMAT: 'text' },
+    fetchImpl: async (url, options) => {
+      const body = JSON.parse(options.body)
+      assert.equal(url, 'https://api.openai.com/v1/chat/completions')
+      assert.equal(body.messages[0].role, 'system')
+      assert.equal('response_format' in body, false)
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({ disposition: 'allow', reasonCodes: ['SAFETY_ALLOWED_BASELINE'] }) } }],
+        usage: { prompt_tokens: 18, completion_tokens: 4 },
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    },
+  })
+  const decision = await client.classify({ text: 'A benign request.', attachments: [] })
+  assert.equal(decision.disposition, 'allow')
+  assert.deepEqual(decision.usage, { inputTokens: 18, outputTokens: 4, metered: true })
 })
 
 test('OpenAI Chat client rejects wrong response types, unknown events, and incomplete streams', async () => {
