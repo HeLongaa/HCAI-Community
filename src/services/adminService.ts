@@ -168,6 +168,7 @@ import type {
   ModelControlListQuery,
   ModelControlStatus,
   ModelControlSummaryDto,
+  ChatProductionReadinessDto,
   ModelGovernanceSummaryDto,
   ModelDeploymentDto,
   ModelDeploymentEnvironment,
@@ -456,6 +457,9 @@ export const adminService = {
   },
   async modelControlSummary() {
     return api.get<ModelControlSummaryDto>('/admin/model-control/summary')
+  },
+  async chatProductionReadiness() {
+    return api.get<ChatProductionReadinessDto>('/admin/model-control/chat-production-readiness')
   },
   async modelProviders(query?: ModelControlListQuery) {
     const envelope = await api.getEnvelope<ModelProviderDto[]>(withQuery('/admin/model-control/providers', query))

@@ -89,6 +89,15 @@ export const createSeedModelGovernanceRepository = ({ modelControl, modelRouting
       if (!row) return null
       return copy({ ...row, releaseChange: await releaseChanges.find(row.releaseChangeId), providerSecretRef: secretRefs.get(row.providerSecretRefId), evaluationRun: await modelEvaluation.findRun(row.evaluationRunId), legalReview: await providerLegal.findReview(row.legalReviewId) })
     },
+    findDeployedPromotionForDeployment: async (modelDeploymentId) => {
+      const candidates = [...promotions.values()].filter((item) => item.modelDeploymentId === String(modelDeploymentId)).sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      for (const row of candidates) {
+        const releaseChange = await releaseChanges.find(row.releaseChangeId)
+        if (releaseChange?.status !== 'deployed') continue
+        return copy({ ...row, releaseChange, providerSecretRef: secretRefs.get(row.providerSecretRefId), evaluationRun: await modelEvaluation.findRun(row.evaluationRunId), legalReview: await providerLegal.findReview(row.legalReviewId) })
+      }
+      return null
+    },
     listPromotions: async (options) => {
       const rows = []
       for (const row of sorted(promotions, 'createdAt', options.order)) {

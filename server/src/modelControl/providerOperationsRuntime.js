@@ -153,6 +153,8 @@ export const evaluateProviderOperationalReadiness = ({ profile, secretRef, contr
   const gates = []
   gates.push({ id: 'policy', allowed: ignorePolicyStatus || profile?.status === 'active', reasonCode: profile ? `provider_policy_${profile.status}` : 'provider_policy_missing' })
   gates.push({ id: 'secret', allowed: Boolean(secretRef) && (!secretRef.expiresAt || Date.parse(secretRef.expiresAt) > now.getTime()), reasonCode: !secretRef ? 'provider_secret_ref_missing' : Date.parse(secretRef.expiresAt ?? '9999-01-01') <= now.getTime() ? 'provider_secret_ref_expired' : null })
+  const perRequestAllowed = profile && BigInt(estimateMicros) <= BigInt(profile.perRequestBudgetMicros)
+  gates.push({ id: 'per_request_budget', allowed: Boolean(perRequestAllowed), reasonCode: profile ? 'provider_per_request_budget_exceeded' : 'provider_policy_missing' })
   const control = evaluateProviderControlSnapshot({ scopes: profile?.controlScopes ?? [], controls, capEvidence, circuit, estimateMicros, currency: profile?.currency, now })
   gates.push({ id: 'control_budget_circuit', allowed: control.allowed, reasonCode: control.reasonCode, blockedScopeKey: control.blockedScopeKey ?? null })
   const healthCurrent = health && Date.parse(health.expiresAt) > now.getTime()

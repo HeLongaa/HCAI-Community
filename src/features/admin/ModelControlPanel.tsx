@@ -3,7 +3,7 @@ import { Archive, Ban, Boxes, Download, FlaskConical, History, KeyRound, Play, P
 
 import type { Permission } from '../../domain/types'
 import { adminService } from '../../services/adminService'
-import type { AiEvaluationPolicyDto, AiEvaluationRunDto, AiEvaluationSuiteDto, AiEvaluationSummaryDto, ModelCatalogModelDto, ModelCapabilityModality, ModelControlStatus, ModelControlSummaryDto, ModelDeploymentDto, ModelDeploymentEnvironment, ModelGovernanceSummaryDto, ModelPromotionDto, ModelProviderDto, ModelRouteDecisionDto, ModelRoutePolicyDto, ModelRoutePreviewResult, ModelRouteRevisionDto, ModelRouteSummaryDto, ModelVersionDto, ProviderLegalReviewDto, ProviderLegalSummaryDto, ProviderOperationalPolicyDto, ProviderOperationsSummaryDto, ProviderSecretRefDto } from '../../services/contracts'
+import type { AiEvaluationPolicyDto, AiEvaluationRunDto, AiEvaluationSuiteDto, AiEvaluationSummaryDto, ChatProductionReadinessDto, ModelCatalogModelDto, ModelCapabilityModality, ModelControlStatus, ModelControlSummaryDto, ModelDeploymentDto, ModelDeploymentEnvironment, ModelGovernanceSummaryDto, ModelPromotionDto, ModelProviderDto, ModelRouteDecisionDto, ModelRoutePolicyDto, ModelRoutePreviewResult, ModelRouteRevisionDto, ModelRouteSummaryDto, ModelVersionDto, ProviderLegalReviewDto, ProviderLegalSummaryDto, ProviderOperationalPolicyDto, ProviderOperationsSummaryDto, ProviderSecretRefDto } from '../../services/contracts'
 
 type Mode = 'providers' | 'models' | 'versions' | 'routes'
 type GovernanceMode = 'operations' | 'evaluations' | 'legal' | 'decisions' | 'secrets' | 'promotions'
@@ -12,6 +12,19 @@ const transitions: Record<ModelControlStatus, ModelControlStatus[]> = {
   draft: ['active', 'archived'], active: ['disabled', 'deprecated'], disabled: ['active', 'archived'], deprecated: ['disabled', 'archived'], archived: [],
 }
 const splitValues = (value: string) => value.split(',').map((item) => item.trim()).filter(Boolean)
+const readinessReasonZh: Record<string, string> = {
+  no_active_route_policy: '没有启用的生产对话路由', no_route_targets: '生产路由没有目标', provider_approval_required: '部署尚未取得生产流量资格',
+  deployment_inactive: '生产部署未启用', deployment_runtime_disabled: '生产运行开关未启用', provider_secret_ref_missing: '缺少当前生产密钥引用',
+  provider_secret_unresolved: '生产密钥引用尚未连接到运行环境', production_promotion_missing: '缺少已发布的生产批准',
+  production_promotion_route_mismatch: '生产批准与当前路由不一致', production_secret_unapproved: '当前密钥版本未获生产批准',
+  production_evaluation_invalid: '模型评测缺失或已过期', production_legal_invalid: '法务审查缺失、已过期或不是当前版本',
+  provider_operational_repository_missing: '运营限制服务不可用', provider_operational_policy_missing: '缺少生产运营策略', provider_policy_draft: '生产运营策略尚未启用', provider_policy_disabled: '生产运营策略已停用',
+  provider_cap_evidence_missing: '缺少金额上限', provider_cap_evidence_expired: '金额上限已过期', provider_cap_insufficient: '剩余金额不足',
+  provider_per_request_budget_exceeded: '单次请求金额超过后台上限',
+  provider_kill_switch_active: '紧急关闭开关已开启', provider_circuit_open: 'Provider 熔断已开启', provider_circuit_probe_required: 'Provider 正在等待恢复检查',
+  provider_health_missing: '缺少 Provider 健康检查', provider_health_expired: 'Provider 健康检查已过期', provider_health_unavailable: 'Provider 当前不可用',
+  provider_rate_limit_exhausted: '每分钟调用次数已用完', provider_concurrency_limit_exhausted: '并发数已用完',
+}
 type ModelControlItem = ModelProviderDto | ModelCatalogModelDto | ModelVersionDto | ModelRoutePolicyDto
 const itemLabel = (item: ModelControlItem) => 'name' in item ? item.name : item.versionKey
 const itemKey = (item: ModelControlItem) => 'key' in item ? item.key : item.versionKey
@@ -41,6 +54,7 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
   const [legalReviews, setLegalReviews] = useState<ProviderLegalReviewDto[]>([])
   const [governanceMode, setGovernanceMode] = useState<GovernanceMode>('decisions')
   const [summary, setSummary] = useState<ModelControlSummaryDto | null>(null)
+  const [chatProductionReadiness, setChatProductionReadiness] = useState<ChatProductionReadinessDto | null>(null)
   const [routeSummary, setRouteSummary] = useState<ModelRouteSummaryDto | null>(null)
   const [governanceSummary, setGovernanceSummary] = useState<ModelGovernanceSummaryDto | null>(null)
   const [operationsSummary, setOperationsSummary] = useState<ProviderOperationsSummaryDto | null>(null)
@@ -57,6 +71,7 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [reasonCode, setReasonCode] = useState('catalog_reviewed')
+  const [chatRollbackEvidenceUrl, setChatRollbackEvidenceUrl] = useState('')
   const [providerDraft, setProviderDraft] = useState({ key: '', name: '', websiteUrl: '', regions: '', dataProcessingRegions: '' })
   const [modelDraft, setModelDraft] = useState({ providerId: '', key: '', name: '', family: '' })
   const [versionDraft, setVersionDraft] = useState({ modelId: '', versionKey: '', contextWindow: '', maxOutputUnits: '' })
@@ -84,12 +99,13 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
   const canManageEvaluations = hasPermission('admin:model-evaluations:manage')
   const canExecuteEvaluations = hasPermission('admin:model-evaluations:execute')
   const canManageLegal = hasPermission('admin:provider-legal:manage')
+  const canDeployRelease = hasPermission('admin:releases:deploy')
 
   const refresh = useCallback(async () => {
     setBusy(true); setError(null)
     try {
       const query = { search: search || null, status: status || null, limit: 100, sort: 'updatedAt' as const, order: 'desc' as const }
-      const [providerPage, modelPage, versionPage, deploymentPage, routePage, decisionPage, secretPage, promotionPage, operationsPage, suitePage, policyPage, runPage, legalPage, nextSummary, nextRouteSummary, nextGovernanceSummary, nextOperationsSummary, nextEvaluationSummary, nextLegalSummary] = await Promise.all([
+      const [providerPage, modelPage, versionPage, deploymentPage, routePage, decisionPage, secretPage, promotionPage, operationsPage, suitePage, policyPage, runPage, legalPage, nextSummary, nextChatProductionReadiness, nextRouteSummary, nextGovernanceSummary, nextOperationsSummary, nextEvaluationSummary, nextLegalSummary] = await Promise.all([
         adminService.modelProviders(mode === 'providers' ? query : { limit: 100 }),
         adminService.catalogModels(mode === 'models' ? query : { limit: 100 }),
         adminService.modelVersions(mode === 'versions' ? query : { limit: 100 }),
@@ -104,13 +120,14 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
         adminService.evaluationRuns(),
         adminService.providerLegalReviews(),
         adminService.modelControlSummary(),
+        adminService.chatProductionReadiness(),
         adminService.modelRouteSummary(),
         adminService.modelGovernanceSummary(),
         adminService.providerOperationsSummary(),
         adminService.evaluationSummary(),
         adminService.providerLegalSummary(),
       ])
-      setProviders(providerPage.items); setModels(modelPage.items); setVersions(versionPage.items); setDeployments(deploymentPage.items); setRoutes(routePage.items); setRouteDecisions(decisionPage.items); setSecretRefs(secretPage.items); setPromotions(promotionPage.items); setProviderOperations(operationsPage.items); setEvaluationSuites(suitePage.items); setEvaluationPolicies(policyPage.items); setEvaluationRuns(runPage.items); setLegalReviews(legalPage.items); setSummary(nextSummary); setRouteSummary(nextRouteSummary); setGovernanceSummary(nextGovernanceSummary); setOperationsSummary(nextOperationsSummary); setEvaluationSummary(nextEvaluationSummary); setLegalSummary(nextLegalSummary); setEvaluationReferenceTime(Date.now())
+      setProviders(providerPage.items); setModels(modelPage.items); setVersions(versionPage.items); setDeployments(deploymentPage.items); setRoutes(routePage.items); setRouteDecisions(decisionPage.items); setSecretRefs(secretPage.items); setPromotions(promotionPage.items); setProviderOperations(operationsPage.items); setEvaluationSuites(suitePage.items); setEvaluationPolicies(policyPage.items); setEvaluationRuns(runPage.items); setLegalReviews(legalPage.items); setSummary(nextSummary); setChatProductionReadiness(nextChatProductionReadiness); setRouteSummary(nextRouteSummary); setGovernanceSummary(nextGovernanceSummary); setOperationsSummary(nextOperationsSummary); setEvaluationSummary(nextEvaluationSummary); setLegalSummary(nextLegalSummary); setEvaluationReferenceTime(Date.now())
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally { setBusy(false) }
@@ -134,6 +151,26 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
   const run = async (action: () => Promise<void>, success: string) => {
     setBusy(true); setError(null)
     try { await action(); notify(success); await refresh() } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) } finally { setBusy(false) }
+  }
+  const emergencyDisableChatProduction = () => {
+    const route = chatProductionReadiness?.checks?.route
+    if (!route || route.status !== 'active') return
+    void run(async () => {
+      await adminService.transitionModelRoutePolicy(route.id, route.version, 'disabled', 'chat_production_emergency_stop')
+    }, isZh ? '生产对话路由已真实停用。' : 'Chat production route disabled.')
+  }
+  const rollbackChatProduction = () => {
+    const promotion = chatProductionReadiness?.checks?.promotion
+    const deployment = chatProductionReadiness?.checks?.deployment
+    if (!promotion || promotion.status !== 'deployed' || !deployment || !chatRollbackEvidenceUrl) return
+    void run(async () => {
+      await adminService.rollbackReleaseChange(promotion.releaseChangeId, {
+        deploymentId: deployment.id,
+        evidenceUrl: chatRollbackEvidenceUrl,
+        reasonCode: 'chat_production_emergency_rollback',
+      })
+      setChatRollbackEvidenceUrl('')
+    }, isZh ? '生产对话发布已真实回滚。' : 'Chat production release rolled back.')
   }
   const create = () => void run(async () => {
     if (mode === 'providers') {
@@ -291,6 +328,30 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
         </div>
       </header>
       <div className="model-control-gate"><ShieldCheck size={18} /><strong>{isZh ? 'Provider 流量受提升审批控制' : 'Provider traffic is promotion-gated'}</strong><span>{summary?.providerTrafficEnabled ? (isZh ? '存在已启用生产流量' : 'Production traffic enabled') : (isZh ? '当前无生产流量' : 'No production traffic')} · {routeSummary?.policyCount ?? 0} {isZh ? '条路由' : 'routes'}</span></div>
+      <div className="model-control-gate" data-testid="chat-production-readiness" data-status={chatProductionReadiness?.decision ?? 'loading'}>
+        <ShieldCheck size={18} />
+        <strong>{chatProductionReadiness?.ready ? (isZh ? '对话生产条件已齐全' : 'Chat production is ready') : (isZh ? '对话生产暂不可开启' : 'Chat production is not ready')}</strong>
+        <span>{chatProductionReadiness?.ready
+          ? `${chatProductionReadiness.checks?.provider?.key ?? 'Provider'} · ${chatProductionReadiness.checks?.deployment?.providerModelId ?? ''}`
+          : (chatProductionReadiness?.blockerCodes.length
+              ? chatProductionReadiness.blockerCodes.map((code) => isZh ? readinessReasonZh[code] ?? code : code).join(isZh ? '；' : '; ')
+              : (isZh ? '正在检查生产条件' : 'Checking production requirements'))}</span>
+        {chatProductionReadiness?.checks && <small className="chat-production-checks">
+          {isZh ? '路由' : 'Route'}: {chatProductionReadiness.checks.route?.status ?? 'missing'} · {isZh ? '部署' : 'Deployment'}: {chatProductionReadiness.checks.deployment?.status ?? 'missing'} · {isZh ? '流量资格' : 'Traffic'}: {chatProductionReadiness.checks.deployment?.trafficEligible ? 'yes' : 'no'} · SecretRef: {chatProductionReadiness.checks.secretRef?.externalVersion ?? 'missing'} · {isZh ? '发布' : 'Promotion'}: {chatProductionReadiness.checks.promotion?.status ?? 'missing'} · {isZh ? '评测' : 'Evaluation'}: {chatProductionReadiness.checks.evaluation?.status ?? 'missing'} · {isZh ? '法务' : 'Legal'}: {chatProductionReadiness.checks.legal?.decision ?? 'missing'}
+          {' · '}{isZh ? '运营限制' : 'Operations'}: {chatProductionReadiness.checks.operational?.readiness.ready ? 'ready' : chatProductionReadiness.checks.operational?.readiness.reasonCode ?? 'missing'}
+          {' · '}{isZh ? '次数' : 'Rate'}: {chatProductionReadiness.checks.operational?.rate?.requestCount ?? 0}/{chatProductionReadiness.checks.operational?.profile?.maxRequestsPerMinute ?? 0}
+          {' · '}{isZh ? '并发' : 'Concurrency'}: {chatProductionReadiness.checks.operational?.rate?.inFlightCount ?? 0}/{chatProductionReadiness.checks.operational?.profile?.maxConcurrentRequests ?? 0}
+          {' · '}{isZh ? '余额' : 'Budget'}: {chatProductionReadiness.checks.operational?.budget?.remainingMicros ?? 'missing'} {chatProductionReadiness.checks.operational?.budget?.currency ?? ''}
+          {' · '}{isZh ? '健康' : 'Health'}: {chatProductionReadiness.checks.operational?.health?.status ?? 'missing'} · {isZh ? '熔断' : 'Circuit'}: {chatProductionReadiness.checks.operational?.circuit?.status ?? 'missing'}
+        </small>}
+        {(canTransition || canDeployRelease) && chatProductionReadiness?.checks && <div className="chat-production-actions" data-testid="chat-production-actions">
+          {canTransition && chatProductionReadiness.checks.route?.status === 'active' && <button className="ghost-button danger" type="button" onClick={emergencyDisableChatProduction} disabled={busy}><Ban size={16} />{isZh ? '紧急停用' : 'Emergency disable'}</button>}
+          {canDeployRelease && chatProductionReadiness.checks.promotion?.status === 'deployed' && <>
+            <input aria-label={isZh ? '生产回滚证据地址' : 'Production rollback evidence URL'} placeholder="https://..." value={chatRollbackEvidenceUrl} onChange={(event) => setChatRollbackEvidenceUrl(event.target.value)} />
+            <button className="ghost-button danger" type="button" onClick={rollbackChatProduction} disabled={busy || !chatRollbackEvidenceUrl}><RotateCcw size={16} />{isZh ? '回滚发布' : 'Rollback release'}</button>
+          </>}
+        </div>}
+      </div>
       <div className="chip-row" role="tablist">
         {(['providers', 'models', 'versions', 'routes'] as Mode[]).map((item) => <button key={item} type="button" className={mode === item ? 'chip active' : 'chip'} onClick={() => changeMode(item)}>{({ providers: isZh ? 'Provider' : 'Providers', models: isZh ? '模型' : 'Models', versions: isZh ? '版本' : 'Versions', routes: isZh ? '路由' : 'Routing' })[item]}</button>)}
       </div>

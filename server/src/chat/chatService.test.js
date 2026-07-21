@@ -257,12 +257,17 @@ test('Chat service checks Provider controls before classification and settles co
     yield { type: 'usage', usage: { inputTokens: 20, outputTokens: 4, metered: true } }
   }
   const controlResults = []
+  const operationalCalls = []
   const allowed = setup({
     generationProvider: { id: 'openai-gpt-5-6-terra', mode: 'openai_chat', label: 'OpenAI GPT-5.6 Terra' },
     providerCostPlanner: planner,
     providerControlPlane: {
       assertDispatchAllowed: async () => ({ allowed: true }),
       recordResult: async (payload) => { controlResults.push(payload) },
+    },
+    providerOperationsGuard: {
+      acquire: async (payload) => { operationalCalls.push(['acquire', payload]); return { lease: { id: 'chat-operations-lease' }, snapshot: { profile: { id: 'chat-production-operations' }, budget: { currency: 'USD', capMicros: '1000000', remainingMicros: '900000' } } } },
+      release: async (payload) => { operationalCalls.push(['release', payload]); return { id: payload.id, status: 'released' } },
     },
     streamAdapter: meteredStream,
     inputSafetyClassifier: async () => ({
@@ -284,6 +289,9 @@ test('Chat service checks Provider controls before classification and settles co
   const prepared = await allowed.service.prepareTurn(conversation.id, input(), actor)
   const reserved = await allowed.repositories.creativeProviderCosts.findForGeneration(prepared.turn.generationId)
   assert.equal(reserved.status, 'reserved')
+  assert.equal(reserved.budgetWindow.budgetScope, 'provider-operations:chat-production-operations')
+  assert.equal(reserved.budgetWindow.capMicros, '1000000')
+  assert.equal(reserved.budgetWindow.spentMicros, '100000')
   assert.equal((await allowed.repositories.creativeGenerations.find(prepared.turn.generationId)).providerId, 'openai-gpt-5-6-terra')
   const completed = await allowed.service.streamPreparedTurn(prepared, actor, () => {}, new AbortController().signal)
   assert.deepEqual(completed.usage, { inputTokens: 35, outputTokens: 6, metered: true })
@@ -292,6 +300,25 @@ test('Chat service checks Provider controls before classification and settles co
   assert.equal(settled.actualMicros, '178')
   assert.equal(controlResults.length, 1)
   assert.equal(controlResults[0].error, null)
+  assert.equal(operationalCalls.filter(([action]) => action === 'acquire').length, 1)
+  assert.equal(operationalCalls.filter(([action]) => action === 'release').length, 1)
+  assert.equal(operationalCalls[1][1].id, 'chat-operations-lease')
+})
+
+test('Chat service releases the production operations lease when dispatch preparation fails', async () => {
+  const calls = []
+  const runtime = setup({
+    generationProvider: { id: 'openai-gpt-5-6-terra', mode: 'openai_chat', label: 'OpenAI GPT-5.6 Terra' },
+    providerCostPlanner: (payload) => assertOpenAIChatBudgetAllowsDispatch(buildOpenAIChatProviderCostMetadata(payload)),
+    providerOperationsGuard: {
+      acquire: async () => { calls.push('acquire'); return { lease: { id: 'lease-preparation-failure' } } },
+      release: async () => { calls.push('release') },
+    },
+    providerControlPlane: { assertDispatchAllowed: async () => { throw Object.assign(new Error('circuit open'), { code: 'CREATIVE_PROVIDER_CIRCUIT_OPEN' }) } },
+  })
+  const conversation = await runtime.service.createConversation({ mode: 'assistant' }, actor)
+  await assert.rejects(runtime.service.prepareTurn(conversation.id, input({ clientTurnId: 'lease-failure-turn' }), actor), { code: 'CREATIVE_PROVIDER_CIRCUIT_OPEN' })
+  assert.deepEqual(calls, ['acquire', 'release'])
 })
 
 test('Chat service reconciles incomplete Provider usage after a stopped stream', async () => {
