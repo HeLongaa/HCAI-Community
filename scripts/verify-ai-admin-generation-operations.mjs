@@ -8,7 +8,7 @@ const [routes, service, parsers, ui, client, openapi, tests, routeTests, e2e, do
   read(contract.evidence.routes),
   read(contract.evidence.service),
   read(contract.evidence.parsers),
-  read(contract.evidence.ui),
+  Promise.all(contract.evidence.ui.map(read)).then((sources) => sources.join('\n')),
   read(contract.evidence.client),
   read(contract.evidence.openapi),
   read(contract.evidence.tests),

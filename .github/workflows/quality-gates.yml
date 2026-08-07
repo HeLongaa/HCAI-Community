@@ -32,10 +32,10 @@ jobs:
     if: github.event_name != 'workflow_dispatch' || inputs.smoke_profile == 'fixture'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
           cache: npm
@@ -160,10 +160,10 @@ jobs:
       CREATIVE_STAGING_SMOKE_MODE: ${{ vars.CREATIVE_STAGING_SMOKE_MODE }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
           cache: npm
@@ -205,10 +205,10 @@ jobs:
       RELEASE_REHEARSAL_BACKUP_BUCKET: ${{ vars.RELEASE_REHEARSAL_BACKUP_BUCKET }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
           cache: npm
@@ -233,7 +233,7 @@ jobs:
 
       - name: Upload sanitized rehearsal evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-infrastructure-rehearsal
           path: .artifacts/release-infrastructure/latest.json
@@ -254,10 +254,10 @@ jobs:
       RELEASE_REHEARSAL_ROLLBACK_COMMAND_JSON: ${{ vars.RELEASE_REHEARSAL_ROLLBACK_COMMAND_JSON }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
 
@@ -269,7 +269,7 @@ jobs:
 
       - name: Upload sanitized application release evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-application-rehearsal
           path: .artifacts/release-application/latest.json

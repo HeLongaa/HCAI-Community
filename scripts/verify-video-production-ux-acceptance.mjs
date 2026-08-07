@@ -11,7 +11,8 @@ const lifecycle = fs.readFileSync(path.join(root, 'server/src/creative/videoProv
 const runtimeResolver = fs.readFileSync(path.join(root, 'server/src/modelControl/modelRuntimeResolver.js'), 'utf8')
 const modelControlE2e = fs.readFileSync(path.join(root, 'e2e/model-control.spec.ts'), 'utf8')
 const adminRoutes = fs.readFileSync(path.join(root, 'server/src/modules/admin/routes.js'), 'utf8')
-const adminUi = fs.readFileSync(path.join(root, 'src/features/admin/AdminPage.tsx'), 'utf8')
+const adminGenerationUi = fs.readFileSync(path.join(root, 'src/features/admin/AdminGenerationRecordsPanel.tsx'), 'utf8')
+const adminGenerationOperations = fs.readFileSync(path.join(root, 'src/features/admin/useAdminGenerationOperations.ts'), 'utf8')
 const checks = []
 const check = (name, pass, detail = '') => checks.push({ name, pass: Boolean(pass), detail })
 
@@ -30,7 +31,13 @@ check('missing trusted price remains reconciliation-required', contract.costReco
 check('model runtime injects only the selected price version', runtimeResolver.includes('routerVideoPricingSource') && runtimeResolver.includes('CREATIVE_ROUTER_VIDEO_PRICING_SOURCE_REF'))
 check('Admin pricing controls expose unit, effective dates, and activation', modelControlE2e.includes("getByLabel('Pricing unit')") && modelControlE2e.includes("getByLabel('Pricing effective from')") && modelControlE2e.includes("name: 'Activate'"))
 check('manual settlement is protected and hashes evidence', contract.costReconciliation.manualSettlementPermission === 'admin:accounting:repair' && contract.costReconciliation.manualEvidenceStoredAsHash === true && adminRoutes.includes("requirePermission(context, 'admin:accounting:repair')") && adminRoutes.includes('evidenceRefHash'))
-check('Admin cost detail exposes an explicit settlement form', adminUi.includes("'Confirm actual Provider cost'") && adminUi.includes('settleCreativeGenerationProviderCost'))
+check('Admin cost detail exposes an explicit settlement form',
+  adminGenerationUi.includes("'Confirm actual Provider cost'") &&
+  adminGenerationUi.includes("'Actual Provider cost USD'") &&
+  adminGenerationUi.includes("'Provider cost evidence reference'") &&
+  adminGenerationUi.includes("'Provider cost settlement reason'") &&
+  adminGenerationUi.includes("onSettleProviderCost()") &&
+  adminGenerationOperations.includes('adminService.settleCreativeGenerationProviderCost'))
 check('mobile acceptance uses 390x844', contract.mobile.viewport.width === 390 && contract.mobile.viewport.height === 844)
 check('all declared evidence exists', contract.evidence.every((file) => fs.existsSync(path.join(root, file))), contract.evidence.join(', '))
 check('Video prompt has an accessible name', ui.includes("aria-label={textFor(t, 'Video prompt', '视频提示词')}"))

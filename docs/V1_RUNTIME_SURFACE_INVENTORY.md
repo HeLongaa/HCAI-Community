@@ -26,7 +26,7 @@ This document records every known demo, mock, catalog, seed, fixture, and fallba
 | `frontend-static-plan-api-catalog` | Pricing reads a validated public catalog configuration and disables purchase when none is approved | Replace only with approved product content | V1-39, V1-40, V1-70, V1-78 |
 | `frontend-points-demo-ledger` | Production uses the Points API or an explicit unavailable ledger | Retain API-only/error behavior | V1-39, V1-40, V1-65 |
 | `frontend-runtime-source-labels` | Task, Community, and Points workflows expose explicit API-unavailable copy and never label local fallback as successful data | Retain explicit unavailable states without source-classification labels | V1-02, V1-39 |
-Frontend source has no direct import of `src/data/mockData.ts`. The runtime verifier requires the import set to remain empty.
+The legacy `src/data/mockData.ts` module has been removed. The runtime verifier rejects any renewed frontend import or equivalent production fallback.
 
 ## Server Inventory
 

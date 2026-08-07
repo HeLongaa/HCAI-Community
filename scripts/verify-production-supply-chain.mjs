@@ -7,6 +7,13 @@ const contractPath = path.join(root, 'config/production-supply-chain-contract.js
 const contract = JSON.parse(fs.readFileSync(contractPath, 'utf8'))
 const exceptions = JSON.parse(fs.readFileSync(path.join(root, contract.vulnerabilityPolicy.exceptionFile), 'utf8'))
 const workflow = fs.readFileSync(path.join(root, contract.ciWorkflow), 'utf8')
+const workflowDirectory = path.join(root, '.github/workflows')
+const workflowFiles = fs.readdirSync(workflowDirectory)
+  .filter((file) => /\.ya?ml$/i.test(file))
+  .sort()
+const allWorkflows = workflowFiles
+  .map((file) => fs.readFileSync(path.join(workflowDirectory, file), 'utf8'))
+  .join('\n')
 const dockerfile = fs.readFileSync(path.join(root, contract.dockerfile), 'utf8')
 const compose = fs.readFileSync(path.join(root, 'infra/production.compose.yml'), 'utf8')
 const packageDocument = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
@@ -60,7 +67,7 @@ for (const exception of exceptions.exceptions ?? []) {
   exceptionKeys.add(key)
 }
 
-const actionReferences = workflow.split('\n')
+const actionReferences = allWorkflows.split('\n')
   .map((line) => line.trim())
   .filter((line) => line.startsWith('uses: '))
   .map((line) => line.slice('uses: '.length))
@@ -74,12 +81,12 @@ const workflowJob = (jobId) => {
 }
 const prBuildJob = workflowJob('build-scan-pr')
 const registryBuildJob = workflowJob('build-scan-registry')
-add('Every GitHub Action is pinned to a full commit SHA', actionReferences.length > 0 && actionReferences.every((reference) => {
+add('Every repository GitHub Action is pinned to a full commit SHA', actionReferences.length > 0 && actionReferences.every((reference) => {
   const revision = reference.split(/\s+#/, 1)[0].split('@').at(-1)
   return /^[a-f0-9]{40}$/.test(revision)
 }), actionReferences.join(', '))
 for (const [action, revision] of Object.entries(contract.githubActions)) {
-  add(`${action} uses the approved revision`, workflow.includes(`${action}@${revision}`), revision)
+  add(`${action} uses the approved revision`, allWorkflows.includes(`${action}@${revision}`), revision)
 }
 add('PR builds load exact local images with a read-only token', prBuildJob.includes('load: true') && prBuildJob.includes("github.event_name == 'pull_request'") && prBuildJob.includes('contents: read') && !/^\s+[a-z-]+:\s*write\s*$/m.test(prBuildJob), 'build-scan-pr contents: read')
 add('Protected branch builds push to GHCR', registryBuildJob.includes('registry: ghcr.io') && registryBuildJob.includes('push: true') && registryBuildJob.includes("github.event_name != 'pull_request'"), 'ghcr.io')

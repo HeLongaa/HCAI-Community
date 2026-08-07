@@ -35,7 +35,11 @@
     "routes": "server/src/modules/admin/routes.js",
     "service": "server/src/creative/generationBulkActionService.js",
     "parsers": "server/src/contracts/requestParsers.js",
-    "ui": "src/features/admin/AdminPage.tsx",
+    "ui": [
+      "src/features/admin/AdminPage.tsx",
+      "src/features/admin/AdminGenerationRecordsPanel.tsx",
+      "src/features/admin/AdminGenerationRecoveryPanel.tsx"
+    ],
     "client": "src/services/adminService.ts",
     "openapi": "server/src/docs/openapi.js",
     "tests": "server/src/creative/generationBulkActionService.test.js",

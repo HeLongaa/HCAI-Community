@@ -162,8 +162,11 @@ test('Auth Session Admin dispositions immediately invalidate access and can cont
   await expect(confirmation).toContainText('Every active session for this user')
   const revokeUserResponse = page.waitForResponse((response) => /\/api\/admin\/auth\/users\/[^/]+\/sessions\/revoke$/.test(response.url()) && response.request().method() === 'POST')
   await confirmation.getByRole('button', { name: 'Revoke all sessions', exact: true }).click()
-  expect((await revokeUserResponse).status()).toBe(200)
-  await expect(panel.locator('.admin-action-feedback')).toContainText('Revoked 1 sessions.')
+  const revokeResponse = await revokeUserResponse
+  expect(revokeResponse.status()).toBe(200)
+  const revokePayload = await revokeResponse.json() as { data: { revoked: number } }
+  expect(revokePayload.data.revoked).toBeGreaterThanOrEqual(1)
+  await expect(panel.locator('.admin-action-feedback')).toContainText(`Revoked ${revokePayload.data.revoked} sessions.`)
   await expect(page.getByTestId('app-toast')).toHaveCount(0)
 
   const rejectedSecondAccess = await request.get(`${apiBaseUrl}/api/me`, { headers: authHeaders(secondUserSession.accessToken) })

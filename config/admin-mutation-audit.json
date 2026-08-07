@@ -207,5 +207,9 @@
     ,{ "method": "POST", "path": "/api/admin/inspiration/:id/review", "action": "inspiration.review.decision", "resourceType": "inspiration_entry", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
     ,{ "method": "POST", "path": "/api/admin/inspiration/:id/archive", "action": "inspiration.archived", "resourceType": "inspiration_entry", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
     ,{ "method": "POST", "path": "/api/admin/inspiration/:id/restore", "action": "inspiration.restored", "resourceType": "inspiration_entry", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
+    ,{ "method": "POST", "path": "/api/admin/security/incidents", "action": "admin.security.incident_created", "resourceType": "security_incident", "resourceParam": null, "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
+    ,{ "method": "POST", "path": "/api/admin/security/incidents/:id/events", "action": "admin.security.incident_events_attached", "resourceType": "security_incident", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
+    ,{ "method": "POST", "path": "/api/admin/security/incidents/:id/resolve", "action": "admin.security.incident_resolved", "resourceType": "security_incident", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
+    ,{ "method": "POST", "path": "/api/admin/provider-alert-deliveries/:id/replay", "action": "admin.provider_alert.delivery_replayed", "resourceType": "provider_alert_delivery", "resourceParam": "id", "reasonCode": "request_reason", "mode": "domain_audited", "risk": "critical" }
   ]
 }

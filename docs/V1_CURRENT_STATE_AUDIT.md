@@ -36,7 +36,7 @@ Production classification must fail closed: a production surface is either backe
 
 The following are intentional today and must be removed, isolated to development/test, or converted into an explicit unavailable state before V1 production:
 
-- `src/data/mockData.ts` and frontend demo-fallback resource paths.
+- Frontend demo-fallback resource paths that remain explicitly unavailable; the legacy `src/data/mockData.ts` module has been removed.
 - Local simulated reactions in Music, Chat, Video, Explore, catalog, player, and selected profile/community presentation flows.
 - `mock://` media upload/download contracts outside tests and local development.
 - Deterministic creative `mock` execution in production.

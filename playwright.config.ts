@@ -27,7 +27,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `NODE_ENV=test PORT=${apiPort} DATABASE_URL= CHAT_MOCK_STREAM_DELAY_MS=150 CHAT_MESSAGE_ENCRYPTION_KEY=CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg= npm --prefix server run start:e2e`,
+      command: `NODE_ENV=test PORT=${apiPort} DATABASE_URL= AUTH_TRUSTED_ORIGINS=${webOrigin} CHAT_MOCK_STREAM_DELAY_MS=150 CHAT_MESSAGE_ENCRYPTION_KEY=CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg= npm --prefix server run start:e2e`,
       url: `${apiOrigin}/health`,
       reuseExistingServer,
       timeout: 30_000,

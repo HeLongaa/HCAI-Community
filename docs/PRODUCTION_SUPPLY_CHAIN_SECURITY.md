@@ -41,7 +41,7 @@ node scripts/verify-production-supply-chain.mjs \
 
 ## GitHub Actions
 
-`.github/workflows/container-supply-chain.yml` 独立执行供应链门禁，所有第三方 Action 都固定完整 commit SHA。
+`.github/workflows/container-supply-chain.yml` 独立执行供应链门禁；仓库内全部工作流的第三方 Action 都固定完整 commit SHA。Checkout、Setup Node 和 Artifact 上传/下载均使用 Node 24 运行版，避免依赖 GitHub Runner 对 Node 20 Action 的临时兼容执行。
 
 - Pull Request：在独立只读 job 中用 Buildx 构建并加载四个本地镜像，扫描构建出的精确镜像，不推送 registry；令牌只授予 `contents: read`。
 - `main`、`master` 或手工运行：登录 GHCR，按提交 SHA 推送四个镜像，启用 BuildKit `sbom: true` 和 `provenance: mode=max`。

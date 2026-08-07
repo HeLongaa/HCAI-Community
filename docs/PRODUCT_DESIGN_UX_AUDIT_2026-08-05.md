@@ -1408,7 +1408,8 @@ Generations 的主对象应是“结果与状态”，而不是 Provider 元数�
 
 本批次真实验证范围：
 
-- 供应链静态合同 `48/48`、生产容器合同 `55/55` 通过；证明任务显式授予 `artifact-metadata: write`，避免 `actions/attest` 在创建 Artifact Metadata 记录时因权限不足失败。
+- 供应链静态合同 `49/49`、生产容器合同 `55/55` 通过；证明任务显式授予 `artifact-metadata: write`，避免 `actions/attest` 在创建 Artifact Metadata 记录时因权限不足失败。
+- 仓库全部 GitHub Action 均固定完整 commit SHA；Checkout、Setup Node、Artifact 上传和下载升级为 Node 24 运行版，消除 Runner 对 Node 20 Action 的弃用兼容告警。
 - 四个 Node 24.18/Trixie 镜像真实构建成功；前端构建中的 npm 审计为 0，生产资源预算 `19/19`、静态交付 `13/13` 继续通过。
 - 本地双 SBOM 与漏洞证据聚合 `90/90` 通过。SPDX 包数分别为前端 `82`、API `120`、Worker `120`、迁移 `215`；CycloneDX 分别为 `81/119/119/214`。
 - 四个镜像中已有修复版本的 `HIGH/CRITICAL` 均为 `0`，操作系统均为受支持的 Debian `13.6`，生产漏洞例外数量为 `0`。

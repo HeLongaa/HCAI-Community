@@ -61,6 +61,8 @@
     "server/src/creative/videoProviderLifecycle.test.js",
     "server/src/modelControl/modelRuntimeResolver.test.js",
     "server/src/modules/admin/routes.test.js",
+    "src/features/admin/AdminGenerationRecordsPanel.tsx",
+    "src/features/admin/useAdminGenerationOperations.ts",
     "e2e/video-capability.spec.ts",
     "e2e/model-control.spec.ts",
     "docs/V1_VIDEO_PRODUCTION_ACCEPTANCE.md"

@@ -41,7 +41,13 @@ add('suspension revokes logical and refresh sessions atomically', prisma.include
 add('self and final active Admin safeguards exist', prisma.includes('current.id === actor.id') && prisma.includes('activeAdmins <= 1') && seed.includes('finalAdmin'))
 add('restore does not issue or reactivate sessions', !/restore:[\s\S]*?issueSession/.test(prisma) && !/restore:[\s\S]*?revokedAt:\s*null/.test(prisma))
 add('query is bounded and cursor-bound', lifecycle.includes('maximum') || (lifecycle.includes('limit > 100') && lifecycle.includes('parsed.sort !== query.sort')))
-add('frontend has filters detail and explicit lifecycle controls', frontend.includes('User lifecycle operations') && frontend.includes("transition('suspend')") && frontend.includes("transition('restore')"))
+add('frontend has filters detail and confirmed lifecycle controls',
+  frontend.includes('User lifecycle operations') &&
+  frontend.includes('user-admin-filters') &&
+  frontend.includes('user-admin-detail') &&
+  frontend.includes("setPendingConfirmation({ scope: 'user', action: 'suspend' })") &&
+  frontend.includes("setPendingConfirmation({ scope: 'user', action: 'restore' })") &&
+  frontend.includes('transition(pendingConfirmation.action)'))
 add('User is registered in Admin resource framework', adminResources.resources.some((entry) => entry.model === 'User' && entry.listRoute === 'GET /api/admin/users'))
 add('user Admin route boundary is registered', boundaries.routeModules.some((entry) => entry.id === 'userAdmin' && entry.registration === 'registerUserAdminRoutes') && modules.includes('registerUserAdminRoutes'))
 const identity = governance.dataAssets.find((entry) => entry.id === 'identity_account_profile')
