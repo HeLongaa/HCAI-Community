@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import './index.css'
 
 import type {
@@ -10,14 +11,16 @@ import type {
   Post,
   PublishDraft,
   Task,
+  TaskProposalDraft,
 } from './domain/types'
-import { marketplaceProfiles } from './data/mockData'
 import {
-  findProfile,
+  createIdentityProfile,
   pointText,
 } from './domain/utils'
 import { adminDeepLinkFromHash, notificationDeepLink, notificationTargetHash, parseNotificationTarget } from './domain/notificationTargets'
 import { AppShell, PageRenderer } from './components/layout'
+import { LoginModal, SearchPanel } from './components/overlays'
+import { ToastViewport } from './components/ui/ToastViewport'
 import { useAccountState } from './hooks/useAccountState'
 import { useAppFeedback } from './hooks/useAppFeedback'
 import { useCommunityWorkflows } from './hooks/useCommunityWorkflows'
@@ -27,17 +30,36 @@ import { useTaskWorkflows } from './hooks/useTaskWorkflows'
 import { useThemeState } from './hooks/useThemeState'
 import { useMusicGenerationWorkflow } from './hooks/useMusicGenerationWorkflow'
 import { useVideoGenerationWorkflow } from './hooks/useVideoGenerationWorkflow'
+import type { GenerationOperationFeedback } from './hooks/generationOperationFeedback'
 import { copy } from './i18n/copy'
+import { persistLocale, readLocale } from './i18n/locale'
 import { notificationService } from './services/notificationService'
 import { profileService } from './services/profileService'
 import { creativeService } from './services/creativeService'
 import { mediaService } from './services/mediaService'
 import { uploadMediaFile } from './services/mediaUpload'
 import { isApiClientError } from './services/apiClient'
+import { isOperationalCreativeProvider } from './services/creativeProviderSelection'
 import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiNotification, ApiUserCreativeGeneration, CreateCreativeGenerationRequest, NotificationListQuery } from './services/contracts'
 
+const publicInformationPages = new Set(['terms', 'privacy', 'aup', 'disclosures', 'support', 'points'])
+const CommunityLandingPage = lazy(() => import('./features/landing/CommunityLandingPage').then((module) => ({ default: module.CommunityLandingPage })))
+
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (update: () => void) => unknown
+}
+
+const startNativePageTransition = (update: () => void) => {
+  const startViewTransition = (document as ViewTransitionDocument).startViewTransition
+  if (!startViewTransition) {
+    return false
+  }
+  startViewTransition.call(document, () => flushSync(update))
+  return true
+}
+
 function App() {
-  const [locale, setLocale] = useState<Locale>('en')
+  const [locale, setLocale] = useState<Locale>(readLocale)
   const {
     page,
     setPage,
@@ -52,6 +74,9 @@ function App() {
   const { activeTrack, playing, setPlaying, playTrack } = usePlayerState()
   const [searchOpen, setSearchOpen] = useState(false)
   const [loginOpen, setLoginOpen] = useState(false)
+  const [authPageOpen, setAuthPageOpen] = useState(() => window.location.hash === '#auth')
+  const [publicTransition, setPublicTransition] = useState<'idle' | 'to-auth' | 'to-landing'>('idle')
+  const publicTransitionTimer = useRef<number | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const { themeMode, setThemeMode } = useThemeState()
   const [billing, setBilling] = useState<'year' | 'month'>('year')
@@ -107,8 +132,9 @@ function App() {
     targetId: string | null
     error: string | null
   }>({ type: null, targetId: null, error: null })
-  const accountProfile = userProfile ?? findProfile('taskops') ?? marketplaceProfiles[0]
-  const [profileList, setProfileList] = useState<MarketplaceProfile[]>(marketplaceProfiles)
+  const [imageGenerationFeedback, setImageGenerationFeedback] = useState<GenerationOperationFeedback | null>(null)
+  const accountProfile = userProfile ?? createIdentityProfile(accountHandle, accountName, userRole)
+  const [profileList, setProfileList] = useState<MarketplaceProfile[]>(() => accountHandle ? [accountProfile] : [])
   const [selectedProfile, setSelectedProfile] = useState<MarketplaceProfile>(() => accountProfile)
   const [notifications, setNotifications] = useState<ApiNotification[]>([])
   const [notificationsLoading, setNotificationsLoading] = useState(false)
@@ -116,6 +142,11 @@ function App() {
   const [notificationReadState, setNotificationReadState] = useState<NonNullable<NotificationListQuery['readState']>>('unread')
   const [adminDeepLink, setAdminDeepLink] = useState<AdminDeepLink | null>(null)
   const t = copy[locale]
+
+  useEffect(() => {
+    persistLocale(locale)
+    document.documentElement.lang = locale === 'zh' ? 'zh-CN' : 'en'
+  }, [locale])
 
   useEffect(() => {
     const restoreAdminTarget = () => setAdminDeepLink(adminDeepLinkFromHash())
@@ -127,6 +158,36 @@ function App() {
       window.removeEventListener('popstate', restoreAdminTarget)
     }
   }, [])
+
+  useEffect(() => () => {
+    if (publicTransitionTimer.current !== null) {
+      window.clearTimeout(publicTransitionTimer.current)
+    }
+  }, [])
+
+  const transitionPublicRoute = useCallback((direction: 'to-auth' | 'to-landing', update: () => void) => {
+    if (startNativePageTransition(update)) return
+    if (publicTransitionTimer.current !== null) {
+      window.clearTimeout(publicTransitionTimer.current)
+    }
+    setPublicTransition(direction)
+    publicTransitionTimer.current = window.setTimeout(() => {
+      update()
+      setPublicTransition('idle')
+      publicTransitionTimer.current = null
+    }, direction === 'to-auth' ? 320 : 240)
+  }, [])
+
+  useEffect(() => {
+    const restorePublicRoute = () => setAuthPageOpen(window.location.hash === '#auth')
+    restorePublicRoute()
+    window.addEventListener('hashchange', restorePublicRoute)
+    window.addEventListener('popstate', restorePublicRoute)
+    return () => {
+      window.removeEventListener('hashchange', restorePublicRoute)
+      window.removeEventListener('popstate', restorePublicRoute)
+    }
+  }, [])
   const { ledgerItems, pointsSummary, pointsStatus, toasts, pushToast, pushLedger, simulateAction, dismissToast } = useAppFeedback(locale, `${accountSource}:${accountHandle}`)
   const requireAuth = useCallback(() => setLoginOpen(true), [])
   const musicWorkflow = useMusicGenerationWorkflow({
@@ -134,28 +195,40 @@ function App() {
     accountKey: `${accountSource}:${accountHandle}`,
     locale,
     requireAuth,
-    pushToast,
   })
   const videoWorkflow = useVideoGenerationWorkflow({
     enabled: accountSource !== 'fallback',
     accountKey: `${accountSource}:${accountHandle}`,
     locale,
     requireAuth,
-    pushToast,
   })
   const currentPoints = accountSource === 'fallback'
     ? (locale === 'zh' ? '未登录' : 'Not signed in')
-    : pointText(String(pointsSummary?.available ?? ledgerItems[0]?.[3] ?? '18,420'))
+    : pointsSummary
+      ? pointText(String(pointsSummary.available), t)
+      : '-'
 
   const switchLocale = () => {
     const nextLocale = locale === 'en' ? 'zh' : 'en'
     setLocale(nextLocale)
-    pushToast(nextLocale === 'zh' ? '已切换为中文内容。' : 'Switched to English content.')
   }
 
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [page])
+
+  const refreshProviderCatalog = useCallback(async () => {
+    setImageProviderCatalogState('loading')
+    try {
+      const catalog = await creativeService.listProviders()
+      setImageProviderCatalog(catalog)
+      setImageProviderCatalogState('ready')
+    } catch (error) {
+      console.info('[creative-provider-catalog]', error)
+      setImageProviderCatalog(null)
+      setImageProviderCatalogState('error')
+    }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -347,8 +420,9 @@ function App() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setSelectedProfile((current) => {
-        if (current.handle !== 'taskops' && current.handle !== accountProfile.handle) return current
-        return profileList.find((profile) => profile.handle === accountProfile.handle) ?? accountProfile
+        const accountMatch = profileList.find((profile) => profile.handle === accountProfile.handle) ?? accountProfile
+        const currentIsPublicProfile = profileList.some((profile) => profile.handle === current.handle && profile.handle !== accountProfile.handle)
+        return currentIsPublicProfile ? current : accountMatch
       })
     }, 0)
     return () => window.clearTimeout(timer)
@@ -368,22 +442,23 @@ function App() {
     quality,
     strength,
     inputAssetIds,
-  }: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; quality: string; strength: number; inputAssetIds: string[] }) => {
+    providerId,
+  }: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; quality: string; strength: number; inputAssetIds: string[]; providerId: string }) => {
     const trimmedPrompt = imagePrompt.trim()
+    setImageGenerationFeedback(null)
     if (!trimmedPrompt) {
-      pushToast(locale === 'zh' ? '请先填写图片提示词。' : 'Add an image prompt first.')
+      setImageGeneration({ status: 'error', result: null, error: locale === 'zh' ? '请先填写图片提示词。' : 'Add an image prompt first.' })
       return
     }
     if (accountSource === 'fallback') {
       requireAuth()
-      pushToast(locale === 'zh' ? '请先登录后再使用 API 生成图片。' : 'Sign in before using API-backed image generation.')
       return
     }
-    const provider = imageProviderCatalog?.providers.find((candidate) => candidate.id === imageProviderCatalog.defaultProviderId)
+    const provider = imageProviderCatalog?.providers.find((candidate) => candidate.id === providerId)
     const imageCapability = provider?.capabilities.find((capability) => capability.workspace === 'image')
     const modeContract = imageCapability?.modeContracts?.find((candidate) => candidate.id === mode)
-    if (!provider?.enabled || !provider.configured || !modeContract?.available) {
-      pushToast(locale === 'zh' ? '当前图片能力不可用，请稍后重试。' : 'The selected image capability is unavailable.')
+    if (!provider || !isOperationalCreativeProvider(provider, 'image') || !modeContract?.available) {
+      setImageGeneration({ status: 'error', result: null, error: locale === 'zh' ? '当前图片能力不可用，请稍后重试。' : 'The selected image capability is unavailable.' })
       return
     }
     setImageGeneration({ status: 'loading', result: null, error: null })
@@ -414,9 +489,12 @@ function App() {
       }
       const output = result.outputs[0]
       const completed = result.status === 'completed' || result.status === 'review_required'
-      pushToast(locale === 'zh'
-        ? `${completed ? '图片生成完成' : '图片任务已创建'}：${output?.storage.mediaAssetId ?? result.id}`
-        : `${completed ? 'Image generation complete' : 'Image job created'}: ${output?.storage.mediaAssetId ?? result.id}`)
+      setImageGenerationFeedback({
+        kind: 'success',
+        text: locale === 'zh'
+          ? `${completed ? '图片生成完成' : '图片任务已创建'}：${output?.storage.mediaAssetId ?? result.id}`
+          : `${completed ? 'Image generation complete' : 'Image job created'}: ${output?.storage.mediaAssetId ?? result.id}`,
+      })
     } catch (error) {
       console.info('[creative-service]', error)
       const message = isApiClientError(error) && error.code === 'AUTH_REQUIRED'
@@ -426,18 +504,22 @@ function App() {
         requireAuth()
       }
       setImageGeneration({ status: 'error', result: null, error: message })
-      pushToast(message)
     }
   }
 
   const uploadImageInput = async (file: File) => {
-    await uploadMediaFile(file, {
-      purpose: 'library_asset',
-      metadata: { source: 'image-studio-input' },
-    })
-    const assets = await creativeService.listInputAssets()
-    setImageInputAssets(assets)
-    pushToast(locale === 'zh' ? '图片已上传；扫描通过后可用于创作。' : 'Image uploaded. It becomes selectable after a clean scan.')
+    setImageGenerationFeedback(null)
+    try {
+      await uploadMediaFile(file, {
+        purpose: 'library_asset',
+        metadata: { source: 'image-studio-input' },
+      })
+      const assets = await creativeService.listInputAssets()
+      setImageInputAssets(assets)
+      setImageGenerationFeedback({ kind: 'success', text: locale === 'zh' ? '图片已上传；扫描通过后可用于创作。' : 'Image uploaded. It becomes selectable after a clean scan.' })
+    } catch (error) {
+      setImageGenerationFeedback({ kind: 'error', text: error instanceof Error ? error.message : (locale === 'zh' ? '图片上传失败。' : 'Image upload failed.') })
+    }
   }
 
   const refreshImageInputAssets = async () => {
@@ -447,6 +529,7 @@ function App() {
   }
 
   const cancelImageGeneration = async (id: string) => {
+    setImageGenerationFeedback(null)
     setImageGenerationAction({ type: 'cancel', targetId: id, error: null })
     try {
       await creativeService.cancelGeneration(id, {
@@ -456,30 +539,27 @@ function App() {
       const detail = await creativeService.generation(id)
       mergeImageGeneration(detail)
       setImageGenerationHistory((current) => ({ ...current, selected: detail }))
-      pushToast(locale === 'zh' ? '图片任务已取消。' : 'Image job cancelled.')
+      setImageGenerationFeedback({ kind: 'success', text: locale === 'zh' ? '图片任务已取消。' : 'Image job cancelled.' })
     } catch (error) {
       console.info('[creative-generation-cancel]', error)
       const message = error instanceof Error ? error.message : (locale === 'zh' ? '取消失败。' : 'Cancellation failed.')
       setImageGenerationAction({ type: null, targetId: null, error: message })
       void refreshImageGenerationHistory()
-      pushToast(message)
       return
     }
     setImageGenerationAction({ type: null, targetId: null, error: null })
   }
 
   const retryImageGeneration = async (id: string) => {
+    setImageGenerationFeedback(null)
     const request = imageGenerationRequests.current.get(id)
     if (!request) {
       const message = locale === 'zh'
         ? '刷新后不会保留原始提示词；请根据安全预览重新填写后生成。'
         : 'Raw prompts are not retained after refresh. Recreate the request from its safe preview.'
       setImageGenerationAction({ type: null, targetId: null, error: message })
-      pushToast(message)
-      return
+      return false
     }
-    const confirmed = window.confirm(locale === 'zh' ? '确认使用完全相同的输入重试此任务？' : 'Retry this job with the exact same inputs?')
-    if (!confirmed) return
     setImageGenerationAction({ type: 'retry', targetId: id, error: null })
     try {
       const result = await creativeService.retryGeneration(id, {
@@ -496,23 +576,23 @@ function App() {
       const detail = await creativeService.generation(targetId)
       mergeImageGeneration(detail)
       setImageGenerationHistory((current) => ({ ...current, selected: detail }))
-      pushToast(locale === 'zh' ? '已创建新的重试任务。' : 'A new retry attempt was created.')
     } catch (error) {
       console.info('[creative-generation-retry]', error)
       const message = error instanceof Error ? error.message : (locale === 'zh' ? '重试失败。' : 'Retry failed.')
       setImageGenerationAction({ type: null, targetId: null, error: message })
-      pushToast(message)
-      return
+      return false
     }
     setImageGenerationAction({ type: null, targetId: null, error: null })
+    return true
   }
 
   const downloadImageGenerationAsset = async (assetId: string) => {
+    setImageGenerationFeedback(null)
     setImageGenerationAction({ type: 'download', targetId: assetId, error: null })
     try {
       const contract = await mediaService.createDownload(assetId)
       if (contract.download.url.startsWith('mock://')) {
-        pushToast(locale === 'zh' ? `下载合约已就绪：${contract.asset.fileName}` : `Download contract ready: ${contract.asset.fileName}`)
+        setImageGenerationFeedback({ kind: 'success', text: locale === 'zh' ? `下载合约已就绪：${contract.asset.fileName}` : `Download contract ready: ${contract.asset.fileName}` })
       } else if (Object.keys(contract.download.headers).length > 0) {
         const response = await fetch(contract.download.url, { headers: contract.download.headers })
         if (!response.ok) throw new Error(`Download failed with status ${response.status}`)
@@ -522,6 +602,7 @@ function App() {
         link.download = contract.asset.fileName
         link.click()
         URL.revokeObjectURL(objectUrl)
+        setImageGenerationFeedback({ kind: 'success', text: locale === 'zh' ? `已开始下载：${contract.asset.fileName}` : `Download started: ${contract.asset.fileName}` })
       } else {
         const link = document.createElement('a')
         link.href = contract.download.url
@@ -529,28 +610,29 @@ function App() {
         link.rel = 'noopener'
         link.target = '_blank'
         link.click()
+        setImageGenerationFeedback({ kind: 'success', text: locale === 'zh' ? `已开始下载：${contract.asset.fileName}` : `Download started: ${contract.asset.fileName}` })
       }
     } catch (error) {
       console.info('[creative-generation-download]', error)
       const message = error instanceof Error ? error.message : (locale === 'zh' ? '下载失败。' : 'Download failed.')
       setImageGenerationAction({ type: null, targetId: null, error: message })
-      pushToast(message)
       return
     }
     setImageGenerationAction({ type: null, targetId: null, error: null })
   }
 
   const prepareImageAssetForReuse = async (assetId: string) => {
+    setImageGenerationFeedback(null)
     try {
       const assets = await refreshImageInputAssets()
       const available = assets.some((asset) => asset.id === assetId)
       if (!available) {
-        pushToast(locale === 'zh' ? '该输出尚未进入可复用资产列表。' : 'This output is not yet available for reuse.')
+        setImageGenerationFeedback({ kind: 'error', text: locale === 'zh' ? '该输出尚未进入可复用资产列表。' : 'This output is not yet available for reuse.' })
       }
       return available
     } catch (error) {
       console.info('[creative-generation-reuse]', error)
-      pushToast(locale === 'zh' ? '无法刷新可复用资产。' : 'Could not refresh reusable assets.')
+      setImageGenerationFeedback({ kind: 'error', text: locale === 'zh' ? '无法刷新可复用资产。' : 'Could not refresh reusable assets.' })
       return false
     }
   }
@@ -577,7 +659,6 @@ function App() {
       setNotifications((current) => current
         .map((item) => (item.id === updated.id ? updated : item))
         .filter((item) => notificationReadState !== 'unread' || !item.readAt))
-      pushToast(locale === 'zh' ? `已标记已读：${notification.title}` : `Marked read: ${notification.title}`)
     } catch (error) {
       console.info('[notification-service]', error)
       pushToast(locale === 'zh' ? '通知处理失败。' : 'Could not update notification.')
@@ -586,13 +667,12 @@ function App() {
 
   const markAllNotificationsRead = async () => {
     try {
-      const result = await notificationService.markAllRead()
+      await notificationService.markAllRead()
       if (notificationReadState === 'unread') {
         setNotifications([])
       } else {
         void refreshNotifications()
       }
-      pushToast(locale === 'zh' ? `已标记 ${result.updated} 条提醒为已读。` : `Marked ${result.updated} reminders as read.`)
     } catch (error) {
       console.info('[notification-service]', error)
       pushToast(locale === 'zh' ? '批量处理通知失败。' : 'Could not mark reminders as read.')
@@ -712,7 +792,6 @@ function App() {
       rememberReturnTarget('profile', page)
     }
     setPage('profile')
-    pushToast(locale === 'zh' ? `已打开用户主页：@${profile.handle}` : `Opened public profile: @${profile.handle}`)
   }
 
   const {
@@ -763,56 +842,6 @@ function App() {
     publishPost,
     deletePost,
   } = useCommunityWorkflows({ locale, publishTask, pushLedger, pushToast, setPage, accountHandle })
-  const sourceCopy = {
-    loading: locale === 'zh' ? '同步中' : 'Syncing',
-    fallback: locale === 'zh' ? '账号不可用' : 'Account unavailable',
-    stored: locale === 'zh' ? '本地会话' : 'Stored session',
-    mock: locale === 'zh' ? '工作台未启用' : 'Workspace unavailable',
-  }
-  const sourceFromStatus = (label: string, status: { loading: boolean; error: string | null }, apiDetail: string, fallbackDetail: string) => ({
-    label,
-    state: status.loading ? 'loading' as const : status.error ? 'fallback' as const : 'api' as const,
-    detail: status.loading ? sourceCopy.loading : status.error ? fallbackDetail : apiDetail,
-  })
-  const homeDataSources = {
-    sources: [
-      {
-        label: locale === 'zh' ? '账号' : 'Account',
-        state: accountReady ? accountSource : 'loading' as const,
-        detail: accountReady
-          ? accountSource === 'api'
-            ? (locale === 'zh' ? '/api/me 已同步' : '/api/me synced')
-            : accountSource === 'stored'
-              ? sourceCopy.stored
-              : sourceCopy.fallback
-          : sourceCopy.loading,
-      },
-      sourceFromStatus(
-        locale === 'zh' ? '任务' : 'Tasks',
-        taskStatus,
-        locale === 'zh' ? 'Tasks API' : 'Tasks API',
-        locale === 'zh' ? '本地任务演示数据' : 'Local task demo data',
-      ),
-      sourceFromStatus(
-        locale === 'zh' ? '社区' : 'Community',
-        communityStatus,
-        locale === 'zh' ? 'Community API' : 'Community API',
-        locale === 'zh' ? '本地社区演示数据' : 'Local community demo data',
-      ),
-      sourceFromStatus(
-        locale === 'zh' ? '积分' : 'Points',
-        pointsStatus,
-        locale === 'zh' ? 'Points API' : 'Points API',
-        locale === 'zh' ? '本地积分演示数据' : 'Local points demo data',
-      ),
-      {
-        label: locale === 'zh' ? '创作' : 'Creation',
-        state: 'mock' as const,
-        detail: sourceCopy.mock,
-      },
-    ],
-  }
-
   const guardedPublishTask = async (draft: PublishDraft) => {
     if (!requirePermission('task:create', locale === 'zh' ? '请使用可发布任务的账号登录。' : 'Sign in with an account that can publish tasks.')) return
     await publishTask(draft)
@@ -823,9 +852,9 @@ function App() {
     await claimTask(task)
   }
 
-  const guardedSubmitProposal = async (task: Task) => {
-    if (!requirePermission('task:propose', locale === 'zh' ? '请使用创作者账号登录后提交方案。' : 'Sign in with a maker account to submit proposals.')) return
-    await submitProposal(task)
+  const guardedSubmitProposal = async (task: Task, draft: TaskProposalDraft) => {
+    if (!requirePermission('task:propose', locale === 'zh' ? '请使用创作者账号登录后提交方案。' : 'Sign in with a maker account to submit proposals.')) return false
+    return submitProposal(task, draft)
   }
 
   const guardedAcceptProposal = async (task: Task, proposalId: string) => {
@@ -873,6 +902,74 @@ function App() {
     await convertPostToTask(post)
   }
 
+  if (!accountReady) {
+    return <div className="public-route-loader" role="status">HCAI</div>
+  }
+
+  if (accountSource === 'fallback' && authPageOpen) {
+    return (
+      <LoginModal
+        t={t}
+        presentation="page"
+        leaving={publicTransition === 'to-landing'}
+        close={() => {
+          transitionPublicRoute('to-landing', () => {
+            navigateToPage('home')
+            setAuthPageOpen(false)
+          })
+        }}
+        onAuthenticated={(destination) => {
+          transitionPublicRoute('to-landing', () => {
+            navigateToPage(destination ?? 'home')
+            setAuthPageOpen(false)
+          })
+        }}
+        simulateAction={simulateAction}
+        loginAs={loginAs}
+        loginWithPassword={loginWithPassword}
+        loginWithOAuthProvider={loginWithOAuthProvider}
+        registerWithEmail={registerWithEmail}
+        setPage={(destination) => {
+          navigateToPage(destination)
+          setAuthPageOpen(false)
+        }}
+      />
+    )
+  }
+
+  if (accountSource === 'fallback' && !publicInformationPages.has(page)) {
+    return (
+      <Suspense fallback={<div className="public-route-loader" role="status">HCAI</div>}>
+        <CommunityLandingPage
+          language={locale}
+          leaving={publicTransition === 'to-auth'}
+          onOpenPage={(destination) => navigatePrimary(destination)}
+          onSearch={() => setSearchOpen(true)}
+          onLanguageChange={(nextLocale) => {
+            if (locale === nextLocale) return
+            setLocale(nextLocale)
+          }}
+          onLogin={() => {
+            transitionPublicRoute('to-auth', () => {
+              window.history.pushState(null, '', '#auth')
+              setAuthPageOpen(true)
+            })
+          }}
+        />
+        {searchOpen && (
+          <SearchPanel
+            t={t}
+            close={() => setSearchOpen(false)}
+            playTrack={playTrack}
+            setPage={navigateToPage}
+            openProfile={openProfile}
+          />
+        )}
+        <ToastViewport toasts={toasts} dismiss={dismissToast} />
+      </Suspense>
+    )
+  }
+
   return (
     <AppShell
       app={{ t, locale, switchLocale }}
@@ -916,7 +1013,7 @@ function App() {
       <PageRenderer
         t={t}
         navigation={{ page, navigateToPage }}
-        workspace={{ imageGeneration, imageGenerationHistory, imageGenerationAction, refreshImageGenerationHistory, selectImageGeneration, cancelImageGeneration, retryImageGeneration, downloadImageGenerationAsset, prepareImageAssetForReuse, hasImageGenerationRetryRequest, imageProviderCatalog, imageProviderCatalogState, imageInputAssets: accountSource === 'fallback' ? [] : imageInputAssets, uploadImageInput, runImageGeneration, musicWorkflow, videoWorkflow, playgroundWorkspace, setPlaygroundWorkspace }}
+        workspace={{ imageGeneration, imageGenerationHistory, imageGenerationAction, imageGenerationFeedback, refreshImageGenerationHistory, selectImageGeneration, cancelImageGeneration, retryImageGeneration, downloadImageGenerationAsset, prepareImageAssetForReuse, hasImageGenerationRetryRequest, imageProviderCatalog, imageProviderCatalogState, refreshProviderCatalog, imageInputAssets: accountSource === 'fallback' ? [] : imageInputAssets, uploadImageInput, runImageGeneration, musicWorkflow, videoWorkflow, playgroundWorkspace, setPlaygroundWorkspace }}
         player={{ playTrack }}
         feedback={{ requireAuth, simulateAction }}
         tasks={{
@@ -967,10 +1064,9 @@ function App() {
           deletePost,
         }}
         rewards={{ ledgerItems, pointsSummary, pointsStatus }}
-        homeDataSources={homeDataSources}
-        account={{ accountHandle, permissions, userRole, hasPermission }}
+        account={{ accountHandle, accountName, permissions, userRole, hasPermission }}
         billing={{ billing, setBilling }}
-        profile={{ selectedProfile, accountProfile, openProfile, onProfileUpdated }}
+        profile={{ selectedProfile, accountProfile, profiles: profileList, openProfile, onProfileUpdated }}
         admin={{ deepLink: adminDeepLink, clearDeepLink: () => setAdminDeepLink(null), openNotificationResource: openNotificationResource }}
       />
     </AppShell>

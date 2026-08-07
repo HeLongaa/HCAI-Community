@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Archive, Download, Eye, Plus, RefreshCw, RotateCcw, Save, Send, Undo2 } from 'lucide-react'
 import { adminService } from '../../services/adminService'
+import { downloadTextArtifact } from './downloadAdminArtifact'
 import type { NotificationTemplate, NotificationTemplateDraft, NotificationTemplateMetrics } from '../../services/contracts'
 import type { Permission } from '../../domain/types'
 import { NotificationDeliveryAdminPanel } from './NotificationDeliveryAdminPanel'
+import { AdminActionFeedback, type AdminActionFeedbackMessage } from './AdminActionFeedback'
 
 const emptyDraft: NotificationTemplateDraft & { key: string } = {
   key: '', name: '', description: '', category: 'general', locale: 'en',
@@ -11,10 +13,9 @@ const emptyDraft: NotificationTemplateDraft & { key: string } = {
   variableSchema: { additionalProperties: false, required: [], properties: {} },
 }
 
-export function NotificationAdminPanel({ hasPermission, isZh, notify }: {
+export function NotificationAdminPanel({ hasPermission, isZh }: {
   hasPermission: (permission: Permission) => boolean
   isZh: boolean
-  notify: (message: string) => void
 }) {
   const text = (en: string, zh: string) => isZh ? zh : en
   const [items, setItems] = useState<NotificationTemplate[]>([])
@@ -29,6 +30,7 @@ export function NotificationAdminPanel({ hasPermission, isZh, notify }: {
   const [reasonCode, setReasonCode] = useState('operator_requested')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<AdminActionFeedbackMessage | null>(null)
   const [view, setView] = useState<'templates' | 'deliveries'>('templates')
 
   const canRead = hasPermission('admin:notifications:read')
@@ -82,13 +84,14 @@ export function NotificationAdminPanel({ hasPermission, isZh, notify }: {
   const mutate = async (operation: () => Promise<NotificationTemplate>, message: string) => {
     setBusy(true)
     setError(null)
+    setFeedback(null)
     try {
       const updated = await operation()
       await selectTemplate(updated)
       await load()
-      notify(message)
+      setFeedback({ kind: 'success', text: message })
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason))
+      setFeedback({ kind: 'error', text: reason instanceof Error ? reason.message : String(reason) })
     } finally {
       setBusy(false)
     }
@@ -115,16 +118,31 @@ export function NotificationAdminPanel({ hasPermission, isZh, notify }: {
   }
 
   const download = async () => {
+    setFeedback(null)
     try {
       const body = await adminService.exportNotificationTemplates({ search: search || null, status: status ? status as NotificationTemplate['status'] : null, includeDeleted: true })
-      const url = URL.createObjectURL(new Blob([body], { type: 'text/csv;charset=utf-8' }))
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = `notification-templates-${new Date().toISOString().slice(0, 10)}.csv`
-      anchor.click()
-      URL.revokeObjectURL(url)
+      downloadTextArtifact({
+        content: body,
+        fileName: `notification-templates-${new Date().toISOString().slice(0, 10)}.csv`,
+        mimeType: 'text/csv;charset=utf-8',
+      })
+      setFeedback({ kind: 'success', text: text('Notification template export generated.', '通知模板导出已生成。') })
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason))
+      setFeedback({ kind: 'error', text: reason instanceof Error ? reason.message : String(reason) })
+    }
+  }
+
+  const sendTest = async () => {
+    if (!selected) return
+    setBusy(true)
+    setFeedback(null)
+    try {
+      await adminService.sendNotificationTemplateTest(selected.id, JSON.parse(variablesText))
+      setFeedback({ kind: 'success', text: text('Test notification sent.', '测试通知已发送。') })
+    } catch (reason) {
+      setFeedback({ kind: 'error', text: reason instanceof Error ? reason.message : String(reason) })
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -132,7 +150,7 @@ export function NotificationAdminPanel({ hasPermission, isZh, notify }: {
 
   const viewTabs = <div className="notification-view-tabs" role="tablist" aria-label={text('Notification operations view', '通知运营视图')}><button type="button" role="tab" aria-selected={view === 'templates'} className={view === 'templates' ? 'active' : ''} onClick={() => setView('templates')}>{text('Templates', '模板')}</button><button type="button" role="tab" aria-selected={view === 'deliveries'} className={view === 'deliveries' ? 'active' : ''} onClick={() => setView('deliveries')}>{text('Delivery queue', '投递队列')}</button></div>
 
-  if (view === 'deliveries') return <>{viewTabs}<NotificationDeliveryAdminPanel canManage={canManage} isZh={isZh} notify={notify} /></>
+  if (view === 'deliveries') return <>{viewTabs}<NotificationDeliveryAdminPanel canManage={canManage} isZh={isZh} /></>
 
   return (
     <>{viewTabs}<section className="panel notification-admin-panel" data-testid="notification-admin-panel">
@@ -151,6 +169,7 @@ export function NotificationAdminPanel({ hasPermission, isZh, notify }: {
         </select>
       </div>
       {error && <div className="inline-error" role="alert">{error}</div>}
+      <AdminActionFeedback message={feedback} />
       <div className="notification-admin-layout">
         <div className="admin-table notification-template-list">
           {items.map((item) => <button className={`admin-row compact ${selected?.id === item.id ? 'selected' : ''}`} type="button" key={item.id} onClick={() => void selectTemplate(item)}><span><strong>{item.name}</strong><small>{item.key} · CAS v{item.version}</small></span><span className={`status ${item.status}`}>{item.status}</span></button>)}
@@ -173,7 +192,7 @@ export function NotificationAdminPanel({ hasPermission, isZh, notify }: {
           {selected && <><div className="notification-preview-controls"><textarea aria-label={text('Preview variables', '预览变量')} value={variablesText} onChange={(event) => setVariablesText(event.target.value)} spellCheck={false}/><input aria-label={text('Reason code', '原因代码')} value={reasonCode} onChange={(event) => setReasonCode(event.target.value)} /></div><div className="button-row">
             <button className="ghost-button small" type="button" disabled={busy || !(latestDraft || selected.activeVersionNumber)} onClick={() => void runPreview()}><Eye size={15}/>{text('Preview', '预览')}</button>
             {canPublish && latestDraft && <button className="primary-button small" type="button" disabled={busy} onClick={() => void mutate(() => adminService.publishNotificationTemplate(selected.id, { expectedVersion: selected.version, versionNumber: latestDraft.versionNumber, reasonCode }), text('Template published.', '模板已发布。'))}><Send size={15}/>{text(`Publish v${latestDraft.versionNumber}`, `发布 v${latestDraft.versionNumber}`)}</button>}
-            {canPublish && selected.activeVersionNumber && <button className="ghost-button small" type="button" disabled={busy} onClick={() => void adminService.sendNotificationTemplateTest(selected.id, JSON.parse(variablesText)).then(() => notify(text('Test notification sent.', '测试通知已发送。'))).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)))}><Send size={15}/>{text('Send test', '发送测试')}</button>}
+            {canPublish && selected.activeVersionNumber && <button className="ghost-button small" type="button" disabled={busy} onClick={() => void sendTest()}><Send size={15}/>{text('Send test', '发送测试')}</button>}
           </div></>}
           {preview && <div className="notification-template-preview"><strong>{preview.title}</strong><p>{preview.body}</p></div>}
           {selected && publishedVersions.length > 0 && <div className="notification-version-list">{publishedVersions.map((version) => <div key={version.id}><span><strong>v{version.versionNumber}</strong><small>{version.status} · {version.reasonCode ?? 'published'}</small></span>{canPublish && version.versionNumber !== selected.activeVersionNumber && <button className="icon-button" type="button" title={text(`Rollback to v${version.versionNumber}`, `回滚到 v${version.versionNumber}`)} onClick={() => void mutate(() => adminService.rollbackNotificationTemplate(selected.id, { expectedVersion: selected.version, versionNumber: version.versionNumber, reasonCode }), text('Template rolled back.', '模板已回滚。'))}><RotateCcw size={15}/></button>}</div>)}</div>}

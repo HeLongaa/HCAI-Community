@@ -3,7 +3,7 @@ export const isProductionRuntime = (env = process.env) => env.NODE_ENV === 'prod
 export const shouldLoadDemoRepository = (env = process.env) => !isProductionRuntime(env)
 
 export const shouldAutoSeedPrisma = (env = process.env) =>
-  !isProductionRuntime(env) && env.DEMO_DATABASE_AUTOSEED !== 'false'
+  !isProductionRuntime(env) && env.DEMO_DATABASE_AUTOSEED === 'true'
 
 export const assertProductionPersistence = (env = process.env) => {
   if (isProductionRuntime(env) && !String(env.DATABASE_URL ?? '').trim()) {

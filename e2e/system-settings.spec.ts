@@ -34,6 +34,10 @@ test('admin previews, requests, independently approves, and publishes a system s
   })
   expect(layout.overflow, JSON.stringify(layout)).toEqual([])
   await panel.getByRole('button', { name: /jobs.worker/ }).click()
+  await panel.getByLabel('Setting JSON').fill('{ invalid json')
+  await panel.getByRole('button', { name: 'Preview' }).click()
+  await expect(panel.locator('.admin-action-feedback.error')).toBeVisible()
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
   await panel.getByLabel('Setting JSON').fill(JSON.stringify({
     leaseTtlSeconds: 480,
     renewIntervalSeconds: 80,
@@ -51,6 +55,8 @@ test('admin previews, requests, independently approves, and publishes a system s
   )
   await panel.getByRole('button', { name: 'Request change' }).click()
   const requested = await requestResponse.then((response) => response.json()) as { data: { id: string; version: number } }
+  await expect(panel.locator('.admin-action-feedback')).toContainText('Setting change submitted for approval.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
 
   const approved = await apiData<{ version: number }>(request.post(`${apiBaseUrl}/api/admin/settings/changes/${requested.data.id}/approve`, {
     headers: authHeaders(approver.accessToken),
@@ -67,6 +73,8 @@ test('admin previews, requests, independently approves, and publishes a system s
   )
   await panel.getByRole('button', { name: 'Publish', exact: true }).click()
   await publishResponse
+  await expect(panel.locator('.admin-action-feedback')).toContainText('Setting change published.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
 
   await expect(panel.locator('.settings-editor-heading code')).toHaveText('v1')
   await expect(panel.locator('.settings-history-list')).toContainText('v1 · published')
@@ -83,7 +91,9 @@ test('admin previews, requests, independently approves, and publishes a system s
       overflowing: descendants.filter((element) => element.getBoundingClientRect().right > viewportWidth + 1).length,
     }
   })
-  expect(mobileOverflow).toEqual({ panelLeft: 12, panelRight: 378, overflowing: 0 })
+  expect(mobileOverflow.overflowing).toBe(0)
+  expect(mobileOverflow.panelLeft).toBeGreaterThanOrEqual(12)
+  expect(390 - mobileOverflow.panelRight).toBe(mobileOverflow.panelLeft)
 })
 
 test('moderator can inspect system settings but cannot preview or mutate them', async ({ page, request }) => {

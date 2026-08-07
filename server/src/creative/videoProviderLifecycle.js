@@ -4,14 +4,24 @@ import { HttpError } from '../common/errors/httpError.js'
 import { buildSafeProviderError } from './providerErrorPolicy.js'
 import { applyProviderReplayThroughLedger } from './providerReplayIntegration.js'
 import {
-  buildGoogleVeoLifecycleReplay,
-  projectGoogleVeoOperation,
-} from './googleVeoProvider.js'
+  buildRouterVideoLifecycleReplay,
+  projectRouterVideoOperation,
+} from './routerVideoProvider.js'
+import { buildMiniMaxVideoLifecycleReplay } from './minimaxVideoProvider.js'
 
-const providerId = 'google-veo-3-1-fast'
-const providerMode = 'google_video'
+const providerDefinitions = Object.freeze({
+  'hcai-router-seedance-2-fast': Object.freeze({
+    providerMode: 'router_video', modelId: 'seedance-2.0-fast', label: 'HCAI Router Seedance 2.0 Fast',
+    buildReplay: buildRouterVideoLifecycleReplay,
+  }),
+  'hcai-router-minimax-hailuo-2-3': Object.freeze({
+    providerMode: 'router_minimax_video', modelId: 'MiniMax-Hailuo-2.3', label: 'HCAI Router MiniMax Hailuo 2.3',
+    buildReplay: buildMiniMaxVideoLifecycleReplay,
+  }),
+})
+const providerIds = Object.freeze(Object.keys(providerDefinitions))
 const terminalOperationStatuses = new Set(['completed', 'failed', 'cancelled', 'timed_out'])
-const safeIdentifierPattern = /^(?:[a-z0-9][a-z0-9:._-]{0,96}|projects\/[a-z][a-z0-9-]{4,62}\/locations\/us-central1\/publishers\/google\/models\/veo-3\.1-fast-generate-001\/operations\/[a-zA-Z0-9._-]{8,160})$/i
+const safeIdentifierPattern = /^[a-z0-9][a-z0-9:._-]{2,160}$/i
 
 const stableHash = (value) => createHash('sha256').update(JSON.stringify(value ?? null)).digest('hex')
 const boolFlag = (source, envKey, camelKey) => {
@@ -31,17 +41,18 @@ const toIso = (value) => {
 }
 
 export const videoProviderLifecycleConfig = (source = process.env) => ({
-  enabled: boolFlag(source, 'CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED', 'creativeGoogleVeoLifecycleEnabled'),
-  workerEnabled: boolFlag(source, 'CREATIVE_GOOGLE_VEO_LIFECYCLE_WORKER_ENABLED', 'creativeGoogleVeoLifecycleWorkerEnabled'),
+  enabled: boolFlag(source, 'CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED', 'creativeRouterVideoLifecycleEnabled'),
+  workerEnabled: boolFlag(source, 'CREATIVE_ROUTER_VIDEO_LIFECYCLE_WORKER_ENABLED', 'creativeRouterVideoLifecycleWorkerEnabled'),
   runtimeEnv: String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? source.creativeProviderRuntimeEnv ?? 'development').trim().toLowerCase(),
-  pollIntervalSeconds: positiveInteger(source, 'CREATIVE_GOOGLE_VEO_POLL_INTERVAL_SECONDS', 'creativeGoogleVeoPollIntervalSeconds', 15),
-  timeoutSeconds: positiveInteger(source, 'CREATIVE_GOOGLE_VEO_TIMEOUT_SECONDS', 'creativeGoogleVeoTimeoutSeconds', 900),
-  maxStatusAttempts: positiveInteger(source, 'CREATIVE_GOOGLE_VEO_MAX_STATUS_ATTEMPTS', 'creativeGoogleVeoMaxStatusAttempts', 20),
-  sweepLimit: positiveInteger(source, 'CREATIVE_GOOGLE_VEO_SWEEP_LIMIT', 'creativeGoogleVeoSweepLimit', 10),
+  pollIntervalSeconds: positiveInteger(source, 'CREATIVE_ROUTER_VIDEO_POLL_INTERVAL_SECONDS', 'creativeRouterVideoPollIntervalSeconds', 15),
+  timeoutSeconds: positiveInteger(source, 'CREATIVE_ROUTER_VIDEO_TIMEOUT_SECONDS', 'creativeRouterVideoTimeoutSeconds', 900),
+  maxStatusAttempts: positiveInteger(source, 'CREATIVE_ROUTER_VIDEO_MAX_STATUS_ATTEMPTS', 'creativeRouterVideoMaxStatusAttempts', 20),
+  sweepLimit: positiveInteger(source, 'CREATIVE_ROUTER_VIDEO_SWEEP_LIMIT', 'creativeRouterVideoSweepLimit', 10),
 })
 
 const assertSafeDispatchGeneration = (generation) => {
-  if (generation?.workspace !== 'video' || generation?.provider?.id !== providerId || generation?.provider?.mode !== providerMode) {
+  const definition = providerDefinitions[generation?.provider?.id]
+  if (generation?.workspace !== 'video' || !definition || generation?.provider?.mode !== definition.providerMode) {
     throw new HttpError(422, 'CREATIVE_PROVIDER_OPERATION_INVALID', 'Video Provider operation dispatch is invalid', {
       reasonCode: 'provider_identity_invalid',
     })
@@ -64,12 +75,14 @@ export const buildVideoProviderOperationDispatch = ({
   now = new Date(),
 }) => {
   assertSafeDispatchGeneration(generation)
+  const providerId = generation.provider.id
+  const definition = providerDefinitions[providerId]
   const config = videoProviderLifecycleConfig(source)
   const timestamp = now instanceof Date ? now : new Date(now)
   return {
     generationId: generation.id,
     providerId,
-    providerMode,
+    providerMode: definition.providerMode,
     providerJobId: generation.providerJobId,
     status: generation.status,
     pollAttempts: 0,
@@ -78,7 +91,7 @@ export const buildVideoProviderOperationDispatch = ({
     sideEffectsComplete: false,
     safeMetadata: {
       schemaVersion: 'video-provider-operation-v1',
-      modelId: 'veo-3.1-fast-generate-001',
+      modelId: generation.usage?.providerCost?.model?.providerModelId ?? definition.modelId,
       workspace: 'video',
       mode: generation.mode,
       inputAssetCount: generation.inputAssetIds?.length ?? 0,
@@ -105,10 +118,11 @@ export const recordVideoProviderOperationDispatch = async ({
 
 const durationForGeneration = (generation) => {
   const duration = Number(generation?.usage?.providerCost?.estimate?.quantity)
-  return [4, 6, 8].includes(duration) ? duration : 8
+  if ([4, 6, 8].includes(duration)) return duration
+  return generation?.provider?.id === 'hcai-router-minimax-hailuo-2-3' ? 6 : 8
 }
 
-const requestForGeneration = (generation) => ({
+const requestForGeneration = (generation, providerId) => ({
   workspace: 'video',
   mode: generation.mode,
   prompt: generation.promptPreview ?? 'Governed Video lifecycle replay',
@@ -122,10 +136,10 @@ const requestForGeneration = (generation) => ({
   providerId,
 })
 
-const provider = Object.freeze({
+const providerFor = (providerId) => Object.freeze({
   id: providerId,
-  mode: providerMode,
-  label: 'Google Veo 3.1 Fast',
+  mode: providerDefinitions[providerId].providerMode,
+  label: providerDefinitions[providerId].label,
 })
 
 const actorForGeneration = (generation) => ({
@@ -160,13 +174,17 @@ const applyProjectedOperation = async ({
   source,
   now,
   fetchOutput,
+  outputSafetyClassifier,
   statusOverride = null,
   sourceType = 'video_provider_polling',
 }) => {
-  const replay = buildGoogleVeoLifecycleReplay({
+  const providerId = operation.providerId
+  const definition = providerDefinitions[providerId]
+  const providerMode = definition.providerMode
+  const replay = definition.buildReplay({
     currentRecord: generation,
-    request: requestForGeneration(generation),
-    provider,
+    request: requestForGeneration(generation, providerId),
+    provider: providerFor(providerId),
     actor,
     operation: projection,
     source,
@@ -187,6 +205,8 @@ const applyProjectedOperation = async ({
     receivedAt: toIso(now),
     now,
     fetchOutput,
+    source,
+    outputSafetyClassifier,
   })
   const status = statusOverride ?? operationStatusForProjection(projection)
   const terminal = terminalOperationStatuses.has(status)
@@ -217,7 +237,7 @@ const applyProjectedOperation = async ({
   return { operation: updated, replay, applied, projection }
 }
 
-const terminalFailureProjection = (operation, code, message) => projectGoogleVeoOperation({
+const terminalFailureProjection = (operation, code, message) => projectRouterVideoOperation({
   id: operation.providerJobId,
   state: 'failed',
   error: { code, message },
@@ -231,15 +251,20 @@ export const pollVideoProviderOperationOnce = async ({
   now = new Date(),
   actor = null,
   fetchOutput = null,
+  outputSafetyClassifier = null,
 }) => {
   const config = videoProviderLifecycleConfig(source)
   if (!config.enabled) return { polled: false, reasonCode: 'video_lifecycle_disabled', operation }
   if (config.runtimeEnv !== 'staging') return { polled: false, reasonCode: 'unsupported_runtime', operation }
-  if (!operation || operation.providerId !== providerId || operation.providerMode !== providerMode) {
+  const definition = providerDefinitions[operation?.providerId]
+  if (!operation || !definition || operation.providerMode !== definition.providerMode) {
     throw new HttpError(422, 'CREATIVE_PROVIDER_OPERATION_INVALID', 'Video Provider operation is invalid', {
       reasonCode: 'operation_identity_invalid',
     })
   }
+  const providerId = operation.providerId
+  const effectiveStatusClient = statusClient?.[providerId] ?? statusClient
+  const effectiveFetchOutput = fetchOutput?.[providerId] ?? fetchOutput
   const generation = await repositories.creativeGenerations?.find?.(operation.generationId)
   if (!generation) {
     throw new HttpError(404, 'CREATIVE_GENERATION_NOT_FOUND', 'Creative generation was not found')
@@ -254,19 +279,20 @@ export const pollVideoProviderOperationOnce = async ({
       actor: effectiveActor,
       source,
       now,
-      fetchOutput,
+      fetchOutput: effectiveFetchOutput,
+      outputSafetyClassifier,
       statusOverride: 'timed_out',
       sourceType: 'video_provider_timeout',
     })
     return { polled: false, timedOut: true, failed: !result.applied.execution?.completed, ...result }
   }
-  if (!statusClient?.getOperation) {
+  if (!effectiveStatusClient?.getOperation) {
     return { polled: false, reasonCode: 'status_client_missing', operation }
   }
 
   let projection
   try {
-    projection = projectGoogleVeoOperation(await statusClient.getOperation(operation.providerJobId))
+    projection = projectRouterVideoOperation(await effectiveStatusClient.getOperation(operation.providerJobId))
   } catch (error) {
     const failure = buildSafeProviderError(error, { operationType: 'status_read', now })
     const attempts = operation.pollAttempts + 1
@@ -279,7 +305,8 @@ export const pollVideoProviderOperationOnce = async ({
         actor: effectiveActor,
         source,
         now,
-        fetchOutput,
+        fetchOutput: effectiveFetchOutput,
+        outputSafetyClassifier,
         sourceType: 'video_provider_retry_exhausted',
       })
       return { polled: true, retryExhausted: true, failed: !result.applied.execution?.completed, failure, ...result }
@@ -311,7 +338,8 @@ export const pollVideoProviderOperationOnce = async ({
     actor: effectiveActor,
     source,
     now,
-    fetchOutput,
+    fetchOutput: effectiveFetchOutput,
+    outputSafetyClassifier,
   })
   return {
     polled: true,
@@ -328,19 +356,20 @@ export const runVideoProviderLifecycleWorkerOnce = async ({
   source = process.env,
   now = new Date(),
   fetchOutput = null,
+  outputSafetyClassifier = null,
   limit,
 }) => {
   const config = videoProviderLifecycleConfig(source)
   if (!config.enabled) return { enabled: false, reasonCode: 'video_lifecycle_disabled', results: [] }
   if (!config.workerEnabled) return { enabled: false, reasonCode: 'video_lifecycle_worker_disabled', results: [] }
   if (config.runtimeEnv !== 'staging') return { enabled: false, reasonCode: 'unsupported_runtime', results: [] }
-  const listed = await repositories.creativeProviderOperations?.listDue?.({
-    providerId,
-    statuses: ['queued', 'running'],
-    dueBefore: toIso(now),
-    limit: limit ?? config.sweepLimit,
-  })
-  const operations = listed?.items ?? []
+  const sweepLimit = limit ?? config.sweepLimit
+  const listed = await Promise.all(providerIds.map((providerId) => repositories.creativeProviderOperations?.listDue?.({
+    providerId, statuses: ['queued', 'running'], dueBefore: toIso(now), limit: sweepLimit,
+  })))
+  const operations = listed.flatMap((page) => page?.items ?? [])
+    .sort((left, right) => String(left.nextPollAt ?? '').localeCompare(String(right.nextPollAt ?? '')))
+    .slice(0, sweepLimit)
   const results = []
   for (const operation of operations) {
     try {
@@ -351,6 +380,7 @@ export const runVideoProviderLifecycleWorkerOnce = async ({
         source,
         now,
         fetchOutput,
+        outputSafetyClassifier,
       }))
     } catch (error) {
       const failure = buildSafeProviderError(error, { operationType: 'status_read', now })
@@ -389,37 +419,24 @@ export const cancelVideoProviderOperation = async ({
   now = new Date(),
   actor = null,
 }) => {
-  const operation = await repositories.creativeProviderOperations?.findForGeneration?.(generationId)
-  if (!operation) throw new HttpError(404, 'CREATIVE_PROVIDER_OPERATION_NOT_FOUND', 'Video Provider operation was not found')
-  if (terminalOperationStatuses.has(operation.status) && operation.sideEffectsComplete) {
-    return { cancelled: operation.status === 'cancelled', duplicate: true, operation }
-  }
-  if (!mutationClient?.cancelOperation) {
-    throw new HttpError(503, 'CREATIVE_PROVIDER_MUTATION_UNAVAILABLE', 'Video Provider cancellation client is unavailable')
-  }
-  const projection = projectGoogleVeoOperation(await mutationClient.cancelOperation(operation.providerJobId))
-  if (projection.id !== operation.providerJobId || projection.state !== 'cancelled') {
-    throw new HttpError(409, 'CREATIVE_PROVIDER_JOB_MISMATCH', 'Video Provider cancellation returned an invalid job state')
-  }
-  const generation = await repositories.creativeGenerations.find(generationId)
-  const result = await applyProjectedOperation({
-    operation,
-    generation,
-    projection,
-    repositories,
-    actor: actor ?? actorForGeneration(generation),
-    source,
-    now,
-    fetchOutput: null,
-    sourceType: 'video_provider_cancellation',
-  })
-  return { cancelled: true, duplicate: false, ...result }
+  void generationId
+  void repositories
+  void mutationClient
+  void source
+  void now
+  void actor
+  throw new HttpError(
+    501,
+    'CREATIVE_PROVIDER_CANCELLATION_UNSUPPORTED',
+    'HCAI Router does not expose upstream video cancellation; the task was not reported as cancelled',
+    { providerIds },
+  )
 }
 
 export const videoProviderLifecycleContract = Object.freeze({
-  schemaVersion: 'video-provider-lifecycle-v2',
-  providerId,
-  providerMode,
+  schemaVersion: 'video-provider-lifecycle-v3',
+  providerIds,
+  providerModes: Object.fromEntries(providerIds.map((id) => [id, providerDefinitions[id].providerMode])),
   terminalOperationStatuses: [...terminalOperationStatuses],
   fixtureStatusClientOnly: false,
   httpClientImplemented: true,

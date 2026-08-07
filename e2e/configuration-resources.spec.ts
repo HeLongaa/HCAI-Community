@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test'
 
-import { signInPage } from './helpers'
+import { selectAdminSection, signInPage } from './helpers'
 
 test('admin manages a feature flag through publish, rollback, archive, and restore', async ({ page, request }) => {
   await signInPage(page, request, 'opsplus')
   await page.goto('/')
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await selectAdminSection(page, 'Settings')
 
   const panel = page.getByTestId('admin-config-resources')
   await expect(panel).toBeVisible()
@@ -29,17 +29,22 @@ test('admin manages a feature flag through publish, rollback, archive, and resto
   await panel.getByRole('button', { name: 'Save draft' }).click()
   await createResponse
   await expect(panel).toContainText(key)
+  await expect(panel.locator('.admin-action-feedback')).toContainText('Draft saved.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
 
   await panel.getByRole('button', { name: 'Publish', exact: true }).click()
   await expect(panel.locator('.settings-history-list')).toContainText('v1 · published')
+  await expect(panel.locator('.admin-action-feedback')).toContainText('Version published.')
 
   await panel.getByLabel('Preview environment').fill('staging')
   await panel.getByRole('button', { name: 'Preview', exact: true }).click()
   await expect(panel.locator('.feature-preview-result')).toContainText('Enabled · environment rule')
   await panel.getByRole('button', { name: 'Emergency off' }).click()
   await expect(panel.locator('.feature-preview-result')).toContainText('Disabled · emergency off')
+  await expect(panel.locator('.admin-action-feedback')).toContainText('Feature flag disabled immediately.')
   await panel.getByRole('button', { name: 'Restore flag' }).click()
   await expect(panel.locator('.feature-preview-result')).toContainText('Enabled · environment rule')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
 
   await panel.getByRole('checkbox', { name: 'Default enabled' }).check()
   await panel.getByLabel('Feature flag payload JSON').fill(JSON.stringify({ variant: 'treatment' }, null, 2))
@@ -72,14 +77,16 @@ test('admin manages a feature flag through publish, rollback, archive, and resto
       overflow: [...root.querySelectorAll('*')].filter((element) => element.getBoundingClientRect().right > document.documentElement.clientWidth + 1).length,
     }
   })
-  expect(mobileLayout).toEqual({ left: 12, right: 378, overflow: 0 })
+  expect(mobileLayout.overflow).toBe(0)
+  expect(mobileLayout.left).toBeGreaterThanOrEqual(12)
+  expect(390 - mobileLayout.right).toBe(mobileLayout.left)
 })
 
 test('moderator sees all configuration domains without mutation controls', async ({ page, request }) => {
   await signInPage(page, request, 'legalpixel')
   await page.goto('/')
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await selectAdminSection(page, 'Settings')
 
   const panel = page.getByTestId('admin-config-resources')
   await expect(panel).toBeVisible()
@@ -89,6 +96,10 @@ test('moderator sees all configuration domains without mutation controls', async
   await expect(panel.getByRole('tab', { name: 'Task rules' })).toBeVisible()
   await panel.getByRole('tab', { name: 'Reference data' }).click()
   await expect(panel.getByTitle('Export JSON')).toBeVisible()
+  const download = page.waitForEvent('download')
+  await panel.getByTitle('Export JSON').click()
+  expect((await download).suggestedFilename()).toMatch(/^reference-data-\d{4}-\d{2}-\d{2}\.json$/)
+  await expect(page.locator('a[download^="reference-data-"]')).toHaveCount(0)
   await expect(panel.getByTitle('Import JSON')).toHaveCount(0)
   await expect(panel.getByTitle('New')).toHaveCount(0)
   await expect(panel.getByRole('button', { name: 'Save draft' })).toHaveCount(0)

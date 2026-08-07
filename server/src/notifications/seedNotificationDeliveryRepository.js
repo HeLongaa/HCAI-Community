@@ -83,6 +83,20 @@ export const createSeedNotificationDeliveryRepository = ({
   }
 
   const repository = {
+    deleteForNotificationIds(notificationIds) {
+      const targetIds = new Set(notificationIds.map(String))
+      const deliveryIds = new Set([...deliveries.values()]
+        .filter((row) => targetIds.has(row.notificationId))
+        .map((row) => row.id))
+      let attemptCount = 0
+      for (const [id, attempt] of attempts) {
+        if (!deliveryIds.has(attempt.deliveryId)) continue
+        attempts.delete(id)
+        attemptCount += 1
+      }
+      for (const id of deliveryIds) deliveries.delete(id)
+      return { deliveries: deliveryIds.size, attempts: attemptCount }
+    },
     createForNotification(notification, recipient) {
       if (!notification?.id || !recipient?.id) return []
       const now = new Date()

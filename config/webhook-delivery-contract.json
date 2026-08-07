@@ -16,6 +16,7 @@
   "requiredAdminRoutes": [
     "GET /api/admin/developer/webhooks/control", "PUT /api/admin/developer/webhooks/control", "GET /api/admin/developer/webhooks",
     "POST /api/admin/developer/webhooks/:id/disable", "GET /api/admin/developer/webhook-deliveries",
-    "POST /api/admin/developer/webhook-deliveries/:id/replay", "GET /api/admin/developer/webhooks/metrics"
+    "POST /api/admin/developer/webhook-deliveries/:id/replay", "GET /api/admin/developer/webhooks/metrics",
+    "GET /api/admin/provider-alert-deliveries", "POST /api/admin/provider-alert-deliveries/:id/replay"
   ]
 }

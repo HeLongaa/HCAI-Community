@@ -6,6 +6,7 @@ import {
 } from '../server/src/repositories/runtimePolicy.js'
 import { buildEnv } from '../server/src/config/env.js'
 import { buildOpenAIChatRuntimeConfig } from '../server/src/chat/openaiChatProvider.js'
+import { buildProviderBudgetExternalAlertDeliveryWiring } from '../server/src/creative/providerBudgetExternalAlerts.js'
 
 const failures = []
 try {
@@ -26,6 +27,17 @@ for (const [label, run] of [
 ]) {
   try { run(); failures.push(`${label} was accepted in production`) } catch { /* expected */ }
 }
+
+try {
+  buildEnv({ ...base, CREATIVE_PROVIDER_ALERTS_ENABLED: 'true', CREATIVE_PROVIDER_ALERT_CHANNELS: 'webhook', CREATIVE_PROVIDER_ALERT_WEBHOOK_URL: 'https://ops.example.com/provider-alerts', CREATIVE_PROVIDER_ALERT_WEBHOOK_SECRET: 'provider-alert-secret', CREATIVE_PROVIDER_ALERT_DELIVERY_WORKER_ENABLED: 'true', CREATIVE_PROVIDER_ALERT_ALLOWED_HOSTS: 'other.example.com' })
+  failures.push('Provider alert endpoint outside the hostname allowlist was accepted')
+} catch { /* expected */ }
+const providerAlertConfig = buildEnv({ ...base, CREATIVE_PROVIDER_ALERTS_ENABLED: 'true', CREATIVE_PROVIDER_ALERT_CHANNELS: 'webhook', CREATIVE_PROVIDER_ALERT_WEBHOOK_URL: 'https://ops.example.com/provider-alerts', CREATIVE_PROVIDER_ALERT_WEBHOOK_SECRET: 'provider-alert-secret', CREATIVE_PROVIDER_ALERT_DELIVERY_WORKER_ENABLED: 'true', CREATIVE_PROVIDER_ALERT_ALLOWED_HOSTS: 'ops.example.com' })
+const providerAlertWiring = buildProviderBudgetExternalAlertDeliveryWiring({
+  config: providerAlertConfig,
+  approval: { deliveryApproved: true, fixtureOnly: false },
+})
+if (providerAlertWiring.mode !== 'production' || !providerAlertWiring.safeSummary.realDeliveryAvailable) failures.push('complete Provider alert production wiring was not recognized')
 
 if (failures.length > 0) {
   for (const failure of failures) console.error(`FAIL ${failure}`)

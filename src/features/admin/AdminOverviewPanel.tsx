@@ -12,6 +12,8 @@ import type {
   ApiSearchDiagnostics,
   ApiSearchRankingControl,
 } from '../../services/contracts'
+import { downloadJsonArtifact } from './downloadAdminArtifact'
+import './admin-overview.css'
 
 type SearchScope = 'all' | 'work' | 'platform' | 'security'
 
@@ -26,6 +28,13 @@ const formatTimestamp = (value: string | null) => {
   if (!value) return '-'
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString()
+}
+
+const formatLagDuration = (seconds: number, t: Record<string, string>) => {
+  if (seconds >= 86_400) return textFor(t, `${(seconds / 86_400).toFixed(1)}d`, `${(seconds / 86_400).toFixed(1)}天`)
+  if (seconds >= 3_600) return textFor(t, `${(seconds / 3_600).toFixed(1)}h`, `${(seconds / 3_600).toFixed(1)}小时`)
+  if (seconds >= 60) return textFor(t, `${Math.round(seconds / 60)}m`, `${Math.round(seconds / 60)}分钟`)
+  return `${seconds}s`
 }
 
 const statusClass = (status: string | null) => {
@@ -184,12 +193,11 @@ export function AdminOverviewPanel({
   const exportDiagnostics = async () => {
     try {
       const payload = await searchService.exportDiagnostics(diagnosticsWindow)
-      const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }))
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = `search-diagnostics-${payload.exportedAt.slice(0, 10)}.json`
-      anchor.click()
-      URL.revokeObjectURL(url)
+      downloadJsonArtifact({
+        value: payload,
+        fileName: `search-diagnostics-${payload.exportedAt.slice(0, 10)}.json`,
+        mimeType: 'application/json',
+      })
     } catch (error) {
       setDiagnosticsError(error instanceof Error ? error.message : textFor(t, 'Diagnostics export failed.', '诊断导出失败。'))
     }
@@ -214,6 +222,24 @@ export function AdminOverviewPanel({
     { key: 'failures', label: textFor(t, 'Failed operations', '失败操作'), value: overview?.totals.failedOperations ?? 0, icon: Activity },
   ], [overview, t])
 
+  const indexDocumentCount = diagnostics
+    ? Object.values(diagnostics.index.documents).reduce((total, item) => total + item.count, 0)
+    : 0
+  const indexQueueCount = diagnostics
+    ? Object.values(diagnostics.index.queue).reduce((total, item) => total + item.count, 0)
+    : 0
+  const indexLagLabel = diagnosticsLoading
+    ? '-'
+    : !diagnostics
+      ? '-'
+      : indexDocumentCount === 0 && indexQueueCount === 0
+        ? textFor(t, 'Not established', '未建立基线')
+        : indexDocumentCount === 0
+          ? textFor(t, `Backlog · ${formatLagDuration(diagnostics.index.lagSeconds, t)}`, `积压 · ${formatLagDuration(diagnostics.index.lagSeconds, t)}`)
+          : formatLagDuration(diagnostics.index.lagSeconds, t)
+  const hasQuerySamples = (diagnostics?.queries ?? 0) > 0
+  const noSamples = textFor(t, 'No samples', '暂无样本')
+
   const openQueueItem = (item: AdminOperationsQueueItemDto) => {
     setQuery(item.id)
     setScope('all')
@@ -236,7 +262,7 @@ export function AdminOverviewPanel({
   }
 
   return (
-    <section className="panel admin-operations-home" data-testid="admin-operations-overview">
+    <section className="admin-operations-home" data-testid="admin-operations-overview">
       <div className="admin-overview-heading">
         <div>
           <span>{textFor(t, 'Operations overview', '运营概览')}</span>
@@ -288,10 +314,10 @@ export function AdminOverviewPanel({
         {diagnosticsError && <div className="empty-state compact"><AlertTriangle size={17} /><strong>{textFor(t, 'Diagnostics unavailable', '诊断不可用')}</strong><span>{diagnosticsError}</span></div>}
         <div className="admin-search-quality-metrics" aria-busy={diagnosticsLoading}>
           <div><strong>{diagnosticsLoading ? '-' : diagnostics?.queries ?? 0}</strong><span>{textFor(t, 'Queries', '查询数')}</span></div>
-          <div className={diagnostics?.zeroResultAlerting ? 'danger' : ''}><strong>{diagnosticsLoading ? '-' : `${((diagnostics?.zeroResultRateBps ?? 0) / 100).toFixed(1)}%`}</strong><span>{textFor(t, 'Zero results', '零结果率')}</span></div>
-          <div><strong>{diagnosticsLoading ? '-' : `${((diagnostics?.clickThroughRateBps ?? 0) / 100).toFixed(1)}%`}</strong><span>CTR</span></div>
-          <div><strong>{diagnosticsLoading ? '-' : `${diagnostics?.latencyMs.p95 ?? 0} ms`}</strong><span>P95</span></div>
-          <div><strong>{diagnosticsLoading ? '-' : `${diagnostics?.index.lagSeconds ?? 0}s`}</strong><span>{textFor(t, 'Index lag', '索引延迟')}</span></div>
+          <div className={diagnostics?.zeroResultAlerting ? 'danger' : ''}><strong>{diagnosticsLoading ? '-' : hasQuerySamples ? `${((diagnostics?.zeroResultRateBps ?? 0) / 100).toFixed(1)}%` : noSamples}</strong><span>{textFor(t, 'Zero results', '零结果率')}</span></div>
+          <div><strong>{diagnosticsLoading ? '-' : hasQuerySamples ? `${((diagnostics?.clickThroughRateBps ?? 0) / 100).toFixed(1)}%` : noSamples}</strong><span>CTR</span></div>
+          <div><strong>{diagnosticsLoading ? '-' : hasQuerySamples ? `${diagnostics?.latencyMs.p95 ?? 0} ms` : noSamples}</strong><span>P95</span></div>
+          <div><strong>{indexLagLabel}</strong><span>{textFor(t, 'Index lag', '索引延迟')}</span></div>
         </div>
         <div className="admin-search-diagnostics-grid">
           <div className="admin-search-popular">

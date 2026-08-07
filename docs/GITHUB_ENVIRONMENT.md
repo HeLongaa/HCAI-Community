@@ -24,6 +24,24 @@ The job reuses the S3 endpoint, region, and credential secrets below. Require an
 Do not configure live application database names, production Redis keys, or a production media prefix. See
 `docs/RELEASE_INFRASTRUCTURE_REHEARSAL.md` for exact isolation and evidence rules.
 
+## RELEASE-02 Application Rehearsal
+
+The `application-rehearsal` job is restricted to a protected staging or rehearsal host. Configure:
+
+| Kind | Name | Requirement |
+| --- | --- | --- |
+| Variable | `RELEASE_APPLICATION_REHEARSAL_CONFIRMATION` | Exact value `release-02-staging-rehearsal` |
+| Variable | `RELEASE_REHEARSAL_TARGET_ORIGIN` | HTTPS API origin whose host contains `staging` or `rehearsal` |
+| Variable | `RELEASE_CANDIDATE_ARTIFACT_SHA256` | Immutable candidate artifact SHA-256 |
+| Variable | `RELEASE_PREVIOUS_ARTIFACT_SHA256` | Different immutable previous artifact SHA-256 |
+| Variable | `RELEASE_REHEARSAL_DEPLOY_COMMAND_JSON` | JSON argv for the allowlisted candidate deployment adapter |
+| Variable | `RELEASE_REHEARSAL_ROLLBACK_COMMAND_JSON` | JSON argv for the allowlisted previous-artifact restore adapter |
+
+Deployment credentials stay in protected Secrets consumed by the selected CLI; never place them in either command
+array. Both commands receive the target artifact digest through `RELEASE_TARGET_ARTIFACT_SHA256` and must deploy the API
+with matching `RELEASE_ARTIFACT_SHA256`. Require an environment reviewer and use a non-production traffic target. See
+`docs/RELEASE_APPLICATION_REHEARSAL.md`.
+
 ## Required Secrets
 
 At least one auth secret is required:

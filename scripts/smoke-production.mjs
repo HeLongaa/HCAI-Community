@@ -5,6 +5,9 @@ import { buildOpenAIChatRuntimeConfig } from '../server/src/chat/openaiChatProvi
 import { chatCapabilityContract } from '../server/src/creative/chatCapabilityContract.js'
 import { musicCapabilityContract } from '../server/src/creative/musicCapabilityContract.js'
 import { videoCapabilityContract } from '../server/src/creative/videoCapabilityContract.js'
+import { buildProviderBudgetExternalAlertDeliveryWiring } from '../server/src/creative/providerBudgetExternalAlerts.js'
+import { buildProviderDeletionGatewayConfig } from '../server/src/dataRights/providerDeletionGateway.js'
+import { inspectProductionWorkers } from './lib/production-smoke.mjs'
 
 const args = new Set(process.argv.slice(2))
 const profile = [...args].find((arg) => arg.startsWith('--profile='))?.split('=')[1] ?? 'fixture'
@@ -58,6 +61,16 @@ const productionFixture = {
   TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS: '300',
   TASK_STALE_SUBMISSION_OLDER_THAN_HOURS: '72',
   TASK_STALE_SUBMISSION_SWEEP_LIMIT: '25',
+  TASK_EXPIRY_WORKER_ENABLED: 'true',
+  TASK_EXPIRY_WORKER_INTERVAL_SECONDS: '60',
+  TASK_EXPIRY_SWEEP_LIMIT: '50',
+  NOTIFICATION_EMAIL_DELIVERY_ENABLED: 'true',
+  NOTIFICATION_EMAIL_WEBHOOK_URL: 'https://mailer.example.com/notifications',
+  NOTIFICATION_EMAIL_WEBHOOK_SECRET: 'notification-email-secret',
+  NOTIFICATION_EMAIL_FROM: 'notifications@example.com',
+  NOTIFICATION_DELIVERY_WORKER_ENABLED: 'true',
+  WEBHOOK_SECRET_ENCRYPTION_KEY: 'CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg=',
+  WEBHOOK_DELIVERY_WORKER_ENABLED: 'true',
   WORKER_LEASE_TTL_SECONDS: '300',
   WORKER_LEASE_RENEW_INTERVAL_SECONDS: '60',
   AUTH_COOKIE_SAMESITE: 'None',
@@ -72,6 +85,7 @@ const productionFixture = {
   RATE_LIMIT_AUTH_MAX: '100',
   RATE_LIMIT_UPLOAD_MAX: '60',
   RATE_LIMIT_ADMIN_MUTATION_MAX: '80',
+  RATE_LIMIT_CLIENT_TELEMETRY_MAX: '120',
   METRICS_EXPORTER_ENABLED: 'true',
   METRICS_EXPORTER_FORMAT: 'prometheus',
   METRICS_EXPORTER_TOKEN: 'metrics-secret',
@@ -85,6 +99,35 @@ const productionFixture = {
   CHAT_RETENTION_WORKER_ENABLED: 'true',
   CHAT_RETENTION_WORKER_INTERVAL_SECONDS: '3600',
   CHAT_RETENTION_SWEEP_LIMIT: '100',
+  DATA_RIGHTS_DELETION_WORKER_ENABLED: 'true',
+  DATA_RIGHTS_PROVIDER_DELETION_GATEWAY_ENABLED: 'true',
+  DATA_RIGHTS_PROVIDER_DELETION_GATEWAY_CONFIRMATION: 'provider-deletion-enabled',
+  DATA_RIGHTS_PROVIDER_DELETION_GATEWAY_URL: 'https://privacy.example.com/provider-deletions',
+  DATA_RIGHTS_PROVIDER_DELETION_GATEWAY_TOKEN: 'provider-deletion-fixture-token',
+  DATA_RIGHTS_EXPORT_RETENTION_WORKER_ENABLED: 'true',
+  OBSERVABILITY_RETENTION_WORKER_ENABLED: 'true',
+  NOTIFICATION_RETENTION_WORKER_ENABLED: 'true',
+  OPERATION_LEASE_RETENTION_WORKER_ENABLED: 'true',
+  PRIVATE_LIBRARY_RETENTION_WORKER_ENABLED: 'true',
+  AUTH_CREDENTIAL_RETENTION_WORKER_ENABLED: 'true',
+  AUDIT_RETENTION_PRUNE_ENABLED: 'true',
+  AUDIT_RETENTION_LEGAL_HOLD: 'false',
+  AUDIT_RETENTION_WORKER_ENABLED: 'true',
+  COMMUNITY_RETENTION_WORKER_ENABLED: 'true',
+  SECURITY_EVENT_RETENTION_WORKER_ENABLED: 'true',
+  RISK_RETENTION_WORKER_ENABLED: 'true',
+  MODERATION_RETENTION_WORKER_ENABLED: 'true',
+  GENERATION_RETENTION_WORKER_ENABLED: 'true',
+  MEDIA_ASSET_RETENTION_WORKER_ENABLED: 'true',
+  PROVIDER_LIFECYCLE_RETENTION_WORKER_ENABLED: 'true',
+  CONFIGURATION_RETENTION_WORKER_ENABLED: 'true',
+  MARKETPLACE_RETENTION_WORKER_ENABLED: 'true',
+  SUPPORT_RETENTION_WORKER_ENABLED: 'true',
+  SECRET_MANAGER_LIFECYCLE_GATEWAY_ENABLED: 'true',
+  SECRET_MANAGER_LIFECYCLE_GATEWAY_CONFIRMATION: 'managed-secret-lifecycle-enabled',
+  SECRET_MANAGER_LIFECYCLE_GATEWAY_URL: 'https://secrets.example.com/v1/lifecycle',
+  SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN: 'secret-lifecycle-fixture-token',
+  PROVIDER_SECRET_RETENTION_WORKER_ENABLED: 'true',
   OAUTH_GOOGLE_CLIENT_ID: 'google-client-id',
   OAUTH_GOOGLE_CLIENT_SECRET: 'google-client-secret',
   OAUTH_GOOGLE_REDIRECT_URI: 'https://api.example.com/api/auth/oauth/google/callback',
@@ -108,7 +151,7 @@ const check = (checks, name, pass, detail = '') => {
   checks.push({ name, pass: Boolean(pass), detail })
 }
 
-const summarize = (env, oauthProviders, chatRuntime) => ({
+const summarize = (env, oauthProviders, chatRuntime, providerDeletionGatewayConfigured, providerAlertWiring) => ({
   nodeEnv: env.nodeEnv,
   storageDriver: env.storageDriver,
   mediaScanProvider: env.mediaScanProvider,
@@ -161,8 +204,8 @@ const summarize = (env, oauthProviders, chatRuntime) => ({
     providerHttpClientImplemented: videoCapabilityContract.runtime.providerHttpClientImplemented,
     providerLifecycleRegistered: videoCapabilityContract.runtime.providerLifecycleRegistered,
     providerLifecycleEnabled: videoCapabilityContract.runtime.providerLifecycleEnabled,
-    lifecycleRuntimeEnabled: env.creativeGoogleVeoLifecycleEnabled,
-    lifecycleWorkerEnabled: env.creativeGoogleVeoLifecycleWorkerEnabled,
+    lifecycleRuntimeEnabled: env.creativeRouterVideoLifecycleEnabled,
+    lifecycleWorkerEnabled: env.creativeRouterVideoLifecycleWorkerEnabled,
     fixtureStatusReaderOnly: videoCapabilityContract.runtime.fixtureStatusReaderOnly,
     outputIngestionImplemented: videoCapabilityContract.runtime.outputIngestionImplemented,
     providerCostCloseoutImplemented: videoCapabilityContract.runtime.providerCostCloseoutImplemented,
@@ -202,6 +245,9 @@ const summarize = (env, oauthProviders, chatRuntime) => ({
   },
   creativeProviderAlertChannels: {
     enabled: env.creativeProviderAlertsEnabled,
+    mode: providerAlertWiring.mode,
+    reasonCode: providerAlertWiring.reasonCode,
+    realDeliveryAvailable: providerAlertWiring.safeSummary.realDeliveryAvailable,
     configuredChannels: env.creativeProviderAlertChannels,
     webhook: env.hasCreativeProviderAlertWebhookUrl,
     slack: env.hasCreativeProviderAlertSlackWebhookUrl,
@@ -224,8 +270,38 @@ const summarize = (env, oauthProviders, chatRuntime) => ({
     mediaStorageCleanupEnabled: env.mediaStorageCleanupWorkerEnabled,
     mediaStorageCleanupBatchSize: env.mediaStorageCleanupBatchSize,
     staleSubmissionEnabled: env.taskStaleSubmissionWorkerEnabled,
+    taskExpiryEnabled: env.taskExpiryWorkerEnabled,
+    notificationDeliveryEnabled: env.notificationDeliveryWorkerEnabled,
+    webhookDeliveryEnabled: env.webhookDeliveryWorkerEnabled,
+    domainEventsEnabled: env.domainEventWorkerEnabled,
+    searchIndexEnabled: env.searchIndexWorkerEnabled,
     leaseTtlSeconds: env.workerLeaseTtlSeconds,
     leaseRenewIntervalSeconds: env.workerLeaseRenewIntervalSeconds,
+  },
+  retentionWorkers: {
+    chat: env.chatRetentionWorkerEnabled,
+    accountDeletion: env.dataRightsDeletionWorkerEnabled,
+    exportArtifacts: env.dataRightsExportRetentionWorkerEnabled,
+    observability: env.observabilityRetentionWorkerEnabled,
+    notifications: env.notificationRetentionWorkerEnabled,
+    operationLeases: env.operationLeaseRetentionWorkerEnabled,
+    privateLibrary: env.privateLibraryRetentionWorkerEnabled,
+    authCredentials: env.authCredentialRetentionWorkerEnabled,
+    auditArchivePrune: env.auditRetentionWorkerEnabled,
+    community: env.communityRetentionWorkerEnabled,
+    securityEvents: env.securityEventRetentionWorkerEnabled,
+    risk: env.riskRetentionWorkerEnabled,
+    moderation: env.moderationRetentionWorkerEnabled,
+    generations: env.generationRetentionWorkerEnabled,
+    mediaAssets: env.mediaAssetRetentionWorkerEnabled,
+    providerLifecycle: env.providerLifecycleRetentionWorkerEnabled,
+    configurationHistory: env.configurationRetentionWorkerEnabled,
+    marketplace: env.marketplaceRetentionWorkerEnabled,
+    support: env.supportRetentionWorkerEnabled,
+    providerSecrets: env.providerSecretRetentionWorkerEnabled,
+  },
+  dataRights: {
+    providerDeletionGatewayConfigured,
   },
 })
 
@@ -238,13 +314,20 @@ try {
   process.exit(1)
 }
 const oauthProviders = listOAuthProviderMetadata(source)
+const providerAlertWiring = buildProviderBudgetExternalAlertDeliveryWiring({
+  config: env,
+  approval: { deliveryApproved: true, fixtureOnly: false },
+})
 let chatEncryption
 let chatRuntime
+let providerDeletionGatewayConfigured = false
 try {
   chatEncryption = buildChatMessageEncryptionConfig(source)
   chatRuntime = buildOpenAIChatRuntimeConfig(source)
+  buildProviderDeletionGatewayConfig(source)
+  providerDeletionGatewayConfigured = true
 } catch (error) {
-  console.error(`Production smoke failed during Chat encryption parsing: ${error.message}`)
+  console.error(`Production smoke failed during protected runtime configuration parsing: ${error.message}`)
   process.exit(1)
 }
 const checks = []
@@ -266,7 +349,7 @@ check(checks, 'OpenAI Image network calls disabled in production smoke', !env.cr
 check(checks, 'creative Provider callback disabled in production smoke', !env.creativeProviderCallbackEnabled, 'CREATIVE_PROVIDER_CALLBACK_ENABLED must not be true in production smoke')
 check(checks, 'creative Provider polling disabled in production smoke', !env.creativeProviderPollingEnabled && !env.creativeProviderPollingWorkerEnabled, 'Provider polling switches must not be true in production smoke')
 check(checks, 'Chat message encryption configured', chatEncryption.configured && env.hasChatMessageEncryptionKey, 'A valid 32-byte Chat encryption key is required')
-check(checks, 'Chat retention worker configured', env.chatRetentionWorkerEnabled, 'CHAT_RETENTION_WORKER_ENABLED should be true for the worker process')
+check(checks, 'external Provider deletion gateway configured', providerDeletionGatewayConfigured, 'DATA_RIGHTS_PROVIDER_DELETION_GATEWAY_* must define an explicitly confirmed fixed HTTPS gateway')
 check(
   checks,
   'Chat context and runtime safety boundary implemented',
@@ -297,7 +380,7 @@ check(
   checks,
   'Video capability contract remains Provider-disabled',
   videoCapabilityContract.schemaVersion === 'video-capability-v1' &&
-    videoCapabilityContract.models.primary.providerId === 'google-veo-3-1-fast' &&
+    videoCapabilityContract.models.primary.providerId === 'hcai-router-seedance-2-fast' &&
     videoCapabilityContract.models.primary.enabled === false &&
     videoCapabilityContract.models.backup.providerId === 'runway-gen-4-5' &&
     videoCapabilityContract.models.backup.enabled === false &&
@@ -311,13 +394,13 @@ check(
     videoCapabilityContract.runtime.providerHttpClientImplemented === true &&
     videoCapabilityContract.runtime.providerLifecycleRegistered === true &&
     videoCapabilityContract.runtime.providerLifecycleEnabled === false &&
-    env.creativeGoogleVeoLifecycleEnabled === false &&
-    env.creativeGoogleVeoLifecycleWorkerEnabled === false &&
+    env.creativeRouterVideoLifecycleEnabled === false &&
+    env.creativeRouterVideoLifecycleWorkerEnabled === false &&
     videoCapabilityContract.runtime.fixtureStatusReaderOnly === false &&
     videoCapabilityContract.runtime.outputIngestionImplemented === true &&
     videoCapabilityContract.runtime.providerCostCloseoutImplemented === true &&
     videoCapabilityContract.runtime.automaticFailoverAllowed === false &&
-    videoCapabilityContract.runtime.realProviderCallsApproved === true &&
+    videoCapabilityContract.runtime.realProviderCallsApproved === false &&
     videoCapabilityContract.runtime.productionEnablementApproved === false,
   'AI-VIDEO-01 registers guarded staging support without enabling Provider traffic by default',
 )
@@ -325,9 +408,9 @@ check(
   checks,
   'Music capability contract remains Provider-disabled',
   musicCapabilityContract.schemaVersion === 'music-capability-v1' &&
-    musicCapabilityContract.models.primary.providerId === 'elevenlabs-music-v2-enterprise' &&
+    musicCapabilityContract.models.primary.providerId === 'hcai-router-minimax-music-3' &&
     musicCapabilityContract.models.primary.enabled === false &&
-    musicCapabilityContract.models.primary.enterpriseMusicContractRequired === true &&
+    musicCapabilityContract.models.primary.routerAndUpstreamTermsRequired === true &&
     musicCapabilityContract.models.backup.providerId === 'google-lyria-3-pro-preview' &&
     musicCapabilityContract.models.backup.enabled === false &&
     musicCapabilityContract.models.backup.suppliedLyricsSupportConfirmed === false &&
@@ -345,7 +428,7 @@ check(
     musicCapabilityContract.runtime.outputIngestionImplemented === true &&
     musicCapabilityContract.runtime.providerCostCloseoutImplemented === true &&
     musicCapabilityContract.runtime.automaticFailoverAllowed === false &&
-    musicCapabilityContract.runtime.realProviderCallsApproved === true &&
+    musicCapabilityContract.runtime.realProviderCallsApproved === false &&
     musicCapabilityContract.runtime.productionEnablementApproved === false &&
     musicCapabilityContract.productBoundary.referenceAudioSupported === false &&
     musicCapabilityContract.productBoundary.voiceCloningSupported === false &&
@@ -362,6 +445,29 @@ check(
     ? 'At least one creative provider alert channel must be configured when enabled'
     : 'CREATIVE_PROVIDER_ALERTS_ENABLED=false',
 )
+check(
+  checks,
+  'creative provider alert real delivery gated',
+  !env.creativeProviderAlertsEnabled || (
+    providerAlertWiring.mode === 'production' &&
+    providerAlertWiring.safeSummary.realDeliveryAvailable === true
+  ),
+  env.creativeProviderAlertsEnabled
+    ? `mode=${providerAlertWiring.mode} reason=${providerAlertWiring.reasonCode}`
+    : 'CREATIVE_PROVIDER_ALERTS_ENABLED=false',
+)
+check(
+  checks,
+  'creative provider alert worker gated',
+  !env.creativeProviderAlertsEnabled || env.creativeProviderAlertDeliveryWorkerEnabled,
+  env.creativeProviderAlertsEnabled ? 'CREATIVE_PROVIDER_ALERT_DELIVERY_WORKER_ENABLED=true is required' : 'CREATIVE_PROVIDER_ALERTS_ENABLED=false',
+)
+check(
+  checks,
+  'creative provider alert hostname allowlist gated',
+  !env.creativeProviderAlertsEnabled || env.creativeProviderAlertAllowedHosts.length > 0,
+  env.creativeProviderAlertsEnabled ? 'CREATIVE_PROVIDER_ALERT_ALLOWED_HOSTS must be configured' : 'CREATIVE_PROVIDER_ALERTS_ENABLED=false',
+)
 check(checks, 'cross-site cookie mode is secure', env.authCookieSameSite !== 'None' || env.authCookieSecure, `SameSite=${env.authCookieSameSite}`)
 check(checks, 'trusted browser origins configured', env.authTrustedOrigins.length > 0, 'AUTH_TRUSTED_ORIGINS or CORS_ALLOWED_ORIGINS must include the frontend origin')
 check(checks, 'rate limit guard enabled', env.rateLimitEnabled, 'RATE_LIMIT_ENABLED must not be false')
@@ -369,9 +475,10 @@ check(checks, 'shared rate limit store configured', env.rateLimitStore === 'redi
 check(checks, 'metrics exporter configured', env.metricsExporterEnabled && env.metricsExporterFormat === 'prometheus', `METRICS_EXPORTER_FORMAT=${env.metricsExporterFormat}`)
 check(checks, 'metrics exporter token protected', env.hasMetricsExporterToken, 'METRICS_EXPORTER_TOKEN should be set when exporter is enabled')
 check(checks, 'api embedded workers disabled', !env.apiEmbeddedWorkersEnabled, 'API_EMBEDDED_WORKERS_ENABLED should be false for multi-instance API deployments')
-check(checks, 'worker media scan sweep configured', env.mediaScanWorkerEnabled, 'MEDIA_SCAN_WORKER_ENABLED should be true for the worker process')
-check(checks, 'worker media storage cleanup configured', env.mediaStorageCleanupWorkerEnabled, 'MEDIA_STORAGE_CLEANUP_WORKER_ENABLED should be true for the worker process')
-check(checks, 'worker stale submission sweep configured', env.taskStaleSubmissionWorkerEnabled, 'TASK_STALE_SUBMISSION_WORKER_ENABLED should be true for the worker process')
+for (const requirement of inspectProductionWorkers(env)) {
+  const label = requirement.group === 'core' ? `worker ${requirement.name}` : `${requirement.name} retention worker`
+  check(checks, `${label} configured`, requirement.enabled, requirement.required ? `${requirement.variable} should be true for the worker process` : `${requirement.variable} is not required while its feature is disabled`)
+}
 check(checks, 'worker lease renews before expiry', env.workerLeaseRenewIntervalSeconds < env.workerLeaseTtlSeconds, `renew=${env.workerLeaseRenewIntervalSeconds}s ttl=${env.workerLeaseTtlSeconds}s`)
 check(checks, 'request body guard enabled', env.requestBodySizeGuardEnabled, 'REQUEST_BODY_SIZE_GUARD_ENABLED must not be false')
 check(checks, 'auth failure monitor enabled', env.authFailureMonitorEnabled, 'AUTH_FAILURE_MONITOR_ENABLED must not be false')
@@ -386,7 +493,7 @@ for (const item of checks) {
   console.log(`${item.pass ? 'PASS' : 'FAIL'} ${item.name}${item.detail ? ` (${item.detail})` : ''}`)
 }
 console.log('Safe summary:')
-console.log(JSON.stringify(summarize(env, oauthProviders, chatRuntime), null, 2))
+console.log(JSON.stringify(summarize(env, oauthProviders, chatRuntime, providerDeletionGatewayConfigured, providerAlertWiring), null, 2))
 
 if (failed.length > 0) {
   console.error(`Production smoke failed: ${failed.length} check(s) failed`)

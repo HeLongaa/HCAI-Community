@@ -1685,8 +1685,11 @@ export type ApiCreativeAccountingPreview = {
     reasonCode: string | null
   }
   providerCost: {
-    availability: 'available' | 'unavailable'
+    availability: 'available' | 'unavailable' | 'reconciliation_required'
     reasonCode: string | null
+    estimateAmount?: number | null
+    currency?: string | null
+    pricingVersionId?: string | null
   }
   settlement: {
     success: string
@@ -1746,6 +1749,12 @@ export type ApiCreativeCapability = {
   parameterDefinitions?: Record<string, ApiCreativeParameterDefinition>
   output?: Record<string, unknown>
   modelDecision?: Record<string, unknown>
+  availability?: {
+    capabilityAvailable: boolean
+    runtimeAvailableWhenConfigured: boolean
+    productionAvailable: boolean
+    evidence?: Record<string, unknown>
+  }
   runtime?: {
     realProviderCallsApproved: boolean
     productionEnablementApproved: boolean
@@ -1950,8 +1959,12 @@ export type ApiUserCreativeGeneration = {
     legacy: boolean
     quotaUnits: number
     providerCost: {
-      availability: 'available' | 'unavailable'
+      availability: 'available' | 'unavailable' | 'reconciliation_required'
       ledgerStatus: string | null
+      estimateAmount: number | null
+      actualAmount: number | null
+      currency: string | null
+      reasonCode: string | null
     }
   }
   safety: {
@@ -2221,6 +2234,8 @@ export type ApiCreativeProviderCost = {
     costExceededEstimate: boolean | null
     providerUsageMissing: boolean | null
     billingReconciliationRequired: boolean | null
+    providerStatus: number | null
+    providerCategory: string | null
   }
   pricingSnapshot: null | {
     schemaVersion: string | null
@@ -2571,6 +2586,94 @@ export type ApiLibraryItem = {
   text: string
   sourceId?: string | null
   metadata?: unknown
+  version: number
+  deletedAt: string | null
+  deletionReasonCode: string | null
+}
+
+export type ApiInspirationCategory = {
+  id: string
+  kind: 'content_type' | 'domain' | 'difficulty'
+  slug: string
+  nameEn: string
+  nameZh: string
+  description: string | null
+  sortOrder: number
+  active: boolean
+}
+
+export type ApiInspirationRevision = {
+  id: string
+  version: number
+  status: ApiInspirationEntry['status']
+  reviewNote: string | null
+  reviewedAt: string | null
+  createdAt: string
+  snapshot?: {
+    title: string
+    summary: string
+    problem: string
+    audience: string
+    categoryId: string
+    contentType: string
+    domains: string[]
+    difficulty: ApiInspirationEntry['difficulty']
+    toolModels: string[]
+    content: Record<string, unknown>
+    sourceAttribution: string | null
+    license: string | null
+    featured: boolean
+    supportsTaskDraft: boolean
+    sortOrder: number
+  }
+}
+
+export type ApiInspirationEntry = {
+  id: string
+  title: string
+  summary: string
+  problem: string
+  audience: string
+  contentType: string
+  category: Pick<ApiInspirationCategory, 'id' | 'slug' | 'nameEn' | 'nameZh'> | null
+  domains: string[]
+  difficulty: string
+  toolModels: string[]
+  sourceKind: 'official' | 'user_submission'
+  sourceAttribution: string | null
+  license: string | null
+  status: 'draft' | 'pending_review' | 'changes_requested' | 'published' | 'rejected' | 'archived'
+  content: Record<string, unknown>
+  featured: boolean
+  supportsTaskDraft: boolean
+  version: number
+  reviewNote: string | null
+  author: { id: string; handle: string | null; displayName: string } | null
+  favoriteCount: number
+  usageCount: number
+  favorited: boolean
+  favoritedAt?: string
+  publishedAt: string | null
+  createdAt: string
+  updatedAt: string
+  revisions?: ApiInspirationRevision[]
+  pendingRevision?: ApiInspirationRevision | null
+}
+
+export type InspirationSubmissionRequest = {
+  title: string
+  summary: string
+  problem: string
+  audience: string
+  categoryId: string
+  contentType: string
+  domains: string[]
+  difficulty: ApiInspirationEntry['difficulty']
+  toolModels: string[]
+  content: Record<string, unknown>
+  sourceAttribution?: string | null
+  license?: string | null
+  supportsTaskDraft?: boolean
 }
 
 export type LibraryListQuery = {
@@ -2789,6 +2892,7 @@ export type NotificationDeliveryMetricGroup = {
   failed: number
   suppressed: number
   cancelled: number
+  abandoned: number
   pending: number
   terminalEligible: number
   deliveryRateBps: number
@@ -3349,8 +3453,24 @@ export type AdminSecurityEventDto = {
   identity?: string | null
   method?: string | null
   pathname?: string | null
+  subjectRef?: string | null
+  incidentId?: string | null
   occurredAt: string
   details?: Record<string, unknown> | unknown
+}
+
+export type AdminSecurityIncidentDto = {
+  id: string
+  status: 'open' | 'resolved'
+  criticalConfirmed: boolean
+  reasonCode: string
+  resolvedReasonCode?: string | null
+  openedAt: string
+  resolvedAt?: string | null
+  version: number
+  eventCount: number
+  createdAt: string
+  updatedAt: string
 }
 
 export type AdminSecurityAlertDto = {
@@ -3721,6 +3841,22 @@ export type AdminSloDto = {
   secondaryOnCallHandle: string | null
   escalationMinutes: number
   controlVersion: number
+  sampleCount?: number
+}
+
+export type AdminGenerationSloWindowDto = {
+  generations: number
+  terminal: number
+  completed: number
+  failed: number
+  cancelled: number
+  retries: number
+  success: number | null
+  retryFree: number | null
+  abandonmentFree: number | null
+  firstResultSamples: number
+  firstResultWithinTarget: number | null
+  firstResultP95Ms: number | null
 }
 
 export type AdminSloSummaryDto = {
@@ -3731,6 +3867,11 @@ export type AdminSloSummaryDto = {
     fiveMinutes: AdminSloWindowDto
     sixtyMinutes: AdminSloWindowDto
     thirtyDays: AdminSloWindowDto
+  }
+  generationWindows?: {
+    fiveMinutes: AdminGenerationSloWindowDto
+    sixtyMinutes: AdminGenerationSloWindowDto
+    thirtyDays: AdminGenerationSloWindowDto
   }
   slos?: AdminSloDto[]
   alerts?: AdminObservabilityAlertDto[]
@@ -4089,7 +4230,7 @@ export type ModelDeploymentDto = {
   environment: ModelDeploymentEnvironment
   region: string
   deploymentRef: string
-  adapterType: 'openai_image' | 'openai_chat' | 'google_video' | 'elevenlabs_music' | null
+  adapterType: 'openai_image' | 'openai_chat' | 'router_video' | 'router_music' | null
   providerModelId: string | null
   endpointUrl: string | null
   secretPurpose: string | null
@@ -4539,6 +4680,14 @@ export type ProviderOperationalPolicyRequest = {
   healthTtlSeconds: number
   reasonCode: string
 }
+export type ProviderOperationalExternalGatesRequest = {
+  capAmount: string
+  remainingAmount?: string | null
+  sourceType: 'fixture_config' | 'manual_attestation' | 'injected_reader'
+  sourceRef: string
+  expiresAt?: string | null
+  reasonCode: string
+}
 export type ProviderHealthEvidenceDto = {
   id: string
   policyId: string
@@ -4759,4 +4908,34 @@ export type WebhookMetrics = {
   subscriptions: { total: number; active: number }
   deliveries: { total: number; queued: number; succeeded: number; deadLettered: number }
   attempts: number
+}
+
+export type ProviderAlertDeliveryStatus = 'queued' | 'processing' | 'retry_scheduled' | 'succeeded' | 'dead_lettered' | 'cancelled'
+export type ProviderAlertDeliveryChannel = 'webhook' | 'slack' | 'email'
+
+export type ProviderAlertDelivery = {
+  id: string
+  sourceKey: string
+  auditEventId: string | null
+  channel: ProviderAlertDeliveryChannel
+  action: string
+  status: ProviderAlertDeliveryStatus
+  attemptCount: number
+  maxAttempts: number
+  replayCount: number
+  availableAt: string
+  lastErrorCode: string | null
+  lastStatusCode: number | null
+  receiptHash: string | null
+  deliveredAt: string | null
+  deadLetteredAt: string | null
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type ProviderAlertDeliveryQuery = {
+  status?: ProviderAlertDeliveryStatus | null
+  channel?: ProviderAlertDeliveryChannel | null
+  limit?: number
 }

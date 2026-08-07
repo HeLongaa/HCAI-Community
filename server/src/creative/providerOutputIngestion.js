@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 
 import { HttpError } from '../common/errors/httpError.js'
 import { buildCreativeIngestedArtifactMetadata } from './artifactBuilder.js'
+import { classifyCreativeOutput } from './outputSafety.js'
 
 const stableHash = (value) => createHash('sha256').update(JSON.stringify(value ?? null)).digest('hex')
 
@@ -16,9 +17,21 @@ export const buildProviderOutputSourceKey = ({ generation, outputDigest, outputI
 
 const persistedOutput = ({ output, asset, ingestion }) => {
   const scanStatus = asset.metadata?.security?.scanStatus ?? 'pending'
+  const security = asset.metadata?.security ?? {}
+  const safety = output.safety ?? (security.outputSafetyDecision ? {
+    schemaVersion: 1,
+    decision: security.outputSafetyDecision,
+    classified: security.outputSafetyClassified === true,
+    classifierId: 'persisted-evidence',
+    classifierVersion: '1',
+    categories: [],
+    evidenceHash: security.outputSafetyEvidenceHash ?? null,
+    classifiedAt: null,
+  } : null)
   const downloadPath = `/api/media/assets/${asset.id}/download`
   return {
     ...output,
+    ...(safety ? { safety } : {}),
     contentType: asset.contentType,
     url: downloadPath,
     storage: {
@@ -68,6 +81,8 @@ export const ingestCreativeProviderOutput = async ({
   fetchOutput,
   now = new Date(),
   leaseSeconds = 60,
+  source = process.env,
+  outputSafetyClassifier = null,
 }) => {
   const ingestionRepository = repositories.creativeOutputIngestions
   if (!ingestionRepository?.record || !ingestionRepository?.claim || !ingestionRepository?.update) {
@@ -118,12 +133,18 @@ export const ingestCreativeProviderOutput = async ({
       workspace: generation.workspace,
       declaredContentType: output.contentType,
     })
+    const outputSafety = await classifyCreativeOutput({ generation, output, body: fetched.body, contentType: fetched.contentType, source, classifier: outputSafetyClassifier, now })
+    const governedOutput = { ...output, safety: outputSafety }
+    const governedGeneration = {
+      ...generation,
+      safety: { ...generation.safety, reviewRequired: generation.safety?.reviewRequired || outputSafety.decision !== 'allow', output: outputSafety },
+    }
     const assetId = `media-output-${sourceKey.slice('creative-output:'.length, 48)}`
     const fileName = `${generation.workspace}-${generation.id}-${output.id}.${fetched.extension}`
     const storageKey = `${actor.handle}/generated/${generation.workspace}/${assetId}.${fetched.extension}`
     const metadata = buildCreativeIngestedArtifactMetadata({
-      generation,
-      output,
+      generation: governedGeneration,
+      output: governedOutput,
       ingestion: { sourceKey, ...fetched },
     })
     const asset = await repositories.media.createIngestedAsset({
@@ -135,8 +156,8 @@ export const ingestCreativeProviderOutput = async ({
       contentType: fetched.contentType,
       sizeBytes: fetched.sizeBytes,
       sha256: fetched.sha256,
-      generation,
-      output,
+      generation: governedGeneration,
+      output: governedOutput,
       metadata,
     }, actor)
     if (!asset) throw new Error('Ingested media asset could not be created')
@@ -160,7 +181,7 @@ export const ingestCreativeProviderOutput = async ({
       })
     }
     ingestion = completed
-    return persistedOutput({ output, asset, ingestion })
+    return persistedOutput({ output: governedOutput, asset, ingestion })
   } catch (error) {
     await ingestionRepository.update(ingestion.id, {
       status: 'failed',

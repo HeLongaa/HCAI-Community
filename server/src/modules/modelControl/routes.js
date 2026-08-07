@@ -32,11 +32,12 @@ import {
   parseProviderSecretRefListQuery,
   resolveAndRecordModelRoute,
 } from '../../modelControl/modelGovernanceRuntime.js'
-import { buildProviderControlScopes, providerCircuitScope } from '../../creative/providerControlContract.js'
+import { buildProviderControlScopes, createProviderCapEvidence, providerCircuitScope } from '../../creative/providerControlContract.js'
 import {
   evaluateProviderOperationalReadiness,
   parseProviderHealthEvidenceCreate,
   parseProviderHealthEvidenceListQuery,
+  parseProviderOperationalExternalGatesProvision,
   parseProviderOperationalPolicyCreate,
   parseProviderOperationalPolicyListQuery,
   parseProviderOperationalPolicyTransition,
@@ -330,6 +331,47 @@ export const registerModelControlRoutes = (router, options = {}) => {
     const evidence = await providerOperationsRepository.recordHealth(parseProviderHealthEvidenceCreate(profile, (await readJsonBody(request)) ?? {}, actor))
     await routeRepositories.audit.recordAttempt({ actor, action: 'admin.model_control.provider_health_recorded', resourceType: 'provider_health_evidence', resourceId: evidence.id, metadata: { policyId: profile.id, status: evidence.status, sourceType: evidence.sourceType, evidenceHash: evidence.evidenceHash } })
     created(response, evidence)
+  })
+
+  router.add('POST', '/api/admin/model-control/provider-operations/:id/external-gates', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:creative:provider-control:manage')
+    const profile = await findProviderOperationsProfile(context.params.id)
+    const provider = profile.provider ?? await repository.find('provider', profile.providerId)
+    if (!provider) throw new HttpError(422, 'REFERENCE_NOT_FOUND', 'Provider operations profile references a missing Provider')
+    const input = parseProviderOperationalExternalGatesProvision((await readJsonBody(request)) ?? {})
+    const scopes = buildProviderControlScopes({ providerId: provider.key, providerAccountRef: profile.providerAccountRef, workspace: profile.workspace, modelFamily: profile.modelFamily })
+    const requiredControls = scopes.filter((scope) => ['global', 'provider'].includes(scope.scopeType))
+    const controls = await Promise.all(requiredControls.map(async (scope) => {
+      const current = await routeRepositories.creativeProviderControls.findControl(scope.scopeKey)
+      return routeRepositories.creativeProviderControls.setControl({ ...scope, enabled: true, expectedVersion: current?.version ?? 0, reasonCode: input.reasonCode }, actor)
+    }))
+    const providerScope = scopes.find((scope) => scope.scopeType === 'provider')
+    const circuitScope = providerCircuitScope(scopes)
+    const [cap, circuit] = await Promise.all([
+      routeRepositories.creativeProviderControls.putCapEvidence(createProviderCapEvidence({
+        sourceKey: `provider-ops-cap-${profile.id}-${Date.now()}`,
+        scopeKey: providerScope.scopeKey,
+        providerId: provider.key,
+        providerAccountRef: profile.providerAccountRef,
+        currency: profile.currency,
+        capAmount: input.capAmount,
+        remainingAmount: input.remainingAmount,
+        sourceType: input.sourceType,
+        sourceRef: input.sourceRef,
+        verifiedAt: new Date().toISOString(),
+        expiresAt: input.expiresAt,
+      }), actor),
+      routeRepositories.creativeProviderControls.ensureCircuit(circuitScope, actor),
+    ])
+    const snapshot = await operationalSnapshot(profile, { ignorePolicyStatus: true })
+    await routeRepositories.audit.recordAttempt({
+      actor,
+      action: 'admin.model_control.provider_operations_external_gates_provisioned',
+      resourceType: 'provider_operational_policy',
+      resourceId: profile.id,
+      metadata: { controlCount: controls.length, capEvidenceId: cap.evidence.id, circuitId: circuit.circuit.id, reasonCode: input.reasonCode },
+    })
+    ok(response, { ...profile, readiness: snapshot.readiness, budget: snapshot.budget, health: snapshot.health, rate: snapshot.rate, cost: snapshot.cost })
   })
 
   router.add('GET', '/api/admin/model-control/provider-operations-summary', async (_request, response, context) => {

@@ -28,7 +28,7 @@ test('provider pricing snapshots cover all four workspace billing contracts', ()
     ['image', 'image', '2', 0.05],
     ['chat', 'input_tokens', '1000', 25],
     ['video', 'generated_seconds', '8', 0.2],
-    ['music', 'generated_minutes', '1.5', 0.0375],
+    ['music', 'request', '1', 0.025],
   ]
 
   for (const [workspace, unit, quantity, expected] of scenarios) {
@@ -139,11 +139,14 @@ test('provider cost reservation verifies generated-second estimates against thei
   const reservation = buildProviderCostReservation({
     generationId: 'gen-provider-cost-video',
     providerCost: {
-      providerId: 'google-veo-3-1-fast',
+      providerId: 'hcai-router-seedance-2-fast',
       providerAccountRef: 'staging',
       model: {
         providerModelId: 'veo-3.1-fast',
-        pricingSource: 'v1_public_list_price',
+        pricingSource: 'model_control_pricing_version',
+        pricingSourceRef: 'price-video-usd-v1',
+        pricingEffectiveAt: '2026-07-01T00:00:00.000Z',
+        pricingExpiresAt: '2026-08-01T00:00:00.000Z',
         pricingSnapshotAt: '2026-07-13T00:00:00.000Z',
       },
       estimate: {
@@ -154,7 +157,7 @@ test('provider cost reservation verifies generated-second estimates against thei
         unitPrice: 0.1,
       },
       budget: {
-        budgetScope: 'staging:google:video',
+        budgetScope: 'staging:hcai-router:video',
         dailyCapCurrency: 'USD',
         dailyCapAmount: 20,
         spentAmount: 0,
@@ -167,15 +170,18 @@ test('provider cost reservation verifies generated-second estimates against thei
   assert.equal(reservation.estimateMicros, '800000')
   assert.equal(reservation.pricingSnapshot.billingUnit, 'generated_seconds')
   assert.equal(reservation.pricingSnapshot.unitPriceMicros, '100000')
+  assert.equal(reservation.pricingSnapshot.sourceRef, 'price-video-usd-v1')
+  assert.equal(reservation.pricingSnapshot.effectiveAt, '2026-07-01T00:00:00.000Z')
+  assert.equal(reservation.pricingSnapshot.expiresAt, '2026-08-01T00:00:00.000Z')
 
   assert.throws(() => buildProviderCostReservation({
     generationId: 'gen-provider-cost-video-mismatch',
     providerCost: {
-      providerId: 'google-veo-3-1-fast',
+      providerId: 'hcai-router-seedance-2-fast',
       providerAccountRef: 'staging',
       model: { providerModelId: 'veo-3.1-fast' },
       estimate: { currency: 'USD', amount: 0.9, billingUnit: 'generated_seconds', quantity: 8, unitPrice: 0.1 },
-      budget: { budgetScope: 'staging:google:video', dailyCapCurrency: 'USD', dailyCapAmount: 20, spentAmount: 0 },
+      budget: { budgetScope: 'staging:hcai-router:video', dailyCapCurrency: 'USD', dailyCapAmount: 20, spentAmount: 0 },
     },
     workspace: 'video',
     mode: 'text_to_video',

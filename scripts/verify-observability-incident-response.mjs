@@ -24,7 +24,14 @@ add('migration adds alert escalation projection', migration.includes('escalation
 add('migration creates SLO controls and immutable incident facts', migration.includes('observability_slo_controls') && migration.includes('observability_alert_events') && migration.includes('observability_incident_reviews'))
 add('database protects event and review facts', migration.includes('observability_alert_events_immutable') && migration.includes('observability_incident_reviews_immutable'))
 add('SLO controls bound targets thresholds latency and escalation', runtime.includes('parseSloControlRequest') && runtime.includes('shortWindowBurnThreshold') && runtime.includes('escalationMinutes'))
-add('SLO evaluation consumes versioned controls', runtime.includes('buildSloSummary') && seed.includes('buildSloSummary(logs, now, controls)') && prisma.includes('buildSloSummary(rows, now, sloControls)'))
+add('SLO evaluation consumes versioned API and generation controls',
+  runtime.includes('buildSloSummary') && runtime.includes('buildGenerationSloSummary') &&
+  seed.includes('buildGenerationSloSummary(generationRows, now, controls)') &&
+  prisma.includes('combinedSummary(rows, generations, now, sloControls)'))
+add('generation SLOs use durable bounded state without user dimensions',
+  contract.sloIds.filter((id) => id.startsWith('generation-')).length === 4 &&
+  prisma.includes('recentGenerations') && prisma.includes('outputIngestions') &&
+  runtime.includes('firstResultWithinTarget') && runtime.includes('retryFree') && runtime.includes('abandonmentFree'))
 add('seed and Prisma implement CAS escalation and immutable review', seed.includes('escalateAlert') && seed.includes('createIncidentReview') && prisma.includes('escalateAlert') && prisma.includes('createIncidentReview'))
 add('on-call notifications are wired for firing and escalation', seed.includes('notifyOnCall') && prisma.includes('notifyOnCall'))
 for (const route of contract.routes) {

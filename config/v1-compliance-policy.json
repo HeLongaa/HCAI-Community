@@ -403,9 +403,9 @@
     { "providerId": "replicate-flux-1-1-pro", "modality": "image", "role": "backup_candidate", "dataCategories": ["prompt", "reference_image", "generation_settings"], "productionApproved": false },
     { "providerId": "openai-gpt-5-6-terra", "modality": "chat", "role": "primary_candidate", "dataCategories": ["messages", "approved_context", "tool_schema", "safety_identifier"], "productionApproved": false },
     { "providerId": "anthropic-claude-sonnet-5", "modality": "chat", "role": "backup_candidate", "dataCategories": ["messages", "approved_context", "tool_schema"], "productionApproved": false },
-    { "providerId": "google-veo-3-1-fast", "modality": "video", "role": "primary_candidate", "dataCategories": ["prompt", "storyboard", "reference_media", "generation_settings"], "productionApproved": false },
+    { "providerId": "hcai-router-seedance-2-fast", "modality": "video", "role": "primary_candidate", "dataCategories": ["prompt", "storyboard", "reference_media", "generation_settings"], "productionApproved": false },
     { "providerId": "runway-gen-4-5", "modality": "video", "role": "backup_candidate_blocked", "dataCategories": ["prompt", "storyboard", "reference_media", "generation_settings"], "productionApproved": false },
-    { "providerId": "elevenlabs-music-v2-enterprise", "modality": "music", "role": "primary_candidate", "dataCategories": ["prompt", "lyrics", "reference_audio", "generation_settings"], "productionApproved": false },
+    { "providerId": "hcai-router-minimax-music-3", "modality": "music", "role": "primary_candidate", "dataCategories": ["prompt", "lyrics", "reference_audio", "generation_settings"], "productionApproved": false },
     { "providerId": "google-lyria-3-pro-preview", "modality": "music", "role": "backup_candidate_preview", "dataCategories": ["prompt", "lyrics", "reference_audio", "generation_settings"], "productionApproved": false }
   ],
   "supportContract": {

@@ -3,8 +3,64 @@ import { expect, test } from '@playwright/test'
 import type { ApiUserCreativeGeneration } from '../src/services/contracts'
 import { apiBaseUrl, authHeaders, login, signInPage } from './helpers'
 
+test('Image Studio prefers an operational real Provider over a Mock default', async ({ page, request }) => {
+  await signInPage(page, request, 'promptlin')
+  const modeContract = {
+    id: 'text_to_image',
+    label: 'Text to Image',
+    runtimeAvailable: true,
+    available: true,
+    unavailableReason: null,
+    inputAssets: { minimum: 0, maximum: 0, purposes: [], contentTypes: [] },
+    parameters: ['aspectRatio'],
+  }
+  const capability = {
+    workspace: 'image',
+    label: 'Image',
+    contractVersion: 'image-capability-v1',
+    modes: ['text_to_image'],
+    modeContracts: [modeContract],
+    inputAssetPurposes: [],
+    outputTypes: ['image'],
+    maxPromptCharacters: 2000,
+    supportedParameters: ['aspectRatio'],
+  }
+  await page.route('**/api/creative/providers', async (route) => {
+    await route.fulfill({
+      json: {
+        data: {
+          defaultProviderId: 'mock',
+          providers: [
+            { id: 'mock', label: 'Mock Creative Provider', mode: 'mock', enabled: true, configured: true, default: true, capabilities: [capability], safeMetadata: {} },
+            { id: 'real-image', label: 'Real Image Provider', mode: 'openai_image', enabled: true, configured: true, default: false, capabilities: [capability], safeMetadata: {} },
+          ],
+        },
+      },
+    })
+  })
+
+  await page.goto('/#playground?workspace=image')
+  const providerSummary = page.locator('.image-provider-summary')
+  await expect(providerSummary).toContainText('Real Image Provider')
+  await expect(providerSummary).not.toContainText('Mock Creative Provider')
+  await expect(page.getByRole('button', { name: 'Generate images' })).toBeEnabled()
+})
+
 test('Image Studio consumes the capability contract and sends only allowed parameters', async ({ page, request }) => {
   const session = await signInPage(page, request, 'promptlin')
+  let generationAttempts = 0
+  await page.route('**/api/creative/generations', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue()
+      return
+    }
+    generationAttempts += 1
+    if (generationAttempts === 1) {
+      await route.fulfill({ status: 503, json: { error: { code: 'IMAGE_PROVIDER_UNAVAILABLE', message: 'Image generation is temporarily unavailable.' } } })
+      return
+    }
+    await route.continue()
+  })
   await page.goto('/')
   await page.getByRole('button', { name: 'AI Workspace' }).click()
   await page.getByRole('button', { name: 'Image', exact: true }).click()
@@ -21,18 +77,29 @@ test('Image Studio consumes the capability contract and sends only allowed param
   await page.getByRole('button', { name: 'Image to Image', exact: true }).click()
   await expect(page.getByText('Source image')).toBeVisible()
   await expect(page.getByText(/Change strength 70%/)).toBeVisible()
+  await page.locator('.media-file-picker input[type="file"]').setInputFiles({ name: 'studio-reference.png', mimeType: 'image/png', buffer: Buffer.from('image studio reference') })
+  await expect(page.locator('.generation-operation-feedback')).toContainText('Image uploaded.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
   await page.getByRole('button', { name: 'Text to Image', exact: true }).click()
   await page.getByLabel('Image quality').selectOption('high')
+
+  const generateButton = page.getByRole('button', { name: 'Generate images' })
+  await generateButton.click()
+  await expect(page.getByRole('status', { name: 'Image generation status' })).toContainText('Image generation is temporarily unavailable.')
+  await expect(page.getByRole('textbox', { name: 'Image prompt' })).toHaveValue('Minimal album cover, chrome flower, cinematic lighting, black background')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
 
   const generationResponse = page.waitForResponse((response) =>
     response.url().endsWith('/api/creative/generations') && response.request().method() === 'POST',
   )
-  const generateButton = page.getByRole('button', { name: 'Generate images' })
   await generateButton.focus()
   await page.keyboard.press('Enter')
   const response = await generationResponse
   expect(response.ok()).toBeTruthy()
+  expect(generationAttempts).toBe(2)
   const generationId = ((await response.json()) as { data: { id: string } }).data.id
+  await expect(page.locator('.generation-operation-feedback')).toContainText(/Image generation complete|Image job created/)
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
   expect(response.request().postDataJSON()).toMatchObject({
     workspace: 'image',
     mode: 'text_to_image',
@@ -45,8 +112,10 @@ test('Image Studio consumes the capability contract and sends only allowed param
   })
   expect(response.request().postDataJSON().parameters).not.toHaveProperty('controls')
 
+  await page.getByRole('button', { name: 'History', exact: true }).click()
   const historyRow = page.locator('.image-history-row').filter({ hasText: 'Minimal album cover' }).first()
   await expect(historyRow).toContainText('Completed')
+  await historyRow.click()
   await expect(page.locator('.visual-grid .generated-result-card')).toHaveCount(1)
   await expect(page.locator('.visual-grid .visual-card')).toHaveCount(1)
 
@@ -57,6 +126,10 @@ test('Image Studio consumes the capability contract and sends only allowed param
   const detail = (await detailResponse.json()).data
   const assetId = detail.outputs[0].assetId as string
 
+  await expect(page.getByTestId('image-preview-checking')).toBeVisible()
+  await expect(page.getByText('Output checks in progress', { exact: true })).toBeVisible()
+  await expect(page.getByText('Preview and download become available after safety checks.')).toBeVisible()
+  await expect(page.getByTestId('generated-image-preview')).toHaveCount(0)
   await expect(page.getByTitle('Download output')).toBeDisabled()
   const operator = await login(request, 'opsplus')
   const scanResponse = await request.post(`${apiBaseUrl}/api/media/uploads/${assetId}/scan`, {
@@ -64,7 +137,12 @@ test('Image Studio consumes the capability contract and sends only allowed param
     data: { decision: 'clean', detectedContentType: 'image/png', note: 'Image lifecycle E2E fixture' },
   })
   expect(scanResponse.ok()).toBeTruthy()
+  await page.getByRole('button', { name: 'History', exact: true }).click()
   await page.getByTitle('Refresh history').click()
+  await page.locator('.image-history-row').filter({ hasText: 'Minimal album cover' }).first().click()
+  await expect(page.getByTestId('image-preview-unavailable')).toBeVisible()
+  await expect(page.getByText('Preview unavailable', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('generated-image-preview')).toHaveCount(0)
   await expect(page.getByTitle('Download output')).toBeEnabled()
 
   const downloadResponse = page.waitForResponse((candidate) =>
@@ -72,13 +150,18 @@ test('Image Studio consumes the capability contract and sends only allowed param
   )
   await page.getByTitle('Download output').click()
   expect((await downloadResponse).ok()).toBeTruthy()
+  await expect(page.locator('.generation-operation-feedback')).toContainText(/Download contract ready|Download started/)
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
 
   await expect(page.getByRole('button', { name: 'Use result as source' })).toHaveCount(0)
 
   await page.reload()
   await page.getByRole('button', { name: 'AI Workspace' }).click()
   await page.getByRole('button', { name: 'Image', exact: true }).click()
-  await expect(page.locator('.image-history-row').filter({ hasText: 'Minimal album cover' }).first()).toContainText('Completed')
+  await page.getByRole('button', { name: 'History', exact: true }).click()
+  const restoredHistoryRow = page.locator('.image-history-row').filter({ hasText: 'Minimal album cover' }).first()
+  await expect(restoredHistoryRow).toContainText('Completed')
+  await restoredHistoryRow.click()
   await expect(page.locator('.visual-grid .generated-result-card')).toBeVisible()
 })
 
@@ -117,6 +200,19 @@ test('Image Studio renders active lifecycle controls and refresh-safe retry degr
     id: 'generation-ui-reusable',
     status: 'completed',
     promptPreview: 'Reusable lifecycle image',
+    accounting: {
+      policyVersion: 'creative-accounting-v1',
+      legacy: false,
+      quotaUnits: 1,
+      providerCost: {
+        availability: 'available',
+        ledgerStatus: 'settled',
+        estimateAmount: 0.053,
+        actualAmount: 0.041,
+        currency: 'USD',
+        reasonCode: null,
+      },
+    },
     outputs: [{
       assetId: 'asset-ui-reusable',
       fileName: 'reusable.png',
@@ -194,9 +290,14 @@ test('Image Studio renders active lifecycle controls and refresh-safe retry degr
   await expect(page.getByText('Running', { exact: true }).first()).toBeVisible()
   await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(page.getByText('Cancelled', { exact: true }).first()).toBeVisible()
+  await expect(page.locator('.generation-operation-feedback')).toContainText('Image job cancelled.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeDisabled()
   await expect(page.getByText(/Exact retry is unavailable after refresh/)).toBeVisible()
+  await page.getByRole('button', { name: 'History', exact: true }).click()
   await page.locator('.image-history-row').filter({ hasText: 'Reusable lifecycle image' }).click()
+  await page.getByText('Technical details', { exact: true }).click()
+  await expect(page.getByText('Provider cost USD 0.041000')).toBeVisible()
   await page.getByRole('button', { name: 'Use result as source' }).click()
   await expect(page.getByRole('button', { name: 'Image to Image', exact: true })).toHaveClass(/active/)
   await expect(page.getByLabel('Source image')).toHaveValue('asset-ui-reusable')
@@ -206,13 +307,18 @@ test('Image Studio renders active lifecycle controls and refresh-safe retry degr
   await expect(page.getByRole('textbox', { name: 'Image prompt' })).toBeVisible()
   await expect(page.getByLabel('Image quality')).toBeVisible()
   await expect(page.getByRole('status', { name: 'Image generation status' })).toHaveAttribute('aria-live', 'polite')
-  await expect(page.locator('.image-generation-history')).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
-  for (const selector of ['.composer', '.provider-status-panel', '.image-generation-history']) {
+  for (const selector of ['.composer', '.provider-status-panel']) {
     const box = await page.locator(selector).boundingBox()
     expect(box, `${selector} must have layout bounds`).not.toBeNull()
     expect(box!.x, `${selector} starts inside viewport`).toBeGreaterThanOrEqual(0)
     expect(box!.x + box!.width, `${selector} ends inside viewport`).toBeLessThanOrEqual(390.5)
   }
+  await page.getByRole('button', { name: 'History', exact: true }).click()
+  await expect(page.locator('.image-generation-history')).toBeVisible()
+  const historyBox = await page.locator('.image-generation-history').boundingBox()
+  expect(historyBox, '.image-generation-history must have layout bounds').not.toBeNull()
+  expect(historyBox!.x, '.image-generation-history starts inside viewport').toBeGreaterThanOrEqual(0)
+  expect(historyBox!.x + historyBox!.width, '.image-generation-history ends inside viewport').toBeLessThanOrEqual(390.5)
   expect(await page.locator('.image-history-table').evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
 })

@@ -1,9 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Track } from '../domain/types'
-import { tracks } from '../data/mockData'
+
+const emptyTrack: Track = {
+  id: 0,
+  title: '',
+  artist: '',
+  plays: '0',
+  duration: '00:00',
+  cover: '',
+  prompt: '',
+  lyrics: [],
+}
 
 export function usePlayerState() {
-  const [activeTrack, setActiveTrack] = useState<Track>(tracks[0])
+  const [activeTrack, setActiveTrack] = useState<Track>(emptyTrack)
   const [playing, setPlaying] = useState(false)
   const audio = useRef<HTMLAudioElement | null>(null)
 

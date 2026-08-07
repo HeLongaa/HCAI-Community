@@ -15,6 +15,7 @@ test('admin can edit and save role permissions from the permission matrix', asyn
   await signInPage(page, request, 'opsplus')
   await page.goto('/')
   await page.getByTestId('nav-admin').click()
+  await page.getByRole('button', { name: 'Access', exact: true }).click()
 
   const creatorRow = page.getByTestId('permission-row-creator')
   await expect(creatorRow).toBeVisible()
@@ -46,30 +47,37 @@ test('release control UI requests, independently approves, and records a deploym
   await signInPage(page, request, 'opsplus')
   await page.goto('/')
   await page.getByTestId('nav-admin').click()
+  await page.getByRole('button', { name: 'Release', exact: true }).click()
 
   const panel = page.getByTestId('admin-release-control')
   await expect(panel).toBeVisible()
-  await panel.getByLabel('Artifact version').fill('e2e-release-current')
-  await panel.getByLabel('Rollback version').fill('e2e-release-previous')
-  await panel.getByLabel('Release summary').fill('E2E production promotion')
+  const suffix = Date.now().toString(36)
+  const summary = `E2E production promotion ${suffix}`
+  await panel.getByLabel('Artifact version').fill(`e2e-release-current-${suffix}`)
+  await panel.getByLabel('Rollback version').fill(`e2e-release-previous-${suffix}`)
+  await panel.getByLabel('Release summary').fill(summary)
   const requestResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/releases') && response.request().method() === 'POST')
   await panel.getByRole('button', { name: 'Request' }).click()
   const requested = await requestResponse.then((response) => response.json()) as { data: { id: string } }
-  await expect(panel.getByText('E2E production promotion')).toBeVisible()
+  await expect(panel.getByText(summary)).toBeVisible()
+  await expect(panel.locator('.admin-action-feedback')).toContainText('Release change submitted for approval.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
 
   await apiData(request.post(`${apiBaseUrl}/api/admin/releases/${requested.data.id}/approve`, {
     headers: authHeaders(approver.accessToken),
     data: { reasonCode: 'e2e_quality_gate' },
   }))
   await panel.getByTitle('Refresh').click()
-  const releaseRow = panel.locator('button.admin-row').filter({ hasText: 'E2E production promotion' })
+  const releaseRow = panel.locator('button.admin-row').filter({ hasText: summary })
   await expect(releaseRow.locator('.status')).toHaveText('approved')
-  await panel.getByLabel('Deployment id').fill('e2e-deployment-1')
-  await panel.getByLabel('Evidence URL').fill('https://example.test/evidence/e2e-deployment-1')
+  await panel.getByLabel('Deployment id').fill(`e2e-deployment-${suffix}`)
+  await panel.getByLabel('Evidence URL').fill(`https://example.test/evidence/e2e-deployment-${suffix}`)
   const deployResponse = page.waitForResponse((response) => response.url().endsWith(`/api/admin/releases/${requested.data.id}/apply`))
   await panel.getByRole('button', { name: 'Record deployment' }).click()
   await deployResponse
   await expect(releaseRow.locator('.status')).toHaveText('deployed')
+  await expect(panel.locator('.admin-action-feedback')).toContainText('Deployment evidence recorded.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
 
   const release = await apiData<{ status: string; evidence: unknown[] }>(request.get(`${apiBaseUrl}/api/admin/releases/${requested.data.id}`, {
     headers: authHeaders(requester.accessToken),
@@ -82,16 +90,26 @@ test('audit UI verifies the chain and creates an immutable archive manifest', as
   await signInPage(page, request, 'opsplus')
   await page.goto('/')
   await page.getByTestId('nav-admin').click()
+  await page.getByRole('button', { name: 'Audit log', exact: true }).click()
+
+  const auditDownload = page.waitForEvent('download')
+  await page.locator('.admin-audit-panel > .permission-summary').getByRole('button', { name: 'Export JSON', exact: true }).click()
+  expect((await auditDownload).suggestedFilename()).toBe('audit-events-all.json')
+  await expect(page.locator('a[download="audit-events-all.json"]')).toHaveCount(0)
 
   const verifyResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/audit/verify'))
   await page.getByRole('button', { name: 'Verify integrity' }).click()
   await verifyResponse
   await expect(page.getByText('Integrity complete')).toBeVisible()
+  await expect(page.locator('.admin-audit-panel > .admin-action-feedback')).toContainText('Audit chain is complete.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
 
   const archiveResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/audit/archives') && response.request().method() === 'POST')
   await page.getByRole('button', { name: 'Archive evidence' }).click()
   await archiveResponse
-  await expect(page.getByText(/Archives: 1/)).toBeVisible()
+  await expect(page.getByText(/Archives: [1-9]\d*/)).toBeVisible()
+  await expect(page.locator('.admin-audit-panel > .admin-action-feedback')).toContainText('Created immutable archive manifest.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
 
   const retention = page.getByTestId('audit-retention-panel')
   await expect(retention).toBeVisible()
@@ -100,6 +118,8 @@ test('audit UI verifies the chain and creates an immutable archive manifest', as
   await retention.getByRole('button', { name: 'Preview' }).click()
   await previewResponse
   await expect(retention.getByText(/Eligible events: 0/)).toBeVisible()
+  await expect(retention.locator('.admin-action-feedback')).toContainText('Audit retention preview generated.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
 })
 
 test('audit search and retention controls remain usable on a mobile viewport', async ({ page, request }) => {
@@ -108,6 +128,7 @@ test('audit search and retention controls remain usable on a mobile viewport', a
   await page.goto('/')
   await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByTestId('nav-admin').click()
+  await page.getByLabel('Current section').selectOption('Audit log')
 
   const auditPanel = page.locator('.admin-audit-panel')
   await expect(auditPanel).toBeVisible()
@@ -136,9 +157,15 @@ test('admin observability UI searches logs, drills into a trace, and exposes SLO
   await expect(panel.getByText('SLO status', { exact: true })).toBeVisible()
   await expect(panel.getByRole('button', { name: 'Evaluate now' })).toBeVisible()
   await expect(panel.getByTitle('Export JSON')).toBeEnabled()
+  const download = page.waitForEvent('download')
+  await panel.getByTitle('Export JSON').click()
+  expect((await download).suggestedFilename()).toMatch(/^observability-logs-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.json$/)
+  await expect(page.locator('a[download^="observability-logs-"]')).toHaveCount(0)
+  await expect(panel.locator('.admin-action-feedback')).toContainText('Observability log export generated.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
   await expect(panel.getByTestId('observability-incident-metrics')).toBeVisible()
-  await expect(panel.getByTestId('observability-slo-controls').locator('.observability-control-row')).toHaveCount(2)
-  await expect(panel.getByTitle('Save SLO control')).toHaveCount(2)
+  await expect(panel.getByTestId('observability-slo-controls').locator('.observability-control-row')).toHaveCount(7)
+  await expect(panel.getByTitle('Save SLO control')).toHaveCount(7)
 
   const firstLog = panel.locator('.observability-log-row').first()
   await expect(firstLog).toBeVisible()
@@ -158,7 +185,7 @@ test('moderator observability UI is read-only', async ({ page, request }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('button', { name: 'Observability', exact: true }).click()
+  await page.getByLabel('Current section').selectOption('Observability')
 
   const panel = page.getByTestId('admin-observability-panel')
   await expect(panel).toBeVisible()

@@ -10,8 +10,8 @@ const generationPayload = (id) => ({
   actorHandle: actor.handle,
   workspace: 'video',
   mode: 'text_to_video',
-  providerId: 'google-veo-3-1-fast',
-  providerMode: 'google_video',
+  providerId: 'hcai-router-seedance-2-fast',
+  providerMode: 'router_video',
   status: 'queued',
   promptHash: 'a'.repeat(64),
   promptPreview: 'Safe preview',
@@ -96,8 +96,8 @@ test('seed Provider operation repository rejects generation and job identity con
   const repository = createSeedRepository()
   await assert.rejects(async () => repository.creativeProviderOperations.record({
     generationId: 'missing-generation',
-    providerId: 'google-veo-3-1-fast',
-    providerMode: 'google_video',
+    providerId: 'hcai-router-seedance-2-fast',
+    providerMode: 'router_video',
     providerJobId: 'missing-job',
     status: 'queued',
     timeoutAt: '2026-07-13T02:15:00.000Z',

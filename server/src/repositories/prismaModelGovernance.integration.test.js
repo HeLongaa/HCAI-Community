@@ -18,6 +18,13 @@ test('Prisma model governance preserves immutable facts and atomically gates pro
   const runId = `model-governance-${Date.now()}-${randomUUID().slice(0, 8)}`
   const actorRef = `${runId}-requester`
   const ids = {}
+  const concurrentQueryWarnings = []
+  const warningListener = (warning) => {
+    if (warning.name === 'DeprecationWarning' && warning.message.includes('client.query() when the client is already executing')) {
+      concurrentQueryWarnings.push(warning.message)
+    }
+  }
+  process.on('warning', warningListener)
 
   try {
     const provider = await repository.modelControl.createProvider({ id: `${runId}-provider`, key: `${runId}-provider`, name: 'Governance Provider', websiteUrl: null, regions: ['us'], dataProcessingRegions: ['us'], createdByRef: actorRef, updatedByRef: actorRef })
@@ -52,6 +59,20 @@ test('Prisma model governance preserves immutable facts and atomically gates pro
     })))
     assert.equal(rotations.filter((result) => result.status === 'fulfilled').length, 1)
     const currentSecretRef = rotations.find((result) => result.status === 'fulfilled').value
+    const lifecycleCalls = []
+    const lifecycleGateway = async ({ action, secretRef: target }) => {
+      lifecycleCalls.push({ action, target })
+      return { action, targetHash: '7'.repeat(64), receiptHash: '8'.repeat(64), completedAt: new Date().toISOString() }
+    }
+    const rotatedAt = new Date(currentSecretRef.createdAt)
+    const disabled = await repository.modelGovernance.sweepSecretRetention({ now: rotatedAt, limit: 10, gateway: lifecycleGateway })
+    assert.equal(disabled.disabled, 1)
+    assert.deepEqual(lifecycleCalls, [{ action: 'disable', target: secretRef.secretRef }])
+    const deleted = await repository.modelGovernance.sweepSecretRetention({ now: new Date(rotatedAt.getTime() + 31 * 86_400_000), limit: 10, gateway: lifecycleGateway })
+    assert.equal(deleted.deleted, 1)
+    const lifecycleReceipt = await repository.client.providerSecretLifecycleReceipt.findFirst({ where: { secretRefId: secretRef.id, action: 'delete' } })
+    assert.ok(lifecycleReceipt)
+    await assert.rejects(repository.client.providerSecretLifecycleReceipt.update({ where: { id: lifecycleReceipt.id }, data: { receiptHash: '9'.repeat(64) } }), /model governance facts are immutable/)
 
     const context = { modality: 'image', operation: 'generate', environment: 'production', region: 'us', subjectKey: `${runId}-private-subject` }
     const decision = await repository.modelGovernance.createDecision(createModelRouteDecision({
@@ -109,6 +130,8 @@ test('Prisma model governance preserves immutable facts and atomically gates pro
     assert.equal(rolledBack.status, 'rolled_back')
     assert.equal((await repository.modelControl.find('deployment', deployment.id)).trafficEligible, false)
     await assert.rejects(repository.client.modelPromotion.delete({ where: { id: ids.promotion } }), /model governance facts are immutable/)
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.deepEqual(concurrentQueryWarnings, [])
   } finally {
     await repository.client.$transaction(async (transaction) => {
       await transaction.$executeRawUnsafe("SET LOCAL app.model_control_maintenance = 'on'")
@@ -128,6 +151,7 @@ test('Prisma model governance preserves immutable facts and atomically gates pro
         await transaction.aiEvaluationCase.deleteMany({ where: { suiteId: ids.evaluationSuite } })
         await transaction.aiEvaluationSuite.deleteMany({ where: { id: ids.evaluationSuite } })
       }
+      if (ids.provider) await transaction.providerSecretLifecycleReceipt.deleteMany({ where: { secretRef: { providerId: ids.provider } } })
       if (ids.provider) await transaction.providerSecretRef.deleteMany({ where: { providerId: ids.provider } })
       if (ids.provider) await transaction.providerLegalReview.deleteMany({ where: { providerId: ids.provider } })
       if (ids.policy) {
@@ -143,5 +167,6 @@ test('Prisma model governance preserves immutable facts and atomically gates pro
       await transaction.auditEvent.deleteMany({ where: { resourceId: { in: Object.values(ids) } } })
     })
     await repository.client.$disconnect()
+    process.off('warning', warningListener)
   }
 })

@@ -8,16 +8,26 @@ export const observabilityAlertStates = Object.freeze(['firing', 'acknowledged',
 export const observabilityRetentionDays = 30
 export const observabilityPageLimit = 100
 export const observabilityExportLimit = 1000
-export const observabilitySloIds = Object.freeze(['api-availability', 'api-latency'])
+export const observabilitySloIds = Object.freeze([
+  'api-availability', 'api-latency', 'generation-success', 'generation-first-result-latency',
+  'generation-retry-rate', 'generation-abandonment-rate', 'frontend-error-rate',
+])
+export const clientErrorEventTypes = Object.freeze(['route_view', 'react_error_boundary', 'window_error', 'unhandled_rejection'])
 
 export const defaultObservabilitySloControls = Object.freeze([
   Object.freeze({ sloId: 'api-availability', target: 0.999, shortWindowBurnThreshold: 14.4, longWindowBurnThreshold: 6, latencyThresholdMs: 750, severity: 'critical', owner: 'platform-operations', runbook: 'docs/OBSERVABILITY_INCIDENT_RESPONSE.md', primaryOnCallHandle: 'opsplus', secondaryOnCallHandle: 'legalpixel', escalationMinutes: 15, enabled: true, version: 0, reasonCode: 'contract_default' }),
   Object.freeze({ sloId: 'api-latency', target: 0.99, shortWindowBurnThreshold: 14.4, longWindowBurnThreshold: 6, latencyThresholdMs: 750, severity: 'critical', owner: 'platform-operations', runbook: 'docs/OBSERVABILITY_INCIDENT_RESPONSE.md', primaryOnCallHandle: 'opsplus', secondaryOnCallHandle: 'legalpixel', escalationMinutes: 15, enabled: true, version: 0, reasonCode: 'contract_default' }),
+  Object.freeze({ sloId: 'generation-success', target: 0.95, shortWindowBurnThreshold: 4, longWindowBurnThreshold: 2, latencyThresholdMs: 120_000, severity: 'critical', owner: 'creative-operations', runbook: 'docs/GENERATION_SLO_RUNBOOK.md', primaryOnCallHandle: 'opsplus', secondaryOnCallHandle: 'legalpixel', escalationMinutes: 15, enabled: true, version: 0, reasonCode: 'contract_default' }),
+  Object.freeze({ sloId: 'generation-first-result-latency', target: 0.9, shortWindowBurnThreshold: 4, longWindowBurnThreshold: 2, latencyThresholdMs: 120_000, severity: 'high', owner: 'creative-operations', runbook: 'docs/GENERATION_SLO_RUNBOOK.md', primaryOnCallHandle: 'opsplus', secondaryOnCallHandle: 'legalpixel', escalationMinutes: 15, enabled: true, version: 0, reasonCode: 'contract_default' }),
+  Object.freeze({ sloId: 'generation-retry-rate', target: 0.95, shortWindowBurnThreshold: 4, longWindowBurnThreshold: 2, latencyThresholdMs: 120_000, severity: 'high', owner: 'creative-operations', runbook: 'docs/GENERATION_SLO_RUNBOOK.md', primaryOnCallHandle: 'opsplus', secondaryOnCallHandle: 'legalpixel', escalationMinutes: 30, enabled: true, version: 0, reasonCode: 'contract_default' }),
+  Object.freeze({ sloId: 'generation-abandonment-rate', target: 0.98, shortWindowBurnThreshold: 4, longWindowBurnThreshold: 2, latencyThresholdMs: 120_000, severity: 'high', owner: 'creative-operations', runbook: 'docs/GENERATION_SLO_RUNBOOK.md', primaryOnCallHandle: 'opsplus', secondaryOnCallHandle: 'legalpixel', escalationMinutes: 30, enabled: true, version: 0, reasonCode: 'contract_default' }),
+  Object.freeze({ sloId: 'frontend-error-rate', target: 0.99, shortWindowBurnThreshold: 4, longWindowBurnThreshold: 2, latencyThresholdMs: 1, severity: 'critical', owner: 'frontend-operations', runbook: 'docs/OBSERVABILITY_INCIDENT_RESPONSE.md', primaryOnCallHandle: 'opsplus', secondaryOnCallHandle: 'legalpixel', escalationMinutes: 15, enabled: true, version: 0, reasonCode: 'contract_default' }),
 ])
 
 const safeIdentifierPattern = /^[a-z0-9][a-z0-9:._/-]{0,191}$/i
 const traceIdPattern = /^[a-f0-9]{32}$/
 const spanIdPattern = /^[a-f0-9]{16}$/
+const sha256Pattern = /^[a-f0-9]{64}$/
 
 const safeIdentifier = (value, fallback = null) => {
   const normalized = String(value ?? '').trim()
@@ -37,6 +47,67 @@ const parseLimit = (value, maximum = observabilityPageLimit, defaultValue = 20) 
   if (!Number.isInteger(limit) || limit < 1 || limit > maximum) throw validationFailed(`limit must be an integer between 1 and ${maximum}`)
   return limit
 }
+
+export const parseClientErrorReport = (payload = {}, { now = new Date() } = {}) => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw validationFailed('client error report must be an object')
+  const eventType = String(payload.eventType ?? '')
+  if (!clientErrorEventTypes.includes(eventType)) throw validationFailed(`eventType must be one of: ${clientErrorEventTypes.join(', ')}`)
+  const occurredAt = parseDate(payload.occurredAt, 'occurredAt') ?? new Date(now)
+  const maximumFuture = new Date(new Date(now).getTime() + 5 * 60 * 1000)
+  const earliest = new Date(new Date(now).getTime() - 7 * 24 * 60 * 60 * 1000)
+  if (occurredAt > maximumFuture || occurredAt < earliest) throw validationFailed('occurredAt must be within the accepted client telemetry window')
+  const optionalHash = (value, name) => {
+    if (value == null || value === '') return null
+    const normalized = String(value).toLowerCase()
+    if (!sha256Pattern.test(normalized)) throw validationFailed(`${name} must be a SHA-256 hex digest`)
+    return normalized
+  }
+  return Object.freeze({
+    eventType,
+    errorName: safeIdentifier(payload.errorName, 'Error'),
+    errorCode: safeIdentifier(payload.errorCode, 'CLIENT_RUNTIME_ERROR'),
+    route: safeIdentifier(payload.route, 'unknown'),
+    release: safeIdentifier(payload.release, 'unknown'),
+    messageHash: optionalHash(payload.messageHash, 'messageHash'),
+    stackHash: optionalHash(payload.stackHash, 'stackHash'),
+    componentStackHash: optionalHash(payload.componentStackHash, 'componentStackHash'),
+    occurredAt: occurredAt.toISOString(),
+  })
+}
+
+export const buildClientErrorTelemetry = ({ report, correlation = {}, environment = process.env.NODE_ENV ?? 'development', now = new Date() } = {}) => ({
+  log: sanitizeLogPayload({
+    id: `obs-log-${randomUUID()}`,
+    timestamp: new Date(now),
+    level: report.eventType === 'route_view' ? 'info' : 'error',
+    service: 'newchat-web',
+    environment,
+    event: report.eventType === 'route_view' ? 'client.route.view' : 'client.runtime.error',
+    requestId: correlation.requestId ?? null,
+    traceId: traceIdPattern.test(String(correlation.traceId ?? '')) ? correlation.traceId : randomBytes(16).toString('hex'),
+    spanId: spanIdPattern.test(String(correlation.spanId ?? '')) ? correlation.spanId : randomBytes(8).toString('hex'),
+    parentSpanId: null,
+    module: 'frontend',
+    operation: report.eventType,
+    outcome: report.eventType === 'route_view' ? 'success' : 'client_error',
+    durationMs: null,
+    errorCode: report.errorCode,
+    method: null,
+    routeTemplate: null,
+    statusCode: null,
+    resourceType: 'client_route',
+    resourceId: report.route,
+    attributes: {
+      errorName: report.errorName,
+      release: report.release,
+      clientOccurredAt: report.occurredAt,
+      messageHash: report.messageHash,
+      stackHash: report.stackHash,
+      componentStackHash: report.componentStackHash,
+    },
+  }),
+  span: null,
+})
 
 export const parseObservabilityQuery = (query = {}, { exportMode = false } = {}) => {
   const dateFrom = parseDate(query.dateFrom, 'dateFrom')
@@ -165,8 +236,75 @@ const statsForWindow = (logs, since, { latencyThresholdMs = 750 } = {}) => {
 
 const burnRate = (actual, target) => actual == null ? 0 : Math.max(0, (1 - actual) / (1 - target))
 
+const frontendStatsForWindow = (logs, cutoff) => {
+  const rows = logs.filter((item) => new Date(item.timestamp) >= cutoff && item.module === 'frontend')
+  const views = rows.filter((item) => item.event === 'client.route.view')
+  const errors = rows.filter((item) => item.event === 'client.runtime.error')
+  return {
+    views: views.length,
+    errors: errors.length,
+    errorFree: views.length ? Math.max(0, 1 - errors.length / views.length) : null,
+  }
+}
+
+const frontendErrorGroups = (logs, cutoff) => {
+  const groups = new Map()
+  for (const item of logs) {
+    if (new Date(item.timestamp) < cutoff || item.event !== 'client.runtime.error') continue
+    const release = safeIdentifier(item.attributes?.release, 'unknown')
+    const route = safeIdentifier(item.resourceId, 'unknown')
+    const errorCode = safeIdentifier(item.errorCode, 'CLIENT_RUNTIME_ERROR')
+    const key = `${release}\u0000${route}\u0000${errorCode}`
+    const current = groups.get(key) ?? { release, route, errorCode, count: 0, lastOccurredAt: null }
+    current.count += 1
+    const timestamp = new Date(item.timestamp).toISOString()
+    if (!current.lastOccurredAt || timestamp > current.lastOccurredAt) current.lastOccurredAt = timestamp
+    groups.set(key, current)
+  }
+  return [...groups.values()].sort((left, right) => right.count - left.count || left.release.localeCompare(right.release)).slice(0, 100)
+}
+
+export const buildFrontendSloSummary = (logs, now = new Date(), controls = defaultObservabilitySloControls) => {
+  const control = controls.find((item) => item.enabled !== false && item.sloId === 'frontend-error-rate')
+  const cutoffs = {
+    fiveMinutes: new Date(now.getTime() - 5 * 60_000),
+    sixtyMinutes: new Date(now.getTime() - 60 * 60_000),
+    thirtyDays: new Date(now.getTime() - 30 * 24 * 60 * 60_000),
+  }
+  const windows = Object.fromEntries(Object.entries(cutoffs).map(([key, cutoff]) => [key, frontendStatsForWindow(logs, cutoff)]))
+  if (!control) return { generatedAt: now.toISOString(), windows, groups: [], slos: [] }
+  const shortWindowBurn = burnRate(windows.fiveMinutes.errorFree, control.target)
+  const longWindowBurn = burnRate(windows.sixtyMinutes.errorFree, control.target)
+  const groups = frontendErrorGroups(logs, cutoffs.thirtyDays)
+  return {
+    generatedAt: now.toISOString(),
+    windows,
+    groups,
+    slos: [{
+      id: control.sloId,
+      target: control.target,
+      shortWindowBurn,
+      longWindowBurn,
+      firing: windows.sixtyMinutes.views > 0 && shortWindowBurn >= control.shortWindowBurnThreshold && longWindowBurn >= control.longWindowBurnThreshold,
+      current: windows.thirtyDays.errorFree,
+      sampleCount: windows.thirtyDays.views,
+      severity: control.severity,
+      owner: control.owner,
+      runbook: control.runbook,
+      primaryOnCallHandle: control.primaryOnCallHandle,
+      secondaryOnCallHandle: control.secondaryOnCallHandle ?? null,
+      escalationMinutes: control.escalationMinutes,
+      controlVersion: control.version,
+      shortWindowBurnThreshold: control.shortWindowBurnThreshold,
+      longWindowBurnThreshold: control.longWindowBurnThreshold,
+      affectedReleases: [...new Set(groups.map((item) => item.release))].slice(0, 20),
+      rollbackRecommendation: { action: 'evaluate_release_rollback', automatic: false, releaseControlPath: '/api/admin/releases' },
+    }],
+  }
+}
+
 export const buildSloSummary = (logs, now = new Date(), controls = defaultObservabilitySloControls) => {
-  const activeControls = controls.filter((item) => item.enabled !== false && observabilitySloIds.includes(item.sloId))
+  const activeControls = controls.filter((item) => item.enabled !== false && ['api-availability', 'api-latency'].includes(item.sloId))
   const latencyThresholdMs = activeControls.find((item) => item.sloId === 'api-latency')?.latencyThresholdMs ?? 750
   const windows = {
     fiveMinutes: statsForWindow(logs, new Date(now.getTime() - 5 * 60 * 1000), { latencyThresholdMs }),
@@ -197,6 +335,80 @@ export const buildSloSummary = (logs, now = new Date(), controls = defaultObserv
       controlVersion: definition.version,
       shortWindowBurnThreshold: definition.shortWindowBurnThreshold,
       longWindowBurnThreshold: definition.longWindowBurnThreshold,
+    }
+  })
+  return { generatedAt: now.toISOString(), windows, slos }
+}
+
+const generationTimestamp = (value) => {
+  const parsed = value ? new Date(value).getTime() : Number.NaN
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const generationPercentile = (values, ratio) => values.length
+  ? [...values].sort((left, right) => left - right)[Math.max(0, Math.ceil(values.length * ratio) - 1)]
+  : null
+
+const generationStatsForWindow = (generations, cutoff, latencyThresholdMs) => {
+  const rows = generations.filter((row) => (generationTimestamp(row.createdAt) ?? 0) >= cutoff.getTime())
+  const terminal = rows.filter((row) => ['completed', 'failed', 'cancelled', 'review_required'].includes(row.status))
+  const completed = terminal.filter((row) => row.status === 'completed')
+  const retries = rows.filter((row) => row.retryOfId || Number(row.attemptNumber ?? 1) > 1)
+  const cancelled = terminal.filter((row) => row.status === 'cancelled')
+  const abandoned = cancelled.filter((row) => (row.mutations ?? []).some((mutation) => mutation.type === 'cancel' && mutation.status === 'succeeded'))
+  const firstResultLatencies = completed.map((row) => {
+    const startedAt = generationTimestamp(row.startedAt) ?? generationTimestamp(row.createdAt)
+    const persistedResultTimes = [
+      ...(row.outputIngestions ?? []).map((item) => generationTimestamp(item.completedAt)),
+      ...(row.assets ?? []).map((item) => generationTimestamp(item.createdAt)),
+    ].filter((item) => item != null)
+    const resultAt = persistedResultTimes.length ? Math.min(...persistedResultTimes) : generationTimestamp(row.completedAt)
+    return startedAt != null && resultAt != null && resultAt >= startedAt ? resultAt - startedAt : null
+  }).filter((item) => item != null)
+  const ratio = (good, total) => total ? good / total : null
+  return {
+    generations: rows.length,
+    terminal: terminal.length,
+    completed: completed.length,
+    failed: terminal.filter((row) => row.status === 'failed').length,
+    cancelled: cancelled.length,
+    abandoned: abandoned.length,
+    retries: retries.length,
+    success: ratio(completed.length, terminal.length),
+    retryFree: ratio(rows.length - retries.length, rows.length),
+    abandonmentFree: ratio(terminal.length - abandoned.length, terminal.length),
+    firstResultSamples: firstResultLatencies.length,
+    firstResultWithinTarget: ratio(firstResultLatencies.filter((value) => value <= latencyThresholdMs).length, firstResultLatencies.length),
+    firstResultP95Ms: generationPercentile(firstResultLatencies, 0.95),
+  }
+}
+
+export const buildGenerationSloSummary = (generations, now = new Date(), controls = defaultObservabilitySloControls) => {
+  const activeControls = controls.filter((item) => item.enabled !== false && item.sloId.startsWith('generation-'))
+  const latencyThresholdMs = activeControls.find((item) => item.sloId === 'generation-first-result-latency')?.latencyThresholdMs ?? 120_000
+  const windows = {
+    fiveMinutes: generationStatsForWindow(generations, new Date(now.getTime() - 5 * 60_000), latencyThresholdMs),
+    sixtyMinutes: generationStatsForWindow(generations, new Date(now.getTime() - 60 * 60_000), latencyThresholdMs),
+    thirtyDays: generationStatsForWindow(generations, new Date(now.getTime() - 30 * 24 * 60 * 60_000), latencyThresholdMs),
+  }
+  const selectors = {
+    'generation-success': { value: (stats) => stats.success, samples: (stats) => stats.terminal },
+    'generation-first-result-latency': { value: (stats) => stats.firstResultWithinTarget, samples: (stats) => stats.firstResultSamples },
+    'generation-retry-rate': { value: (stats) => stats.retryFree, samples: (stats) => stats.generations },
+    'generation-abandonment-rate': { value: (stats) => stats.abandonmentFree, samples: (stats) => stats.terminal },
+  }
+  const slos = activeControls.map((control) => {
+    const selector = selectors[control.sloId]
+    const shortWindowBurn = burnRate(selector.value(windows.fiveMinutes), control.target)
+    const longWindowBurn = burnRate(selector.value(windows.sixtyMinutes), control.target)
+    return {
+      id: control.sloId, target: control.target, shortWindowBurn, longWindowBurn,
+      firing: selector.samples(windows.sixtyMinutes) > 0 && shortWindowBurn >= control.shortWindowBurnThreshold && longWindowBurn >= control.longWindowBurnThreshold,
+      current: selector.value(windows.thirtyDays), sampleCount: selector.samples(windows.thirtyDays),
+      severity: control.severity, owner: control.owner, runbook: control.runbook,
+      primaryOnCallHandle: control.primaryOnCallHandle, secondaryOnCallHandle: control.secondaryOnCallHandle ?? null,
+      escalationMinutes: control.escalationMinutes, controlVersion: control.version,
+      shortWindowBurnThreshold: control.shortWindowBurnThreshold, longWindowBurnThreshold: control.longWindowBurnThreshold,
     }
   })
   return { generatedAt: now.toISOString(), windows, slos }
@@ -279,7 +491,7 @@ export const parseSloControlRequest = (sloId, payload = {}) => {
     target: boundedNumber(payload.target, 'target', 0.9, 0.99999),
     shortWindowBurnThreshold: boundedNumber(payload.shortWindowBurnThreshold, 'shortWindowBurnThreshold', 0.1, 1000),
     longWindowBurnThreshold: boundedNumber(payload.longWindowBurnThreshold, 'longWindowBurnThreshold', 0.1, 1000),
-    latencyThresholdMs: Math.trunc(boundedNumber(payload.latencyThresholdMs, 'latencyThresholdMs', 1, 60_000)),
+    latencyThresholdMs: Math.trunc(boundedNumber(payload.latencyThresholdMs, 'latencyThresholdMs', 1, 3_600_000)),
     severity,
     owner: boundedText(payload.owner, 'owner', 2, 120),
     runbook: boundedText(payload.runbook, 'runbook', 2, 240),

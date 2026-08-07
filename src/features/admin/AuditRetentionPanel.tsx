@@ -5,6 +5,7 @@ import { textFor } from '../../domain/utils'
 import { adminService } from '../../services/adminService'
 import { useAsyncResource } from '../../hooks/useAsyncResource'
 import type { AdminAuditRetentionPreviewDto, AdminAuditRetentionStatusDto } from '../../services/contracts'
+import { AdminActionFeedback, type AdminActionFeedbackMessage } from './AdminActionFeedback'
 
 type Props = {
   canRead: boolean
@@ -12,15 +13,15 @@ type Props = {
   isZh: boolean
   t: Record<string, string>
   onChanged: () => void
-  notify: (message: string) => void
 }
 
-export function AuditRetentionPanel({ canRead, canExecute, isZh, t, onChanged, notify }: Props) {
+export function AuditRetentionPanel({ canRead, canExecute, isZh, t, onChanged }: Props) {
   const [status, setStatus] = useState<AdminAuditRetentionStatusDto | null>(null)
   const [preview, setPreview] = useState<AdminAuditRetentionPreviewDto | null>(null)
   const [confirmation, setConfirmation] = useState('')
   const [previewing, setPreviewing] = useState(false)
   const [executing, setExecuting] = useState(false)
+  const [feedback, setFeedback] = useState<AdminActionFeedbackMessage | null>(null)
   const statusResource = useAsyncResource<AdminAuditRetentionStatusDto | null>({
     load: () => canRead ? adminService.auditRetentionStatus() : Promise.resolve(null),
     onSuccess: setStatus,
@@ -31,13 +32,15 @@ export function AuditRetentionPanel({ canRead, canExecute, isZh, t, onChanged, n
 
   const runPreview = async () => {
     setPreviewing(true)
+    setFeedback(null)
     try {
       const next = await adminService.previewAuditRetention()
       setPreview(next)
       setConfirmation('')
+      setFeedback({ kind: 'success', text: isZh ? '留存预览已生成。' : 'Audit retention preview generated.' })
     } catch (error) {
       console.info('[admin-service]', error)
-      notify(isZh ? '无法生成留存预览。' : 'Could not preview audit retention.')
+      setFeedback({ kind: 'error', text: error instanceof Error ? error.message : (isZh ? '无法生成留存预览。' : 'Could not preview audit retention.') })
     } finally {
       setPreviewing(false)
     }
@@ -46,16 +49,17 @@ export function AuditRetentionPanel({ canRead, canExecute, isZh, t, onChanged, n
   const execute = async () => {
     if (!preview?.confirmation || confirmation !== preview.confirmation) return
     setExecuting(true)
+    setFeedback(null)
     try {
       await adminService.executeAuditRetention(preview.previewId, confirmation)
       setPreview(null)
       setConfirmation('')
       await statusResource.refresh()
       onChanged()
-      notify(isZh ? '审计留存批次已完成。' : 'Audit retention batch completed.')
+      setFeedback({ kind: 'success', text: isZh ? '审计留存批次已完成。' : 'Audit retention batch completed.' })
     } catch (error) {
       console.info('[admin-service]', error)
-      notify(error instanceof Error ? error.message : (isZh ? '留存执行失败。' : 'Audit retention failed.'))
+      setFeedback({ kind: 'error', text: error instanceof Error ? error.message : (isZh ? '留存执行失败。' : 'Audit retention failed.') })
     } finally {
       setExecuting(false)
     }
@@ -84,6 +88,7 @@ export function AuditRetentionPanel({ canRead, canExecute, isZh, t, onChanged, n
           </button>
         </div>
       </div>
+      <AdminActionFeedback message={feedback} />
       {policy && (
         <div className="audit-retention-flags">
           <span className={policy.legalHold ? 'status-badge rejected' : 'status-badge completed'}>{textFor(t, 'Legal hold', '法务保留')}: {policy.legalHold ? 'ON' : 'OFF'}</span>

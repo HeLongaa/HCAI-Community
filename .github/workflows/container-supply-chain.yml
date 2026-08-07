@@ -1,0 +1,276 @@
+name: Container Supply Chain
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: container-supply-chain-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Supply-chain contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Verify immutable supply-chain policy
+        run: node scripts/verify-production-supply-chain.mjs
+
+  build-scan-pr:
+    name: Build and scan PR ${{ matrix.image }}
+    needs: contract
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: frontend
+            target: frontend
+          - image: api
+            target: api
+          - image: worker
+            target: worker
+          - image: migration
+            target: migrate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Derive local image name
+        shell: bash
+        run: |
+          echo "LOCAL_IMAGE=hcai-supply-chain-${{ matrix.image }}:${GITHUB_SHA}" >> "$GITHUB_ENV"
+
+      - name: Build local PR image
+        id: local-build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: Dockerfile
+          target: ${{ matrix.target }}
+          load: true
+          push: false
+          sbom: false
+          provenance: false
+          tags: ${{ env.LOCAL_IMAGE }}
+          cache-from: type=gha,scope=production-${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=production-${{ matrix.image }}
+
+      - name: Install checksum-pinned Trivy
+        shell: bash
+        run: |
+          tool_path="$(node scripts/install-production-security-tools.mjs | tail -n 1)"
+          echo "TRIVY_PATH=$tool_path" >> "$GITHUB_ENV"
+
+      - name: Scan exact local PR image
+        run: >-
+          node scripts/generate-production-supply-chain-evidence.mjs
+          --image "${{ matrix.image }}=${{ env.LOCAL_IMAGE }}"
+          --output .artifacts/production-supply-chain
+          --source-revision "${{ github.sha }}"
+
+      - name: Upload per-image evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: supply-chain-${{ matrix.image }}
+          path: .artifacts/production-supply-chain/${{ matrix.image }}
+          if-no-files-found: error
+          retention-days: 30
+
+  build-scan-registry:
+    name: Publish, scan, and attest ${{ matrix.image }}
+    needs: contract
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: frontend
+            target: frontend
+          - image: api
+            target: api
+          - image: worker
+            target: worker
+          - image: migration
+            target: migrate
+    env:
+      registry: ghcr.io
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Derive immutable image name
+        shell: bash
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          repository="${GITHUB_REPOSITORY#*/}"
+          repository="${repository,,}"
+          echo "IMAGE_NAME=${{ env.registry }}/${owner}/${repository}-${{ matrix.image }}" >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ${{ env.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish registry image
+        id: registry-build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: Dockerfile
+          target: ${{ matrix.target }}
+          load: false
+          push: true
+          sbom: true
+          provenance: mode=max
+          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha,scope=production-${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=production-${{ matrix.image }}
+
+      - name: Install checksum-pinned Trivy
+        shell: bash
+        run: |
+          tool_path="$(node scripts/install-production-security-tools.mjs | tail -n 1)"
+          echo "TRIVY_PATH=$tool_path" >> "$GITHUB_ENV"
+
+      - name: Scan exact published digest
+        run: >-
+          node scripts/generate-production-supply-chain-evidence.mjs
+          --image "${{ matrix.image }}=${{ env.IMAGE_NAME }}@${{ steps.registry-build.outputs.digest }}"
+          --expected-digest "${{ matrix.image }}=${{ steps.registry-build.outputs.digest }}"
+          --output .artifacts/production-supply-chain
+          --source-revision "${{ github.sha }}"
+
+      - name: Sign image provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.registry-build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Sign image SPDX SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.registry-build.outputs.digest }}
+          sbom-path: .artifacts/production-supply-chain/${{ matrix.image }}/sbom.spdx.json
+          push-to-registry: true
+
+      - name: Verify published provenance and SBOM attestations
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          image="oci://${{ env.IMAGE_NAME }}@${{ steps.registry-build.outputs.digest }}"
+          signer="${{ github.repository }}/.github/workflows/container-supply-chain.yml"
+          predicates=(
+            "https://slsa.dev/provenance/v1"
+            "https://spdx.dev/Document/v2.3"
+          )
+          for predicate in "${predicates[@]}"; do
+            gh attestation verify "$image" \
+              --repo "${{ github.repository }}" \
+              --signer-workflow "$signer" \
+              --source-digest "${{ github.sha }}" \
+              --source-ref "${{ github.ref }}" \
+              --deny-self-hosted-runners \
+              --predicate-type "$predicate"
+            gh attestation verify "$image" \
+              --repo "${{ github.repository }}" \
+              --signer-workflow "$signer" \
+              --source-digest "${{ github.sha }}" \
+              --source-ref "${{ github.ref }}" \
+              --deny-self-hosted-runners \
+              --predicate-type "$predicate" \
+              --bundle-from-oci
+          done
+
+      - name: Upload per-image evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: supply-chain-${{ matrix.image }}
+          path: .artifacts/production-supply-chain/${{ matrix.image }}
+          if-no-files-found: error
+          retention-days: 30
+
+  evidence:
+    name: Verify candidate evidence
+    needs:
+      - build-scan-pr
+      - build-scan-registry
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Download per-image evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: supply-chain-*
+          path: .artifacts/production-supply-chain
+          merge-multiple: false
+
+      - name: Normalize evidence directories
+        shell: bash
+        run: |
+          for image in frontend api worker migration; do
+            test -d ".artifacts/production-supply-chain/supply-chain-${image}"
+            mv ".artifacts/production-supply-chain/supply-chain-${image}" ".artifacts/production-supply-chain/${image}"
+          done
+
+      - name: Verify PR evidence and assemble local manifest
+        if: github.event_name == 'pull_request'
+        run: >-
+          node scripts/verify-production-supply-chain.mjs
+          --evidence-dir .artifacts/production-supply-chain
+          --write-manifest .artifacts/production-supply-chain/digest-manifest.json
+
+      - name: Verify registry evidence and assemble deployable manifest
+        if: github.event_name != 'pull_request'
+        run: >-
+          node scripts/verify-production-supply-chain.mjs
+          --evidence-dir .artifacts/production-supply-chain
+          --require-registry-digests
+          --write-manifest .artifacts/production-supply-chain/digest-manifest.json
+
+      - name: Upload aggregate supply-chain evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: production-supply-chain-manifest
+          path: |
+            .artifacts/production-supply-chain/digest-manifest.json
+            .artifacts/production-supply-chain/*/summary.json
+          if-no-files-found: error
+          retention-days: 90

@@ -90,7 +90,13 @@ test('Prisma OpenAI Image acceptance persists governed outputs and accounting', 
         },
       },
     })
-    const summary = await runOpenAIImageStagingAcceptance({ source, fetchImpl, now, repositories })
+    const summary = await runOpenAIImageStagingAcceptance({
+      source,
+      fetchImpl,
+      now,
+      repositories,
+      outputSafetyClassifier: openAIImageStagingAcceptanceFixture.outputSafetyClassifier,
+    })
     assert.equal(summary.providerCalls, 2)
 
     const generations = await client.creativeGeneration.findMany({

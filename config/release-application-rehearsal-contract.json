@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "taskId": "RELEASE-02",
+  "scope": "staging_application_release_rehearsal",
+  "policyDocument": "docs/RELEASE_APPLICATION_REHEARSAL.md",
+  "evidenceDirectory": ".artifacts/release-application",
+  "profiles": ["local", "env"],
+  "confirmation": "release-02-staging-rehearsal",
+  "allowedTargetHostFragments": ["staging", "rehearsal"],
+  "allowedCommandExecutables": ["aws", "az", "docker", "gcloud", "kubectl", "node", "npm", "npx"],
+  "objectives": {
+    "maximumPreflightAgeSeconds": 1800,
+    "maximumDeploymentSeconds": 900,
+    "maximumSmokeSeconds": 120,
+    "maximumEvidenceBytes": 524288
+  },
+  "smoke": {
+    "attempts": 6,
+    "retryDelayMs": 1000,
+    "requestTimeoutMs": 10000,
+    "checks": [
+      { "id": "health", "method": "GET", "path": "/health", "expectedStatus": 200 },
+      { "id": "openapi", "method": "GET", "path": "/api/openapi.json", "expectedStatus": 200 },
+      { "id": "public_policy", "method": "GET", "path": "/api/compliance/policies", "expectedStatus": 200 },
+      { "id": "auth_rejection", "method": "GET", "path": "/api/me", "expectedStatus": 401 }
+    ]
+  },
+  "evidence": {
+    "schemaVersion": "release-application-rehearsal-evidence-v1",
+    "preflightSchemaVersion": "release-application-preflight-v1",
+    "requiredPhases": ["candidate", "rollback"],
+    "receiptHashAlgorithm": "sha256",
+    "mustFailClosed": true
+  }
+}

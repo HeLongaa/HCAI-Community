@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { MarketplaceProfile, Permission, Role } from '../domain/types'
-import { findProfile } from '../domain/utils'
+import { createIdentityProfile } from '../domain/utils'
 import { authService, type SessionUser } from '../services/authService'
 import { complianceService, policyConsentRequest } from '../services/complianceService'
 import type { ApiPolicyConsentStatus, OAuthProvider, RegisterRequest } from '../services/contracts'
-import { getStoredAccessToken, setStoredAccessToken } from '../services/apiClient'
+import { getStoredAccessToken, sessionInvalidatedEvent, setStoredAccessToken } from '../services/apiClient'
 
 export type OAuthLoginResult = 'authenticated' | 'redirecting'
 
@@ -18,7 +18,6 @@ type AccountState = {
   source: 'api' | 'stored' | 'fallback'
 }
 
-const fallbackProfile = findProfile('taskops') ?? null
 let accountBootstrapPromise: Promise<SessionUser> | null = null
 
 const bootstrapAccount = () => {
@@ -54,16 +53,12 @@ const asProfileLane = (lane?: string): MarketplaceProfile['lane'] => (
 const initialsFor = (value: string) => value.trim().slice(0, 2).toUpperCase() || 'U'
 
 const profileFromUser = (user: SessionUser): MarketplaceProfile | null => {
-  const localProfile = user.profile?.handle ? findProfile(user.profile.handle) : findProfile(user.handle)
-  if (localProfile) {
-    return localProfile
-  }
-
   const handle = user.profile?.handle ?? user.handle
   if (!handle) {
     return null
   }
   const displayName = user.displayName || handle
+  if (!user.profile) return createIdentityProfile(handle, displayName, user.role)
   const name = user.profile?.name ?? { en: displayName, zh: displayName }
   const role = user.profile?.role ?? { en: user.role, zh: user.role }
 
@@ -122,7 +117,7 @@ const loadInitialState = (): AccountState => {
       displayName: parsed.displayName ?? 'HCAI Creator',
       role: parsed.role ?? 'member',
       handle: parsed.handle ?? 'taskops',
-      profile: parsed.profile ?? fallbackProfile,
+      profile: parsed.profile ?? (parsed.handle ? createIdentityProfile(parsed.handle, parsed.displayName ?? parsed.handle, parsed.role ?? 'member') : null),
       permissions: parsed.permissions ?? ['task:create', 'post:create', 'comment:create', 'points:read'],
       policyConsent: parsed.policyConsent ?? null,
       source: 'stored',
@@ -135,6 +130,16 @@ const loadInitialState = (): AccountState => {
 export function useAccountState() {
   const [account, setAccount] = useState<AccountState>(loadInitialState)
   const [bootstrapped, setBootstrapped] = useState(false)
+
+  useEffect(() => {
+    const resetInvalidSession = () => {
+      localStorage.removeItem('hcaiUser')
+      setAccount(guestState())
+      setBootstrapped(true)
+    }
+    window.addEventListener(sessionInvalidatedEvent, resetInvalidSession)
+    return () => window.removeEventListener(sessionInvalidatedEvent, resetInvalidSession)
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -160,6 +165,10 @@ export function useAccountState() {
 
   useEffect(() => {
     if (!bootstrapped) return
+    if (account.source === 'fallback') {
+      localStorage.removeItem('hcaiUser')
+      return
+    }
     localStorage.setItem('hcaiUser', JSON.stringify(account))
   }, [account, bootstrapped])
 
@@ -236,7 +245,7 @@ export function useAccountState() {
 
   return {
     accountName: account.displayName,
-    accountProfile: account.profile ?? fallbackProfile,
+    accountProfile: account.profile,
     accountHandle: account.handle,
     accountSource: account.source,
     accountReady: bootstrapped,

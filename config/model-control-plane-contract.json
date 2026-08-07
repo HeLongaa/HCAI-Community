@@ -10,7 +10,7 @@
   "permissions": ["admin:model-control:read", "admin:model-control:manage", "admin:model-control:transition"],
   "trafficEligibilityPolicy": "approved_promotion_only",
   "stagingRuntimePolicy": "active_route_active_deployment_runtime_enabled_current_secretref",
-  "runtimeAdapterTypes": ["openai_image", "openai_chat", "google_video", "elevenlabs_music"],
+  "runtimeAdapterTypes": ["openai_image", "openai_chat", "router_video", "router_music"],
   "credentialsAccepted": false,
   "realProviderApprovalRequired": true,
   "allowedModalities": ["image", "chat", "video", "music"],

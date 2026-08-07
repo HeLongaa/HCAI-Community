@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 
+import { dataRightsSafeSubjectRef } from '../dataRights/dataRightsLifecycle.js'
 import {
   assertRiskTransition,
   decodeRiskCursor,
@@ -58,6 +59,8 @@ export const createSeedRiskRepository = ({ getAccountById, creativeGenerationsBy
       riskCase = {
         id: `risk-case-${randomUUID()}`,
         userId,
+        subjectRef: dataRightsSafeSubjectRef(userId),
+        retentionRedactedAt: null,
         status: 'restricted',
         disposition,
         riskLevel: severity,
@@ -139,7 +142,7 @@ export const createSeedRiskRepository = ({ getAccountById, creativeGenerationsBy
       assertRiskTransition(riskCase, { toStatus: 'appealed', disposition: riskCase.disposition })
       if (riskCase.appeals.some((item) => item.status === 'pending')) return { conflict: 'pending_appeal' }
       const now = new Date()
-      const appeal = { id: `risk-appeal-${randomUUID()}`, status: 'pending', reasonCode: payload.reasonCode, statementHash: payload.statementHash, statementPreview: payload.statementPreview, decisionReasonCode: null, decidedAt: null, createdAt: now }
+      const appeal = { id: `risk-appeal-${randomUUID()}`, appellantId: actor.id, status: 'pending', reasonCode: payload.reasonCode, statementHash: payload.statementHash, statementPreview: payload.statementPreview, decisionReasonCode: null, decidedAt: null, createdAt: now }
       riskCase.appeals.push(appeal)
       riskCase.events.push({ id: `risk-event-${randomUUID()}`, fromStatus: riskCase.status, toStatus: 'appealed', disposition: riskCase.disposition, reasonCode: payload.reasonCode, actorType: 'user', actorId: actor.id, createdAt: now })
       riskCase.status = 'appealed'
@@ -158,6 +161,7 @@ export const createSeedRiskRepository = ({ getAccountById, creativeGenerationsBy
     transition: async (id, payload, actor) => {
       const riskCase = cases.get(String(id))
       if (!riskCase) return null
+      if (riskCase.retentionRedactedAt) return { retentionRedacted: true }
       if (riskCase.version !== payload.expectedVersion) return { conflict: true }
       assertRiskTransition(riskCase, payload)
       const pendingAppeal = riskCase.appeals.find((item) => item.status === 'pending')

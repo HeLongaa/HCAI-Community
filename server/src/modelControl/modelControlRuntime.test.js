@@ -34,3 +34,33 @@ test('chat deployment accepts only supported safety response formats', () => {
     /must be one of: responses, chat_completions/,
   )
 })
+
+test('Router video deployments require a supported Seedance model and endpoint', () => {
+  const routerVideo = {
+    ...base,
+    adapterType: 'router_video',
+    providerModelId: 'seedance-2.0-fast',
+    endpointUrl: 'https://router.hctopup.com',
+    secretPurpose: 'inference',
+    runtimeConfig: { providerAccountRef: 'support' },
+    runtimeEnabled: true,
+  }
+  assert.equal(parseDeploymentCreate(routerVideo, { handle: 'admin' }).providerModelId, 'seedance-2.0-fast')
+  assert.throws(() => parseDeploymentCreate({ ...routerVideo, providerModelId: 'router-video-default' }, { handle: 'admin' }), /supported Seedance model/)
+  assert.throws(() => parseDeploymentCreate({ ...routerVideo, endpointUrl: null }, { handle: 'admin' }), /requires endpointUrl/)
+})
+
+test('Router MiniMax video deployments require the Hailuo model and provider account', () => {
+  const minimax = {
+    ...base,
+    adapterType: 'router_minimax_video',
+    providerModelId: 'MiniMax-Hailuo-2.3',
+    endpointUrl: 'https://router.hctopup.com',
+    secretPurpose: 'minimax-video-inference',
+    runtimeConfig: { providerAccountRef: 'staging' },
+    runtimeEnabled: true,
+  }
+  assert.equal(parseDeploymentCreate(minimax, { handle: 'admin' }).adapterType, 'router_minimax_video')
+  assert.throws(() => parseDeploymentCreate({ ...minimax, providerModelId: 'seedance-2.0-fast' }, { handle: 'admin' }), /supported MiniMax Hailuo model/)
+  assert.throws(() => parseDeploymentCreate({ ...minimax, runtimeConfig: {} }, { handle: 'admin' }), /requires providerAccountRef/)
+})

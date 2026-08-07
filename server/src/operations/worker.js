@@ -128,19 +128,15 @@ export const startIntervalWorkerJob = ({
     return null
   }
   const intervalMs = Math.max(1000, Number(intervalSeconds ?? 60) * 1000)
-  let running = false
-  const runOnce = async () => {
-    if (running) {
-      log(logger, 'warn', `[worker:${id}] skipped because the previous run is still active`)
-      return { skipped: true }
-    }
-    running = true
+  let activeRun = null
+  let stopped = false
+  const executeRun = async () => {
     let trackedRun = null
     try {
       if (jobManager) {
         await jobManager.ensureDefinition({
           id,
-          type: 'interval',
+          type: String(id),
           version: 1,
           enabled: true,
           defaultTimeoutSeconds: positiveSeconds(lease?.ttlSeconds, Math.max(60, Math.ceil(intervalMs / 1000))),
@@ -186,9 +182,22 @@ export const startIntervalWorkerJob = ({
       }
       log(logger, 'error', `[worker:${id}] failed`, error)
       return null
-    } finally {
-      running = false
     }
+  }
+  const runOnce = () => {
+    if (stopped) {
+      return Promise.resolve({ skipped: true, reason: 'worker_stopping' })
+    }
+    if (activeRun) {
+      log(logger, 'warn', `[worker:${id}] skipped because the previous run is still active`)
+      return Promise.resolve({ skipped: true })
+    }
+    const execution = executeRun()
+    activeRun = execution
+    void execution.finally(() => {
+      if (activeRun === execution) activeRun = null
+    })
+    return execution
   }
   const timer = setInterval(() => {
     void runOnce()
@@ -208,11 +217,14 @@ export const startIntervalWorkerJob = ({
     id,
     intervalMs,
     run: runOnce,
-    stop: () => {
+    stop: async () => {
+      stopped = true
       clearInterval(timer)
       if (initialRun) {
         clearTimeout(initialRun)
       }
+      if (activeRun) await activeRun
+      return { drained: true }
     },
   }
 }
@@ -237,10 +249,9 @@ export const startWorkerJobs = (definitions = [], options = {}) => {
   }
   return {
     jobs,
-    stop: () => {
-      for (const job of jobs) {
-        job.stop()
-      }
+    stop: async () => {
+      await Promise.all(jobs.map((job) => job.stop()))
+      return { drained: true }
     },
     run: async (id) => {
       const job = jobs.find((entry) => entry.id === id)

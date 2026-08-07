@@ -21,25 +21,37 @@ import type {
   ApiCreativeProviderCatalogEntry,
 } from '../../services/contracts'
 import { CreativeCostPreview } from './CreativeCostPreview'
+import { GenerationRetryConfirmation } from './GenerationRetryConfirmation'
 import { UseCreativeAsset } from '../assets/UseCreativeAsset'
+import { ActionFeedback, type ActionFeedbackMessage } from '../../components/ui/ActionFeedback'
+import { isOperationalCreativeProvider, selectOperationalCreativeProvider } from '../../services/creativeProviderSelection'
 
 const labelForMode = (mode: string, isZh: boolean) => ({
   instrumental: isZh ? '纯音乐' : 'Instrumental',
   lyrics_to_song: isZh ? '歌词成歌' : 'Lyrics to Song',
 })[mode] ?? mode
 
-const labelForStatus = (status: string | null, isZh: boolean) => ({
-  queued: isZh ? '排队中' : 'Queued',
-  running: isZh ? '生成中' : 'Running',
-  review_required: isZh ? '等待审核' : 'Review required',
-  completed: isZh ? '已完成' : 'Completed',
-  failed: isZh ? '失败' : 'Failed',
-  cancelled: isZh ? '已取消' : 'Cancelled',
-})[status ?? ''] ?? (isZh ? '就绪' : 'Ready')
+const labelForStatus = (status: string | null, isZh: boolean, scanStatus: string | null = null) => {
+  if (status === 'completed' && scanStatus !== 'clean') {
+    return scanStatus === 'rejected' || scanStatus === 'failed'
+      ? (isZh ? '输出不可用' : 'Output unavailable')
+      : (isZh ? '正在处理输出' : 'Processing output')
+  }
+  return ({
+    queued: isZh ? '排队中' : 'Queued',
+    running: isZh ? '生成中' : 'Running',
+    review_required: isZh ? '等待审核' : 'Review required',
+    completed: isZh ? '已完成' : 'Completed',
+    failed: isZh ? '失败' : 'Failed',
+    cancelled: isZh ? '已取消' : 'Cancelled',
+  })[status ?? ''] ?? (isZh ? '就绪' : 'Ready')
+}
 
-const statusTone = (status: string | null) => {
+const statusTone = (status: string | null, scanStatus: string | null = null) => {
   if (status === 'queued' || status === 'running') return 'loading'
-  if (status === 'completed') return 'done'
+  if (status === 'completed' && scanStatus === 'clean') return 'done'
+  if (status === 'completed' && (scanStatus === 'rejected' || scanStatus === 'failed')) return 'error'
+  if (status === 'completed') return 'loading'
   if (status === 'failed' || status === 'cancelled') return 'error'
   return ''
 }
@@ -64,9 +76,10 @@ const capabilityFor = (provider: ApiCreativeProviderCatalogEntry | null) =>
 
 const providerClassification = (provider: ApiCreativeProviderCatalogEntry | null, isZh: boolean) => {
   if (!provider) return { label: isZh ? '不可用' : 'Unavailable', tone: 'unavailable' }
-  if (provider.id === 'mock' && provider.enabled && provider.configured) return { label: 'Mock', tone: 'mock' }
-  if (provider.fixtureInjectable || provider.safeMetadata.fixtureAdapterOnly === true) {
-    return { label: isZh ? '仅 Fixture' : 'Fixture only', tone: 'fixture' }
+  if (provider.id === 'mock' || provider.mode === 'mock') return { label: 'Mock', tone: 'mock' }
+  if (provider.fixtureInjectable || Boolean(provider.safeMetadata.fixtureAdapterOnly)) return { label: 'Fixture only', tone: 'unavailable' }
+  if (provider.enabled && provider.configured && !provider.fixtureInjectable && provider.safeMetadata.fixtureAdapterOnly !== true) {
+    return { label: isZh ? '已配置' : 'Configured', tone: 'available' }
   }
   return { label: isZh ? '不可用' : 'Unavailable', tone: 'unavailable' }
 }
@@ -100,11 +113,14 @@ export function MusicStudioPage({
   const [tempoBpm, setTempoBpm] = useState(100)
   const [language, setLanguage] = useState(isZh ? 'zh' : 'en')
   const [rightsConfirmed, setRightsConfirmed] = useState(false)
+  const [activePanel, setActivePanel] = useState<'setup' | 'result' | 'history'>('setup')
+  const [pendingRetryId, setPendingRetryId] = useState<string | null>(null)
+  const [retryFeedback, setRetryFeedback] = useState<ActionFeedbackMessage | null>(null)
 
-  const providerId = providers.some((provider) => provider.id === providerChoice)
-    ? providerChoice
-    : providers.find((provider) => provider.id === providerCatalog?.defaultProviderId)?.id ?? providers[0]?.id ?? ''
-  const selectedProvider = providers.find((provider) => provider.id === providerId) ?? null
+  const preferredProvider = providerChoice ? providers.find((provider) => provider.id === providerChoice) ?? null : null
+  const operationalProvider = selectOperationalCreativeProvider(providerCatalog, 'music')
+  const selectedProvider = preferredProvider ?? operationalProvider
+  const providerId = selectedProvider?.id ?? ''
   const capability = capabilityFor(selectedProvider)
   const modeContracts = capability?.modeContracts ?? []
   const availableModes = modeContracts.filter((contract) => contract.available)
@@ -112,16 +128,32 @@ export function MusicStudioPage({
   const activeMode = modeContractFor(modeContracts, mode)
   const outputQualityProfile = typeof capability?.output?.qualityProfile === 'string'
     ? capability.output.qualityProfile
-    : 'mp3_48000_192'
+    : 'mp3_44100_256'
   const classification = providerClassification(selectedProvider, isZh)
-  const providerAvailable = Boolean(selectedProvider?.enabled && selectedProvider.configured && activeMode?.available)
+  const providerAvailable = Boolean(
+    selectedProvider &&
+    isOperationalCreativeProvider(selectedProvider, 'music') &&
+    activeMode?.available,
+  )
   const selectedGeneration = workflow.history.selected
+  const visibleRetryId = pendingRetryId === selectedGeneration?.id ? pendingRetryId : null
   const selectedOutput = selectedGeneration?.outputs[0] ?? null
   const actionBusy = workflow.action.type != null
   const lifecycleActive = ['queued', 'running'].includes(selectedGeneration?.status ?? '')
   const lyricsReady = mode !== 'lyrics_to_song' || Boolean(lyrics.trim())
   const canGenerate = providerCatalogState === 'ready' && providerAvailable && Boolean(prompt.trim()) && lyricsReady && rightsConfirmed && !lifecycleActive && workflow.generation.status !== 'loading'
   const exactRetryAvailable = selectedGeneration ? workflow.hasOriginalRequest(selectedGeneration.id) : false
+  const confirmRetry = async () => {
+    if (!pendingRetryId) return
+    setRetryFeedback(null)
+    const succeeded = await workflow.retryGeneration(pendingRetryId)
+    if (!succeeded) return
+    setPendingRetryId(null)
+    setRetryFeedback({
+      kind: 'success',
+      text: textFor(t, 'A new music attempt was created with the same inputs.', '已使用相同输入创建新的音乐尝试。'),
+    })
+  }
   const canPlay = Boolean(
     selectedOutput &&
     selectedOutput.contentType === 'audio/mpeg' &&
@@ -129,22 +161,25 @@ export function MusicStudioPage({
     selectedGeneration?.actions.download.available,
   )
 
-  const runGeneration = () => workflow.runGeneration({
-    prompt,
-    mode,
-    providerId,
-    parameters: {
-      durationSeconds,
-      genre,
-      mood,
-      tempoBpm,
-      outputFormat: 'mp3',
-      ...(mode === 'lyrics_to_song' ? { lyrics, language } : {}),
-    },
-  })
+  const runGeneration = () => {
+    setActivePanel('result')
+    return workflow.runGeneration({
+      prompt,
+      mode,
+      providerId,
+      parameters: {
+        durationSeconds,
+        genre,
+        mood,
+        tempoBpm,
+        outputFormat: 'mp3',
+        ...(mode === 'lyrics_to_song' ? { lyrics, language } : {}),
+      },
+    })
+  }
 
   return (
-    <div className="stack video-studio music-studio" data-testid="music-studio">
+    <div className="stack video-studio music-studio" data-testid="music-studio" data-panel={activePanel}>
       <header className="video-studio-header">
         <div className="video-studio-title">
           <span className="video-studio-mark"><Music2 size={22} /></span>
@@ -156,14 +191,21 @@ export function MusicStudioPage({
         </div>
         <div className="video-provider-control">
           <label>
-            <span>{textFor(t, 'Runtime', '运行来源')}</span>
+            <span>{textFor(t, 'Model', '模型')}</span>
             <select aria-label={textFor(t, 'Music runtime', '音乐运行来源')} value={providerId} onChange={(event) => setProviderChoice(event.target.value)}>
+              {!providerId && <option value="">{textFor(t, 'No available model', '暂无可用模型')}</option>}
               {providers.map((provider) => <option value={provider.id} key={provider.id}>{provider.label}</option>)}
             </select>
           </label>
-          <span className={`runtime-badge ${classification.tone}`}>{classification.label}</span>
+          <span className={`runtime-badge ${classification.tone}`} aria-hidden="true">{classification.label}</span>
         </div>
       </header>
+
+      <nav className="workspace-panel-switcher" aria-label={textFor(t, 'Music workspace panels', '音乐工作台面板')}>
+        <button className={activePanel === 'setup' ? 'active' : ''} type="button" onClick={() => setActivePanel('setup')}>{textFor(t, 'Generation setup', '生成设置')}</button>
+        <button className={activePanel === 'result' ? 'active' : ''} type="button" onClick={() => setActivePanel('result')}>{textFor(t, 'Result', '生成结果')}</button>
+        <button className={activePanel === 'history' ? 'active' : ''} type="button" onClick={() => setActivePanel('history')}>{textFor(t, 'History', '生成记录')}</button>
+      </nav>
 
       <div className="video-workbench">
         <section className="video-controls" aria-label={textFor(t, 'Music controls', '音乐控制')}>
@@ -248,7 +290,7 @@ export function MusicStudioPage({
             <label>
               <span>{textFor(t, 'Output', '输出')}</span>
               <select aria-label={textFor(t, 'Music output quality', '音乐输出质量')} value={outputQualityProfile} disabled>
-                <option value={outputQualityProfile}>{textFor(t, 'MP3 · 48 kHz · 192 kbps', 'MP3 · 48 kHz · 192 kbps')}</option>
+                <option value={outputQualityProfile}>{textFor(t, 'MP3 · 44.1 kHz · 256 kbps', 'MP3 · 44.1 kHz · 256 kbps')}</option>
               </select>
             </label>
           </div>
@@ -267,7 +309,7 @@ export function MusicStudioPage({
           {providerCatalogState === 'loading' && <p className="video-runtime-message">{textFor(t, 'Loading runtime capabilities', '正在读取运行能力')}</p>}
           {providerCatalogState === 'error' && <p className="video-inline-error">{textFor(t, 'Runtime capabilities could not be loaded. Generation is disabled.', '无法读取运行能力，生成已禁用。')}</p>}
           {providerCatalogState === 'ready' && !providerAvailable && (
-            <p className="video-runtime-message"><AlertTriangle size={15} />{textFor(t, 'This runtime is visible for capability review but is not available for product generation.', '此运行来源仅用于能力查看，不能用于产品生成。')}</p>
+            <p className="video-runtime-message"><AlertTriangle size={15} />{textFor(t, 'This model is not enabled. Ask an administrator to configure it.', '该模型尚未启用，需要管理员先完成配置。')}</p>
           )}
           {workflow.generation.error && <p className="video-inline-error">{workflow.generation.error}</p>}
         </section>
@@ -275,8 +317,12 @@ export function MusicStudioPage({
         <section className="video-preview-panel" aria-label={textFor(t, 'Music player', '音乐播放器')}>
           <div className="video-preview-toolbar" role="status" aria-live="polite" aria-label={textFor(t, 'Music generation status', '音乐生成状态')}>
             <div>
-              <span className={`status-dot ${statusTone(selectedGeneration?.status ?? null)}`} />
-              <strong>{labelForStatus(selectedGeneration?.status ?? null, isZh)}</strong>
+              <span className={`status-dot ${statusTone(selectedGeneration?.status ?? null, selectedOutput?.scanStatus ?? null)}`} />
+              <strong>{selectedGeneration
+                ? labelForStatus(selectedGeneration.status, isZh, selectedOutput?.scanStatus ?? null)
+                : providerAvailable
+                  ? textFor(t, 'Ready', '就绪')
+                  : textFor(t, 'Model unavailable', '模型暂不可用')}</strong>
             </div>
             <span>{selectedGeneration?.provider.id ?? classification.label}</span>
           </div>
@@ -307,7 +353,10 @@ export function MusicStudioPage({
               </button>
             )}
             {selectedGeneration?.actions.retry.available && (
-              <button className="ghost-button" type="button" disabled={actionBusy || !exactRetryAvailable} onClick={() => void workflow.retryGeneration(selectedGeneration.id)}>
+              <button className="ghost-button" type="button" disabled={actionBusy || !exactRetryAvailable} onClick={() => {
+                setRetryFeedback(null)
+                setPendingRetryId(selectedGeneration.id)
+              }}>
                 <RotateCcw size={15} />{textFor(t, 'Retry', '重试')}
               </button>
             )}
@@ -327,6 +376,17 @@ export function MusicStudioPage({
               </button>
             )}
           </div>
+
+          {visibleRetryId && (
+            <GenerationRetryConfirmation
+              t={t}
+              busy={workflow.action.type === 'retry' && workflow.action.targetId === visibleRetryId}
+              onCancel={() => setPendingRetryId(null)}
+              onConfirm={() => void confirmRetry()}
+            />
+          )}
+          <ActionFeedback message={retryFeedback} className="generation-retry-feedback" />
+          <ActionFeedback message={workflow.feedback} className="generation-operation-feedback" />
 
           {selectedOutput && (
             <UseCreativeAsset t={t} assetId={selectedOutput.assetId} fileName={selectedOutput.fileName} available={selectedOutput.scanStatus === 'clean' && selectedGeneration?.status === 'completed'}/>
@@ -372,7 +432,7 @@ export function MusicStudioPage({
                 key={item.id}
                 onClick={() => workflow.selectGeneration(item.id)}
               >
-                <span className="video-history-status"><span className={`status-dot ${statusTone(item.status)}`} />{labelForStatus(item.status, isZh)}</span>
+                <span className="video-history-status"><span className={`status-dot ${statusTone(item.status, item.outputs[0]?.scanStatus ?? null)}`} />{labelForStatus(item.status, isZh, item.outputs[0]?.scanStatus ?? null)}</span>
                 <span className="video-history-prompt">{item.promptPreview ?? item.id}</span>
                 <span>{labelForMode(item.mode, isZh)}</span>
                 <span>{formatTime(item.createdAt, isZh)}</span>

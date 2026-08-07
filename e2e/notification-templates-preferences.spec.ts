@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { apiBaseUrl, apiData, authHeaders, login, signInPage } from './helpers'
+import { apiBaseUrl, apiData, authHeaders, login, selectAdminSection, signInPage } from './helpers'
 
 const schema = JSON.stringify({ required: ['taskTitle'], properties: { taskTitle: { type: 'string', maxLength: 120 } } }, null, 2)
 
@@ -9,10 +9,16 @@ test('Admin publishes a notification template and the user preference suppresses
   await signInPage(page, request, 'opsplus')
   await page.goto('/')
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('button', { name: 'Notifications', exact: true }).click()
+  await selectAdminSection(page, 'Notifications')
 
   const panel = page.getByTestId('notification-admin-panel')
   await expect(panel).toBeVisible()
+  const templateDownload = page.waitForEvent('download')
+  await panel.getByTitle('Export CSV').click()
+  expect((await templateDownload).suggestedFilename()).toMatch(/^notification-templates-\d{4}-\d{2}-\d{2}\.csv$/)
+  await expect(page.locator('a[download^="notification-templates-"]')).toHaveCount(0)
+  await expect(panel.locator('.admin-action-feedback')).toContainText('Notification template export generated.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
   await panel.getByRole('button', { name: 'New', exact: true }).click()
   await panel.getByLabel('Template key').fill(key)
   await panel.getByLabel('Template name').fill('E2E task notification')
@@ -23,6 +29,7 @@ test('Admin publishes a notification template and the user preference suppresses
   const createdResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/notifications/templates') && response.request().method() === 'POST')
   await panel.getByRole('button', { name: 'Save draft' }).click()
   expect((await createdResponse).status()).toBe(201)
+  await expect(panel.locator('.admin-action-feedback')).toContainText('Template created.')
 
   await panel.getByLabel('Preview variables').fill(JSON.stringify({ taskTitle: 'Launch visual' }))
   await panel.getByRole('button', { name: 'Preview' }).click()
@@ -33,15 +40,27 @@ test('Admin publishes a notification template and the user preference suppresses
   const testResponse = page.waitForResponse((response) => response.url().endsWith('/send-test') && response.request().method() === 'POST')
   await panel.getByRole('button', { name: 'Send test' }).click()
   expect((await testResponse).status()).toBe(201)
+  await expect(panel.locator('.admin-action-feedback')).toContainText('Test notification sent.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
 
   await page.getByRole('tab', { name: 'Delivery queue' }).click()
   const deliveryPanel = page.getByTestId('notification-delivery-panel')
   await expect(deliveryPanel).toBeVisible()
   await expect(deliveryPanel).toContainText('Email unavailable')
   await expect(deliveryPanel).toContainText('Ready: Launch visual')
+  const inventoryDownload = page.waitForEvent('download')
+  await deliveryPanel.getByTitle('Export inventory').click()
+  expect((await inventoryDownload).suggestedFilename()).toMatch(/^notification-inventory-\d{4}-\d{2}-\d{2}\.csv$/)
+  await expect(page.locator('a[download^="notification-inventory-"]')).toHaveCount(0)
+  await expect(deliveryPanel.locator('.admin-action-feedback')).toContainText('Notification inventory export generated.')
   await deliveryPanel.getByRole('button', { name: 'Metrics' }).click()
   await expect(deliveryPanel).toContainText('Delivery rate')
   await expect(deliveryPanel).toContainText('P95')
+  const metricsDownload = page.waitForEvent('download')
+  await deliveryPanel.getByTitle('Export metrics').click()
+  expect((await metricsDownload).suggestedFilename()).toMatch(/^notification-metrics-\d{4}-\d{2}-\d{2}\.csv$/)
+  await expect(page.locator('a[download^="notification-metrics-"]')).toHaveCount(0)
+  await expect(deliveryPanel.locator('.admin-action-feedback')).toContainText('Notification metrics export generated.')
   await deliveryPanel.getByRole('button', { name: 'Channels' }).click()
   const emailChannel = deliveryPanel.getByTestId('notification-channel-email')
   await expect(emailChannel).toContainText('environment unavailable')
@@ -49,6 +68,8 @@ test('Admin publishes a notification template and the user preference suppresses
   const configResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/notifications/channels/email') && response.request().method() === 'PUT')
   await emailChannel.getByRole('button', { name: 'Save' }).click()
   expect((await configResponse).status()).toBe(200)
+  await expect(deliveryPanel.locator('.admin-action-feedback')).toContainText('Channel configuration saved.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
   await emailChannel.getByRole('button', { name: 'History' }).click()
   await expect(emailChannel).toContainText('r2')
   await page.getByRole('tab', { name: 'Templates' }).click()
@@ -78,7 +99,7 @@ test('notification template operations and preferences remain bounded on mobile'
   await page.goto('/')
   await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('button', { name: 'Notifications', exact: true }).click()
+  await selectAdminSection(page, 'Notifications')
   const panel = page.getByTestId('notification-admin-panel')
   await expect(panel).toBeVisible()
   const overflow = await panel.evaluate((element) => {

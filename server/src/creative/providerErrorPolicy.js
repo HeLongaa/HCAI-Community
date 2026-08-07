@@ -8,6 +8,7 @@ const providerErrorCategorySet = new Set([
   'timeout',
   'provider_5xx',
   'provider_incident',
+  'provider_balance',
   'provider_rejected',
   'auth_configuration',
   'invalid_request',
@@ -24,6 +25,7 @@ export const providerErrorPolicies = Object.freeze({
   timeout: Object.freeze({ code: 'PROVIDER_TIMEOUT', retryable: true, circuitEligible: true, terminal: false, statusCode: 504, publicMessageKey: 'provider_timeout' }),
   provider_5xx: Object.freeze({ code: 'PROVIDER_UNAVAILABLE', retryable: true, circuitEligible: true, terminal: false, statusCode: 503, publicMessageKey: 'provider_temporarily_unavailable' }),
   provider_incident: Object.freeze({ code: 'PROVIDER_INCIDENT', retryable: true, circuitEligible: true, terminal: false, statusCode: 503, publicMessageKey: 'provider_temporarily_unavailable' }),
+  provider_balance: Object.freeze({ code: 'PROVIDER_BALANCE_INSUFFICIENT', retryable: false, circuitEligible: false, terminal: true, statusCode: 503, publicMessageKey: 'provider_balance_unavailable' }),
   provider_rejected: Object.freeze({ code: 'PROVIDER_REJECTED', retryable: false, circuitEligible: false, terminal: true, statusCode: 422, publicMessageKey: 'provider_request_rejected' }),
   auth_configuration: Object.freeze({ code: 'PROVIDER_AUTH_CONFIGURATION', retryable: false, circuitEligible: false, terminal: true, statusCode: 503, publicMessageKey: 'provider_configuration_unavailable' }),
   invalid_request: Object.freeze({ code: 'PROVIDER_INVALID_REQUEST', retryable: false, circuitEligible: false, terminal: true, statusCode: 422, publicMessageKey: 'provider_request_invalid' }),
@@ -45,6 +47,23 @@ const normalizedStatus = (error) => {
 
 const codeText = (error) => String(error?.code ?? '').trim().toUpperCase()
 const messageText = (error) => String(error?.message ?? '')
+const providerBalanceReasonCodes = new Set(['NOT_ENOUGH_BALANCE', 'INSUFFICIENT_BALANCE', 'BALANCE_INSUFFICIENT'])
+
+export const normalizeProviderReasonCode = (value) => {
+  const normalized = String(value ?? '').trim().toUpperCase()
+  return /^[A-Z][A-Z0-9_]{1,63}$/.test(normalized) ? normalized : null
+}
+
+export const classifyProviderHttpFailure = ({ statusCode, providerReasonCode = null } = {}) => {
+  const status = integer(statusCode, 500)
+  const reasonCode = normalizeProviderReasonCode(providerReasonCode)
+  if (providerBalanceReasonCodes.has(reasonCode)) return 'provider_balance'
+  if (status === 429) return 'rate_limit'
+  if ([408, 504].includes(status)) return 'timeout'
+  if ([401, 403].includes(status)) return 'auth_configuration'
+  if (status >= 500) return 'provider_5xx'
+  return 'provider_rejected'
+}
 
 const explicitCategory = (error) => {
   const value = String(error?.providerCategory ?? error?.details?.providerCategory ?? error?.details?.category ?? '').trim().toLowerCase()
@@ -57,6 +76,8 @@ export const classifyProviderError = (error) => {
   const status = normalizedStatus(error)
   const code = codeText(error)
   const message = messageText(error)
+  const providerReasonCode = normalizeProviderReasonCode(error?.providerReasonCode ?? error?.details?.providerReasonCode ?? error?.details?.reasonCode)
+  if (providerBalanceReasonCodes.has(providerReasonCode) || code.includes('BALANCE_INSUFFICIENT')) return 'provider_balance'
   if (status === 429 || code.includes('RATE_LIMIT')) return 'rate_limit'
   if (code.includes('TIMEOUT') || /timeout|timed out/i.test(message)) return 'timeout'
   if (code === 'PROVIDER_INCIDENT' || code.includes('PROVIDER_INCIDENT')) return 'provider_incident'
@@ -122,6 +143,7 @@ export const buildSafeProviderError = (error, {
     operationType,
     accountingDisposition: accountingDisposition({ operationType, providerAccepted }),
     publicMessageKey: policy.publicMessageKey,
+    reasonCode: category === 'provider_balance' ? 'provider_balance_insufficient' : null,
   })
 }
 

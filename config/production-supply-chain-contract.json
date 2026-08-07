@@ -1,0 +1,104 @@
+{
+  "schemaVersion": "production-supply-chain-contract-v1",
+  "artifactDirectory": ".artifacts/production-supply-chain",
+  "dockerfile": "Dockerfile",
+  "ciWorkflow": ".github/workflows/container-supply-chain.yml",
+  "registry": "ghcr.io",
+  "deployByDigestOnly": true,
+  "baseImages": {
+    "node": "public.ecr.aws/docker/library/node:24.18.0-trixie-slim@sha256:ae91dcc111a68c9d2d81ff2a17bda61be126426176fde6fe7d08ab13b7f50573",
+    "caddy": "caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d",
+    "postgres": "postgres:16.10-bookworm@sha256:38471f330eb885e04de130b768d6db4e10469e2311879c7e5c699f6d2d8a1c74",
+    "redis": "redis:7.4.5-bookworm@sha256:90e7a336d044f1abc9e9dbc05d65566850896d11453bbd1dd0fb7e5059f0e8fb",
+    "minio": "minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
+    "minioClient": "minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727"
+  },
+  "images": [
+    {
+      "id": "frontend",
+      "target": "frontend",
+      "localReference": "newchat-production-rehearsal-frontend:latest"
+    },
+    {
+      "id": "api",
+      "target": "api",
+      "localReference": "newchat-production-rehearsal-api:latest"
+    },
+    {
+      "id": "worker",
+      "target": "worker",
+      "localReference": "newchat-production-rehearsal-worker:latest"
+    },
+    {
+      "id": "migration",
+      "target": "migrate",
+      "localReference": "newchat-production-rehearsal-migration:latest"
+    }
+  ],
+  "sbomFormats": ["spdx-json", "cyclonedx"],
+  "provenance": {
+    "buildKitMode": "max",
+    "requireRegistryAttestation": true,
+    "requireGitHubSignedAttestation": true
+  },
+  "vulnerabilityPolicy": {
+    "severities": ["HIGH", "CRITICAL"],
+    "defaultDisposition": "deny-when-fix-available",
+    "unfixedDisposition": "track",
+    "denyEndOfLifeOperatingSystems": true,
+    "maximumExceptionDays": 30,
+    "exceptionFile": "config/production-vulnerability-exceptions.json",
+    "requiredExceptionFields": [
+      "vulnerabilityId",
+      "imageId",
+      "packageName",
+      "installedVersion",
+      "reason",
+      "owner",
+      "approvedBy",
+      "approvedAt",
+      "expiresAt"
+    ]
+  },
+  "scanner": {
+    "name": "trivy",
+    "version": "0.73.0",
+    "maximumDatabaseAgeHours": 48,
+    "releaseBaseUrl": "https://github.com/aquasecurity/trivy/releases/download/v0.73.0",
+    "databaseRepositories": [
+      "ghcr.io/aquasecurity/trivy-db:2",
+      "mirror.gcr.io/aquasec/trivy-db:2"
+    ],
+    "platforms": {
+      "darwin-arm64": {
+        "asset": "trivy_0.73.0_macOS-ARM64.tar.gz",
+        "archiveSha256": "80cc25faaf6378e37701202d0b4f9f43d9e413d198d594ba60fdf559fe44a683",
+        "binarySha256": "6b61392e1798f42a66fc78ddf4829b5d26500d259439bb00ae10ed93217ff38f"
+      },
+      "darwin-x64": {
+        "asset": "trivy_0.73.0_macOS-64bit.tar.gz",
+        "archiveSha256": "d39d1374dd3e35d48621b82df9b6625fe69f9920cc67d2739ed81bb679f16f51",
+        "binarySha256": "6e5793a6f6a08a74a11445c314d84dc5cb715f04f44aa68b3e2706949328583f"
+      },
+      "linux-arm64": {
+        "asset": "trivy_0.73.0_Linux-ARM64.tar.gz",
+        "archiveSha256": "13833d97e8a1a5367471c372a173180157f593bece570e20d5d925fef552f5dd",
+        "binarySha256": "a77454b28fe64a5ccfb39974e157db591060a4e3bcc367ef9992a70c5e48f249"
+      },
+      "linux-x64": {
+        "asset": "trivy_0.73.0_Linux-64bit.tar.gz",
+        "archiveSha256": "2edd39da482bb4e9831962487b68f68e3928ec3137794757f54d00383d79547b",
+        "binarySha256": "5b3ebab0f98d95196c85efc3a9d31a01520c96fa342e4e611f56db64c516df1d"
+      }
+    }
+  },
+  "githubActions": {
+    "actions/attest": "1e69f48acb82d1966a394da916b4c1698aa569d6",
+    "actions/checkout": "11d5960a326750d5838078e36cf38b85af677262",
+    "actions/download-artifact": "d3f86a106a0bac45b974a628896c90dbdf5c8093",
+    "actions/upload-artifact": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+    "docker/build-push-action": "53b7df96c91f9c12dcc8a07bcb9ccacbed38856a",
+    "docker/login-action": "dbcb813823bdd20940b903addbd779551569679f",
+    "docker/setup-buildx-action": "bb05f3f5519dd87d3ba754cc423b652a5edd6d2c"
+  }
+}

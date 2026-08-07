@@ -10,6 +10,7 @@ import type {
   SystemSettingPreviewDto,
   SystemSettingRevisionDto,
 } from '../../services/contracts'
+import { AdminActionFeedback, type AdminActionFeedbackMessage } from './AdminActionFeedback'
 
 const statuses: Array<SystemSettingChangeStatus | ''> = ['', 'pending_approval', 'approved', 'rejected', 'published']
 const formatStatus = (value: string) => value.replaceAll('_', ' ')
@@ -27,10 +28,9 @@ const settingNames: Record<string, { zh: string; en: string }> = {
   'runtime.system': { zh: '系统高级设置', en: 'Advanced system settings' },
 }
 
-export function SystemSettingsPanel({ hasPermission, isZh, notify }: {
+export function SystemSettingsPanel({ hasPermission, isZh }: {
   hasPermission: (permission: Permission) => boolean
   isZh: boolean
-  notify: (message: string) => void
 }) {
   const [settings, setSettings] = useState<SystemSettingDto[]>([])
   const [changes, setChanges] = useState<SystemSettingChangeDto[]>([])
@@ -46,6 +46,7 @@ export function SystemSettingsPanel({ hasPermission, isZh, notify }: {
   const [selectedChangeId, setSelectedChangeId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<AdminActionFeedbackMessage | null>(null)
 
   const selectedSetting = useMemo(
     () => settings.find((item) => item.key === selectedKey) ?? settings[0] ?? null,
@@ -127,11 +128,12 @@ export function SystemSettingsPanel({ hasPermission, isZh, notify }: {
   const run = async (action: () => Promise<void>, success?: string) => {
     setLoading(true)
     setError(null)
+    setFeedback(null)
     try {
       await action()
-      if (success) notify(success)
+      if (success) setFeedback({ kind: 'success', text: success })
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      setFeedback({ kind: 'error', text: cause instanceof Error ? cause.message : String(cause) })
     } finally {
       setLoading(false)
     }
@@ -213,6 +215,7 @@ export function SystemSettingsPanel({ hasPermission, isZh, notify }: {
       </div>
 
       {error && <div className="inline-error" role="alert">{error}</div>}
+      <AdminActionFeedback message={feedback} />
       <div className="settings-workspace">
         <div className="admin-table settings-list">
           {settings.map((item) => (

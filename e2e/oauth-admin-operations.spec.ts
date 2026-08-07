@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { apiBaseUrl, apiData, authHeaders, login, signInPage } from './helpers'
+import { apiBaseUrl, apiData, authHeaders, login, selectAdminSection, signInPage } from './helpers'
 
 test('OAuth Admin controls Provider availability, linked accounts, and pending authorizations', async ({ page, request }) => {
   const admin = await login(request, 'opsplus')
@@ -25,7 +25,7 @@ test('OAuth Admin controls Provider availability, linked accounts, and pending a
   await signInPage(page, request, 'opsplus')
   await page.goto('/')
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('button', { name: 'Access', exact: true }).click()
+  await selectAdminSection(page, 'Access')
 
   const panel = page.getByTestId('oauth-admin-panel')
   await expect(panel).toBeVisible()
@@ -42,37 +42,58 @@ test('OAuth Admin controls Provider availability, linked accounts, and pending a
   expect((await configuredResponse).status()).toBe(200)
   await expect(github).toContainText('Disabled')
   await expect(github).toContainText('Secret missing')
+  await expect(panel.locator('.admin-action-feedback')).toContainText('GitHub OAuth configuration saved.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
   await expect(panel.getByTestId(`oauth-account-${linkedAccountId}`)).toBeVisible()
   await expect(panel.getByTestId(`oauth-request-${pendingRequestId}`)).toBeVisible()
 
-  page.on('dialog', (dialog) => dialog.accept())
   const google = panel.getByTestId('oauth-provider-google')
   await google.getByLabel('Google reason code').fill('e2e_disable')
-  const disabledResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/auth/oauth/providers/google/status') && response.request().method() === 'POST')
   await google.getByRole('button', { name: 'Disable' }).click()
+  let confirmation = panel.getByRole('alertdialog', { name: 'Confirm OAuth operation' })
+  await expect(confirmation).toContainText('New sign-ins through this Provider stop immediately')
+  await confirmation.getByRole('button', { name: 'Back', exact: true }).click()
+  await expect(confirmation).toHaveCount(0)
+  await expect(google).toContainText('Enabled')
+  await google.getByRole('button', { name: 'Disable' }).click()
+  confirmation = panel.getByRole('alertdialog', { name: 'Confirm OAuth operation' })
+  const disabledResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/auth/oauth/providers/google/status') && response.request().method() === 'POST')
+  await confirmation.getByRole('button', { name: 'Disable Provider', exact: true }).click()
   await disabledResponse
   await expect(google).toContainText('Disabled')
+  await expect(panel.locator('.admin-action-feedback')).toContainText('Google OAuth updated.')
 
   const publicProviders = await apiData<Array<{ provider: string; available: boolean }>>(request.get(`${apiBaseUrl}/api/auth/oauth/providers`))
   expect(publicProviders.find((provider) => provider.provider === 'google')?.available).toBe(false)
 
   const accountRow = panel.getByTestId(`oauth-account-${linkedAccountId}`)
-  const unlinkResponse = page.waitForResponse((response) => /\/api\/admin\/auth\/oauth\/accounts\/[^/]+$/.test(response.url()) && response.request().method() === 'DELETE')
   await accountRow.getByRole('button', { name: 'Unlink OAuth account' }).click()
+  confirmation = panel.getByRole('alertdialog', { name: 'Confirm OAuth operation' })
+  await expect(confirmation).toContainText('The user account remains active.')
+  const unlinkResponse = page.waitForResponse((response) => /\/api\/admin\/auth\/oauth\/accounts\/[^/]+$/.test(response.url()) && response.request().method() === 'DELETE')
+  await confirmation.getByRole('button', { name: 'Unlink account', exact: true }).click()
   await unlinkResponse
   await expect(accountRow).toHaveCount(0)
+  await expect(panel.locator('.admin-action-feedback')).toContainText('OAuth account unlinked.')
 
   const requestRow = panel.getByTestId(`oauth-request-${pendingRequestId}`)
-  const revokeResponse = page.waitForResponse((response) => response.url().endsWith('/revoke') && response.request().method() === 'POST')
   await requestRow.getByRole('button', { name: 'Revoke authorization' }).click()
+  confirmation = panel.getByRole('alertdialog', { name: 'Confirm OAuth operation' })
+  await expect(confirmation).toContainText('can no longer be completed')
+  const revokeResponse = page.waitForResponse((response) => response.url().endsWith('/revoke') && response.request().method() === 'POST')
+  await confirmation.getByRole('button', { name: 'Revoke authorization', exact: true }).click()
   await revokeResponse
   await expect(requestRow).toContainText('revoked')
+  await expect(panel.locator('.admin-action-feedback')).toContainText('OAuth authorization revoked.')
 
   await google.getByLabel('Google reason code').fill('e2e_restore')
-  const enabledResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/auth/oauth/providers/google/status') && response.request().method() === 'POST')
   await google.getByRole('button', { name: 'Enable' }).click()
+  confirmation = panel.getByRole('alertdialog', { name: 'Confirm OAuth operation' })
+  const enabledResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/auth/oauth/providers/google/status') && response.request().method() === 'POST')
+  await confirmation.getByRole('button', { name: 'Enable Provider', exact: true }).click()
   await enabledResponse
   await expect(google).toContainText('Enabled')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
 
   const secretText = await panel.textContent()
   expect(secretText).not.toContain('clientSecret')
@@ -85,7 +106,7 @@ test('OAuth Admin panel remains bounded on mobile', async ({ page, request }) =>
   await page.goto('/')
   await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('button', { name: 'Access', exact: true }).click()
+  await selectAdminSection(page, 'Access')
   const panel = page.getByTestId('oauth-admin-panel')
   await expect(panel).toBeVisible()
   const layout = await panel.evaluate((element) => {

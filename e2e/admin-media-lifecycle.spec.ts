@@ -1,12 +1,18 @@
 import { expect, test } from '@playwright/test'
-import { apiBaseUrl, apiData, authHeaders, login, signInPage } from './helpers'
+import { apiBaseUrl, apiData, authHeaders, login, selectAdminSection, signInPage } from './helpers'
 
 test('admin filters and transitions owner media lifecycle records', async ({ page, request }) => {
+  const nativeDialogs: string[] = []
+  page.on('dialog', async (dialog) => {
+    nativeDialogs.push(dialog.type())
+    await dialog.dismiss()
+  })
+  const fileName = `e2e-admin-lifecycle-${Date.now()}.png`
   const owner = await login(request, 'promptlin')
   const admin = await login(request, 'opsplus')
   const upload = await apiData<{ asset: { id: string } }>(request.post(`${apiBaseUrl}/api/media/uploads`, {
     headers: authHeaders(owner.accessToken),
-    data: { fileName: 'e2e-admin-lifecycle.png', contentType: 'image/png', sizeBytes: 2048, purpose: 'library_asset' },
+    data: { fileName, contentType: 'image/png', sizeBytes: 2048, purpose: 'library_asset' },
   }))
   await apiData(request.post(`${apiBaseUrl}/api/media/uploads/${upload.asset.id}/complete`, { headers: authHeaders(owner.accessToken), data: {} }))
   await apiData(request.post(`${apiBaseUrl}/api/media/uploads/${upload.asset.id}/scan`, { headers: authHeaders(admin.accessToken), data: { decision: 'clean', note: 'E2E clean fixture' } }))
@@ -16,14 +22,16 @@ test('admin filters and transitions owner media lifecycle records', async ({ pag
   await page.goto('/')
   await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByTestId('nav-admin').click()
+  await selectAdminSection(page, 'Security')
+  await page.locator('.security-workspace-select select').selectOption('media')
   const panel = page.getByTestId('admin-media-lifecycle')
   await expect(panel).toBeVisible()
   await expect(panel.getByText('Active capacity')).toBeVisible()
   await expect(panel.getByText('Scan failures')).toBeVisible()
   await panel.getByLabel('Admin media type').selectOption('image')
   await expect(panel.getByText('P95 scan latency')).toBeVisible()
-  await panel.getByLabel('Search asset lifecycle').fill('e2e-admin-lifecycle')
-  const row = panel.locator('article').filter({ hasText: 'e2e-admin-lifecycle.png' })
+  await panel.getByLabel('Search asset lifecycle').fill(fileName)
+  const row = panel.locator('article').filter({ hasText: fileName })
   await expect(row).toBeVisible()
   await expect(row).toContainText('available')
   await panel.getByLabel('Admin object state').selectOption('available')
@@ -37,28 +45,41 @@ test('admin filters and transitions owner media lifecycle records', async ({ pag
   await page.setViewportSize({ width: 390, height: 844 })
   await row.getByRole('button').click()
   const detail = panel.locator('.admin-media-detail')
-  await expect(detail).toContainText('e2e-admin-lifecycle.png')
+  await expect(detail).toContainText(fileName)
   await detail.getByRole('button', { name: 'Reject' }).click()
   await expect(detail).toContainText('rejected')
   await detail.getByRole('button', { name: 'Mark clean' }).click()
   await expect(detail).toContainText('clean')
-  page.once('dialog', (dialog) => dialog.accept())
   await detail.getByRole('button', { name: 'Delete' }).click()
+  let confirmation = panel.getByRole('alertdialog', { name: 'Confirm media delete' })
+  await expect(confirmation).toContainText(fileName)
+  await confirmation.getByRole('button', { name: 'Cancel' }).click()
+  await expect(row).not.toContainText('Deleted')
+  await detail.getByRole('button', { name: 'Delete' }).click()
+  confirmation = panel.getByRole('alertdialog', { name: 'Confirm media delete' })
+  await confirmation.getByRole('button', { name: 'Move to trash' }).click()
   await expect(row).toContainText('Deleted')
   await detail.getByRole('button', { name: 'Recover' }).click()
   await expect(row).toContainText('Active')
 
   await row.getByRole('checkbox').check()
+  await panel.locator('.admin-media-bulkbar').getByRole('button', { name: 'Delete' }).click()
+  confirmation = panel.getByRole('alertdialog', { name: 'Confirm media delete' })
+  await expect(confirmation).toContainText('Move 1 assets to trash?')
+  await confirmation.getByRole('button', { name: 'Cancel' }).click()
   await panel.locator('.admin-media-bulkbar').getByRole('button', { name: 'Archive' }).click()
   await expect(row).toContainText('Archived')
   const download = page.waitForEvent('download')
   await panel.getByRole('button', { name: 'Export media JSON' }).click()
-  await expect(await download).toBeTruthy()
+  await expect((await download).suggestedFilename()).toBe('media-assets.json')
+  await expect(page.locator('a[download="media-assets.json"]')).toHaveCount(0)
   const metricsDownload = page.waitForEvent('download')
   await panel.getByRole('button', { name: 'Export media metrics JSON' }).click()
   await expect((await metricsDownload).suggestedFilename()).toBe('media-business-metrics.json')
+  await expect(page.locator('a[download="media-business-metrics.json"]')).toHaveCount(0)
 
   await expect(panel).toBeVisible()
+  expect(nativeDialogs).toEqual([])
   expect(await panel.evaluate((element) => {
     const rect = element.getBoundingClientRect()
     return rect.left >= 0 && rect.right <= document.documentElement.clientWidth && element.scrollWidth <= element.clientWidth

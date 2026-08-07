@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LedgerEntry, Locale, SimulateAction } from '../domain/types'
-import { pointsLedger } from '../data/mockData'
 import { pointsService } from '../services/pointsService'
 import type { ApiPointsSummary } from '../services/contracts'
 import { useAsyncResource } from './useAsyncResource'
@@ -9,7 +8,7 @@ export type AppToastTone = 'info' | 'success' | 'warning' | 'error'
 export type AppToast = { id: number; message: string; tone: AppToastTone }
 
 export function useAppFeedback(locale: Locale, accountKey = 'anonymous') {
-  const [ledgerItems, setLedgerItems] = useState<LedgerEntry[]>(pointsLedger)
+  const [ledgerItems, setLedgerItems] = useState<LedgerEntry[]>([])
   const [pointsSummary, setPointsSummary] = useState<ApiPointsSummary | null>(null)
   const [toasts, setToasts] = useState<AppToast[]>([])
   const nextToastId = useRef(0)
@@ -17,7 +16,7 @@ export function useAppFeedback(locale: Locale, accountKey = 'anonymous') {
   const pointsStatus = useAsyncResource<{ entries: LedgerEntry[]; summary: ApiPointsSummary | null }>({
     load: () => pointsService.ledger(),
     onSuccess: ({ entries, summary }) => {
-      if (entries.length > 0) setLedgerItems(entries)
+      setLedgerItems(entries)
       setPointsSummary(summary)
     },
     getErrorMessage: () => (locale === 'zh' ? '积分 API 暂不可用；未显示本地替代数据。' : 'The points API is unavailable; no local substitute is shown.'),
@@ -36,7 +35,7 @@ export function useAppFeedback(locale: Locale, accountKey = 'anonymous') {
     const normalized = message.trim()
     if (!normalized) return
     const id = ++nextToastId.current
-    setToasts((current) => [...current.slice(-3), { id, message: normalized, tone }])
+    setToasts((current) => [...current.slice(-1), { id, message: normalized, tone }])
     toastTimers.current.set(id, window.setTimeout(() => dismissToast(id), tone === 'error' ? 8_000 : 5_000))
   }, [dismissToast])
 

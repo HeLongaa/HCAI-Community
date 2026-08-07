@@ -1,17 +1,21 @@
 import { expect, test } from '@playwright/test'
 
-import { signInPage } from './helpers'
+import { selectAdminSection, signInPage } from './helpers'
 
 test('User lifecycle workbench manages metrics and audited tag assignments', async ({ page, request }) => {
   await signInPage(page, request, 'opsplus')
   await page.goto('/')
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('button', { name: 'Users', exact: true }).click()
+  await selectAdminSection(page, 'Users')
 
   const panel = page.getByTestId('user-admin-panel')
   await expect(panel.getByTestId('user-lifecycle-metrics')).toBeVisible()
   await expect(panel.getByText('D7', { exact: true })).toBeVisible()
   await expect(panel.getByTestId('user-tag-operations')).toBeVisible()
+  const download = page.waitForEvent('download')
+  await panel.getByTitle('Export user metrics').click()
+  expect((await download).suggestedFilename()).toMatch(/^user-lifecycle-metrics-\d{4}-\d{2}-\d{2}\.json$/)
+  await expect(page.locator('a[download^="user-lifecycle-metrics-"]')).toHaveCount(0)
 
   await panel.getByRole('button', { name: 'Create user tag' }).click()
   await panel.getByLabel('User tag key').fill('e2e.lifecycle')
@@ -43,9 +47,10 @@ test('User lifecycle workbench manages metrics and audited tag assignments', asy
   expect((await removeResponse).status()).toBe(200)
   await expect(panel.getByText('No tags assigned')).toBeVisible()
 
-  page.on('dialog', (dialog) => dialog.accept())
   const archiveResponse = page.waitForResponse((response) => /\/api\/admin\/user-tags\/[^/]+\/archive$/.test(response.url()))
   await panel.getByRole('button', { name: 'Archive user tag' }).click()
+  await expect(panel.getByRole('alertdialog', { name: 'Confirm user tag status' })).toBeVisible()
+  await panel.getByRole('button', { name: 'Confirm', exact: true }).click()
   expect((await archiveResponse).status()).toBe(200)
   await page.screenshot({ path: 'test-results/user-lifecycle-desktop.png', fullPage: true })
 })
@@ -56,7 +61,7 @@ test('User lifecycle workbench remains bounded at 390px', async ({ page, request
   await page.goto('/')
   await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('button', { name: 'Users', exact: true }).click()
+  await selectAdminSection(page, 'Users')
 
   const panel = page.getByTestId('user-admin-panel')
   await expect(panel.getByTestId('user-lifecycle-metrics')).toBeVisible()

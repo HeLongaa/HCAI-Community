@@ -83,35 +83,43 @@ const buildProfileSummary = (profile) => {
   const metadata = asObject(profile?.metadata)
   const user = profile?.user ?? null
   const displayName = String(firstNonEmpty(metadata?.name?.en, user?.displayName, profile?.handle, user?.id, 'User'))
-  const role = firstNonEmpty(metadata?.role, user?.role ? { en: user.role, zh: user.role } : null, {
-    en: 'Member',
-    zh: '成员',
-  })
+  const defaultName = { en: displayName, zh: displayName }
+  const defaultRole = user?.role ? { en: user.role, zh: user.role } : { en: 'Member', zh: '成员' }
   return {
     handle: profile?.handle ?? user?.id ?? '',
-    name: metadata?.name ?? { en: displayName, zh: displayName },
-    role,
+    name: { ...defaultName, ...asObject(metadata?.name) },
+    role: { ...defaultRole, ...asObject(metadata?.role) },
     lane: profile?.lane ?? metadata?.lane ?? 'both',
     initials: metadata?.initials ?? displayName.slice(0, 2).toUpperCase(),
   }
 }
 
-const buildFallbackProfile = (profile) => ({
-  handle: profile.handle,
-  lane: profile.lane,
-  initials: profile.handle.slice(0, 2).toUpperCase(),
-  name: { en: profile.handle, zh: profile.handle },
-  role: { en: 'Member', zh: '成员' },
-  bio: '',
-  tags: [],
-  zhTags: [],
-  categories: [],
-  languages: [],
-  stats: {},
-  badges: [],
-  portfolio: [],
-  reviews: [],
-})
+const buildFallbackProfile = (profile) => {
+  const summary = buildProfileSummary(profile)
+  const bio = String(profile.bio ?? '')
+  const skills = Array.isArray(profile.skills) ? profile.skills : []
+  return {
+    ...summary,
+    bio: { en: bio, zh: bio },
+    tags: skills,
+    zhTags: skills,
+    categories: [],
+    languages: Array.isArray(profile.languages) ? profile.languages : [],
+    stats: {
+      score: 0,
+      completed: 0,
+      posted: 0,
+      response: 'New',
+      acceptance: 'New',
+      earned: '0 pts',
+      paid: '0',
+      rank: 'New member',
+    },
+    badges: [],
+    portfolio: [],
+    reviews: [],
+  }
+}
 
 export const getCommentDto = (comment) => ({
   id: comment.id,
@@ -254,6 +262,7 @@ export const getCreativeGenerationDto = (generation) => ({
   id: generation.id,
   actorId: generation.actorId ?? null,
   actorHandle: generation.actorHandle ?? null,
+  subjectRef: generation.subjectRef ?? null,
   workspace: generation.workspace,
   mode: generation.mode,
   providerId: generation.providerId,
@@ -281,6 +290,8 @@ export const getCreativeGenerationDto = (generation) => ({
   startedAt: generation.startedAt ? generation.startedAt.toISOString() : null,
   completedAt: generation.completedAt ? generation.completedAt.toISOString() : null,
   failedAt: generation.failedAt ? generation.failedAt.toISOString() : null,
+  retentionPreviewRedactedAt: generation.retentionPreviewRedactedAt?.toISOString() ?? null,
+  retentionRedactedAt: generation.retentionRedactedAt?.toISOString() ?? null,
   createdAt: generation.createdAt ? generation.createdAt.toISOString() : '',
   updatedAt: generation.updatedAt ? generation.updatedAt.toISOString() : '',
 })
@@ -601,10 +612,18 @@ export const getPostDetailDto = (post, viewer = null) => {
 
 export const getProfileDto = (profile) => {
   const metadata = asObject(profile.metadata)
-  if (metadata) {
-    return metadata
+  const fallback = buildFallbackProfile(profile)
+  if (!metadata) return fallback
+  return {
+    ...fallback,
+    ...metadata,
+    handle: profile.handle,
+    lane: profile.lane ?? metadata.lane ?? fallback.lane,
+    name: { ...fallback.name, ...asObject(metadata.name) },
+    role: { ...fallback.role, ...asObject(metadata.role) },
+    bio: { ...fallback.bio, ...asObject(metadata.bio) },
+    stats: { ...fallback.stats, ...asObject(profile.stats), ...asObject(metadata.stats) },
   }
-  return buildFallbackProfile(profile)
 }
 
 export const getLedgerDto = (entry) => ({

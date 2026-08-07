@@ -42,6 +42,14 @@ const parsePointsReward = (value: string) => {
   return Number.parseInt(points, 10) || 0
 }
 
+const identityHandle = (value: unknown, fallback: string) => {
+  if (typeof value === 'string') return value
+  if (value && typeof value === 'object' && 'handle' in value && typeof value.handle === 'string') {
+    return value.handle
+  }
+  return fallback
+}
+
 const toTask = (task: ApiTask): Task => ({
   id: task.id,
   title: task.title,
@@ -52,8 +60,8 @@ const toTask = (task: ApiTask): Task => ({
   deadline: task.deadline,
   proposals: task.proposals,
   description: task.description,
-  publisher: task.publisher,
-  assignee: task.assignee,
+  publisher: identityHandle(task.publisher, 'unknown'),
+  assignee: identityHandle(task.assignee, 'Unassigned'),
   requirements: task.requirements ?? [],
   attachments: task.attachments ?? [],
   privateBrief: task.privateBrief ?? '',

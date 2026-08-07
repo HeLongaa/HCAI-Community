@@ -164,6 +164,12 @@ export const openApiDocument = {
     '/admin/developer/webhooks/metrics': {
       get: { summary: 'Read aggregate subscription, delivery, attempt, retry, and DLQ metrics', responses: { '200': { description: 'Webhook operations metrics' }, '403': { description: 'Requires admin:webhooks:read' } } },
     },
+    '/admin/provider-alert-deliveries': {
+      get: { summary: 'Query secret-free Provider budget alert delivery and DLQ evidence', description: 'Returns operational metadata only. The outbound payload, destination URL, recipient and signing secret are never included.', responses: { '200': { description: 'Bounded Provider alert delivery evidence without outbound payloads' }, '403': { description: 'Requires admin:webhooks:read' } } },
+    },
+    '/admin/provider-alert-deliveries/{id}/replay': {
+      post: { summary: 'Idempotently replay a dead-lettered Provider alert delivery', description: 'Requires optimistic concurrency, a bounded reason code and an idempotency key. The response excludes the outbound payload.', responses: { '200': { description: 'Queued secret-free replay evidence' }, '403': { description: 'Requires admin:webhooks:manage' }, '409': { description: 'Stale version or replay not allowed' } } },
+    },
     '/auth/login': {
       post: {
         summary: 'Login with email/password or a seeded demo handle',
@@ -1097,6 +1103,29 @@ export const openApiDocument = {
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['backupClass', 'objectRefHash', 'evidenceHash', 'expiredAt', 'verifiedByRef'], properties: { backupClass: { type: 'string', enum: ['primary_database', 'object_storage', 'audit_archive'] }, objectRefHash: { type: 'string', pattern: '^[a-f0-9]{64}$' }, evidenceHash: { type: 'string', pattern: '^[a-f0-9]{64}$' }, expiredAt: { type: 'string', format: 'date-time' }, verifiedByRef: { type: 'string', minLength: 3, maxLength: 64 } } } } } },
         responses: { '201': { description: 'Backup expiry evidence recorded' }, '403': { description: 'Requires admin:data-rights:manage' }, '409': { description: 'Primary deletion incomplete, expiry pending, or duplicate backup class' } },
+      },
+    },
+    '/admin/data-rights/legal-holds': {
+      get: {
+        summary: 'List scoped legal holds by lifecycle status without raw subject identifiers',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'subjectId', in: 'query', schema: { type: 'string', minLength: 3, maxLength: 128 } }, { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'released', 'expired', 'all'], default: 'active' } }, { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 } }],
+        responses: { '200': { description: 'Scoped legal holds with append-only event evidence' }, '403': { description: 'Requires admin:data-rights:legal-hold' } },
+      },
+      post: {
+        summary: 'Create a scoped legal hold with review, finite expiry, and hashed authority evidence',
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['subjectId', 'scopeDomain', 'reasonCode', 'authorityRole', 'authorityReferenceHash', 'reviewAt', 'expiresAt'], properties: { subjectId: { type: 'string', minLength: 3, maxLength: 128 }, scopeDomain: { type: 'string', enum: ['identity', 'sessions', 'profile', 'community', 'tasks', 'media', 'creative', 'chat', 'developer_access', 'webhooks', 'notifications', 'support', 'billing', 'audit', 'safety'] }, reasonCode: { type: 'string', minLength: 3, maxLength: 64 }, authorityRole: { type: 'string', enum: ['legal_hold_admin', 'security_legal_incident_owner'] }, authorityReferenceHash: { type: 'string', pattern: '^[a-f0-9]{64}$' }, reviewAt: { type: 'string', format: 'date-time' }, expiresAt: { type: 'string', format: 'date-time' } } } } } },
+        responses: { '201': { description: 'Legal hold created with immutable creation event' }, '403': { description: 'Requires admin:data-rights:legal-hold' }, '404': { description: 'Subject not found' } },
+      },
+    },
+    '/admin/data-rights/legal-holds/{id}/release': {
+      post: {
+        summary: 'Release one legal hold with optimistic version control and immutable evidence',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['expectedVersion', 'reasonCode'], properties: { expectedVersion: { type: 'integer', minimum: 1 }, reasonCode: { type: 'string', minLength: 3, maxLength: 64 } } } } } },
+        responses: { '200': { description: 'Legal hold released; blocked deletion can resume' }, '403': { description: 'Requires admin:data-rights:legal-hold' }, '404': { description: 'Legal hold not found' }, '409': { description: 'Version conflict or already released' } },
       },
     },
     '/admin/users': {
@@ -2834,7 +2863,7 @@ export const openApiDocument = {
           },
           '400': { description: 'Invalid workspace, mode, prompt, or parameter payload' },
           '401': { description: 'Authentication required' },
-          '422': { description: 'Creative moderation policy blocked the request before provider execution' },
+          '422': { description: 'Provider or downstream policy rejected the request after a generation record existed' },
           '429': { description: 'Creative generation quota or durable Provider budget cap exceeded before dispatch' },
           '503': { description: 'Creative provider unavailable' },
         },
@@ -2877,6 +2906,42 @@ export const openApiDocument = {
           '403': { description: 'Generation belongs to another user' },
           '409': { description: 'Generation state is not cancellable or Provider did not confirm cancellation' },
           '503': { description: 'Provider cancellation adapter is not configured; no Provider call is attempted' },
+        },
+      },
+    },
+    '/creative/generations/{id}/resume': {
+      post: {
+        summary: 'Resume one owned review-held generation after an approving Trust and Safety decision',
+        description: 'The owner resubmits the original request because raw prompts are not retained. The service verifies the prompt hash and immutable request shape, claims the resume once, and reruns risk, routing, entitlement, quota, credit, Provider budget, and Provider control gates before dispatch.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['workspace', 'mode', 'prompt', 'idempotencyKey'],
+                properties: {
+                  workspace: { type: 'string', enum: ['image', 'video', 'music', 'chat'] },
+                  mode: { type: 'string' },
+                  prompt: { type: 'string', minLength: 1, maxLength: 4000 },
+                  idempotencyKey: { type: 'string', minLength: 8, maxLength: 128 },
+                  providerId: { type: ['string', 'null'] },
+                  inputAssetIds: { type: 'array', items: { type: 'string' } },
+                  parameters: { type: 'object', additionalProperties: true },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Resumed generation or idempotent replay of the completed resume' },
+          '400': { description: 'A valid explicit idempotency key is required' },
+          '404': { description: 'Generation not found or belongs to another user' },
+          '409': { description: 'Request mismatch, approval missing, resume in progress, or generation already resumed' },
+          '429': { description: 'Risk, entitlement, quota, or Provider budget prevents the fresh dispatch' },
+          '503': { description: 'Provider or resume runtime unavailable' },
         },
       },
     },
@@ -3334,9 +3399,88 @@ export const openApiDocument = {
         },
       },
     },
+    '/inspiration/categories': {
+      get: { summary: 'List active inspiration content and domain categories', responses: { '200': { description: 'Database-backed active categories' } } },
+    },
+    '/inspiration': {
+      get: {
+        summary: 'List published inspiration resources',
+        description: 'Returns only published resources. Drafts, review snapshots, rejected content, and archived content are never exposed by this endpoint.',
+        parameters: [
+          { name: 'search', in: 'query', schema: { type: 'string', maxLength: 120 } },
+          { name: 'category', in: 'query', schema: { type: 'string' } },
+          { name: 'domain', in: 'query', schema: { type: 'string' } },
+          { name: 'difficulty', in: 'query', schema: { type: 'string', description: 'Active difficulty category slug.' } },
+          { name: 'sourceKind', in: 'query', schema: { type: 'string', enum: ['official', 'user_submission'] } },
+          { name: 'featured', in: 'query', schema: { type: 'boolean' } },
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
+        ],
+        responses: { '200': { description: 'Published inspiration page' } },
+      },
+    },
+    '/inspiration/{id}': {
+      get: { summary: 'Read one published inspiration resource and its public published-version history', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Published resource without private review snapshots' }, '404': { description: 'Resource is missing or not published' } } },
+    },
+    '/inspiration/{id}/favorite': {
+      post: { summary: 'Favorite a published inspiration resource', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Updated resource and real favorite count' }, '401': { description: 'Authentication required' } } },
+      delete: { summary: 'Remove a published resource from the current user favorites', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Updated resource and real favorite count' }, '401': { description: 'Authentication required' } } },
+    },
+    '/inspiration/favorites/mine': {
+      get: { summary: 'List the current user favorites', security: [{ bearerAuth: [] }], responses: { '200': { description: 'Current favorites' }, '401': { description: 'Authentication required' } } },
+    },
+    '/inspiration/favorites': {
+      delete: { summary: 'Remove up to 100 current-user favorites in one operation', security: [{ bearerAuth: [] }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['ids'], properties: { ids: { type: 'array', minItems: 1, maxItems: 100, uniqueItems: true, items: { type: 'string' } } } } } } }, responses: { '200': { description: 'Requested IDs and real removed count' }, '401': { description: 'Authentication required' } } },
+    },
+    '/inspiration/{id}/use': {
+      post: { summary: 'Create a version-pinned workspace draft from a published resource', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Workspace handoff with resource ID and exact version' }, '401': { description: 'Authentication required' }, '404': { description: 'Resource unavailable' } } },
+    },
+    '/inspiration/submissions': {
+      post: { summary: 'Create a private user inspiration draft', security: [{ bearerAuth: [] }], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/InspirationEntryInput' } } } }, responses: { '201': { description: 'Private draft' }, '401': { description: 'Authentication required' } } },
+    },
+    '/inspiration/submissions/mine': {
+      get: { summary: 'List current-user drafts, reviews, published resources, and pending revisions', security: [{ bearerAuth: [] }], responses: { '200': { description: 'Owner-visible submissions with private revision snapshots' }, '401': { description: 'Authentication required' } } },
+    },
+    '/inspiration/submissions/{id}': {
+      patch: { summary: 'Edit an owned draft or create/update the next revision of owned published content', description: 'Editing published content never changes the live version. A private next-version draft is created and must pass review.', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/InspirationEntryPatch' } } } }, responses: { '200': { description: 'Updated draft or pending revision' }, '401': { description: 'Authentication required' }, '404': { description: 'Submission cannot be edited' } } },
+    },
+    '/inspiration/submissions/{id}/submit': {
+      post: { summary: 'Submit an owned draft or next version for review', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Pending review without public publication' }, '404': { description: 'No submittable draft' } } },
+    },
+    '/inspiration/submissions/{id}/withdraw': {
+      post: { summary: 'Withdraw an owned pending submission or pending revision back to draft', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Withdrawn draft; live published version remains unchanged' }, '404': { description: 'No withdrawable review' } } },
+    },
+    '/admin/inspiration': {
+      get: { summary: 'List inspiration administration and review records', description: 'Pending-review filtering includes both first publications and next-version revisions.', security: [{ bearerAuth: [] }], responses: { '200': { description: 'Admin inspiration list' }, '403': { description: 'Requires admin:inspiration:read' } } },
+      post: { summary: 'Directly publish an official inspiration resource', security: [{ bearerAuth: [] }], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/InspirationEntryInput' } } } }, responses: { '201': { description: 'Published official resource with version 1' }, '403': { description: 'Requires admin:inspiration:manage' } } },
+    },
+    '/admin/inspiration/categories': {
+      get: { summary: 'List active and inactive inspiration categories', security: [{ bearerAuth: [] }], responses: { '200': { description: 'All category administration records' }, '403': { description: 'Requires admin:inspiration:read' } } },
+      post: { summary: 'Create an inspiration category', security: [{ bearerAuth: [] }], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/InspirationCategoryInput' } } } }, responses: { '201': { description: 'Created category' }, '403': { description: 'Requires admin:inspiration:manage' } } },
+    },
+    '/admin/inspiration/categories/{id}': {
+      patch: { summary: 'Edit, sort, activate, or deactivate an inspiration category', description: 'Deactivating a referenced category requires an active replacement of the same kind; referenced entries are migrated atomically.', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], requestBody: { required: true, content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/InspirationCategoryInput' }, { type: 'object', properties: { active: { type: 'boolean' }, replacementCategoryId: { type: ['string', 'null'] } } }] } } } }, responses: { '200': { description: 'Updated category' }, '409': { description: 'CATEGORY_MIGRATION_REQUIRED' }, '403': { description: 'Requires admin:inspiration:manage' } } },
+    },
+    '/admin/inspiration/{id}': {
+      get: { summary: 'Read an inspiration resource with full version and review history', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Admin resource detail' }, '403': { description: 'Requires admin:inspiration:read' } } },
+      patch: { summary: 'Edit published or archived content and create a new immutable version', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/InspirationEntryPatch' } } } }, responses: { '200': { description: 'Updated resource with new version' }, '403': { description: 'Requires admin:inspiration:manage' }, '404': { description: 'Resource is not editable or has a pending user revision' } } },
+    },
+    '/admin/inspiration/{id}/review': {
+      post: { summary: 'Approve, request changes, or reject a first submission or pending revision', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['decision'], properties: { decision: { type: 'string', enum: ['approve', 'request_changes', 'reject'] }, note: { type: 'string', maxLength: 1000 } } } } } }, responses: { '200': { description: 'Reviewed content; live version changes only on approval' }, '403': { description: 'Requires admin:inspiration:manage' } } },
+    },
+    '/admin/inspiration/{id}/rollback': {
+      post: { summary: 'Restore a historical snapshot as a new published version', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['version'], properties: { version: { type: 'integer', minimum: 1 }, note: { type: ['string', 'null'], maxLength: 1000 } } } } } }, responses: { '200': { description: 'Historical snapshot restored as a new version' }, '404': { description: 'Version unavailable or a pending revision blocks rollback' }, '403': { description: 'Requires admin:inspiration:manage' } } },
+    },
+    '/admin/inspiration/{id}/archive': {
+      post: { summary: 'Archive a public inspiration resource', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Archived resource' }, '403': { description: 'Requires admin:inspiration:manage' } } },
+    },
+    '/admin/inspiration/{id}/restore': {
+      post: { summary: 'Restore an archived inspiration resource', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Restored published resource' }, '403': { description: 'Requires admin:inspiration:manage' } } },
+    },
     '/library': {
       get: {
-        summary: 'List library items',
+        summary: 'List active private library items owned by the authenticated user',
+        security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'type', in: 'query', schema: { type: 'string' } },
           { name: 'source', in: 'query', schema: { type: 'string' } },
@@ -3346,13 +3490,15 @@ export const openApiDocument = {
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
         ],
         responses: {
-          '200': { description: 'Library items' },
+          '200': { description: 'Owner-scoped active Library items' },
+          '401': { description: 'Authentication required' },
         },
       },
     },
     '/library/items': {
       post: {
         summary: 'Save a library item',
+        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -3375,6 +3521,24 @@ export const openApiDocument = {
         responses: {
           '201': { description: 'Library item saved' },
         },
+      },
+    },
+    '/library/items/{id}': {
+      delete: {
+        summary: 'Soft-delete an owned private Library item for a 30-day recovery window',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['expectedVersion', 'reasonCode'], properties: { expectedVersion: { type: 'integer', minimum: 1 }, reasonCode: { type: 'string', enum: ['owner_requested'] } } } } } },
+        responses: { '200': { description: 'Soft-deleted owner projection' }, '404': { description: 'Item not found or not owned by caller' }, '409': { description: 'Version conflict' } },
+      },
+    },
+    '/library/items/{id}/restore': {
+      post: {
+        summary: 'Restore an owned private Library item during its 30-day recovery window',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['expectedVersion', 'reasonCode'], properties: { expectedVersion: { type: 'integer', minimum: 1 }, reasonCode: { type: 'string', enum: ['owner_restore'] } } } } } },
+        responses: { '200': { description: 'Restored owner projection' }, '404': { description: 'Item not found, expired, or not owned by caller' }, '409': { description: 'Version conflict' } },
       },
     },
     '/library/items/{id}/convert-to-task': {
@@ -3589,6 +3753,36 @@ export const openApiDocument = {
         responses: { '200': { description: 'Selected user billing JSON or CSV export' }, '403': { description: 'Requires admin:accounting:read' }, '404': { description: 'User not found' } },
       },
     },
+    '/observability/client-errors': {
+      post: {
+        summary: 'Accept privacy-safe browser runtime error fingerprints',
+        description: 'Accepts only bounded route/release identifiers and SHA-256 fingerprints; raw messages, stacks, prompts, and page content are not accepted.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['eventType', 'errorName', 'errorCode', 'route', 'release', 'occurredAt'],
+                properties: {
+                  eventType: { type: 'string', enum: ['route_view', 'react_error_boundary', 'window_error', 'unhandled_rejection'] },
+                  errorName: { type: 'string', maxLength: 192 },
+                  errorCode: { type: 'string', maxLength: 192 },
+                  route: { type: 'string', maxLength: 192 },
+                  release: { type: 'string', maxLength: 192 },
+                  occurredAt: { type: 'string', format: 'date-time' },
+                  messageHash: { type: ['string', 'null'], pattern: '^[a-f0-9]{64}$' },
+                  stackHash: { type: ['string', 'null'], pattern: '^[a-f0-9]{64}$' },
+                  componentStackHash: { type: ['string', 'null'], pattern: '^[a-f0-9]{64}$' },
+                },
+              },
+            },
+          },
+        },
+        responses: { '200': { description: 'Client error fingerprint accepted' }, '400': { description: 'Invalid or unsafe report' }, '429': { description: 'Rate limit exceeded' } },
+      },
+    },
     '/admin/observability/logs': {
       get: {
         summary: 'Search sanitized structured application logs',
@@ -3649,7 +3843,7 @@ export const openApiDocument = {
     },
     '/admin/observability/slos': {
       get: {
-        summary: 'Read API availability and latency SLO status',
+        summary: 'Read API and generation SLO status',
         responses: {
           '200': { description: 'Thirty-day SLO status with 5-minute and 60-minute burn rates' },
           '403': { description: 'Requires admin:observability:read' },
@@ -3674,7 +3868,7 @@ export const openApiDocument = {
     '/admin/observability/slo-controls/{sloId}': {
       put: {
         summary: 'Update one SLO threshold and on-call control using optimistic concurrency',
-        parameters: [{ name: 'sloId', in: 'path', required: true, schema: { type: 'string', enum: ['api-availability', 'api-latency'] } }],
+        parameters: [{ name: 'sloId', in: 'path', required: true, schema: { type: 'string', enum: ['api-availability', 'api-latency', 'generation-success', 'generation-first-result-latency', 'generation-retry-rate', 'generation-abandonment-rate'] } }],
         responses: { '200': { description: 'Updated SLO control' }, '400': { description: 'Invalid threshold, on-call handle, or runbook' }, '403': { description: 'Requires admin:observability:manage' }, '409': { description: 'Control version conflict' } },
       },
     },
@@ -4268,6 +4462,37 @@ export const openApiDocument = {
           '200': { description: 'Creative generation history detail with sanitized durable Provider cost ledger, pricing snapshot, budget, replay, mutation, and output-ingestion evidence summaries when available' },
           '403': { description: 'Requires audit read permission' },
           '404': { description: 'Creative generation record not found' },
+        },
+      },
+    },
+    '/admin/creative/generations/{id}/provider-cost-settlement': {
+      post: {
+        summary: 'Settle a reconciliation-required Provider cost with protected audited evidence',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['actualAmount', 'currency', 'evidenceRef', 'reasonCode'],
+                properties: {
+                  actualAmount: { type: 'string', pattern: '^\\d+(?:\\.\\d{1,6})?$' },
+                  currency: { type: 'string', enum: ['USD'] },
+                  evidenceRef: { type: 'string', maxLength: 128 },
+                  reasonCode: { type: 'string', maxLength: 80 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Provider cost settled once; evidence reference is retained only as a hash' },
+          '403': { description: 'Requires protected admin:accounting:repair permission' },
+          '404': { description: 'Generation or Provider cost ledger not found' },
+          '409': { description: 'Ledger already closed or currency mismatch' },
+          '503': { description: 'Provider cost settlement repository is unavailable' },
         },
       },
     },
@@ -5280,6 +5505,7 @@ export const openApiDocument = {
   },
   components: {
     securitySchemes: {
+      bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'session access token', description: 'Authenticated HCAI user session token.' },
       developerApiKey: { type: 'http', scheme: 'bearer', bearerFormat: 'mfk_<prefix>_<secret>', description: 'Service account API key with an explicitly granted developer scope.' },
     },
     parameters: {
@@ -5294,6 +5520,47 @@ export const openApiDocument = {
       DeprecationLink: { description: 'Links to deprecation information and the successor version.', schema: { type: 'string' } },
     },
     schemas: {
+      InspirationCategoryInput: {
+        type: 'object',
+        properties: {
+          kind: { type: 'string', enum: ['content_type', 'domain', 'difficulty'] },
+          slug: { type: 'string', maxLength: 64 },
+          nameEn: { type: 'string', maxLength: 80 },
+          nameZh: { type: 'string', maxLength: 80 },
+          description: { type: ['string', 'null'], maxLength: 300 },
+          sortOrder: { type: 'integer', minimum: 0, maximum: 100000 },
+        },
+      },
+      InspirationEntryFields: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          title: { type: 'string', minLength: 1, maxLength: 140 },
+          summary: { type: 'string', minLength: 1, maxLength: 320 },
+          problem: { type: 'string', minLength: 1, maxLength: 1200 },
+          audience: { type: 'string', minLength: 1, maxLength: 800 },
+          categoryId: { type: 'string', minLength: 1, maxLength: 128 },
+          contentType: { type: 'string', minLength: 1, maxLength: 64 },
+          domains: { type: 'array', maxItems: 12, uniqueItems: true, items: { type: 'string' } },
+          difficulty: { type: 'string', description: 'Active difficulty category slug.' },
+          toolModels: { type: 'array', maxItems: 12, uniqueItems: true, items: { type: 'string' } },
+          content: { type: 'object' },
+          sourceAttribution: { type: ['string', 'null'], maxLength: 500 },
+          license: { type: ['string', 'null'], maxLength: 120 },
+          featured: { type: 'boolean' },
+          supportsTaskDraft: { type: 'boolean' },
+          sortOrder: { type: 'integer', minimum: 0, maximum: 100000 },
+        },
+      },
+      InspirationEntryInput: {
+        allOf: [{ $ref: '#/components/schemas/InspirationEntryFields' }],
+        required: ['title', 'summary', 'problem', 'audience', 'categoryId', 'contentType', 'domains', 'difficulty', 'toolModels', 'content'],
+      },
+      InspirationEntryPatch: {
+        allOf: [{ $ref: '#/components/schemas/InspirationEntryFields' }],
+        minProperties: 1,
+        description: 'Any non-empty subset of InspirationEntryInput fields.',
+      },
       ApiV1ErrorEnvelope: {
         type: 'object',
         required: ['data', 'error', 'meta'],

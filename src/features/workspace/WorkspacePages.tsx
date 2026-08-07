@@ -5,6 +5,8 @@ import {
   Clapperboard,
   Download,
   FileText,
+  FolderOpen,
+  History,
   Image,
   Music2,
   RefreshCcw,
@@ -15,16 +17,25 @@ import {
   Upload,
   Video,
 } from 'lucide-react'
-import type { InspirationItem, Page, PlaygroundMode, SimulateAction, Task } from '../../domain/types'
+import type { InspirationItem, Page, PlaygroundMode, Task } from '../../domain/types'
 import { isZhCopy, textFor } from '../../domain/utils'
 import type { VideoGenerationWorkflow } from '../../hooks/useVideoGenerationWorkflow'
 import type { MusicGenerationWorkflow } from '../../hooks/useMusicGenerationWorkflow'
+import type { GenerationOperationFeedback } from '../../hooks/generationOperationFeedback'
 import type { ApiCreativeCapability, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiUserCreativeGeneration } from '../../services/contracts'
 import { ChatPage } from './ChatPage'
 import { MusicStudioPage } from './MusicStudioPage'
 import { VideoStudioPage } from './VideoStudioPage'
 import { CreativeCostPreview } from './CreativeCostPreview'
+import { GenerationRetryConfirmation } from './GenerationRetryConfirmation'
 import { UseCreativeAsset } from '../assets/UseCreativeAsset'
+import { ActionFeedback, type ActionFeedbackMessage } from '../../components/ui/ActionFeedback'
+import { MediaLoadFallback } from '../../components/ui/MediaLoadFallback'
+import {
+  isMockCreativeProvider,
+  isOperationalCreativeProvider,
+  selectOperationalCreativeProvider,
+} from '../../services/creativeProviderSelection'
 
 type ImageGenerationState = {
   status: 'idle' | 'loading' | 'done' | 'error'
@@ -46,6 +57,7 @@ export function PlaygroundPage({
   imageGeneration,
   imageGenerationHistory,
   imageGenerationAction,
+  imageGenerationFeedback,
   refreshImageGenerationHistory,
   selectImageGeneration,
   cancelImageGeneration,
@@ -55,6 +67,7 @@ export function PlaygroundPage({
   hasImageGenerationRetryRequest,
   imageProviderCatalog,
   imageProviderCatalogState,
+  refreshProviderCatalog,
   imageInputAssets,
   uploadImageInput,
   runImageGeneration,
@@ -65,7 +78,6 @@ export function PlaygroundPage({
   libraryItems,
   openModerationAppeal,
   requireAuth,
-  simulateAction,
   workspace,
   setWorkspace,
   setPage,
@@ -78,18 +90,20 @@ export function PlaygroundPage({
     targetId: string | null
     error: string | null
   }
+  imageGenerationFeedback: GenerationOperationFeedback | null
   refreshImageGenerationHistory: (cursor?: string | null) => Promise<void>
   selectImageGeneration: (id: string) => void
   cancelImageGeneration: (id: string) => Promise<void>
-  retryImageGeneration: (id: string) => Promise<void>
+  retryImageGeneration: (id: string) => Promise<boolean>
   downloadImageGenerationAsset: (assetId: string) => Promise<void>
   prepareImageAssetForReuse: (assetId: string) => Promise<boolean>
   hasImageGenerationRetryRequest: (id: string) => boolean
   imageProviderCatalog: ApiCreativeProviderCatalog | null
   imageProviderCatalogState: 'loading' | 'ready' | 'error'
+  refreshProviderCatalog: () => Promise<void>
   imageInputAssets: ApiMediaAsset[]
   uploadImageInput: (file: File) => Promise<void>
-  runImageGeneration: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; quality: string; strength: number; inputAssetIds: string[] }) => Promise<void>
+  runImageGeneration: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; quality: string; strength: number; inputAssetIds: string[]; providerId: string }) => Promise<void>
   musicWorkflow: MusicGenerationWorkflow
   videoWorkflow: VideoGenerationWorkflow
   signedIn: boolean
@@ -97,36 +111,108 @@ export function PlaygroundPage({
   libraryItems: InspirationItem[]
   openModerationAppeal: (moderationDecisionId: string) => void
   requireAuth: () => void
-  simulateAction: SimulateAction
   workspace: PlaygroundMode
   setWorkspace: (workspace: PlaygroundMode) => void
   setPage: (page: Page) => void
 }) {
-  const imageProvider = imageProviderCatalog?.providers.find((provider) => provider.id === imageProviderCatalog.defaultProviderId)
+  const imageProvider = selectOperationalCreativeProvider(imageProviderCatalog, 'image')
   const imageCapability = imageProvider?.capabilities.find((capability) => capability.workspace === 'image') ?? null
+  const imageProviderAvailable = Boolean(imageProvider && isOperationalCreativeProvider(imageProvider, 'image'))
 
   const workspaceTabs = [
-    { key: 'music' as PlaygroundMode, label: textFor(t, 'Music', '音乐'), icon: Music2 },
     { key: 'image' as PlaygroundMode, label: textFor(t, 'Image', '图片'), icon: Image },
     { key: 'video' as PlaygroundMode, label: textFor(t, 'Video', '视频'), icon: Video },
+    { key: 'music' as PlaygroundMode, label: textFor(t, 'Music', '音乐'), icon: Music2 },
     { key: 'chat' as PlaygroundMode, label: t.chat, icon: Bot },
   ]
+  const workspaceProfiles: Record<PlaygroundMode, { index: string; kicker: string; title: string; description: string }> = {
+    image: {
+      index: '01',
+      kicker: textFor(t, 'VISUAL SYNTHESIS', '视觉生成'),
+      title: textFor(t, 'Image Studio', '图像创作'),
+      description: textFor(t, 'Generate, transform, and refine a visual world from words or references.', '从文字或参考图出发，生成、转换并打磨完整视觉。'),
+    },
+    video: {
+      index: '02',
+      kicker: textFor(t, 'MOTION SYNTHESIS', '动态生成'),
+      title: textFor(t, 'Video Studio', '视频创作'),
+      description: textFor(t, 'Direct movement, timing, and cinematic rhythm across every frame.', '控制运动、时长与镜头节奏，让每一帧进入叙事。'),
+    },
+    music: {
+      index: '03',
+      kicker: textFor(t, 'AUDIO SYNTHESIS', '声音生成'),
+      title: textFor(t, 'Music Studio', '音乐创作'),
+      description: textFor(t, 'Compose structure, mood, and sound from a focused creative brief.', '从清晰的创作需求出发，编排结构、情绪与声音。'),
+    },
+    chat: {
+      index: '04',
+      kicker: textFor(t, 'CREATIVE INTELLIGENCE', '创作智能'),
+      title: textFor(t, 'AI Assistant', 'AI 助手'),
+      description: textFor(t, 'Develop ideas, prompts, and production decisions in one conversation.', '在一次对话中推进想法、提示词与制作决策。'),
+    },
+  }
+  const workspaceProfile = workspaceProfiles[workspace]
+  const workspaceProvider = workspace === 'image'
+    ? imageProvider
+    : workspace === 'chat' ? null : selectOperationalCreativeProvider(imageProviderCatalog, workspace)
+  const workspaceProviderAvailable = workspace === 'chat'
+    ? signedIn
+    : Boolean(
+        workspaceProvider && isOperationalCreativeProvider(workspaceProvider, workspace),
+      )
+  const workspaceProviderIsDemo = workspace !== 'chat' && Boolean(
+    workspaceProvider && isMockCreativeProvider(workspaceProvider),
+  )
+  const runtimeTone = workspace === 'chat'
+    ? (signedIn ? 'available' : 'unavailable')
+    : imageProviderCatalogState === 'loading'
+      ? 'loading'
+      : imageProviderCatalogState === 'error'
+        ? 'error'
+        : workspaceProviderIsDemo
+          ? 'demo'
+          : workspaceProviderAvailable ? 'available' : 'unavailable'
+  const runtimeLabel = runtimeTone === 'loading'
+    ? textFor(t, 'CONNECTING', '连接中')
+    : runtimeTone === 'error'
+      ? textFor(t, 'CHECK RUNTIME', '检查运行来源')
+      : runtimeTone === 'available'
+        ? textFor(t, 'READY', '可用')
+        : runtimeTone === 'demo'
+          ? textFor(t, 'DEMO RUNTIME', '演示运行')
+        : workspace === 'chat'
+          ? textFor(t, 'SIGN IN', '请登录')
+          : textFor(t, 'NOT READY', '未就绪')
+  const runtimeName = workspace === 'chat'
+    ? textFor(t, 'Personal session', '个人会话')
+    : workspaceProvider?.label ?? textFor(t, 'No runtime selected', '未选择运行来源')
 
   return (
-    <div className="stack">
-      <section className="playground-hero">
-        <div>
-          <span className="eyebrow">{textFor(t, 'Workspace', '工作区')}</span>
-          <h1>{t.playgroundTitle}</h1>
-          <p>{t.playgroundSubtitle}</p>
+    <div className={`workspace-page workspace-${workspace}`} data-workspace={workspace}>
+      <header className="workspace-page-header">
+        <div className="workspace-page-title">
+          <span className="workspace-page-kicker"><b>{workspaceProfile.index}</b> / 04&nbsp;&nbsp;{workspaceProfile.kicker}</span>
+          <div className="workspace-page-display">{workspaceProfile.title}</div>
+          <p>{workspaceProfile.description}</p>
         </div>
-        <div className="playground-tabs" role="tablist" aria-label={t.playgroundTitle}>
+        <div className={`workspace-runtime workspace-runtime-${runtimeTone}`} aria-live="polite">
+          <span className="workspace-runtime-signal" aria-hidden="true" />
+          <span>
+            <small>{textFor(t, 'ACTIVE RUNTIME', '当前运行来源')}</small>
+            <strong>{runtimeName}</strong>
+          </span>
+          <b>{runtimeLabel}</b>
+        </div>
+        <div className="workspace-page-toolbar">
+          <div className="playground-tabs" aria-label={t.playgroundTitle}>
           {workspaceTabs.map((item) => {
             const Icon = item.icon
             return (
               <button
-                className={workspace === item.key ? 'chip active' : 'chip'}
+                className={workspace === item.key ? 'active' : ''}
                 type="button"
+                aria-pressed={workspace === item.key}
+                data-workspace={item.key}
                 key={item.key}
                 onClick={() => setWorkspace(item.key)}
               >
@@ -135,9 +221,21 @@ export function PlaygroundPage({
               </button>
             )
           })}
+          </div>
+          <div className="workspace-page-actions">
+            <button type="button" onClick={() => setPage('generations')}>
+              <History size={16} />
+              {textFor(t, 'Generations', '生成记录')}
+            </button>
+            <button type="button" onClick={() => setPage('assets')}>
+              <FolderOpen size={16} />
+              {textFor(t, 'Assets', '资产')}
+            </button>
+          </div>
         </div>
-      </section>
+      </header>
 
+      <main className="workspace-mode-surface">
       {workspace === 'music' && (
         <MusicStudioPage
           t={t}
@@ -159,11 +257,11 @@ export function PlaygroundPage({
           primaryAction={textFor(t, 'Generate images', '生成图片')}
           options={['none', 'poster', 'avatar', 'product_visual', 'logo_concept']}
           controls={['1:1', '16:9', '4:5', '9:16']}
-          simulateAction={simulateAction}
           providerGeneration={{
             state: imageGeneration,
             history: imageGenerationHistory,
             action: imageGenerationAction,
+            feedback: imageGenerationFeedback,
             refreshHistory: refreshImageGenerationHistory,
             selectGeneration: selectImageGeneration,
             cancelGeneration: cancelImageGeneration,
@@ -175,8 +273,9 @@ export function PlaygroundPage({
             catalogState: imageProviderCatalogState,
             inputAssets: imageInputAssets,
             uploadInput: uploadImageInput,
-            providerAvailable: Boolean(imageProvider?.enabled && imageProvider.configured),
+            providerAvailable: imageProviderAvailable,
             providerId: imageProvider?.id ?? null,
+            providerLabel: imageProvider?.label ?? null,
             onGenerate: runImageGeneration,
             openAssetLibrary: () => setPage('assets'),
           }}
@@ -188,6 +287,7 @@ export function PlaygroundPage({
           t={t}
           providerCatalog={imageProviderCatalog}
           providerCatalogState={imageProviderCatalogState}
+          onRetryCatalog={refreshProviderCatalog}
           workflow={videoWorkflow}
         />
       )}
@@ -201,12 +301,17 @@ export function PlaygroundPage({
           requireAuth={requireAuth}
           tasks={tasks}
           libraryItems={libraryItems}
-          openModerationAppeal={openModerationAppeal}
-          simulateAction={simulateAction}
-        />
+        openModerationAppeal={openModerationAppeal}
+      />
       )}
+      </main>
     </div>
   )
+}
+
+const isBrowserRenderableImageUrl = (value: string | null | undefined) => {
+  if (!value) return false
+  return /^(https?:\/\/|\/\/|\/(?!\/)|blob:|data:image\/)/i.test(value)
 }
 
 function StudioPage({
@@ -219,7 +324,6 @@ function StudioPage({
   primaryAction,
   options,
   controls,
-  simulateAction,
   extraAction,
   extraActionLabel,
   providerGeneration,
@@ -233,7 +337,6 @@ function StudioPage({
   primaryAction: string
   options: string[]
   controls: string[]
-  simulateAction: SimulateAction
   extraAction?: () => void
   extraActionLabel?: string
   providerGeneration: {
@@ -244,10 +347,11 @@ function StudioPage({
       targetId: string | null
       error: string | null
     }
+    feedback: GenerationOperationFeedback | null
     refreshHistory: (cursor?: string | null) => Promise<void>
     selectGeneration: (id: string) => void
     cancelGeneration: (id: string) => Promise<void>
-    retryGeneration: (id: string) => Promise<void>
+    retryGeneration: (id: string) => Promise<boolean>
     downloadAsset: (assetId: string) => Promise<void>
     prepareAssetForReuse: (assetId: string) => Promise<boolean>
     hasOriginalRequest: (id: string) => boolean
@@ -255,9 +359,10 @@ function StudioPage({
     catalogState: 'loading' | 'ready' | 'error'
     providerAvailable: boolean
     providerId: string | null
+    providerLabel: string | null
     inputAssets: ApiMediaAsset[]
     uploadInput: (file: File) => Promise<void>
-    onGenerate: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; quality: string; strength: number; inputAssetIds: string[] }) => Promise<void>
+    onGenerate: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; quality: string; strength: number; inputAssetIds: string[]; providerId: string }) => Promise<void>
     openAssetLibrary: () => void
   }
 }) {
@@ -271,6 +376,11 @@ function StudioPage({
   const [quality, setQuality] = useState('medium')
   const [strength, setStrength] = useState(0.7)
   const [uploadingInput, setUploadingInput] = useState(false)
+  const [activePanel, setActivePanel] = useState<'setup' | 'result' | 'history'>('setup')
+  const [pendingRetryId, setPendingRetryId] = useState<string | null>(null)
+  const [retryFeedback, setRetryFeedback] = useState<ActionFeedbackMessage | null>(null)
+  const [failedPreviewUrl, setFailedPreviewUrl] = useState<string | null>(null)
+  const [sampleMediaFailed, setSampleMediaFailed] = useState(false)
   useEffect(() => {
     try {
       const raw = window.sessionStorage.getItem('hcaiAssetReuse')
@@ -321,19 +431,18 @@ function StudioPage({
   const toggleControl = (control: string) => {
     if (providerGeneration) {
       setActiveControls([control])
-      simulateAction(isZh ? `已选择画幅：${control}` : `Aspect ratio selected: ${control}`)
       return
     }
     setActiveControls((current) =>
       current.includes(control) ? current.filter((item) => item !== control) : [...current, control],
     )
-    simulateAction(isZh ? `已切换参数：${control}` : `Control changed: ${control}`)
   }
 
   const runStudioGenerate = () => {
     const inputAssetIds = selectedImageMode === 'image_edit'
       ? [sourceAssetId, maskAssetId].filter(Boolean)
       : selectedImageMode === 'text_to_image' ? [] : [sourceAssetId].filter(Boolean)
+    setActivePanel('result')
     void providerGeneration.onGenerate({
       prompt: draftPrompt,
       mode: selectedImageMode,
@@ -342,14 +451,27 @@ function StudioPage({
       quality: selectedQuality,
       strength,
       inputAssetIds,
+      providerId: providerGeneration.providerId ?? '',
     })
   }
 
   const selectedGeneration = providerGeneration?.history.selected ?? null
+  const visibleRetryId = pendingRetryId === selectedGeneration?.id ? pendingRetryId : null
   const selectedStatus = selectedGeneration?.status ?? null
   const lifecycleActive = selectedStatus === 'queued' || selectedStatus === 'running'
   const actionBusy = providerGeneration?.action.type != null
   const exactRetryAvailable = selectedGeneration ? providerGeneration?.hasOriginalRequest(selectedGeneration.id) === true : false
+  const confirmRetry = async () => {
+    if (!pendingRetryId) return
+    setRetryFeedback(null)
+    const succeeded = await providerGeneration.retryGeneration(pendingRetryId)
+    if (!succeeded) return
+    setPendingRetryId(null)
+    setRetryFeedback({
+      kind: 'success',
+      text: textFor(t, 'A new image attempt was created with the same inputs.', '已使用相同输入创建新的图片尝试。'),
+    })
+  }
   const activeState = providerGeneration?.state.status === 'loading' || lifecycleActive
     ? 'loading'
     : selectedStatus === 'completed' || selectedStatus === 'review_required' || providerGeneration?.state.status === 'done'
@@ -364,6 +486,19 @@ function StudioPage({
   const generatedAssetId = historyOutput?.assetId ?? generatedOutput?.storage.mediaAssetId ?? null
   const generatedContentType = historyOutput?.contentType ?? generatedOutput?.contentType ?? null
   const scanStatus = historyOutput?.scanStatus ?? generatedOutput?.storage.scanStatus ?? mediaAsset?.scanStatus ?? null
+  const outputChecksPending = selectedStatus === 'completed'
+    && Boolean(generatedAssetId)
+    && (scanStatus == null || scanStatus === 'pending')
+  const outputRejected = scanStatus === 'rejected'
+  const previewUrl = scanStatus === 'clean' && isBrowserRenderableImageUrl(generatedOutput?.url)
+    ? generatedOutput?.url ?? null
+    : null
+  const previewMediaFailed = Boolean(previewUrl && failedPreviewUrl === previewUrl)
+  const providerCost = selectedGeneration?.accounting?.providerCost ?? null
+  const providerCostAmount = providerCost?.actualAmount ?? providerCost?.estimateAmount ?? null
+  const providerCostSummary = providerCost && providerCostAmount != null
+    ? `${textFor(t, 'Provider cost', '提供方成本')} ${providerCost.currency ?? 'USD'} ${providerCostAmount.toFixed(6)}`
+    : null
   const activeModeContract = selectableImageModes.find((modeContract) => modeContract.id === selectedImageMode)
   const governedImageInputAssets = providerGeneration?.inputAssets.filter((asset) =>
     (!activeModeContract || activeModeContract.inputAssets.contentTypes.includes(asset.contentType)) &&
@@ -383,9 +518,9 @@ function StudioPage({
     return label ? (isZh ? label[1] : label[0]) : textFor(t, 'Ready', '就绪')
   }
   const formatGenerationTime = (value: string | null) => {
-    if (!value) return '—'
+    if (!value) return '-'
     const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return '—'
+    if (Number.isNaN(date.getTime())) return '-'
     return new Intl.DateTimeFormat(isZh ? 'zh-CN' : 'en-US', {
       month: 'short',
       day: 'numeric',
@@ -395,24 +530,64 @@ function StudioPage({
   }
 
   return (
-    <div className="stack">
-      <section className="studio-hero">
-        <div className="studio-icon">{icon}</div>
-        <div>
-          <span className="eyebrow">{eyebrow}</span>
-          <h1>{title}</h1>
-          <p>{subtitle}</p>
+    <div className="stack workspace-image-studio" data-panel={activePanel}>
+      <section className="studio-hero workspace-studio-header">
+        <div className="workspace-studio-title">
+          <div className="studio-icon">{icon}</div>
+          <div>
+            <span className="eyebrow">{eyebrow}</span>
+            <h1>{title}</h1>
+            <p>{subtitle}</p>
+          </div>
+        </div>
+        <div className="image-provider-summary">
+          <span className={`status-dot ${providerGeneration.providerAvailable ? 'done' : 'error'}`} />
+          <span>{textFor(t, 'Model', '模型')}</span>
+          <strong>{providerGeneration.providerLabel ?? textFor(t, 'Not configured', '未配置')}</strong>
+          {providerGeneration.capability?.contractVersion && (
+            <small>{providerGeneration.capability.contractVersion}</small>
+          )}
         </div>
       </section>
+      <nav className="workspace-panel-switcher" aria-label={textFor(t, 'Image workspace panels', '图片工作台面板')}>
+        <button className={activePanel === 'setup' ? 'active' : ''} type="button" onClick={() => setActivePanel('setup')}>{textFor(t, 'Create', '创作')}</button>
+        <button className={activePanel === 'result' ? 'active' : ''} type="button" onClick={() => setActivePanel('result')}>{textFor(t, 'Result', '生成结果')}</button>
+        <button className={activePanel === 'history' ? 'active' : ''} type="button" onClick={() => setActivePanel('history')}>{textFor(t, 'History', '生成记录')}</button>
+      </nav>
       <section className="composer" aria-label={textFor(t, 'Image generation controls', '图片生成控件')}>
-        <textarea
-          aria-label={textFor(t, 'Image prompt', '图片提示词')}
-          maxLength={providerGeneration?.capability?.maxPromptCharacters ?? 2000}
-          value={draftPrompt}
-          onChange={(event) => setDraftPrompt(event.target.value)}
-        />
+        <section className="workspace-setting-block workspace-prompt-block">
+          <div className="workspace-setting-heading workspace-prompt-heading">
+            <strong>{textFor(t, 'Prompt', '提示词')}</strong>
+            <button
+              className="primary-button image-generate-inline"
+              type="button"
+              onClick={runStudioGenerate}
+              disabled={providerGeneration
+                ? providerGeneration.catalogState !== 'ready'
+                  || !providerGeneration.capability
+                  || !providerGeneration.providerAvailable
+                  || !selectedImageMode
+                  || !requiredInputsReady
+                  || activeState === 'loading'
+                : false}
+            >
+              <Sparkles size={15} />
+              {activeState === 'loading' ? t.generating : primaryAction}
+            </button>
+          </div>
+          <textarea
+            aria-label={textFor(t, 'Image prompt', '图片提示词')}
+            maxLength={providerGeneration?.capability?.maxPromptCharacters ?? 2000}
+            value={draftPrompt}
+            onChange={(event) => setDraftPrompt(event.target.value)}
+          />
+        </section>
         {providerGeneration && (
-          <div className="chip-row image-mode-row">
+          <section className="workspace-setting-block workspace-mode-block">
+            <div className="workspace-setting-heading">
+              <strong>{textFor(t, 'Mode', '模式')}</strong>
+            </div>
+            <div className="chip-row image-mode-row">
             {(providerGeneration.capability?.modeContracts ?? []).map((modeContract) => {
               const disabled = !modeContract.available
               const unavailableReason = modeContract.unavailableReason ?? ''
@@ -429,7 +604,8 @@ function StudioPage({
                 </button>
               )
             })}
-          </div>
+            </div>
+          </section>
         )}
         {providerGeneration && activeModeContract && activeModeContract.inputAssets.minimum > 0 && (
           <div className="image-input-controls">
@@ -441,9 +617,7 @@ function StudioPage({
                 event.currentTarget.value = ''
                 if (!file) return
                 setUploadingInput(true)
-                void providerGeneration.uploadInput(file)
-                  .catch(() => simulateAction(textFor(t, 'Image upload failed', '图片上传失败')))
-                  .finally(() => setUploadingInput(false))
+                void providerGeneration.uploadInput(file).finally(() => setUploadingInput(false))
               }} />
             </label>
             <label>
@@ -473,65 +647,68 @@ function StudioPage({
           </div>
         )}
         {(!providerGeneration || activeModeContract?.parameters.includes('stylePreset')) && (
-          <div className="chip-row">
-          {displayedOptions.map((option) => (
-            <button
-              className={selectedOption === option ? 'chip active' : 'chip'}
-              type="button"
-              key={option}
-              onClick={() => {
-                setActiveOption(option)
-                simulateAction(isZh ? `已选择生成模式：${option}` : `Generation mode selected: ${option}`)
-              }}
-            >
-              {imageLabel(option)}
-            </button>
-          ))}
-          </div>
+          <section className="workspace-setting-block workspace-style-block">
+            <div className="workspace-setting-heading">
+              <strong>{textFor(t, 'Style', '风格')}</strong>
+            </div>
+            <div className="chip-row">
+            {displayedOptions.map((option) => (
+              <button
+                className={selectedOption === option ? 'chip active' : 'chip'}
+                type="button"
+                key={option}
+                onClick={() => {
+                  setActiveOption(option)
+                }}
+              >
+                {imageLabel(option)}
+              </button>
+            ))}
+            </div>
+          </section>
         )}
-        {(!providerGeneration || activeModeContract?.parameters.includes('aspectRatio')) && (
-          <div className="control-grid">
-          {displayedControls.map((control) => (
-            <button
-              className={activeControls.includes(control) ? 'control-pill active' : 'control-pill'}
-              type="button"
-              key={control}
-              onClick={() => toggleControl(control)}
-            >
-              {control}
-              <ChevronDown size={14} />
-            </button>
-          ))}
+        <section className="workspace-setting-block workspace-output-block">
+          <div className="workspace-setting-heading">
+            <strong>{textFor(t, 'Format', '格式')}</strong>
           </div>
-        )}
-        {providerGeneration && activeModeContract?.parameters.includes('quality') && (
-          <label className="image-quality-control">
-            <span>{textFor(t, 'Image quality', '图片质量')}</span>
-            <select aria-label={textFor(t, 'Image quality', '图片质量')} value={selectedQuality} onChange={(event) => setQuality(event.target.value)}>
-              {displayedQualities.map((value) => (
-                <option value={value} key={value}>{textFor(t, `${value[0].toUpperCase()}${value.slice(1)} quality`, `${value === 'low' ? '低' : value === 'high' ? '高' : '中'}质量`)}</option>
+          <div className="workspace-output-controls">
+            {(!providerGeneration || activeModeContract?.parameters.includes('aspectRatio')) && (
+              <div className="control-grid">
+              {displayedControls.map((control) => (
+                <button
+                  className={activeControls.includes(control) ? 'control-pill active' : 'control-pill'}
+                  type="button"
+                  key={control}
+                  onClick={() => toggleControl(control)}
+                >
+                  {control}
+                </button>
               ))}
-            </select>
-          </label>
-        )}
+              </div>
+            )}
+            {providerGeneration && activeModeContract?.parameters.includes('quality') && (
+              <label className="image-quality-control">
+                <span>{textFor(t, 'Image quality', '图片质量')}</span>
+                <select aria-label={textFor(t, 'Image quality', '图片质量')} value={selectedQuality} onChange={(event) => setQuality(event.target.value)}>
+                  {displayedQualities.map((value) => (
+                    <option value={value} key={value}>{textFor(t, `${value[0].toUpperCase()}${value.slice(1)} quality`, `${value === 'low' ? '低' : value === 'high' ? '高' : '中'}质量`)}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+        </section>
         <div className="button-row">
-          {providerGeneration && <CreativeCostPreview t={t} workspace="image" mode={activeImageMode} providerId={providerGeneration.providerId} />}
-          <button
-            className="primary-button"
-            type="button"
-            onClick={runStudioGenerate}
-            disabled={providerGeneration
-              ? providerGeneration.catalogState !== 'ready'
-                || !providerGeneration.capability
-                || !providerGeneration.providerAvailable
-                || !selectedImageMode
-                || !requiredInputsReady
-                || activeState === 'loading'
-              : false}
-          >
-            <Sparkles size={17} />
-            {activeState === 'loading' ? t.generating : activeState === 'done' ? t.generated : primaryAction}
-          </button>
+          {providerGeneration && <CreativeCostPreview
+            t={t}
+            workspace="image"
+            mode={activeImageMode}
+            providerId={providerGeneration.providerId}
+            parameters={{
+              aspectRatio: activeControls.find((control) => displayedControls.includes(control)) ?? displayedControls[0] ?? '1:1',
+              quality: selectedQuality,
+            }}
+          />}
           {providerGeneration && selectedGeneration?.actions.cancel.available && (
             <button className="ghost-button" type="button" disabled={actionBusy} onClick={() => void providerGeneration.cancelGeneration(selectedGeneration.id)}>
               <Square size={16} />
@@ -544,7 +721,10 @@ function StudioPage({
               type="button"
               disabled={actionBusy || !exactRetryAvailable}
               title={!exactRetryAvailable ? textFor(t, 'Exact retry is unavailable after refresh because raw prompts are not retained.', '刷新后不会保留原始提示词，因此无法精确重试。') : textFor(t, 'Retry with the same inputs', '使用相同输入重试')}
-              onClick={() => void providerGeneration.retryGeneration(selectedGeneration.id)}
+              onClick={() => {
+                setRetryFeedback(null)
+                setPendingRetryId(selectedGeneration.id)
+              }}
             >
               <RotateCcw size={16} />
               {providerGeneration.action.type === 'retry' ? textFor(t, 'Retrying', '正在重试') : textFor(t, 'Retry', '重试')}
@@ -556,6 +736,7 @@ function StudioPage({
                 if (!available) return
                 setSourceAssetId(generatedAssetId)
                 setActiveImageMode('image_to_image')
+                setActivePanel('setup')
               })
             }}>
               <RefreshCcw size={17} />
@@ -569,6 +750,16 @@ function StudioPage({
             </button>
           )}
         </div>
+        {visibleRetryId && (
+          <GenerationRetryConfirmation
+            t={t}
+            busy={providerGeneration.action.type === 'retry' && providerGeneration.action.targetId === visibleRetryId}
+            onCancel={() => setPendingRetryId(null)}
+            onConfirm={() => void confirmRetry()}
+          />
+        )}
+        <ActionFeedback message={retryFeedback} className="generation-retry-feedback" />
+        <ActionFeedback message={providerGeneration.feedback} className="generation-operation-feedback" />
         {providerGeneration && (
           <div className="provider-status-panel" role="status" aria-live="polite" aria-label={textFor(t, 'Image generation status', '图片生成状态')}>
             <div>
@@ -579,14 +770,14 @@ function StudioPage({
                   : providerGeneration.state.status === 'loading'
                     ? textFor(t, 'Submitting generation', '正在提交生成任务')
                     : providerGeneration.state.status === 'error'
-                      ? textFor(t, 'Provider generation failed', '提供方生成失败')
+                      ? textFor(t, 'Image generation failed', '图片生成失败')
                       : providerGeneration.catalogState === 'loading'
                         ? textFor(t, 'Loading capability contract', '正在加载能力合同')
                         : providerGeneration.catalogState === 'error'
                           ? textFor(t, 'Capability contract unavailable', '能力合同不可用')
                           : !providerGeneration.providerAvailable
-                            ? textFor(t, 'Provider unavailable', '提供方不可用')
-                            : textFor(t, 'Provider-backed path ready', '提供方路径就绪')}
+                            ? textFor(t, 'Model unavailable', '模型暂不可用')
+                            : textFor(t, 'Ready', '就绪')}
               </strong>
             </div>
             <p>
@@ -598,25 +789,28 @@ function StudioPage({
                     `${selectedGeneration.promptPreview ?? selectedGeneration.id} · ${providerGeneration.history.polling ? 'refreshing' : selectedGeneration.provider.mode ?? selectedGeneration.provider.id}`,
                     `${selectedGeneration.promptPreview ?? selectedGeneration.id} · ${providerGeneration.history.polling ? '正在刷新' : selectedGeneration.provider.mode ?? selectedGeneration.provider.id}`,
                   )
-                  : providerGeneration.capability
-                    ? textFor(
-                      t,
-                      `${providerGeneration.capability.contractVersion ?? 'Image contract'} · ${providerGeneration.capability.modes.join(', ')}`,
-                      `${providerGeneration.capability.contractVersion ?? 'Image 合同'} · ${providerGeneration.capability.modes.map(imageLabel).join('、')}`,
-                    )
-                    : textFor(t, 'Generation is disabled until capability metadata is available.', '能力元数据可用前，生成保持禁用。')}
+                  : providerGeneration.providerAvailable
+                    ? textFor(t, 'Ready for your prompt.', '等待你的提示词。')
+                    : textFor(t, 'Generation is unavailable until a model is configured.', '配置可用模型后才能开始生成。')}
             </p>
             {selectedGeneration && (
-              <div className="provider-meta-row">
-                <span>{selectedGeneration.provider.id}</span>
-                <span>{textFor(t, `${selectedGeneration.usage.estimatedCredits} credits`, `${selectedGeneration.usage.estimatedCredits} 点额度`)}</span>
-                <span>{textFor(t, `Attempt ${selectedGeneration.attempt.number}`, `第 ${selectedGeneration.attempt.number} 次尝试`)}</span>
-                {generatedContentType && <span>{generatedContentType}</span>}
-                {selectedGeneration.safety.reviewRequired && (
-                  <span>{textFor(t, 'Policy review', '策略复核')}</span>
-                )}
-                {generatedAssetId && <span>{scanStatus === 'clean' ? textFor(t, 'Download ready', '可下载') : textFor(t, 'Download gated', '下载受限')}</span>}
-              </div>
+              <details className="provider-technical-details">
+                <summary>
+                  <span>{textFor(t, 'Technical details', '技术详情')}</span>
+                  <ChevronDown size={14} />
+                </summary>
+                <div className="provider-meta-row">
+                  <span>{selectedGeneration.provider.id}</span>
+                  <span>{textFor(t, `${selectedGeneration.usage.estimatedCredits} credits`, `${selectedGeneration.usage.estimatedCredits} 点额度`)}</span>
+                  <span>{textFor(t, `Attempt ${selectedGeneration.attempt.number}`, `第 ${selectedGeneration.attempt.number} 次尝试`)}</span>
+                  {generatedContentType && <span>{generatedContentType}</span>}
+                  {selectedGeneration.safety.reviewRequired && (
+                    <span>{textFor(t, 'Policy review', '策略复核')}</span>
+                  )}
+                  {providerCostSummary && <span>{providerCostSummary}</span>}
+                  {generatedAssetId && <span>{scanStatus === 'clean' ? textFor(t, 'Download ready', '可下载') : textFor(t, 'Download gated', '下载受限')}</span>}
+                </div>
+              </details>
             )}
             {providerGeneration.action.error && <p className="image-history-error">{providerGeneration.action.error}</p>}
             {selectedGeneration?.actions.retry.available && !exactRetryAvailable && (
@@ -624,6 +818,93 @@ function StudioPage({
             )}
           </div>
         )}
+      </section>
+
+      <section className="image-preview-panel" aria-label={textFor(t, 'Image result', '图片结果')}>
+        <div className="image-preview-toolbar" role="status" aria-live="polite">
+          <div>
+            <span className={`status-dot ${lifecycleActive || providerGeneration.state.status === 'loading' || outputChecksPending ? 'loading' : selectedStatus === 'completed' && !outputRejected ? 'done' : selectedStatus === 'failed' || selectedStatus === 'cancelled' || outputRejected ? 'error' : ''}`} />
+            <strong>{outputChecksPending
+              ? textFor(t, 'Output checks in progress', '输出检查中')
+              : outputRejected
+                ? textFor(t, 'Output blocked', '输出已拦截')
+                : selectedGeneration
+                  ? lifecycleLabel(selectedGeneration.status)
+                  : providerGeneration.providerAvailable
+                    ? textFor(t, 'Ready to create', '可以开始创作')
+                    : textFor(t, 'Model unavailable', '模型暂不可用')}</strong>
+          </div>
+          {selectedGeneration && <span>{formatGenerationTime(selectedGeneration.createdAt)}</span>}
+        </div>
+        <div className="image-preview-stage">
+          {previewUrl && previewMediaFailed ? (
+            <MediaLoadFallback
+              title={textFor(t, 'Image could not be loaded', '图片加载失败')}
+              detail={textFor(t, 'The output remains in Assets. Refresh the history to request a new private preview.', '产物仍保存在资产库中，可刷新历史记录重新获取私有预览。')}
+              testId="image-preview-load-failed"
+            />
+          ) : previewUrl ? (
+            <img data-testid="generated-image-preview" onError={() => setFailedPreviewUrl(previewUrl)} src={previewUrl} alt={selectedGeneration?.promptPreview ?? textFor(t, 'Generated image', '生成图片')} />
+          ) : outputChecksPending ? (
+            <div className="image-preview-empty image-preview-checking" data-testid="image-preview-checking">
+              <Sparkles size={32} />
+              <strong>{textFor(t, 'Checking your image', '正在检查图片')}</strong>
+              <span>{textFor(t, 'Preview and download become available after safety checks.', '安全检查通过后即可预览和下载。')}</span>
+            </div>
+          ) : outputRejected ? (
+            <div className="image-preview-empty image-preview-blocked" data-testid="image-preview-blocked">
+              <Image size={32} />
+              <strong>{textFor(t, 'Preview blocked', '预览已拦截')}</strong>
+              <span>{textFor(t, 'This output did not pass safety checks and cannot be previewed or downloaded.', '此输出未通过安全检查，无法预览或下载。')}</span>
+            </div>
+          ) : scanStatus === 'clean' && generatedAssetId ? (
+            <div className="image-preview-empty" data-testid="image-preview-unavailable">
+              <Image size={32} />
+              <strong>{textFor(t, 'Preview unavailable', '暂不支持预览')}</strong>
+              <span>{textFor(t, 'The checked output is available in Assets.', '已通过检查的输出可在资产库中查看。')}</span>
+            </div>
+          ) : (
+            <div className={`image-preview-empty ${providerGeneration.providerAvailable ? 'image-preview-sample' : ''}`}>
+              {providerGeneration.providerAvailable && (sampleMediaFailed ? (
+                <MediaLoadFallback
+                  compact
+                  title={textFor(t, 'Sample unavailable', '示例图暂不可用')}
+                  detail={textFor(t, 'You can still create with the configured model.', '模型仍可正常使用，可以继续创作。')}
+                  testId="workspace-sample-load-failed"
+                />
+              ) : <img src="/showcase/home-cinematic.jpg" alt="" aria-hidden="true" onError={() => setSampleMediaFailed(true)} />)}
+              <div>
+                <span>{providerGeneration.providerAvailable ? textFor(t, 'STUDIO SAMPLE', '工作台示例') : textFor(t, 'MODEL STATUS', '模型状态')}</span>
+                <strong>{providerGeneration.providerAvailable
+                  ? textFor(t, 'Your next image starts here.', '你的下一张图片，从这里开始。')
+                  : textFor(t, 'No image model is available', '暂无可用的图片模型')}</strong>
+                <small>{providerGeneration.providerAvailable
+                  ? textFor(t, 'This sample is not part of your assets.', '此示例不属于你的资产。')
+                  : textFor(t, 'Ask an administrator to configure a model.', '请联系管理员配置模型。')}</small>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="image-preview-actions">
+          {generatedAssetId && (
+            <>
+              <button className="ghost-button" type="button" onClick={providerGeneration.openAssetLibrary}>
+                <FileText size={16} />{textFor(t, 'Open in Assets', '在资产中查看')}
+              </button>
+              <button
+                className="ghost-button"
+                type="button"
+                title={textFor(t, 'Download output', '下载输出')}
+                aria-label={textFor(t, 'Download output', '下载输出')}
+                disabled={scanStatus !== 'clean' || actionBusy}
+                onClick={() => void providerGeneration.downloadAsset(generatedAssetId)}
+              >
+                <Download size={16} />{textFor(t, 'Download', '下载')}
+              </button>
+            </>
+          )}
+          {!generatedAssetId && <span>{textFor(t, 'No generation selected', '尚未选择生成记录')}</span>}
+        </div>
       </section>
 
       {providerGeneration && (
@@ -667,7 +948,10 @@ function StudioPage({
                     className={`image-history-row ${providerGeneration.history.selected?.id === generation.id ? 'active' : ''}`}
                     type="button"
                     key={generation.id}
-                    onClick={() => providerGeneration.selectGeneration(generation.id)}
+                    onClick={() => {
+                      providerGeneration.selectGeneration(generation.id)
+                      setActivePanel('result')
+                    }}
                   >
                     <span className="image-history-status">
                       <span className={`status-dot ${generation.status === 'queued' || generation.status === 'running' ? 'loading' : generation.status === 'completed' ? 'done' : generation.status === 'failed' || generation.status === 'cancelled' ? 'error' : ''}`} />
@@ -676,7 +960,7 @@ function StudioPage({
                     <span className="image-history-prompt">{generation.promptPreview ?? generation.id}</span>
                     <span>{imageLabel(generation.mode)}</span>
                     <span>{formatGenerationTime(generation.createdAt)}</span>
-                    <span>{output ? output.scanStatus : '—'}</span>
+                    <span>{output ? output.scanStatus : '-'}</span>
                   </button>
                 )
               })}
@@ -714,7 +998,7 @@ function StudioPage({
               </button>
               <button
                 type="button"
-                title={textFor(t, 'Download output', '下载输出')}
+                title={textFor(t, 'Download asset from legacy card', '从旧卡片下载资产')}
                 disabled={scanStatus !== 'clean' || actionBusy}
                 onClick={() => void providerGeneration?.downloadAsset(generatedAssetId)}
               >

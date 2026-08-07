@@ -8,7 +8,10 @@ test('email registration and password login work from the login modal', async ({
   const handle = `browser${suffix}`
 
   await page.goto('/')
+  await expect(page.locator('.hcai-landing')).toBeVisible()
   await page.getByRole('button', { name: 'Login' }).click()
+  await expect(page).toHaveURL(/#auth$/)
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
   await page.getByRole('button', { name: 'Sign up' }).click()
   await page.getByPlaceholder('Display name').fill(displayName)
   await page.getByPlaceholder('Handle').fill(handle)
@@ -26,7 +29,9 @@ test('email registration and password login work from the login modal', async ({
   await page.evaluate(() => localStorage.clear())
   await context.clearCookies()
   await page.reload()
+  await expect(page.locator('.hcai-landing')).toBeVisible()
   await page.getByRole('button', { name: 'Login' }).click()
+  await expect(page).toHaveURL(/#auth$/)
   await page.getByPlaceholder('Email').fill(email)
   await page.getByPlaceholder('Password').fill(password)
 
@@ -83,12 +88,13 @@ test('email registration and password login work from the login modal', async ({
 
 test('dev OAuth provider login works from the login modal', async ({ page }) => {
   await page.goto('/')
+  await expect(page.locator('.hcai-landing')).toBeVisible()
   const providersResponse = page.waitForResponse((response) =>
     response.url().endsWith('/api/auth/oauth/providers') && response.request().method() === 'GET',
   )
   await page.getByRole('button', { name: 'Login' }).click()
   expect((await providersResponse).ok()).toBeTruthy()
-  await expect(page.getByRole('button', { name: /Continue with Google/ }).getByText('Dev callback')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Google' })).toBeVisible()
 
   const startResponse = page.waitForResponse((response) =>
     response.url().endsWith('/api/auth/oauth/google/start') && response.request().method() === 'POST',
@@ -96,7 +102,7 @@ test('dev OAuth provider login works from the login modal', async ({ page }) => 
   const callbackResponse = page.waitForResponse((response) =>
     response.url().includes('/api/auth/oauth/google/callback') && response.request().method() === 'GET',
   )
-  await page.getByRole('button', { name: 'Continue with Google' }).click()
+  await page.getByRole('button', { name: 'Google' }).click()
   expect((await startResponse).ok()).toBeTruthy()
   expect((await callbackResponse).ok()).toBeTruthy()
   await expect(page.locator('.sidebar-profile-name', { hasText: 'Google User' })).toBeVisible()

@@ -12,7 +12,37 @@ const dto = (row) => ({
   modelPromotion: row.modelPromotion ? { ...row.modelPromotion, createdAt: row.modelPromotion.createdAt.toISOString() } : null,
 })
 
-const releaseInclude = { evidence: { orderBy: { createdAt: 'asc' } }, modelPromotion: true }
+const hydrateRelease = async (db, row) => {
+  if (!row) return null
+  const evidence = await db.releaseEvidence.findMany({ where: { releaseChangeId: row.id }, orderBy: { createdAt: 'asc' } })
+  const modelPromotion = await db.modelPromotion.findUnique({ where: { releaseChangeId: row.id } })
+  return { ...row, evidence, modelPromotion }
+}
+
+const loadPromotionForTransition = async (db, releaseChangeId) => {
+  const promotion = await db.modelPromotion.findUnique({ where: { releaseChangeId: String(releaseChangeId) } })
+  if (!promotion) return null
+  const releaseChange = await db.releaseChange.findUnique({ where: { id: promotion.releaseChangeId } })
+  const modelDeployment = await db.modelDeployment.findUnique({ where: { id: promotion.modelDeploymentId } })
+  const modelVersion = modelDeployment ? await db.modelVersion.findUnique({ where: { id: modelDeployment.modelVersionId } }) : null
+  const model = modelVersion ? await db.model.findUnique({ where: { id: modelVersion.modelId } }) : null
+  const routePolicy = await db.modelRoutePolicy.findUnique({ where: { id: promotion.routePolicyId } })
+  const targets = routePolicy ? await db.modelRouteTarget.findMany({ where: { policyId: routePolicy.id } }) : []
+  const revisions = routePolicy ? await db.modelRoutePolicyRevision.findMany({ where: { policyId: routePolicy.id }, orderBy: { revisionNumber: 'desc' }, take: 1 }) : []
+  const providerSecretRef = await db.providerSecretRef.findUnique({ where: { id: promotion.providerSecretRefId } })
+  const evaluationRun = await db.aiEvaluationRun.findUnique({ where: { id: promotion.evaluationRunId } })
+  const evaluationPolicy = evaluationRun ? await db.aiEvaluationPolicy.findUnique({ where: { id: evaluationRun.policyId } }) : null
+  const legalReview = await db.providerLegalReview.findUnique({ where: { id: promotion.legalReviewId } })
+  return {
+    ...promotion,
+    releaseChange,
+    modelDeployment: modelDeployment ? { ...modelDeployment, modelVersion: modelVersion ? { ...modelVersion, model } : null } : null,
+    routePolicy: routePolicy ? { ...routePolicy, targets, revisions } : null,
+    providerSecretRef,
+    evaluationRun: evaluationRun ? { ...evaluationRun, policy: evaluationPolicy } : null,
+    legalReview,
+  }
+}
 
 const evidenceCreate = (changeId, evidence, nested = false) => ({
   id: evidence.id,
@@ -34,7 +64,7 @@ export const createPrismaReleaseRepository = (client) => ({
       })
       if (conflict) throw new HttpError(409, 'PROMOTION_ALREADY_ACTIVE', 'production deployment already has an active or pending promotion')
     }
-    return tx.releaseChange.create({
+    const row = await tx.releaseChange.create({
       data: {
         id: payload.id,
         changeType: payload.changeType,
@@ -51,12 +81,12 @@ export const createPrismaReleaseRepository = (client) => ({
         ...(payload.modelPromotion ? { modelPromotion: { create: payload.modelPromotion } } : {}),
         evidence: { create: evidenceCreate(payload.id, payload.evidence, true) },
       },
-      include: releaseInclude,
     })
+    return hydrateRelease(tx, row)
   }, { isolationLevel: payload.modelPromotion ? 'Serializable' : undefined })),
   find: async (id) => {
-    const row = await client.releaseChange.findUnique({ where: { id: String(id) }, include: releaseInclude })
-    return row ? dto(row) : null
+    const row = await client.releaseChange.findUnique({ where: { id: String(id) } })
+    return row ? dto(await hydrateRelease(client, row)) : null
   },
   list: async (query = {}) => {
     const rows = await client.releaseChange.findMany({
@@ -68,23 +98,14 @@ export const createPrismaReleaseRepository = (client) => ({
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: query.limit + 1,
       ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-      include: releaseInclude,
     })
     const items = rows.slice(0, query.limit)
-    return { items: items.map(dto), limit: query.limit, nextCursor: rows.length > query.limit ? items.at(-1)?.id ?? null : null }
+    const hydrated = []
+    for (const item of items) hydrated.push(dto(await hydrateRelease(client, item)))
+    return { items: hydrated, limit: query.limit, nextCursor: rows.length > query.limit ? items.at(-1)?.id ?? null : null }
   },
   transition: async (id, expectedVersion, patch) => client.$transaction(async (tx) => {
-    const promotion = await tx.modelPromotion.findUnique({
-      where: { releaseChangeId: String(id) },
-      include: {
-        releaseChange: true,
-        modelDeployment: { include: { modelVersion: { include: { model: true } } } },
-        routePolicy: { include: { targets: true, revisions: { orderBy: { revisionNumber: 'desc' }, take: 1 } } },
-        providerSecretRef: true,
-        evaluationRun: { include: { policy: true } },
-        legalReview: true,
-      },
-    })
+    const promotion = await loadPromotionForTransition(tx, id)
     const lifecycleStatus = ['deployed', 'failed', 'rolled_back'].includes(patch.status)
     if (promotion && lifecycleStatus && patch.evidence?.evidence?.deploymentId !== promotion.modelDeploymentId) {
       throw new HttpError(422, 'PROMOTION_DEPLOYMENT_MISMATCH', 'model promotion deployment evidence does not match the approved deployment')
@@ -147,6 +168,7 @@ export const createPrismaReleaseRepository = (client) => ({
       if (deployment.count !== 1) throw new HttpError(409, 'PROMOTION_DEPLOYMENT_INELIGIBLE', 'model promotion deployment is not eligible for the requested release transition')
     }
     await tx.releaseEvidence.create({ data: evidenceCreate(String(id), patch.evidence) })
-    return dto(await tx.releaseChange.findUnique({ where: { id: String(id) }, include: releaseInclude }))
+    const row = await tx.releaseChange.findUnique({ where: { id: String(id) } })
+    return dto(await hydrateRelease(tx, row))
   }),
 })

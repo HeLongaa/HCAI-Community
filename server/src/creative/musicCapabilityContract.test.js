@@ -19,9 +19,9 @@ const request = (overrides = {}) => ({
 
 test('Music capability freezes rights, lifecycle, output, budget, and Provider boundaries', () => {
   assert.equal(musicCapabilityContract.schemaVersion, 'music-capability-v1')
-  assert.equal(musicCapabilityContract.models.primary.providerId, 'elevenlabs-music-v2-enterprise')
+  assert.equal(musicCapabilityContract.models.primary.providerId, 'hcai-router-minimax-music-3')
   assert.equal(musicCapabilityContract.models.primary.enabled, false)
-  assert.equal(musicCapabilityContract.models.primary.enterpriseMusicContractRequired, true)
+  assert.equal(musicCapabilityContract.models.primary.routerAndUpstreamTermsRequired, true)
   assert.equal(musicCapabilityContract.models.primary.fixtureAdapterImplemented, true)
   assert.equal(musicCapabilityContract.models.backup.providerId, 'google-lyria-3-pro-preview')
   assert.equal(musicCapabilityContract.models.backup.suppliedLyricsSupportConfirmed, false)
@@ -37,6 +37,8 @@ test('Music capability freezes rights, lifecycle, output, budget, and Provider b
   assert.equal(musicCapabilityContract.runtime.outputIngestionImplemented, true)
   assert.equal(musicCapabilityContract.runtime.providerCostCloseoutImplemented, true)
   assert.equal(musicCapabilityContract.runtime.automaticFailoverAllowed, false)
+  assert.equal(musicCapabilityContract.runtime.realProviderCallsApproved, false)
+  assert.equal(musicCapabilityContract.runtime.productionEnablementApproved, false)
   assert.equal(musicCapabilityContract.output.formats[0], 'mp3')
   assert.equal(musicCapabilityContract.output.durationSeconds.maximum, 180)
   assert.equal(musicCapabilityContract.lifecycle.timeoutSeconds, 900)
@@ -51,11 +53,11 @@ test('Music capability freezes rights, lifecycle, output, budget, and Provider b
 
 test('Music Provider projections expose only confirmed modes without claiming enablement', () => {
   const mock = musicCapabilityForProvider('mock')
-  const eleven = musicCapabilityForProvider('elevenlabs-music-v2-enterprise')
+  const routerMusic = musicCapabilityForProvider('hcai-router-minimax-music-3')
   const lyria = musicCapabilityForProvider('google-lyria-3-pro-preview')
   const unknown = musicCapabilityForProvider('unknown')
   assert.deepEqual(mock.modes, ['instrumental', 'lyrics_to_song'])
-  assert.deepEqual(eleven.modes, ['instrumental', 'lyrics_to_song'])
+  assert.deepEqual(routerMusic.modes, ['instrumental', 'lyrics_to_song'])
   assert.deepEqual(lyria.modes, ['instrumental'])
   assert.equal(lyria.modeContracts.find((mode) => mode.id === 'lyrics_to_song').available, false)
   assert.deepEqual(unknown.modes, [])

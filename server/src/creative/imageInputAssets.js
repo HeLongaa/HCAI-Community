@@ -3,6 +3,7 @@ import { validationFailed } from '../common/http/validation.js'
 
 const allowedPurposes = new Set(['submission_asset', 'profile_portfolio', 'library_asset'])
 const allowedContentTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
+const maximumImageInputBytes = 20 * 1024 * 1024
 
 const modeRoles = Object.freeze({
   text_to_image: [],
@@ -24,14 +25,21 @@ const unavailable = (reasonCode) => new HttpError(
   { reasonCode },
 )
 
-const safeAsset = (asset, role) => Object.freeze({
-  id: asset.id,
-  role,
-  contentType: asset.contentType,
-  sizeBytes: asset.sizeBytes,
-  purpose: asset.purpose,
-  scanStatus: asset.metadata?.security?.scanStatus ?? null,
-})
+const safeAsset = (asset, role) => {
+  const projected = {
+    id: asset.id,
+    role,
+    contentType: asset.contentType,
+    sizeBytes: asset.sizeBytes,
+    purpose: asset.purpose,
+    scanStatus: asset.metadata?.security?.scanStatus ?? null,
+  }
+  Object.defineProperty(projected, 'storageKey', {
+    value: asset.storageKey ?? null,
+    enumerable: false,
+  })
+  return Object.freeze(projected)
+}
 
 export const resolveImageGenerationInputs = async (request, {
   actor,
@@ -59,6 +67,9 @@ export const resolveImageGenerationInputs = async (request, {
     if (!allowedContentTypes.has(asset.contentType)) throw unavailable('content_type_not_allowed')
     if (asset.status !== 'uploaded') throw unavailable('asset_not_uploaded')
     if (asset.metadata?.security?.scanStatus !== 'clean') throw unavailable('asset_not_clean')
+    if (!Number.isInteger(asset.sizeBytes) || asset.sizeBytes < 1 || asset.sizeBytes > maximumImageInputBytes) {
+      throw unavailable('declared_size_not_allowed')
+    }
     if (roles[index] === 'mask' && asset.contentType !== 'image/png') throw unavailable('mask_must_be_png')
     return safeAsset(asset, roles[index])
   }))
@@ -95,6 +106,7 @@ export const imageInputAssetContract = Object.freeze({
   schemaVersion: 'image-input-assets-v1',
   allowedPurposes: [...allowedPurposes],
   allowedContentTypes: [...allowedContentTypes],
+  maximumImageInputBytes,
   modeRoles,
   relationByMode,
 })

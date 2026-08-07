@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "providerId": "hcai-router-minimax-hailuo-2-3",
+  "providerMode": "router_minimax_video",
+  "modelId": "MiniMax-Hailuo-2.3",
+  "availability": "staging_available",
+  "decision": {
+    "transportAcceptance": "passed",
+    "applicationFixtureAcceptance": "passed",
+    "targetStagingAcceptance": "passed",
+    "productionEnablement": "no_go"
+  },
+  "limits": {
+    "maximumCallsPerApproval": 1,
+    "maximumApprovalHours": 24,
+    "maximumGeneratedSecondsPerCall": 6,
+    "perJobUsdCap": 1.2,
+    "lifecycleTimeoutSeconds": 900
+  },
+  "applicationEvidence": {
+    "applicationApiDispatch": true,
+    "providerCreateCalls": 1,
+    "providerOutputFetches": 1,
+    "outputSafetyRequired": true,
+    "outputScanRequired": true,
+    "privatePersistence": true,
+    "ownerDownloadAllowed": true,
+    "unrelatedUserDownloadAllowed": false,
+    "creditStatus": "settled",
+    "quotaUsed": 8,
+    "generatedSeconds": 6,
+    "providerCostStatus": "reconciliation_required"
+  },
+  "targetStagingEvidence": {
+    "acceptedAt": "2026-08-04T05:00:50.000Z",
+    "providerCreateCalls": 1,
+    "providerOutputFetches": 1,
+    "generatedSeconds": 6,
+    "outputBytes": 748679,
+    "outputSha256": "63a2af314cb2a8b0c22bf05e9487a80dc592aaa0dc0948083410a4bf3e5907e1",
+    "database": "local_postgresql",
+    "objectStorage": "real_s3_compatible_images_prefix",
+    "outputSafety": "temporary_allow_fixture",
+    "mediaScan": "mock",
+    "routerSpendUsd": 0.274,
+    "credentialDisabled": true
+  },
+  "requiredEvidence": [
+    {
+      "path": "server/src/creative/minimaxVideoProvider.js",
+      "markers": ["createMiniMaxVideoHttpClient", "hcai-router-minimax"]
+    },
+    {
+      "path": "server/src/creative/minimaxVideoStagingAcceptance.js",
+      "markers": ["runMiniMaxVideoStagingAcceptance", "outputSafetyClassifier", "output privacy boundary"]
+    },
+    {
+      "path": "server/src/creative/minimaxVideoStagingAcceptance.test.js",
+      "markers": ["governed application lifecycle with exact output bytes", "classifierCalls"]
+    },
+    {
+      "path": "server/src/creative/generationService.test.js",
+      "markers": ["downloads and ingests MiniMax Video MP4 bytes"]
+    },
+    {
+      "path": "server/src/creative/videoProviderLifecycle.test.js",
+      "markers": ["outputSafetyClassifications"]
+    }
+  ],
+  "commands": {
+    "gate": "npm run test:minimax-video-staging",
+    "preflight": "npm run minimax-video:preflight",
+    "acceptance": "npm run minimax-video:acceptance"
+  },
+  "productionNoGo": true
+}

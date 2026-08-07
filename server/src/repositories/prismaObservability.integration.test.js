@@ -20,6 +20,8 @@ test('Prisma observability persists filtered pages, trace chains, and alert CAS 
   let alertId = null
   let controlId = null
   let httpLogId = null
+  const generationId = `${runId}-generation`
+  const evaluatedAlertIds = []
 
   const log = (id, spanId, timestamp, level = 'info') => ({
     id,
@@ -42,7 +44,7 @@ test('Prisma observability persists filtered pages, trace chains, and alert CAS 
     statusCode: level === 'error' ? 500 : 200,
     resourceType: 'integration_observability',
     resourceId: runId,
-    attributes: { fixture: true },
+    attributes: { statusClass: level === 'error' ? '5xx' : '2xx', sampled: false },
     attributesSchemaVersion: 1,
   })
   const span = (id, spanId, parentSpanId, startedAt, endedAt) => ({
@@ -66,6 +68,11 @@ test('Prisma observability persists filtered pages, trace chains, and alert CAS 
   })
 
   try {
+    await assert.rejects(repository.observability.record({
+      log: { ...log(`${runId}-unsafe`, rootSpanId, now), attributes: { context: { prompt: 'must not persist' } } },
+    }), /unsupported field: context/)
+    assert.equal(await repository.client.observabilityLog.findUnique({ where: { id: `${runId}-unsafe` } }), null)
+
     const recordedHttp = await repository.observability.recordHttp({
       request: { method: 'GET' },
       response: { statusCode: 200 },
@@ -88,6 +95,19 @@ test('Prisma observability persists filtered pages, trace chains, and alert CAS 
       log: log(logIds[0], rootSpanId, new Date(now.getTime() - 20)),
       span: span(`${runId}-span-1`, rootSpanId, null, new Date(now.getTime() - 30), new Date(now.getTime() - 18)),
     })
+
+    await repository.client.creativeGeneration.create({ data: {
+      id: generationId, workspace: 'image', mode: 'text_to_image', providerId: 'integration-provider', status: 'failed',
+      promptHash: 'c'.repeat(64), inputAssetIds: [], parameterKeys: [], outputAssetIds: [], attemptNumber: 1,
+      createdAt: new Date(now.getTime() - 60_000), startedAt: new Date(now.getTime() - 55_000), failedAt: now,
+    } })
+    const generationSloSummary = await repository.observability.slos()
+    assert.equal(generationSloSummary.generationWindows.sixtyMinutes.terminal, 1)
+    assert.equal(generationSloSummary.slos.find((item) => item.id === 'generation-success').firing, true)
+    const existingGenerationAlertIds = new Set((await repository.client.observabilityAlert.findMany({ where: { alertKey: { startsWith: 'generation-' } }, select: { id: true } })).map((item) => item.id))
+    const evaluatedGeneration = await repository.observability.evaluateSlos()
+    evaluatedAlertIds.push(...evaluatedGeneration.alerts.filter((item) => item.alertKey.startsWith('generation-') && !existingGenerationAlertIds.has(item.id)).map((item) => item.id))
+    assert.equal(evaluatedGeneration.alerts.some((item) => item.alertKey === 'generation-success:multi-window' && item.state === 'firing'), true)
     await repository.observability.record({
       log: log(logIds[1], childSpanId, now, 'error'),
       span: span(`${runId}-span-2`, childSpanId, rootSpanId, new Date(now.getTime() - 17), now),
@@ -162,6 +182,12 @@ test('Prisma observability persists filtered pages, trace chains, and alert CAS 
     assert.equal((await repository.observability.incidentMetrics()).reviewCoverage, 1)
     await assert.rejects(() => repository.client.observabilityAlertEvent.update({ where: { id: detail.events[0].id }, data: { reasonCode: 'changed' } }), /append-only/)
   } finally {
+    if (evaluatedAlertIds.length) await repository.client.$transaction(async (transaction) => {
+      await transaction.$executeRawUnsafe("SET LOCAL app.audit_maintenance = 'on'")
+      await transaction.observabilityIncidentReview.deleteMany({ where: { alertId: { in: evaluatedAlertIds } } })
+      await transaction.observabilityAlertEvent.deleteMany({ where: { alertId: { in: evaluatedAlertIds } } })
+      await transaction.observabilityAlert.deleteMany({ where: { id: { in: evaluatedAlertIds } } })
+    })
     if (alertId || controlId) await repository.client.$transaction(async (transaction) => {
       await transaction.$executeRawUnsafe("SET LOCAL app.audit_maintenance = 'on'")
       if (alertId) {
@@ -174,6 +200,7 @@ test('Prisma observability persists filtered pages, trace chains, and alert CAS 
     await repository.client.traceSpan.deleteMany({ where: { traceId: { in: [traceId, httpTraceId] } } })
     if (httpLogId) await repository.client.observabilityLog.deleteMany({ where: { id: httpLogId } })
     await repository.client.observabilityLog.deleteMany({ where: { id: { in: logIds } } })
+    await repository.client.creativeGeneration.deleteMany({ where: { id: generationId } })
     await repository.client.$disconnect()
   }
 })

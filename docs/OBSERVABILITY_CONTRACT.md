@@ -13,6 +13,12 @@ Structured logs must use the common error taxonomy and stable error codes. Crede
 bodies, Provider payloads, and storage URLs are forbidden. Resource identifiers may appear only in access-controlled,
 retention-governed fields and must not become metric dimensions.
 
+Every persistent log passes through `projectPersistedObservabilityLog` at the Prisma or Seed write boundary. The root
+shape exactly matches `ObservabilityLog`; attributes are flat and selected by event. HTTP completion permits only status
+family and sampling state. Browser route/error telemetry permits only bounded error/release/time identifiers and SHA-256
+message or stack evidence. Unknown root or attribute keys, nested attribute objects, malformed hashes, and unsupported
+status families are rejected before any log or paired span is written.
+
 ## Metrics
 
 HTTP, job, and dependency boundaries use RED metrics: rate, errors, and duration. Runtime resources use USE metrics:

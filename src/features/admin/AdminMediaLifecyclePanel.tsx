@@ -3,10 +3,15 @@ import { Activity, Archive, ArchiveRestore, CheckCircle2, DatabaseZap, Download,
 import { textFor } from '../../domain/utils'
 import type { AdminMediaAssetQuery, AdminMediaBusinessMetrics, AdminMediaBusinessMetricsQuery, ApiAdminMediaAsset, AssetMediaType, MediaAssetPurpose, MediaStorageState } from '../../services/contracts'
 import { mediaService } from '../../services/mediaService'
+import { AdminOperationConfirmation } from './AdminOperationConfirmation'
+import { downloadJsonArtifact, downloadTextArtifact } from './downloadAdminArtifact'
 
 const purposes: Array<'' | MediaAssetPurpose> = ['', 'task_attachment', 'submission_asset', 'profile_portfolio', 'library_asset']
 const storageStates: Array<'' | MediaStorageState> = ['', 'pending_upload', 'verifying', 'quarantined', 'available', 'cleanup_pending', 'deleting', 'deleted', 'verification_failed']
 type LifecycleAction = 'archive' | 'restore' | 'delete' | 'recover'
+type PendingMediaDelete =
+  | { kind: 'single'; item: ApiAdminMediaAsset }
+  | { kind: 'bulk'; ids: string[] }
 
 const bytesLabel = (bytes: number) => {
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
@@ -34,6 +39,7 @@ export function AdminMediaLifecyclePanel({ t, canRead, canReview, canExport }: {
   const [metricsLoading, setMetricsLoading] = useState(false)
   const [metricsError, setMetricsError] = useState<string | null>(null)
   const [metricsDates, setMetricsDates] = useState({ dateFrom: '', dateTo: '' })
+  const [pendingDelete, setPendingDelete] = useState<PendingMediaDelete | null>(null)
 
   const metricsQuery = useMemo<AdminMediaBusinessMetricsQuery>(() => ({
     dateFrom: startOfDayIso(metricsDates.dateFrom),
@@ -96,11 +102,14 @@ export function AdminMediaLifecyclePanel({ t, canRead, canReview, canExport }: {
   }
 
   const runAction = async (item: ApiAdminMediaAsset, action: LifecycleAction) => {
-    if (action === 'delete' && !window.confirm(textFor(t, 'Move this asset to trash?', '将此素材移入回收站？'))) return
+    if (action === 'delete') {
+      setPendingDelete({ kind: 'single', item })
+      return
+    }
     setBusy(item.id)
     setError(null)
     try {
-      updateItem(await mediaService.adminAssetAction(item.id, action, action === 'delete' ? 'admin_lifecycle_action' : undefined))
+      updateItem(await mediaService.adminAssetAction(item.id, action))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : textFor(t, 'Asset state action failed.', '素材状态操作失败。'))
     } finally {
@@ -123,7 +132,10 @@ export function AdminMediaLifecyclePanel({ t, canRead, canReview, canExport }: {
   const runBulk = async (action: LifecycleAction) => {
     const ids = [...selectedIds]
     if (!ids.length) return
-    if (action === 'delete' && !window.confirm(textFor(t, `Move ${ids.length} assets to trash?`, `将 ${ids.length} 个素材移入回收站？`))) return
+    if (action === 'delete') {
+      setPendingDelete({ kind: 'bulk', ids })
+      return
+    }
     setBusy('bulk')
     setError(null)
     try {
@@ -138,17 +150,38 @@ export function AdminMediaLifecyclePanel({ t, canRead, canReview, canExport }: {
     }
   }
 
+  const confirmDelete = async () => {
+    if (!pendingDelete || busy) return
+    const busyKey = pendingDelete.kind === 'single' ? pendingDelete.item.id : 'bulk'
+    setBusy(busyKey)
+    setError(null)
+    try {
+      if (pendingDelete.kind === 'single') {
+        updateItem(await mediaService.adminAssetAction(pendingDelete.item.id, 'delete', 'admin_lifecycle_action'))
+      } else {
+        const result = await mediaService.adminAssetBulkAction(pendingDelete.ids, 'delete')
+        result.results.forEach((entry) => { if (entry.status === 'succeeded') updateItem(entry.asset) })
+        setSelectedIds(new Set(result.results.filter((entry) => entry.status === 'failed').map((entry) => entry.id)))
+        setNotice(textFor(t, `${result.succeeded} succeeded, ${result.failed} failed.`, `成功 ${result.succeeded} 项，失败 ${result.failed} 项。`))
+      }
+      setPendingDelete(null)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : textFor(t, 'Delete action failed.', '删除操作失败。'))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const exportAssets = async (format: 'json' | 'csv') => {
     setBusy(`export-${format}`)
     try {
       const exported = await mediaService.adminAssetExport(query, format)
       const content = typeof exported === 'string' ? exported : JSON.stringify(exported, null, 2)
-      const url = URL.createObjectURL(new Blob([content], { type: format === 'csv' ? 'text/csv' : 'application/json' }))
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = `media-assets.${format}`
-      anchor.click()
-      URL.revokeObjectURL(url)
+      downloadTextArtifact({
+        content,
+        fileName: `media-assets.${format}`,
+        mimeType: format === 'csv' ? 'text/csv' : 'application/json',
+      })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : textFor(t, 'Export failed.', '导出失败。'))
     } finally {
@@ -160,12 +193,11 @@ export function AdminMediaLifecyclePanel({ t, canRead, canReview, canExport }: {
     setBusy('export-metrics')
     try {
       const exported = await mediaService.adminBusinessMetricsExport(metricsQuery)
-      const url = URL.createObjectURL(new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' }))
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = 'media-business-metrics.json'
-      anchor.click()
-      URL.revokeObjectURL(url)
+      downloadJsonArtifact({
+        value: exported,
+        fileName: 'media-business-metrics.json',
+        mimeType: 'application/json',
+      })
     } catch (cause) {
       setMetricsError(cause instanceof Error ? cause.message : textFor(t, 'Metrics export failed.', '统计导出失败。'))
     } finally {
@@ -201,6 +233,21 @@ export function AdminMediaLifecyclePanel({ t, canRead, canReview, canExport }: {
         <button className="icon-button" aria-label={textFor(t, 'Refresh asset lifecycle', '刷新素材生命周期')} disabled={!canRead || loading} onClick={() => void load()} type="button"><RefreshCw className={loading ? 'spin' : ''} size={16}/></button>
       </div>
     </div>
+    {pendingDelete && <AdminOperationConfirmation
+      ariaLabel={textFor(t, 'Confirm media delete', '确认删除媒体素材')}
+      title={pendingDelete.kind === 'single'
+        ? textFor(t, 'Move this asset to trash?', '将此素材移入回收站？')
+        : textFor(t, `Move ${pendingDelete.ids.length} assets to trash?`, `将 ${pendingDelete.ids.length} 个素材移入回收站？`)}
+      description={pendingDelete.kind === 'single'
+        ? textFor(t, `${pendingDelete.item.fileName} will be removed from active use and retained for recovery.`, `${pendingDelete.item.fileName} 将停止使用并保留在回收站中以供恢复。`)
+        : textFor(t, 'Selected assets will be removed from active use and retained for recovery.', '所选素材将停止使用并保留在回收站中以供恢复。')}
+      confirmLabel={busy ? textFor(t, 'Deleting', '删除中') : textFor(t, 'Move to trash', '移入回收站')}
+      cancelLabel={textFor(t, 'Cancel', '取消')}
+      onConfirm={() => void confirmDelete()}
+      onCancel={() => setPendingDelete(null)}
+      busy={Boolean(busy)}
+      compact
+    />}
     <div className="admin-media-metrics-controls">
       <input aria-label={textFor(t, 'Media metrics start date', '媒体统计开始日期')} type="date" value={metricsDates.dateFrom} onChange={(event) => setMetricsDates((current) => ({ ...current, dateFrom: event.target.value }))}/>
       <input aria-label={textFor(t, 'Media metrics end date', '媒体统计结束日期')} type="date" value={metricsDates.dateTo} onChange={(event) => setMetricsDates((current) => ({ ...current, dateTo: event.target.value }))}/>

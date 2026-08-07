@@ -20,6 +20,16 @@
     "default": "medium",
     "apiRequestEvidenceRequired": true
   },
+  "pricing": {
+    "source": "model_control_pricing_version",
+    "outputUnits": 9,
+    "tokenUnits": ["input_text_tokens", "input_image_tokens", "output_image_tokens"],
+    "immutableSnapshotRequired": true,
+    "missingTrustedPriceStatus": "reconciliation_required",
+    "duplicateSettlementAllowed": false,
+    "userEstimateAndActualRequired": true,
+    "adminManualReconciliationRequired": true
+  },
   "reliability": {
     "concurrentDuplicateDispatchAllowed": false,
     "idempotentReplayRequired": true,
@@ -41,6 +51,9 @@
     "server/src/creative/imageProductionAcceptance.test.js",
     "server/src/creative/generationExecutionRuntime.test.js",
     "server/src/creative/providerErrorPolicy.test.js",
+    "server/src/creative/openaiImageProvider.test.js",
+    "server/src/creative/generationService.test.js",
+    "server/src/modelControl/modelRuntimeResolver.test.js",
     "e2e/image-capability.spec.ts",
     "docs/V1_IMAGE_PRODUCTION_ACCEPTANCE.md"
   ]

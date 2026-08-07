@@ -60,15 +60,22 @@ const roleContract = (mode, role) => {
   return null
 }
 
-const safeAsset = (asset, role, kind) => Object.freeze({
-  id: asset.id,
-  role,
-  kind,
-  contentType: asset.contentType,
-  sizeBytes: asset.sizeBytes,
-  purpose: asset.purpose,
-  scanStatus: asset.metadata?.security?.scanStatus ?? null,
-})
+const safeAsset = (asset, role, kind) => {
+  const projected = {
+    id: asset.id,
+    role,
+    kind,
+    contentType: asset.contentType,
+    sizeBytes: asset.sizeBytes,
+    purpose: asset.purpose,
+    scanStatus: asset.metadata?.security?.scanStatus ?? null,
+  }
+  Object.defineProperty(projected, 'storageKey', {
+    value: asset.storageKey ?? null,
+    enumerable: false,
+  })
+  return Object.freeze(projected)
+}
 
 export const resolveVideoGenerationInputs = async (request, {
   actor,

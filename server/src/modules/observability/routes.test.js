@@ -21,6 +21,62 @@ const createServer = async () => {
 
 const waitForTelemetry = () => new Promise((resolve) => setTimeout(resolve, 10))
 
+test('client error reports store only bounded hashes and remain searchable by operations', async () => {
+  const { server } = await createServer()
+  const rawSecret = 'prompt-and-token-must-not-be-stored'
+  const hash = 'a'.repeat(64)
+  try {
+    const reported = await requestJson(server.url, '/api/observability/client-errors', {
+      body: {
+        eventType: 'react_error_boundary',
+        errorName: 'ChunkLoadError',
+        errorCode: 'CLIENT_CHUNK_LOAD_FAILED',
+        route: 'video',
+        release: 'release-2026.07.27',
+        messageHash: hash,
+        stackHash: 'b'.repeat(64),
+        componentStackHash: 'c'.repeat(64),
+        occurredAt: new Date().toISOString(),
+        rawMessage: rawSecret,
+      },
+    })
+    assert.equal(reported.status, 200)
+    assert.equal(reported.payload.data.accepted, true)
+
+    const logs = await requestJson(
+      server.url,
+      '/api/admin/observability/logs?module=frontend&errorCode=CLIENT_CHUNK_LOAD_FAILED&limit=10',
+      { method: 'GET', token: 'demo-access.opsplus' },
+    )
+    assert.equal(logs.status, 200)
+    const clientLog = logs.payload.data.find((item) => item.event === 'client.runtime.error')
+    assert.ok(clientLog)
+    assert.equal(clientLog.service, 'newchat-web')
+    assert.equal(clientLog.outcome, 'client_error')
+    assert.equal(clientLog.attributes.messageHash, hash)
+    assert.equal(JSON.stringify(clientLog).includes(rawSecret), false)
+  } finally {
+    await server.close()
+  }
+})
+
+test('client error reports reject unsupported events hashes and stale timestamps', async () => {
+  const { server } = await createServer()
+  try {
+    for (const body of [
+      { eventType: 'console_error', occurredAt: new Date().toISOString() },
+      { eventType: 'window_error', messageHash: 'not-a-hash', occurredAt: new Date().toISOString() },
+      { eventType: 'window_error', occurredAt: '2020-01-01T00:00:00.000Z' },
+    ]) {
+      const result = await requestJson(server.url, '/api/observability/client-errors', { body })
+      assert.equal(result.status, 400)
+      assert.equal(result.payload.error.code, 'VALIDATION_FAILED')
+    }
+  } finally {
+    await server.close()
+  }
+})
+
 test('observability routes capture HTTP logs and expose filtered trace drill-down and export', async () => {
   const { repository, server } = await createServer()
   try {
@@ -72,7 +128,7 @@ test('SLO evaluation creates versioned alerts and enforces CAS disposition', asy
     }
     const controls = await requestJson(server.url, '/api/admin/observability/slo-controls', { method: 'GET', token: 'demo-access.opsplus' })
     assert.equal(controls.status, 200)
-    assert.equal(controls.payload.data.length, 2)
+    assert.equal(controls.payload.data.length, 7)
     const availabilityControl = controls.payload.data.find((item) => item.sloId === 'api-availability')
     const configured = await requestJson(server.url, '/api/admin/observability/slo-controls/api-availability', {
       method: 'PUT', token: 'demo-access.opsplus', body: { ...availabilityControl, expectedVersion: availabilityControl.version, reasonCode: 'assign_incident_rotation' },

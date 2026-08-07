@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { acceptCurrentPolicies, apiBaseUrl, apiData, authHeaders, login, signInPage } from './helpers'
+import { acceptCurrentPolicies, apiBaseUrl, apiData, authHeaders, login, selectAdminSection, selectTrustSafetyWorkspace, signInPage } from './helpers'
 import type { RiskPolicy } from '../src/services/contracts'
 
 test('generation abuse is throttled, appealed by the owner, and recovered by Admin', async ({ page, request }) => {
@@ -34,7 +34,8 @@ test('generation abuse is throttled, appealed by the owner, and recovered by Adm
     await signInPage(page, request, 'opsplus')
     await page.goto('/')
     await page.getByTestId('nav-admin').click()
-    await page.getByRole('main').getByRole('button', { name: 'Trust & Safety', exact: true }).click()
+    await selectAdminSection(page, 'Trust & Safety')
+    await selectTrustSafetyWorkspace(page, 'cases')
     const adminPanel = page.getByTestId('risk-admin-panel')
     await expect(adminPanel).toBeVisible()
     await adminPanel.getByLabel('Risk case status').selectOption('appealed')
@@ -49,6 +50,8 @@ test('generation abuse is throttled, appealed by the owner, and recovered by Adm
     const recovery = await recoveryResponse
     expect(recovery.status()).toBe(200)
     expect(((await recovery.json()) as { data: { status: string; disposition: string } }).data).toMatchObject({ status: 'recovered', disposition: 'cleared' })
+    await expect(adminPanel.locator('.admin-action-feedback')).toContainText('Risk case transitioned.')
+    await expect(page.getByTestId('app-toast')).toHaveCount(0)
     await expect(adminPanel.getByTestId('risk-admin-metrics')).toBeVisible()
   } finally {
     const current = await apiData<RiskPolicy>(request.get(`${apiBaseUrl}/api/admin/risk/policy`, { headers: authHeaders(admin.accessToken) }))
@@ -62,7 +65,8 @@ test('risk Admin and owner panels remain bounded on mobile', async ({ page, requ
   await page.goto('/')
   await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('main').getByRole('button', { name: 'Trust & Safety', exact: true }).click()
+  await selectAdminSection(page, 'Trust & Safety')
+  await selectTrustSafetyWorkspace(page, 'cases')
   const panel = page.getByTestId('risk-admin-panel')
   await expect(panel).toBeVisible()
   expect(await panel.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)

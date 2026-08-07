@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { apiBaseUrl, apiData, authHeaders, login, signInPage } from './helpers'
+import { apiBaseUrl, apiData, authHeaders, login, selectAdminSection, signInPage } from './helpers'
 
 const createTask = async (request: Parameters<typeof login>[0], title: string) => {
   const publisher = await login(request, 'launchteam')
@@ -25,7 +25,7 @@ test('Task Admin edits, archives, restores, and bulk disposes with evidence', as
   await signInPage(page, request, 'opsplus')
   await page.goto('/')
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('button', { name: 'Task review', exact: true }).click()
+  await selectAdminSection(page, 'Task review')
 
   const panel = page.getByTestId('task-admin-panel')
   await expect(panel).toBeVisible()
@@ -45,6 +45,8 @@ test('Task Admin edits, archives, restores, and bulk disposes with evidence', as
 
   const archiveResponse = page.waitForResponse((response) => response.url().endsWith(`/api/admin/tasks/${task.id}/archive`))
   await panel.getByRole('button', { name: 'Archive', exact: true }).click()
+  await expect(panel.getByRole('alertdialog', { name: 'Confirm task action' })).toBeVisible()
+  await panel.getByRole('button', { name: 'Confirm', exact: true }).click()
   expect((await archiveResponse).ok()).toBeTruthy()
   await expect(panel.getByRole('button', { name: 'Restore', exact: true })).toBeVisible()
   const publicHidden = await request.get(`${apiBaseUrl}/api/tasks/${task.id}`)
@@ -76,7 +78,7 @@ test('Task Admin panel stays bounded on a mobile viewport', async ({ page, reque
   await page.goto('/')
   await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('button', { name: 'Task review', exact: true }).click()
+  await selectAdminSection(page, 'Task review')
   const panel = page.getByTestId('task-admin-panel')
   await expect(panel).toBeVisible()
   await panel.scrollIntoViewIfNeeded()

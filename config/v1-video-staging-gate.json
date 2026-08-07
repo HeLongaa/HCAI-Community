@@ -1,11 +1,12 @@
 {
   "schemaVersion": 1,
   "taskId": "V1-29",
-  "title": "Google Veo guarded staging acceptance gate",
-  "primaryProviderId": "google-veo-3-1-fast",
+  "title": "HCAI Router Seedance guarded staging acceptance gate",
+  "primaryProviderId": "hcai-router-seedance-2-fast",
   "backupProviderId": "runway-gen-4-5",
   "decision": {
     "fixtureAcceptance": "ready",
+    "credentialedAcceptance": "passed",
     "externalCall": "approved_with_runtime_gates",
     "productionEnablement": "no_go",
     "fixtureOnly": false,
@@ -34,18 +35,18 @@
     {
       "id": "request_mapping",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_credentials_required",
+      "realStagingStatus": "passed_real_acceptance",
       "evidence": [
         {
-          "path": "server/src/creative/googleVeoProvider.test.js",
-          "markers": ["buildGoogleVeoGenerationRequest freezes one 720p MP4 request shape", "createGoogleVeoGeneration requires an injected fixture client"]
+          "path": "server/src/creative/routerVideoProvider.test.js",
+          "markers": ["buildRouterVideoGenerationRequest freezes one 720p MP4 request shape", "createRouterVideoGeneration requires an injected fixture client"]
         }
       ]
     },
     {
       "id": "ordered_inputs",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_credentials_required",
+      "realStagingStatus": "fixture_only_not_repeated",
       "evidence": [
         {
           "path": "server/src/creative/videoInputAssets.test.js",
@@ -60,7 +61,7 @@
     {
       "id": "queued_running",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_credentials_required",
+      "realStagingStatus": "fixture_only_not_repeated",
       "evidence": [
         {
           "path": "server/src/creative/videoProviderLifecycle.test.js",
@@ -71,7 +72,7 @@
     {
       "id": "success_accounting",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_credentials_required",
+      "realStagingStatus": "passed_real_acceptance",
       "evidence": [
         {
           "path": "server/src/creative/videoProviderLifecycle.test.js",
@@ -82,7 +83,7 @@
     {
       "id": "provider_failure",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_credentials_required",
+      "realStagingStatus": "fixture_only_not_repeated",
       "evidence": [
         {
           "path": "server/src/creative/videoProviderLifecycle.test.js",
@@ -93,7 +94,7 @@
     {
       "id": "timeout",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_credentials_required",
+      "realStagingStatus": "fixture_only_not_repeated",
       "evidence": [
         {
           "path": "server/src/creative/videoProviderLifecycle.test.js",
@@ -104,7 +105,7 @@
     {
       "id": "retry_exhaustion",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_credentials_required",
+      "realStagingStatus": "fixture_only_not_repeated",
       "evidence": [
         {
           "path": "server/src/creative/videoProviderLifecycle.test.js",
@@ -115,22 +116,18 @@
     {
       "id": "cancellation",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_credentials_required",
+      "realStagingStatus": "unsupported_by_router",
       "evidence": [
         {
           "path": "server/src/creative/videoProviderLifecycle.test.js",
-          "markers": ["fixture cancellation is idempotent and closes accounting"]
-        },
-        {
-          "path": "e2e/video-capability.spec.ts",
-          "markers": ["handles lifecycle, private preview, and mobile layout"]
+          "markers": ["Router video cancellation fails explicitly without changing operation or accounting"]
         }
       ]
     },
     {
       "id": "partial_replay",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_credentials_required",
+      "realStagingStatus": "fixture_only_not_repeated",
       "evidence": [
         {
           "path": "server/src/creative/videoProviderLifecycle.test.js",
@@ -141,7 +138,7 @@
     {
       "id": "scan_review_private_release",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_credentials_required",
+      "realStagingStatus": "passed_real_acceptance",
       "evidence": [
         {
           "path": "server/src/creative/userGenerationHistory.test.js",
@@ -156,7 +153,7 @@
     {
       "id": "user_visible_failure",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_credentials_required",
+      "realStagingStatus": "fixture_only_not_repeated",
       "evidence": [
         {
           "path": "server/src/creative/userGenerationHistory.test.js",
@@ -171,7 +168,7 @@
     {
       "id": "operational_evidence",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_credentials_required",
+      "realStagingStatus": "passed_real_acceptance",
       "evidence": [
         {
           "path": "server/src/repositories/providerLifecycleWiring.test.js",
@@ -186,11 +183,11 @@
     {
       "id": "kill_switch_and_rollback",
       "fixtureStatus": "covered",
-      "realStagingStatus": "not_run_credentials_required",
+      "realStagingStatus": "fixture_only_not_repeated",
       "evidence": [
         {
           "path": "server/src/config/env.test.js",
-          "markers": ["keeps the fixture-only Veo lifecycle behind independent staging switches"]
+          "markers": ["keeps the fixture-only Router video lifecycle behind independent staging switches"]
         },
         {
           "path": "scripts/smoke-production.mjs",
@@ -199,6 +196,24 @@
       ]
     }
   ],
+  "credentialedAcceptanceEvidence": {
+    "executedOn": "2026-07-21",
+    "modelId": "seedance-2.0-fast",
+    "generatedSeconds": 4,
+    "providerState": "SUCCESS",
+    "providerLatencySeconds": 129,
+    "providerCostUsd": 0.484,
+    "outputContentType": "video/mp4",
+    "outputBytes": 665431,
+    "applicationLifecycle": "completed",
+    "mediaScan": "clean",
+    "ownerDownloadAllowed": true,
+    "unrelatedUserDownloadAllowed": false,
+    "creditStatus": "settled",
+    "quotaUsed": 8,
+    "applicationCostStatus": "reconciliation_required",
+    "temporaryCredentialDeleted": true
+  },
   "requiredApprovalFields": [
     "approver",
     "approvalTimestamp",
@@ -217,9 +232,9 @@
   ],
   "commands": {
     "contractAndFixtures": "npm run test:v1-video-staging",
-    "providerReadiness": "npm run test:video-google-readiness",
-    "realPreflight": "npm run video:google:preflight",
-    "realAcceptance": "npm run video:google:acceptance",
+    "providerReadiness": "npm run test:video-router-readiness",
+    "realPreflight": "npm run video:router:preflight",
+    "realAcceptance": "npm run video:router:acceptance",
     "productionSmoke": "npm run smoke:production",
     "pullRequestGate": "CI=1 npm run check:pr"
   },
@@ -227,7 +242,7 @@
     "docs/V1_VIDEO_STAGING_ACCEPTANCE.md",
     "docs/V1_VIDEO_CAPABILITY_CONTRACT.md",
     "docs/V1_VIDEO_LIFECYCLE_PERSISTENCE.md",
-    "scripts/check-google-veo-readiness.mjs",
+    "scripts/check-router-video-readiness.mjs",
     "docs/REAL_PROVIDER_EXTERNAL_CALL_GO_NO_GO.md"
   ]
 }

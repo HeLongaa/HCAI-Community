@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto'
 import { permissionRegistry, rolePermissions } from '../auth/permissions.js'
-import { seedStore } from '../data/seed.js'
 import {
   buildAdminReviewRecord,
   buildLedgerRecord,
@@ -17,7 +16,7 @@ const getHandle = (value) => {
   return typeof value === 'string' ? value : value.handle ?? null
 }
 
-const uniqueHandles = () => {
+const uniqueHandles = (seedStore) => {
   const handles = new Set()
   for (const account of seedStore.demoAccounts) {
     handles.add(account.handle)
@@ -35,7 +34,7 @@ const uniqueHandles = () => {
   return [...handles].filter(Boolean)
 }
 
-const buildHandleMap = () => {
+const buildHandleMap = (seedStore) => {
   const handleToUserId = new Map()
 
   for (const account of seedStore.demoAccounts) {
@@ -48,7 +47,7 @@ const buildHandleMap = () => {
     }
   }
 
-  for (const handle of uniqueHandles()) {
+  for (const handle of uniqueHandles(seedStore)) {
     if (!handleToUserId.has(handle)) {
       handleToUserId.set(handle, `user-${handle}`)
     }
@@ -82,14 +81,19 @@ const seedPermissionPolicy = async (client) => {
   })
 }
 
-export const seedPrismaDatabase = async (client) => {
+export const seedPrismaDatabase = async (client, { includeDemoContent = false } = {}) => {
   await seedPermissionPolicy(client)
+
+  if (!includeDemoContent) {
+    return
+  }
 
   if ((await client.user.count()) > 0) {
     return
   }
 
-  const handleToUserId = buildHandleMap()
+  const { seedStore } = await import('../data/seed.js')
+  const handleToUserId = buildHandleMap(seedStore)
   const userRows = []
 
   for (const account of seedStore.demoAccounts) {

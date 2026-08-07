@@ -303,6 +303,7 @@ const providerBudgetExternalAlertDeliveryReasonCode = ({
   missingConfig,
   deliveryApproved,
   fixtureOnly,
+  productionReady,
 }) => {
   if (!enabled) {
     return 'provider_alert_delivery_disabled'
@@ -316,10 +317,10 @@ const providerBudgetExternalAlertDeliveryReasonCode = ({
   if (!deliveryApproved) {
     return 'provider_alert_delivery_approval_required'
   }
-  if (!fixtureOnly) {
+  if (!fixtureOnly && !productionReady) {
     return 'provider_alert_real_delivery_not_implemented'
   }
-  return 'provider_alert_fixture_delivery_ready'
+  return fixtureOnly ? 'provider_alert_fixture_delivery_ready' : 'provider_alert_production_delivery_ready'
 }
 
 export const buildProviderBudgetExternalAlertDeliveryWiring = ({
@@ -333,13 +334,19 @@ export const buildProviderBudgetExternalAlertDeliveryWiring = ({
   const missingConfig = channelReadiness.filter((item) => item.configured !== true).map((item) => item.channel)
   const deliveryApproved = approval?.deliveryApproved === true
   const fixtureOnly = approval?.fixtureOnly === true
-  const mode = enabled && missingConfig.length === 0 && deliveryApproved && fixtureOnly ? 'fixture' : 'disabled'
+  const productionReady = !fixtureOnly &&
+    config?.creativeProviderAlertDeliveryWorkerEnabled === true &&
+    Array.isArray(config?.creativeProviderAlertAllowedHosts) &&
+    config.creativeProviderAlertAllowedHosts.length > 0
+  const ready = enabled && missingConfig.length === 0 && deliveryApproved
+  const mode = ready && fixtureOnly ? 'fixture' : ready && productionReady ? 'production' : 'disabled'
   const reasonCode = providerBudgetExternalAlertDeliveryReasonCode({
     enabled,
     channels,
     missingConfig,
     deliveryApproved,
     fixtureOnly,
+    productionReady,
   })
 
   return {
@@ -360,7 +367,7 @@ export const buildProviderBudgetExternalAlertDeliveryWiring = ({
       configuredChannelCount: channelReadiness.filter((item) => item.configured === true).length,
       missingConfig,
       channelReadiness,
-      realDeliveryAvailable: false,
+      realDeliveryAvailable: mode === 'production',
     },
   }
 }

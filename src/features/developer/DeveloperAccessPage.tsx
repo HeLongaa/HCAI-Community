@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Ban, Copy, KeyRound, Plus, RefreshCw, RotateCw, ShieldCheck } from 'lucide-react'
+import { ActionFeedback, type ActionFeedbackMessage } from '../../components/ui/ActionFeedback'
+import { OperationConfirmation } from '../../components/ui/OperationConfirmation'
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { textFor } from '../../domain/utils'
 import { developerService } from '../../services/developerService'
@@ -10,12 +12,16 @@ type Props = {
   t: Record<string, string>
   signedIn: boolean
   requireAuth: () => void
-  notify: (message: string) => void
 }
+
+type PendingCredentialOperation =
+  | { kind: 'account'; account: DeveloperServiceAccount }
+  | { kind: 'key'; account: DeveloperServiceAccount; key: DeveloperApiKeyCredential }
+  | { kind: 'rotate'; account: DeveloperServiceAccount; key: DeveloperApiKeyCredential }
 
 const formatDate = (value: string | null) => value ? new Date(value).toLocaleString() : '-'
 
-export function DeveloperAccessPage({ t, signedIn, requireAuth, notify }: Props) {
+export function DeveloperAccessPage({ t, signedIn, requireAuth }: Props) {
   const [control, setControl] = useState<DeveloperAccessControl | null>(null)
   const [accounts, setAccounts] = useState<DeveloperServiceAccount[]>([])
   const [loading, setLoading] = useState(false)
@@ -28,6 +34,8 @@ export function DeveloperAccessPage({ t, signedIn, requireAuth, notify }: Props)
   const [keyTtl, setKeyTtl] = useState('30')
   const [ipAllowlist, setIpAllowlist] = useState('')
   const [oneTimeKey, setOneTimeKey] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<ActionFeedbackMessage | null>(null)
+  const [pendingOperation, setPendingOperation] = useState<PendingCredentialOperation | null>(null)
 
   const refresh = useCallback(async () => {
     if (!signedIn) return
@@ -54,14 +62,15 @@ export function DeveloperAccessPage({ t, signedIn, requireAuth, notify }: Props)
     if (!accountName.trim()) return
     setBusy('create-account')
     setError(null)
+    setFeedback(null)
     try {
       const account = await developerService.createAccount({ name: accountName.trim(), description: accountDescription.trim() })
       setAccounts((current) => [account, ...current])
       setAccountName('')
       setAccountDescription('')
-      notify(textFor(t, 'Service account created.', 'Service Account 已创建。'))
+      setFeedback({ kind: 'success', text: textFor(t, 'Service account created.', 'Service Account 已创建。') })
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : textFor(t, 'Could not create service account.', '无法创建 Service Account。'))
+      setFeedback({ kind: 'error', text: nextError instanceof Error ? nextError.message : textFor(t, 'Could not create service account.', '无法创建 Service Account。') })
     } finally {
       setBusy(null)
     }
@@ -71,6 +80,7 @@ export function DeveloperAccessPage({ t, signedIn, requireAuth, notify }: Props)
     if (!keyAccountId || !keyName.trim()) return
     setBusy(`create-key:${keyAccountId}`)
     setError(null)
+    setFeedback(null)
     try {
       const result = await developerService.createKey(keyAccountId, {
         name: keyName.trim(),
@@ -83,38 +93,43 @@ export function DeveloperAccessPage({ t, signedIn, requireAuth, notify }: Props)
       setIpAllowlist('')
       setKeyAccountId(null)
       await refresh()
+      setFeedback({ kind: 'success', text: textFor(t, 'API key issued. Store it before leaving this page.', 'API Key 已签发，请在离开页面前妥善保存。') })
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : textFor(t, 'Could not create API key.', '无法创建 API Key。'))
+      setFeedback({ kind: 'error', text: nextError instanceof Error ? nextError.message : textFor(t, 'Could not create API key.', '无法创建 API Key。') })
     } finally {
       setBusy(null)
     }
   }
 
   const revokeAccount = async (account: DeveloperServiceAccount) => {
-    if (!window.confirm(textFor(t, `Revoke ${account.name} and all its keys?`, `撤销 ${account.name} 及其全部密钥？`))) return
     setBusy(account.id)
+    setFeedback(null)
     try {
       const updated = await developerService.revokeAccount(account.id, { expectedVersion: account.version, reasonCode: 'owner_revoked' })
       setAccounts((current) => current.map((item) => item.id === updated.id ? updated : item))
+      setPendingOperation(null)
+      setFeedback({ kind: 'success', text: textFor(t, `${account.name} and its keys were revoked.`, `${account.name} 及其密钥已撤销。`) })
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : textFor(t, 'Could not revoke service account.', '无法撤销 Service Account。'))
+      setFeedback({ kind: 'error', text: nextError instanceof Error ? nextError.message : textFor(t, 'Could not revoke service account.', '无法撤销 Service Account。') })
     } finally { setBusy(null) }
   }
 
   const revokeKey = async (account: DeveloperServiceAccount, key: DeveloperApiKeyCredential) => {
-    if (!window.confirm(textFor(t, `Revoke ${key.name}?`, `撤销 ${key.name}？`))) return
     setBusy(key.id)
+    setFeedback(null)
     try {
       await developerService.revokeKey(account.id, key.id, { expectedVersion: key.version, reasonCode: 'owner_revoked' })
       await refresh()
+      setPendingOperation(null)
+      setFeedback({ kind: 'success', text: textFor(t, `${key.name} was revoked.`, `${key.name} 已撤销。`) })
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : textFor(t, 'Could not revoke API key.', '无法撤销 API Key。'))
+      setFeedback({ kind: 'error', text: nextError instanceof Error ? nextError.message : textFor(t, 'Could not revoke API key.', '无法撤销 API Key。') })
     } finally { setBusy(null) }
   }
 
   const rotateKey = async (account: DeveloperServiceAccount, key: DeveloperApiKeyCredential) => {
-    if (!window.confirm(textFor(t, `Rotate ${key.name} now? The old key stops immediately.`, `立即轮换 ${key.name}？旧密钥会立即失效。`))) return
     setBusy(key.id)
+    setFeedback(null)
     try {
       const result = await developerService.rotateKey(account.id, key.id, {
         name: `${key.name} rotated`, scopes: key.scopes, ipAllowlist: key.ipAllowlist,
@@ -122,9 +137,29 @@ export function DeveloperAccessPage({ t, signedIn, requireAuth, notify }: Props)
       })
       setOneTimeKey(result.plaintextKey)
       await refresh()
+      setPendingOperation(null)
+      setFeedback({ kind: 'success', text: textFor(t, `${key.name} was rotated. Store the replacement key now.`, `${key.name} 已轮换，请立即保存新密钥。`) })
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : textFor(t, 'Could not rotate API key.', '无法轮换 API Key。'))
+      setFeedback({ kind: 'error', text: nextError instanceof Error ? nextError.message : textFor(t, 'Could not rotate API key.', '无法轮换 API Key。') })
     } finally { setBusy(null) }
+  }
+
+  const confirmPendingOperation = () => {
+    if (!pendingOperation) return
+    if (pendingOperation.kind === 'account') void revokeAccount(pendingOperation.account)
+    else if (pendingOperation.kind === 'key') void revokeKey(pendingOperation.account, pendingOperation.key)
+    else void rotateKey(pendingOperation.account, pendingOperation.key)
+  }
+
+  const copyOneTimeKey = async () => {
+    if (!oneTimeKey) return
+    setFeedback(null)
+    try {
+      await navigator.clipboard.writeText(oneTimeKey)
+      setFeedback({ kind: 'success', text: textFor(t, 'API key copied.', 'API Key 已复制。') })
+    } catch (nextError) {
+      setFeedback({ kind: 'error', text: nextError instanceof Error ? nextError.message : textFor(t, 'Could not copy the API key.', '无法复制 API Key。') })
+    }
   }
 
   if (!signedIn) {
@@ -139,10 +174,11 @@ export function DeveloperAccessPage({ t, signedIn, requireAuth, notify }: Props)
       </section>
 
       {error && <div className="inline-alert error">{error}</div>}
+      <ActionFeedback message={feedback} />
       {oneTimeKey && (
         <section className="panel one-time-key" data-testid="one-time-api-key">
           <SectionHeader eyebrow={textFor(t, 'Shown once', '仅显示一次')} title={textFor(t, 'Store this key now', '立即保存此密钥')} />
-          <div className="secret-display"><code>{oneTimeKey}</code><button className="icon-button" type="button" title={textFor(t, 'Copy key', '复制密钥')} onClick={() => void navigator.clipboard.writeText(oneTimeKey).then(() => notify(textFor(t, 'API key copied.', 'API Key 已复制。')))}><Copy size={17} /></button></div>
+          <div className="secret-display"><code>{oneTimeKey}</code><button className="icon-button" type="button" title={textFor(t, 'Copy key', '复制密钥')} onClick={() => void copyOneTimeKey()}><Copy size={17} /></button></div>
           <button className="ghost-button" type="button" onClick={() => setOneTimeKey(null)}>{textFor(t, 'I stored it', '我已保存')}</button>
         </section>
       )}
@@ -163,18 +199,40 @@ export function DeveloperAccessPage({ t, signedIn, requireAuth, notify }: Props)
         <div className="developer-account-list">
           {accounts.map((account) => (
             <article className="developer-account" key={account.id} data-testid={`service-account-${account.id}`}>
-              <div className="developer-account-header"><div><strong>{account.name}</strong><span>{account.description || textFor(t, 'No description', '无描述')}</span></div><span className={`status-badge ${account.status === 'active' ? 'success' : 'danger'}`}>{account.status}</span><div className="button-row"><button className="ghost-button small" type="button" onClick={() => setKeyAccountId(account.id)} disabled={account.status !== 'active' || !control?.enabled}><KeyRound size={15} />{textFor(t, 'New key', '新建密钥')}</button><button className="icon-button" type="button" onClick={() => void revokeAccount(account)} disabled={account.status !== 'active' || busy === account.id} title={textFor(t, 'Revoke service account', '撤销 Service Account')}><Ban size={16} /></button></div></div>
+              <div className="developer-account-header"><div><strong>{account.name}</strong><span>{account.description || textFor(t, 'No description', '无描述')}</span></div><span className={`status-badge ${account.status === 'active' ? 'success' : 'danger'}`}>{account.status}</span><div className="button-row"><button className="ghost-button small" type="button" onClick={() => setKeyAccountId(account.id)} disabled={account.status !== 'active' || !control?.enabled}><KeyRound size={15} />{textFor(t, 'New key', '新建密钥')}</button><button className="icon-button" type="button" onClick={() => setPendingOperation({ kind: 'account', account })} disabled={account.status !== 'active' || busy === account.id} title={textFor(t, 'Revoke service account', '撤销 Service Account')}><Ban size={16} /></button></div></div>
               {keyAccountId === account.id && <div className="developer-key-form"><label><span>{textFor(t, 'Key name', '密钥名称')}</span><input value={keyName} onChange={(event) => setKeyName(event.target.value)} /></label><label><span>{textFor(t, 'TTL days', '有效天数')}</span><input type="number" min="1" max="365" value={keyTtl} onChange={(event) => setKeyTtl(event.target.value)} /></label><label className="grow"><span>{textFor(t, 'IP/CIDR allowlist', 'IP/CIDR 白名单')}</span><input value={ipAllowlist} onChange={(event) => setIpAllowlist(event.target.value)} placeholder="203.0.113.0/24" /></label><button className="primary-button" type="button" onClick={() => void createKey()} disabled={!keyName.trim() || busy === `create-key:${account.id}`}><Plus size={16} />{textFor(t, 'Issue once', '签发')}</button></div>}
               <div className="developer-key-list">
-                {account.keys.map((key) => <div className="developer-key-row" key={key.id}><div><strong>{key.name}</strong><code>{key.displayPrefix}</code></div><span className={`status-badge ${key.status === 'active' ? 'success' : 'danger'}`}>{key.status}</span><span>{key.usageCount} {textFor(t, 'uses', '次调用')}</span><span>{textFor(t, 'Expires', '到期')} {formatDate(key.expiresAt)}</span><span>{key.ipAllowlist.length ? key.ipAllowlist.join(', ') : textFor(t, 'Any IP', '任意 IP')}</span><div className="button-row"><button className="icon-button" type="button" title={textFor(t, 'Rotate key', '轮换密钥')} onClick={() => void rotateKey(account, key)} disabled={key.status !== 'active' || busy === key.id}><RotateCw size={15} /></button><button className="icon-button" type="button" title={textFor(t, 'Revoke key', '撤销密钥')} onClick={() => void revokeKey(account, key)} disabled={key.status !== 'active' || busy === key.id}><Ban size={15} /></button></div></div>)}
+                {account.keys.map((key) => <div className="developer-key-row" key={key.id}><div><strong>{key.name}</strong><code>{key.displayPrefix}</code></div><span className={`status-badge ${key.status === 'active' ? 'success' : 'danger'}`}>{key.status}</span><span>{key.usageCount} {textFor(t, 'uses', '次调用')}</span><span>{textFor(t, 'Expires', '到期')} {formatDate(key.expiresAt)}</span><span>{key.ipAllowlist.length ? key.ipAllowlist.join(', ') : textFor(t, 'Any IP', '任意 IP')}</span><div className="button-row"><button className="icon-button" type="button" title={textFor(t, 'Rotate key', '轮换密钥')} onClick={() => setPendingOperation({ kind: 'rotate', account, key })} disabled={key.status !== 'active' || busy === key.id}><RotateCw size={15} /></button><button className="icon-button" type="button" title={textFor(t, 'Revoke key', '撤销密钥')} onClick={() => setPendingOperation({ kind: 'key', account, key })} disabled={key.status !== 'active' || busy === key.id}><Ban size={15} /></button></div></div>)}
                 {!account.keys.length && <div className="empty-state"><strong>{textFor(t, 'No API keys', '暂无 API Key')}</strong></div>}
               </div>
+              {pendingOperation?.account.id === account.id && (
+                <OperationConfirmation
+                  ariaLabel={textFor(t, 'Confirm developer credential operation', '确认开发者凭证操作')}
+                  title={pendingOperation.kind === 'account'
+                    ? textFor(t, `Revoke ${pendingOperation.account.name}?`, `撤销 ${pendingOperation.account.name}？`)
+                    : pendingOperation.kind === 'rotate'
+                      ? textFor(t, `Rotate ${pendingOperation.key.name}?`, `轮换 ${pendingOperation.key.name}？`)
+                      : textFor(t, `Revoke ${pendingOperation.key.name}?`, `撤销 ${pendingOperation.key.name}？`)}
+                  description={pendingOperation.kind === 'account'
+                    ? textFor(t, 'This service account and every active key under it will stop authenticating immediately.', '此 Service Account 及其全部活跃密钥将立即停止认证。')
+                    : pendingOperation.kind === 'rotate'
+                      ? textFor(t, 'The current key stops immediately. The replacement key is shown only once.', '当前密钥将立即失效，新密钥仅显示一次。')
+                      : textFor(t, 'This key will stop authenticating immediately. Other active keys remain available.', '此密钥将立即停止认证，其他活跃密钥不受影响。')}
+                  confirmLabel={pendingOperation.kind === 'rotate' ? textFor(t, 'Rotate key', '轮换密钥') : pendingOperation.kind === 'account' ? textFor(t, 'Revoke account', '撤销账号') : textFor(t, 'Revoke key', '撤销密钥')}
+                  cancelLabel={textFor(t, 'Back', '返回')}
+                  onConfirm={confirmPendingOperation}
+                  onCancel={() => setPendingOperation(null)}
+                  busy={busy === (pendingOperation.kind === 'account' ? pendingOperation.account.id : pendingOperation.key.id)}
+                  tone="danger"
+                  compact
+                />
+              )}
             </article>
           ))}
           {!loading && !accounts.length && <div className="empty-state"><strong>{textFor(t, 'No service accounts', '暂无 Service Account')}</strong></div>}
         </div>
       </section>
-      <WebhookDeveloperPanel t={t} notify={notify} />
+      <WebhookDeveloperPanel t={t} />
     </div>
   )
 }

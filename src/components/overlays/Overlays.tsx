@@ -1,16 +1,22 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
   AlertTriangle,
+  ArrowRight,
+  AtSign,
   Bot,
   BriefcaseBusiness,
   ChevronDown,
   ChevronRight,
   FileText,
+  Eye,
+  EyeOff,
   Globe2,
   Heart,
   Image,
   ListMusic,
   LoaderCircle,
+  LockKeyhole,
+  Mail,
   MonitorCheck,
   MessageCircle,
   MoreHorizontal,
@@ -24,20 +30,19 @@ import {
   SkipForward,
   Trophy,
   UserRound,
-  UsersRound,
   WandSparkles,
   X,
 } from 'lucide-react'
+import { SiApple, SiDiscord, SiGithub, SiGoogle } from 'react-icons/si'
 import type { Locale, MarketplaceProfile, Page, SimulateAction, Track } from '../../domain/types'
-import { tracks } from '../../data/mockData'
 import { isZhCopy, localizeText, textFor } from '../../domain/utils'
 import { authService } from '../../services/authService'
 import { complianceService, policyConsentRequest } from '../../services/complianceService'
 import { isApiClientError } from '../../services/apiClient'
 import { profileService } from '../../services/profileService'
 import { searchService } from '../../services/searchService'
-import type { ApiComplianceManifest, ApiPolicyConsentStatus, ApiSearchResult, ApiSession, OAuthAccountLink, OAuthProvider, OAuthProviderMetadata, RegisterRequest, SearchResourceType, SearchSort } from '../../services/contracts'
 import { showLocalTestAccounts } from '../../services/runtimeConfig'
+import type { ApiComplianceManifest, ApiPolicyConsentStatus, ApiSearchResult, ApiSession, OAuthAccountLink, OAuthProvider, OAuthProviderMetadata, RegisterRequest, SearchResourceType, SearchSort } from '../../services/contracts'
 import type { OAuthLoginResult } from '../../hooks/useAccountState'
 
 type IslandAction = {
@@ -54,10 +59,8 @@ export function DynamicIsland({
   page,
   setPage,
   track,
-  playTrack,
   playing,
   setPlaying,
-  simulateAction,
 }: {
   t: Record<string, string>
   locale: Locale
@@ -67,7 +70,6 @@ export function DynamicIsland({
   playTrack: (track: Track) => void
   playing: boolean
   setPlaying: (playing: boolean) => void
-  simulateAction: SimulateAction
 }) {
   const [open, setOpen] = useState(false)
   const [minimized, setMinimized] = useState(false)
@@ -149,9 +151,6 @@ export function DynamicIsland({
   ]
   const currentGuide = pageGuide[page] || pageGuide.home!
   const primaryAction = actions.find((item) => item.page === page) || actions[0]
-  const trackIndex = tracks.findIndex((item) => item.id === track.id)
-  const previousTrack = tracks[(trackIndex - 1 + tracks.length) % tracks.length] ?? tracks[0]
-  const nextTrack = tracks[(trackIndex + 1) % tracks.length] ?? tracks[0]
   const currentLyricLine = track.lyrics[1] || track.lyrics[0] || track.prompt
   const runGuide = (raw: string) => {
     const value = raw.trim().toLowerCase()
@@ -161,7 +160,6 @@ export function DynamicIsland({
     setPage(action.page)
     setOpen(false)
     setMoreOpen(false)
-    simulateAction(isZh ? `灵动岛已跳转：${action.label}` : `Dynamic island routed: ${action.label}`)
   }
 
   if (minimized) {
@@ -174,7 +172,6 @@ export function DynamicIsland({
         onClick={() => {
           setMinimized(false)
           setOpen(false)
-          simulateAction(isZh ? 'AI 灵动岛已展开' : 'AI guide expanded')
         }}
       >
         <span className="island-orb">AI</span>
@@ -209,13 +206,13 @@ export function DynamicIsland({
           <button type="button" disabled title={textFor(t, 'Shuffle is not available', '随机播放暂未开放')} aria-label={isZh ? '随机播放暂未开放' : 'Shuffle unavailable'}>
             <RefreshCcw size={17} />
           </button>
-          <button type="button" disabled={!previousTrack.audioUrl} onClick={() => playTrack(previousTrack)} aria-label={isZh ? '上一首' : 'Previous track'}>
+          <button type="button" disabled aria-label={isZh ? '上一首暂不可用' : 'Previous track unavailable'}>
             <SkipBack size={17} fill="currentColor" />
           </button>
           <button className="music-play-button" type="button" onClick={() => setPlaying(!playing)} aria-label={playing ? textFor(t, 'Pause', '暂停') : textFor(t, 'Play', '播放')}>
             {playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
           </button>
-          <button type="button" disabled={!nextTrack.audioUrl} onClick={() => playTrack(nextTrack)} aria-label={isZh ? '下一首' : 'Next track'}>
+          <button type="button" disabled aria-label={isZh ? '下一首暂不可用' : 'Next track unavailable'}>
             <SkipForward size={17} fill="currentColor" />
           </button>
           <button type="button" disabled title={textFor(t, 'Repeat is not available', '循环播放暂未开放')} aria-label={isZh ? '循环播放暂未开放' : 'Repeat unavailable'}>
@@ -242,7 +239,6 @@ export function DynamicIsland({
             event.stopPropagation()
             setOpen(false)
             setMinimized(true)
-            simulateAction(isZh ? 'AI 灵动岛已收起到右侧' : 'AI guide minimized to the right')
           }}
         >
           <ChevronDown size={16} />
@@ -307,34 +303,9 @@ export function DynamicIsland({
               <span><UserRound size={22} /></span>
               <strong>{textFor(t, 'Add a comment...', '添加评论...')}</strong>
             </button>
-            <div className="music-comment-list">
-              <article>
-                <img src={tracks[2]?.cover || track.cover} alt="" />
-                <div>
-                  <strong>Damienhartsfi...</strong>
-                  <time>3h</time>
-                  <p>{textFor(t, 'I like this song I like it', '我喜欢这首歌，真的喜欢')}</p>
-                  <button type="button" disabled><Heart size={16} /> {textFor(t, 'Reply unavailable', '回复暂未开放')}</button>
-                </div>
-              </article>
-              <article>
-                <img src={tracks[3]?.cover || track.cover} alt="" />
-                <div>
-                  <strong>Rylaiflor</strong>
-                  <time>3d</time>
-                  <p>🎧☀️🕺</p>
-                  <button type="button" disabled><Heart size={16} /> {textFor(t, 'Reply unavailable', '回复暂未开放')}</button>
-                </div>
-              </article>
-              <article>
-                <span className="comment-fallback-avatar"><UserRound size={21} /></span>
-                <div>
-                  <strong>Sitwsmusic</strong>
-                  <time>1w</time>
-                  <p>{textFor(t, 'The bassline is clean. This one belongs in the next playlist.', '贝斯线很干净，这首应该进下一轮歌单。')}</p>
-                  <button type="button" disabled><Heart size={16} /> {textFor(t, 'Reply unavailable', '回复暂未开放')}</button>
-                </div>
-              </article>
+            <div className="music-comment-list empty-state compact">
+              <strong>{textFor(t, 'No comments yet', '暂无评论')}</strong>
+              <span>{textFor(t, 'Comments will appear after the public media catalog is connected.', '公开媒体目录接入后，评论将在这里显示。')}</span>
             </div>
           </div>
           <div className="music-lyrics-reader" aria-label={textFor(t, 'Lyrics', '歌词')}>
@@ -381,16 +352,13 @@ export function SearchPanel({
   close,
   setPage,
   openProfile,
-  simulateAction,
 }: {
   t: Record<string, string>
   close: () => void
   playTrack: (track: Track) => void
   setPage: (page: Page) => void
   openProfile: (profile: MarketplaceProfile) => void
-  simulateAction: SimulateAction
 }) {
-  const isZh = isZhCopy(t)
   const [query, setQuery] = useState('')
   const [type, setType] = useState<SearchResourceType | 'all'>('all')
   const [sort, setSort] = useState<SearchSort>('relevance')
@@ -399,6 +367,34 @@ export function SearchPanel({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searched, setSearched] = useState(false)
+  const dialogRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    const handleDialogKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        close()
+        return
+      }
+      if (event.key !== 'Tab') return
+
+      const focusable = [...(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])') ?? [])]
+        .filter((element) => element.getClientRects().length > 0)
+      if (!focusable.length) return
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', handleDialogKeyDown)
+    return () => document.removeEventListener('keydown', handleDialogKeyDown)
+  }, [close])
 
   const runSearch = useCallback(async (cursor: string | null = null, append = false) => {
     const normalized = query.trim()
@@ -440,7 +436,6 @@ export function SearchPanel({
       } else if (target.page === 'tasks' || target.page === 'community' || target.page === 'profile') {
         setPage(target.page)
       }
-      simulateAction(isZh ? `已打开搜索结果：${hit.item.title}` : `Opened search result: ${hit.item.title}`)
       close()
     } catch (navigationError) {
       setError(navigationError instanceof Error ? navigationError.message : textFor(t, 'Result unavailable.', '结果暂不可用。'))
@@ -457,7 +452,7 @@ export function SearchPanel({
 
   return (
     <div className="search-backdrop" onClick={close}>
-      <section className="search-panel" role="dialog" aria-modal="true" aria-label={t.search} onClick={(event) => event.stopPropagation()}>
+      <section ref={dialogRef} className="search-panel" role="dialog" aria-modal="true" aria-label={t.search} onClick={(event) => event.stopPropagation()}>
         <div className="search-input">
           <Search size={18} />
           <input data-testid="discovery-search-input" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t.search} />
@@ -552,6 +547,13 @@ const defaultOAuthProviders: OAuthProviderMetadata[] = [
   },
 ]
 
+const oauthProviderIcon = (provider: OAuthProvider) => {
+  if (provider === 'google') return <SiGoogle aria-hidden="true" />
+  if (provider === 'github') return <SiGithub aria-hidden="true" />
+  if (provider === 'apple') return <SiApple aria-hidden="true" />
+  return <SiDiscord aria-hidden="true" />
+}
+
 const oauthProviderStatus = (provider: OAuthProviderMetadata, t: Record<string, string>) => {
   if (provider.configured && provider.mode === 'external') {
     return {
@@ -643,6 +645,9 @@ const authFieldErrorsFromApi = (error: unknown, mode: 'login' | 'register', t: R
 export function LoginModal({
   t,
   close,
+  onAuthenticated,
+  presentation = 'modal',
+  leaving = false,
   simulateAction,
   loginAs,
   loginWithPassword,
@@ -652,8 +657,11 @@ export function LoginModal({
 }: {
   t: Record<string, string>
   close: () => void
+  onAuthenticated?: (destination?: Page) => void
+  presentation?: 'modal' | 'page'
+  leaving?: boolean
   simulateAction: SimulateAction
-  loginAs: (handle: string) => Promise<void>
+  loginAs?: (handle: string) => Promise<void>
   loginWithPassword: (email: string, password: string) => Promise<void>
   loginWithOAuthProvider: (provider: OAuthProvider) => Promise<OAuthLoginResult>
   registerWithEmail: (payload: RegisterRequest) => Promise<void>
@@ -665,6 +673,7 @@ export function LoginModal({
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordVisible, setPasswordVisible] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [handle, setHandle] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -672,8 +681,30 @@ export function LoginModal({
   const [policyAccepted, setPolicyAccepted] = useState(false)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors>({})
+  const localTestAccounts = [
+    { handle: 'opsplus', label: textFor(t, 'Admin', '管理员'), hint: 'opsplus' },
+    { handle: 'legalpixel', label: textFor(t, 'Moderator', '审核员'), hint: 'legalpixel' },
+    { handle: 'promptlin', label: textFor(t, 'Creator', '创作者'), hint: 'promptlin' },
+    { handle: 'veyn', label: textFor(t, 'MiniMax creator', 'MiniMax 创作者'), hint: 'veyn' },
+    { handle: 'taskops', label: textFor(t, 'Publisher', '发布方'), hint: 'taskops' },
+  ]
   const hasDevOAuthProviders = providers.some((provider) => provider.mode === 'dev' && !provider.configured)
   const hasExternalOAuthProviders = providers.some((provider) => provider.mode === 'external' && provider.configured)
+  const isPage = presentation === 'page'
+  const finishAuthentication = (destination?: Page) => {
+    if (onAuthenticated) {
+      onAuthenticated(destination)
+      return
+    }
+    close()
+  }
+  const openLinkedPage = (nextPage: Page) => {
+    setPage(nextPage)
+    if (isPage) {
+      return
+    }
+    close()
+  }
 
   useEffect(() => {
     let active = true
@@ -761,7 +792,7 @@ export function LoginModal({
             ? textFor(t, 'Account created and session verified', '账号已创建并完成会话校验')
             : textFor(t, 'Signed in and session verified', '已登录并完成会话校验'),
         )
-        close()
+        finishAuthentication()
       })
       .catch((authError) => {
         console.info('[auth]', authError)
@@ -771,13 +802,53 @@ export function LoginModal({
       .finally(() => setSubmitting(false))
   }
 
+  const submitLocalTestAccount = (handleName: string) => {
+    if (!loginAs || submitting) return
+    setError('')
+    setFieldErrors({})
+    setSubmitting(true)
+    void loginAs(handleName)
+      .then(() => {
+        simulateAction(textFor(t, `Signed in as ${handleName}`, `已作为 ${handleName} 登录`))
+        finishAuthentication()
+      })
+      .catch((authError) => {
+        console.info('[auth-demo]', authError)
+        setError(emailAuthErrorCopy(authError, 'login', t))
+      })
+      .finally(() => setSubmitting(false))
+  }
+
   return (
-    <div className="modal-backdrop" onClick={close}>
-      <section className="login-modal" onClick={(event) => event.stopPropagation()}>
-        <button className="close-button" type="button" onClick={close}>
+    <div className={isPage ? `auth-page-shell${leaving ? ' is-leaving' : ''}` : 'modal-backdrop'} onClick={isPage ? undefined : close}>
+      {isPage && (
+        <a className="auth-page-brand" href="/" aria-label="HCAI Community home">
+          <span>HCAI</span>
+          <small>COMMUNITY</small>
+        </a>
+      )}
+      <section className={isPage ? 'login-modal auth-page-panel' : 'login-modal'} onClick={(event) => event.stopPropagation()}>
+        <button className="close-button" type="button" onClick={close} aria-label={textFor(t, 'Back to home', '返回首页')}>
           <X size={18} />
         </button>
-        <h2>{textFor(t, 'Login or sign up', '登录或注册')}</h2>
+        <div className="auth-heading">
+          {isPage && <span className="auth-product-icon"><WandSparkles size={20} /></span>}
+          <div>
+            {isPage && <small>HCAI COMMUNITY</small>}
+            <h2>
+              {mode === 'login'
+                ? textFor(t, 'Welcome back', '欢迎回来')
+                : textFor(t, 'Create your account', '创建你的账号')}
+            </h2>
+            {isPage && (
+              <p>
+                {mode === 'login'
+                  ? textFor(t, 'Sign in to continue to your workspace.', '登录后继续进入你的工作空间。')
+                  : textFor(t, 'Join the community and start building.', '加入社区，开始共同创造。')}
+              </p>
+            )}
+          </div>
+        </div>
         <div className="auth-mode-tabs" role="tablist" aria-label={textFor(t, 'Authentication mode', '认证模式')}>
           <button
             className={mode === 'login' ? 'active' : ''}
@@ -805,58 +876,86 @@ export function LoginModal({
         <form className="auth-form" onSubmit={submitEmailAuth} noValidate>
           {mode === 'register' && (
             <>
-              <input
-                type="text"
-                autoComplete="name"
-                placeholder={textFor(t, 'Display name', '显示名称')}
-                value={displayName}
-                onChange={(event) => setDisplayName(event.target.value)}
-              />
+              <label className="auth-field">
+                <span className="auth-field-label">{textFor(t, 'Display name', '显示名称')}</span>
+                <span className="auth-input-control">
+                  <UserRound size={17} aria-hidden="true" />
+                  <input
+                    type="text"
+                    autoComplete="name"
+                    placeholder={textFor(t, 'Display name', '显示名称')}
+                    value={displayName}
+                    onChange={(event) => setDisplayName(event.target.value)}
+                  />
+                </span>
+              </label>
               <label className={fieldErrors.handle ? 'auth-field invalid' : 'auth-field'}>
-                <input
-                  type="text"
-                  autoComplete="username"
-                  placeholder={textFor(t, 'Handle', '用户名')}
-                  value={handle}
-                  aria-invalid={fieldErrors.handle ? 'true' : 'false'}
-                  aria-describedby={fieldErrors.handle ? 'auth-handle-error' : undefined}
-                  onChange={(event) => {
-                    setHandle(event.target.value)
-                    clearFieldError('handle')
-                  }}
-                />
+                <span className="auth-field-label">{textFor(t, 'Handle', '用户名')}</span>
+                <span className="auth-input-control">
+                  <AtSign size={17} aria-hidden="true" />
+                  <input
+                    type="text"
+                    autoComplete="username"
+                    placeholder={textFor(t, 'Handle', '用户名')}
+                    value={handle}
+                    aria-invalid={fieldErrors.handle ? 'true' : 'false'}
+                    aria-describedby={fieldErrors.handle ? 'auth-handle-error' : undefined}
+                    onChange={(event) => {
+                      setHandle(event.target.value)
+                      clearFieldError('handle')
+                    }}
+                  />
+                </span>
                 {fieldErrors.handle && <small id="auth-handle-error">{fieldErrors.handle}</small>}
               </label>
             </>
           )}
           <label className={fieldErrors.email ? 'auth-field invalid' : 'auth-field'}>
-            <input
-              type="email"
-              autoComplete="email"
-              placeholder={textFor(t, 'Email', '邮箱')}
-              value={email}
-              aria-invalid={fieldErrors.email ? 'true' : 'false'}
-              aria-describedby={fieldErrors.email ? 'auth-email-error' : undefined}
-              onChange={(event) => {
-                setEmail(event.target.value)
-                clearFieldError('email')
-              }}
-            />
+            <span className="auth-field-label">{textFor(t, 'Email address', '邮箱地址')}</span>
+            <span className="auth-input-control">
+              <Mail size={17} aria-hidden="true" />
+              <input
+                type="email"
+                autoComplete="email"
+                placeholder={textFor(t, 'Email', '邮箱')}
+                value={email}
+                aria-invalid={fieldErrors.email ? 'true' : 'false'}
+                aria-describedby={fieldErrors.email ? 'auth-email-error' : undefined}
+                onChange={(event) => {
+                  setEmail(event.target.value)
+                  clearFieldError('email')
+                }}
+              />
+            </span>
             {fieldErrors.email && <small id="auth-email-error">{fieldErrors.email}</small>}
           </label>
           <label className={fieldErrors.password ? 'auth-field invalid' : 'auth-field'}>
-            <input
-              type="password"
-              autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
-              placeholder={textFor(t, 'Password', '密码')}
-              value={password}
-              aria-invalid={fieldErrors.password ? 'true' : 'false'}
-              aria-describedby={fieldErrors.password ? 'auth-password-error' : undefined}
-              onChange={(event) => {
-                setPassword(event.target.value)
-                clearFieldError('password')
-              }}
-            />
+            <span className="auth-field-label">{textFor(t, 'Password', '密码')}</span>
+            <span className="auth-input-control">
+              <LockKeyhole size={17} aria-hidden="true" />
+              <input
+                type={passwordVisible ? 'text' : 'password'}
+                autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+                placeholder={textFor(t, 'Password', '密码')}
+                value={password}
+                aria-invalid={fieldErrors.password ? 'true' : 'false'}
+                aria-describedby={fieldErrors.password ? 'auth-password-error' : undefined}
+                onChange={(event) => {
+                  setPassword(event.target.value)
+                  clearFieldError('password')
+                }}
+              />
+              <button
+                className="auth-password-toggle"
+                type="button"
+                onClick={() => setPasswordVisible((visible) => !visible)}
+                aria-label={passwordVisible
+                  ? textFor(t, 'Hide password', '隐藏密码')
+                  : textFor(t, 'Show password', '显示密码')}
+              >
+                {passwordVisible ? <EyeOff size={17} /> : <Eye size={17} />}
+              </button>
+            </span>
             {fieldErrors.password && <small id="auth-password-error">{fieldErrors.password}</small>}
           </label>
           {mode === 'register' && (
@@ -883,8 +982,7 @@ export function LoginModal({
                     type="button"
                     key={policyPage}
                     onClick={() => {
-                      setPage(policyPage)
-                      close()
+                      openLinkedPage(policyPage)
                     }}
                   >
                     {label}
@@ -896,25 +994,46 @@ export function LoginModal({
           )}
           {error && <div className="auth-error">{error}</div>}
           <button className="primary-button auth-submit" type="submit" disabled={submitting} onClick={() => undefined}>
-            <UserRound size={17} />
             {submitting
               ? textFor(t, 'Submitting...', '提交中...')
               : mode === 'register'
                 ? textFor(t, 'Create account', '创建账号')
                 : textFor(t, 'Continue with email', '使用邮箱继续')}
+            {!submitting && <ArrowRight size={17} />}
           </button>
         </form>
+        {showLocalTestAccounts && loginAs && (
+          <details className="local-test-account-list">
+            <summary>{textFor(t, 'Local test accounts', '本地测试账号')}</summary>
+            <div>
+              {localTestAccounts.map((account) => (
+                <button
+                  type="button"
+                  key={account.handle}
+                  onClick={() => submitLocalTestAccount(account.handle)}
+                  disabled={submitting}
+                >
+                  <strong>{account.label}</strong>
+                  <small>@{account.hint}</small>
+                </button>
+              ))}
+            </div>
+          </details>
+        )}
+        <div className="auth-divider"><span>{textFor(t, 'or continue with', '或使用以下方式')}</span></div>
         <div className="oauth-provider-list" aria-label={textFor(t, 'Social login providers', '第三方登录方式')}>
-          <div className="oauth-config-status">
-            <ShieldCheck size={15} />
-            <span>
-              {hasExternalOAuthProviders && !hasDevOAuthProviders
-                ? textFor(t, 'External OAuth is configured for this environment.', '当前环境已配置外部 OAuth。')
-                : hasDevOAuthProviders
-                  ? textFor(t, 'Using signed local callbacks in this development environment.', '当前开发环境使用签名本地回调。')
-                  : textFor(t, 'OAuth providers are unavailable in this environment.', '当前环境未启用第三方登录。')}
-            </span>
-          </div>
+          {!isPage && (
+            <div className="oauth-config-status">
+              <ShieldCheck size={15} />
+              <span>
+                {hasExternalOAuthProviders && !hasDevOAuthProviders
+                  ? textFor(t, 'External OAuth is configured for this environment.', '当前环境已配置外部 OAuth。')
+                  : hasDevOAuthProviders
+                    ? textFor(t, 'Using signed local callbacks in this development environment.', '当前开发环境使用签名本地回调。')
+                    : textFor(t, 'OAuth providers are unavailable in this environment.', '当前环境未启用第三方登录。')}
+              </span>
+            </div>
+          )}
           {providers.map((provider) => {
             const status = oauthProviderStatus(provider, t)
             return (
@@ -932,7 +1051,7 @@ export function LoginModal({
                       return
                     }
                     simulateAction(isZh ? `已使用 ${provider.label} 登录` : `Signed in with ${provider.label}`)
-                    close()
+                    finishAuthentication()
                   }).catch((oauthError) => {
                     console.info('[oauth]', oauthError)
                     setError(oauthErrorCopy(oauthError, t))
@@ -941,36 +1060,24 @@ export function LoginModal({
                   })
                 }}
               >
-                <Globe2 size={18} />
-                <span>{isZh ? `使用 ${provider.label} 继续` : `Continue with ${provider.label}`}</span>
-                <b className={status.className} title={status.title}>
-                  {status.label}
-                </b>
+                {isPage ? oauthProviderIcon(provider.provider) : <Globe2 size={18} />}
+                <span>{isPage ? provider.label : isZh ? `使用 ${provider.label} 继续` : `Continue with ${provider.label}`}</span>
+                {!isPage && (
+                  <b className={status.className} title={status.title}>
+                    {status.label}
+                  </b>
+                )}
               </button>
             )
           })}
         </div>
-        {showLocalTestAccounts && (
-          <button
-            className="social-login"
-            type="button"
-            onClick={() => {
-              void loginAs('opsplus').then(() => {
-                setPage('admin')
-                close()
-                simulateAction(isZh ? '已使用本地测试管理员账号登录' : 'Signed in as local admin test account')
-              })
-            }}
-          >
-            <UsersRound size={18} />
-            {textFor(t, 'Local admin test login', '本地测试管理员登录')}
-          </button>
-        )}
         <div className="auth-legal-note">
-          <span>{textFor(t, 'Review our current policies before using the service.', '使用服务前请阅读当前政策。')}</span>
-          <button type="button" onClick={() => { setPage('terms'); close() }}>{t.terms}</button>
-          <button type="button" onClick={() => { setPage('privacy'); close() }}>{t.privacy}</button>
-          <button type="button" onClick={() => { setPage('support'); close() }}>{textFor(t, 'Support', '支持')}</button>
+          <span>{isPage
+            ? textFor(t, 'By continuing, you agree to our', '继续即表示你同意我们的')
+            : textFor(t, 'Review our current policies before using the service.', '使用服务前请阅读当前政策。')}</span>
+          <button type="button" onClick={() => openLinkedPage('terms')}>{t.terms}</button>
+          <button type="button" onClick={() => openLinkedPage('privacy')}>{t.privacy}</button>
+          <button type="button" onClick={() => openLinkedPage('support')}>{textFor(t, 'Support', '支持')}</button>
         </div>
       </section>
     </div>

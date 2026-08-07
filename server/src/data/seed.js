@@ -2,10 +2,10 @@ import fs from 'node:fs/promises'
 import ts from 'typescript'
 import { getPermissionsForRole } from '../auth/permissions.js'
 
-const mockDataPath = new URL('../../../src/data/mockData.ts', import.meta.url)
+const seedFixturePath = new URL('./seedFixture.ts', import.meta.url)
 
-const loadMockData = async () => {
-  const source = await fs.readFile(mockDataPath, 'utf8')
+const loadSeedFixture = async () => {
+  const source = await fs.readFile(seedFixturePath, 'utf8')
   const transpiled = ts.transpileModule(source, {
     compilerOptions: {
       module: ts.ModuleKind.ESNext,
@@ -17,8 +17,8 @@ const loadMockData = async () => {
   return import(dataUrl)
 }
 
-const mockData = await loadMockData()
-const { inspirationItems, marketplaceProfiles, pointsLedger, posts, tasks } = mockData
+const seedFixture = await loadSeedFixture()
+const { inspirationItems, marketplaceProfiles, pointsLedger, posts, tasks } = seedFixture
 
 const rawProfileByHandle = new Map(marketplaceProfiles.map((profile) => [profile.handle, profile]))
 

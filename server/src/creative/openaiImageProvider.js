@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { fileTypeFromBuffer } from 'file-type'
 
 import { HttpError } from '../common/errors/httpError.js'
+import { providerNativeSafetyForGeneration } from './providerNativeSafety.js'
 import { safeProviderFailure } from './providerAdapterContract.js'
 import { parseProviderRetryAfter } from './providerErrorPolicy.js'
 
@@ -48,6 +49,12 @@ const tokenPricesUsdPerMillion = Object.freeze({
   outputImage: 30,
 })
 
+const imageTokenPricingUnits = Object.freeze({
+  inputText: 'input_text_tokens',
+  inputImage: 'input_image_tokens',
+  outputImage: 'output_image_tokens',
+})
+
 const moderationStages = new Set(['input', 'output', 'unknown'])
 const moderationCategories = new Set(['harassment', 'self-harm', 'sexual', 'violence'])
 
@@ -56,6 +63,32 @@ const stableHash = (value) => createHash('sha256').update(JSON.stringify(value ?
 const numberOrNull = (value) => {
   const parsed = Number(value)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+}
+
+export const openAIImagePricingUnitForRequest = (request = {}) => {
+  const size = aspectRatioSizes[request.parameters?.aspectRatio ?? '1:1'] ?? null
+  const quality = request.parameters?.quality ?? 'medium'
+  return size && ['low', 'medium', 'high'].includes(quality)
+    ? `image_output_${size}_${quality}`
+    : null
+}
+
+const databasePricingFor = (source = {}) => {
+  try {
+    const rows = JSON.parse(String(source.CREATIVE_OPENAI_IMAGE_PRICING_JSON ?? '[]'))
+    if (!Array.isArray(rows)) return new Map()
+    return new Map(rows
+      .filter((item) => isRecord(item) && item.currency === 'USD' && typeof item.unit === 'string' && typeof item.id === 'string' && Number.isSafeInteger(Number(item.unitPriceMicros)) && Number(item.unitPriceMicros) >= 0)
+      .map((item) => [item.unit, Object.freeze({
+        id: item.id,
+        unit: item.unit,
+        unitPriceUsd: Number(item.unitPriceMicros) / 1_000_000,
+        effectiveFrom: item.effectiveFrom,
+        effectiveTo: item.effectiveTo ?? null,
+      })]))
+  } catch {
+    return new Map()
+  }
 }
 
 const resolveOpenAIImageModelId = (source = {}) => {
@@ -548,7 +581,7 @@ const budgetStatus = ({ estimateAmount, dailyCapAmount, spentAmount, thresholdPe
   return projectedSpend >= dailyCapAmount * (thresholdPercent / 100) ? 'threshold_exceeded' : 'within_budget'
 }
 
-const calculateActualAmount = (request, usage) => {
+const calculateActualAmount = (request, usage, pricing = null) => {
   if (!usage || !Number.isSafeInteger(usage.output_tokens)) return null
   const details = usage.input_tokens_details
   let textInputTokens = null
@@ -563,9 +596,17 @@ const calculateActualAmount = (request, usage) => {
   }
   if (textInputTokens == null || imageInputTokens == null) return null
   if (Number.isSafeInteger(usage.total_tokens) && usage.total_tokens !== usage.input_tokens + usage.output_tokens) return null
-  const actualMicros = textInputTokens * tokenPricesUsdPerMillion.inputText +
-    imageInputTokens * tokenPricesUsdPerMillion.inputImage +
-    usage.output_tokens * tokenPricesUsdPerMillion.outputImage
+  const tokenPricing = pricing
+    ? {
+        inputText: pricing.get(imageTokenPricingUnits.inputText)?.unitPriceUsd,
+        inputImage: pricing.get(imageTokenPricingUnits.inputImage)?.unitPriceUsd,
+        outputImage: pricing.get(imageTokenPricingUnits.outputImage)?.unitPriceUsd,
+      }
+    : tokenPricesUsdPerMillion
+  if (Object.values(tokenPricing).some((value) => !Number.isFinite(value))) return null
+  const actualMicros = textInputTokens * tokenPricing.inputText +
+    imageInputTokens * tokenPricing.inputImage +
+    usage.output_tokens * tokenPricing.outputImage
   return actualMicros / 1_000_000
 }
 
@@ -577,14 +618,17 @@ export const buildOpenAIImageProviderCostMetadata = ({
 } = {}) => {
   const quality = request.parameters?.quality ?? 'medium'
   const size = aspectRatioSizes[request.parameters?.aspectRatio ?? '1:1'] ?? null
-  const estimateAmount = outputPricesUsdBySize[size]?.[quality] ?? null
+  const databasePricing = databasePricingFor(source)
+  const pricingRequired = String(source.CREATIVE_OPENAI_IMAGE_PRICING_REQUIRED ?? '').trim().toLowerCase() === 'true'
+  const outputPricing = databasePricing.get(openAIImagePricingUnitForRequest(request)) ?? null
+  const estimateAmount = outputPricing?.unitPriceUsd ?? (pricingRequired ? null : outputPricesUsdBySize[size]?.[quality] ?? null)
   const dailyCapAmount = numberOrNull(source.CREATIVE_OPENAI_IMAGE_DAILY_BUDGET_USD)
   const spentAmount = numberOrNull(source.CREATIVE_OPENAI_IMAGE_DAILY_SPEND_USD) ?? 0
   const thresholdPercent = numberOrNull(source.CREATIVE_OPENAI_IMAGE_BUDGET_THRESHOLD_PERCENT) ?? 80
   const status = estimateAmount == null
     ? 'unknown_estimate'
     : budgetStatus({ estimateAmount, dailyCapAmount, spentAmount, thresholdPercent })
-  const actualAmount = result?.output ? calculateActualAmount(request, result.usage) : null
+  const actualAmount = result?.output ? calculateActualAmount(request, result.usage, pricingRequired ? databasePricing : null) : null
   const nowIso = now.toISOString()
   const configuredModelId = resolveOpenAIImageModelId(source)
   return {
@@ -596,7 +640,10 @@ export const buildOpenAIImageProviderCostMetadata = ({
       providerModelVersion: null,
       displayName: 'OpenAI GPT Image 2',
       family: 'image',
-      pricingSource: 'v1_public_list_price',
+      pricingSource: outputPricing ? 'model_control_pricing_version' : 'v1_public_list_price',
+      pricingSourceRef: outputPricing?.id ?? 'openai:gpt-image-2:public-price-table',
+      pricingEffectiveAt: outputPricing?.effectiveFrom ?? nowIso,
+      pricingExpiresAt: outputPricing?.effectiveTo ?? null,
       pricingSnapshotAt: nowIso,
     },
     job: {
@@ -615,6 +662,9 @@ export const buildOpenAIImageProviderCostMetadata = ({
     estimate: {
       currency: 'USD',
       amount: estimateAmount,
+      billingUnit: 'image',
+      quantity: 1,
+      unitPrice: estimateAmount,
       source: 'official_output_price_table',
       confidence: estimateAmount == null ? 'unknown' : 'estimated',
       calculatedAt: nowIso,
@@ -637,7 +687,11 @@ export const buildOpenAIImageProviderCostMetadata = ({
     },
     risk: {
       reconciliationRequired: actualAmount == null,
-      reasonCodes: actualAmount == null ? ['provider_usage_incomplete'] : [],
+      reasonCodes: actualAmount == null
+        ? [pricingRequired
+            ? (databasePricing.size === 0 ? 'trusted_pricing_missing' : 'provider_usage_or_component_pricing_incomplete')
+            : 'provider_usage_incomplete']
+        : [],
     },
   }
 }
@@ -704,12 +758,19 @@ const failedGeneration = ({ request, provider, actor, error, now, generationId }
     safety: {
       moderationRequired: Boolean(moderation),
       reviewRequired: false,
+      providerNative: providerNativeSafetyForGeneration({
+        providerId: provider.id,
+        status: 'failed',
+        providerCategory: failure.providerCategory,
+      }),
       ...(moderation ? { providerModeration: moderation } : {}),
     },
     createdBy: { id: actor.id, handle: actor.handle },
     createdAt: now.toISOString(),
     errorCode: failure.code,
     errorMessagePreview: failure.messagePreview,
+    providerStatusCode: failure.providerStatus,
+    providerCategory: failure.providerCategory,
     failedAt: now.toISOString(),
   }
 }
@@ -771,7 +832,11 @@ export const createOpenAIImageGeneration = async ({
         providerUsageUnit: 'image',
         providerCost: completedCost,
       },
-      safety: { moderationRequired: false, reviewRequired: false },
+      safety: {
+        moderationRequired: false,
+        reviewRequired: false,
+        providerNative: providerNativeSafetyForGeneration({ providerId: provider.id, status: 'completed' }),
+      },
       createdBy: { id: actor.id, handle: actor.handle },
       createdAt: now.toISOString(),
     }

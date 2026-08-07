@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 
-export const evidenceSchemaVersion = 'release-infrastructure-rehearsal-evidence-v1'
+export const evidenceSchemaVersion = 'release-infrastructure-rehearsal-evidence-v3'
+export const preflightSchemaVersion = 'release-infrastructure-preflight-v2'
 
 export const canonicalJson = (value) => {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
@@ -12,9 +13,41 @@ export const canonicalJson = (value) => {
 
 export const sha256 = (value) => createHash('sha256').update(value).digest('hex')
 
+export const sourceSnapshotHash = (source) => sha256(canonicalJson({
+  gitCommit: source.gitCommit,
+  trackedDiffSha256: source.trackedDiffSha256,
+  trackedDiffBytes: source.trackedDiffBytes,
+  untrackedManifestSha256: source.untrackedManifestSha256,
+  untrackedFileCount: source.untrackedFileCount,
+  untrackedBytes: source.untrackedBytes,
+}))
+
 export const receiptHash = (evidence) => {
   const { receiptHash: _ignored, ...unsigned } = evidence
   return sha256(canonicalJson(unsigned))
+}
+
+export const buildSourcePreflight = ({ source, createdAt = new Date() }) => {
+  const preflight = {
+    schemaVersion: preflightSchemaVersion,
+    createdAt: new Date(createdAt).toISOString(),
+    gitCommit: source.gitCommit,
+    sourceSnapshotSha256: source.snapshotSha256,
+    clean: source.clean,
+  }
+  return { ...preflight, receiptHash: receiptHash(preflight) }
+}
+
+export const verifySourcePreflight = ({ preflight, source, now = new Date(), maximumAgeSeconds = 7200 }) => {
+  const failures = []
+  if (preflight?.schemaVersion !== preflightSchemaVersion) failures.push('preflight_schema_version')
+  if (preflight?.receiptHash !== receiptHash(preflight ?? {})) failures.push('preflight_receipt_hash')
+  if (preflight?.clean !== true || source?.clean !== true) failures.push('preflight_source_dirty')
+  if (preflight?.gitCommit !== source?.gitCommit) failures.push('preflight_git_commit_mismatch')
+  if (preflight?.sourceSnapshotSha256 !== source?.snapshotSha256) failures.push('preflight_source_snapshot_mismatch')
+  const ageSeconds = (new Date(now).getTime() - new Date(preflight?.createdAt ?? '').getTime()) / 1000
+  if (!Number.isFinite(ageSeconds) || ageSeconds < 0 || ageSeconds > maximumAgeSeconds) failures.push('preflight_expired')
+  return { valid: failures.length === 0, failures }
 }
 
 export const parseIsolatedPostgresUrl = (value, requiredNameFragment = 'rehearsal') => {
@@ -77,23 +110,33 @@ export const summarizeChecks = (checks) => ({
   failed: checks.filter((check) => !check.pass).length,
 })
 
-export const evaluateObjectives = ({ targets, database, redis, objectStorage }) => ({
+export const evaluateObjectives = ({ targets, database, redis, objectStorage, backupExpiry }) => ({
   databaseRestoreRto: database.restoreSeconds <= targets.databaseRestoreRtoSeconds,
   redisRecoveryRto: redis.recoverySeconds <= targets.redisRecoveryRtoSeconds,
   objectRestoreRto: objectStorage.restoreSeconds <= targets.objectRestoreRtoSeconds,
   rpo: Math.max(database.dataLossSeconds, redis.dataLossSeconds, objectStorage.dataLossSeconds) <= targets.rpoSeconds,
+  backupExpiry:
+    backupExpiry.policyId === 'rolling_backup_35d' &&
+    backupExpiry.simulatedAgeDays === targets.backupRetentionDays &&
+    backupExpiry.databaseBackupDeleted === true &&
+    backupExpiry.databaseRestoreDenied === true &&
+    backupExpiry.objectBackupDeleted === true &&
+    backupExpiry.objectRestoreDenied === true &&
+    backupExpiry.localRestoreCopyDeleted === true,
 })
 
-export const buildEvidence = ({ run, targets, database, redis, objectStorage, checks }) => {
-  const objectiveChecks = evaluateObjectives({ targets, database, redis, objectStorage })
+export const buildEvidence = ({ run, source, targets, database, redis, objectStorage, backupExpiry, checks }) => {
+  const objectiveChecks = evaluateObjectives({ targets, database, redis, objectStorage, backupExpiry })
   const summary = summarizeChecks(checks)
   const evidence = {
     schemaVersion: evidenceSchemaVersion,
     run,
+    source,
     targets,
     database,
     redis,
     objectStorage,
+    backupExpiry,
     checks,
     result: {
       ...summary,
@@ -107,9 +150,16 @@ export const buildEvidence = ({ run, targets, database, redis, objectStorage, ch
 export const verifyEvidence = (evidence) => {
   const failures = []
   if (evidence?.schemaVersion !== evidenceSchemaVersion) failures.push('schema_version')
-  for (const section of ['run', 'targets', 'database', 'redis', 'objectStorage', 'checks', 'result', 'receiptHash']) {
+  for (const section of ['run', 'source', 'targets', 'database', 'redis', 'objectStorage', 'backupExpiry', 'checks', 'result', 'receiptHash']) {
     if (evidence?.[section] == null) failures.push(`missing_${section}`)
   }
+  if (!/^[a-f0-9]{40}$/.test(evidence?.source?.gitCommit ?? '')) failures.push('source_git_commit')
+  if (!/^[a-f0-9]{64}$/.test(evidence?.source?.trackedDiffSha256 ?? '')) failures.push('source_tracked_diff_hash')
+  if (!/^[a-f0-9]{64}$/.test(evidence?.source?.untrackedManifestSha256 ?? '')) failures.push('source_untracked_manifest_hash')
+  if (!/^[a-f0-9]{64}$/.test(evidence?.source?.snapshotSha256 ?? '')) failures.push('source_snapshot_hash')
+  else if (evidence.source.snapshotSha256 !== sourceSnapshotHash(evidence.source)) failures.push('source_snapshot_mismatch')
+  if (typeof evidence?.source?.clean !== 'boolean') failures.push('source_clean_state')
+  if (evidence?.run?.profile === 'env' && evidence?.source?.clean !== true) failures.push('target_source_dirty')
   if (findForbiddenEvidencePaths(evidence).length > 0) failures.push('forbidden_fields')
   if (evidence?.receiptHash !== receiptHash(evidence ?? {})) failures.push('receipt_hash')
   if (evidence?.result?.complete !== true) failures.push('incomplete_result')

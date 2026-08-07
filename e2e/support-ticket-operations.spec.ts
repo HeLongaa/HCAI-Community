@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { apiBaseUrl, apiData, authHeaders, login, signInPage } from './helpers'
+import { apiBaseUrl, apiData, authHeaders, login, selectAdminSection, signInPage } from './helpers'
 import type { ApiSupportRequest } from '../src/services/contracts'
 
 const createTicket = async (request: Parameters<typeof login>[0], suffix: number) => {
@@ -16,7 +16,7 @@ test('support requester and Admin complete search, priority, reply, and lifecycl
   await signInPage(page, request, 'opsplus')
   await page.goto('/')
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('main').getByRole('button', { name: 'Support', exact: true }).click()
+  await selectAdminSection(page, 'Support')
   const panel = page.getByTestId('support-admin-panel')
   await expect(panel).toBeVisible()
   await expect(page.getByLabel('AI dynamic island guide')).toHaveCount(0)
@@ -32,6 +32,8 @@ test('support requester and Admin complete search, priority, reply, and lifecycl
   await detail.locator('.support-detail-controls select').nth(1).selectOption('urgent')
   expect((await priorityResponse).ok()).toBeTruthy()
   await expect(detail).toContainText('urgent')
+  await expect(detail.getByText('Ticket updated.')).toBeVisible()
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
 
   await detail.getByPlaceholder('Reply to requester').fill('We are reviewing your support request now.')
   const replyResponse = page.waitForResponse((response) => response.url().endsWith(`/api/admin/support/tickets/${ticket.id}/messages`) && response.request().method() === 'POST')
@@ -39,6 +41,17 @@ test('support requester and Admin complete search, priority, reply, and lifecycl
   expect((await replyResponse).status()).toBe(201)
   await expect(detail).toContainText('We are reviewing your support request now.')
   await expect(detail).toContainText('in progress')
+  await expect(detail.getByText('Support reply sent.')).toBeVisible()
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
+
+  const missingCaseId = `missing-case-${Date.now()}`
+  await detail.getByPlaceholder('Case ID').fill(missingCaseId)
+  const linkResponse = page.waitForResponse((response) => response.url().endsWith(`/api/admin/support/tickets/${ticket.id}/case-links`) && response.request().method() === 'POST')
+  await detail.getByRole('button', { name: 'Link', exact: true }).click()
+  expect((await linkResponse).ok()).toBeFalsy()
+  await expect(detail.getByText(/Could not link the case/)).toBeVisible()
+  await expect(detail.getByPlaceholder('Case ID')).toHaveValue(missingCaseId)
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
   await panel.screenshot({ path: 'test-results/support-admin-desktop.png' })
 
   await signInPage(page, request, 'promptlin')
@@ -69,7 +82,7 @@ test('support Admin workspace remains bounded on mobile', async ({ page, request
   await page.goto('/')
   await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('main').getByRole('button', { name: 'Support', exact: true }).click()
+  await selectAdminSection(page, 'Support')
   const panel = page.getByTestId('support-admin-panel')
   await expect(panel).toBeVisible()
   const overflow = await panel.evaluate((element) => element.scrollWidth - element.clientWidth)

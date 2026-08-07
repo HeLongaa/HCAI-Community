@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { buildHttpTelemetry, buildIncidentMetrics, buildObservabilityExport, buildSloSummary, defaultObservabilitySloControls } from './observabilityRuntime.js'
+import { buildFrontendSloSummary, buildGenerationSloSummary, buildHttpTelemetry, buildIncidentMetrics, buildObservabilityExport, buildSloSummary, defaultObservabilitySloControls } from './observabilityRuntime.js'
+import { buildRetentionAggregates, observabilityRetentionContract, retentionCutoff, retentionSweepLimit } from './observabilityRetention.js'
+import { projectPersistedObservabilityLog } from './structuredLogging.js'
 
 const logDto = (row) => ({ ...row, timestamp: row.timestamp.toISOString() })
 const spanDto = (row) => ({ ...row, startedAt: row.startedAt.toISOString(), endedAt: row.endedAt.toISOString() })
@@ -51,6 +53,25 @@ export const createPrismaObservabilityRepository = (client, { notifyOnCall = asy
     take: 100_001,
   })
 
+  const recentGenerations = async (now) => client.creativeGeneration.findMany({
+    where: { createdAt: { gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) } },
+    orderBy: { createdAt: 'desc' },
+    take: 100_001,
+    select: {
+      id: true, status: true, retryOfId: true, attemptNumber: true, createdAt: true, startedAt: true, completedAt: true, failedAt: true, updatedAt: true,
+      outputIngestions: { select: { completedAt: true } },
+      assets: { where: { direction: 'output' }, select: { createdAt: true } },
+      mutations: { where: { type: 'cancel', status: 'succeeded' }, select: { type: true, status: true } },
+    },
+  })
+
+  const combinedSummary = (logs, generations, now, sloControls) => {
+    const api = buildSloSummary(logs, now, sloControls)
+    const generation = buildGenerationSloSummary(generations, now, sloControls)
+    const frontend = buildFrontendSloSummary(logs, now, sloControls)
+    return { ...api, generationWindows: generation.windows, frontendWindows: frontend.windows, frontendErrorGroups: frontend.groups, slos: [...api.slos, ...generation.slos, ...frontend.slos] }
+  }
+
   const controls = async (db = client) => {
     const stored = await db.observabilitySloControl.findMany({ orderBy: { sloId: 'asc' } })
     const bySlo = new Map(stored.map((item) => [item.sloId, item]))
@@ -62,11 +83,11 @@ export const createPrismaObservabilityRepository = (client, { notifyOnCall = asy
   })
 
   const evaluate = async () => {
-    const rows = await recentLogs()
-    if (rows.length > 100_000) return { status: 'unverifiable', reason: 'telemetry_window_exceeds_evaluation_limit', alerts: [] }
     const now = new Date()
+    const [rows, generations] = await Promise.all([recentLogs(), recentGenerations(now)])
+    if (rows.length > 100_000 || generations.length > 100_000) return { status: 'unverifiable', reason: 'telemetry_window_exceeds_evaluation_limit', alerts: [] }
     const sloControls = await controls()
-    const summary = buildSloSummary(rows, now, sloControls)
+    const summary = combinedSummary(rows, generations, now, sloControls)
     const notifications = []
     await client.$transaction(async (transaction) => {
       for (const slo of summary.slos) {
@@ -88,7 +109,7 @@ export const createPrismaObservabilityRepository = (client, { notifyOnCall = asy
             },
           })
           if (!existing || existing.state === 'resolved') {
-            await appendEvent(transaction, alert.id, 'fired', { fromState: existing?.state ?? null, toState: 'firing', reasonCode: 'slo_burn_rate_firing', actorRef: 'system', metadata: { controlVersion: slo.controlVersion } })
+            await appendEvent(transaction, alert.id, 'fired', { fromState: existing?.state ?? null, toState: 'firing', reasonCode: 'slo_burn_rate_firing', actorRef: 'system', metadata: { controlVersion: slo.controlVersion, affectedReleases: slo.affectedReleases ?? [], rollbackRecommendation: slo.rollbackRecommendation ?? null } })
             notifications.push({ handles: [slo.primaryOnCallHandle], alert: alertDto(alert), eventType: 'fired' })
           }
         } else if (existing && existing.state !== 'resolved') {
@@ -108,19 +129,89 @@ export const createPrismaObservabilityRepository = (client, { notifyOnCall = asy
   return {
     recordHttp: async (input) => {
       const { log, span } = buildHttpTelemetry(input)
+      const persistedLog = projectPersistedObservabilityLog(log)
       const [storedLog, storedSpan] = await client.$transaction([
-        client.observabilityLog.create({ data: log }),
+        client.observabilityLog.create({ data: persistedLog }),
         client.traceSpan.create({ data: span }),
       ])
       return { log: logDto(storedLog), span: spanDto(storedSpan) }
     },
     record: async ({ log, span = null }) => {
+      const persistedLog = projectPersistedObservabilityLog(log)
       const stored = await client.$transaction(async (transaction) => {
-        const row = await transaction.observabilityLog.create({ data: log })
+        const row = await transaction.observabilityLog.create({ data: persistedLog })
         if (span) await transaction.traceSpan.create({ data: span })
         return row
       })
       return logDto(stored)
+    },
+    sweepRetention: async ({ now = new Date(), limit = observabilityRetentionContract.defaultSweepLimit } = {}) => {
+      const sweepLimit = retentionSweepLimit(limit)
+      const rawLogCutoff = retentionCutoff(now, observabilityRetentionContract.rawLogDays)
+      const traceCutoff = retentionCutoff(now, observabilityRetentionContract.traceDays)
+      const aggregateCutoff = retentionCutoff(now, observabilityRetentionContract.aggregateDays)
+      return client.$transaction(async (transaction) => {
+        const [logs, traces, aggregates] = await Promise.all([
+          transaction.observabilityLog.findMany({
+            where: { timestamp: { lte: rawLogCutoff } },
+            orderBy: [{ timestamp: 'asc' }, { id: 'asc' }],
+            take: sweepLimit,
+            select: {
+              id: true, timestamp: true, service: true, module: true, event: true,
+              outcome: true, statusCode: true, durationMs: true,
+            },
+          }),
+          transaction.traceSpan.findMany({
+            where: { startedAt: { lte: traceCutoff } },
+            orderBy: [{ startedAt: 'asc' }, { id: 'asc' }],
+            take: sweepLimit,
+            select: { id: true },
+          }),
+          transaction.observabilityRetentionAggregate.findMany({
+            where: { bucketStart: { lte: aggregateCutoff } },
+            orderBy: [{ bucketStart: 'asc' }, { id: 'asc' }],
+            take: sweepLimit,
+            select: { id: true },
+          }),
+        ])
+        const grouped = buildRetentionAggregates(logs.filter((log) => log.timestamp > aggregateCutoff))
+        for (const aggregate of grouped) {
+          const where = {
+            bucketStart_service_module_event_outcome_statusClass: {
+              bucketStart: aggregate.bucketStart,
+              service: aggregate.service,
+              module: aggregate.module,
+              event: aggregate.event,
+              outcome: aggregate.outcome,
+              statusClass: aggregate.statusClass,
+            },
+          }
+          await transaction.observabilityRetentionAggregate.upsert({
+            where,
+            create: { id: `observability-retention-${randomUUID()}`, ...aggregate },
+            update: {
+              requestCount: { increment: aggregate.requestCount },
+              durationTotalMs: { increment: aggregate.durationTotalMs },
+            },
+          })
+        }
+        const [deletedLogs, deletedTraces, deletedAggregates] = await Promise.all([
+          transaction.observabilityLog.deleteMany({ where: { id: { in: logs.map((item) => item.id) } } }),
+          transaction.traceSpan.deleteMany({ where: { id: { in: traces.map((item) => item.id) } } }),
+          transaction.observabilityRetentionAggregate.deleteMany({ where: { id: { in: aggregates.map((item) => item.id) } } }),
+        ])
+        return {
+          policyId: observabilityRetentionContract.policyId,
+          inspected: { logs: logs.length, traces: traces.length, aggregates: aggregates.length },
+          deleted: { logs: deletedLogs.count, traces: deletedTraces.count, aggregates: deletedAggregates.count },
+          aggregateBucketsUpdated: grouped.length,
+          cutoffs: {
+            logs: rawLogCutoff.toISOString(),
+            traces: traceCutoff.toISOString(),
+            aggregates: aggregateCutoff.toISOString(),
+          },
+        }
+      })
     },
     list,
     find: async (id) => {
@@ -137,8 +228,9 @@ export const createPrismaObservabilityRepository = (client, { notifyOnCall = asy
       return buildObservabilityExport({ logs: page.items, query: options })
     },
     slos: async () => {
-      const rows = await recentLogs()
-      return rows.length > 100_000 ? { status: 'unverifiable', reason: 'telemetry_window_exceeds_evaluation_limit' } : { ...buildSloSummary(rows, new Date(), await controls()), status: 'complete' }
+      const now = new Date()
+      const [rows, generations, sloControls] = await Promise.all([recentLogs(), recentGenerations(now), controls()])
+      return rows.length > 100_000 || generations.length > 100_000 ? { status: 'unverifiable', reason: 'telemetry_window_exceeds_evaluation_limit' } : { ...combinedSummary(rows, generations, now, sloControls), status: 'complete' }
     },
     evaluateSlos: evaluate,
     listAlerts: async () => (await client.observabilityAlert.findMany({ orderBy: { updatedAt: 'desc' } })).map(alertDto),

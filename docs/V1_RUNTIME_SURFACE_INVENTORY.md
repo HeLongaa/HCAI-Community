@@ -5,7 +5,7 @@ This document records every known demo, mock, catalog, seed, fixture, and fallba
 ## Decision
 
 - Silent production fallback is forbidden.
-- V1-39 resolved all inventoried `release_blocker` entries on 2026-07-14; `productionReady=true` is valid only while the disposition, production-bundle, negative persistence, and smoke guards continue to pass.
+- V1-39 resolved all inventoried fallback `release_blocker` entries on 2026-07-14; `fallbackDispositionComplete=true` is valid only while the disposition, production-bundle, negative persistence, and smoke guards continue to pass. This scoped flag is not global production approval; release, Provider, safety, governance, and target-environment gates decide that separately.
 - Fixture and development implementations may remain only when their environment boundary is explicit and tested.
 - V1-39 owns the final production removal/explicit-unavailable gate; domain tasks own the real replacements.
 - A visible “Demo fallback” label is useful audit evidence today, not permission to ship the fallback in V1.
@@ -16,19 +16,17 @@ This document records every known demo, mock, catalog, seed, fixture, and fallba
 | --- | --- | --- | --- |
 | `frontend-marketplace-demo-state` | Production resolves the catalog module to explicit unavailable data until the task API succeeds; API failure never renders local task success | Retain API-only/error behavior | V1-39, V1-64 |
 | `frontend-community-library-demo-state` | Production uses API content or explicit unavailable records; API failure never renders demo posts or replies | Retain API-only/error behavior | V1-39, V1-66 |
-| `frontend-account-profile-demo-catalog` | Production uses account/profile APIs or an explicit unavailable profile, while demo profiles are excluded from the bundle | Retain API-only/error behavior | V1-36, V1-37, V1-39, V1-66, V1-67 |
-| `frontend-player-search-demo-catalog` | Production player catalog is explicit unavailable and contains no demo tracks; search discovery uses the permission-aware API | Replace the player unavailable state only when a governed catalog API is approved | V1-32, V1-33, V1-35, V1-36, V1-39 |
-| `frontend-explore-demo-catalog` | Production Explore catalog is explicit unavailable and contains no demo radio/works | Replace unavailable state only when a public catalog API is approved | V1-35, V1-36, V1-39 |
+| `frontend-account-profile-demo-catalog` | Account and public profile data comes from authentication and Profiles APIs; identity-only fallback contains no invented activity | Retain API-only/error behavior | V1-36, V1-37, V1-39, V1-66, V1-67 |
+| `frontend-player-search-demo-catalog` | The player starts empty and only opens for a real audio asset; comments remain explicitly unavailable | Replace the empty state only when a governed catalog API is approved | V1-32, V1-33, V1-35, V1-36, V1-39 |
+| `frontend-explore-demo-catalog` | Explore renders an explicit empty state and no invented radio, works, plays, or engagement | Replace unavailable state only when a public catalog API is approved | V1-35, V1-36, V1-39 |
 | `frontend-music-workspace-mock-runtime` | Production defaults the application Provider mode to disabled; fixture Music remains development/test only | Keep disabled until separate Music approval | V1-30 through V1-34, V1-39 |
 | `frontend-video-workspace-mock-runtime` | Production defaults the application Provider mode to disabled; fixture Video remains development/test only | Keep disabled until separate Video approval | V1-25 through V1-29, V1-39 |
 | `creative-image-mock-execution` | Production defaults the application Provider mode to disabled; mock Image execution remains development/test only | Keep disabled until separate Image approval | V1-15 through V1-19, V1-39 |
 | `frontend-admin-demo-queue` | Production uses the permission-scoped Admin API or an explicit unavailable queue; V1-64 removed local review fallback records | Retain API-only/error behavior | V1-39, V1-42, V1-43, V1-64, V1-69 |
-| `frontend-static-plan-api-catalog` | Production pricing/API catalog is explicit unavailable until approved versioned content exists | Replace only with approved product content | V1-39, V1-40, V1-70, V1-78 |
+| `frontend-static-plan-api-catalog` | Pricing reads a validated public catalog configuration and disables purchase when none is approved | Replace only with approved product content | V1-39, V1-40, V1-70, V1-78 |
 | `frontend-points-demo-ledger` | Production uses the Points API or an explicit unavailable ledger | Retain API-only/error behavior | V1-39, V1-40, V1-65 |
-| `frontend-runtime-source-labels` | Shell exposes API, stored, fallback, and mock classifications | Retain until blockers close, then show only real/unavailable states | V1-02, V1-39 |
-| `frontend-mockdata-root` | Vite production resolution replaces the shared demo module with explicit unavailable records; bundle guard rejects known demo markers | Retain only for development/tests | V1-39 |
-
-All 13 direct frontend imports of `src/data/mockData.ts` are checked exactly. Adding, removing, or moving one requires updating the machine inventory in the same pull request.
+| `frontend-runtime-source-labels` | Task, Community, and Points workflows expose explicit API-unavailable copy and never label local fallback as successful data | Retain explicit unavailable states without source-classification labels | V1-02, V1-39 |
+Frontend source has no direct import of `src/data/mockData.ts`. The runtime verifier requires the import set to remain empty.
 
 ## Server Inventory
 
@@ -43,7 +41,7 @@ All 13 direct frontend imports of `src/data/mockData.ts` are checked exactly. Ad
 | `server-provider-fixture-injection` | Replicate dispatch, manual replay clients, OpenAI Image fixture overrides, and the production Chat UI Mock stream remain injectable test boundaries | Retain fixture overrides and keep unapproved Provider paths unregistered | V1-05 through V1-08, V1-12, V1-14, V1-16, V1-21, V1-22, V1-24 |
 | `server-openai-image-staging-provider-boundary` | GPT Image 2 generation/edit dispatch, application acceptance, Provider controls, governed output ingestion, and usage cost closeout exist behind dedicated staging-only client, network, confirmation, credential, and approval gates | Retain guarded staging runtime; keep every network gate, credential, and production enablement off outside explicit acceptance | V1-19, V1-39 |
 | `server-chat-staging-provider-boundary` | A fixed OpenAI Responses stream/classifier client, exact-size attachment reader, Provider controls, and cost closeout exist behind independent staging-only switches | Keep every network, classifier, and attachment-byte switch off until separate Chat staging and production approvals | V1-24, V1-39 |
-| `server-video-capability-contract` | The Video contract, governed inputs, safe Provider operation persistence, guarded Vertex create/status/cancel and private GCS reads, idempotent replay, bounded MP4 ingestion, scanner isolation, terminal accounting, and application acceptance are implemented | Keep every Veo staging switch disabled unless the short-lived acceptance envelope is active; keep Runway, automatic failover, and production enablement disabled | V1-25 through V1-29, AI-VIDEO-01, V1-39 |
+| `server-video-capability-contract` | The Video contract, governed inputs, safe Provider operation persistence, guarded Router create/status and private content reads, explicit unsupported cancellation, idempotent replay, bounded MP4 ingestion, scanner isolation, terminal accounting, and application acceptance are implemented | Keep every Router video staging switch disabled unless the short-lived acceptance envelope is active; keep Runway, automatic failover, and production enablement disabled | V1-25 through V1-29, AI-VIDEO-01, V1-39 |
 | `server-music-capability-contract` | The Music contract freezes instrumental and lyrics-to-song modes, closed parameters, three-minute MP3 output, rights/license/data gates, lifecycle and budgets; ElevenLabs Music v2 has a guarded synchronous staging HTTP runtime, application acceptance, private MP3 ingestion, scanner gating, license evidence, and generated-minute cost closeout | Retain the fail-closed staging runtime; require independent network, credential, Enterprise-rights, training opt-out, license-evidence, budget, and acceptance gates; keep Lyria failover and production enablement unavailable | V1-30 through V1-34, V1-39, AI-MUSIC-01 |
 | `server-provider-alert-fixture-delivery` | Provider budget alerts can dispatch only through approved fixture-injected clients | Replace with separately approved external delivery clients | V1-13, V1-53 |
 | `server-provider-callback-boundary` | Signed Replicate callback intake exists behind an independent staging-only, default-off kill switch | Keep disabled outside an explicitly approved staging callback delivery | V1-06 |
@@ -78,7 +76,7 @@ npm run check:quick
 npm run check:deploy
 ```
 
-The verifier checks paths and markers, exact direct `mockData` imports, visible frontend fallback labels, server demo/mock/fixture boundaries, V1 owners, human-document coverage, and quality-gate wiring.
+The verifier checks paths and markers, the absence of direct `mockData` imports, visible frontend fallback labels, server demo/mock/fixture boundaries, V1 owners, human-document coverage, and quality-gate wiring.
 
 ## Change Control
 

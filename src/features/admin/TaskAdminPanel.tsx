@@ -16,6 +16,9 @@ import type {
   TaskBusinessMetrics,
   TaskBusinessMetricsQuery,
 } from '../../services/contracts'
+import { AdminActionFeedback } from './AdminActionFeedback'
+import { AdminOperationConfirmation } from './AdminOperationConfirmation'
+import { downloadJsonArtifact } from './downloadAdminArtifact'
 
 const statuses: AdminTaskStatus[] = ['draft', 'open', 'assigned', 'in_progress', 'submitted', 'pending_review', 'disputed', 'completed', 'rejected', 'cancelled', 'expired']
 const editableStatuses: AdminTaskStatus[] = ['draft', 'open']
@@ -43,11 +46,9 @@ const draftFor = (task: AdminTaskDto): Draft => ({
 export function TaskAdminPanel({
   hasPermission,
   isZh,
-  notify,
 }: {
   hasPermission: (permission: Permission) => boolean
   isZh: boolean
-  notify: (message: string) => void
 }) {
   const canRead = hasPermission('admin:tasks:read')
   const canManage = hasPermission('admin:tasks:manage')
@@ -78,6 +79,8 @@ export function TaskAdminPanel({
   const [loadingMore, setLoadingMore] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
+  const [pendingAction, setPendingAction] = useState<'cancel' | 'archive' | null>(null)
 
   const query = useMemo<AdminTaskQuery>(() => ({
     search: search.trim() || null,
@@ -130,12 +133,11 @@ export function TaskAdminPanel({
   const exportMetrics = async () => {
     try {
       const document = await adminService.exportTaskBusinessMetrics(metricsQuery)
-      const url = URL.createObjectURL(new Blob([JSON.stringify(document, null, 2)], { type: 'application/json' }))
-      const link = window.document.createElement('a')
-      link.href = url
-      link.download = `task-business-metrics-${new Date().toISOString().slice(0, 10)}.json`
-      link.click()
-      URL.revokeObjectURL(url)
+      downloadJsonArtifact({
+        value: document,
+        fileName: `task-business-metrics-${new Date().toISOString().slice(0, 10)}.json`,
+        mimeType: 'application/json',
+      })
     } catch (exportError) {
       setError(errorMessage(exportError))
     }
@@ -147,6 +149,8 @@ export function TaskAdminPanel({
     setDraft(draftFor(task))
     setLifecycle([])
     setError(null)
+    setActionMessage(null)
+    setPendingAction(null)
     try {
       const [detail, evidence] = await Promise.all([adminService.task(task.id), adminService.taskLifecycle(task.id)])
       setSelected(detail)
@@ -160,17 +164,19 @@ export function TaskAdminPanel({
   const applyMutation = async (operation: () => Promise<AdminTaskDto>, success: string) => {
     setSaving(true)
     setError(null)
+    setActionMessage(null)
     try {
       const updated = await operation()
       setSelected(updated)
       setDraft(draftFor(updated))
       setRows((current) => current.map((item) => item.id === updated.id ? updated : item))
-      notify(success)
+      setActionMessage(success)
       await load()
     } catch (mutationError) {
       setError(errorMessage(mutationError))
     } finally {
       setSaving(false)
+      setPendingAction(null)
     }
   }
 
@@ -213,7 +219,7 @@ export function TaskAdminPanel({
         note,
       })
       setLifecycle((current) => [mutation, ...current.filter((item) => item.id !== mutation.id)])
-      notify(isZh ? '托管状态已完成受控对账。' : 'Escrow state reconciled through the registered recovery action.')
+      setActionMessage(isZh ? '托管状态已完成受控对账。' : 'Escrow state reconciled through the registered recovery action.')
     } catch (recoveryError) {
       setError(errorMessage(recoveryError))
     } finally {
@@ -226,7 +232,7 @@ export function TaskAdminPanel({
     setError(null)
     try {
       const result = await adminService.sweepExpiredTasks()
-      notify(isZh ? `到期扫描完成：扫描 ${result.scanned}，过期 ${result.expired}` : `Expiry sweep complete: ${result.scanned} scanned, ${result.expired} expired.`)
+      setActionMessage(isZh ? `到期扫描完成：扫描 ${result.scanned}，过期 ${result.expired}` : `Expiry sweep complete: ${result.scanned} scanned, ${result.expired} expired.`)
       await load()
     } catch (sweepError) {
       setError(errorMessage(sweepError))
@@ -276,7 +282,7 @@ export function TaskAdminPanel({
       setBulkPreview(null)
       setBulkConfirmation('')
       setSelectedIds([])
-      notify(isZh ? `批量处置完成：成功 ${result.succeededCount}，跳过 ${result.skippedCount}` : `Bulk disposition completed: ${result.succeededCount} succeeded, ${result.skippedCount} skipped.`)
+      setActionMessage(isZh ? `批量处置完成：成功 ${result.succeededCount}，跳过 ${result.skippedCount}` : `Bulk disposition completed: ${result.succeededCount} succeeded, ${result.skippedCount} skipped.`)
       await load()
     } catch (executeError) {
       setError(errorMessage(executeError))
@@ -329,6 +335,7 @@ export function TaskAdminPanel({
       </div>
 
       {error && <div className="task-admin-error" role="alert">{error}</div>}
+      {!error && <AdminActionFeedback message={actionMessage ? { kind: 'success', text: actionMessage } : null} />}
       <div className="task-admin-workspace">
         <div className="task-admin-list" aria-busy={loading}>
           {loading && !rows.length && <div className="empty-state"><strong>{isZh ? '正在加载任务' : 'Loading tasks'}</strong></div>}
@@ -363,10 +370,11 @@ export function TaskAdminPanel({
               <div className="button-row task-admin-actions">
                 {editableStatuses.includes(selected.status) && !selected.archivedAt && <button className="primary-button" type="button" onClick={() => void saveTask()} disabled={saving}><Save size={16} />{isZh ? '保存' : 'Save'}</button>}
                 {selected.status === 'draft' && !selected.archivedAt && <button className="ghost-button" type="button" onClick={() => void transition('publish')} disabled={saving}><PlayCircle size={16} />{isZh ? '发布' : 'Publish'}</button>}
-                {['draft', 'open'].includes(selected.status) && !selected.archivedAt && <button className="ghost-button danger" type="button" onClick={() => void transition('cancel')} disabled={saving}><XCircle size={16} />{isZh ? '取消任务' : 'Cancel task'}</button>}
+                {['draft', 'open'].includes(selected.status) && !selected.archivedAt && <button className="ghost-button danger" type="button" onClick={() => setPendingAction('cancel')} disabled={saving}><XCircle size={16} />{isZh ? '取消任务' : 'Cancel task'}</button>}
                 {['cancelled', 'expired'].includes(selected.status) && <button className="ghost-button" type="button" onClick={() => void recoverEscrow()} disabled={saving}><Wrench size={16} />{isZh ? '托管对账' : 'Reconcile escrow'}</button>}
-                {['draft', 'open', 'completed', 'rejected', 'cancelled', 'expired'].includes(selected.status) && <button className="ghost-button" type="button" onClick={() => void archiveOrRestore()} disabled={saving}>{selected.archivedAt ? <RotateCcw size={16} /> : <Archive size={16} />}{selected.archivedAt ? (isZh ? '恢复' : 'Restore') : (isZh ? '归档' : 'Archive')}</button>}
+                {['draft', 'open', 'completed', 'rejected', 'cancelled', 'expired'].includes(selected.status) && <button className="ghost-button" type="button" onClick={() => selected.archivedAt ? void archiveOrRestore() : setPendingAction('archive')} disabled={saving}>{selected.archivedAt ? <RotateCcw size={16} /> : <Archive size={16} />}{selected.archivedAt ? (isZh ? '恢复' : 'Restore') : (isZh ? '归档' : 'Archive')}</button>}
               </div>
+              {pendingAction && <AdminOperationConfirmation ariaLabel={isZh ? '确认任务操作' : 'Confirm task action'} title={pendingAction === 'cancel' ? (isZh ? '确认取消此任务？' : 'Cancel this task?') : (isZh ? '确认归档此任务？' : 'Archive this task?')} description={pendingAction === 'cancel' ? (isZh ? '取消后任务将进入终止状态，操作会写入生命周期证据。' : 'The task will enter a terminal state and the action will be recorded.') : (isZh ? '任务将从默认运营视图中移除。' : 'The task will be removed from the default operations view.')} confirmLabel={isZh ? '确认执行' : 'Confirm'} cancelLabel={isZh ? '返回' : 'Back'} onConfirm={() => pendingAction === 'cancel' ? void transition('cancel') : void archiveOrRestore()} onCancel={() => setPendingAction(null)} busy={saving} />}
             </>}
             {selected.archivedAt && <div className="task-admin-archive-evidence"><strong>{selected.archiveReasonCode}</strong><span>{selected.archivedByHandle ?? '-'} · {formatDate(selected.archivedAt)}</span><small>{selected.archiveNote}</small></div>}
             {(selected.cancelledAt || selected.expiredAt) && <div className="task-admin-archive-evidence"><strong>{selected.terminalReasonCode ?? '-'}</strong><span>{selected.cancelledAt ? (isZh ? '已取消' : 'Cancelled') : (isZh ? '已过期' : 'Expired')} · {formatDate(selected.cancelledAt ?? selected.expiredAt)}</span></div>}

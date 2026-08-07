@@ -2,18 +2,35 @@ import { created, ok } from '../../common/http/responses.js'
 import { HttpError, notFound } from '../../common/errors/httpError.js'
 import { requirePermission, requireUser } from '../../common/http/auth.js'
 import { readJsonBody } from '../../common/http/request.js'
-import { parseConvertLibraryItemToTaskRequest, parseCreateLibraryItemRequest, parseLibraryListQuery } from '../../contracts/requestParsers.js'
+import { parseConvertLibraryItemToTaskRequest, parseCreateLibraryItemRequest, parseLibraryLifecycleRequest, parseLibraryListQuery } from '../../contracts/requestParsers.js'
 import { repositories } from '../../repositories/index.js'
 
 export const registerLibraryRoutes = (router) => {
   router.add('GET', '/api/library', async (_request, response, context) => {
-    const page = await repositories.library.list(parseLibraryListQuery(context.query))
+    const actor = requireUser(context)
+    const page = await repositories.library.list(parseLibraryListQuery(context.query), actor)
     ok(response, page.items, {
       pagination: {
         limit: page.limit,
         nextCursor: page.nextCursor,
       },
     })
+  })
+
+  router.add('DELETE', '/api/library/items/:id', async (request, response, context) => {
+    const actor = requireUser(context)
+    const body = (await readJsonBody(request)) ?? {}
+    const item = await repositories.library.softDelete(context.params.id, parseLibraryLifecycleRequest(body), actor)
+    if (!item) throw notFound(`/api/library/items/${context.params.id}`)
+    ok(response, item)
+  })
+
+  router.add('POST', '/api/library/items/:id/restore', async (request, response, context) => {
+    const actor = requireUser(context)
+    const body = (await readJsonBody(request)) ?? {}
+    const item = await repositories.library.restore(context.params.id, parseLibraryLifecycleRequest(body), actor)
+    if (!item) throw notFound(`/api/library/items/${context.params.id}`)
+    ok(response, item)
   })
 
   router.add('POST', '/api/library/items', async (request, response, context) => {

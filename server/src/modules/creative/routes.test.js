@@ -7,13 +7,15 @@ import { quotaWindowFor, resetCreativePolicyState } from '../../creative/policy.
 import { signProviderCallbackNonce, signProviderCallbackPayload } from '../../creative/providerCallbackAuth.js'
 import { createReplicateStagingPrediction } from '../../creative/replicateStagingProvider.js'
 import { createOpenAIImageGeneration, projectOpenAIImageGenerationResponse } from '../../creative/openaiImageProvider.js'
-import { createGoogleVeoGeneration } from '../../creative/googleVeoProvider.js'
-import { createElevenLabsMusicGeneration } from '../../creative/elevenLabsMusicProvider.js'
+import { createRouterVideoGeneration } from '../../creative/routerVideoProvider.js'
+import { createRouterMusicGeneration } from '../../creative/routerMusicProvider.js'
 import { executeCreativeGeneration } from '../../creative/generationService.js'
 import { repositories } from '../../repositories/index.js'
 import { createSeedRepository } from '../../repositories/seedRepository.js'
+import { runNotificationDeliveryWorkerOnce } from '../../notifications/notificationDeliveryWorker.js'
 import { sha256 } from '../../creative/generationRecords.js'
 import { registerMediaRoutes } from '../media/routes.js'
+import { registerTrustRoutes } from '../trust/routes.js'
 import { registerCreativeRoutes, resolveCreativeProviderControlPlane } from './routes.js'
 
 const providerOutputPng = Buffer.from(
@@ -34,17 +36,17 @@ const mp3Bytes = () => Buffer.from([
   0x00, 0x00, 0x00, 0x00,
 ])
 
-const elevenLabsMusicResponse = () => ({
+const routerMusicResponse = () => ({
   requestId: 'music-route-fixture-request',
   body: mp3Bytes(),
   contentType: 'audio/mpeg',
   usage: { generatedSeconds: 60, actualCostUsd: 0.15 },
   license: {
     licenseId: 'fixture-license-1',
-    termsVersion: 'enterprise-music-v1',
-    rightsBasis: 'enterprise_music_contract',
-    commercialUseAllowed: true,
-    resaleAndStreamingAllowed: true,
+    termsVersion: 'router-minimax-staging-v1',
+    rightsBasis: 'router_minimax_staging',
+    commercialUseAllowed: false,
+    resaleAndStreamingAllowed: false,
     attributionRequired: false,
     trainingOptOutApplied: true,
     evidenceStatus: 'fixture_only',
@@ -277,6 +279,52 @@ test('creative accounting preview consumes the active personal entitlement decis
   }
 })
 
+test('image accounting preview reads the exact active Model Control price for size and quality', async () => {
+  const repository = createSeedRepository()
+  const deployment = {
+    id: 'preview-image-deployment', key: 'preview-image-staging', version: 1, environment: 'staging', region: 'us', status: 'active', runtimeEnabled: true, trafficEligible: false,
+    adapterType: 'openai_image', providerModelId: 'gpt-image-2', endpointUrl: 'https://router.hctopup.com/v1', secretPurpose: 'image-inference', runtimeConfig: {},
+    modelVersion: {
+      id: 'preview-image-version', status: 'active', capabilities: [{ modality: 'image', operations: ['generate'] }],
+      model: { id: 'preview-image-model', key: 'gpt-image-2', family: 'image', status: 'active', provider: { id: 'preview-image-provider', key: 'hcai-router', status: 'active' } },
+    },
+  }
+  const policy = {
+    id: 'preview-image-policy', key: 'preview-image-policy', version: 1, status: 'active', modality: 'image', operation: 'generate', environment: 'staging', region: 'us', audienceRoles: [], rolloutPercentage: 100, rolloutSeed: 'v1', fallbackMode: 'fail_closed', priority: 1,
+    targets: [{ id: 'preview-image-target', modelDeploymentId: deployment.id, role: 'primary', priority: 1, enabled: true, deployment }],
+  }
+  repository.modelRouting.match = async () => [policy]
+  repository.modelGovernance.findCurrentSecretRef = async () => ({ id: 'preview-image-secret', secretRef: 'secret://env/creative-openai-image-api-token' })
+  repository.modelGovernance.createDecision = async (input) => ({ ...input, id: input.id ?? 'preview-image-decision' })
+  repository.modelControl.findRuntimePricing = async () => null
+  repository.modelControl.findRuntimePricings = async () => [
+    { id: 'price-image-square-high', currency: 'USD', unit: 'image_output_1024x1024_high', unitPriceMicros: 211000, effectiveFrom: '2026-07-22T00:00:00.000Z', effectiveTo: null },
+    { id: 'price-image-input-text', currency: 'USD', unit: 'input_text_tokens', unitPriceMicros: 5000000, effectiveFrom: '2026-07-22T00:00:00.000Z', effectiveTo: null },
+    { id: 'price-image-input-image', currency: 'USD', unit: 'input_image_tokens', unitPriceMicros: 8000000, effectiveFrom: '2026-07-22T00:00:00.000Z', effectiveTo: null },
+    { id: 'price-image-output-token', currency: 'USD', unit: 'output_image_tokens', unitPriceMicros: 30000000, effectiveFrom: '2026-07-22T00:00:00.000Z', effectiveTo: null },
+  ]
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+    source: {
+      NODE_ENV: 'production', ACCESS_TOKEN_SECRET: 'preview-image-access-secret-32-bytes', CREATIVE_PROVIDER_RUNTIME_ENV: 'staging', CREATIVE_PROVIDER_REGION: 'us',
+      CREATIVE_OPENAI_IMAGE_API_TOKEN: 'preview-image-secret-value', CREATIVE_OPENAI_IMAGE_DAILY_BUDGET_USD: '8',
+    },
+    now: new Date('2026-07-22T01:00:00.000Z'),
+  }))
+  try {
+    const preview = await requestJson(server.url, '/api/creative/accounting-policy/preview?workspace=image&mode=text_to_image&providerId=openai-gpt-image-2&aspectRatio=1%3A1&quality=high', {
+      method: 'GET', token: 'demo-access.promptlin',
+    })
+    assert.equal(preview.status, 200)
+    assert.deepEqual(preview.payload.data.providerCost, {
+      availability: 'available', reasonCode: null, estimateAmount: 0.211, currency: 'USD', pricingVersionId: 'price-image-square-high',
+    })
+    assert.equal(JSON.stringify(preview.payload).includes('preview-image-secret-value'), false)
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/creative/providers lists safe provider capability metadata', async () => {
   const server = await createRouteTestServer(registerCreativeRoutes)
   try {
@@ -325,18 +373,19 @@ test('GET /api/creative/providers lists safe provider capability metadata', asyn
     assert.deepEqual(videoCapability.modes, ['text_to_video', 'image_to_video', 'music_video'])
     assert.equal(videoCapability.output.formats[0], 'mp4')
     assert.equal(videoCapability.lifecycle.timeoutSeconds, 900)
-    const veo = payload.data.providers.find((provider) => provider.id === 'google-veo-3-1-fast')
-    assert.equal(veo.enabled, false)
-    assert.equal(veo.configured, false)
-    assert.equal(veo.safeMetadata.c2paExpected, true)
-    assert.equal(veo.safeMetadata.adapterImplemented, true)
-    assert.equal(veo.safeMetadata.adapterRegistered, false)
-    assert.equal(veo.safeMetadata.fixtureAdapterOnly, true)
-    assert.equal(veo.safeMetadata.httpClientImplemented, true)
-    assert.equal(veo.safeMetadata.networkCallsEnabled, false)
-    assert.equal(veo.safeMetadata.lifecycleRegistered, true)
-    assert.equal(veo.safeMetadata.lifecycleEnabled, false)
-    assert.deepEqual(veo.capabilities[0].modes, ['text_to_video', 'image_to_video'])
+    const routerVideo = payload.data.providers.find((provider) => provider.id === 'hcai-router-seedance-2-fast')
+    assert.equal(routerVideo.enabled, false)
+    assert.equal(routerVideo.configured, false)
+    assert.equal(routerVideo.safeMetadata.c2paExpected, false)
+    assert.equal(routerVideo.safeMetadata.cancellationUnsupported, true)
+    assert.equal(routerVideo.safeMetadata.adapterImplemented, true)
+    assert.equal(routerVideo.safeMetadata.adapterRegistered, false)
+    assert.equal(routerVideo.safeMetadata.fixtureAdapterOnly, true)
+    assert.equal(routerVideo.safeMetadata.httpClientImplemented, true)
+    assert.equal(routerVideo.safeMetadata.networkCallsEnabled, false)
+    assert.equal(routerVideo.safeMetadata.lifecycleRegistered, true)
+    assert.equal(routerVideo.safeMetadata.lifecycleEnabled, false)
+    assert.deepEqual(routerVideo.capabilities[0].modes, ['text_to_video', 'image_to_video'])
     const musicCapability = payload.data.providers[0].capabilities.find((capability) => capability.workspace === 'music')
     assert.equal(musicCapability.contractVersion, 'music-capability-v1')
     assert.deepEqual(musicCapability.modes, ['instrumental', 'lyrics_to_song'])
@@ -344,19 +393,19 @@ test('GET /api/creative/providers lists safe provider capability metadata', asyn
     assert.equal(musicCapability.output.durationSeconds.maximum, 180)
     assert.equal(musicCapability.productBoundary.referenceAudioSupported, false)
     assert.equal(musicCapability.productBoundary.textToSpeechSupported, false)
-    const eleven = payload.data.providers.find((provider) => provider.id === 'elevenlabs-music-v2-enterprise')
+    const routerMusic = payload.data.providers.find((provider) => provider.id === 'hcai-router-minimax-music-3')
     const lyria = payload.data.providers.find((provider) => provider.id === 'google-lyria-3-pro-preview')
-    assert.equal(eleven.enabled, false)
-    assert.equal(eleven.configured, false)
-    assert.equal(eleven.safeMetadata.adapterImplemented, true)
-    assert.equal(eleven.safeMetadata.adapterRegistered, false)
-    assert.equal(eleven.safeMetadata.fixtureAdapterOnly, true)
-    assert.equal(eleven.safeMetadata.httpClientImplemented, true)
-    assert.equal(eleven.safeMetadata.networkCallsEnabled, false)
-    assert.equal(eleven.safeMetadata.outputIngestionImplemented, true)
-    assert.equal(eleven.safeMetadata.providerCostCloseoutImplemented, true)
-    assert.equal(eleven.safeMetadata.enterpriseMusicContractRequired, true)
-    assert.deepEqual(eleven.capabilities[0].modes, ['instrumental', 'lyrics_to_song'])
+    assert.equal(routerMusic.enabled, false)
+    assert.equal(routerMusic.configured, false)
+    assert.equal(routerMusic.safeMetadata.adapterImplemented, true)
+    assert.equal(routerMusic.safeMetadata.adapterRegistered, false)
+    assert.equal(routerMusic.safeMetadata.fixtureAdapterOnly, true)
+    assert.equal(routerMusic.safeMetadata.httpClientImplemented, true)
+    assert.equal(routerMusic.safeMetadata.networkCallsEnabled, false)
+    assert.equal(routerMusic.safeMetadata.outputIngestionImplemented, true)
+    assert.equal(routerMusic.safeMetadata.providerCostCloseoutImplemented, true)
+    assert.equal(routerMusic.safeMetadata.routerAndUpstreamTermsRequired, true)
+    assert.deepEqual(routerMusic.capabilities[0].modes, ['instrumental', 'lyrics_to_song'])
     assert.equal(lyria.safeMetadata.previewRiskAcceptanceRequired, true)
     assert.equal(lyria.safeMetadata.automaticFailoverAllowed, false)
     assert.deepEqual(lyria.capabilities[0].modes, ['instrumental'])
@@ -365,7 +414,7 @@ test('GET /api/creative/providers lists safe provider capability metadata', asyn
   }
 })
 
-test('POST /api/creative/generations persists injected ElevenLabs Music fixture output privately', async () => {
+test('POST /api/creative/generations persists injected Router MiniMax Music fixture output privately', async () => {
   resetCreativePolicyState()
   const previousScanProvider = process.env.MEDIA_SCAN_PROVIDER
   process.env.MEDIA_SCAN_PROVIDER = 'mock'
@@ -375,12 +424,12 @@ test('POST /api/creative/generations persists injected ElevenLabs Music fixture 
     (router) => registerCreativeRoutes(router, {
       repositories: repository,
       fixtureAdapters: {
-        'elevenlabs-music-v2-enterprise': (context) => createElevenLabsMusicGeneration({
+        'hcai-router-minimax-music-3': (context) => createRouterMusicGeneration({
           ...context,
           client: {
             compose: async () => {
               fixtureCalls += 1
-              return elevenLabsMusicResponse()
+              return routerMusicResponse()
             },
           },
         }),
@@ -396,7 +445,7 @@ test('POST /api/creative/generations persists injected ElevenLabs Music fixture 
       body: {
         workspace: 'music',
         mode: 'instrumental',
-        providerId: 'elevenlabs-music-v2-enterprise',
+        providerId: 'hcai-router-minimax-music-3',
         prompt: 'A fixture-only governed Music request.',
         parameters: {
           durationSeconds: 60,
@@ -430,7 +479,7 @@ test('POST /api/creative/generations persists injected ElevenLabs Music fixture 
     assert.equal(history.payload.data.outputs[0].scanStatus, 'clean')
     assert.equal(history.payload.data.actions.download.available, true)
     assert.equal(JSON.stringify({ created: payload.data, history: history.payload.data }).includes(mp3Bytes().toString('base64')), false)
-    assert.equal(JSON.stringify(payload.data).includes('api.elevenlabs.io'), false)
+    assert.equal(JSON.stringify(payload.data).includes('router.hctopup.com'), false)
   } finally {
     await server.close()
     if (previousScanProvider == null) delete process.env.MEDIA_SCAN_PROVIDER
@@ -779,6 +828,71 @@ test('POST image-to-image persists governed parent lineage in output and media m
   }
 })
 
+test('POST image-to-image uses the default private S3 input reader without exposing storage credentials', async () => {
+  resetCreativePolicyState()
+  const repository = createSeedRepository()
+  const storageSecret = 'creative-input-storage-secret-value'
+  const source = {
+    NODE_ENV: 'test',
+    STORAGE_DRIVER: 's3',
+    STORAGE_ENDPOINT: 'https://storage.example.com',
+    STORAGE_REGION: 'us-east-1',
+    STORAGE_BUCKET: 'private-media',
+    STORAGE_ACCESS_KEY_ID: 'creative-input-reader-access',
+    STORAGE_SECRET_ACCESS_KEY: storageSecret,
+    STORAGE_SCANNER_READ_TTL_SECONDS: '60',
+  }
+  repository.media.findAccessibleCreativeInput = async (id) => ({
+    id,
+    storageKey: 'private/taskops/governed-source.png',
+    fileName: 'governed-source.png',
+    contentType: 'image/png',
+    sizeBytes: providerOutputPng.length,
+    purpose: 'library_asset',
+    status: 'uploaded',
+    metadata: { security: { scanStatus: 'clean' } },
+  })
+  let storageRequest = null
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+    executionSource: source,
+    executeCreativeGeneration: (options) => executeCreativeGeneration({
+      ...options,
+      now: new Date('2033-07-12T00:00:00.000Z'),
+    }),
+    inputAssetFetchImpl: async (url, options) => {
+      storageRequest = { url, options }
+      return new Response(providerOutputPng, {
+        status: 200,
+        headers: { 'content-length': String(providerOutputPng.length), 'content-type': 'image/png' },
+      })
+    },
+  }))
+  try {
+    const { status, payload } = await requestJson(server.url, '/api/creative/generations', {
+      body: {
+        workspace: 'image',
+        mode: 'image_to_image',
+        prompt: 'Restyle this private governed source',
+        inputAssetIds: ['asset-private-source'],
+        parameters: { aspectRatio: '1:1', stylePreset: 'editorial', strength: 0.6 },
+      },
+      token: 'demo-access.taskops',
+    })
+
+    assert.equal(status, 200)
+    assert.equal(storageRequest.options.redirect, 'error')
+    assert.equal(new URL(storageRequest.url).protocol, 'https:')
+    const serialized = JSON.stringify({ storageRequest, payload })
+    assert.equal(serialized.includes(storageSecret), false)
+    assert.equal(JSON.stringify(payload).includes('storageKey'), false)
+    assert.equal(JSON.stringify(payload).includes(source.STORAGE_ACCESS_KEY_ID), false)
+  } finally {
+    await server.close()
+    resetCreativePolicyState()
+  }
+})
+
 test('POST /api/creative/generations persists an injected OpenAI Image fixture without Provider URLs', async () => {
   resetCreativePolicyState()
   const fixtureNow = new Date('2030-07-12T00:00:00.000Z')
@@ -873,7 +987,7 @@ test('POST /api/creative/generations cannot select the default-disabled OpenAI I
   }
 })
 
-test('POST /api/creative/generations persists only a queued record for the injected Veo fixture boundary', async () => {
+test('POST /api/creative/generations persists only a queued record for the injected Router video fixture boundary', async () => {
   resetCreativePolicyState()
   const repository = createSeedRepository()
   let fixtureCalls = 0
@@ -881,7 +995,7 @@ test('POST /api/creative/generations persists only a queued record for the injec
     (router) => registerCreativeRoutes(router, {
       repositories: repository,
       fixtureAdapters: {
-        'google-veo-3-1-fast': (context) => createGoogleVeoGeneration({
+        'hcai-router-seedance-2-fast': (context) => createRouterVideoGeneration({
           ...context,
           client: {
             createVideo: async () => {
@@ -902,7 +1016,7 @@ test('POST /api/creative/generations persists only a queued record for the injec
       body: {
         workspace: 'video',
         mode: 'text_to_video',
-        providerId: 'google-veo-3-1-fast',
+        providerId: 'hcai-router-seedance-2-fast',
         prompt: 'A fixture-only governed Video request.',
         parameters: {
           aspectRatio: '16:9',
@@ -1426,6 +1540,206 @@ test('POST /api/creative/generations validates request payloads', async () => {
   }
 })
 
+for (const alertCase of [
+  {
+    name: 'Provider balance failures',
+    error: new HttpError(503, 'PROVIDER_BALANCE_INSUFFICIENT', 'Upstream balance failure with secret-provider-token', {
+      providerId: 'hcai-router-seedance-2-fast',
+      providerStatus: 403,
+      providerCategory: 'provider_balance',
+      reasonCode: 'provider_balance_insufficient',
+      retryable: false,
+    }),
+    event: 'creative.provider_balance.insufficient',
+    status: 503,
+  },
+  {
+    name: 'quota failures',
+    error: new HttpError(429, 'CREATIVE_QUOTA_EXCEEDED', 'Quota failure with secret-provider-token', {
+      providerId: 'hcai-router-seedance-2-fast',
+      providerCategory: 'quota',
+      reasonCode: 'quota_exceeded',
+      retryable: false,
+    }),
+    event: 'creative.provider_quota.dispatch_blocked',
+    status: 429,
+  },
+  {
+    name: 'Provider status failures',
+    error: new HttpError(503, 'MODEL_RUNTIME_ROUTE_UNAVAILABLE', 'Provider URL https://provider.example/jobs/secret-job', {
+      providerId: 'hcai-router-seedance-2-fast',
+      providerStatus: 502,
+      providerCategory: 'provider_5xx',
+      reasonCode: 'provider_health_expired',
+      retryable: true,
+    }),
+    event: 'creative.provider_status.dispatch_blocked',
+    status: 503,
+  },
+]) {
+  test(`POST /api/creative/generations sends safe operations alerts for ${alertCase.name}`, async () => {
+    const repository = createSeedRepository()
+    const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+      repositories: repository,
+      executionSource: { NODE_ENV: 'test', CREATIVE_PROVIDER_MODE: 'mock' },
+      executeCreativeGeneration: async () => {
+        throw alertCase.error
+      },
+    }))
+    try {
+      const result = await requestJson(server.url, '/api/creative/generations', {
+        token: 'demo-access.promptlin',
+        body: {
+          workspace: 'image',
+          mode: 'text_to_image',
+          providerId: 'mock',
+          prompt: 'Confidential launch prompt that must stay out of operations alerts',
+        },
+      })
+
+      assert.equal(result.status, alertCase.status)
+      assert.equal(result.payload.error.code, alertCase.error.code)
+      const operations = await repository.notifications.list(
+        { handle: 'opsplus' },
+        { readState: 'all', type: alertCase.event, limit: 100 },
+      )
+      const notification = operations.items.find((item) =>
+        item.metadata.sourceKey?.startsWith(`${alertCase.event}:gen_mock_`) &&
+        item.metadata.sourceKey?.endsWith(`:${alertCase.error.code}`),
+      )
+      assert.ok(notification, JSON.stringify(operations.items.map((item) => item.metadata)))
+      assert.equal(notification.metadata.providerId, alertCase.error.details.providerId)
+      assert.equal(
+        notification.metadata.providerStatus ?? null,
+        alertCase.error.details.providerStatus == null ? null : String(alertCase.error.details.providerStatus),
+      )
+      assert.equal(notification.metadata.providerCategory, alertCase.error.details.providerCategory)
+      assert.equal(notification.metadata.statusCode, alertCase.status)
+      assert.equal(notification.metadata.retryable, alertCase.error.details.retryable)
+
+      const serialized = JSON.stringify(notification)
+      assert.equal(serialized.includes('secret-provider-token'), false)
+      assert.equal(serialized.includes('https://provider.example'), false)
+      assert.equal(serialized.includes('Confidential launch prompt'), false)
+    } finally {
+      await server.close()
+    }
+  })
+}
+
+test('POST /api/creative/generations preserves the original failure when operations alert delivery fails', async () => {
+  const repository = createSeedRepository()
+  repository.providerLifecycleNotifications.create = async () => {
+    throw new Error('notification store unavailable')
+  }
+  const originalError = new HttpError(503, 'PROVIDER_BALANCE_INSUFFICIENT', 'Provider balance is unavailable', {
+    providerId: 'hcai-router-seedance-2-fast',
+    providerStatus: 403,
+    providerCategory: 'provider_balance',
+    reasonCode: 'provider_balance_insufficient',
+    retryable: false,
+  })
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+    executionSource: { NODE_ENV: 'test', CREATIVE_PROVIDER_MODE: 'mock' },
+    executeCreativeGeneration: async () => {
+      throw originalError
+    },
+  }))
+  try {
+    const result = await requestJson(server.url, '/api/creative/generations', {
+      token: 'demo-access.promptlin',
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        providerId: 'mock',
+        prompt: 'Alert delivery failure isolation',
+      },
+    })
+
+    assert.equal(result.status, 503)
+    assert.equal(result.payload.error.code, originalError.code)
+    assert.equal(result.payload.error.message, originalError.message)
+  } finally {
+    await server.close()
+  }
+})
+
+test('POST /api/creative/generations queues and delivers safe operations email for Provider failures', async () => {
+  const previous = Object.fromEntries([
+    'NOTIFICATION_EMAIL_DELIVERY_ENABLED',
+    'NOTIFICATION_EMAIL_WEBHOOK_URL',
+    'NOTIFICATION_DELIVERY_WORKER_ENABLED',
+  ].map((key) => [key, process.env[key]]))
+  Object.assign(process.env, {
+    NOTIFICATION_EMAIL_DELIVERY_ENABLED: 'true',
+    NOTIFICATION_EMAIL_WEBHOOK_URL: 'https://mailer.example.com/notifications',
+    NOTIFICATION_DELIVERY_WORKER_ENABLED: 'true',
+  })
+  const repository = createSeedRepository()
+  const providerError = new HttpError(503, 'PROVIDER_BALANCE_INSUFFICIENT', 'Provider secret must not reach email', {
+    providerId: 'hcai-router-seedance-2-fast',
+    providerStatus: 403,
+    providerCategory: 'provider_balance',
+    reasonCode: 'provider_balance_insufficient',
+    retryable: false,
+  })
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+    executionSource: { NODE_ENV: 'test', CREATIVE_PROVIDER_MODE: 'mock' },
+    executeCreativeGeneration: async () => {
+      throw providerError
+    },
+  }))
+  try {
+    const result = await requestJson(server.url, '/api/creative/generations', {
+      token: 'demo-access.promptlin',
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        providerId: 'mock',
+        prompt: 'Confidential prompt must not reach operations email',
+      },
+    })
+    assert.equal(result.status, 503)
+    assert.equal(result.payload.error.code, providerError.code)
+
+    const queued = await repository.notificationDeliveries.list({
+      channel: 'email',
+      status: 'queued',
+      notificationType: 'creative.provider_balance.insufficient',
+      limit: 100,
+    })
+    assert.ok(queued.items.length > 0)
+
+    const sentClaims = []
+    const delivery = await runNotificationDeliveryWorkerOnce({
+      repositories: repository,
+      emailClient: {
+        send: async (claim) => {
+          sentClaims.push(claim)
+          return { outcome: 'sent', statusCode: 202, receiptHash: 'a'.repeat(64) }
+        },
+      },
+      workerId: 'provider-alert-email-route-test',
+      limit: 100,
+    })
+    assert.ok(delivery.sent > 0)
+    const sent = sentClaims.find((claim) => claim.notification?.type === 'creative.provider_balance.insufficient')
+    assert.ok(sent)
+    const serialized = JSON.stringify(sent)
+    assert.equal(serialized.includes('Provider secret must not reach email'), false)
+    assert.equal(serialized.includes('Confidential prompt'), false)
+    assert.equal(serialized.includes('mailer.example.com'), false)
+  } finally {
+    await server.close()
+    for (const [key, value] of Object.entries(previous)) {
+      if (value == null) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+})
+
 test('model-routed creative requests create Provider controls without a startup client', () => {
   const controlPlane = resolveCreativeProviderControlPlane({
     repositories: { creativeProviderControls: {} },
@@ -1617,6 +1931,7 @@ test('POST /api/creative/generations can run a Replicate staging fixture through
     (router) => registerCreativeRoutes(router, {
       fixtureAdapters,
       providerOutputFetcher: fixtureProviderOutputFetcher,
+      outputSafetyClassifier: async () => ({ decision: 'allow', classifierId: 'replicate-route-fixture', classifierVersion: '1', categories: [] }),
     }),
     registerMediaRoutes,
   )
@@ -1692,6 +2007,128 @@ test('POST /api/creative/generations can run a Replicate staging fixture through
   }
 })
 
+test('POST Replicate generation persists threshold and anomaly operations alerts after cost closeout', async () => {
+  resetCreativePolicyState()
+  const restoreEnv = applyReplicateStagingFixtureEnv({
+    CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD: '3.75',
+    MEDIA_SCAN_PROVIDER: 'manual',
+  })
+  const repository = createSeedRepository()
+  const fixtureAdapters = {
+    'replicate-staging': (context) => createReplicateStagingPrediction({
+      ...context,
+      client: {
+        createPrediction: async () => ({
+          id: 'pred-budget-threshold-route',
+          status: 'succeeded',
+          output: ['https://replicate.example/budget-threshold.png'],
+          metrics: { predict_time: 2 },
+          costUsd: 1.5,
+          completed_at: '2026-07-06T00:20:00.000Z',
+        }),
+      },
+    }),
+  }
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+    fixtureAdapters,
+    providerOutputFetcher: fixtureProviderOutputFetcher,
+    outputSafetyClassifier: async () => ({ decision: 'allow', classifierId: 'budget-route-fixture', classifierVersion: '1', categories: [] }),
+  }))
+  try {
+    const result = await requestJson(server.url, '/api/creative/generations', {
+      token: 'demo-access.promptlin',
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        providerId: 'replicate-staging',
+        prompt: 'A safe budget threshold fixture',
+      },
+    })
+
+    assert.equal(result.status, 200, JSON.stringify(result.payload))
+    assert.equal(result.payload.data.usage.providerCost.budget.status, 'threshold_exceeded')
+    assert.equal(result.payload.data.usage.providerCost.risk.costExceededEstimate, true)
+    const thresholdAudits = repository.audit.list({ action: 'creative.provider_budget.threshold_crossed', limit: 100 })
+    const anomalyAudits = repository.audit.list({ action: 'creative.provider_cost.anomaly_detected', limit: 100 })
+    assert.ok(thresholdAudits.items.some((event) => event.metadata.crossedThresholdPercent === 80))
+    assert.ok(anomalyAudits.items.some((event) => event.metadata.reasonCode === 'estimate_exceeded_critical'))
+    const operations = await repository.notifications.list(
+      { handle: 'finops' },
+      { readState: 'all', resourceType: 'creative_provider_budget', limit: 100 },
+    )
+    assert.ok(operations.items.some((item) => item.type === 'creative.provider_budget.threshold_80'))
+    assert.ok(operations.items.some((item) => item.type === 'creative.provider_cost.anomaly_detected'))
+    const serialized = JSON.stringify(operations.items)
+    assert.equal(serialized.includes('budget-threshold.png'), false)
+    assert.equal(serialized.includes('A safe budget threshold fixture'), false)
+  } finally {
+    await server.close()
+    restoreEnv()
+    resetCreativePolicyState()
+  }
+})
+
+test('POST Replicate generation records a budget block before Provider dispatch', async () => {
+  resetCreativePolicyState()
+  const restoreEnv = applyReplicateStagingFixtureEnv({
+    CREATIVE_STAGING_PROVIDER_DAILY_SPEND_USD: '4.9',
+  })
+  const repository = createSeedRepository()
+  let adapterCalls = 0
+  const server = await createRouteTestServer((router) => registerCreativeRoutes(router, {
+    repositories: repository,
+    fixtureAdapters: {
+      'replicate-staging': async () => {
+        adapterCalls += 1
+        throw new Error('Provider adapter must not run after a budget block')
+      },
+    },
+  }))
+  try {
+    const result = await requestJson(server.url, '/api/creative/generations', {
+      token: 'demo-access.promptlin',
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        providerId: 'replicate-staging',
+        prompt: 'A budget blocked fixture',
+      },
+    })
+
+    assert.equal(result.status, 429)
+    assert.equal(result.payload.error.code, 'CREATIVE_PROVIDER_BUDGET_EXCEEDED')
+    assert.equal(adapterCalls, 0)
+    const audits = repository.audit.list({ action: 'creative.provider_budget.dispatch_blocked', limit: 100 })
+    assert.ok(audits.items.some((event) => event.metadata.reasonCode === 'over_budget'))
+    const operations = await repository.notifications.list(
+      { handle: 'finops' },
+      { readState: 'all', type: 'creative.provider_budget.dispatch_blocked', limit: 100 },
+    )
+    assert.ok(operations.items.some((item) => item.metadata.reasonCode === 'over_budget'))
+
+    repository.providerBudgetAudit.recordMany = async () => {
+      throw new Error('budget audit store unavailable')
+    }
+    const isolated = await requestJson(server.url, '/api/creative/generations', {
+      token: 'demo-access.promptlin',
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        providerId: 'replicate-staging',
+        prompt: 'A second budget blocked fixture',
+      },
+    })
+    assert.equal(isolated.status, 429)
+    assert.equal(isolated.payload.error.code, 'CREATIVE_PROVIDER_BUDGET_EXCEEDED')
+    assert.equal(adapterCalls, 0)
+  } finally {
+    await server.close()
+    restoreEnv()
+    resetCreativePolicyState()
+  }
+})
+
 test('POST /api/creative/generations blocks unsafe Replicate fixture prompts before adapter dispatch', async () => {
   resetCreativePolicyState()
   const restoreEnv = applyReplicateStagingFixtureEnv()
@@ -1718,18 +2155,93 @@ test('POST /api/creative/generations blocks unsafe Replicate fixture prompts bef
       token: 'demo-access.promptlin',
     })
 
-    assert.equal(status, 422)
-    assert.equal(payload.data, null)
-    assert.equal(payload.error.code, 'CREATIVE_MODERATION_BLOCKED')
+    assert.equal(status, 200)
+    assert.equal(payload.data.status, 'review_required')
+    assert.equal(payload.data.safety.decision, 'block')
+    assert.equal(payload.data.credit, null)
+    assert.equal(payload.data.quota, null)
+    assert.ok(payload.data.safety.moderationCaseId)
     assert.equal(adapterCalls, 0)
     const after = await repositories.creativeGenerations.list({
       actorHandle: 'promptlin',
       limit: 100,
     })
-    assert.equal(after.items.length, before.items.length)
+    assert.equal(after.items.length, before.items.length + 1)
+    const blockedRecord = await repositories.creativeGenerations.find(payload.data.id)
+    assert.equal(blockedRecord.status, 'review_required')
   } finally {
     await server.close()
     restoreEnv()
+    resetCreativePolicyState()
+  }
+})
+
+test('POST image generation creates a Trust case when multimodal input safety blocks before dispatch', async () => {
+  resetCreativePolicyState()
+  const repository = createSeedRepository()
+  const source = {
+    NODE_ENV: 'production',
+    ACCESS_TOKEN_SECRET: 'creative-input-safety-route-secret-at-least-32-bytes',
+    CREATIVE_OPENAI_IMAGE_DAILY_BUDGET_USD: '8',
+  }
+  let adapterCalls = 0
+  repository.media.findAccessibleCreativeInput = async (id, actor) => id === 'unsafe-reference' && actor.handle === 'promptlin'
+    ? {
+        id,
+        ownerHandle: actor.handle,
+        purpose: 'library_asset',
+        contentType: 'image/png',
+        sizeBytes: providerOutputPng.length,
+        status: 'uploaded',
+        metadata: { security: { scanStatus: 'clean' } },
+      }
+    : null
+  const server = await createRouteTestServer(
+    (router) => registerCreativeRoutes(router, {
+      repositories: repository,
+      source,
+      executionSource: source,
+      inputAssetReader: async () => ({ body: providerOutputPng }),
+      inputSafetyClassifier: async () => ({
+        decision: 'block',
+        classifierId: 'multimodal-input',
+        classifierVersion: '2026-07',
+        categories: ['graphic_violence'],
+      }),
+      fixtureAdapters: {
+        'openai-gpt-image-2': async () => {
+          adapterCalls += 1
+          throw new Error('Provider adapter must not run')
+        },
+      },
+    }),
+    (router) => registerTrustRoutes(router, { repositories: repository }),
+  )
+  try {
+    const result = await requestJson(server.url, '/api/creative/generations', {
+      token: 'demo-access.promptlin',
+      body: {
+        workspace: 'image',
+        mode: 'image_to_image',
+        providerId: 'openai-gpt-image-2',
+        prompt: 'Create a restrained editorial variation.',
+        inputAssetIds: ['unsafe-reference'],
+        parameters: { aspectRatio: '1:1', stylePreset: 'none', strength: 0.6, quality: 'medium' },
+      },
+    })
+
+    assert.equal(result.status, 200)
+    assert.equal(result.payload.data.status, 'review_required')
+    assert.equal(result.payload.data.safety.decision, 'block')
+    assert.equal(result.payload.data.safety.input.decision, 'block')
+    assert.ok(result.payload.data.safety.moderationCaseId)
+    assert.equal(result.payload.data.quota, null)
+    assert.equal(result.payload.data.credit, null)
+    assert.equal(adapterCalls, 0)
+    const ownCases = await requestJson(server.url, '/api/trust/cases', { method: 'GET', token: 'demo-access.promptlin' })
+    assert.ok(ownCases.payload.data.some((item) => item.id === result.payload.data.safety.moderationCaseId))
+  } finally {
+    await server.close()
     resetCreativePolicyState()
   }
 })
@@ -2039,14 +2551,14 @@ test('POST /api/creative/generations closes out cancelled Replicate fixture gene
   }
 })
 
-test('POST /api/creative/generations returns moderation errors before generation', async () => {
+test('POST /api/creative/generations persists direct policy blocks and lets the owner appeal without dispatch costs', async () => {
   resetCreativePolicyState()
-  const server = await createRouteTestServer(registerCreativeRoutes)
+  const repository = createSeedRepository()
+  const server = await createRouteTestServer(
+    (router) => registerCreativeRoutes(router, { repositories: repository }),
+    (router) => registerTrustRoutes(router, { repositories: repository }),
+  )
   try {
-    const before = await repositories.creativeGenerations.list({
-      actorHandle: 'promptlin',
-      limit: 100,
-    })
     const { status, payload } = await requestJson(server.url, '/api/creative/generations', {
       body: {
         workspace: 'image',
@@ -2056,16 +2568,48 @@ test('POST /api/creative/generations returns moderation errors before generation
       token: 'demo-access.promptlin',
     })
 
-    assert.equal(status, 422)
-    assert.equal(payload.data, null)
-    assert.equal(payload.error.code, 'CREATIVE_MODERATION_BLOCKED')
-    assert.equal(payload.error.details.policyVersion, 'creative-policy-v1')
-    assert.equal(payload.error.details.reasons[0].id, 'credential_abuse')
-    const after = await repositories.creativeGenerations.list({
-      actorHandle: 'promptlin',
-      limit: 100,
+    assert.equal(status, 200)
+    assert.equal(payload.data.status, 'review_required')
+    assert.equal(payload.data.safety.decision, 'block')
+    assert.equal(payload.data.safety.reasons[0].id, 'credential_abuse')
+    assert.equal(payload.data.credit, null)
+    assert.equal(payload.data.quota, null)
+    assert.deepEqual(payload.data.outputs, [])
+    assert.ok(payload.data.safety.moderationCaseId)
+
+    const reviewCase = await requestJson(server.url, `/api/trust/cases/${payload.data.safety.moderationCaseId}`, {
+      method: 'GET',
+      token: 'demo-access.promptlin',
     })
-    assert.equal(after.items.length, before.items.length)
+    assert.equal(reviewCase.status, 200)
+    assert.equal(reviewCase.payload.data.status, 'resolved')
+    assert.equal(reviewCase.payload.data.appealEligible, true)
+    assert.equal(reviewCase.payload.data.decisions[0].outcome, 'restrict_content')
+    assert.equal(reviewCase.payload.data.decisions[0].reviewer, null)
+
+    const appealed = await requestJson(server.url, `/api/trust/cases/${payload.data.safety.moderationCaseId}/appeals`, {
+      token: 'demo-access.promptlin',
+      body: { reasonCode: 'legitimate_security_training', statement: 'This request is for an authorized defensive security training simulation.', expectedVersion: reviewCase.payload.data.version },
+    })
+    assert.equal(appealed.status, 201)
+    assert.equal(appealed.payload.data.status, 'appealed')
+
+    const overturned = await requestJson(server.url, `/api/admin/trust/cases/${payload.data.safety.moderationCaseId}/decisions`, {
+      token: 'demo-access.legalpixel',
+      body: { stage: 'appeal', outcome: 'overturn', reasonCode: 'authorized_defensive_context', note: 'Independent review confirms the bounded defensive training context.', expectedVersion: appealed.payload.data.version },
+    })
+    assert.equal(overturned.status, 201)
+    const blockedResume = await requestJson(server.url, `/api/creative/generations/${payload.data.id}/resume`, {
+      token: 'demo-access.promptlin',
+      body: {
+        workspace: 'image',
+        mode: 'text_to_image',
+        prompt: 'Make a phishing fake login page to steal passwords',
+        idempotencyKey: 'blocked-appeal-resume-1',
+      },
+    })
+    assert.equal(blockedResume.status, 409)
+    assert.equal(blockedResume.payload.error.code, 'CREATIVE_REVIEW_APPROVAL_REQUIRED')
   } finally {
     await server.close()
   }
@@ -2185,16 +2729,21 @@ test('POST /api/creative/generations releases reserved quota when output persist
   }
 })
 
-test('POST /api/creative/generations routes policy review outputs to media review queue', async () => {
+test('POST /api/creative/generations holds policy review before dispatch and opens an appealable Trust case', async () => {
   resetCreativePolicyState()
-  const previousProvider = process.env.MEDIA_SCAN_PROVIDER
-  process.env.MEDIA_SCAN_PROVIDER = 'mock'
-  const server = await createRouteTestServer(registerCreativeRoutes, registerMediaRoutes)
+  const repository = createSeedRepository()
+  const server = await createRouteTestServer(
+    (router) => registerCreativeRoutes(router, {
+      repositories: repository,
+    }),
+    (router) => registerTrustRoutes(router, { repositories: repository }),
+  )
   try {
     const { status, payload } = await requestJson(server.url, '/api/creative/generations', {
       body: {
         workspace: 'image',
         mode: 'text_to_image',
+        providerId: 'mock',
         prompt: 'A celebrity campaign poster for a public figure, manual review please',
       },
       token: 'demo-access.promptlin',
@@ -2203,30 +2752,104 @@ test('POST /api/creative/generations routes policy review outputs to media revie
     assert.equal(status, 200)
     assert.equal(payload.data.safety.reviewRequired, true)
     assert.equal(payload.data.status, 'review_required')
-    assert.equal(payload.data.credit.status, 'settled')
-    assert.equal(payload.data.credit.reasonCode, 'generation_review_required')
+    assert.equal(payload.data.credit, null)
+    assert.equal(payload.data.quota, null)
+    assert.deepEqual(payload.data.outputs, [])
+    assert.ok(payload.data.safety.moderationCaseId)
     assert.equal(payload.data.generationRecord.status, 'review_required')
-    assert.equal(payload.data.generationRecord.credit.status, 'settled')
-    assert.equal(payload.data.outputs[0].storage.scanStatus, 'review')
-    assert.equal(payload.data.outputs[0].mediaAsset.scanStatus, 'review')
+    assert.equal(payload.data.generationRecord.credit, null)
 
-    const assetId = payload.data.outputs[0].storage.mediaAssetId
-    const reviewQueue = await requestJson(server.url, `/api/media/review-queue?status=review&search=${assetId}`, {
+    const ownCases = await requestJson(server.url, '/api/trust/cases', {
       method: 'GET',
-      token: 'demo-access.opsplus',
+      token: 'demo-access.promptlin',
     })
-    assert.equal(reviewQueue.status, 200)
-    const queuedAsset = reviewQueue.payload.data.find((asset) => asset.id === assetId)
-    assert.ok(queuedAsset)
-    assert.equal(queuedAsset.metadata.creative.safety.reviewRequired, true)
-    assert.equal(queuedAsset.metadata.security.creativeReviewRequired, true)
+    const reviewCase = ownCases.payload.data.find((item) => item.id === payload.data.safety.moderationCaseId)
+    assert.ok(reviewCase)
+    assert.equal(reviewCase.targetType, 'creative_generation')
+
+    const decided = await requestJson(server.url, `/api/admin/trust/cases/${reviewCase.id}/decisions`, {
+      token: 'demo-access.opsplus',
+      body: { stage: 'original', outcome: 'restrict_content', reasonCode: 'pre_dispatch_review_rejected', note: 'Rights evidence is insufficient.', expectedVersion: reviewCase.version },
+    })
+    assert.equal(decided.status, 201)
+    const appealed = await requestJson(server.url, `/api/trust/cases/${reviewCase.id}/appeals`, {
+      token: 'demo-access.promptlin',
+      body: { reasonCode: 'rights_evidence_available', statement: 'I can provide the required rights and consent evidence.', expectedVersion: decided.payload.data.version },
+    })
+    assert.equal(appealed.status, 201)
+    assert.equal(appealed.payload.data.status, 'appealed')
   } finally {
     await server.close()
-    if (previousProvider == null) {
-      delete process.env.MEDIA_SCAN_PROVIDER
-    } else {
-      process.env.MEDIA_SCAN_PROVIDER = previousProvider
-    }
+  }
+})
+
+test('approved creative review resumes once with request matching and fresh accounting checks', async () => {
+  resetCreativePolicyState()
+  const repository = createSeedRepository()
+  let resumeDispatches = 0
+  const server = await createRouteTestServer(
+    (router) => registerCreativeRoutes(router, {
+      repositories: repository,
+      executeCreativeGeneration: async (options) => {
+        if (options.reviewApproval) resumeDispatches += 1
+        return executeCreativeGeneration(options)
+      },
+    }),
+    (router) => registerTrustRoutes(router, { repositories: repository }),
+  )
+  const generationBody = {
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'mock',
+    prompt: 'A celebrity campaign poster for a public figure, manual review please',
+  }
+  try {
+    const held = await requestJson(server.url, '/api/creative/generations', { body: generationBody, token: 'demo-access.promptlin' })
+    assert.equal(held.status, 200)
+    assert.equal(held.payload.data.status, 'review_required')
+    const reviewCase = await requestJson(server.url, `/api/trust/cases/${held.payload.data.safety.moderationCaseId}`, { method: 'GET', token: 'demo-access.promptlin' })
+    const approved = await requestJson(server.url, `/api/admin/trust/cases/${reviewCase.payload.data.id}/decisions`, {
+      token: 'demo-access.opsplus',
+      body: { stage: 'original', outcome: 'no_action', reasonCode: 'rights_verified', note: 'Rights and consent evidence are sufficient for this request.', expectedVersion: reviewCase.payload.data.version },
+    })
+    assert.equal(approved.status, 201)
+
+    const mismatch = await requestJson(server.url, `/api/creative/generations/${held.payload.data.id}/resume`, {
+      token: 'demo-access.promptlin',
+      body: { ...generationBody, prompt: `${generationBody.prompt} changed`, idempotencyKey: 'review-resume-mismatch-1' },
+    })
+    assert.equal(mismatch.status, 409)
+    assert.equal(mismatch.payload.error.code, 'CREATIVE_REVIEW_RESUME_REQUEST_MISMATCH')
+
+    const resumed = await requestJson(server.url, `/api/creative/generations/${held.payload.data.id}/resume`, {
+      token: 'demo-access.promptlin',
+      body: { ...generationBody, idempotencyKey: 'review-resume-approved-1' },
+    })
+    assert.equal(resumed.status, 200, JSON.stringify(resumed.payload))
+    assert.equal(resumed.payload.data.status, 'completed')
+    assert.equal(resumed.payload.data.id, held.payload.data.id)
+    assert.equal(resumed.payload.data.safety.reviewApproval.decisionOutcome, 'no_action')
+    assert.equal(resumed.payload.data.credit.status, 'settled')
+    assert.ok(resumed.payload.data.quota)
+    assert.equal(resumeDispatches, 1)
+
+    const replay = await requestJson(server.url, `/api/creative/generations/${held.payload.data.id}/resume`, {
+      token: 'demo-access.promptlin',
+      body: { ...generationBody, idempotencyKey: 'review-resume-approved-1' },
+    })
+    assert.equal(replay.status, 200)
+    assert.equal(replay.payload.data.idempotentReplay, true)
+    assert.equal(resumeDispatches, 1)
+
+    const secondClaim = await requestJson(server.url, `/api/creative/generations/${held.payload.data.id}/resume`, {
+      token: 'demo-access.promptlin',
+      body: { ...generationBody, idempotencyKey: 'review-resume-approved-2' },
+    })
+    assert.equal(secondClaim.status, 409)
+    assert.equal(secondClaim.payload.error.code, 'CREATIVE_REVIEW_RESUME_ALREADY_CLAIMED')
+    assert.equal(resumeDispatches, 1)
+  } finally {
+    await server.close()
   }
 })
 

@@ -14,7 +14,10 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 
 addCheck('inventory schema version is supported', inventory.schemaVersion === 1, `schemaVersion=${inventory.schemaVersion}`)
 addCheck('silent production fallback is forbidden', inventory.productionPolicy.silentFallback === 'forbidden', inventory.productionPolicy.silentFallback)
-addCheck('production readiness matches resolved blocker state', inventory.productionPolicy.productionReady === (releaseBlockers.length === 0), `productionReady=${inventory.productionPolicy.productionReady}; blockers=${releaseBlockers.length}`)
+addCheck('fallback disposition scope is explicit', inventory.productionPolicy.scope === 'runtime_surface_fallback_disposition_only', inventory.productionPolicy.scope)
+addCheck('fallback disposition completion matches resolved blocker state', inventory.productionPolicy.fallbackDispositionComplete === (releaseBlockers.length === 0), `fallbackDispositionComplete=${inventory.productionPolicy.fallbackDispositionComplete}; blockers=${releaseBlockers.length}`)
+addCheck('global production approval remains delegated to release and domain gates', inventory.productionPolicy.globalProductionApproval === 'governed_by_release_scope_and_domain_gates', inventory.productionPolicy.globalProductionApproval)
+addCheck('ambiguous global production readiness field is absent', !Object.hasOwn(inventory.productionPolicy, 'productionReady'), 'productionReady is forbidden in the fallback-only inventory')
 addCheck('unresolved surfaces are owned by V1-39', inventory.productionPolicy.releaseGateTask === 'V1-39', inventory.productionPolicy.releaseGateTask)
 
 const ids = inventory.surfaces.map((surface) => surface.id)
@@ -50,24 +53,10 @@ function listFiles(relativeRoot) {
 const frontendFiles = listFiles('src')
 const serverFiles = listFiles('server/src')
 const directMockDataImports = frontendFiles.filter((file) => /from ['"][^'"]*data\/mockData['"]/.test(read(file)))
-const expectedMockDataImports = [
-  'src/App.tsx',
-  'src/components/overlays/Overlays.tsx',
-  'src/components/prototype/PrototypeComponents.tsx',
-  'src/domain/utils.ts',
-  'src/features/community/CommunityPage.tsx',
-  'src/features/explore/ExplorePages.tsx',
-  'src/features/profile/ProfilePages.tsx',
-  'src/features/static-pages/StaticPages.tsx',
-  'src/features/workspace/VideoStudioPage.tsx',
-  'src/hooks/useAppFeedback.ts',
-  'src/hooks/useCommunityWorkflows.ts',
-  'src/hooks/usePlayerState.ts',
-  'src/hooks/useTaskWorkflows.ts',
-]
+const expectedMockDataImports = []
 
 addCheck(
-  'all direct frontend mockData imports are known',
+  'frontend source does not import mockData',
   sameMembers(directMockDataImports, expectedMockDataImports),
   directMockDataImports.join(', '),
 )

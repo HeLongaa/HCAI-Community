@@ -13,9 +13,9 @@ npm run release:infrastructure:rehearse
 
 The local command starts pinned PostgreSQL 16, Redis 7 with AOF, and MinIO S3 containers. It applies every Prisma migration with `migrate deploy`, verifies permission seeds, writes a marker, creates a custom-format `pg_dump`, uploads the dump to the backup bucket, removes the local dump, downloads and checksum-verifies the backup, and restores it into a separate database.
 
-The same run writes and synchronously persists a Redis marker, restarts Redis, and verifies recovery. It also writes an object to the primary bucket, copies its bytes to the backup bucket, deletes the primary object, restores it, and verifies the SHA-256 checksum. Containers and volumes are removed after the run unless `--keep` is supplied directly to the runner.
+The same run writes and synchronously persists a Redis marker, restarts Redis, and verifies recovery. It also writes an object to the primary bucket, copies its bytes to the backup bucket, deletes the primary object, restores it, and verifies the SHA-256 checksum. After recovery succeeds, the rehearsal simulates the 35-day expiry boundary: it deletes both the database and media backup objects, proves absence with HEAD, proves restore denial with GET, and removes the local restore copy. Containers and volumes are removed after the run unless `--keep` is supplied directly to the runner.
 
-Sanitized evidence is written below `.artifacts/release-infrastructure/`, which is excluded from Git. Evidence contains service labels, counts, durations, content hashes, objective results, and a SHA-256 receipt. It rejects secret-shaped fields recursively.
+Sanitized evidence is written below `.artifacts/release-infrastructure/`, which is excluded from Git. Evidence contains service labels, counts, durations, content hashes, objective results, explicit `backupExpiry` results, and a SHA-256 receipt. A source section binds the HEAD commit, tracked-diff digest, untracked-file manifest digest, byte/count summaries, clean state, and one combined snapshot digest. Local runs may record `clean=false`; target-environment runs reject a dirty checkout before mutating infrastructure. Evidence rejects secret-shaped fields recursively. Local evidence keeps `targetScheduleVerified=false` and `managedKeyDestructionVerified=false`; those claims require protected target-environment evidence.
 
 ## RTO And RPO
 
@@ -59,6 +59,8 @@ Run the fail-closed preflight before any mutation:
 npm run release:infrastructure:preflight
 ```
 
+Preflight writes a secret-free `target-preflight.json` below the ignored evidence directory. It is bound to the clean source snapshot and HEAD commit and expires after two hours. The execute command refuses a missing, expired, modified, dirty, or source-mismatched preflight, so the protected job cannot validate one checkout and mutate infrastructure with another.
+
 After reviewing its safe summary and entering an approved release window, run:
 
 ```bash
@@ -69,6 +71,6 @@ The GitHub Actions `Quality Gates` workflow exposes the same operation through `
 
 ## Production Boundary
 
-Local Docker evidence proves the executable recovery path, migration compatibility, and evidence controls. It does not prove a production provider's backup schedule, cross-zone failover, access policy, or actual target-environment latency. `RELEASE-01` remains incomplete until the protected target-environment workflow succeeds and an operator reviews the resulting receipt.
+Local Docker evidence proves the executable recovery path, restore-negative backup expiry behavior, migration compatibility, and evidence controls. It does not prove a production provider's 35-day schedule, managed encryption-key destruction, cross-zone failover, access policy, or actual target-environment latency. `RELEASE-01` remains incomplete until the protected target-environment workflow succeeds and an operator reviews the resulting receipt.
 
 For account deletion, production backup expiry receipts remain separate from this infrastructure rehearsal. RELEASE-01 supplies the backup inventory and recovery evidence needed to execute that lifecycle without claiming that a specific user's backup expiry has occurred.

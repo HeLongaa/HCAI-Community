@@ -1,12 +1,11 @@
 # V1 Video Input And Async Boundary
 
-V1-26 implements the application-side Video input and fixture-only Google Veo boundary. The executable sources are
-`server/src/creative/videoInputAssets.js` and `server/src/creative/googleVeoProvider.js`.
+V1-26 implements the application-side Video input and fixture-only HCAI Router Seedance boundary. The executable
+sources are `server/src/creative/videoInputAssets.js` and `server/src/creative/routerVideoProvider.js`.
 
-Current decision: **this is a testable code boundary, not a Provider connection**. The Google Veo catalog shell remains
-disabled and unconfigured. Only an explicitly injected fixture adapter can enter the mapper. There is no default
-adapter registration, HTTP client, credential reader, Provider operation state store, polling/callback registration,
-output fetch client, real request, or production enablement.
+Current decision: **the guarded Router adapter is implemented but remains disabled unless the complete staging envelope
+passes**. Fixture injection remains available for deterministic tests. There is no default credential, paid request,
+or production enablement.
 
 ## Governed Inputs
 
@@ -20,9 +19,9 @@ output fetch client, real request, or production enablement.
 - The reader verifies exact declared size and magic MIME before bytes reach an injected fixture client.
 - Output lineage stores only application asset ids and fixed roles. It does not store object keys or signed URLs.
 
-## Veo Fixture Boundary
+## Router Video Boundary
 
-The canonical request fixes `veo-3.1-fast`, one 720p MP4 output, 4/6/8 seconds, `16:9` or `9:16`, no native audio,
+The canonical request fixes `seedance-2.0-fast`, one 720p MP4 output, 4/6/8 seconds, `16:9` or `9:16`, no native audio,
 and one optional source image. The full prompt and optional image bytes exist only in the in-process request passed to
 the injected fixture client. Safe metadata contains only the model, mode, closed parameters, input roles, and byte
 count.
@@ -30,12 +29,13 @@ count.
 The strict operation projection accepts only a safe fixture job id, `queued`, `running`, `succeeded`, `failed`, or
 `cancelled`, one optional MP4 output reference, a bounded safe error, and bounded usage. Unknown fields and unsafe job
 ids fail closed. Terminal mapping uses the shared replay contract, so duplicate/stale transitions and job mismatches
-are rejected before side effects. No lifecycle route or worker consumes this projection in V1-26.
+are rejected before side effects. Router exposes no public cancellation endpoint; cancellation therefore returns a
+real unsupported error and does not alter generation, operation, or billing state.
 
 ## Cost And Persistence
 
-- Public-list-price estimate: USD 0.10 per generated second.
-- Maximum estimate: USD 0.80 for the current 8-second output cap.
+- Router has no reliable public unit price recorded; the generated-second estimate is an application budget guard only.
+- Actual Router usage and charges must be reconciled after staging.
 - Frozen caps: USD 1.20 per job, USD 20 daily, and USD 500 monthly.
 - Dispatch fixtures pass the Provider control plane before a durable generated-second reservation.
 - Queued/running jobs keep the reservation open for a later terminal closeout.

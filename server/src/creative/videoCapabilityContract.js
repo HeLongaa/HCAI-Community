@@ -63,11 +63,26 @@ const modes = [
 
 export const videoCapabilityContract = {
   schemaVersion: videoCapabilityContractVersion,
-  asOf: '2026-07-20',
+  asOf: '2026-07-30',
   workspace: 'video',
-  decisionState: 'conditionally_approved_for_implementation_planning',
+  decisionState: 'staging_capability_available',
+  availability: {
+    capabilityAvailable: true,
+    runtimeAvailableWhenConfigured: true,
+    productionAvailable: false,
+    evidence: {
+      providerId: 'hcai-router-seedance-2-fast',
+      modelId: 'seedance-2.0-fast',
+      completedAt: '2026-07-21',
+      outputValidated: true,
+      privateIngestionValidated: true,
+      mediaScanValidated: true,
+      ownerIsolationValidated: true,
+      accountingCloseoutValidated: true,
+    },
+  },
   runtime: {
-    realProviderCallsApproved: true,
+    realProviderCallsApproved: false,
     productionEnablementApproved: false,
     productionFallback: 'fail_closed',
     silentMockFallback: false,
@@ -89,14 +104,14 @@ export const videoCapabilityContract = {
   },
   models: {
     primary: {
-      providerId: 'google-veo-3-1-fast',
-      modelId: 'veo-3.1-fast-generate-001',
-      apiFamily: 'google_long_running_operation',
+      providerId: 'hcai-router-seedance-2-fast',
+      modelId: 'seedance-2.0-fast',
+      apiFamily: 'openai_compatible_video_tasks',
       registered: true,
       enabled: false,
       modes: ['text_to_video', 'image_to_video'],
       nativeAudioEnabled: false,
-      c2paExpected: true,
+      c2paExpected: false,
     },
     backup: {
       providerId: 'runway-gen-4-5',
@@ -109,6 +124,32 @@ export const videoCapabilityContract = {
       noTrainingTermsRequired: true,
     },
   },
+  feasibleCandidates: [
+    {
+      providerId: 'hcai-router-minimax-hailuo-2-3',
+      modelIds: ['MiniMax-Hailuo-2.3', 'MiniMax-Hailuo-2.3-Fast'],
+      apiFamily: 'hcai_router_video_tasks',
+      modes: ['text_to_video', 'image_to_video'],
+      implementationFeasible: true,
+      providerAdapterImplemented: true,
+      providerHttpClientImplemented: true,
+      taskPollingImplemented: true,
+      governedOutputDownloadImplemented: true,
+      lifecycleRegistered: true,
+      runtimeAvailableWhenConfigured: true,
+      runtimeEnabled: false,
+      availability: 'staging_available',
+      stagingTransportAccepted: true,
+      productionApproved: false,
+      boundary: {
+        durationSeconds: [6],
+        resolution: '768P',
+        aspectRatios: ['16:9'],
+        outputFormats: ['mp4'],
+        fastModelModes: ['image_to_video'],
+      },
+    },
+  ],
   maxPromptCharacters: 2000,
   modes,
   parameterDefinitions,
@@ -128,7 +169,9 @@ export const videoCapabilityContract = {
     statuses: ['queued', 'running', 'completed', 'failed', 'cancelled', 'review_required'],
     timeoutSeconds: 900,
     maximumAttempts: 1,
-    cancellationIdempotencyRequired: true,
+    cancellationSupported: false,
+    cancellationIdempotencyRequired: false,
+    cancellationUnavailableReason: 'HCAI Router does not expose an upstream video cancellation endpoint.',
     callbackOrPollingReplayRequired: true,
     terminalResultMustBeApplicationOwned: true,
   },
@@ -171,11 +214,15 @@ export const videoCapabilityContract = {
 
 const providerModes = {
   mock: Object.fromEntries(modes.map((mode) => [mode.id, mode.parameters])),
-  'google-veo-3-1-fast': {
+  'hcai-router-seedance-2-fast': {
     text_to_video: commonParameters,
     image_to_video: commonParameters,
   },
   'runway-gen-4-5': {
+    text_to_video: commonParameters,
+    image_to_video: commonParameters,
+  },
+  'hcai-router-minimax-hailuo-2-3': {
     text_to_video: commonParameters,
     image_to_video: commonParameters,
   },
@@ -184,6 +231,7 @@ const providerModes = {
 const clone = (value) => structuredClone(value)
 
 export const videoCapabilityForProvider = (providerId) => {
+  const minimax = providerId === 'hcai-router-minimax-hailuo-2-3'
   const supportedModes = providerModes[providerId] ?? {}
   const modeContracts = modes.map((mode) => {
     const providerParameters = supportedModes[mode.id]
@@ -211,9 +259,27 @@ export const videoCapabilityForProvider = (providerId) => {
     outputTypes: [...videoCapabilityContract.output.types],
     maxPromptCharacters: videoCapabilityContract.maxPromptCharacters,
     supportedParameters,
-    parameterDefinitions: clone(parameterDefinitions),
-    output: clone(videoCapabilityContract.output),
+    parameterDefinitions: clone(minimax ? {
+      ...parameterDefinitions,
+      aspectRatio: { ...parameterDefinitions.aspectRatio, default: '16:9', options: ['16:9'] },
+      durationSeconds: { ...parameterDefinitions.durationSeconds, default: 6, minimum: 6, maximum: 6, options: [6] },
+    } : parameterDefinitions),
+    output: clone(minimax ? {
+      ...videoCapabilityContract.output,
+      durationSeconds: { default: 6, options: [6], maximum: 6 },
+      resolution: '768P',
+      dimensionsByAspectRatio: { '16:9': '1366x768' },
+    } : videoCapabilityContract.output),
     modelDecision: clone(videoCapabilityContract.models),
+    feasibleCandidates: clone(videoCapabilityContract.feasibleCandidates),
+    availability: clone(providerId === videoCapabilityContract.availability.evidence.providerId
+      ? videoCapabilityContract.availability
+      : {
+          capabilityAvailable: false,
+          runtimeAvailableWhenConfigured: false,
+          productionAvailable: false,
+          evidence: null,
+        }),
     runtime: clone(videoCapabilityContract.runtime),
     lifecycle: clone(videoCapabilityContract.lifecycle),
     composition: clone(videoCapabilityContract.composition),

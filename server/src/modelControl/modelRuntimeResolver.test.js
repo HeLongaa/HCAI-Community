@@ -16,7 +16,7 @@ const policy = {
   targets: [{ id: 'target-image', modelDeploymentId: deployment.id, role: 'primary', priority: 1, enabled: true, deployment }],
 }
 
-const repositoriesFor = ({ secretRef = { id: 'secret-1', secretRef: 'secret://env/router-image-token' }, policies = [policy], deployedPromotion = null, latestLegalReview = null } = {}) => {
+const repositoriesFor = ({ secretRef = { id: 'secret-1', secretRef: 'secret://env/router-image-token' }, policies = [policy], deployedPromotion = null, latestLegalReview = null, pricing = { id: 'price-image-v1' } } = {}) => {
   const decisions = []
   const capEvidence = createProviderCapEvidence({
     sourceKey: 'runtime-cap', scopeKey: 'provider:hc-router:default', providerId: 'hc-router', providerAccountRef: 'default', currency: 'USD',
@@ -25,7 +25,7 @@ const repositoriesFor = ({ secretRef = { id: 'secret-1', secretRef: 'secret://en
   })
   return {
     decisions,
-    modelControl: { findRuntimePricing: async () => ({ id: 'price-image-v1' }) },
+    modelControl: { findRuntimePricing: async () => pricing },
     modelRouting: { match: async () => policies },
     modelGovernance: {
       createDecision: async (input) => { decisions.push(input); return { ...input, createdAt: new Date().toISOString() } },
@@ -74,6 +74,191 @@ test('resolved database deployment drives the real image HTTP endpoint and model
   assert.equal(calls[0].url, 'https://router.example/v1/images/generations')
   assert.equal(JSON.parse(calls[0].options.body).model, 'gpt-image-2')
   assert.equal(calls[0].options.headers.authorization, 'Bearer deployment-secret')
+})
+
+test('database image deployment exposes the selected immutable output price and complete token price set', async () => {
+  const repositories = repositoriesFor({ pricing: null })
+  repositories.modelControl.findRuntimePricings = async () => [
+    { id: 'price-output-medium-landscape', currency: 'USD', unit: 'image_output_1536x1024_medium', unitPriceMicros: 41000, effectiveFrom: '2026-07-22T00:00:00.000Z', effectiveTo: null },
+    { id: 'price-input-text', currency: 'USD', unit: 'input_text_tokens', unitPriceMicros: 5000000, effectiveFrom: '2026-07-22T00:00:00.000Z', effectiveTo: null },
+    { id: 'price-input-image', currency: 'USD', unit: 'input_image_tokens', unitPriceMicros: 8000000, effectiveFrom: '2026-07-22T00:00:00.000Z', effectiveTo: null },
+    { id: 'price-output-image', currency: 'USD', unit: 'output_image_tokens', unitPriceMicros: 30000000, effectiveFrom: '2026-07-22T00:00:00.000Z', effectiveTo: null },
+  ]
+  const resolved = await resolveModelRuntimeDeployment({
+    repositories,
+    modality: 'image',
+    environment: 'staging',
+    region: 'us',
+    actor,
+    pricingUnit: 'image_output_1536x1024_medium',
+    baseSource: { NODE_ENV: 'production', CREATIVE_PROVIDER_RUNTIME_ENV: 'staging', ROUTER_IMAGE_TOKEN: 'deployment-secret' },
+  })
+  assert.equal(resolved.pricingVersionId, 'price-output-medium-landscape')
+  assert.equal(resolved.runtimeSource.CREATIVE_OPENAI_IMAGE_PRICING_REQUIRED, 'true')
+  const pricing = JSON.parse(resolved.runtimeSource.CREATIVE_OPENAI_IMAGE_PRICING_JSON)
+  assert.equal(pricing.length, 4)
+  assert.equal(pricing.find((item) => item.unit === 'input_image_tokens').unitPriceMicros, 8000000)
+  assert.equal(JSON.stringify(resolved).includes('deployment-secret'), false)
+})
+
+test('database Router video deployment resolves model, endpoint, SecretRef, account, and budget without exposing the key', async () => {
+  const videoDeployment = {
+    ...deployment,
+    id: 'deployment-video',
+    adapterType: 'router_video',
+    providerModelId: 'seedance-2.0-fast',
+    endpointUrl: 'https://router.hctopup.com',
+    secretPurpose: 'video-inference',
+    runtimeConfig: { providerAccountRef: 'museflow-video-staging', dailyBudgetUsd: 20, budgetThresholdPercent: 80 },
+    modelVersion: {
+      ...deployment.modelVersion,
+      id: 'version-video',
+      capabilities: [{ modality: 'video', operations: ['generate'] }],
+    },
+  }
+  const videoPolicy = {
+    ...policy,
+    id: 'policy-video',
+    modality: 'video',
+    targets: [{ id: 'target-video', modelDeploymentId: videoDeployment.id, role: 'primary', priority: 1, enabled: true, deployment: videoDeployment }],
+  }
+  const repositories = repositoriesFor({
+    secretRef: { id: 'secret-video', secretRef: 'secret://env/CREATIVE_ROUTER_VIDEO_API_KEY' },
+    policies: [videoPolicy],
+    pricing: {
+      id: 'price-video-usd-v1',
+      currency: 'USD',
+      unit: 'generated_seconds',
+      unitPriceMicros: 121000,
+      effectiveFrom: '2026-07-01T00:00:00.000Z',
+      effectiveTo: null,
+    },
+  })
+  const resolved = await resolveModelRuntimeDeployment({
+    repositories,
+    modality: 'video',
+    environment: 'staging',
+    region: 'us',
+    actor,
+    baseSource: { NODE_ENV: 'production', CREATIVE_PROVIDER_RUNTIME_ENV: 'staging', CREATIVE_ROUTER_VIDEO_API_KEY: 'router-video-secret' },
+  })
+  assert.equal(resolved.adapterType, 'router_video')
+  assert.equal(resolved.providerId, 'hcai-router-seedance-2-fast')
+  assert.equal(resolved.providerModelId, 'seedance-2.0-fast')
+  assert.equal(resolved.runtimeSource.CREATIVE_ROUTER_VIDEO_BASE_URL, 'https://router.hctopup.com')
+  assert.equal(resolved.runtimeSource.CREATIVE_ROUTER_VIDEO_MODEL, 'seedance-2.0-fast')
+  assert.equal(resolved.runtimeSource.CREATIVE_ROUTER_VIDEO_API_KEY, 'router-video-secret')
+  assert.equal(resolved.runtimeSource.CREATIVE_ROUTER_VIDEO_PROVIDER_ACCOUNT_REF, 'museflow-video-staging')
+  assert.equal(resolved.runtimeSource.CREATIVE_ROUTER_VIDEO_DAILY_BUDGET_USD, 20)
+  assert.equal(resolved.runtimeSource.CREATIVE_ROUTER_VIDEO_BUDGET_THRESHOLD_PERCENT, 80)
+  assert.equal(resolved.pricingVersionId, 'price-video-usd-v1')
+  assert.equal(resolved.runtimeSource.CREATIVE_ROUTER_VIDEO_UNIT_PRICE_MICROS, '121000')
+  assert.equal(resolved.runtimeSource.CREATIVE_ROUTER_VIDEO_PRICING_SOURCE_REF, 'price-video-usd-v1')
+  assert.equal(resolved.runtimeSource.CREATIVE_ROUTER_VIDEO_PRICING_EFFECTIVE_FROM, '2026-07-01T00:00:00.000Z')
+  assert.equal(JSON.stringify(resolved).includes('router-video-secret'), false)
+  assert.equal(JSON.stringify(repositories.decisions).includes('router-video-secret'), false)
+})
+
+test('database Router MiniMax video deployment resolves the dedicated adapter and credential', async () => {
+  const minimaxDeployment = {
+    ...deployment,
+    id: 'deployment-minimax-video',
+    adapterType: 'router_minimax_video',
+    providerModelId: 'MiniMax-Hailuo-2.3',
+    endpointUrl: 'https://router.hctopup.com',
+    secretPurpose: 'minimax-video-inference',
+    runtimeConfig: { providerAccountRef: 'minimax-video-staging', dailyBudgetUsd: 1.2 },
+    modelVersion: {
+      ...deployment.modelVersion,
+      id: 'version-minimax-video',
+      capabilities: [{ modality: 'video', operations: ['generate'] }],
+    },
+  }
+  const minimaxPolicy = {
+    ...policy,
+    id: 'policy-minimax-video',
+    modality: 'video',
+    targets: [{ id: 'target-minimax-video', modelDeploymentId: minimaxDeployment.id, role: 'primary', priority: 1, enabled: true, deployment: minimaxDeployment }],
+  }
+  const repositories = repositoriesFor({
+    secretRef: { id: 'secret-minimax-video', secretRef: 'secret://env/CREATIVE_ROUTER_MINIMAX_VIDEO_API_KEY' },
+    policies: [minimaxPolicy],
+    pricing: { id: 'price-minimax-video', currency: 'USD', unit: 'generated_seconds', unitPriceMicros: 46667, effectiveFrom: '2026-07-30T00:00:00.000Z', effectiveTo: null },
+  })
+  const resolved = await resolveModelRuntimeDeployment({
+    repositories,
+    modality: 'video',
+    environment: 'staging',
+    region: 'us',
+    actor,
+    baseSource: { NODE_ENV: 'production', CREATIVE_PROVIDER_RUNTIME_ENV: 'staging', CREATIVE_ROUTER_MINIMAX_VIDEO_API_KEY: 'minimax-video-secret' },
+  })
+  assert.equal(resolved.adapterType, 'router_minimax_video')
+  assert.equal(resolved.providerId, 'hcai-router-minimax-hailuo-2-3')
+  assert.equal(resolved.providerModelId, 'MiniMax-Hailuo-2.3')
+  assert.equal(resolved.runtimeSource.CREATIVE_ROUTER_MINIMAX_VIDEO_API_KEY, 'minimax-video-secret')
+  assert.equal(resolved.runtimeSource.CREATIVE_ROUTER_MINIMAX_VIDEO_DAILY_BUDGET_USD, 1.2)
+  assert.equal(resolved.pricingVersionId, 'price-minimax-video')
+  assert.equal(JSON.stringify(resolved).includes('minimax-video-secret'), false)
+})
+
+test('database Router music deployment resolves provider, model, SecretRef, rights, and request pricing', async () => {
+  const musicDeployment = {
+    ...deployment,
+    id: 'deployment-music',
+    adapterType: 'router_music',
+    providerModelId: 'music-3.0',
+    endpointUrl: 'https://router.hctopup.com',
+    secretPurpose: 'music-inference',
+    runtimeConfig: {
+      providerAccountRef: 'museflow-music-staging',
+      stagingRightsAcknowledged: true,
+      trainingOptOutConfirmed: true,
+      licenseId: 'router-minimax-staging',
+      termsVersion: 'music-terms-2026-07',
+    },
+    modelVersion: {
+      ...deployment.modelVersion,
+      id: 'version-music',
+      capabilities: [{ modality: 'music', operations: ['generate'] }],
+    },
+  }
+  const musicPolicy = {
+    ...policy,
+    id: 'policy-music',
+    modality: 'music',
+    targets: [{ id: 'target-music', modelDeploymentId: musicDeployment.id, role: 'primary', priority: 1, enabled: true, deployment: musicDeployment }],
+  }
+  const repositories = repositoriesFor({
+    secretRef: { id: 'secret-music', secretRef: 'secret://env/creative-router-music-api-key' },
+    policies: [musicPolicy],
+    pricing: {
+      id: 'price-music-usd-v1',
+      currency: 'USD',
+      unit: 'request',
+      unitPriceMicros: 150000,
+      effectiveFrom: '2026-07-22T00:00:00.000Z',
+      effectiveTo: null,
+    },
+  })
+  const resolved = await resolveModelRuntimeDeployment({
+    repositories,
+    modality: 'music',
+    environment: 'staging',
+    region: 'us',
+    actor,
+    baseSource: { NODE_ENV: 'production', CREATIVE_PROVIDER_RUNTIME_ENV: 'staging', CREATIVE_ROUTER_MUSIC_API_KEY: 'router-music-secret' },
+  })
+  assert.equal(resolved.adapterType, 'router_music')
+  assert.equal(resolved.providerId, 'hcai-router-minimax-music-3')
+  assert.equal(resolved.providerModelId, 'music-3.0')
+  assert.equal(resolved.runtimeSource.CREATIVE_ROUTER_MUSIC_BASE_URL, 'https://router.hctopup.com')
+  assert.equal(resolved.runtimeSource.CREATIVE_ROUTER_MUSIC_API_KEY, 'router-music-secret')
+  assert.equal(resolved.runtimeSource.CREATIVE_ROUTER_MUSIC_STAGING_RIGHTS_ACKNOWLEDGED, 'true')
+  assert.equal(resolved.runtimeSource.CREATIVE_ROUTER_MUSIC_UNIT_PRICE_MICROS, '150000')
+  assert.equal(resolved.runtimeSource.CREATIVE_ROUTER_MUSIC_PRICING_SOURCE_REF, 'price-music-usd-v1')
+  assert.equal(resolved.pricingVersionId, 'price-music-usd-v1')
+  assert.equal(JSON.stringify(resolved).includes('router-music-secret'), false)
 })
 
 test('active route fails closed when SecretRef cannot be resolved', async () => {

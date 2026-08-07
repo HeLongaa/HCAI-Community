@@ -33,7 +33,7 @@ const saveLibraryItem = async (server, token = 'demo-access.promptlin', override
 test('GET /api/library paginates library items', async () => {
   const server = await createTestServer()
   try {
-    const firstPage = await requestJson(server.url, '/api/library?limit=2', { method: 'GET' })
+    const firstPage = await requestJson(server.url, '/api/library?limit=2', { method: 'GET', token: 'demo-access.taskops' })
 
     assert.equal(firstPage.status, 200)
     assert.equal(firstPage.payload.data.length, 2)
@@ -42,6 +42,7 @@ test('GET /api/library paginates library items', async () => {
     if (firstPage.payload.meta.pagination.nextCursor) {
       const secondPage = await requestJson(server.url, `/api/library?limit=2&cursor=${firstPage.payload.meta.pagination.nextCursor}`, {
         method: 'GET',
+        token: 'demo-access.taskops',
       })
       assert.equal(secondPage.status, 200)
       assert.notDeepEqual(secondPage.payload.data.map((item) => item.id), firstPage.payload.data.map((item) => item.id))
@@ -54,15 +55,61 @@ test('GET /api/library paginates library items', async () => {
 test('GET /api/library filters by type and validates limit', async () => {
   const server = await createTestServer()
   try {
-    const filtered = await requestJson(server.url, '/api/library?type=Prompt&limit=3', { method: 'GET' })
+    const filtered = await requestJson(server.url, '/api/library?type=Prompt&limit=3', { method: 'GET', token: 'demo-access.taskops' })
 
     assert.equal(filtered.status, 200)
     assert.ok(filtered.payload.data.every((item) => item.type === 'Prompt'))
 
-    const invalid = await requestJson(server.url, '/api/library?limit=101', { method: 'GET' })
+    const invalid = await requestJson(server.url, '/api/library?limit=101', { method: 'GET', token: 'demo-access.taskops' })
     assert.equal(invalid.status, 400)
     assert.equal(invalid.payload.error.code, 'VALIDATION_FAILED')
     assert.equal(invalid.payload.error.message, 'limit must be an integer between 1 and 100')
+  } finally {
+    await server.close()
+  }
+})
+
+test('GET /api/library requires authentication and isolates private owners', async () => {
+  const server = await createTestServer()
+  try {
+    const anonymous = await requestJson(server.url, '/api/library', { method: 'GET' })
+    assert.equal(anonymous.status, 401)
+    const saved = await saveLibraryItem(server, 'demo-access.promptlin')
+    const owner = await requestJson(server.url, '/api/library', { method: 'GET', token: 'demo-access.promptlin' })
+    const other = await requestJson(server.url, '/api/library', { method: 'GET', token: 'demo-access.launchteam' })
+    assert.ok(owner.payload.data.some((item) => item.id === saved.id))
+    assert.equal(other.payload.data.some((item) => item.id === saved.id), false)
+  } finally {
+    await server.close()
+  }
+})
+
+test('Library owners can soft-delete and restore with optimistic versions', async () => {
+  const server = await createTestServer()
+  try {
+    const item = await saveLibraryItem(server, 'demo-access.promptlin')
+    const deleted = await requestJson(server.url, `/api/library/items/${item.id}`, {
+      method: 'DELETE',
+      token: 'demo-access.promptlin',
+      body: { expectedVersion: item.version, reasonCode: 'owner_requested' },
+    })
+    assert.equal(deleted.status, 200)
+    assert.equal(deleted.payload.data.version, item.version + 1)
+    assert.ok(deleted.payload.data.deletedAt)
+    const hidden = await requestJson(server.url, `/api/library/items/${item.id}/send-to-workspace`, { token: 'demo-access.promptlin' })
+    assert.equal(hidden.status, 404)
+    const foreignRestore = await requestJson(server.url, `/api/library/items/${item.id}/restore`, {
+      token: 'demo-access.launchteam',
+      body: { expectedVersion: deleted.payload.data.version, reasonCode: 'owner_restore' },
+    })
+    assert.equal(foreignRestore.status, 404)
+    const restored = await requestJson(server.url, `/api/library/items/${item.id}/restore`, {
+      token: 'demo-access.promptlin',
+      body: { expectedVersion: deleted.payload.data.version, reasonCode: 'owner_restore' },
+    })
+    assert.equal(restored.status, 200)
+    assert.equal(restored.payload.data.deletedAt, null)
+    assert.equal(restored.payload.data.version, item.version + 2)
   } finally {
     await server.close()
   }

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "taskId": "V1-04",
-  "asOf": "2026-07-11",
+  "asOf": "2026-07-22",
   "decisionStatus": "conditionally_approved_for_implementation_planning",
   "runtimeStatus": {
     "realProviderCallsApproved": false,
@@ -111,7 +111,7 @@
     },
     {
       "id": "video",
-      "primaryProviderId": "google-veo-3-1-fast",
+      "primaryProviderId": "hcai-router-seedance-2-fast",
       "backupProviderId": "runway-gen-4-5",
       "decisionState": "conditional",
       "appPolicy": {
@@ -123,7 +123,7 @@
         "dailyUsdCap": 20,
         "monthlyUsdCap": 500
       },
-      "budgetExample": "An 8-second Veo 3.1 Fast output is about USD 0.80; 20 outputs are about USD 16 before storage, egress, tax, and support costs.",
+      "budgetExample": "Router has not provided a reliable public per-second price. The application keeps a conservative USD 1.20 per-job cap and requires actual Router usage reconciliation after staging.",
       "failover": {
         "productionBehavior": "fail_closed",
         "automaticFailoverAllowed": false,
@@ -142,12 +142,12 @@
         "30-day p95 completion time above 10 minutes",
         "7-day successful-generation rate below 95 percent",
         "effective cost above USD 1.20 per accepted 8-second output",
-        "loss of C2PA, commercial-use, retention, or supported-region eligibility"
+        "commercial-use, retention, supported-region, or provenance requirements cannot be confirmed"
       ]
     },
     {
       "id": "music",
-      "primaryProviderId": "elevenlabs-music-v2-enterprise",
+      "primaryProviderId": "hcai-router-minimax-music-3",
       "backupProviderId": "google-lyria-3-pro-preview",
       "decisionState": "conditional",
       "appPolicy": {
@@ -441,68 +441,68 @@
       "sourceIds": ["anthropic-models", "anthropic-rate-limits", "anthropic-retention", "anthropic-training", "anthropic-regions", "anthropic-commercial-terms"]
     },
     {
-      "id": "google-veo-3-1-fast",
+      "id": "hcai-router-seedance-2-fast",
       "modality": "video",
       "role": "primary",
-      "company": "Google Cloud",
-      "model": "veo-3.1-fast-generate-001",
+      "company": "HCAI Router (upstream Jiekou AI Seedance)",
+      "model": "seedance-2.0-fast",
       "decisionState": "conditional_primary",
-      "availabilityStage": "general_availability",
+      "availabilityStage": "router_channel_enabled_unverified",
       "api": {
-        "family": "Gemini Enterprise Agent Platform publisher-model video API, formerly Vertex AI",
-        "requestMode": "asynchronous_provider_operation",
-        "callback": "no provider callback commitment was established",
-        "polling": "poll the provider operation with a durable lease and bounded stop conditions",
-        "cancellation": "must be confirmed against the current operation endpoint before enablement",
-        "artifactHandling": "copy final MP4 into governed storage before exposing it"
+        "family": "HCAI Router OpenAI-compatible asynchronous video task API",
+        "requestMode": "POST /v1/video/generations",
+        "callback": "not documented; application polling is required",
+        "polling": "GET /v1/video/generations/{task_id} with a durable lease and bounded stop conditions",
+        "cancellation": "Router exposes no public video cancellation endpoint; cancellation must fail explicitly without changing job or billing state",
+        "artifactHandling": "read final bytes only through GET /v1/videos/{task_id}/content, validate MP4 size and MIME, then copy into governed private storage"
       },
       "pricing": {
-        "unit": "second of generated video with audio",
-        "rateUsd": 0.1,
-        "notes": "Veo 3.1 Fast public list price for 720p output.",
-        "exampleUsd": 0.8,
-        "exampleVolume": "one 8-second output"
+        "unit": "provider-reported video usage",
+        "rateUsd": null,
+        "notes": "No reliable public Router unit price was found. Application-side estimates are budget guards only and must be reconciled against actual Router usage.",
+        "exampleUsd": null,
+        "exampleVolume": "one 4-second 720p staging output"
       },
       "rights": {
-        "status": "requires_service_coverage_confirmation",
-        "commercialUse": true,
-        "outputOwnership": "Generated Output is Customer Data and Google does not assert ownership in new IP created in it.",
-        "trainingUse": "Google does not train or fine-tune models on Customer Data without prior permission or instruction.",
-        "restrictions": ["Generative AI prohibited-use rules apply", "customer must retain safety filters", "confirm Veo is covered by generated-output indemnity"]
+        "status": "unconfirmed",
+        "commercialUse": null,
+        "outputOwnership": "Not confirmed for the Router and upstream Seedance channel.",
+        "trainingUse": "Not confirmed for the Router and upstream Seedance channel.",
+        "restrictions": ["application rights and safety gates remain mandatory", "do not enable production until Router and upstream commercial-use and training terms are recorded"]
       },
       "data": {
-        "defaultRetention": "Request/response logging is off by default; abuse-monitoring prompt logging may apply. In-memory caching can last up to 24 hours and can be disabled.",
-        "zeroRetention": "Possible only after all documented abuse-monitoring, advanced-safety, logging, and cache conditions are satisfied.",
-        "residency": "The GA Veo 3.1 model card documents data residency and us-central1 availability.",
-        "trainingDefault": false
+        "defaultRetention": "Not confirmed for Router or the upstream channel.",
+        "zeroRetention": "Not confirmed; sensitive content remains blocked.",
+        "residency": "Not confirmed for Router or the upstream channel.",
+        "trainingDefault": null
       },
       "regions": {
-        "documented": ["us-central1"],
-        "mainlandChina": "not_a_documented_model_region",
-        "productionCondition": "Use the documented US region and complete cross-border/data-location review."
+        "documented": [],
+        "mainlandChina": "not_confirmed",
+        "productionCondition": "Confirm Router and upstream processing locations and complete cross-border/data-location review."
       },
       "limits": {
-        "published": "The GA Veo 3.1 model card lists 50 regional online prediction requests per minute per base model.",
+        "published": "No reliable public Router quota was found; the channel is enabled but shown as untested in the admin console.",
         "appConcurrencyCap": 2,
         "accountCheckRequired": true
       },
       "sla": {
-        "status": "requires_written_coverage_confirmation",
-        "publicCommitment": "The reviewed Vertex AI SLA did not clearly list the Google publisher generative-video model as a covered service; Preview features are excluded.",
-        "productionCondition": "Confirm model-specific SLA/support and whether Provisioned Throughput is required."
+        "status": "unconfirmed",
+        "publicCommitment": "No Router or upstream Seedance SLA was confirmed.",
+        "productionCondition": "Confirm support, incident handling, quota, and service commitment before production."
       },
       "safety": {
-        "providerControls": ["safety filters", "C2PA Content Credentials", "prompt rewriting"],
-        "appControls": ["input rights check", "prompt moderation", "output media scan", "human review", "C2PA metadata preservation"]
+        "providerControls": ["not confirmed"],
+        "appControls": ["input rights check", "prompt moderation", "output media scan", "human review", "preserve provenance metadata when present"]
       },
       "goLiveConditions": [
-        "Google Cloud agreement, DPA, generated-output indemnity coverage, region, and SLA are approved",
-        "abuse logging, zero-retention exception, request logging, and cache settings are recorded",
-        "operation polling, cancellation behavior, timeouts, C2PA preservation, and artifact copy pass staging",
-        "quota, Provisioned Throughput decision, budget cap, and kill switch are recorded",
+        "Router and upstream commercial terms, DPA, output rights, processing locations, and SLA are approved",
+        "retention, training, abuse logging, request logging, and deletion behavior are recorded",
+        "task polling, explicit unsupported-cancellation behavior, timeouts, provenance handling, and private artifact copy pass staging",
+        "actual usage pricing, account quota, budget cap, and kill switch are recorded",
         "the exact real-call approval package is completed"
       ],
-      "sourceIds": ["google-veo-model", "google-pricing", "google-zero-retention", "google-service-terms", "google-vertex-sla"]
+      "sourceIds": ["hcai-router-seedance-api"]
     },
     {
       "id": "runway-gen-4-5",
@@ -569,34 +569,34 @@
       "sourceIds": ["runway-models", "runway-pricing", "runway-tiers", "runway-using-api", "runway-outputs", "runway-uploads", "runway-terms"]
     },
     {
-      "id": "elevenlabs-music-v2-enterprise",
+      "id": "hcai-router-minimax-music-3",
       "modality": "music",
       "role": "primary",
-      "company": "ElevenLabs",
-      "model": "music_v2",
-      "decisionState": "blocked_pending_enterprise_music_contract",
+      "company": "HCAI Router / MiniMax",
+      "model": "music-3.0",
+      "decisionState": "staging_adapter_ready_upstream_plan_blocked",
       "availabilityStage": "paid_api",
       "api": {
-        "family": "Music compose API",
-        "requestMode": "synchronous_or_streaming_wrapped_by_internal_job",
+        "family": "Router MiniMax music generation API",
+        "requestMode": "synchronous_url_result_wrapped_by_internal_job",
         "callback": "none",
         "polling": "none",
         "cancellation": "abort the request/stream; application job cancellation remains authoritative",
-        "artifactHandling": "stream or copy the MP3 response into governed storage"
+        "artifactHandling": "download the returned URL immediately into governed storage; never persist the Provider URL"
       },
       "pricing": {
-        "unit": "minute of generated music",
+        "unit": "request",
         "rateUsd": 0.15,
-        "notes": "Public API list price; enterprise contract pricing can differ. V1 caps tracks at 3 minutes even though the API parameter permits longer values.",
-        "exampleUsd": 0.45,
-        "exampleVolume": "one 3-minute output"
+        "notes": "Router model price observed in the administrator model page; stored as an immutable Model Control pricing version.",
+        "exampleUsd": 0.15,
+        "exampleVolume": "one music generation request"
       },
       "rights": {
-        "status": "blocked_pending_enterprise_music_contract",
-        "commercialUse": true,
-        "outputOwnership": "Customer retains Output rights as between the parties, subject to Music and model-specific terms.",
-        "trainingUse": "Public terms permit model-improvement use unless the account opts out; prior uses are unaffected.",
-        "restrictions": ["self-serve plans prohibit reseller and music-library rights", "full film, TV, radio, and Studio Games rights require Enterprise Music", "plan eligibility depends on organization size", "streaming and media rights vary by plan"]
+        "status": "router_and_upstream_terms_review_required",
+        "commercialUse": false,
+        "outputOwnership": "Must be confirmed against both Router and MiniMax terms before production.",
+        "trainingUse": "Training behavior and opt-out must be recorded before production.",
+        "restrictions": ["current MiniMax upstream token plan rejects music-3.0 with error 2061", "reference-audio cover/remix is outside the V1 contract", "production distribution rights remain unapproved"]
       },
       "data": {
         "defaultRetention": "Standard customer data is hosted in the US; the reviewed public page did not state a default Music-content deletion period.",
@@ -610,27 +610,27 @@
         "productionCondition": "Select and contract an eligible region before integration."
       },
       "limits": {
-        "published": "Music concurrency is 2 on Starter/Creator/Pro, 5 on Scale/Business/Enterprise Music Lite, and 10+ on Enterprise Music.",
-        "appConcurrencyCap": 2,
+        "published": "Router/MiniMax music concurrency was not confirmed during staging inspection.",
+        "appConcurrencyCap": 1,
         "accountCheckRequired": true
       },
       "sla": {
-        "status": "requires_enterprise_contract",
-        "publicCommitment": "Music terms provide the service as-is; enterprise pricing advertises custom DPA/SLA terms.",
-        "productionCondition": "Enterprise Music must include the agreed SLA, support, deletion, and region terms."
+        "status": "requires_router_and_upstream_terms",
+        "publicCommitment": "No production SLA was established during Router staging inspection.",
+        "productionCondition": "Router and MiniMax must confirm SLA, support, deletion, region, and plan eligibility."
       },
       "safety": {
         "providerControls": ["copyrighted artist/lyric prompt detection", "bad_prompt suggestions", "music-specific prohibited uses"],
         "appControls": ["rights attestation", "artist-name and lyric checks", "output review", "license metadata persistence", "report/takedown path"]
       },
       "goLiveConditions": [
-        "Enterprise Music contract grants reseller, streaming, media, library/repository, and required API rights",
-        "DPA, retention/deletion, no-training opt-out, region, and ZRM model eligibility are recorded",
-        "SLA, support, price, concurrency, and organization eligibility are confirmed",
-        "copyright filters, license metadata, streaming, abort, artifact storage, and download controls pass staging",
-        "the exact real-call approval package is completed"
+        "MiniMax upstream plan supports music-3.0 without error 2061",
+        "Router and MiniMax rights, DPA, retention/deletion, training behavior, and region are recorded",
+        "SLA, support, request price, concurrency, and account eligibility are confirmed",
+        "copyright filters, license metadata, immediate artifact ingestion, and download controls pass staging",
+        "the exact real-call approval package is completed while production remains separately gated"
       ],
-      "sourceIds": ["eleven-music-overview", "eleven-music-api", "eleven-compose-reference", "eleven-pricing", "eleven-music-terms", "eleven-model-terms", "eleven-terms", "eleven-data-residency"]
+      "sourceIds": ["hcai-router-music-model", "minimax-music-generation-api"]
     },
     {
       "id": "google-lyria-3-pro-preview",
@@ -719,7 +719,7 @@
     "Every provider requires an exact staging real-call approval before the first external request.",
     "ElevenLabs Music requires an Enterprise Music contract that grants platform/reseller and complete required media rights.",
     "Runway requires enterprise no-training, retention/deletion, residency, SLA, and support terms before backup enablement.",
-    "Google must confirm Veo model-specific SLA/indemnity coverage and Lyria Preview region/quota/retention behavior.",
+    "HCAI Router and its upstream Seedance channel must confirm video pricing, rights, retention, training, processing locations, quota, and SLA; Google must confirm Lyria Preview region/quota/retention behavior.",
     "OpenAI must confirm production-project supported geography, gpt-image-2 residency, and selected retention controls.",
     "Anthropic must be accepted with US storage or replaced by a contracted regional deployment.",
     "Provider price, model availability, account quota, legal terms, and supported regions must be rechecked within 30 days of production launch."
@@ -746,13 +746,14 @@
     {"id": "anthropic-training", "official": true, "accessed": "2026-07-11", "url": "https://privacy.claude.com/en/articles/7996868-is-my-data-used-for-model-training", "dimensions": ["training"]},
     {"id": "anthropic-regions", "official": true, "accessed": "2026-07-11", "url": "https://privacy.claude.com/en/articles/7996890-where-are-your-servers-located-do-you-host-your-models-on-eu-servers", "dimensions": ["regions", "residency"]},
     {"id": "anthropic-commercial-terms", "official": true, "accessed": "2026-07-11", "url": "https://www.anthropic.com/legal/commercial-terms", "dimensions": ["rights", "commercial_use", "training", "sla"]},
-    {"id": "google-veo-model", "official": true, "accessed": "2026-07-11", "url": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/veo/3-1-generate", "dimensions": ["model", "capability", "regions", "limits", "safety"]},
+    {"id": "hcai-router-seedance-api", "official": true, "accessed": "2026-07-21", "url": "https://router.hctopup.com", "dimensions": ["model", "api", "lifecycle", "artifact", "channel_status"]},
+    {"id": "hcai-router-music-model", "official": true, "accessed": "2026-07-22", "url": "https://router.hctopup.com", "dimensions": ["model", "api", "price", "channel_status"]},
+    {"id": "minimax-music-generation-api", "official": true, "accessed": "2026-07-22", "url": "https://platform.minimax.io/docs/api-reference/music-generation", "dimensions": ["api", "artifact", "quality", "response"]},
     {"id": "google-lyria-model", "official": true, "accessed": "2026-07-11", "url": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/lyria/lyria-3", "dimensions": ["model", "preview", "commercial_use"]},
     {"id": "google-lyria-api", "official": true, "accessed": "2026-07-11", "url": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/music/generate-music", "dimensions": ["api", "lifecycle", "artifact"]},
     {"id": "google-pricing", "official": true, "accessed": "2026-07-11", "url": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing", "dimensions": ["price"]},
     {"id": "google-zero-retention", "official": true, "accessed": "2026-07-11", "url": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/resources/zero-data-retention", "dimensions": ["training", "retention", "residency"]},
     {"id": "google-service-terms", "official": true, "accessed": "2026-07-11", "url": "https://cloud.google.com/terms/service-terms", "dimensions": ["rights", "commercial_use", "training", "retention", "sla", "preview"]},
-    {"id": "google-vertex-sla", "official": true, "accessed": "2026-07-11", "url": "https://cloud.google.com/vertex-ai/sla", "dimensions": ["sla"]},
     {"id": "runway-models", "official": true, "accessed": "2026-07-11", "url": "https://docs.dev.runwayml.com/guides/models/", "dimensions": ["model", "capability"]},
     {"id": "runway-pricing", "official": true, "accessed": "2026-07-11", "url": "https://docs.dev.runwayml.com/guides/pricing/", "dimensions": ["price"]},
     {"id": "runway-tiers", "official": true, "accessed": "2026-07-11", "url": "https://docs.dev.runwayml.com/usage/tiers/", "dimensions": ["limits", "budget"]},

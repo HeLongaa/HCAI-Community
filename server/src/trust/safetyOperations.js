@@ -141,6 +141,7 @@ export const parseSafetyOperationsListQuery = (query = {}, kind = 'queue') => {
 
 export const moderationBulkTargetHash = (payload) => createHash('sha256').update(JSON.stringify({ action: payload.action, targetIds: payload.targetIds, assigneeId: payload.assigneeId, priority: payload.priority, reasonCode: payload.reasonCode })).digest('hex')
 export const moderationBulkRequestHash = (payload) => createHash('sha256').update(JSON.stringify({ ...payload, confirmationText: undefined, idempotencyKey: undefined })).digest('hex')
+export const moderationBulkIdempotencyHash = (idempotencyKey) => createHash('sha256').update(String(idempotencyKey)).digest('hex')
 
 export const safetyRuleState = (rule) => {
   const transition = [...(rule.transitions ?? [])].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)).at(-1)

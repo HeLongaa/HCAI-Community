@@ -79,6 +79,24 @@ npm run dev:server
 
 Open `http://127.0.0.1:8787/health`.
 
+Production frontend artifact:
+
+```bash
+npm run build:release
+STATIC_HOST=0.0.0.0 STATIC_PORT=4173 npm run serve:production
+```
+
+The release build generates Brotli/Gzip sidecars, enforces asset budgets, and rehearses cache, MIME, range, SPA fallback, and security-header behavior. The static process serves only the frontend artifact; the production ingress must route `/api/*` and backend health paths to the API service. See `docs/PRODUCTION_STATIC_DELIVERY.md`.
+
+Production container contract and full local rehearsal:
+
+```bash
+npm run check:production-containers
+npm run rehearse:production-containers
+```
+
+The multi-stage image provides separate frontend, API, Worker, and migration targets. The production Compose topology adds a same-origin gateway, pinned PostgreSQL/Redis/MinIO services, health dependencies, read-only non-root application containers, resource limits, and bounded SIGTERM draining. See `docs/PRODUCTION_CONTAINER_DEPLOYMENT.md`.
+
 Background operations can run as an independent worker process:
 
 ```bash
@@ -170,7 +188,7 @@ npm run check:deploy
 My Tasks delivery desk, community forum flows, publish-form AI assists, creation tools, points ledger, admin review queue,
 cross-module actions, localization, responsive layout contracts, and prototype-boundary documentation.
 
-`smoke:production` validates the managed production configuration checklist against a safe fixture profile. Use `npm run smoke:production:env` in a deployment environment to validate the real `process.env` without printing secrets.
+`smoke:production` validates the managed production configuration checklist against a safe fixture profile, including the closed core/retention Worker inventory and external Provider-deletion gateway. Use `npm run smoke:production:env` in a deployment environment to validate the real `process.env` without printing secrets.
 
 GitHub Actions configuration lives in `.github/workflows/quality-gates.yml`: PRs and pushes run the fixture deployment gate, while manual dispatch can run real environment smoke through a selected GitHub Environment.
 

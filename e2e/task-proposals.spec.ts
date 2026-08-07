@@ -32,6 +32,10 @@ test('proposal, submission, and review can complete through the browser workflow
     response.url().includes(`/api/tasks/${task.id}/proposals`) && response.request().method() === 'POST',
   )
   await page.getByTestId('submit-proposal-button').click()
+  await page.getByRole('textbox', { name: 'Approach' }).fill('Review the brief, agree on the visual direction, and validate each delivery against the acceptance rules.')
+  await page.getByRole('textbox', { name: 'Deliverables' }).fill('Final exports, editable source notes, and one revision round.')
+  await page.getByRole('textbox', { name: 'Timeline' }).fill('First draft in 2 days, final delivery in 4 days.')
+  await page.getByTestId('confirm-proposal-button').click()
   const response = await proposalResponse
   expect(response.ok()).toBeTruthy()
   const payload = await response.json()

@@ -6,6 +6,7 @@ import { buildCreativeProviderConfig, buildEnv, buildMediaGovernanceConfig } fro
 test('buildEnv allows development without managed token secrets', () => {
   assert.deepEqual(buildEnv({ NODE_ENV: 'development', PORT: '9999' }), {
     port: 9999,
+    processShutdownTimeoutSeconds: 30,
     nodeEnv: 'development',
     deploymentEnv: 'development',
     secretManagerProvider: '',
@@ -39,6 +40,12 @@ test('buildEnv allows development without managed token secrets', () => {
     creativeOpenAIImageHttpClientEnabled: false,
     creativeOpenAIImageNetworkCallsEnabled: false,
     hasCreativeOpenAIImageApiToken: false,
+    creativeInputSafetyClassifierMode: 'disabled',
+    hasCreativeInputSafetyClassifierUrl: false,
+    hasCreativeInputSafetyClassifierToken: false,
+    creativeOutputSafetyClassifierMode: 'disabled',
+    hasCreativeOutputSafetyClassifierUrl: false,
+    hasCreativeOutputSafetyClassifierToken: false,
     creativeProviderCallbackEnabled: false,
     hasCreativeProviderCallbackSignatureSecret: false,
     creativeProviderCallbackReplayWindowSeconds: 300,
@@ -89,27 +96,86 @@ test('buildEnv allows development without managed token secrets', () => {
     creativeProviderPollingIntervalSeconds: 60,
     creativeProviderPollingSweepLimit: 10,
     creativeProviderPollingRequireCreditReservation: false,
-    creativeGoogleVeoLifecycleEnabled: false,
-    creativeGoogleVeoLifecycleWorkerEnabled: false,
-    creativeGoogleVeoHttpClientEnabled: false,
-    creativeGoogleVeoNetworkCallsEnabled: false,
-    hasCreativeGoogleVeoAccessToken: false,
-    creativeGoogleVeoProjectId: '',
-    creativeGoogleVeoLocation: 'us-central1',
-    creativeGoogleVeoOutputGcsUri: '',
-    creativeGoogleVeoPollIntervalSeconds: 15,
-    creativeGoogleVeoTimeoutSeconds: 900,
-    creativeGoogleVeoMaxStatusAttempts: 20,
-    creativeGoogleVeoSweepLimit: 10,
-    creativeElevenLabsMusicHttpClientEnabled: false,
-    creativeElevenLabsMusicNetworkCallsEnabled: false,
-    hasCreativeElevenLabsMusicApiKey: false,
-    creativeElevenLabsMusicRightsConfirmed: false,
-    creativeElevenLabsMusicTrainingOptOutConfirmed: false,
-    hasCreativeElevenLabsMusicLicenseEvidence: false,
+    creativeRouterVideoLifecycleEnabled: false,
+    creativeRouterVideoLifecycleWorkerEnabled: false,
+    creativeRouterVideoHttpClientEnabled: false,
+    creativeRouterVideoNetworkCallsEnabled: false,
+    hasCreativeRouterVideoApiKey: false,
+    creativeRouterVideoBaseUrl: 'https://router.hctopup.com',
+    creativeRouterMiniMaxVideoHttpClientEnabled: false,
+    creativeRouterMiniMaxVideoNetworkCallsEnabled: false,
+    hasCreativeRouterMiniMaxVideoApiKey: false,
+    creativeRouterMiniMaxVideoBaseUrl: 'https://router.hctopup.com',
+    creativeRouterVideoPollIntervalSeconds: 15,
+    creativeRouterVideoTimeoutSeconds: 900,
+    creativeRouterVideoMaxStatusAttempts: 20,
+    creativeRouterVideoSweepLimit: 10,
+    creativeRouterMusicHttpClientEnabled: false,
+    creativeRouterMusicNetworkCallsEnabled: false,
+    hasCreativeRouterMusicApiKey: false,
+    creativeRouterMusicRightsConfirmed: false,
+    creativeRouterMusicTrainingOptOutConfirmed: false,
+    hasCreativeRouterMusicLicenseEvidence: false,
     chatRetentionWorkerEnabled: false,
     chatRetentionWorkerIntervalSeconds: 3600,
     chatRetentionSweepLimit: 100,
+    dataRightsDeletionWorkerEnabled: false,
+    dataRightsDeletionWorkerIntervalSeconds: 3600,
+    dataRightsDeletionSweepLimit: 25,
+    dataRightsDeletionProcessingRecoverySeconds: 300,
+    dataRightsExportRetentionWorkerEnabled: false,
+    dataRightsExportRetentionWorkerIntervalSeconds: 3600,
+    dataRightsExportRetentionSweepLimit: 25,
+    observabilityRetentionWorkerEnabled: false,
+    observabilityRetentionWorkerIntervalSeconds: 3600,
+    observabilityRetentionSweepLimit: 500,
+    notificationRetentionWorkerEnabled: false,
+    notificationRetentionWorkerIntervalSeconds: 3600,
+    notificationRetentionSweepLimit: 250,
+    operationLeaseRetentionWorkerEnabled: false,
+    operationLeaseRetentionWorkerIntervalSeconds: 3600,
+    operationLeaseRetentionSweepLimit: 500,
+    privateLibraryRetentionWorkerEnabled: false,
+    privateLibraryRetentionWorkerIntervalSeconds: 3600,
+    privateLibraryRetentionSweepLimit: 250,
+    authCredentialRetentionWorkerEnabled: false,
+    authCredentialRetentionWorkerIntervalSeconds: 3600,
+    authCredentialRetentionSweepLimit: 250,
+    auditRetentionWorkerEnabled: false,
+    auditRetentionWorkerIntervalSeconds: 3600,
+    communityRetentionWorkerEnabled: false,
+    communityRetentionWorkerIntervalSeconds: 3600,
+    communityRetentionSweepLimit: 250,
+    securityEventRetentionWorkerEnabled: false,
+    securityEventRetentionWorkerIntervalSeconds: 3600,
+    securityEventRetentionSweepLimit: 250,
+    riskRetentionWorkerEnabled: false,
+    riskRetentionWorkerIntervalSeconds: 3600,
+    riskRetentionSweepLimit: 250,
+    moderationRetentionWorkerEnabled: false,
+    moderationRetentionWorkerIntervalSeconds: 3600,
+    moderationRetentionSweepLimit: 100,
+    generationRetentionWorkerEnabled: false,
+    generationRetentionWorkerIntervalSeconds: 3600,
+    generationRetentionSweepLimit: 100,
+    mediaAssetRetentionWorkerEnabled: false,
+    mediaAssetRetentionWorkerIntervalSeconds: 3600,
+    mediaAssetRetentionSweepLimit: 100,
+    providerLifecycleRetentionWorkerEnabled: false,
+    providerLifecycleRetentionWorkerIntervalSeconds: 3600,
+    providerLifecycleRetentionSweepLimit: 100,
+    configurationRetentionWorkerEnabled: false,
+    configurationRetentionWorkerIntervalSeconds: 3600,
+    configurationRetentionSweepLimit: 100,
+    marketplaceRetentionWorkerEnabled: false,
+    marketplaceRetentionWorkerIntervalSeconds: 3600,
+    marketplaceRetentionSweepLimit: 100,
+    supportRetentionWorkerEnabled: false,
+    supportRetentionWorkerIntervalSeconds: 3600,
+    supportRetentionSweepLimit: 100,
+    providerSecretRetentionWorkerEnabled: false,
+    providerSecretRetentionWorkerIntervalSeconds: 300,
+    providerSecretRetentionSweepLimit: 50,
     hasChatMessageEncryptionKey: false,
     mediaScanHistoryRetentionDays: 180,
     mediaScanHistoryRetentionMaxPerAsset: 50,
@@ -157,6 +223,13 @@ test('buildEnv allows development without managed token secrets', () => {
     creativeProviderAlertEmailRecipientCount: 0,
     hasCreativeProviderAlertEmailFrom: false,
     creativeProviderAlertEmailTimeoutSeconds: 5,
+    creativeProviderAlertDeliveryWorkerEnabled: false,
+    creativeProviderAlertDeliveryWorkerIntervalSeconds: 10,
+    creativeProviderAlertDeliveryWorkerBatchSize: 25,
+    creativeProviderAlertDeliveryLeaseSeconds: 60,
+    creativeProviderAlertDeliveryMaxAttempts: 5,
+    creativeProviderAlertDeliveryRetryBaseSeconds: 30,
+    creativeProviderAlertAllowedHosts: [],
     hasMediaScanRequestUrl: false,
     hasMediaScanRequestSecret: false,
     hasMediaScanCallbackBaseUrl: false,
@@ -176,6 +249,7 @@ test('buildEnv allows development without managed token secrets', () => {
     rateLimitAuthMax: 120,
     rateLimitUploadMax: 120,
     rateLimitAdminMutationMax: 180,
+    rateLimitClientTelemetryMax: 120,
     metricsExporterEnabled: false,
     metricsExporterFormat: 'prometheus',
     hasMetricsExporterToken: false,
@@ -246,6 +320,228 @@ test('buildEnv validates and exposes Chat retention worker settings', () => {
   )
 })
 
+test('buildEnv validates and exposes data export retention worker settings', () => {
+  const configured = buildEnv({
+    NODE_ENV: 'development',
+    DATA_RIGHTS_EXPORT_RETENTION_WORKER_ENABLED: 'true',
+    DATA_RIGHTS_EXPORT_RETENTION_WORKER_INTERVAL_SECONDS: '1800',
+    DATA_RIGHTS_EXPORT_RETENTION_SWEEP_LIMIT: '40',
+  })
+  assert.equal(configured.dataRightsExportRetentionWorkerEnabled, true)
+  assert.equal(configured.dataRightsExportRetentionWorkerIntervalSeconds, 1800)
+  assert.equal(configured.dataRightsExportRetentionSweepLimit, 40)
+  assert.throws(() => buildEnv({ DATA_RIGHTS_EXPORT_RETENTION_SWEEP_LIMIT: '0' }), /must be a positive integer/)
+})
+
+test('buildEnv validates and exposes observability retention worker settings', () => {
+  const configured = buildEnv({
+    NODE_ENV: 'development',
+    OBSERVABILITY_RETENTION_WORKER_ENABLED: 'true',
+    OBSERVABILITY_RETENTION_WORKER_INTERVAL_SECONDS: '1800',
+    OBSERVABILITY_RETENTION_SWEEP_LIMIT: '250',
+  })
+  assert.equal(configured.observabilityRetentionWorkerEnabled, true)
+  assert.equal(configured.observabilityRetentionWorkerIntervalSeconds, 1800)
+  assert.equal(configured.observabilityRetentionSweepLimit, 250)
+  assert.throws(() => buildEnv({ OBSERVABILITY_RETENTION_SWEEP_LIMIT: '0' }), /must be a positive integer/)
+})
+
+test('buildEnv validates and exposes notification retention worker settings', () => {
+  const configured = buildEnv({
+    NODE_ENV: 'development',
+    NOTIFICATION_RETENTION_WORKER_ENABLED: 'true',
+    NOTIFICATION_RETENTION_WORKER_INTERVAL_SECONDS: '1800',
+    NOTIFICATION_RETENTION_SWEEP_LIMIT: '125',
+  })
+  assert.equal(configured.notificationRetentionWorkerEnabled, true)
+  assert.equal(configured.notificationRetentionWorkerIntervalSeconds, 1800)
+  assert.equal(configured.notificationRetentionSweepLimit, 125)
+  assert.throws(() => buildEnv({ NOTIFICATION_RETENTION_SWEEP_LIMIT: '0' }), /must be a positive integer/)
+})
+
+test('buildEnv validates and exposes operation lease retention worker settings', () => {
+  const configured = buildEnv({
+    NODE_ENV: 'development',
+    OPERATION_LEASE_RETENTION_WORKER_ENABLED: 'true',
+    OPERATION_LEASE_RETENTION_WORKER_INTERVAL_SECONDS: '1800',
+    OPERATION_LEASE_RETENTION_SWEEP_LIMIT: '200',
+  })
+  assert.equal(configured.operationLeaseRetentionWorkerEnabled, true)
+  assert.equal(configured.operationLeaseRetentionWorkerIntervalSeconds, 1800)
+  assert.equal(configured.operationLeaseRetentionSweepLimit, 200)
+  assert.throws(() => buildEnv({ OPERATION_LEASE_RETENTION_SWEEP_LIMIT: '0' }), /must be a positive integer/)
+})
+
+test('buildEnv validates and exposes private Library retention worker settings', () => {
+  const configured = buildEnv({
+    NODE_ENV: 'development',
+    PRIVATE_LIBRARY_RETENTION_WORKER_ENABLED: 'true',
+    PRIVATE_LIBRARY_RETENTION_WORKER_INTERVAL_SECONDS: '1800',
+    PRIVATE_LIBRARY_RETENTION_SWEEP_LIMIT: '125',
+  })
+  assert.equal(configured.privateLibraryRetentionWorkerEnabled, true)
+  assert.equal(configured.privateLibraryRetentionWorkerIntervalSeconds, 1800)
+  assert.equal(configured.privateLibraryRetentionSweepLimit, 125)
+  assert.throws(() => buildEnv({ PRIVATE_LIBRARY_RETENTION_SWEEP_LIMIT: '0' }), /must be a positive integer/)
+})
+
+test('buildEnv validates and exposes auth credential retention worker settings', () => {
+  const configured = buildEnv({
+    NODE_ENV: 'development',
+    AUTH_CREDENTIAL_RETENTION_WORKER_ENABLED: 'true',
+    AUTH_CREDENTIAL_RETENTION_WORKER_INTERVAL_SECONDS: '1800',
+    AUTH_CREDENTIAL_RETENTION_SWEEP_LIMIT: '125',
+  })
+  assert.equal(configured.authCredentialRetentionWorkerEnabled, true)
+  assert.equal(configured.authCredentialRetentionWorkerIntervalSeconds, 1800)
+  assert.equal(configured.authCredentialRetentionSweepLimit, 125)
+  assert.throws(() => buildEnv({ AUTH_CREDENTIAL_RETENTION_SWEEP_LIMIT: '0' }), /must be a positive integer/)
+})
+
+test('buildEnv validates and exposes community retention worker settings', () => {
+  const configured = buildEnv({
+    NODE_ENV: 'development',
+    COMMUNITY_RETENTION_WORKER_ENABLED: 'true',
+    COMMUNITY_RETENTION_WORKER_INTERVAL_SECONDS: '1800',
+    COMMUNITY_RETENTION_SWEEP_LIMIT: '125',
+  })
+  assert.equal(configured.communityRetentionWorkerEnabled, true)
+  assert.equal(configured.communityRetentionWorkerIntervalSeconds, 1800)
+  assert.equal(configured.communityRetentionSweepLimit, 125)
+  assert.throws(() => buildEnv({ COMMUNITY_RETENTION_SWEEP_LIMIT: '0' }), /must be a positive integer/)
+})
+
+test('buildEnv validates and exposes security event retention worker settings', () => {
+  const configured = buildEnv({
+    NODE_ENV: 'development',
+    SECURITY_EVENT_RETENTION_WORKER_ENABLED: 'true',
+    SECURITY_EVENT_RETENTION_WORKER_INTERVAL_SECONDS: '1800',
+    SECURITY_EVENT_RETENTION_SWEEP_LIMIT: '125',
+  })
+  assert.equal(configured.securityEventRetentionWorkerEnabled, true)
+  assert.equal(configured.securityEventRetentionWorkerIntervalSeconds, 1800)
+  assert.equal(configured.securityEventRetentionSweepLimit, 125)
+  assert.throws(() => buildEnv({ SECURITY_EVENT_RETENTION_SWEEP_LIMIT: '0' }), /must be a positive integer/)
+})
+
+test('buildEnv validates and exposes risk retention worker settings', () => {
+  const configured = buildEnv({
+    NODE_ENV: 'development',
+    RISK_RETENTION_WORKER_ENABLED: 'true',
+    RISK_RETENTION_WORKER_INTERVAL_SECONDS: '1800',
+    RISK_RETENTION_SWEEP_LIMIT: '125',
+  })
+  assert.equal(configured.riskRetentionWorkerEnabled, true)
+  assert.equal(configured.riskRetentionWorkerIntervalSeconds, 1800)
+  assert.equal(configured.riskRetentionSweepLimit, 125)
+  assert.throws(() => buildEnv({ RISK_RETENTION_SWEEP_LIMIT: '0' }), /must be a positive integer/)
+})
+
+test('buildEnv validates and exposes moderation retention worker settings', () => {
+  const configured = buildEnv({
+    NODE_ENV: 'development',
+    MODERATION_RETENTION_WORKER_ENABLED: 'true',
+    MODERATION_RETENTION_WORKER_INTERVAL_SECONDS: '1800',
+    MODERATION_RETENTION_SWEEP_LIMIT: '75',
+  })
+  assert.equal(configured.moderationRetentionWorkerEnabled, true)
+  assert.equal(configured.moderationRetentionWorkerIntervalSeconds, 1800)
+  assert.equal(configured.moderationRetentionSweepLimit, 75)
+  assert.throws(() => buildEnv({ MODERATION_RETENTION_SWEEP_LIMIT: '0' }), /must be a positive integer/)
+})
+
+test('buildEnv validates and exposes generation retention worker settings', () => {
+  const configured = buildEnv({ NODE_ENV: 'development', GENERATION_RETENTION_WORKER_ENABLED: 'true', GENERATION_RETENTION_WORKER_INTERVAL_SECONDS: '1800', GENERATION_RETENTION_SWEEP_LIMIT: '75' })
+  assert.equal(configured.generationRetentionWorkerEnabled, true)
+  assert.equal(configured.generationRetentionWorkerIntervalSeconds, 1800)
+  assert.equal(configured.generationRetentionSweepLimit, 75)
+  assert.throws(() => buildEnv({ GENERATION_RETENTION_SWEEP_LIMIT: '0' }), /must be a positive integer/)
+})
+
+test('buildEnv validates and exposes Provider lifecycle retention worker settings', () => {
+  const configured = buildEnv({ NODE_ENV: 'development', PROVIDER_LIFECYCLE_RETENTION_WORKER_ENABLED: 'true', PROVIDER_LIFECYCLE_RETENTION_WORKER_INTERVAL_SECONDS: '1800', PROVIDER_LIFECYCLE_RETENTION_SWEEP_LIMIT: '75' })
+  assert.equal(configured.providerLifecycleRetentionWorkerEnabled, true)
+  assert.equal(configured.providerLifecycleRetentionWorkerIntervalSeconds, 1800)
+  assert.equal(configured.providerLifecycleRetentionSweepLimit, 75)
+  assert.throws(() => buildEnv({ PROVIDER_LIFECYCLE_RETENTION_SWEEP_LIMIT: '0' }), /must be a positive integer/)
+})
+
+test('buildEnv validates and exposes configuration retention worker settings', () => {
+  const configured = buildEnv({ NODE_ENV: 'development', CONFIGURATION_RETENTION_WORKER_ENABLED: 'true', CONFIGURATION_RETENTION_WORKER_INTERVAL_SECONDS: '1800', CONFIGURATION_RETENTION_SWEEP_LIMIT: '75' })
+  assert.equal(configured.configurationRetentionWorkerEnabled, true)
+  assert.equal(configured.configurationRetentionWorkerIntervalSeconds, 1800)
+  assert.equal(configured.configurationRetentionSweepLimit, 75)
+  assert.throws(() => buildEnv({ CONFIGURATION_RETENTION_SWEEP_LIMIT: '0' }), /must be a positive integer/)
+})
+
+test('buildEnv validates and exposes marketplace retention worker settings', () => {
+  const configured = buildEnv({ NODE_ENV: 'development', MARKETPLACE_RETENTION_WORKER_ENABLED: 'true', MARKETPLACE_RETENTION_WORKER_INTERVAL_SECONDS: '1800', MARKETPLACE_RETENTION_SWEEP_LIMIT: '75' })
+  assert.equal(configured.marketplaceRetentionWorkerEnabled, true)
+  assert.equal(configured.marketplaceRetentionWorkerIntervalSeconds, 1800)
+  assert.equal(configured.marketplaceRetentionSweepLimit, 75)
+  assert.throws(() => buildEnv({ MARKETPLACE_RETENTION_SWEEP_LIMIT: '0' }), /must be a positive integer/)
+})
+
+test('buildEnv validates and exposes support retention worker settings', () => {
+  const configured = buildEnv({ NODE_ENV: 'development', SUPPORT_RETENTION_WORKER_ENABLED: 'true', SUPPORT_RETENTION_WORKER_INTERVAL_SECONDS: '1800', SUPPORT_RETENTION_SWEEP_LIMIT: '75' })
+  assert.equal(configured.supportRetentionWorkerEnabled, true)
+  assert.equal(configured.supportRetentionWorkerIntervalSeconds, 1800)
+  assert.equal(configured.supportRetentionSweepLimit, 75)
+  assert.throws(() => buildEnv({ SUPPORT_RETENTION_SWEEP_LIMIT: '0' }), /must be a positive integer/)
+})
+
+test('buildEnv gates Provider secret retention on an explicit managed lifecycle gateway', () => {
+  assert.throws(() => buildEnv({
+    PROVIDER_SECRET_RETENTION_WORKER_ENABLED: 'true',
+  }), /requires the managed secret lifecycle gateway/)
+  const env = buildEnv({
+    PROVIDER_SECRET_RETENTION_WORKER_ENABLED: 'true',
+    PROVIDER_SECRET_RETENTION_WORKER_INTERVAL_SECONDS: '120',
+    PROVIDER_SECRET_RETENTION_SWEEP_LIMIT: '25',
+    SECRET_MANAGER_LIFECYCLE_GATEWAY_ENABLED: 'true',
+    SECRET_MANAGER_LIFECYCLE_GATEWAY_CONFIRMATION: 'managed-secret-lifecycle-enabled',
+    SECRET_MANAGER_LIFECYCLE_GATEWAY_URL: 'https://secrets.example.test/v1/lifecycle',
+    SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN: 'managed-secret-test-token',
+  })
+  assert.equal(env.providerSecretRetentionWorkerEnabled, true)
+  assert.equal(env.providerSecretRetentionWorkerIntervalSeconds, 120)
+  assert.equal(env.providerSecretRetentionSweepLimit, 25)
+})
+
+test('buildEnv keeps automated audit retention fail closed without prune approval and durable storage', () => {
+  const storage = {
+    STORAGE_DRIVER: 's3',
+    STORAGE_ENDPOINT: 'https://storage.example.com',
+    STORAGE_REGION: 'us-east-1',
+    STORAGE_BUCKET: 'audit-archive',
+    STORAGE_ACCESS_KEY_ID: 'access-key',
+    STORAGE_SECRET_ACCESS_KEY: 'secret-key',
+  }
+  const configured = buildEnv({
+    NODE_ENV: 'development',
+    ...storage,
+    AUDIT_RETENTION_WORKER_ENABLED: 'true',
+    AUDIT_RETENTION_WORKER_INTERVAL_SECONDS: '1800',
+    AUDIT_RETENTION_PRUNE_ENABLED: 'true',
+    AUDIT_RETENTION_LEGAL_HOLD: 'false',
+  })
+  assert.equal(configured.auditRetentionWorkerEnabled, true)
+  assert.equal(configured.auditRetentionWorkerIntervalSeconds, 1800)
+  assert.throws(
+    () => buildEnv({ AUDIT_RETENTION_WORKER_ENABLED: 'true' }),
+    /requires AUDIT_RETENTION_PRUNE_ENABLED=true and AUDIT_RETENTION_LEGAL_HOLD=false/,
+  )
+  assert.throws(
+    () => buildEnv({
+      AUDIT_RETENTION_WORKER_ENABLED: 'true',
+      AUDIT_RETENTION_PRUNE_ENABLED: 'true',
+      AUDIT_RETENTION_LEGAL_HOLD: 'false',
+    }),
+    /requires durable STORAGE_DRIVER=s3 archive storage/,
+  )
+  assert.throws(() => buildEnv({ AUDIT_RETENTION_WORKER_INTERVAL_SECONDS: '0' }), /must be a positive integer/)
+})
+
 test('buildEnv validates and exposes creative provider polling worker settings', () => {
   const env = buildEnv({
     NODE_ENV: 'production',
@@ -301,84 +597,109 @@ test('buildEnv validates and exposes creative provider polling worker settings',
   )
 })
 
-test('buildEnv keeps the fixture-only Veo lifecycle behind independent staging switches', () => {
+test('buildEnv keeps the fixture-only Router video lifecycle behind independent staging switches', () => {
   const env = buildEnv({
     NODE_ENV: 'production',
     ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
     CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
-    CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED: 'true',
-    CREATIVE_GOOGLE_VEO_LIFECYCLE_WORKER_ENABLED: 'true',
-    CREATIVE_GOOGLE_VEO_CONFIRMATION: 'fixture-only',
-    CREATIVE_GOOGLE_VEO_POLL_INTERVAL_SECONDS: '10',
-    CREATIVE_GOOGLE_VEO_TIMEOUT_SECONDS: '900',
-    CREATIVE_GOOGLE_VEO_MAX_STATUS_ATTEMPTS: '12',
-    CREATIVE_GOOGLE_VEO_SWEEP_LIMIT: '4',
+    CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED: 'true',
+    CREATIVE_ROUTER_VIDEO_LIFECYCLE_WORKER_ENABLED: 'true',
+    CREATIVE_ROUTER_VIDEO_CONFIRMATION: 'fixture-only',
+    CREATIVE_ROUTER_VIDEO_POLL_INTERVAL_SECONDS: '10',
+    CREATIVE_ROUTER_VIDEO_TIMEOUT_SECONDS: '900',
+    CREATIVE_ROUTER_VIDEO_MAX_STATUS_ATTEMPTS: '12',
+    CREATIVE_ROUTER_VIDEO_SWEEP_LIMIT: '4',
   })
-  assert.equal(env.creativeGoogleVeoLifecycleEnabled, true)
-  assert.equal(env.creativeGoogleVeoLifecycleWorkerEnabled, true)
-  assert.equal(env.creativeGoogleVeoPollIntervalSeconds, 10)
-  assert.equal(env.creativeGoogleVeoTimeoutSeconds, 900)
-  assert.equal(env.creativeGoogleVeoMaxStatusAttempts, 12)
-  assert.equal(env.creativeGoogleVeoSweepLimit, 4)
+  assert.equal(env.creativeRouterVideoLifecycleEnabled, true)
+  assert.equal(env.creativeRouterVideoLifecycleWorkerEnabled, true)
+  assert.equal(env.creativeRouterVideoPollIntervalSeconds, 10)
+  assert.equal(env.creativeRouterVideoTimeoutSeconds, 900)
+  assert.equal(env.creativeRouterVideoMaxStatusAttempts, 12)
+  assert.equal(env.creativeRouterVideoSweepLimit, 4)
 
   assert.throws(
-    () => buildEnv({ CREATIVE_GOOGLE_VEO_LIFECYCLE_WORKER_ENABLED: 'true' }),
-    /requires CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED=true/,
+    () => buildEnv({ CREATIVE_ROUTER_VIDEO_LIFECYCLE_WORKER_ENABLED: 'true' }),
+    /requires CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED=true/,
   )
   assert.throws(
     () => buildEnv({
       NODE_ENV: 'production',
       ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
       CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
-      CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED: 'true',
+      CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED: 'true',
     }),
-    /CREATIVE_GOOGLE_VEO_CONFIRMATION must be fixture-only/,
+    /requires a Seedance or MiniMax staging confirmation/,
   )
 })
 
-test('buildEnv enables real Veo staging only behind complete HTTP, credential, and GCS gates', () => {
+test('buildEnv enables real Router video staging only behind complete HTTP and credential gates', () => {
   const env = buildEnv({
     NODE_ENV: 'production',
     ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
     CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
-    CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED: 'true',
-    CREATIVE_GOOGLE_VEO_NETWORK_CALLS_ENABLED: 'true',
-    CREATIVE_GOOGLE_VEO_CONFIRMATION: 'staging-only',
-    CREATIVE_GOOGLE_VEO_ACCESS_TOKEN: 'veo-fixture-access-token',
-    CREATIVE_GOOGLE_VEO_PROJECT_ID: 'video-staging-123',
-    CREATIVE_GOOGLE_VEO_LOCATION: 'us-central1',
-    CREATIVE_GOOGLE_VEO_OUTPUT_GCS_URI: 'gs://video-staging-output/veo/',
-    CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED: 'true',
-    CREATIVE_GOOGLE_VEO_LIFECYCLE_WORKER_ENABLED: 'true',
+    CREATIVE_ROUTER_VIDEO_HTTP_CLIENT_ENABLED: 'true',
+    CREATIVE_ROUTER_VIDEO_NETWORK_CALLS_ENABLED: 'true',
+    CREATIVE_ROUTER_VIDEO_CONFIRMATION: 'staging-only',
+    CREATIVE_ROUTER_VIDEO_API_KEY: 'router-video-fixture-api-key',
+    CREATIVE_ROUTER_VIDEO_BASE_URL: 'https://router.hctopup.com',
+    CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED: 'true',
+    CREATIVE_ROUTER_VIDEO_LIFECYCLE_WORKER_ENABLED: 'true',
   })
-  assert.equal(env.creativeGoogleVeoHttpClientEnabled, true)
-  assert.equal(env.creativeGoogleVeoNetworkCallsEnabled, true)
-  assert.equal(env.hasCreativeGoogleVeoAccessToken, true)
-  assert.equal(env.creativeGoogleVeoLifecycleWorkerEnabled, true)
+  assert.equal(env.creativeRouterVideoHttpClientEnabled, true)
+  assert.equal(env.creativeRouterVideoNetworkCallsEnabled, true)
+  assert.equal(env.hasCreativeRouterVideoApiKey, true)
+  assert.equal(env.creativeRouterVideoLifecycleWorkerEnabled, true)
   assert.throws(
-    () => buildEnv({ CREATIVE_GOOGLE_VEO_NETWORK_CALLS_ENABLED: 'true' }),
-    /requires CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED=true/,
+    () => buildEnv({ CREATIVE_ROUTER_VIDEO_NETWORK_CALLS_ENABLED: 'true' }),
+    /requires CREATIVE_ROUTER_VIDEO_HTTP_CLIENT_ENABLED=true/,
   )
 })
 
-test('buildEnv enables ElevenLabs Music staging only with rights and license evidence', () => {
+test('buildEnv enables MiniMax Video with lifecycle, credential, and authenticated Router output proxy', () => {
+  const env = buildEnv({
+    NODE_ENV: 'production',
+    ACCESS_TOKEN_SECRET: 'minimax-video-access-secret-at-least-32-bytes',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED: 'true',
+    CREATIVE_ROUTER_MINIMAX_VIDEO_HTTP_CLIENT_ENABLED: 'true',
+    CREATIVE_ROUTER_MINIMAX_VIDEO_NETWORK_CALLS_ENABLED: 'true',
+    CREATIVE_ROUTER_MINIMAX_VIDEO_CONFIRMATION: 'staging-only',
+    CREATIVE_ROUTER_MINIMAX_VIDEO_API_KEY: 'minimax-video-secret',
+    CREATIVE_ROUTER_MINIMAX_VIDEO_BASE_URL: 'https://router.hctopup.com',
+  })
+  assert.equal(env.creativeRouterMiniMaxVideoHttpClientEnabled, true)
+  assert.equal(env.creativeRouterMiniMaxVideoNetworkCallsEnabled, true)
+  assert.equal(env.hasCreativeRouterMiniMaxVideoApiKey, true)
+  assert.doesNotThrow(() => buildEnv({
+    NODE_ENV: 'production',
+    ACCESS_TOKEN_SECRET: 'minimax-video-access-secret-at-least-32-bytes',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_ROUTER_MINIMAX_VIDEO_HTTP_CLIENT_ENABLED: 'true',
+    CREATIVE_ROUTER_MINIMAX_VIDEO_NETWORK_CALLS_ENABLED: 'true',
+    CREATIVE_ROUTER_MINIMAX_VIDEO_CONFIRMATION: 'staging-only',
+    CREATIVE_ROUTER_MINIMAX_VIDEO_API_KEY: 'minimax-video-secret',
+    CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED: 'true',
+  }))
+})
+
+test('buildEnv enables Router MiniMax Music staging only with rights and license evidence', () => {
   const env = buildEnv({
     NODE_ENV: 'production', ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
     CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
-    CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED: 'true',
-    CREATIVE_ELEVENLABS_MUSIC_NETWORK_CALLS_ENABLED: 'true',
-    CREATIVE_ELEVENLABS_MUSIC_CONFIRMATION: 'staging-only',
-    CREATIVE_ELEVENLABS_MUSIC_API_KEY: 'fixture-key',
-    CREATIVE_ELEVENLABS_MUSIC_ENTERPRISE_RIGHTS_CONFIRMED: 'true',
-    CREATIVE_ELEVENLABS_MUSIC_TRAINING_OPT_OUT_CONFIRMED: 'true',
-    CREATIVE_ELEVENLABS_MUSIC_LICENSE_ID: 'order-1',
-    CREATIVE_ELEVENLABS_MUSIC_TERMS_VERSION: 'terms-1',
+    CREATIVE_ROUTER_MUSIC_HTTP_CLIENT_ENABLED: 'true',
+    CREATIVE_ROUTER_MUSIC_NETWORK_CALLS_ENABLED: 'true',
+    CREATIVE_ROUTER_MUSIC_CONFIRMATION: 'staging-only',
+    CREATIVE_ROUTER_MUSIC_API_KEY: 'fixture-key',
+    CREATIVE_ROUTER_MUSIC_STAGING_RIGHTS_ACKNOWLEDGED: 'true',
+    CREATIVE_ROUTER_MUSIC_TRAINING_OPT_OUT_CONFIRMED: 'true',
+    CREATIVE_ROUTER_MUSIC_LICENSE_ID: 'order-1',
+    CREATIVE_ROUTER_MUSIC_TERMS_VERSION: 'terms-1',
   })
-  assert.equal(env.creativeElevenLabsMusicHttpClientEnabled, true)
-  assert.equal(env.hasCreativeElevenLabsMusicLicenseEvidence, true)
+  assert.equal(env.creativeRouterMusicHttpClientEnabled, true)
+  assert.equal(env.hasCreativeRouterMusicLicenseEvidence, true)
   assert.throws(
-    () => buildEnv({ CREATIVE_ELEVENLABS_MUSIC_NETWORK_CALLS_ENABLED: 'true' }),
-    /requires CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED=true/,
+    () => buildEnv({ CREATIVE_ROUTER_MUSIC_NETWORK_CALLS_ENABLED: 'true' }),
+    /requires CREATIVE_ROUTER_MUSIC_HTTP_CLIENT_ENABLED=true/,
   )
 })
 
@@ -695,6 +1016,43 @@ test('buildEnv keeps OpenAI Image client and network gates independent and stagi
   )
 })
 
+test('buildEnv validates fixed HTTPS creative safety classifier deployments without exposing secrets', () => {
+  const source = {
+    NODE_ENV: 'production',
+    ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+    CREATIVE_INPUT_SAFETY_CLASSIFIER_MODE: 'external',
+    CREATIVE_INPUT_SAFETY_CLASSIFIER_URL: 'https://safety.example.com/v1/input',
+    CREATIVE_INPUT_SAFETY_CLASSIFIER_TOKEN: 'input-classifier-secret',
+    CREATIVE_OUTPUT_SAFETY_CLASSIFIER_MODE: 'external',
+    CREATIVE_OUTPUT_SAFETY_CLASSIFIER_URL: 'https://safety.example.com/v1/output',
+    CREATIVE_OUTPUT_SAFETY_CLASSIFIER_TOKEN: 'output-classifier-secret',
+  }
+  const env = buildEnv(source)
+  const config = buildCreativeProviderConfig(source)
+
+  assert.equal(env.creativeInputSafetyClassifierMode, 'external')
+  assert.equal(env.hasCreativeInputSafetyClassifierUrl, true)
+  assert.equal(env.hasCreativeInputSafetyClassifierToken, true)
+  assert.deepEqual(config.safetyClassifiers, {
+    input: { implemented: true, mode: 'external', configured: true },
+    output: { implemented: true, mode: 'external', configured: true },
+  })
+  assert.equal(JSON.stringify(config).includes(source.CREATIVE_INPUT_SAFETY_CLASSIFIER_TOKEN), false)
+  assert.equal(JSON.stringify(config).includes(source.CREATIVE_OUTPUT_SAFETY_CLASSIFIER_TOKEN), false)
+  assert.throws(
+    () => buildEnv({ CREATIVE_INPUT_SAFETY_CLASSIFIER_MODE: 'external', CREATIVE_INPUT_SAFETY_CLASSIFIER_URL: 'http://safety.example.com/input', CREATIVE_INPUT_SAFETY_CLASSIFIER_TOKEN: 'long-enough-secret' }),
+    /CREATIVE_INPUT_SAFETY_CLASSIFIER_URL must be a fixed HTTPS URL/,
+  )
+  assert.throws(
+    () => buildEnv({ CREATIVE_OUTPUT_SAFETY_CLASSIFIER_MODE: 'external', CREATIVE_OUTPUT_SAFETY_CLASSIFIER_URL: 'https://safety.example.com/output?tenant=one', CREATIVE_OUTPUT_SAFETY_CLASSIFIER_TOKEN: 'long-enough-secret' }),
+    /CREATIVE_OUTPUT_SAFETY_CLASSIFIER_URL must be a fixed HTTPS URL/,
+  )
+  assert.throws(
+    () => buildEnv({ CREATIVE_INPUT_SAFETY_CLASSIFIER_MODE: 'external', CREATIVE_INPUT_SAFETY_CLASSIFIER_URL: 'https://safety.example.com/input', CREATIVE_INPUT_SAFETY_CLASSIFIER_TOKEN: 'short' }),
+    /CREATIVE_INPUT_SAFETY_CLASSIFIER_TOKEN must be at least 16 characters/,
+  )
+})
+
 test('buildEnv enables Provider callbacks only behind the independent staging kill switch', () => {
   assert.throws(
     () => buildEnv({ NODE_ENV: 'development', CREATIVE_PROVIDER_CALLBACK_ENABLED: 'yes' }),
@@ -845,6 +1203,7 @@ test('buildEnv validates and exposes rate-limit settings', () => {
     RATE_LIMIT_AUTH_MAX: '20',
     RATE_LIMIT_UPLOAD_MAX: '8',
     RATE_LIMIT_ADMIN_MUTATION_MAX: '12',
+    RATE_LIMIT_CLIENT_TELEMETRY_MAX: '6',
   })
 
   assert.equal(env.rateLimitEnabled, false)
@@ -857,6 +1216,7 @@ test('buildEnv validates and exposes rate-limit settings', () => {
   assert.equal(env.rateLimitAuthMax, 20)
   assert.equal(env.rateLimitUploadMax, 8)
   assert.equal(env.rateLimitAdminMutationMax, 12)
+  assert.equal(env.rateLimitClientTelemetryMax, 6)
 
   const redisEnv = buildEnv({
     NODE_ENV: 'development',
@@ -1090,6 +1450,13 @@ test('buildEnv validates and exposes creative provider alert settings without en
     CREATIVE_PROVIDER_ALERT_EMAIL_TO: 'creative-ops@example.com, finance@example.com',
     CREATIVE_PROVIDER_ALERT_EMAIL_FROM: 'provider-alerts@example.com',
     CREATIVE_PROVIDER_ALERT_EMAIL_TIMEOUT_SECONDS: '8',
+    CREATIVE_PROVIDER_ALERT_DELIVERY_WORKER_ENABLED: 'true',
+    CREATIVE_PROVIDER_ALERT_DELIVERY_WORKER_INTERVAL_SECONDS: '11',
+    CREATIVE_PROVIDER_ALERT_DELIVERY_WORKER_BATCH_SIZE: '12',
+    CREATIVE_PROVIDER_ALERT_DELIVERY_LEASE_SECONDS: '45',
+    CREATIVE_PROVIDER_ALERT_DELIVERY_MAX_ATTEMPTS: '6',
+    CREATIVE_PROVIDER_ALERT_DELIVERY_RETRY_BASE_SECONDS: '20',
+    CREATIVE_PROVIDER_ALERT_ALLOWED_HOSTS: 'ops.example.com,hooks.slack.com,mailer.example.com',
   })
 
   assert.equal(enabled.creativeProviderAlertsEnabled, true)
@@ -1106,6 +1473,13 @@ test('buildEnv validates and exposes creative provider alert settings without en
   assert.equal(enabled.creativeProviderAlertEmailRecipientCount, 2)
   assert.equal(enabled.hasCreativeProviderAlertEmailFrom, true)
   assert.equal(enabled.creativeProviderAlertEmailTimeoutSeconds, 8)
+  assert.equal(enabled.creativeProviderAlertDeliveryWorkerEnabled, true)
+  assert.equal(enabled.creativeProviderAlertDeliveryWorkerIntervalSeconds, 11)
+  assert.equal(enabled.creativeProviderAlertDeliveryWorkerBatchSize, 12)
+  assert.equal(enabled.creativeProviderAlertDeliveryLeaseSeconds, 45)
+  assert.equal(enabled.creativeProviderAlertDeliveryMaxAttempts, 6)
+  assert.equal(enabled.creativeProviderAlertDeliveryRetryBaseSeconds, 20)
+  assert.deepEqual(enabled.creativeProviderAlertAllowedHosts, ['ops.example.com', 'hooks.slack.com', 'mailer.example.com'])
 })
 
 test('buildEnv validates explicit object storage settings', () => {
@@ -1377,6 +1751,7 @@ test('deployment smoke accepts production auth, storage, scanner, and notificati
     RATE_LIMIT_AUTH_MAX: '100',
     RATE_LIMIT_UPLOAD_MAX: '60',
     RATE_LIMIT_ADMIN_MUTATION_MAX: '80',
+    RATE_LIMIT_CLIENT_TELEMETRY_MAX: '120',
     METRICS_EXPORTER_ENABLED: 'true',
     METRICS_EXPORTER_FORMAT: 'prometheus',
     METRICS_EXPORTER_TOKEN: 'metrics-secret',
@@ -1455,6 +1830,7 @@ test('deployment smoke accepts production auth, storage, scanner, and notificati
   assert.equal(env.rateLimitAuthMax, 100)
   assert.equal(env.rateLimitUploadMax, 60)
   assert.equal(env.rateLimitAdminMutationMax, 80)
+  assert.equal(env.rateLimitClientTelemetryMax, 120)
   assert.equal(env.metricsExporterEnabled, true)
   assert.equal(env.metricsExporterFormat, 'prometheus')
   assert.equal(env.hasMetricsExporterToken, true)

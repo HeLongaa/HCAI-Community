@@ -4,6 +4,8 @@ import { ArchiveRestore, Download, Eye, ListChecks, ListTree, Megaphone, Plus, R
 import type { Permission } from '../../domain/types'
 import { adminService } from '../../services/adminService'
 import type { ConfigResourceDeletedFilter, ConfigResourceDto, ConfigResourceExportDocument, ConfigResourceKind, ConfigResourceRevisionDto, FeatureFlagDefinition, FeatureFlagEvaluation, FeatureFlagRule } from '../../services/contracts'
+import { downloadJsonArtifact } from './downloadAdminArtifact'
+import { AdminActionFeedback, type AdminActionFeedbackMessage } from './AdminActionFeedback'
 
 const modes: Array<{ kind: ConfigResourceKind; icon: typeof ToggleLeft; read: Permission; manage: Permission; publish: Permission; en: string; zh: string }> = [
   { kind: 'feature_flag', icon: ToggleLeft, read: 'admin:feature-flags:read', manage: 'admin:feature-flags:manage', publish: 'admin:feature-flags:publish', en: 'Feature flags', zh: '功能开关' },
@@ -30,10 +32,9 @@ const featureDefinition = (value: Record<string, unknown>): FeatureFlagDefinitio
   rolloutSeed: typeof value.rolloutSeed === 'string' ? value.rolloutSeed : 'v1',
 })
 
-export function ConfigurationResourcesPanel({ hasPermission, isZh, notify }: {
+export function ConfigurationResourcesPanel({ hasPermission, isZh }: {
   hasPermission: (permission: Permission) => boolean
   isZh: boolean
-  notify: (message: string) => void
 }) {
   const readableModes = useMemo(() => modes.filter((mode) => hasPermission(mode.read)), [hasPermission])
   const [kind, setKind] = useState<ConfigResourceKind>(() => readableModes[0]?.kind ?? 'feature_flag')
@@ -57,6 +58,7 @@ export function ConfigurationResourcesPanel({ hasPermission, isZh, notify }: {
   const [reasonCode, setReasonCode] = useState('configuration_reviewed')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<AdminActionFeedbackMessage | null>(null)
   const creatingRef = useRef(false)
   const importInputRef = useRef<HTMLInputElement>(null)
 
@@ -130,11 +132,12 @@ export function ConfigurationResourcesPanel({ hasPermission, isZh, notify }: {
   const run = async (action: () => Promise<void>, success: string) => {
     setLoading(true)
     setError(null)
+    setFeedback(null)
     try {
       await action()
-      notify(success)
+      setFeedback({ kind: 'success', text: success })
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      setFeedback({ kind: 'error', text: cause instanceof Error ? cause.message : String(cause) })
     } finally {
       setLoading(false)
     }
@@ -220,12 +223,11 @@ export function ConfigurationResourcesPanel({ hasPermission, isZh, notify }: {
   }, isZh ? '所选资源已归档。' : 'Selected resources archived.')
   const exportResources = () => void run(async () => {
     const exported = await adminService.exportConfigResources(kind)
-    const url = URL.createObjectURL(new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `reference-data-${new Date().toISOString().slice(0, 10)}.json`
-    link.click()
-    URL.revokeObjectURL(url)
+    downloadJsonArtifact({
+      value: exported,
+      fileName: `reference-data-${new Date().toISOString().slice(0, 10)}.json`,
+      mimeType: 'application/json',
+    })
   }, isZh ? '字典数据已导出。' : 'Reference data exported.')
   const importResources = (file: File) => void run(async () => {
     const document = JSON.parse(await file.text()) as Partial<ConfigResourceExportDocument>
@@ -281,6 +283,7 @@ export function ConfigurationResourcesPanel({ hasPermission, isZh, notify }: {
       </div>
 
       {error && <div className="inline-error" role="alert">{error}</div>}
+      <AdminActionFeedback message={feedback} />
       <div className="settings-workspace">
         <div className="admin-table settings-list config-resource-list">
           {resources.map((item) => <div className={`admin-row compact ${selected?.id === item.id ? 'selected' : ''}`} key={item.id}>

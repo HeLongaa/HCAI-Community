@@ -4,6 +4,7 @@ import test from 'node:test'
 import { executeMockCreativeGeneration } from './mockProvider.js'
 import { safeErrorPreview } from './generationRecords.js'
 import { assertCreativeProviderAdapterContract, safeProviderFailure } from './providerAdapterContract.js'
+import { providerNativeSafetyForGeneration } from './providerNativeSafety.js'
 
 const actor = {
   id: 'demo-user-creator',
@@ -123,24 +124,53 @@ test('provider adapter contract rejects secret-like metadata keys', () => {
   )
 })
 
+test('provider adapter contract requires status-consistent native safety evidence for real adapters', () => {
+  const externalProvider = {
+    ...provider,
+    id: 'external-provider',
+    safeMetadata: { providerNativeSafetyRequired: true },
+  }
+  const generation = {
+    ...completedGeneration(),
+    provider: { ...completedGeneration().provider, id: externalProvider.id },
+  }
+  assert.throws(
+    () => assertCreativeProviderAdapterContract(generation, { request, provider: externalProvider }),
+    { code: 'CREATIVE_PROVIDER_SAFETY_CONTRACT_FAILED' },
+  )
+  assert.doesNotThrow(() => assertCreativeProviderAdapterContract({
+    ...generation,
+    safety: {
+      ...generation.safety,
+      providerNative: providerNativeSafetyForGeneration({ providerId: externalProvider.id, status: 'completed' }),
+    },
+  }, { request, provider: externalProvider }))
+})
+
 test('safeProviderFailure maps rate limits, timeouts, and redacts secrets', () => {
   assert.deepEqual(safeProviderFailure({ statusCode: 429, message: 'provider says slow down api_key=secret-value' }), {
     code: 'PROVIDER_RATE_LIMITED',
     messagePreview: 'provider says slow down api_key=<redacted>',
     retryable: true,
     statusCode: 429,
+    providerStatus: 429,
+    providerCategory: 'rate_limit',
   })
   assert.deepEqual(safeProviderFailure({ code: 'ETIMEDOUT', message: 'request timed out with Bearer abc.def.ghi' }), {
     code: 'PROVIDER_TIMEOUT',
     messagePreview: 'request timed out with <redacted>',
     retryable: true,
     statusCode: 504,
+    providerStatus: null,
+    providerCategory: 'timeout',
   })
   assert.deepEqual(safeProviderFailure({ statusCode: 502, message: 'upstream bad gateway sk-secret123456' }), {
     code: 'PROVIDER_UNAVAILABLE',
     messagePreview: 'upstream bad gateway <redacted>',
     retryable: true,
     statusCode: 503,
+    providerStatus: 502,
+    providerCategory: 'provider_5xx',
   })
 })
 

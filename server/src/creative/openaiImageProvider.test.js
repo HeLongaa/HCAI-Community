@@ -10,6 +10,7 @@ import {
   createOpenAIImageHttpClient,
   compileOpenAIImageEditPrompt,
   projectOpenAIImageGenerationResponse,
+  openAIImagePricingUnitForRequest,
   readOpenAIImageInputFiles,
   readOpenAIImageOutputBytes,
 } from './openaiImageProvider.js'
@@ -304,6 +305,43 @@ test('OpenAI Image cost metadata enforces quality pricing and daily cap', () => 
     })),
     (error) => error.code === 'CREATIVE_PROVIDER_BUDGET_EXCEEDED',
   )
+})
+
+test('OpenAI Image cost uses versioned database output and token prices', () => {
+  const pricedSource = {
+    ...source,
+    CREATIVE_OPENAI_IMAGE_PRICING_REQUIRED: 'true',
+    CREATIVE_OPENAI_IMAGE_PRICING_JSON: JSON.stringify([
+      { id: 'price-output-medium-landscape', currency: 'USD', unit: 'image_output_1536x1024_medium', unitPriceMicros: 41000, effectiveFrom: '2026-07-22T00:00:00.000Z' },
+      { id: 'price-input-text', currency: 'USD', unit: 'input_text_tokens', unitPriceMicros: 5000000, effectiveFrom: '2026-07-22T00:00:00.000Z' },
+      { id: 'price-input-image', currency: 'USD', unit: 'input_image_tokens', unitPriceMicros: 8000000, effectiveFrom: '2026-07-22T00:00:00.000Z' },
+      { id: 'price-output-image', currency: 'USD', unit: 'output_image_tokens', unitPriceMicros: 30000000, effectiveFrom: '2026-07-22T00:00:00.000Z' },
+    ]),
+  }
+  assert.equal(openAIImagePricingUnitForRequest(request), 'image_output_1536x1024_medium')
+  const metadata = buildOpenAIImageProviderCostMetadata({
+    request,
+    result: {
+      output: { contentType: 'image/png' },
+      usage: { input_tokens: 20, input_tokens_details: { image_tokens: 0, text_tokens: 20 }, output_tokens: 100, total_tokens: 120 },
+    },
+    source: pricedSource,
+    now: new Date('2026-07-22T01:00:00.000Z'),
+  })
+  assert.equal(metadata.estimate.amount, 0.041)
+  assert.equal(metadata.estimate.billingUnit, 'image')
+  assert.equal(metadata.model.pricingSource, 'model_control_pricing_version')
+  assert.equal(metadata.model.pricingSourceRef, 'price-output-medium-landscape')
+  assert.equal(metadata.actual.amount, 0.0031)
+  assert.equal(metadata.risk.reconciliationRequired, false)
+
+  const missingComponents = buildOpenAIImageProviderCostMetadata({
+    request,
+    result: { output: { contentType: 'image/png' }, usage: { input_tokens: 20, input_tokens_details: { image_tokens: 0, text_tokens: 20 }, output_tokens: 100, total_tokens: 120 } },
+    source: { ...source, CREATIVE_OPENAI_IMAGE_PRICING_REQUIRED: 'true', CREATIVE_OPENAI_IMAGE_PRICING_JSON: JSON.stringify([JSON.parse(pricedSource.CREATIVE_OPENAI_IMAGE_PRICING_JSON)[0]]) },
+  })
+  assert.equal(missingComponents.actual.amount, null)
+  assert.deepEqual(missingComponents.risk.reasonCodes, ['provider_usage_or_component_pricing_incomplete'])
 })
 
 test('OpenAI Image adapter returns contract-safe output with non-serializable in-memory bytes', async () => {

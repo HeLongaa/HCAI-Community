@@ -25,7 +25,7 @@ test('published task rules govern the publisher form and business metrics export
 
     await page.goto('/')
     await page.getByTestId('nav-tasks').click()
-    await page.getByRole('button', { name: /Post task|Post a task/ }).click()
+    await page.getByRole('button', { name: /Post task|Post a task/ }).first().click()
     await expect(page.getByLabel('Category')).toHaveValue(category)
     await page.getByLabel('Acceptance template').selectOption('complete-delivery')
     await expect(page.getByLabel('Submission and acceptance rules')).toHaveValue(templateBody)
@@ -52,6 +52,7 @@ test('published task rules govern the publisher form and business metrics export
     const download = page.waitForEvent('download')
     await panel.getByTitle('Export business metrics').click()
     expect((await download).suggestedFilename()).toMatch(/^task-business-metrics-.*\.json$/)
+    await expect(page.locator('a[download^="task-business-metrics-"]')).toHaveCount(0)
   } finally {
     await request.delete(`${apiBaseUrl}/api/admin/config-resources/task_rule/${rule.id}`, {
       headers: authHeaders(session.accessToken), data: { expectedVersion: 2, reasonCode: 'e2e_cleanup' },

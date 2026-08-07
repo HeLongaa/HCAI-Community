@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 import test from 'node:test'
 
@@ -76,6 +77,28 @@ test('inspectStorageObject fails closed on missing and mismatched objects', asyn
       inspectStorageObject(asset, { source: sourceFor(port) }),
       (error) => error instanceof StorageObjectError && error.code === 'STORAGE_SIZE_MISMATCH',
     )
+  })
+})
+
+test('inspectStorageObject verifies bytes with GET when an edge gateway rejects HEAD', async () => {
+  const body = Buffer.from('verified-get')
+  const fallbackAsset = { ...asset, sizeBytes: body.length, checksumSha256: createHash('sha256').update(body).digest('hex') }
+  let requests = 0
+  await withServer((request, response) => {
+    requests += 1
+    if (request.method === 'HEAD') {
+      response.writeHead(403)
+      response.end()
+      return
+    }
+    assert.equal(request.method, 'GET')
+    response.writeHead(200, { 'content-length': String(body.length), 'content-type': fallbackAsset.contentType, etag: '"etag-get"' })
+    response.end(body)
+  }, async (port) => {
+    const result = await inspectStorageObject(fallbackAsset, { source: sourceFor(port) })
+    assert.equal(requests, 2)
+    assert.equal(result.checksumSha256, fallbackAsset.checksumSha256)
+    assert.equal(result.etag, 'etag-get')
   })
 })
 

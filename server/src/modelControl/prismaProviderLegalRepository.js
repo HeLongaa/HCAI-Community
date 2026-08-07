@@ -36,11 +36,9 @@ export const createPrismaProviderLegalRepository = (client) => ({
           if (duplicate.evidenceHash !== input.evidenceHash) throw new HttpError(409, 'LEGAL_REVIEW_SOURCE_CONFLICT', 'legal review source key already records different evidence')
           return duplicate
         }
-        const [provider, modelVersion, current] = await Promise.all([
-          tx.provider.findUnique({ where: { id: input.providerId } }),
-          tx.modelVersion.findUnique({ where: { id: input.modelVersionId }, include: { model: true } }),
-          tx.providerLegalReview.findFirst({ where: { scopeKey }, orderBy: { version: 'desc' } }),
-        ])
+        const provider = await tx.provider.findUnique({ where: { id: input.providerId } })
+        const modelVersion = await tx.modelVersion.findUnique({ where: { id: input.modelVersionId }, include: { model: true } })
+        const current = await tx.providerLegalReview.findFirst({ where: { scopeKey }, orderBy: { version: 'desc' } })
         if (!provider || !modelVersion) throw new HttpError(422, 'LEGAL_REVIEW_REFERENCE_NOT_FOUND', 'Provider and model version must exist')
         if (modelVersion.model.providerId !== provider.id) throw new HttpError(422, 'LEGAL_REVIEW_PROVIDER_MISMATCH', 'model version does not belong to the selected Provider')
         if (input.version !== (current?.version ?? 0) + 1) throw new HttpError(409, 'LEGAL_REVIEW_VERSION_CONFLICT', 'legal review versions must be appended sequentially per scope')

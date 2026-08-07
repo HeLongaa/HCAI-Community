@@ -29,3 +29,23 @@ test('runtime pricing prefers a deployment-specific price over the global fallba
     { modelDeploymentId: null },
   ])
 })
+
+test('runtime pricing set keeps the newest deployment-specific row for every image cost unit', async () => {
+  let query = null
+  const repository = createPrismaModelControlRepository({
+    pricingVersion: {
+      findMany: async (input) => {
+        query = input
+        return [
+          { id: 'deployment-output', unit: 'image_output_1024x1024_high', modelDeploymentId: 'deployment-image', effectiveFrom: new Date('2026-07-22T00:00:00.000Z') },
+          { id: 'global-output', unit: 'image_output_1024x1024_high', modelDeploymentId: null, effectiveFrom: new Date('2026-07-01T00:00:00.000Z') },
+          { id: 'text-token', unit: 'input_text_tokens', modelDeploymentId: null, effectiveFrom: new Date('2026-07-01T00:00:00.000Z') },
+        ]
+      },
+    },
+  })
+  const result = await repository.findRuntimePricings({ modelVersionId: 'version-image', modelDeploymentId: 'deployment-image', now: new Date('2026-07-22T01:00:00.000Z') })
+  assert.deepEqual(result.map((item) => item.id), ['deployment-output', 'text-token'])
+  assert.equal(query.where.modelVersionId, 'version-image')
+  assert.deepEqual(query.orderBy[0], { modelDeploymentId: { sort: 'desc', nulls: 'last' } })
+})

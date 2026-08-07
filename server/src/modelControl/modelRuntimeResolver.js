@@ -6,19 +6,20 @@ import { resolveModelRoute } from './modelRoutingRuntime.js'
 import { assertProviderLegalApproval } from './providerLegalRuntime.js'
 import { readProviderOperationalSnapshot } from './providerOperationsService.js'
 
-const adapterForModality = Object.freeze({
-  image: 'openai_image',
-  chat: 'openai_chat',
-  video: 'google_video',
-  music: 'elevenlabs_music',
+const adaptersForModality = Object.freeze({
+  image: Object.freeze(['openai_image']),
+  chat: Object.freeze(['openai_chat']),
+  video: Object.freeze(['router_video', 'router_minimax_video']),
+  music: Object.freeze(['router_music']),
 })
 const providerIdForAdapter = Object.freeze({
   openai_image: 'openai-gpt-image-2',
   openai_chat: 'openai-gpt-5-6-terra',
-  google_video: 'google-veo-3-1-fast',
-  elevenlabs_music: 'elevenlabs-music-v2-enterprise',
+  router_video: 'hcai-router-seedance-2-fast',
+  router_minimax_video: 'hcai-router-minimax-hailuo-2-3',
+  router_music: 'hcai-router-minimax-music-3',
 })
-const secretEnvPattern = /^secret:\/\/env\/([a-z0-9][a-z0-9-]{2,120})$/
+const secretEnvPattern = /^secret:\/\/env\/([a-zA-Z0-9][a-zA-Z0-9_-]{2,120})$/
 const envKeyFor = (name) => name.replaceAll('-', '_').toUpperCase()
 const unavailable = (reasonCode, details = {}) => new HttpError(503, 'MODEL_RUNTIME_ROUTE_UNAVAILABLE', 'No approved AI runtime deployment is available', { reasonCode, ...details })
 
@@ -41,12 +42,12 @@ const validateDeployment = (target, context) => {
   if (deployment.status !== 'active') return { allowed: false, reasonCode: 'deployment_inactive' }
   if (!deployment.runtimeEnabled) return { allowed: false, reasonCode: 'deployment_runtime_disabled' }
   if (deployment.environment !== context.environment) return { allowed: false, reasonCode: 'deployment_environment_mismatch' }
-  if (deployment.adapterType !== adapterForModality[context.modality]) return { allowed: false, reasonCode: 'deployment_adapter_mismatch' }
+  if (!adaptersForModality[context.modality]?.includes(deployment.adapterType)) return { allowed: false, reasonCode: 'deployment_adapter_mismatch' }
   if (!providerIdForAdapter[deployment.adapterType]) return { allowed: false, reasonCode: 'deployment_adapter_unsupported' }
   if (!deployment.providerModelId || !deployment.secretPurpose) return { allowed: false, reasonCode: 'deployment_runtime_config_incomplete' }
   const capability = deployment.modelVersion?.capabilities?.find((item) => item.modality === context.modality)
   if (!capability?.operations?.includes(context.operation)) return { allowed: false, reasonCode: 'deployment_capability_missing' }
-  if (['openai_image', 'openai_chat', 'elevenlabs_music'].includes(deployment.adapterType) && !safeEndpoint(deployment.endpointUrl)) return { allowed: false, reasonCode: 'deployment_endpoint_invalid' }
+  if (['openai_image', 'openai_chat', 'router_video', 'router_minimax_video', 'router_music'].includes(deployment.adapterType) && !safeEndpoint(deployment.endpointUrl)) return { allowed: false, reasonCode: 'deployment_endpoint_invalid' }
   return { allowed: true, reasonCode: null, deployment, provider }
 }
 
@@ -164,7 +165,57 @@ export const resolveModelRuntimeReadiness = async ({ repositories, modality = 'c
   }
 }
 
-const sourceFor = ({ deployment, credential, baseSource, approvalEvidence }) => {
+const routerVideoPricingSource = (pricing) => {
+  const unitPriceMicros = Number(pricing?.unitPriceMicros)
+  if (
+    !pricing ||
+    pricing.currency !== 'USD' ||
+    pricing.unit !== 'generated_seconds' ||
+    !Number.isSafeInteger(unitPriceMicros) ||
+    unitPriceMicros <= 0 ||
+    !pricing.id ||
+    !pricing.effectiveFrom
+  ) return {}
+  return {
+    CREATIVE_ROUTER_VIDEO_UNIT_PRICE_MICROS: String(unitPriceMicros),
+    CREATIVE_ROUTER_VIDEO_PRICING_SOURCE_REF: pricing.id,
+    CREATIVE_ROUTER_VIDEO_PRICING_EFFECTIVE_FROM: pricing.effectiveFrom,
+    CREATIVE_ROUTER_VIDEO_PRICING_EFFECTIVE_TO: pricing.effectiveTo ?? '',
+  }
+}
+
+const routerMusicPricingSource = (pricing) => {
+  const unitPriceMicros = Number(pricing?.unitPriceMicros)
+  if (
+    !pricing ||
+    pricing.currency !== 'USD' ||
+    pricing.unit !== 'request' ||
+    !Number.isSafeInteger(unitPriceMicros) ||
+    unitPriceMicros <= 0 ||
+    !pricing.id ||
+    !pricing.effectiveFrom
+  ) return {}
+  return {
+    CREATIVE_ROUTER_MUSIC_UNIT_PRICE_MICROS: String(unitPriceMicros),
+    CREATIVE_ROUTER_MUSIC_PRICING_SOURCE_REF: pricing.id,
+    CREATIVE_ROUTER_MUSIC_PRICING_EFFECTIVE_FROM: pricing.effectiveFrom,
+    CREATIVE_ROUTER_MUSIC_PRICING_EFFECTIVE_TO: pricing.effectiveTo ?? '',
+  }
+}
+
+const openAIImagePricingSource = (pricings = []) => ({
+  CREATIVE_OPENAI_IMAGE_PRICING_REQUIRED: 'true',
+  CREATIVE_OPENAI_IMAGE_PRICING_JSON: JSON.stringify(pricings.map((pricing) => ({
+    id: pricing.id,
+    currency: pricing.currency,
+    unit: pricing.unit,
+    unitPriceMicros: pricing.unitPriceMicros,
+    effectiveFrom: pricing.effectiveFrom,
+    effectiveTo: pricing.effectiveTo ?? null,
+  }))),
+})
+
+const sourceFor = ({ deployment, credential, baseSource, approvalEvidence, pricing = null, pricings = [] }) => {
   const source = { ...baseSource }
   const enabled = deployment.runtimeEnabled ? 'true' : 'false'
   if (deployment.adapterType === 'openai_image') Object.assign(source, {
@@ -172,6 +223,7 @@ const sourceFor = ({ deployment, credential, baseSource, approvalEvidence }) => 
     CREATIVE_OPENAI_IMAGE_MODEL: deployment.providerModelId, CREATIVE_OPENAI_IMAGE_API_TOKEN: credential,
     CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED: enabled, CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED: enabled,
     CREATIVE_OPENAI_IMAGE_CONFIRMATION: deployment.runtimeEnabled ? 'staging-only' : '',
+    ...openAIImagePricingSource(pricings),
   })
   if (deployment.adapterType === 'openai_chat') Object.assign(source, {
     CHAT_PROVIDER_TYPE: 'openai-compatible', CHAT_PROVIDER_MODE: deployment.runtimeEnabled ? (deployment.environment === 'production' ? 'openai_production' : 'openai_staging') : 'disabled',
@@ -181,22 +233,36 @@ const sourceFor = ({ deployment, credential, baseSource, approvalEvidence }) => 
     CHAT_OPENAI_SAFETY_RESPONSE_FORMAT: deployment.runtimeConfig?.safetyResponseFormat ?? 'json_schema',
     CHAT_OPENAI_CONFIRMATION: deployment.runtimeEnabled ? (deployment.environment === 'production' ? 'database-approved' : 'staging-only') : '',
   })
-  if (deployment.adapterType === 'google_video') Object.assign(source, {
-    CREATIVE_GOOGLE_VEO_PROVIDER_TYPE: 'google-vertex', CREATIVE_GOOGLE_VEO_MODEL: deployment.providerModelId,
-    CREATIVE_GOOGLE_VEO_ACCESS_TOKEN: credential, CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED: enabled,
-    CREATIVE_GOOGLE_VEO_NETWORK_CALLS_ENABLED: enabled, CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED: enabled,
-    CREATIVE_GOOGLE_VEO_CONFIRMATION: deployment.runtimeEnabled ? 'staging-only' : '',
-    CREATIVE_GOOGLE_VEO_PROJECT_ID: deployment.runtimeConfig?.projectId ?? '', CREATIVE_GOOGLE_VEO_LOCATION: deployment.runtimeConfig?.location ?? '',
-    CREATIVE_GOOGLE_VEO_OUTPUT_GCS_URI: deployment.runtimeConfig?.outputGcsUri ?? '',
+  if (deployment.adapterType === 'router_video') Object.assign(source, {
+    CREATIVE_ROUTER_VIDEO_PROVIDER_TYPE: 'hcai-router', CREATIVE_ROUTER_VIDEO_BASE_URL: deployment.endpointUrl,
+    CREATIVE_ROUTER_VIDEO_MODEL: deployment.providerModelId, CREATIVE_ROUTER_VIDEO_API_KEY: credential,
+    CREATIVE_ROUTER_VIDEO_HTTP_CLIENT_ENABLED: enabled,
+    CREATIVE_ROUTER_VIDEO_NETWORK_CALLS_ENABLED: enabled, CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED: enabled,
+    CREATIVE_ROUTER_VIDEO_CONFIRMATION: deployment.runtimeEnabled ? 'staging-only' : '',
+    CREATIVE_ROUTER_VIDEO_PROVIDER_ACCOUNT_REF: deployment.runtimeConfig?.providerAccountRef ?? 'staging',
+    CREATIVE_ROUTER_VIDEO_DAILY_BUDGET_USD: deployment.runtimeConfig?.dailyBudgetUsd ?? '',
+    CREATIVE_ROUTER_VIDEO_BUDGET_THRESHOLD_PERCENT: deployment.runtimeConfig?.budgetThresholdPercent ?? '',
+    ...routerVideoPricingSource(pricing),
   })
-  if (deployment.adapterType === 'elevenlabs_music') Object.assign(source, {
-    CREATIVE_ELEVENLABS_MUSIC_PROVIDER_TYPE: 'elevenlabs', CREATIVE_ELEVENLABS_MUSIC_BASE_URL: deployment.endpointUrl,
-    CREATIVE_ELEVENLABS_MUSIC_MODEL: deployment.providerModelId, CREATIVE_ELEVENLABS_MUSIC_API_KEY: credential,
-    CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED: enabled, CREATIVE_ELEVENLABS_MUSIC_NETWORK_CALLS_ENABLED: enabled,
-    CREATIVE_ELEVENLABS_MUSIC_CONFIRMATION: deployment.runtimeEnabled ? 'staging-only' : '',
-    CREATIVE_ELEVENLABS_MUSIC_ENTERPRISE_RIGHTS_CONFIRMED: String(Boolean(deployment.runtimeConfig?.enterpriseRightsConfirmed)),
-    CREATIVE_ELEVENLABS_MUSIC_TRAINING_OPT_OUT_CONFIRMED: String(Boolean(deployment.runtimeConfig?.trainingOptOutConfirmed)),
-    CREATIVE_ELEVENLABS_MUSIC_LICENSE_ID: deployment.runtimeConfig?.licenseId ?? '', CREATIVE_ELEVENLABS_MUSIC_TERMS_VERSION: deployment.runtimeConfig?.termsVersion ?? '',
+  if (deployment.adapterType === 'router_minimax_video') Object.assign(source, {
+    CREATIVE_ROUTER_MINIMAX_VIDEO_BASE_URL: deployment.endpointUrl,
+    CREATIVE_ROUTER_MINIMAX_VIDEO_MODEL: deployment.providerModelId,
+    CREATIVE_ROUTER_MINIMAX_VIDEO_API_KEY: credential,
+    CREATIVE_ROUTER_MINIMAX_VIDEO_HTTP_CLIENT_ENABLED: enabled,
+    CREATIVE_ROUTER_MINIMAX_VIDEO_NETWORK_CALLS_ENABLED: enabled,
+    CREATIVE_ROUTER_MINIMAX_VIDEO_CONFIRMATION: deployment.runtimeEnabled ? 'staging-only' : '',
+    CREATIVE_ROUTER_MINIMAX_VIDEO_PROVIDER_ACCOUNT_REF: deployment.runtimeConfig?.providerAccountRef ?? 'staging',
+    CREATIVE_ROUTER_MINIMAX_VIDEO_DAILY_BUDGET_USD: deployment.runtimeConfig?.dailyBudgetUsd ?? '',
+  })
+  if (deployment.adapterType === 'router_music') Object.assign(source, {
+    CREATIVE_ROUTER_MUSIC_PROVIDER_TYPE: 'hcai-router', CREATIVE_ROUTER_MUSIC_BASE_URL: deployment.endpointUrl,
+    CREATIVE_ROUTER_MUSIC_MODEL: deployment.providerModelId, CREATIVE_ROUTER_MUSIC_API_KEY: credential,
+    CREATIVE_ROUTER_MUSIC_HTTP_CLIENT_ENABLED: enabled, CREATIVE_ROUTER_MUSIC_NETWORK_CALLS_ENABLED: enabled,
+    CREATIVE_ROUTER_MUSIC_CONFIRMATION: deployment.runtimeEnabled ? 'staging-only' : '',
+    CREATIVE_ROUTER_MUSIC_STAGING_RIGHTS_ACKNOWLEDGED: String(Boolean(deployment.runtimeConfig?.stagingRightsAcknowledged)),
+    CREATIVE_ROUTER_MUSIC_TRAINING_OPT_OUT_CONFIRMED: String(Boolean(deployment.runtimeConfig?.trainingOptOutConfirmed)),
+    CREATIVE_ROUTER_MUSIC_LICENSE_ID: deployment.runtimeConfig?.licenseId ?? '', CREATIVE_ROUTER_MUSIC_TERMS_VERSION: deployment.runtimeConfig?.termsVersion ?? '',
+    ...routerMusicPricingSource(pricing),
   })
   if (deployment.adapterType === 'openai_chat' && deployment.environment === 'production') {
     attachProductionRuntimeApproval(source, approvalEvidence)
@@ -204,7 +270,7 @@ const sourceFor = ({ deployment, credential, baseSource, approvalEvidence }) => 
   return Object.freeze(source)
 }
 
-export const resolveModelRuntimeDeployment = async ({ repositories, modality, operation = 'generate', environment = 'staging', region = null, actor, baseSource = process.env, now = new Date() }) => {
+export const resolveModelRuntimeDeployment = async ({ repositories, modality, operation = 'generate', environment = 'staging', region = null, actor, baseSource = process.env, now = new Date(), pricingUnit = null }) => {
   if (!repositories?.modelRouting?.match || !repositories?.modelGovernance?.createDecision) return null
   const context = { modality, operation, environment, region, subjectKey: actor?.id ?? actor?.handle ?? 'anonymous', role: actor?.role ?? 'member' }
   const candidates = new Map()
@@ -221,7 +287,12 @@ export const resolveModelRuntimeDeployment = async ({ repositories, modality, op
   if (result.status !== 'selected') throw unavailable(result.reasonCode, { decisionId: result.decisionId })
   const selected = candidates.get(result.selected.targetId)
   if (!selected) throw unavailable('selected_deployment_unresolved', { decisionId: result.decisionId })
-  const pricing = await repositories.modelControl?.findRuntimePricing?.({ modelVersionId: selected.deployment.modelVersion.id, modelDeploymentId: selected.deployment.id, now }) ?? null
+  const pricingQuery = { modelVersionId: selected.deployment.modelVersion.id, modelDeploymentId: selected.deployment.id, now }
+  const pricings = await repositories.modelControl?.findRuntimePricings?.(pricingQuery) ?? []
+  const fallbackPricing = await repositories.modelControl?.findRuntimePricing?.(pricingQuery) ?? null
+  const adapterDefaultUnit = ['router_video', 'router_minimax_video'].includes(selected.deployment.adapterType) ? 'generated_seconds'
+    : selected.deployment.adapterType === 'router_music' ? 'request' : null
+  const pricing = pricings.find((item) => item.unit === (pricingUnit ?? adapterDefaultUnit)) ?? fallbackPricing
   const resolved = {
     source: 'model_control', decisionId: result.decisionId, routePolicyId: result.policy.id,
     deploymentId: selected.deployment.id, deploymentVersion: selected.deployment.version,
@@ -245,6 +316,8 @@ export const resolveModelRuntimeDeployment = async ({ repositories, modality, op
       deploymentId: selected.deployment.id,
       secretRefId: selected.secretRef.id,
     },
+    pricing,
+    pricings,
   }), enumerable: false })
   return Object.freeze(resolved)
 }

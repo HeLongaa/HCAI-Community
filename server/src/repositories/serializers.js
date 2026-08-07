@@ -878,6 +878,8 @@ export const serializeSecurityEvent = (event) => ({
   identity: event.identity ?? null,
   method: event.method ?? null,
   pathname: event.pathname ?? null,
+  subjectRef: event.subjectRef ?? null,
+  incidentId: event.incidentId ?? null,
   occurredAt: event.occurredAt?.toISOString?.() ?? event.occurredAt ?? '',
   details: event.details ?? null,
 })
@@ -983,4 +985,7 @@ export const serializeLibraryItem = (item) => ({
   text: item.text,
   sourceId: item.sourceId ?? null,
   metadata: item.metadata ?? null,
+  version: item.version ?? 1,
+  deletedAt: item.deletedAt ?? null,
+  deletionReasonCode: item.deletionReasonCode ?? null,
 })

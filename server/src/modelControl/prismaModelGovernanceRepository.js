@@ -1,4 +1,10 @@
 import { HttpError } from '../common/errors/httpError.js'
+import {
+  isProviderSecretPurposeDeletable,
+  providerSecretRetentionContract,
+  providerSecretRetentionCutoff,
+  providerSecretRetentionSweepLimit,
+} from './providerSecretRetention.js'
 
 const iso = (value) => value?.toISOString?.() ?? value ?? null
 const decisionDto = (row) => row ? ({ ...row, createdAt: iso(row.createdAt) }) : null
@@ -35,7 +41,7 @@ const conflict = (error) => {
   throw error
 }
 
-export const createPrismaModelGovernanceRepository = (client, { modelEvaluation, providerLegal } = {}) => ({
+export const createPrismaModelGovernanceRepository = (client, { modelEvaluation, providerLegal, recordAudit } = {}) => ({
   createDecision: async (input) => {
     try { return decisionDto(await client.modelRouteDecision.create({ data: input })) } catch (error) { return conflict(error) }
   },
@@ -81,15 +87,72 @@ export const createPrismaModelGovernanceRepository = (client, { modelEvaluation,
       ...(pageCursor ? { cursor: { id: pageCursor.id }, skip: 1 } : {}),
     }), options, secretRefDto)
   },
+  sweepSecretRetention: async ({ now = new Date(), limit, gateway } = {}) => {
+    if (typeof gateway !== 'function') throw new HttpError(503, 'SECRET_MANAGER_LIFECYCLE_UNAVAILABLE', 'Managed secret lifecycle gateway is unavailable')
+    const cutoff = providerSecretRetentionCutoff(now)
+    const take = providerSecretRetentionSweepLimit(limit)
+    const discovered = await client.$queryRawUnsafe(`
+      SELECT retired.id
+      FROM provider_secret_refs retired
+      JOIN provider_secret_refs replacement ON replacement.rotated_from_id = retired.id
+      WHERE retired.purpose IN ('inference', 'chat-inference', 'image-inference', 'music-inference', 'video-inference')
+        AND (
+          NOT EXISTS (SELECT 1 FROM provider_secret_lifecycle_receipts receipt WHERE receipt.secret_ref_id = retired.id AND receipt.action = 'disable')
+          OR (
+            replacement.created_at <= $1
+            AND EXISTS (SELECT 1 FROM provider_secret_lifecycle_receipts receipt WHERE receipt.secret_ref_id = retired.id AND receipt.action = 'disable')
+            AND NOT EXISTS (SELECT 1 FROM provider_secret_lifecycle_receipts receipt WHERE receipt.secret_ref_id = retired.id AND receipt.action = 'delete')
+          )
+        )
+      ORDER BY replacement.created_at, retired.id
+      LIMIT $2`, cutoff, take)
+    let disabled = 0
+    let deleted = 0
+    let skipped = 0
+    for (const candidate of discovered) {
+      const current = await client.providerSecretRef.findUnique({
+        where: { id: candidate.id },
+        include: { rotatedTo: true, lifecycleReceipts: true },
+      })
+      if (!current?.rotatedTo || !isProviderSecretPurposeDeletable(current.purpose)) { skipped += 1; continue }
+      const disabledReceipt = current.lifecycleReceipts.find((receipt) => receipt.action === 'disable')
+      const deletedReceipt = current.lifecycleReceipts.find((receipt) => receipt.action === 'delete')
+      const action = !disabledReceipt ? 'disable' : (!deletedReceipt && current.rotatedTo.createdAt <= cutoff ? 'delete' : null)
+      if (!action) { skipped += 1; continue }
+      const result = await gateway({ action, secretRef: current.secretRef, externalVersion: current.externalVersion, purpose: current.purpose, now })
+      const recorded = await client.$transaction(async (db) => {
+        await db.$queryRawUnsafe('SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext($1))', `provider-secret-retention:${current.id}`)
+        const fresh = await db.providerSecretRef.findUnique({ where: { id: current.id } })
+        if (!fresh || !isProviderSecretPurposeDeletable(fresh.purpose)) return false
+        const rotatedTo = await db.providerSecretRef.findFirst({ where: { rotatedFromId: fresh.id } })
+        if (!rotatedTo) return false
+        const lifecycleReceipts = await db.providerSecretLifecycleReceipt.findMany({ where: { secretRefId: fresh.id } })
+        if (lifecycleReceipts.some((receipt) => receipt.action === action)) return false
+        if (action === 'delete' && (!lifecycleReceipts.some((receipt) => receipt.action === 'disable') || rotatedTo.createdAt > cutoff)) return false
+        await db.providerSecretLifecycleReceipt.create({ data: {
+          secretRefId: fresh.id,
+          action,
+          targetHash: result.targetHash,
+          receiptHash: result.receiptHash,
+          completedAt: new Date(result.completedAt),
+        } })
+        return true
+      }, { isolationLevel: 'ReadCommitted' })
+      if (!recorded) skipped += 1
+      else if (action === 'disable') disabled += 1
+      else deleted += 1
+    }
+    const summary = { policyId: providerSecretRetentionContract.policyId, inspected: discovered.length, disabled, deleted, skipped }
+    await recordAudit?.({ actor: null, action: 'system.model_control.provider_secret_retention_processed', resourceType: 'provider_secret_retention', resourceId: providerSecretRetentionContract.policyId, metadata: summary })
+    return summary
+  },
   validatePromotion: async (input, release) => {
-    const [deployment, policy, revision, latestRevision, secretRef, conflictingPromotion] = await Promise.all([
-      client.modelDeployment.findUnique({ where: { id: input.modelDeploymentId }, include: { modelVersion: { include: { model: true } } } }),
-      client.modelRoutePolicy.findUnique({ where: { id: input.routePolicyId }, include: { targets: true } }),
-      client.modelRoutePolicyRevision.findUnique({ where: { id: input.routePolicyRevisionId } }),
-      client.modelRoutePolicyRevision.findFirst({ where: { policyId: input.routePolicyId }, orderBy: { revisionNumber: 'desc' } }),
-      client.providerSecretRef.findUnique({ where: { id: input.providerSecretRefId } }),
-      client.modelPromotion.findFirst({ where: { modelDeploymentId: input.modelDeploymentId, releaseChange: { status: { in: ['pending_approval', 'approved', 'deployed'] } } } }),
-    ])
+    const deployment = await client.modelDeployment.findUnique({ where: { id: input.modelDeploymentId }, include: { modelVersion: { include: { model: true } } } })
+    const policy = await client.modelRoutePolicy.findUnique({ where: { id: input.routePolicyId }, include: { targets: true } })
+    const revision = await client.modelRoutePolicyRevision.findUnique({ where: { id: input.routePolicyRevisionId } })
+    const latestRevision = await client.modelRoutePolicyRevision.findFirst({ where: { policyId: input.routePolicyId }, orderBy: { revisionNumber: 'desc' } })
+    const secretRef = await client.providerSecretRef.findUnique({ where: { id: input.providerSecretRefId } })
+    const conflictingPromotion = await client.modelPromotion.findFirst({ where: { modelDeploymentId: input.modelDeploymentId, releaseChange: { status: { in: ['pending_approval', 'approved', 'deployed'] } } } })
     if (!deployment || !policy || !revision || !secretRef) throw new HttpError(422, 'PROMOTION_REFERENCE_NOT_FOUND', 'promotion references must all exist')
     if (deployment.environment !== 'production' || policy.environment !== 'production' || secretRef.environment !== 'production') throw new HttpError(422, 'PROMOTION_ENVIRONMENT_MISMATCH', 'deployment, route policy, and SecretRef must target production')
     if (policy.status !== 'active') throw new HttpError(409, 'PROMOTION_POLICY_INACTIVE', 'production route policy must be active before promotion')

@@ -1,5 +1,4 @@
 import type { InspirationItem, LocalizedText, MarketplaceProfile, Post, PublishDraft, Role, Task } from './types'
-import { marketplaceProfiles } from '../data/mockData'
 
 export const hasCjk = (value: string) => /[\u3400-\u9fff]/.test(value)
 
@@ -12,8 +11,6 @@ export const matchesLanguage = (value: string, isZh: boolean) => (isZh ? hasCjk(
 export const localizeText = (value: LocalizedText, t: Record<string, string>) => (isZhCopy(t) ? value.zh : value.en)
 
 export const profileTags = (profile: MarketplaceProfile, t: Record<string, string>) => (isZhCopy(t) ? profile.zhTags : profile.tags)
-
-export const findProfile = (handle: string) => marketplaceProfiles.find((profile) => profile.handle === handle)
 
 const taskLanguageText = (task: Task) =>
   [task.title, task.description, task.privateBrief, task.submission, task.reviewNote, ...task.requirements].join(' ')
@@ -38,40 +35,6 @@ export function localizedInspiration(items: InspirationItem[], t: Record<string,
   const isZh = isZhCopy(t)
   const filtered = items.filter((item) => matchesLanguage(inspirationLanguageText(item), isZh))
   return filtered.length ? filtered : items
-}
-
-export function rankProfiles(lane: 'maker' | 'publisher') {
-  return marketplaceProfiles
-    .filter((profile) => profile.lane === lane || profile.lane === 'both')
-    .sort((a, b) => {
-      const aValue = lane === 'maker' ? a.stats.score + a.stats.completed * 12 : a.stats.score + a.stats.posted * 11
-      const bValue = lane === 'maker' ? b.stats.score + b.stats.completed * 12 : b.stats.score + b.stats.posted * 11
-      return bValue - aValue
-    })
-}
-
-export function profileMatchScore(profile: MarketplaceProfile, draft: PublishDraft) {
-  const source = `${draft.title} ${draft.category} ${draft.details} ${draft.rules}`.toLowerCase()
-  const tagHits = [...profile.tags, ...profile.zhTags].filter((tag) => source.includes(tag.toLowerCase()))
-  const categoryHit = profile.categories.includes(draft.category)
-  const broadHits = profile.categories.filter((category) => source.includes(category.toLowerCase()))
-  const languageHit = hasCjk(source) && profile.languages.includes('中文')
-  const score = Math.min(99, 54 + tagHits.length * 7 + (categoryHit ? 22 : 0) + broadHits.length * 5 + (languageHit ? 6 : 0) + Math.round(profile.stats.score / 80))
-  return {
-    profile,
-    score,
-    tags: tagHits.slice(0, 3),
-    categoryHit,
-    languageHit,
-  }
-}
-
-export function matchProfilesForDraft(draft: PublishDraft) {
-  return marketplaceProfiles
-    .filter((profile) => profile.lane === 'maker' || profile.lane === 'both')
-    .map((profile) => profileMatchScore(profile, draft))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 4)
 }
 
 export function publishFieldLabel(field: keyof PublishDraft, t: Record<string, string>) {
@@ -151,19 +114,48 @@ export function mediaTypeLabel(type: string, t: Record<string, string>) {
   return labels[type] ?? type
 }
 
-export function pointText(value: string) {
-  const normalized = value
+export function pointText(value: string | number | null | undefined, t?: Record<string, string>) {
+  const unit = t && !isZhCopy(t) ? 'pts' : '积分'
+  const normalized = String(value ?? '0')
     .replace(/[¥$]/g, '')
-    .replace(/\bcredits?\b/gi, '积分')
-    .replace(/\bpoints?\b/gi, '积分')
-    .replace(/\bpts\b/gi, '积分')
+    .replace(/\bcredits?\b|\bpoints?\b|\bpts\b|积分/gi, '')
     .trim()
-  if (!normalized) return '积分'
-  return /积分/.test(normalized) ? normalized : `${normalized} 积分`
+  return `${normalized || '0'} ${unit}`
 }
 
 export function roleTier(role: Role) {
   return role === 'admin' ? 'Ultra' : role === 'moderator' || role === 'publisher' ? 'Pro' : role === 'contributor' || role === 'creator' ? 'Plus' : 'Free'
+}
+
+export function createIdentityProfile(handle: string, displayName: string, role: string): MarketplaceProfile {
+  const safeHandle = handle.trim() || 'guest'
+  const safeName = displayName.trim() || safeHandle
+  return {
+    id: safeHandle,
+    handle: safeHandle,
+    initials: safeName.slice(0, 2).toUpperCase() || 'U',
+    lane: 'both',
+    name: { en: safeName, zh: safeName },
+    role: { en: role, zh: role },
+    bio: { en: '', zh: '' },
+    tags: [],
+    zhTags: [],
+    categories: [],
+    languages: [],
+    stats: {
+      score: 0,
+      completed: 0,
+      posted: 0,
+      response: '-',
+      acceptance: '-',
+      earned: '0',
+      paid: '0',
+      rank: '-',
+    },
+    badges: [],
+    portfolio: [],
+    reviews: [],
+  }
 }
 
 export function localeFirstTask(tasksToFilter: Task[], t: Record<string, string>) {

@@ -1,4 +1,10 @@
 import { HttpError } from '../common/errors/httpError.js'
+import {
+  isProviderSecretPurposeDeletable,
+  providerSecretRetentionContract,
+  providerSecretRetentionCutoff,
+  providerSecretRetentionSweepLimit,
+} from './providerSecretRetention.js'
 
 const copy = (value) => structuredClone(value)
 const nowIso = () => new Date().toISOString()
@@ -11,6 +17,7 @@ const paginate = (items, options) => {
 export const createSeedModelGovernanceRepository = ({ modelControl, modelRouting, modelEvaluation, providerLegal, releaseChanges }) => {
   const decisions = new Map()
   const secretRefs = new Map()
+  const secretLifecycleReceipts = new Map()
   const promotions = new Map()
   const sorted = (map, field = 'createdAt', order = 'desc') => [...map.values()].sort((left, right) => {
     const result = String(left[field] ?? '').localeCompare(String(right[field] ?? '')) || left.id.localeCompare(right.id)
@@ -49,6 +56,39 @@ export const createSeedModelGovernanceRepository = ({ modelControl, modelRouting
       .filter((row) => !options.environment || row.environment === options.environment)
       .filter((row) => !options.purpose || row.purpose === options.purpose)
       .filter((row) => !options.search || `${row.purpose} ${row.ownerRef} ${row.externalVersion}`.toLowerCase().includes(options.search.toLowerCase())), options),
+    sweepSecretRetention: async ({ now = new Date(), limit, gateway } = {}) => {
+      if (typeof gateway !== 'function') throw new HttpError(503, 'SECRET_MANAGER_LIFECYCLE_UNAVAILABLE', 'Managed secret lifecycle gateway is unavailable')
+      const cutoff = providerSecretRetentionCutoff(now).getTime()
+      const candidates = [...secretRefs.values()]
+        .map((retired) => ({ retired, replacement: [...secretRefs.values()].find((candidate) => candidate.rotatedFromId === retired.id) }))
+        .filter(({ retired, replacement }) => replacement && isProviderSecretPurposeDeletable(retired.purpose))
+        .filter(({ retired, replacement }) => {
+          const disabled = secretLifecycleReceipts.has(`${retired.id}:disable`)
+          const deleted = secretLifecycleReceipts.has(`${retired.id}:delete`)
+          return !disabled || (!deleted && Date.parse(replacement.createdAt) <= cutoff)
+        })
+        .sort((left, right) => left.replacement.createdAt.localeCompare(right.replacement.createdAt) || left.retired.id.localeCompare(right.retired.id))
+        .slice(0, providerSecretRetentionSweepLimit(limit))
+      let disabled = 0
+      let deleted = 0
+      let skipped = 0
+      for (const { retired, replacement } of candidates) {
+        const disabledKey = `${retired.id}:disable`
+        const deletedKey = `${retired.id}:delete`
+        const action = !secretLifecycleReceipts.has(disabledKey)
+          ? 'disable'
+          : (!secretLifecycleReceipts.has(deletedKey) && Date.parse(replacement.createdAt) <= cutoff ? 'delete' : null)
+        if (!action) { skipped += 1; continue }
+        const result = await gateway({ action, secretRef: retired.secretRef, externalVersion: retired.externalVersion, purpose: retired.purpose, now })
+        const key = `${retired.id}:${action}`
+        if (secretLifecycleReceipts.has(key)) { skipped += 1; continue }
+        secretLifecycleReceipts.set(key, { id: `provider-secret-lifecycle-${key}`, secretRefId: retired.id, action, targetHash: result.targetHash, receiptHash: result.receiptHash, completedAt: result.completedAt, createdAt: now.toISOString() })
+        if (action === 'disable') disabled += 1
+        else deleted += 1
+      }
+      return { policyId: providerSecretRetentionContract.policyId, inspected: candidates.length, disabled, deleted, skipped }
+    },
+    listSecretLifecycleReceipts: async () => copy([...secretLifecycleReceipts.values()]),
     validatePromotion: async (input, release) => {
       const [deployment, policy, revisions, secretRef] = await Promise.all([
         modelControl.findRoutingDeployment(input.modelDeploymentId), modelRouting.find(input.routePolicyId), modelRouting.listRevisions(input.routePolicyId), Promise.resolve(secretRefs.get(input.providerSecretRefId)),

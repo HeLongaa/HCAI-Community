@@ -74,15 +74,22 @@ export function UseCreativeAsset({ t, assetId, fileName, available = true }: {
         <button disabled={busy !== null} type="button" onClick={() => void run('portfolio')}>{busy === 'portfolio' ? <LoaderCircle className="spin" size={14}/> : <ImagePlus size={14}/>} {textFor(t, 'Portfolio draft', '作品集草稿')}</button>
       </div>
       <div className="use-creative-asset-task">
-        <label><span><BriefcaseBusiness size={13}/> {textFor(t, 'Task delivery', '任务交付')}</span>
-          <select aria-label={textFor(t, 'Delivery task', '交付任务')} disabled={busy === 'targets' || targets.length === 0} value={taskId} onChange={(event) => setTaskId(event.target.value)}>
-            {targets.length === 0 && <option value="">{busy === 'targets' ? textFor(t, 'Loading tasks…', '正在加载任务…') : textFor(t, 'No submit-ready tasks', '暂无可交付任务')}</option>}
-            {targets.map((task) => <option key={task.id} value={task.id}>{task.title} · {task.status}</option>)}
-          </select>
-        </label>
-        <textarea aria-label={textFor(t, 'Delivery note', '交付说明')} value={content} onChange={(event) => setContent(event.target.value)}/>
-        <input aria-label={textFor(t, 'Rights note', '权利说明')} value={rightsNote} onChange={(event) => setRightsNote(event.target.value)}/>
-        <button className="primary-button" disabled={!taskId || !content.trim() || busy !== null} type="button" onClick={() => void run('task')}><Send size={14}/> {textFor(t, 'Submit to task', '提交到任务')}</button>
+        <div className="use-creative-asset-task-head">
+          <span><BriefcaseBusiness size={13}/> {textFor(t, 'Task delivery', '任务交付')}</span>
+          {targets.length > 0 && <b>{targets.length}</b>}
+        </div>
+        {busy === 'targets' ? <div className="use-creative-asset-task-empty"><LoaderCircle className="spin" size={14}/><span>{textFor(t, 'Loading tasks…', '正在加载任务…')}</span></div>
+          : targets.length === 0 ? <div className="use-creative-asset-task-empty"><span>{textFor(t, 'No submit-ready tasks', '暂无可交付任务')}</span></div>
+            : <div className="use-creative-asset-task-form">
+              <label><span>{textFor(t, 'Task', '任务')}</span>
+                <select aria-label={textFor(t, 'Delivery task', '交付任务')} value={taskId} onChange={(event) => setTaskId(event.target.value)}>
+                  {targets.map((task) => <option key={task.id} value={task.id}>{task.title} · {task.status}</option>)}
+                </select>
+              </label>
+              <label><span>{textFor(t, 'Delivery note', '交付说明')}</span><textarea aria-label={textFor(t, 'Delivery note', '交付说明')} rows={3} value={content} onChange={(event) => setContent(event.target.value)}/></label>
+              <label><span>{textFor(t, 'Rights note', '权利说明')}</span><input aria-label={textFor(t, 'Rights note', '权利说明')} value={rightsNote} onChange={(event) => setRightsNote(event.target.value)}/></label>
+              <button className="primary-button" disabled={!taskId || !content.trim() || busy !== null} type="button" onClick={() => void run('task')}><Send size={14}/> {textFor(t, 'Submit to task', '提交到任务')}</button>
+            </div>}
       </div>
       {notice && <p className="use-creative-asset-notice success">{notice}</p>}
       {error && <p className="use-creative-asset-notice error">{error}</p>}

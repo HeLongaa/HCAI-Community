@@ -3,7 +3,7 @@
   "taskId": "AI-VIDEO-02",
   "productionDecision": "no_go",
   "provider": {
-    "id": "google-veo-3-1-fast",
+    "id": "hcai-router-seedance-2-fast",
     "rollbackMode": "disabled",
     "disabledErrorCode": "CREATIVE_PROVIDER_HTTP_CLIENT_DISABLED",
     "automaticFailoverAllowed": false,
@@ -30,7 +30,18 @@
     "providerFailureCloseoutRequired": true,
     "timeoutCompensationRequired": true,
     "partialReplayRequired": true,
-    "cancellationIdempotencyRequired": true
+    "providerCancellationUnsupportedMustFail": true
+  },
+  "costReconciliation": {
+    "pricingSource": "model_control_pricing_version",
+    "billingUnit": "generated_seconds",
+    "immutableSnapshotRequired": true,
+    "idempotentSettlementRequired": true,
+    "manualSettlementPermission": "admin:accounting:repair",
+    "manualEvidenceStoredAsHash": true,
+    "missingTrustedPriceStatus": "reconciliation_required",
+    "fourSecondAcceptanceUnitPriceMicros": 121000,
+    "fourSecondAcceptanceActualMicros": 484000
   },
   "mobile": {
     "viewport": { "width": 390, "height": 844 },
@@ -46,9 +57,12 @@
   },
   "evidence": [
     "server/src/creative/videoProductionAcceptance.test.js",
-    "server/src/creative/googleVeoStagingAcceptance.test.js",
+    "server/src/creative/routerVideoStagingAcceptance.test.js",
     "server/src/creative/videoProviderLifecycle.test.js",
+    "server/src/modelControl/modelRuntimeResolver.test.js",
+    "server/src/modules/admin/routes.test.js",
     "e2e/video-capability.spec.ts",
+    "e2e/model-control.spec.ts",
     "docs/V1_VIDEO_PRODUCTION_ACCEPTANCE.md"
   ]
 }

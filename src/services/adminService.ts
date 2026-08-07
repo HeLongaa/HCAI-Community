@@ -23,6 +23,8 @@ import type {
   WebhookMetrics,
   WebhookSubscription,
   WebhookSubscriptionQuery,
+  ProviderAlertDelivery,
+  ProviderAlertDeliveryQuery,
   AdminCommunityBulkAction,
   AdminCommunityBulkPreview,
   AdminCommunityBulkResult,
@@ -105,6 +107,7 @@ import type {
   AdminSecurityAlertDto,
   AdminSecurityEventDto,
   AdminSecurityEventListQuery,
+  AdminSecurityIncidentDto,
   ApiLedgerEntry,
   ApiNotification,
   ApiCreativeGenerationRecord,
@@ -186,6 +189,7 @@ import type {
   ProviderSecretRefDto,
   ProviderSecretRefListQuery,
   ProviderSecretRefRequest,
+  ProviderOperationalExternalGatesRequest,
   ProviderOperationalPolicyDto,
   ProviderOperationalPolicyRequest,
   ProviderHealthEvidenceDto,
@@ -207,10 +211,43 @@ import type {
   DataRightsStatus,
   ModelVersionDto,
   PricingVersionDto,
+  ApiInspirationCategory,
+  ApiInspirationEntry,
+  InspirationSubmissionRequest,
 } from './contracts'
 import type { Permission, Role } from '../domain/types'
 
 export const adminService = {
+  async inspirationEntries(status?: string) {
+    return api.get<ApiInspirationEntry[]>(withQuery('/admin/inspiration', { status: status && status !== 'all' ? status : undefined, limit: 100 }))
+  },
+  async inspirationCategories() {
+    return api.get<ApiInspirationCategory[]>('/admin/inspiration/categories')
+  },
+  async inspirationEntry(id: string) {
+    return api.get<ApiInspirationEntry>(`/admin/inspiration/${id}`)
+  },
+  async createOfficialInspiration(request: InspirationSubmissionRequest & { featured?: boolean; sortOrder?: number }) {
+    return api.post<ApiInspirationEntry>('/admin/inspiration', request)
+  },
+  async createInspirationCategory(request: Pick<ApiInspirationCategory, 'kind' | 'slug' | 'nameEn' | 'nameZh' | 'description' | 'sortOrder'>) {
+    return api.post<ApiInspirationCategory>('/admin/inspiration/categories', request)
+  },
+  async updateInspirationCategory(id: string, request: Partial<Pick<ApiInspirationCategory, 'kind' | 'slug' | 'nameEn' | 'nameZh' | 'description' | 'sortOrder' | 'active'>> & { replacementCategoryId?: string | null }) {
+    return api.patch<ApiInspirationCategory>(`/admin/inspiration/categories/${id}`, request)
+  },
+  async updateInspiration(id: string, request: Partial<InspirationSubmissionRequest> & { featured?: boolean; supportsTaskDraft?: boolean; sortOrder?: number }) {
+    return api.patch<ApiInspirationEntry>(`/admin/inspiration/${id}`, request)
+  },
+  async rollbackInspiration(id: string, version: number, note: string) {
+    return api.post<ApiInspirationEntry>(`/admin/inspiration/${id}/rollback`, { version, note })
+  },
+  async reviewInspiration(id: string, decision: 'approve' | 'request_changes' | 'reject', note: string) {
+    return api.post<ApiInspirationEntry>(`/admin/inspiration/${id}/review`, { decision, note })
+  },
+  async setInspirationArchived(id: string, archived: boolean) {
+    return api.post<ApiInspirationEntry>(`/admin/inspiration/${id}/${archived ? 'archive' : 'restore'}`)
+  },
   async tasks(query?: AdminTaskQuery) {
     const envelope = await api.getEnvelope<AdminTaskDto[]>(withQuery('/admin/tasks', query))
     return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
@@ -351,6 +388,13 @@ export const adminService = {
   },
   webhookMetrics() {
     return api.get<WebhookMetrics>('/admin/developer/webhooks/metrics')
+  },
+  async providerAlertDeliveries(query?: ProviderAlertDeliveryQuery) {
+    const envelope = await api.getEnvelope<ProviderAlertDelivery[]>(withQuery('/admin/provider-alert-deliveries', query))
+    return { items: envelope.data, nextCursor: (envelope.meta as ApiPaginationMeta | undefined)?.pagination?.nextCursor ?? null }
+  },
+  replayProviderAlertDelivery(id: string, payload: { expectedVersion: number; reasonCode: string; idempotencyKey: string; maxAttempts?: number }) {
+    return api.post<ProviderAlertDelivery>(`/admin/provider-alert-deliveries/${encodeURIComponent(id)}/replay`, payload)
   },
   async authSessions(query?: AdminAuthSessionQuery) {
     const envelope = await api.getEnvelope<AdminAuthSession[]>(withQuery('/admin/auth/sessions', query))
@@ -616,6 +660,9 @@ export const adminService = {
   async transitionProviderOperationalPolicy(id: string, expectedVersion: number, status: 'active' | 'disabled', reasonCode: string) {
     return api.post<ProviderOperationalPolicyDto>(`/admin/model-control/provider-operations/${encodeURIComponent(id)}/status`, { expectedVersion, status, reasonCode })
   },
+  async provisionProviderOperationalExternalGates(id: string, payload: ProviderOperationalExternalGatesRequest) {
+    return api.post<ProviderOperationalPolicyDto>(`/admin/model-control/provider-operations/${encodeURIComponent(id)}/external-gates`, payload)
+  },
   async recordProviderHealth(id: string, payload: { sourceKey: string; status: ProviderHealthEvidenceDto['status']; checkedAt: string; latencyMs?: number | null; successRateBps?: number | null; sourceType: ProviderHealthEvidenceDto['sourceType']; sourceRef: string; details?: Record<string, unknown> | null }) {
     return api.post<ProviderHealthEvidenceDto>(`/admin/model-control/provider-operations/${encodeURIComponent(id)}/health`, payload)
   },
@@ -829,6 +876,9 @@ export const adminService = {
   async creativeGeneration(id: string) {
     return api.get<AdminCreativeGenerationHistoryPage['items'][number]>(`/admin/creative/generations/${id}`)
   },
+  async settleCreativeGenerationProviderCost(id: string, payload: { actualAmount: string; currency: 'USD'; evidenceRef: string; reasonCode: string }) {
+    return api.post<Record<string, unknown>>(`/admin/creative/generations/${encodeURIComponent(id)}/provider-cost-settlement`, payload)
+  },
   async creativeGenerationSummary(query?: AdminCreativeGenerationHistoryQuery) {
     return api.get<AdminCreativeGenerationSummary>(withQuery('/admin/creative/generations/summary', query))
   },
@@ -921,6 +971,18 @@ export const adminService = {
   },
   async securityAlerts() {
     return api.get<AdminSecurityAlertDto[]>('/admin/security/alerts')
+  },
+  async securityIncidents(status?: 'open' | 'resolved' | null) {
+    return api.get<AdminSecurityIncidentDto[]>(withQuery('/admin/security/incidents', { status: status ?? null, limit: 100 }))
+  },
+  async createSecurityIncident(eventIds: string[], criticalConfirmed: boolean, reasonCode: string) {
+    return api.post<AdminSecurityIncidentDto>('/admin/security/incidents', { eventIds, criticalConfirmed, reasonCode })
+  },
+  async attachSecurityIncidentEvents(id: string, eventIds: string[], expectedVersion: number, reasonCode: string) {
+    return api.post<AdminSecurityIncidentDto>(`/admin/security/incidents/${id}/events`, { eventIds, expectedVersion, reasonCode })
+  },
+  async resolveSecurityIncident(id: string, expectedVersion: number, reasonCode: string) {
+    return api.post<AdminSecurityIncidentDto>(`/admin/security/incidents/${id}/resolve`, { expectedVersion, reasonCode })
   },
   async securityAlertEvents(id: string) {
     return api.get<AdminSecurityAlertEventDto[]>(`/admin/security/alerts/${id}/events`)

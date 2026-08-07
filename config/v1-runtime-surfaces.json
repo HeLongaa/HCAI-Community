@@ -3,7 +3,9 @@
   "auditDate": "2026-07-14",
   "productionPolicy": {
     "silentFallback": "forbidden",
-    "productionReady": true,
+    "scope": "runtime_surface_fallback_disposition_only",
+    "fallbackDispositionComplete": true,
+    "globalProductionApproval": "governed_by_release_scope_and_domain_gates",
     "releaseGateTask": "V1-39",
     "allowedResolvedClassifications": ["fixture_only", "development_only", "production_capable", "explicit_unavailable"]
   },
@@ -13,7 +15,7 @@
       "area": "tasks-home",
       "classification": "production_capable",
       "paths": ["src/hooks/useTaskWorkflows.ts", "src/components/prototype/PrototypeComponents.tsx"],
-      "markers": ["useState<Task[]>(tasks)", "no local substitute is shown", "featuredTask"],
+      "markers": ["useState<Task[]>([])", "no local substitute is shown", "taskService.list"],
       "productionDisposition": "production_bundle_uses_api_data_or_explicit_unavailable_catalog",
       "ownerTasks": ["V1-39", "V1-64"]
     },
@@ -22,7 +24,7 @@
       "area": "community-library",
       "classification": "production_capable",
       "paths": ["src/hooks/useCommunityWorkflows.ts", "src/features/community/CommunityPage.tsx"],
-      "markers": ["no local substitute is shown", "visualWorks", "Nothing was posted."],
+      "markers": ["no local substitute is shown", "useState<InspirationItem[]>([])", "communityService.listLibrary"],
       "productionDisposition": "production_bundle_uses_api_data_or_explicit_unavailable_catalog",
       "ownerTasks": ["V1-39", "V1-66"]
     },
@@ -31,7 +33,7 @@
       "area": "account-profile-portfolio",
       "classification": "production_capable",
       "paths": ["src/App.tsx", "src/domain/utils.ts", "src/hooks/useAccountState.ts", "src/features/profile/ProfilePages.tsx"],
-      "markers": ["marketplaceProfiles", "fallbackProfile", "accountSource === 'fallback'"],
+      "markers": ["profileService", "createIdentityProfile", "accountSource === 'fallback'"],
       "productionDisposition": "production_bundle_uses_account_profile_api_or_explicit_unavailable_profile",
       "ownerTasks": ["V1-36", "V1-37", "V1-39", "V1-66", "V1-67"]
     },
@@ -40,7 +42,7 @@
       "area": "player-search",
       "classification": "explicit_unavailable",
       "paths": ["src/hooks/usePlayerState.ts", "src/components/overlays/Overlays.tsx"],
-      "markers": ["useState<Track>(tracks[0])", "tracks.findIndex", "tracks[(trackIndex + 1) % tracks.length]"],
+      "markers": ["emptyTrack", "No comments yet", "public media catalog is connected"],
       "productionDisposition": "explicit_unavailable_until_governed_asset_catalog_api_is_approved",
       "ownerTasks": ["V1-32", "V1-33", "V1-35", "V1-36", "V1-39"]
     },
@@ -49,7 +51,7 @@
       "area": "explore-catalog",
       "classification": "explicit_unavailable",
       "paths": ["src/features/explore/ExplorePages.tsx"],
-      "markers": ["radioStations", "visualWorks", "tracks.map"],
+      "markers": ["No public works yet", "Only governed, explicitly published works", "Open AI Workspace"],
       "productionDisposition": "explicit_unavailable_until_public_catalog_api_is_approved",
       "ownerTasks": ["V1-35", "V1-36", "V1-39"]
     },
@@ -93,8 +95,8 @@
       "id": "frontend-static-plan-api-catalog",
       "area": "pricing-api-static-pages",
       "classification": "explicit_unavailable",
-      "paths": ["src/features/static-pages/StaticPages.tsx"],
-      "markers": ["planCards", "apiFeatures"],
+      "paths": ["src/features/static-pages/StaticPages.tsx", "src/config/publicPricing.ts"],
+      "markers": ["publicPricingCatalog", "Public pricing is not published yet", "checkoutAvailable"],
       "productionDisposition": "explicit_unavailable_until_versioned_product_catalog_is_approved",
       "ownerTasks": ["V1-39", "V1-40", "V1-70", "V1-78"]
     },
@@ -103,33 +105,24 @@
       "area": "points",
       "classification": "production_capable",
       "paths": ["src/hooks/useAppFeedback.ts", "src/features/rewards/PointsPage.tsx", "src/services/pointsService.ts", "server/src/repositories/prismaRepository.js", "server/prisma/schema.prisma"],
-      "markers": ["pointsLedger", "pointsService", "InternalPointAccount"],
+      "markers": ["useState<LedgerEntry[]>([])", "pointsService", "InternalPointAccount"],
       "productionDisposition": "points_api_or_explicit_unavailable",
       "ownerTasks": ["V1-39", "V1-40", "V1-65"]
     },
     {
       "id": "frontend-runtime-source-labels",
-      "area": "shell-observability",
+      "area": "api-unavailable-copy",
       "classification": "production_capable",
-      "paths": ["src/App.tsx", "src/components/layout/AppShell.tsx", "src/components/prototype/PrototypeComponents.tsx"],
-      "markers": ["Account unavailable", "Workspace unavailable", "Current data sources"],
-      "productionDisposition": "retain_until_all_release_blockers_are_closed",
+      "paths": ["src/hooks/useTaskWorkflows.ts", "src/hooks/useCommunityWorkflows.ts", "src/hooks/useAppFeedback.ts"],
+      "markers": ["The task API is unavailable; no local substitute is shown.", "The community API is unavailable; no local substitute is shown.", "The points API is unavailable; no local substitute is shown."],
+      "productionDisposition": "explicit_api_unavailable_copy_without_source_classification_labels",
       "ownerTasks": ["V1-02", "V1-39"]
-    },
-    {
-      "id": "frontend-mockdata-root",
-      "area": "shared-demo-catalog",
-      "classification": "development_only",
-      "paths": ["src/data/mockData.ts"],
-      "markers": ["export const tasks", "export const tracks", "export const marketplaceProfiles"],
-      "productionDisposition": "production_alias_excludes_mockdata_and_bundle_guard_scans_demo_markers",
-      "ownerTasks": ["V1-39"]
     },
     {
       "id": "server-seed-repository-fallback",
       "area": "persistence",
       "classification": "development_only",
-      "paths": ["server/src/repositories/index.js", "server/src/repositories/runtimePolicy.js", "server/src/repositories/seedRepository.js", "server/src/search/seedSearchRepository.js", "server/src/data/seed.js"],
+      "paths": ["server/src/repositories/index.js", "server/src/repositories/runtimePolicy.js", "server/src/repositories/seedRepository.js", "server/src/search/seedSearchRepository.js", "server/src/data/seed.js", "server/src/data/seedFixture.ts"],
       "markers": ["assertProductionPersistence", "PRODUCTION_DATABASE_REQUIRED", "createSeedRepository", "demoAccounts"],
       "productionDisposition": "production_requires_postgresql_and_never_loads_seed_repository",
       "ownerTasks": ["V1-39", "V1-49"]
@@ -139,7 +132,7 @@
       "area": "persistence-bootstrap",
       "classification": "development_only",
       "paths": ["server/src/repositories/prismaRepository.js", "server/src/repositories/prismaSeed.js", "server/src/data/seed.js"],
-      "markers": ["seedPrismaDatabase(client)", "seedStore.demoAccounts", "provider: 'demo'"],
+      "markers": ["seedPrismaDatabase(client, { includeDemoContent: shouldAutoSeedPrisma() })", "seedStore.demoAccounts", "provider: 'demo'"],
       "productionDisposition": "production_disables_demo_autoseed_and_uses_explicit_bootstrap",
       "ownerTasks": ["V1-39", "V1-49"]
     },
@@ -156,8 +149,8 @@
       "id": "server-mock-storage-driver",
       "area": "media-storage",
       "classification": "development_only",
-      "paths": ["server/src/config/env.js", "server/src/storage/uploadSigner.js", "server/src/storage/objectStore.js", "server/src/storage/objectWriter.js", "server/src/storage/archiveWriter.js"],
-      "markers": ["driver: 'mock'", "mock://media/", "upload.provider === 'mock'"],
+      "paths": ["server/src/config/env.js", "server/src/storage/uploadSigner.js", "server/src/storage/objectStore.js", "server/src/storage/objectWriter.js", "server/src/storage/archiveWriter.js", "server/src/audit/auditRetentionWorker.js"],
+      "markers": ["driver: 'mock'", "mock://media/", "upload.provider === 'mock'", "archive.provider === 'mock'"],
       "productionDisposition": "require_s3_in_production",
       "ownerTasks": ["V1-39", "V1-50"]
     },
@@ -183,8 +176,8 @@
       "id": "server-provider-fixture-injection",
       "area": "provider-lifecycle",
       "classification": "fixture_only",
-      "paths": ["server/src/modules/creative/routes.js", "server/src/creative/generationService.js", "server/src/creative/openaiImageProvider.js", "server/src/creative/replicateStagingProvider.js", "server/src/creative/providerPollingWorker.js", "server/src/creative/providerManualReplay.js", "server/src/creative/providerReplayIntegration.js", "server/src/chat/chatService.js", "server/src/chat/mockStreamAdapter.js", "server/src/chat/chatSafety.js", "server/src/creative/chatCapabilityContract.js"],
-      "markers": ["fixtureAdapters", "must be injected; no default network client is available", "providerMode", "streamMockChatResponse", "mock_fixture"],
+      "paths": ["server/src/modules/creative/routes.js", "server/src/creative/generationService.js", "server/src/creative/openaiImageProvider.js", "server/src/creative/replicateStagingProvider.js", "server/src/creative/providerPollingWorker.js", "server/src/creative/providerManualReplay.js", "server/src/creative/providerReplayIntegration.js", "server/src/creative/inputSafety.js", "server/src/creative/outputSafety.js", "server/src/dataRights/providerDeletionGateway.js", "server/src/chat/chatService.js", "server/src/chat/mockStreamAdapter.js", "server/src/chat/chatSafety.js", "server/src/creative/chatCapabilityContract.js"],
+      "markers": ["fixtureAdapters", "must be injected; no default network client is available", "providerMode", "streamMockChatResponse", "mock_fixture", "classifierId: 'local-fixture'", "externalProvider"],
       "productionDisposition": "retain_for_tests_and_keep_product_dispatch_unregistered",
       "ownerTasks": ["V1-05", "V1-06", "V1-07", "V1-08", "V1-12", "V1-14", "V1-16", "V1-21", "V1-22", "V1-24"]
     },
@@ -210,18 +203,18 @@
       "id": "server-video-capability-contract",
       "area": "video-provider",
       "classification": "production_capable",
-      "paths": ["server/src/creative/videoCapabilityContract.js", "server/src/creative/videoInputAssets.js", "server/src/creative/googleVeoProvider.js", "server/src/creative/googleVeoStagingAcceptance.js", "server/src/creative/videoProviderLifecycle.js", "server/src/creative/providerRegistry.js", "server/src/creative/generationService.js", "server/src/creative/providerOutputFetcher.js", "server/src/creative/providerReplayIntegration.js", "server/src/repositories/seedRepository.js", "server/src/repositories/prismaRepository.js", "server/prisma/migrations/0030_video_provider_operations/migration.sql"],
-      "markers": ["video-capability-v1", "video-provider-operation-v1", "video-provider-lifecycle-v2", "CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED", "createGoogleVeoHttpClient"],
-      "productionDisposition": "retain_guarded_video_staging_runtime_and_keep_all_veo_network_gates_credentials_and_production_enablement_disabled_outside_explicit_acceptance",
+      "paths": ["server/src/creative/videoCapabilityContract.js", "server/src/creative/videoInputAssets.js", "server/src/creative/routerVideoProvider.js", "server/src/creative/routerVideoStagingAcceptance.js", "server/src/creative/minimaxVideoProvider.js", "server/src/creative/minimaxVideoStagingAcceptance.js", "server/src/creative/videoProviderLifecycle.js", "server/src/creative/providerRegistry.js", "server/src/creative/generationService.js", "server/src/creative/providerOutputFetcher.js", "server/src/creative/providerReplayIntegration.js", "server/src/repositories/seedRepository.js", "server/src/repositories/prismaRepository.js", "server/prisma/migrations/0030_video_provider_operations/migration.sql"],
+      "markers": ["video-capability-v1", "video-provider-operation-v1", "video-provider-lifecycle-v3", "hcai-router-minimax-video-staging-boundary-v2", "CREATIVE_ROUTER_VIDEO_HTTP_CLIENT_ENABLED", "createRouterVideoHttpClient"],
+      "productionDisposition": "retain_guarded_router_video_staging_runtime_and_keep_all_router_network_gates_credentials_and_production_enablement_disabled_outside_explicit_acceptance",
       "ownerTasks": ["V1-25", "V1-26", "V1-27", "V1-28", "V1-29", "V1-39"]
     },
     {
       "id": "server-music-capability-contract",
       "area": "music-provider",
       "classification": "production_capable",
-      "paths": ["server/src/creative/musicCapabilityContract.js", "server/src/creative/elevenLabsMusicProvider.js", "server/src/creative/elevenLabsMusicStagingAcceptance.js", "server/src/creative/providerRegistry.js", "server/src/creative/generationService.js", "server/src/contracts/requestParsers.js", "scripts/check-elevenlabs-music-readiness.mjs"],
-      "markers": ["music-capability-v1", "elevenlabs-music-staging-boundary-v1", "elevenlabs-music-v2-enterprise", "music_v2", "CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED", "createElevenLabsMusicHttpClient", "readElevenLabsMusicOutputBytes", "applicationLifecyclePersistenceImplemented"],
-      "productionDisposition": "retain_guarded_elevenlabs_music_staging_runtime_and_keep_network_credentials_enterprise_rights_evidence_and_production_enablement_fail_closed_outside_explicit_acceptance",
+      "paths": ["server/src/creative/musicCapabilityContract.js", "server/src/creative/routerMusicProvider.js", "server/src/creative/routerMusicStagingAcceptance.js", "server/src/creative/providerRegistry.js", "server/src/creative/generationService.js", "server/src/contracts/requestParsers.js", "scripts/check-router-music-readiness.mjs"],
+      "markers": ["music-capability-v1", "router-minimax-music-staging-boundary-v1", "hcai-router-minimax-music-3", "music-3.0", "CREATIVE_ROUTER_MUSIC_HTTP_CLIENT_ENABLED", "createRouterMusicHttpClient", "readRouterMusicOutputBytes", "applicationLifecyclePersistenceImplemented"],
+      "productionDisposition": "retain_guarded_router_music_staging_runtime_and_keep_network_credentials_enterprise_rights_evidence_and_production_enablement_fail_closed_outside_explicit_acceptance",
       "ownerTasks": ["V1-30", "V1-31", "V1-32", "V1-33", "V1-34", "V1-39"]
     },
     {

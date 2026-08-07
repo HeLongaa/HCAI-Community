@@ -1,0 +1,133 @@
+/* Loaded after the legacy stylesheet so shell typography stays predictable. */
+.brand {
+  min-height: 42px;
+  font-size: 18px;
+}
+
+.search-trigger,
+.nav-item,
+.sidebar-profile button {
+  font-size: 16px;
+}
+
+.search-trigger kbd,
+.sidebar-profile small,
+.topbar-context > small,
+.account-menu-summary span,
+.account-menu-links button,
+.notification-item small,
+.security-modal small,
+.security-modal label > span {
+  font-size: 13px;
+}
+
+.sidebar-nav-label {
+  min-height: 26px;
+  font-size: 12px;
+}
+
+.sidebar-profile-name,
+.topbar-context > span,
+.account-menu-summary strong,
+.notification-item strong,
+.notification-empty strong {
+  font-size: 15px;
+}
+
+.topbar-account b {
+  font-size: 14px;
+}
+
+.account-menu {
+  width: 272px;
+}
+
+.account-menu > button {
+  min-height: 42px;
+  font-size: 15px;
+}
+
+.notification-popover-header strong {
+  font-size: 16px;
+}
+
+.notification-filters .chip,
+.notification-item span,
+.notification-empty span {
+  font-size: 14px;
+}
+
+.security-modal,
+.security-modal button,
+.security-modal input,
+.security-modal select,
+.security-header p,
+.security-note {
+  font-size: 15px;
+}
+
+.app-shell {
+  --app-sidebar-width: 225px;
+  grid-template-columns: 225px minmax(0, 1fr);
+}
+
+.sidebar {
+  width: 225px;
+  padding-inline: 12px;
+}
+
+.brand-mark {
+  width: 30px;
+  height: 30px;
+}
+
+.search-trigger {
+  min-height: 40px;
+}
+
+.nav-item {
+  min-height: 40px;
+}
+
+.nav-item svg {
+  width: 19px;
+  height: 19px;
+}
+
+.sidebar:not(.collapsed) .nav-item {
+  grid-template-columns: 19px minmax(0, 1fr);
+}
+
+.sidebar-profile button {
+  min-height: 54px;
+}
+
+.sidebar-account-avatar {
+  width: 32px;
+  height: 32px;
+  font-size: 13px;
+}
+
+.topbar-context > span {
+  font-size: 15px;
+}
+
+.notification-trigger,
+.topbar-account {
+  min-height: 38px;
+}
+
+@media (max-width: 820px) {
+  .app-shell,
+  .app-shell.sidebar-collapsed {
+    --app-sidebar-width: 0px;
+    display: block;
+  }
+
+  .sidebar,
+  .sidebar.collapsed,
+  .sidebar.mobile-expanded,
+  .sidebar.mobile-expanded.collapsed {
+    width: min(288px, calc(100vw - 20px));
+  }
+}

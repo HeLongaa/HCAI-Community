@@ -15,6 +15,7 @@ const cleanAsset = (overrides = {}) => ({
   contentType: 'image/png',
   sizeBytes: png.length,
   status: 'uploaded',
+  storageKey: 'private/director/input.png',
   metadata: { security: { scanStatus: 'clean' } },
   ...overrides,
 })
@@ -36,6 +37,10 @@ test('resolveVideoGenerationInputs assigns governed image and music roles', asyn
   assert.deepEqual(music.map(({ id, role, kind }) => ({ id, role, kind })), [
     { id: 'audio', role: 'audio_track', kind: 'audio' },
     { id: 'reference', role: 'reference_image', kind: 'image' },
+  ])
+  assert.deepEqual(music.map(({ storageKey }) => storageKey), [
+    'private/director/input.png',
+    'private/director/input.png',
   ])
   assert.equal(JSON.stringify(music).includes('storageKey'), false)
 })

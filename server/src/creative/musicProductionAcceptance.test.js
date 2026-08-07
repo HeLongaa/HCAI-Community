@@ -3,11 +3,11 @@ import test from 'node:test'
 
 import acceptance from '../../../config/music-production-ux-acceptance.json' with { type: 'json' }
 import {
-  assertElevenLabsMusicBudgetAllowsDispatch,
-  buildElevenLabsMusicCostMetadata,
-  buildElevenLabsMusicRequest,
-  createElevenLabsMusicHttpClient,
-} from './elevenLabsMusicProvider.js'
+  assertRouterMusicBudgetAllowsDispatch,
+  buildRouterMusicCostMetadata,
+  buildRouterMusicRequest,
+  createRouterMusicHttpClient,
+} from './routerMusicProvider.js'
 import { musicCapabilityForProvider } from './musicCapabilityContract.js'
 
 const requestForDuration = (durationSeconds) => ({
@@ -37,53 +37,53 @@ test('AI-MUSIC-02 freezes quality, rights, duration, lifecycle, and spend limits
 
   for (const durationSeconds of capability.output.durationSeconds.options) {
     const request = requestForDuration(durationSeconds)
-    const providerRequest = buildElevenLabsMusicRequest(request)
+    const providerRequest = buildRouterMusicRequest(request)
     assert.equal(providerRequest.outputFormat, acceptance.quality.profile)
-    const cost = buildElevenLabsMusicCostMetadata({ request, now: new Date('2026-07-20T00:00:00.000Z') })
+    const cost = buildRouterMusicCostMetadata({ request, now: new Date('2026-07-20T00:00:00.000Z') })
     assert.ok(cost.estimate.amount <= acceptance.limits.perJobUsdCap)
     assert.equal(cost.budget.dailyCapAmount, acceptance.limits.dailyUsdCap)
     assert.equal(cost.budget.monthlyCapAmount, acceptance.limits.monthlyUsdCap)
     assert.equal(cost.budget.maximumJobsPerDay, acceptance.limits.maximumJobsPerDay)
-    assert.doesNotThrow(() => assertElevenLabsMusicBudgetAllowsDispatch(cost))
+    assert.doesNotThrow(() => assertRouterMusicBudgetAllowsDispatch(cost))
   }
 })
 
 test('AI-MUSIC-02 daily spend limit blocks before Provider dispatch', () => {
-  const cost = buildElevenLabsMusicCostMetadata({
+  const cost = buildRouterMusicCostMetadata({
     request: requestForDuration(acceptance.limits.maximumDurationSeconds),
-    source: { CREATIVE_ELEVENLABS_MUSIC_DAILY_SPEND_USD: String(acceptance.limits.dailyUsdCap) },
+    source: { CREATIVE_ROUTER_MUSIC_DAILY_SPEND_USD: String(acceptance.limits.dailyUsdCap) },
   })
   assert.throws(
-    () => assertElevenLabsMusicBudgetAllowsDispatch(cost),
+    () => assertRouterMusicBudgetAllowsDispatch(cost),
     (error) => error.code === 'CREATIVE_PROVIDER_BUDGET_EXCEEDED',
   )
 })
 
-test('AI-MUSIC-02 rollback disables ElevenLabs without network dispatch or fallback', () => {
+test('AI-MUSIC-02 rollback disables Router MiniMax without network dispatch or fallback', () => {
   const stagingSource = {
     NODE_ENV: 'production',
     CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
-    CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED: 'true',
-    CREATIVE_ELEVENLABS_MUSIC_NETWORK_CALLS_ENABLED: 'true',
-    CREATIVE_ELEVENLABS_MUSIC_CONFIRMATION: 'staging-only',
-    CREATIVE_ELEVENLABS_MUSIC_API_KEY: 'fixture-not-a-secret',
-    CREATIVE_ELEVENLABS_MUSIC_ENTERPRISE_RIGHTS_CONFIRMED: 'true',
-    CREATIVE_ELEVENLABS_MUSIC_TRAINING_OPT_OUT_CONFIRMED: 'true',
-    CREATIVE_ELEVENLABS_MUSIC_LICENSE_ID: 'fixture-license',
-    CREATIVE_ELEVENLABS_MUSIC_TERMS_VERSION: 'fixture-terms',
+    CREATIVE_ROUTER_MUSIC_HTTP_CLIENT_ENABLED: 'true',
+    CREATIVE_ROUTER_MUSIC_NETWORK_CALLS_ENABLED: 'true',
+    CREATIVE_ROUTER_MUSIC_CONFIRMATION: 'staging-only',
+    CREATIVE_ROUTER_MUSIC_API_KEY: 'fixture-not-a-secret',
+    CREATIVE_ROUTER_MUSIC_STAGING_RIGHTS_ACKNOWLEDGED: 'true',
+    CREATIVE_ROUTER_MUSIC_TRAINING_OPT_OUT_CONFIRMED: 'true',
+    CREATIVE_ROUTER_MUSIC_LICENSE_ID: 'fixture-license',
+    CREATIVE_ROUTER_MUSIC_TERMS_VERSION: 'fixture-terms',
   }
   let fetchCalls = 0
-  createElevenLabsMusicHttpClient({ source: stagingSource, fetchImpl: async () => {
+  createRouterMusicHttpClient({ source: stagingSource, fetchImpl: async () => {
     fetchCalls += 1
     throw new Error('acceptance fixture must not dispatch')
   } })
   assert.equal(fetchCalls, 0)
 
   assert.throws(
-    () => createElevenLabsMusicHttpClient({ source: {
+    () => createRouterMusicHttpClient({ source: {
       ...stagingSource,
-      CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED: 'false',
-      CREATIVE_ELEVENLABS_MUSIC_NETWORK_CALLS_ENABLED: 'false',
+      CREATIVE_ROUTER_MUSIC_HTTP_CLIENT_ENABLED: 'false',
+      CREATIVE_ROUTER_MUSIC_NETWORK_CALLS_ENABLED: 'false',
     } }),
     (error) => error.code === acceptance.provider.disabledErrorCode,
   )

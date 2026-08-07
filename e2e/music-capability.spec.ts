@@ -49,6 +49,7 @@ test('Music Studio submits capability parameters and keeps real Provider shells 
   await signInPage(page, request, 'promptlin')
   const created = musicGeneration({ id: 'music-created', status: 'completed', prompt: 'Late-night focus track' })
   let submitted: Record<string, unknown> | null = null
+  let generationAttempts = 0
 
   await page.route('**/api/creative/generations?*', async (route) => {
     await route.fulfill({ json: { data: [], meta: { pagination: { limit: 20, nextCursor: null } } } })
@@ -57,6 +58,11 @@ test('Music Studio submits capability parameters and keeps real Provider shells 
     await route.fulfill({ json: { data: created } })
   })
   await page.route('**/api/creative/generations', async (route) => {
+    generationAttempts += 1
+    if (generationAttempts === 1) {
+      await route.fulfill({ status: 503, json: { error: { code: 'MUSIC_PROVIDER_UNAVAILABLE', message: 'Music generation is temporarily unavailable.' } } })
+      return
+    }
     submitted = route.request().postDataJSON()
     await route.fulfill({
       json: {
@@ -81,14 +87,26 @@ test('Music Studio submits capability parameters and keeps real Provider shells 
   await expect(page.locator('.runtime-badge', { hasText: 'Mock' })).toBeVisible()
   await expect(page.getByRole('tab', { name: 'Instrumental' })).toBeEnabled()
   await expect(page.getByRole('tab', { name: 'Lyrics to Song' })).toBeEnabled()
-  await expect(page.getByLabel('Music output quality')).toHaveValue('mp3_48000_192')
+  await expect(page.getByLabel('Music output quality')).toHaveValue('mp3_44100_256')
   await expect(page.locator('.video-rights-check')).toContainText('not requesting artist imitation')
 
   await page.getByLabel(/rights to this prompt/).check()
   const generateButton = page.getByRole('button', { name: 'Generate music' })
+  const promptBeforeFailure = await page.getByLabel('Music prompt').inputValue()
+  await generateButton.click()
+  await expect(page.locator('.video-inline-error')).toContainText('Music generation is temporarily unavailable.')
+  await expect(page.getByLabel('Music prompt')).toHaveValue(promptBeforeFailure)
+  await expect(page.getByLabel(/rights to this prompt/)).toBeChecked()
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
+
   await generateButton.focus()
   await page.keyboard.press('Enter')
+  await expect(page.locator('.generation-operation-feedback')).toContainText('Music job created.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
+  expect(generationAttempts).toBe(2)
   await expect(page.locator('.music-history-row').filter({ hasText: 'Late-night focus track' })).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Music generation status' })).toContainText('Processing output')
+  await expect(page.locator('.music-history-row').filter({ hasText: 'Late-night focus track' })).toContainText('Processing output')
   expect(submitted).toMatchObject({
     workspace: 'music',
     mode: 'instrumental',
@@ -103,8 +121,8 @@ test('Music Studio submits capability parameters and keeps real Provider shells 
     },
   })
 
-  await page.getByLabel('Music runtime').selectOption('elevenlabs-music-v2-enterprise')
-  await expect(page.getByText('Fixture only', { exact: true })).toBeVisible()
+  await page.getByLabel('Music runtime').selectOption('hcai-router-minimax-music-3')
+  await expect(page.getByText('This model is not enabled. Ask an administrator to configure it.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Generate music' })).toBeDisabled()
 })
 
@@ -177,14 +195,20 @@ test('Music Studio restores lifecycle, gates private audio, and submits lyrics s
   await expect(page.getByText('Running', { exact: true }).first()).toBeVisible()
   await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(page.getByText('Cancelled', { exact: true }).first()).toBeVisible()
+  await expect(page.locator('.generation-operation-feedback')).toContainText('Music job cancelled.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
   await expect(page.getByText(/Exact retry is unavailable after refresh/)).toBeVisible()
 
   await page.locator('.music-history-row').filter({ hasText: 'Completed private song' }).click()
+  await expect(page.getByRole('status', { name: 'Music generation status' })).toContainText('Completed')
   await page.getByRole('button', { name: 'Private player' }).click()
   await expect(page.getByTestId('private-music-player')).toBeVisible()
   await expect(page.getByTestId('private-music-player')).toHaveAttribute('src', /^data:audio\/mpeg/)
   await expect(page.getByTestId('private-music-player')).toHaveAccessibleName('Private music player')
   await expect(page.getByRole('button', { name: 'Download output' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Download output' }).click()
+  await expect(page.locator('.generation-operation-feedback')).toContainText('Download started: private-song.mp3')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
   await page.getByRole('button', { name: 'Use in Video' }).click()
   await expect(page.getByRole('heading', { name: 'Video Studio' })).toBeVisible()
   await page.getByRole('button', { name: 'Music', exact: true }).click()
@@ -193,6 +217,8 @@ test('Music Studio restores lifecycle, gates private audio, and submits lyrics s
   await page.getByLabel('Song lyrics').fill('City lights fade while the morning starts')
   await page.getByLabel(/rights to this prompt/).check()
   await page.getByRole('button', { name: 'Generate music' }).click()
+  await expect(page.locator('.generation-operation-feedback')).toContainText('Music job created.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
   expect(submitted).toMatchObject({
     workspace: 'music',
     mode: 'lyrics_to_song',
@@ -208,7 +234,19 @@ test('Music Studio restores lifecycle, gates private audio, and submits lyrics s
   await expect(page.locator('.video-workbench')).toBeVisible()
   await expect(page.getByRole('status', { name: 'Music generation status' })).toHaveAttribute('aria-live', 'polite')
   await expect(page.locator('.video-history-table')).toBeVisible()
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  const mobileLayout = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    overflow: [...document.querySelectorAll<HTMLElement>('body *')]
+      .filter((element) => element.getBoundingClientRect().right > window.innerWidth + 1)
+      .map((element) => ({
+        className: element.className,
+        right: Math.round(element.getBoundingClientRect().right),
+        scrollWidth: element.scrollWidth,
+        clientWidth: element.clientWidth,
+      }))
+      .slice(0, 12),
+  }))
+  expect(mobileLayout.scrollWidth, JSON.stringify(mobileLayout, null, 2)).toBeLessThanOrEqual(390)
   for (const selector of ['.video-controls', '.video-preview-panel', '.video-history']) {
     const box = await page.locator(selector).boundingBox()
     expect(box, `${selector} must have layout bounds`).not.toBeNull()

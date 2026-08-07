@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, ListChecks, Plus, RefreshCw, ShieldCheck, SlidersHorizontal } from 'lucide-react'
+import { AlertTriangle, ListChecks, Plus, RefreshCw, SlidersHorizontal } from 'lucide-react'
 
 import type {
   ModerationBulkAction,
@@ -12,13 +12,13 @@ import type {
   TrustOperationsMetrics,
 } from '../../services/contracts'
 import { trustService } from '../../services/trustService'
+import { AdminActionFeedback, type AdminActionFeedbackMessage } from './AdminActionFeedback'
 
-type Props = { canOperate: boolean; canManageRules: boolean; isZh: boolean; notify: (message: string) => void }
 type View = 'queue' | 'rules' | 'signals'
+type Props = { view: View; canOperate: boolean; canManageRules: boolean; isZh: boolean }
 const priorities: ModerationCasePriority[] = ['normal', 'high', 'critical']
 
-export function TrustSafetyOperationsPanel({ canOperate, canManageRules, isZh, notify }: Props) {
-  const [view, setView] = useState<View>('queue')
+export function TrustSafetyOperationsPanel({ view, canOperate, canManageRules, isZh }: Props) {
   const [queue, setQueue] = useState<ModerationQueueItem[]>([])
   const [rules, setRules] = useState<SafetyRuleDto[]>([])
   const [signals, setSignals] = useState<SafetySignalDto[]>([])
@@ -27,7 +27,7 @@ export function TrustSafetyOperationsPanel({ canOperate, canManageRules, isZh, n
   const [assignment, setAssignment] = useState<'' | 'assigned' | 'unassigned'>('')
   const [sla, setSla] = useState<'' | 'within' | 'breached'>('')
   const [priority, setPriority] = useState<ModerationCasePriority | ''>('')
-  const [assigneeId, setAssigneeId] = useState('demo-user-moderator')
+  const [assigneeId, setAssigneeId] = useState('')
   const [reasonCode, setReasonCode] = useState('operator_triage')
   const [bulkAction, setBulkAction] = useState<ModerationBulkAction>('set_priority')
   const [bulkPriority, setBulkPriority] = useState<ModerationCasePriority>('high')
@@ -36,7 +36,8 @@ export function TrustSafetyOperationsPanel({ canOperate, canManageRules, isZh, n
   const [bulkResult, setBulkResult] = useState<ModerationBulkResult | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [ruleDraft, setRuleDraft] = useState({ ruleKey: 'community.spam', name: 'Community spam score', signalType: 'spam_score', minimumScore: 75, priority: 'high' as ModerationCasePriority, configHash: '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a' })
+  const [feedback, setFeedback] = useState<AdminActionFeedbackMessage | null>(null)
+  const [ruleDraft, setRuleDraft] = useState({ ruleKey: '', name: '', signalType: '', minimumScore: 0, priority: 'normal' as ModerationCasePriority, configHash: '' })
 
   const load = useCallback(async () => {
     await Promise.resolve()
@@ -75,8 +76,8 @@ export function TrustSafetyOperationsPanel({ canOperate, canManageRules, isZh, n
   }, [assignment, priority, sla])
 
   const run = async (operation: () => Promise<unknown>, message: string) => {
-    setBusy(true); setError(null)
-    try { await operation(); notify(message); await load() } catch (operationError) { setError(operationError instanceof Error ? operationError.message : 'Trust operation failed.') } finally { setBusy(false) }
+    setBusy(true); setError(null); setFeedback(null)
+    try { await operation(); setFeedback({ kind: 'success', text: message }); await load() } catch (operationError) { setError(operationError instanceof Error ? operationError.message : 'Trust operation failed.') } finally { setBusy(false) }
   }
 
   const transition = (rule: SafetyRuleDto, toState: 'canary' | 'active' | 'retired') => run(
@@ -101,31 +102,32 @@ export function TrustSafetyOperationsPanel({ canOperate, canManageRules, isZh, n
   }
   const executeBulk = async () => {
     if (!bulkPreview) return
-    setBusy(true); setError(null)
+    setBusy(true); setError(null); setFeedback(null)
     try {
       const result = await trustService.executeBulk({ ...bulkPayload(), targetHash: bulkPreview.targetHash, confirmationText: bulkConfirmation, idempotencyKey: `trust-queue-${Date.now()}-${bulkPreview.targetHash.slice(0, 12)}` })
-      setBulkResult(result); setBulkPreview(null); setBulkConfirmation(''); setSelectedIds([]); notify(isZh ? '批量队列操作已完成。' : 'Bulk queue operation completed.'); await load()
+      setBulkResult(result); setBulkPreview(null); setBulkConfirmation(''); setSelectedIds([]); setFeedback({ kind: 'success', text: isZh ? '批量队列操作已完成。' : 'Bulk queue operation completed.' }); await load()
     } catch (executeError) { setError(executeError instanceof Error ? executeError.message : 'Bulk operation failed.') } finally { setBusy(false) }
   }
 
-  return <div className="trust-ops" data-testid="trust-safety-operations">
+  const viewMeta = {
+    queue: { icon: ListChecks, title: isZh ? '案件运营队列' : 'Moderation operations queue', description: isZh ? '按分派、优先级和 SLA 处理待办案件。' : 'Triage active cases by assignment, priority, and SLA.' },
+    rules: { icon: SlidersHorizontal, title: isZh ? '安全规则版本' : 'Safety rule versions', description: isZh ? '创建、灰度、启用或退役审核规则。' : 'Create, canary, activate, or retire moderation rules.' },
+    signals: { icon: AlertTriangle, title: isZh ? '安全信号证据' : 'Safety signal evidence', description: isZh ? '查看规则产生的真实信号、分值与内容摘要。' : 'Inspect rule signals, scores, and content hashes.' },
+  }[view]
+  const ViewIcon = viewMeta.icon
+
+  return <section className="trust-ops trust-workspace-surface" data-view={view} data-testid="trust-safety-operations">
     <div className="trust-ops-heading">
-      <div><ShieldCheck size={18} /><strong>{isZh ? '安全规则与案件队列' : 'Safety rules and case queue'}</strong></div>
+      <div><ViewIcon size={18} /><span><strong>{viewMeta.title}</strong><small>{viewMeta.description}</small></span></div>
       <button className="icon-button" type="button" onClick={() => void load()} disabled={busy} title={isZh ? '刷新安全运营' : 'Refresh safety operations'}><RefreshCw size={16} /></button>
     </div>
     {metrics && <div className="admin-metric-strip trust-ops-metrics">
-      <div><span>{isZh ? '活跃规则' : 'Active rules'}</span><strong>{metrics.rules.active}</strong></div>
-      <div><span>{isZh ? '灰度规则' : 'Canary rules'}</span><strong>{metrics.rules.canary}</strong></div>
-      <div><span>{isZh ? '24h 信号' : '24h signals'}</span><strong>{metrics.signals.last24Hours}</strong></div>
-      <div><span>{isZh ? '未分派' : 'Unassigned'}</span><strong>{metrics.queue.unassigned}</strong></div>
-      <div><span>{isZh ? 'SLA 超时' : 'SLA breached'}</span><strong>{metrics.queue.breached}</strong></div>
+      {view === 'rules' && <><div><span>{isZh ? '活跃规则' : 'Active rules'}</span><strong>{metrics.rules.active}</strong></div><div><span>{isZh ? '灰度规则' : 'Canary rules'}</span><strong>{metrics.rules.canary}</strong></div></>}
+      {view === 'queue' && <><div><span>{isZh ? '未分派' : 'Unassigned'}</span><strong>{metrics.queue.unassigned}</strong></div><div><span>{isZh ? 'SLA 超时' : 'SLA breached'}</span><strong>{metrics.queue.breached}</strong></div></>}
+      {view === 'signals' && <div><span>{isZh ? '24h 信号' : '24h signals'}</span><strong>{metrics.signals.last24Hours}</strong></div>}
     </div>}
-    <div className="segmented-control trust-ops-tabs" role="tablist">
-      <button type="button" className={view === 'queue' ? 'active' : ''} onClick={() => setView('queue')}><ListChecks size={15} />{isZh ? '案件队列' : 'Queue'}</button>
-      <button type="button" className={view === 'rules' ? 'active' : ''} onClick={() => setView('rules')}><SlidersHorizontal size={15} />{isZh ? '规则版本' : 'Rules'}</button>
-      <button type="button" className={view === 'signals' ? 'active' : ''} onClick={() => setView('signals')}><AlertTriangle size={15} />{isZh ? '安全信号' : 'Signals'}</button>
-    </div>
     {error && <div className="inline-alert error" role="alert">{error}</div>}
+    <AdminActionFeedback message={feedback} />
 
     {view === 'queue' && <>
       <div className="trust-ops-filters">
@@ -140,14 +142,14 @@ export function TrustSafetyOperationsPanel({ canOperate, canManageRules, isZh, n
           <input type="checkbox" aria-label={`Select ${item.case.id}`} checked={selectedIds.includes(item.case.id)} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, item.case.id] : current.filter((id) => id !== item.case.id))} />
           <div><strong>{item.case.report?.subject ?? item.case.id}</strong><small>{item.case.id} · {item.queue.assignee?.handle ?? 'unassigned'} · {new Date(item.queue.dueAt).toLocaleString()}</small></div>
           <span className={`status-badge ${item.queue.breached ? 'danger' : item.queue.priority === 'critical' ? 'warning' : ''}`}>{item.queue.breached ? 'breached' : item.queue.priority}</span>
-          {canOperate && <div className="button-row"><button className="icon-button" type="button" onClick={() => void queueAction(item.case.id, item.queue.assignee ? 'release' : 'assign')} title={item.queue.assignee ? 'Release' : 'Assign'}><ListChecks size={15} /></button><button className="icon-button" type="button" onClick={() => void queueAction(item.case.id, 'set_priority')} title="Set priority"><AlertTriangle size={15} /></button></div>}
+          {canOperate && <div className="button-row"><button className="icon-button" type="button" onClick={() => void queueAction(item.case.id, item.queue.assignee ? 'release' : 'assign')} title={item.queue.assignee ? 'Release' : 'Assign'} disabled={!item.queue.assignee && !assigneeId.trim()}><ListChecks size={15} /></button><button className="icon-button" type="button" onClick={() => void queueAction(item.case.id, 'set_priority')} title="Set priority"><AlertTriangle size={15} /></button></div>}
         </div>)}
       </div>
       {canOperate && selectedIds.length > 0 && <div className="trust-bulk-bar">
         <strong>{isZh ? `已选 ${selectedIds.length} 项` : `${selectedIds.length} selected`}</strong>
         <select aria-label="Moderation bulk action" value={bulkAction} onChange={(event) => { setBulkAction(event.target.value as ModerationBulkAction); setBulkPreview(null) }}><option value="assign">assign</option><option value="release">release</option><option value="set_priority">set_priority</option></select>
         {bulkAction === 'set_priority' && <select aria-label="Moderation bulk priority" value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value as ModerationCasePriority)}>{priorities.map((item) => <option key={item}>{item}</option>)}</select>}
-        <button className="ghost-button" type="button" onClick={() => void previewBulk()} disabled={busy}>{isZh ? '预览' : 'Preview'}</button>
+        <button className="ghost-button" type="button" onClick={() => void previewBulk()} disabled={busy || (bulkAction === 'assign' && !assigneeId.trim())}>{isZh ? '预览' : 'Preview'}</button>
         {bulkPreview && <><span>{bulkPreview.eligibleCount} eligible / {bulkPreview.skippedCount} skipped</span><input aria-label="Moderation bulk confirmation" value={bulkConfirmation} onChange={(event) => setBulkConfirmation(event.target.value)} placeholder={bulkPreview.requiredConfirmationText} /><button className="primary-button" type="button" onClick={() => void executeBulk()} disabled={bulkConfirmation !== bulkPreview.requiredConfirmationText}>{isZh ? '执行' : 'Execute'}</button></>}
         {bulkResult && <span>{bulkResult.succeededCount} succeeded / {bulkResult.skippedCount} skipped</span>}
       </div>}
@@ -161,11 +163,11 @@ export function TrustSafetyOperationsPanel({ canOperate, canManageRules, isZh, n
         <input aria-label="Minimum score" type="number" min="0" max="100" value={ruleDraft.minimumScore} onChange={(event) => setRuleDraft((current) => ({ ...current, minimumScore: Number(event.target.value) }))} />
         <select aria-label="Rule priority" value={ruleDraft.priority} onChange={(event) => setRuleDraft((current) => ({ ...current, priority: event.target.value as ModerationCasePriority }))}>{priorities.map((item) => <option key={item}>{item}</option>)}</select>
         <input aria-label="Rule config hash" value={ruleDraft.configHash} onChange={(event) => setRuleDraft((current) => ({ ...current, configHash: event.target.value }))} placeholder="SHA-256 configuration hash" />
-        <button className="primary-button" type="button" onClick={() => void createRule()} disabled={busy}><Plus size={15} />{isZh ? '创建版本' : 'Create version'}</button>
+        <button className="primary-button" type="button" onClick={() => void createRule()} disabled={busy || !ruleDraft.ruleKey.trim() || !ruleDraft.name.trim() || !ruleDraft.signalType.trim() || !/^[a-f0-9]{64}$/.test(ruleDraft.configHash)}><Plus size={15} />{isZh ? '创建版本' : 'Create version'}</button>
       </div>}
       <div className="admin-table trust-rule-list">{rules.map((rule) => <div className="admin-row compact" key={rule.id} data-testid={`trust-rule-${rule.id}`}><div><strong>{rule.name} · v{rule.version}</strong><small>{rule.ruleKey} · {rule.signalType} ≥ {rule.minimumScore} · {rule.rolloutPercent}%</small></div><span className="status-badge">{rule.state}</span>{canManageRules && <div className="button-row">{rule.state === 'draft' && <button className="ghost-button" type="button" onClick={() => void transition(rule, 'canary')}>Canary</button>}{['draft', 'canary', 'retired'].includes(rule.state) && <button className="ghost-button" type="button" onClick={() => void transition(rule, 'active')}>{rule.state === 'retired' ? 'Rollback' : 'Activate'}</button>}{rule.state !== 'retired' && <button className="ghost-button danger" type="button" onClick={() => void transition(rule, 'retired')}>Retire</button>}</div>}</div>)}</div>
     </>}
 
     {view === 'signals' && <div className="admin-table trust-signal-list">{signals.map((signal) => <div className="admin-row compact" key={signal.id}><div><strong>{signal.signalType} · {signal.score}</strong><small>{signal.caseId} · {new Date(signal.observedAt).toLocaleString()}</small></div><span className={`status-badge ${signal.severity === 'critical' ? 'danger' : ''}`}>{signal.severity}</span><code>{signal.contentHash.slice(0, 12)}</code></div>)}</div>}
-  </div>
+  </section>
 }

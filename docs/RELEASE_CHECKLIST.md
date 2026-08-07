@@ -20,11 +20,18 @@ npm run check:deploy:env
 Confirm:
 
 - `npm run test:v1-scope` passes and the scope manifest matches `docs/V1_SCOPE_AND_DEFINITION_OF_DONE.md`.
-- `npm run test:v1-surfaces`, `npm run test:v1-production-fallbacks`, and the post-build `npm run test:v1-production-bundle` pass; every inventoried release blocker is closed and `productionReady=true` remains evidence-backed.
+- `npm run test:v1-surfaces`, `npm run test:v1-production-fallbacks`, and the post-build `npm run test:v1-production-bundle` pass; every inventoried fallback blocker is closed and `fallbackDispositionComplete=true` remains evidence-backed. Do not interpret this scoped status as global production approval.
 - `npm run test:v1-compliance` passes, the final legal entity/jurisdiction are recorded, qualified legal review is approved, and the published versions match the consent gate. The current engineering draft intentionally does not satisfy this release condition.
 - No RMB payment, withdrawal/payout, KYC, invoice, tax-settlement, or merchant-settlement route or schema is present.
 - Internal points, creative credits, quota, escrow, compensation, and refunds are not represented as withdrawable money.
 - GitHub Actions `Quality Gates` workflow is passing for the target commit.
+- `npm run check:production-containers` passes for the exact candidate source.
+- `npm run rehearse:production-containers` passes, including migrations, no-demo production seed, Worker jobs, read-only runtime, and SIGTERM drain.
+- GitHub Actions `Container Supply Chain` passes for the exact candidate commit and publishes four GHCR images by digest.
+- The aggregate `production-image-digest-manifest-v1` has `registryReady=true`, the approved `sourceRevision`, and frontend/API/Worker/migration digest entries.
+- Each image has matching SPDX and CycloneDX SBOM evidence, zero unexcepted fixable `HIGH/CRITICAL` findings, and a non-EOL operating system.
+- GitHub provenance and SPDX SBOM attestations pass `gh attestation verify` for every exact image digest.
+- Any active vulnerability exception identifies the exact CVE/package/image/version, has release approval, and expires within 30 days; expired or blanket ignores are prohibited.
 - The multi-instance deployment profile in `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` has been reviewed for the target environment.
 - `docs/GITHUB_ENVIRONMENT.md` required secrets and variables are configured for the selected GitHub Environment.
 - `ACCESS_TOKEN_KEY_ID` matches the active signing secret rotation plan.
@@ -55,6 +62,17 @@ npm run release:infrastructure:rehearse:env
 
 Both database names must contain `rehearsal` and must differ. Attach the sanitized SHA-256-bound evidence receipt to the release change. Local Docker evidence is useful engineering proof but does not replace this target-environment receipt.
 
+Before the first target-environment application release, complete the protected staging candidate/rollback rehearsal:
+
+```bash
+npm run release:application:preflight
+npm run release:application:rehearse:env
+```
+
+Attach the `RELEASE-02` receipt proving the exact candidate artifact was served, the previous artifact was restored, and
+both phases passed the same health, OpenAPI, public policy, and authentication-rejection smoke. The local fixture
+rehearsal is not a deployment receipt.
+
 Before switching traffic:
 
 1. Back up the target database.
@@ -67,13 +85,14 @@ Before switching traffic:
 
 Deploy order:
 
-1. Apply database migrations.
-2. Deploy backend API with embedded workers disabled.
-3. Run backend health check: `GET /health`.
-4. Run OpenAPI check: `GET /api/openapi.json`.
-5. Deploy worker process type with explicit job flags.
-6. Deploy frontend.
-7. Confirm frontend can reach the API origin with credentialed requests when cookie auth is enabled.
+1. Resolve no tags. Load the approved four-image digest manifest and verify its signed attestations.
+2. Apply database migrations using the approved migration digest.
+3. Deploy backend API with embedded workers disabled using the approved API digest.
+4. Run backend health check: `GET /health`.
+5. Run OpenAPI check: `GET /api/openapi.json`.
+6. Deploy the approved Worker digest with explicit job flags.
+7. Deploy the approved frontend digest.
+8. Confirm frontend can reach the API origin with credentialed requests when cookie auth is enabled.
 
 Critical API smoke checks:
 

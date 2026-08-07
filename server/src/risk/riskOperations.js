@@ -22,6 +22,36 @@ export const defaultRiskPolicy = Object.freeze({
   updatedAt: null,
 })
 
+const dayMs = 86_400_000
+
+export const riskRetentionContract = Object.freeze({
+  policyId: 'security_event_365d',
+  retentionDays: 365,
+  legalHoldScopeDomains: Object.freeze(['audit', 'safety']),
+  defaultSweepLimit: 250,
+  maximumSweepLimit: 1000,
+})
+
+export const riskRetentionCutoff = (now = new Date()) => new Date(now.getTime() - riskRetentionContract.retentionDays * dayMs)
+
+export const riskRetentionSweepLimit = (value) => {
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isInteger(parsed) || parsed < 1) return riskRetentionContract.defaultSweepLimit
+  return Math.min(parsed, riskRetentionContract.maximumSweepLimit)
+}
+
+export const riskCaseTerminalAt = (riskCase) => {
+  if (riskCase?.status === 'recovered') return riskCase.recoveredAt ? new Date(riskCase.recoveredAt) : null
+  if (riskCase?.status === 'closed') return riskCase.closedAt ? new Date(riskCase.closedAt) : null
+  return null
+}
+
+export const isRiskCaseRetentionEligible = (riskCase, cutoff) => {
+  if (!riskCase || riskCase.retentionRedactedAt || !riskCase.userId || !riskCase.subjectRef) return false
+  const terminalAt = riskCaseTerminalAt(riskCase)
+  return Boolean(terminalAt && terminalAt <= cutoff)
+}
+
 const validationFailed = (message) => new HttpError(400, 'VALIDATION_FAILED', message)
 
 const stableText = (value, name, maximum = 80) => {

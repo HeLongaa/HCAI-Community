@@ -6,8 +6,10 @@ import { validationFailed } from '../common/http/validation.js'
 export const modelControlStatuses = Object.freeze(['draft', 'active', 'disabled', 'deprecated', 'archived'])
 export const modelDeploymentEnvironments = Object.freeze(['development', 'staging', 'production'])
 export const modelCapabilityModalities = Object.freeze(['image', 'chat', 'video', 'music'])
-export const modelDeploymentAdapterTypes = Object.freeze(['openai_image', 'openai_chat', 'google_video', 'elevenlabs_music'])
+export const modelDeploymentAdapterTypes = Object.freeze(['openai_image', 'openai_chat', 'router_video', 'router_minimax_video', 'router_music'])
 export const modelControlPageLimit = 100
+const routerVideoModelIdPattern = /^seedance-(?:2\.0(?:-fast)?|v1\.5-pro-(?:t2v|i2v))$/
+const routerMiniMaxVideoModelIdPattern = /^MiniMax-Hailuo-2\.3(?:-Fast)?$/
 
 const allowedTransitions = Object.freeze({
   draft: Object.freeze(['active', 'archived']),
@@ -208,6 +210,12 @@ export const parseDeploymentCreate = (raw = {}, actor) => {
   if (adapterType && !modelDeploymentAdapterTypes.includes(adapterType)) throw validationFailed(`adapterType must be one of: ${modelDeploymentAdapterTypes.join(', ')}`)
   const providerModelId = safeText(payload.providerModelId, 'providerModelId', { maximum: 160 }) || null
   if (providerModelId && !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,159}$/.test(providerModelId)) throw validationFailed('providerModelId contains unsupported characters')
+  if (adapterType === 'router_video' && providerModelId && !routerVideoModelIdPattern.test(providerModelId)) {
+    throw validationFailed('router_video providerModelId must be a supported Seedance model')
+  }
+  if (adapterType === 'router_minimax_video' && providerModelId && !routerMiniMaxVideoModelIdPattern.test(providerModelId)) {
+    throw validationFailed('router_minimax_video providerModelId must be a supported MiniMax Hailuo model')
+  }
   const secretPurpose = safeText(payload.secretPurpose, 'secretPurpose', { maximum: 80 }) || null
   if (secretPurpose && !/^[a-z0-9][a-z0-9._/-]{0,79}$/.test(secretPurpose)) throw validationFailed('secretPurpose contains unsupported characters')
   if (payload.runtimeEnabled != null && typeof payload.runtimeEnabled !== 'boolean') throw validationFailed('runtimeEnabled must be a boolean')
@@ -221,9 +229,9 @@ export const parseDeploymentCreate = (raw = {}, actor) => {
   if (adapterType === 'openai_chat' && runtimeConfig?.apiDialect != null && !['responses', 'chat_completions'].includes(runtimeConfig.apiDialect)) {
     throw validationFailed('openai_chat runtimeConfig.apiDialect must be one of: responses, chat_completions')
   }
-  if (runtimeEnabled && ['openai_image', 'openai_chat', 'elevenlabs_music'].includes(adapterType) && !endpointUrl) throw validationFailed('runtimeEnabled requires endpointUrl for the selected adapter')
-  if (runtimeEnabled && adapterType === 'google_video' && !['projectId', 'location', 'outputGcsUri'].every((key) => typeof runtimeConfig?.[key] === 'string' && runtimeConfig[key].trim())) throw validationFailed('google_video runtimeConfig requires projectId, location, and outputGcsUri')
-  if (runtimeEnabled && adapterType === 'elevenlabs_music' && !['licenseId', 'termsVersion'].every((key) => typeof runtimeConfig?.[key] === 'string' && runtimeConfig[key].trim())) throw validationFailed('elevenlabs_music runtimeConfig requires licenseId and termsVersion')
+  if (runtimeEnabled && ['openai_image', 'openai_chat', 'router_video', 'router_minimax_video', 'router_music'].includes(adapterType) && !endpointUrl) throw validationFailed('runtimeEnabled requires endpointUrl for the selected adapter')
+  if (runtimeEnabled && ['router_video', 'router_minimax_video'].includes(adapterType) && !['providerAccountRef'].every((key) => typeof runtimeConfig?.[key] === 'string' && runtimeConfig[key].trim())) throw validationFailed(`${adapterType} runtimeConfig requires providerAccountRef`)
+  if (runtimeEnabled && adapterType === 'router_music' && !['licenseId', 'termsVersion'].every((key) => typeof runtimeConfig?.[key] === 'string' && runtimeConfig[key].trim())) throw validationFailed('router_music runtimeConfig requires licenseId and termsVersion')
   return {
     id: `model-deployment-${randomUUID()}`,
     modelVersionId: safeText(payload.modelVersionId, 'modelVersionId', { required: true, maximum: 160 }),

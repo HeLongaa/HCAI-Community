@@ -1,8 +1,5 @@
 import { useEffect, useState } from 'react'
 import type { CommunityPostDraft, CommunityView, InspirationItem, Locale, Page, Post, PublishDraft } from '../domain/types'
-import { inspirationItems, posts } from '../data/mockData'
-import { copy } from '../i18n/copy'
-import { localeFirstPost } from '../domain/utils'
 import { communityService } from '../services/communityService'
 import { useAsyncResource } from './useAsyncResource'
 
@@ -25,9 +22,9 @@ function bumpLikeCount(value: string) {
 }
 
 export function useCommunityWorkflows({ locale, publishTask, pushLedger, pushToast, setPage, accountHandle }: CommunityWorkflowOptions) {
-  const [postList, setPostList] = useState<Post[]>(posts)
-  const [libraryItems, setLibraryItems] = useState<InspirationItem[]>(inspirationItems)
-  const [selectedPost, setSelectedPost] = useState<Post>(() => localeFirstPost(posts, copy.en))
+  const [postList, setPostList] = useState<Post[]>([])
+  const [libraryItems, setLibraryItems] = useState<InspirationItem[]>([])
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null)
   const [communityFilter, setCommunityFilter] = useState('Hot')
   const [communityView, setCommunityView] = useState<CommunityView>('list')
   const [myPosts, setMyPosts] = useState<Post[]>([])
@@ -38,7 +35,7 @@ export function useCommunityWorkflows({ locale, publishTask, pushLedger, pushToa
     onSuccess: ([postsData, libraryData]) => {
       setPostList(postsData)
       setLibraryItems(libraryData)
-      setSelectedPost((current) => postsData.find((post) => post.id === current.id) ?? postsData[0] ?? current)
+      setSelectedPost((current) => postsData.find((post) => post.id === current?.id) ?? postsData[0] ?? null)
     },
     getErrorMessage: () => (locale === 'zh' ? '社区 API 暂不可用；未显示本地替代数据。' : 'The community API is unavailable; no local substitute is shown.'),
     deps: [locale],
@@ -90,7 +87,7 @@ export function useCommunityWorkflows({ locale, publishTask, pushLedger, pushToa
       const updated = await communityService.updatePost(post, draft)
       setMyPosts((current) => replacePost(current, updated))
       setPostList((current) => replacePost(current, updated))
-      if (selectedPost.id === updated.id) setSelectedPost(updated)
+      if (selectedPost?.id === updated.id) setSelectedPost(updated)
       pushToast(locale === 'zh' ? '帖子已更新。' : 'Post updated.')
       return updated
     } finally {
@@ -118,7 +115,7 @@ export function useCommunityWorkflows({ locale, publishTask, pushLedger, pushToa
       const deleted = await communityService.deletePost(post)
       setMyPosts((current) => replacePost(current, deleted))
       setPostList((current) => current.filter((item) => item.id !== deleted.id))
-      setSelectedPost((current) => current.id === deleted.id ? postList.find((item) => item.id !== deleted.id) ?? current : current)
+      setSelectedPost((current) => current?.id === deleted.id ? postList.find((item) => item.id !== deleted.id) ?? null : current)
       pushToast(locale === 'zh' ? '帖子已删除。' : 'Post deleted.')
       return deleted
     } finally {
@@ -185,24 +182,17 @@ export function useCommunityWorkflows({ locale, publishTask, pushLedger, pushToa
 
   const savePostToLibrary = async (post: Post) => {
     const isZh = locale === 'zh'
-    try {
-      const item = await communityService.savePostToLibrary(post)
-      const nextItem: InspirationItem = {
-        id: item.id,
-        title: item.title,
-        type: item.type,
-        source: item.source,
-        saves: item.saves,
-        text: item.text,
-      }
-      setLibraryItems((current) => [nextItem, ...current])
-      pushLedger(isZh ? `收入灵感库：${post.title}` : `Saved to inspiration library: ${post.title}`, '+10')
-      pushToast(isZh ? `已收入灵感库：${post.title}` : `Saved to inspiration library: ${post.title}`)
-      setPage('inspiration')
-    } catch (error) {
-      console.info('[community-service]', error)
-      pushToast(isZh ? '保存灵感失败，已保留本地状态。' : 'Save failed. Local state kept.')
-    }
+    window.sessionStorage.setItem('hcaiInspirationSubmissionPrefill', JSON.stringify({
+      title: post.title,
+      summary: post.excerpt,
+      problem: post.excerpt,
+      sourceAttribution: `Community post #${post.id}`,
+    }))
+    setPage('inspiration')
+    window.history.replaceState(null, '', '#inspiration/submit')
+    window.dispatchEvent(new Event('hcai:navigation'))
+    window.dispatchEvent(new HashChangeEvent('hashchange'))
+    pushToast(isZh ? '帖子内容已带入投稿表单，请完善后保存或提交审核。' : 'The post was added to the submission form. Complete it before saving or submitting.')
   }
 
   return {

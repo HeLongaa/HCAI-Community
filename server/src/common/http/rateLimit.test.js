@@ -43,6 +43,7 @@ const createRateLimitTestServer = async (context = {}) => {
   const handler = async (_request, response) => ok(response, { ok: true })
   router.add('POST', '/api/auth/login', handler)
   router.add('POST', '/api/media/uploads', handler)
+  router.add('POST', '/api/observability/client-errors', handler)
   router.add('PUT', '/api/admin/roles/member/permissions', handler)
   router.add('GET', '/api/admin/audit', handler)
   const server = createServer(router, context)
@@ -124,6 +125,20 @@ test('rate limiter protects media upload and admin mutation buckets separately',
 
       const auditList = await fetch(`${server.url}/api/admin/audit`, { headers: { accept: 'application/json' } })
       assert.equal(auditList.status, 200)
+    } finally {
+      await server.close()
+    }
+  })
+})
+
+test('rate limiter protects anonymous client telemetry independently', async () => {
+  await withProcessEnv({ RATE_LIMIT_CLIENT_TELEMETRY_MAX: '1', RATE_LIMIT_WINDOW_MS: '60000' }, async () => {
+    const server = await createRateLimitTestServer()
+    try {
+      assert.equal((await postJson(server.url, '/api/observability/client-errors')).status, 200)
+      const limited = await postJson(server.url, '/api/observability/client-errors')
+      assert.equal(limited.status, 429)
+      assert.equal((await limited.json()).error.details.bucket, 'client_telemetry')
     } finally {
       await server.close()
     }

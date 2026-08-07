@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   AlertTriangle,
   BadgeDollarSign,
-  Check,
   CircleHelp,
   Code2,
   Download,
@@ -19,8 +18,8 @@ import {
 } from 'lucide-react'
 import type { Page, SimulateAction } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
-import { apiFeatures, planCards } from '../../data/mockData'
-import { isZhCopy, pointText, textFor } from '../../domain/utils'
+import { isZhCopy, textFor } from '../../domain/utils'
+import { publicPricingCatalog } from '../../config/publicPricing'
 import { isApiClientError } from '../../services/apiClient'
 import { complianceService } from '../../services/complianceService'
 import type {
@@ -47,61 +46,51 @@ export function PricingPage({
   requireAuth: () => void
 }) {
   const isZh = isZhCopy(t)
-  const plans = isZh
-    ? [
-        { name: '免费版', price: '500 积分', credits: '10 首/月', songs: '基础', badge: '' },
-        { name: 'Plus', price: '60K 积分', credits: '100 首/月', songs: '标准', badge: '' },
-        { name: 'Pro', price: '300K 积分', credits: '500 首/月', songs: '最受欢迎', badge: '最受欢迎' },
-        { name: 'Ultra', price: '不限量积分', credits: '不限量生成', songs: '旗舰', badge: '' },
-      ]
-    : planCards
-  const comparison = isZh
-    ? ['音乐生成', '图片生成', '视频生成', '商用授权', '任务广场加权', 'API 访问']
-    : ['Music generation', 'Image generation', 'Video generation', 'Commercial use', 'Task Plaza boost', 'API access']
-
+  const plans = publicPricingCatalog?.plans ?? []
   return (
-    <div className="stack">
-      <SectionHeader eyebrow={textFor(t, 'Plans', '套餐')} title={textFor(t, 'Unlock the full AI creative platform', '解锁完整 AI 创作平台')} />
-      <div className="billing-toggle">
-        <button className={billing === 'year' ? 'active' : ''} type="button" onClick={() => setBilling('year')}>
-          {t.billingYear}
-        </button>
-        <button className={billing === 'month' ? 'active' : ''} type="button" onClick={() => setBilling('month')}>
-          {t.billingMonth}
-        </button>
-      </div>
+    <div className="stack pricing-page">
+      <SectionHeader eyebrow={textFor(t, 'Plans', '套餐')} title={textFor(t, 'Plans and product access', '套餐与产品权益')} />
+      {publicPricingCatalog && (
+        <div className="billing-toggle">
+          <button className={billing === 'year' ? 'active' : ''} type="button" onClick={() => setBilling('year')}>
+            {t.billingYear}
+          </button>
+          <button className={billing === 'month' ? 'active' : ''} type="button" onClick={() => setBilling('month')}>
+            {t.billingMonth}
+          </button>
+        </div>
+      )}
+      {!publicPricingCatalog && (
+        <section className="pricing-unavailable" role="status">
+          <div className="pricing-status-icon"><BadgeDollarSign size={22} /></div>
+          <div className="pricing-status-copy">
+            <span className="eyebrow">{textFor(t, 'Publishing status', '发布状态')}</span>
+            <h2>{textFor(t, 'Public pricing is not published yet', '公开套餐价格尚未发布')}</h2>
+            <p>{textFor(t, 'No price or purchase action is shown until the approved catalog is configured. Existing assigned access remains available.', '获批价格目录完成配置前，系统不会展示价格或购买入口；已分配的产品权益不受影响。')}</p>
+          </div>
+          <dl className="pricing-status-facts">
+            <div><dt>{textFor(t, 'Pricing', '价格')}</dt><dd>{textFor(t, 'Not published', '未发布')}</dd></div>
+            <div><dt>{textFor(t, 'Checkout', '购买')}</dt><dd>{textFor(t, 'Unavailable', '未开放')}</dd></div>
+            <div><dt>{textFor(t, 'Current access', '当前权益')}</dt><dd>{textFor(t, 'Unchanged', '保持有效')}</dd></div>
+          </dl>
+        </section>
+      )}
       <div className="plan-grid">
         {plans.map((plan) => (
-          <article className={plan.badge ? 'plan-card featured' : 'plan-card'} key={plan.name}>
-            {plan.badge && <span className="pill small">{plan.badge}</span>}
-            <h3>{plan.name}</h3>
-            <strong>{pointText(plan.price)}</strong>
-            <p>{plan.credits}</p>
+          <article className={plan.badge ? 'plan-card featured' : 'plan-card'} key={plan.id}>
+            {plan.badge && <span className="pill small">{isZh ? plan.badge.zh : plan.badge.en}</span>}
+            <h3>{isZh ? plan.name.zh : plan.name.en}</h3>
+            <strong>{new Intl.NumberFormat(isZh ? 'zh-CN' : 'en-US', { style: 'currency', currency: plan.currency }).format(billing === 'month' ? plan.monthlyPrice : plan.yearlyPrice)}</strong>
+            <p>{isZh ? plan.summary.zh : plan.summary.en}</p>
             <ul>
-              <li>{textFor(t, 'Music generation', '音乐生成')}: {plan.credits}</li>
-              <li>{textFor(t, 'Image generation', '图片生成')}</li>
-              <li>{textFor(t, 'Video generation queue', '视频生成队列')}</li>
-              <li>{textFor(t, 'Chat assistant usage', '对话助手额度')}</li>
-              <li>{textFor(t, 'Community and Task Plaza', '社区与任务广场')}</li>
+              {plan.features.map((feature) => <li key={feature.en}>{isZh ? feature.zh : feature.en}</li>)}
             </ul>
-            <button className="primary-button" type="button" onClick={requireAuth}>
-              {textFor(t, 'Get plan', '选择套餐')}
+            <button className="primary-button" type="button" disabled={!plan.checkoutAvailable} onClick={requireAuth}>
+              {plan.checkoutAvailable ? textFor(t, 'Continue', '继续') : textFor(t, 'Not available', '暂未开放')}
             </button>
           </article>
         ))}
       </div>
-      <section className="panel comparison">
-        <SectionHeader title={textFor(t, 'Feature comparison', '功能对比')} />
-        {comparison.map((feature) => (
-          <div className="compare-row" key={feature}>
-            <span>{feature}</span>
-            <Check size={18} />
-            <Check size={18} />
-            <Check size={18} />
-            <Check size={18} />
-          </div>
-        ))}
-      </section>
     </div>
   )
 }
@@ -115,18 +104,8 @@ export function ApiPage({
 }) {
   const isZh = isZhCopy(t)
   const features = isZh
-    ? [
-        '音乐 AI',
-        '图片生成',
-        '文生视频',
-        '声音生成器',
-        '文本朗读',
-        'AI 翻唱',
-        '分轨拆分',
-        '歌词生成',
-        'BPM 检测',
-      ]
-    : apiFeatures
+    ? ['图片生成', '视频生成', '音乐生成', 'AI 对话']
+    : ['Image generation', 'Video generation', 'Music generation', 'AI chat']
   const [selectedFeature, setSelectedFeature] = useState(features[0])
 
   return (
@@ -139,7 +118,7 @@ export function ApiPage({
           <div className="button-row">
             <button className="primary-button" type="button" onClick={requireAuth}>
               <BadgeDollarSign size={17} />
-              {textFor(t, '$20 credit', '¥140 测试额度')}
+              {textFor(t, 'Sign in for access', '登录后查看权限')}
             </button>
             <a className="ghost-button" href="/api/openapi.json" target="_blank" rel="noreferrer">
               <Code2 size={17} />
@@ -147,7 +126,7 @@ export function ApiPage({
             </a>
           </div>
         </div>
-        <pre className="code-card">{`await museflow.generate({
+        <pre className="code-card">{`await hcai.generate({
   type: "music-video",
   prompt: "neon lofi lyric loop",
   duration: 8
@@ -210,7 +189,7 @@ export function AboutPage({ t }: { t: Record<string, string> }) {
     <div className="stack">
       <section className="panel readable">
         <span className="eyebrow">{t.about}</span>
-        <h1>{textFor(t, 'HCAI is a front-end prototype for an AI creative network.', 'HCAI 是一个 AI 创作协作网络的前端原型。')}</h1>
+        <h1>{textFor(t, 'HCAI is an AI creation and collaboration network.', 'HCAI 是一个 AI 创作与协作网络。')}</h1>
         <p>
           {textFor(
             t,

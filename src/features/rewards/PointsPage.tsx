@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { Download, RefreshCw, ShieldCheck, Trophy } from 'lucide-react'
-import type { AsyncResourceState, LedgerEntry } from '../../domain/types'
+import { Download, RefreshCw, ShieldCheck } from 'lucide-react'
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { isZhCopy, pointText, textFor } from '../../domain/utils'
 import type { ApiPointsSummary, EffectiveEntitlementDto, PersonalBillingEntry, PersonalBillingStatus, PersonalBillingSummary, PersonalBillingUnit } from '../../services/contracts'
@@ -13,9 +12,7 @@ export function PointsPage({
   summary,
 }: {
   t: Record<string, string>
-  ledger: LedgerEntry[]
   summary: ApiPointsSummary | null
-  status: AsyncResourceState
 }) {
   const isZh = isZhCopy(t)
   const [entitlement, setEntitlement] = useState<EffectiveEntitlementDto | null>(null)
@@ -48,55 +45,32 @@ export function PointsPage({
   const metrics = billingSummary
     ? isZh
       ? [
-          ['可用积分', pointText(String(billingSummary.points.available)), '可立即使用的已结算积分'],
-          ['冻结与待结算', pointText(String(billingSummary.points.frozen + billingSummary.points.pendingSettlement)), '任务托管与待确认积分'],
+          ['可用积分', pointText(String(billingSummary.points.available), t), '可立即使用的已结算积分'],
+          ['冻结与待结算', pointText(String(billingSummary.points.frozen + billingSummary.points.pendingSettlement), t), '任务托管与待确认积分'],
           ['创作 Credit', String(billingSummary.creativeCredits.settled), `${billingSummary.creativeCredits.refunded} 已退款`],
           ['剩余配额', String(billingSummary.quotas.remaining), `${billingSummary.quotas.used}/${billingSummary.quotas.limit} 已使用`],
         ]
       : [
-          ['Available points', pointText(String(billingSummary.points.available)), 'Settled points ready to use'],
-          ['Frozen and pending', pointText(String(billingSummary.points.frozen + billingSummary.points.pendingSettlement)), 'Task escrow and pending settlement'],
+          ['Available points', pointText(String(billingSummary.points.available), t), 'Settled points ready to use'],
+          ['Frozen and pending', pointText(String(billingSummary.points.frozen + billingSummary.points.pendingSettlement), t), 'Task escrow and pending settlement'],
           ['Creative credits', String(billingSummary.creativeCredits.settled), `${billingSummary.creativeCredits.refunded} refunded`],
           ['Quota remaining', String(billingSummary.quotas.remaining), `${billingSummary.quotas.used}/${billingSummary.quotas.limit} used`],
         ]
     : effectivePoints
     ? isZh
       ? [
-          ['可用余额', pointText(String(effectivePoints.available)), '可立即用于任务加权、兑换和发布托管'],
-          ['冻结托管', pointText(String(effectivePoints.frozen)), '已发布任务的待验收奖励托管'],
-          ['待结算', pointText(String(effectivePoints.pendingSettlement)), '等待验收或系统确认的正向积分'],
-          ['累计收入', pointText(String(effectivePoints.lifetimeEarned)), '历史已结算任务、社区和内容收益'],
+          ['可用余额', pointText(String(effectivePoints.available), t), '可立即用于任务加权、兑换和发布托管'],
+          ['冻结托管', pointText(String(effectivePoints.frozen), t), '已发布任务的待验收奖励托管'],
+          ['待结算', pointText(String(effectivePoints.pendingSettlement), t), '等待验收或系统确认的正向积分'],
+          ['累计收入', pointText(String(effectivePoints.lifetimeEarned), t), '历史已结算任务、社区和内容收益'],
         ]
       : [
-          ['Available', pointText(String(effectivePoints.available)), 'Ready for boosts, redemptions, and task escrow'],
-          ['Frozen', pointText(String(effectivePoints.frozen)), 'Rewards held for posted tasks awaiting review'],
-          ['Pending', pointText(String(effectivePoints.pendingSettlement)), 'Positive points waiting for acceptance or system settlement'],
-          ['Lifetime earned', pointText(String(effectivePoints.lifetimeEarned)), 'Settled task, community, and library earnings'],
+          ['Available', pointText(String(effectivePoints.available), t), 'Ready for boosts, redemptions, and task escrow'],
+          ['Frozen', pointText(String(effectivePoints.frozen), t), 'Rewards held for posted tasks awaiting review'],
+          ['Pending', pointText(String(effectivePoints.pendingSettlement), t), 'Positive points waiting for acceptance or system settlement'],
+          ['Lifetime earned', pointText(String(effectivePoints.lifetimeEarned), t), 'Settled task, community, and library earnings'],
         ]
-    : isZh
-    ? [
-        ['余额', '18,420', '可用于任务加权和奖励兑换'],
-        ['待结算', '4,100', '等待验收和发布方确认'],
-        ['排名', '前 4%', '基于已验收任务和已解决回答'],
-        ['本月新增', '+6,840', '任务交付、社区回答、模板入库'],
-      ]
-    : [
-        ['Balance', '18,420', 'Available points for boosts and rewards'],
-        ['Pending', '4,100', 'Awaiting review and publisher acceptance'],
-        ['Rank', 'Top 4%', 'Based on accepted tasks and solved answers'],
-        ['This month', '+6,840', 'Task delivery, community answers, templates'],
-      ]
-  const rewards = isZh
-    ? [
-        ['加权任务曝光', '-200'],
-        ['解锁专业模板', '-120'],
-        ['兑换创作者徽章', '-300'],
-      ]
-    : [
-        ['Boost a task listing', '-200'],
-        ['Unlock pro templates', '-120'],
-        ['Redeem creator badge', '-300'],
-      ]
+    : []
   const exportBilling = async () => {
     const csv = await billingService.exportCsv({ unit: billingUnit || null, status: billingStatusFilter || null, search: billingSearch || null, dateFrom: billingDateFrom || null, dateTo: billingDateTo || null, sort: 'desc' })
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
@@ -108,17 +82,19 @@ export function PointsPage({
   }
 
   return (
-    <div className="stack">
+    <div className="stack points-page">
       <SectionHeader eyebrow={textFor(t, 'Rewards', '奖励')} title={t.pointsTitle} />
-      <div className="market-dashboard">
-        {metrics.map(([label, value, text]) => (
-          <article className="metric-card highlight" key={label}>
+      {metrics.length > 0 && (
+        <section className="points-summary-strip" aria-label={textFor(t, 'Account balance summary', '账户余额概览')}>
+          {metrics.map(([label, value, text]) => (
+            <article key={label}>
             <span>{label}</span>
             <strong>{value}</strong>
             <small>{text}</small>
           </article>
-        ))}
-      </div>
+          ))}
+        </section>
+      )}
       <section className="panel entitlement-summary" data-testid="personal-entitlement-summary">
         <SectionHeader
           eyebrow={textFor(t, 'Product access', '产品权益')}
@@ -178,27 +154,20 @@ export function PointsPage({
             )}
           </div>
         )}
+        <div className="billing-ledger-head" aria-hidden="true">
+          <span>{textFor(t, 'Time', '时间')}</span>
+          <span>{textFor(t, 'Description', '说明')}</span>
+          <span>{textFor(t, 'Amount', '金额')}</span>
+          <span>{textFor(t, 'Unit / status', '单位 / 状态')}</span>
+        </div>
         <div className="ledger-table">
           {!billingStatus.loading && !billingStatus.error && billingEntries.map((entry) => <div className="ledger-row billing-ledger-row" key={entry.id}><span>{new Date(entry.occurredAt).toLocaleString()}</span><strong>{entry.description}<small>{entry.sourceType} · {entry.sourceId ?? '-'}</small></strong><b className={entry.amount >= 0 ? 'positive' : 'negative'}>{entry.amount > 0 ? '+' : ''}{entry.amount}</b><span>{entry.unit}<small>{entry.status}</small></span></div>)}
           {!billingStatus.loading && !billingStatus.error && billingEntries.length === 0 && <div className="empty-state compact"><strong>{textFor(t, 'No matching billing entries', '没有匹配的账务明细')}</strong></div>}
         </div>
       </section>
-      <div className="content-grid three">
-        {rewards.map(([item, cost]) => (
-          <article className="library-card" key={item}>
-            <Trophy size={22} />
-            <h3>{item}</h3>
-            <p>{textFor(t, 'Use points earned from accepted work, helpful posts, and featured library contributions.', '使用任务验收、优质帖子和精选灵感贡献获得的积分。')}</p>
-            <button
-              className="ghost-button"
-              type="button"
-              disabled
-              title={textFor(t, 'Redemption is not available yet', '兑换功能暂未开放')}
-            >
-              {textFor(t, `Unavailable · ${cost}`, `暂未开放 · ${cost}`)}
-            </button>
-          </article>
-        ))}
+      <div className="points-redemption-status" role="status">
+        <strong>{textFor(t, 'Points redemption is not available yet', '积分兑换暂未开放')}</strong>
+        <span>{textFor(t, 'This page currently shows only confirmed balances, product access, and billing records.', '当前页面仅展示已确认的余额、产品权益和账务明细。')}</span>
       </div>
     </div>
   )

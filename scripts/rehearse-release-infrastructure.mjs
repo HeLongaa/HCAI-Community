@@ -12,11 +12,15 @@ import {
 } from '../server/src/storage/uploadSigner.js'
 import {
   buildEvidence,
+  buildSourcePreflight,
+  canonicalJson,
   sha256,
+  sourceSnapshotHash,
   validateBucketIsolation,
   validateIsolation,
   validateRecoveryCommand,
   verifyEvidence,
+  verifySourcePreflight,
 } from './lib/release-infrastructure-rehearsal.mjs'
 
 const root = process.cwd()
@@ -30,6 +34,7 @@ const composeArgs = ['compose', '-f', composeFile]
 const runId = randomUUID()
 const startedAt = new Date()
 const artifactDirectory = path.join(root, contract.evidenceDirectory)
+const preflightPath = path.join(artifactDirectory, 'target-preflight.json')
 const runDirectory = path.join(artifactDirectory, runId)
 const backupPath = path.join(runDirectory, 'database.dump')
 const restorePath = path.join(runDirectory, 'database.restore.dump')
@@ -70,6 +75,24 @@ const run = (executable, args, options = {}) => {
 
 const compose = (...args) => run('docker', [...composeArgs, ...args])
 const secondsSince = (value) => Number(((Date.now() - value) / 1000).toFixed(3))
+const sourceSnapshot = () => {
+  const gitCommit = run('git', ['rev-parse', 'HEAD']).trim()
+  const trackedDiff = run('git', ['diff', '--binary', 'HEAD'])
+  const untrackedPaths = run('git', ['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean).sort()
+  const untrackedManifest = untrackedPaths.map((relativePath) => {
+    const body = fs.readFileSync(path.join(root, relativePath))
+    return { path: relativePath, bytes: body.byteLength, sha256: sha256(body) }
+  })
+  const snapshot = {
+    gitCommit,
+    trackedDiffSha256: sha256(trackedDiff),
+    trackedDiffBytes: Buffer.byteLength(trackedDiff),
+    untrackedManifestSha256: sha256(canonicalJson(untrackedManifest)),
+    untrackedFileCount: untrackedManifest.length,
+    untrackedBytes: untrackedManifest.reduce((total, item) => total + item.bytes, 0),
+  }
+  return { ...snapshot, clean: snapshot.trackedDiffBytes === 0 && snapshot.untrackedFileCount === 0, snapshotSha256: sourceSnapshotHash(snapshot) }
+}
 const sleepSync = (milliseconds) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds)
 const retrySync = (operation, attempts = 3) => {
   let lastError
@@ -133,6 +156,15 @@ const objectExists = async ({ storageKey, body, source }) => {
   if (response.status === 404) return false
   if (!response.ok) throw new Error(`S3 head failed with HTTP ${response.status}`)
   return true
+}
+
+const objectDownloadDenied = async ({ storageKey, body, source }) => {
+  const asset = assetFor({ storageKey, body, contentType: 'application/octet-stream' })
+  const signed = signMediaDownload(asset, { source })
+  const response = await fetch(signed.url, { method: signed.method, headers: signed.headers })
+  if ([404, 410].includes(response.status)) return true
+  if (response.ok) await response.body?.cancel()
+  return false
 }
 
 const waitFor = async (operation, { timeoutMs, intervalMs = 250 }) => {
@@ -246,6 +278,8 @@ const resetRestoreDatabase = ({ adminDatabaseUrl, restoreDatabaseUrl }) => {
 
 if (!['local', 'env'].includes(profile)) throw new Error('profile must be local or env')
 if (!['preflight', 'execute'].includes(mode)) throw new Error('mode must be preflight or execute')
+const source = sourceSnapshot()
+if (profile === 'env' && !source.clean) throw new Error('Target-environment rehearsal requires a clean source checkout')
 
 let configuration
 let localStarted = false
@@ -266,8 +300,11 @@ try {
   })
 
   if (mode === 'preflight') {
+    const preflight = buildSourcePreflight({ source, createdAt: new Date() })
+    fs.mkdirSync(artifactDirectory, { recursive: true })
+    fs.writeFileSync(preflightPath, `${JSON.stringify(preflight, null, 2)}\n`)
     console.log(JSON.stringify({
-      schemaVersion: 'release-infrastructure-preflight-v1',
+      ...preflight,
       profile,
       isolated: true,
       sourceDatabase: isolation.source.database,
@@ -278,6 +315,13 @@ try {
       confirmationAccepted: true,
     }, null, 2))
     process.exit(0)
+  }
+
+  if (profile === 'env') {
+    if (!fs.existsSync(preflightPath)) throw new Error('Target-environment execute requires a successful preflight')
+    const preflight = JSON.parse(fs.readFileSync(preflightPath, 'utf8'))
+    const verifiedPreflight = verifySourcePreflight({ preflight, source, maximumAgeSeconds: contract.objectives.maximumPreflightAgeSeconds })
+    if (!verifiedPreflight.valid) throw new Error(`Target-environment preflight verification failed: ${verifiedPreflight.failures.join(', ')}`)
   }
 
   fs.mkdirSync(runDirectory, { recursive: true })
@@ -349,6 +393,22 @@ try {
   const objectRestoreSeconds = secondsSince(objectRestoreStarted)
   addCheck('object_marker_restored', verifiedObjectBody.equals(Buffer.from(marker)), markerSha256)
 
+  await deleteObject({ storageKey: databaseBackupStorageKey, body: backupBody, source: configuration.backupStorageSource })
+  const databaseBackupDeleted = !(await objectExists({ storageKey: databaseBackupStorageKey, body: backupBody, source: configuration.backupStorageSource }))
+  const databaseRestoreDenied = await objectDownloadDenied({ storageKey: databaseBackupStorageKey, body: backupBody, source: configuration.backupStorageSource })
+  addCheck('database_backup_expired', databaseBackupDeleted, 'backup object absent')
+  addCheck('database_backup_restore_denied', databaseRestoreDenied, 'expired backup GET denied')
+
+  await deleteObject({ storageKey: objectStorageKey, body: marker, source: configuration.backupStorageSource })
+  const objectBackupDeleted = !(await objectExists({ storageKey: objectStorageKey, body: marker, source: configuration.backupStorageSource }))
+  const objectRestoreDenied = await objectDownloadDenied({ storageKey: objectStorageKey, body: marker, source: configuration.backupStorageSource })
+  addCheck('object_backup_expired', objectBackupDeleted, 'backup object absent')
+  addCheck('object_backup_restore_denied', objectRestoreDenied, 'expired backup GET denied')
+
+  fs.rmSync(restorePath)
+  const localRestoreCopyDeleted = !fs.existsSync(restorePath)
+  addCheck('local_restore_copy_expired', localRestoreCopyDeleted, 'local restore copy absent')
+
   const completedAt = new Date()
   const totalSeconds = Number(((completedAt.getTime() - startedAt.getTime()) / 1000).toFixed(3))
   addCheck('overall_rto', totalSeconds <= contract.objectives.overallRtoSeconds, `${totalSeconds}/${contract.objectives.overallRtoSeconds}`)
@@ -365,8 +425,8 @@ try {
       startedAt: startedAt.toISOString(),
       completedAt: completedAt.toISOString(),
       totalSeconds,
-      gitCommit: run('git', ['rev-parse', 'HEAD']).trim(),
     },
+    source,
     targets: contract.objectives,
     database: {
       service: configuration.serviceLabels.database,
@@ -395,6 +455,17 @@ try {
       restoreSeconds: objectRestoreSeconds,
       dataLossSeconds: verifiedObjectBody.equals(Buffer.from(marker)) ? 0 : contract.objectives.rpoSeconds + 1,
       markerSha256,
+    },
+    backupExpiry: {
+      policyId: 'rolling_backup_35d',
+      simulatedAgeDays: contract.objectives.backupRetentionDays,
+      databaseBackupDeleted,
+      databaseRestoreDenied,
+      objectBackupDeleted,
+      objectRestoreDenied,
+      localRestoreCopyDeleted,
+      targetScheduleVerified: false,
+      managedKeyDestructionVerified: false,
     },
     checks,
   }

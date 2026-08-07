@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "document": "docs/PRODUCTION_STATIC_DELIVERY.md",
+  "fullVisual": {
+    "maximumDomContentLoadedMs": 2000,
+    "maximumLoadEventMs": 3000,
+    "maximumLcpMs": 2500,
+    "maximumLongTaskMs": 250,
+    "maximumTotalLongTaskMs": 1000,
+    "maximumNextPaintInteractionMs": 250,
+    "maximumTransferBytes": 1800000
+  },
+  "staticVisual": {
+    "maximumDomContentLoadedMs": 1600,
+    "maximumLoadEventMs": 2500,
+    "maximumLcpMs": 2000,
+    "maximumLongTaskMs": 150,
+    "maximumTotalLongTaskMs": 500,
+    "maximumTransferBytes": 600000
+  }
+}

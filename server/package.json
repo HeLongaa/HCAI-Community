@@ -10,6 +10,7 @@
     "start:e2e": "node src/index.js",
     "db:generate": "prisma generate --schema ./prisma/schema.prisma",
     "db:migrate": "prisma migrate dev --schema ./prisma/schema.prisma",
+    "db:migrate:deploy": "prisma migrate deploy --schema ./prisma/schema.prisma",
     "db:seed": "node prisma/seed.js",
     "test": "node --test"
   },

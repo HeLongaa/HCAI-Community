@@ -4,7 +4,7 @@ import test from 'node:test'
 import { createSeedRepository } from '../repositories/seedRepository.js'
 import { buildCreativeGenerationRecordPayload, sha256 } from './generationRecords.js'
 import { executeCreativeGeneration } from './generationService.js'
-import { createGoogleVeoGeneration } from './googleVeoProvider.js'
+import { createRouterVideoGeneration } from './routerVideoProvider.js'
 import { resetCreativePolicyState } from './policy.js'
 import {
   cancelVideoProviderOperation,
@@ -13,15 +13,15 @@ import {
   runVideoProviderLifecycleWorkerOnce,
 } from './videoProviderLifecycle.js'
 
-const providerId = 'google-veo-3-1-fast'
+const providerId = 'hcai-router-seedance-2-fast'
 const mp4 = Buffer.from('00000018667479706d703432000000006d70343269736f6d0000000866726565', 'hex')
 const lifecycleSource = {
   CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
-  CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED: 'true',
-  CREATIVE_GOOGLE_VEO_LIFECYCLE_WORKER_ENABLED: 'true',
-  CREATIVE_GOOGLE_VEO_POLL_INTERVAL_SECONDS: '1',
-  CREATIVE_GOOGLE_VEO_TIMEOUT_SECONDS: '900',
-  CREATIVE_GOOGLE_VEO_MAX_STATUS_ATTEMPTS: '3',
+  CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED: 'true',
+  CREATIVE_ROUTER_VIDEO_LIFECYCLE_WORKER_ENABLED: 'true',
+  CREATIVE_ROUTER_VIDEO_POLL_INTERVAL_SECONDS: '1',
+  CREATIVE_ROUTER_VIDEO_TIMEOUT_SECONDS: '900',
+  CREATIVE_ROUTER_VIDEO_MAX_STATUS_ATTEMPTS: '3',
 }
 
 const fixtureOutputFetcher = async () => ({
@@ -32,7 +32,10 @@ const fixtureOutputFetcher = async () => ({
   sha256: sha256(mp4),
 })
 
-const createQueuedVideo = async (suffix, now = new Date('2030-07-13T03:00:00.000Z')) => {
+const createQueuedVideo = async (suffix, now = new Date('2030-07-13T03:00:00.000Z'), {
+  durationSeconds = 8,
+  unitPriceMicros = null,
+} = {}) => {
   resetCreativePolicyState()
   const repository = createSeedRepository()
   const actor = { id: `video-lifecycle-user-${suffix}`, handle: `director-${suffix}` }
@@ -43,7 +46,7 @@ const createQueuedVideo = async (suffix, now = new Date('2030-07-13T03:00:00.000
     mode: 'text_to_video',
     prompt: `Governed lifecycle fixture ${suffix}`,
     inputAssetIds: [],
-    parameters: { aspectRatio: '16:9', durationSeconds: 8, motionPreset: 'cinematic', outputFormat: 'mp4' },
+    parameters: { aspectRatio: '16:9', durationSeconds, motionPreset: 'cinematic', outputFormat: 'mp4' },
     providerId,
   }
   let generation = await executeCreativeGeneration({
@@ -51,11 +54,19 @@ const createQueuedVideo = async (suffix, now = new Date('2030-07-13T03:00:00.000
     actor,
     generationId,
     now,
-    source: { CREATIVE_DAILY_QUOTA: '1000' },
+    source: {
+      CREATIVE_DAILY_QUOTA: '1000',
+      ...(unitPriceMicros == null ? {} : {
+        CREATIVE_ROUTER_VIDEO_MODEL: 'seedance-2.0-fast',
+        CREATIVE_ROUTER_VIDEO_UNIT_PRICE_MICROS: String(unitPriceMicros),
+        CREATIVE_ROUTER_VIDEO_PRICING_SOURCE_REF: 'price-video-lifecycle-v1',
+        CREATIVE_ROUTER_VIDEO_PRICING_EFFECTIVE_FROM: '2030-07-01T00:00:00.000Z',
+      }),
+    },
     quotaRepository: repository.creativeQuota,
     providerCostRepository: repository.creativeProviderCosts,
     fixtureAdapters: {
-      [providerId]: (context) => createGoogleVeoGeneration({
+      [providerId]: (context) => createRouterVideoGeneration({
         ...context,
         client: { createVideo: async () => ({ id: providerJobId, state: 'queued' }) },
       }),
@@ -70,7 +81,7 @@ const createQueuedVideo = async (suffix, now = new Date('2030-07-13T03:00:00.000
     mode: 'text_to_video',
     amount: generation.usage.estimatedCredits,
     reasonCode: 'generation_reserved',
-    metadata: { providerId, providerMode: 'google_video' },
+    metadata: { providerId, providerMode: 'router_video' },
   }, actor)
   generation = { ...generation, credit: reservedCredit.credit }
   await repository.creativeGenerations.create(buildCreativeGenerationRecordPayload(generation, actor), actor)
@@ -113,6 +124,7 @@ test('Video lifecycle worker maps queued to running without losing safe operatio
 
 test('Video lifecycle completion ingests MP4 and settles cost, credits, and quota once', async () => {
   const fixture = await createQueuedVideo('complete')
+  let outputSafetyClassifications = 0
   const result = await pollVideoProviderOperationOnce({
     operation: fixture.operation,
     repositories: fixture.repository,
@@ -124,13 +136,20 @@ test('Video lifecycle completion ingests MP4 and settles cost, credits, and quot
         usage: { generatedSeconds: 8, actualCostUsd: 0.8 },
       }),
     },
-    source: lifecycleSource,
+    source: { ...lifecycleSource, NODE_ENV: 'production' },
     now: new Date('2030-07-13T03:00:01.000Z'),
     fetchOutput: fixtureOutputFetcher,
+    outputSafetyClassifier: async ({ body, contentType }) => {
+      outputSafetyClassifications += 1
+      assert.deepEqual(body, mp4)
+      assert.equal(contentType, 'video/mp4')
+      return { decision: 'allow', classifierId: 'video-lifecycle-fixture', classifierVersion: '1', categories: [] }
+    },
   })
 
   assert.equal(result.failed, false)
   assert.equal(result.applied.execution.completed, true)
+  assert.equal(outputSafetyClassifications, 1)
   const operation = await fixture.repository.creativeProviderOperations.findForGeneration(fixture.generationId)
   const generation = await fixture.repository.creativeGenerations.find(fixture.generationId)
   const cost = await fixture.repository.creativeProviderCosts.findForGeneration(fixture.generationId)
@@ -149,6 +168,7 @@ test('Video lifecycle completion ingests MP4 and settles cost, credits, and quot
   const asset = await fixture.repository.media.find(generation.outputAssetIds[0])
   assert.equal(asset.contentType, 'video/mp4')
   assert.equal(asset.metadata.security.scanStatus, 'pending')
+  assert.equal(asset.metadata.security.outputSafetyDecision, 'allow')
   assert.equal(JSON.stringify(asset).includes('signature=ephemeral'), false)
 
   const duplicateSweep = await runVideoProviderLifecycleWorkerOnce({
@@ -158,6 +178,38 @@ test('Video lifecycle completion ingests MP4 and settles cost, credits, and quot
     now: new Date('2030-07-13T03:00:02.000Z'),
   })
   assert.equal(duplicateSweep.results.some((item) => item.operation?.generationId === fixture.generationId), false)
+})
+
+test('Video lifecycle settles Router success from the reserved database price when Provider omits USD cost', async () => {
+  const fixture = await createQueuedVideo('database-price', new Date('2030-07-13T03:00:00.000Z'), {
+    durationSeconds: 4,
+    unitPriceMicros: 121000,
+  })
+  const result = await pollVideoProviderOperationOnce({
+    operation: fixture.operation,
+    repositories: fixture.repository,
+    statusClient: {
+      getOperation: async () => ({
+        id: fixture.providerJobId,
+        state: 'succeeded',
+        output: { uri: 'https://video.example.test/database-price.mp4', contentType: 'video/mp4' },
+        usage: { generatedSeconds: 4, actualCostUsd: null },
+      }),
+    },
+    source: lifecycleSource,
+    now: new Date('2030-07-13T03:02:09.000Z'),
+    fetchOutput: fixtureOutputFetcher,
+  })
+
+  assert.equal(result.failed, false)
+  const generation = await fixture.repository.creativeGenerations.find(fixture.generationId)
+  const cost = await fixture.repository.creativeProviderCosts.findForGeneration(fixture.generationId)
+  assert.equal(generation.status, 'completed')
+  assert.equal(generation.quota.used, 8)
+  assert.equal(cost.status, 'settled')
+  assert.equal(cost.actualMicros, '484000')
+  assert.equal(cost.pricingSnapshot.sourceRef, 'price-video-lifecycle-v1')
+  assert.equal(cost.reasonCode, 'provider_actual_settled')
 })
 
 test('Video lifecycle replay resumes a partial output-ingestion failure idempotently', async () => {
@@ -294,32 +346,15 @@ test('Video lifecycle rejects Provider job mismatches without changing operation
   assert.equal(operation.pollAttempts, 0)
 })
 
-test('Video fixture cancellation is idempotent and closes accounting', async () => {
+test('Router video cancellation fails explicitly without changing operation or accounting', async () => {
   const fixture = await createQueuedVideo('cancel')
-  let cancelCalls = 0
-  const first = await cancelVideoProviderOperation({
+  await assert.rejects(cancelVideoProviderOperation({
     generationId: fixture.generationId,
     repositories: fixture.repository,
-    mutationClient: {
-      cancelOperation: async (providerJobId) => {
-        cancelCalls += 1
-        return { id: providerJobId, state: 'cancelled' }
-      },
-    },
     source: lifecycleSource,
     now: new Date('2030-07-13T03:00:01.000Z'),
-  })
-  const second = await cancelVideoProviderOperation({
-    generationId: fixture.generationId,
-    repositories: fixture.repository,
-    mutationClient: { cancelOperation: async () => { throw new Error('duplicate must not call client') } },
-    source: lifecycleSource,
-    now: new Date('2030-07-13T03:00:02.000Z'),
-  })
-
-  assert.equal(first.cancelled, true)
-  assert.equal(second.duplicate, true)
-  assert.equal(cancelCalls, 1)
-  assert.equal((await fixture.repository.creativeGenerations.find(fixture.generationId)).status, 'cancelled')
-  assert.equal((await fixture.repository.creativeProviderCosts.findForGeneration(fixture.generationId)).status, 'reconciliation_required')
+  }), { code: 'CREATIVE_PROVIDER_CANCELLATION_UNSUPPORTED' })
+  assert.equal((await fixture.repository.creativeGenerations.find(fixture.generationId)).status, 'queued')
+  assert.equal((await fixture.repository.creativeProviderOperations.findForGeneration(fixture.generationId)).status, 'queued')
+  assert.equal((await fixture.repository.creativeProviderCosts.findForGeneration(fixture.generationId)).status, 'reserved')
 })

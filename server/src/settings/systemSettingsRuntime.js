@@ -139,6 +139,7 @@ export const requestSystemSettingChange = async ({ payload, actor, repository })
 export const requestSystemSettingRollback = async ({ key, revisionId, payload, actor, repository }) => {
   const [current, revision] = await Promise.all([repository.getSetting(key), repository.findRevision(revisionId)])
   if (!current || !revision || revision.settingKey !== key) return null
+  if (revision.retentionRedactedAt || revision.value == null) throw new HttpError(409, 'REVISION_REDACTED', 'target revision is no longer available for rollback')
   if (current.publishedVersion !== payload.baseVersion) throw new HttpError(409, 'STATE_CONFLICT', 'setting changed after this rollback started')
   const preview = buildSystemSettingPreview({ key, currentValue: current.value, currentVersion: current.publishedVersion, candidateValue: revision.value })
   if (!preview.changed) throw validationFailed('target revision is already published')

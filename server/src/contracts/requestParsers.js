@@ -24,6 +24,10 @@ import {
   taskAdminTransitionActions,
 } from '../tasks/taskAdminContract.js'
 import { taskRecoveryActions } from '../tasks/taskLifecycleRecoveryContract.js'
+import {
+  validateSecurityIncidentEventIds,
+  validateSecurityIncidentReasonCode,
+} from '../security/securityRetention.js'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const handlePattern = /^[a-zA-Z0-9_-]{3,32}$/
@@ -326,6 +330,17 @@ export const parseCreateLibraryItemRequest = (body) => ({
   sourceId: nullableText(body, 'sourceId'),
   metadata: body.metadata ?? null,
 })
+
+export const parseLibraryLifecycleRequest = (body) => {
+  const expectedVersion = requireNumber(body, 'expectedVersion')
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+    throw validationFailed('expectedVersion must be a positive integer')
+  }
+  return {
+    expectedVersion,
+    reasonCode: requireOneOf(body, 'reasonCode', ['owner_requested', 'owner_restore']),
+  }
+}
 
 export const parseCreateMediaUploadRequest = (body) => {
   const sizeBytes = requireNumber(body, 'sizeBytes')
@@ -958,11 +973,15 @@ export const parseCreativeAccountingPreviewQuery = (query) => {
   const workspace = optionalText(query, 'workspace', null)
   const mode = optionalText(query, 'mode', null)
   const providerId = optionalText(query, 'providerId', null)
+  const aspectRatio = optionalText(query, 'aspectRatio', '1:1')
+  const quality = optionalText(query, 'quality', 'medium')
   if (!workspace || !creativeWorkspaces.includes(workspace)) {
     throw validationFailed(`workspace must be one of: ${creativeWorkspaces.join(', ')}`)
   }
   if (!mode) throw validationFailed('mode is required')
-  return { workspace, mode, providerId }
+  if (!['1:1', '3:2', '2:3'].includes(aspectRatio)) throw validationFailed('aspectRatio must be one of: 1:1, 3:2, 2:3')
+  if (!['low', 'medium', 'high'].includes(quality)) throw validationFailed('quality must be one of: low, medium, high')
+  return { workspace, mode, providerId, aspectRatio, quality }
 }
 
 export const parseAdminReviewListQuery = (query) => ({
@@ -1055,6 +1074,31 @@ export const parseAdminSecurityEventListQuery = (query) => ({
   type: optionalText(query, 'type', null),
   source: optionalText(query, 'source', null),
   severity: optionalText(query, 'severity', null),
+})
+
+export const parseAdminSecurityIncidentListQuery = (query) => ({
+  status: query.status ? requireOneOf(query, 'status', ['open', 'resolved']) : null,
+  limit: parseLimit(query, 50, 100),
+})
+
+export const parseAdminSecurityIncidentCreateRequest = (body) => {
+  if (typeof body?.criticalConfirmed !== 'boolean') throw validationFailed('criticalConfirmed must be a boolean')
+  return {
+    eventIds: validateSecurityIncidentEventIds(requireStringArray(body, 'eventIds')),
+    criticalConfirmed: body.criticalConfirmed,
+    reasonCode: validateSecurityIncidentReasonCode(requireText(body, 'reasonCode')),
+  }
+}
+
+export const parseAdminSecurityIncidentAttachRequest = (body) => ({
+  eventIds: validateSecurityIncidentEventIds(requireStringArray(body, 'eventIds')),
+  expectedVersion: requireExpectedVersion(body),
+  reasonCode: validateSecurityIncidentReasonCode(requireText(body, 'reasonCode')),
+})
+
+export const parseAdminSecurityIncidentResolveRequest = (body) => ({
+  expectedVersion: requireExpectedVersion(body),
+  reasonCode: validateSecurityIncidentReasonCode(requireText(body, 'reasonCode')),
 })
 
 const optionalBooleanText = (query, field) => {

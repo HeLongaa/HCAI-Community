@@ -27,6 +27,8 @@ add('database backup and restore are executable', runner.includes("'pg_dump'") &
 add('database backup is stored through S3', runner.includes('databaseBackupStorageKey') && runner.includes('writeStorageObject'), 'S3 backup object')
 add('Redis restart and persisted marker are verified', runner.includes('restartRedis') && runner.includes("['GET', redisMarkerKey]"), 'Redis recovery')
 add('object delete and restore are verified', runner.includes('signMediaObjectDelete') && runner.includes('restoredObjectBody'), 'S3 recovery')
+add('backup expiry deletes database and object copies', ['database_backup_expired', 'object_backup_expired', 'local_restore_copy_expired'].every((marker) => runner.includes(marker)), 'rolling_backup_35d')
+add('backup expiry proves restore-negative behavior', ['database_backup_restore_denied', 'object_backup_restore_denied', 'objectDownloadDenied'].every((marker) => runner.includes(marker)), 'HEAD and GET absence')
 add('environment resources require exact confirmation', runner.includes('RELEASE_REHEARSAL_CONFIRMATION') && runner.includes('contract.confirmation'), contract.confirmation)
 add('database isolation is enforced', library.includes('validateIsolation') && library.includes('must include'), contract.isolation.databaseNameIncludes)
 add('object-storage isolation is enforced', library.includes('validateBucketIsolation') && runner.includes('bucketNameIncludes'), contract.isolation.bucketNameIncludes)
@@ -34,6 +36,10 @@ add('Redis recovery target isolation is enforced', library.includes('validateRec
 add('subprocess errors redact configured secrets', runner.includes('knownSecrets') && runner.includes("'[REDACTED]'"), 'known environment credentials')
 add('evidence rejects secret-shaped fields', library.includes('findForbiddenEvidencePaths') && contract.evidence.forbiddenFields.every((field) => JSON.stringify(contract).includes(field)), 'secret-free evidence')
 add('evidence is SHA-256 receipt bound', library.includes('receiptHash') && library.includes("createHash('sha256')"), contract.evidence.receiptHashAlgorithm)
+add('evidence binds the exact source snapshot and target runs require a clean checkout', contract.evidence.requiredSections.includes('source') && runner.includes('sourceSnapshot') && runner.includes("profile === 'env' && !source.clean") && library.includes('target_source_dirty'), contract.evidence.schemaVersion)
+add('target execute requires a fresh source-bound preflight', runner.includes('target-preflight.json') && runner.includes('verifySourcePreflight') && library.includes('preflight_source_snapshot_mismatch') && contract.objectives.maximumPreflightAgeSeconds > 0, `${contract.objectives.maximumPreflightAgeSeconds}s`)
+add('backup expiry evidence is mandatory and target claims remain false', contract.evidence.requiredSections.includes('backupExpiry') && library.includes('backupExpiry') && runner.includes('targetScheduleVerified: false') && runner.includes('managedKeyDestructionVerified: false'), contract.evidence.schemaVersion)
+add('backup retention is bounded to 35 days', contract.objectives.backupRetentionDays === 35, `${contract.objectives.backupRetentionDays} days`)
 for (const key of ['overallRtoSeconds', 'databaseRestoreRtoSeconds', 'redisRecoveryRtoSeconds', 'objectRestoreRtoSeconds', 'rpoSeconds']) {
   add(`${key} is bounded`, Number.isInteger(contract.objectives[key]) && contract.objectives[key] > 0, String(contract.objectives[key]))
 }

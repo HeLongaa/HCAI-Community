@@ -129,18 +129,19 @@
       "valueType": "object",
       "schemaVersion": 1,
       "schema": {
-        "required": ["enabled", "model", "projectId", "location", "outputGcsUri", "accessTokenRef"],
+        "required": ["enabled", "baseUrl", "model", "apiKeyRef", "providerAccountRef", "dailyBudgetUsd", "budgetThresholdPercent"],
         "properties": {
           "enabled": { "type": "boolean" },
-          "provider": { "type": "string", "enum": ["google-vertex"] },
-          "model": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$" },
-          "projectId": { "type": "string", "pattern": "^[a-z][a-z0-9-]{4,62}$" },
-          "location": { "type": "string", "pattern": "^[a-z0-9-]{2,40}$" },
-          "outputGcsUri": { "type": "string", "pattern": "^gs://[^?# ]{3,500}/$" },
-          "accessTokenRef": { "type": "string", "pattern": "^secretref://env/[a-z0-9][a-z0-9-]{2,120}$" }
+          "provider": { "type": "string", "enum": ["hcai-router"] },
+          "baseUrl": { "type": "string", "pattern": "^https://router\\.hctopup\\.com/?$" },
+          "model": { "type": "string", "enum": ["seedance-2.0", "seedance-2.0-fast", "seedance-v1.5-pro-t2v", "seedance-v1.5-pro-i2v"] },
+          "apiKeyRef": { "type": "string", "pattern": "^secretref://env/[a-z0-9][a-z0-9-]{2,120}$" },
+          "providerAccountRef": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{2,120}$" },
+          "dailyBudgetUsd": { "type": "number", "minimum": 0 },
+          "budgetThresholdPercent": { "type": "integer", "minimum": 1, "maximum": 100 }
         }
       },
-      "defaultValue": { "enabled": false, "provider": "google-vertex", "model": "veo-3.1-fast-generate-001", "projectId": "staging-project", "location": "us-central1", "outputGcsUri": "gs://staging-private/video/", "accessTokenRef": "secretref://env/creative-google-veo-access-token" },
+      "defaultValue": { "enabled": false, "provider": "hcai-router", "baseUrl": "https://router.hctopup.com", "model": "seedance-2.0-fast", "apiKeyRef": "secretref://env/creative-router-video-api-key", "providerAccountRef": "museflow-video-staging", "dailyBudgetUsd": 20, "budgetThresholdPercent": 80 },
       "publishStrategy": "reviewed_version",
       "applyMode": "restart_required"
     },
@@ -151,21 +152,21 @@
       "valueType": "object",
       "schemaVersion": 1,
       "schema": {
-        "required": ["enabled", "baseUrl", "model", "apiKeyRef", "providerAccountRef", "enterpriseRightsConfirmed", "trainingOptOutConfirmed", "licenseId", "termsVersion"],
+        "required": ["enabled", "baseUrl", "model", "apiKeyRef", "providerAccountRef", "stagingRightsAcknowledged", "trainingOptOutConfirmed", "licenseId", "termsVersion"],
         "properties": {
           "enabled": { "type": "boolean" },
-          "provider": { "type": "string", "enum": ["elevenlabs"] },
+          "provider": { "type": "string", "enum": ["hcai-router"] },
           "baseUrl": { "type": "string", "pattern": "^https://[^?#]{3,300}$" },
           "model": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$" },
           "apiKeyRef": { "type": "string", "pattern": "^secretref://env/[a-z0-9][a-z0-9-]{2,120}$" },
           "providerAccountRef": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,96}$" },
-          "enterpriseRightsConfirmed": { "type": "boolean" },
+          "stagingRightsAcknowledged": { "type": "boolean" },
           "trainingOptOutConfirmed": { "type": "boolean" },
           "licenseId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$" },
           "termsVersion": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" }
         }
       },
-      "defaultValue": { "enabled": false, "provider": "elevenlabs", "baseUrl": "https://api.elevenlabs.io", "model": "music_v2", "apiKeyRef": "secretref://env/creative-elevenlabs-music-api-key", "providerAccountRef": "staging", "enterpriseRightsConfirmed": false, "trainingOptOutConfirmed": false, "licenseId": "staging-license", "termsVersion": "v1" },
+      "defaultValue": { "enabled": false, "provider": "hcai-router", "baseUrl": "https://router.hctopup.com", "model": "music-3.0", "apiKeyRef": "secretref://env/creative-router-music-api-key", "providerAccountRef": "museflow-music-staging", "stagingRightsAcknowledged": false, "trainingOptOutConfirmed": false, "licenseId": "router-minimax-staging", "termsVersion": "pending-review" },
       "publishStrategy": "reviewed_version",
       "applyMode": "restart_required"
     },

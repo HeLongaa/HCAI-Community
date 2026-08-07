@@ -22,7 +22,7 @@
       "migrationCommand": "prisma migrate deploy",
       "backupFormat": "pg_dump custom",
       "restoreCommand": "pg_restore --clean --if-exists",
-      "requiredChecks": ["all_migrations_applied", "permissions_seeded", "marker_restored", "backup_checksum_verified"]
+      "requiredChecks": ["all_migrations_applied", "permissions_seeded", "marker_restored", "backup_checksum_verified", "database_backup_expired", "database_backup_restore_denied"]
     },
     "redis": {
       "image": "redis:7-alpine",
@@ -33,7 +33,7 @@
       "image": "minio/minio:RELEASE.2025-09-07T16-13-09Z",
       "clientImage": "minio/mc:RELEASE.2025-08-13T08-35-41Z",
       "requiredBuckets": ["newchat-release-primary", "newchat-release-backup"],
-      "requiredChecks": ["database_backup_uploaded", "backup_download_checksum_verified", "marker_deleted", "marker_restored"]
+      "requiredChecks": ["database_backup_uploaded", "backup_checksum_verified", "object_marker_deleted", "object_marker_restored", "database_backup_expired", "database_backup_restore_denied", "object_backup_expired", "object_backup_restore_denied"]
     }
   },
   "objectives": {
@@ -42,11 +42,13 @@
     "redisRecoveryRtoSeconds": 120,
     "objectRestoreRtoSeconds": 300,
     "rpoSeconds": 300,
+    "backupRetentionDays": 35,
+    "maximumPreflightAgeSeconds": 7200,
     "maximumEvidenceBytes": 1048576
   },
   "evidence": {
-    "schemaVersion": "release-infrastructure-rehearsal-evidence-v1",
-    "requiredSections": ["run", "targets", "database", "redis", "objectStorage", "checks", "result", "receiptHash"],
+    "schemaVersion": "release-infrastructure-rehearsal-evidence-v3",
+    "requiredSections": ["run", "source", "targets", "database", "redis", "objectStorage", "backupExpiry", "checks", "result", "receiptHash"],
     "forbiddenFields": ["password", "secret", "token", "authorization", "databaseUrl", "redisUrl", "accessKeyId", "secretAccessKey"],
     "receiptHashAlgorithm": "sha256",
     "mustFailClosed": true

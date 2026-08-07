@@ -41,6 +41,12 @@ const privateDownloadConfig = (source) => {
 
 const normalizeDriver = (source) => String(source.STORAGE_DRIVER ?? (source.STORAGE_BUCKET ? 's3' : 'mock')).trim().toLowerCase()
 
+const normalizeKeyPrefix = (value) => {
+  const parts = String(value ?? '').trim().split('/').filter(Boolean)
+  if (parts.some((part) => part === '.' || part === '..')) throw new Error('STORAGE_KEY_PREFIX must not contain relative path segments')
+  return parts.length > 0 ? `${parts.join('/')}/` : ''
+}
+
 const boundedPositiveInteger = (value, fallback, maximum = 604800) => {
   const parsed = Number.parseInt(value ?? '', 10)
   return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, maximum) : fallback
@@ -68,12 +74,14 @@ const requireS3Value = (source, key) => {
 
 export const buildStorageConfig = (source = process.env) => {
   const driver = normalizeDriver(source)
+  const keyPrefix = normalizeKeyPrefix(source.STORAGE_KEY_PREFIX)
   if (!['mock', 's3'].includes(driver)) {
     throw new Error('STORAGE_DRIVER must be one of: mock, s3')
   }
   if (driver !== 's3') {
     return {
       driver: 'mock',
+      keyPrefix,
       uploadTtlSeconds: boundedPositiveInteger(source.STORAGE_UPLOAD_TTL_SECONDS, defaultUploadTtlSeconds),
       downloadTtlSeconds: boundedPositiveInteger(source.STORAGE_DOWNLOAD_TTL_SECONDS, defaultDownloadTtlSeconds),
       scannerReadTtlSeconds: boundedPositiveInteger(source.STORAGE_SCANNER_READ_TTL_SECONDS, defaultScannerReadTtlSeconds),
@@ -85,6 +93,7 @@ export const buildStorageConfig = (source = process.env) => {
     endpoint: trimSlash(requireS3Value(source, 'STORAGE_ENDPOINT')),
     region: requireS3Value(source, 'STORAGE_REGION'),
     bucket: requireS3Value(source, 'STORAGE_BUCKET'),
+    keyPrefix,
     accessKeyId: requireS3Value(source, 'STORAGE_ACCESS_KEY_ID'),
     secretAccessKey: requireS3Value(source, 'STORAGE_SECRET_ACCESS_KEY'),
     sessionToken: String(source.STORAGE_SESSION_TOKEN ?? '').trim() || null,
@@ -118,7 +127,7 @@ const signS3Request = ({ asset, config, now, expiresAt, ttlSeconds, method, sign
   const amzDate = toAmzDate(now)
   const dateStamp = toDateStamp(now)
   const credentialScope = `${dateStamp}/${config.region}/s3/aws4_request`
-  const keyPath = asset.storageKey.split('/').map(awsEncode).join('/')
+  const keyPath = `${config.keyPrefix}${asset.storageKey}`.split('/').map(awsEncode).join('/')
   const basePath = endpointUrl.pathname === '/' ? '' : endpointUrl.pathname.replace(/\/+$/, '')
   const canonicalUri = `${basePath}/${awsEncode(config.bucket)}/${keyPath}`
   const credential = `${config.accessKeyId}/${credentialScope}`
@@ -196,7 +205,7 @@ const signS3Delete = (params) => signS3Request({
 })
 
 const signPrivateDownload = ({ asset, config, expiresAt }) => {
-  const keyPath = asset.storageKey.split('/').map(awsEncode).join('/')
+  const keyPath = `${config.keyPrefix}${asset.storageKey}`.split('/').map(awsEncode).join('/')
   const path = `/${keyPath}`
   const expires = String(Math.floor(expiresAt.getTime() / 1000))
   const keyId = config.privateDownloadKeyId

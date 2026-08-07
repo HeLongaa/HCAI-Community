@@ -9,12 +9,13 @@ import type {
   AdminOAuthAuthorizationRequest,
   AdminOAuthProviderControl,
 } from '../../services/contracts'
+import { AdminActionFeedback, type AdminActionFeedbackMessage } from './AdminActionFeedback'
+import { AdminOperationConfirmation } from './AdminOperationConfirmation'
 
 type OAuthAdminPanelProps = {
   t: Record<string, string>
   canRead: boolean
   canManage: boolean
-  notify: (message: string) => void
 }
 
 const providers = ['google', 'github', 'apple', 'discord']
@@ -23,6 +24,10 @@ const defaultReason = 'operator_requested'
 
 const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback
 type OAuthConfigurationDraft = { clientId: string; redirectUri: string; scopes: string; clientSecretRef: string }
+type PendingOAuthOperation =
+  | { kind: 'provider'; control: AdminOAuthProviderControl; nextEnabled: boolean }
+  | { kind: 'account'; account: AdminOAuthAccount }
+  | { kind: 'authorization'; request: AdminOAuthAuthorizationRequest }
 const draftFor = (control: AdminOAuthProviderControl): OAuthConfigurationDraft => ({
   clientId: control.clientId ?? '',
   redirectUri: control.redirectUri ?? '',
@@ -30,7 +35,7 @@ const draftFor = (control: AdminOAuthProviderControl): OAuthConfigurationDraft =
   clientSecretRef: control.clientSecretRef ?? control.expectedClientSecretRef,
 })
 
-export function OAuthAdminPanel({ t, canRead, canManage, notify }: OAuthAdminPanelProps) {
+export function OAuthAdminPanel({ t, canRead, canManage }: OAuthAdminPanelProps) {
   const isZh = isZhCopy(t)
   const [providerControls, setProviderControls] = useState<AdminOAuthProviderControl[]>([])
   const [providerReasons, setProviderReasons] = useState<Record<string, string>>({})
@@ -54,6 +59,8 @@ export function OAuthAdminPanel({ t, canRead, canManage, notify }: OAuthAdminPan
   const [requestBusy, setRequestBusy] = useState(true)
   const [requestError, setRequestError] = useState<string | null>(null)
   const [revokingId, setRevokingId] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<AdminActionFeedbackMessage | null>(null)
+  const [pendingOperation, setPendingOperation] = useState<PendingOAuthOperation | null>(null)
 
   const loadProviders = useCallback(async () => {
     if (!canRead) return
@@ -143,12 +150,9 @@ export function OAuthAdminPanel({ t, canRead, canManage, notify }: OAuthAdminPan
   const changeProvider = async (control: AdminOAuthProviderControl) => {
     if (!canManage) return
     const nextEnabled = !control.enabled
-    const confirmed = window.confirm(nextEnabled
-      ? textFor(t, `Enable ${control.label}?`, `启用 ${control.label}？`)
-      : textFor(t, `Disable ${control.label}?`, `停用 ${control.label}？`))
-    if (!confirmed) return
     setProviderBusy(control.provider)
     setProviderError(null)
+    setFeedback(null)
     try {
       const updated = await adminService.setOAuthProviderStatus(control.provider, {
         enabled: nextEnabled,
@@ -156,10 +160,12 @@ export function OAuthAdminPanel({ t, canRead, canManage, notify }: OAuthAdminPan
         reasonCode: providerReasons[control.provider]?.trim() || defaultReason,
       })
       setProviderControls((current) => current.map((item) => item.provider === updated.provider ? updated : item))
-      notify(textFor(t, `${control.label} OAuth updated.`, `${control.label} OAuth 已更新。`))
+      setPendingOperation(null)
+      setFeedback({ kind: 'success', text: textFor(t, `${control.label} OAuth updated.`, `${control.label} OAuth 已更新。`) })
     } catch (error) {
-      setProviderError(errorMessage(error, isZh ? 'OAuth Provider 状态更新失败。' : 'OAuth Provider update failed.'))
+      const message = errorMessage(error, isZh ? 'OAuth Provider 状态更新失败。' : 'OAuth Provider update failed.')
       await loadProviders()
+      setProviderError(message)
     } finally {
       setProviderBusy(null)
     }
@@ -170,6 +176,7 @@ export function OAuthAdminPanel({ t, canRead, canManage, notify }: OAuthAdminPan
     const draft = providerDrafts[control.provider] ?? draftFor(control)
     setProviderBusy(control.provider)
     setProviderError(null)
+    setFeedback(null)
     try {
       const updated = await adminService.setOAuthProviderConfiguration(control.provider, {
         clientId: draft.clientId.trim(),
@@ -181,23 +188,26 @@ export function OAuthAdminPanel({ t, canRead, canManage, notify }: OAuthAdminPan
       })
       setProviderControls((current) => current.map((item) => item.provider === updated.provider ? updated : item))
       setProviderDrafts((current) => ({ ...current, [updated.provider]: draftFor(updated) }))
-      notify(textFor(t, `${control.label} OAuth configuration saved.`, `${control.label} OAuth 配置已保存。`))
+      setFeedback({ kind: 'success', text: textFor(t, `${control.label} OAuth configuration saved.`, `${control.label} OAuth 配置已保存。`) })
     } catch (error) {
-      setProviderError(errorMessage(error, isZh ? 'OAuth Provider 配置保存失败。' : 'OAuth Provider configuration failed.'))
+      const message = errorMessage(error, isZh ? 'OAuth Provider 配置保存失败。' : 'OAuth Provider configuration failed.')
       await loadProviders()
+      setProviderError(message)
     } finally {
       setProviderBusy(null)
     }
   }
 
   const unlinkAccount = async (account: AdminOAuthAccount) => {
-    if (!canManage || !window.confirm(textFor(t, `Unlink ${account.provider} from ${account.user.handle ?? account.user.displayName}?`, `解除 ${account.user.handle ?? account.user.displayName} 的 ${account.provider} 绑定？`))) return
+    if (!canManage) return
     setUnlinkingId(account.id)
     setAccountError(null)
+    setFeedback(null)
     try {
       await adminService.unlinkOAuthAccount(account.id)
       setAccounts((current) => current.filter((item) => item.id !== account.id))
-      notify(textFor(t, 'OAuth account unlinked.', 'OAuth 账号已解绑。'))
+      setPendingOperation(null)
+      setFeedback({ kind: 'success', text: textFor(t, 'OAuth account unlinked.', 'OAuth 账号已解绑。') })
     } catch (error) {
       setAccountError(errorMessage(error, isZh ? 'OAuth 账号解绑失败。' : 'OAuth account unlink failed.'))
     } finally {
@@ -206,16 +216,19 @@ export function OAuthAdminPanel({ t, canRead, canManage, notify }: OAuthAdminPan
   }
 
   const revokeRequest = async (request: AdminOAuthAuthorizationRequest) => {
-    if (!canManage || !window.confirm(textFor(t, `Revoke pending ${request.provider} authorization?`, `撤销待处理的 ${request.provider} 授权？`))) return
+    if (!canManage) return
     setRevokingId(request.id)
     setRequestError(null)
+    setFeedback(null)
     try {
       const result = await adminService.revokeOAuthAuthorizationRequest(request.id, 'operator_revoked')
       setRequests((current) => current.map((item) => item.id === request.id ? result.request : item))
-      notify(textFor(t, 'OAuth authorization revoked.', 'OAuth 授权已撤销。'))
+      setPendingOperation(null)
+      setFeedback({ kind: 'success', text: textFor(t, 'OAuth authorization revoked.', 'OAuth 授权已撤销。') })
     } catch (error) {
-      setRequestError(errorMessage(error, isZh ? 'OAuth 授权撤销失败。' : 'OAuth authorization revoke failed.'))
+      const message = errorMessage(error, isZh ? 'OAuth 授权撤销失败。' : 'OAuth authorization revoke failed.')
       await loadRequests(false)
+      setRequestError(message)
     } finally {
       setRevokingId(null)
     }
@@ -237,6 +250,26 @@ export function OAuthAdminPanel({ t, canRead, canManage, notify }: OAuthAdminPan
         title={textFor(t, 'OAuth operations', 'OAuth 运营')}
         action={<button className="ghost-button" type="button" onClick={() => void Promise.all([loadProviders(), loadAccounts(false), loadRequests(false)])} title={textFor(t, 'Refresh OAuth operations', '刷新 OAuth 运营数据')}><RefreshCw size={17} />{textFor(t, 'Refresh', '刷新')}</button>}
       />
+      <AdminActionFeedback message={feedback} />
+      {pendingOperation && <AdminOperationConfirmation
+        ariaLabel={textFor(t, 'Confirm OAuth operation', '确认 OAuth 操作')}
+        title={pendingOperation.kind === 'provider'
+          ? (pendingOperation.nextEnabled ? textFor(t, `Enable ${pendingOperation.control.label}?`, `启用 ${pendingOperation.control.label}？`) : textFor(t, `Disable ${pendingOperation.control.label}?`, `停用 ${pendingOperation.control.label}？`))
+          : pendingOperation.kind === 'account'
+            ? textFor(t, `Unlink ${pendingOperation.account.provider}?`, `解绑 ${pendingOperation.account.provider}？`)
+            : textFor(t, `Revoke ${pendingOperation.request.provider} authorization?`, `撤销 ${pendingOperation.request.provider} 授权？`)}
+        description={pendingOperation.kind === 'provider'
+          ? (pendingOperation.nextEnabled ? textFor(t, 'This Provider becomes available to configured authentication flows.', '该 Provider 将对已配置的认证流程开放。') : textFor(t, 'New sign-ins through this Provider stop immediately; existing sessions are not revoked.', '该 Provider 的新登录将立即停止，现有会话不会被撤销。'))
+          : pendingOperation.kind === 'account'
+            ? textFor(t, `The link for ${pendingOperation.account.user.handle ?? pendingOperation.account.user.displayName} will be removed. The user account remains active.`, `${pendingOperation.account.user.handle ?? pendingOperation.account.user.displayName} 的绑定将被移除，用户账号仍保持有效。`)
+            : textFor(t, 'The pending authorization can no longer be completed with its current state.', '该待处理授权将无法再使用当前状态完成。')}
+        confirmLabel={pendingOperation.kind === 'provider' && pendingOperation.nextEnabled ? textFor(t, 'Enable Provider', '启用 Provider') : pendingOperation.kind === 'account' ? textFor(t, 'Unlink account', '解绑账号') : pendingOperation.kind === 'authorization' ? textFor(t, 'Revoke authorization', '撤销授权') : textFor(t, 'Disable Provider', '停用 Provider')}
+        cancelLabel={textFor(t, 'Back', '返回')}
+        onConfirm={() => void (pendingOperation.kind === 'provider' ? changeProvider(pendingOperation.control) : pendingOperation.kind === 'account' ? unlinkAccount(pendingOperation.account) : revokeRequest(pendingOperation.request))}
+        onCancel={() => setPendingOperation(null)}
+        busy={pendingOperation.kind === 'provider' ? providerBusy === pendingOperation.control.provider : pendingOperation.kind === 'account' ? unlinkingId === pendingOperation.account.id : revokingId === pendingOperation.request.id}
+        tone={pendingOperation.kind === 'provider' && pendingOperation.nextEnabled ? 'primary' : 'danger'}
+      />}
 
       <div className="oauth-provider-list">
         {providerControls.map((control) => (
@@ -248,7 +281,7 @@ export function OAuthAdminPanel({ t, canRead, canManage, notify }: OAuthAdminPan
             <span className={control.enabled ? 'status-badge success' : 'status-badge danger'}>{control.enabled ? textFor(t, 'Enabled', '已启用') : textFor(t, 'Disabled', '已停用')}</span>
             <span className={control.environmentAvailable ? 'status-badge' : 'status-badge warning'}>{control.environmentAvailable ? textFor(t, 'Available', '环境可用') : textFor(t, 'Unavailable', '环境不可用')}</span>
             <input aria-label={textFor(t, `${control.label} reason code`, `${control.label} 原因码`)} value={providerReasons[control.provider] ?? ''} onChange={(event) => setProviderReasons((current) => ({ ...current, [control.provider]: event.target.value }))} placeholder={defaultReason} disabled={!canManage} />
-            <button className={control.enabled ? 'ghost-button small danger-button' : 'primary-button small'} type="button" onClick={() => void changeProvider(control)} disabled={!canManage || providerBusy === control.provider || (!control.enabled && !control.environmentAvailable)} title={control.enabled ? textFor(t, `Disable ${control.label}`, `停用 ${control.label}`) : textFor(t, `Enable ${control.label}`, `启用 ${control.label}`)}>
+            <button className={control.enabled ? 'ghost-button small danger-button' : 'primary-button small'} type="button" onClick={() => setPendingOperation({ kind: 'provider', control, nextEnabled: !control.enabled })} disabled={!canManage || providerBusy === control.provider || (!control.enabled && !control.environmentAvailable)} title={control.enabled ? textFor(t, `Disable ${control.label}`, `停用 ${control.label}`) : textFor(t, `Enable ${control.label}`, `启用 ${control.label}`)}>
               <Power size={16} />{providerBusy === control.provider ? textFor(t, 'Updating', '更新中') : control.enabled ? textFor(t, 'Disable', '停用') : textFor(t, 'Enable', '启用')}
             </button>
             <div className="oauth-provider-config">
@@ -278,7 +311,7 @@ export function OAuthAdminPanel({ t, canRead, canManage, notify }: OAuthAdminPan
             <div className="oauth-record-row" key={account.id} data-testid={`oauth-account-${account.id}`}>
               <div><strong>{account.user.handle ? `@${account.user.handle}` : account.user.displayName}</strong><span>{account.user.email ?? account.user.id}</span></div>
               <span>{account.provider}</span><code>{account.providerUserIdHint}</code><span>{new Date(account.createdAt).toLocaleString()}</span>
-              <button className="icon-button" type="button" title={textFor(t, 'Unlink OAuth account', '解绑 OAuth 账号')} aria-label={textFor(t, 'Unlink OAuth account', '解绑 OAuth 账号')} onClick={() => void unlinkAccount(account)} disabled={!canManage || unlinkingId === account.id}><Unlink size={16} /></button>
+              <button className="icon-button" type="button" title={textFor(t, 'Unlink OAuth account', '解绑 OAuth 账号')} aria-label={textFor(t, 'Unlink OAuth account', '解绑 OAuth 账号')} onClick={() => setPendingOperation({ kind: 'account', account })} disabled={!canManage || unlinkingId === account.id}><Unlink size={16} /></button>
             </div>
           ))}
           {!accountBusy && accounts.length === 0 && <div className="empty-state"><strong>{textFor(t, 'No linked accounts', '暂无绑定账号')}</strong></div>}
@@ -302,7 +335,7 @@ export function OAuthAdminPanel({ t, canRead, canManage, notify }: OAuthAdminPan
               <div><strong>{request.provider}</strong><span>{request.id}</span></div>
               <span className={`status-badge ${request.status === 'pending' ? 'warning' : request.status === 'revoked' ? 'danger' : ''}`}>{request.status}</span>
               <span>{new Date(request.createdAt).toLocaleString()}</span><span>{new Date(request.expiresAt).toLocaleString()}</span>
-              <button className="icon-button" type="button" title={textFor(t, 'Revoke authorization', '撤销授权')} aria-label={textFor(t, 'Revoke authorization', '撤销授权')} onClick={() => void revokeRequest(request)} disabled={!canManage || request.status !== 'pending' || revokingId === request.id}><Ban size={16} /></button>
+              <button className="icon-button" type="button" title={textFor(t, 'Revoke authorization', '撤销授权')} aria-label={textFor(t, 'Revoke authorization', '撤销授权')} onClick={() => setPendingOperation({ kind: 'authorization', request })} disabled={!canManage || request.status !== 'pending' || revokingId === request.id}><Ban size={16} /></button>
             </div>
           ))}
           {!requestBusy && requests.length === 0 && <div className="empty-state"><strong>{textFor(t, 'No authorization requests', '暂无授权请求')}</strong></div>}

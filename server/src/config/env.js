@@ -34,6 +34,7 @@ const supportedRateLimitStores = ['memory', 'redis']
 const supportedRateLimitFailureModes = ['fail_open', 'fail_closed']
 const supportedMetricsExporterFormats = ['prometheus']
 const supportedCreativeProviderAlertChannels = ['webhook', 'slack', 'email']
+const supportedCreativeSafetyClassifierModes = ['disabled', 'external']
 const getRateLimitStore = (source) => String(source.RATE_LIMIT_STORE ?? 'memory').trim().toLowerCase()
 const getRateLimitFailureMode = (source) => String(source.RATE_LIMIT_REDIS_FAILURE_MODE ?? source.RATE_LIMIT_STORE_FAILURE_MODE ?? 'fail_closed').trim().toLowerCase()
 const getMetricsExporterFormat = (source) => String(source.METRICS_EXPORTER_FORMAT ?? 'prometheus').trim().toLowerCase()
@@ -125,6 +126,12 @@ export const buildEnv = (source = process.env) => {
   const creativeOpenAIImageNetworkCallsEnabled = strictBoolFlag(source, 'CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED', false)
   const creativeOpenAIImageConfirmation = String(source.CREATIVE_OPENAI_IMAGE_CONFIRMATION ?? '').trim().toLowerCase()
   const hasCreativeOpenAIImageApiToken = Boolean(String(source.CREATIVE_OPENAI_IMAGE_API_TOKEN ?? '').trim())
+  const creativeInputSafetyClassifierMode = String(source.CREATIVE_INPUT_SAFETY_CLASSIFIER_MODE ?? 'disabled').trim().toLowerCase()
+  const creativeInputSafetyClassifierUrl = getOptionalUrl(source, 'CREATIVE_INPUT_SAFETY_CLASSIFIER_URL')
+  const creativeInputSafetyClassifierToken = String(source.CREATIVE_INPUT_SAFETY_CLASSIFIER_TOKEN ?? '').trim()
+  const creativeOutputSafetyClassifierMode = String(source.CREATIVE_OUTPUT_SAFETY_CLASSIFIER_MODE ?? 'disabled').trim().toLowerCase()
+  const creativeOutputSafetyClassifierUrl = getOptionalUrl(source, 'CREATIVE_OUTPUT_SAFETY_CLASSIFIER_URL')
+  const creativeOutputSafetyClassifierToken = String(source.CREATIVE_OUTPUT_SAFETY_CLASSIFIER_TOKEN ?? '').trim()
   const creativeProviderCallbackEnabled = strictBoolFlag(source, 'CREATIVE_PROVIDER_CALLBACK_ENABLED', false)
   const creativeProviderCallbackSecret = String(source.CREATIVE_PROVIDER_CALLBACK_SIGNATURE_SECRET ?? '').trim()
   const creativeProviderCallbackReplayWindowSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_CALLBACK_REPLAY_WINDOW_SECONDS', 300)
@@ -132,22 +139,25 @@ export const buildEnv = (source = process.env) => {
   const creativeProviderCallbackSideEffectLeaseSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_CALLBACK_SIDE_EFFECT_LEASE_SECONDS', 60)
   const creativeProviderPollingEnabled = strictBoolFlag(source, 'CREATIVE_PROVIDER_POLLING_ENABLED', false)
   const creativeProviderPollingWorkerEnabled = strictBoolFlag(source, 'CREATIVE_PROVIDER_POLLING_WORKER_ENABLED', false)
-  const creativeGoogleVeoLifecycleEnabled = strictBoolFlag(source, 'CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED', false)
-  const creativeGoogleVeoLifecycleWorkerEnabled = strictBoolFlag(source, 'CREATIVE_GOOGLE_VEO_LIFECYCLE_WORKER_ENABLED', false)
-  const creativeGoogleVeoHttpClientEnabled = strictBoolFlag(source, 'CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED', false)
-  const creativeGoogleVeoNetworkCallsEnabled = strictBoolFlag(source, 'CREATIVE_GOOGLE_VEO_NETWORK_CALLS_ENABLED', false)
-  const creativeGoogleVeoConfirmation = String(source.CREATIVE_GOOGLE_VEO_CONFIRMATION ?? '').trim().toLowerCase()
-  const hasCreativeGoogleVeoAccessToken = Boolean(String(source.CREATIVE_GOOGLE_VEO_ACCESS_TOKEN ?? '').trim())
-  const creativeGoogleVeoProjectId = String(source.CREATIVE_GOOGLE_VEO_PROJECT_ID ?? '').trim()
-  const creativeGoogleVeoLocation = String(source.CREATIVE_GOOGLE_VEO_LOCATION ?? 'us-central1').trim().toLowerCase()
-  const creativeGoogleVeoOutputGcsUri = String(source.CREATIVE_GOOGLE_VEO_OUTPUT_GCS_URI ?? '').trim()
-  const creativeElevenLabsMusicHttpClientEnabled = strictBoolFlag(source, 'CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED', false)
-  const creativeElevenLabsMusicNetworkCallsEnabled = strictBoolFlag(source, 'CREATIVE_ELEVENLABS_MUSIC_NETWORK_CALLS_ENABLED', false)
-  const creativeElevenLabsMusicConfirmation = String(source.CREATIVE_ELEVENLABS_MUSIC_CONFIRMATION ?? '').trim().toLowerCase()
-  const hasCreativeElevenLabsMusicApiKey = Boolean(String(source.CREATIVE_ELEVENLABS_MUSIC_API_KEY ?? '').trim())
-  const creativeElevenLabsMusicRightsConfirmed = strictBoolFlag(source, 'CREATIVE_ELEVENLABS_MUSIC_ENTERPRISE_RIGHTS_CONFIRMED', false)
-  const creativeElevenLabsMusicTrainingOptOutConfirmed = strictBoolFlag(source, 'CREATIVE_ELEVENLABS_MUSIC_TRAINING_OPT_OUT_CONFIRMED', false)
-  const hasCreativeElevenLabsMusicLicenseEvidence = [source.CREATIVE_ELEVENLABS_MUSIC_LICENSE_ID, source.CREATIVE_ELEVENLABS_MUSIC_TERMS_VERSION]
+  const creativeRouterVideoLifecycleEnabled = strictBoolFlag(source, 'CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED', false)
+  const creativeRouterVideoLifecycleWorkerEnabled = strictBoolFlag(source, 'CREATIVE_ROUTER_VIDEO_LIFECYCLE_WORKER_ENABLED', false)
+  const creativeRouterVideoHttpClientEnabled = strictBoolFlag(source, 'CREATIVE_ROUTER_VIDEO_HTTP_CLIENT_ENABLED', false)
+  const creativeRouterVideoNetworkCallsEnabled = strictBoolFlag(source, 'CREATIVE_ROUTER_VIDEO_NETWORK_CALLS_ENABLED', false)
+  const creativeRouterVideoConfirmation = String(source.CREATIVE_ROUTER_VIDEO_CONFIRMATION ?? '').trim().toLowerCase()
+  const hasCreativeRouterVideoApiKey = Boolean(String(source.CREATIVE_ROUTER_VIDEO_API_KEY ?? '').trim())
+  const creativeRouterVideoBaseUrl = String(source.CREATIVE_ROUTER_VIDEO_BASE_URL ?? 'https://router.hctopup.com').trim().replace(/\/+$/, '')
+  const creativeRouterMiniMaxVideoHttpClientEnabled = strictBoolFlag(source, 'CREATIVE_ROUTER_MINIMAX_VIDEO_HTTP_CLIENT_ENABLED', false)
+  const creativeRouterMiniMaxVideoNetworkCallsEnabled = strictBoolFlag(source, 'CREATIVE_ROUTER_MINIMAX_VIDEO_NETWORK_CALLS_ENABLED', false)
+  const creativeRouterMiniMaxVideoConfirmation = String(source.CREATIVE_ROUTER_MINIMAX_VIDEO_CONFIRMATION ?? '').trim().toLowerCase()
+  const hasCreativeRouterMiniMaxVideoApiKey = Boolean(String(source.CREATIVE_ROUTER_MINIMAX_VIDEO_API_KEY ?? '').trim())
+  const creativeRouterMiniMaxVideoBaseUrl = String(source.CREATIVE_ROUTER_MINIMAX_VIDEO_BASE_URL ?? 'https://router.hctopup.com').trim().replace(/\/+$/, '')
+  const creativeRouterMusicHttpClientEnabled = strictBoolFlag(source, 'CREATIVE_ROUTER_MUSIC_HTTP_CLIENT_ENABLED', false)
+  const creativeRouterMusicNetworkCallsEnabled = strictBoolFlag(source, 'CREATIVE_ROUTER_MUSIC_NETWORK_CALLS_ENABLED', false)
+  const creativeRouterMusicConfirmation = String(source.CREATIVE_ROUTER_MUSIC_CONFIRMATION ?? '').trim().toLowerCase()
+  const hasCreativeRouterMusicApiKey = Boolean(String(source.CREATIVE_ROUTER_MUSIC_API_KEY ?? '').trim())
+  const creativeRouterMusicRightsConfirmed = strictBoolFlag(source, 'CREATIVE_ROUTER_MUSIC_STAGING_RIGHTS_ACKNOWLEDGED', false)
+  const creativeRouterMusicTrainingOptOutConfirmed = strictBoolFlag(source, 'CREATIVE_ROUTER_MUSIC_TRAINING_OPT_OUT_CONFIRMED', false)
+  const hasCreativeRouterMusicLicenseEvidence = [source.CREATIVE_ROUTER_MUSIC_LICENSE_ID, source.CREATIVE_ROUTER_MUSIC_TERMS_VERSION]
     .every((value) => Boolean(String(value ?? '').trim()))
   const mediaScanRequestAdapter = getMediaScanRequestAdapter(source)
   const rateLimitStore = getRateLimitStore(source)
@@ -159,6 +169,7 @@ export const buildEnv = (source = process.env) => {
   const rateLimitAuthMax = positiveInteger(source, 'RATE_LIMIT_AUTH_MAX', 120)
   const rateLimitUploadMax = positiveInteger(source, 'RATE_LIMIT_UPLOAD_MAX', 120)
   const rateLimitAdminMutationMax = positiveInteger(source, 'RATE_LIMIT_ADMIN_MUTATION_MAX', 180)
+  const rateLimitClientTelemetryMax = positiveInteger(source, 'RATE_LIMIT_CLIENT_TELEMETRY_MAX', 120)
   const metricsExporterFormat = getMetricsExporterFormat(source)
   const requestBodyMaxBytes = positiveInteger(source, 'REQUEST_BODY_MAX_BYTES', 1_048_576)
   const authFailureWindowMs = positiveInteger(source, 'AUTH_FAILURE_WINDOW_MS', 300_000)
@@ -188,6 +199,13 @@ export const buildEnv = (source = process.env) => {
   const creativeProviderAlertEmailWebhookUrl = getOptionalUrl(source, 'CREATIVE_PROVIDER_ALERT_EMAIL_WEBHOOK_URL')
   const creativeProviderAlertEmailRecipients = splitCsv(source.CREATIVE_PROVIDER_ALERT_EMAIL_TO)
   const creativeProviderAlertEmailTimeoutSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_ALERT_EMAIL_TIMEOUT_SECONDS', 5)
+  const creativeProviderAlertDeliveryWorkerEnabled = strictBoolFlag(source, 'CREATIVE_PROVIDER_ALERT_DELIVERY_WORKER_ENABLED', false)
+  const creativeProviderAlertDeliveryWorkerIntervalSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_ALERT_DELIVERY_WORKER_INTERVAL_SECONDS', 10)
+  const creativeProviderAlertDeliveryWorkerBatchSize = positiveInteger(source, 'CREATIVE_PROVIDER_ALERT_DELIVERY_WORKER_BATCH_SIZE', 25)
+  const creativeProviderAlertDeliveryLeaseSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_ALERT_DELIVERY_LEASE_SECONDS', 60)
+  const creativeProviderAlertDeliveryMaxAttempts = positiveInteger(source, 'CREATIVE_PROVIDER_ALERT_DELIVERY_MAX_ATTEMPTS', 5)
+  const creativeProviderAlertDeliveryRetryBaseSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_ALERT_DELIVERY_RETRY_BASE_SECONDS', 30)
+  const creativeProviderAlertAllowedHosts = splitLowerCsv(source.CREATIVE_PROVIDER_ALERT_ALLOWED_HOSTS)
   const mediaScanRetryDelaySeconds = positiveInteger(source, 'MEDIA_SCAN_RETRY_DELAY_SECONDS', 300)
   const mediaScanTimeoutSeconds = positiveInteger(source, 'MEDIA_SCAN_TIMEOUT_SECONDS', 900)
   const mediaScanMaxAttempts = positiveInteger(source, 'MEDIA_SCAN_MAX_ATTEMPTS', 3)
@@ -221,13 +239,59 @@ export const buildEnv = (source = process.env) => {
   const creativeProviderPollingLeaseTtlSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_LEASE_TTL_SECONDS', 300)
   const creativeProviderPollingIntervalSeconds = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_INTERVAL_SECONDS', 60)
   const creativeProviderPollingSweepLimit = positiveInteger(source, 'CREATIVE_PROVIDER_POLLING_SWEEP_LIMIT', 10)
-  const creativeGoogleVeoPollIntervalSeconds = positiveInteger(source, 'CREATIVE_GOOGLE_VEO_POLL_INTERVAL_SECONDS', 15)
-  const creativeGoogleVeoTimeoutSeconds = positiveInteger(source, 'CREATIVE_GOOGLE_VEO_TIMEOUT_SECONDS', 900)
-  const creativeGoogleVeoMaxStatusAttempts = positiveInteger(source, 'CREATIVE_GOOGLE_VEO_MAX_STATUS_ATTEMPTS', 20)
-  const creativeGoogleVeoSweepLimit = positiveInteger(source, 'CREATIVE_GOOGLE_VEO_SWEEP_LIMIT', 10)
+  const creativeRouterVideoPollIntervalSeconds = positiveInteger(source, 'CREATIVE_ROUTER_VIDEO_POLL_INTERVAL_SECONDS', 15)
+  const creativeRouterVideoTimeoutSeconds = positiveInteger(source, 'CREATIVE_ROUTER_VIDEO_TIMEOUT_SECONDS', 900)
+  const creativeRouterVideoMaxStatusAttempts = positiveInteger(source, 'CREATIVE_ROUTER_VIDEO_MAX_STATUS_ATTEMPTS', 20)
+  const creativeRouterVideoSweepLimit = positiveInteger(source, 'CREATIVE_ROUTER_VIDEO_SWEEP_LIMIT', 10)
   const hasChatMessageEncryptionKey = Boolean(String(source.CHAT_MESSAGE_ENCRYPTION_KEY ?? source.CHAT_MESSAGE_ENCRYPTION_KEYS ?? '').trim())
   const chatRetentionWorkerIntervalSeconds = positiveInteger(source, 'CHAT_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
   const chatRetentionSweepLimit = positiveInteger(source, 'CHAT_RETENTION_SWEEP_LIMIT', 100)
+  const dataRightsDeletionWorkerIntervalSeconds = positiveInteger(source, 'DATA_RIGHTS_DELETION_WORKER_INTERVAL_SECONDS', 3600)
+  const dataRightsDeletionSweepLimit = positiveInteger(source, 'DATA_RIGHTS_DELETION_SWEEP_LIMIT', 25)
+  const dataRightsDeletionProcessingRecoverySeconds = positiveInteger(source, 'DATA_RIGHTS_DELETION_PROCESSING_RECOVERY_SECONDS', 300)
+  const dataRightsExportRetentionWorkerIntervalSeconds = positiveInteger(source, 'DATA_RIGHTS_EXPORT_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
+  const dataRightsExportRetentionSweepLimit = positiveInteger(source, 'DATA_RIGHTS_EXPORT_RETENTION_SWEEP_LIMIT', 25)
+  const observabilityRetentionWorkerIntervalSeconds = positiveInteger(source, 'OBSERVABILITY_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
+  const observabilityRetentionSweepLimit = positiveInteger(source, 'OBSERVABILITY_RETENTION_SWEEP_LIMIT', 500)
+  const notificationRetentionWorkerIntervalSeconds = positiveInteger(source, 'NOTIFICATION_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
+  const notificationRetentionSweepLimit = positiveInteger(source, 'NOTIFICATION_RETENTION_SWEEP_LIMIT', 250)
+  const operationLeaseRetentionWorkerIntervalSeconds = positiveInteger(source, 'OPERATION_LEASE_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
+  const operationLeaseRetentionSweepLimit = positiveInteger(source, 'OPERATION_LEASE_RETENTION_SWEEP_LIMIT', 500)
+  const privateLibraryRetentionWorkerIntervalSeconds = positiveInteger(source, 'PRIVATE_LIBRARY_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
+  const privateLibraryRetentionSweepLimit = positiveInteger(source, 'PRIVATE_LIBRARY_RETENTION_SWEEP_LIMIT', 250)
+  const authCredentialRetentionWorkerIntervalSeconds = positiveInteger(source, 'AUTH_CREDENTIAL_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
+  const authCredentialRetentionSweepLimit = positiveInteger(source, 'AUTH_CREDENTIAL_RETENTION_SWEEP_LIMIT', 250)
+  const auditRetentionWorkerEnabled = boolFlag(source, 'AUDIT_RETENTION_WORKER_ENABLED', false)
+  const auditRetentionWorkerIntervalSeconds = positiveInteger(source, 'AUDIT_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
+  const auditRetentionPruneEnabled = boolFlag(source, 'AUDIT_RETENTION_PRUNE_ENABLED', false)
+  const auditRetentionLegalHold = boolFlag(source, 'AUDIT_RETENTION_LEGAL_HOLD', true)
+  const communityRetentionWorkerIntervalSeconds = positiveInteger(source, 'COMMUNITY_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
+  const communityRetentionSweepLimit = positiveInteger(source, 'COMMUNITY_RETENTION_SWEEP_LIMIT', 250)
+  const securityEventRetentionWorkerIntervalSeconds = positiveInteger(source, 'SECURITY_EVENT_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
+  const securityEventRetentionSweepLimit = positiveInteger(source, 'SECURITY_EVENT_RETENTION_SWEEP_LIMIT', 250)
+  const riskRetentionWorkerIntervalSeconds = positiveInteger(source, 'RISK_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
+  const riskRetentionSweepLimit = positiveInteger(source, 'RISK_RETENTION_SWEEP_LIMIT', 250)
+  const moderationRetentionWorkerIntervalSeconds = positiveInteger(source, 'MODERATION_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
+  const moderationRetentionSweepLimit = positiveInteger(source, 'MODERATION_RETENTION_SWEEP_LIMIT', 100)
+  const generationRetentionWorkerIntervalSeconds = positiveInteger(source, 'GENERATION_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
+  const generationRetentionSweepLimit = positiveInteger(source, 'GENERATION_RETENTION_SWEEP_LIMIT', 100)
+  const mediaAssetRetentionWorkerIntervalSeconds = positiveInteger(source, 'MEDIA_ASSET_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
+  const mediaAssetRetentionSweepLimit = positiveInteger(source, 'MEDIA_ASSET_RETENTION_SWEEP_LIMIT', 100)
+  const providerLifecycleRetentionWorkerIntervalSeconds = positiveInteger(source, 'PROVIDER_LIFECYCLE_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
+  const providerLifecycleRetentionSweepLimit = positiveInteger(source, 'PROVIDER_LIFECYCLE_RETENTION_SWEEP_LIMIT', 100)
+  const configurationRetentionWorkerIntervalSeconds = positiveInteger(source, 'CONFIGURATION_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
+  const configurationRetentionSweepLimit = positiveInteger(source, 'CONFIGURATION_RETENTION_SWEEP_LIMIT', 100)
+  const marketplaceRetentionWorkerIntervalSeconds = positiveInteger(source, 'MARKETPLACE_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
+  const marketplaceRetentionSweepLimit = positiveInteger(source, 'MARKETPLACE_RETENTION_SWEEP_LIMIT', 100)
+  const supportRetentionWorkerIntervalSeconds = positiveInteger(source, 'SUPPORT_RETENTION_WORKER_INTERVAL_SECONDS', 3600)
+  const supportRetentionSweepLimit = positiveInteger(source, 'SUPPORT_RETENTION_SWEEP_LIMIT', 100)
+  const providerSecretRetentionWorkerEnabled = strictBoolFlag(source, 'PROVIDER_SECRET_RETENTION_WORKER_ENABLED', false)
+  const providerSecretRetentionWorkerIntervalSeconds = positiveInteger(source, 'PROVIDER_SECRET_RETENTION_WORKER_INTERVAL_SECONDS', 300)
+  const providerSecretRetentionSweepLimit = positiveInteger(source, 'PROVIDER_SECRET_RETENTION_SWEEP_LIMIT', 50)
+  const secretManagerLifecycleGatewayEnabled = strictBoolFlag(source, 'SECRET_MANAGER_LIFECYCLE_GATEWAY_ENABLED', false)
+  const secretManagerLifecycleGatewayUrl = getOptionalUrl(source, 'SECRET_MANAGER_LIFECYCLE_GATEWAY_URL')
+  const secretManagerLifecycleGatewayToken = String(source.SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN ?? '').trim()
+  const secretManagerLifecycleGatewayConfirmation = String(source.SECRET_MANAGER_LIFECYCLE_GATEWAY_CONFIRMATION ?? '').trim()
   const mediaScanHistoryRetentionDays = positiveInteger(source, 'MEDIA_SCAN_HISTORY_RETENTION_DAYS', 180)
   const mediaScanHistoryRetentionMaxPerAsset = positiveInteger(source, 'MEDIA_SCAN_HISTORY_RETENTION_MAX_PER_ASSET', 50)
   const mediaScanAlertWindowMinutes = positiveInteger(source, 'MEDIA_SCAN_ALERT_WINDOW_MINUTES', 60)
@@ -246,6 +310,7 @@ export const buildEnv = (source = process.env) => {
   const mediaScanCallbackBaseUrl = getOptionalUrl(source, 'MEDIA_SCAN_CALLBACK_BASE_URL')
   const mediaScanRequestTimeoutSeconds = positiveInteger(source, 'MEDIA_SCAN_REQUEST_TIMEOUT_SECONDS', 10)
   const mediaScanCallbackSignatureToleranceSeconds = positiveInteger(source, 'MEDIA_SCAN_CALLBACK_SIGNATURE_TOLERANCE_SECONDS', 300)
+  const processShutdownTimeoutSeconds = positiveInteger(source, 'PROCESS_SHUTDOWN_TIMEOUT_SECONDS', 30)
   const authCookieSameSite = getAuthCookieSameSite(source)
   if (!supportedDeploymentEnvs.includes(deploymentEnv)) {
     throw new Error(`DEPLOYMENT_ENV must be one of: ${supportedDeploymentEnvs.join(', ')}`)
@@ -409,50 +474,86 @@ export const buildEnv = (source = process.env) => {
       throw new Error('CREATIVE_PROVIDER_POLLING_INTERVAL_SECONDS must be less than CREATIVE_PROVIDER_POLLING_MAX_AGE_SECONDS')
     }
   }
-  if (creativeGoogleVeoLifecycleWorkerEnabled && !creativeGoogleVeoLifecycleEnabled) {
-    throw new Error('CREATIVE_GOOGLE_VEO_LIFECYCLE_WORKER_ENABLED requires CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED=true')
+  if (creativeRouterVideoLifecycleWorkerEnabled && !creativeRouterVideoLifecycleEnabled) {
+    throw new Error('CREATIVE_ROUTER_VIDEO_LIFECYCLE_WORKER_ENABLED requires CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED=true')
   }
-  if (creativeGoogleVeoNetworkCallsEnabled && !creativeGoogleVeoHttpClientEnabled) {
-    throw new Error('CREATIVE_GOOGLE_VEO_NETWORK_CALLS_ENABLED requires CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED=true')
+  if (creativeRouterVideoNetworkCallsEnabled && !creativeRouterVideoHttpClientEnabled) {
+    throw new Error('CREATIVE_ROUTER_VIDEO_NETWORK_CALLS_ENABLED requires CREATIVE_ROUTER_VIDEO_HTTP_CLIENT_ENABLED=true')
   }
-  if (creativeGoogleVeoHttpClientEnabled) {
-    if (nodeEnv !== 'production') throw new Error('CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED requires NODE_ENV=production')
-    if (creativeProviderRuntimeEnv !== 'staging') throw new Error('CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
-    if (!creativeGoogleVeoNetworkCallsEnabled) throw new Error('CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED requires CREATIVE_GOOGLE_VEO_NETWORK_CALLS_ENABLED=true')
-    if (creativeGoogleVeoConfirmation !== 'staging-only') throw new Error('CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED requires CREATIVE_GOOGLE_VEO_CONFIRMATION=staging-only')
-    if (!hasCreativeGoogleVeoAccessToken) throw new Error('CREATIVE_GOOGLE_VEO_ACCESS_TOKEN is required when the Veo HTTP client is enabled')
-    if (!/^[a-z][a-z0-9-]{4,62}$/.test(creativeGoogleVeoProjectId)) throw new Error('CREATIVE_GOOGLE_VEO_PROJECT_ID is invalid')
-    if (creativeGoogleVeoLocation !== 'us-central1') throw new Error('CREATIVE_GOOGLE_VEO_LOCATION must be us-central1')
-    if (!/^gs:\/\/[a-z0-9][a-z0-9._-]{1,221}[a-z0-9]\/(?:[^?#\s]+\/)?$/.test(creativeGoogleVeoOutputGcsUri)) throw new Error('CREATIVE_GOOGLE_VEO_OUTPUT_GCS_URI must be a gs:// prefix ending in /')
+  if (creativeRouterVideoHttpClientEnabled) {
+    if (nodeEnv !== 'production') throw new Error('CREATIVE_ROUTER_VIDEO_HTTP_CLIENT_ENABLED requires NODE_ENV=production')
+    if (creativeProviderRuntimeEnv !== 'staging') throw new Error('CREATIVE_ROUTER_VIDEO_HTTP_CLIENT_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
+    if (!creativeRouterVideoNetworkCallsEnabled) throw new Error('CREATIVE_ROUTER_VIDEO_HTTP_CLIENT_ENABLED requires CREATIVE_ROUTER_VIDEO_NETWORK_CALLS_ENABLED=true')
+    if (creativeRouterVideoConfirmation !== 'staging-only') throw new Error('CREATIVE_ROUTER_VIDEO_HTTP_CLIENT_ENABLED requires CREATIVE_ROUTER_VIDEO_CONFIRMATION=staging-only')
+    if (!hasCreativeRouterVideoApiKey) throw new Error('CREATIVE_ROUTER_VIDEO_API_KEY is required when the Router Video HTTP client is enabled')
+    let routerVideoUrl
+    try { routerVideoUrl = new URL(creativeRouterVideoBaseUrl) } catch { routerVideoUrl = null }
+    if (!routerVideoUrl || routerVideoUrl.protocol !== 'https:' || routerVideoUrl.hostname !== 'router.hctopup.com' || routerVideoUrl.username || routerVideoUrl.password || routerVideoUrl.search || routerVideoUrl.hash) {
+      throw new Error('CREATIVE_ROUTER_VIDEO_BASE_URL must be https://router.hctopup.com')
+    }
   }
-  if (creativeGoogleVeoLifecycleEnabled) {
+  if (creativeRouterVideoLifecycleEnabled) {
     if (nodeEnv !== 'production') {
-      throw new Error('CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED requires NODE_ENV=production')
+      throw new Error('CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED requires NODE_ENV=production')
     }
     if (creativeProviderRuntimeEnv !== 'staging') {
-      throw new Error('CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
+      throw new Error('CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
     }
-    if (!['fixture-only', 'staging-only'].includes(creativeGoogleVeoConfirmation)) {
-      throw new Error('CREATIVE_GOOGLE_VEO_CONFIRMATION must be fixture-only or staging-only when lifecycle is enabled')
+    const seedanceLifecycleConfirmed = ['fixture-only', 'staging-only'].includes(creativeRouterVideoConfirmation)
+    const minimaxLifecycleConfirmed = creativeRouterMiniMaxVideoConfirmation === 'staging-only'
+    if (!seedanceLifecycleConfirmed && !minimaxLifecycleConfirmed) {
+      throw new Error('Video lifecycle requires a Seedance or MiniMax staging confirmation')
     }
-    if (creativeGoogleVeoConfirmation === 'staging-only' && !creativeGoogleVeoHttpClientEnabled) {
-      throw new Error('real Veo lifecycle requires CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED=true')
+    if (creativeRouterVideoConfirmation === 'staging-only' && !creativeRouterVideoHttpClientEnabled) {
+      throw new Error('real Router Video lifecycle requires CREATIVE_ROUTER_VIDEO_HTTP_CLIENT_ENABLED=true')
     }
-    if (creativeGoogleVeoPollIntervalSeconds >= creativeGoogleVeoTimeoutSeconds) {
-      throw new Error('CREATIVE_GOOGLE_VEO_POLL_INTERVAL_SECONDS must be less than CREATIVE_GOOGLE_VEO_TIMEOUT_SECONDS')
+    if (creativeRouterVideoPollIntervalSeconds >= creativeRouterVideoTimeoutSeconds) {
+      throw new Error('CREATIVE_ROUTER_VIDEO_POLL_INTERVAL_SECONDS must be less than CREATIVE_ROUTER_VIDEO_TIMEOUT_SECONDS')
     }
   }
-  if (creativeElevenLabsMusicNetworkCallsEnabled && !creativeElevenLabsMusicHttpClientEnabled) {
-    throw new Error('CREATIVE_ELEVENLABS_MUSIC_NETWORK_CALLS_ENABLED requires CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED=true')
+  if (creativeRouterMiniMaxVideoNetworkCallsEnabled && !creativeRouterMiniMaxVideoHttpClientEnabled) {
+    throw new Error('CREATIVE_ROUTER_MINIMAX_VIDEO_NETWORK_CALLS_ENABLED requires CREATIVE_ROUTER_MINIMAX_VIDEO_HTTP_CLIENT_ENABLED=true')
   }
-  if (creativeElevenLabsMusicHttpClientEnabled) {
-    if (nodeEnv !== 'production') throw new Error('CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED requires NODE_ENV=production')
-    if (creativeProviderRuntimeEnv !== 'staging') throw new Error('CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
-    if (!creativeElevenLabsMusicNetworkCallsEnabled) throw new Error('CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED requires CREATIVE_ELEVENLABS_MUSIC_NETWORK_CALLS_ENABLED=true')
-    if (creativeElevenLabsMusicConfirmation !== 'staging-only') throw new Error('CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED requires CREATIVE_ELEVENLABS_MUSIC_CONFIRMATION=staging-only')
-    if (!hasCreativeElevenLabsMusicApiKey) throw new Error('CREATIVE_ELEVENLABS_MUSIC_API_KEY is required when the Music HTTP client is enabled')
-    if (!creativeElevenLabsMusicRightsConfirmed || !creativeElevenLabsMusicTrainingOptOutConfirmed || !hasCreativeElevenLabsMusicLicenseEvidence) {
-      throw new Error('ElevenLabs Music staging requires verified Enterprise rights, training opt-out, license ID, and terms version')
+  if (creativeRouterMiniMaxVideoHttpClientEnabled) {
+    if (nodeEnv !== 'production') throw new Error('CREATIVE_ROUTER_MINIMAX_VIDEO_HTTP_CLIENT_ENABLED requires NODE_ENV=production')
+    if (creativeProviderRuntimeEnv !== 'staging') throw new Error('CREATIVE_ROUTER_MINIMAX_VIDEO_HTTP_CLIENT_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
+    if (!creativeRouterMiniMaxVideoNetworkCallsEnabled) throw new Error('CREATIVE_ROUTER_MINIMAX_VIDEO_HTTP_CLIENT_ENABLED requires CREATIVE_ROUTER_MINIMAX_VIDEO_NETWORK_CALLS_ENABLED=true')
+    if (creativeRouterMiniMaxVideoConfirmation !== 'staging-only') throw new Error('CREATIVE_ROUTER_MINIMAX_VIDEO_HTTP_CLIENT_ENABLED requires CREATIVE_ROUTER_MINIMAX_VIDEO_CONFIRMATION=staging-only')
+    if (!hasCreativeRouterMiniMaxVideoApiKey) throw new Error('CREATIVE_ROUTER_MINIMAX_VIDEO_API_KEY is required when the MiniMax Video HTTP client is enabled')
+    let minimaxVideoUrl
+    try { minimaxVideoUrl = new URL(creativeRouterMiniMaxVideoBaseUrl) } catch { minimaxVideoUrl = null }
+    if (!minimaxVideoUrl || minimaxVideoUrl.protocol !== 'https:' || minimaxVideoUrl.hostname !== 'router.hctopup.com') {
+      throw new Error('CREATIVE_ROUTER_MINIMAX_VIDEO_BASE_URL must be https://router.hctopup.com')
+    }
+    if (!creativeRouterVideoLifecycleEnabled) throw new Error('MiniMax Video HTTP client requires CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED=true')
+  }
+  if (creativeRouterMusicNetworkCallsEnabled && !creativeRouterMusicHttpClientEnabled) {
+    throw new Error('CREATIVE_ROUTER_MUSIC_NETWORK_CALLS_ENABLED requires CREATIVE_ROUTER_MUSIC_HTTP_CLIENT_ENABLED=true')
+  }
+  if (creativeRouterMusicHttpClientEnabled) {
+    if (nodeEnv !== 'production') throw new Error('CREATIVE_ROUTER_MUSIC_HTTP_CLIENT_ENABLED requires NODE_ENV=production')
+    if (creativeProviderRuntimeEnv !== 'staging') throw new Error('CREATIVE_ROUTER_MUSIC_HTTP_CLIENT_ENABLED requires CREATIVE_PROVIDER_RUNTIME_ENV=staging')
+    if (!creativeRouterMusicNetworkCallsEnabled) throw new Error('CREATIVE_ROUTER_MUSIC_HTTP_CLIENT_ENABLED requires CREATIVE_ROUTER_MUSIC_NETWORK_CALLS_ENABLED=true')
+    if (creativeRouterMusicConfirmation !== 'staging-only') throw new Error('CREATIVE_ROUTER_MUSIC_HTTP_CLIENT_ENABLED requires CREATIVE_ROUTER_MUSIC_CONFIRMATION=staging-only')
+    if (!hasCreativeRouterMusicApiKey) throw new Error('CREATIVE_ROUTER_MUSIC_API_KEY is required when the Music HTTP client is enabled')
+    if (!creativeRouterMusicRightsConfirmed || !creativeRouterMusicTrainingOptOutConfirmed || !hasCreativeRouterMusicLicenseEvidence) {
+      throw new Error('Router MiniMax Music staging requires rights acknowledgement, training opt-out evidence, license ID, and terms version')
+    }
+  }
+  for (const [label, mode, urlValue, token] of [
+    ['CREATIVE_INPUT_SAFETY_CLASSIFIER', creativeInputSafetyClassifierMode, creativeInputSafetyClassifierUrl, creativeInputSafetyClassifierToken],
+    ['CREATIVE_OUTPUT_SAFETY_CLASSIFIER', creativeOutputSafetyClassifierMode, creativeOutputSafetyClassifierUrl, creativeOutputSafetyClassifierToken],
+  ]) {
+    if (!supportedCreativeSafetyClassifierModes.includes(mode)) {
+      throw new Error(`${label}_MODE must be one of: ${supportedCreativeSafetyClassifierModes.join(', ')}`)
+    }
+    if (mode === 'external') {
+      let endpoint
+      try { endpoint = new URL(urlValue) } catch { endpoint = null }
+      if (!endpoint || endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
+        throw new Error(`${label}_URL must be a fixed HTTPS URL without credentials, query, or fragment`)
+      }
+      if (token.length < 16) throw new Error(`${label}_TOKEN must be at least 16 characters when external mode is enabled`)
     }
   }
   if (mediaScanProvider === 'webhook' && !String(source.MEDIA_SCAN_WEBHOOK_SECRET ?? '').trim()) {
@@ -489,6 +590,17 @@ export const buildEnv = (source = process.env) => {
   if (creativeProviderAlertsEnabled && creativeProviderAlertChannels.length === 0) {
     throw new Error('CREATIVE_PROVIDER_ALERT_CHANNELS must include at least one channel when CREATIVE_PROVIDER_ALERTS_ENABLED=true')
   }
+  if (creativeProviderAlertsEnabled && !creativeProviderAlertDeliveryWorkerEnabled) {
+    throw new Error('CREATIVE_PROVIDER_ALERT_DELIVERY_WORKER_ENABLED must be true when CREATIVE_PROVIDER_ALERTS_ENABLED=true')
+  }
+  if (creativeProviderAlertsEnabled && creativeProviderAlertAllowedHosts.length === 0) {
+    throw new Error('CREATIVE_PROVIDER_ALERT_ALLOWED_HOSTS must include at least one hostname when CREATIVE_PROVIDER_ALERTS_ENABLED=true')
+  }
+  const configuredProviderAlertHosts = [creativeProviderAlertWebhookUrl, creativeProviderAlertSlackWebhookUrl, creativeProviderAlertEmailWebhookUrl]
+    .filter(Boolean).map((value) => new URL(value).hostname.toLowerCase())
+  if (creativeProviderAlertsEnabled && configuredProviderAlertHosts.some((hostname) => !creativeProviderAlertAllowedHosts.includes(hostname))) {
+    throw new Error('CREATIVE_PROVIDER_ALERT_ALLOWED_HOSTS must include every configured Provider alert hostname')
+  }
   if (creativeProviderAlertChannels.includes('webhook') && !creativeProviderAlertWebhookUrl) {
     throw new Error('CREATIVE_PROVIDER_ALERT_WEBHOOK_URL is required when CREATIVE_PROVIDER_ALERT_CHANNELS includes webhook')
   }
@@ -501,8 +613,28 @@ export const buildEnv = (source = process.env) => {
   if (workerLeaseRenewIntervalSeconds >= workerLeaseTtlSeconds) {
     throw new Error('WORKER_LEASE_RENEW_INTERVAL_SECONDS must be less than WORKER_LEASE_TTL_SECONDS')
   }
+  if (auditRetentionWorkerEnabled && (!auditRetentionPruneEnabled || auditRetentionLegalHold)) {
+    throw new Error('AUDIT_RETENTION_WORKER_ENABLED requires AUDIT_RETENTION_PRUNE_ENABLED=true and AUDIT_RETENTION_LEGAL_HOLD=false')
+  }
+  if (auditRetentionWorkerEnabled && storageDriver !== 's3') {
+    throw new Error('AUDIT_RETENTION_WORKER_ENABLED requires durable STORAGE_DRIVER=s3 archive storage')
+  }
+  if (providerSecretRetentionWorkerEnabled) {
+    let endpoint
+    try { endpoint = new URL(secretManagerLifecycleGatewayUrl) } catch { endpoint = null }
+    if (!secretManagerLifecycleGatewayEnabled || secretManagerLifecycleGatewayConfirmation !== 'managed-secret-lifecycle-enabled') {
+      throw new Error('PROVIDER_SECRET_RETENTION_WORKER_ENABLED requires the managed secret lifecycle gateway and explicit confirmation')
+    }
+    if (!endpoint || endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
+      throw new Error('SECRET_MANAGER_LIFECYCLE_GATEWAY_URL must be a fixed HTTPS URL without credentials, query, or fragment')
+    }
+    if (secretManagerLifecycleGatewayToken.length < 16) {
+      throw new Error('SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN must be at least 16 characters when Provider secret retention is enabled')
+    }
+  }
   return {
     port: toPort(source.PORT),
+    processShutdownTimeoutSeconds,
     nodeEnv,
     deploymentEnv,
     secretManagerProvider,
@@ -536,6 +668,12 @@ export const buildEnv = (source = process.env) => {
     creativeOpenAIImageHttpClientEnabled,
     creativeOpenAIImageNetworkCallsEnabled,
     hasCreativeOpenAIImageApiToken,
+    creativeInputSafetyClassifierMode,
+    hasCreativeInputSafetyClassifierUrl: Boolean(creativeInputSafetyClassifierUrl),
+    hasCreativeInputSafetyClassifierToken: Boolean(creativeInputSafetyClassifierToken),
+    creativeOutputSafetyClassifierMode,
+    hasCreativeOutputSafetyClassifierUrl: Boolean(creativeOutputSafetyClassifierUrl),
+    hasCreativeOutputSafetyClassifierToken: Boolean(creativeOutputSafetyClassifierToken),
     creativeProviderCallbackEnabled,
     hasCreativeProviderCallbackSignatureSecret: Boolean(creativeProviderCallbackSecret),
     creativeProviderCallbackReplayWindowSeconds,
@@ -586,27 +724,86 @@ export const buildEnv = (source = process.env) => {
     creativeProviderPollingIntervalSeconds,
     creativeProviderPollingSweepLimit,
     creativeProviderPollingRequireCreditReservation: boolFlag(source, 'CREATIVE_PROVIDER_POLLING_REQUIRE_CREDIT_RESERVATION', false),
-    creativeGoogleVeoLifecycleEnabled,
-    creativeGoogleVeoLifecycleWorkerEnabled,
-    creativeGoogleVeoHttpClientEnabled,
-    creativeGoogleVeoNetworkCallsEnabled,
-    hasCreativeGoogleVeoAccessToken,
-    creativeGoogleVeoProjectId,
-    creativeGoogleVeoLocation,
-    creativeGoogleVeoOutputGcsUri,
-    creativeGoogleVeoPollIntervalSeconds,
-    creativeGoogleVeoTimeoutSeconds,
-    creativeGoogleVeoMaxStatusAttempts,
-    creativeGoogleVeoSweepLimit,
-    creativeElevenLabsMusicHttpClientEnabled,
-    creativeElevenLabsMusicNetworkCallsEnabled,
-    hasCreativeElevenLabsMusicApiKey,
-    creativeElevenLabsMusicRightsConfirmed,
-    creativeElevenLabsMusicTrainingOptOutConfirmed,
-    hasCreativeElevenLabsMusicLicenseEvidence,
+    creativeRouterVideoLifecycleEnabled,
+    creativeRouterVideoLifecycleWorkerEnabled,
+    creativeRouterVideoHttpClientEnabled,
+    creativeRouterVideoNetworkCallsEnabled,
+    hasCreativeRouterVideoApiKey,
+    creativeRouterVideoBaseUrl,
+    creativeRouterMiniMaxVideoHttpClientEnabled,
+    creativeRouterMiniMaxVideoNetworkCallsEnabled,
+    hasCreativeRouterMiniMaxVideoApiKey,
+    creativeRouterMiniMaxVideoBaseUrl,
+    creativeRouterVideoPollIntervalSeconds,
+    creativeRouterVideoTimeoutSeconds,
+    creativeRouterVideoMaxStatusAttempts,
+    creativeRouterVideoSweepLimit,
+    creativeRouterMusicHttpClientEnabled,
+    creativeRouterMusicNetworkCallsEnabled,
+    hasCreativeRouterMusicApiKey,
+    creativeRouterMusicRightsConfirmed,
+    creativeRouterMusicTrainingOptOutConfirmed,
+    hasCreativeRouterMusicLicenseEvidence,
     chatRetentionWorkerEnabled: boolFlag(source, 'CHAT_RETENTION_WORKER_ENABLED', false),
     chatRetentionWorkerIntervalSeconds,
     chatRetentionSweepLimit,
+    dataRightsDeletionWorkerEnabled: boolFlag(source, 'DATA_RIGHTS_DELETION_WORKER_ENABLED', false),
+    dataRightsDeletionWorkerIntervalSeconds,
+    dataRightsDeletionSweepLimit,
+    dataRightsDeletionProcessingRecoverySeconds,
+    dataRightsExportRetentionWorkerEnabled: boolFlag(source, 'DATA_RIGHTS_EXPORT_RETENTION_WORKER_ENABLED', false),
+    dataRightsExportRetentionWorkerIntervalSeconds,
+    dataRightsExportRetentionSweepLimit,
+    observabilityRetentionWorkerEnabled: boolFlag(source, 'OBSERVABILITY_RETENTION_WORKER_ENABLED', false),
+    observabilityRetentionWorkerIntervalSeconds,
+    observabilityRetentionSweepLimit,
+    notificationRetentionWorkerEnabled: boolFlag(source, 'NOTIFICATION_RETENTION_WORKER_ENABLED', false),
+    notificationRetentionWorkerIntervalSeconds,
+    notificationRetentionSweepLimit,
+    operationLeaseRetentionWorkerEnabled: boolFlag(source, 'OPERATION_LEASE_RETENTION_WORKER_ENABLED', false),
+    operationLeaseRetentionWorkerIntervalSeconds,
+    operationLeaseRetentionSweepLimit,
+    privateLibraryRetentionWorkerEnabled: boolFlag(source, 'PRIVATE_LIBRARY_RETENTION_WORKER_ENABLED', false),
+    privateLibraryRetentionWorkerIntervalSeconds,
+    privateLibraryRetentionSweepLimit,
+    authCredentialRetentionWorkerEnabled: boolFlag(source, 'AUTH_CREDENTIAL_RETENTION_WORKER_ENABLED', false),
+    authCredentialRetentionWorkerIntervalSeconds,
+    authCredentialRetentionSweepLimit,
+    auditRetentionWorkerEnabled,
+    auditRetentionWorkerIntervalSeconds,
+    communityRetentionWorkerEnabled: boolFlag(source, 'COMMUNITY_RETENTION_WORKER_ENABLED', false),
+    communityRetentionWorkerIntervalSeconds,
+    communityRetentionSweepLimit,
+    securityEventRetentionWorkerEnabled: boolFlag(source, 'SECURITY_EVENT_RETENTION_WORKER_ENABLED', false),
+    securityEventRetentionWorkerIntervalSeconds,
+    securityEventRetentionSweepLimit,
+    riskRetentionWorkerEnabled: boolFlag(source, 'RISK_RETENTION_WORKER_ENABLED', false),
+    riskRetentionWorkerIntervalSeconds,
+    riskRetentionSweepLimit,
+    moderationRetentionWorkerEnabled: boolFlag(source, 'MODERATION_RETENTION_WORKER_ENABLED', false),
+    moderationRetentionWorkerIntervalSeconds,
+    moderationRetentionSweepLimit,
+    generationRetentionWorkerEnabled: boolFlag(source, 'GENERATION_RETENTION_WORKER_ENABLED', false),
+    generationRetentionWorkerIntervalSeconds,
+    generationRetentionSweepLimit,
+    mediaAssetRetentionWorkerEnabled: boolFlag(source, 'MEDIA_ASSET_RETENTION_WORKER_ENABLED', false),
+    mediaAssetRetentionWorkerIntervalSeconds,
+    mediaAssetRetentionSweepLimit,
+    providerLifecycleRetentionWorkerEnabled: boolFlag(source, 'PROVIDER_LIFECYCLE_RETENTION_WORKER_ENABLED', false),
+    providerLifecycleRetentionWorkerIntervalSeconds,
+    providerLifecycleRetentionSweepLimit,
+    configurationRetentionWorkerEnabled: boolFlag(source, 'CONFIGURATION_RETENTION_WORKER_ENABLED', false),
+    configurationRetentionWorkerIntervalSeconds,
+    configurationRetentionSweepLimit,
+    marketplaceRetentionWorkerEnabled: boolFlag(source, 'MARKETPLACE_RETENTION_WORKER_ENABLED', false),
+    marketplaceRetentionWorkerIntervalSeconds,
+    marketplaceRetentionSweepLimit,
+    supportRetentionWorkerEnabled: boolFlag(source, 'SUPPORT_RETENTION_WORKER_ENABLED', false),
+    supportRetentionWorkerIntervalSeconds,
+    supportRetentionSweepLimit,
+    providerSecretRetentionWorkerEnabled,
+    providerSecretRetentionWorkerIntervalSeconds,
+    providerSecretRetentionSweepLimit,
     hasChatMessageEncryptionKey,
     mediaScanHistoryRetentionDays,
     mediaScanHistoryRetentionMaxPerAsset,
@@ -654,6 +851,13 @@ export const buildEnv = (source = process.env) => {
     creativeProviderAlertEmailRecipientCount: creativeProviderAlertEmailRecipients.length,
     hasCreativeProviderAlertEmailFrom: Boolean(String(source.CREATIVE_PROVIDER_ALERT_EMAIL_FROM ?? '').trim()),
     creativeProviderAlertEmailTimeoutSeconds,
+    creativeProviderAlertDeliveryWorkerEnabled,
+    creativeProviderAlertDeliveryWorkerIntervalSeconds,
+    creativeProviderAlertDeliveryWorkerBatchSize,
+    creativeProviderAlertDeliveryLeaseSeconds,
+    creativeProviderAlertDeliveryMaxAttempts,
+    creativeProviderAlertDeliveryRetryBaseSeconds,
+    creativeProviderAlertAllowedHosts,
     hasMediaScanRequestUrl: Boolean(mediaScanRequestUrl),
     hasMediaScanRequestSecret: Boolean(String(source.MEDIA_SCAN_REQUEST_SECRET ?? '').trim()),
     hasMediaScanCallbackBaseUrl: Boolean(mediaScanCallbackBaseUrl),
@@ -673,6 +877,7 @@ export const buildEnv = (source = process.env) => {
     rateLimitAuthMax,
     rateLimitUploadMax,
     rateLimitAdminMutationMax,
+    rateLimitClientTelemetryMax,
     metricsExporterEnabled: boolFlag(source, 'METRICS_EXPORTER_ENABLED', false),
     metricsExporterFormat,
     hasMetricsExporterToken: Boolean(String(source.METRICS_EXPORTER_TOKEN ?? '').trim()),
@@ -894,6 +1099,18 @@ export const buildCreativeProviderConfig = (source = process.env) => {
       implemented: true,
       enabled: current.creativeProviderHttpClientEnabled,
       supportedProviderIds: ['replicate-staging'],
+    },
+    safetyClassifiers: {
+      input: {
+        implemented: true,
+        mode: current.creativeInputSafetyClassifierMode,
+        configured: current.creativeInputSafetyClassifierMode === 'external' && current.hasCreativeInputSafetyClassifierUrl && current.hasCreativeInputSafetyClassifierToken,
+      },
+      output: {
+        implemented: true,
+        mode: current.creativeOutputSafetyClassifierMode,
+        configured: current.creativeOutputSafetyClassifierMode === 'external' && current.hasCreativeOutputSafetyClassifierUrl && current.hasCreativeOutputSafetyClassifierToken,
+      },
     },
     callback: {
       implemented: true,

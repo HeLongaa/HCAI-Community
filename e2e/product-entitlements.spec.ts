@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { apiBaseUrl, apiData, authHeaders, login, signInPage } from './helpers'
+import { apiBaseUrl, apiData, authHeaders, login, selectAdminSection, signInPage } from './helpers'
 
 type Plan = { id: string; key: string; status: string; version: number }
 type PlanVersion = { id: string; version: number }
@@ -69,7 +69,7 @@ test('personal entitlement appears for the user and remains operable in Admin Fi
     await adminPage.goto('/')
     await adminPage.getByRole('button', { name: 'Toggle navigation' }).click()
     await adminPage.getByTestId('nav-admin').click()
-    await adminPage.getByRole('button', { name: 'Finance', exact: true }).click()
+    await selectAdminSection(adminPage, 'Finance')
     const panel = adminPage.getByTestId('admin-entitlements-panel')
     await expect(panel).toBeVisible()
     await expect(panel).toContainText('Personal entitlement control')
@@ -87,10 +87,15 @@ test('personal entitlement appears for the user and remains operable in Admin Fi
     await panel.getByRole('button', { name: 'Evaluate', exact: true }).click()
     await expect(panel.locator('.entitlement-decision')).toContainText('Denied')
     await expect(panel.locator('.entitlement-decision')).toContainText('entitlement_quota_too_low')
+    await expect(panel.locator('.admin-action-feedback')).toContainText('Entitlement evaluated.')
+    await expect(adminPage.getByTestId('app-toast')).toHaveCount(0)
 
     const download = adminPage.waitForEvent('download')
     await panel.getByRole('button', { name: 'Export', exact: true }).click()
     await expect((await download).suggestedFilename()).toMatch(/^personal-entitlements-\d{4}-\d{2}-\d{2}\.json$/)
+    await expect(adminPage.locator('a[download^="personal-entitlements-"]')).toHaveCount(0)
+    await expect(panel.locator('.admin-action-feedback')).toContainText('Entitlement snapshot exported.')
+    await expect(adminPage.getByTestId('app-toast')).toHaveCount(0)
 
     const layout = await panel.evaluate((element) => {
       const rect = element.getBoundingClientRect()

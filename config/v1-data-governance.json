@@ -9,7 +9,7 @@
     "retentionAutomationComplete": false,
     "accountExportImplemented": true,
     "accountDeletionImplemented": true,
-    "providerDeletionAutomationImplemented": false,
+    "providerDeletionAutomationImplemented": true,
     "backupDeletionRehearsed": false,
     "policyConsentImplemented": true,
     "supportEntryPointsImplemented": true,
@@ -98,9 +98,9 @@
       "id": "configuration_superseded_plus_365d",
       "trigger": "configuration_superseded",
       "maximumDaysAfterTrigger": 365,
-      "action": "delete_history_or_retain_non_secret_diff",
-      "fieldOverrides": {},
-      "exceptions": ["active_configuration"]
+      "action": "irreversibly_minimize_values_identities_and_notes_retain_hash_only_shape_evidence",
+      "fieldOverrides": { "active_configuration": 0, "pending_or_approved_rollback_target": 0 },
+      "exceptions": ["active_configuration", "pending_or_approved_rollback_target"]
     },
     {
       "id": "lease_expiry_plus_7d",
@@ -192,17 +192,17 @@
     },
     {
       "id": "notification_created_plus_180d",
-      "trigger": "notification_created",
+      "trigger": "notification_created_or_provider_alert_terminal",
       "maximumDaysAfterTrigger": 180,
       "action": "hard_delete",
       "fieldOverrides": {},
-      "exceptions": []
+      "exceptions": ["provider_alert_delivery_not_terminal"]
     },
     {
       "id": "support_close_plus_730d",
       "trigger": "support_ticket_closed",
       "maximumDaysAfterTrigger": 730,
-      "action": "redact_request_and_message_bodies_then_delete",
+      "action": "redact_message_bodies_then_retain_minimal_case_evidence",
       "fieldOverrides": { "support_message_body": 365 },
       "exceptions": ["active_legal_hold", "open_privacy_or_data_rights_request"]
     },
@@ -271,6 +271,32 @@
       "exceptions": ["managed_key_version_required_for_decryption"]
     }
   ],
+  "retentionAutomationInventory": {
+    "account_deletion_plus_30d": "implemented_pending_target_environment_acceptance",
+    "auth_expiry_plus_30d": "implemented_pending_target_environment_acceptance",
+    "configuration_superseded_plus_365d": "implemented_pending_target_environment_acceptance",
+    "lease_expiry_plus_7d": "implemented_pending_target_environment_acceptance",
+    "marketplace_close_plus_730d": "partial_mutable_task_redaction_implemented_immutable_lifecycle_event_ledger_and_asset_evidence_contract_required",
+    "community_delete_plus_30d": "implemented_pending_target_environment_acceptance",
+    "search_index_source_change_plus_7d": "implemented_success_queue_evidence_deleted_immediately_failures_retained_for_investigation",
+    "private_library_delete_plus_30d": "implemented_pending_target_environment_acceptance",
+    "internal_ledger_plus_730d": "partial_new_writes_pseudonymized_historical_immutable_fact_anonymization_contract_pending",
+    "media_asset_delete_plus_30d": "implemented_pending_target_environment_acceptance",
+    "media_scan_history_180d": "implemented",
+    "generation_terminal_365d": "implemented_pending_target_environment_acceptance",
+    "chat_inactive_plus_365d": "implemented",
+    "provider_lifecycle_terminal_180d": "implemented_pending_target_environment_acceptance",
+    "notification_created_plus_180d": "implemented_pending_target_environment_acceptance",
+    "support_close_plus_730d": "implemented_pending_target_environment_acceptance",
+    "moderation_close_plus_730d": "implemented_pending_target_environment_acceptance",
+    "audit_event_plus_730d": "implemented_pending_target_environment_acceptance",
+    "security_event_365d": "implemented_pending_target_environment_acceptance",
+    "transient_request_zero": "implemented_by_strict_projection_and_non_persistence",
+    "observability_bounded": "implemented_pending_target_environment_acceptance",
+    "rolling_backup_35d": "local_restore_negative_expiry_rehearsal_implemented_pending_target_environment_schedule_and_kms_acceptance",
+    "export_package_7d": "implemented_pending_target_environment_acceptance",
+    "retired_secret_30d": "implemented_pending_target_environment_acceptance"
+  },
   "dataAssets": [
     {
       "id": "governance_configuration",
@@ -303,11 +329,11 @@
     {
       "id": "identity_account_profile",
       "classification": "confidential",
-      "prismaModels": ["User", "UserTag", "UserTagAssignment", "Profile", "ProfilePortfolioAsset", "DataRightsRequest", "DataRightsEvent", "DataRightsExportArtifact", "DataRightsDeletionReceipt", "DataRightsBackupExpiryReceipt"],
+      "prismaModels": ["User", "UserTag", "UserTagAssignment", "Profile", "ProfilePortfolioAsset", "DataRightsRequest", "DataRightsEvent", "DataRightsExportArtifact", "DataRightsDeletionReceipt", "DataRightsBackupExpiryReceipt", "DataRightsLegalHold", "DataRightsLegalHoldEvent"],
       "locations": ["postgres"],
       "dataSubjects": ["user"],
       "purposes": ["account_service", "community_participation", "support_operations", "legal_compliance"],
-      "exampleFields": ["email", "display name", "avatar", "handle", "bio", "skills", "languages", "profile visibility", "discoverability", "activity visibility", "portfolio visibility", "profile version", "account lifecycle version", "suspension timestamp", "bounded suspension reason code", "deletion request timestamp", "deletion schedule", "bounded deletion reason code", "user tag definition", "tag assignment lifecycle", "portfolio draft relation", "portfolio lifecycle state", "hashed data rights subject reference", "export checksum", "deletion domain receipt", "backup expiry evidence hash"],
+      "exampleFields": ["email", "display name", "avatar", "handle", "bio", "skills", "languages", "profile visibility", "discoverability", "activity visibility", "portfolio visibility", "profile version", "account lifecycle version", "suspension timestamp", "bounded suspension reason code", "deletion request timestamp", "deletion schedule", "bounded deletion reason code", "user tag definition", "tag assignment lifecycle", "portfolio draft relation", "portfolio lifecycle state", "hashed data rights subject reference", "export checksum", "deletion domain receipt", "backup expiry evidence hash", "legal hold scope domain", "authority reference hash", "review and expiry timestamps", "legal hold event hash"],
       "accessRoles": ["user_self", "authorized_service", "support_operator_allowlisted", "data_rights_operator_allowlisted"],
       "retentionPolicyId": "account_deletion_plus_30d",
       "exportPolicy": "include_user_owned_fields",
@@ -373,7 +399,7 @@
     {
       "id": "community_content_interactions",
       "classification": "public",
-      "prismaModels": ["Post", "Comment", "PostLike", "CommunityAdminBulkOperation"],
+      "prismaModels": ["Post", "Comment", "PostLike", "CommunityAdminBulkOperation", "InspirationCategory", "InspirationEntry", "InspirationRevision", "InspirationFavorite", "InspirationUsage"],
       "locations": ["postgres"],
       "dataSubjects": ["author", "participant"],
       "purposes": ["community_participation", "safety_moderation"],
@@ -555,7 +581,7 @@
     {
       "id": "provider_control_records",
       "classification": "confidential",
-      "prismaModels": ["CreativeProviderControlState", "CreativeProviderCapEvidence", "CreativeProviderCircuitState", "CreativeProviderCircuitEvent", "Provider", "Model", "ModelVersion", "ModelCapability", "ModelDeployment", "PricingVersion", "ModelRoutePolicy", "ModelRouteTarget", "ModelRoutePolicyRevision", "ModelRouteDecision", "ProviderSecretRef", "ModelPromotion", "ProviderOperationalPolicy", "ProviderHealthEvidence", "ProviderRateLimitWindow", "ProviderDispatchLease"],
+      "prismaModels": ["CreativeProviderControlState", "CreativeProviderCapEvidence", "CreativeProviderCircuitState", "CreativeProviderCircuitEvent", "Provider", "Model", "ModelVersion", "ModelCapability", "ModelDeployment", "PricingVersion", "ModelRoutePolicy", "ModelRouteTarget", "ModelRoutePolicyRevision", "ModelRouteDecision", "ProviderSecretRef", "ProviderSecretLifecycleReceipt", "ModelPromotion", "ProviderOperationalPolicy", "ProviderHealthEvidence", "ProviderRateLimitWindow", "ProviderDispatchLease"],
       "locations": ["postgres"],
       "dataSubjects": ["user", "system", "authorized_operator"],
       "purposes": ["creative_generation", "internal_accounting", "support_operations"],
@@ -597,15 +623,15 @@
     {
       "id": "notification_records",
       "classification": "confidential",
-      "prismaModels": ["Notification", "NotificationTemplate", "NotificationTemplateVersion", "NotificationPreference", "NotificationDelivery", "NotificationDeliveryAttempt", "NotificationChannelConfig", "NotificationChannelConfigRevision", "WebhookDelivery", "WebhookDeliveryAttempt", "WebhookDeliveryReplay"],
+      "prismaModels": ["Notification", "NotificationTemplate", "NotificationTemplateVersion", "NotificationPreference", "NotificationDelivery", "NotificationDeliveryAttempt", "NotificationChannelConfig", "NotificationChannelConfigRevision", "WebhookDelivery", "WebhookDeliveryAttempt", "WebhookDeliveryReplay", "ProviderAlertDelivery", "ProviderAlertDeliveryAttempt", "ProviderAlertDeliveryReplay"],
       "locations": ["postgres"],
-      "dataSubjects": ["user"],
+      "dataSubjects": ["user", "system", "authorized_operator"],
       "purposes": ["account_service", "marketplace_delivery", "creative_generation", "support_operations"],
-      "exampleFields": ["type", "title", "body", "deep link", "safe metadata", "read state", "template key and immutable version", "closed variable schema", "personal in-app enabled preference", "channel enablement and bounded delivery thresholds", "immutable channel configuration revision", "webhook event id and version", "delivery status and bounded attempts", "DLQ replay idempotency evidence"],
-      "accessRoles": ["user_self", "authorized_service", "notification_operator_redacted"],
+      "exampleFields": ["type", "title", "body", "deep link", "safe metadata", "read state", "template key and immutable version", "closed variable schema", "personal in-app enabled preference", "channel enablement and bounded delivery thresholds", "immutable channel configuration revision", "webhook event id and version", "Provider budget alert schema-versioned payload", "delivery status and bounded attempts", "DLQ replay idempotency evidence", "hash-only receipt"],
+      "accessRoles": ["user_self", "authorized_service", "notification_operator_redacted", "provider_operations_operator_redacted"],
       "retentionPolicyId": "notification_created_plus_180d",
-      "exportPolicy": "include_user_notifications_and_webhook_delivery_summaries_without_signing_material",
-      "deletionPolicy": "hard_delete",
+      "exportPolicy": "include_user_notifications_and_webhook_delivery_summaries_without_signing_material_exclude_provider_alert_payloads_destinations_recipients_and_secrets",
+      "deletionPolicy": "hard_delete_notifications_after_creation_and_terminal_provider_alert_delivery_attempt_replay_families_after_terminal_update_at_180d",
       "ownerTasks": ["V1-68", "V1-67", "V1-53"]
     },
     {
@@ -615,11 +641,11 @@
       "locations": ["postgres"],
       "dataSubjects": ["user", "support_operator"],
       "purposes": ["support_operations", "legal_compliance"],
-      "exampleFields": ["request category and subject", "restricted request details", "assignment and priority", "state and version", "first-response and resolution SLA", "append-only requester and operator messages", "typed moderation or review case links"],
+      "exampleFields": ["request category and subject", "restricted request details", "assignment and priority", "state and version", "first-response and resolution SLA", "stable subject references", "append-only requester and operator messages", "typed moderation or review case links"],
       "accessRoles": ["user_self", "authorized_service", "support_operator_allowlisted", "auditor_redacted"],
       "retentionPolicyId": "support_close_plus_730d",
       "exportPolicy": "include_user_visible_ticket_and_messages_exclude_internal_operator_evidence_for_other_subjects",
-      "deletionPolicy": "redact_subject_details_and_message_bodies_after_retention_or_account_deletion_unless_legal_hold",
+      "deletionPolicy": "redact_message_bodies_after_365d_then_remove_subject_details_resource_and_actor_links_after_730d_retain_minimal_case_evidence_unless_legal_hold_or_open_data_rights_request",
       "ownerTasks": ["V1-67", "V1-78"]
     },
     {
@@ -653,11 +679,11 @@
     {
       "id": "security_event_records",
       "classification": "restricted",
-      "prismaModels": ["SecurityEvent"],
+      "prismaModels": ["SecurityEvent", "SecurityIncident"],
       "locations": ["postgres"],
       "dataSubjects": ["user", "visitor", "system"],
       "purposes": ["auth_security", "support_operations", "legal_compliance"],
-      "exampleFields": ["event type", "severity", "source", "folded client key", "safe identity", "path", "redacted details"],
+      "exampleFields": ["event type", "severity", "source", "folded client key", "safe identity", "hashed subject reference", "path", "redacted details", "open or resolved incident state", "confirmed critical flag"],
       "accessRoles": ["authorized_security_service", "security_operator", "auditor"],
       "retentionPolicyId": "security_event_365d",
       "exportPolicy": "exclude_detection_logic_provide_subject_security_summary_when_safe",
@@ -695,7 +721,7 @@
     {
       "id": "observability_logs_traces_metrics",
       "classification": "internal",
-      "prismaModels": ["ObservabilityLog", "TraceSpan", "ObservabilityAlert", "ObservabilitySloControl", "ObservabilityAlertEvent", "ObservabilityIncidentReview"],
+      "prismaModels": ["ObservabilityLog", "TraceSpan", "ObservabilityRetentionAggregate", "ObservabilityAlert", "ObservabilitySloControl", "ObservabilityAlertEvent", "ObservabilityIncidentReview"],
       "locations": ["postgres", "observability"],
       "dataSubjects": ["user", "staff_role", "system"],
       "purposes": ["auth_security", "support_operations"],
@@ -972,7 +998,7 @@
   "subjectRights": {
     "export": {
       "implementationTaskId": "V1-67",
-      "implementationStatus": "not_implemented",
+      "implementationStatus": "implemented_pending_production_storage_acceptance",
       "authentication": "recent_authentication_and_step_up_for_sensitive_export",
       "format": ["JSON manifest", "UTF-8 JSON records", "owned clean assets", "SHA-256 checksums"],
       "targetDays": 30,
@@ -982,7 +1008,7 @@
     },
     "deletion": {
       "implementationTaskId": "V1-67",
-      "implementationStatus": "not_implemented",
+      "implementationStatus": "implemented_pending_backup_expiry_rehearsal",
       "authentication": "recent_authentication_and_explicit_confirmation",
       "immediateActions": ["disable account", "revoke sessions and OAuth tokens", "revoke private downloads", "block new jobs and notifications"],
       "primaryStoreTargetDays": 30,
@@ -994,7 +1020,7 @@
       "requiredEvidence": ["request id", "verified subject", "asset plan", "per-store results", "processor receipts", "exceptions", "completed timestamp"]
     },
     "legalHold": {
-      "implementationStatus": "not_implemented",
+      "implementationStatus": "implemented_pending_target_environment_migration_acceptance",
       "authorizedRoles": ["legal_hold_admin", "security_legal_incident_owner"],
       "requiredFields": ["hold id", "scope", "reason code", "authority reference", "owner", "createdAt", "reviewAt", "expiresAt"],
       "reviewIntervalDays": 90,
@@ -1045,14 +1071,14 @@
         "deletionEvidence": "contract retention and exception evidence"
       },
       {
-        "providerId": "google-veo-3-1-fast",
+        "providerId": "hcai-router-seedance-2-fast",
         "modality": "video",
         "approvalStatus": "not_approved",
         "allowedDataAssetIds": ["raw_generation_inputs", "media_object_bytes"],
-        "defaultRetention": "Request/response logging is off by default; abuse logging may apply and in-memory caching can last up to 24 hours.",
-        "trainingDefault": false,
-        "regionCondition": "approved us-central1 processing and cross-border review",
-        "deletionEvidence": "logging/cache configuration and contract evidence"
+        "defaultRetention": "Unconfirmed for HCAI Router and the upstream Seedance channel; sensitive content is blocked.",
+        "trainingDefault": null,
+        "regionCondition": "Router and upstream processing locations plus cross-border review must be approved",
+        "deletionEvidence": "Router and upstream retention, logging, training, and deletion contract evidence"
       },
       {
         "providerId": "runway-gen-4-5",
@@ -1065,7 +1091,7 @@
         "deletionEvidence": "enterprise retention and deletion evidence"
       },
       {
-        "providerId": "elevenlabs-music-v2-enterprise",
+        "providerId": "hcai-router-minimax-music-3",
         "modality": "music",
         "approvalStatus": "not_approved",
         "allowedDataAssetIds": ["raw_generation_inputs", "media_object_bytes"],
@@ -1143,7 +1169,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 166,
+    "modelCount": 179,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",
@@ -1162,17 +1188,27 @@
       "Admin creative serializers redact unsafe identifiers, URLs, and error previews",
       "archive and object writers support mock/S3-compatible boundaries",
       "Trust and Safety reports, cases, hash evidence, original decisions and independently reviewed appeals are append-only PostgreSQL facts with owner-scoped reads",
-      "personal-account data rights requests enforce recent identity, bounded secret-free exports, 30-day deletion grace, 15-domain primary deletion, immutable evidence, and three-class backup expiry completion"
+      "personal-account data rights requests enforce recent identity, bounded secret-free exports, 30-day deletion grace, 15-domain primary deletion, immutable evidence, and three-class backup expiry completion",
+      "due account deletion invokes an explicitly enabled HTTPS Provider privacy gateway before local deletion and persists only bounded hash-based receipts",
+      "expired data export packages use a dedicated namespace-constrained object deletion boundary, remove the database locator only after object deletion, and retain hash-only expiry evidence through a leased bounded worker",
+      "scoped legal holds use a normalized expiring registry, hashed authority references, append-only events, domain-level deletion exclusion, and blocked-request retry after release or expiry",
+      "observability retention transactionally aggregates non-identifying daily service metrics before deleting raw logs after 30 days, traces after 7 days, and aggregates after 90 days through a leased bounded worker",
+      "notifications and cascaded delivery evidence are deleted after 180 days through a leased bounded worker",
+      "expired or released operation leases are deleted after seven days through a leased bounded worker",
+      "successful search synchronization queue rows are deleted immediately while failed rows remain available for bounded investigation",
+      "Prisma and Seed observability persistence share a fail-closed root and event-attribute allowlist that rejects unknown fields and nested values before writing logs or paired spans",
+      "terminal Provider lifecycle operation, mutation, replay, ingestion, and retry evidence is irreversibly minimized after 180 days only after review, legal-hold, reconciliation, accounting, and lifecycle closeout through a leased worker sharing generation locks",
+      "isolated RELEASE-01 rehearsal restores database and media backups, then simulates the 35-day boundary by deleting backup objects and proving restore-negative HEAD/GET behavior with hash-bound evidence"
     ],
     "knownGaps": [
       "no production object-storage acceptance for account export packages",
-      "no production backup expiry and restore-negative deletion rehearsal",
-      "no field-level retention sweeper outside media scan history",
-      "no Provider deletion request/receipt ledger",
-      "no backup expiry and restore deletion rehearsal evidence",
-      "no global structured log allowlist enforcement",
+      "no target-environment 35-day backup lifecycle schedule or managed encryption-key destruction acceptance",
+      "retention automation remains incomplete; the per-policy retentionAutomationInventory is authoritative for implemented, partial, pending, blocked, and policy-conflict states",
+      "Provider lifecycle retention passed isolated PostgreSQL acceptance; migration 0116 and the disabled-by-default worker still require target-environment scheduling, replay, alerting, and access-control acceptance",
+      "private Library retention passed isolated PostgreSQL acceptance; migration 0105 and the disabled-by-default worker still require target-environment acceptance",
+      "the external output-safety classifier and Provider deletion gateway still require production processor disclosure and legal approval",
       "current foreign-key behavior can cascade or restrict deletion without the frozen anonymization plan",
-      "no legal-hold registry or expiry workflow",
+      "legal-hold registry, deletion cutoff serialization, and Provider receipt constraints passed isolated PostgreSQL acceptance; target-environment migration acceptance remains required",
       "no account-level Chat export/deletion orchestration beyond owner conversation deletion and restore tombstones"
     ],
     "evidenceFiles": [
@@ -1215,7 +1251,15 @@
       "server/src/modules/compliance/routes.js",
       "server/src/compliance/policyManifest.js",
       "server/src/dataRights/dataRightsLifecycle.js",
+      "server/src/dataRights/exportArtifactRetention.js",
+      "server/src/dataRights/providerDeletionGateway.js",
       "server/src/dataRights/prismaDataRightsRepository.js",
+      "server/src/dataRights/seedDataRightsRepository.js",
+      "server/src/observability/observabilityRetention.js",
+      "server/src/observability/structuredLogging.js",
+      "server/src/observability/prismaObservabilityRepository.js",
+      "server/src/observability/seedObservabilityRepository.js",
+      "server/src/operations/workerJobs.js",
       "server/src/modules/dataRights/routes.js"
     ]
   },

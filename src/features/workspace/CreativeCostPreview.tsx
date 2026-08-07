@@ -10,13 +10,17 @@ export function CreativeCostPreview({
   workspace,
   mode,
   providerId,
+  parameters = {},
 }: {
   t: Record<string, string>
   workspace: CreativeWorkspace
   mode: string
   providerId?: string | null
+  parameters?: { aspectRatio?: string; quality?: string }
 }) {
-  const requestKey = `${workspace}:${mode}:${providerId ?? ''}`
+  const aspectRatio = parameters.aspectRatio
+  const quality = parameters.quality
+  const requestKey = `${workspace}:${mode}:${providerId ?? ''}:${aspectRatio ?? ''}:${quality ?? ''}`
   const [result, setResult] = useState<{
     key: string
     preview: ApiCreativeAccountingPreview | null
@@ -26,14 +30,14 @@ export function CreativeCostPreview({
   useEffect(() => {
     if (!mode) return
     let active = true
-    creativeService.accountingPreview(workspace, mode, providerId).then((result) => {
+    creativeService.accountingPreview(workspace, mode, providerId, { aspectRatio, quality }).then((result) => {
       if (!active) return
       setResult({ key: requestKey, preview: result, error: false })
     }).catch(() => {
       if (active) setResult({ key: requestKey, preview: null, error: true })
     })
     return () => { active = false }
-  }, [mode, providerId, requestKey, workspace])
+  }, [aspectRatio, mode, providerId, quality, requestKey, workspace])
 
   if (result.key !== requestKey) {
     return <div className="creative-cost-preview loading">{textFor(t, 'Loading cost and limit…', '正在读取积分与限额…')}</div>
@@ -44,11 +48,15 @@ export function CreativeCostPreview({
   const preview = result.preview
   const reset = new Date(preview.quota.window.resetsAt)
   const resetLabel = Number.isNaN(reset.getTime()) ? '-' : reset.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  const providerCostLabel = preview.providerCost.availability === 'available' && preview.providerCost.estimateAmount != null
+    ? `${textFor(t, 'Provider cost:', '提供方成本：')} ${preview.providerCost.currency ?? 'USD'} ${preview.providerCost.estimateAmount.toFixed(6)}`
+    : textFor(t, 'Provider cost: unavailable', '提供方成本：不可用')
   return (
     <div className={`creative-cost-preview ${preview.quota.allowed ? '' : 'blocked'}`} data-testid={`creative-cost-${workspace}`}>
       <span><CircleDollarSign size={15} /><strong>{preview.credits.estimate}</strong> {textFor(t, 'credits estimated', '积分预估')}</span>
       <span><Gauge size={15} /><strong>{preview.quota.weight}</strong> {textFor(t, 'quota units', '限额单位')} · {textFor(t, 'remaining', '剩余')} {preview.quota.remaining}/{preview.quota.limit}</span>
-      <small>{textFor(t, 'Resets', '重置')} {resetLabel} · {textFor(t, 'Provider cost', '提供方成本')}: {preview.providerCost.availability === 'available' ? textFor(t, 'available from ledger', '以账本为准') : textFor(t, 'unavailable', '不可用')} · {preview.policy.version}</small>
+      <small>{providerCostLabel}</small>
+      <small>{textFor(t, 'Usage resets at', '使用额度重置于')} {resetLabel}</small>
     </div>
   )
 }

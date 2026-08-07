@@ -2,7 +2,8 @@
   "schemaVersion": 1,
   "task": "V1-39",
   "policy": {
-    "productionReadyRequiresZeroReleaseBlockers": true,
+    "scope": "runtime_surface_fallback_disposition_only",
+    "fallbackDispositionCompleteRequiresZeroReleaseBlockers": true,
     "allowedTargets": ["production_capable", "development_only", "fixture_only", "explicit_unavailable"],
     "realProviderApprovalRequired": true
   },

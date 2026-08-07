@@ -27,6 +27,10 @@ import {
   parseAdminSecurityAlertActionRequest,
   parseAdminSecurityAlertSilenceRequest,
   parseAdminSecurityEventListQuery,
+  parseAdminSecurityIncidentAttachRequest,
+  parseAdminSecurityIncidentCreateRequest,
+  parseAdminSecurityIncidentListQuery,
+  parseAdminSecurityIncidentResolveRequest,
   parseHighRiskApprovalRequest,
   parsePointAdjustmentPolicyRequest,
   parsePointAdjustmentPolicyRollbackRequest,
@@ -48,7 +52,7 @@ import { getProtectedRolePermissions } from '../../auth/permissions.js'
 import { defaultPointAdjustmentPolicy, getDirectLimitForActor } from '../../points/adjustmentPolicy.js'
 import { buildBillingPolicyPreview } from '../../accounting/billingPolicyRuntime.js'
 import { safeCreativeCreditMetadata, safeErrorPreview, safeProviderJobIdEvidence } from '../../creative/generationRecords.js'
-import { providerMoneyAmount } from '../../creative/providerCostContract.js'
+import { providerMoneyAmount, stableProviderCostHash, toProviderMoneyMicros } from '../../creative/providerCostContract.js'
 import { createProviderCapEvidence } from '../../creative/providerControlContract.js'
 import { safeProviderLifecycleEvidenceIdentifier } from '../../repositories/providerLifecycleWiring.js'
 import {
@@ -91,6 +95,21 @@ const isPointAdjustmentReview = (review) => review?.queue === 'points' || review
 const isManualProviderReplayReview = (review) => review?.metadata?.kind === 'manual_provider_replay'
 const isProviderControlRecoveryReview = (review) => review?.metadata?.kind === 'provider_control_recovery'
 const isAccountingCompensationReview = (review) => review?.metadata?.kind === 'accounting_compensation'
+
+const parseProviderCostSettlement = (body = {}) => {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw validationFailed('payload must be an object')
+  const unsupported = Object.keys(body).filter((key) => !['actualAmount', 'currency', 'evidenceRef', 'reasonCode'].includes(key))
+  if (unsupported.length) throw validationFailed(`payload contains unsupported fields: ${unsupported.join(', ')}`)
+  const actualMicros = toProviderMoneyMicros(body.actualAmount, { allowZero: false })
+  if (actualMicros == null) throw validationFailed('actualAmount must be a positive amount with at most six decimal places')
+  const currency = String(body.currency ?? '').trim().toUpperCase()
+  if (currency !== 'USD') throw validationFailed('currency must be USD')
+  const evidenceRef = String(body.evidenceRef ?? '').trim()
+  if (!/^[a-z0-9][a-z0-9:._/-]{2,127}$/i.test(evidenceRef)) throw validationFailed('evidenceRef must be a safe bounded reference')
+  const reasonCode = String(body.reasonCode ?? '').trim().toLowerCase()
+  if (!/^[a-z0-9][a-z0-9._-]{2,79}$/.test(reasonCode)) throw validationFailed('reasonCode must be a safe bounded code')
+  return { actualMicros: actualMicros.toString(), currency, evidenceRef, reasonCode }
+}
 
 const safeProviderControlBundle = ({ controls, circuits, capEvidence, retries = [] }) => ({
   controls: controls.map((control) => ({
@@ -263,6 +282,8 @@ const safeProviderCost = (providerCost) => {
       costExceededEstimate: safeBoolean(risk.costExceededEstimate),
       providerUsageMissing: safeBoolean(risk.providerUsageMissing),
       billingReconciliationRequired: safeBoolean(risk.billingReconciliationRequired),
+      providerStatus: safeNumber(risk.providerStatus),
+      providerCategory: safeString(risk.providerCategory),
     },
     pricingSnapshot: Object.keys(pricingSnapshot).length > 0
       ? {
@@ -1257,6 +1278,45 @@ export const registerAdminRoutes = (router, options = {}) => {
     ))
   })
 
+  router.add('POST', '/api/admin/creative/generations/:id/provider-cost-settlement', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:accounting:repair')
+    if (
+      typeof routeRepositories.creativeProviderCosts?.findForGeneration !== 'function'
+      || typeof routeRepositories.creativeProviderCosts?.settle !== 'function'
+    ) {
+      throw new HttpError(503, 'CREATIVE_PROVIDER_COST_REPOSITORY_UNAVAILABLE', 'Provider cost settlement is unavailable')
+    }
+    const payload = parseProviderCostSettlement((await readJsonBody(request)) ?? {})
+    const generation = await routeRepositories.creativeGenerations.find(context.params.id)
+    if (!generation) throw notFound(`/api/admin/creative/generations/${context.params.id}`)
+    const ledger = await routeRepositories.creativeProviderCosts?.findForGeneration?.(generation.id)
+    if (!ledger) throw notFound(`/api/admin/creative/generations/${context.params.id}/provider-cost-settlement`)
+    if (!['reserved', 'reconciliation_required'].includes(ledger.status)) {
+      throw new HttpError(409, 'CREATIVE_PROVIDER_COST_ALREADY_CLOSED', 'Provider cost ledger is already closed', { status: ledger.status })
+    }
+    if (ledger.currency !== payload.currency) {
+      throw new HttpError(409, 'CREATIVE_PROVIDER_COST_CONFLICT', 'Provider cost currency does not match the ledger', { reasonCode: 'actual_currency_mismatch' })
+    }
+    const evidenceRefHash = stableProviderCostHash(payload.evidenceRef)
+    const settled = await routeRepositories.creativeProviderCosts.settle(ledger.sourceKey, {
+      actualMicros: payload.actualMicros,
+      actualCurrency: payload.currency,
+      providerJobId: generation.providerJobId ?? ledger.providerJobId ?? null,
+      usage: ledger.usage,
+      risk: { ...(ledger.risk ?? {}), reconciliationRequired: false, reasonCodes: ['manual_cost_confirmed'], evidenceRefHash },
+      reasonCode: payload.reasonCode,
+      settledAt: new Date().toISOString(),
+    }, actor)
+    await routeRepositories.audit?.recordAttempt?.({
+      actor,
+      action: 'admin.creative.provider_cost.manually_settled',
+      resourceType: 'creative_provider_cost_ledger',
+      resourceId: ledger.id,
+      metadata: { generationId: generation.id, currency: payload.currency, actualMicros: payload.actualMicros, evidenceRefHash, reasonCode: payload.reasonCode },
+    })
+    ok(response, settled)
+  })
+
   router.add('POST', '/api/admin/creative/generations/:id/cancel', async (request, response, context) => {
     const actor = requirePermission(context, 'admin:creative:cancel')
     const payload = parseAdminCreativeGenerationMutationRequest((await readJsonBody(request)) ?? {})
@@ -1302,6 +1362,41 @@ export const registerAdminRoutes = (router, options = {}) => {
         nextCursor: page.nextCursor,
       },
     })
+  })
+
+  router.add('GET', '/api/admin/security/incidents', async (_request, response, context) => {
+    requirePermission(context, 'admin:audit:read')
+    ok(response, await routeRepositories.securityRetention.listIncidents(parseAdminSecurityIncidentListQuery(context.query)))
+  })
+
+  router.add('POST', '/api/admin/security/incidents', async (request, response, context) => {
+    const actor = requirePermission(context, 'security:alerts:manage')
+    ok(response, await routeRepositories.securityRetention.createIncident(
+      actor,
+      parseAdminSecurityIncidentCreateRequest((await readJsonBody(request)) ?? {}),
+    ))
+  })
+
+  router.add('POST', '/api/admin/security/incidents/:id/events', async (request, response, context) => {
+    const actor = requirePermission(context, 'security:alerts:manage')
+    const incident = await routeRepositories.securityRetention.attachEvents(
+      actor,
+      context.params.id,
+      parseAdminSecurityIncidentAttachRequest((await readJsonBody(request)) ?? {}),
+    )
+    if (!incident) throw notFound(`/api/admin/security/incidents/${context.params.id}`)
+    ok(response, incident)
+  })
+
+  router.add('POST', '/api/admin/security/incidents/:id/resolve', async (request, response, context) => {
+    const actor = requirePermission(context, 'security:alerts:manage')
+    const incident = await routeRepositories.securityRetention.resolveIncident(
+      actor,
+      context.params.id,
+      parseAdminSecurityIncidentResolveRequest((await readJsonBody(request)) ?? {}),
+    )
+    if (!incident) throw notFound(`/api/admin/security/incidents/${context.params.id}`)
+    ok(response, incident)
   })
 
   router.add('GET', '/api/admin/security/alerts', async (_request, response, context) => {

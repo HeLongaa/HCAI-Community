@@ -1,0 +1,248 @@
+name: newchat-production
+
+x-application-environment: &application-environment
+  NODE_ENV: production
+  DEPLOYMENT_ENV: production
+  DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+  ACCESS_TOKEN_SECRET: ${ACCESS_TOKEN_SECRET:?ACCESS_TOKEN_SECRET is required}
+  SECRET_MANAGER_PROVIDER: ${SECRET_MANAGER_PROVIDER:-vault}
+  STORAGE_DRIVER: s3
+  STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
+  STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+  STORAGE_BUCKET: ${STORAGE_BUCKET:-newchat-media}
+  STORAGE_KEY_PREFIX: ${STORAGE_KEY_PREFIX:-images/}
+  STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:?STORAGE_ACCESS_KEY_ID is required}
+  STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:?STORAGE_SECRET_ACCESS_KEY is required}
+  MEDIA_SCAN_PROVIDER: manual
+  RATE_LIMIT_STORE: redis
+  RATE_LIMIT_REDIS_URL: ${RATE_LIMIT_REDIS_URL:?RATE_LIMIT_REDIS_URL is required}
+  RATE_LIMIT_REDIS_FAILURE_MODE: fail_closed
+  API_EMBEDDED_WORKERS_ENABLED: "false"
+  CREATIVE_PROVIDER_MODE: disabled
+  PROCESS_SHUTDOWN_TIMEOUT_SECONDS: ${PROCESS_SHUTDOWN_TIMEOUT_SECONDS:-30}
+
+x-application-security: &application-security
+  init: true
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=64m
+  pids_limit: 256
+  stop_grace_period: 45s
+
+services:
+  gateway:
+    image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    tmpfs:
+      - /config:rw,noexec,nosuid,size=8m
+      - /data:rw,noexec,nosuid,size=8m
+      - /tmp:rw,noexec,nosuid,size=8m
+    pids_limit: 128
+    cpus: 0.50
+    mem_limit: 128m
+    depends_on:
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/gateway-healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - edge
+
+  frontend:
+    <<: *application-security
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: frontend
+      args:
+        VITE_API_BASE_URL: /api
+        VITE_APP_RELEASE: ${APP_RELEASE:-container}
+    restart: unless-stopped
+    cpus: 0.50
+    mem_limit: 192m
+    networks:
+      - edge
+
+  api:
+    <<: *application-security
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: api
+    restart: unless-stopped
+    environment:
+      <<: *application-environment
+      PORT: 8787
+    cpus: 1.50
+    mem_limit: 768m
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - edge
+      - backend
+
+  worker:
+    <<: *application-security
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: worker
+    restart: unless-stopped
+    environment:
+      <<: *application-environment
+      DOMAIN_EVENT_WORKER_ENABLED: "true"
+      SEARCH_INDEX_WORKER_ENABLED: "true"
+    cpus: 1.50
+    mem_limit: 768m
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - backend
+
+  migration:
+    <<: *application-security
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: migrate
+    restart: "no"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+    cpus: 1.00
+    mem_limit: 512m
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  postgres:
+    image: postgres:16.10-bookworm@sha256:38471f330eb885e04de130b768d6db4e10469e2311879c7e5c699f6d2d8a1c74
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-newchat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-newchat}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    pids_limit: 256
+    cpus: 2.00
+    mem_limit: 1g
+    shm_size: 256m
+    networks:
+      - backend
+
+  redis:
+    image: redis:7.4.5-bookworm@sha256:90e7a336d044f1abc9e9dbc05d65566850896d11453bbd1dd0fb7e5059f0e8fb
+    restart: unless-stopped
+    command: ["sh", "-c", "exec redis-server --appendonly yes --appendfsync everysec --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$${REDIS_PASSWORD} redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    pids_limit: 128
+    cpus: 1.00
+    mem_limit: 384m
+    networks:
+      - backend
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:?STORAGE_ACCESS_KEY_ID is required}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:?STORAGE_SECRET_ACCESS_KEY is required}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    pids_limit: 256
+    cpus: 1.00
+    mem_limit: 512m
+    networks:
+      - backend
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    restart: "no"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      MC_CONFIG_DIR: /tmp/.mc
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:?STORAGE_ACCESS_KEY_ID is required}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:?STORAGE_SECRET_ACCESS_KEY is required}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-newchat-media}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - >-
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
+        mc mb --ignore-existing "local/$$STORAGE_BUCKET"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    pids_limit: 64
+    cpus: 0.25
+    mem_limit: 64m
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - backend
+
+networks:
+  edge: {}
+  backend:
+    internal: true
+
+volumes:
+  postgres-data: {}
+  redis-data: {}
+  minio-data: {}

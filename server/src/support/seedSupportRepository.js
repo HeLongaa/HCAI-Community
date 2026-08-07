@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { HttpError } from '../common/errors/httpError.js'
+import { dataRightsSafeSubjectRef } from '../dataRights/dataRightsLifecycle.js'
 import { assertSupportTransition, decodeSupportCursor, encodeSupportCursor, serializeSupportTicket, supportSlaDates, supportSlaState } from './supportOperations.js'
 
 const activeStatuses = ['open', 'in_progress', 'waiting_on_user']
@@ -14,11 +15,12 @@ export const createSeedSupportRepository = ({ getUserById, recordAudit, notifyRe
     create(payload, actor) {
       const now = new Date()
       const ticket = {
-        id: `support-${randomUUID()}`, requesterId: actor.id, requester: actor,
+        id: `support-${randomUUID()}`, requesterId: actor.id, requesterSubjectRef: dataRightsSafeSubjectRef(actor.id), requester: actor,
         category: payload.category, status: 'open', priority: payload.priority,
         subject: payload.subject, details: payload.details, relatedResourceType: payload.relatedResourceType,
         relatedResourceId: payload.relatedResourceId, locale: payload.locale, assignedToId: null, assignedTo: null,
         ...supportSlaDates(payload.category, payload.priority, now), firstRespondedAt: null, resolvedAt: null, closedAt: null,
+        dataRightsRedactedAt: null, retentionMessageRedactedAt: null, retentionRedactedAt: null,
         version: 1, createdAt: now, updatedAt: now, messages: [], caseLinks: [],
       }
       tickets.unshift(ticket)
@@ -41,7 +43,7 @@ export const createSeedSupportRepository = ({ getUserById, recordAudit, notifyRe
       if (ticket.status === 'closed') throw new HttpError(409, 'SUPPORT_TICKET_CLOSED', 'Closed support tickets cannot receive messages')
       if (ticket.version !== payload.expectedVersion) throw new HttpError(409, 'VERSION_CONFLICT', 'Support ticket was modified concurrently')
       if (ticket.status === 'waiting_on_user') ticket.status = 'in_progress'
-      ticket.messages.push({ id: `support-message-${randomUUID()}`, authorId: actor.id, author: actor, authorType: 'requester', body: payload.message, createdAt: new Date() })
+      ticket.messages.push({ id: `support-message-${randomUUID()}`, authorId: actor.id, authorSubjectRef: dataRightsSafeSubjectRef(actor.id), author: actor, authorType: 'requester', body: payload.message, createdAt: new Date() })
       touch(ticket)
       recordAudit({ actor, action: 'support.ticket.requester_message_added', resourceType: 'support_ticket', resourceId: ticket.id, metadata: { reasonCode: payload.reasonCode, status: ticket.status } })
       return project(ticket)
@@ -105,7 +107,7 @@ export const createSeedSupportRepository = ({ getUserById, recordAudit, notifyRe
       if (ticket.version !== payload.expectedVersion) throw new HttpError(409, 'VERSION_CONFLICT', 'Support ticket was modified concurrently')
       if (ticket.status === 'open') ticket.status = 'in_progress'
       ticket.firstRespondedAt ??= new Date()
-      ticket.messages.push({ id: `support-message-${randomUUID()}`, authorId: actor.id, author: actor, authorType: 'operator', body: payload.message, createdAt: new Date() })
+      ticket.messages.push({ id: `support-message-${randomUUID()}`, authorId: actor.id, authorSubjectRef: dataRightsSafeSubjectRef(actor.id), author: actor, authorType: 'operator', body: payload.message, createdAt: new Date() })
       touch(ticket)
       recordAudit({ actor, action: 'admin.support.message_added', resourceType: 'support_ticket', resourceId: ticket.id, metadata: { reasonCode: payload.reasonCode, status: ticket.status, version: ticket.version } })
       notifyRequester?.(ticket.requester, ticket, 'support.message_added')
@@ -117,7 +119,7 @@ export const createSeedSupportRepository = ({ getUserById, recordAudit, notifyRe
       if (ticket.version !== payload.expectedVersion) throw new HttpError(409, 'VERSION_CONFLICT', 'Support ticket was modified concurrently')
       if (ticket.caseLinks.some((link) => link.caseType === payload.caseType && link.caseId === payload.caseId)) throw new HttpError(409, 'SUPPORT_CASE_ALREADY_LINKED', 'Case is already linked to this support ticket')
       if (!await caseExists?.(payload.caseType, payload.caseId)) throw new HttpError(422, 'SUPPORT_CASE_NOT_FOUND', 'Linked case does not exist')
-      ticket.caseLinks.push({ id: `support-link-${randomUUID()}`, caseType: payload.caseType, caseId: payload.caseId, createdAt: new Date() })
+      ticket.caseLinks.push({ id: `support-link-${randomUUID()}`, caseType: payload.caseType, caseId: payload.caseId, createdById: actor.id, createdBySubjectRef: dataRightsSafeSubjectRef(actor.id), createdAt: new Date() })
       touch(ticket)
       recordAudit({ actor, action: 'admin.support.case_linked', resourceType: 'support_ticket', resourceId: ticket.id, metadata: { caseType: payload.caseType, caseId: payload.caseId, reasonCode: payload.reasonCode } })
       return project(ticket)

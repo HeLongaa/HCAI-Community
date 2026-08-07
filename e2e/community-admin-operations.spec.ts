@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { apiBaseUrl, apiData, authHeaders, login, signInPage } from './helpers'
+import { apiBaseUrl, apiData, authHeaders, login, selectAdminSection, signInPage } from './helpers'
 
 const createPost = async (request: Parameters<typeof login>[0], title: string) => {
   const author = await login(request, 'promptlin')
@@ -14,7 +14,7 @@ test('Community Admin edits, deletes, restores, and bulk disposes content', asyn
   await signInPage(page, request, 'opsplus')
   await page.goto('/')
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('main').getByRole('button', { name: 'Community', exact: true }).click()
+  await selectAdminSection(page, 'Community')
   const panel = page.getByTestId('community-admin-panel')
   await expect(panel).toBeVisible()
   await panel.getByLabel('Search').fill(fixture.post.id)
@@ -24,9 +24,31 @@ test('Community Admin edits, deletes, restores, and bulk disposes content', asyn
   await expect(panel.getByLabel('Title')).toHaveValue(fixture.post.title)
   await panel.getByLabel('Title').fill(`${fixture.post.title} edited`)
   await panel.getByLabel('Reason code').fill('e2e_community_edit')
+  let updateAttempts = 0
+  await page.route(`**/api/admin/community/posts/${fixture.post.id}`, async (route) => {
+    if (route.request().method() !== 'PATCH') {
+      await route.continue()
+      return
+    }
+    updateAttempts += 1
+    if (updateAttempts === 1) {
+      await route.fulfill({ status: 503, json: { error: { code: 'COMMUNITY_UPDATE_UNAVAILABLE', message: 'Community update is temporarily unavailable.' } } })
+      return
+    }
+    await route.continue()
+  })
+  await panel.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(panel.locator('.community-admin-operation-feedback.error')).toContainText('Community update is temporarily unavailable.')
+  await expect(panel.getByLabel('Title')).toHaveValue(`${fixture.post.title} edited`)
+  await expect(panel.getByLabel('Reason code')).toHaveValue('e2e_community_edit')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
+
   const update = page.waitForResponse((response) => response.url().endsWith(`/api/admin/community/posts/${fixture.post.id}`) && response.request().method() === 'PATCH')
   await panel.getByRole('button', { name: 'Save', exact: true }).click()
   expect((await update).ok()).toBeTruthy()
+  await expect(panel.locator('.community-admin-operation-feedback')).toContainText('Community content updated.')
+  expect(updateAttempts).toBe(2)
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
 
   await panel.getByLabel('Search').fill(fixture.post.id)
   await expect(row).toBeVisible()
@@ -34,6 +56,7 @@ test('Community Admin edits, deletes, restores, and bulk disposes content', asyn
   const removed = page.waitForResponse((response) => response.url().endsWith(`/api/admin/community/posts/${fixture.post.id}/delete`))
   await panel.getByRole('button', { name: 'Delete', exact: true }).click()
   expect((await removed).ok()).toBeTruthy()
+  await expect(panel.locator('.community-admin-operation-feedback')).toContainText('Content deleted.')
   await panel.getByLabel('Deletion').selectOption('deleted')
   await panel.getByLabel('Search').fill(fixture.post.id)
   await expect(row).toBeVisible()
@@ -41,6 +64,7 @@ test('Community Admin edits, deletes, restores, and bulk disposes content', asyn
   const restored = page.waitForResponse((response) => response.url().endsWith(`/api/admin/community/posts/${fixture.post.id}/restore`))
   await panel.getByRole('button', { name: 'Restore', exact: true }).click()
   expect((await restored).ok()).toBeTruthy()
+  await expect(panel.locator('.community-admin-operation-feedback')).toContainText('Content restored.')
 
   await panel.getByRole('button', { name: 'Comments', exact: true }).click()
   await panel.getByLabel('Search').fill(fixture.comment.id)
@@ -54,6 +78,8 @@ test('Community Admin edits, deletes, restores, and bulk disposes content', asyn
   const bulk = page.waitForResponse((response) => response.url().endsWith('/api/admin/community/bulk') && response.request().method() === 'POST')
   await panel.getByRole('button', { name: 'Execute', exact: true }).click()
   expect((await bulk).ok()).toBeTruthy()
+  await expect(panel.locator('.community-admin-operation-feedback')).toContainText('Bulk completed: 1 succeeded, 0 skipped.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
 })
 
 test('Community Admin remains bounded on a mobile viewport', async ({ page, request }) => {
@@ -63,9 +89,15 @@ test('Community Admin remains bounded on a mobile viewport', async ({ page, requ
   await page.goto('/')
   await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('main').getByRole('button', { name: 'Community', exact: true }).click()
+  await selectAdminSection(page, 'Community')
   const panel = page.getByTestId('community-admin-panel')
   await expect(panel).toBeVisible()
+  const download = page.waitForEvent('download')
+  await panel.getByRole('button', { name: 'Export metrics', exact: true }).click()
+  expect((await download).suggestedFilename()).toMatch(/^community-metrics-\d{4}-\d{2}-\d{2}\.json$/)
+  await expect(panel.locator('.community-admin-operation-feedback')).toContainText('Community metrics exported.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
+  await expect(page.locator('a[download^="community-metrics-"]')).toHaveCount(0)
   await panel.scrollIntoViewIfNeeded()
   const layout = await panel.evaluate((element) => ({ panelWidth: element.getBoundingClientRect().width, viewportWidth: window.innerWidth, overflow: [...element.querySelectorAll<HTMLElement>('*')].filter((node) => getComputedStyle(node).overflowX !== 'auto' && node.scrollWidth > node.clientWidth + 2).map((node) => node.className).filter(Boolean).slice(0, 10) }))
   expect(layout.panelWidth).toBeLessThanOrEqual(layout.viewportWidth)

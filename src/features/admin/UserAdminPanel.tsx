@@ -5,14 +5,21 @@ import { SectionHeader } from '../../components/ui/SectionHeader'
 import type { Role } from '../../domain/types'
 import { textFor } from '../../domain/utils'
 import { adminService } from '../../services/adminService'
+import { downloadJsonArtifact } from './downloadAdminArtifact'
 import type { AdminUserDto, AdminUserMetrics, AdminUserStatus, AdminUserTag, AdminUserTagColor } from '../../services/contracts'
+import { AdminActionFeedback } from './AdminActionFeedback'
+import { AdminOperationConfirmation } from './AdminOperationConfirmation'
+import './admin-users.css'
 
 type Props = {
   t: Record<string, string>
   canRead: boolean
   canManage: boolean
-  notify: (message: string) => void
 }
+
+type PendingConfirmation =
+  | { scope: 'user'; action: 'suspend' | 'restore' }
+  | { scope: 'tag'; action: 'archive' | 'restore' }
 
 const roles: Role[] = ['member', 'creator', 'publisher', 'moderator', 'admin']
 const statuses: AdminUserStatus[] = ['active', 'suspended', 'deleted']
@@ -29,15 +36,14 @@ const metricQuery = (dateFrom: string, dateTo: string) => ({
 })
 
 const downloadJson = (document: unknown) => {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(document, null, 2)], { type: 'application/json' }))
-  const link = window.document.createElement('a')
-  link.href = url
-  link.download = `user-lifecycle-metrics-${new Date().toISOString().slice(0, 10)}.json`
-  link.click()
-  URL.revokeObjectURL(url)
+  downloadJsonArtifact({
+    value: document,
+    fileName: `user-lifecycle-metrics-${new Date().toISOString().slice(0, 10)}.json`,
+    mimeType: 'application/json',
+  })
 }
 
-export function UserAdminPanel({ t, canRead, canManage, notify }: Props) {
+export function UserAdminPanel({ t, canRead, canManage }: Props) {
   const [users, setUsers] = useState<AdminUserDto[]>([])
   const [selected, setSelected] = useState<AdminUserDto | null>(null)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
@@ -51,6 +57,8 @@ export function UserAdminPanel({ t, canRead, canManage, notify }: Props) {
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [actionMessage, setActionMessage] = useState('')
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null)
 
   const [metrics, setMetrics] = useState<AdminUserMetrics | null>(null)
   const [dateFrom, setDateFrom] = useState(initialDateFrom)
@@ -139,6 +147,7 @@ export function UserAdminPanel({ t, canRead, canManage, notify }: Props) {
   const selectUser = async (user: AdminUserDto) => {
     setSelected(user)
     setError('')
+    setPendingConfirmation(null)
     try { setSelected(await adminService.user(user.id)) } catch (detailError) { setError(errorMessage(detailError, textFor(t, 'Could not load user detail.', '无法读取用户详情。'))) }
   }
 
@@ -149,26 +158,24 @@ export function UserAdminPanel({ t, canRead, canManage, notify }: Props) {
 
   const transition = async (action: 'suspend' | 'restore') => {
     if (!canManage || !selected) return
-    const prompt = action === 'suspend'
-      ? textFor(t, 'Suspend this user and revoke every active session?', '暂停该用户并撤销全部活跃会话？')
-      : textFor(t, 'Restore this user without restoring old sessions?', '恢复该用户，但不恢复旧会话？')
-    if (!window.confirm(prompt)) return
     setBusy(true)
     setError('')
+    setActionMessage('')
     try {
       const payload = { expectedVersion: selected.version, reasonCode: reasonCode.trim() || 'operator_requested' }
       const result = action === 'suspend' ? await adminService.suspendUser(selected.id, payload) : await adminService.restoreUser(selected.id, payload)
       replaceUser(result.user)
-      notify(action === 'suspend'
+      setActionMessage(action === 'suspend'
         ? textFor(t, `User suspended; ${result.revokedSessions ?? 0} sessions revoked.`, `用户已暂停，撤销 ${result.revokedSessions ?? 0} 个会话。`)
         : textFor(t, 'User restored. Old sessions remain revoked.', '用户已恢复，旧会话仍保持撤销。'))
     } catch (actionError) {
       setError(errorMessage(actionError, textFor(t, 'Could not update user status.', '无法更新用户状态。')))
       try { replaceUser(await adminService.user(selected.id)) } catch { /* preserve the actionable error */ }
-    } finally { setBusy(false) }
+    } finally { setBusy(false); setPendingConfirmation(null) }
   }
 
   const clearTagDraft = () => {
+    setPendingConfirmation(null)
     setSelectedTagId('')
     setTagKey('')
     setTagLabel('')
@@ -177,6 +184,7 @@ export function UserAdminPanel({ t, canRead, canManage, notify }: Props) {
   }
 
   const editTag = (tag: AdminUserTag) => {
+    setPendingConfirmation(null)
     setSelectedTagId(tag.id)
     setTagKey(tag.key)
     setTagLabel(tag.label)
@@ -195,7 +203,7 @@ export function UserAdminPanel({ t, canRead, canManage, notify }: Props) {
         : await adminService.createUserTag({ key: tagKey.trim(), label: tagLabel.trim(), description: tagDescription.trim() || null, color: tagColor, reasonCode: reason })
       setTags((current) => selectedTag ? current.map((item) => item.id === tag.id ? tag : item) : [...current, tag].sort((left, right) => left.label.localeCompare(right.label)))
       editTag(tag)
-      notify(textFor(t, 'User tag saved.', '用户标签已保存。'))
+      setActionMessage(textFor(t, 'User tag saved.', '用户标签已保存。'))
     } catch (actionError) {
       setError(errorMessage(actionError, textFor(t, 'Could not save user tag.', '无法保存用户标签。')))
       await loadTags()
@@ -203,19 +211,20 @@ export function UserAdminPanel({ t, canRead, canManage, notify }: Props) {
   }
 
   const transitionTag = async (action: 'archive' | 'restore') => {
-    if (!canManage || !selectedTag || !window.confirm(textFor(t, `${action === 'archive' ? 'Archive' : 'Restore'} ${selectedTag.label}?`, `${action === 'archive' ? '归档' : '恢复'} ${selectedTag.label}？`))) return
+    if (!canManage || !selectedTag) return
     setBusy(true)
     setError('')
+    setActionMessage('')
     try {
       const payload = { expectedVersion: selectedTag.version, reasonCode: reasonCode.trim() || 'operator_requested' }
       const tag = action === 'archive' ? await adminService.archiveUserTag(selectedTag.id, payload) : await adminService.restoreUserTag(selectedTag.id, payload)
       setTags((current) => current.map((item) => item.id === tag.id ? tag : item))
       editTag(tag)
-      notify(textFor(t, `User tag ${action}d.`, `用户标签已${action === 'archive' ? '归档' : '恢复'}。`))
+      setActionMessage(textFor(t, `User tag ${action}d.`, `用户标签已${action === 'archive' ? '归档' : '恢复'}。`))
     } catch (actionError) {
       setError(errorMessage(actionError, textFor(t, 'Could not change user tag status.', '无法更新用户标签状态。')))
       await loadTags()
-    } finally { setBusy(false) }
+    } finally { setBusy(false); setPendingConfirmation(null) }
   }
 
   const changeAssignment = async (tag: AdminUserTag, action: 'assign' | 'remove') => {
@@ -227,7 +236,7 @@ export function UserAdminPanel({ t, canRead, canManage, notify }: Props) {
       const result = action === 'assign' ? await adminService.assignUserTag(selected.id, tag.id, payload) : await adminService.removeUserTag(selected.id, tag.id, payload)
       replaceUser(result.user)
       await Promise.all([loadTags(), loadMetrics()])
-      notify(textFor(t, `User tag ${action === 'assign' ? 'assigned' : 'removed'}.`, `用户标签已${action === 'assign' ? '分配' : '移除'}。`))
+      setActionMessage(textFor(t, `User tag ${action === 'assign' ? 'assigned' : 'removed'}.`, `用户标签已${action === 'assign' ? '分配' : '移除'}。`))
     } catch (actionError) {
       setError(errorMessage(actionError, textFor(t, 'Could not change user tags.', '无法更新用户标签。')))
       try { replaceUser(await adminService.user(selected.id)) } catch { /* preserve the actionable error */ }
@@ -238,7 +247,7 @@ export function UserAdminPanel({ t, canRead, canManage, notify }: Props) {
     setMetricsBusy(true)
     try {
       downloadJson(await adminService.exportUserMetrics(metricQuery(dateFrom, dateTo)))
-      notify(textFor(t, 'User lifecycle metrics exported.', '用户生命周期统计已导出。'))
+      setActionMessage(textFor(t, 'User lifecycle metrics exported.', '用户生命周期统计已导出。'))
     } catch (exportError) {
       setError(errorMessage(exportError, textFor(t, 'Could not export user metrics.', '无法导出用户统计。')))
     } finally { setMetricsBusy(false) }
@@ -247,7 +256,7 @@ export function UserAdminPanel({ t, canRead, canManage, notify }: Props) {
   if (!canRead) return null
 
   return (
-    <section className="panel user-admin-panel" data-testid="user-admin-panel">
+    <section className="user-admin-panel" data-testid="user-admin-panel">
       <SectionHeader
         eyebrow={textFor(t, 'Personal accounts', '个人账户')}
         title={textFor(t, 'User lifecycle operations', '用户生命周期运营')}
@@ -280,7 +289,8 @@ export function UserAdminPanel({ t, canRead, canManage, notify }: Props) {
             <label><span>{textFor(t, 'Label', '名称')}</span><input aria-label={textFor(t, 'User tag label', '用户标签名称')} value={tagLabel} onChange={(event) => setTagLabel(event.target.value)} disabled={!canManage || Boolean(selectedTag?.archivedAt)} /></label>
             <label><span>{textFor(t, 'Description', '说明')}</span><input aria-label={textFor(t, 'User tag description', '用户标签说明')} value={tagDescription} onChange={(event) => setTagDescription(event.target.value)} disabled={!canManage || Boolean(selectedTag?.archivedAt)} /></label>
             <label><span>{textFor(t, 'Color', '颜色')}</span><select aria-label={textFor(t, 'User tag color', '用户标签颜色')} value={tagColor} onChange={(event) => setTagColor(event.target.value as AdminUserTagColor)} disabled={!canManage || Boolean(selectedTag?.archivedAt)}>{colors.map((color) => <option key={color}>{color}</option>)}</select></label>
-            <div className="button-row"><button className="primary-button small" type="button" onClick={() => void saveTag()} disabled={!canManage || busy || !tagLabel.trim() || (!selectedTag && !tagKey.trim()) || Boolean(selectedTag?.archivedAt)}><Save size={15}/>{textFor(t, 'Save', '保存')}</button>{selectedTag && <button className="icon-button" type="button" title={selectedTag.archivedAt ? textFor(t, 'Restore user tag', '恢复用户标签') : textFor(t, 'Archive user tag', '归档用户标签')} aria-label={selectedTag.archivedAt ? textFor(t, 'Restore user tag', '恢复用户标签') : textFor(t, 'Archive user tag', '归档用户标签')} onClick={() => void transitionTag(selectedTag.archivedAt ? 'restore' : 'archive')} disabled={!canManage || busy}>{selectedTag.archivedAt ? <ArchiveRestore size={16}/> : <Archive size={16}/>}</button>}</div>
+            <div className="button-row"><button className="primary-button small" type="button" onClick={() => void saveTag()} disabled={!canManage || busy || !tagLabel.trim() || (!selectedTag && !tagKey.trim()) || Boolean(selectedTag?.archivedAt)}><Save size={15}/>{textFor(t, 'Save', '保存')}</button>{selectedTag && <button className="icon-button" type="button" title={selectedTag.archivedAt ? textFor(t, 'Restore user tag', '恢复用户标签') : textFor(t, 'Archive user tag', '归档用户标签')} aria-label={selectedTag.archivedAt ? textFor(t, 'Restore user tag', '恢复用户标签') : textFor(t, 'Archive user tag', '归档用户标签')} onClick={() => setPendingConfirmation({ scope: 'tag', action: selectedTag.archivedAt ? 'restore' : 'archive' })} disabled={!canManage || busy}>{selectedTag.archivedAt ? <ArchiveRestore size={16}/> : <Archive size={16}/>}</button>}</div>
+            {pendingConfirmation?.scope === 'tag' && selectedTag && <AdminOperationConfirmation ariaLabel={textFor(t, 'Confirm user tag status', '确认用户标签状态')} title={pendingConfirmation.action === 'archive' ? textFor(t, 'Archive this tag?', '归档此标签？') : textFor(t, 'Restore this tag?', '恢复此标签？')} description={`${selectedTag.label} · ${textFor(t, 'This change is recorded in the audit log.', '该变更会记录到审计日志。')}`} confirmLabel={textFor(t, 'Confirm', '确认')} cancelLabel={textFor(t, 'Cancel', '取消')} onConfirm={() => void transitionTag(pendingConfirmation.action)} onCancel={() => setPendingConfirmation(null)} busy={busy} tone={pendingConfirmation.action === 'archive' ? 'danger' : 'primary'} compact />}
           </div>
         </div>
       </section>
@@ -294,7 +304,8 @@ export function UserAdminPanel({ t, canRead, canManage, notify }: Props) {
         <label><span>{textFor(t, 'Order', '顺序')}</span><select aria-label={textFor(t, 'User order', '用户顺序')} value={order} onChange={(event) => setOrder(event.target.value as 'asc' | 'desc')}><option value="desc">desc</option><option value="asc">asc</option></select></label>
         <button className="icon-button" type="button" title={textFor(t, 'Apply user filters', '应用用户筛选')} aria-label={textFor(t, 'Apply user filters', '应用用户筛选')} onClick={() => void load(false)} disabled={loading}><Search size={16} /></button>
       </div>
-      {error && <div className="user-admin-error">{error}</div>}
+      {error && <div className="user-admin-error" role="alert">{error}</div>}
+      {!error && <AdminActionFeedback message={actionMessage ? { kind: 'success', text: actionMessage } : null} />}
       <div className="user-admin-workspace">
         <div className="user-admin-list">
           {users.map((user) => (
@@ -316,7 +327,8 @@ export function UserAdminPanel({ t, canRead, canManage, notify }: Props) {
             <div className="user-assignment-block"><strong><Tag size={15}/>{textFor(t, 'User tags', '用户标签')}</strong><div className="user-assigned-tags">{selected.tags.map((item) => <span key={item.id}><i className={`user-tag-swatch ${item.color}`}/>{item.label}<button type="button" title={textFor(t, `Remove ${item.label}`, `移除 ${item.label}`)} aria-label={textFor(t, `Remove ${item.label}`, `移除 ${item.label}`)} onClick={() => void changeAssignment(item, 'remove')} disabled={!canManage || busy}><X size={13}/></button></span>)}{!selected.tags.length && <small>{textFor(t, 'No tags assigned', '未分配标签')}</small>}</div><select aria-label={textFor(t, 'Assign user tag', '分配用户标签')} value="" onChange={(event) => { const tag = activeTags.find((item) => item.id === event.target.value); if (tag) void changeAssignment(tag, 'assign') }} disabled={!canManage || busy || selected.status === 'deleted'}><option value="">{textFor(t, 'Assign tag', '分配标签')}</option>{activeTags.filter((item) => !selected.tags.some((assigned) => assigned.id === item.id)).map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select></div>
             {selected.suspensionReasonCode && <div className="user-admin-evidence"><span>{textFor(t, 'Suspension reason', '暂停原因')}</span><strong>{selected.suspensionReasonCode}</strong></div>}
             <label className="user-admin-reason"><span>{textFor(t, 'Reason code', '原因代码')}</span><input aria-label={textFor(t, 'User lifecycle reason code', '用户生命周期原因代码')} value={reasonCode} onChange={(event) => setReasonCode(event.target.value)} disabled={!canManage || busy} /></label>
-            <div className="button-row">{selected.status === 'active' && <button className="danger-button" type="button" onClick={() => void transition('suspend')} disabled={!canManage || busy}><Ban size={16} />{textFor(t, 'Suspend', '暂停')}</button>}{selected.status === 'suspended' && <button className="primary-button" type="button" onClick={() => void transition('restore')} disabled={!canManage || busy}><RotateCcw size={16} />{textFor(t, 'Restore', '恢复')}</button>}</div>
+            {pendingConfirmation?.scope === 'user' && <AdminOperationConfirmation ariaLabel={textFor(t, 'Confirm user lifecycle action', '确认用户生命周期操作')} title={pendingConfirmation.action === 'suspend' ? textFor(t, 'Suspend this user?', '暂停该用户？') : textFor(t, 'Restore this user?', '恢复该用户？')} description={pendingConfirmation.action === 'suspend' ? textFor(t, 'Every active session will be revoked immediately.', '所有活跃会话将立即撤销。') : textFor(t, 'Old sessions remain revoked after restoration.', '恢复后旧会话仍保持撤销。')} confirmLabel={pendingConfirmation.action === 'suspend' ? textFor(t, 'Confirm suspend', '确认暂停') : textFor(t, 'Confirm restore', '确认恢复')} cancelLabel={textFor(t, 'Cancel', '取消')} onConfirm={() => void transition(pendingConfirmation.action)} onCancel={() => setPendingConfirmation(null)} busy={busy} tone={pendingConfirmation.action === 'suspend' ? 'danger' : 'primary'} />}
+            <div className="button-row">{selected.status === 'active' && <button className="danger-button" type="button" onClick={() => setPendingConfirmation({ scope: 'user', action: 'suspend' })} disabled={!canManage || busy}><Ban size={16} />{textFor(t, 'Suspend', '暂停')}</button>}{selected.status === 'suspended' && <button className="primary-button" type="button" onClick={() => setPendingConfirmation({ scope: 'user', action: 'restore' })} disabled={!canManage || busy}><RotateCcw size={16} />{textFor(t, 'Restore', '恢复')}</button>}</div>
           </>}
         </div>
       </div>

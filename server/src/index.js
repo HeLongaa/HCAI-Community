@@ -8,6 +8,7 @@ import { repositories } from './repositories/index.js'
 import { createAdminMutationAuditHook } from './audit/adminMutationAudit.js'
 import { resolveApiKeyClientIp } from './common/http/clientIp.js'
 import { configureEnvironmentProxy } from './common/http/environmentProxy.js'
+import { createGracefulShutdown } from './common/process/gracefulShutdown.js'
 
 configureEnvironmentProxy()
 
@@ -46,10 +47,20 @@ const main = async () => {
     if (runtimeConfig.appliedKeys.length) console.log(`Applied ${runtimeConfig.appliedKeys.length} database runtime setting overrides`)
   })
 
-  startMediaScanWorker(repositories, {
+  const mediaScanWorker = startMediaScanWorker(repositories, {
     enabled: env.apiEmbeddedWorkersEnabled && env.mediaScanWorkerEnabled,
     intervalSeconds: env.mediaScanWorkerIntervalSeconds,
   })
+
+  const shutdown = createGracefulShutdown({
+    serviceName: 'api',
+    server,
+    workers: [mediaScanWorker],
+    disconnect: () => repositories.client?.$disconnect(),
+    timeoutMs: env.processShutdownTimeoutSeconds * 1000,
+  })
+  process.once('SIGINT', () => { void shutdown('SIGINT') })
+  process.once('SIGTERM', () => { void shutdown('SIGTERM') })
 }
 
 await main()

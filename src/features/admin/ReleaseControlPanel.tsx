@@ -4,16 +4,16 @@ import { Check, KeyRound, RefreshCw, Rocket, RotateCcw, X } from 'lucide-react'
 import type { Permission } from '../../domain/types'
 import { adminService } from '../../services/adminService'
 import type { ReleaseChangeDto, ReleaseChangeRequest, ReleaseChangeStatus, ReleaseChangeType, ReleaseEnvironment } from '../../services/contracts'
+import { AdminActionFeedback, type AdminActionFeedbackMessage } from './AdminActionFeedback'
 
 const environments: ReleaseEnvironment[] = ['development', 'staging', 'production']
 const changeTypes: ReleaseChangeType[] = ['promotion', 'configuration', 'secret_rotation']
 const statuses: ReleaseChangeStatus[] = ['pending_approval', 'approved', 'deployed', 'failed', 'rolled_back', 'rejected']
 const label = (value: string) => value.replaceAll('_', ' ')
 
-export function ReleaseControlPanel({ hasPermission, isZh, notify }: {
+export function ReleaseControlPanel({ hasPermission, isZh }: {
   hasPermission: (permission: Permission) => boolean
   isZh: boolean
-  notify: (message: string) => void
 }) {
   const [items, setItems] = useState<ReleaseChangeDto[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -22,6 +22,7 @@ export function ReleaseControlPanel({ hasPermission, isZh, notify }: {
   const [changeType, setChangeType] = useState<ReleaseChangeType | ''>('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<AdminActionFeedbackMessage | null>(null)
   const [reasonCode, setReasonCode] = useState('release_reviewed')
   const [deploymentId, setDeploymentId] = useState('')
   const [evidenceUrl, setEvidenceUrl] = useState('')
@@ -53,13 +54,14 @@ export function ReleaseControlPanel({ hasPermission, isZh, notify }: {
   const mutate = async (action: () => Promise<ReleaseChangeDto>, success: string) => {
     setLoading(true)
     setError(null)
+    setFeedback(null)
     try {
       const changed = await action()
       setItems((current) => [changed, ...current.filter((item) => item.id !== changed.id)])
       setSelectedId(changed.id)
-      notify(success)
+      setFeedback({ kind: 'success', text: success })
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      setFeedback({ kind: 'error', text: cause instanceof Error ? cause.message : String(cause) })
     } finally {
       setLoading(false)
     }
@@ -109,6 +111,7 @@ export function ReleaseControlPanel({ hasPermission, isZh, notify }: {
         </form>
       )}
       {error && <div className="inline-error" role="alert">{error}</div>}
+      <AdminActionFeedback message={feedback} />
       <div className="release-control-grid">
         <div className="admin-table release-list">
           {items.map((item) => <button type="button" className={`admin-row compact ${selected?.id === item.id ? 'selected' : ''}`} key={item.id} onClick={() => setSelectedId(item.id)}><span><strong>{item.summary}</strong><small>{label(item.changeType)} · {item.sourceEnvironment ? `${item.sourceEnvironment} → ` : ''}{item.targetEnvironment}</small></span><span className={`status ${item.status}`}>{label(item.status)}</span></button>)}

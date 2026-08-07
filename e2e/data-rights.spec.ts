@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { apiBaseUrl, apiData, authHeaders, login, signInPage } from './helpers'
+import { selectAdminSection, signInPage } from './helpers'
 
 type DataRightsRequest = { id: string; version: number; status: string; requestType: string; artifact: { checksumSha256: string } | null }
 
@@ -17,13 +17,23 @@ test('owner export request is processed by Admin and downloaded through the priv
   expect(created.requestType).toBe('data_export')
   expect(created.status).toBe('identity_verified')
 
-  const admin = await login(request, 'opsplus')
-  const processed = await apiData<DataRightsRequest>(request.post(`${apiBaseUrl}/api/admin/data-rights/requests/${created.id}/process`, {
-    headers: authHeaders(admin.accessToken),
-    data: { expectedVersion: created.version, reasonCode: 'e2e_export_generated' },
-  }))
+  const adminPage = await page.context().newPage()
+  await signInPage(adminPage, request, 'opsplus')
+  await adminPage.goto('/')
+  await adminPage.getByTestId('nav-admin').click()
+  await selectAdminSection(adminPage, 'Users')
+  const adminPanel = adminPage.getByTestId('data-rights-admin-panel')
+  await expect(adminPanel).toBeVisible()
+  await expect(adminPanel.getByText(created.id, { exact: true })).toBeVisible()
+  await adminPanel.getByLabel('Processing reason code').fill('e2e_export_generated')
+  const processResponse = adminPage.waitForResponse((response) => response.url().endsWith(`/api/admin/data-rights/requests/${created.id}/process`) && response.request().method() === 'POST')
+  await adminPanel.getByRole('button', { name: 'Process', exact: true }).click()
+  const processed = (await (await processResponse).json() as { data: DataRightsRequest }).data
   expect(processed.status).toBe('completed')
   expect(processed.artifact?.checksumSha256).toHaveLength(64)
+  await expect(adminPanel.getByText('Data rights request processed.')).toBeVisible()
+  await expect(adminPage.getByTestId('app-toast')).toHaveCount(0)
+  await adminPage.close()
 
   await page.reload()
   await page.locator('.sidebar-profile > button').click()
@@ -35,15 +45,6 @@ test('owner export request is processed by Admin and downloaded through the priv
   expect((await exportResponse).status()).toBe(200)
   expect((await download).suggestedFilename()).toBe(`data-export-${created.id}.json`)
 
-  const adminPage = await page.context().newPage()
-  await signInPage(adminPage, request, 'opsplus')
-  await adminPage.goto('/')
-  await adminPage.getByTestId('nav-admin').click()
-  await adminPage.getByRole('button', { name: 'Users', exact: true }).click()
-  const adminPanel = adminPage.getByTestId('data-rights-admin-panel')
-  await expect(adminPanel).toBeVisible()
-  await expect(adminPanel.getByText(created.id, { exact: true })).toBeVisible()
-  await adminPage.close()
 })
 
 test('data rights owner and Admin panels remain bounded at 390px', async ({ page, request }) => {
@@ -52,7 +53,7 @@ test('data rights owner and Admin panels remain bounded at 390px', async ({ page
   await page.goto('/')
   await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('button', { name: 'Users', exact: true }).click()
+  await selectAdminSection(page, 'Users')
 
   const panel = page.getByTestId('data-rights-admin-panel')
   await expect(panel).toBeVisible()

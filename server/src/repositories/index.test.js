@@ -12,9 +12,10 @@ test('production requires PostgreSQL and disables demo repository fallback', () 
   assert.equal(shouldAutoSeedPrisma({ NODE_ENV: 'production', DEMO_DATABASE_AUTOSEED: 'true' }), false)
 })
 
-test('development keeps explicit fixture repository and seed controls', () => {
+test('development requires an explicit opt-in for demo database content', () => {
   assert.doesNotThrow(() => assertProductionPersistence({ NODE_ENV: 'development' }))
   assert.equal(shouldLoadDemoRepository({ NODE_ENV: 'test' }), true)
-  assert.equal(shouldAutoSeedPrisma({ NODE_ENV: 'test' }), true)
+  assert.equal(shouldAutoSeedPrisma({ NODE_ENV: 'test' }), false)
+  assert.equal(shouldAutoSeedPrisma({ NODE_ENV: 'test', DEMO_DATABASE_AUTOSEED: 'true' }), true)
   assert.equal(shouldAutoSeedPrisma({ NODE_ENV: 'test', DEMO_DATABASE_AUTOSEED: 'false' }), false)
 })

@@ -10,14 +10,17 @@ type PostDto = {
 }
 
 test('community owner can draft, edit, publish, and soft-delete a post', async ({ page, request }) => {
+  const runId = Date.now()
+  const draftTitle = `COMM-01 browser lifecycle ${runId}`
+  const publishedTitle = `COMM-01 published lifecycle ${runId}`
   const session = await signInPage(page, request, 'promptlin')
   await page.goto('/')
   await page.getByTestId('nav-community').click()
 
   const workspace = page.getByTestId('community-author-workspace')
+  await page.getByRole('button', { name: 'New post' }).click()
   await expect(workspace).toBeVisible()
-  await workspace.getByRole('button', { name: 'New post' }).click()
-  await workspace.getByLabel('Title').fill('COMM-01 browser lifecycle')
+  await workspace.getByLabel('Title').fill(draftTitle)
   await workspace.getByLabel('Category').selectOption('Questions')
   await workspace.getByLabel('Tag').fill('Lifecycle')
   await workspace.getByLabel('Excerpt').fill('A private draft moving through the owner lifecycle.')
@@ -28,14 +31,14 @@ test('community owner can draft, edit, publish, and soft-delete a post', async (
   await workspace.getByRole('button', { name: 'Save draft' }).click()
   expect((await draftResponse).status()).toBe(201)
   const drafts = await apiData<PostDto[]>(request.get(`${apiBaseUrl}/api/posts/mine?status=draft`, { headers: authHeaders(session.accessToken) }))
-  const draft = drafts.find((post) => post.title === 'COMM-01 browser lifecycle')
+  const draft = drafts.find((post) => post.title === draftTitle)
   expect(draft).toBeTruthy()
   expect((await request.get(`${apiBaseUrl}/api/posts/${draft!.id}`)).status()).toBe(404)
 
-  const row = workspace.locator('.community-owned-row').filter({ hasText: 'COMM-01 browser lifecycle' })
+  const row = workspace.locator('.community-owned-row').filter({ hasText: draftTitle })
   await expect(row).toContainText('Draft')
   await row.getByTitle('Edit').click()
-  await workspace.getByLabel('Title').fill('COMM-01 published lifecycle')
+  await workspace.getByLabel('Title').fill(publishedTitle)
   const updateResponse = page.waitForResponse((response) => response.url().endsWith(`/api/posts/${draft!.id}`) && response.request().method() === 'PATCH')
   const publishResponse = page.waitForResponse((response) => response.url().endsWith(`/api/posts/${draft!.id}/publish`) && response.request().method() === 'POST')
   await workspace.locator('.community-editor-actions').getByRole('button', { name: 'Publish', exact: true }).click()
@@ -44,9 +47,9 @@ test('community owner can draft, edit, publish, and soft-delete a post', async (
 
   const published = await apiData<PostDto>(request.get(`${apiBaseUrl}/api/posts/${draft!.id}`))
   expect(published.status).toBe('published')
-  expect(published.title).toBe('COMM-01 published lifecycle')
+  expect(published.title).toBe(publishedTitle)
 
-  const publishedRow = workspace.locator('.community-owned-row').filter({ hasText: 'COMM-01 published lifecycle' })
+  const publishedRow = workspace.locator('.community-owned-row').filter({ hasText: publishedTitle })
   await expect(publishedRow).toContainText('Published')
   page.on('dialog', (dialog) => dialog.accept())
   const deleteResponse = page.waitForResponse((response) => response.url().endsWith(`/api/posts/${draft!.id}`) && response.request().method() === 'DELETE')
@@ -63,7 +66,7 @@ test('community owner workspace remains bounded at 390px', async ({ page, reques
   await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByTestId('nav-community').click()
   const workspace = page.getByTestId('community-author-workspace')
-  await workspace.getByRole('button', { name: 'New post' }).click()
+  await page.getByRole('button', { name: 'New post' }).click()
   await expect(workspace).toBeVisible()
   const layout = await workspace.evaluate((element) => ({
     width: element.getBoundingClientRect().width,

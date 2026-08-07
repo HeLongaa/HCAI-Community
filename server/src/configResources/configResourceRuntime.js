@@ -378,6 +378,7 @@ export const rollbackConfigResource = async ({ resource, payload, actor, reposit
   const transition = parseConfigResourceRollback(payload)
   const revision = await repository.findRevision(transition.revisionId)
   if (!revision || revision.resourceId !== resource.id) return null
+  if (revision.retentionRedactedAt || revision.value == null || revision.title == null) throw new HttpError(409, 'REVISION_REDACTED', 'target revision is no longer available for rollback')
   const result = await repository.publish(resource.id, transition.expectedVersion, {
     actor, actorRef: actorRef(actor), reasonCode: transition.reasonCode, eventType: 'rolled_back',
     snapshot: { title: revision.title, description: revision.description, value: revision.value },

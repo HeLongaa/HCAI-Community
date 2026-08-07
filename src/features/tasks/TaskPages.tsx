@@ -1,123 +1,234 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  ArrowLeft,
   BadgeDollarSign,
   BriefcaseBusiness,
   Check,
+  ChevronRight,
   Clock3,
-  FileText,
   MessageCircle,
   Plus,
+  Search,
   Send,
   Sparkles,
   Upload,
-  UserRound,
   UsersRound,
   X,
 } from 'lucide-react'
-import type { AsyncResourceState, MarketplaceProfile, Page, PublishDraft, SimulateAction, Task } from '../../domain/types'
+import type { AsyncResourceState, MarketplaceProfile, Page, PublishDraft, SimulateAction, Task, TaskProposalDraft } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
+import { StatusBadge } from '../../components/ui/StatusBadge'
 import type { TaskChildCollection } from '../../hooks/useTaskWorkflows'
 import { uploadMediaFile } from '../../services/mediaUpload'
 import type { ApiAcceptanceChecklistItem, ApiMediaAsset, ApiProfileSummary, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, ApiTaskWorkflow, MediaAssetPurpose, TaskRule } from '../../services/contracts'
 import { taskService } from '../../services/taskService'
 import {
   categoryLabel,
-  findProfile,
   isZhCopy,
-  localizeText,
   localizedTasks,
-  matchProfilesForDraft,
-  profileTags,
   publishFieldLabel,
-  rankProfiles,
   statusLabel,
   textFor,
 } from '../../domain/utils'
+
+const taskMarketStateKey = 'hcaiTaskMarketplaceState'
+
+type TaskMarketSavedState = {
+  search: string
+  category: string
+  minimumPoints: string
+  scrollY: number
+}
+
+const defaultTaskMarketState: TaskMarketSavedState = { search: '', category: 'All', minimumPoints: 'all', scrollY: 0 }
+
+const readTaskMarketState = (): TaskMarketSavedState => {
+  try {
+    const stored = window.sessionStorage.getItem(taskMarketStateKey)
+    return stored ? { ...defaultTaskMarketState, ...JSON.parse(stored) } : defaultTaskMarketState
+  } catch {
+    return defaultTaskMarketState
+  }
+}
+
+const taskIdFromHash = () => {
+  const match = window.location.hash.match(/^#tasks\/([^?]+)/)
+  return match ? decodeURIComponent(match[1]) : null
+}
+
+const formatTaskDeadline = (value: string, isZh: boolean) => {
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) return value
+  return new Intl.DateTimeFormat(isZh ? 'zh-CN' : 'en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(timestamp)
+}
 
 export function TasksPage({
   t,
   tasks,
   setPage,
-  openProfile,
   submitProposal,
-  selectedTask,
   setSelectedTask,
   status,
-  simulateAction,
 }: {
   t: Record<string, string>
   tasks: Task[]
   setPage: (page: Page) => void
   openProfile: (profile: MarketplaceProfile) => void
-  submitProposal: (task: Task) => Promise<void>
-  selectedTask: Task
-  setSelectedTask: (task: Task) => void
+  submitProposal: (task: Task, draft: TaskProposalDraft) => Promise<boolean>
+  selectedTask: Task | null
+  setSelectedTask: (task: Task | null) => void
   status: AsyncResourceState
-  simulateAction: SimulateAction
 }) {
   const isZh = isZhCopy(t)
   const scopedTasks = localizedTasks(tasks, t)
   const openTasks = scopedTasks.filter((task) => task.status === 'Open')
-  const categories = ['All', 'Music', 'Image', 'Video', 'Voice', 'Prompt', 'Design', 'Automation']
-  const [activeCategory, setActiveCategory] = useState('All')
+  const categories = ['All', ...Array.from(new Set(openTasks.map((task) => task.category)))]
+  const initialState = useMemo(() => readTaskMarketState(), [])
+  const [activeCategory, setActiveCategory] = useState(initialState.category)
+  const [search, setSearch] = useState(initialState.search)
+  const [minimumPoints, setMinimumPoints] = useState(initialState.minimumPoints)
+  const [detailTaskId, setDetailTaskId] = useState(taskIdFromHash)
+  const [proposalOpen, setProposalOpen] = useState(false)
   const openTaskCount = openTasks.length
-  const activeMakerCount = rankProfiles('maker').length
-  const visibleTasks =
-    activeCategory === 'All'
-      ? openTasks
-      : openTasks.filter((task) => task.category === activeCategory || (activeCategory === 'Design' && task.category === 'Image'))
-  const activeSelectedTask =
-    visibleTasks.find((task) => task.id === selectedTask.id) ?? openTasks.find((task) => task.id === selectedTask.id) ?? openTasks[0] ?? selectedTask
-  const publisherProfile = findProfile(activeSelectedTask.publisher)
-  const hasSubmittedProposal = activeSelectedTask.assignee !== 'Unassigned'
+  const normalizedSearch = search.trim().toLocaleLowerCase()
+  const visibleTasks = openTasks.filter((task) => {
+    const categoryMatches = activeCategory === 'All' || task.category === activeCategory
+    const searchMatches = !normalizedSearch || [task.title, task.description, task.publisher]
+      .some((value) => value.toLocaleLowerCase().includes(normalizedSearch))
+    const pointValue = Number.parseInt(task.points.replace(/[^\d]/g, ''), 10) || 0
+    const rewardMatches = minimumPoints === 'all' || pointValue >= Number(minimumPoints)
+    return categoryMatches && searchMatches && rewardMatches
+  })
+  const detailTask = detailTaskId ? scopedTasks.find((task) => String(task.id) === detailTaskId) ?? null : null
+
+  useEffect(() => {
+    const current = readTaskMarketState()
+    window.sessionStorage.setItem(taskMarketStateKey, JSON.stringify({ ...current, search, category: activeCategory, minimumPoints }))
+  }, [activeCategory, minimumPoints, search])
+
+  useEffect(() => {
+    const syncRoute = () => {
+      const nextTaskId = taskIdFromHash()
+      setDetailTaskId(nextTaskId)
+      if (!nextTaskId) {
+        const saved = readTaskMarketState()
+        window.requestAnimationFrame(() => window.scrollTo({ top: saved.scrollY, behavior: 'instant' }))
+      }
+    }
+    window.addEventListener('hashchange', syncRoute)
+    window.addEventListener('popstate', syncRoute)
+    window.addEventListener('hcai:navigation', syncRoute)
+    return () => {
+      window.removeEventListener('hashchange', syncRoute)
+      window.removeEventListener('popstate', syncRoute)
+      window.removeEventListener('hcai:navigation', syncRoute)
+    }
+  }, [])
+
+  const openTask = (task: Task) => {
+    window.sessionStorage.setItem(taskMarketStateKey, JSON.stringify({ search, category: activeCategory, minimumPoints, scrollY: window.scrollY }))
+    window.history.pushState({ hcaiTaskDetailFromList: true }, '', `#tasks/${encodeURIComponent(String(task.id))}`)
+    setSelectedTask(task)
+    setDetailTaskId(String(task.id))
+    window.scrollTo({ top: 0, behavior: 'instant' })
+    window.dispatchEvent(new Event('hcai:navigation'))
+  }
+
+  const returnToList = () => {
+    setProposalOpen(false)
+    if (window.history.state?.hcaiTaskDetailFromList) {
+      window.history.back()
+      return
+    }
+    window.history.pushState(null, '', '#tasks')
+    setDetailTaskId(null)
+    window.dispatchEvent(new Event('hcai:navigation'))
+  }
+
+  if (detailTaskId) {
+    return (
+      <TaskDetailView
+        t={t}
+        task={detailTask}
+        loading={status.loading}
+        proposalOpen={proposalOpen}
+        setProposalOpen={setProposalOpen}
+        returnToList={returnToList}
+        submitProposal={submitProposal}
+      />
+    )
+  }
 
   const selectCategory = (category: string) => {
-    const matches =
-      category === 'All'
-        ? openTasks
-        : openTasks.filter((task) => task.category === category || (category === 'Design' && task.category === 'Image'))
+    const matches = category === 'All' ? openTasks : openTasks.filter((task) => task.category === category)
     setActiveCategory(category)
     const firstMatch = matches[0]
     if (firstMatch) {
       setSelectedTask(firstMatch)
     }
-    simulateAction(
-      isZh
-        ? `已切换任务分类：${categoryLabel(category, t)}，当前显示 ${matches.length} 条结果`
-        : `Task category changed to ${category}. Showing ${matches.length} results.`,
-    )
   }
 
   return (
-    <div className="stack">
-      <SectionHeader
-        eyebrow={textFor(t, 'Marketplace', '任务市场')}
-        title={t.tasksTitle}
-        action={
-          <button className="primary-button" type="button" onClick={() => setPage('publish')}>
+    <div className="task-market-workbench">
+      <header className="task-market-header">
+        <div>
+          <span>{textFor(t, 'TASK MARKETPLACE', '任务广场')}</span>
+          <h1>{textFor(t, 'Find the right work. Make a clear proposal.', '找到合适的任务，提交清晰的方案。')}</h1>
+          <p>{textFor(t, 'Browse open creative requests, understand the brief, and work directly with publishers.', '浏览开放的创作需求，读懂任务说明，与发布方直接协作。')}</p>
+        </div>
+        <div className="task-market-actions">
+          <button type="button" onClick={() => setPage('mine')}>
+            <BriefcaseBusiness size={17} />
+            {textFor(t, 'My tasks', '我的任务')}
+          </button>
+          <button className="primary" type="button" onClick={() => setPage('publish')}>
             <Plus size={17} />
             {t.postTask}
           </button>
-        }
-      />
-      <div className="market-dashboard">
-        {[
-          [textFor(t, 'Open tasks', '开放任务'), `${openTaskCount}`, textFor(t, 'Music, image, video, voice, automation', '音乐、图片、视频、配音、自动化')],
-          [textFor(t, 'Active makers', '活跃创作者'), `${activeMakerCount}`, textFor(t, 'Available for scoped AI work', '可接取明确范围的 AI 工作')],
-          [textFor(t, 'Avg. response', '平均响应'), '18m', textFor(t, 'Fast proposals and discussion', '快速提案与讨论')],
-          [textFor(t, 'Available categories', '可接取分类'), `${categories.length - 1}`, textFor(t, 'Browse open AI requests by category', '按分类浏览开放 AI 需求')],
-        ].map(([label, value, text]) => (
-          <article className="metric-card highlight" key={label}>
-            <span>{label}</span>
-            <strong>{value}</strong>
-            <small>{text}</small>
-          </article>
-        ))}
+        </div>
+      </header>
+
+      <div className="task-market-summary" aria-label={textFor(t, 'Marketplace summary', '任务广场概览')}>
+        <span><strong>{openTaskCount}</strong>{textFor(t, 'Open tasks', '开放任务')}</span>
+        <span><strong>{visibleTasks.length}</strong>{textFor(t, 'Results', '筛选结果')}</span>
+        <span><strong>{Math.max(categories.length - 1, 0)}</strong>{textFor(t, 'Categories', '任务分类')}</span>
       </div>
-      <div className="tasks-workspace">
-        <div className="tasks-main">
+
+      <section className="task-market-filters" aria-label={textFor(t, 'Task filters', '任务筛选')}>
+        <label className="task-market-search">
+          <Search size={17} />
+          <input
+            type="search"
+            value={search}
+            placeholder={textFor(t, 'Search title, brief, or publisher', '搜索任务、说明或发布方')}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </label>
+        <label>
+          <span>{textFor(t, 'Category', '分类')}</span>
+          <select value={activeCategory} onChange={(event) => selectCategory(event.target.value)}>
+            {categories.map((category) => <option value={category} key={category}>{categoryLabel(category, t)}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>{textFor(t, 'Minimum reward', '最低报酬')}</span>
+          <select value={minimumPoints} onChange={(event) => setMinimumPoints(event.target.value)}>
+            <option value="all">{textFor(t, 'Any reward', '不限')}</option>
+            <option value="500">500+ pts</option>
+            <option value="1000">1,000+ pts</option>
+            <option value="3000">3,000+ pts</option>
+          </select>
+        </label>
+      </section>
+
+      <div className="task-market-layout">
+        <section className="task-market-list" aria-label={textFor(t, 'Open tasks', '开放任务')}>
           {(status.loading || status.error) && (
-            <div className="empty-state">
+            <div className="task-market-message">
               <strong>
                 {status.loading
                   ? textFor(t, 'Syncing tasks', '正在同步任务')
@@ -135,164 +246,188 @@ export function TasksPage({
               )}
             </div>
           )}
-          <div className="chip-row">
-            {categories.map((category) => (
-              <button
-                className={activeCategory === category ? 'chip active' : 'chip'}
-                type="button"
-                key={category}
-                onClick={() => selectCategory(category)}
-              >
-                {categoryLabel(category, t)}
-              </button>
-            ))}
-          </div>
-          <div className="content-grid task-layout">
-            <div className="task-list">
-              {visibleTasks.map((task) => (
+          {!status.loading && visibleTasks.map((task) => (
                 <button
-                  className={activeSelectedTask.id === task.id ? 'task-card active' : 'task-card'}
+                  className="task-market-row"
                   data-testid={`task-card-${task.id}`}
                   type="button"
                   key={task.id}
-                  onClick={() => {
-                    setSelectedTask(task)
-                    simulateAction(isZh ? `已打开任务详情：${task.title}` : `Opened task detail: ${task.title}`)
-                  }}
+                  onClick={() => openTask(task)}
                 >
-                  <div>
+                  <span className="task-market-row-category">{categoryLabel(task.category, t)}</span>
+                  <span className="task-market-row-copy">
                     <strong>{task.title}</strong>
-                    <span>
-                      {categoryLabel(task.category, t)} · {task.deadline}
-                    </span>
-                    <span>{task.points} · @{task.publisher}</span>
-                  </div>
-                  <div>
-                    <b>{task.points}</b>
-                  </div>
+                    <small>{task.description}</small>
+                    <span>@{task.publisher}</span>
+                  </span>
+                  <span className="task-market-row-stat"><small>{textFor(t, 'Reward', '报酬')}</small><b>{task.points}</b></span>
+                  <span className="task-market-row-stat"><small>{textFor(t, 'Deadline', '截止')}</small><b>{formatTaskDeadline(task.deadline, isZh)}</b></span>
+                  <span className="task-market-row-stat"><small>{textFor(t, 'Proposals', '方案')}</small><b>{task.proposals}</b></span>
+                  <ChevronRight size={18} />
                 </button>
               ))}
-              {visibleTasks.length === 0 && (
-                <div className="empty-state">
-                  <strong>{textFor(t, 'No tasks in this category', '当前分类暂无任务')}</strong>
-                  <span>{textFor(t, 'Publish a task or switch to another category.', '可以发布一个任务，或切换到其他分类继续浏览。')}</span>
+          {!status.loading && visibleTasks.length === 0 && (
+            <div className={`task-market-message ${openTasks.length === 0 && !search.trim() && activeCategory === 'All' && minimumPoints === 'all' ? 'task-market-cold-start' : ''}`}>
+              <strong>{openTasks.length === 0 && !search.trim() && activeCategory === 'All' && minimumPoints === 'all'
+                ? textFor(t, 'The marketplace is ready for its first brief', '任务广场正在等待第一条需求')
+                : textFor(t, 'No matching tasks', '没有符合条件的任务')}</strong>
+              <span>{openTasks.length === 0 && !search.trim() && activeCategory === 'All' && minimumPoints === 'all'
+                ? textFor(t, 'Publish a clear request to start working with creators, or review your existing task activity.', '发布一条清晰的创作需求，与创作者开始协作；也可以查看自己的任务记录。')
+                : textFor(t, 'Try a different search or publish a new request.', '可以调整筛选条件，或者发布一条新需求。')}</span>
+              {openTasks.length === 0 && !search.trim() && activeCategory === 'All' && minimumPoints === 'all' ? (
+                <div className="task-market-message-actions">
+                  <button className="primary-button" type="button" onClick={() => setPage('publish')}><Plus size={16} />{t.postTask}</button>
+                  <button type="button" onClick={() => setPage('mine')}><BriefcaseBusiness size={16} />{textFor(t, 'My tasks', '我的任务')}</button>
                 </div>
+              ) : (
+                <button type="button" onClick={() => { setSearch(''); setActiveCategory('All'); setMinimumPoints('all') }}>
+                  {textFor(t, 'Clear filters', '清除筛选')}
+                </button>
               )}
             </div>
-            <article className="panel task-detail">
-              <div className="detail-top">
-                <span>{activeSelectedTask.proposals} {textFor(t, 'proposals', '个提案')}</span>
-              </div>
-              <h2>{activeSelectedTask.title}</h2>
-              <p>{activeSelectedTask.description}</p>
-              <div className="proposal-note">
-                {textFor(
-                  t,
-                  'Multiple makers can submit proposal drafts for this open task. The publisher reviews all proposals from My Tasks, chooses one plan, then starts discussion and delivery.',
-                  '开放任务支持多位创作者提交方案草稿。发布方会在个人中心查看全部方案，选择一个方案后再进入沟通与交付。',
-                )}
-              </div>
-              <div className="detail-stats">
-                <span>
-                  <BadgeDollarSign size={17} />
-                  {activeSelectedTask.points}
-                </span>
-                <span>
-                  <Clock3 size={17} />
-                  {activeSelectedTask.deadline}
-                </span>
-                <span>
-                  <UsersRound size={17} />
-                  {activeSelectedTask.proposals} {textFor(t, 'makers', '位创作者')}
-                </span>
-              </div>
-              <div className="split-row">
-                <span>
-                  {textFor(t, 'Publisher', '发布方')}:{' '}
-                  {publisherProfile ? (
-                    <button className="profile-link" type="button" onClick={() => openProfile(publisherProfile)}>
-                      @{activeSelectedTask.publisher}
-                    </button>
-                  ) : (
-                    <>@{activeSelectedTask.publisher}</>
-                  )}
-                </span>
-                <span>
-                  {textFor(t, 'Proposal mode', '方案模式')}:{' '}
-                  {hasSubmittedProposal ? (
-                    <>{textFor(t, 'Your draft submitted', '你的方案已提交')}</>
-                  ) : (
-                    <>{textFor(t, 'Open to multiple proposals', '多人可提交方案')}</>
-                  )}
-                </span>
-              </div>
-              <div className="button-row">
-                <button className="primary-button" data-testid="submit-proposal-button" type="button" onClick={() => void submitProposal(activeSelectedTask)}>
-                  <BriefcaseBusiness size={17} />
-                  {t.takeTask}
-                </button>
-              </div>
-              <div className="proposal-flow">
-                {(isZh
-                  ? ['提交方案', '发布方选择方案', '双方沟通', '提交验收成果']
-                  : ['Submit proposal', 'Publisher chooses', 'Discuss together', 'Submit deliverable']
-                ).map((step, index) => (
-                  <span className="flow-step" key={step}>
-                    <b>{index + 1}</b>
-                    {step}
-                  </span>
-                ))}
-              </div>
-              <div className="detail-section-grid">
-                <InfoBox title={textFor(t, 'Submission requirements', '提交要求')} items={activeSelectedTask.requirements} />
-                <InfoBox title={textFor(t, 'Attachments', '附件')} items={activeSelectedTask.attachments} />
-                <InfoBox title={textFor(t, 'Private brief', '私密说明')} text={activeSelectedTask.privateBrief} />
-                <InfoBox title={textFor(t, 'Rights', '版权范围')} text={activeSelectedTask.rights} />
-              </div>
-            </article>
-          </div>
-        </div>
-        <aside className="tasks-sidebar">
-          <div className="leaderboard-grid">
-            <LeaderboardPanel
-              t={t}
-              lane="maker"
-              title={textFor(t, 'Taker ranking', '接单排行榜')}
-              subtitle={textFor(t, 'Best matched makers by delivery score', '按交付分、通过率和响应速度排序')}
-              profiles={rankProfiles('maker').slice(0, 5)}
-              openProfile={openProfile}
-            />
-            <LeaderboardPanel
-              t={t}
-              lane="publisher"
-              title={textFor(t, 'Publisher ranking', '发需求排行榜')}
-              subtitle={textFor(t, 'Publishers with clear briefs and fast acceptance', '按需求清晰度、发布量和验收速度排序')}
-              profiles={rankProfiles('publisher').slice(0, 5)}
-              openProfile={openProfile}
-            />
-          </div>
-        </aside>
+          )}
+        </section>
+
       </div>
     </div>
   )
 }
 
-export function StatusBadge({ status, t }: { status: string; t?: Record<string, string> }) {
-  return <span className={`status-badge ${status.toLowerCase().replace(/\s/g, '-')}`}>{statusLabel(status, t)}</span>
+function TaskDetailView({
+  t,
+  task,
+  loading,
+  proposalOpen,
+  setProposalOpen,
+  returnToList,
+  submitProposal,
+}: {
+  t: Record<string, string>
+  task: Task | null
+  loading: boolean
+  proposalOpen: boolean
+  setProposalOpen: (open: boolean) => void
+  returnToList: () => void
+  submitProposal: (task: Task, draft: TaskProposalDraft) => Promise<boolean>
+}) {
+  const isZh = isZhCopy(t)
+  if (loading) {
+    return <div className="task-detail-state"><strong>{textFor(t, 'Loading task', '正在加载任务')}</strong><span>{textFor(t, 'Retrieving the latest task details.', '正在获取最新任务详情。')}</span></div>
+  }
+  if (!task) {
+    return (
+      <div className="task-detail-state">
+        <BriefcaseBusiness size={25} />
+        <strong>{textFor(t, 'Task not found', '未找到该任务')}</strong>
+        <span>{textFor(t, 'It may have been removed or is no longer available.', '该任务可能已被删除或暂时不可用。')}</span>
+        <button type="button" onClick={returnToList}><ArrowLeft size={16} />{textFor(t, 'Back to tasks', '返回任务广场')}</button>
+      </div>
+    )
+  }
+  const canPropose = task.status === 'Open'
+  return (
+    <div className="task-detail-page">
+      <button className="task-detail-back" type="button" onClick={returnToList}><ArrowLeft size={17} />{textFor(t, 'All tasks', '全部任务')}</button>
+      <div className="task-detail-layout">
+        <article className="task-detail-content">
+          <div className="task-detail-kicker"><span>{categoryLabel(task.category, t)}</span><small>{task.proposals} {textFor(t, 'proposals', '个提案')}</small></div>
+          <h1>{task.title}</h1>
+          <p className="task-detail-description">{task.description}</p>
+          <div className="task-detail-meta">
+            <span><BadgeDollarSign size={18} /><b>{task.points}</b><small>{textFor(t, 'Reward', '任务报酬')}</small></span>
+            <span><Clock3 size={18} /><b>{formatTaskDeadline(task.deadline, isZh)}</b><small>{textFor(t, 'Deadline', '截止时间')}</small></span>
+            <span><UsersRound size={18} /><b>{task.proposals}</b><small>{textFor(t, 'Proposals', '已收方案')}</small></span>
+          </div>
+          <div className="task-detail-sections">
+            <InfoBox title={textFor(t, 'Submission requirements', '提交要求')} items={task.requirements} />
+            <InfoBox title={textFor(t, 'Attachments', '附件')} items={task.attachments} emptyText={textFor(t, 'No attachments provided.', '未提供附件。')} />
+            <InfoBox title={textFor(t, 'Private brief', '私密说明')} text={task.privateBrief} emptyText={textFor(t, 'No private brief for this task.', '该任务没有私密说明。')} />
+            <InfoBox title={textFor(t, 'Rights', '版权范围')} text={task.rights} emptyText={textFor(t, 'No additional rights terms provided.', '未提供额外版权条款。')} />
+          </div>
+        </article>
+        <aside className="task-detail-action-rail">
+          <div>
+            <span>{textFor(t, 'Publisher', '发布方')}</span>
+            <strong>@{task.publisher}</strong>
+          </div>
+          <div><span>{textFor(t, 'Status', '任务状态')}</span><strong>{canPropose ? textFor(t, 'Accepting proposals', '正在征集方案') : statusLabel(task.status, t)}</strong></div>
+          <button className="task-detail-propose" data-testid="submit-proposal-button" disabled={!canPropose} type="button" onClick={() => setProposalOpen(true)}>
+            <BriefcaseBusiness size={18} />{canPropose ? t.takeTask : textFor(t, 'Proposals closed', '方案已关闭')}
+          </button>
+          <p>{textFor(t, 'Describe your approach, delivery plan, and timing before submitting.', '提交前请完整说明方案思路、交付内容和时间安排。')}</p>
+        </aside>
+      </div>
+      {proposalOpen && <TaskProposalDialog t={t} task={task} close={() => setProposalOpen(false)} submitProposal={submitProposal} />}
+    </div>
+  )
 }
 
-export function InfoBox({ title, text, items }: { title: string; text?: string; items?: string[] }) {
+function TaskProposalDialog({
+  t,
+  task,
+  close,
+  submitProposal,
+}: {
+  t: Record<string, string>
+  task: Task
+  close: () => void
+  submitProposal: (task: Task, draft: TaskProposalDraft) => Promise<boolean>
+}) {
+  const [approach, setApproach] = useState('')
+  const [deliverables, setDeliverables] = useState('')
+  const [estimate, setEstimate] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (approach.trim().length < 20 || deliverables.trim().length < 10 || estimate.trim().length < 3) {
+      setError(textFor(t, 'Complete all three fields with enough detail before submitting.', '请完整填写方案思路、交付内容和时间安排。'))
+      return
+    }
+    setSubmitting(true)
+    setError('')
+    const succeeded = await submitProposal(task, { approach, deliverables, estimate })
+    setSubmitting(false)
+    if (succeeded) close()
+  }
+
+  return (
+    <div className="task-proposal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !submitting) close() }}>
+      <section className="task-proposal-dialog" role="dialog" aria-modal="true" aria-labelledby="task-proposal-title">
+        <header>
+          <div><span>{textFor(t, 'Proposal for', '提交方案')}</span><h2 id="task-proposal-title">{task.title}</h2></div>
+          <button type="button" aria-label={textFor(t, 'Close', '关闭')} disabled={submitting} onClick={close}><X size={19} /></button>
+        </header>
+        <form onSubmit={(event) => void submit(event)}>
+          <label><span>{textFor(t, 'Approach', '方案思路')}</span><textarea autoFocus rows={5} value={approach} onChange={(event) => setApproach(event.target.value)} placeholder={textFor(t, 'Explain how you will approach the brief and manage quality.', '说明你会如何拆解任务、执行工作并保证质量。')} /></label>
+          <label><span>{textFor(t, 'Deliverables', '交付内容')}</span><textarea rows={4} value={deliverables} onChange={(event) => setDeliverables(event.target.value)} placeholder={textFor(t, 'List the files, formats, and revisions you will deliver.', '列出你会提供的文件、格式和修改范围。')} /></label>
+          <label><span>{textFor(t, 'Timeline', '时间安排')}</span><input value={estimate} onChange={(event) => setEstimate(event.target.value)} placeholder={textFor(t, 'Example: First draft in 2 days, final in 4 days', '例如：2 天提交首版，4 天完成最终交付')} /></label>
+          {error && <p className="task-proposal-error">{error}</p>}
+          <footer>
+            <button type="button" disabled={submitting} onClick={close}>{textFor(t, 'Cancel', '取消')}</button>
+            <button className="primary" data-testid="confirm-proposal-button" disabled={submitting} type="submit"><Send size={17} />{submitting ? textFor(t, 'Submitting', '提交中') : textFor(t, 'Submit proposal', '确认提交')}</button>
+          </footer>
+        </form>
+      </section>
+    </div>
+  )
+}
+
+export function InfoBox({ title, text, items, emptyText }: { title: string; text?: string; items?: string[]; emptyText?: string }) {
+  const hasContent = Boolean(text || items?.length)
   return (
     <div className="deliverable-box">
       <strong>{title}</strong>
       {text && <p>{text}</p>}
-      {items && (
+      {items && items.length > 0 && (
         <ul className="clean-list">
           {items.map((item) => (
             <li key={item}>{item}</li>
           ))}
         </ul>
       )}
+      {!hasContent && emptyText && <p>{emptyText}</p>}
     </div>
   )
 }
@@ -368,61 +503,10 @@ function MediaUploadPanel({
   )
 }
 
-export function LeaderboardPanel({
-  t,
-  lane,
-  title,
-  subtitle,
-  profiles,
-  openProfile,
-}: {
-  t: Record<string, string>
-  lane: 'maker' | 'publisher'
-  title: string
-  subtitle: string
-  profiles: MarketplaceProfile[]
-  openProfile: (profile: MarketplaceProfile) => void
-}) {
-  const isZh = isZhCopy(t)
-  return (
-    <section className="leaderboard-panel">
-      <div className="leaderboard-head">
-        <div>
-          <span className="eyebrow">{lane === 'maker' ? textFor(t, 'Makers', '接单者') : textFor(t, 'Publishers', '发布者')}</span>
-          <strong>{title}</strong>
-        </div>
-        <span>{subtitle}</span>
-      </div>
-      <div className="rank-list">
-        {profiles.map((profile, index) => (
-          <button className="rank-row" type="button" key={profile.id} onClick={() => openProfile(profile)}>
-            <b>#{index + 1}</b>
-            <span className="avatar compact">{profile.initials}</span>
-            <span className="rank-copy">
-              <strong>{localizeText(profile.name, t)}</strong>
-              <small>@{profile.handle} · {profileTags(profile, t).slice(0, 2).join(' / ')}</small>
-            </span>
-            <span className="rank-metric">
-              <strong>{lane === 'maker' ? profile.stats.completed : profile.stats.posted}</strong>
-              <small>{lane === 'maker' ? (isZh ? '完成' : 'done') : isZh ? '发布' : 'posted'}</small>
-            </span>
-            <span className="rank-metric">
-              <strong>{lane === 'maker' ? profile.stats.acceptance : profile.stats.response}</strong>
-              <small>{lane === 'maker' ? (isZh ? '通过率' : 'accept') : isZh ? '响应' : 'response'}</small>
-            </span>
-          </button>
-        ))}
-      </div>
-    </section>
-  )
-}
-
 export function PublishPage({
   t,
   setPage,
-  requireAuth,
   publishTask,
-  openProfile,
   simulateAction,
 }: {
   t: Record<string, string>
@@ -434,7 +518,7 @@ export function PublishPage({
 }) {
   const isZh = isZhCopy(t)
   const [draft, setDraft] = useState<PublishDraft>(() => {
-    let inspiration: { title?: string; category?: string; details?: string; source?: string } | null = null
+    let inspiration: { title?: string; category?: string; details?: string; rules?: string; source?: string } | null = null
     try {
       const raw = window.sessionStorage.getItem('hcaiInspirationTaskDraft')
       if (raw) inspiration = JSON.parse(raw)
@@ -445,19 +529,19 @@ export function PublishPage({
     return {
       title: inspiration?.title ?? textFor(t, 'Create a 30-second AI product launch video', '制作一套中文 AI 课程宣传短视频'),
       category: inspiration?.category ?? 'Video',
-      reward: textFor(t, '$450 / 4,500 pts', '¥2,800 / 2,800 积分'),
-      deadline: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16),
+      reward: inspiration ? '' : textFor(t, '$450 / 4,500 pts', '¥2,800 / 2,800 积分'),
+      deadline: inspiration ? '' : new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16),
       visibility: 'Public brief + private files',
       details: inspiration?.details ?? textFor(
         t,
         'Need a polished vertical video with product shots, captions, music, and fast edits.',
         '需要 3 条中文竖版短视频，包含课程卖点、字幕、AI 配音和封面建议。',
       ),
-      rules: textFor(
+      rules: (inspiration?.rules || textFor(
         t,
         'Submit script, preview link, final MP4, captions, cover prompt, and rights summary.',
         '提交脚本、预览链接、最终 MP4、字幕文件、封面提示词和版权摘要。',
-      ) + (inspiration?.source ? textFor(t, `\n\nSource: ${inspiration.source}`, `\n\n来源：${inspiration.source}`) : ''),
+      )) + (inspiration?.source ? textFor(t, `\n\nSource: ${inspiration.source}`, `\n\n来源：${inspiration.source}`) : ''),
     }
   })
   const [taskAssets, setTaskAssets] = useState<ApiMediaAsset[]>([])
@@ -506,7 +590,6 @@ export function PublishPage({
       ),
     }
     updateDraft(key, suggestions[key])
-    simulateAction(isZh ? `已应用${publishFieldLabel(key, t)}模板` : `Template applied: ${publishFieldLabel(key, t)}`)
   }
   const templateButtonLabel = (key: EditablePublishField) =>
     isZh
@@ -523,7 +606,14 @@ export function PublishPage({
       <Sparkles size={16} />
     </button>
   )
-  const recommendedProfiles = useMemo(() => matchProfilesForDraft(draft), [draft])
+  const publishChecks = [
+    { label: textFor(t, 'Clear title', '标题清晰'), passed: Boolean(draft.title.trim()) },
+    { label: textFor(t, 'Budget and points set', '预算和积分已填写'), passed: Boolean(draft.reward.trim()) },
+    { label: textFor(t, 'Deadline set', '截止时间已填写'), passed: Boolean(draft.deadline.trim()) },
+    { label: textFor(t, 'Requirement details included', '需求详情已填写'), passed: Boolean(draft.details.trim()) },
+    { label: textFor(t, 'Acceptance criteria included', '包含验收标准'), passed: Boolean(draft.rules.trim()) },
+  ]
+  const readyToPublish = publishChecks.every((check) => check.passed)
 
   return (
     <div className="stack">
@@ -613,78 +703,25 @@ export function PublishPage({
             simulateAction={simulateAction}
           />
           <div className="button-row">
-            <button className="primary-button" type="button" onClick={() => void publishTask({ ...draft, attachmentIds: taskAssets.map((asset) => asset.id) })}>
+            <button className="primary-button" type="button" disabled={!readyToPublish} onClick={() => void publishTask({ ...draft, attachmentIds: taskAssets.map((asset) => asset.id) })}>
               <Upload size={17} />
               {textFor(t, 'Publish task', '发布任务')}
-            </button>
-            <button className="ghost-button" type="button" onClick={requireAuth}>
-              <FileText size={17} />
-              {textFor(t, 'Save draft', '保存草稿')}
             </button>
           </div>
         </div>
         <aside className="side-stack">
           <section className="panel side-panel compact-panel">
-            <SectionHeader eyebrow={textFor(t, 'Auto checks', '自动检查')} title={textFor(t, 'Ready to publish', '可以发布')} />
-          {(isZh
-            ? ['标题清晰', '预算和积分已填写', '包含验收标准', '附件已标记私密', '已开启社区讨论']
-            : ['Clear title', 'Budget and points set', 'Acceptance criteria included', 'Attachments marked private', 'Community discussion enabled']
-          ).map((item) => (
-            <div className="check-line" key={item}>
-              <Check size={16} />
-              <span>{item}</span>
+            <SectionHeader eyebrow={textFor(t, 'Auto checks', '自动检查')} title={readyToPublish ? textFor(t, 'Ready to publish', '可以发布') : textFor(t, 'Complete required fields', '请补全必填信息')} />
+          {publishChecks.map((check) => (
+            <div className={`check-line ${check.passed ? 'is-passed' : 'is-missing'}`} key={check.label}>
+              {check.passed ? <Check size={16} /> : <X size={16} />}
+              <span>{check.label}</span>
             </div>
           ))}
           <button className="ghost-button" type="button" onClick={() => setPage('community')}>
             <MessageCircle size={17} />
             {textFor(t, 'Discuss in community', '到社区讨论')}
           </button>
-          </section>
-          <section className="panel match-panel">
-            <SectionHeader
-              eyebrow={textFor(t, 'Smart matching', '智能匹配')}
-              title={textFor(t, 'Recommended makers', '推荐接单用户')}
-            />
-            <div className="match-list">
-              {recommendedProfiles.map(({ profile, score, tags, categoryHit, languageHit }) => {
-                const visibleTags = tags.length ? tags : profileTags(profile, t).slice(0, 2)
-                return (
-                  <article className="match-card" key={profile.id}>
-                    <div className="match-card-top">
-                      <span className="avatar compact">{profile.initials}</span>
-                      <div>
-                        <strong>{localizeText(profile.name, t)}</strong>
-                        <span>@{profile.handle} · {localizeText(profile.role, t)}</span>
-                      </div>
-                      <b>{score}%</b>
-                    </div>
-                    <p>
-                      {categoryHit
-                        ? textFor(t, 'Category match', '分类匹配')
-                        : textFor(t, 'Related skill match', '相关能力匹配')}
-                      {languageHit ? ` · ${textFor(t, 'Chinese ready', '支持中文')}` : ''}
-                      {' · '}
-                      {textFor(t, 'Response', '响应')} {profile.stats.response}
-                    </p>
-                    <div className="skill-cloud compact">
-                      {visibleTags.map((tag) => (
-                        <span className="tag" key={tag}>{tag}</span>
-                      ))}
-                    </div>
-                    <div className="button-row compact-buttons">
-                      <button className="ghost-button" type="button" onClick={() => openProfile(profile)}>
-                        <UserRound size={16} />
-                        {textFor(t, 'Profile', '主页')}
-                      </button>
-                      <button className="primary-button" type="button" disabled title={textFor(t, 'Direct invitations are not available yet', '定向邀请暂未开放')}>
-                        <Send size={16} />
-                        {textFor(t, 'Invite unavailable', '邀请暂未开放')}
-                      </button>
-                    </div>
-                  </article>
-                )
-              })}
-            </div>
           </section>
         </aside>
       </section>
@@ -1046,7 +1083,7 @@ export function MyTasksPage({
   }
 
   return (
-    <div className="stack">
+    <div className="stack my-tasks-page">
       <SectionHeader
         eyebrow={textFor(t, 'Delivery desk', '交付工作台')}
         title={t.mineTitle}
@@ -1057,20 +1094,15 @@ export function MyTasksPage({
           </button>
         }
       />
-      <div className="market-dashboard">
+      <section className="mine-summary-strip" aria-label={textFor(t, 'My task summary', '我的任务概览')}>
         {stages.map((stage) => (
-          <article className="metric-card highlight" key={stage.label}>
+          <article key={stage.label}>
             <span>{stage.label}</span>
             <strong>{stage.value}</strong>
             <small>{stage.text}</small>
           </article>
         ))}
-        <article className="metric-card highlight">
-          <span>{textFor(t, 'Points pending', '待结算积分')}</span>
-          <strong>4,100</strong>
-          <small>{textFor(t, 'Released after selected work passes acceptance.', '被选方案完成验收后发放。')}</small>
-        </article>
-      </div>
+      </section>
       <div className="my-task-workspace">
         <div className="my-task-picker">
           <div className="my-task-filter" aria-label={textFor(t, 'Filter my tasks', '筛选我的任务')}>

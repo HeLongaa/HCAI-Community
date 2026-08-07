@@ -245,7 +245,16 @@ export const buildProviderSideEffectPlan = ({
   }
 }
 
-const executeOperation = async ({ operation, replay, repositories, actor, state, fetchOutput }) => {
+const executeOperation = async ({
+  operation,
+  replay,
+  repositories,
+  actor,
+  state,
+  fetchOutput,
+  source,
+  outputSafetyClassifier,
+}) => {
   const generation = state.generation ?? replay.generation
   const generationId = generationIdFor(replay)
   switch (operation.type) {
@@ -258,6 +267,8 @@ const executeOperation = async ({ operation, replay, repositories, actor, state,
         repositories,
         outputDigest: replay.outputDigest,
         fetchOutput,
+        source,
+        outputSafetyClassifier,
       })
       state.generation = persisted
       state.outputAssetIds = getOutputAssetIds(persisted)
@@ -387,6 +398,8 @@ export const executeProviderSideEffectPlan = async ({
   actor = null,
   sideEffectResult = replay?.sideEffectResult ?? {},
   fetchOutput = null,
+  source = process.env,
+  outputSafetyClassifier = null,
 } = {}) => {
   const plan = buildProviderSideEffectPlan({ replay, sideEffectResult })
   const previousOperations = new Map((sideEffectResult?.operations ?? []).map((operation) => [operation.key, operation]))
@@ -418,7 +431,16 @@ export const executeProviderSideEffectPlan = async ({
       continue
     }
     try {
-      const result = await executeOperation({ operation, replay, repositories, actor, state, fetchOutput })
+      const result = await executeOperation({
+        operation,
+        replay,
+        repositories,
+        actor,
+        state,
+        fetchOutput,
+        source,
+        outputSafetyClassifier,
+      })
       operations.push({ key: operation.key, type: operation.type, status: 'succeeded', result: ledgerOperationResult(operation, result) })
     } catch (error) {
       const failure = safeProviderFailure(error)

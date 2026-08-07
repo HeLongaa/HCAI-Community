@@ -3,6 +3,7 @@ import { notFound } from '../../common/errors/httpError.js'
 import { readJsonBody } from '../../common/http/request.js'
 import { created, ok } from '../../common/http/responses.js'
 import { repositories } from '../../repositories/index.js'
+import { parseProviderAlertDeliveryListQuery, parseProviderAlertDeliveryReplay, serializeProviderAlertDeliveryAdmin } from '../../creative/providerAlertDeliveries.js'
 import {
   parseWebhookConfigurationUpdate,
   parseWebhookControlUpdate,
@@ -110,5 +111,21 @@ export const registerWebhookRoutes = (router, options = {}) => {
   router.add('GET', '/api/admin/developer/webhooks/metrics', async (_request, response, context) => {
     requirePermission(context, 'admin:webhooks:read')
     ok(response, await routeRepositories.webhooks.metrics())
+  })
+  router.add('GET', '/api/admin/provider-alert-deliveries', async (_request, response, context) => {
+    requirePermission(context, 'admin:webhooks:read')
+    const query = parseProviderAlertDeliveryListQuery(context.query)
+    const items = await routeRepositories.providerAlertDeliveries.list(query)
+    ok(response, items.map(serializeProviderAlertDeliveryAdmin), { pagination: { limit: query.limit, nextCursor: null } })
+  })
+  router.add('POST', '/api/admin/provider-alert-deliveries/:id/replay', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:webhooks:manage')
+    const result = await routeRepositories.providerAlertDeliveries.replay(
+      context.params.id,
+      parseProviderAlertDeliveryReplay((await readJsonBody(request)) ?? {}),
+      actor,
+    )
+    if (!result) throw notFound(`/api/admin/provider-alert-deliveries/${context.params.id}`)
+    ok(response, serializeProviderAlertDeliveryAdmin(result))
   })
 }
