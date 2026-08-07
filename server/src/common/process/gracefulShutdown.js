@@ -43,7 +43,6 @@ export const createGracefulShutdown = ({
         logger.error?.(`[shutdown:${serviceName}] timed out after ${deadlineMs}ms`)
         finish(1, { drained: false, reason: 'timeout' })
       }, deadlineMs)
-      deadline.unref?.()
 
       logger.info?.(`[shutdown:${serviceName}] received ${signal}; draining`)
       void (async () => {
