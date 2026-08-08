@@ -153,10 +153,13 @@ const assertDiscardedRouterMetadataSafe = (value) => {
   if (value == null) return
   if (!isRecord(value)) throw providerResponseError('metadata_invalid')
   assertExactKeys(value, ['failed_count', 'success_count'], providerResponseError, 'metadata_fields_unsupported')
-  for (const key of ['failed_count', 'success_count']) {
-    if (!Number.isSafeInteger(value[key]) || value[key] < 0) throw providerResponseError('metadata_count_invalid')
-  }
-  if (value.failed_count !== 0 || value.success_count !== 1) throw providerResponseError('metadata_result_count_invalid')
+  const counts = Object.fromEntries(['failed_count', 'success_count'].map((key) => {
+    const raw = value[key]
+    const parsed = typeof raw === 'string' && /^(?:0|[1-9][0-9]{0,9})$/.test(raw) ? Number(raw) : raw
+    if (!Number.isSafeInteger(parsed) || parsed < 0) throw providerResponseError('metadata_count_invalid')
+    return [key, parsed]
+  }))
+  if (counts.failed_count !== 0 || counts.success_count !== 1) throw providerResponseError('metadata_result_count_invalid')
 }
 
 const configuredProviderCostId = (source = {}) => {

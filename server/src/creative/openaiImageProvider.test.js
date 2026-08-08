@@ -166,7 +166,7 @@ test('OpenAI Image response normalizes MiniMax JPEG base64 to the public PNG out
   }).jpeg().toBuffer()
   const result = await projectOpenAIImageGenerationResponse({
     created: 1_725_000_001,
-    metadata: { failed_count: 0, success_count: 1 },
+    metadata: { failed_count: '0', success_count: '1' },
     data: [{ b64_json: jpeg.toString('base64'), url: '', revised_prompt: '' }],
   })
   assert.equal(result.output.contentType, 'image/png')
