@@ -37,7 +37,7 @@ if [ "$mode" = preflight ]; then
   fi
   git -C "$source_dir" fetch --quiet --no-tags origin "$source_sha"
   git -C "$source_dir" checkout --quiet --detach "$source_sha"
-  git -C "$source_dir" clean -ffdx
+  git -C "$source_dir" clean -ffdx >/dev/null
   npm --prefix "$source_dir" ci --ignore-scripts --no-audit --no-fund >/dev/null
   npm --prefix "$source_dir/server" ci --ignore-scripts --no-audit --no-fund >/dev/null
 else
