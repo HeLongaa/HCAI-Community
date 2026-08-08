@@ -104,6 +104,9 @@ jobs:
           DATABASE_URL: ${{ env.FOUNDATION_DATABASE_URL }}
         run: npm --prefix server run db:migrate:deploy
 
+      - name: Generate Prisma client
+        run: npm --prefix server run db:generate
+
       - name: Run isolated Prisma integration shard
         run: npm run test:prisma-integration-gate
 
