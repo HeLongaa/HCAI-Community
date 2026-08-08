@@ -9,7 +9,7 @@
 - `worker`：继承 API 运行时，使用独立进程执行持久化任务。
 - `migrate`：一次性迁移镜像，唯一允许包含 Prisma CLI 的运行制品。
 
-`infra/production.compose.yml` 还编排固定版本的 Caddy、PostgreSQL、Redis、MinIO 和 MinIO 初始化任务。浏览器只访问网关；`/api/*` 与 `/health` 转发到 API，其余路径转发到前端，因此线上保持同源访问。
+`infra/production.compose.yml` 还编排固定版本的 Caddy、PostgreSQL、Redis、MinIO 和 MinIO 初始化任务。浏览器只访问网关；`/api/*`、`/health` 与 `/ready` 转发到 API，其余路径转发到前端，因此线上保持同源访问。`/health` 只证明进程存活，`/ready` 还会检查 PostgreSQL 与生产 Redis；容器和流量门禁使用后者。
 
 ## 安全边界
 
@@ -67,7 +67,7 @@ npm run supply-chain:scan
 npm run rehearse:production-containers
 ```
 
-演练会使用明显的临时 fixture 密钥和随机宿主机端口，执行镜像构建、114 组迁移、权限种子、MinIO 建桶、健康探针、前端深链、管理员未授权拒绝、无 demo 用户检查、Worker 双任务执行、只读文件系统检查，以及 API/Worker 的 `SIGTERM` 排空。成功或失败后默认删除容器和临时卷。
+演练会使用明显的临时 fixture 密钥和随机宿主机端口，执行镜像构建、114 组迁移、权限种子、MinIO 建桶、健康探针、前端深链、管理员未授权拒绝、无 demo 用户检查、Worker 双任务执行、Redis/PostgreSQL 中断与 readiness 恢复、只读文件系统检查，以及 API/Worker 的 `SIGTERM` 排空。成功或失败后默认删除容器和临时卷。
 
 调试失败现场时可临时保留容器：
 
@@ -82,7 +82,7 @@ CONTAINER_REHEARSAL_KEEP=true npm run rehearse:production-containers
 1. 为候选版本构建四个 target，生成双格式 SBOM、漏洞报告和签名来源证明；只接受聚合 manifest 中的 registry digest。
 2. 启动 PostgreSQL、Redis 和对象存储依赖，等待健康。
 3. 运行 `migrate`，要求退出码为 `0`。
-4. 启动 API，等待 `/health` 通过。
+4. 启动 API，确认 `/health` 存活后等待 `/ready` 通过；依赖失败时不得接入流量。
 5. 启动 Worker，确认启用任务均出现 `completed`，没有唯一约束、租约或连接失败。
 6. 启动前端和同源网关，验证 `/`、深链、`/api/*` 和未授权边界。
 7. 外层 Ingress 完成 TLS、HSTS、CSP、域名和发布流量切换；运行面继续使用已批准 digest，不切回 tag。

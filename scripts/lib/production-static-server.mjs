@@ -85,6 +85,7 @@ export function createProductionStaticServer({ rootDirectory, contract }) {
     }
 
     const isBackendRoute = pathname === '/health'
+      || pathname === '/ready'
       || pathname === '/metrics'
       || pathname === '/api'
       || pathname.startsWith('/api/')

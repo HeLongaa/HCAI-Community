@@ -63,8 +63,8 @@ try {
 
   const spa = await request('/auth/deep-link')
   check('spa_fallback', spa.status === 200 && spa.headers['content-type']?.startsWith('text/html') && spa.headers['cache-control'] === contract.htmlCacheControl)
-  const backendRoute = await request('/api/me')
-  check('backend_route_not_spa', backendRoute.status === 404 && backendRoute.headers['content-type']?.startsWith('application/json') && backendRoute.headers['cache-control'] === contract.healthCacheControl)
+  const backendRoutes = await Promise.all(['/api/me', '/health', '/ready'].map((pathname) => request(pathname)))
+  check('backend_route_not_spa', backendRoutes.every((response) => response.status === 404 && response.headers['content-type']?.startsWith('application/json') && response.headers['cache-control'] === contract.healthCacheControl))
   const missing = await request('/assets/missing.js')
   check('asset_not_found', missing.status === 404)
   const traversal = await request('/%2e%2e/package.json')

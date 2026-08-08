@@ -80,7 +80,7 @@ npm run release:application:rehearse:env
 ```
 
 Attach the `RELEASE-02` receipt proving the exact candidate artifact was served, the previous artifact was restored, and
-both phases passed the same health, OpenAPI, public policy, and authentication-rejection smoke. The local fixture
+both phases passed the same liveness, dependency-readiness, OpenAPI, public policy, and authentication-rejection smoke. The local fixture
 rehearsal is not a deployment receipt.
 
 Before switching traffic:
@@ -98,11 +98,12 @@ Deploy order:
 1. Resolve no tags. Load the approved four-image digest manifest and verify its signed attestations.
 2. Apply database migrations using the approved migration digest.
 3. Deploy backend API with embedded workers disabled using the approved API digest.
-4. Run backend health check: `GET /health`.
-5. Run OpenAPI check: `GET /api/openapi.json`.
-6. Deploy the approved Worker digest with explicit job flags.
-7. Deploy the approved frontend digest.
-8. Confirm frontend can reach the API origin with credentialed requests when cookie auth is enabled.
+4. Run backend liveness check: `GET /health`.
+5. Run dependency readiness check: `GET /ready`; require `data.status=ready` before traffic.
+6. Run OpenAPI check: `GET /api/openapi.json`.
+7. Deploy the approved Worker digest with explicit job flags.
+8. Deploy the approved frontend digest.
+9. Confirm frontend can reach the API origin with credentialed requests when cookie auth is enabled.
 
 Critical API smoke checks:
 
@@ -188,5 +189,5 @@ Rollback or pause rollout when any of these occur:
 5. If migrations are not backward-compatible, follow the database rollback plan prepared before release.
 6. Scale worker processes down to one instance or disable mutating job flags if the incident involves leases.
 7. Run `npm run smoke:production:env` against the restored environment.
-8. Confirm `GET /health`, login/refresh, worker logs, and Admin operations metrics are healthy.
+8. Confirm `GET /health`, `GET /ready`, login/refresh, worker logs, and Admin operations metrics are healthy.
 9. Record the incident and attach relevant audit exports or operations snapshot artifacts.

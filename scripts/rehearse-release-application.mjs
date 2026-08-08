@@ -93,6 +93,10 @@ const startFixture = async ({ previousArtifactSha256 }) => {
       response.end(JSON.stringify({ data: { status: 'ok', service: 'release-application-fixture', releaseArtifactSha256: currentArtifactSha256 } }))
       return
     }
+    if (request.url === '/ready') {
+      response.end(JSON.stringify({ data: { status: 'ready', service: 'release-application-fixture', checks: { database: 'ok', rateLimitStore: 'ok' }, releaseArtifactSha256: currentArtifactSha256 } }))
+      return
+    }
     if (request.url === '/api/me') {
       response.statusCode = 401
       response.end(JSON.stringify({ error: { code: 'AUTH_REQUIRED' } }))

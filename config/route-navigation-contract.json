@@ -6,7 +6,7 @@
   "routeRoot": "server/src/modules",
   "openApiPath": "server/src/docs/openapi.js",
   "permissionMatrixPath": "docs/PERMISSION_MATRIX.md",
-  "ignoredRoutes": ["GET /health", "GET /metrics", "GET /api/openapi.json"],
+  "ignoredRoutes": ["GET /health", "GET /ready", "GET /metrics", "GET /api/openapi.json"],
   "routeGroups": [
     { "id": "auth", "module": "identity-access", "prefixes": ["/api/auth", "/api/me"], "nav": "account", "breadcrumb": "Account", "deepLink": "account" },
     { "id": "users", "module": "user-profile", "prefixes": ["/api/users", "/api/profiles"], "nav": "profiles", "breadcrumb": "Profiles", "deepLink": "profiles" },

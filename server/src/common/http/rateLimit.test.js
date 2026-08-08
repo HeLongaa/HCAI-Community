@@ -242,6 +242,29 @@ test('redis rate limit store increments shared counters with prefixed keys', asy
   assert.equal(commands[0][3], 'test-prefix:auth:198.51.100.50')
 })
 
+test('redis rate limit readiness uses a non-mutating PING command', async () => {
+  const commands = []
+  const store = createRedisRateLimitStore({
+    client: {
+      sendCommand: async (parts) => {
+        commands.push(parts)
+        return 'PONG'
+      },
+    },
+  })
+
+  assert.equal(await store.healthCheck(), true)
+  assert.deepEqual(commands, [['PING']])
+})
+
+test('redis rate limit readiness rejects unexpected responses', async () => {
+  const store = createRedisRateLimitStore({
+    client: { sendCommand: async () => 'LOADING' },
+  })
+
+  await assert.rejects(store.healthCheck(), /readiness check failed/)
+})
+
 test('rate limit store factory selects redis store with injected client', async () => {
   const client = {
     sendCommand: async () => [1, 30_000],

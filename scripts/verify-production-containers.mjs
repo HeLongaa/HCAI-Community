@@ -6,6 +6,7 @@ const root = process.cwd()
 const contract = JSON.parse(fs.readFileSync(path.join(root, 'config/production-container-contract.json'), 'utf8'))
 const dockerfile = fs.readFileSync(path.join(root, contract.dockerfile), 'utf8')
 const gatewayConfig = fs.readFileSync(path.join(root, contract.gatewayConfig), 'utf8')
+const rehearsal = fs.readFileSync(path.join(root, 'scripts/rehearse-production-containers.mjs'), 'utf8')
 const serverPackage = JSON.parse(fs.readFileSync(path.join(root, 'server/package.json'), 'utf8'))
 const checks = []
 const add = (name, pass, evidence) => checks.push({ name, pass: Boolean(pass), evidence })
@@ -46,6 +47,7 @@ add('API and Worker include immutable runtime policies', dockerfile.includes('CO
 add('Worker inherits the non-root API runtime', /FROM api AS worker/.test(dockerfile), 'worker FROM api')
 add('Frontend runtime uses a non-root user', /FROM \$\{NODE_IMAGE\} AS frontend[\s\S]*?USER node/.test(dockerfile), 'USER node')
 add('Runtime images include health checks', (dockerfile.match(/^HEALTHCHECK /gm) ?? []).length === 3, 'frontend, api, worker')
+add('API container health is dependency-aware readiness', /FROM server-runtime-base AS api[\s\S]*?HEALTHCHECK[\s\S]*?127\.0\.0\.1:8787\/ready/.test(dockerfile), '/ready')
 add('Migration image runs deploy mode without global npm', dockerfile.includes('COPY --chown=node:node --from=server-build /app/server/prisma.config.ts ./prisma.config.ts') && dockerfile.includes('CMD ["node", "node_modules/prisma/build/index.js", "migrate", "deploy", "--schema", "./prisma/schema.prisma"]') && serverPackage.scripts['db:migrate:deploy']?.includes('migrate deploy'), serverPackage.scripts['db:migrate:deploy'])
 add('Docker context excludes secret environment files', fs.readFileSync(path.join(root, '.dockerignore'), 'utf8').split(/\r?\n/).includes('.env.*'), '.dockerignore')
 add('API has graceful SIGTERM handling', fs.readFileSync(path.join(root, 'server/src/index.js'), 'utf8').includes("shutdown('SIGTERM')"), 'server/src/index.js')
@@ -89,7 +91,8 @@ if (compose) {
   add('Embedded API workers are disabled', services.api?.environment?.API_EMBEDDED_WORKERS_ENABLED === 'false', services.api?.environment?.API_EMBEDDED_WORKERS_ENABLED)
 }
 
-add('Gateway routes API and frontend on one origin', gatewayConfig.includes('handle /api/*') && gatewayConfig.includes('reverse_proxy api:8787') && gatewayConfig.includes('reverse_proxy frontend:4173'), contract.gatewayConfig)
+add('Gateway routes API, probes, and frontend on one origin', gatewayConfig.includes('handle /api/*') && gatewayConfig.includes('handle /health') && gatewayConfig.includes('handle /ready') && gatewayConfig.includes('reverse_proxy api:8787') && gatewayConfig.includes('reverse_proxy frontend:4173'), contract.gatewayConfig)
+add('Container rehearsal proves dependency readiness failure and recovery', ["['redis', 'postgres']", "run(['stop', dependency])", "status === 'not_ready'", "status === 'ready'"].every((marker) => rehearsal.includes(marker)), 'Redis + PostgreSQL outage recovery')
 
 for (const check of checks) console.log(`${check.pass ? 'PASS' : 'FAIL'} ${check.name}: ${check.evidence ?? ''}`)
 const failed = checks.filter((check) => !check.pass)

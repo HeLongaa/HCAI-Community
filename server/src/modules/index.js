@@ -36,7 +36,7 @@ import { registerDataRightsRoutes } from './dataRights/routes.js'
 
 export const registerModules = (router, options = {}) => {
   const source = options.source ?? process.env
-  registerHealthRoutes(router)
+  registerHealthRoutes(router, { readinessChecks: options.readinessChecks })
   registerMetricsRoutes(router)
   registerDocsRoutes(router)
   registerComplianceRoutes(router)

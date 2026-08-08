@@ -51,6 +51,23 @@ const waitForHttp = async (url, timeoutMs = 180_000) => {
   }
   throw new Error(`Timed out waiting for ${url}: ${lastError?.message ?? 'unavailable'}`)
 }
+const waitForHttpStatus = async (url, expectedStatus, timeoutMs = 60_000) => {
+  const deadline = Date.now() + timeoutMs
+  let lastStatus = null
+  let lastError = null
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url)
+      lastStatus = response.status
+      if (response.status === expectedStatus) return response
+      await response.body?.cancel()
+    } catch (error) {
+      lastError = error
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000))
+  }
+  throw new Error(`Timed out waiting for ${url} status ${expectedStatus}: ${lastStatus ?? lastError?.message ?? 'unavailable'}`)
+}
 const waitForWorkerLogs = async (timeoutMs = 30_000) => {
   const deadline = Date.now() + timeoutMs
   let logs = ''
@@ -74,7 +91,7 @@ try {
   const origin = `http://127.0.0.1:${port}`
   await waitForHttp(`${origin}/gateway-healthz`)
 
-  for (const path of ['/health', '/', '/assets', '/#assets']) {
+  for (const path of ['/health', '/ready', '/', '/assets', '/#assets']) {
     const response = await fetch(`${origin}${path}`)
     check(response.status === 200, `${path} is served through the same-origin gateway`)
   }
@@ -95,6 +112,19 @@ try {
   check(workerLogs.includes('[worker:domain-event-pipeline] completed'), 'domain event worker completes')
   check(workerLogs.includes('[worker:search-index-sync] completed'), 'search index worker completes')
   check(!workerLogs.includes('] failed'), 'worker startup contains no failed jobs')
+
+  for (const dependency of ['redis', 'postgres']) {
+    run(['stop', dependency])
+    const degraded = await waitForHttpStatus(`${origin}/ready`, 503)
+    const degradedBody = await degraded.json()
+    check(degradedBody?.data?.status === 'not_ready', `readiness fails closed while ${dependency} is unavailable`)
+    const liveness = await fetch(`${origin}/health`)
+    check(liveness.status === 200, `liveness remains independent while ${dependency} is unavailable`)
+    run(['start', dependency])
+    const recovered = await waitForHttp(`${origin}/ready`)
+    const recoveredBody = await recovered.json()
+    check(recoveredBody?.data?.status === 'ready', `readiness recovers after ${dependency} returns`)
+  }
 
   const apiId = serviceContainer('api')
   const immutable = spawnSync('docker', ['exec', apiId, 'touch', '/app/server/should-fail'], { encoding: 'utf8' })

@@ -19,6 +19,10 @@
 		reverse_proxy api:8787
 	}
 
+	handle /ready {
+		reverse_proxy api:8787
+	}
+
 	handle {
 		reverse_proxy frontend:4173
 	}

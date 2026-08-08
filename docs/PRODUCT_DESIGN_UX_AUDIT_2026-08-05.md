@@ -1777,6 +1777,57 @@ Generations 的主对象应是“结果与状态”，而不是 Provider 元数�
 - 提交候选分支；网络恢复后推送 Draft PR，并由远端 CI 对完整 `check:pr` 重新验收。
 - 在真实设备补齐 400% 缩放、VoiceOver/NVDA、语音控制与长数据证据，继续收集生产 Go bundle 外部签字和环境证明。
 
+## 59. 阶段 4 第四十一批实施记录（2026-08-08）
+
+本批次修复 API 将进程存活误作流量就绪依据的生产缺陷，并把依赖感知 readiness 接入容器与发布证据链：
+
+- 保留 `GET /health` 作为纯 liveness，新增 `GET /ready`。Readiness 并行执行 PostgreSQL 与生产 Redis 检查，单项最多
+  2 秒；没有检查器、检查器返回 `false`、抛错或超时均 fail closed 为 HTTP 503。
+- 探针响应只公开依赖名称和 `ok/failed`，不回传异常文本、连接串、主机或凭据；`/health` 与 `/ready` 均设置
+  `cache-control: no-store`，并在配置时返回同一不可变制品 SHA-256。
+- Redis 限流 Store 新增只读 `PING` 健康检查；数据库使用固定 Prisma tagged query `SELECT 1`，不使用 Unsafe API。
+- API Docker `HEALTHCHECK` 改为 `/ready`。Caddy 同源网关转发 `/health` 与 `/ready`；前端静态服务器把两个路径都视为
+  后端保留路径，避免网关错误时被 SPA HTML 回退掩盖。
+- Candidate/rollback 发布烟测现在同时要求 liveness、dependency readiness、OpenAPI、公开政策和未认证拒绝；readiness
+  必须返回 `data.status=ready` 且制品身份与目标 digest 完全一致。
+- 隔离容器演练增加 Redis/PostgreSQL 停止、`/ready=503`、`/health=200` 和依赖恢复后重新 ready 的故障注入步骤；机器
+  合同要求这些步骤存在，待 Docker 守护进程可用时执行真实容器证据。
+
+本批发现并修复的 Bug：
+
+- 原 `/health` 不访问任何依赖，却被 API Docker、Worker/Gateway 启动依赖和发布 smoke 当作可接流量信号。数据库或
+  Redis 在运行中失联后，API 仍会保持 healthy 并继续接收请求，直到业务请求大量失败。
+- 原静态前端只阻止 `/health` 和 `/api/*` 进入 SPA 回退；新增探针若未同步保留路径，会在网关配置错误时返回 200 HTML，
+  造成假阳性。
+- 原发布 candidate/rollback 只证明进程和制品身份，不能证明关键运行依赖可用。
+
+本批次验证范围：
+
+- Health、Redis 和发布 smoke 聚焦测试 `26/26` 通过；完整服务端测试共 `1443` 项，`1376` 通过、`67` 个外部 Prisma
+  集成项按既定条件跳过、`0` 失败。
+- Release 应用机器合同 `32/32`、本地 candidate/rollback 演练 `14/14`、生产容器合同 `57/57`、生产 Secret Lifecycle
+  `21/21`、路由合同 `46/46`、前端/API 合同 `28/28`、静态交付 `13/13`、资源预算 `19/19` 和键盘浏览器回归 `3/3`
+  通过；`build:release` 与聚焦 ESLint 通过。
+- 真实 `src/index.js` 无数据库进程验证得到 `/health=200`、`/ready=503`、`checks.database=failed`，证明主进程接线
+  fail closed，而非仅注入式路由测试通过。
+- 本地 Docker/OrbStack socket 当前不存在，隔离容器故障注入未能启动，且没有创建、停止或修改任何容器；不得宣称真实
+  容器中断恢复已通过。
+- npm 镜像站返回 `ECONNRESET`，官方 Registry 返回 `ENOTFOUND`，前后端 `npm audit` 均未取得漏洞结论；依赖树
+  `npm ls --omit=dev --all` 可完整解析，但不能替代漏洞数据库扫描。
+
+尚未关闭的上线阻断：
+
+- 恢复 Docker 守护进程后执行完整生产容器故障注入；网络恢复后执行前后端依赖审计、Trivy 镜像扫描和远端 CI。
+- 真实六角色签字、Google/GitHub OAuth、Mailer 最终送达与 bounce/complaint、生产 Vault/KMS-HSM/CA/off-host audit、
+  法律与 Provider 治理、GHCR/OIDC Attestation、目标环境 UAT/canary/rollback/hypercare 仍未闭环。
+- 输出安全分类和媒体扫描继续由上游承担，边界需写入 Provider 与法律批准证据；当前发布判断保持 **No-Go**。
+
+下一步：
+
+- 提交本批并尝试推送 Draft PR；网络恢复后执行完整远端 `check:pr` 和漏洞扫描。
+- 在不触碰受保护 OpenClaw 容器的前提下恢复隔离 Docker 演练能力，取得 Redis/PostgreSQL 故障与恢复的真实运行回执。
+- 继续收集目标环境 OAuth、Mailer、Secret Manager、供应链、UAT 和六角色独立签字证据。
+
 ## 附录：审计截图
 
 管理员端审计截图：

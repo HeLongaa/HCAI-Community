@@ -16,6 +16,7 @@ The local command starts an in-process HTTP fixture and changes only its in-memo
 Both candidate and rollback phases require:
 
 - `GET /health` returns HTTP 200, `data.status=ok`, and the expected SHA-256 artifact identity in both `data.releaseArtifactSha256` and `x-release-artifact-sha256`.
+- `GET /ready` returns HTTP 200, `data.status=ready`, successful PostgreSQL and production Redis checks, and the same expected artifact identity.
 - `GET /api/openapi.json` returns HTTP 200.
 - `GET /api/compliance/policies` returns HTTP 200.
 - Unauthenticated `GET /api/me` returns HTTP 401.
@@ -40,7 +41,7 @@ Store these values in the protected Environment Secrets consumed by the workflow
 credentials, but keeping them in Environment Secrets preserves the reviewer and branch boundary when the Environment's
 100-variable quota is already occupied. Do not fall back to repository variables.
 
-Commands are parsed as JSON argument arrays and run without a shell. The executable must be one of `aws`, `az`, `docker`, `gcloud`, `kubectl`, `node`, `npm`, or `npx`. Credential-shaped command arguments are rejected; credentials must come from the protected environment. The runner supplies `RELEASE_TARGET_ARTIFACT_SHA256`, both artifact digests, and the target origin to each command. The deployment adapter must configure `RELEASE_ARTIFACT_SHA256` on the API process so `/health` can prove which artifact serves traffic.
+Commands are parsed as JSON argument arrays and run without a shell. The executable must be one of `aws`, `az`, `docker`, `gcloud`, `kubectl`, `node`, `npm`, or `npx`. Credential-shaped command arguments are rejected; credentials must come from the protected environment. The runner supplies `RELEASE_TARGET_ARTIFACT_SHA256`, both artifact digests, and the target origin to each command. The deployment adapter must configure `RELEASE_ARTIFACT_SHA256` on the API process so `/health` and `/ready` can prove which artifact serves traffic.
 
 For a single-host protected staging target, use the repository SSH adapter documented in
 `docs/GITHUB_ENVIRONMENT.md`. The remote `infra/staging/deploy-release.sh` command accepts only a SHA-256 whose manifest

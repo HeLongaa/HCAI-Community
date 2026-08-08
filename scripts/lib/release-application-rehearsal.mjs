@@ -123,9 +123,10 @@ export const runSmokeChecks = async ({ origin, definitions, expectedArtifactSha2
         observedStatus = response.status
         const observedArtifactSha256 = response.headers.get('x-release-artifact-sha256')
         let semanticPass = true
-        if (definition.id === 'health' && response.status === definition.expectedStatus) {
+        if (['health', 'readiness'].includes(definition.id) && response.status === definition.expectedStatus) {
           const body = await response.json()
-          semanticPass = observedArtifactSha256 === expectedArtifactSha256 && body?.data?.status === 'ok' && body?.data?.releaseArtifactSha256 === expectedArtifactSha256
+          const expectedProbeStatus = definition.id === 'readiness' ? 'ready' : 'ok'
+          semanticPass = observedArtifactSha256 === expectedArtifactSha256 && body?.data?.status === expectedProbeStatus && body?.data?.releaseArtifactSha256 === expectedArtifactSha256
         } else {
           await response.body?.cancel()
         }

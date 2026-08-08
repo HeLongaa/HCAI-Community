@@ -133,3 +133,35 @@ test('smoke validates health semantics and retries transient status', async () =
   assert.equal(results[0].pass, true)
   assert.equal(results[0].attempts, 2)
 })
+
+test('smoke requires dependency readiness and exact artifact identity', async () => {
+  const artifactSha256 = 'c'.repeat(64)
+  const ready = await runSmokeChecks({
+    origin: 'https://api.staging.example.com',
+    expectedArtifactSha256: artifactSha256,
+    definitions: [{ id: 'readiness', method: 'GET', path: '/ready', expectedStatus: 200 }],
+    attempts: 1,
+    retryDelayMs: 0,
+    requestTimeoutMs: 100,
+    fetchImpl: async () => new Response(`{"data":{"status":"ready","releaseArtifactSha256":"${artifactSha256}"}}`, {
+      status: 200,
+      headers: { 'content-type': 'application/json', 'x-release-artifact-sha256': artifactSha256 },
+    }),
+  })
+  assert.equal(ready[0].pass, true)
+
+  const degraded = await runSmokeChecks({
+    origin: 'https://api.staging.example.com',
+    expectedArtifactSha256: artifactSha256,
+    definitions: [{ id: 'readiness', method: 'GET', path: '/ready', expectedStatus: 200 }],
+    attempts: 1,
+    retryDelayMs: 0,
+    requestTimeoutMs: 100,
+    fetchImpl: async () => new Response(`{"data":{"status":"not_ready","releaseArtifactSha256":"${artifactSha256}"}}`, {
+      status: 200,
+      headers: { 'content-type': 'application/json', 'x-release-artifact-sha256': artifactSha256 },
+    }),
+  })
+  assert.equal(degraded[0].pass, false)
+  assert.equal(degraded[0].errorCode, 'artifact_or_payload_mismatch')
+})

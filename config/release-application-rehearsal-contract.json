@@ -20,6 +20,7 @@
     "requestTimeoutMs": 10000,
     "checks": [
       { "id": "health", "method": "GET", "path": "/health", "expectedStatus": 200 },
+      { "id": "readiness", "method": "GET", "path": "/ready", "expectedStatus": 200 },
       { "id": "openapi", "method": "GET", "path": "/api/openapi.json", "expectedStatus": 200 },
       { "id": "public_policy", "method": "GET", "path": "/api/compliance/policies", "expectedStatus": 200 },
       { "id": "auth_rejection", "method": "GET", "path": "/api/me", "expectedStatus": 401 }

@@ -22,6 +22,9 @@ export const rateLimitConfig = (source = process.env) => ({
 export const createMemoryRateLimitStore = () => {
   const windows = new Map()
   return {
+    async healthCheck() {
+      return true
+    },
     increment({ key, windowMs, now = Date.now() }) {
       const current = windows.get(key)
       const windowStart = current && current.resetAt > now ? current.resetAt - windowMs : now
@@ -179,6 +182,11 @@ export const createRedisRateLimitStore = ({
   const commandClient = client ?? createRedisCommandClient({ url, timeoutMs })
   const keyPrefix = String(prefix || 'newchat:rate-limit').replace(/:+$/, '')
   return {
+    async healthCheck() {
+      const result = await commandClient.sendCommand(['PING'])
+      if (result !== 'PONG') throw new Error('Redis rate-limit store readiness check failed')
+      return true
+    },
     async increment({ key, windowMs, now = Date.now() }) {
       const redisKey = `${keyPrefix}:${key}`
       const result = await commandClient.sendCommand(['EVAL', redisIncrementScript, '1', redisKey, String(windowMs)])

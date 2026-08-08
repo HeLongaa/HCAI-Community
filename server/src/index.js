@@ -17,9 +17,23 @@ const main = async () => {
   const runtimeSource = runtimeConfig.source
   applyRuntimeConfigToProcess(runtimeConfig)
   const env = buildEnv(runtimeSource)
+  const rateLimitStore = createRateLimitStore(runtimeSource)
+  const readinessChecks = {
+    database: async () => {
+      if (!repositories.client?.$queryRaw) throw new Error('Database readiness check is unavailable')
+      await repositories.client.$queryRaw`SELECT 1`
+    },
+    ...(env.rateLimitStore === 'redis'
+      ? {
+          rateLimitStore: async () => {
+            await rateLimitStore.healthCheck()
+          },
+        }
+      : {}),
+  }
   const { registerModules } = await import('./modules/index.js')
   const router = createRouter()
-  registerModules(router, { source: runtimeSource, repositories })
+  registerModules(router, { source: runtimeSource, repositories, readinessChecks })
 
   const server = createServer(router, {
     resolveUser: async (token, request) => (await repositories.developerAccess.authenticateApiKey(token, {
@@ -27,7 +41,7 @@ const main = async () => {
     })) ?? repositories.auth.findDemoAccountByAccessToken(token),
     auditAdminMutation: createAdminMutationAuditHook(repositories.audit),
     onRequestFinished: (input) => repositories.observability.recordHttp(input),
-    rateLimitStore: createRateLimitStore(runtimeSource),
+    rateLimitStore,
     onRateLimitExceeded: (event) => {
       console.warn('[rate-limit]', JSON.stringify(event))
     },
