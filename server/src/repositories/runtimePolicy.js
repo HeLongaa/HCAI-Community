@@ -1,4 +1,6 @@
-export const isProductionRuntime = (env = process.env) => env.NODE_ENV === 'production'
+import { isProductionEnvironment } from '../common/runtimeEnvironment.js'
+
+export const isProductionRuntime = (env = process.env) => isProductionEnvironment(env)
 
 export const shouldLoadDemoRepository = (env = process.env) => !isProductionRuntime(env)
 

@@ -127,6 +127,8 @@ Production/browser auth:
 | `AUTH_COOKIE_DOMAIN` | Optional | `.example.com` |
 | `AUTH_TRUSTED_ORIGINS` | Yes | `https://app.example.com,https://admin.example.com` |
 | `CORS_ALLOWED_ORIGINS` | Alternative | Used when `AUTH_TRUSTED_ORIGINS` is omitted |
+| `OAUTH_CALLBACK_ORIGIN` | External OAuth | `https://api.example.com`; every Provider redirect must use this exact origin |
+| `OAUTH_BROWSER_RETURN_ORIGIN` | External OAuth | `https://app.example.com`; must also appear in `AUTH_TRUSTED_ORIGINS` |
 
 Object storage:
 
@@ -165,8 +167,10 @@ OAuth provider variables. Configure at least one provider:
 | Discord | `OAUTH_DISCORD_CLIENT_ID`, `OAUTH_DISCORD_REDIRECT_URI` |
 | Apple | `OAUTH_APPLE_CLIENT_ID`, `OAUTH_APPLE_TEAM_ID`, `OAUTH_APPLE_KEY_ID`, `OAUTH_APPLE_REDIRECT_URI` |
 
-Every redirect URI must use HTTPS and exactly end at `/api/auth/oauth/{provider}/callback`. Production never falls back
-to a dev callback when a provider is missing or invalid. Set `OAUTH_DEV_MODE=disabled` as defense in depth and optionally
+Every redirect URI must use HTTPS, use the exact `OAUTH_CALLBACK_ORIGIN`, and end at
+`/api/auth/oauth/{provider}/callback`. `OAUTH_BROWSER_RETURN_ORIGIN` is the frontend origin that receives users after the
+API callback sets the refresh and CSRF cookies; it must be listed in `AUTH_TRUSTED_ORIGINS`. Production never falls back
+to a dev callback when a provider or either origin is missing or invalid. Set `OAUTH_DEV_MODE=disabled` as defense in depth and optionally
 set `OAUTH_PROVIDER_TIMEOUT_MS` between `1000` and `15000` (default `8000`). Register the same exact URI in the Provider
 console before enabling the Provider in Admin. Admin stores an allowlisted environment SecretRef and never receives the deployment secret itself.
 

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "oauth-staging-contract-v1",
+  "evidenceSchemaVersion": "oauth-staging-evidence-v1",
+  "confirmation": "real-staging-oauth-acceptance",
+  "providers": ["google", "github"],
+  "rehearsalScript": "scripts/rehearse-oauth-staging.mjs",
+  "evidenceVerifier": "scripts/verify-oauth-staging-evidence.mjs",
+  "documentation": "docs/OAUTH_SECURITY_AND_STAGING.md",
+  "requiredChecks": [
+    "external_provider_ready",
+    "provider_authorization_opened",
+    "browser_returned_to_product",
+    "refresh_cookie_secure_httponly",
+    "csrf_cookie_secure_readable",
+    "cookie_refresh_succeeded",
+    "authenticated_profile_loaded",
+    "provider_link_observed",
+    "logout_succeeded"
+  ],
+  "requiredLimitations": {
+    "accountLinkingVerified": false,
+    "accountConflictVerified": false,
+    "accountUnlinkVerified": false,
+    "providerCancellationVerified": false,
+    "configurationChangeVerified": false,
+    "targetProductionEnvironmentVerified": false
+  }
+}

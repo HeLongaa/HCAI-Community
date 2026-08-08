@@ -1,4 +1,5 @@
 import { buildNotificationDeliveryConfig } from '../notifications/notificationDeliveries.js'
+import { isProductionEnvironment } from '../common/runtimeEnvironment.js'
 
 const toPort = (value) => {
   const parsed = Number.parseInt(value ?? '', 10)
@@ -109,6 +110,7 @@ const getAuthCookieSameSite = (source) => {
 export const buildEnv = (source = process.env) => {
   const nodeEnv = source.NODE_ENV || 'development'
   const deploymentEnv = getDeploymentEnv(source)
+  const productionEnvironment = isProductionEnvironment(source)
   const secretManagerProvider = getSecretManagerProvider(source)
   const hasDatabaseUrl = Boolean(String(source.DATABASE_URL ?? '').trim())
   const accessTokenSecret = getAccessTokenSecret(source)
@@ -321,13 +323,16 @@ export const buildEnv = (source = process.env) => {
   if (!supportedDeploymentEnvs.includes(deploymentEnv)) {
     throw new Error(`DEPLOYMENT_ENV must be one of: ${supportedDeploymentEnvs.join(', ')}`)
   }
+  if (deploymentEnv === 'production' && String(nodeEnv).trim().toLowerCase() !== 'production') {
+    throw new Error('DEPLOYMENT_ENV=production requires NODE_ENV=production')
+  }
   if (secretManagerProvider && !supportedSecretManagerProviders.includes(secretManagerProvider)) {
     throw new Error(`SECRET_MANAGER_PROVIDER must be one of: ${supportedSecretManagerProviders.join(', ')}`)
   }
-  if (nodeEnv === 'production' && !accessTokenSecret) {
+  if (productionEnvironment && !accessTokenSecret) {
     throw new Error('ACCESS_TOKEN_SECRET or SESSION_SECRET is required in production')
   }
-  if (nodeEnv === 'production' && accessTokenSecret.length < 32) {
+  if (productionEnvironment && accessTokenSecret.length < 32) {
     throw new Error('ACCESS_TOKEN_SECRET or SESSION_SECRET must be at least 32 characters in production')
   }
   if (deploymentEnv === 'production' && !secretManagerProvider) {

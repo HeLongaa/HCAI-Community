@@ -1,3 +1,5 @@
+import { isProductionEnvironment } from '../runtimeEnvironment.js'
+
 const defaultDevelopmentOrigins = [
   'http://127.0.0.1:5173',
   'http://127.0.0.1:5174',
@@ -26,7 +28,7 @@ export const getTrustedOrigins = (source = process.env) => {
   return [
     ...new Set([
       ...configured,
-      ...(source.NODE_ENV === 'production' ? [] : defaultDevelopmentOrigins),
+      ...(isProductionEnvironment(source) ? [] : defaultDevelopmentOrigins),
     ]),
   ]
 }

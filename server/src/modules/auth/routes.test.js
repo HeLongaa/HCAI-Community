@@ -598,35 +598,34 @@ test('GET /api/auth/oauth/:provider/callback creates an OAuth session', async ()
 })
 
 test('GET /api/auth/oauth/:provider/callback renders a browser bridge for HTML clients', async () => {
-  const server = await createTestServer()
-  try {
-    const start = await requestJson(server.url, '/api/auth/oauth/google/start', {
-      body: { redirectTo: '/profile' },
-    })
-    const callbackUrl = new URL(start.payload.data.authorizationUrl)
-    const response = await fetch(`${server.url}${callbackUrl.pathname}${callbackUrl.search}`, {
-      method: 'GET',
-      headers: { accept: 'text/html' },
-    })
-    const body = await response.text()
-    const cookie = setCookieNamed(response, 'hcaiRefreshToken')
-    const csrfCookie = setCookieNamed(response, 'hcaiCsrfToken')
+  await withProcessEnv({ OAUTH_BROWSER_RETURN_ORIGIN: 'https://app.example.com' }, async () => {
+    const server = await createTestServer()
+    try {
+      const start = await requestJson(server.url, '/api/auth/oauth/google/start', {
+        body: { redirectTo: '/profile' },
+      })
+      const callbackUrl = new URL(start.payload.data.authorizationUrl)
+      const response = await fetch(`${server.url}${callbackUrl.pathname}${callbackUrl.search}`, {
+        method: 'GET',
+        headers: { accept: 'text/html' },
+      })
+      const body = await response.text()
+      const cookie = setCookieNamed(response, 'hcaiRefreshToken')
+      const csrfCookie = setCookieNamed(response, 'hcaiCsrfToken')
 
-    assert.equal(response.status, 200)
-    assert.match(response.headers.get('content-type'), /^text\/html/)
-    assert.match(cookie, /^hcaiRefreshToken=hcai_refresh\./)
-    assert.match(cookie, /HttpOnly/)
-    assert.match(csrfCookie, /^hcaiCsrfToken=/)
-    assert.match(body, /localStorage\.removeItem\('hcaiAccessToken'/)
-    assert.match(body, /localStorage\.removeItem\('hcaiUser'/)
-    assert.match(body, /localStorage\.setItem\('hcaiOAuthRedirectTo'/)
-    assert.match(body, /"redirectTo":"\/profile"/)
-    assert.match(body, /window\.location\.replace\('\/'\)/)
-    assert.equal(body.includes('refreshToken'), false)
-    assert.equal(body.includes('accessToken"'), false)
-  } finally {
-    await server.close()
-  }
+      assert.equal(response.status, 200)
+      assert.match(response.headers.get('content-type'), /^text\/html/)
+      assert.match(cookie, /^hcaiRefreshToken=hcai_refresh\./)
+      assert.match(cookie, /HttpOnly/)
+      assert.match(csrfCookie, /^hcaiCsrfToken=/)
+      assert.match(body, /"returnUrl":"https:\/\/app\.example\.com\/#profile"/)
+      assert.match(body, /window\.location\.replace\(payload\.returnUrl\)/)
+      assert.equal(body.includes('refreshToken'), false)
+      assert.equal(body.includes('accessToken"'), false)
+    } finally {
+      await server.close()
+    }
+  })
 })
 
 test('POST /api/auth/oauth/:provider/callback accepts form-post callbacks', async () => {

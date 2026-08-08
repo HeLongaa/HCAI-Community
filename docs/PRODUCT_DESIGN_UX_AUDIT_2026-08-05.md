@@ -1547,6 +1547,66 @@ Generations 的主对象应是“结果与状态”，而不是 Provider 元数�
 - 追加邮箱最终送达、bounce 和 complaint 回执，再决定是否允许生产邮件流量；在证据完成前保持生产通道关闭。
 - 并行完成真实 OAuth、生产 Vault/CA/审计、法律与 Provider 签字和主分支供应链证明。
 
+## 54. 阶段 4 第三十六批实施记录（2026-08-08）
+
+本批次完成生产 OAuth 环境边界、前后端分域回跳和真实 Staging 登录验收工具的加固：
+
+- 新增统一生产环境判断，同时识别 `NODE_ENV=production` 与 `DEPLOYMENT_ENV=production`。生产部署若使用非生产
+  `NODE_ENV` 会直接拒绝启动，不再可能误启 Seed 数据、开发 OAuth、非 Secure Cookie 或默认本地可信 Origin。
+- 外部 OAuth 现在要求精确的 `OAUTH_CALLBACK_ORIGIN` 和 `OAUTH_BROWSER_RETURN_ORIGIN`。Provider 回调必须属于
+  canonical API origin，浏览器回跳必须属于可信前端 Origin；空白 client id、Apple team id/key id 不再被视为有效配置。
+- 修复 API 与前端分域时回调桥仍跳到 API 根路径的问题。成功回调设置 HttpOnly refresh Cookie 与 CSRF Cookie 后，
+  直接回到前端 hash 路由，不再尝试把登录状态写入 API Origin 的 `localStorage`。
+- 外部授权入口与 code exchange 显式拒绝无效 state、缺失 state payload 或 Provider 不匹配，避免在协议上下文不完整时
+  调用第三方 Token 端点。
+- 新增 Google/GitHub 交互式 Staging 演练。演练要求 Staging 精确确认、干净源码、候选制品 SHA-256、精确 HTTPS
+  API/浏览器 Origin、Provider Secret 和公开运行时状态；使用临时 Playwright Profile，允许测试账号人工完成 MFA。
+- 演练验证 credentialed CORS、Provider 授权页实际打开、回到产品域、Secure/HttpOnly/SameSite=None refresh Cookie、
+  Secure 且前端可读的 CSRF Cookie、CSRF 实际轮换、`/api/me`、已关联 Provider，以及退出后认证 Cookie 清除。
+- OAuth 证据仅记录源码/制品哈希、API/浏览器/Provider host 哈希、时间、布尔结果和回执哈希；未知字段、URL、邮箱、
+  凭据形态、嵌套敏感对象、失败检查或生产结论即使重新计算回执也无法通过独立验证器。
+
+本批发现并修复的 Bug：
+
+- 多处生产边界只读取 `NODE_ENV`，与部署 smoke 使用的 `DEPLOYMENT_ENV` 语义不一致，可能造成生产配置误判。
+- 生产 OAuth 只检查 HTTPS callback 路径，没有绑定 canonical API Origin，也没有验证最终浏览器返回 Origin。
+- 前后端分域时回调桥固定执行 `window.location.replace('/')`，用户会落到 API 根路径，且 API 域写入的
+  `localStorage` 无法被前端读取。
+- OAuth 配置中的纯空白 client/team/key id 可通过存在性判断；无效 state 也可能进入授权 URL 或交换函数。
+- 初版 Staging 证据错误复用通用敏感字段规则，把合法的 `authorizationMode` 误判为敏感字段；随后改为 OAuth
+  专用严格字段白名单，并补上嵌套对象与敏感值扫描。
+- 初版真实演练只检查退出接口返回 `2xx`，没有确认 Cookie 清除；刷新也只检查响应成功，没有证明 CSRF 轮换。
+  现已把 Cookie 清除和实际轮换纳入通过条件，并对可能包含 state/code URL 的 Playwright 导航异常做固定文本脱敏。
+
+本批次验证范围：
+
+- OAuth Staging 静态合同 `16/16`、证据测试 `4/4`；OAuth Hardening 静态合同 `29/29`，运行时测试
+  `55` 通过、`1` 个 Prisma 测试因未配置数据库而跳过；OAuth Admin 静态合同 `47/47`、测试 `11/11`。
+- Production negative smoke `8/8`、完整 fixture production smoke、ESLint、TypeScript/Vite 生产构建和严格差异检查通过。
+- 完整服务端测试共 `1429` 项，`1362` 通过、`67` 个数据库集成测试因未配置目标数据库而跳过、`0` 失败。
+- 空配置的真实 OAuth Staging preflight 返回脱敏 `pass:false`，没有打开浏览器、创建 Provider 授权或发起真实登录，
+  也没有输出 Origin、Secret、state、code、Token、Cookie 或账号身份。
+
+尚未关闭的上线阻断：
+
+- 尚未提供并验证真实 Staging API/前端 HTTPS Origin、Google/GitHub 测试客户端、受保护 Secret、测试账号和当前候选
+  制品 SHA-256，因此本批没有执行任何真实 Google/GitHub 登录，也没有生成真实登录证据。
+- 本次单次登录工具不证明已有账号绑定、账号冲突、解绑、Provider 取消、配置变更、禁用 Provider 或生产批准；这些场景
+  仍需独立受控验收，不能由静态测试替代。
+- 真实 Mailer Relay canary、最终邮箱送达、bounce/complaint，生产 HA/托管 Vault、KMS/HSM auto-unseal、正式 CA、
+  off-host Vault 审计、法律与 Provider 治理批准，以及合并后的 GHCR digest、OIDC 签名和 Attestation 仍未闭环。
+- 当前本机到 GitHub 的 DNS 解析超时仍阻止候选分支推送和 Draft PR 更新；这属于网络阻断，不代表本地测试或认证失败。
+
+因此，本批关闭的是 OAuth 生产边界、分域回跳和真实验收工具缺口，不代表真实 OAuth 已通过。整体发布判断继续保持
+**No-Go**。
+
+下一步：
+
+- 在受保护 Staging 为 Google 和 GitHub 分别配置客户端、Secret、精确 callback/browser Origin、测试账号和候选制品哈希，
+  从同一干净提交依次运行 `npm run oauth-staging:preflight` 与 `npm run oauth-staging:rehearse`，并独立验证 hash-only 证据。
+- 单独执行绑定、冲突、解绑、取消、配置变更和 Provider 禁用验收；真实测试完成前保持生产 OAuth 发布审批关闭。
+- 并行关闭 Mailer、生产 Vault/CA/审计、法律/Provider 签字和主分支供应链证明，再汇总最终 Go/No-Go 签字包。
+
 ## 附录：审计截图
 
 管理员端审计截图：

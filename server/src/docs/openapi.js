@@ -640,6 +640,7 @@ export const openApiDocument = {
                           mode: { type: 'string', enum: ['dev', 'external', 'unavailable'] },
                           authorizationUrl: { type: ['string', 'null'], format: 'uri' },
                           callbackUrl: { type: ['string', 'null'], format: 'uri' },
+                          browserReturnOrigin: { type: ['string', 'null'], format: 'uri' },
                           callbackMethod: { type: 'string', enum: ['GET', 'POST'] },
                           scopes: { type: 'array', items: { type: 'string' } },
                         },

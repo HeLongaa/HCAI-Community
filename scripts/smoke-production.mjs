@@ -1,5 +1,5 @@
 import { buildEnv } from '../server/src/config/env.js'
-import { listOAuthProviderMetadata } from '../server/src/auth/oauth.js'
+import { getOAuthBrowserReturnOrigin, getOAuthCallbackOrigin, listOAuthProviderMetadata } from '../server/src/auth/oauth.js'
 import { chatCapabilityContract } from '../server/src/creative/chatCapabilityContract.js'
 import { musicCapabilityContract } from '../server/src/creative/musicCapabilityContract.js'
 import { videoCapabilityContract } from '../server/src/creative/videoCapabilityContract.js'
@@ -78,6 +78,8 @@ const productionFixture = {
   AUTH_COOKIE_SAMESITE: 'None',
   AUTH_COOKIE_DOMAIN: '.example.com',
   AUTH_TRUSTED_ORIGINS: 'https://app.example.com, https://admin.example.com',
+  OAUTH_CALLBACK_ORIGIN: 'https://api.example.com',
+  OAUTH_BROWSER_RETURN_ORIGIN: 'https://app.example.com',
   RATE_LIMIT_STORE: 'redis',
   RATE_LIMIT_REDIS_URL: 'rediss://:redis-secret@redis.example.com:6380/0',
   RATE_LIMIT_REDIS_PREFIX: 'newchat:prod:limits',
@@ -316,6 +318,8 @@ try {
   process.exit(1)
 }
 const oauthProviders = listOAuthProviderMetadata(source)
+const oauthCallbackOrigin = getOAuthCallbackOrigin(source)
+const oauthBrowserReturnOrigin = getOAuthBrowserReturnOrigin(source)
 const providerAlertWiring = buildProviderBudgetExternalAlertDeliveryWiring({
   config: env,
   approval: { deliveryApproved: true, fixtureOnly: false },
@@ -490,6 +494,8 @@ for (const requirement of inspectProductionWorkers(env)) {
 check(checks, 'worker lease renews before expiry', env.workerLeaseRenewIntervalSeconds < env.workerLeaseTtlSeconds, `renew=${env.workerLeaseRenewIntervalSeconds}s ttl=${env.workerLeaseTtlSeconds}s`)
 check(checks, 'request body guard enabled', env.requestBodySizeGuardEnabled, 'REQUEST_BODY_SIZE_GUARD_ENABLED must not be false')
 check(checks, 'auth failure monitor enabled', env.authFailureMonitorEnabled, 'AUTH_FAILURE_MONITOR_ENABLED must not be false')
+check(checks, 'OAuth callback origin configured', Boolean(oauthCallbackOrigin), 'OAUTH_CALLBACK_ORIGIN must be an exact HTTPS origin')
+check(checks, 'OAuth browser return origin configured and trusted', Boolean(oauthBrowserReturnOrigin) && env.authTrustedOrigins.includes(oauthBrowserReturnOrigin), 'OAUTH_BROWSER_RETURN_ORIGIN must be an exact HTTPS origin included in AUTH_TRUSTED_ORIGINS')
 check(checks, 'external OAuth provider configured', oauthProviders.some((provider) => provider.mode === 'external'), 'At least one OAuth provider should be external in managed smoke')
 
 const failed = checks.filter((item) => !item.pass)

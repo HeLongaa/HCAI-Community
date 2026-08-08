@@ -1986,3 +1986,10 @@ test('buildEnv treats empty optional deployment values as unset defaults', () =>
   assert.equal(env.metricsExporterFormat, 'prometheus')
   assert.equal(env.authCookieSameSite, 'Lax')
 })
+
+test('buildEnv rejects a production deployment running with a non-production Node environment', () => {
+  assert.throws(() => buildEnv({
+    NODE_ENV: 'development',
+    DEPLOYMENT_ENV: 'production',
+  }), /DEPLOYMENT_ENV=production requires NODE_ENV=production/)
+})

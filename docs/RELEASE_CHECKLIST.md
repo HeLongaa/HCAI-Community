@@ -48,7 +48,8 @@ Confirm:
 - `API_EMBEDDED_WORKERS_ENABLED=false` is set on API instances.
 - Worker processes have explicit job flags and lease settings.
 - At least one media scanner alert channel is configured in webhook mode, and at least one security alert channel is always configured.
-- OAuth redirect URIs match the deployed API callback URLs.
+- `OAUTH_CALLBACK_ORIGIN` matches the deployed API, every OAuth redirect uses that origin, and
+  `OAUTH_BROWSER_RETURN_ORIGIN` is the product frontend origin included in `AUTH_TRUSTED_ORIGINS`.
 - Durable notification email uses a real HTTPS relay, a dedicated HMAC secret of at least 32 characters, an approved
   sender, required Provider message receipts, and a successful target-environment canary receipt.
 - `CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=false`; no production release may register the staging Provider HTTP client.

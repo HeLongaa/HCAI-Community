@@ -134,6 +134,7 @@ Includes:
 - `npm run test:v1-compliance`
 - `npm run test:v1-image-staging`
 - `npm run test:v1-video-staging`
+- `npm run test:oauth-staging`
 - `npm run test:sim`
 - `npm run test:release-infrastructure`
 - `npm run test:release-application`
@@ -177,6 +178,12 @@ safe failures, generated-minute costs, staging license evidence, private ingesti
 short-lived one-call approval envelope. Reference audio, remix, voice/TTS, Lyria failover, and production remain disabled.
 
 Use this before handing off small frontend, contract, or documentation changes.
+
+The real OAuth acceptance is an operator gate, not an unattended CI claim. From a protected Staging environment, run
+`npm run oauth-staging:preflight` and then `npm run oauth-staging:rehearse` once for Google and once for GitHub. The
+interactive browser permits manual MFA but stores no test-account password. Retain only the independently verified
+hash-only JSON evidence; this login check does not close account-linking/conflict/unlink/cancellation cases or approve
+production.
 
 For migration or repository changes in EVENT-01/JOB-01, also run the opt-in real PostgreSQL gate after `0043_domain_events_and_job_runs` is deployed:
 
@@ -267,6 +274,9 @@ Includes:
 - OAuth hardening validation: `npm run test:oauth-hardening` proves production fail-closed behavior, hashed single-use
   state, PKCE, bounded Provider failures, cookie-based callback recovery, transactional account lifecycle, governance,
   and opt-in PostgreSQL concurrency coverage without making a real Provider call
+- OAuth Staging contract validation: `npm run test:oauth-staging` proves the interactive runner remains restricted to
+  Google/GitHub, exact HTTPS API/browser origins, clean candidate source, an immutable artifact hash, ephemeral browser
+  profiles, hash-only evidence, and explicit non-production limitations. This gate does not make a Provider call.
 - creative provider safety validation: production smoke must keep staging provider preflight and the Provider HTTP
   client disabled, while client tests use injected fetch implementations and never expose real Provider tokens
 - provider decision validation: all four modalities retain a conditional primary and backup with explicit legal, data,

@@ -47,6 +47,9 @@ test('OAuth Admin parsers bound filters, ordering, versions, and stable reason c
   assert.throws(() => parseOAuthProviderConfigurationRequest('google', {
     clientId: 'x', redirectUri: 'https://app.example.com/api/auth/oauth/google/callback', scopes: ['openid', 'email'], clientSecretRef: 'secret://env/DATABASE_URL', expectedVersion: 0, reasonCode: 'wrong_secret_ref',
   }), /OAUTH_GOOGLE_CLIENT_SECRET/)
+  assert.throws(() => parseOAuthProviderConfigurationRequest('google', {
+    clientId: 'x', redirectUri: 'http://127.0.0.1:8787/api/auth/oauth/google/callback', scopes: ['openid', 'email'], clientSecretRef: 'secret://env/OAUTH_GOOGLE_CLIENT_SECRET', expectedVersion: 0, reasonCode: 'production_loopback',
+  }, { NODE_ENV: 'development', DEPLOYMENT_ENV: 'production' }), /HTTPS/)
 })
 
 test('OAuth Admin cursors are query-bound and reject tampering', () => {

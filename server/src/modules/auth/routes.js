@@ -19,6 +19,7 @@ import {
   parseRegisterRequest,
 } from '../../contracts/requestParsers.js'
 import {
+  buildOAuthBrowserReturnUrl,
   createOAuthState,
   exchangeOAuthCodeForProfile,
   getOAuthAuthorizationUrl,
@@ -70,9 +71,10 @@ const shouldRenderOAuthBridge = (request, query, fallback = false) => {
   return fallback || accept.includes('text/html')
 }
 
-const renderOAuthBridge = (response, payload) => {
+const renderOAuthBridge = (response, payload, source = process.env) => {
   const bridgePayload = {
     redirectTo: payload.redirectTo ?? '/',
+    returnUrl: buildOAuthBrowserReturnUrl(payload.redirectTo, source),
   }
   const body = `<!doctype html>
 <html lang="en">
@@ -85,6 +87,10 @@ const renderOAuthBridge = (response, payload) => {
   <script>
     (function () {
       var payload = ${scriptSafeJson(bridgePayload)};
+      if (payload.returnUrl) {
+        window.location.replace(payload.returnUrl);
+        return;
+      }
       try {
         window.localStorage.removeItem('hcaiAccessToken');
         window.localStorage.removeItem('hcaiUser');
@@ -143,6 +149,7 @@ const recordAuthFailureAnomaly = async (event, context) => {
 
 export const registerAuthRoutes = (router, options = {}) => {
   const routeRepositories = options.repositories ?? repositories
+  const routeSource = options.source ?? process.env
   const recordLoginAttempt = async ({ method, outcome, reasonCode, identity, request }) => {
     await routeRepositories.authRiskAdmin?.recordAttempt?.(createAuthAttemptEvidence({
       method,
@@ -234,6 +241,7 @@ export const registerAuthRoutes = (router, options = {}) => {
       throw new HttpError(401, 'OAUTH_FAILED', 'OAuth provider response could not be verified')
     }
     const profile = await exchangeOAuthCodeForProfile(provider, query.code, {
+      source: routeSource,
       statePayload,
       user: query.user,
       configuration: providerControl,
@@ -356,10 +364,10 @@ export const registerAuthRoutes = (router, options = {}) => {
   router.add('GET', '/api/auth/oauth/providers', async (_request, response) => {
     const controls = await routeRepositories.oauthAdmin?.listProviderControls?.() ?? []
     const controlByProvider = new Map(controls.map((control) => [control.provider, control]))
-    const metadata = listOAuthProviderMetadata(process.env, controlByProvider)
+    const metadata = listOAuthProviderMetadata(routeSource, controlByProvider)
     ok(response, metadata.map((provider) => {
       if (controlByProvider.get(provider.provider)?.enabled !== false) return provider
-      return { ...provider, available: false, mode: 'unavailable', authorizationUrl: null, callbackUrl: null }
+      return { ...provider, available: false, mode: 'unavailable', authorizationUrl: null, callbackUrl: null, browserReturnOrigin: null }
     }))
   })
 
@@ -398,7 +406,7 @@ export const registerAuthRoutes = (router, options = {}) => {
     const linkUser = payload.linkAccount ? requireUser(context) : null
     const state = createOAuthState({ provider })
     const origin = `${context.url.protocol}//${context.url.host}`
-    const authorization = getOAuthAuthorizationUrl({ provider, state, origin, configuration: providerControl })
+    const authorization = getOAuthAuthorizationUrl({ provider, state, origin, source: routeSource, configuration: providerControl })
     if (authorization.mode === 'unavailable' || !authorization.authorizationUrl) {
       throw new HttpError(503, 'OAUTH_PROVIDER_UNAVAILABLE', 'OAuth provider is not configured for this environment')
     }
@@ -426,7 +434,7 @@ export const registerAuthRoutes = (router, options = {}) => {
     const payload = await completeOAuthCallback({ provider, query: context.query, request })
     if (shouldRenderOAuthBridge(request, context.query)) {
       setRefreshTokenCookie(response, payload.refreshToken)
-      renderOAuthBridge(response, payload)
+      renderOAuthBridge(response, payload, routeSource)
       return
     }
     sendSession(response, payload)
@@ -438,7 +446,7 @@ export const registerAuthRoutes = (router, options = {}) => {
     const payload = await completeOAuthCallback({ provider, query: form, request })
     if (shouldRenderOAuthBridge(request, form, true)) {
       setRefreshTokenCookie(response, payload.refreshToken)
-      renderOAuthBridge(response, payload)
+      renderOAuthBridge(response, payload, routeSource)
       return
     }
     sendSession(response, payload)

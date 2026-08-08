@@ -37,6 +37,7 @@ const withProviderStatusServer = async (callbackFor, execute) => {
         mode: 'external',
         available: true,
         callbackUrl: callbackFor(provider, origin),
+        browserReturnOrigin: 'https://app.example.com',
       })),
     }))
   })
@@ -54,7 +55,9 @@ test('preflight accepts Admin-managed client ids and exact callbacks', async () 
   await withProviderStatusServer(
     (provider, origin) => `${origin}/api/auth/oauth/${provider}/callback`,
     async (origin) => {
-      const result = await runPreflight(['--allow-local', `--api-origin=${origin}`])
+      const result = await runPreflight(['--allow-local', `--api-origin=${origin}`, '--browser-origin=https://app.example.com'], {
+        AUTH_TRUSTED_ORIGINS: 'https://app.example.com',
+      })
       assert.equal(result.code, 0, result.stderr)
       assert.match(result.stdout, /client_id=admin\/runtime/)
       assert.match(result.stdout, /callback=exact/)
@@ -66,9 +69,24 @@ test('preflight rejects a runtime callback registered for another origin', async
   await withProviderStatusServer(
     (provider) => `https://wrong.example.com/api/auth/oauth/${provider}/callback`,
     async (origin) => {
-      const result = await runPreflight(['--allow-local', `--api-origin=${origin}`])
+      const result = await runPreflight(['--allow-local', `--api-origin=${origin}`, '--browser-origin=https://app.example.com'], {
+        AUTH_TRUSTED_ORIGINS: 'https://app.example.com',
+      })
       assert.equal(result.code, 1)
       assert.match(result.stderr, /effective callback must equal/)
+    },
+  )
+})
+
+test('preflight rejects an untrusted browser return origin', async () => {
+  await withProviderStatusServer(
+    (provider, origin) => `${origin}/api/auth/oauth/${provider}/callback`,
+    async (origin) => {
+      const result = await runPreflight(['--allow-local', `--api-origin=${origin}`, '--browser-origin=https://app.example.com'], {
+        AUTH_TRUSTED_ORIGINS: 'https://other.example.com',
+      })
+      assert.equal(result.code, 1)
+      assert.match(result.stderr, /browser return origin must be included/)
     },
   )
 })
