@@ -18,7 +18,7 @@ test('Prisma email Provider events are atomic, idempotent, receipt-bound, and su
   process.env.DATABASE_URL = databaseUrl
   process.env.DEMO_DATABASE_AUTOSEED = 'false'
   process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED = 'true'
-  process.env.NOTIFICATION_EMAIL_WEBHOOK_URL = 'http://127.0.0.1:9876/email'
+  process.env.NOTIFICATION_EMAIL_WEBHOOK_URL = 'https://relay.example.test/email'
   process.env.NOTIFICATION_EMAIL_EVENT_WEBHOOK_ENABLED = 'true'
   process.env.NOTIFICATION_EMAIL_EVENT_WEBHOOK_SECRET = secret
   process.env.NOTIFICATION_EMAIL_RECIPIENT_FINGERPRINT_SECRET = 'prisma-email-recipient-fingerprint-secret-32-bytes'
