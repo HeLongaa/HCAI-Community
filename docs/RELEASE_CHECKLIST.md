@@ -34,6 +34,8 @@ Confirm:
 - `npm run rehearse:production-containers` passes, including migrations, no-demo production seed, Worker jobs, read-only runtime, and SIGTERM drain.
 - GitHub Actions `Container Supply Chain` passes for the exact candidate commit and publishes four GHCR images by digest.
 - The aggregate `production-image-digest-manifest-v1` has `registryReady=true`, the approved `sourceRevision`, frontend/API/Worker/migration OCI index digests, and exact `linux/amd64` plus `linux/arm64` platform manifest digests for every image.
+- The staging importer verifies the approved manifest SHA-256 and source commit, pulls each exact GHCR OCI index for `linux/arm64`, validates architecture and RepoDigest, and emits the candidate artifact SHA-256 without resolving a tag.
+- The previous allowlisted artifact and all rollback images remain available; temporary GHCR authentication is removed immediately after import.
 - Each image has matching SPDX and CycloneDX SBOM evidence, zero unexcepted fixable `HIGH/CRITICAL` findings, and a non-EOL operating system.
 - OCI index provenance and both platform-specific SPDX SBOM attestations pass `gh attestation verify` through the GitHub API and OCI registry for every exact digest.
 - Any active vulnerability exception identifies the exact CVE/package/image/version, has release approval, and expires within 30 days; expired or blanket ignores are prohibited.

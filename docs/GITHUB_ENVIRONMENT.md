@@ -64,9 +64,16 @@ manifest.
 Install the public key on the staging host with OpenSSH `restrict` and a forced command pointing to
 `infra/staging/ssh-dispatch.sh`. The dispatcher rejects interactive sessions, forwarding, extra arguments, shell
 operators, and any value other than one lowercase 64-character artifact digest.
-Run `infra/staging/build-release.sh` through the privileged host build path before using that key. In addition to the
-allowlisted image manifest, the builder provisions the deployment lock as `root:newchat-deploy` with mode `0660`; do not
-grant the deployment user general write access to `/opt/newchat-staging` as a substitute.
+For a host-local candidate, run `infra/staging/build-release.sh` through the privileged host build path before using that
+key. For a Container Supply Chain candidate, install and run `infra/staging/import-supply-chain-release.sh` through the
+privileged path with the downloaded manifest, its independently verified SHA-256, and exact source commit. The importer
+accepts only the four immutable project GHCR references, pulls `linux/arm64`, and writes a compatible allowlisted
+artifact after architecture and RepoDigest verification. GHCR login must be temporary; run `docker logout ghcr.io`
+immediately after import and verify that the host Docker configuration retains no GHCR credential.
+
+The host-local builder provisions the deployment lock as `root:newchat-deploy` with mode `0660`; do not grant the
+deployment user general write access to `/opt/newchat-staging` as a substitute. Keep the previous allowlisted artifact
+and its local images available until candidate smoke, rollback, rollback smoke, and final candidate restoration finish.
 
 ## Required Secrets
 

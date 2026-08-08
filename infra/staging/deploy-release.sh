@@ -40,10 +40,60 @@ verify_image() {
   fi
 }
 
-verify_image "$FRONTEND_IMAGE" "$FRONTEND_IMAGE_ID"
-verify_image "$API_IMAGE" "$API_IMAGE_ID"
-verify_image "$WORKER_IMAGE" "$WORKER_IMAGE_ID"
-verify_image "$MIGRATION_IMAGE" "$MIGRATION_IMAGE_ID"
+verify_registry_image() {
+  image=$1
+  expected_id=$2
+  expected_index_digest=$3
+  expected_platform_digest=$4
+  label=$5
+  if [ "${TARGET_PLATFORM:-}" != "linux/arm64" ]; then
+    echo "Registry artifact target platform is not supported by this staging host" >&2
+    exit 1
+  fi
+  for expected_digest in "$expected_index_digest" "$expected_platform_digest"; do
+    case "$expected_digest" in
+      sha256:*) expected_digest_hex=${expected_digest#sha256:} ;;
+      *) expected_digest_hex= ;;
+    esac
+    case "$expected_digest_hex" in
+      *[!0-9a-f]*|'') echo "$label artifact digest is invalid" >&2; exit 1 ;;
+    esac
+    if [ "${#expected_digest_hex}" -ne 64 ]; then
+      echo "$label artifact digest is invalid" >&2
+      exit 1
+    fi
+  done
+  case "$image" in
+    ghcr.io/*@"$expected_index_digest") ;;
+    *) echo "$label image is not pinned to its allowlisted OCI index digest" >&2; exit 1 ;;
+  esac
+  observed_platform=$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image")
+  if [ "$observed_platform" != "$TARGET_PLATFORM" ]; then
+    echo "$label image architecture does not match its allowlisted target platform" >&2
+    exit 1
+  fi
+  if ! docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$image" | grep -Fxq "$image"; then
+    echo "$label image RepoDigest does not match its allowlisted OCI index digest" >&2
+    exit 1
+  fi
+  verify_image "$image" "$expected_id"
+}
+
+case "${ARTIFACT_FORMAT:-local-image-id-v1}" in
+  local-image-id-v1)
+    verify_image "$FRONTEND_IMAGE" "$FRONTEND_IMAGE_ID"
+    verify_image "$API_IMAGE" "$API_IMAGE_ID"
+    verify_image "$WORKER_IMAGE" "$WORKER_IMAGE_ID"
+    verify_image "$MIGRATION_IMAGE" "$MIGRATION_IMAGE_ID"
+    ;;
+  registry-digest-v1)
+    verify_registry_image "$FRONTEND_IMAGE" "$FRONTEND_IMAGE_ID" "$FRONTEND_INDEX_DIGEST" "$FRONTEND_PLATFORM_DIGEST" frontend
+    verify_registry_image "$API_IMAGE" "$API_IMAGE_ID" "$API_INDEX_DIGEST" "$API_PLATFORM_DIGEST" api
+    verify_registry_image "$WORKER_IMAGE" "$WORKER_IMAGE_ID" "$WORKER_INDEX_DIGEST" "$WORKER_PLATFORM_DIGEST" worker
+    verify_registry_image "$MIGRATION_IMAGE" "$MIGRATION_IMAGE_ID" "$MIGRATION_INDEX_DIGEST" "$MIGRATION_PLATFORM_DIGEST" migration
+    ;;
+  *) echo "Release artifact format is unsupported" >&2; exit 1 ;;
+esac
 
 lock="$root/deploy.lock"
 if [ ! -w "$lock" ]; then

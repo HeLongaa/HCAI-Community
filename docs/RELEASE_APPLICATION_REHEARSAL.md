@@ -45,9 +45,12 @@ Commands are parsed as JSON argument arrays and run without a shell. The executa
 
 For a single-host protected staging target, use the repository SSH adapter documented in
 `docs/GITHUB_ENVIRONMENT.md`. The remote `infra/staging/deploy-release.sh` command accepts only a SHA-256 whose manifest
-was created by `infra/staging/build-release.sh`, verifies every local Docker image ID against that manifest, serializes
-deployments with a host lock, and starts the production Compose contract through the staging-only override. The public
-TLS proxy remains separate from the application Compose project.
+was created by `infra/staging/build-release.sh` or `infra/staging/import-supply-chain-release.sh`. Local artifacts retain
+image-ID verification for rollback compatibility. Registry artifacts bind the approved supply-chain manifest hash,
+source commit, `linux/arm64` target, and the OCI index and ARM64 platform digest for all four images. Deployment
+revalidates local image ID, architecture, and exact GHCR RepoDigest before Compose runs. It then serializes deployments
+with a host lock and starts the production Compose contract through the staging-only override. The public TLS proxy
+remains separate from the application Compose project.
 The privileged build step creates `/opt/newchat-staging/deploy.lock` as `root:newchat-deploy` with mode `0660`; this is
 required so the forced-command deployment user can open the lock without receiving write access to the release root.
 The staging override loads the same protected runtime environment file into both API and Worker so the smoke profile and
@@ -58,6 +61,22 @@ After the application services become healthy, the deployment command force-recr
 with `--no-deps`. Docker Compose does not otherwise notice changes to its bind-mounted Caddyfile, which can leave newly
 added routes inactive even when the application image is current. Deployment then requires both `/health` and `/ready`
 to return the selected artifact identity before reporting success.
+
+Import a published candidate only from a `registryReady=true` `production-image-digest-manifest-v1` produced by the
+Container Supply Chain workflow. Obtain its independently verified SHA-256 and expected 40-character source commit,
+authenticate Docker to GHCR through an ephemeral operator session, and run as root:
+
+```bash
+/opt/newchat-staging/bin/import-supply-chain-release \
+  /path/to/production-image-digest-manifest.json \
+  <approved-manifest-sha256> \
+  <expected-source-commit>
+docker logout ghcr.io
+```
+
+The importer rejects extra or missing images, mutable references, source/hash drift, any platform set other than exact
+AMD64 plus ARM64, and target-host image identity drift. Preserve the printed `artifact_sha256` as the RELEASE-02
+candidate. Do not remove the previous local artifact or images until rollback and post-rollback smoke have passed.
 
 Run preflight and execute from the same clean checkout and protected job:
 

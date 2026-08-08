@@ -57,6 +57,7 @@ umask 077
 manifest_tmp="$root/artifacts/$artifact_sha256.env.tmp"
 manifest="$root/artifacts/$artifact_sha256.env"
 {
+  printf 'ARTIFACT_FORMAT=local-image-id-v1\n'
   printf 'SOURCE_COMMIT=%s\n' "$commit"
   printf 'FRONTEND_IMAGE=%s\n' "newchat-staging-frontend:$commit"
   printf 'FRONTEND_IMAGE_ID=%s\n' "$frontend_id"
