@@ -1828,6 +1828,50 @@ Generations 的主对象应是“结果与状态”，而不是 Provider 元数�
 - 在不触碰受保护 OpenClaw 容器的前提下恢复隔离 Docker 演练能力，取得 Redis/PostgreSQL 故障与恢复的真实运行回执。
 - 继续收集目标环境 OAuth、Mailer、Secret Manager、供应链、UAT 和六角色独立签字证据。
 
+## 60. 阶段 4 第四十二批实施记录（2026-08-08）
+
+本批次在网络恢复后完成前后端真实依赖漏洞审计，并修复远端质量门禁发现的 fixture 治理遗漏：
+
+- 前端 `npm audit --omit=dev` 返回 `0 vulnerabilities`。服务端首次审计发现 5 个中危漏洞，来自 Prisma `7.8.0`
+  工具链携带的 Hono、`@hono/node-server` 和 Valibot；漏洞范围包括静态文件路径处理、CORS ReDoS、跨请求缓存和
+  代理响应头处理等。
+- 将 `@prisma/adapter-pg`、`@prisma/client` 和 Prisma CLI 同步升级到 `7.9.1`。升级后的 `@prisma/dev 0.24.17`
+  不再携带受影响的 Hono 组件，并使用已修复的 Valibot `1.4.2`；前后端生产依赖复审均为 0 个已知漏洞。
+- 锁文件所有下载地址统一为 npm 官方 Registry，避免 GitHub runner 或生产镜像构建隐式依赖本机镜像源。
+- 远端两组隔离 Prisma Integration Gate 均通过，四个 PR 镜像的构建与 Trivy 扫描、供应链合同和候选证据校验也通过。
+- 远端 PR Quality Gate 随后正确拒绝了未登记的 `productionReleaseEvidence.fixtures.js`。该文件只为测试生成临时六角色
+  Ed25519 签名，不代表真实生产审批；现已登记到 `fixture-smoke-and-simulation-profiles`，明确归属 V1-73，机器清单与
+  人类可读清单都声明合成签名不得用于生产 Go 决策。
+
+本批发现并修复的问题：
+
+- 网络阻断解除后确认服务端生产安装路径存在 5 个中危供应链漏洞；此前只能证明依赖树可解析，不能证明无漏洞。
+- 发布签字 fixture 在新增时未同步 V1 运行面清单，导致完整质量门禁在约六分钟后失败；局部发布合同和服务端测试无法
+  发现这类跨仓库治理遗漏。
+- 本机 npm 默认镜像源会把新增锁文件条目写入镜像域名，降低 CI 和灾备构建的可移植性。
+
+本批次验证范围：
+
+- 前端与服务端生产依赖 `npm audit` 均为 0 个漏洞；Prisma Client `7.9.1` 生成成功，schema 校验通过。
+- 完整服务端测试共 `1443` 项，`1376` 通过、`67` 个外部 Prisma 集成项按既定条件跳过、`0` 失败。
+- Release 应用合同 `32/32`、生产容器合同 `57/57`、Secret Lifecycle `21/21`、供应链合同 `49/49`、发布证据聚焦测试
+  `11/11`、V1 运行面门禁 `148/148` 和严格差异检查通过。
+- 以上依赖升级和清单修复仍需推送后的新一轮远端 CI 复验；旧提交的 Prisma 分片与镜像扫描绿灯不能替代新提交结果。
+- Docker 守护进程仍不可用，真实容器依赖中断恢复演练仍未执行；没有创建、停止或修改任何容器。
+
+尚未关闭的上线阻断：
+
+- 新提交必须重新通过完整 PR Quality Gate、两组 Prisma Integration Gate 和四镜像 Trivy 扫描。
+- 真实六角色签字、Google/GitHub OAuth、Mailer 最终送达与 bounce/complaint、生产 Vault/KMS-HSM/CA/off-host audit、
+  法律与 Provider 治理、主分支 GHCR digest/OIDC Attestation、目标环境 UAT/canary/rollback/hypercare 仍未闭环。
+- 输出安全分类和媒体扫描继续由上游承担，边界必须进入 Provider 与法律批准证据；当前发布判断保持 **No-Go**。
+
+下一步：
+
+- 提交并推送依赖与运行面清单修复，持续观察 PR #244 的完整新一轮 CI；任何失败继续按日志修复。
+- Docker 守护进程恢复后，在不触碰 OpenClaw 容器的前提下执行生产容器 Redis/PostgreSQL 故障恢复演练。
+- 继续收集目标环境和六角色外部证据，所有证据绑定同一不可变 candidate/rollback digest 后再评估 Go/No-Go。
+
 ## 附录：审计截图
 
 管理员端审计截图：

@@ -58,7 +58,7 @@ The legacy `src/data/mockData.ts` module has been removed. The runtime verifier 
 
 | Surface id | Current behavior | Production disposition | Owners |
 | --- | --- | --- | --- |
-| `fixture-smoke-and-simulation-profiles` | Deterministic production/staging fixtures, the V1-19 Image metadata gate, the V1-29 13-scenario Video acceptance matrix, and UI simulations exercise safe gates without Provider calls | Retain as CI-only evidence | V1-19, V1-29, V1-71, V1-75 |
+| `fixture-smoke-and-simulation-profiles` | Deterministic production/staging fixtures, the V1-19 Image metadata gate, the V1-29 13-scenario Video acceptance matrix, UI simulations, and synthetic six-role release signatures exercise safe gates without Provider calls or production approvals | Retain as CI-only evidence; synthetic signatures must never be accepted as production release approval | V1-19, V1-29, V1-71, V1-73, V1-75 |
 
 ## Production Classification Rules
 

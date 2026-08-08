@@ -15,15 +15,15 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.8.0",
-    "@prisma/client": "^7.8.0",
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
     "file-type": "^21.3.4",
     "ipaddr.js": "^2.2.0",
     "pg": "^8.22.0",
     "typescript": "~6.0.2"
   },
   "devDependencies": {
-    "prisma": "^7.8.0"
+    "prisma": "^7.9.1"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
