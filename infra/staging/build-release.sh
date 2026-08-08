@@ -24,6 +24,10 @@ if [ -n "$(git -C "$source_dir" status --porcelain)" ]; then
 fi
 
 install -d -m 0770 -g "$staging_group" "$root/artifacts"
+lock="$root/deploy.lock"
+touch "$lock"
+chgrp "$staging_group" "$lock"
+chmod 0660 "$lock"
 
 for target in frontend api worker migrate; do
   image="newchat-staging-$target:$commit"

@@ -58,6 +58,9 @@ manifest.
 Install the public key on the staging host with OpenSSH `restrict` and a forced command pointing to
 `infra/staging/ssh-dispatch.sh`. The dispatcher rejects interactive sessions, forwarding, extra arguments, shell
 operators, and any value other than one lowercase 64-character artifact digest.
+Run `infra/staging/build-release.sh` through the privileged host build path before using that key. In addition to the
+allowlisted image manifest, the builder provisions the deployment lock as `root:newchat-deploy` with mode `0660`; do not
+grant the deployment user general write access to `/opt/newchat-staging` as a substitute.
 
 ## Required Secrets
 

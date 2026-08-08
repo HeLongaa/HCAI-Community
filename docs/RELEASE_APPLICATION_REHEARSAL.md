@@ -43,6 +43,8 @@ For a single-host protected staging target, use the repository SSH adapter docum
 was created by `infra/staging/build-release.sh`, verifies every local Docker image ID against that manifest, serializes
 deployments with a host lock, and starts the production Compose contract through the staging-only override. The public
 TLS proxy remains separate from the application Compose project.
+The privileged build step creates `/opt/newchat-staging/deploy.lock` as `root:newchat-deploy` with mode `0660`; this is
+required so the forced-command deployment user can open the lock without receiving write access to the release root.
 The staging override loads the same protected runtime environment file into both API and Worker so the smoke profile and
 the running processes cannot drift on retention, delivery, lifecycle, and security switches. The file remains outside
 the repository and is never included in release evidence.

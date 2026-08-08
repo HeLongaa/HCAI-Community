@@ -46,6 +46,10 @@ verify_image "$WORKER_IMAGE" "$WORKER_IMAGE_ID"
 verify_image "$MIGRATION_IMAGE" "$MIGRATION_IMAGE_ID"
 
 lock="$root/deploy.lock"
+if [ ! -w "$lock" ]; then
+  echo "Staging deployment lock is not writable by the deployment user" >&2
+  exit 1
+fi
 exec 9>"$lock"
 flock -w 900 9
 
