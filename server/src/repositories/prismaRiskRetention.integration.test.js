@@ -51,7 +51,7 @@ test('Prisma risk retention redacts terminal subject links, preserves evidence, 
     } })
     await repository.client.riskCase.create({ data: { id: ids.open, userId: user.id, subjectRef, status: 'restricted', disposition: 'generation_throttled', riskLevel: 'high', reasonCode: 'retention_test', openedAt: oldTerminalAt } })
     await repository.client.dataRightsLegalHold.create({ data: {
-      id: `risk-retention-hold-${suffix}`, subjectId: admin.id, subjectRef: adminSubjectRef, scopeDomain: 'safety', reasonCode: 'retention_test', authorityRole: 'legal_hold_admin', authorityReferenceHash: 'b'.repeat(64), ownerRef: `actor_${'c'.repeat(24)}`, reviewAt: new Date(now.getTime() + 86_400_000), expiresAt: new Date(now.getTime() + 7 * 86_400_000),
+      id: `risk-retention-hold-${suffix}`, subjectId: admin.id, subjectRef: adminSubjectRef, scopeDomain: 'safety', reasonCode: 'retention_test', authorityRole: 'legal_hold_admin', authorityReferenceHash: 'b'.repeat(64), ownerRef: `actor_${'c'.repeat(24)}`, createdAt: now, reviewAt: new Date(now.getTime() + 86_400_000), expiresAt: new Date(now.getTime() + 7 * 86_400_000),
     } })
 
     const heldResult = await repository.riskRetention.sweepRetention({ now, limit: 1 })
@@ -85,7 +85,7 @@ test('Prisma risk retention redacts terminal subject links, preserves evidence, 
       lockedResolve()
       await new Promise((resolve) => setTimeout(resolve, 100))
       await db.dataRightsLegalHold.create({ data: {
-        id: ids.racingHold, subjectId: racing.id, subjectRef: racingSubjectRef, scopeDomain: 'safety', reasonCode: 'retention_race', authorityRole: 'security_legal_incident_owner', authorityReferenceHash: 'e'.repeat(64), ownerRef: `actor_${'f'.repeat(24)}`, reviewAt: new Date(now.getTime() + 86_400_000), expiresAt: new Date(now.getTime() + 7 * 86_400_000),
+        id: ids.racingHold, subjectId: racing.id, subjectRef: racingSubjectRef, scopeDomain: 'safety', reasonCode: 'retention_race', authorityRole: 'security_legal_incident_owner', authorityReferenceHash: 'e'.repeat(64), ownerRef: `actor_${'f'.repeat(24)}`, createdAt: now, reviewAt: new Date(now.getTime() + 86_400_000), expiresAt: new Date(now.getTime() + 7 * 86_400_000),
       } })
     })
     await locked

@@ -55,6 +55,58 @@ jobs:
       - name: Run deployment fixture gate
         run: npm run check:deploy
 
+  prisma-integration-gate:
+    name: Prisma Integration Gate (${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name != 'workflow_dispatch' || inputs.smoke_profile == 'fixture'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1]
+    services:
+      postgres:
+        image: postgres:16.10-bookworm@sha256:38471f330eb885e04de130b768d6db4e10469e2311879c7e5c699f6d2d8a1c74
+        env:
+          POSTGRES_USER: newchat
+          POSTGRES_PASSWORD: prisma-integration
+          POSTGRES_DB: newchat_template
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U newchat -d newchat_template"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      FOUNDATION_DATABASE_URL: postgresql://newchat:prisma-integration@127.0.0.1:5432/newchat_template?schema=public
+      PRISMA_INTEGRATION_SHARD_INDEX: ${{ matrix.shard }}
+      PRISMA_INTEGRATION_SHARD_TOTAL: 2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm --prefix server ci
+
+      - name: Install PostgreSQL client tools
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Apply every migration to the template database
+        env:
+          DATABASE_URL: ${{ env.FOUNDATION_DATABASE_URL }}
+        run: npm --prefix server run db:migrate:deploy
+
+      - name: Run isolated Prisma integration shard
+        run: npm run test:prisma-integration-gate
+
   deployment-env-smoke:
     name: Deployment Environment Smoke
     runs-on: ubuntu-latest

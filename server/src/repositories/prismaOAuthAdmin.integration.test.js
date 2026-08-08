@@ -61,10 +61,11 @@ test('Prisma OAuth Admin operations are concurrent, revocable, and preserve sign
       }, actor),
     ])
     assert.equal(githubConfigurations.filter(Boolean).length, 1)
+    const winningGithubConfiguration = githubConfigurations.find(Boolean)
     const githubControl = await repository.oauthAdmin.getProviderControl('github')
     assert.equal(githubControl.enabled, false)
-    assert.equal(githubControl.clientId, `${runId}-github-client`)
-    assert.deepEqual(githubControl.scopes, ['read:user', 'user:email'])
+    assert.equal(githubControl.clientId, winningGithubConfiguration.clientId)
+    assert.deepEqual(githubControl.scopes, winningGithubConfiguration.scopes)
     assert.equal(githubControl.clientSecretRef, githubSecretRef)
     assert.equal(Object.hasOwn(githubControl, 'clientSecret'), false)
     assert.equal(JSON.stringify(githubControl).includes('plaintext-github-secret'), false)

@@ -98,6 +98,16 @@ V1-35 adds an owner-scoped safe projection across Image, Chat, Video, and Music 
 
 This document defines the productization quality gates used before local handoff, pull request review, and deployment.
 
+## Prisma Integration Gate
+
+Every pull request runs the 66 database-only `*.integration.test.js` files against PostgreSQL in two parallel shards.
+The gate applies every migration once per shard, clones a clean database for each test file, and fails on any skipped
+database path or cross-repository regression without allowing one test's global configuration to contaminate another.
+`prismaMediaStorage.integration.test.js` remains in the production-container and protected-environment S3/scanner
+rehearsals because untrusted pull-request code must not receive target object-storage credentials.
+The same runner accepts explicit integration-test basenames for focused local gates; the events/jobs command uses this
+mode so its two queue consumers cannot claim each other's rows from a shared database.
+
 ## Local Quick Check
 
 Run:
