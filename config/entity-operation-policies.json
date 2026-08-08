@@ -95,6 +95,7 @@
     { "model": "SearchClickEvent", "domain": "search-discovery", "policy": "append_only", "hardDelete": true },
     { "model": "SearchRankingControl", "domain": "search-discovery", "policy": "state_transition", "hardDelete": false },
     { "model": "AuthAccount", "domain": "identity-access", "policy": "mutable_crud", "hardDelete": true },
+    { "model": "AuthEmailAction", "domain": "identity-access", "policy": "state_transition", "hardDelete": true },
     { "model": "OAuthAuthorizationRequest", "domain": "identity-access", "policy": "state_transition", "hardDelete": true },
     { "model": "OAuthProviderControl", "domain": "identity-access", "policy": "state_transition", "hardDelete": false },
     { "model": "AuthSession", "domain": "identity-access", "policy": "state_transition", "hardDelete": true },

@@ -10,13 +10,16 @@ const schemaModels = [...schema.matchAll(/^model\s+(\w+)\s+\{/gm)].map((match) =
 const checks = []
 const add = (name, pass, detail) => checks.push({ name, pass: Boolean(pass), detail })
 const unique = (values) => new Set(values).size === values.length
+const classifiedModels = contract.entities.map((entity) => entity.model)
+const missingModels = schemaModels.filter((model) => !classifiedModels.includes(model))
+const unknownModels = classifiedModels.filter((model) => !schemaModels.includes(model))
 
 add('contract schema is supported', contract.schemaVersion === 1, `schemaVersion=${contract.schemaVersion}`)
 add('contract is personal-account scoped', contract.scope === 'personal_accounts_only', contract.scope)
 add('policy document exists', fs.existsSync(path.join(root, contract.policyDocument)), contract.policyDocument)
-add('entity assignments are unique', unique(contract.entities.map((entity) => entity.model)), `${contract.entities.length} entity assignment(s)`)
-add('all Prisma models are classified', schemaModels.every((model) => contract.entities.some((entity) => entity.model === model)), `${schemaModels.length} Prisma model(s)`)
-add('no unknown entities are classified', contract.entities.every((entity) => schemaModels.includes(entity.model)), `${contract.entities.length} classified entity(s)`)
+add('entity assignments are unique', unique(classifiedModels), `${contract.entities.length} entity assignment(s)`)
+add('all Prisma models are classified', missingModels.length === 0, missingModels.length ? `missing: ${missingModels.join(', ')}` : `${schemaModels.length} Prisma model(s)`)
+add('no unknown entities are classified', unknownModels.length === 0, unknownModels.length ? `unknown: ${unknownModels.join(', ')}` : `${contract.entities.length} classified entity(s)`)
 
 const knownDomains = new Set(baseline.modules.map((module) => module.id))
 const knownPolicies = new Set(Object.keys(contract.policies))
