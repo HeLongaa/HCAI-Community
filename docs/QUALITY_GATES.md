@@ -26,7 +26,7 @@ Run the static contract on every pull request:
 npm run check:production-supply-chain
 ```
 
-It verifies digest-pinned base images, four governed targets, checksum-pinned Trivy packages, bounded vulnerability exceptions, complete-commit GitHub Action pins, GHCR digest scanning, BuildKit SBOM/max provenance, GitHub signed attestations, verification, and evidence retention. This check does not require Docker or network access.
+It verifies digest-pinned base images, four governed targets, checksum-pinned Trivy packages, bounded vulnerability exceptions, complete-commit GitHub Action pins, dual-platform GHCR digest scanning, per-platform SBOMs, BuildKit max provenance, GitHub/OCI signed attestation receipts, and evidence retention. It also runs synthetic negative evidence tests for missing ARM64, missing SBOMs, failed platform scans, and missing platform attestations. This check does not require Docker or network access.
 
 For real local images, run:
 

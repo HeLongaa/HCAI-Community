@@ -19,7 +19,7 @@
     "test:secret-lifecycle-staging": "node scripts/verify-secret-lifecycle-staging.mjs && node --test server/src/modelControl/providerSecretRetention.test.js server/src/modelControl/vaultSecretLifecycleGateway.test.js server/src/modelControl/secretLifecycleStagingAcceptance.test.js",
     "test:secret-lifecycle-dr": "node scripts/verify-secret-lifecycle-dr.mjs && node --test scripts/secret-lifecycle-dr-rehearsal.test.mjs",
     "rehearse:production-containers": "node scripts/rehearse-production-containers.mjs",
-    "check:production-supply-chain": "node scripts/verify-production-supply-chain.mjs",
+    "check:production-supply-chain": "node scripts/verify-production-supply-chain.mjs && node scripts/test-production-supply-chain-evidence.mjs",
     "supply-chain:install-tools": "node scripts/install-production-security-tools.mjs",
     "supply-chain:scan": "node scripts/generate-production-supply-chain-evidence.mjs",
     "lint": "eslint .",

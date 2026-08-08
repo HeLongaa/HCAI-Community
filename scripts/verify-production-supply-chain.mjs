@@ -17,6 +17,7 @@ const allWorkflows = workflowFiles
 const dockerfile = fs.readFileSync(path.join(root, contract.dockerfile), 'utf8')
 const compose = fs.readFileSync(path.join(root, 'infra/production.compose.yml'), 'utf8')
 const packageDocument = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
+const evidenceGenerator = fs.readFileSync(path.join(root, 'scripts/generate-production-supply-chain-evidence.mjs'), 'utf8')
 const args = process.argv.slice(2)
 const flagValue = (name, fallback = null) => {
   const index = args.lastIndexOf(name)
@@ -29,6 +30,7 @@ const sha256File = (filePath) => createHash('sha256').update(fs.readFileSync(fil
 
 add('Supply-chain schema is versioned', contract.schemaVersion === 'production-supply-chain-contract-v1', contract.schemaVersion)
 add('Deployment requires immutable digests', contract.deployByDigestOnly === true, contract.deployByDigestOnly)
+add('Production images cover AMD64 and ARM64 targets', JSON.stringify([...(contract.requiredImagePlatforms ?? [])].sort()) === JSON.stringify(['linux/amd64', 'linux/arm64']), contract.requiredImagePlatforms?.join(', '))
 add('Every base image is pinned by SHA-256 digest', Object.values(contract.baseImages).every((reference) => /@sha256:[a-f0-9]{64}$/.test(reference)), Object.keys(contract.baseImages).join(', '))
 add('Dockerfile consumes the digest-pinned Node image', dockerfile.includes(`ARG NODE_IMAGE=${contract.baseImages.node}`), contract.baseImages.node)
 for (const [name, reference] of Object.entries(contract.baseImages).filter(([name]) => name !== 'node')) {
@@ -91,13 +93,17 @@ for (const [action, revision] of Object.entries(contract.githubActions)) {
 add('PR builds load exact local images with a read-only token', prBuildJob.includes('load: true') && prBuildJob.includes("github.event_name == 'pull_request'") && prBuildJob.includes('contents: read') && !/^\s+[a-z-]+:\s*write\s*$/m.test(prBuildJob), 'build-scan-pr contents: read')
 add('Protected branch builds push to GHCR', registryBuildJob.includes('registry: ghcr.io') && registryBuildJob.includes('push: true') && registryBuildJob.includes("github.event_name != 'pull_request'"), 'ghcr.io')
 add('Registry builds attach SBOM and max provenance', registryBuildJob.includes('sbom: true') && registryBuildJob.includes('provenance: mode=max'), 'sbom=true provenance=mode=max')
-add('Registry scan uses the build digest', registryBuildJob.includes('@${{ steps.registry-build.outputs.digest }}') && registryBuildJob.includes('--expected-digest'), 'registry digest scan')
-add('GitHub signs provenance and SBOM attestations', (registryBuildJob.match(/actions\/attest@/g) ?? []).length >= 2 && registryBuildJob.includes('sbom-path:') && registryBuildJob.includes('push-to-registry: true'), 'actions/attest')
+add('Registry builds initialize pinned QEMU for ARM64', registryBuildJob.includes('docker/setup-qemu-action@') && registryBuildJob.includes('platforms: arm64'), 'setup-qemu arm64')
+add('Registry builds publish AMD64 and ARM64 manifests', registryBuildJob.includes('platforms: linux/amd64,linux/arm64'), contract.requiredImagePlatforms?.join(', '))
+add('Frontend release identity is bound to the source commit', [prBuildJob, registryBuildJob].every((job) => job.includes('VITE_APP_RELEASE=${{ github.sha }}')), 'VITE_APP_RELEASE=github.sha')
+add('Registry scan selects and records every image platform', registryBuildJob.includes('@${{ steps.registry-build.outputs.digest }}') && registryBuildJob.includes('--expected-digest') && registryBuildJob.includes('--github-output') && evidenceGenerator.includes("['--platform', platform]"), 'registry digest + Trivy --platform')
+add('GitHub signs index provenance and both platform SPDX SBOMs', (registryBuildJob.match(/actions\/attest@/g) ?? []).length >= 3 && ['linux_amd64_digest', 'linux_arm64_digest', 'platforms/linux-amd64/sbom.spdx.json', 'platforms/linux-arm64/sbom.spdx.json'].every((value) => registryBuildJob.includes(value)), 'index provenance + AMD64 SPDX + ARM64 SPDX')
 add('Attestation job grants all required write permissions', ['packages', 'id-token', 'attestations', 'artifact-metadata'].every((permission) => registryBuildJob.includes(`${permission}: write`)), 'build-scan-registry write permissions')
-add('Both attestation types are verified through GitHub and OCI', registryBuildJob.includes('https://slsa.dev/provenance/v1') && registryBuildJob.includes('https://spdx.dev/Document/v2.3') && registryBuildJob.includes('--bundle-from-oci') && (registryBuildJob.match(/gh attestation verify/g) ?? []).length >= 2, 'provenance + SPDX; GitHub + OCI')
-add('CI uploads per-image and aggregate evidence', workflow.includes('supply-chain-${{ matrix.image }}') && workflow.includes('production-supply-chain-manifest'), 'artifact evidence')
+add('Index and platform attestations are verified through GitHub and OCI', registryBuildJob.includes('https://slsa.dev/provenance/v1') && registryBuildJob.includes('https://spdx.dev/Document/v2.3') && registryBuildJob.includes('--bundle-from-oci') && registryBuildJob.includes('spdx-linux-amd64') && registryBuildJob.includes('spdx-linux-arm64') && registryBuildJob.includes('--format json'), 'index provenance + per-platform SPDX; GitHub + OCI')
+add('Verified attestation receipts are hashed into image evidence', registryBuildJob.includes('record-production-attestation-evidence.mjs') && fs.existsSync(path.join(root, 'scripts/record-production-attestation-evidence.mjs')), 'record-production-attestation-evidence.mjs')
+add('CI uploads per-image evidence and retains aggregate receipts', workflow.includes('supply-chain-${{ matrix.image }}') && workflow.includes('production-supply-chain-manifest') && workflow.includes('*/attestations/*.json'), 'artifact evidence + attestation receipts')
 
-add('Static supply-chain gate is exposed through npm', packageDocument.scripts['check:production-supply-chain'] === 'node scripts/verify-production-supply-chain.mjs', packageDocument.scripts['check:production-supply-chain'])
+add('Static supply-chain gate and negative evidence tests are exposed through npm', packageDocument.scripts['check:production-supply-chain']?.includes('node scripts/verify-production-supply-chain.mjs') && packageDocument.scripts['check:production-supply-chain']?.includes('test-production-supply-chain-evidence.mjs'), packageDocument.scripts['check:production-supply-chain'])
 add('Pinned scanner installer is exposed through npm', packageDocument.scripts['supply-chain:install-tools'] === 'node scripts/install-production-security-tools.mjs', packageDocument.scripts['supply-chain:install-tools'])
 add('Real image evidence command is exposed through npm', packageDocument.scripts['supply-chain:scan']?.includes('generate-production-supply-chain-evidence.mjs'), packageDocument.scripts['supply-chain:scan'])
 add('PR gate includes the static supply-chain contract', packageDocument.scripts['check:pr']?.includes('check:production-supply-chain'), packageDocument.scripts['check:pr'])
@@ -106,25 +112,72 @@ const evidenceDirectoryFlag = flagValue('--evidence-dir')
 const summaries = []
 if (evidenceDirectoryFlag) {
   const evidenceRoot = path.resolve(root, evidenceDirectoryFlag)
+  const expectedRegistryPlatforms = [...contract.requiredImagePlatforms].sort()
+  const exactPlatforms = (actual, expected) => JSON.stringify([...(actual ?? [])].sort()) === JSON.stringify([...expected].sort())
+  const verifyArtifact = (label, summaryPath, artifact) => {
+    const artifactPath = artifact?.file ? path.resolve(path.dirname(summaryPath), artifact.file) : ''
+    const insideImageDirectory = artifactPath.startsWith(`${path.dirname(summaryPath)}${path.sep}`)
+    add(`${label} exists and hash matches`, insideImageDirectory && fs.existsSync(artifactPath) && /^[a-f0-9]{64}$/.test(artifact?.sha256 ?? '') && sha256File(artifactPath) === artifact.sha256, artifact?.file)
+  }
+  const receiptComplete = (attestation, subjectDigest, predicateType) => {
+    const receipts = attestation?.receipts
+    return attestation?.subjectDigest === subjectDigest
+      && attestation?.predicateType === predicateType
+      && ['github', 'oci'].every((source) => receipts?.[source]?.file && receipts[source]?.sha256)
+  }
   for (const image of contract.images) {
     const summaryPath = path.join(evidenceRoot, image.id, 'summary.json')
     add(`${image.id} evidence summary exists`, fs.existsSync(summaryPath), summaryPath)
     if (!fs.existsSync(summaryPath)) continue
     const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'))
     summaries.push({ summary, summaryPath })
-    add(`${image.id} evidence schema and identity match`, summary.schemaVersion === 'production-image-supply-chain-evidence-v1' && summary.imageId === image.id && summary.target === image.target, `${summary.imageId}/${summary.target}`)
+    add(`${image.id} evidence schema and identity match`, summary.schemaVersion === 'production-image-supply-chain-evidence-v2' && summary.imageId === image.id && summary.target === image.target, `${summary.imageId}/${summary.target}`)
     const databaseAgeAtScan = (Date.parse(summary.generatedAt) - Date.parse(summary.scanner?.vulnerabilityDatabase?.updatedAt)) / (60 * 60 * 1000)
     add(`${image.id} scanner version and database freshness match`, summary.scanner?.name === contract.scanner.name && summary.scanner?.version === contract.scanner.version && Number.isFinite(databaseAgeAtScan) && databaseAgeAtScan >= 0 && databaseAgeAtScan <= contract.scanner.maximumDatabaseAgeHours, JSON.stringify(summary.scanner))
-    add(`${image.id} contains both non-empty SBOMs`, summary.packageCounts?.spdx > 0 && summary.packageCounts?.cyclonedx > 0, JSON.stringify(summary.packageCounts))
-    add(`${image.id} has no blocked HIGH/CRITICAL findings`, summary.vulnerabilityCounts?.blocked === 0 && summary.blockedFindings?.length === 0, summary.vulnerabilityCounts?.blocked)
-    add(`${image.id} operating system is supported`, summary.endOfLife === false, summary.operatingSystem ? JSON.stringify(summary.operatingSystem) : 'not reported')
-    add(`${image.id} policy passed`, summary.policyPassed === true, summary.policyPassed)
+    const identityPlatforms = summary.identity?.platforms ?? []
+    const platformKeys = Object.keys(summary.platformEvidence ?? {})
+    add(`${image.id} has exactly one evidence record per identity platform`, exactPlatforms(platformKeys, identityPlatforms), platformKeys.join(', '))
     if (hasFlag('--require-registry-digests')) {
       add(`${image.id} is bound to a registry manifest digest`, summary.identity?.kind === 'registry-manifest-digest' && /^sha256:[a-f0-9]{64}$/.test(summary.identity?.digest ?? '') && summary.identity?.immutableReference?.endsWith(`@${summary.identity.digest}`), summary.identity?.immutableReference)
+      add(`${image.id} registry manifest covers exactly every production platform`, exactPlatforms(identityPlatforms, expectedRegistryPlatforms), identityPlatforms.join(', '))
+      add(`${image.id} records one immutable manifest digest per platform`, exactPlatforms(Object.keys(summary.identity?.platformManifests ?? {}), expectedRegistryPlatforms) && Object.values(summary.identity?.platformManifests ?? {}).every((digest) => /^sha256:[a-f0-9]{64}$/.test(digest)), JSON.stringify(summary.identity?.platformManifests))
+      verifyArtifact(`${image.id} OCI index`, summaryPath, summary.artifacts?.ociIndex)
+    } else {
+      add(`${image.id} local evidence binds one supported platform`, summary.identity?.kind === 'local-image-id' && identityPlatforms.length === 1 && /^linux\/(amd64|arm64)$/.test(identityPlatforms[0]), identityPlatforms.join(', '))
     }
-    for (const artifact of Object.values(summary.artifacts ?? {})) {
-      const artifactPath = path.join(path.dirname(summaryPath), artifact.file)
-      add(`${image.id} ${artifact.file} hash matches`, fs.existsSync(artifactPath) && sha256File(artifactPath) === artifact.sha256, artifact.sha256)
+
+    for (const platform of platformKeys) {
+      const evidence = summary.platformEvidence[platform]
+      const expectedManifestDigest = summary.identity?.platformManifests?.[platform] ?? summary.identity?.digest
+      add(`${image.id} ${platform} scan completed for the expected manifest`, evidence?.platform === platform && evidence?.manifestDigest === expectedManifestDigest && evidence?.scanSucceeded === true, evidence?.manifestDigest)
+      add(`${image.id} ${platform} contains both non-empty SBOMs`, evidence?.packageCounts?.spdx > 0 && evidence?.packageCounts?.cyclonedx > 0, JSON.stringify(evidence?.packageCounts))
+      add(`${image.id} ${platform} has no blocked HIGH/CRITICAL findings`, evidence?.vulnerabilityCounts?.blocked === 0 && evidence?.blockedFindings?.length === 0, evidence?.vulnerabilityCounts?.blocked)
+      add(`${image.id} ${platform} operating system is supported`, evidence?.endOfLife === false, evidence?.operatingSystem ? JSON.stringify(evidence.operatingSystem) : 'not reported')
+      add(`${image.id} ${platform} policy passed`, evidence?.policyPassed === true, evidence?.policyPassed)
+      const artifactKeys = Object.keys(evidence?.artifacts ?? {}).sort()
+      add(`${image.id} ${platform} has vulnerability, SPDX, and CycloneDX artifacts`, exactPlatforms(artifactKeys, ['cyclonedx', 'spdx', 'vulnerabilities']), artifactKeys.join(', '))
+      for (const [artifactName, artifact] of Object.entries(evidence?.artifacts ?? {})) {
+        verifyArtifact(`${image.id} ${platform} ${artifactName}`, summaryPath, artifact)
+      }
+    }
+    add(`${image.id} aggregate policy passed`, summary.policyPassed === true && summary.blockedFindings?.length === 0, summary.policyPassed)
+
+    if (hasFlag('--require-registry-digests')) {
+      const provenancePredicate = 'https://slsa.dev/provenance/v1'
+      const spdxPredicate = 'https://spdx.dev/Document/v2.3'
+      add(`${image.id} index provenance receipt is complete`, receiptComplete(summary.attestations?.provenance, summary.identity?.digest, provenancePredicate), summary.attestations?.provenance?.subjectDigest)
+      for (const receiptArtifact of Object.values(summary.attestations?.provenance?.receipts ?? {})) {
+        verifyArtifact(`${image.id} index provenance receipt`, summaryPath, receiptArtifact)
+      }
+      const attestedPlatforms = Object.keys(summary.attestations?.platforms ?? {})
+      add(`${image.id} has SPDX attestation receipts for every platform`, exactPlatforms(attestedPlatforms, expectedRegistryPlatforms), attestedPlatforms.join(', '))
+      for (const platform of expectedRegistryPlatforms) {
+        const attestation = summary.attestations?.platforms?.[platform]
+        add(`${image.id} ${platform} SPDX receipt is complete`, receiptComplete(attestation, summary.identity?.platformManifests?.[platform], spdxPredicate), attestation?.subjectDigest)
+        for (const receiptArtifact of Object.values(attestation?.receipts ?? {})) {
+          verifyArtifact(`${image.id} ${platform} SPDX receipt`, summaryPath, receiptArtifact)
+        }
+      }
     }
   }
   add('Evidence covers each image exactly once', summaries.length === contract.images.length && new Set(summaries.map(({ summary }) => summary.imageId)).size === contract.images.length, summaries.map(({ summary }) => summary.imageId).join(', '))
@@ -135,7 +188,13 @@ if (evidenceDirectoryFlag) {
   if (manifestOutput && summaries.length === contract.images.length) {
     const manifestPath = path.resolve(root, manifestOutput)
     fs.mkdirSync(path.dirname(manifestPath), { recursive: true })
-    const registryReady = summaries.every(({ summary }) => summary.identity?.kind === 'registry-manifest-digest')
+    const registryReady = checks.every((check) => check.pass) && hasFlag('--require-registry-digests') && summaries.every(({ summary }) => (
+      summary.identity?.kind === 'registry-manifest-digest'
+      && exactPlatforms(summary.identity?.platforms, expectedRegistryPlatforms)
+      && exactPlatforms(Object.keys(summary.platformEvidence ?? {}), expectedRegistryPlatforms)
+      && exactPlatforms(Object.keys(summary.attestations?.platforms ?? {}), expectedRegistryPlatforms)
+      && summary.policyPassed === true
+    ))
     const manifest = {
       schemaVersion: 'production-image-digest-manifest-v1',
       sourceRevision: [...revisions][0] ?? null,
@@ -145,6 +204,8 @@ if (evidenceDirectoryFlag) {
         target: summary.target,
         reference: summary.imageReference,
         digest: summary.identity?.digest ?? null,
+        platforms: summary.identity?.platforms ?? [],
+        platformManifests: summary.identity?.platformManifests ?? {},
         evidenceSummarySha256: sha256File(summaryPath),
       }])),
     }

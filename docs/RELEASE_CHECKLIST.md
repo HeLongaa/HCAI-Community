@@ -33,9 +33,9 @@ Confirm:
 - `npm run check:production-containers` passes for the exact candidate source.
 - `npm run rehearse:production-containers` passes, including migrations, no-demo production seed, Worker jobs, read-only runtime, and SIGTERM drain.
 - GitHub Actions `Container Supply Chain` passes for the exact candidate commit and publishes four GHCR images by digest.
-- The aggregate `production-image-digest-manifest-v1` has `registryReady=true`, the approved `sourceRevision`, and frontend/API/Worker/migration digest entries.
+- The aggregate `production-image-digest-manifest-v1` has `registryReady=true`, the approved `sourceRevision`, frontend/API/Worker/migration OCI index digests, and exact `linux/amd64` plus `linux/arm64` platform manifest digests for every image.
 - Each image has matching SPDX and CycloneDX SBOM evidence, zero unexcepted fixable `HIGH/CRITICAL` findings, and a non-EOL operating system.
-- GitHub provenance and SPDX SBOM attestations pass `gh attestation verify` for every exact image digest.
+- OCI index provenance and both platform-specific SPDX SBOM attestations pass `gh attestation verify` through the GitHub API and OCI registry for every exact digest.
 - Any active vulnerability exception identifies the exact CVE/package/image/version, has release approval, and expires within 30 days; expired or blanket ignores are prohibited.
 - The multi-instance deployment profile in `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` has been reviewed for the target environment.
 - `docs/GITHUB_ENVIRONMENT.md` required secrets and variables are configured for the selected GitHub Environment.

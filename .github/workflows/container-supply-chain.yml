@@ -69,6 +69,8 @@ jobs:
           sbom: false
           provenance: false
           tags: ${{ env.LOCAL_IMAGE }}
+          build-args: |
+            VITE_APP_RELEASE=${{ github.sha }}
           cache-from: type=gha,scope=production-${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=production-${{ matrix.image }}
 
@@ -123,6 +125,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+        with:
+          platforms: arm64
+
       - name: Set up Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
@@ -153,6 +160,9 @@ jobs:
           sbom: true
           provenance: mode=max
           tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            VITE_APP_RELEASE=${{ github.sha }}
           cache-from: type=gha,scope=production-${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=production-${{ matrix.image }}
 
@@ -163,12 +173,14 @@ jobs:
           echo "TRIVY_PATH=$tool_path" >> "$GITHUB_ENV"
 
       - name: Scan exact published digest
+        id: scan
         run: >-
           node scripts/generate-production-supply-chain-evidence.mjs
           --image "${{ matrix.image }}=${{ env.IMAGE_NAME }}@${{ steps.registry-build.outputs.digest }}"
           --expected-digest "${{ matrix.image }}=${{ steps.registry-build.outputs.digest }}"
           --output .artifacts/production-supply-chain
           --source-revision "${{ github.sha }}"
+          --github-output "${GITHUB_OUTPUT}"
 
       - name: Sign image provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
@@ -177,12 +189,20 @@ jobs:
           subject-digest: ${{ steps.registry-build.outputs.digest }}
           push-to-registry: true
 
-      - name: Sign image SPDX SBOM
+      - name: Sign AMD64 image SPDX SBOM
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-name: ${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.registry-build.outputs.digest }}
-          sbom-path: .artifacts/production-supply-chain/${{ matrix.image }}/sbom.spdx.json
+          subject-digest: ${{ steps.scan.outputs.linux_amd64_digest }}
+          sbom-path: .artifacts/production-supply-chain/${{ matrix.image }}/platforms/linux-amd64/sbom.spdx.json
+          push-to-registry: true
+
+      - name: Sign ARM64 image SPDX SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.scan.outputs.linux_arm64_digest }}
+          sbom-path: .artifacts/production-supply-chain/${{ matrix.image }}/platforms/linux-arm64/sbom.spdx.json
           push-to-registry: true
 
       - name: Verify published provenance and SBOM attestations
@@ -190,29 +210,49 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          image="oci://${{ env.IMAGE_NAME }}@${{ steps.registry-build.outputs.digest }}"
           signer="${{ github.repository }}/.github/workflows/container-supply-chain.yml"
-          predicates=(
-            "https://slsa.dev/provenance/v1"
-            "https://spdx.dev/Document/v2.3"
-          )
-          for predicate in "${predicates[@]}"; do
-            gh attestation verify "$image" \
-              --repo "${{ github.repository }}" \
-              --signer-workflow "$signer" \
-              --source-digest "${{ github.sha }}" \
-              --source-ref "${{ github.ref }}" \
-              --deny-self-hosted-runners \
-              --predicate-type "$predicate"
-            gh attestation verify "$image" \
+          receipts=".artifacts/production-supply-chain/${{ matrix.image }}/attestations"
+          mkdir -p "$receipts"
+          verify_attestation() {
+            local subject="$1"
+            local predicate="$2"
+            local receipt_name="$3"
+            gh attestation verify "$subject" \
               --repo "${{ github.repository }}" \
               --signer-workflow "$signer" \
               --source-digest "${{ github.sha }}" \
               --source-ref "${{ github.ref }}" \
               --deny-self-hosted-runners \
               --predicate-type "$predicate" \
-              --bundle-from-oci
-          done
+              --format json > "$receipts/${receipt_name}.github.json"
+            gh attestation verify "$subject" \
+              --repo "${{ github.repository }}" \
+              --signer-workflow "$signer" \
+              --source-digest "${{ github.sha }}" \
+              --source-ref "${{ github.ref }}" \
+              --deny-self-hosted-runners \
+              --predicate-type "$predicate" \
+              --bundle-from-oci \
+              --format json > "$receipts/${receipt_name}.oci.json"
+          }
+          verify_attestation \
+            "oci://${{ env.IMAGE_NAME }}@${{ steps.registry-build.outputs.digest }}" \
+            "https://slsa.dev/provenance/v1" \
+            "provenance"
+          verify_attestation \
+            "oci://${{ env.IMAGE_NAME }}@${{ steps.scan.outputs.linux_amd64_digest }}" \
+            "https://spdx.dev/Document/v2.3" \
+            "spdx-linux-amd64"
+          verify_attestation \
+            "oci://${{ env.IMAGE_NAME }}@${{ steps.scan.outputs.linux_arm64_digest }}" \
+            "https://spdx.dev/Document/v2.3" \
+            "spdx-linux-arm64"
+
+      - name: Record verified attestation receipts
+        run: >-
+          node scripts/record-production-attestation-evidence.mjs
+          --summary .artifacts/production-supply-chain/${{ matrix.image }}/summary.json
+          --receipts-dir .artifacts/production-supply-chain/${{ matrix.image }}/attestations
 
       - name: Upload per-image evidence
         if: always()
@@ -272,5 +312,6 @@ jobs:
           path: |
             .artifacts/production-supply-chain/digest-manifest.json
             .artifacts/production-supply-chain/*/summary.json
+            .artifacts/production-supply-chain/*/attestations/*.json
           if-no-files-found: error
           retention-days: 90

@@ -5,6 +5,7 @@
   "ciWorkflow": ".github/workflows/container-supply-chain.yml",
   "registry": "ghcr.io",
   "deployByDigestOnly": true,
+  "requiredImagePlatforms": ["linux/amd64", "linux/arm64"],
   "baseImages": {
     "node": "public.ecr.aws/docker/library/node:24.18.0-trixie-slim@sha256:ae91dcc111a68c9d2d81ff2a17bda61be126426176fde6fe7d08ab13b7f50573",
     "caddy": "caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d",
@@ -100,6 +101,7 @@
     "actions/upload-artifact": "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     "docker/build-push-action": "53b7df96c91f9c12dcc8a07bcb9ccacbed38856a",
     "docker/login-action": "dbcb813823bdd20940b903addbd779551569679f",
+    "docker/setup-qemu-action": "96fe6ef7f33517b61c61be40b68a1882f3264fb8",
     "docker/setup-buildx-action": "bb05f3f5519dd87d3ba754cc423b652a5edd6d2c"
   }
 }
