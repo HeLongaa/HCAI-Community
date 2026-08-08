@@ -214,7 +214,7 @@ test('OpenAI Image HTTP client uses deployment secret internally with injected f
           output_tokens: 100,
           total_tokens: 120,
         },
-      }), { status: 200 })
+      }), { status: 200, headers: { 'x-request-id': 'openai-request-fixture-1' } })
     },
   })
   const result = await client.generateImage(request)
@@ -222,6 +222,7 @@ test('OpenAI Image HTTP client uses deployment secret internally with injected f
   assert.equal(calls[0].url, 'https://api.openai.com/v1/images/generations')
   assert.equal(calls[0].options.headers.authorization, 'Bearer openai-fixture-token')
   assert.equal(result.output.contentType, 'image/png')
+  assert.equal(result.providerRequestId, 'openai-request-fixture-1')
   assert.equal(JSON.stringify(client).includes('openai-fixture-token'), false)
   assert.equal(JSON.stringify(result).includes('openai-fixture-token'), false)
 })
@@ -241,13 +242,44 @@ test('OpenAI Image HTTP client supports an HTTPS OpenAI-compatible router and co
     },
     fetchImpl: async (url, options) => {
       calls.push({ url, options })
-      return new Response(JSON.stringify({ data: [{ b64_json: pngBase64 }] }), { status: 200 })
+      return new Response(JSON.stringify({ data: [{ b64_json: pngBase64 }] }), {
+        status: 200,
+        headers: { 'x-oneapi-request-id': '202608090001-router-request-fixture' },
+      })
     },
   })
 
-  await client.generateImage(request)
+  const result = await client.generateImage(request)
   assert.equal(calls[0].url, 'https://router.hctopup.com/v1/images/generations')
   assert.equal(JSON.parse(calls[0].options.body).model, 'gpt-image-2')
+  assert.equal(result.providerRequestId, '202608090001-router-request-fixture')
+})
+
+test('MiniMax Router image success fails closed without a safe gateway request id', async () => {
+  const routerSource = {
+    NODE_ENV: 'production',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED: 'true',
+    CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED: 'true',
+    CREATIVE_OPENAI_IMAGE_CONFIRMATION: 'staging-only',
+    CREATIVE_OPENAI_IMAGE_API_TOKEN: 'router-fixture-token',
+    CREATIVE_OPENAI_IMAGE_BASE_URL: 'https://router.hctopup.com/v1',
+    CREATIVE_OPENAI_IMAGE_MODEL: 'image-01-live',
+    CREATIVE_OPENAI_IMAGE_COST_PROVIDER_ID: 'hcai-router-minimax-image-01-live',
+  }
+  const response = (headers = {}) => new Response(JSON.stringify({ data: [{ b64_json: pngBase64 }] }), { status: 200, headers })
+
+  await assert.rejects(
+    createOpenAIImageHttpClient({ source: routerSource, fetchImpl: async () => response() }).generateImage(request),
+    (error) => error.code === 'CREATIVE_PROVIDER_HTTP_RESPONSE_INVALID' && error.details.reasonCode === 'provider_request_id_missing',
+  )
+  await assert.rejects(
+    createOpenAIImageHttpClient({ source: routerSource, fetchImpl: async () => response({ 'x-oneapi-request-id': 'https://router.example/private?token=secret' }) }).generateImage(request),
+    (error) => error.code === 'CREATIVE_PROVIDER_HTTP_RESPONSE_INVALID' &&
+      error.details.reasonCode === 'provider_request_id_invalid' &&
+      JSON.stringify(error).includes('private') === false &&
+      JSON.stringify(error).includes('secret') === false,
+  )
 })
 
 test('OpenAI Image HTTP client rejects unsafe router configuration before dispatch', () => {
@@ -287,12 +319,13 @@ test('OpenAI Image HTTP errors expose only safe shared taxonomy evidence', async
     },
     fetchImpl: async () => new Response(JSON.stringify({
       error: 'token=openai-fixture-token https://private.example',
-    }), { status: 429, headers: { 'retry-after': '9999' } }),
+    }), { status: 429, headers: { 'retry-after': '9999', 'x-oneapi-request-id': 'router-rate-limit-1' } }),
   })
   await assert.rejects(
     client.generateImage(request),
     (error) => error.code === 'CREATIVE_PROVIDER_RATE_LIMITED' &&
       error.details.retryAfterSeconds === 900 &&
+      error.details.providerRequestId === 'router-rate-limit-1' &&
       JSON.stringify(error).includes('openai-fixture-token') === false &&
       JSON.stringify(error).includes('private.example') === false,
   )
@@ -439,7 +472,7 @@ test('OpenAI Image adapter returns contract-safe output with non-serializable in
           output_tokens: 100,
           total_tokens: 120,
         },
-      }),
+      }, { providerRequestId: 'router-generation-request-1' }),
     },
   })
   assert.equal(generation.status, 'completed')
@@ -449,6 +482,8 @@ test('OpenAI Image adapter returns contract-safe output with non-serializable in
   assert.equal(JSON.stringify(generation).includes(pngBase64), false)
   assert.equal(JSON.stringify(generation).includes('openai-fixture-token'), false)
   assert.equal(generation.usage.providerCost.actual.amount, 0.0031)
+  assert.equal(generation.providerRequestId, 'router-generation-request-1')
+  assert.equal(generation.usage.providerCost.job.providerRequestId, 'router-generation-request-1')
 })
 
 test('OpenAI Image edit cost reconciles when Provider usage lacks input modality details', async () => {
@@ -479,12 +514,15 @@ test('OpenAI Image adapter maps client failures without leaking Provider content
         throw Object.assign(new Error('Bearer openai-private-token https://private.example'), {
           statusCode: 429,
           code: 'CREATIVE_PROVIDER_RATE_LIMITED',
+          details: { providerRequestId: 'router-failed-request-1' },
         })
       },
     },
   })
   assert.equal(generation.status, 'failed')
   assert.equal(generation.errorCode, 'PROVIDER_RATE_LIMITED')
+  assert.equal(generation.providerRequestId, 'router-failed-request-1')
+  assert.equal(generation.usage.providerCost.job.providerRequestId, 'router-failed-request-1')
   assert.equal(JSON.stringify(generation).includes('openai-private-token'), false)
   assert.equal(JSON.stringify(generation).includes('private.example'), false)
 })

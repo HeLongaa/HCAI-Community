@@ -605,7 +605,7 @@ test('MiniMax Image fixed output pricing closes the durable Provider ledger with
         client: {
           generateImage: async () => projectOpenAIImageGenerationResponse({
             data: [{ b64_json: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }],
-          }),
+          }, { providerRequestId: 'minimax-image-request-fixture-1' }),
         },
       }),
     },
@@ -613,6 +613,8 @@ test('MiniMax Image fixed output pricing closes the durable Provider ledger with
 
   const ledger = await repository.creativeProviderCosts.findForGeneration(generationId)
   assert.equal(generated.usage.providerCost.actual.source, 'approved_fixed_output_price')
+  assert.equal(generated.providerRequestId, 'minimax-image-request-fixture-1')
+  assert.equal(generated.usage.providerCost.job.providerRequestId, 'minimax-image-request-fixture-1')
   assert.equal(generated.usage.providerCost.ledger.status, 'settled')
   assert.equal(generated.usage.providerCost.ledger.actualMicros, '3424')
   assert.equal(ledger.status, 'settled')
