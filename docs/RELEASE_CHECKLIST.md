@@ -39,13 +39,13 @@ Confirm:
 - `AUTH_TRUSTED_ORIGINS` includes all browser frontend origins that will use cookie refresh.
 - `STORAGE_DRIVER=s3` and storage bucket/region/endpoint match the deployment.
 - Upload/download/scanner TTLs are bounded, and private CDN URL/secret/key ID are configured together when CDN delivery is enabled.
-- `MEDIA_SCAN_PROVIDER=webhook` has request URL, request signing, callback base URL, and callback signature settings.
+- Media ingestion is fail-closed: `MEDIA_SCAN_PROVIDER=webhook` has request URL, signing, callback, and alert settings, or `MEDIA_SCAN_PROVIDER=manual` deliberately keeps every unreviewed asset quarantined and unavailable.
 - `MEDIA_STORAGE_CLEANUP_WORKER_ENABLED=true` is set on workers with the approved retention days and bounded batch size.
 - `RATE_LIMIT_STORE=redis` and `RATE_LIMIT_REDIS_URL` are configured for multi-instance API deployments.
 - `METRICS_EXPORTER_ENABLED` and `METRICS_EXPORTER_TOKEN` match the monitoring deployment plan.
 - `API_EMBEDDED_WORKERS_ENABLED=false` is set on API instances.
 - Worker processes have explicit job flags and lease settings.
-- At least one media alert channel and one security alert channel are configured.
+- At least one media scanner alert channel is configured in webhook mode, and at least one security alert channel is always configured.
 - OAuth redirect URIs match the deployed API callback URLs.
 - `CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=false`; no production release may register the staging Provider HTTP client.
 - `CREATIVE_PROVIDER_CALLBACK_ENABLED=false`; no production release may expose the staging Provider callback intake.

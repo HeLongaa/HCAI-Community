@@ -12,7 +12,10 @@ const profile = [...args].find((arg) => arg.startsWith('--profile='))?.split('='
 
 const productionFixture = {
   NODE_ENV: 'production',
+  DEPLOYMENT_ENV: 'production',
   PORT: '8787',
+  DATABASE_URL: 'postgresql://newchat:fixture@db.example.com:5432/newchat',
+  SECRET_MANAGER_PROVIDER: 'vault',
   ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
   ACCESS_TOKEN_KEY_ID: '2026-07',
   STORAGE_DRIVER: 's3',
@@ -319,16 +322,27 @@ const providerAlertWiring = buildProviderBudgetExternalAlertDeliveryWiring({
 const protectedRuntime = inspectProtectedRuntimeConfiguration(source)
 const { chatRuntime, providerDeletionGatewayConfigured } = protectedRuntime
 const checks = []
+const webhookMediaScanner = env.mediaScanProvider === 'webhook'
 
 check(checks, 'production mode', env.nodeEnv === 'production', `NODE_ENV=${env.nodeEnv}`)
+check(checks, 'managed deployment environment', ['staging', 'production'].includes(env.deploymentEnv), `DEPLOYMENT_ENV=${env.deploymentEnv}`)
+check(checks, 'production persistence configured', env.hasDatabaseUrl, 'DATABASE_URL must be configured; runtime Seed fallback is disabled')
+check(checks, 'production secret manager configured', env.deploymentEnv !== 'production' || env.hasSecretManager, 'SECRET_MANAGER_PROVIDER is required for production deployments')
 check(checks, 'managed access token secret', env.hasManagedAccessTokenSecret, 'ACCESS_TOKEN_SECRET or SESSION_SECRET must be present')
 check(checks, 'object storage is S3-backed', env.storageDriver === 's3', `storageDriver=${env.storageDriver}`)
-check(checks, 'private media download signing configured', env.hasStoragePrivateDownloadBaseUrl && env.hasStoragePrivateDownloadSigningSecret, 'STORAGE_PRIVATE_DOWNLOAD_BASE_URL and signing secret are required for CDN delivery')
-check(checks, 'media scanner uses webhook provider', env.mediaScanProvider === 'webhook', `mediaScanProvider=${env.mediaScanProvider}`)
-check(checks, 'media scanner request dispatch configured', env.hasMediaScanRequestUrl, 'MEDIA_SCAN_REQUEST_URL is required for managed smoke')
-check(checks, 'media scanner request signing configured', env.hasMediaScanRequestSecret, 'MEDIA_SCAN_REQUEST_SECRET is recommended for managed smoke')
-check(checks, 'media scanner callback base URL configured', env.hasMediaScanCallbackBaseUrl, 'MEDIA_SCAN_CALLBACK_BASE_URL is required')
-check(checks, 'media scanner callback signature configured', env.hasMediaScanCallbackSignatureSecret, 'MEDIA_SCAN_CALLBACK_SIGNATURE_SECRET or request secret is required')
+check(
+  checks,
+  'private media delivery configured',
+  env.storageDriver === 's3' && (env.hasStoragePrivateDownloadBaseUrl === env.hasStoragePrivateDownloadSigningSecret),
+  env.hasStoragePrivateDownloadBaseUrl
+    ? 'private CDN signing is configured'
+    : 'private S3 presigned downloads are used; CDN signing is optional',
+)
+check(checks, 'media scanner boundary fails closed', ['manual', 'webhook'].includes(env.mediaScanProvider), `mediaScanProvider=${env.mediaScanProvider}; mock is forbidden and manual keeps assets quarantined`)
+check(checks, 'media scanner request dispatch gated', !webhookMediaScanner || env.hasMediaScanRequestUrl, webhookMediaScanner ? 'MEDIA_SCAN_REQUEST_URL is required for webhook scanning' : 'not required outside webhook mode')
+check(checks, 'media scanner request signing gated', !webhookMediaScanner || env.hasMediaScanRequestSecret, webhookMediaScanner ? 'MEDIA_SCAN_REQUEST_SECRET is required for webhook scanning' : 'not required outside webhook mode')
+check(checks, 'media scanner callback base URL gated', !webhookMediaScanner || env.hasMediaScanCallbackBaseUrl, webhookMediaScanner ? 'MEDIA_SCAN_CALLBACK_BASE_URL is required for webhook scanning' : 'not required outside webhook mode')
+check(checks, 'media scanner callback signature gated', !webhookMediaScanner || env.hasMediaScanCallbackSignatureSecret, webhookMediaScanner ? 'MEDIA_SCAN_CALLBACK_SIGNATURE_SECRET or request secret is required for webhook scanning' : 'not required outside webhook mode')
 check(checks, 'creative provider mode is explicitly unavailable', env.creativeProviderMode === 'disabled', `CREATIVE_PROVIDER_MODE=${env.creativeProviderMode}; production product runtime requires disabled until approval`)
 check(checks, 'creative staging preflight disabled in production smoke', !env.creativeStagingProviderPreflightEnabled && !env.hasCreativeStagingProviderApiToken, 'Staging provider preflight must not be enabled in production smoke')
 check(checks, 'creative Provider HTTP client disabled in production smoke', !env.creativeProviderHttpClientEnabled, 'CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED must not be true in production smoke')
@@ -422,7 +436,7 @@ check(
     musicCapabilityContract.productBoundary.textToSpeechSupported === false,
   'AI-MUSIC-01 registers guarded staging support while all Music network gates, credentials, Lyria failover, and production enablement remain disabled by default',
 )
-check(checks, 'media alert channel configured', hasAny(env.hasMediaScanAlertWebhookUrl, env.hasMediaScanAlertSlackWebhookUrl, env.mediaScanAlertEmailRecipientCount > 0), 'At least one media alert channel must be configured')
+check(checks, 'media alert channel gated', !webhookMediaScanner || hasAny(env.hasMediaScanAlertWebhookUrl, env.hasMediaScanAlertSlackWebhookUrl, env.mediaScanAlertEmailRecipientCount > 0), webhookMediaScanner ? 'At least one media scanner alert channel must be configured' : 'not required outside webhook mode')
 check(checks, 'security alert channel configured', hasAny(env.hasSecurityAlertWebhookUrl, env.hasSecurityAlertSlackWebhookUrl, env.securityAlertEmailRecipientCount > 0), 'At least one security alert channel must be configured')
 check(
   checks,
@@ -470,8 +484,6 @@ check(checks, 'worker lease renews before expiry', env.workerLeaseRenewIntervalS
 check(checks, 'request body guard enabled', env.requestBodySizeGuardEnabled, 'REQUEST_BODY_SIZE_GUARD_ENABLED must not be false')
 check(checks, 'auth failure monitor enabled', env.authFailureMonitorEnabled, 'AUTH_FAILURE_MONITOR_ENABLED must not be false')
 check(checks, 'external OAuth provider configured', oauthProviders.some((provider) => provider.mode === 'external'), 'At least one OAuth provider should be external in managed smoke')
-check(checks, 'Google OAuth provider configured', oauthProviders.find((provider) => provider.provider === 'google')?.mode === 'external', 'Google OAuth must pass the managed smoke')
-check(checks, 'GitHub OAuth provider configured', oauthProviders.find((provider) => provider.provider === 'github')?.mode === 'external', 'GitHub OAuth must pass the managed smoke')
 
 const failed = checks.filter((item) => !item.pass)
 

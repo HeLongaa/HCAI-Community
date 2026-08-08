@@ -8,6 +8,8 @@ import { inspectProtectedRuntimeConfiguration } from './lib/protected-runtime-sm
 test('production smoke requires every declared core and retention worker', () => {
   const enabled = Object.fromEntries(productionWorkerRequirements.map(({ key }) => [key, true]))
   enabled.creativeProviderAlertsEnabled = true
+  enabled.notificationEmailDeliveryEnabled = true
+  enabled.mediaScanProvider = 'webhook'
   const checks = inspectProductionWorkers(enabled)
   assert.equal(checks.length, 29)
   assert.equal(checks.filter(({ group }) => group === 'core').length, 9)
@@ -19,11 +21,18 @@ test('production smoke requires every declared core and retention worker', () =>
 test('production smoke identifies each disabled worker without accepting truthy strings', () => {
   const baseline = Object.fromEntries(productionWorkerRequirements.map(({ key }) => [key, true]))
   baseline.creativeProviderAlertsEnabled = true
+  baseline.notificationEmailDeliveryEnabled = true
+  baseline.mediaScanProvider = 'webhook'
   for (const requirement of productionWorkerRequirements) {
     const checks = inspectProductionWorkers({ ...baseline, [requirement.key]: false })
     assert.deepEqual(checks.filter(({ enabled }) => !enabled).map(({ variable }) => variable), [requirement.variable])
   }
-  assert.equal(inspectProductionWorkers({ ...Object.fromEntries(productionWorkerRequirements.map(({ key }) => [key, 'true'])), creativeProviderAlertsEnabled: true }).every(({ enabled }) => !enabled), true)
+  assert.equal(inspectProductionWorkers({
+    ...Object.fromEntries(productionWorkerRequirements.map(({ key }) => [key, 'true'])),
+    creativeProviderAlertsEnabled: true,
+    notificationEmailDeliveryEnabled: true,
+    mediaScanProvider: 'webhook',
+  }).every(({ enabled }) => !enabled), true)
 })
 
 test('Provider alert worker is required only when its delivery feature is enabled', () => {
@@ -32,6 +41,18 @@ test('Provider alert worker is required only when its delivery feature is enable
   assert.equal(disabled.find(({ key }) => key === 'creativeProviderAlertDeliveryWorkerEnabled').enabled, true)
   const enabled = inspectProductionWorkers({ ...baseline, creativeProviderAlertsEnabled: true, creativeProviderAlertDeliveryWorkerEnabled: false })
   assert.equal(enabled.find(({ key }) => key === 'creativeProviderAlertDeliveryWorkerEnabled').enabled, false)
+})
+
+test('scanner and notification workers are required only when their external delivery modes are enabled', () => {
+  const baseline = Object.fromEntries(productionWorkerRequirements.map(({ key }) => [key, true]))
+  baseline.mediaScanWorkerEnabled = false
+  baseline.notificationDeliveryWorkerEnabled = false
+  const disabled = inspectProductionWorkers({ ...baseline, mediaScanProvider: 'manual', notificationEmailDeliveryEnabled: false })
+  assert.equal(disabled.find(({ key }) => key === 'mediaScanWorkerEnabled').enabled, true)
+  assert.equal(disabled.find(({ key }) => key === 'notificationDeliveryWorkerEnabled').enabled, true)
+  const enabled = inspectProductionWorkers({ ...baseline, mediaScanProvider: 'webhook', notificationEmailDeliveryEnabled: true })
+  assert.equal(enabled.find(({ key }) => key === 'mediaScanWorkerEnabled').enabled, false)
+  assert.equal(enabled.find(({ key }) => key === 'notificationDeliveryWorkerEnabled').enabled, false)
 })
 
 test('protected runtime smoke accumulates independent failures without exposing configuration values', () => {

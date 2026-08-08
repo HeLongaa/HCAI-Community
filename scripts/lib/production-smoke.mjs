@@ -1,11 +1,11 @@
 export const productionWorkerRequirements = Object.freeze([
   Object.freeze({ group: 'core', key: 'domainEventWorkerEnabled', name: 'domain event delivery', variable: 'DOMAIN_EVENT_WORKER_ENABLED' }),
   Object.freeze({ group: 'core', key: 'searchIndexWorkerEnabled', name: 'search index synchronization', variable: 'SEARCH_INDEX_WORKER_ENABLED' }),
-  Object.freeze({ group: 'core', key: 'mediaScanWorkerEnabled', name: 'media scan sweep', variable: 'MEDIA_SCAN_WORKER_ENABLED' }),
+  Object.freeze({ group: 'core', key: 'mediaScanWorkerEnabled', name: 'media scan sweep', variable: 'MEDIA_SCAN_WORKER_ENABLED', requiredWhen: Object.freeze({ key: 'mediaScanProvider', equals: 'webhook' }) }),
   Object.freeze({ group: 'core', key: 'mediaStorageCleanupWorkerEnabled', name: 'media storage cleanup', variable: 'MEDIA_STORAGE_CLEANUP_WORKER_ENABLED' }),
   Object.freeze({ group: 'core', key: 'taskStaleSubmissionWorkerEnabled', name: 'stale submission sweep', variable: 'TASK_STALE_SUBMISSION_WORKER_ENABLED' }),
   Object.freeze({ group: 'core', key: 'taskExpiryWorkerEnabled', name: 'task expiry sweep', variable: 'TASK_EXPIRY_WORKER_ENABLED' }),
-  Object.freeze({ group: 'core', key: 'notificationDeliveryWorkerEnabled', name: 'notification delivery', variable: 'NOTIFICATION_DELIVERY_WORKER_ENABLED' }),
+  Object.freeze({ group: 'core', key: 'notificationDeliveryWorkerEnabled', name: 'notification delivery', variable: 'NOTIFICATION_DELIVERY_WORKER_ENABLED', requiredWhen: 'notificationEmailDeliveryEnabled' }),
   Object.freeze({ group: 'core', key: 'webhookDeliveryWorkerEnabled', name: 'webhook delivery', variable: 'WEBHOOK_DELIVERY_WORKER_ENABLED' }),
   Object.freeze({ group: 'core', key: 'creativeProviderAlertDeliveryWorkerEnabled', name: 'Provider alert delivery', variable: 'CREATIVE_PROVIDER_ALERT_DELIVERY_WORKER_ENABLED', requiredWhen: 'creativeProviderAlertsEnabled' }),
   Object.freeze({ group: 'retention', key: 'chatRetentionWorkerEnabled', name: 'Chat history', variable: 'CHAT_RETENTION_WORKER_ENABLED' }),
@@ -31,6 +31,9 @@ export const productionWorkerRequirements = Object.freeze([
 ])
 
 export const inspectProductionWorkers = (env) => productionWorkerRequirements.map((requirement) => {
-  const required = !requirement.requiredWhen || env?.[requirement.requiredWhen] === true
+  const condition = requirement.requiredWhen
+  const required = !condition || (typeof condition === 'string'
+    ? env?.[condition] === true
+    : env?.[condition.key] === condition.equals)
   return { ...requirement, required, enabled: !required || env?.[requirement.key] === true }
 })
