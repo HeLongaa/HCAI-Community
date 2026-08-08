@@ -22,6 +22,7 @@ add('Provisioning enables a named file audit device', ['audit list -format=json'
 add('Restore node has no network connectivity', rehearsal.includes('--network none') && contract.restoreNetworkMode === 'none', contract.restoreNetworkMode)
 add('Restore node publishes no host ports', !rehearsal.includes('--publish') && !rehearsal.includes('-p '), 'no publish flags')
 add('Restore node is least privileged and bounded', ['--read-only', '--cap-drop ALL', '--security-opt no-new-privileges', '--pids-limit 128', '--memory 512m', '--cpus 1'].every((needle) => rehearsal.includes(needle)), 'container hardening')
+add('Restore config is loaded exactly once by the Vault image entrypoint', rehearsal.includes('dst=/vault/config/restore.hcl,readonly') && rehearsal.includes('"$vault_image" server >/dev/null') && !rehearsal.includes('server -config=/vault/config/restore.hcl'), 'single config load')
 add('Rehearsal saves and inspects a real Raft snapshot', ['operator raft snapshot save', 'operator raft snapshot inspect'].every((needle) => rehearsal.includes(needle)), 'snapshot save + inspect')
 add('Rehearsal forces restore only into the isolated node', rehearsal.includes('operator raft snapshot restore -force') && rehearsal.includes('restore_container'), 'isolated force restore')
 add('Rehearsal uses original source recovery material after restore', ['source_unseal_key', 'source_root_token', 'operator unseal "$source_unseal_key"'].every((needle) => rehearsal.includes(needle)), 'source recovery material')

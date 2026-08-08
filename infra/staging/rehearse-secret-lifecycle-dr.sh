@@ -155,7 +155,7 @@ docker run --detach --name "$restore_container" \
   --mount "type=bind,src=$lifecycle_root/tls/vault.crt,dst=/vault/tls/vault.crt,readonly" \
   --mount "type=bind,src=$lifecycle_root/tls/vault.key,dst=/vault/tls/vault.key,readonly" \
   --mount "type=bind,src=$snapshot,dst=/vault/restore/source.snap,readonly" \
-  "$vault_image" server -config=/vault/config/restore.hcl >/dev/null
+  "$vault_image" server >/dev/null
 
 restore_status="$run_dir/restore-status.json"
 attempt=0
