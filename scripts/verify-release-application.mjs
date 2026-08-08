@@ -39,6 +39,7 @@ add('staging images are content-addressed before deployment', stagingBuilder.inc
 add('staging deployment is serialized and image-only', stagingDeployer.includes('flock -w 900') && stagingDeployer.includes('up --detach --no-build --wait'), 'remote allowlist')
 add('staging SSH key is compatible with a forced-command dispatcher', stagingSshDispatcher.includes('SSH_ORIGINAL_COMMAND') && stagingSshDispatcher.includes('exec "$deploy_command" "$artifact_sha256"'), 'no interactive shell')
 add('staging Compose binds the inner gateway to loopback', stagingCompose.includes('APP_BIND_ADDRESS:-127.0.0.1') && stagingCompose.includes('RELEASE_ARTIFACT_SHA256'), 'outer TLS proxy required')
+add('staging API and Worker receive the protected runtime profile', stagingCompose.match(/STAGING_RUNTIME_ENV_FILE/g)?.length === 2, 'runtime env file')
 
 const appJobStart = workflow.indexOf('\n  application-rehearsal:')
 const appJob = appJobStart < 0 ? '' : workflow.slice(appJobStart)

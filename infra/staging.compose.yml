@@ -19,12 +19,18 @@ services:
   api:
     build: !reset null
     image: ${API_IMAGE:?API_IMAGE is required}
+    env_file:
+      - path: ${STAGING_RUNTIME_ENV_FILE:-/dev/null}
+        required: true
     environment:
       <<: *staging-application-environment
 
   worker:
     build: !reset null
     image: ${WORKER_IMAGE:?WORKER_IMAGE is required}
+    env_file:
+      - path: ${STAGING_RUNTIME_ENV_FILE:-/dev/null}
+        required: true
     environment:
       <<: *staging-application-environment
 

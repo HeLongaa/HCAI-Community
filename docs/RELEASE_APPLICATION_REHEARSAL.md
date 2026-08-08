@@ -43,6 +43,9 @@ For a single-host protected staging target, use the repository SSH adapter docum
 was created by `infra/staging/build-release.sh`, verifies every local Docker image ID against that manifest, serializes
 deployments with a host lock, and starts the production Compose contract through the staging-only override. The public
 TLS proxy remains separate from the application Compose project.
+The staging override loads the same protected runtime environment file into both API and Worker so the smoke profile and
+the running processes cannot drift on retention, delivery, lifecycle, and security switches. The file remains outside
+the repository and is never included in release evidence.
 
 Run preflight and execute from the same clean checkout and protected job:
 
