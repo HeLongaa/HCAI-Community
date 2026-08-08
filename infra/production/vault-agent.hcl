@@ -24,7 +24,7 @@ auto_auth {
   sink "file" {
     config = {
       path = "/run/vault-agent/token"
-      mode = "0440"
+      mode = 288
     }
   }
 }

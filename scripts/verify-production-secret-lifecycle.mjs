@@ -73,6 +73,7 @@ add('Vault Agent uses renewable certificate auto-auth', [
   'reload        = true',
   'reload_period = "30s"',
   `path = "${contract.tokenSink}"`,
+  'mode = 288',
 ].every((needle) => agentConfig.includes(needle)), contract.workloadAuthMethod)
 add('Managed Vault policy cannot read Provider secret values', [
   'provider-secrets/delete/hcai/production/providers/*',
