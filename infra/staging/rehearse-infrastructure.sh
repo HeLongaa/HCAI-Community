@@ -72,6 +72,7 @@ if [ "$mode" = execute ]; then
 fi
 
 log="$rehearsal_root/$mode.log"
+rm -f "$log"
 cd "$source_dir"
 if ! node scripts/rehearse-release-infrastructure.mjs --profile=env --mode="$mode" >"$log" 2>&1; then
   echo "Infrastructure rehearsal failed; inspect the protected server log" >&2
