@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 
 import {
@@ -13,6 +14,10 @@ import {
   verifyEvidence,
   verifySourcePreflight,
 } from './lib/release-infrastructure-rehearsal.mjs'
+import {
+  buildSshInfrastructureArguments,
+  parseSshInfrastructureConfiguration,
+} from './lib/release-infrastructure-ssh.mjs'
 
 const fixture = () => buildEvidence({
   run: { id: 'run-1', profile: 'local', startedAt: '2026-07-20T00:00:00.000Z', completedAt: '2026-07-20T00:01:00.000Z' },
@@ -52,6 +57,46 @@ test('Redis recovery command is allowlisted, isolated, and credential-free', () 
   assert.throws(() => validateRecoveryCommand({ command: ['sh', '-c', 'true'], allowedExecutables }), /executable/)
   assert.throws(() => validateRecoveryCommand({ command: ['aws', 'elasticache', 'reboot-cache-cluster', '--cache-cluster-id', 'production'], allowedExecutables }), /target must include rehearsal/)
   assert.throws(() => validateRecoveryCommand({ command: ['aws', '--secret-access-key', 'value', 'newchat-rehearsal'], allowedExecutables }), /credentials through the environment/)
+})
+
+test('SSH infrastructure adapter binds the mode and exact source SHA', () => {
+  const base = {
+    RELEASE_REHEARSAL_CONFIRMATION: 'release-01-isolated-rehearsal',
+    RELEASE_REHEARSAL_SOURCE_SHA: 'a'.repeat(40),
+    RELEASE_REHEARSAL_SSH_HOST: '157.151.204.187',
+    RELEASE_REHEARSAL_SSH_PORT: '22',
+    RELEASE_REHEARSAL_SSH_USER: 'newchat-deploy',
+    RELEASE_REHEARSAL_SSH_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\nfixture\n-----END PRIVATE KEY-----',
+    RELEASE_REHEARSAL_SSH_KNOWN_HOSTS: '157.151.204.187 ssh-ed25519 AAAAfixture',
+    RELEASE_REHEARSAL_SSH_INFRASTRUCTURE_COMMAND: '/opt/newchat-staging/bin/rehearse-infrastructure',
+  }
+  const configuration = parseSshInfrastructureConfiguration({ source: base, mode: 'execute' })
+  const args = buildSshInfrastructureArguments({ configuration, privateKeyPath: '/tmp/identity', knownHostsPath: '/tmp/known_hosts' })
+  assert.deepEqual(args.slice(-3), [base.RELEASE_REHEARSAL_SSH_INFRASTRUCTURE_COMMAND, 'execute', base.RELEASE_REHEARSAL_SOURCE_SHA])
+  assert.ok(!args.join(' ').includes('fixture'))
+  assert.throws(() => parseSshInfrastructureConfiguration({ source: { ...base, RELEASE_REHEARSAL_SOURCE_SHA: 'main' }, mode: 'execute' }), /full Git SHA/)
+  assert.throws(() => parseSshInfrastructureConfiguration({ source: { ...base, RELEASE_REHEARSAL_CONFIRMATION: 'wrong' }, mode: 'execute' }), /invalid/)
+  assert.throws(() => parseSshInfrastructureConfiguration({ source: base, mode: 'shell' }), /mode/)
+})
+
+test('forced SSH dispatcher accepts only exact infrastructure rehearsal commands', () => {
+  const command = '/bin/echo'
+  const sha = 'a'.repeat(40)
+  const run = (original) => spawnSync('sh', ['infra/staging/ssh-dispatch.sh'], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    env: {
+      PATH: process.env.PATH,
+      NEWCHAT_STAGING_DEPLOY_COMMAND: '/bin/false',
+      NEWCHAT_STAGING_INFRASTRUCTURE_COMMAND: command,
+      SSH_ORIGINAL_COMMAND: original,
+    },
+  })
+  assert.equal(run(`${command} preflight ${sha}`).status, 0)
+  assert.equal(run(`${command} execute ${sha}`).status, 0)
+  for (const unsafe of [`${command} execute ${sha}; id`, `${command} execute ${sha} extra`, `${command} shell ${sha}`]) {
+    assert.notEqual(run(unsafe).status, 0)
+  }
 })
 
 test('release rehearsal requires distinct isolated PostgreSQL databases', () => {

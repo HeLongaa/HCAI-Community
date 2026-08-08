@@ -33,9 +33,21 @@ The rehearsal records zero data-loss seconds only when the exact database, Redis
 
 ## Target Environment
 
-Target environment resources must be dedicated rehearsal resources in the same managed infrastructure boundary as the intended release. Never point these variables at the live application database or bucket.
+Target environment resources must be dedicated rehearsal resources in the same managed infrastructure boundary as the intended release. Never point these values at the live application database or bucket. The protected GitHub job reaches them through a forced-command SSH adapter, so database and storage credentials stay on the target host.
 
-Required values:
+The protected GitHub Environment requires:
+
+```text
+RELEASE_REHEARSAL_CONFIRMATION=release-01-isolated-rehearsal
+RELEASE_REHEARSAL_SSH_HOST=...
+RELEASE_REHEARSAL_SSH_PORT=22
+RELEASE_REHEARSAL_SSH_USER=newchat-deploy
+RELEASE_REHEARSAL_SSH_INFRASTRUCTURE_COMMAND=/opt/newchat-staging/bin/rehearse-infrastructure
+RELEASE_REHEARSAL_SSH_PRIVATE_KEY=...
+RELEASE_REHEARSAL_SSH_KNOWN_HOSTS=...
+```
+
+The target host's protected `/opt/newchat-staging/secrets/release-infrastructure.env` contains the direct resource configuration:
 
 ```text
 RELEASE_REHEARSAL_CONFIRMATION=release-01-isolated-rehearsal
@@ -51,7 +63,7 @@ RELEASE_REHEARSAL_PRIMARY_BUCKET=...
 RELEASE_REHEARSAL_BACKUP_BUCKET=...
 ```
 
-The Redis recovery command is executed without a shell and only accepts `aws`, `az`, `docker`, `gcloud`, `kubectl`, or `redis-cli` as the executable. Its target arguments must contain `rehearsal`, and credential-shaped arguments are rejected; credentials must come from the protected environment. Arguments are never written to evidence. Both S3 bucket names must also contain `rehearsal` and must differ.
+The Redis recovery command is executed without a shell and only accepts `aws`, `az`, `docker`, `gcloud`, `kubectl`, or `redis-cli` as the executable. Its target arguments must contain `rehearsal`, and credential-shaped arguments are rejected; credentials must come from the protected environment. Arguments are never written to evidence. Both S3 bucket names must also contain `rehearsal` and must differ. PostgreSQL, Redis, and local MinIO ports in the rehearsal Compose profile bind to loopback only.
 
 Run the fail-closed preflight before any mutation:
 
@@ -67,7 +79,7 @@ After reviewing its safe summary and entering an approved release window, run:
 npm run release:infrastructure:rehearse:env
 ```
 
-The GitHub Actions `Quality Gates` workflow exposes the same operation through `smoke_profile=infrastructure-rehearsal` and a protected GitHub Environment. The job uploads only `latest.json` sanitized evidence for 30 days.
+The GitHub Actions `Quality Gates` workflow exposes the operation through `smoke_profile=infrastructure-rehearsal` and a protected GitHub Environment. The server dispatcher permits only `preflight|execute` plus the exact 40-character Git SHA, while the job uploads only `latest.json` sanitized evidence for 30 days.
 
 ## Production Boundary
 

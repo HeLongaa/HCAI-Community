@@ -333,18 +333,14 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.smoke_profile == 'infrastructure-rehearsal'
     environment: ${{ inputs.environment }}
     env:
-      RELEASE_REHEARSAL_CONFIRMATION: ${{ vars.RELEASE_REHEARSAL_CONFIRMATION }}
-      RELEASE_REHEARSAL_DATABASE_URL: ${{ secrets.RELEASE_REHEARSAL_DATABASE_URL }}
-      RELEASE_REHEARSAL_RESTORE_DATABASE_URL: ${{ secrets.RELEASE_REHEARSAL_RESTORE_DATABASE_URL }}
-      RELEASE_REHEARSAL_REDIS_URL: ${{ secrets.RELEASE_REHEARSAL_REDIS_URL }}
-      RELEASE_REHEARSAL_REDIS_RECOVERY_COMMAND_JSON: ${{ vars.RELEASE_REHEARSAL_REDIS_RECOVERY_COMMAND_JSON }}
-      STORAGE_ENDPOINT: ${{ vars.STORAGE_ENDPOINT }}
-      STORAGE_REGION: ${{ vars.STORAGE_REGION }}
-      STORAGE_ACCESS_KEY_ID: ${{ secrets.STORAGE_ACCESS_KEY_ID }}
-      STORAGE_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_SECRET_ACCESS_KEY }}
-      STORAGE_SESSION_TOKEN: ${{ secrets.STORAGE_SESSION_TOKEN }}
-      RELEASE_REHEARSAL_PRIMARY_BUCKET: ${{ vars.RELEASE_REHEARSAL_PRIMARY_BUCKET }}
-      RELEASE_REHEARSAL_BACKUP_BUCKET: ${{ vars.RELEASE_REHEARSAL_BACKUP_BUCKET }}
+      RELEASE_REHEARSAL_CONFIRMATION: ${{ secrets.RELEASE_REHEARSAL_CONFIRMATION }}
+      RELEASE_REHEARSAL_SOURCE_SHA: ${{ github.sha }}
+      RELEASE_REHEARSAL_SSH_HOST: ${{ secrets.RELEASE_REHEARSAL_SSH_HOST }}
+      RELEASE_REHEARSAL_SSH_PORT: ${{ secrets.RELEASE_REHEARSAL_SSH_PORT }}
+      RELEASE_REHEARSAL_SSH_USER: ${{ secrets.RELEASE_REHEARSAL_SSH_USER }}
+      RELEASE_REHEARSAL_SSH_INFRASTRUCTURE_COMMAND: ${{ secrets.RELEASE_REHEARSAL_SSH_INFRASTRUCTURE_COMMAND }}
+      RELEASE_REHEARSAL_SSH_PRIVATE_KEY: ${{ secrets.RELEASE_REHEARSAL_SSH_PRIVATE_KEY }}
+      RELEASE_REHEARSAL_SSH_KNOWN_HOSTS: ${{ secrets.RELEASE_REHEARSAL_SSH_KNOWN_HOSTS }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -353,20 +349,6 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            server/package-lock.json
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Install backend dependencies
-        run: npm --prefix server ci
-
-      - name: Install PostgreSQL client tools
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
-
       - name: Verify isolated rehearsal configuration
         run: npm run release:infrastructure:preflight
 

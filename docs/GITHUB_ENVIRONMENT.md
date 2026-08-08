@@ -8,17 +8,19 @@ For the deployment sequence, process topology, staging rehearsal, and rollback b
 
 ## RELEASE-01 Isolated Rehearsal
 
-The `infrastructure-rehearsal` workflow job uses a protected GitHub Environment and dedicated resources only. Configure:
+The `infrastructure-rehearsal` workflow job uses a protected GitHub Environment and a forced-command SSH adapter. Database, Redis, and object-storage credentials remain on the target host and are never injected into GitHub Actions. Configure:
 
 | Kind | Name | Requirement |
 | --- | --- | --- |
-| Variable | `RELEASE_REHEARSAL_CONFIRMATION` | Exact value `release-01-isolated-rehearsal` |
-| Secret | `RELEASE_REHEARSAL_DATABASE_URL` | Dedicated PostgreSQL source database whose name contains `rehearsal` |
-| Secret | `RELEASE_REHEARSAL_RESTORE_DATABASE_URL` | Different dedicated PostgreSQL restore database whose name contains `rehearsal` |
-| Secret | `RELEASE_REHEARSAL_REDIS_URL` | Dedicated Redis-compatible endpoint or database |
-| Variable | `RELEASE_REHEARSAL_REDIS_RECOVERY_COMMAND_JSON` | JSON argv using an allowlisted executable; target arguments must contain `rehearsal` and credentials must come from the environment |
-| Variable | `RELEASE_REHEARSAL_PRIMARY_BUCKET` | Dedicated S3 bucket whose name contains `rehearsal` |
-| Variable | `RELEASE_REHEARSAL_BACKUP_BUCKET` | Different dedicated S3 bucket whose name contains `rehearsal` |
+| Secret | `RELEASE_REHEARSAL_CONFIRMATION` | Exact value `release-01-isolated-rehearsal` |
+| Secret | `RELEASE_REHEARSAL_SSH_HOST` | Fixed staging SSH host |
+| Secret | `RELEASE_REHEARSAL_SSH_PORT` | Fixed SSH port, normally `22` |
+| Secret | `RELEASE_REHEARSAL_SSH_USER` | Dedicated forced-command staging user |
+| Secret | `RELEASE_REHEARSAL_SSH_INFRASTRUCTURE_COMMAND` | Exact remote path `/opt/newchat-staging/bin/rehearse-infrastructure` |
+| Secret | `RELEASE_REHEARSAL_SSH_PRIVATE_KEY` | Staging-only private key with no production access |
+| Secret | `RELEASE_REHEARSAL_SSH_KNOWN_HOSTS` | Pinned host-key line for the exact host and port |
+
+The host stores the direct target inputs in `/opt/newchat-staging/secrets/release-infrastructure.env` with mode `0640`. Its source and restore database names, Redis recovery target, and two S3 bucket names must contain `rehearsal`. The remote runner checks out the exact `${{ github.sha }}` in a dedicated directory, rejects dirty or mismatched source, binds preflight and execution to that SHA, and returns only receipt-verified JSON evidence.
 
 The job reuses the S3 endpoint, region, and credential secrets below. Require an environment reviewer before execution.
 Do not configure live application database names, production Redis keys, or a production media prefix. See
