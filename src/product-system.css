@@ -1397,7 +1397,7 @@
   --border-strong: #3c4040;
   --text: #f4f4f1;
   --muted: #9da2a1;
-  --faint: #6f7473;
+  --faint: #8f9593;
   color: var(--text);
   background: var(--bg);
 }
@@ -2434,6 +2434,11 @@
 .app-shell.page-inspiration .inspiration-featured-item:first-child p { color: var(--muted); }
 .app-shell.page-inspiration .inspiration-featured-item small,
 .app-shell.page-inspiration .inspiration-featured-item:first-child small { color: var(--product-accent-ink); }
+.app-shell.page-inspiration .inspiration-featured-item:first-child .inspiration-featured-main > span,
+.app-shell.page-inspiration .inspiration-list-head,
+.app-shell.page-inspiration .inspiration-row-meta small,
+.app-shell.page-inspiration .inspiration-row-count small { color: var(--muted); }
+.app-shell.page-inspiration .inspiration-row-main small { color: var(--product-accent-ink); }
 .app-shell.page-inspiration .inspiration-list { border-radius: 0; }
 
 /* Profile separates identity, proof and account tools without nested presentation cards. */
@@ -3032,7 +3037,10 @@
   position: absolute;
   left: 10px;
   bottom: 9px;
-  color: color-mix(in srgb, var(--asset-media) 74%, var(--text));
+  padding: 4px 6px;
+  border-radius: 4px;
+  color: #fff;
+  background: rgba(7, 8, 8, .72);
   font-size: 10px;
   font-weight: 650;
 }
@@ -3076,7 +3084,8 @@
 }
 
 .app-shell[data-theme='black'].page-assets .asset-card-state { color: #83c99c; }
-.app-shell.page-assets .asset-card-state.pending { border-color: color-mix(in srgb, #c48a2a 38%, var(--border)); color: #a46b14; }
+.app-shell.page-assets .asset-card-state.pending { border-color: color-mix(in srgb, #c48a2a 38%, var(--border)); color: #965f0c; }
+.app-shell[data-theme='black'].page-assets .asset-card-state.pending { color: #d5a34d; }
 .app-shell.page-assets .asset-card-state.blocked { border-color: color-mix(in srgb, #d25049 38%, var(--border)); color: #c74c45; }
 
 .app-shell.page-assets .asset-grid.list .asset-group > div { grid-template-columns: 1fr; gap: 6px; }
@@ -3535,7 +3544,7 @@
   --text: #171818;
   --text-muted: #676a69;
   --muted: #676a69;
-  --faint: #858987;
+  --faint: #656967;
   --topbar-bg: rgba(247, 247, 245, .94);
   --danger: #bd3d36;
   --success: #267a55;

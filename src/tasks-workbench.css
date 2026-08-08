@@ -403,10 +403,14 @@
 
 .task-market-row-category {
   align-self: start;
+  min-width: 0;
   padding-top: 3px;
-  color: var(--task-accent);
+  color: var(--product-accent-ink);
   font-size: 12px;
   font-weight: 700;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .task-market-list .task-market-row-copy {

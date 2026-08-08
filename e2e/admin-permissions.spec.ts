@@ -41,7 +41,7 @@ test('admin can edit and save role permissions from the permission matrix', asyn
   expect(roles.find((role) => role.role === 'creator')?.permissions).toContain('task:moderate')
 })
 
-test('release control UI requests, independently approves, and records a deployment', async ({ page, request }) => {
+test('release control UI requests, independently approves, and records a staging deployment', async ({ page, request }) => {
   const requester = await login(request, 'opsplus')
   const approver = await login(request, 'finops')
   await signInPage(page, request, 'opsplus')
@@ -52,7 +52,9 @@ test('release control UI requests, independently approves, and records a deploym
   const panel = page.getByTestId('admin-release-control')
   await expect(panel).toBeVisible()
   const suffix = Date.now().toString(36)
-  const summary = `E2E production promotion ${suffix}`
+  const summary = `E2E staging promotion ${suffix}`
+  await panel.getByLabel('Source environment').selectOption('development')
+  await panel.getByLabel('New target environment').selectOption('staging')
   await panel.getByLabel('Artifact version').fill(`e2e-release-current-${suffix}`)
   await panel.getByLabel('Rollback version').fill(`e2e-release-previous-${suffix}`)
   await panel.getByLabel('Release summary').fill(summary)

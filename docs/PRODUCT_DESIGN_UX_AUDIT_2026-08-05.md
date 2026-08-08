@@ -1842,6 +1842,9 @@ Generations 的主对象应是“结果与状态”，而不是 Provider 元数�
 - 远端 PR Quality Gate 随后正确拒绝了未登记的 `productionReleaseEvidence.fixtures.js`。该文件只为测试生成临时六角色
   Ed25519 签名，不代表真实生产审批；现已登记到 `fixture-smoke-and-simulation-profiles`，明确归属 V1-73，机器清单与
   人类可读清单都声明合成签名不得用于生产 Go 决策。
+- 修复提交 `521dedb9e270b668384be289854d87156b18ad74` 推送后，四镜像构建与 Trivy、供应链合同、候选证据和两组
+  Prisma Integration Gate 全部通过；PR Quality Gate 在 `15m04s` 后因前端 E2E 正确失败，没有将后端与供应链绿灯
+  误解释为可发布。
 
 本批发现并修复的问题：
 
@@ -1849,6 +1852,12 @@ Generations 的主对象应是“结果与状态”，而不是 Provider 元数�
 - 发布签字 fixture 在新增时未同步 V1 运行面清单，导致完整质量门禁在约六分钟后失败；局部发布合同和服务端测试无法
   发现这类跨仓库治理遗漏。
 - 本机 npm 默认镜像源会把新增锁文件条目写入镜像域名，降低 CI 和灾备构建的可移植性。
+- Release Control E2E 试图构造不具备真实六角色签字的生产发布，且 source/target 状态不合法；现改为真实允许的
+  `development -> staging` 生命周期。Model Control E2E 同时补齐 source commit、候选/回滚制品 SHA-256 和 evidence
+  receipt SHA-256，不再绕过 promotion 证据合同。
+- 全站 AA 门禁此前在空数据下无法覆盖动态内容。完整顺序回归先后发现 Home 完成状态、Tasks 长分类与分类色、Assets
+  数量/时间/媒体类型/处理中状态、Generations 选中任务/完成状态/创作描述，以及 Inspiration 精选领域、表头、内容类型、
+  难度和使用次数的对比度或文字重排缺陷。现统一使用亮暗主题语义 token，并为缩略图类型标签使用稳定的深底白字样式。
 
 本批次验证范围：
 
@@ -1856,12 +1865,15 @@ Generations 的主对象应是“结果与状态”，而不是 Provider 元数�
 - 完整服务端测试共 `1443` 项，`1376` 通过、`67` 个外部 Prisma 集成项按既定条件跳过、`0` 失败。
 - Release 应用合同 `32/32`、生产容器合同 `57/57`、Secret Lifecycle `21/21`、供应链合同 `49/49`、发布证据聚焦测试
   `11/11`、V1 运行面门禁 `148/148` 和严格差异检查通过。
-- 以上依赖升级和清单修复仍需推送后的新一轮远端 CI 复验；旧提交的 Prisma 分片与镜像扫描绿灯不能替代新提交结果。
+- 动态数据聚焦 E2E `9/9`、累积数据库可访问性与 Forced Colors `2/2`、最终完整浏览器 E2E `151/151` 通过；最终批次
+  覆盖管理员与用户角色、亮暗主题、320px 重排、WCAG 文字间距、键盘焦点、真实开发任务/素材/生成/灵感数据和移动端边界。
+- 前端 Lint、`git diff --check` 通过。上述 E2E 与主题修复仍需推送后的新一轮远端完整 CI 复验，本地绿灯不能替代
+  受保护 runner 和目标环境证据。
 - Docker 守护进程仍不可用，真实容器依赖中断恢复演练仍未执行；没有创建、停止或修改任何容器。
 
 尚未关闭的上线阻断：
 
-- 新提交必须重新通过完整 PR Quality Gate、两组 Prisma Integration Gate 和四镜像 Trivy 扫描。
+- 新提交必须重新通过完整 PR Quality Gate；两组 Prisma Integration Gate 与四镜像 Trivy 也必须对同一新提交保持绿灯。
 - 真实六角色签字、Google/GitHub OAuth、Mailer 最终送达与 bounce/complaint、生产 Vault/KMS-HSM/CA/off-host audit、
   法律与 Provider 治理、主分支 GHCR digest/OIDC Attestation、目标环境 UAT/canary/rollback/hypercare 仍未闭环。
 - 输出安全分类和媒体扫描继续由上游承担，边界必须进入 Provider 与法律批准证据；当前发布判断保持 **No-Go**。
