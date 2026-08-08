@@ -5,6 +5,7 @@ import test from 'node:test'
 import { parseEvaluationPolicyCreate, parseEvaluationRunCreate, parseEvaluationSuiteCreate } from '../modelControl/modelEvaluationRuntime.js'
 import { parseProviderLegalReviewCreate } from '../modelControl/providerLegalRuntime.js'
 import { applyReleaseChange, approveReleaseChange, requestReleaseChange } from '../releases/releaseControl.js'
+import { createProductionReleaseEvidenceFixture } from '../releases/productionReleaseEvidence.fixtures.js'
 
 const databaseUrl = process.env.FOUNDATION_DATABASE_URL
 
@@ -27,6 +28,7 @@ test('Prisma Provider legal evidence is append-only and atomically gates Release
   }, actor)
 
   try {
+    const productionEvidence = createProductionReleaseEvidenceFixture()
     const provider = await repository.modelControl.createProvider({ id: `${runId}-provider`, key: `${runId}-provider`, name: 'Provider Legal Integration', websiteUrl: null, regions: ['us', 'eu'], dataProcessingRegions: ['us', 'eu'], createdByRef: actor.handle, updatedByRef: actor.handle })
     ids.provider = provider.id
     const otherProvider = await repository.modelControl.createProvider({ id: `${runId}-other-provider`, key: `${runId}-other-provider`, name: 'Other Provider', websiteUrl: null, regions: ['us'], dataProcessingRegions: ['us'], createdByRef: actor.handle, updatedByRef: actor.handle })
@@ -97,14 +99,14 @@ test('Prisma Provider legal evidence is append-only and atomically gates Release
     const evaluationRun = await repository.modelEvaluation.createRun(runInput(`${runId}-candidate`, baselineRun.id, 8900))
 
     const requested = await requestReleaseChange({
-      payload: { changeType: 'promotion', sourceEnvironment: 'staging', targetEnvironment: 'production', artifactVersion: 'v1', rollbackVersion: 'v0', secretRef: null, secretVersion: null, summary: 'Provider legal atomic apply', reasonCode: 'integration_request', modelPromotion: { id: `${runId}-promotion`, modelDeploymentId: deployment.id, routePolicyId: policy.id, routePolicyRevisionId: revision.id, providerSecretRefId: secretRef.id, evaluationRunId: evaluationRun.id, legalReviewId: approved.id, createdByRef: actor.handle } },
+      payload: { changeType: 'promotion', sourceEnvironment: 'staging', targetEnvironment: 'production', artifactVersion: 'v1', rollbackVersion: 'v0', secretRef: null, secretVersion: null, summary: 'Provider legal atomic apply', reasonCode: 'integration_request', modelPromotion: { id: `${runId}-promotion`, modelDeploymentId: deployment.id, routePolicyId: policy.id, routePolicyRevisionId: revision.id, providerSecretRefId: secretRef.id, evaluationRunId: evaluationRun.id, legalReviewId: approved.id, createdByRef: actor.handle }, ...productionEvidence.binding },
       actor, repository: repository.releaseChanges,
     })
     ids.release = requested.id
     const releaseApproved = await approveReleaseChange({ change: requested, payload: { reasonCode: 'integration_approved', note: '' }, actor: { handle: `${runId}-approver` }, repository: repository.releaseChanges })
     const supersedingBlock = await repository.providerLegal.createReview(reviewPayload({ sourceKey: `${runId}-superseding-block`, version: 7, providerId: provider.id, modelVersionId: version.id, decision: 'blocked', sourceEvidenceHash: '0'.repeat(64) }))
     ids.supersedingBlock = supersedingBlock.id
-    await assert.rejects(applyReleaseChange({ change: releaseApproved, payload: { outcome: 'deployed', deploymentId: deployment.id, evidenceUrl: 'https://ci.example/provider-legal', reasonCode: 'integration_applied', note: '' }, actor, repository: repository.releaseChanges }), (error) => error.code === 'PROMOTION_LEGAL_CHANGED')
+    await assert.rejects(applyReleaseChange({ change: releaseApproved, payload: { outcome: 'deployed', deploymentId: deployment.id, evidenceUrl: 'https://ci.example/provider-legal', evidenceBundle: productionEvidence.bundle, reasonCode: 'integration_applied', note: '' }, actor, repository: repository.releaseChanges, source: productionEvidence.environment, now: productionEvidence.now }), (error) => error.code === 'PROMOTION_LEGAL_CHANGED')
     assert.equal((await repository.releaseChanges.find(requested.id)).status, 'approved')
     assert.equal((await repository.modelControl.find('deployment', deployment.id)).trafficEligible, false)
   } finally {

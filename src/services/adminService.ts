@@ -127,6 +127,7 @@ import type {
   ReleaseChangeDto,
   ReleaseChangeListQuery,
   ReleaseChangeRequest,
+  ProductionReleaseEvidenceBundle,
   AdminObservabilityAlertDto,
   AdminObservabilityAlertDetailDto,
   AdminObservabilityIncidentMetricsDto,
@@ -756,7 +757,7 @@ export const adminService = {
   async rejectReleaseChange(id: string, reasonCode: string, note = '') {
     return api.post<ReleaseChangeDto>(`/admin/releases/${id}/reject`, { reasonCode, note })
   },
-  async applyReleaseChange(id: string, body: { outcome: 'deployed' | 'failed'; deploymentId: string; evidenceUrl: string; reasonCode: string; note?: string }) {
+  async applyReleaseChange(id: string, body: { outcome: 'deployed' | 'failed'; deploymentId: string; evidenceUrl: string; evidenceBundle?: ProductionReleaseEvidenceBundle | null; reasonCode: string; note?: string }) {
     return api.post<ReleaseChangeDto>(`/admin/releases/${id}/apply`, body)
   },
   async rollbackReleaseChange(id: string, body: { deploymentId: string; evidenceUrl: string; reasonCode: string; note?: string }) {

@@ -19,6 +19,7 @@ import { registerCreativeRoutes } from '../creative/routes.js'
 import { registerAdminRoutes } from './routes.js'
 import { getProtectedRolePermissions } from '../../auth/permissions.js'
 import { defaultPointAdjustmentPolicy } from '../../points/adjustmentPolicy.js'
+import { createProductionReleaseEvidenceFixture } from '../../releases/productionReleaseEvidence.fixtures.js'
 
 const createTestServer = () => createRouteTestServer(registerAdminRoutes)
 const createCreativeAdminServer = () => createRouteTestServer(registerCreativeRoutes, registerAdminRoutes)
@@ -98,7 +99,8 @@ test('Admin overview and global search are bounded permission-aware read models'
 
 test('release control routes enforce approval, SecretRef validation, evidence, and rollback', async () => {
   const repository = createSeedRepository()
-  const server = await createInjectedAdminServer(repository)
+  const productionEvidence = createProductionReleaseEvidenceFixture()
+  const server = await createInjectedAdminServer(repository, { releaseEvidenceSource: productionEvidence.environment })
   try {
     const denied = await requestJson(server.url, '/api/admin/releases', { method: 'GET', token: 'demo-access.promptlin' })
     assert.equal(denied.status, 403)
@@ -117,6 +119,7 @@ test('release control routes enforce approval, SecretRef validation, evidence, a
       body: {
         changeType: 'promotion', sourceEnvironment: 'staging', targetEnvironment: 'production', artifactVersion: 'sha-2', rollbackVersion: 'sha-1',
         summary: 'Production promotion', reasonCode: 'scheduled_release',
+        ...productionEvidence.binding,
       },
     })
     assert.equal(requested.status, 200)
@@ -133,12 +136,21 @@ test('release control routes enforce approval, SecretRef validation, evidence, a
     assert.equal(approved.status, 200)
     assert.equal(approved.payload.data.status, 'approved')
 
-    const deployed = await requestJson(server.url, `/api/admin/releases/${requested.payload.data.id}/apply`, {
+    const missingBundle = await requestJson(server.url, `/api/admin/releases/${requested.payload.data.id}/apply`, {
       token: 'demo-access.opsplus',
       body: { outcome: 'deployed', deploymentId: 'deploy-route-1', evidenceUrl: 'https://ci.example/deploy-route-1', reasonCode: 'applied' },
     })
+    assert.equal(missingBundle.status, 409)
+    assert.equal(missingBundle.payload.error.code, 'PRODUCTION_RELEASE_EVIDENCE_REQUIRED')
+
+    const deployed = await requestJson(server.url, `/api/admin/releases/${requested.payload.data.id}/apply`, {
+      token: 'demo-access.opsplus',
+      body: { outcome: 'deployed', deploymentId: 'deploy-route-1', evidenceUrl: 'https://ci.example/deploy-route-1', evidenceBundle: productionEvidence.bundle, reasonCode: 'applied', note: 'private deployment note' },
+    })
     assert.equal(deployed.status, 200)
     assert.equal(deployed.payload.data.status, 'deployed')
+    assert.equal(JSON.stringify(deployed.payload.data).includes('https://ci.example'), false)
+    assert.equal(JSON.stringify(deployed.payload.data).includes('private deployment note'), false)
 
     const rolledBack = await requestJson(server.url, `/api/admin/releases/${requested.payload.data.id}/rollback`, {
       token: 'demo-access.finops',

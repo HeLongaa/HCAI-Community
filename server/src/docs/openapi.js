@@ -4698,8 +4698,24 @@ export const openApiDocument = {
       },
       post: {
         summary: 'Request an environment, configuration, or SecretRef release change',
-        description: 'Creates a pending change with artifact and rollback versions. Plaintext secret fields are rejected.',
-        responses: { '200': { description: 'Pending release change with request evidence' }, '400': { description: 'Invalid environment, version, or SecretRef' }, '403': { description: 'Requires release management permission' } },
+        description: 'Creates a pending change with artifact and rollback versions. Production requests additionally require all four immutable source/evidence binding fields. Plaintext secret fields are rejected.',
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object',
+          required: ['changeType', 'targetEnvironment', 'artifactVersion', 'rollbackVersion', 'summary', 'reasonCode'],
+          properties: {
+            changeType: { type: 'string', enum: ['promotion', 'secret_rotation', 'configuration'] },
+            sourceEnvironment: { type: ['string', 'null'], enum: ['development', 'staging', 'production', null] },
+            targetEnvironment: { type: 'string', enum: ['development', 'staging', 'production'] },
+            artifactVersion: { type: 'string' }, rollbackVersion: { type: 'string' },
+            secretRef: { type: ['string', 'null'], pattern: '^secret://' }, secretVersion: { type: ['string', 'null'] },
+            summary: { type: 'string' }, reasonCode: { type: 'string' },
+            sourceCommit: { type: 'string', pattern: '^[a-f0-9]{40}$' },
+            releaseArtifactSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+            rollbackArtifactSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+            productionEvidenceReceiptSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+          },
+        } } } },
+        responses: { '200': { description: 'Pending release change with request evidence' }, '400': { description: 'Invalid environment, version, SecretRef, or production evidence binding' }, '403': { description: 'Requires release management permission' }, '422': { description: 'Production evidence binding is invalid' } },
       },
     },
     '/admin/releases/{id}': {
@@ -4722,8 +4738,20 @@ export const openApiDocument = {
     },
     '/admin/releases/{id}/apply': {
       post: {
-        summary: 'Record a deployment outcome and evidence URL',
-        responses: { '200': { description: 'Deployed or failed release change' }, '409': { description: 'Change is not approved or was modified concurrently' } },
+        summary: 'Record a deployment outcome with hash-safe evidence',
+        description: 'A successful production deployment requires the complete signed evidence bundle matching the approved request. Raw URL and note values are not persisted.',
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', additionalProperties: false,
+          required: ['outcome', 'deploymentId', 'evidenceUrl', 'reasonCode'],
+          properties: {
+            outcome: { type: 'string', enum: ['deployed', 'failed'] },
+            deploymentId: { type: 'string', maxLength: 180 },
+            evidenceUrl: { type: 'string', format: 'uri', pattern: '^https://' },
+            evidenceBundle: { type: ['object', 'null'], description: 'Required when outcome is deployed and the target environment is production' },
+            reasonCode: { type: 'string' }, note: { type: 'string' },
+          },
+        } } } },
+        responses: { '200': { description: 'Deployed or failed release change' }, '409': { description: 'Change is not approved, evidence is missing/invalid, or the row was modified concurrently' }, '422': { description: 'Invalid deployment evidence request' } },
       },
     },
     '/admin/releases/{id}/rollback': {
@@ -4893,7 +4921,24 @@ export const openApiDocument = {
     },
     '/admin/model-control/promotions': {
       get: { summary: 'List model promotions and linked release approval state', responses: { '200': { description: 'Promotion page' } } },
-      post: { summary: 'Request staging-to-production model promotion using current evaluation and Provider legal evidence plus release approval control', responses: { '201': { description: 'Promotion pending independent approval' }, '409': { description: 'Route, SecretRef, evaluation, legal review, or deployment is not eligible' }, '422': { description: 'Promotion references or scopes mismatch' } } },
+      post: {
+        summary: 'Request staging-to-production model promotion using current evaluation, legal, and signed release evidence',
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', additionalProperties: false,
+          required: ['modelDeploymentId', 'routePolicyId', 'routePolicyRevisionId', 'providerSecretRefId', 'evaluationRunId', 'legalReviewId', 'artifactVersion', 'rollbackVersion', 'sourceCommit', 'releaseArtifactSha256', 'rollbackArtifactSha256', 'productionEvidenceReceiptSha256', 'summary', 'reasonCode'],
+          properties: {
+            modelDeploymentId: { type: 'string' }, routePolicyId: { type: 'string' }, routePolicyRevisionId: { type: 'string' },
+            providerSecretRefId: { type: 'string' }, evaluationRunId: { type: 'string' }, legalReviewId: { type: 'string' },
+            artifactVersion: { type: 'string' }, rollbackVersion: { type: 'string' },
+            sourceCommit: { type: 'string', pattern: '^[a-f0-9]{40}$' },
+            releaseArtifactSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+            rollbackArtifactSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+            productionEvidenceReceiptSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+            summary: { type: 'string' }, reasonCode: { type: 'string' },
+          },
+        } } } },
+        responses: { '201': { description: 'Promotion pending independent approval' }, '409': { description: 'Route, SecretRef, evaluation, legal review, or deployment is not eligible' }, '422': { description: 'Promotion references, scopes, or production release binding mismatch' } },
+      },
     },
     '/admin/model-control/promotions/{id}': {
       get: { summary: 'Read one promotion with immutable associations and linked release evidence', responses: { '200': { description: 'Promotion detail' }, '404': { description: 'Promotion not found' } } },

@@ -19,6 +19,11 @@ npm run check:deploy:env
 
 Confirm:
 
+- `npm run test:production-release-evidence` passes and the production request/deploy binding has not drifted.
+- The six-role production evidence bundle verifies against the exact source commit, candidate artifact SHA-256, and rollback artifact SHA-256 selected for this release.
+- Six different evidence owners, key ids, and Ed25519 public keys are present; no attestation is expired or older than seven days.
+- Admin Release Control request and deployment both use the same verified bundle receipt. A fixture bundle is never accepted as production approval.
+
 - `npm run test:v1-scope` passes and the scope manifest matches `docs/V1_SCOPE_AND_DEFINITION_OF_DONE.md`.
 - `npm run test:v1-surfaces`, `npm run test:v1-production-fallbacks`, and the post-build `npm run test:v1-production-bundle` pass; every inventoried fallback blocker is closed and `fallbackDispositionComplete=true` remains evidence-backed. Do not interpret this scoped status as global production approval.
 - `npm run test:v1-compliance` passes, the final legal entity/jurisdiction are recorded, qualified legal review is approved, and the published versions match the consent gate. The current engineering draft intentionally does not satisfy this release condition.

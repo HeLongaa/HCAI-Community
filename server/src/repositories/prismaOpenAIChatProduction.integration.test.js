@@ -8,6 +8,7 @@ import { resolveModelRuntimeDeployment, resolveModelRuntimeReadiness } from '../
 import { acquireProviderOperationalLease } from '../modelControl/providerOperationsService.js'
 import { parseProviderLegalReviewCreate } from '../modelControl/providerLegalRuntime.js'
 import { applyReleaseChange, approveReleaseChange, requestReleaseChange, rollbackReleaseChange } from '../releases/releaseControl.js'
+import { createProductionReleaseEvidenceFixture } from '../releases/productionReleaseEvidence.fixtures.js'
 
 const databaseUrl = process.env.FOUNDATION_DATABASE_URL ??
   (process.env.CHAT_DATABASE_INTEGRATION_ENABLED === 'true' ? process.env.DATABASE_URL : null)
@@ -33,6 +34,7 @@ test('Prisma production Chat approval, operations, rotation, and rollback fail c
   let priorGlobalControl = null
 
   try {
+    const productionEvidence = createProductionReleaseEvidenceFixture({ now })
     const provider = await repository.modelControl.createProvider({ id: `${runId}-provider`, key: `${runId}-provider`, name: 'Production Chat Router', websiteUrl: 'https://router.example', regions: ['us'], dataProcessingRegions: ['us'], createdByRef: actor.handle, updatedByRef: actor.handle })
     ids.provider = provider.id
     const model = await repository.modelControl.createModel({ id: `${runId}-model`, providerId: provider.id, key: `${runId}-model`, name: 'Production Terra Chat', family: 'chat', createdByRef: actor.handle, updatedByRef: actor.handle })
@@ -97,10 +99,10 @@ test('Prisma production Chat approval, operations, rotation, and rollback fail c
 
     const promotionInput = { id: `${runId}-promotion`, modelDeploymentId: deployment.id, routePolicyId: route.id, routePolicyRevisionId: revision.id, providerSecretRefId: secretV1.id, evaluationRunId: evaluation.id, legalReviewId: legal.id, createdByRef: actor.handle }
     await repository.modelGovernance.validatePromotion(promotionInput, { artifactVersion: 'v1' })
-    const requested = await requestReleaseChange({ payload: { changeType: 'promotion', sourceEnvironment: 'staging', targetEnvironment: 'production', artifactVersion: 'v1', rollbackVersion: 'v0', secretRef: null, secretVersion: null, summary: 'Production Chat integration promotion', reasonCode: 'chat_production_request', modelPromotion: promotionInput }, actor, repository: repository.releaseChanges })
+    const requested = await requestReleaseChange({ payload: { changeType: 'promotion', sourceEnvironment: 'staging', targetEnvironment: 'production', artifactVersion: 'v1', rollbackVersion: 'v0', secretRef: null, secretVersion: null, summary: 'Production Chat integration promotion', reasonCode: 'chat_production_request', modelPromotion: promotionInput, ...productionEvidence.binding }, actor, repository: repository.releaseChanges })
     ids.release = requested.id
     const approved = await approveReleaseChange({ change: requested, payload: { reasonCode: 'chat_production_approved', note: '' }, actor: { handle: `${runId}-approver` }, repository: repository.releaseChanges })
-    const deployed = await applyReleaseChange({ change: approved, payload: { outcome: 'deployed', deploymentId: deployment.id, evidenceUrl: 'https://ci.example/chat-production-integration', reasonCode: 'chat_production_deployed', note: '' }, actor, repository: repository.releaseChanges })
+    const deployed = await applyReleaseChange({ change: approved, payload: { outcome: 'deployed', deploymentId: deployment.id, evidenceUrl: 'https://ci.example/chat-production-integration', evidenceBundle: productionEvidence.bundle, reasonCode: 'chat_production_deployed', note: '' }, actor, repository: repository.releaseChanges, source: productionEvidence.environment, now: productionEvidence.now })
     assert.equal(deployed.status, 'deployed')
 
     const resolved = await resolveModelRuntimeDeployment({ repositories: repository, modality: 'chat', environment: 'production', region: 'us', actor, baseSource, now })

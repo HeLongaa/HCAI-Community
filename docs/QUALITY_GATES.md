@@ -1,5 +1,11 @@
 # Quality Gates
 
+## Final Production Go/No-Go Evidence
+
+`npm run test:production-release-evidence` verifies the machine contract, six-role Ed25519 signature runtime, source/artifact/rollback/receipt binding, safe persistence, CLI tooling, and Admin JSON bundle import. The gate is part of `check:quick`.
+
+This engineering gate proves that invalid evidence fails closed; it does not produce a Go decision. A production deployment additionally requires a current bundle signed by independent Platform, Security, Legal, Provider Governance, Supply Chain, and Operations owners for the exact release candidate. See `docs/PRODUCTION_RELEASE_EVIDENCE_AND_GO_NO_GO.md`.
+
 ## Production Static Delivery
 
 `npm run build:release` builds the Vite artifact, generates Brotli/Gzip sidecars, verifies production asset budgets, and starts an isolated static server to execute the delivery contract in `config/production-static-delivery-contract.json`. The gate covers HTML revalidation, immutable content-hashed assets, JavaScript Brotli, stylesheet Gzip, point-cloud MIME and byte ranges, WebP MIME, SPA fallback, backend-route exclusion, missing-asset 404, security headers, and encoded path-traversal rejection.

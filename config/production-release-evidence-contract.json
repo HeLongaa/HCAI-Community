@@ -1,0 +1,76 @@
+{
+  "schemaVersion": "production-release-evidence-contract-v1",
+  "attestationSchemaVersion": "production-release-role-attestation-v1",
+  "bundleSchemaVersion": "production-release-evidence-bundle-v1",
+  "maximumAttestationAgeDays": 7,
+  "roles": {
+    "platform": {
+      "publicKeyEnv": "PRODUCTION_RELEASE_PLATFORM_PUBLIC_KEY",
+      "controls": [
+        "production_ha_quorum",
+        "kms_hsm_auto_unseal",
+        "encrypted_offsite_backup_restore",
+        "workload_ca_lifecycle",
+        "off_host_audit_delivery",
+        "production_infrastructure_rehearsal"
+      ]
+    },
+    "security": {
+      "publicKeyEnv": "PRODUCTION_RELEASE_SECURITY_PUBLIC_KEY",
+      "controls": [
+        "google_oauth_live_acceptance",
+        "github_oauth_live_acceptance",
+        "oauth_lifecycle_negative_cases",
+        "mail_relay_and_mailbox_delivery",
+        "bounce_and_complaint_lifecycle",
+        "upstream_output_safety_assurance",
+        "upstream_media_scan_assurance",
+        "security_alert_delivery"
+      ]
+    },
+    "legal": {
+      "publicKeyEnv": "PRODUCTION_RELEASE_LEGAL_PUBLIC_KEY",
+      "controls": [
+        "operator_legal_entity",
+        "operating_jurisdiction",
+        "published_policy_approval",
+        "processor_dpa_approval",
+        "data_region_and_retention_approval",
+        "output_rights_and_copyright_approval"
+      ]
+    },
+    "provider_governance": {
+      "publicKeyEnv": "PRODUCTION_RELEASE_PROVIDER_GOVERNANCE_PUBLIC_KEY",
+      "controls": [
+        "chat_provider_production_approval",
+        "image_provider_production_approval",
+        "video_provider_production_approval",
+        "music_provider_production_approval",
+        "provider_budget_and_kill_switches",
+        "provider_incident_and_deletion_process"
+      ]
+    },
+    "supply_chain": {
+      "publicKeyEnv": "PRODUCTION_RELEASE_SUPPLY_CHAIN_PUBLIC_KEY",
+      "controls": [
+        "immutable_ghcr_digests",
+        "spdx_and_cyclonedx_sbom",
+        "vulnerability_policy",
+        "oidc_provenance",
+        "github_signed_attestations",
+        "source_artifact_binding"
+      ]
+    },
+    "operations": {
+      "publicKeyEnv": "PRODUCTION_RELEASE_OPERATIONS_PUBLIC_KEY",
+      "controls": [
+        "target_application_candidate_rollback",
+        "multi_instance_runtime",
+        "monitoring_and_alerting",
+        "desktop_mobile_theme_locale_uat",
+        "rollback_ownership",
+        "canary_and_hypercare"
+      ]
+    }
+  }
+}

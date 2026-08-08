@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { createProductionReleaseEvidenceFixture } from '../releases/productionReleaseEvidence.fixtures.js'
 
 const databaseUrl = process.env.FOUNDATION_DATABASE_URL
 
@@ -12,11 +13,13 @@ test('Prisma release control persists CAS transitions and append-only evidence',
   assert.ok(repository)
   let changeId = null
   try {
+    const productionEvidence = createProductionReleaseEvidenceFixture()
     const requested = await requestReleaseChange({
       payload: {
         changeType: 'promotion', sourceEnvironment: 'staging', targetEnvironment: 'production',
         artifactVersion: `integration-${Date.now()}`, rollbackVersion: 'integration-previous', secretRef: null, secretVersion: null,
         summary: 'Prisma release integration', reasonCode: 'integration',
+        ...productionEvidence.binding,
       },
       actor: { id: 'integration-a', handle: 'integration-a' },
       repository: repository.releaseChanges,

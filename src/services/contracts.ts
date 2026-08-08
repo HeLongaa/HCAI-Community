@@ -3209,6 +3209,21 @@ export type ReleaseChangeListQuery = {
   cursor?: string | null
   limit?: number | null
 }
+export type ProductionReleaseEvidenceBinding = {
+  sourceCommit: string
+  releaseArtifactSha256: string
+  rollbackArtifactSha256: string
+  productionEvidenceReceiptSha256: string
+}
+export type ProductionReleaseEvidenceBundle = Record<string, unknown> & {
+  receiptHash?: string
+  source?: {
+    gitCommit?: string
+    artifactSha256?: string
+    rollbackArtifactSha256?: string
+    [key: string]: unknown
+  }
+}
 export type ReleaseChangeRequest = {
   changeType: ReleaseChangeType
   sourceEnvironment?: ReleaseEnvironment | null
@@ -3219,6 +3234,10 @@ export type ReleaseChangeRequest = {
   secretVersion?: string | null
   summary: string
   reasonCode: string
+  sourceCommit?: string | null
+  releaseArtifactSha256?: string | null
+  rollbackArtifactSha256?: string | null
+  productionEvidenceReceiptSha256?: string | null
 }
 
 export type AdminPermissionDto = {
@@ -4477,6 +4496,10 @@ export type ModelPromotionRequest = {
   rollbackVersion: string
   summary: string
   reasonCode: string
+  sourceCommit: string
+  releaseArtifactSha256: string
+  rollbackArtifactSha256: string
+  productionEvidenceReceiptSha256: string
 }
 export type ModelPromotionListQuery = {
   status?: ReleaseChangeStatus | null

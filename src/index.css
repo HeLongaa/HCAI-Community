@@ -6749,6 +6749,42 @@ button.video-history-row.active {
   width: 100%;
 }
 
+.release-bundle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.release-bundle-row small {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
+.release-binding-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  margin: 12px 0;
+}
+
+.release-binding-summary > div {
+  min-width: 0;
+}
+
+.release-binding-summary dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.release-binding-summary dd {
+  margin: 3px 0 0;
+}
+
 .release-evidence-list {
   display: grid;
   gap: 8px;

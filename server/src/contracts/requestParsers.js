@@ -866,6 +866,19 @@ export const parseReleaseChangeRequest = (body) => {
   if (secretRef && !/^secret:\/\/[a-zA-Z0-9][a-zA-Z0-9/_.:-]{2,180}$/.test(secretRef)) {
     throw validationFailed('secretRef must be a secret:// reference')
   }
+  const productionBindingFields = ['sourceCommit', 'releaseArtifactSha256', 'rollbackArtifactSha256', 'productionEvidenceReceiptSha256']
+  const productionBinding = Object.fromEntries(productionBindingFields.map((field) => [field, body?.[field] == null ? null : requireText(body, field)]))
+  if (targetEnvironment === 'production') {
+    if (!/^[a-f0-9]{40}$/.test(productionBinding.sourceCommit ?? '')) throw validationFailed('sourceCommit must be a lowercase Git commit SHA for production')
+    for (const field of productionBindingFields.slice(1)) {
+      if (!/^[a-f0-9]{64}$/.test(productionBinding[field] ?? '')) throw validationFailed(`${field} must be a lowercase SHA-256 for production`)
+    }
+    if (productionBinding.releaseArtifactSha256 === productionBinding.rollbackArtifactSha256) {
+      throw validationFailed('releaseArtifactSha256 and rollbackArtifactSha256 must differ')
+    }
+  } else if (Object.values(productionBinding).some((value) => value != null)) {
+    throw validationFailed('production evidence binding is only allowed for production changes')
+  }
   return {
     changeType,
     sourceEnvironment,
@@ -876,6 +889,7 @@ export const parseReleaseChangeRequest = (body) => {
     secretVersion,
     summary: requireText(body, 'summary'),
     reasonCode: requireText(body, 'reasonCode'),
+    ...productionBinding,
   }
 }
 
@@ -884,20 +898,44 @@ export const parseReleaseDecisionRequest = (body) => ({
   note: optionalText(body, 'note', ''),
 })
 
-export const parseReleaseApplyRequest = (body) => ({
-  outcome: requireOneOf(body, 'outcome', ['deployed', 'failed']),
-  deploymentId: requireText(body, 'deploymentId'),
-  evidenceUrl: requireText(body, 'evidenceUrl'),
-  reasonCode: requireText(body, 'reasonCode'),
-  note: optionalText(body, 'note', ''),
-})
+const parseReleaseEvidenceUrl = (body) => {
+  const value = requireText(body, 'evidenceUrl')
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'https:' || url.username || url.password || url.hash) throw new Error('unsafe')
+    return url.toString()
+  } catch {
+    throw validationFailed('evidenceUrl must be a fixed HTTPS URL without credentials or fragment')
+  }
+}
 
-export const parseReleaseRollbackRequest = (body) => ({
-  deploymentId: requireText(body, 'deploymentId'),
-  evidenceUrl: requireText(body, 'evidenceUrl'),
-  reasonCode: requireText(body, 'reasonCode'),
-  note: optionalText(body, 'note', ''),
-})
+export const parseReleaseApplyRequest = (body) => {
+  const deploymentId = requireText(body, 'deploymentId')
+  if (!safeResourceIdPattern.test(deploymentId)) throw validationFailed('deploymentId must be a safe bounded identifier')
+  const evidenceBundle = body?.evidenceBundle
+  if (evidenceBundle != null && (typeof evidenceBundle !== 'object' || Array.isArray(evidenceBundle))) {
+    throw validationFailed('evidenceBundle must be an object')
+  }
+  return {
+    outcome: requireOneOf(body, 'outcome', ['deployed', 'failed']),
+    deploymentId,
+    evidenceUrl: parseReleaseEvidenceUrl(body),
+    evidenceBundle: evidenceBundle ?? null,
+    reasonCode: requireText(body, 'reasonCode'),
+    note: optionalText(body, 'note', ''),
+  }
+}
+
+export const parseReleaseRollbackRequest = (body) => {
+  const deploymentId = requireText(body, 'deploymentId')
+  if (!safeResourceIdPattern.test(deploymentId)) throw validationFailed('deploymentId must be a safe bounded identifier')
+  return {
+    deploymentId,
+    evidenceUrl: parseReleaseEvidenceUrl(body),
+    reasonCode: requireText(body, 'reasonCode'),
+    note: optionalText(body, 'note', ''),
+  }
+}
 
 export const parseCreativeGenerationHistoryQuery = (query) => {
   const workspace = optionalText(query, 'workspace', 'image')

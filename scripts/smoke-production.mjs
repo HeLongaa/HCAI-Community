@@ -1,3 +1,5 @@
+import { generateKeyPairSync } from 'node:crypto'
+
 import { buildEnv } from '../server/src/config/env.js'
 import { getOAuthBrowserReturnOrigin, getOAuthCallbackOrigin, listOAuthProviderMetadata } from '../server/src/auth/oauth.js'
 import { chatCapabilityContract } from '../server/src/creative/chatCapabilityContract.js'
@@ -6,9 +8,15 @@ import { videoCapabilityContract } from '../server/src/creative/videoCapabilityC
 import { buildProviderBudgetExternalAlertDeliveryWiring } from '../server/src/creative/providerBudgetExternalAlerts.js'
 import { inspectDurableSecurityAlertDelivery, inspectProductionWorkers } from './lib/production-smoke.mjs'
 import { inspectProtectedRuntimeConfiguration } from './lib/protected-runtime-smoke.mjs'
+import { inspectProductionReleasePublicKeys, productionReleasePublicKeyEnvironment } from '../server/src/releases/productionReleaseEvidence.js'
 
 const args = new Set(process.argv.slice(2))
 const profile = [...args].find((arg) => arg.startsWith('--profile='))?.split('=')[1] ?? 'fixture'
+
+const productionReleaseFixturePublicKeys = Object.fromEntries(Object.keys(productionReleasePublicKeyEnvironment).map((role) => {
+  const { publicKey } = generateKeyPairSync('ed25519')
+  return [role, publicKey.export({ type: 'spki', format: 'pem' })]
+}))
 
 const productionFixture = {
   NODE_ENV: 'production',
@@ -141,6 +149,12 @@ const productionFixture = {
   OAUTH_DISCORD_CLIENT_ID: 'discord-client-id',
   OAUTH_DISCORD_CLIENT_SECRET: 'discord-client-secret',
   OAUTH_DISCORD_REDIRECT_URI: 'https://api.example.com/api/auth/oauth/discord/callback',
+  PRODUCTION_RELEASE_PLATFORM_PUBLIC_KEY: productionReleaseFixturePublicKeys.platform,
+  PRODUCTION_RELEASE_SECURITY_PUBLIC_KEY: productionReleaseFixturePublicKeys.security,
+  PRODUCTION_RELEASE_LEGAL_PUBLIC_KEY: productionReleaseFixturePublicKeys.legal,
+  PRODUCTION_RELEASE_PROVIDER_GOVERNANCE_PUBLIC_KEY: productionReleaseFixturePublicKeys.provider_governance,
+  PRODUCTION_RELEASE_SUPPLY_CHAIN_PUBLIC_KEY: productionReleaseFixturePublicKeys.supply_chain,
+  PRODUCTION_RELEASE_OPERATIONS_PUBLIC_KEY: productionReleaseFixturePublicKeys.operations,
 }
 
 const selectSource = () => {
@@ -155,7 +169,7 @@ const check = (checks, name, pass, detail = '') => {
   checks.push({ name, pass: Boolean(pass), detail })
 }
 
-const summarize = (env, oauthProviders, chatRuntime, providerDeletionGatewayConfigured, providerAlertWiring) => ({
+const summarize = (env, oauthProviders, chatRuntime, providerDeletionGatewayConfigured, providerAlertWiring, productionReleaseKeys) => ({
   nodeEnv: env.nodeEnv,
   storageDriver: env.storageDriver,
   mediaScanProvider: env.mediaScanProvider,
@@ -237,6 +251,12 @@ const summarize = (env, oauthProviders, chatRuntime, providerDeletionGatewayConf
   authCookieSecure: env.authCookieSecure,
   authTrustedOriginCount: env.authTrustedOrigins.length,
   oauthExternalProviders: oauthProviders.filter((provider) => provider.mode === 'external').map((provider) => provider.provider),
+  productionReleaseEvidence: {
+    publicKeysReady: productionReleaseKeys.ready,
+    roleCount: productionReleaseKeys.roleCount,
+    validRoleCount: productionReleaseKeys.validRoleCount,
+    distinctKeys: productionReleaseKeys.distinct,
+  },
   mediaAlertChannels: {
     webhook: env.hasMediaScanAlertWebhookUrl,
     slack: env.hasMediaScanAlertSlackWebhookUrl,
@@ -320,6 +340,7 @@ try {
 const oauthProviders = listOAuthProviderMetadata(source)
 const oauthCallbackOrigin = getOAuthCallbackOrigin(source)
 const oauthBrowserReturnOrigin = getOAuthBrowserReturnOrigin(source)
+const productionReleaseKeys = inspectProductionReleasePublicKeys(source)
 const providerAlertWiring = buildProviderBudgetExternalAlertDeliveryWiring({
   config: env,
   approval: { deliveryApproved: true, fixtureOnly: false },
@@ -497,6 +518,7 @@ check(checks, 'auth failure monitor enabled', env.authFailureMonitorEnabled, 'AU
 check(checks, 'OAuth callback origin configured', Boolean(oauthCallbackOrigin), 'OAUTH_CALLBACK_ORIGIN must be an exact HTTPS origin')
 check(checks, 'OAuth browser return origin configured and trusted', Boolean(oauthBrowserReturnOrigin) && env.authTrustedOrigins.includes(oauthBrowserReturnOrigin), 'OAUTH_BROWSER_RETURN_ORIGIN must be an exact HTTPS origin included in AUTH_TRUSTED_ORIGINS')
 check(checks, 'external OAuth provider configured', oauthProviders.some((provider) => provider.mode === 'external'), 'At least one OAuth provider should be external in managed smoke')
+check(checks, 'production release verification keys configured', productionReleaseKeys.ready, 'Six distinct Ed25519 role public keys are required for production release apply')
 
 const failed = checks.filter((item) => !item.pass)
 
@@ -505,7 +527,7 @@ for (const item of checks) {
   console.log(`${item.pass ? 'PASS' : 'FAIL'} ${item.name}${item.detail ? ` (${item.detail})` : ''}`)
 }
 console.log('Safe summary:')
-console.log(JSON.stringify(summarize(env, oauthProviders, chatRuntime, providerDeletionGatewayConfigured, providerAlertWiring), null, 2))
+console.log(JSON.stringify(summarize(env, oauthProviders, chatRuntime, providerDeletionGatewayConfigured, providerAlertWiring, productionReleaseKeys), null, 2))
 
 if (failed.length > 0) {
   console.error(`Production smoke failed: ${failed.length} check(s) failed`)

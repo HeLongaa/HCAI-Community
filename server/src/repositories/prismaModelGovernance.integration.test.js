@@ -6,6 +6,7 @@ import { createModelRouteDecision } from '../modelControl/modelGovernanceRuntime
 import { parseEvaluationPolicyCreate, parseEvaluationRunCreate, parseEvaluationSuiteCreate } from '../modelControl/modelEvaluationRuntime.js'
 import { parseProviderLegalReviewCreate } from '../modelControl/providerLegalRuntime.js'
 import { applyReleaseChange, approveReleaseChange, requestReleaseChange, rollbackReleaseChange } from '../releases/releaseControl.js'
+import { createProductionReleaseEvidenceFixture } from '../releases/productionReleaseEvidence.fixtures.js'
 
 const databaseUrl = process.env.FOUNDATION_DATABASE_URL
 
@@ -27,6 +28,7 @@ test('Prisma model governance preserves immutable facts and atomically gates pro
   process.on('warning', warningListener)
 
   try {
+    const productionEvidence = createProductionReleaseEvidenceFixture()
     const provider = await repository.modelControl.createProvider({ id: `${runId}-provider`, key: `${runId}-provider`, name: 'Governance Provider', websiteUrl: null, regions: ['us'], dataProcessingRegions: ['us'], createdByRef: actorRef, updatedByRef: actorRef })
     ids.provider = provider.id
     const model = await repository.modelControl.createModel({ id: `${runId}-model`, providerId: provider.id, key: `${runId}-model`, name: 'Governance Model', family: 'image', createdByRef: actorRef, updatedByRef: actorRef })
@@ -115,7 +117,7 @@ test('Prisma model governance preserves immutable facts and atomically gates pro
     ids.promotion = promotion.id
     await repository.modelGovernance.validatePromotion(promotion, { artifactVersion: 'v1' })
     const promotionRequests = await Promise.allSettled([promotion, { ...promotion, id: `${runId}-promotion-conflict` }].map((modelPromotion) => requestReleaseChange({
-      payload: { changeType: 'promotion', sourceEnvironment: 'staging', targetEnvironment: 'production', artifactVersion: 'v1', rollbackVersion: 'v0', secretRef: null, secretVersion: null, summary: 'Integration promotion', reasonCode: 'integration_request', modelPromotion },
+      payload: { changeType: 'promotion', sourceEnvironment: 'staging', targetEnvironment: 'production', artifactVersion: 'v1', rollbackVersion: 'v0', secretRef: null, secretVersion: null, summary: 'Integration promotion', reasonCode: 'integration_request', modelPromotion, ...productionEvidence.binding },
       actor: { handle: actorRef }, repository: repository.releaseChanges,
     })))
     assert.equal(promotionRequests.filter((result) => result.status === 'fulfilled').length, 1)
@@ -123,7 +125,7 @@ test('Prisma model governance preserves immutable facts and atomically gates pro
     ids.promotion = requested.modelPromotion.id
     ids.release = requested.id
     const approved = await approveReleaseChange({ change: requested, payload: { reasonCode: 'integration_approved', note: '' }, actor: { handle: `${runId}-approver` }, repository: repository.releaseChanges })
-    const deployed = await applyReleaseChange({ change: approved, payload: { outcome: 'deployed', deploymentId: deployment.id, evidenceUrl: 'https://ci.example/integration-promotion', reasonCode: 'integration_applied', note: '' }, actor: { handle: actorRef }, repository: repository.releaseChanges })
+    const deployed = await applyReleaseChange({ change: approved, payload: { outcome: 'deployed', deploymentId: deployment.id, evidenceUrl: 'https://ci.example/integration-promotion', evidenceBundle: productionEvidence.bundle, reasonCode: 'integration_applied', note: '' }, actor: { handle: actorRef }, repository: repository.releaseChanges, source: productionEvidence.environment, now: productionEvidence.now })
     assert.equal(deployed.status, 'deployed')
     assert.equal((await repository.modelControl.find('deployment', deployment.id)).trafficEligible, true)
     const rolledBack = await rollbackReleaseChange({ change: deployed, payload: { deploymentId: deployment.id, evidenceUrl: 'https://ci.example/integration-rollback', reasonCode: 'integration_rollback', note: '' }, actor: { handle: `${runId}-approver` }, repository: repository.releaseChanges })

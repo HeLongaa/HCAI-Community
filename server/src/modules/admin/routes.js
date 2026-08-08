@@ -651,6 +651,7 @@ const creativeGenerationExport = (items, query) => {
 export const registerAdminRoutes = (router, options = {}) => {
   const routeRepositories = options.repositories ?? repositories
   const auditRetentionSource = options.auditRetentionSource ?? process.env
+  const releaseEvidenceSource = options.releaseEvidenceSource ?? process.env
   const auditArchiveWriter = options.auditArchiveWriter ?? writeJsonArchive
   const loadReleaseChange = async (id) => {
     const change = await routeRepositories.releaseChanges.find(id)
@@ -1541,7 +1542,7 @@ export const registerAdminRoutes = (router, options = {}) => {
     const actor = requirePermission(context, 'admin:releases:deploy')
     const change = await loadReleaseChange(context.params.id)
     const payload = parseReleaseApplyRequest((await readJsonBody(request)) ?? {})
-    ok(response, requireTransitionResult(await applyReleaseChange({ change, payload, actor, repository: routeRepositories.releaseChanges })))
+    ok(response, requireTransitionResult(await applyReleaseChange({ change, payload, actor, repository: routeRepositories.releaseChanges, source: releaseEvidenceSource })))
   })
 
   router.add('POST', '/api/admin/releases/:id/rollback', async (request, response, context) => {

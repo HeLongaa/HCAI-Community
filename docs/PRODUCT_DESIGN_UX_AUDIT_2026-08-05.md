@@ -1607,6 +1607,47 @@ Generations 的主对象应是“结果与状态”，而不是 Provider 元数�
 - 单独执行绑定、冲突、解绑、取消、配置变更和 Provider 禁用验收；真实测试完成前保持生产 OAuth 发布审批关闭。
 - 并行关闭 Mailer、生产 Vault/CA/审计、法律/Provider 签字和主分支供应链证明，再汇总最终 Go/No-Go 签字包。
 
+## 55. 阶段 4 第三十七批实施记录（2026-08-08）
+
+本批次完成最终生产发布证据总门禁，将此前分散的 OAuth、Mailer、Vault、法律、Provider、供应链和运营证据绑定到同一个候选：
+
+- 新增六角色 Ed25519 签字合同，角色固定为 Platform、Security、Legal、Provider Governance、Supply Chain 和 Operations；每个角色只能签署自己的闭集控制项。
+- 六份签字必须绑定同一 Git commit、候选制品 SHA-256 和不同的回滚制品 SHA-256；要求六个不同 approver hash、key id 和公钥，最长有效期 7 天，全部控制项必须 `pass=true`。
+- 生产发布申请新增源码、候选、回滚和 bundle receipt 四项绑定；成功部署时必须再次提交完整 bundle。服务端从申请时的 append-only evidence 读取原绑定，再使用部署环境中的六把公钥重新验签。
+- 旧生产申请、缺 bundle、receipt/source/artifact 漂移、过期、签名篡改、公钥缺失或复用均不能进入 `deployed`。失败部署可以记录为 `failed`，但不能借此开启生产流量。
+- ReleaseEvidence 不再保存原始 CI URL、host 或 operator note，只保存 SHA-256 与 note presence；完整 bundle 和签名也不进入数据库，只保留安全摘要和每个角色 attestation 的 SHA-256。
+- Admin Release Control 和 Model Control 支持导入不超过 64 KiB 的 JSON bundle，自动填充四项绑定；生产部署按钮在未导入 bundle 时保持禁用，并显示当前请求的短 hash，减少手抄和错选候选。
+- 新增签字、组包、独立验证 CLI、OpenAPI 请求合同、GitHub Environment 公钥透传、环境样例和完整操作文档；`test:production-release-evidence` 已进入 `check:quick`。
+
+本批发现并修复的 Bug：
+
+- 原 Release Control 只要求双人审批和任意证据 URL，不证明证据属于当前源码与制品，任意 HTTPS URL 都可能被用于记录生产部署。
+- 模型晋升入口未携带最终发布 binding，即使通用 Release Control 收紧，模型控制面仍无法完成合规申请。
+- 原始 CI URL 和自由文本 note 会进入 ReleaseEvidence，可能把 query、内部 host 或操作说明带入长期审计存储。
+- 新签名篡改测试固定把末字符改为 `A`；当随机签名原本以 `A` 结尾时测试并未真正篡改，造成偶发失败。现改为确定切换字符。
+- 初版生产 smoke 未检查六把验签公钥，公钥全部缺失时仍可能显示生产配置全绿。现要求 `6/6` 有效 Ed25519 公钥且互不复用，摘要只输出数量和布尔结果。
+
+本批次验证范围：
+
+- 生产发布证据静态合同 `63/63`，证据/Release/模型解析聚焦测试 `14/14`，Release Control 路由与服务测试 `97/97`，Model Governance 门禁 `14/14` 通过。
+- 前端生产模拟 `28/28`、API 合同、Production negative smoke `8/8`、完整 fixture production smoke、ESLint、TypeScript/Vite 生产构建和严格差异检查通过。
+- 完整服务端测试共 `1438` 项，`1371` 通过、`67` 个数据库集成测试因未配置目标数据库而跳过、`0` 失败。
+
+尚未关闭的上线阻断：
+
+- 当前测试 bundle 由运行时 fixture 临时生成，只用于验证失败关闭逻辑，绝不代表任何真实角色批准；目前没有六个真实独立角色对同一生产候选完成签字，因此无法生成真实 Go bundle。
+- 真实 Google/GitHub OAuth、Mailer 最终送达与 bounce/complaint、生产 HA/Vault KMS-HSM/CA/off-host audit、法律主体和司法辖区、Provider DPA/保留/版权/生产批准、主分支 GHCR digest 与 OIDC Attestation 仍需各责任人提交真实证据。
+- 目标生产环境尚未配置六把真实角色公钥，也未以同一 candidate/rollback digest 完成 canary、回滚和 hypercare 验收。
+- 当前本机到 GitHub 的 DNS 解析超时仍可能阻止本批提交推送和 Draft PR 更新；本地通过不能替代远端 CI、受保护环境或人工签字。
+
+因此，本批关闭的是“证据可以被错配或用任意 URL 代替”的代码漏洞，并建立最终 Go/No-Go 机械门禁；由于真实证据和签字尚未齐备，整体发布判断继续保持 **No-Go**。
+
+下一步：
+
+- 先将当前候选构建为不可变 candidate/rollback artifact，取得主分支 GHCR digest 和签名 Attestation，并冻结三项 source binding。
+- 六个责任角色分别依据闭集控制提交 hash-only 证据和短期签字；使用独立公钥验证后构建唯一 bundle，并把 receipt 写入生产发布申请。
+- 在受保护环境执行候选部署、真实 OAuth/Mailer/UAT、canary 和回滚演练；所有结果仍匹配原 binding 后，才允许 Release Control 记录 `deployed`。
+
 ## 附录：审计截图
 
 管理员端审计截图：

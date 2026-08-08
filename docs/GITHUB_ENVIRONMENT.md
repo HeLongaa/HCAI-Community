@@ -130,6 +130,19 @@ Production/browser auth:
 | `OAUTH_CALLBACK_ORIGIN` | External OAuth | `https://api.example.com`; every Provider redirect must use this exact origin |
 | `OAUTH_BROWSER_RETURN_ORIGIN` | External OAuth | `https://app.example.com`; must also appear in `AUTH_TRUSTED_ORIGINS` |
 
+Production release evidence verification:
+
+| Name | Required | Value |
+| --- | --- | --- |
+| `PRODUCTION_RELEASE_PLATFORM_PUBLIC_KEY` | Production deploy apply | Platform Ed25519 SPKI PEM public key |
+| `PRODUCTION_RELEASE_SECURITY_PUBLIC_KEY` | Production deploy apply | Security Ed25519 SPKI PEM public key |
+| `PRODUCTION_RELEASE_LEGAL_PUBLIC_KEY` | Production deploy apply | Legal Ed25519 SPKI PEM public key |
+| `PRODUCTION_RELEASE_PROVIDER_GOVERNANCE_PUBLIC_KEY` | Production deploy apply | Provider Governance Ed25519 SPKI PEM public key |
+| `PRODUCTION_RELEASE_SUPPLY_CHAIN_PUBLIC_KEY` | Production deploy apply | Supply Chain Ed25519 SPKI PEM public key |
+| `PRODUCTION_RELEASE_OPERATIONS_PUBLIC_KEY` | Production deploy apply | Operations Ed25519 SPKI PEM public key |
+
+These are public verification keys and may be GitHub Environment variables. Every value must represent a different Ed25519 key pair. Keep all six private keys outside GitHub Actions and outside the application runtime; role owners use them only in their controlled signing environment. See `docs/PRODUCTION_RELEASE_EVIDENCE_AND_GO_NO_GO.md`.
+
 Object storage:
 
 | Name | Required | Example |

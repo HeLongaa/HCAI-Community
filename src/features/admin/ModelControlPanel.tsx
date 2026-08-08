@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Archive, Ban, Boxes, Download, FlaskConical, History, KeyRound, Play, Plus, RefreshCw, RotateCcw, Save, Scale, Search, ShieldCheck, Waypoints } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Archive, Ban, Boxes, Download, FlaskConical, History, KeyRound, Play, Plus, RefreshCw, RotateCcw, Save, Scale, Search, ShieldCheck, Upload, Waypoints } from 'lucide-react'
 
 import type { Permission } from '../../domain/types'
 import { adminService } from '../../services/adminService'
 import type { AiEvaluationPolicyDto, AiEvaluationRunDto, AiEvaluationSuiteDto, AiEvaluationSummaryDto, ChatProductionReadinessDto, ModelCatalogModelDto, ModelCapabilityModality, ModelControlStatus, ModelControlSummaryDto, ModelDeploymentDto, ModelDeploymentEnvironment, ModelGovernanceSummaryDto, ModelPromotionDto, ModelProviderDto, ModelRouteDecisionDto, ModelRoutePolicyDto, ModelRoutePreviewResult, ModelRouteRevisionDto, ModelRouteSummaryDto, ModelVersionDto, PricingVersionDto, ProviderLegalReviewDto, ProviderLegalSummaryDto, ProviderOperationalPolicyDto, ProviderOperationsSummaryDto, ProviderSecretRefDto } from '../../services/contracts'
 import { AdminActionFeedback, type AdminActionFeedbackMessage } from './AdminActionFeedback'
 import { downloadJsonArtifact } from './downloadAdminArtifact'
+import { parseProductionReleaseEvidenceFile } from './productionReleaseEvidenceFile'
 
 type Mode = 'providers' | 'models' | 'versions' | 'routes'
 type GovernanceMode = 'operations' | 'evaluations' | 'legal' | 'decisions' | 'secrets' | 'promotions'
@@ -135,7 +136,8 @@ export function ModelControlPanel({ hasPermission, isZh }: { hasPermission: (per
   const [routeTargets, setRouteTargets] = useState({ primary: '', backup: '' })
   const [previewDraft, setPreviewDraft] = useState({ subjectKey: 'preview-user', role: 'member', region: '' })
   const [secretDraft, setSecretDraft] = useState({ providerId: '', environment: 'staging' as ModelDeploymentEnvironment, purpose: 'inference', secretRef: '', externalVersion: '', ownerRef: '', checksumSha256: '', expiresAt: '', rotatedFromId: '' })
-  const [promotionDraft, setPromotionDraft] = useState({ modelDeploymentId: '', routePolicyId: '', routePolicyRevisionId: '', providerSecretRefId: '', evaluationRunId: '', legalReviewId: '', artifactVersion: '', rollbackVersion: '', summary: '' })
+  const [promotionDraft, setPromotionDraft] = useState({ modelDeploymentId: '', routePolicyId: '', routePolicyRevisionId: '', providerSecretRefId: '', evaluationRunId: '', legalReviewId: '', artifactVersion: '', rollbackVersion: '', sourceCommit: '', releaseArtifactSha256: '', rollbackArtifactSha256: '', productionEvidenceReceiptSha256: '', summary: '' })
+  const promotionEvidenceInputRef = useRef<HTMLInputElement>(null)
   const [promotionRevisions, setPromotionRevisions] = useState<ModelRouteRevisionDto[]>([])
   const [operationsDraft, setOperationsDraft] = useState({ providerId: '', environment: 'staging' as ModelDeploymentEnvironment, providerAccountRef: 'default', secretPurpose: 'inference', workspace: 'image' as ModelCapabilityModality, modelFamily: '', currency: 'USD', perRequestBudgetMicros: '250000', maxRequestsPerMinute: '60', maxConcurrentRequests: '4', healthTtlSeconds: '300' })
   const [healthDraft, setHealthDraft] = useState({ policyId: '', status: 'healthy' as 'healthy' | 'degraded' | 'unavailable', latencyMs: '', successRateBps: '', sourceType: 'provider_probe' as 'provider_probe' | 'provider_status_page' | 'manual_unavailable' | 'fixture_probe', sourceRef: '' })
@@ -359,6 +361,17 @@ export function ModelControlPanel({ hasPermission, isZh }: { hasPermission: (per
     await adminService.requestModelPromotion({ ...promotionDraft, reasonCode })
     setPromotionDraft((current) => ({ ...current, artifactVersion: '', rollbackVersion: '', summary: '' }))
   }, isZh ? '生产提升已提交审批。' : 'Production promotion submitted for approval.')
+
+  const importPromotionEvidence = async (file: File | null) => {
+    if (!file) return
+    try {
+      const parsed = await parseProductionReleaseEvidenceFile(file)
+      setPromotionDraft((current) => ({ ...current, ...parsed.binding }))
+      setFeedback(null)
+    } catch (cause) {
+      setFeedback({ kind: 'error', text: cause instanceof Error ? cause.message : String(cause) })
+    }
+  }
   const createOperationsPolicy = () => void run(async () => {
     const policy = await adminService.createProviderOperationalPolicy({ ...operationsDraft, modelFamily: operationsDraft.modelFamily || null, perRequestBudgetMicros: Number(operationsDraft.perRequestBudgetMicros), maxRequestsPerMinute: Number(operationsDraft.maxRequestsPerMinute), maxConcurrentRequests: Number(operationsDraft.maxConcurrentRequests), healthTtlSeconds: Number(operationsDraft.healthTtlSeconds), reasonCode })
     setHealthDraft((current) => ({ ...current, policyId: policy.id }))
@@ -671,8 +684,14 @@ export function ModelControlPanel({ hasPermission, isZh }: { hasPermission: (per
           }).map((item) => <option value={item.id} key={item.id}>v{item.version} · {item.evidenceHash.slice(0, 8)}</option>)}</select>
           <input aria-label="Promotion artifact version" value={promotionDraft.artifactVersion} onChange={(event) => setPromotionDraft({ ...promotionDraft, artifactVersion: event.target.value })} placeholder="artifact-version" />
           <input aria-label="Promotion rollback version" value={promotionDraft.rollbackVersion} onChange={(event) => setPromotionDraft({ ...promotionDraft, rollbackVersion: event.target.value })} placeholder="rollback-version" />
+          <input aria-label="Promotion source commit" value={promotionDraft.sourceCommit} onChange={(event) => setPromotionDraft({ ...promotionDraft, sourceCommit: event.target.value })} placeholder="Git commit SHA" />
+          <input aria-label="Promotion candidate artifact SHA-256" value={promotionDraft.releaseArtifactSha256} onChange={(event) => setPromotionDraft({ ...promotionDraft, releaseArtifactSha256: event.target.value })} placeholder={isZh ? '候选制品 SHA-256' : 'Candidate artifact SHA-256'} />
+          <input aria-label="Promotion rollback artifact SHA-256" value={promotionDraft.rollbackArtifactSha256} onChange={(event) => setPromotionDraft({ ...promotionDraft, rollbackArtifactSha256: event.target.value })} placeholder={isZh ? '回滚制品 SHA-256' : 'Rollback artifact SHA-256'} />
+          <input aria-label="Promotion evidence receipt SHA-256" value={promotionDraft.productionEvidenceReceiptSha256} onChange={(event) => setPromotionDraft({ ...promotionDraft, productionEvidenceReceiptSha256: event.target.value })} placeholder={isZh ? '证据包 receipt SHA-256' : 'Evidence receipt SHA-256'} />
+          <button className="ghost-button" type="button" onClick={() => promotionEvidenceInputRef.current?.click()}><Upload size={16} />{isZh ? '导入证据包' : 'Import evidence'}</button>
+          <input ref={promotionEvidenceInputRef} className="config-import-input" type="file" accept="application/json,.json" tabIndex={-1} aria-hidden="true" onChange={(event) => { void importPromotionEvidence(event.target.files?.[0] ?? null); event.target.value = '' }} />
           <input aria-label="Promotion summary" value={promotionDraft.summary} onChange={(event) => setPromotionDraft({ ...promotionDraft, summary: event.target.value })} placeholder={isZh ? '提升摘要' : 'Promotion summary'} />
-          <button className="primary-button" type="button" onClick={requestPromotion} disabled={busy || !promotionDraft.modelDeploymentId || !promotionDraft.routePolicyId || !promotionDraft.routePolicyRevisionId || !promotionDraft.providerSecretRefId || !promotionDraft.evaluationRunId || !promotionDraft.legalReviewId || !promotionDraft.artifactVersion || !promotionDraft.rollbackVersion || !promotionDraft.summary}><ShieldCheck size={17} />{isZh ? '提交审批' : 'Request approval'}</button>
+          <button className="primary-button" type="button" onClick={requestPromotion} disabled={busy || !promotionDraft.modelDeploymentId || !promotionDraft.routePolicyId || !promotionDraft.routePolicyRevisionId || !promotionDraft.providerSecretRefId || !promotionDraft.evaluationRunId || !promotionDraft.legalReviewId || !promotionDraft.artifactVersion || !promotionDraft.rollbackVersion || !promotionDraft.sourceCommit || !promotionDraft.releaseArtifactSha256 || !promotionDraft.rollbackArtifactSha256 || !promotionDraft.productionEvidenceReceiptSha256 || !promotionDraft.summary}><ShieldCheck size={17} />{isZh ? '提交审批' : 'Request approval'}</button>
         </div>}
         <div className="model-governance-list">
           {governanceMode === 'decisions' && routeDecisions.map((item) => <div key={item.id}><span><strong>{item.status}</strong><small>{item.modality} · {item.environment} · {item.reasonCode}</small></span><code>{item.subjectHash.slice(0, 12)}</code><time>{new Date(item.createdAt).toLocaleString()}</time></div>)}

@@ -8,9 +8,11 @@ import {
   requestReleaseChange,
   rollbackReleaseChange,
 } from './releaseControl.js'
+import { createProductionReleaseEvidenceFixture } from './productionReleaseEvidence.fixtures.js'
 
 const requester = { id: 'admin-a', handle: 'admin-a' }
 const approver = { id: 'admin-b', handle: 'admin-b' }
+const productionEvidence = createProductionReleaseEvidenceFixture()
 const payload = {
   changeType: 'promotion',
   sourceEnvironment: 'staging',
@@ -21,6 +23,7 @@ const payload = {
   secretVersion: null,
   summary: 'Promote release candidate',
   reasonCode: 'scheduled_release',
+  ...productionEvidence.binding,
 }
 
 test('production release requires two-person approval and preserves append-only evidence through rollback', async () => {
@@ -44,11 +47,15 @@ test('production release requires two-person approval and preserves append-only 
 
   const deployed = await applyReleaseChange({
     change: approved,
-    payload: { outcome: 'deployed', deploymentId: 'deploy-1', evidenceUrl: 'https://ci.example/deploy-1', reasonCode: 'release_applied', note: '' },
+    payload: { outcome: 'deployed', deploymentId: 'deploy-1', evidenceUrl: 'https://ci.example/deploy-1', evidenceBundle: productionEvidence.bundle, reasonCode: 'release_applied', note: '' },
     actor: requester,
     repository,
+    source: productionEvidence.environment,
+    now: productionEvidence.now,
   })
   assert.equal(deployed.status, 'deployed')
+  assert.equal(JSON.stringify(deployed.evidence).includes('https://ci.example'), false)
+  assert.equal(deployed.evidence.at(-1).evidence.productionEvidence.receiptHash, productionEvidence.bundle.receiptHash)
 
   const rolledBack = await rollbackReleaseChange({
     change: deployed,
@@ -76,4 +83,77 @@ test('release transitions use optimistic version checks', async () => {
     evidence: approved.evidence.at(-1),
   })
   assert.equal(stale, null)
+})
+
+test('production release binding cannot be omitted or attached to a non-production change', async () => {
+  const repository = createSeedReleaseRepository()
+  const { sourceCommit: _sourceCommit, ...missingSource } = payload
+  await assert.rejects(
+    requestReleaseChange({ payload: missingSource, actor: requester, repository }),
+    (error) => error.code === 'PRODUCTION_RELEASE_EVIDENCE_BINDING_INVALID',
+  )
+  await assert.rejects(
+    requestReleaseChange({ payload: { ...payload, targetEnvironment: 'staging' }, actor: requester, repository }),
+    (error) => error.code === 'PRODUCTION_RELEASE_EVIDENCE_BINDING_INVALID',
+  )
+})
+
+test('production deployment rejects missing, mismatched, stale, and untrusted evidence', async () => {
+  const repository = createSeedReleaseRepository()
+  const requested = await requestReleaseChange({ payload, actor: requester, repository })
+  const approved = await approveReleaseChange({
+    change: requested,
+    payload: { reasonCode: 'review_passed', note: '' },
+    actor: approver,
+    repository,
+  })
+  const baseApply = { outcome: 'deployed', deploymentId: 'deploy-negative', evidenceUrl: 'https://ci.example/deploy-negative', reasonCode: 'release_applied', note: '' }
+  const legacyChange = structuredClone(approved)
+  legacyChange.evidence[0].evidence.productionEvidenceBinding = null
+  await assert.rejects(
+    applyReleaseChange({ change: legacyChange, payload: { ...baseApply, evidenceBundle: productionEvidence.bundle }, actor: requester, repository, source: productionEvidence.environment, now: productionEvidence.now }),
+    (error) => error.code === 'PRODUCTION_RELEASE_EVIDENCE_REQUIRED',
+  )
+  await assert.rejects(
+    applyReleaseChange({ change: approved, payload: baseApply, actor: requester, repository }),
+    (error) => error.code === 'PRODUCTION_RELEASE_EVIDENCE_REQUIRED',
+  )
+  const mismatched = structuredClone(productionEvidence.bundle)
+  mismatched.receiptHash = 'f'.repeat(64)
+  await assert.rejects(
+    applyReleaseChange({ change: approved, payload: { ...baseApply, evidenceBundle: mismatched }, actor: requester, repository, source: productionEvidence.environment, now: productionEvidence.now }),
+    (error) => error.code === 'PRODUCTION_RELEASE_EVIDENCE_INVALID' && error.details.failures.includes('receipt_binding'),
+  )
+  const differentSource = createProductionReleaseEvidenceFixture({
+    now: productionEvidence.now,
+    source: { ...productionEvidence.source, artifactSha256: 'd'.repeat(64) },
+  })
+  await assert.rejects(
+    applyReleaseChange({ change: approved, payload: { ...baseApply, evidenceBundle: differentSource.bundle }, actor: requester, repository, source: differentSource.environment, now: productionEvidence.now }),
+    (error) => error.code === 'PRODUCTION_RELEASE_EVIDENCE_INVALID' && error.details.failures.includes('source_binding'),
+  )
+  await assert.rejects(
+    applyReleaseChange({ change: approved, payload: { ...baseApply, evidenceBundle: productionEvidence.bundle }, actor: requester, repository, source: {}, now: productionEvidence.now }),
+    (error) => error.code === 'PRODUCTION_RELEASE_EVIDENCE_INVALID' && error.details.failures.some((failure) => failure.includes('public_key')),
+  )
+  await assert.rejects(
+    applyReleaseChange({ change: approved, payload: { ...baseApply, evidenceBundle: productionEvidence.bundle }, actor: requester, repository, source: productionEvidence.environment, now: new Date(productionEvidence.now.getTime() + 8 * 24 * 60 * 60 * 1_000) }),
+    (error) => error.code === 'PRODUCTION_RELEASE_EVIDENCE_INVALID' && error.details.failures.some((failure) => failure.includes('validity')),
+  )
+  assert.equal((await repository.find(approved.id)).status, 'approved')
+})
+
+test('failed production deployment records safe evidence without a Go bundle', async () => {
+  const repository = createSeedReleaseRepository()
+  const requested = await requestReleaseChange({ payload, actor: requester, repository })
+  const approved = await approveReleaseChange({ change: requested, payload: { reasonCode: 'review_passed', note: '' }, actor: approver, repository })
+  const failed = await applyReleaseChange({
+    change: approved,
+    payload: { outcome: 'failed', deploymentId: 'deploy-failed', evidenceUrl: 'https://ci.example/deploy-failed', reasonCode: 'deployment_failed', note: 'private failure note' },
+    actor: requester,
+    repository,
+  })
+  assert.equal(failed.status, 'failed')
+  assert.equal(JSON.stringify(failed.evidence).includes('https://ci.example'), false)
+  assert.equal(JSON.stringify(failed.evidence).includes('private failure note'), false)
 })
