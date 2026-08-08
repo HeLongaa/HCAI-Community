@@ -18,9 +18,16 @@ try {
     secretExternalVersion: String(process.env.OPENAI_IMAGE_STAGING_SECRET_VERSION ?? `temporary-${Date.now()}`),
     secretExpiresAt: process.env.OPENAI_IMAGE_STAGING_SECRET_EXPIRES_AT || null,
   })
-  const summary = Object.fromEntries(Object.entries(result).map(([name, resource]) => [name, Array.isArray(resource)
-    ? resource.map((item) => ({ id: item.id, key: item.versionKey ?? null, status: item.status }))
-    : resource ? { id: resource.id, key: resource.key ?? resource.versionKey ?? null, status: resource.status ?? 'configured' } : null]))
+  const summary = Object.fromEntries(Object.entries(result).map(([name, resource]) => {
+    if (Array.isArray(resource)) return [name, resource.map((item) => ({ id: item.id, key: item.versionKey ?? null, status: item.status }))]
+    if (resource?.controls && resource?.capEvidence && resource?.circuit) return [name, {
+      controlIds: resource.controls.map((item) => item.id),
+      capEvidenceId: resource.capEvidence.id,
+      circuitId: resource.circuit.id,
+      circuitStatus: resource.circuit.status,
+    }]
+    return [name, resource ? { id: resource.id, key: resource.key ?? resource.versionKey ?? null, status: resource.status ?? 'configured' } : null]
+  }))
   process.stdout.write(`${JSON.stringify({ decision: 'configured', resources: summary }, null, 2)}\n`)
 } finally {
   await repositories.client?.$disconnect?.()

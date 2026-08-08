@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import { HttpError } from '../common/errors/httpError.js'
+import { buildProviderControlScopes, createProviderCapEvidence, providerCircuitScope } from '../creative/providerControlContract.js'
 import {
   parseCapabilityUpsert,
   parseDeploymentCreate,
@@ -239,7 +240,52 @@ const ensureSecretRef = async ({ repository, actor, spec, provider, credential, 
   }, actor))
 }
 
-export const provisionOpenAIImageStaging = async ({ repositories, actor, credential = null, secretExternalVersion = 'temporary-v1', secretExpiresAt = null, spec = openAIImageStagingSpec } = {}) => {
+const ensureProviderControls = async ({ repository, actor, provider, credential, secretExternalVersion, secretExpiresAt, now }) => {
+  if (!credential) return null
+  if (!repository) throw new TypeError('creative Provider controls repository is required with a credential')
+  const providerAccountRef = 'museflow-image-staging'
+  const scopes = buildProviderControlScopes({ providerId: provider.key, providerAccountRef, workspace: 'image', modelFamily: 'image' })
+  const requiredControls = scopes.filter((scope) => ['global', 'provider'].includes(scope.scopeType))
+  const controls = await Promise.all(requiredControls.map(async (scope) => {
+    const current = await repository.findControl(scope.scopeKey)
+    const result = await repository.setControl({
+      ...scope,
+      enabled: true,
+      expectedVersion: current?.version ?? 0,
+      reasonCode: 'openai_image_staging_uat',
+    }, actor)
+    return result.control
+  }))
+  const providerScope = scopes.find((scope) => scope.scopeType === 'provider')
+  const circuitScope = providerCircuitScope(scopes)
+  const capExpiresAt = secretExpiresAt ?? new Date(now.getTime() + 86_400_000).toISOString()
+  let capEvidence = await repository.findCapEvidence(providerScope.scopeKey)
+  if (
+    !capEvidence || capEvidence.active !== true || capEvidence.currency !== 'USD' ||
+    capEvidence.capMicros !== '10000000' || capEvidence.remainingMicros !== '10000000' ||
+    capEvidence.expiresAt !== capExpiresAt
+  ) {
+    const versionHash = createHash('sha256').update(String(secretExternalVersion)).digest('hex').slice(0, 16)
+    const result = await repository.putCapEvidence(createProviderCapEvidence({
+      sourceKey: `openai-image-staging-cap-${versionHash}-${now.getTime()}`,
+      scopeKey: providerScope.scopeKey,
+      providerId: provider.key,
+      providerAccountRef,
+      currency: 'USD',
+      capAmount: '10',
+      remainingAmount: '10',
+      sourceType: 'manual_attestation',
+      sourceRef: `router-console-attestation-${versionHash}`,
+      verifiedAt: now.toISOString(),
+      expiresAt: capExpiresAt,
+    }), actor)
+    capEvidence = result.evidence
+  }
+  const circuit = (await repository.ensureCircuit(circuitScope, actor)).circuit
+  return { controls, capEvidence, circuit }
+}
+
+export const provisionOpenAIImageStaging = async ({ repositories, actor, credential = null, secretExternalVersion = 'temporary-v1', secretExpiresAt = null, now = new Date(), spec = openAIImageStagingSpec } = {}) => {
   if (!repositories?.modelControl || !repositories?.modelRouting || !repositories?.modelGovernance) throw new TypeError('model control, routing, and governance repositories are required')
   const provider = await ensureProvider({ repository: repositories.modelControl, actor, spec })
   const model = await ensureModel({ repository: repositories.modelControl, actor, spec, provider })
@@ -248,5 +294,14 @@ export const provisionOpenAIImageStaging = async ({ repositories, actor, credent
   const pricing = await ensurePricings({ repository: repositories.modelControl, actor, spec, version, deployment })
   const route = await ensureRoute({ repository: repositories.modelRouting, actor, spec, deployment })
   const secretRef = await ensureSecretRef({ repository: repositories.modelGovernance, actor, spec, provider, credential, secretExternalVersion, secretExpiresAt })
-  return { provider, model, version, deployment, pricing, route, secretRef }
+  const providerControls = await ensureProviderControls({
+    repository: repositories.creativeProviderControls,
+    actor,
+    provider,
+    credential,
+    secretExternalVersion,
+    secretExpiresAt,
+    now,
+  })
+  return { provider, model, version, deployment, pricing, route, secretRef, providerControls }
 }
