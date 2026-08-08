@@ -114,7 +114,7 @@ if (mode === 'acceptance') {
     check('exactly two Provider calls completed', acceptance.providerCalls === 2, `providerCalls=${acceptance.providerCalls}`)
     check('generation and edit completed', acceptance.textToImageCompleted && acceptance.imageToImageCompleted, 'generation=true edit=true')
     check('moderation storage and lineage passed', acceptance.inputModerationPassed && acceptance.inputAssetSafetyPassed && acceptance.outputSafetyPassed && acceptance.outputScanPassed && acceptance.lineageVerified, 'governance=true')
-    check('credit quota and Provider costs closed', acceptance.creditSettled && acceptance.quotaCommitted && ['settled', 'reconciliation_required'].includes(acceptance.textCostStatus) && ['settled', 'reconciliation_required'].includes(acceptance.editCostStatus), 'accounting=true')
+    check('credit quota and Provider costs settled', acceptance.creditSettled && acceptance.quotaCommitted && acceptance.textCostStatus === 'settled' && acceptance.editCostStatus === 'settled', 'accounting=settled')
   } catch (error) {
     summary.acceptance = {
       failed: true,

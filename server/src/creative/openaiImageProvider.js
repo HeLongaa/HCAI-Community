@@ -58,6 +58,10 @@ const imageTokenPricingUnits = Object.freeze({
   outputImage: 'output_image_tokens',
 })
 
+const fixedOutputPricingContracts = Object.freeze({
+  'hcai-router-minimax-image-01-live': 'image-01-live',
+})
+
 const moderationStages = new Set(['input', 'output', 'unknown'])
 const moderationCategories = new Set(['harassment', 'self-harm', 'sexual', 'violence'])
 
@@ -662,6 +666,14 @@ const calculateActualAmount = (request, usage, pricing = null) => {
   return actualMicros / 1_000_000
 }
 
+const fixedOutputActualAmount = ({ providerId, modelId, outputPricing, result }) => (
+  result?.output &&
+  fixedOutputPricingContracts[providerId] === modelId &&
+  Number.isFinite(outputPricing?.unitPriceUsd)
+    ? outputPricing.unitPriceUsd
+    : null
+)
+
 export const buildOpenAIImageProviderCostMetadata = ({
   request,
   result = null,
@@ -680,10 +692,24 @@ export const buildOpenAIImageProviderCostMetadata = ({
   const status = estimateAmount == null
     ? 'unknown_estimate'
     : budgetStatus({ estimateAmount, dailyCapAmount, spentAmount, thresholdPercent })
-  const actualAmount = result?.output ? calculateActualAmount(request, result.usage, pricingRequired ? databasePricing : null) : null
   const nowIso = now.toISOString()
   const configuredModelId = resolveOpenAIImageModelId(source)
   const configuredCostProviderId = configuredProviderCostId(source)
+  const fixedActualAmount = fixedOutputActualAmount({
+    providerId: configuredCostProviderId,
+    modelId: configuredModelId,
+    outputPricing,
+    result,
+  })
+  const usageActualAmount = result?.output
+    ? calculateActualAmount(request, result.usage, pricingRequired ? databasePricing : null)
+    : null
+  const actualAmount = fixedActualAmount ?? usageActualAmount
+  const actualSource = fixedActualAmount != null
+    ? 'approved_fixed_output_price'
+    : usageActualAmount != null
+      ? 'provider_usage_calculation'
+      : 'not_calculated'
   return {
     schemaVersion: 'provider-cost-v1',
     providerId: configuredCostProviderId,
@@ -725,7 +751,7 @@ export const buildOpenAIImageProviderCostMetadata = ({
     actual: {
       currency: 'USD',
       amount: actualAmount,
-      source: actualAmount == null ? 'not_calculated' : 'provider_usage_calculation',
+      source: actualSource,
       confidence: actualAmount == null ? 'unknown' : 'calculated',
       settledAt: actualAmount == null ? null : nowIso,
     },

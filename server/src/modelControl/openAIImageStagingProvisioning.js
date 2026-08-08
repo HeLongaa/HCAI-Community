@@ -16,17 +16,18 @@ import { parseProviderSecretRefCreate } from './modelGovernanceRuntime.js'
 import { parseModelRouteListQuery, parseModelRoutePolicyCreate, parseModelRouteTargets } from './modelRoutingRuntime.js'
 
 const outputPricing = [
-  ['1024x1024', 'low', 3_400],
-  ['1024x1024', 'medium', 3_400],
-  ['1024x1024', 'high', 3_400],
-  ['1024x1536', 'low', 3_400],
-  ['1024x1536', 'medium', 3_400],
-  ['1024x1536', 'high', 3_400],
-  ['1536x1024', 'low', 3_400],
-  ['1536x1024', 'medium', 3_400],
-  ['1536x1024', 'high', 3_400],
+  ['1024x1024', 'low', 3_424],
+  ['1024x1024', 'medium', 3_424],
+  ['1024x1024', 'high', 3_424],
+  ['1024x1536', 'low', 3_424],
+  ['1024x1536', 'medium', 3_424],
+  ['1024x1536', 'high', 3_424],
+  ['1536x1024', 'low', 3_424],
+  ['1536x1024', 'medium', 3_424],
+  ['1536x1024', 'high', 3_424],
 ].map(([size, quality, unitPriceMicros]) => ({
-  versionKey: `usd-image-output-${size}-${quality}-v1`,
+  versionKey: `usd-image-output-${size}-${quality}-v2`,
+  supersededVersionKey: `usd-image-output-${size}-${quality}-v1`,
   unit: `image_output_${size}_${quality}`,
   unitPriceMicros,
 }))
@@ -191,10 +192,32 @@ const ensurePricings = async ({ repository, actor, spec, version, deployment }) 
       currency: 'USD',
       unit: price.unit,
       unitPriceMicros: price.unitPriceMicros,
-      effectiveFrom: '2026-08-08T00:00:00.000Z',
+      effectiveFrom: '2026-08-08T15:05:37.000Z',
       effectiveTo: null,
     }, actor))
     resources.push(await activate(repository, 'pricing', created, actor))
+  }
+
+  for (const price of spec.pricing) {
+    if (!price.supersededVersionKey) continue
+    const superseded = catalog.pricingVersions.find((item) => (
+      item.modelVersionId === version.id &&
+      item.versionKey === price.supersededVersionKey
+    ))
+    if (!superseded || superseded.status !== 'active') continue
+    assertEqual('superseded pricing', 'deployment', superseded.modelDeploymentId, deployment.id)
+    assertEqual('superseded pricing', 'unit', superseded.unit, price.unit)
+    await transitionModelControlResource({
+      type: 'pricing',
+      resource: superseded,
+      payload: {
+        expectedVersion: superseded.version,
+        status: 'disabled',
+        reasonCode: 'minimax_image_price_superseded',
+      },
+      actor,
+      repository,
+    })
   }
   return resources
 }

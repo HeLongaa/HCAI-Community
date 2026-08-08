@@ -576,6 +576,49 @@ test('OpenAI Image generation snapshots Model Control pricing and reconciles inc
   assert.equal(incomplete.usage.providerCost.ledger.reasonCode, 'actual_cost_missing')
 })
 
+test('MiniMax Image fixed output pricing closes the durable Provider ledger without token usage', async () => {
+  resetCreativePolicyState()
+  const repository = createSeedRepository()
+  const generationId = `gen_minimax_fixed_image_price_${Date.now()}`
+  const generated = await executeCreativeGeneration({
+    request: {
+      ...request,
+      providerId: 'openai-gpt-image-2',
+      parameters: { aspectRatio: '1:1', stylePreset: 'none', quality: 'low' },
+    },
+    actor,
+    generationId,
+    now: new Date('2026-08-08T16:00:00.000Z'),
+    source: {
+      CREATIVE_OPENAI_IMAGE_DAILY_BUDGET_USD: '10',
+      CREATIVE_OPENAI_IMAGE_MODEL: 'image-01-live',
+      CREATIVE_OPENAI_IMAGE_COST_PROVIDER_ID: 'hcai-router-minimax-image-01-live',
+      CREATIVE_OPENAI_IMAGE_PRICING_REQUIRED: 'true',
+      CREATIVE_OPENAI_IMAGE_PRICING_JSON: JSON.stringify([
+        { id: 'price-minimax-image-square-low', currency: 'USD', unit: 'image_output_1024x1024_low', unitPriceMicros: 3424, effectiveFrom: '2026-08-08T15:05:37.000Z' },
+      ]),
+    },
+    providerCostRepository: repository.creativeProviderCosts,
+    fixtureAdapters: {
+      'openai-gpt-image-2': (context) => createOpenAIImageGeneration({
+        ...context,
+        client: {
+          generateImage: async () => projectOpenAIImageGenerationResponse({
+            data: [{ b64_json: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }],
+          }),
+        },
+      }),
+    },
+  })
+
+  const ledger = await repository.creativeProviderCosts.findForGeneration(generationId)
+  assert.equal(generated.usage.providerCost.actual.source, 'approved_fixed_output_price')
+  assert.equal(generated.usage.providerCost.ledger.status, 'settled')
+  assert.equal(generated.usage.providerCost.ledger.actualMicros, '3424')
+  assert.equal(ledger.status, 'settled')
+  assert.equal(ledger.actualMicros, '3424')
+})
+
 test('getCreativeProviderCatalog exposes Replicate staging shell as unavailable safe metadata', () => {
   const catalog = getCreativeProviderCatalog({
     NODE_ENV: 'production',

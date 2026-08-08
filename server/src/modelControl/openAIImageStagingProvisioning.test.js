@@ -42,7 +42,7 @@ const repositories = () => {
 test('MiniMax Image 01 Live staging provisioning creates an active, priced, idempotent runtime', async () => {
   const repo = repositories()
   const actor = { id: 'staging-admin', handle: 'helong', role: 'admin' }
-  const options = { repositories: repo, actor, credential: 'temporary-image-key', secretExpiresAt: '2026-08-09T13:00:00.000Z', now: new Date('2026-08-08T13:00:00.000Z') }
+  const options = { repositories: repo, actor, credential: 'temporary-image-key', secretExpiresAt: '2026-08-09T16:00:00.000Z', now: new Date('2026-08-08T16:00:00.000Z') }
   const first = await provisionOpenAIImageStaging(options)
   let legacyRoute = await repo.modelRouting.create(parseModelRoutePolicyCreate({
     key: 'staging-image-gpt-image-2', name: 'Legacy GPT Image Staging', modality: 'image', operation: 'generate', environment: 'staging', region: 'us',
@@ -63,8 +63,8 @@ test('MiniMax Image 01 Live staging provisioning creates an active, priced, idem
   assert.equal(first.deployment.runtimeConfig.costProviderId, 'hcai-router-minimax-image-01-live')
   assert.equal(first.deployment.runtimeConfig.dailyBudgetUsd, 10)
   assert.equal(first.pricing.length, 9)
-  assert.equal(first.pricing.find((item) => item.unit === 'image_output_1024x1024_medium').unitPriceMicros, 3_400)
-  assert.equal(first.pricing.every((item) => item.unitPriceMicros === 3_400), true)
+  assert.equal(first.pricing.find((item) => item.unit === 'image_output_1024x1024_medium').unitPriceMicros, 3_424)
+  assert.equal(first.pricing.every((item) => item.unitPriceMicros === 3_424), true)
   assert.equal(first.route.priority, 0)
   assert.equal(first.route.targets[0].modelDeploymentId, first.deployment.id)
   assert.equal(second.provider.id, first.provider.id)
@@ -84,6 +84,41 @@ test('MiniMax Image 01 Live staging provisioning creates an active, priced, idem
   assert.equal(catalog.providers.filter((item) => item.key === openAIImageStagingSpec.providerKey).length, 1)
   assert.equal(catalog.deployments.filter((item) => item.key === openAIImageStagingSpec.deploymentKey).length, 1)
   assert.equal(catalog.pricingVersions.filter((item) => item.modelVersionId === first.version.id).length, 9)
+})
+
+test('MiniMax Image 01 Live staging provisioning supersedes active v1 prices without rewriting history', async () => {
+  const repo = repositories()
+  const actor = { id: 'staging-admin', handle: 'helong', role: 'admin' }
+  const v1Spec = {
+    ...openAIImageStagingSpec,
+    pricing: openAIImageStagingSpec.pricing.map((price) => ({
+      ...price,
+      versionKey: price.supersededVersionKey,
+      supersededVersionKey: null,
+      unitPriceMicros: 3_400,
+    })),
+  }
+  const options = { repositories: repo, actor, now: new Date('2026-08-08T16:00:00.000Z') }
+  const v1 = await provisionOpenAIImageStaging({ ...options, spec: v1Spec })
+  const v2 = await provisionOpenAIImageStaging(options)
+  const repeated = await provisionOpenAIImageStaging(options)
+  const catalog = await repo.modelControl.exportCatalog()
+  const prices = catalog.pricingVersions.filter((item) => item.modelVersionId === v2.version.id)
+
+  assert.equal(v1.pricing.every((item) => item.status === 'active' && item.unitPriceMicros === 3_400), true)
+  assert.equal(v2.pricing.every((item) => item.status === 'active' && item.unitPriceMicros === 3_424), true)
+  assert.equal(prices.length, 18)
+  assert.equal(prices.filter((item) => item.versionKey.endsWith('-v1') && item.status === 'disabled').length, 9)
+  assert.equal(prices.filter((item) => item.versionKey.endsWith('-v2') && item.status === 'active').length, 9)
+  assert.deepEqual(repeated.pricing.map((item) => item.id), v2.pricing.map((item) => item.id))
+
+  const runtimePrices = await repo.modelControl.findRuntimePricings({
+    modelVersionId: v2.version.id,
+    modelDeploymentId: v2.deployment.id,
+    now: options.now,
+  })
+  assert.equal(runtimePrices.length, 9)
+  assert.equal(runtimePrices.every((item) => item.versionKey.endsWith('-v2') && item.unitPriceMicros === 3_424), true)
 })
 
 test('MiniMax Image 01 Live staging provisioning rotates changed credentials without persisting plaintext', async () => {

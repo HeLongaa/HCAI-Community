@@ -26,6 +26,9 @@ no page overflow at 390x844.
   pricing snapshot, so later price changes do not rewrite history.
 - Provider usage is priced only when all required Token components are present. Missing prices or incomplete usage stay
   `reconciliation_required`; they are never shown as zero or as a successful settlement.
+- The HCAI Router MiniMax Image 01 Live deployment is separately constrained to a versioned fixed per-image price.
+  A successful single-output response settles that contractual charge directly; this exception is bound to the exact
+  Provider and model identifiers and does not apply to token-priced or unknown deployments.
 - Image Studio shows the database estimate before generation and the safe ledger estimate/actual state afterward.
   Existing protected Admin reconciliation actions remain the only manual settlement path and retain hashed evidence,
   permissions, and audit records.

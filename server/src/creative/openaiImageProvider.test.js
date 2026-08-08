@@ -398,6 +398,30 @@ test('OpenAI Image-compatible cost metadata supports deployment provider identit
   assert.equal(metadata.budget.budgetScope, 'staging:hcai-router-minimax-image-01-live:image')
 })
 
+test('MiniMax Image 01 Live settles successful output from its approved fixed per-image price', () => {
+  const metadata = buildOpenAIImageProviderCostMetadata({
+    request,
+    result: { output: { contentType: 'image/png' }, usage: null },
+    source: {
+      ...source,
+      CREATIVE_OPENAI_IMAGE_MODEL: 'image-01-live',
+      CREATIVE_OPENAI_IMAGE_COST_PROVIDER_ID: 'hcai-router-minimax-image-01-live',
+      CREATIVE_OPENAI_IMAGE_PRICING_REQUIRED: 'true',
+      CREATIVE_OPENAI_IMAGE_PRICING_JSON: JSON.stringify([
+        { id: 'price-minimax-image-landscape-medium', currency: 'USD', unit: 'image_output_1536x1024_medium', unitPriceMicros: 3424, effectiveFrom: '2026-08-08T15:05:37.000Z' },
+      ]),
+    },
+    now: new Date('2026-08-08T16:00:00.000Z'),
+  })
+
+  assert.equal(metadata.estimate.amount, 0.003424)
+  assert.equal(metadata.actual.amount, 0.003424)
+  assert.equal(metadata.actual.source, 'approved_fixed_output_price')
+  assert.equal(metadata.actual.confidence, 'calculated')
+  assert.equal(metadata.risk.reconciliationRequired, false)
+  assert.deepEqual(metadata.risk.reasonCodes, [])
+})
+
 test('OpenAI Image adapter returns contract-safe output with non-serializable in-memory bytes', async () => {
   const generation = await createOpenAIImageGeneration({
     request,

@@ -222,10 +222,10 @@ export const runOpenAIImageStagingAcceptance = async ({
 
     const textLedger = await repositories.creativeProviderCosts.findForGeneration(textGeneration.id)
     const editLedger = await repositories.creativeProviderCosts.findForGeneration(editGeneration.id)
-    if (!['settled', 'reconciliation_required'].includes(textLedger?.status)) {
+    if (textLedger?.status !== 'settled') {
       throw new Error('OpenAI Image text cost closeout acceptance failed')
     }
-    if (!['settled', 'reconciliation_required'].includes(editLedger?.status)) {
+    if (editLedger?.status !== 'settled') {
       throw new Error('OpenAI Image edit cost closeout acceptance failed')
     }
     if (providerCalls !== 2) {
