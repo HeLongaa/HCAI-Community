@@ -1936,3 +1936,31 @@ test('buildMediaGovernanceConfig overlays editable numeric policy values', () =>
   assert.equal(config.alerts.thresholds.dispatchFailed, 3)
   assert.equal(config.alerts.thresholds.timeout, 4)
 })
+
+test('buildEnv treats empty optional deployment values as unset defaults', () => {
+  const env = buildEnv({
+    NODE_ENV: 'development',
+    DEPLOYMENT_ENV: '',
+    MEDIA_SCAN_PROVIDER: '',
+    MEDIA_SCAN_REQUEST_ADAPTER: '',
+    CREATIVE_PROVIDER_MODE: '',
+    CREATIVE_PROVIDER_RUNTIME_ENV: '',
+    CREATIVE_INPUT_SAFETY_CLASSIFIER_MODE: '',
+    CREATIVE_OUTPUT_SAFETY_CLASSIFIER_MODE: '',
+    RATE_LIMIT_STORE: '',
+    RATE_LIMIT_REDIS_FAILURE_MODE: '',
+    METRICS_EXPORTER_FORMAT: '',
+    AUTH_COOKIE_SAMESITE: '',
+  })
+  assert.equal(env.deploymentEnv, 'development')
+  assert.equal(env.mediaScanProvider, 'manual')
+  assert.equal(env.mediaScanRequestAdapter, 'generic-webhook')
+  assert.equal(env.creativeProviderMode, 'mock')
+  assert.equal(env.creativeProviderRuntimeEnv, 'development')
+  assert.equal(env.creativeInputSafetyClassifierMode, 'disabled')
+  assert.equal(env.creativeOutputSafetyClassifierMode, 'disabled')
+  assert.equal(env.rateLimitStore, 'memory')
+  assert.equal(env.rateLimitRedisFailureMode, 'fail_closed')
+  assert.equal(env.metricsExporterFormat, 'prometheus')
+  assert.equal(env.authCookieSameSite, 'Lax')
+})

@@ -17,28 +17,30 @@ const positiveInteger = (source, key, fallback) => {
 
 const getAccessTokenSecret = (source) => source.ACCESS_TOKEN_SECRET ?? source.SESSION_SECRET ?? ''
 const storageRequiredKeys = ['STORAGE_ENDPOINT', 'STORAGE_REGION', 'STORAGE_BUCKET', 'STORAGE_ACCESS_KEY_ID', 'STORAGE_SECRET_ACCESS_KEY']
+const valueOrDefault = (value, fallback = '') => String(value ?? '').trim() || fallback
+const lowerValueOrDefault = (value, fallback) => valueOrDefault(value, fallback).toLowerCase()
 
 const getStorageDriver = (source) => String(source.STORAGE_DRIVER ?? (source.STORAGE_BUCKET ? 's3' : 'mock')).trim().toLowerCase()
-const getMediaScanProvider = (source) => String(source.MEDIA_SCAN_PROVIDER ?? 'manual').trim().toLowerCase()
-const getCreativeProviderMode = (source) => String(source.CREATIVE_PROVIDER_MODE ?? (source.NODE_ENV === 'production' ? 'disabled' : 'mock')).trim().toLowerCase()
+const getMediaScanProvider = (source) => lowerValueOrDefault(source.MEDIA_SCAN_PROVIDER, 'manual')
+const getCreativeProviderMode = (source) => lowerValueOrDefault(source.CREATIVE_PROVIDER_MODE, source.NODE_ENV === 'production' ? 'disabled' : 'mock')
 const getCreativeProviderRuntimeEnv = (source) =>
-  String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? source.DEPLOYMENT_ENV ?? source.NODE_ENV ?? 'development').trim().toLowerCase()
+  lowerValueOrDefault(source.CREATIVE_PROVIDER_RUNTIME_ENV, lowerValueOrDefault(source.DEPLOYMENT_ENV, lowerValueOrDefault(source.NODE_ENV, 'development')))
 const supportedMediaScanRequestAdapters = ['generic-webhook', 'clamav-http']
 const supportedCreativeProviderModes = ['mock', 'disabled', 'replicate_staging']
 const supportedCreativeProviderRuntimeEnvs = ['development', 'test', 'ci', 'staging', 'production']
 const supportedDeploymentEnvs = ['development', 'test', 'ci', 'staging', 'production']
 const supportedSecretManagerProviders = ['aws-secrets-manager', 'gcp-secret-manager', 'vault', '1password']
 const supportedCreativeStagingImageProviders = ['replicate']
-const getMediaScanRequestAdapter = (source) => String(source.MEDIA_SCAN_REQUEST_ADAPTER ?? 'generic-webhook').trim().toLowerCase()
+const getMediaScanRequestAdapter = (source) => lowerValueOrDefault(source.MEDIA_SCAN_REQUEST_ADAPTER, 'generic-webhook')
 const supportedRateLimitStores = ['memory', 'redis']
 const supportedRateLimitFailureModes = ['fail_open', 'fail_closed']
 const supportedMetricsExporterFormats = ['prometheus']
 const supportedCreativeProviderAlertChannels = ['webhook', 'slack', 'email']
 const supportedCreativeSafetyClassifierModes = ['disabled', 'external']
-const getRateLimitStore = (source) => String(source.RATE_LIMIT_STORE ?? 'memory').trim().toLowerCase()
-const getRateLimitFailureMode = (source) => String(source.RATE_LIMIT_REDIS_FAILURE_MODE ?? source.RATE_LIMIT_STORE_FAILURE_MODE ?? 'fail_closed').trim().toLowerCase()
-const getMetricsExporterFormat = (source) => String(source.METRICS_EXPORTER_FORMAT ?? 'prometheus').trim().toLowerCase()
-const getDeploymentEnv = (source) => String(source.DEPLOYMENT_ENV ?? 'development').trim().toLowerCase()
+const getRateLimitStore = (source) => lowerValueOrDefault(source.RATE_LIMIT_STORE, 'memory')
+const getRateLimitFailureMode = (source) => lowerValueOrDefault(source.RATE_LIMIT_REDIS_FAILURE_MODE, lowerValueOrDefault(source.RATE_LIMIT_STORE_FAILURE_MODE, 'fail_closed'))
+const getMetricsExporterFormat = (source) => lowerValueOrDefault(source.METRICS_EXPORTER_FORMAT, 'prometheus')
+const getDeploymentEnv = (source) => lowerValueOrDefault(source.DEPLOYMENT_ENV, 'development')
 const getSecretManagerProvider = (source) => String(source.SECRET_MANAGER_PROVIDER ?? '').trim().toLowerCase()
 const getRedisUrl = (source) => {
   const value = String(source.RATE_LIMIT_REDIS_URL ?? '').trim()
@@ -96,7 +98,7 @@ const positiveIntegerValue = (value, fallback) => {
 }
 
 const getAuthCookieSameSite = (source) => {
-  const value = String(source.AUTH_COOKIE_SAMESITE ?? 'Lax').trim().toLowerCase()
+  const value = lowerValueOrDefault(source.AUTH_COOKIE_SAMESITE, 'Lax')
   if (value === 'none') return 'None'
   if (value === 'strict') return 'Strict'
   return 'Lax'
@@ -126,10 +128,10 @@ export const buildEnv = (source = process.env) => {
   const creativeOpenAIImageNetworkCallsEnabled = strictBoolFlag(source, 'CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED', false)
   const creativeOpenAIImageConfirmation = String(source.CREATIVE_OPENAI_IMAGE_CONFIRMATION ?? '').trim().toLowerCase()
   const hasCreativeOpenAIImageApiToken = Boolean(String(source.CREATIVE_OPENAI_IMAGE_API_TOKEN ?? '').trim())
-  const creativeInputSafetyClassifierMode = String(source.CREATIVE_INPUT_SAFETY_CLASSIFIER_MODE ?? 'disabled').trim().toLowerCase()
+  const creativeInputSafetyClassifierMode = lowerValueOrDefault(source.CREATIVE_INPUT_SAFETY_CLASSIFIER_MODE, 'disabled')
   const creativeInputSafetyClassifierUrl = getOptionalUrl(source, 'CREATIVE_INPUT_SAFETY_CLASSIFIER_URL')
   const creativeInputSafetyClassifierToken = String(source.CREATIVE_INPUT_SAFETY_CLASSIFIER_TOKEN ?? '').trim()
-  const creativeOutputSafetyClassifierMode = String(source.CREATIVE_OUTPUT_SAFETY_CLASSIFIER_MODE ?? 'disabled').trim().toLowerCase()
+  const creativeOutputSafetyClassifierMode = lowerValueOrDefault(source.CREATIVE_OUTPUT_SAFETY_CLASSIFIER_MODE, 'disabled')
   const creativeOutputSafetyClassifierUrl = getOptionalUrl(source, 'CREATIVE_OUTPUT_SAFETY_CLASSIFIER_URL')
   const creativeOutputSafetyClassifierToken = String(source.CREATIVE_OUTPUT_SAFETY_CLASSIFIER_TOKEN ?? '').trim()
   const creativeProviderCallbackEnabled = strictBoolFlag(source, 'CREATIVE_PROVIDER_CALLBACK_ENABLED', false)
