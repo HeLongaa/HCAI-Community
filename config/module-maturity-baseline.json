@@ -237,7 +237,7 @@
       "adminCapabilities": ["质量门禁", "部署 Smoke", "回滚运行手册"],
       "operationPolicies": ["not_applicable"],
       "evidence": ["docs/QUALITY_GATES.md", "docs/RELEASE_CHECKLIST.md", "scripts/smoke-production.mjs"],
-      "gapTasks": ["INFRA-01", "RELEASE-01"]
+      "gapTasks": ["INFRA-01"]
     }
   ]
 }

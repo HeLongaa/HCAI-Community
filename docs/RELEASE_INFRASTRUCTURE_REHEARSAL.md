@@ -81,8 +81,12 @@ npm run release:infrastructure:rehearse:env
 
 The GitHub Actions `Quality Gates` workflow exposes the operation through `smoke_profile=infrastructure-rehearsal` and a protected GitHub Environment. The server dispatcher permits only `preflight|execute` plus the exact 40-character Git SHA, while the job uploads only `latest.json` sanitized evidence for 30 days.
 
+## Accepted Staging Rehearsal
+
+The protected staging rehearsal completed on 2026-08-08 in [Quality Gates run 31238305998](https://github.com/HeLongaa/HCAI-Community/actions/runs/31238305998), bound to clean source `874ffb17429abc6a2f4d1066daeadfd11010aecf`. All 23 checks passed: 114 migrations and permission seeds were present, a 764,069-byte database backup was uploaded to dedicated S3 storage and checksum-restored, Redis recovered its marker after restart, and the primary object was restored from the isolated backup bucket. RPO was zero; total RTO was 25.507 seconds, including 4.927 seconds for PostgreSQL, 2.757 seconds for Redis, and 0.471 seconds for object storage. Independent receipt verification returned `valid=true`, found no forbidden evidence fields, and confirmed receipt `18d9d574ed565b4c02548b3ea6cd5191a97fecd9f0e7b396b64acb33a98bfeed`.
+
 ## Production Boundary
 
-Local Docker evidence proves the executable recovery path, restore-negative backup expiry behavior, migration compatibility, and evidence controls. It does not prove a production provider's 35-day schedule, managed encryption-key destruction, cross-zone failover, access policy, or actual target-environment latency. `RELEASE-01` remains incomplete until the protected target-environment workflow succeeds and an operator reviews the resulting receipt.
+The accepted protected staging evidence closes `RELEASE-01` for the isolated target recovery scope. It does not prove a production provider's real 35-day lifecycle schedule, managed encryption-key destruction, cross-zone failover, production access policy, or production latency. Those remain separate launch and data-governance gates.
 
 For account deletion, production backup expiry receipts remain separate from this infrastructure rehearsal. RELEASE-01 supplies the backup inventory and recovery evidence needed to execute that lifecycle without claiming that a specific user's backup expiry has occurred.
