@@ -4,7 +4,7 @@ import { chatCapabilityContract } from '../server/src/creative/chatCapabilityCon
 import { musicCapabilityContract } from '../server/src/creative/musicCapabilityContract.js'
 import { videoCapabilityContract } from '../server/src/creative/videoCapabilityContract.js'
 import { buildProviderBudgetExternalAlertDeliveryWiring } from '../server/src/creative/providerBudgetExternalAlerts.js'
-import { inspectProductionWorkers } from './lib/production-smoke.mjs'
+import { inspectDurableSecurityAlertDelivery, inspectProductionWorkers } from './lib/production-smoke.mjs'
 import { inspectProtectedRuntimeConfiguration } from './lib/protected-runtime-smoke.mjs'
 
 const args = new Set(process.argv.slice(2))
@@ -321,6 +321,7 @@ const providerAlertWiring = buildProviderBudgetExternalAlertDeliveryWiring({
 })
 const protectedRuntime = inspectProtectedRuntimeConfiguration(source)
 const { chatRuntime, providerDeletionGatewayConfigured } = protectedRuntime
+const durableSecurityAlertDelivery = inspectDurableSecurityAlertDelivery(env)
 const checks = []
 const webhookMediaScanner = env.mediaScanProvider === 'webhook'
 
@@ -437,7 +438,12 @@ check(
   'AI-MUSIC-01 registers guarded staging support while all Music network gates, credentials, Lyria failover, and production enablement remain disabled by default',
 )
 check(checks, 'media alert channel gated', !webhookMediaScanner || hasAny(env.hasMediaScanAlertWebhookUrl, env.hasMediaScanAlertSlackWebhookUrl, env.mediaScanAlertEmailRecipientCount > 0), webhookMediaScanner ? 'At least one media scanner alert channel must be configured' : 'not required outside webhook mode')
-check(checks, 'security alert channel configured', hasAny(env.hasSecurityAlertWebhookUrl, env.hasSecurityAlertSlackWebhookUrl, env.securityAlertEmailRecipientCount > 0), 'At least one security alert channel must be configured')
+check(
+  checks,
+  'durable security alert delivery configured',
+  durableSecurityAlertDelivery.ready,
+  'Security alerts require the persistent notification email queue, a real email webhook, and the delivery worker; direct fanout alone is best-effort',
+)
 check(
   checks,
   'creative provider alert channel gated',

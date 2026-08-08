@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
-import { recordSecurityEvent, resetSecurityEvents } from '../../security/securityEvents.js'
+import { flushSecurityEvents, recordSecurityEvent, resetSecurityEvents } from '../../security/securityEvents.js'
 import { quotaWindowFor, resetCreativePolicyState } from '../../creative/policy.js'
 import { createReplicateStagingPrediction } from '../../creative/replicateStagingProvider.js'
 import { sha256 } from '../../creative/generationRecords.js'
@@ -3759,6 +3759,61 @@ test('GET /api/admin/security/alerts returns aggregated threshold alerts', async
     else process.env.SECURITY_ALERT_BODY_REJECTED_THRESHOLD = previous.bodyRejected
     if (previous.authFailure == null) delete process.env.SECURITY_ALERT_AUTH_FAILURE_THRESHOLD
     else process.env.SECURITY_ALERT_AUTH_FAILURE_THRESHOLD = previous.authFailure
+    resetSecurityEvents()
+    await server.close()
+  }
+})
+
+test('security threshold alerts enter the durable notification email queue', async () => {
+  resetSecurityEvents()
+  const previous = {
+    window: process.env.SECURITY_ALERT_WINDOW_MINUTES,
+    rateLimit: process.env.SECURITY_ALERT_RATE_LIMIT_THRESHOLD,
+    emailEnabled: process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED,
+    emailUrl: process.env.NOTIFICATION_EMAIL_WEBHOOK_URL,
+    workerEnabled: process.env.NOTIFICATION_DELIVERY_WORKER_ENABLED,
+  }
+  process.env.SECURITY_ALERT_WINDOW_MINUTES = '15'
+  process.env.SECURITY_ALERT_RATE_LIMIT_THRESHOLD = '2'
+  process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED = 'true'
+  process.env.NOTIFICATION_EMAIL_WEBHOOK_URL = 'http://127.0.0.1:9876/security-email'
+  process.env.NOTIFICATION_DELIVERY_WORKER_ENABLED = 'true'
+  const repository = createSeedRepository()
+  const server = await createInjectedAdminServer(repository)
+  try {
+    recordSecurityEvent({ type: 'rate_limit.exceeded', severity: 'warning', source: 'rate_limit', clientKey: '198.51.100.51', pathname: '/api/auth/login' })
+    recordSecurityEvent({ type: 'rate_limit.exceeded', severity: 'warning', source: 'rate_limit', clientKey: '198.51.100.52', pathname: '/api/auth/login' })
+    await flushSecurityEvents()
+    await repository.securityEvents.notifyAlerts()
+
+    const deliveries = await repository.notificationDeliveries.list({
+      status: 'queued',
+      notificationType: 'security.event.alert',
+      limit: 100,
+    })
+    const queued = deliveries.items.filter((item) =>
+      item.channel === 'email' && item.notification?.resourceType === 'security_alert')
+    assert.ok(queued.length > 0)
+
+    await repository.securityEvents.notifyAlerts()
+    const repeated = await repository.notificationDeliveries.list({
+      status: 'queued',
+      notificationType: 'security.event.alert',
+      limit: 100,
+    })
+    assert.equal(repeated.items.filter((item) =>
+      item.channel === 'email' && item.notification?.resourceType === 'security_alert').length, queued.length)
+  } finally {
+    for (const [key, value] of Object.entries({
+      SECURITY_ALERT_WINDOW_MINUTES: previous.window,
+      SECURITY_ALERT_RATE_LIMIT_THRESHOLD: previous.rateLimit,
+      NOTIFICATION_EMAIL_DELIVERY_ENABLED: previous.emailEnabled,
+      NOTIFICATION_EMAIL_WEBHOOK_URL: previous.emailUrl,
+      NOTIFICATION_DELIVERY_WORKER_ENABLED: previous.workerEnabled,
+    })) {
+      if (value == null) delete process.env[key]
+      else process.env[key] = value
+    }
     resetSecurityEvents()
     await server.close()
   }

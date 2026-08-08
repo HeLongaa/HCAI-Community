@@ -37,3 +37,15 @@ export const inspectProductionWorkers = (env) => productionWorkerRequirements.ma
     : env?.[condition.key] === condition.equals)
   return { ...requirement, required, enabled: !required || env?.[requirement.key] === true }
 })
+
+export const inspectDurableSecurityAlertDelivery = (env) => {
+  const emailEnabled = env?.notificationEmailDeliveryEnabled === true
+  const emailEndpointConfigured = env?.hasNotificationEmailWebhookUrl === true
+  const workerEnabled = env?.notificationDeliveryWorkerEnabled === true
+  return Object.freeze({
+    ready: emailEnabled && emailEndpointConfigured && workerEnabled,
+    emailEnabled,
+    emailEndpointConfigured,
+    workerEnabled,
+  })
+}

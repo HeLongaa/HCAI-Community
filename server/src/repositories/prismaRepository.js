@@ -1450,9 +1450,9 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             resourceId: payload.resourceId ?? null,
             readAt: null,
           },
-          select: { id: true },
         })
         if (existing) {
+          await notificationDeliveries.createForNotification(existing, recipient, db)
           return null
         }
       }

@@ -39,13 +39,20 @@ test('Prisma notification channel controls preserve CAS, immutable history, runt
     const disabled = attempts.find((item) => item.status === 'fulfilled').value
     assert.equal(disabled.effectiveEnabled, false)
 
-    const [notification] = await repository.notifications.createForHandles([actor.handle], {
-      type, title: 'Metrics integration', body: 'Aggregate-only fixture', resourceType: 'task', resourceId: suffix,
-    })
-    const deliveries = await repository.notificationDeliveries.listForNotification(notification.id, actor)
+    const notificationPayload = {
+      type, title: 'Metrics integration', body: 'Aggregate-only fixture', resourceType: 'task', resourceId: suffix, dedupeUnread: true,
+    }
+    const [notification] = await repository.notifications.createForHandles([actor.handle], notificationPayload)
+    let deliveries = await repository.notificationDeliveries.listForNotification(notification.id, actor)
     const email = deliveries.find((item) => item.channel === 'email')
     assert.equal(email.status, 'suppressed')
     assert.equal(email.lastErrorCode, 'CHANNEL_DISABLED')
+
+    await repository.client.notificationDelivery.delete({ where: { id: email.id } })
+    assert.deepEqual(await repository.notifications.createForHandles([actor.handle], notificationPayload), [])
+    deliveries = await repository.notificationDeliveries.listForNotification(notification.id, actor)
+    assert.equal(deliveries.filter((item) => item.channel === 'email').length, 1)
+    assert.equal(deliveries.find((item) => item.channel === 'email').status, 'suppressed')
 
     const metrics = await repository.notificationDeliveries.metrics({
       dateFrom: new Date(Date.now() - 60_000), dateTo: new Date(Date.now() + 60_000), channel: null, notificationType: type,

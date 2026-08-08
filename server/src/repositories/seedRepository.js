@@ -1442,18 +1442,24 @@ function uniqueHandles(handles) {
 
 function createNotificationsForHandles(handles, payload) {
   const now = new Date().toISOString()
-  const created = uniqueHandles(handles)
+  const recipients = uniqueHandles(handles)
     .map((handle) => getAccountByHandle(handle))
     .filter(Boolean)
     .filter((recipient) => isSeedNotificationEnabled(recipient.id, payload.type))
-    .filter((recipient) => !payload.dedupeUnread || !notifications.some((notification) =>
+  const created = []
+  for (const recipient of recipients) {
+    const existing = payload.dedupeUnread ? notifications.find((notification) =>
       notification.recipientHandle === recipient.handle &&
       notification.type === payload.type &&
       notification.resourceType === payload.resourceType &&
       notification.resourceId === (payload.resourceId ?? null) &&
-      !notification.readAt,
-    ))
-    .map((recipient) => ({
+      !notification.readAt
+    ) : null
+    if (existing) {
+      notificationDeliveryRepository?.createForNotification(existing, recipient)
+      continue
+    }
+    created.push({
       id: `notification-${randomUUID()}`,
       recipientId: recipient.id,
       recipientHandle: recipient.handle,
@@ -1467,7 +1473,8 @@ function createNotificationsForHandles(handles, payload) {
       templateVersion: payload.templateVersion ?? null,
       readAt: null,
       createdAt: now,
-    }))
+    })
+  }
   notifications.unshift(...created)
   for (const notification of created) {
     notificationDeliveryRepository?.createForNotification(notification, getAccountById(notification.recipientId))

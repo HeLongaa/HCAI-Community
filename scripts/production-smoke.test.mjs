@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
 
-import { inspectProductionWorkers, productionWorkerRequirements } from './lib/production-smoke.mjs'
+import { inspectDurableSecurityAlertDelivery, inspectProductionWorkers, productionWorkerRequirements } from './lib/production-smoke.mjs'
 import { inspectProtectedRuntimeConfiguration } from './lib/protected-runtime-smoke.mjs'
 
 test('production smoke requires every declared core and retention worker', () => {
@@ -53,6 +53,28 @@ test('scanner and notification workers are required only when their external del
   const enabled = inspectProductionWorkers({ ...baseline, mediaScanProvider: 'webhook', notificationEmailDeliveryEnabled: true })
   assert.equal(enabled.find(({ key }) => key === 'mediaScanWorkerEnabled').enabled, false)
   assert.equal(enabled.find(({ key }) => key === 'notificationDeliveryWorkerEnabled').enabled, false)
+})
+
+test('security alert release delivery requires the durable notification email queue', () => {
+  assert.deepEqual(inspectDurableSecurityAlertDelivery({
+    notificationEmailDeliveryEnabled: true,
+    hasNotificationEmailWebhookUrl: true,
+    notificationDeliveryWorkerEnabled: true,
+    hasSecurityAlertWebhookUrl: false,
+  }), {
+    ready: true,
+    emailEnabled: true,
+    emailEndpointConfigured: true,
+    workerEnabled: true,
+  })
+  for (const incomplete of [
+    { notificationEmailDeliveryEnabled: false, hasNotificationEmailWebhookUrl: true, notificationDeliveryWorkerEnabled: true },
+    { notificationEmailDeliveryEnabled: true, hasNotificationEmailWebhookUrl: false, notificationDeliveryWorkerEnabled: true },
+    { notificationEmailDeliveryEnabled: true, hasNotificationEmailWebhookUrl: true, notificationDeliveryWorkerEnabled: false },
+    { hasSecurityAlertWebhookUrl: true, hasSecurityAlertSlackWebhookUrl: true, securityAlertEmailRecipientCount: 1 },
+  ]) {
+    assert.equal(inspectDurableSecurityAlertDelivery(incomplete).ready, false)
+  }
 })
 
 test('protected runtime smoke accumulates independent failures without exposing configuration values', () => {

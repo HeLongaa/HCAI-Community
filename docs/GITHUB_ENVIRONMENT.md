@@ -201,6 +201,12 @@ Security alert channel variables/secrets:
 | Slack | none | `SECURITY_ALERT_SLACK_WEBHOOK_URL` |
 | Email webhook | `SECURITY_ALERT_EMAIL_WEBHOOK_URL`, `SECURITY_ALERT_EMAIL_TO`, `SECURITY_ALERT_EMAIL_FROM` optional | `SECURITY_ALERT_EMAIL_WEBHOOK_SECRET` optional/recommended |
 
+Direct Security Alert Webhook, Slack, and email fanout are best-effort secondary channels. The release smoke recognizes
+security alert delivery only when the durable notification email path is enabled with
+`NOTIFICATION_EMAIL_DELIVERY_ENABLED=true`, a real `NOTIFICATION_EMAIL_WEBHOOK_URL`, and
+`NOTIFICATION_DELIVERY_WORKER_ENABLED=true`. Security alerts already create recipient-scoped notifications for
+`admin:audit:read` users, so this path provides leases, bounded retry, dead-letter state, and operator recovery.
+
 Creative provider budget alert variables/secrets:
 
 These are parsed and exposed only through safe config summaries for provider budget alert readiness. Production smoke gates channel presence only when `CREATIVE_PROVIDER_ALERTS_ENABLED=true`. External provider budget alert delivery is still inactive: no Slack, webhook, or email message is sent until a later explicitly approved delivery implementation wires dispatch audit events and outbound clients.
