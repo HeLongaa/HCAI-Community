@@ -1428,6 +1428,41 @@ Generations 的主对象应是“结果与状态”，而不是 Provider 元数�
 - 把该 manifest 接入 RELEASE-02 staging 候选/回滚演练，确保部署与回滚全程不再解析 tag。
 - 继续推进受保护 staging 的 TLS/CDN、真实对象存储、Cookie 登录和滚动发布排空验收。
 
+## 51. 阶段 4 第三十三批实施记录（2026-08-08）
+
+本批次完成 Vault 工作负载凭据自动续期、生产部署合同和受保护 Staging 的真实撤销恢复演练：
+
+- Secret Lifecycle Gateway 不再只在进程启动时缓存 Worker Bearer 或 Vault Token；每次请求都会从受控文件重新读取当前凭据，凭据轮换不再要求重启 Gateway。
+- Gateway 新增 `/readyz`，读取当前 Token 并调用 Vault `auth/token/lookup-self`；Token 缺失、已撤销或 Vault 不可达时返回 `503`，避免只有进程存活却无法完成密钥操作的假健康状态。
+- 新增生产 Secret Lifecycle Compose Overlay。生产合同要求连接外部 HA/托管 Vault，不在应用栈启动单节点 Vault；Vault Agent 使用平台颁发的客户端证书 auto-auth，并将短期 Token 写入 RAM-backed sink。
+- Worker 无法挂载 Vault Token、工作负载私钥或 Gateway TLS 私钥；Gateway 只取得完成职责所需的最小文件和 Vault policy，`SECRET_MANAGER_PROVIDER` 在生产部署中必须显式配置。
+- 新增生产最小权限策略、Vault Agent 配置、机器可读合同和运维文档；Staging 同步迁移为证书 auto-auth，并移除原静态 `vault-gateway-token` 文件。
+- 首次 Staging provisioning 发现 Vault `2.0.3` 不接受字符串形式的 `mode = "0440"`，导致 Agent 重启循环。已改为数值 `mode = 288`（八进制 `0440`）并加入静态合同，首次失败未替换原 API、Gateway 或 Worker。
+
+本批次验证范围：
+
+- 生产容器合同 `55/55`、生产 Secret Lifecycle 合同 `21/21`、Staging Secret Lifecycle 合同 `25/25`、聚焦生命周期测试 `14/14` 通过；ESLint、Shell 语法和严格差异检查通过。
+- 候选源码提交为 `65e49ee47ccf13dc2917a9e6320f615fe99684c0`，Staging 制品为 `f87ff8d360ba8a984e2ccaf87560a816a69b96526019f0df2bfe2dd9ac8c9143`；公网 `/health` 返回同一制品哈希。
+- API、Worker、Frontend、Vault Agent、Secret Lifecycle Gateway、Vault、PostgreSQL、Redis、MinIO 与入口 Gateway 均通过健康检查；宿主机未监听 Vault `8200` 或生命周期 Gateway `8790`，两个 OpenClaw 容器未被重建或重启。
+- 真实演练主动撤销当前 Agent Token，随后确认 Agent 使用证书重新认证、Token 发生轮换且 Gateway readiness 恢复；结果为 `vault_agent_token_rotation=passed` 和 `gateway_readiness_recovery=passed`。
+- 同一演练执行真实 KV soft-delete 与 destroy：版本 1 已存在删除时间并被销毁，版本 2 保留；两项保留策略操作均生成不可变回执。
+- 演练运行 ID 为 `slg-20260808053435-ff23b255`，证据回执 SHA-256 为 `4ee6a29688535f177aff8522c57ea0a125745a3f4c93494617996d72c6e4f2e6`，受保护证据位于 `/opt/newchat-staging/evidence/secret-lifecycle-slg-20260808053435-ff23b255.json`。
+
+尚未关闭的上线阻断：
+
+- 当前 Staging Vault 只用于验收，不能替代真实生产 HA/托管 Vault；生产仍需完成 KMS/HSM auto-unseal、备份恢复、灾难恢复和容量/故障域验收。
+- 生产平台尚未提供工作负载证书的正式签发、短期轮换和吊销流程，也未提交 Vault 审计设备、访问策略复核和异常访问告警证据。
+- 真实 HTTPS OAuth Provider 回调、真实 Mailer 投递、法律主体/司法辖区/政策发布批准，以及 Provider DPA、数据地区、保留、版权和生产批准仍未闭环。
+- PR 供应链门禁已验证候选构建和扫描，但合并后的 GHCR digest 发布、OIDC 签名和 Attestation 仍须由主分支工作流生成并验证。
+
+因此，本批关闭的是 Secret Manager 的 Staging 基础生命周期缺口，不改变整体发布判断：系统继续保持 **No-Go**。
+
+下一批建议：
+
+- 由生产平台提供外部 HA Vault、KMS/HSM、正式 CA 和审计日志落点后，按本批合同执行同等的 Token 撤销、证书轮换、备份恢复与故障切换演练。
+- 完成真实 OAuth 和 Mailer 的受保护环境验收，并将回调域名、Cookie、投递回执和失败恢复绑定到同一候选制品。
+- 合并候选后执行 GHCR 发布与证明工作流，再以 digest 部署并完成一次候选/回滚演练，形成最终上线签字包。
+
 ## 附录：审计截图
 
 管理员端审计截图：
