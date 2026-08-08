@@ -27,12 +27,24 @@ test('Prisma data rights lifecycle exports owned data, erases primary data, and 
   process.env.DATA_RIGHTS_PROVIDER_DELETION_GATEWAY_CONFIRMATION = 'provider-deletion-enabled'
   process.env.DATA_RIGHTS_PROVIDER_DELETION_GATEWAY_URL = 'https://provider-deletion.integration.test/v1/deletions'
   process.env.DATA_RIGHTS_PROVIDER_DELETION_GATEWAY_TOKEN = 'integration-provider-deletion-token'
-  globalThis.fetch = async () => {
+  globalThis.fetch = async (_url, options = {}) => {
     if (providerBarrier) {
       providerBarrier.started()
       await providerBarrier.release
     }
-    return { ok: true, text: async () => JSON.stringify({ status: 'completed', receiptId: `receipt-${randomUUID()}`, deletedOperationCount: 1 }) }
+    const request = JSON.parse(options.body)
+    return { ok: true, text: async () => JSON.stringify({
+      schemaVersion: 2,
+      status: 'completed',
+      requestId: request.requestId,
+      providerId: request.providerId,
+      operationRefsHash: request.operationRefsHash,
+      batchIndex: request.batchIndex,
+      batchCount: request.batchCount,
+      receiptId: `receipt-${randomUUID()}`,
+      processedOperationCount: request.operationRefs.length,
+      deletedOperationCount: request.operationRefs.length,
+    }) }
   }
 
   const { createPrismaRepository } = await import('./prismaRepository.js')
