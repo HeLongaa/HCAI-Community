@@ -27,6 +27,8 @@ add('post operation policy remains soft delete', policies.entities.some((entry) 
 add('seed repository filters public lifecycle', seed.includes("postStatus(post) !== 'published'") && seed.includes("status: 'deleted'"))
 add('Prisma repository filters public lifecycle', prisma.includes("status: 'published'") && prisma.includes('version: { increment: 1 }'))
 add('owner UI exposes draft and lifecycle actions', ['Save draft', 'publishPost', 'updatePost', 'deletePost'].every((marker) => ui.includes(marker)))
+add('owner delete uses in-context confirmation', ui.includes('OperationConfirmation') && ui.includes('Confirm community post deletion') && !ui.includes('window.confirm'))
+add('owner lifecycle uses local feedback', ui.includes('postMutationFeedback') && !read('src/hooks/useCommunityWorkflows.ts').includes("pushToast(locale === 'zh' ? '帖子已删除。'"))
 
 for (const route of contract.routes) {
   add(`${route.method} ${route.path} is implemented`, routes.includes(`router.add('${route.method}', '${route.path}'`))

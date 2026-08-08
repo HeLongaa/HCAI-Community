@@ -20,6 +20,7 @@ import { categoryLabel, isZhCopy, localizedPosts, textFor } from '../../domain/u
 import { communityService } from '../../services/communityService'
 import { trustService } from '../../services/trustService'
 import type { ModerationReportCategory } from '../../services/contracts'
+import { OperationConfirmation } from '../../components/ui/OperationConfirmation'
 
 export function CommunityPage({
   t,
@@ -81,6 +82,9 @@ export function CommunityPage({
   const [editingPost, setEditingPost] = useState<Post | null>(null)
   const [postDraft, setPostDraft] = useState<CommunityPostDraft>(emptyPostDraft)
   const [postEditorError, setPostEditorError] = useState<string | null>(null)
+  const [postMutationFeedback, setPostMutationFeedback] = useState<string | null>(null)
+  const [pendingDeletePost, setPendingDeletePost] = useState<Post | null>(null)
+  const [deletePostError, setDeletePostError] = useState<string | null>(null)
   const [reportTarget, setReportTarget] = useState<{ targetType: 'post' | 'comment'; targetId: string; label: string } | null>(null)
   const [reportCategory, setReportCategory] = useState<ModerationReportCategory>('spam')
   const [reportStatement, setReportStatement] = useState('')
@@ -229,6 +233,7 @@ export function CommunityPage({
       excerpt: post.excerpt,
     } : emptyPostDraft)
     setPostEditorError(null)
+    setPostMutationFeedback(null)
     setEditorOpen(true)
   }
 
@@ -238,7 +243,13 @@ export function CommunityPage({
       return
     }
     setPostEditorError(null)
+    setPostMutationFeedback(null)
     try {
+      const successMessage = editingPost
+        ? (isZh ? '帖子修改已保存。' : 'Post changes saved.')
+        : target === 'draft'
+          ? (isZh ? '草稿已保存。' : 'Draft saved.')
+          : (isZh ? '帖子已发布。' : 'Post published.')
       if (!editingPost) {
         await createPost(postDraft, target)
       } else {
@@ -248,27 +259,34 @@ export function CommunityPage({
       resetPostEditor()
       await refreshMyPosts()
       setMyPostsOpen(true)
+      setPostMutationFeedback(successMessage)
     } catch (error) {
       console.info('[community-post-editor]', error)
       setPostEditorError(isZh ? '保存失败，请刷新后重试。' : 'Save failed. Refresh and try again.')
     }
   }
 
-  const removePost = async (post: Post) => {
-    if (!window.confirm(isZh ? `删除“${post.title}”？` : `Delete “${post.title}”?`)) return
+  const confirmPostDeletion = async () => {
+    if (!pendingDeletePost) return
+    setDeletePostError(null)
+    setPostMutationFeedback(null)
     try {
-      await deletePost(post)
-      if (editingPost?.id === post.id) resetPostEditor()
+      await deletePost(pendingDeletePost)
+      if (editingPost?.id === pendingDeletePost.id) resetPostEditor()
+      setPendingDeletePost(null)
+      setPostMutationFeedback(isZh ? '帖子已删除。' : 'Post deleted.')
     } catch (error) {
       console.info('[community-post-delete]', error)
-      setPostEditorError(isZh ? '删除失败，请刷新后重试。' : 'Delete failed. Refresh and try again.')
+      setDeletePostError(isZh ? '删除失败，帖子未发生变化。请重试。' : 'Delete failed and the post was not changed. Try again.')
     }
   }
 
   const publishDraftPost = async (post: Post) => {
     setPostEditorError(null)
+    setPostMutationFeedback(null)
     try {
       await publishPost(post)
+      setPostMutationFeedback(isZh ? '草稿已发布。' : 'Draft published.')
     } catch (error) {
       console.info('[community-post-publish]', error)
       setPostEditorError(isZh ? '发布失败，请刷新后重试。' : 'Publish failed. Refresh and try again.')
@@ -310,6 +328,7 @@ export function CommunityPage({
       </header>
       <section className="community-author-workspace" data-testid="community-author-workspace">
         {postEditorError && <div className="inline-error" role="alert">{postEditorError}</div>}
+        {postMutationFeedback && <div className="inline-success" role="status">{postMutationFeedback}</div>}
         {editorOpen && (
           <div className="community-post-editor">
             <div className="community-editor-grid">
@@ -383,7 +402,7 @@ export function CommunityPage({
             {myPosts.length > 0 ? (
               <div className="community-owned-list">
                 {myPosts.map((post) => (
-                  <article className="community-owned-row" key={post.id}>
+                  <article className={`community-owned-row${pendingDeletePost?.id === post.id ? ' confirming' : ''}`} key={post.id}>
                     <div>
                       <strong>{post.title}</strong>
                       <span>{post.status === 'draft' ? (isZh ? '草稿' : 'Draft') : post.status === 'deleted' ? (isZh ? '已删除' : 'Deleted') : (isZh ? '已发布' : 'Published')}</span>
@@ -391,8 +410,23 @@ export function CommunityPage({
                     <div className="community-owned-actions">
                       {post.status !== 'deleted' && <button className="community-row-action" type="button" disabled={postMutationBusy} onClick={() => openPostEditor(post)} title={isZh ? '编辑' : 'Edit'}><Pencil size={15} />{isZh ? '编辑' : 'Edit'}</button>}
                       {post.status === 'draft' && <button className="community-row-action" type="button" disabled={postMutationBusy} onClick={() => void publishDraftPost(post)} title={isZh ? '发布' : 'Publish'}><Send size={15} />{isZh ? '发布' : 'Publish'}</button>}
-                      {post.status !== 'deleted' && <button className="community-row-action danger" type="button" disabled={postMutationBusy} onClick={() => void removePost(post)} title={isZh ? '删除' : 'Delete'}><Trash2 size={15} />{isZh ? '删除' : 'Delete'}</button>}
+                      {post.status !== 'deleted' && <button className="community-row-action danger" type="button" disabled={postMutationBusy} onClick={() => { setPendingDeletePost(post); setDeletePostError(null); setPostMutationFeedback(null) }} title={isZh ? '删除' : 'Delete'}><Trash2 size={15} />{isZh ? '删除' : 'Delete'}</button>}
                     </div>
+                    {pendingDeletePost?.id === post.id && <div className="community-delete-confirmation">
+                      <OperationConfirmation
+                        ariaLabel={isZh ? '确认删除社区帖子' : 'Confirm community post deletion'}
+                        title={isZh ? `删除“${post.title}”？` : `Delete “${post.title}”?`}
+                        description={isZh ? '帖子将从社区和你的公开内容中移除，已有审核记录仍会保留。' : 'The post will be removed from the community and your public content. Existing moderation records remain available.'}
+                        confirmLabel={isZh ? '删除帖子' : 'Delete post'}
+                        cancelLabel={isZh ? '返回' : 'Back'}
+                        onConfirm={() => void confirmPostDeletion()}
+                        onCancel={() => { setPendingDeletePost(null); setDeletePostError(null) }}
+                        busy={postMutationBusy}
+                        compact
+                      >
+                        {deletePostError && <span className="community-delete-error" role="alert">{deletePostError}</span>}
+                      </OperationConfirmation>
+                    </div>}
                   </article>
                 ))}
               </div>

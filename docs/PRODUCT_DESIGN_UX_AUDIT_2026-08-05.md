@@ -1648,6 +1648,36 @@ Generations 的主对象应是“结果与状态”，而不是 Provider 元数�
 - 六个责任角色分别依据闭集控制提交 hash-only 证据和短期签字；使用独立公钥验证后构建唯一 bundle，并把 receipt 写入生产发布申请。
 - 在受保护环境执行候选部署、真实 OAuth/Mailer/UAT、canary 和回滚演练；所有结果仍匹配原 binding 后，才允许 Release Control 记录 `deployed`。
 
+## 56. 阶段 4 第三十八批实施记录（2026-08-08）
+
+本批次关闭用户侧最后一个浏览器原生确认框，并将社区内容生命周期反馈迁回操作工作面：
+
+- 社区帖子删除不再调用 `window.confirm`，改为当前帖子行内的 `alertdialog`；确认区显示目标标题、从公开内容移除的影响，以及审核记录仍保留的边界。
+- 默认焦点落在安全的“返回”操作；按 `Escape` 取消后焦点恢复到原删除按钮，取消路径不会发送删除请求。
+- 删除失败时帖子状态不变、确认区不关闭，失败原因留在同一上下文并允许直接重试；成功后显示工作区内状态，不产生右上角 Toast。
+- 保存草稿、发布、修改和删除四个作者生命周期操作移除全局 Toast，统一使用社区作者工作区内反馈。
+- 共用 `OperationConfirmation` 增加初始焦点、Escape 取消和触发器焦点恢复能力，现有管理端和用户端确认面共享相同键盘合同。
+- 社区确认样式归属于 `community-workbench.css`，不依赖管理端 CSS；桌面保持单行影响说明与操作，移动端改为纵向说明和等宽按钮。
+
+本批次验证范围：
+
+- 社区生命周期机器合同扩展为 `28/28`，新增站内确认、无 `window.confirm` 和本地反馈断言；服务端聚焦测试 `58/58` 通过。
+- Chromium 生命周期回归 `2/2` 通过，真实覆盖取消零请求、焦点恢复、一次 `503` 失败保留、重试成功、零 Toast 和测试数据清理。
+- `390px` 移动端确认区的页面、容器和所有子元素横向溢出均为 `0`；按钮和最长标题完整显示。
+- ESLint、TypeScript/Vite 生产构建和严格差异检查通过。
+- 视觉证据位于 `test-results/community-delete-confirmation-desktop.png` 与 `test-results/community-delete-confirmation-mobile.png`。
+
+尚未关闭的上线阻断：
+
+- 本批只关闭社区用户体验与可访问性缺口，不替代真实 OAuth/Mailer、生产 Vault/CA/审计、法律与 Provider 治理、GHCR/OIDC 供应链证明和目标环境 UAT。
+- 全站自动对比度、屏幕阅读器朗读顺序、高对比度模式与语音控制仍需独立验收；当前键盘合同不能代表这些检查已经完成。
+- 生产 Go bundle 仍需要六个真实责任角色对同一候选和回滚制品完成独立签字。
+
+下一步：
+
+- 建立自动对比度、语义顺序和 Forced Colors 门禁，优先覆盖 Auth、Home、Community、Workspace、Assets、Generations 与关键管理操作。
+- 继续准备不可变 candidate/rollback 制品和目标环境证据；网络恢复后推送候选分支并运行远端供应链工作流。
+
 ## 附录：审计截图
 
 管理员端审计截图：

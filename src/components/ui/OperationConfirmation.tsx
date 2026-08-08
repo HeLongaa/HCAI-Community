@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react'
 
 export function OperationConfirmation({
   ariaLabel,
@@ -27,11 +27,28 @@ export function OperationConfirmation({
   confirmDisabled?: boolean
   children?: ReactNode
 }) {
+  const cancelButtonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    const returnFocusTo = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    cancelButtonRef.current?.focus()
+    return () => {
+      if (returnFocusTo?.isConnected) returnFocusTo.focus()
+    }
+  }, [])
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Escape' || busy) return
+    event.preventDefault()
+    event.stopPropagation()
+    onCancel()
+  }
+
   return (
-    <div className={`operation-confirmation admin-operation-confirmation tone-${tone}`} role="alertdialog" aria-label={ariaLabel}>
+    <div className={`operation-confirmation admin-operation-confirmation tone-${tone}`} role="alertdialog" aria-label={ariaLabel} onKeyDown={handleKeyDown}>
       <div><strong>{title}</strong><span>{description}</span>{children}</div>
       <div className="button-row">
-        <button className={`ghost-button${compact ? ' small' : ''}`} type="button" onClick={onCancel} disabled={busy}>{cancelLabel}</button>
+        <button ref={cancelButtonRef} className={`ghost-button${compact ? ' small' : ''}`} type="button" onClick={onCancel} disabled={busy}>{cancelLabel}</button>
         <button className={`${tone === 'danger' ? 'danger-button' : 'primary-button'}${compact ? ' small' : ''}`} type="button" onClick={onConfirm} disabled={busy || confirmDisabled}>{confirmLabel}</button>
       </div>
     </div>

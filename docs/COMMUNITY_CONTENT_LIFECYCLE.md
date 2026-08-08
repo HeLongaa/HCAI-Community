@@ -12,7 +12,9 @@ COMM-01 adds owner-scoped post creation, drafts, editing, publication, and soft 
 
 ## UI
 
-The Community page contains an owner workspace for creating a post, saving a draft, editing, publishing, and deleting. The public topic list continues to use only published API results. Mutation failures remain visible and do not fabricate local success.
+The Community page contains an owner workspace for creating a post, saving a draft, editing, publishing, and deleting. The public topic list continues to use only published API results. Owner lifecycle results stay in that workspace instead of creating a global toast.
+
+Soft deletion uses an in-row `alertdialog` that identifies the post and explains the public-content and moderation-record impact. The safe Back action receives initial focus, Escape cancels and restores focus to the initiating Delete button, and no delete request is sent before explicit confirmation. A failed request leaves the post and confirmation context intact for retry; it does not fabricate local success.
 
 ## Verification
 

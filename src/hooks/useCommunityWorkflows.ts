@@ -74,7 +74,6 @@ export function useCommunityWorkflows({ locale, publishTask, pushLedger, pushToa
         setPostList((current) => [post, ...current])
         setSelectedPost(post)
       }
-      pushToast(locale === 'zh' ? (status === 'draft' ? '草稿已保存。' : '帖子已发布。') : (status === 'draft' ? 'Draft saved.' : 'Post published.'))
       return post
     } finally {
       setPostMutationBusy(false)
@@ -88,7 +87,6 @@ export function useCommunityWorkflows({ locale, publishTask, pushLedger, pushToa
       setMyPosts((current) => replacePost(current, updated))
       setPostList((current) => replacePost(current, updated))
       if (selectedPost?.id === updated.id) setSelectedPost(updated)
-      pushToast(locale === 'zh' ? '帖子已更新。' : 'Post updated.')
       return updated
     } finally {
       setPostMutationBusy(false)
@@ -102,7 +100,6 @@ export function useCommunityWorkflows({ locale, publishTask, pushLedger, pushToa
       setMyPosts((current) => replacePost(current, published))
       setPostList((current) => [published, ...current.filter((item) => item.id !== published.id)])
       setSelectedPost(published)
-      pushToast(locale === 'zh' ? '草稿已发布。' : 'Draft published.')
       return published
     } finally {
       setPostMutationBusy(false)
@@ -116,7 +113,6 @@ export function useCommunityWorkflows({ locale, publishTask, pushLedger, pushToa
       setMyPosts((current) => replacePost(current, deleted))
       setPostList((current) => current.filter((item) => item.id !== deleted.id))
       setSelectedPost((current) => current?.id === deleted.id ? postList.find((item) => item.id !== deleted.id) ?? null : current)
-      pushToast(locale === 'zh' ? '帖子已删除。' : 'Post deleted.')
       return deleted
     } finally {
       setPostMutationBusy(false)

@@ -254,6 +254,83 @@
   padding: 10px 0;
 }
 
+.community-workbench .community-owned-row.confirming {
+  flex-wrap: wrap;
+}
+
+.community-workbench .community-delete-confirmation {
+  flex: 0 0 100%;
+  width: 100%;
+}
+
+.community-workbench .community-delete-confirmation .operation-confirmation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 34%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--danger) 6%, var(--surface));
+}
+
+.community-workbench .community-delete-confirmation .operation-confirmation > div:first-child {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.community-workbench .community-delete-confirmation .operation-confirmation strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.community-workbench .community-delete-confirmation .operation-confirmation span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.community-workbench .community-delete-confirmation .operation-confirmation .community-delete-error {
+  color: var(--danger);
+}
+
+.community-workbench .community-delete-confirmation .button-row {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+
+.community-workbench .community-delete-confirmation .danger-button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  background: var(--danger);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.community-workbench .community-delete-confirmation .danger-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--danger) 82%, #000);
+  background: color-mix(in srgb, var(--danger) 82%, #000);
+}
+
+.community-workbench .community-delete-confirmation .danger-button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
 .community-owned-empty {
   min-height: 86px;
   display: grid;
@@ -800,6 +877,19 @@
   .community-workbench .community-owned-row {
     align-items: flex-start;
     gap: 12px;
+  }
+
+  .community-workbench .community-delete-confirmation .operation-confirmation {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .community-workbench .community-delete-confirmation .button-row {
+    width: 100%;
+  }
+
+  .community-workbench .community-delete-confirmation .button-row > button {
+    flex: 1 1 120px;
   }
 
   .community-workbench .community-owned-actions {
