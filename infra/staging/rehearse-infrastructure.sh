@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+umask 027
 
 root=${NEWCHAT_STAGING_ROOT:-/opt/newchat-staging}
 repository=${NEWCHAT_REHEARSAL_REPOSITORY:-https://github.com/HeLongaa/HCAI-Community.git}
@@ -71,7 +72,8 @@ if [ "$mode" = execute ]; then
 fi
 
 log="$rehearsal_root/$mode.log"
-if ! node "$source_dir/scripts/rehearse-release-infrastructure.mjs" --profile=env --mode="$mode" >"$log" 2>&1; then
+cd "$source_dir"
+if ! node scripts/rehearse-release-infrastructure.mjs --profile=env --mode="$mode" >"$log" 2>&1; then
   echo "Infrastructure rehearsal failed; inspect the protected server log" >&2
   exit 1
 fi
