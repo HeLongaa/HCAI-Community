@@ -87,3 +87,26 @@ Before production traffic:
 7. Restore a Vault snapshot into an isolated cluster and verify the exact KV metadata state.
 
 Production remains No-Go until the target environment supplies these receipts. The Staging certificate auto-auth rehearsal proves the application integration but does not prove production HA, KMS/HSM, backup, or platform identity operations.
+
+## Staging Disaster-Recovery Rehearsal
+
+After provisioning and deploying an allowlisted Staging artifact, run the independent snapshot exercise:
+
+```bash
+sudo /opt/newchat-staging/source/infra/staging/rehearse-secret-lifecycle-dr.sh <artifact-sha256>
+```
+
+The exercise performs an isolated Vault Raft restore without changing the live application Vault:
+
+1. Create two random KV versions under a run-scoped Staging path and retain only their SHA-256 values in memory.
+2. Save and inspect a real integrated-storage snapshot.
+3. Add a third version and soft-delete version 2 so the live source diverges from the recovery point.
+4. Initialize a temporary Vault container with `--network none`, no published ports, a read-only root filesystem, and bounded resources.
+5. Force-restore the snapshot, unseal with the original source recovery material, and authenticate with the restored source identity.
+6. Require the restored metadata hash and both restored value hashes to match the recovery point, while proving the third version and later deletion are absent.
+7. Verify the Vault audit device recorded the run and snapshot request without any plaintext generated values.
+8. Permanently remove the run-scoped source path, snapshot, temporary recovery material, restore data, and container before publishing hash-only evidence.
+
+Evidence is written to `/opt/newchat-staging/evidence/secret-lifecycle-dr-<run-id>.json` and validated against `secret-lifecycle-dr-evidence-v1`. The receipt deliberately records all production-only controls as `false`.
+
+This Staging exercise proves the restore procedure, point-in-time state, isolation, audit redaction, cleanup, and a measured local RTO. It does not prove production HA, KMS/HSM auto-unseal, external encrypted backup retention, off-host audit durability, multi-node quorum, or production platform access controls. Those receipts remain mandatory before production traffic.

@@ -37,6 +37,7 @@ Confirm:
 - `ACCESS_TOKEN_KEY_ID` matches the active signing secret rotation plan.
 - `ACCESS_TOKEN_PREVIOUS_SECRETS` and `ACCESS_TOKEN_PREVIOUS_KEY_IDS` are set when rotating keys.
 - `docs/PRODUCTION_SECRET_LIFECYCLE.md` is complete for the target: external HA/managed Vault, KMS/HSM auto-unseal, audited restore evidence, certificate workload identity, renewable Agent token, and least-privilege policy receipts are attached. A confirmation variable without those receipts is not sufficient.
+- `npm run test:secret-lifecycle-dr` passes and the latest Staging isolated-Raft restore receipt is attached as engineering evidence. Its production-control flags must remain `false`; it cannot replace the target HA/KMS/off-host backup and audit receipts required above.
 - `AUTH_TRUSTED_ORIGINS` includes all browser frontend origins that will use cookie refresh.
 - `STORAGE_DRIVER=s3` and storage bucket/region/endpoint match the deployment.
 - Upload/download/scanner TTLs are bounded, and private CDN URL/secret/key ID are configured together when CDN delivery is enabled.

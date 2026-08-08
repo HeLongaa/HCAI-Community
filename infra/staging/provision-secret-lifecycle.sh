@@ -130,6 +130,9 @@ vault_exec() {
   docker exec -e VAULT_ADDR=https://127.0.0.1:8200 -e VAULT_CACERT=/vault/tls/ca.crt \
     -e VAULT_TOKEN="$root_token" "$vault_container" vault "$@"
 }
+if ! vault_exec audit list -format=json | jq -e 'has("staging-file/")' >/dev/null; then
+  vault_exec audit enable -path=staging-file file file_path=/vault/file/audit.log mode=0600 >/dev/null
+fi
 if ! vault_exec secrets list -format=json | jq -e 'has("provider-secrets/")' >/dev/null; then
   vault_exec secrets enable -path=provider-secrets -version=2 kv >/dev/null
 fi
@@ -205,4 +208,5 @@ printf 'vault_initialized=true\n'
 printf 'vault_unsealed=true\n'
 printf 'gateway_policy=secret-lifecycle-gateway\n'
 printf 'vault_agent_auto_auth=cert\n'
+printf 'staging_audit_device=enabled\n'
 printf 'static_vault_token_removed=true\n'
