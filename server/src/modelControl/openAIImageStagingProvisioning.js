@@ -16,15 +16,15 @@ import { parseProviderSecretRefCreate } from './modelGovernanceRuntime.js'
 import { parseModelRouteListQuery, parseModelRoutePolicyCreate, parseModelRouteTargets } from './modelRoutingRuntime.js'
 
 const outputPricing = [
-  ['1024x1024', 'low', 6_000],
-  ['1024x1024', 'medium', 53_000],
-  ['1024x1024', 'high', 211_000],
-  ['1024x1536', 'low', 5_000],
-  ['1024x1536', 'medium', 41_000],
-  ['1024x1536', 'high', 165_000],
-  ['1536x1024', 'low', 5_000],
-  ['1536x1024', 'medium', 41_000],
-  ['1536x1024', 'high', 165_000],
+  ['1024x1024', 'low', 3_400],
+  ['1024x1024', 'medium', 3_400],
+  ['1024x1024', 'high', 3_400],
+  ['1024x1536', 'low', 3_400],
+  ['1024x1536', 'medium', 3_400],
+  ['1024x1536', 'high', 3_400],
+  ['1536x1024', 'low', 3_400],
+  ['1536x1024', 'medium', 3_400],
+  ['1536x1024', 'high', 3_400],
 ].map(([size, quality, unitPriceMicros]) => ({
   versionKey: `usd-image-output-${size}-${quality}-v1`,
   unit: `image_output_${size}_${quality}`,
@@ -32,22 +32,23 @@ const outputPricing = [
 }))
 
 export const openAIImageStagingSpec = Object.freeze({
-  providerKey: 'hcai-router-gpt-image-2',
-  modelKey: 'gpt-image-2',
-  versionKey: 'gpt-image-2',
-  deploymentKey: 'gpt-image-2-staging-us',
-  routeKey: 'staging-image-gpt-image-2',
-  providerModelId: 'gpt-image-2',
+  providerKey: 'hcai-router-minimax-image-01-live',
+  providerName: 'HCAI Router MiniMax Image 01 Live',
+  modelKey: 'image-01-live',
+  modelName: 'MiniMax Image 01 Live',
+  versionKey: 'image-01-live',
+  deploymentKey: 'image-01-live-staging-us',
+  routeKey: 'staging-image-minimax-image-01-live',
+  routeName: 'MiniMax Image 01 Live Staging',
+  legacyRouteKeys: Object.freeze(['staging-image-gpt-image-2']),
+  providerModelId: 'image-01-live',
   endpointUrl: 'https://router.hctopup.com/v1',
   environment: 'staging',
   region: 'us',
-  secretPurpose: 'gpt-image-2-inference',
+  secretPurpose: 'image-01-live-inference',
   secretRef: 'secret://env/CREATIVE_OPENAI_IMAGE_API_TOKEN',
   pricing: Object.freeze([
     ...outputPricing,
-    { versionKey: 'usd-input-text-tokens-v1', unit: 'input_text_tokens', unitPriceMicros: 5_000_000 },
-    { versionKey: 'usd-input-image-tokens-v1', unit: 'input_image_tokens', unitPriceMicros: 8_000_000 },
-    { versionKey: 'usd-output-image-tokens-v1', unit: 'output_image_tokens', unitPriceMicros: 30_000_000 },
   ].map(Object.freeze)),
 })
 
@@ -76,7 +77,7 @@ const ensureProvider = async ({ repository, actor, spec }) => {
   if (existing) return activate(repository, 'provider', existing, actor)
   const created = await repository.createProvider(parseProviderCreate({
     key: spec.providerKey,
-    name: 'HCAI Router GPT Image 2',
+    name: spec.providerName,
     websiteUrl: spec.endpointUrl,
     regions: [spec.region],
     dataProcessingRegions: [spec.region],
@@ -93,7 +94,7 @@ const ensureModel = async ({ repository, actor, spec, provider }) => {
   const created = await repository.createModel(parseModelCreate({
     providerId: provider.id,
     key: spec.modelKey,
-    name: 'GPT Image 2',
+    name: spec.modelName,
     family: 'image',
   }, actor))
   return activate(repository, 'model', created, actor)
@@ -142,6 +143,11 @@ const ensureDeployment = async ({ repository, actor, spec, version }) => {
     assertEqual('deployment', 'endpointUrl', existing.endpointUrl, spec.endpointUrl)
     assertEqual('deployment', 'secretPurpose', existing.secretPurpose, spec.secretPurpose)
     assertEqual('deployment', 'runtimeEnabled', existing.runtimeEnabled, true)
+    assertEqual('deployment', 'providerAccountRef', existing.runtimeConfig?.providerAccountRef, 'museflow-image-staging')
+    assertEqual('deployment', 'displayName', existing.runtimeConfig?.displayName, spec.providerName)
+    assertEqual('deployment', 'costProviderId', existing.runtimeConfig?.costProviderId, spec.providerKey)
+    assertEqual('deployment', 'dailyBudgetUsd', existing.runtimeConfig?.dailyBudgetUsd, 10)
+    assertEqual('deployment', 'budgetThresholdPercent', existing.runtimeConfig?.budgetThresholdPercent, 80)
     return activate(repository, 'deployment', existing, actor)
   }
   const created = await repository.createDeployment(parseDeploymentCreate({
@@ -154,7 +160,13 @@ const ensureDeployment = async ({ repository, actor, spec, version }) => {
     providerModelId: spec.providerModelId,
     endpointUrl: spec.endpointUrl,
     secretPurpose: spec.secretPurpose,
-    runtimeConfig: { providerAccountRef: 'museflow-image-staging', dailyBudgetUsd: 10, budgetThresholdPercent: 80 },
+    runtimeConfig: {
+      providerAccountRef: 'museflow-image-staging',
+      displayName: spec.providerName,
+      costProviderId: spec.providerKey,
+      dailyBudgetUsd: 10,
+      budgetThresholdPercent: 80,
+    },
     runtimeEnabled: true,
   }, actor))
   return activate(repository, 'deployment', created, actor)
@@ -193,7 +205,7 @@ const ensureRoute = async ({ repository, actor, spec, deployment }) => {
   if (!policy) {
     policy = await repository.create(parseModelRoutePolicyCreate({
       key: spec.routeKey,
-      name: 'GPT Image 2 Staging',
+      name: spec.routeName,
       modality: 'image',
       operation: 'generate',
       environment: spec.environment,
@@ -219,6 +231,26 @@ const ensureRoute = async ({ repository, actor, spec, deployment }) => {
   if (policy.status === 'active') return policy
   if (!['draft', 'disabled'].includes(policy.status)) conflict('route', 'status')
   return repository.transition(policy.id, { expectedVersion: policy.version, status: 'active', reasonCode: 'openai_image_staging_provisioned', actorRef: actor?.handle ?? actor?.id ?? 'unknown' })
+}
+
+const disableLegacyRoutes = async ({ repository, actor, spec }) => {
+  const disabled = []
+  for (const routeKey of spec.legacyRouteKeys ?? []) {
+    const options = parseModelRouteListQuery({ search: routeKey, environment: spec.environment, modality: 'image', limit: 100, sort: 'priority', order: 'asc' })
+    const policy = exactItem((await repository.list(options)).items, 'key', routeKey)
+    if (!policy) continue
+    if (policy.status !== 'active') {
+      disabled.push(policy)
+      continue
+    }
+    disabled.push(await repository.transition(policy.id, {
+      expectedVersion: policy.version,
+      status: 'disabled',
+      reasonCode: 'image_staging_route_replaced',
+      actorRef: actor?.handle ?? actor?.id ?? 'unknown',
+    }))
+  }
+  return disabled
 }
 
 const ensureSecretRef = async ({ repository, actor, spec, provider, credential, secretExternalVersion, secretExpiresAt }) => {
@@ -267,7 +299,7 @@ const ensureProviderControls = async ({ repository, actor, provider, credential,
   ) {
     const versionHash = createHash('sha256').update(String(secretExternalVersion)).digest('hex').slice(0, 16)
     const result = await repository.putCapEvidence(createProviderCapEvidence({
-      sourceKey: `openai-image-staging-cap-${versionHash}-${now.getTime()}`,
+      sourceKey: `image-staging-cap-${versionHash}-${now.getTime()}`,
       scopeKey: providerScope.scopeKey,
       providerId: provider.key,
       providerAccountRef,
@@ -293,6 +325,7 @@ export const provisionOpenAIImageStaging = async ({ repositories, actor, credent
   const deployment = await ensureDeployment({ repository: repositories.modelControl, actor, spec, version })
   const pricing = await ensurePricings({ repository: repositories.modelControl, actor, spec, version, deployment })
   const route = await ensureRoute({ repository: repositories.modelRouting, actor, spec, deployment })
+  const legacyRoutes = await disableLegacyRoutes({ repository: repositories.modelRouting, actor, spec })
   const secretRef = await ensureSecretRef({ repository: repositories.modelGovernance, actor, spec, provider, credential, secretExternalVersion, secretExpiresAt })
   const providerControls = await ensureProviderControls({
     repository: repositories.creativeProviderControls,
@@ -303,5 +336,5 @@ export const provisionOpenAIImageStaging = async ({ repositories, actor, credent
     secretExpiresAt,
     now,
   })
-  return { provider, model, version, deployment, pricing, route, secretRef, providerControls }
+  return { provider, model, version, deployment, pricing, route, legacyRoutes, secretRef, providerControls }
 }

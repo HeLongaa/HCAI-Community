@@ -4,6 +4,7 @@ import test from 'node:test'
 import { createSeedModelControlRepository } from './seedModelControlRepository.js'
 import { createSeedModelGovernanceRepository } from './seedModelGovernanceRepository.js'
 import { createSeedModelRoutingRepository } from './seedModelRoutingRepository.js'
+import { parseModelRoutePolicyCreate, parseModelRouteTargets } from './modelRoutingRuntime.js'
 import { openAIImageStagingSpec, provisionOpenAIImageStaging } from './openAIImageStagingProvisioning.js'
 
 const repositories = () => {
@@ -38,24 +39,38 @@ const repositories = () => {
   return { modelControl, modelRouting, modelGovernance, creativeProviderControls }
 }
 
-test('GPT Image 2 staging provisioning creates an active, priced, idempotent runtime', async () => {
+test('MiniMax Image 01 Live staging provisioning creates an active, priced, idempotent runtime', async () => {
   const repo = repositories()
   const actor = { id: 'staging-admin', handle: 'helong', role: 'admin' }
   const options = { repositories: repo, actor, credential: 'temporary-image-key', secretExpiresAt: '2026-08-09T13:00:00.000Z', now: new Date('2026-08-08T13:00:00.000Z') }
   const first = await provisionOpenAIImageStaging(options)
+  let legacyRoute = await repo.modelRouting.create(parseModelRoutePolicyCreate({
+    key: 'staging-image-gpt-image-2', name: 'Legacy GPT Image Staging', modality: 'image', operation: 'generate', environment: 'staging', region: 'us',
+    audienceRoles: [], rolloutPercentage: 100, rolloutSeed: 'v1', fallbackMode: 'fail_closed', priority: 0,
+  }, actor))
+  legacyRoute = await repo.modelRouting.replaceTargets(legacyRoute.id, parseModelRouteTargets(legacyRoute.id, {
+    expectedVersion: legacyRoute.version, reasonCode: 'legacy_image_route_fixture',
+    targets: [{ modelDeploymentId: first.deployment.id, role: 'primary', priority: 0, enabled: true }],
+  }, actor))
+  legacyRoute = await repo.modelRouting.transition(legacyRoute.id, { expectedVersion: legacyRoute.version, status: 'active', reasonCode: 'legacy_image_route_fixture', actorRef: actor.handle })
   const second = await provisionOpenAIImageStaging(options)
 
   for (const resource of [first.provider, first.model, first.version, first.deployment, ...first.pricing, first.route]) assert.equal(resource.status, 'active')
   assert.equal(first.deployment.adapterType, 'openai_image')
   assert.equal(first.deployment.endpointUrl, 'https://router.hctopup.com/v1')
+  assert.equal(first.deployment.providerModelId, 'image-01-live')
+  assert.equal(first.deployment.runtimeConfig.displayName, 'HCAI Router MiniMax Image 01 Live')
+  assert.equal(first.deployment.runtimeConfig.costProviderId, 'hcai-router-minimax-image-01-live')
   assert.equal(first.deployment.runtimeConfig.dailyBudgetUsd, 10)
-  assert.equal(first.pricing.length, 12)
-  assert.equal(first.pricing.find((item) => item.unit === 'image_output_1024x1024_medium').unitPriceMicros, 53_000)
-  assert.equal(first.pricing.find((item) => item.unit === 'output_image_tokens').unitPriceMicros, 30_000_000)
+  assert.equal(first.pricing.length, 9)
+  assert.equal(first.pricing.find((item) => item.unit === 'image_output_1024x1024_medium').unitPriceMicros, 3_400)
+  assert.equal(first.pricing.every((item) => item.unitPriceMicros === 3_400), true)
   assert.equal(first.route.priority, 0)
   assert.equal(first.route.targets[0].modelDeploymentId, first.deployment.id)
   assert.equal(second.provider.id, first.provider.id)
   assert.equal(second.route.id, first.route.id)
+  assert.equal(second.legacyRoutes[0].id, legacyRoute.id)
+  assert.equal(second.legacyRoutes[0].status, 'disabled')
   assert.deepEqual(second.pricing.map((item) => item.id), first.pricing.map((item) => item.id))
   assert.equal(second.secretRef.id, first.secretRef.id)
   assert.equal(first.providerControls.controls.length, 2)
@@ -68,10 +83,10 @@ test('GPT Image 2 staging provisioning creates an active, priced, idempotent run
   const catalog = await repo.modelControl.exportCatalog()
   assert.equal(catalog.providers.filter((item) => item.key === openAIImageStagingSpec.providerKey).length, 1)
   assert.equal(catalog.deployments.filter((item) => item.key === openAIImageStagingSpec.deploymentKey).length, 1)
-  assert.equal(catalog.pricingVersions.filter((item) => item.modelVersionId === first.version.id).length, 12)
+  assert.equal(catalog.pricingVersions.filter((item) => item.modelVersionId === first.version.id).length, 9)
 })
 
-test('GPT Image 2 staging provisioning rotates changed credentials without persisting plaintext', async () => {
+test('MiniMax Image 01 Live staging provisioning rotates changed credentials without persisting plaintext', async () => {
   const repo = repositories()
   const actor = { handle: 'helong' }
   const first = await provisionOpenAIImageStaging({ repositories: repo, actor, credential: 'temporary-image-key-v1', secretExternalVersion: 'temporary-v1', secretExpiresAt: '2026-08-09T13:00:00.000Z', now: new Date('2026-08-08T13:00:00.000Z') })

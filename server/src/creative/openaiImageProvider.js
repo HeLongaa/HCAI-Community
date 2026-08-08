@@ -9,6 +9,7 @@ import { parseProviderRetryAfter } from './providerErrorPolicy.js'
 
 const providerId = 'openai-gpt-image-2'
 const providerCostId = 'openai'
+const providerDisplayName = 'OpenAI GPT Image 2'
 const defaultModelId = 'gpt-image-2'
 const defaultBaseUrl = 'https://api.openai.com/v1'
 const pathname = '/images/generations'
@@ -133,6 +134,27 @@ const providerResponseError = (reasonCode) =>
 const assertExactKeys = (value, allowedKeys, errorFactory, reasonCode) => {
   const unknownKey = Object.keys(value).find((key) => !allowedKeys.includes(key))
   if (unknownKey) throw errorFactory(reasonCode)
+}
+
+const assertDiscardedOutputUrlSafe = (value) => {
+  if (value == null) return
+  if (typeof value !== 'string' || value.length > 2048) throw providerResponseError('output_url_invalid')
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'https:' || url.username || url.password) throw new Error('unsafe URL')
+  } catch {
+    throw providerResponseError('output_url_invalid')
+  }
+}
+
+const configuredProviderCostId = (source = {}) => {
+  const value = String(source.CREATIVE_OPENAI_IMAGE_COST_PROVIDER_ID ?? providerCostId).trim().toLowerCase()
+  return /^[a-z0-9][a-z0-9._/-]{0,127}$/.test(value) ? value : providerCostId
+}
+
+export const configuredOpenAIImageDisplayName = (source = {}) => {
+  const value = String(source.CREATIVE_OPENAI_IMAGE_DISPLAY_NAME ?? providerDisplayName).trim()
+  return value && value.length <= 120 && !/[\u0000-\u001f\u007f]/.test(value) ? value : providerDisplayName
 }
 
 export const compileOpenAIImagePrompt = (prompt, stylePreset = 'none') => {
@@ -380,7 +402,8 @@ export const projectOpenAIImageGenerationResponse = async (payload) => {
   if (!Array.isArray(payload.data) || payload.data.length !== 1 || !isRecord(payload.data[0])) {
     throw providerResponseError('output_count_invalid')
   }
-  assertExactKeys(payload.data[0], ['b64_json', 'revised_prompt'], providerResponseError, 'output_fields_unsupported')
+  assertExactKeys(payload.data[0], ['b64_json', 'revised_prompt', 'url'], providerResponseError, 'output_fields_unsupported')
+  assertDiscardedOutputUrlSafe(payload.data[0].url)
   if (payload.data[0].revised_prompt != null && (
     typeof payload.data[0].revised_prompt !== 'string' ||
     payload.data[0].revised_prompt.length > 4000
@@ -631,14 +654,15 @@ export const buildOpenAIImageProviderCostMetadata = ({
   const actualAmount = result?.output ? calculateActualAmount(request, result.usage, pricingRequired ? databasePricing : null) : null
   const nowIso = now.toISOString()
   const configuredModelId = resolveOpenAIImageModelId(source)
+  const configuredCostProviderId = configuredProviderCostId(source)
   return {
     schemaVersion: 'provider-cost-v1',
-    providerId: providerCostId,
+    providerId: configuredCostProviderId,
     providerAccountRef: String(source.CREATIVE_OPENAI_IMAGE_PROVIDER_ACCOUNT_REF ?? 'staging').trim() || 'staging',
     model: {
       providerModelId: configuredModelId,
       providerModelVersion: null,
-      displayName: 'OpenAI GPT Image 2',
+      displayName: configuredOpenAIImageDisplayName(source),
       family: 'image',
       pricingSource: outputPricing ? 'model_control_pricing_version' : 'v1_public_list_price',
       pricingSourceRef: outputPricing?.id ?? 'openai:gpt-image-2:public-price-table',
@@ -677,7 +701,7 @@ export const buildOpenAIImageProviderCostMetadata = ({
       settledAt: actualAmount == null ? null : nowIso,
     },
     budget: {
-      budgetScope: 'staging:openai:image',
+      budgetScope: `staging:${configuredCostProviderId}:image`,
       dailyCapCurrency: 'USD',
       dailyCapAmount,
       spentAmount,

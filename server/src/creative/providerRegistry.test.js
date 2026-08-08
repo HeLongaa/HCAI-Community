@@ -15,6 +15,17 @@ test('workspace default keeps explicit mock behavior in test runtimes', () => {
   assert.equal(getCreativeProviderForWorkspace(null, 'image', registry).id, 'mock')
 })
 
+test('image provider uses the deployment display name without changing its adapter identity', () => {
+  const registry = createCreativeProviderRegistry({
+    NODE_ENV: 'test',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_OPENAI_IMAGE_DISPLAY_NAME: 'HCAI Router MiniMax Image 01 Live',
+  })
+  const provider = registry.providers.find((item) => item.id === 'openai-gpt-image-2')
+  assert.equal(provider.label, 'HCAI Router MiniMax Image 01 Live')
+  assert.equal(provider.id, 'openai-gpt-image-2')
+})
+
 test('workspace default prefers an operational real provider when mock is unavailable', () => {
   const registry = {
     config: { defaultProviderId: 'mock' },

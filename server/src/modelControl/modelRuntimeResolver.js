@@ -224,6 +224,8 @@ const sourceFor = ({ deployment, credential, baseSource, approvalEvidence, prici
     CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED: enabled, CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED: enabled,
     CREATIVE_OPENAI_IMAGE_CONFIRMATION: deployment.runtimeEnabled ? 'staging-only' : '',
     CREATIVE_OPENAI_IMAGE_PROVIDER_ACCOUNT_REF: deployment.runtimeConfig?.providerAccountRef ?? 'staging',
+    CREATIVE_OPENAI_IMAGE_DISPLAY_NAME: deployment.runtimeConfig?.displayName ?? 'OpenAI GPT Image 2',
+    CREATIVE_OPENAI_IMAGE_COST_PROVIDER_ID: deployment.runtimeConfig?.costProviderId ?? 'openai',
     CREATIVE_OPENAI_IMAGE_DAILY_BUDGET_USD: deployment.runtimeConfig?.dailyBudgetUsd ?? '',
     CREATIVE_OPENAI_IMAGE_BUDGET_THRESHOLD_PERCENT: deployment.runtimeConfig?.budgetThresholdPercent ?? '',
     ...openAIImagePricingSource(pricings),

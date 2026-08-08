@@ -2,6 +2,7 @@ import { HttpError } from '../common/errors/httpError.js'
 import { buildCreativeProviderConfig } from '../config/env.js'
 import { chatCapabilityForProvider } from './chatCapabilityContract.js'
 import { imageCapabilityForProvider } from './imageCapabilityContract.js'
+import { configuredOpenAIImageDisplayName } from './openaiImageProvider.js'
 import { musicCapabilityForProvider } from './musicCapabilityContract.js'
 import { videoCapabilityForProvider } from './videoCapabilityContract.js'
 
@@ -74,7 +75,7 @@ const buildOpenAIImageProvider = (source) => {
   const runtimeEnabled = stagingRuntime && stagingConfirmed && credentialConfigured && clientRequested && networkRequested
   return {
     id: 'openai-gpt-image-2',
-    label: 'OpenAI GPT Image 2',
+    label: configuredOpenAIImageDisplayName(source),
     mode: 'openai_image',
     enabled: runtimeEnabled,
     configured: runtimeEnabled,

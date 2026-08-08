@@ -112,10 +112,15 @@ test('OpenAI Image response strictly validates one canonical PNG and safe usage'
     input_tokens_details: { image_tokens: 0, text_tokens: 20 },
     output_tokens_details: { image_tokens: 100, text_tokens: 0 },
   })
+  const compatible = await projectOpenAIImageGenerationResponse({
+    data: [{ b64_json: pngBase64, url: 'https://private.example/output.png?signature=discarded' }],
+  })
+  assert.equal(compatible.output.contentType, 'image/png')
+  assert.equal(Object.hasOwn(compatible.output, 'url'), false)
+  assert.equal(JSON.stringify(compatible).includes('private.example'), false)
   await assert.rejects(
-    projectOpenAIImageGenerationResponse({ data: [{ b64_json: pngBase64, url: 'https://private.example/output.png' }] }),
-    (error) => error.code === 'CREATIVE_PROVIDER_HTTP_RESPONSE_INVALID' &&
-      JSON.stringify(error).includes('private.example') === false,
+    projectOpenAIImageGenerationResponse({ data: [{ b64_json: pngBase64, url: 'http://private.example/output.png' }] }),
+    (error) => error.details.reasonCode === 'output_url_invalid' && JSON.stringify(error).includes('private.example') === false,
   )
   await assert.rejects(
     projectOpenAIImageGenerationResponse({ data: [{ b64_json: Buffer.from('not an image').toString('base64') }] }),
@@ -342,6 +347,21 @@ test('OpenAI Image cost uses versioned database output and token prices', () => 
   })
   assert.equal(missingComponents.actual.amount, null)
   assert.deepEqual(missingComponents.risk.reasonCodes, ['provider_usage_or_component_pricing_incomplete'])
+})
+
+test('OpenAI Image-compatible cost metadata supports deployment provider identity and display name', () => {
+  const metadata = buildOpenAIImageProviderCostMetadata({
+    request,
+    source: {
+      ...source,
+      CREATIVE_OPENAI_IMAGE_MODEL: 'image-01-live',
+      CREATIVE_OPENAI_IMAGE_DISPLAY_NAME: 'HCAI Router MiniMax Image 01 Live',
+      CREATIVE_OPENAI_IMAGE_COST_PROVIDER_ID: 'hcai-router-minimax-image-01-live',
+    },
+  })
+  assert.equal(metadata.providerId, 'hcai-router-minimax-image-01-live')
+  assert.equal(metadata.model.displayName, 'HCAI Router MiniMax Image 01 Live')
+  assert.equal(metadata.budget.budgetScope, 'staging:hcai-router-minimax-image-01-live:image')
 })
 
 test('OpenAI Image adapter returns contract-safe output with non-serializable in-memory bytes', async () => {
