@@ -8,7 +8,8 @@ import { resolveModelRuntimeDeployment, resolveModelRuntimeReadiness } from './m
 const actor = { id: 'user-1', handle: 'member-1', role: 'member' }
 const deployment = {
   id: 'deployment-image', key: 'image-staging', version: 3, environment: 'staging', region: 'us', status: 'active', runtimeEnabled: true, trafficEligible: false,
-  adapterType: 'openai_image', providerModelId: 'gpt-image-2', endpointUrl: 'https://router.example/v1', secretPurpose: 'inference', runtimeConfig: {},
+  adapterType: 'openai_image', providerModelId: 'gpt-image-2', endpointUrl: 'https://router.example/v1', secretPurpose: 'inference',
+  runtimeConfig: { providerAccountRef: 'museflow-image-staging', dailyBudgetUsd: 10, budgetThresholdPercent: 80 },
   modelVersion: { id: 'version-image', status: 'active', capabilities: [{ modality: 'image', operations: ['generate'] }], model: { id: 'model-image', key: 'gpt-image', status: 'active', provider: { id: 'provider-router', key: 'hc-router', status: 'active' } } },
 }
 const policy = {
@@ -55,6 +56,9 @@ test('active staging route resolves deployment Provider, model, endpoint, and Se
   assert.equal(resolved.pricingVersionId, 'price-image-v1')
   assert.equal(resolved.runtimeSource.CREATIVE_OPENAI_IMAGE_BASE_URL, 'https://router.example/v1')
   assert.equal(resolved.runtimeSource.CREATIVE_OPENAI_IMAGE_API_TOKEN, 'deployment-secret')
+  assert.equal(resolved.runtimeSource.CREATIVE_OPENAI_IMAGE_PROVIDER_ACCOUNT_REF, 'museflow-image-staging')
+  assert.equal(resolved.runtimeSource.CREATIVE_OPENAI_IMAGE_DAILY_BUDGET_USD, 10)
+  assert.equal(resolved.runtimeSource.CREATIVE_OPENAI_IMAGE_BUDGET_THRESHOLD_PERCENT, 80)
   assert.equal(JSON.stringify(resolved).includes('deployment-secret'), false)
   assert.equal(repositories.decisions[0].selectedDeploymentId, deployment.id)
   assert.equal(JSON.stringify(repositories.decisions).includes('deployment-secret'), false)
