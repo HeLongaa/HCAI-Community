@@ -1,13 +1,11 @@
 import { buildEnv } from '../server/src/config/env.js'
 import { listOAuthProviderMetadata } from '../server/src/auth/oauth.js'
-import { buildChatMessageEncryptionConfig } from '../server/src/chat/messageCrypto.js'
-import { buildOpenAIChatRuntimeConfig } from '../server/src/chat/openaiChatProvider.js'
 import { chatCapabilityContract } from '../server/src/creative/chatCapabilityContract.js'
 import { musicCapabilityContract } from '../server/src/creative/musicCapabilityContract.js'
 import { videoCapabilityContract } from '../server/src/creative/videoCapabilityContract.js'
 import { buildProviderBudgetExternalAlertDeliveryWiring } from '../server/src/creative/providerBudgetExternalAlerts.js'
-import { buildProviderDeletionGatewayConfig } from '../server/src/dataRights/providerDeletionGateway.js'
 import { inspectProductionWorkers } from './lib/production-smoke.mjs'
+import { inspectProtectedRuntimeConfiguration } from './lib/protected-runtime-smoke.mjs'
 
 const args = new Set(process.argv.slice(2))
 const profile = [...args].find((arg) => arg.startsWith('--profile='))?.split('=')[1] ?? 'fixture'
@@ -318,18 +316,8 @@ const providerAlertWiring = buildProviderBudgetExternalAlertDeliveryWiring({
   config: env,
   approval: { deliveryApproved: true, fixtureOnly: false },
 })
-let chatEncryption
-let chatRuntime
-let providerDeletionGatewayConfigured = false
-try {
-  chatEncryption = buildChatMessageEncryptionConfig(source)
-  chatRuntime = buildOpenAIChatRuntimeConfig(source)
-  buildProviderDeletionGatewayConfig(source)
-  providerDeletionGatewayConfigured = true
-} catch (error) {
-  console.error(`Production smoke failed during protected runtime configuration parsing: ${error.message}`)
-  process.exit(1)
-}
+const protectedRuntime = inspectProtectedRuntimeConfiguration(source)
+const { chatRuntime, providerDeletionGatewayConfigured } = protectedRuntime
 const checks = []
 
 check(checks, 'production mode', env.nodeEnv === 'production', `NODE_ENV=${env.nodeEnv}`)
@@ -348,8 +336,7 @@ check(checks, 'OpenAI Image HTTP client disabled in production smoke', !env.crea
 check(checks, 'OpenAI Image network calls disabled in production smoke', !env.creativeOpenAIImageNetworkCallsEnabled, 'CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED must not be true in production smoke')
 check(checks, 'creative Provider callback disabled in production smoke', !env.creativeProviderCallbackEnabled, 'CREATIVE_PROVIDER_CALLBACK_ENABLED must not be true in production smoke')
 check(checks, 'creative Provider polling disabled in production smoke', !env.creativeProviderPollingEnabled && !env.creativeProviderPollingWorkerEnabled, 'Provider polling switches must not be true in production smoke')
-check(checks, 'Chat message encryption configured', chatEncryption.configured && env.hasChatMessageEncryptionKey, 'A valid 32-byte Chat encryption key is required')
-check(checks, 'external Provider deletion gateway configured', providerDeletionGatewayConfigured, 'DATA_RIGHTS_PROVIDER_DELETION_GATEWAY_* must define an explicitly confirmed fixed HTTPS gateway')
+for (const item of protectedRuntime.checks) check(checks, item.name, item.pass, item.detail)
 check(
   checks,
   'Chat context and runtime safety boundary implemented',
