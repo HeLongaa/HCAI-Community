@@ -3,6 +3,7 @@ name: newchat-staging
 x-staging-application-environment: &staging-application-environment
   DEPLOYMENT_ENV: staging
   RELEASE_ARTIFACT_SHA256: ${RELEASE_ARTIFACT_SHA256:?RELEASE_ARTIFACT_SHA256 is required}
+  MEDIA_SCAN_PROVIDER: ${MEDIA_SCAN_PROVIDER:-manual}
   AUTH_COOKIE_SECURE: "true"
   AUTH_COOKIE_SAMESITE: Lax
   AUTH_TRUSTED_ORIGINS: ${AUTH_TRUSTED_ORIGINS:?AUTH_TRUSTED_ORIGINS is required}
