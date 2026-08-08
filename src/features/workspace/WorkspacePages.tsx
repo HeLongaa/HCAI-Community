@@ -31,6 +31,7 @@ import { GenerationRetryConfirmation } from './GenerationRetryConfirmation'
 import { UseCreativeAsset } from '../assets/UseCreativeAsset'
 import { ActionFeedback, type ActionFeedbackMessage } from '../../components/ui/ActionFeedback'
 import { MediaLoadFallback } from '../../components/ui/MediaLoadFallback'
+import { mediaService } from '../../services/mediaService'
 import {
   isMockCreativeProvider,
   isOperationalCreativeProvider,
@@ -309,11 +310,6 @@ export function PlaygroundPage({
   )
 }
 
-const isBrowserRenderableImageUrl = (value: string | null | undefined) => {
-  if (!value) return false
-  return /^(https?:\/\/|\/\/|\/(?!\/)|blob:|data:image\/)/i.test(value)
-}
-
 function StudioPage({
   t,
   eyebrow,
@@ -380,6 +376,11 @@ function StudioPage({
   const [pendingRetryId, setPendingRetryId] = useState<string | null>(null)
   const [retryFeedback, setRetryFeedback] = useState<ActionFeedbackMessage | null>(null)
   const [failedPreviewUrl, setFailedPreviewUrl] = useState<string | null>(null)
+  const [privatePreview, setPrivatePreview] = useState<{
+    assetId: string | null
+    status: 'idle' | 'ready' | 'error'
+    url: string | null
+  }>({ assetId: null, status: 'idle', url: null })
   const [sampleMediaFailed, setSampleMediaFailed] = useState(false)
   useEffect(() => {
     try {
@@ -490,9 +491,16 @@ function StudioPage({
     && Boolean(generatedAssetId)
     && (scanStatus == null || scanStatus === 'pending')
   const outputRejected = scanStatus === 'rejected'
-  const previewUrl = scanStatus === 'clean' && isBrowserRenderableImageUrl(generatedOutput?.url)
-    ? generatedOutput?.url ?? null
+  const previewUrl = privatePreview.assetId === generatedAssetId && privatePreview.status === 'ready'
+    ? privatePreview.url
     : null
+  const previewLoading = scanStatus === 'clean'
+    && Boolean(generatedAssetId)
+    && privatePreview.assetId !== generatedAssetId
+  const previewLoadFailed = scanStatus === 'clean'
+    && Boolean(generatedAssetId)
+    && privatePreview.assetId === generatedAssetId
+    && privatePreview.status === 'error'
   const previewMediaFailed = Boolean(previewUrl && failedPreviewUrl === previewUrl)
   const providerCost = selectedGeneration?.accounting?.providerCost ?? null
   const providerCostAmount = providerCost?.actualAmount ?? providerCost?.estimateAmount ?? null
@@ -528,6 +536,32 @@ function StudioPage({
       minute: '2-digit',
     }).format(date)
   }
+
+  useEffect(() => {
+    if (!generatedAssetId || scanStatus !== 'clean') return
+
+    let active = true
+    let objectUrl: string | null = null
+    void mediaService.createDownload(generatedAssetId).then(async (contract) => {
+      if (contract.download.url.startsWith('mock://')) throw new Error('Preview bytes are unavailable')
+      if (Object.keys(contract.download.headers).length === 0) return contract.download.url
+      const response = await fetch(contract.download.url, { headers: contract.download.headers })
+      if (!response.ok) throw new Error(`Preview failed with status ${response.status}`)
+      objectUrl = URL.createObjectURL(await response.blob())
+      return objectUrl
+    }).then((url) => {
+      if (!active) return
+      setPrivatePreview({ assetId: generatedAssetId, status: 'ready', url })
+    }).catch(() => {
+      if (!active) return
+      setPrivatePreview({ assetId: generatedAssetId, status: 'error', url: null })
+    })
+
+    return () => {
+      active = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [generatedAssetId, scanStatus])
 
   return (
     <div className="stack workspace-image-studio" data-panel={activePanel}>
@@ -837,10 +871,16 @@ function StudioPage({
           {selectedGeneration && <span>{formatGenerationTime(selectedGeneration.createdAt)}</span>}
         </div>
         <div className="image-preview-stage">
-          {previewUrl && previewMediaFailed ? (
+          {previewLoading ? (
+            <div className="image-preview-empty image-preview-checking" data-testid="image-preview-loading">
+              <Sparkles size={32} />
+              <strong>{textFor(t, 'Preparing private preview', '正在准备私有预览')}</strong>
+              <span>{textFor(t, 'Loading the checked output from Assets.', '正在从资产库加载已通过检查的输出。')}</span>
+            </div>
+          ) : previewLoadFailed || (previewUrl && previewMediaFailed) ? (
             <MediaLoadFallback
               title={textFor(t, 'Image could not be loaded', '图片加载失败')}
-              detail={textFor(t, 'The output remains in Assets. Refresh the history to request a new private preview.', '产物仍保存在资产库中，可刷新历史记录重新获取私有预览。')}
+              detail={textFor(t, 'The output remains available to view and download in Assets.', '产物仍可在资产库中查看和下载。')}
               testId="image-preview-load-failed"
             />
           ) : previewUrl ? (

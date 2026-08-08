@@ -137,12 +137,22 @@ test('Image Studio consumes the capability contract and sends only allowed param
     data: { decision: 'clean', detectedContentType: 'image/png', note: 'Image lifecycle E2E fixture' },
   })
   expect(scanResponse.ok()).toBeTruthy()
+  const governedPreviewUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+  await page.route(`**/api/media/assets/${assetId}/download`, async (route) => {
+    await route.fulfill({
+      json: {
+        data: {
+          asset: { id: assetId, fileName: 'generated.png' },
+          download: { method: 'GET', url: governedPreviewUrl, headers: {}, expiresAt: '2026-07-12T11:00:00.000Z' },
+        },
+      },
+    })
+  })
   await page.getByRole('button', { name: 'History', exact: true }).click()
   await page.getByTitle('Refresh history').click()
   await page.locator('.image-history-row').filter({ hasText: 'Minimal album cover' }).first().click()
-  await expect(page.getByTestId('image-preview-unavailable')).toBeVisible()
-  await expect(page.getByText('Preview unavailable', { exact: true })).toBeVisible()
-  await expect(page.getByTestId('generated-image-preview')).toHaveCount(0)
+  await expect(page.getByTestId('generated-image-preview')).toBeVisible()
+  await expect(page.getByTestId('generated-image-preview')).toHaveAttribute('src', governedPreviewUrl)
   await expect(page.getByTitle('Download output')).toBeEnabled()
 
   const downloadResponse = page.waitForResponse((candidate) =>
