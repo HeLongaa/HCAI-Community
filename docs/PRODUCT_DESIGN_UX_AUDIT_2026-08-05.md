@@ -1678,6 +1678,61 @@ Generations 的主对象应是“结果与状态”，而不是 Provider 元数�
 - 建立自动对比度、语义顺序和 Forced Colors 门禁，优先覆盖 Auth、Home、Community、Workspace、Assets、Generations 与关键管理操作。
 - 继续准备不可变 candidate/rollback 制品和目标环境证据；网络恢复后推送候选分支并运行远端供应链工作流。
 
+## 57. 阶段 4 第三十九批实施记录（2026-08-08）
+
+本批次建立用户侧自动可访问性上线门禁，并修复明暗主题、语义结构和发布控制空状态中的真实缺陷：
+
+- 新增 `test:user-accessibility-quality`，覆盖 Home、Tasks、Community、Inspiration、AI Workspace、Generations 和 Assets
+  七个关键用户页面的明暗双主题。门禁检查唯一可见主 landmark、唯一页面 H1、图片替代文本、Chromium Accessibility
+  Tree 中的主区域与页面标题，以及可见直接文本的 WCAG 2.2 AA 对比度。
+- 新增 Forced Colors 与 reduced-motion 验收，覆盖七个用户页面和管理员 Release Control，检查横向溢出、无名称控件、
+  `forced-color-adjust: none` 滥用和可见键盘焦点。
+- 品牌珊瑚色拆分为填充色、强调文字色和填充上文字色三个语义角色。实心按钮使用深色 `on-accent`，白色主题的小号
+  强调文字使用更深的 `accent-ink`，暗色主题继续保留明亮品牌色，不再通过整体压暗强调色解决局部问题。
+- Home、Community、Workspace、Tasks、Inspiration、Assets 和 Generations 中的固定白字、固定浅灰及旧模式色已接回主题令牌；
+  社区分页、资产空状态和工作台生成按钮也使用统一对比度合同。
+- AppShell 已提供全局 `<main>`，Workspace、Assets、Generations 和 Inspiration 的内部 `<main>` 改为页面 section，消除
+  嵌套/重复主 landmark，同时保留原有 H1、路由结构和视觉布局。
+- 修复 Release Control 在“没有发布记录且没有部署证据”时因 `undefined === undefined` 误判匹配、继而读取
+  `null.bundle` 的崩溃；部署证据现在必须同时存在并明确绑定当前选中发布。
+
+本批发现并修复的 Bug：
+
+- 珊瑚色 `#ed5a42` 上的白色小文本只有 `3.42:1`，影响 Home CTA、社区分页、Workspace、Assets 和 Generations 等
+  多个实心控件；旧资产空状态 `#ff654f` 白字仅 `2.91:1`。
+- 白色主题中品牌色作为小号文字只有约 `3.19:1`；Home 固定灰文字最低约 `2.76:1`，Workspace 的未选中标签和工具
+  按钮最低约 `1.97:1`，Inspiration 筛选标签最低约 `3.24:1`。
+- Workspace 主题选择器用更高权重把 `--workspace-accent-text` 固定为白色，覆盖了模式令牌和后置产品令牌，导致单纯修改
+  通用按钮样式无效；现已从主题基座修正。
+- Workspace、Assets、Generations 和 Inspiration 在 AppShell `<main>` 内声明第二个 `<main>`，屏幕阅读器会得到两个主区域。
+- Release Control 空列表会触发空引用崩溃；该问题此前因测试账号切换后只进行 hash 导航、未重载页面而未被正确覆盖。
+
+本批次验证范围：
+
+- 七个关键用户页面、两个主题共 `14` 个页面状态的语义和 WCAG AA 文本对比度全部通过；Chromium AX Tree 能识别唯一
+  主区域和页面 H1。
+- Forced Colors 用户页与 Release Control 验收通过，发布控制空状态实际渲染且无横向溢出。
+- ESLint、TypeScript/Vite 生产构建、生产资源预算 `19/19`、前端模拟/API 合同 `28/28`、社区生命周期合同
+  `28/28` 与服务端回归 `58/58`、Release Control 合同 `35/35` 与服务端回归 `97/97` 全部通过；可访问性、键盘和
+  桌面/移动视觉浏览器批次 `6/6` 通过。
+- 本门禁不依赖外网或浏览器扩展。Axe 官方 Playwright 包因当前 npm 网络连接重置未能安装，因此本批不宣称 Axe 已通过；
+  网络恢复后应将 Axe 作为补充扫描，而不是替代现有确定性合同。
+- 本批只关闭自动语义、文本对比度和 Forced Colors 基线，不代表真实 NVDA/JAWS/VoiceOver、浏览器缩放 200%/400%、
+  语音控制或认知可用性人工验收已经完成。
+
+尚未关闭的上线阻断：
+
+- 真实六角色签字、Google/GitHub OAuth、Mailer 最终送达与 bounce/complaint、生产 Vault/KMS-HSM/CA/off-host audit、
+  法律与 Provider 治理、主分支 GHCR/OIDC Attestation、目标环境 UAT/canary/rollback/hypercare 仍未闭环。
+- 输出安全分类和媒体扫描由上游承担，本系统按既定决定不重复建设；该边界必须在 Provider/法律批准证据中明确记录。
+- 当前发布判断继续保持 **No-Go**。本地可访问性绿灯不能替代远端 CI、目标环境人工验收或责任人签字。
+
+下一步：
+
+- 提交本批，并在网络恢复时推送候选分支、更新 Draft PR 和执行远端完整 `check:pr`。
+- 在真实桌面与移动设备补做 200%/400% 缩放、VoiceOver/NVDA、语音控制和长中文/英文数据验收，并把结果绑定同一候选制品。
+- 继续并行收集最终生产 Go bundle 所需外部证据；所有外部阻断完成前保持生产流量关闭。
+
 ## 附录：审计截图
 
 管理员端审计截图：

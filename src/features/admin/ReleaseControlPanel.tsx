@@ -39,8 +39,11 @@ export function ReleaseControlPanel({ hasPermission, isZh }: {
     const value = selected?.evidence.find((item) => item.eventType === 'requested')?.evidence.productionEvidenceBinding
     return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, string> : null
   }, [selected])
-  const evidenceBundle = deploymentEvidence?.releaseId === selected?.id ? deploymentEvidence.bundle : null
-  const evidenceBundleName = deploymentEvidence?.releaseId === selected?.id ? deploymentEvidence.fileName : ''
+  const selectedDeploymentEvidence = deploymentEvidence && selected && deploymentEvidence.releaseId === selected.id
+    ? deploymentEvidence
+    : null
+  const evidenceBundle = selectedDeploymentEvidence?.bundle ?? null
+  const evidenceBundleName = selectedDeploymentEvidence?.fileName ?? ''
 
   const refresh = useCallback(async () => {
     if (!hasPermission('admin:releases:read')) return

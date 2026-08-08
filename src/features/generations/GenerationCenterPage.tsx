@@ -342,14 +342,14 @@ export function GenerationCenterPage({
 
   if (!signedIn) {
     return (
-      <main className="generation-center-page">
+      <section className="generation-center-page">
         <section className="generation-center-auth">
           <ListFilter size={28} />
           <h1>{textFor(t, 'Generations', '生成任务')}</h1>
           <p>{textFor(t, 'Sign in to view your generation history.', '登录后查看你的生成历史。')}</p>
           <button className="primary-button" type="button" onClick={requireAuth}>{textFor(t, 'Sign in', '登录')}</button>
         </section>
-      </main>
+      </section>
     )
   }
 
@@ -359,7 +359,7 @@ export function GenerationCenterPage({
   ]
 
   return (
-    <main className="generation-center-page" data-testid="generation-center">
+    <section className="generation-center-page" data-testid="generation-center">
       <header className="generation-center-header">
         <div>
           <span className="generation-center-eyebrow"><Sparkles size={14} /> {textFor(t, 'Generation archive', '生成档案')}</span>
@@ -454,6 +454,6 @@ export function GenerationCenterPage({
           </>}
         </article>}
       </section>
-    </main>
+    </section>
   )
 }

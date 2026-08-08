@@ -260,9 +260,9 @@ export function AssetLibraryPage({ t, signedIn, requireAuth, navigateToPage }: {
     return createPortal(detail, document.querySelector('.app-shell') ?? document.body)
   }
 
-  if (!signedIn) return <main className="asset-library-page"><section className="asset-library-auth"><Boxes size={28}/><h1>{textFor(t, 'Assets', '资产库')}</h1><p>{textFor(t, 'Sign in to manage your governed creative assets.', '登录后管理你的受治理创作资产。')}</p><button className="primary-button" onClick={requireAuth} type="button">{textFor(t, 'Sign in', '登录')}</button></section></main>
+  if (!signedIn) return <section className="asset-library-page"><div className="asset-library-auth"><Boxes size={28}/><h1>{textFor(t, 'Assets', '资产库')}</h1><p>{textFor(t, 'Sign in to manage your governed creative assets.', '登录后管理你的受治理创作资产。')}</p><button className="primary-button" onClick={requireAuth} type="button">{textFor(t, 'Sign in', '登录')}</button></div></section>
 
-  return <main className="asset-library-page" data-testid="asset-library">
+  return <section className="asset-library-page" data-testid="asset-library">
     <header className="asset-library-header">
       <div className="asset-library-heading">
         <span>{textFor(t, 'Creative library', '创作素材库')} · {items.length} {textFor(t, items.length === 1 ? 'item' : 'items', '项')}</span>
@@ -308,5 +308,5 @@ export function AssetLibraryPage({ t, signedIn, requireAuth, navigateToPage }: {
       <div className={`asset-grid ${viewMode}`} aria-busy={loading}>{loading && items.length === 0 ? <div className="asset-empty"><LoaderCircle className="spin"/><span>{textFor(t, 'Loading assets…', '正在加载资产…')}</span></div> : items.length === 0 ? <div className="asset-empty"><FolderSearch/><strong>{textFor(t, 'No assets found', '没有找到资产')}</strong><span>{textFor(t, 'Adjust filters or create something in a studio.', '调整筛选条件或前往工作台创作。')}</span><button className="primary-button" type="button" onClick={() => navigateToPage('playground', 'image')}><ExternalLink size={15}/>{textFor(t, 'Create your first asset', '创作第一份资产')}</button></div> : groups.map((group) => <section className="asset-group" key={group.label}><header><strong>{groupLabel(group.label)}</strong><span>{group.assets.length}</span></header><div>{group.assets.map(renderAssetCard)}</div></section>)}{nextCursor && <button className="asset-load-more" disabled={loading} onClick={() => void load(nextCursor)} type="button">{textFor(t, 'Load more', '加载更多')}</button>}</div>
       {renderAssetDetail()}
     </section>
-  </main>
+  </section>
 }

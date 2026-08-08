@@ -81,7 +81,7 @@
 
 .community-header-actions button.primary {
   background: var(--community-accent);
-  color: #fff;
+  color: var(--product-on-accent);
 }
 
 .community-header-actions button.primary:hover {
@@ -146,7 +146,7 @@
 .community-workbench .topic-empty button {
   border-color: transparent;
   background: var(--community-accent);
-  color: #fff;
+  color: var(--product-on-accent);
 }
 
 .community-workbench .community-editor-actions .primary-button:hover,
@@ -642,7 +642,7 @@
 
 .community-workbench .page-number.active {
   background: var(--community-accent);
-  color: #fff;
+  color: var(--product-on-accent);
 }
 
 .community-workbench .topic-detail {
@@ -688,7 +688,7 @@
 
 .community-workbench .compact-action.primary {
   background: var(--community-accent);
-  color: #fff;
+  color: var(--product-on-accent);
 }
 
 .community-workbench .compact-action:hover {

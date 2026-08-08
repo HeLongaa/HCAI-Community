@@ -719,7 +719,7 @@ function DetailView({ t, item, loading, error, busy, difficultyLabels, onBack, o
       </header>
       {error && <div className="inspiration-inline-error">{error}</div>}
       <div className="inspiration-detail-layout">
-        <main>
+        <section>
           <section className="inspiration-problem">
             <span>{textFor(t, 'WHAT IT SOLVES', '解决什么问题')}</span>
             <h2>{item.problem}</h2>
@@ -744,7 +744,7 @@ function DetailView({ t, item, loading, error, busy, difficultyLabels, onBack, o
               ))}
             </section>
           )}
-        </main>
+        </section>
         <aside className="inspiration-detail-meta">
           <h2>{textFor(t, 'About this resource', '内容信息')}</h2>
           <dl>

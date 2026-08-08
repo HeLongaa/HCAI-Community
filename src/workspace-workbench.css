@@ -113,8 +113,8 @@
   font-weight: 630;
   cursor: pointer;
 }
-.workspace-mode-surface .primary-button { border: 1px solid var(--workspace-accent); color: #fff; background: var(--workspace-accent); }
-.workspace-mode-surface .primary-button:hover:not(:disabled) { background: color-mix(in srgb, var(--workspace-accent) 88%, #000); }
+.workspace-mode-surface .primary-button { border: 1px solid var(--workspace-accent); color: var(--product-on-accent); background: var(--workspace-accent); }
+.workspace-mode-surface .primary-button:hover:not(:disabled) { background: var(--product-accent-strong); }
 .workspace-mode-surface .primary-button.danger { border-color: #c84747; background: #c84747; }
 .workspace-mode-surface .ghost-button, .workspace-mode-surface .icon-button, .media-file-picker, .video-upload-button { border: 1px solid var(--workspace-border); color: var(--workspace-text); background: transparent; }
 .workspace-mode-surface .ghost-button:hover:not(:disabled), .workspace-mode-surface .icon-button:hover:not(:disabled), .media-file-picker:hover, .video-upload-button:hover { background: var(--workspace-surface-muted); }
@@ -999,7 +999,7 @@
   --workspace-border: #2b2e2e;
   --workspace-text: #f4f4f1;
   --workspace-muted: #9da2a1;
-  --workspace-accent-text: #fff;
+  --workspace-accent-text: var(--product-on-accent);
   max-width: 1480px;
 }
 
@@ -1011,7 +1011,7 @@
   --workspace-border: var(--border);
   --workspace-text: var(--text);
   --workspace-muted: var(--muted);
-  --workspace-accent-text: #fff;
+  --workspace-accent-text: var(--product-on-accent);
   max-width: 1480px;
 }
 

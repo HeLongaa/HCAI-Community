@@ -235,7 +235,7 @@ export function PlaygroundPage({
         </div>
       </header>
 
-      <main className="workspace-mode-surface">
+      <section className="workspace-mode-surface">
       {workspace === 'music' && (
         <MusicStudioPage
           t={t}
@@ -304,7 +304,7 @@ export function PlaygroundPage({
         openModerationAppeal={openModerationAppeal}
       />
       )}
-      </main>
+      </section>
     </div>
   )
 }
