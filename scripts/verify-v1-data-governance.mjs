@@ -39,6 +39,7 @@ const seedRepositorySource = read('server/src/repositories/seedRepository.js')
 const internalAccountingSource = read('server/src/accounting/internalAccounting.js')
 const notificationRetentionMigration = read('server/prisma/migrations/0103_notification_retention/migration.sql')
 const providerAlertRetentionMigration = read('server/prisma/migrations/0120_provider_alert_retention/migration.sql')
+const notificationEmailProviderEventMigration = read('server/prisma/migrations/0122_notification_email_provider_events/migration.sql')
 const operationLeaseRetentionSource = read('server/src/operations/operationLeaseRetention.js')
 const operationLeaseRetentionMigration = read('server/prisma/migrations/0104_operation_lease_retention/migration.sql')
 const privateLibraryRetentionSource = read('server/src/library/libraryRetention.js')
@@ -1032,13 +1033,14 @@ addCheck(
   'shared root and event-attribute allowlist before Prisma/Seed writes',
 )
 addCheck(
-  'runtime notification retention deletes bounded notification and terminal Provider alert families after 180 days',
+  'runtime notification retention deletes bounded notification, email Provider event, and terminal Provider alert families after 180 days',
   notificationRetentionSource.includes("policyId: 'notification_created_plus_180d'") &&
     notificationRetentionSource.includes('retentionDays: 180') &&
     notificationRetentionSource.includes('maximumSweepLimit: 1000') &&
     prismaRepositorySource.includes("orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]") &&
     prismaRepositorySource.includes('notificationDeliveryAttempt.count') &&
     prismaRepositorySource.includes('notification.deleteMany') &&
+    prismaRepositorySource.includes('notificationEmailProviderEvent.deleteMany') &&
     prismaRepositorySource.includes('providerAlertDeliveryAttempt.deleteMany') &&
     prismaRepositorySource.includes('providerAlertDeliveryReplay.deleteMany') &&
     prismaRepositorySource.includes('providerAlertDelivery.deleteMany') &&
@@ -1046,8 +1048,9 @@ addCheck(
     workerJobsSource.includes("id: 'notification-retention-sweep'") &&
     workerJobsSource.includes('notificationRetentionSweepLimit') &&
     notificationRetentionMigration.includes('notifications_retention_idx') &&
-    providerAlertRetentionMigration.includes('provider_alert_deliveries_status_updated_at_id_idx'),
-  'global oldest-first bounded deletion, active Provider alert exclusion, child evidence cleanup, indexes, and leased worker',
+    providerAlertRetentionMigration.includes('provider_alert_deliveries_status_updated_at_id_idx') &&
+    notificationEmailProviderEventMigration.includes('notification_email_provider_events_recipient_fingerprint_received_at_idx'),
+  'global oldest-first bounded deletion, active recipient suppression and Provider alert exclusion, child evidence cleanup, indexes, and leased worker',
 )
 addCheck(
   'runtime operation lease retention deletes bounded expired or released coordination rows after seven days',

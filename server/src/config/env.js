@@ -1,4 +1,5 @@
 import { buildNotificationDeliveryConfig } from '../notifications/notificationDeliveries.js'
+import { buildNotificationEmailEventConfig } from '../notifications/emailProviderEvents.js'
 import { buildAuthEmailActionConfig } from '../auth/emailActions.js'
 import { isProductionEnvironment } from '../common/runtimeEnvironment.js'
 
@@ -236,6 +237,7 @@ export const buildEnv = (source = process.env) => {
   const notificationDeliveryWorkerEnabled = strictBoolFlag(source, 'NOTIFICATION_DELIVERY_WORKER_ENABLED', false)
   const notificationEmailWebhookUrl = getOptionalUrl(source, 'NOTIFICATION_EMAIL_WEBHOOK_URL')
   const notificationDeliveryConfig = buildNotificationDeliveryConfig(source)
+  const notificationEmailEventConfig = buildNotificationEmailEventConfig(source)
   const authEmailActionConfig = buildAuthEmailActionConfig(source)
   const notificationDeliveryWorkerIntervalSeconds = positiveInteger(source, 'NOTIFICATION_DELIVERY_WORKER_INTERVAL_SECONDS', 10)
   const notificationDeliveryWorkerBatchSize = positiveInteger(source, 'NOTIFICATION_DELIVERY_WORKER_BATCH_SIZE', 25)
@@ -742,6 +744,11 @@ export const buildEnv = (source = process.env) => {
     hasNotificationEmailWebhookSecret: Boolean(notificationDeliveryConfig.email.secret),
     hasNotificationEmailFrom: Boolean(notificationDeliveryConfig.email.from),
     notificationEmailProviderReceiptRequired: notificationDeliveryConfig.email.requireProviderReceipt,
+    notificationEmailEventWebhookEnabled: notificationEmailEventConfig.enabled,
+    hasNotificationEmailEventWebhookSecret: Boolean(notificationEmailEventConfig.secret),
+    hasNotificationEmailRecipientFingerprintSecret: Boolean(notificationEmailEventConfig.recipientFingerprintSecret),
+    notificationEmailEventWebhookReplayWindowSeconds: notificationEmailEventConfig.replayWindowSeconds,
+    notificationEmailEventWebhookMaxBytes: notificationEmailEventConfig.maxBodyBytes,
     authEmailVerificationRequired: authEmailActionConfig.verificationRequired,
     authPasswordResetEnabled: authEmailActionConfig.passwordResetEnabled,
     authEmailActionOrigin: authEmailActionConfig.origin,

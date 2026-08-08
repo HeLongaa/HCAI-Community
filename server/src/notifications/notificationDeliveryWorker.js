@@ -11,6 +11,11 @@ export const runNotificationDeliveryWorkerOnce = async ({
   const claims = await repositories.notificationDeliveries.claim({ workerId, limit, leaseSeconds })
   const results = []
   for (const claim of claims) {
+    const suppressed = await repositories.notificationDeliveries.suppressClaimIfNeeded?.(claim)
+    if (suppressed) {
+      results.push(suppressed)
+      continue
+    }
     let result
     if (claim.channel === 'email') {
       const prepared = await repositories.auth?.prepareEmailDelivery?.(claim, undefined) ?? claim
@@ -32,5 +37,6 @@ export const runNotificationDeliveryWorkerOnce = async ({
     sent: results.filter((item) => item?.status === 'sent').length,
     retryScheduled: results.filter((item) => item?.status === 'retry_scheduled').length,
     deadLettered: results.filter((item) => item?.status === 'dead_lettered').length,
+    suppressed: results.filter((item) => item?.status === 'suppressed').length,
   }
 }

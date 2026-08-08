@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
-import { createHmac } from 'node:crypto'
+import { createHash, createHmac } from 'node:crypto'
 import http from 'node:http'
 import test from 'node:test'
 
 import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
+import { signNotificationEmailProviderEvent } from '../../notifications/emailProviderEvents.js'
 import { repositories } from '../../repositories/index.js'
 import { registerAdminRoutes } from '../admin/routes.js'
 import { registerMediaRoutes } from '../media/routes.js'
@@ -887,6 +888,136 @@ test('notification channel controls are versioned, auditable, effective, and rol
     else process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED = previousEnabled
     if (previousUrl === undefined) delete process.env.NOTIFICATION_EMAIL_WEBHOOK_URL
     else process.env.NOTIFICATION_EMAIL_WEBHOOK_URL = previousUrl
+    await server.close()
+  }
+})
+
+test('signed email Provider events are idempotent and suppress complaint recipients only', async () => {
+  const previous = {
+    deliveryEnabled: process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED,
+    deliveryUrl: process.env.NOTIFICATION_EMAIL_WEBHOOK_URL,
+    eventEnabled: process.env.NOTIFICATION_EMAIL_EVENT_WEBHOOK_ENABLED,
+    eventSecret: process.env.NOTIFICATION_EMAIL_EVENT_WEBHOOK_SECRET,
+    fingerprintSecret: process.env.NOTIFICATION_EMAIL_RECIPIENT_FINGERPRINT_SECRET,
+  }
+  const secret = 'route-email-provider-event-secret-at-least-32-bytes'
+  process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED = 'true'
+  process.env.NOTIFICATION_EMAIL_WEBHOOK_URL = 'http://127.0.0.1:9876/email'
+  process.env.NOTIFICATION_EMAIL_EVENT_WEBHOOK_ENABLED = 'true'
+  process.env.NOTIFICATION_EMAIL_EVENT_WEBHOOK_SECRET = secret
+  process.env.NOTIFICATION_EMAIL_RECIPIENT_FINGERPRINT_SECRET = 'route-email-recipient-fingerprint-secret-32-bytes'
+  const server = await createTestServer()
+  const timestamp = String(Date.now())
+  const sendEvent = (body, signature = signNotificationEmailProviderEvent(secret, timestamp, JSON.stringify(body))) => requestJson(
+    server.url,
+    '/api/notifications/email/provider-events',
+    { body, headers: { 'x-notification-event-timestamp': timestamp, 'x-notification-event-signature': signature } },
+  )
+  const complaint = {
+    schemaVersion: 1,
+    eventId: `complaint-${Date.now()}`,
+    eventType: 'complaint',
+    providerMessageId: `message-${Date.now()}`,
+    recipient: 'promptlin@example.com',
+    reasonCode: 'recipient_complaint',
+    statusEvidence: 'feedback-loop complaint',
+    occurredAt: new Date().toISOString(),
+  }
+  try {
+    const [originNotification] = await repositories.notifications.createForHandles(['promptlin'], {
+      type: `task.provider_receipt_origin_${Date.now()}`, title: 'Provider receipt origin', body: 'Receipt correlation fixture', resourceType: 'task', resourceId: 'provider-receipt-origin',
+    })
+    const claims = await repositories.notificationDeliveries.claim({ workerId: 'provider-event-route-test', limit: 100 })
+    const originClaim = claims.find((claim) => claim.notificationId === originNotification.id)
+    assert.ok(originClaim)
+    await repositories.notificationDeliveries.complete(originClaim.id, originClaim.leaseToken, {
+      outcome: 'sent',
+      receiptHash: createHash('sha256').update(complaint.providerMessageId).digest('hex'),
+    })
+    for (const claim of claims.filter((item) => item.id !== originClaim.id)) {
+      await repositories.notificationDeliveries.complete(claim.id, claim.leaseToken, { outcome: 'permanent_failure', errorCode: 'TEST_QUEUE_DRAIN' })
+    }
+
+    const denied = await sendEvent(complaint, `sha256=${'0'.repeat(64)}`)
+    assert.equal(denied.status, 403)
+    assert.equal(denied.payload.error.code, 'NOTIFICATION_EMAIL_EVENT_SIGNATURE_INVALID')
+
+    const accepted = await sendEvent(complaint)
+    assert.equal(accepted.status, 200)
+    assert.deepEqual({ replayed: accepted.payload.data.replayed, suppressed: accepted.payload.data.suppressed }, { replayed: false, suppressed: true })
+    assert.doesNotMatch(JSON.stringify(accepted.payload), /promptlin@example\.com|message-/)
+
+    const replayed = await sendEvent(complaint)
+    assert.equal(replayed.status, 200)
+    assert.equal(replayed.payload.data.replayed, true)
+
+    const conflict = await sendEvent({ ...complaint, reasonCode: 'different_evidence' })
+    assert.equal(conflict.status, 409)
+    assert.equal(conflict.payload.error.code, 'NOTIFICATION_EMAIL_EVENT_IDEMPOTENCY_CONFLICT')
+
+    const [suppressedNotification] = await repositories.notifications.createForHandles(['promptlin'], {
+      type: `task.provider_complaint_${Date.now()}`, title: 'Suppressed recipient', body: 'Must not leave the queue', resourceType: 'task', resourceId: 'provider-complaint-test',
+    })
+    const suppressedDeliveries = await repositories.notificationDeliveries.listForNotification(suppressedNotification.id, { handle: 'promptlin' })
+    const email = suppressedDeliveries.find((item) => item.channel === 'email')
+    assert.equal(email.status, 'suppressed')
+    assert.equal(email.lastErrorCode, 'RECIPIENT_SUPPRESSED')
+
+    const suppressionList = await requestJson(server.url, '/api/admin/notifications/email-suppressions', { method: 'GET', token: 'demo-access.legalpixel' })
+    assert.equal(suppressionList.status, 200)
+    const suppression = suppressionList.payload.data.find((item) => item.recipient.handle === 'promptlin')
+    assert.ok(suppression)
+    assert.equal(suppression.recipient.emailHint, 'p***@example.com')
+    assert.match(suppression.recipientFingerprintPreview, /^[a-f0-9]{12}$/)
+    assert.doesNotMatch(JSON.stringify(suppressionList.payload), /promptlin@example\.com/)
+
+    const releaseDenied = await requestJson(server.url, `/api/admin/notifications/email-suppressions/${suppression.id}/release`, {
+      token: 'demo-access.legalpixel', body: { reasonCode: 'recipient_reconfirmed', confirmation: 'RELEASE EMAIL SUPPRESSION' },
+    })
+    assert.equal(releaseDenied.status, 403)
+    const releaseUnconfirmed = await requestJson(server.url, `/api/admin/notifications/email-suppressions/${suppression.id}/release`, {
+      token: 'demo-access.opsplus', body: { reasonCode: 'recipient_reconfirmed', confirmation: 'release' },
+    })
+    assert.equal(releaseUnconfirmed.status, 400)
+    const released = await requestJson(server.url, `/api/admin/notifications/email-suppressions/${suppression.id}/release`, {
+      token: 'demo-access.opsplus', body: { reasonCode: 'recipient_reconfirmed', confirmation: 'RELEASE EMAIL SUPPRESSION' },
+    })
+    assert.equal(released.status, 200)
+    assert.equal(released.payload.data.released, true)
+
+    const [recoveredNotification] = await repositories.notifications.createForHandles(['promptlin'], {
+      type: `task.provider_complaint_recovered_${Date.now()}`, title: 'Recovered recipient', body: 'May leave the queue', resourceType: 'task', resourceId: 'provider-complaint-recovery-test',
+    })
+    const recoveredDeliveries = await repositories.notificationDeliveries.listForNotification(recoveredNotification.id, { handle: 'promptlin' })
+    assert.equal(recoveredDeliveries.find((item) => item.channel === 'email').status, 'queued')
+
+    const transient = {
+      ...complaint,
+      eventId: `transient-${Date.now()}`,
+      eventType: 'bounce',
+      bounceClass: 'transient',
+      recipient: 'legalpixel@example.com',
+      reasonCode: 'mailbox_busy',
+    }
+    const transientAccepted = await sendEvent(transient)
+    assert.equal(transientAccepted.status, 200)
+    assert.equal(transientAccepted.payload.data.suppressed, false)
+    const [queuedNotification] = await repositories.notifications.createForHandles(['legalpixel'], {
+      type: `task.transient_bounce_${Date.now()}`, title: 'Transient bounce', body: 'May be retried', resourceType: 'task', resourceId: 'transient-bounce-test',
+    })
+    const queuedDeliveries = await repositories.notificationDeliveries.listForNotification(queuedNotification.id, { handle: 'legalpixel' })
+    assert.equal(queuedDeliveries.find((item) => item.channel === 'email').status, 'queued')
+  } finally {
+    for (const [key, value] of Object.entries({
+      NOTIFICATION_EMAIL_DELIVERY_ENABLED: previous.deliveryEnabled,
+      NOTIFICATION_EMAIL_WEBHOOK_URL: previous.deliveryUrl,
+      NOTIFICATION_EMAIL_EVENT_WEBHOOK_ENABLED: previous.eventEnabled,
+      NOTIFICATION_EMAIL_EVENT_WEBHOOK_SECRET: previous.eventSecret,
+      NOTIFICATION_EMAIL_RECIPIENT_FINGERPRINT_SECRET: previous.fingerprintSecret,
+    })) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
     await server.close()
   }
 })

@@ -623,15 +623,15 @@
     {
       "id": "notification_records",
       "classification": "confidential",
-      "prismaModels": ["Notification", "NotificationTemplate", "NotificationTemplateVersion", "NotificationPreference", "NotificationDelivery", "NotificationDeliveryAttempt", "NotificationChannelConfig", "NotificationChannelConfigRevision", "WebhookDelivery", "WebhookDeliveryAttempt", "WebhookDeliveryReplay", "ProviderAlertDelivery", "ProviderAlertDeliveryAttempt", "ProviderAlertDeliveryReplay"],
+      "prismaModels": ["Notification", "NotificationTemplate", "NotificationTemplateVersion", "NotificationPreference", "NotificationDelivery", "NotificationDeliveryAttempt", "NotificationEmailProviderEvent", "NotificationEmailSuppression", "NotificationChannelConfig", "NotificationChannelConfigRevision", "WebhookDelivery", "WebhookDeliveryAttempt", "WebhookDeliveryReplay", "ProviderAlertDelivery", "ProviderAlertDeliveryAttempt", "ProviderAlertDeliveryReplay"],
       "locations": ["postgres"],
       "dataSubjects": ["user", "system", "authorized_operator"],
       "purposes": ["account_service", "marketplace_delivery", "creative_generation", "support_operations"],
-      "exampleFields": ["type", "title", "body", "deep link", "safe metadata", "read state", "template key and immutable version", "closed variable schema", "personal in-app enabled preference", "channel enablement and bounded delivery thresholds", "immutable channel configuration revision", "webhook event id and version", "Provider budget alert schema-versioned payload", "delivery status and bounded attempts", "DLQ replay idempotency evidence", "hash-only receipt"],
+      "exampleFields": ["type", "title", "body", "deep link", "safe metadata", "read state", "template key and immutable version", "closed variable schema", "personal in-app enabled preference", "channel enablement and bounded delivery thresholds", "immutable channel configuration revision", "webhook event id and version", "Provider budget alert schema-versioned payload", "delivery status and bounded attempts", "DLQ replay idempotency evidence", "hash-only receipt", "hash-only email bounce or complaint evidence", "HMAC recipient suppression fingerprint"],
       "accessRoles": ["user_self", "authorized_service", "notification_operator_redacted", "provider_operations_operator_redacted"],
       "retentionPolicyId": "notification_created_plus_180d",
       "exportPolicy": "include_user_notifications_and_webhook_delivery_summaries_without_signing_material_exclude_provider_alert_payloads_destinations_recipients_and_secrets",
-      "deletionPolicy": "hard_delete_notifications_after_creation_and_terminal_provider_alert_delivery_attempt_replay_families_after_terminal_update_at_180d",
+      "deletionPolicy": "hard_delete_notifications_and_email_provider_event_evidence_after_creation_or_receipt_at_180d_and_terminal_provider_alert_delivery_attempt_replay_families_after_terminal_update_at_180d; retain hash-only active recipient suppression until explicit address consent recovery or account deletion",
       "ownerTasks": ["V1-68", "V1-67", "V1-53"]
     },
     {
@@ -1169,7 +1169,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 180,
+    "modelCount": 182,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",

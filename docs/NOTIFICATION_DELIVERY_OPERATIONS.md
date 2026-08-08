@@ -43,6 +43,22 @@ Required enablement order:
 
 Without these values, Email is explicitly unavailable and no external request is made.
 
+## Bounce And Complaint Events
+
+The relay posts a closed `notification.email.provider-event.v1`-equivalent JSON contract to
+`POST /api/notifications/email/provider-events`. Enable it with `NOTIFICATION_EMAIL_EVENT_WEBHOOK_ENABLED=true`, a
+dedicated `NOTIFICATION_EMAIL_EVENT_WEBHOOK_SECRET` of at least 32 characters, and a separate stable
+`NOTIFICATION_EMAIL_RECIPIENT_FINGERPRINT_SECRET` of at least 32 characters. Do not rotate the fingerprint secret
+without a controlled suppression re-key migration. The relay signs `timestamp.rawBody` using HMAC-SHA256 in
+`x-notification-event-signature`; timestamps outside the bounded replay window are rejected.
+
+The API accepts only `bounce` and `complaint`. Permanent bounces and complaints create an account-bound suppression
+only when the hashed Provider message ID matches a receipt from a sent email and the current recipient fingerprint
+also matches. Transient bounces remain evidence but do not suppress. Event IDs are idempotent, conflicting reuse is
+rejected, and PostgreSQL stores only hashes, bounded status evidence, and stable reason codes. Workers check
+suppression while claiming and immediately before the Provider call. Provider event evidence expires through the
+180-day notification retention worker; active suppression survives until explicit recovery or account deletion.
+
 ## Staging Relay Acceptance
 
 Before enabling production traffic, run `npm run notification-email:preflight` and then execute the controlled canary
@@ -53,8 +69,8 @@ source/artifact binding; it must be checked independently with
 `node scripts/verify-notification-email-staging-evidence.mjs <evidence.json>`.
 
 This acceptance proves only that the configured Staging relay returned a success response with a traceable Provider
-receipt. It does not prove mailbox delivery, bounce handling, complaint handling, or approval for production. Final
-mailbox delivery and the relay's bounce and complaint lifecycle require separate Provider and mailbox evidence.
+receipt. The signed callback contract can prove application handling of relay fixtures, but production still requires
+real mailbox delivery and Provider-originated bounce/complaint evidence.
 
 ## Verification
 

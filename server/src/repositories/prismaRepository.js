@@ -5457,17 +5457,25 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           take,
           select: { id: true, updatedAt: true },
         })
+        const emailProviderEventCandidates = await db.notificationEmailProviderEvent.findMany({
+          where: { receivedAt: { lte: cutoff } },
+          orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }],
+          take,
+          select: { id: true, receivedAt: true },
+        })
         const candidates = [
           ...notificationCandidates.map((row) => ({ id: row.id, family: 'notification', retainedAt: row.createdAt })),
           ...providerAlertCandidates.map((row) => ({ id: row.id, family: 'provider_alert', retainedAt: row.updatedAt })),
+          ...emailProviderEventCandidates.map((row) => ({ id: row.id, family: 'email_provider_event', retainedAt: row.receivedAt })),
         ].sort((left, right) => left.retainedAt - right.retainedAt || left.id.localeCompare(right.id)).slice(0, take)
         const notificationIds = candidates.filter((row) => row.family === 'notification').map((row) => row.id)
         const providerAlertIds = candidates.filter((row) => row.family === 'provider_alert').map((row) => row.id)
+        const emailProviderEventIds = candidates.filter((row) => row.family === 'email_provider_event').map((row) => row.id)
         if (candidates.length === 0) {
           return {
             policyId: notificationRetentionContract.policyId,
             inspected: 0,
-            deleted: { notifications: 0, deliveries: 0, attempts: 0, providerAlertDeliveries: 0, providerAlertAttempts: 0, providerAlertReplays: 0 },
+            deleted: { notifications: 0, deliveries: 0, attempts: 0, emailProviderEvents: 0, providerAlertDeliveries: 0, providerAlertAttempts: 0, providerAlertReplays: 0 },
           }
         }
         const deliveries = notificationIds.length
@@ -5507,6 +5515,11 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             where: { id: { in: notificationIds }, createdAt: { lte: cutoff } },
           })
           : { count: 0 }
+        const deletedEmailProviderEvents = emailProviderEventIds.length
+          ? await db.notificationEmailProviderEvent.deleteMany({
+              where: { id: { in: emailProviderEventIds }, receivedAt: { lte: cutoff } },
+            })
+          : { count: 0 }
         return {
           policyId: notificationRetentionContract.policyId,
           inspected: candidates.length,
@@ -5514,6 +5527,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             notifications: deletedNotifications.count,
             deliveries,
             attempts,
+            emailProviderEvents: deletedEmailProviderEvents.count,
             providerAlertDeliveries: deletedProviderAlerts.count,
             providerAlertAttempts: deletedProviderAlertAttempts.count,
             providerAlertReplays: deletedProviderAlertReplays.count,

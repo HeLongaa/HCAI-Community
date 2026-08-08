@@ -1,6 +1,6 @@
 import { HttpError, notFound } from '../../common/errors/httpError.js'
 import { requirePermission, requireUser } from '../../common/http/auth.js'
-import { readJsonBody } from '../../common/http/request.js'
+import { readJsonBody, readRawBody } from '../../common/http/request.js'
 import { created, ok, text } from '../../common/http/responses.js'
 import { parseNotificationListQuery } from '../../contracts/requestParsers.js'
 import {
@@ -18,6 +18,11 @@ import {
   parseNotificationDeliveryMetricsQuery,
   parseNotificationDeliveryTransition,
 } from '../../notifications/notificationDeliveries.js'
+import {
+  buildNotificationEmailEventConfig,
+  parseNotificationEmailSuppressionRelease,
+  verifyNotificationEmailProviderEventRequest,
+} from '../../notifications/emailProviderEvents.js'
 import { repositories } from '../../repositories/index.js'
 
 const csvCell = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`
@@ -44,6 +49,31 @@ const requireTemplate = async (repository, id, path, includeVersions = true) => 
 
 export const registerNotificationRoutes = (router, options = {}) => {
   const routeRepositories = options.repositories ?? repositories
+  const callbackSource = options.source ?? process.env
+  const callbackNow = options.now ?? (() => new Date())
+
+  router.add('POST', '/api/notifications/email/provider-events', async (request, response) => {
+    const eventConfig = buildNotificationEmailEventConfig(callbackSource)
+    let rawBody
+    try {
+      rawBody = await readRawBody(request, eventConfig.maxBodyBytes)
+    } catch (error) {
+      if (error?.code !== 'BODY_TOO_LARGE') throw error
+      throw new HttpError(413, 'NOTIFICATION_EMAIL_EVENT_BODY_TOO_LARGE', 'Notification email provider event body is too large', {
+        reasonCode: 'body_too_large',
+        limitBytes: eventConfig.maxBodyBytes,
+        receivedBytes: error.details?.receivedBytes ?? null,
+      })
+    }
+    const verified = verifyNotificationEmailProviderEventRequest({
+      headers: request.headers,
+      rawBody,
+      source: callbackSource,
+      now: callbackNow(),
+    })
+    ok(response, await routeRepositories.notificationDeliveries.ingestEmailProviderEvent(verified))
+  })
+
   router.add('GET', '/api/notifications', async (_request, response, context) => {
     const actor = requireUser(context)
     const page = await routeRepositories.notifications.list(actor, parseNotificationListQuery(context.query))
@@ -95,6 +125,22 @@ export const registerNotificationRoutes = (router, options = {}) => {
   router.add('GET', '/api/admin/notifications/deliveries/metrics', async (_request, response, context) => {
     requirePermission(context, 'admin:notifications:read')
     ok(response, await routeRepositories.notificationDeliveries.metrics(parseNotificationDeliveryMetricsQuery(context.query)))
+  })
+
+  router.add('GET', '/api/admin/notifications/email-suppressions', async (_request, response, context) => {
+    requirePermission(context, 'admin:notifications:read')
+    ok(response, await routeRepositories.notificationDeliveries.listEmailSuppressions())
+  })
+
+  router.add('POST', '/api/admin/notifications/email-suppressions/:id/release', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:notifications:manage')
+    const result = await routeRepositories.notificationDeliveries.releaseEmailSuppression(
+      context.params.id,
+      parseNotificationEmailSuppressionRelease((await readJsonBody(request)) ?? {}),
+      actor,
+    )
+    if (!result) throw notFound(`/api/admin/notifications/email-suppressions/${context.params.id}/release`)
+    ok(response, result)
   })
 
   router.add('GET', '/api/admin/notifications/deliveries/metrics/export', async (_request, response, context) => {

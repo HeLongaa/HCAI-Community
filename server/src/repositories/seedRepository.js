@@ -4771,11 +4771,15 @@ export const createSeedRepository = () => {
         .filter((delivery) => notificationRetentionContract.providerAlertTerminalStatuses.includes(delivery.status))
         .filter((delivery) => new Date(delivery.updatedAt).getTime() <= cutoff)
         .map((delivery) => ({ id: delivery.id, family: 'provider_alert', retainedAt: new Date(delivery.updatedAt).getTime() }))
-      const candidates = [...notificationCandidates, ...providerAlertCandidates]
+      const emailProviderEventCandidates = [...notificationDeliveryRepository._state.emailProviderEvents.values()]
+        .filter((event) => new Date(event.receivedAt).getTime() <= cutoff)
+        .map((event) => ({ id: event.id, key: event.providerEventHash, family: 'email_provider_event', retainedAt: new Date(event.receivedAt).getTime() }))
+      const candidates = [...notificationCandidates, ...providerAlertCandidates, ...emailProviderEventCandidates]
         .sort((left, right) => left.retainedAt - right.retainedAt || left.id.localeCompare(right.id))
         .slice(0, take)
       const notificationIds = new Set(candidates.filter((candidate) => candidate.family === 'notification').map((candidate) => candidate.id))
       const providerAlertIds = new Set(candidates.filter((candidate) => candidate.family === 'provider_alert').map((candidate) => candidate.id))
+      const emailProviderEventKeys = new Set(candidates.filter((candidate) => candidate.family === 'email_provider_event').map((candidate) => candidate.key))
       const childCounts = notificationDeliveryRepository.deleteForNotificationIds([...notificationIds])
       for (let index = notifications.length - 1; index >= 0; index -= 1) {
         if (notificationIds.has(notifications[index].id)) notifications.splice(index, 1)
@@ -4804,12 +4808,20 @@ export const createSeedRepository = () => {
         }
         providerAlertDeliveryCount += 1
       }
+      let emailProviderEventCount = 0
+      for (const key of emailProviderEventKeys) {
+        const event = notificationDeliveryRepository._state.emailProviderEvents.get(key)
+        if (!event || new Date(event.receivedAt).getTime() > cutoff) continue
+        notificationDeliveryRepository._state.emailProviderEvents.delete(key)
+        emailProviderEventCount += 1
+      }
       return {
         policyId: notificationRetentionContract.policyId,
         inspected: candidates.length,
         deleted: {
           notifications: notificationIds.size,
           ...childCounts,
+          emailProviderEvents: emailProviderEventCount,
           providerAlertDeliveries: providerAlertDeliveryCount,
           providerAlertAttempts,
           providerAlertReplays,

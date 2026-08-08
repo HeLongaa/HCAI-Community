@@ -26,7 +26,7 @@ test('seed notification retention deletes bounded parents and delivery children 
     now: new Date(createdAt.getTime() + 179 * 86_400_000),
     limit: 10,
   })
-  assert.deepEqual(premature.deleted, { notifications: 0, deliveries: 0, attempts: 0, providerAlertDeliveries: 0, providerAlertAttempts: 0, providerAlertReplays: 0 })
+  assert.deepEqual(premature.deleted, { notifications: 0, deliveries: 0, attempts: 0, emailProviderEvents: 0, providerAlertDeliveries: 0, providerAlertAttempts: 0, providerAlertReplays: 0 })
 
   const first = await repository.notifications.sweepRetention({
     now: new Date(createdAt.getTime() + 181 * 86_400_000),
@@ -34,14 +34,14 @@ test('seed notification retention deletes bounded parents and delivery children 
   })
   assert.equal(first.policyId, 'notification_created_plus_180d')
   assert.equal(first.inspected, 2)
-  assert.deepEqual(first.deleted, { notifications: 2, deliveries: 4, attempts: 0, providerAlertDeliveries: 0, providerAlertAttempts: 0, providerAlertReplays: 0 })
+  assert.deepEqual(first.deleted, { notifications: 2, deliveries: 4, attempts: 0, emailProviderEvents: 0, providerAlertDeliveries: 0, providerAlertAttempts: 0, providerAlertReplays: 0 })
   assert.equal((await repository.notifications.list(actor, { readState: 'all', limit: 10 })).items.length, 1)
 
   const second = await repository.notifications.sweepRetention({
     now: new Date(createdAt.getTime() + 181 * 86_400_000),
     limit: 2,
   })
-  assert.deepEqual(second.deleted, { notifications: 1, deliveries: 2, attempts: 0, providerAlertDeliveries: 0, providerAlertAttempts: 0, providerAlertReplays: 0 })
+  assert.deepEqual(second.deleted, { notifications: 1, deliveries: 2, attempts: 0, emailProviderEvents: 0, providerAlertDeliveries: 0, providerAlertAttempts: 0, providerAlertReplays: 0 })
   assert.equal((await repository.notifications.list(actor, { readState: 'all', limit: 10 })).items.length, 0)
 })
 
@@ -67,7 +67,28 @@ test('seed notification retention removes terminal Provider alerts and preserves
   repository.providerAlertDeliveries._state.deliveries.get(active.id).updatedAt = old
 
   const result = await repository.notifications.sweepRetention({ now: new Date('2026-07-29T00:00:00.000Z'), limit: 10 })
-  assert.deepEqual(result.deleted, { notifications: 0, deliveries: 0, attempts: 0, providerAlertDeliveries: 1, providerAlertAttempts: 2, providerAlertReplays: 1 })
+  assert.deepEqual(result.deleted, { notifications: 0, deliveries: 0, attempts: 0, emailProviderEvents: 0, providerAlertDeliveries: 1, providerAlertAttempts: 2, providerAlertReplays: 1 })
   assert.equal(repository.providerAlertDeliveries._state.deliveries.has(terminal.id), false)
   assert.equal(repository.providerAlertDeliveries._state.deliveries.has(active.id), true)
+})
+
+test('seed notification retention prunes old email Provider events without removing active suppressions', async () => {
+  const repository = createSeedRepository()
+  const old = new Date('2025-01-01T00:00:00.000Z')
+  const fresh = new Date('2026-07-28T00:00:00.000Z')
+  repository.notificationDeliveries._state.emailProviderEvents.set('old-event-hash', {
+    id: 'old-email-provider-event', providerEventHash: 'old-event-hash', receivedAt: old,
+  })
+  repository.notificationDeliveries._state.emailProviderEvents.set('fresh-event-hash', {
+    id: 'fresh-email-provider-event', providerEventHash: 'fresh-event-hash', receivedAt: fresh,
+  })
+  repository.notificationDeliveries._state.emailSuppressions.set('recipient-fingerprint', {
+    id: 'active-email-suppression', recipientFingerprint: 'recipient-fingerprint', createdAt: old,
+  })
+
+  const result = await repository.notifications.sweepRetention({ now: new Date('2026-07-29T00:00:00.000Z'), limit: 10 })
+  assert.equal(result.deleted.emailProviderEvents, 1)
+  assert.equal(repository.notificationDeliveries._state.emailProviderEvents.has('old-event-hash'), false)
+  assert.equal(repository.notificationDeliveries._state.emailProviderEvents.has('fresh-event-hash'), true)
+  assert.equal(repository.notificationDeliveries._state.emailSuppressions.has('recipient-fingerprint'), true)
 })

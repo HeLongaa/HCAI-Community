@@ -49,14 +49,14 @@ test('Prisma notification retention deletes oldest bounded parents with cascaded
 
     const first = await repository.notifications.sweepRetention({ now, limit: 1 })
     assert.equal(first.policyId, 'notification_created_plus_180d')
-    assert.deepEqual(first.deleted, { notifications: 1, deliveries: 2, attempts: 1, providerAlertDeliveries: 0, providerAlertAttempts: 0, providerAlertReplays: 0 })
+    assert.deepEqual(first.deleted, { notifications: 1, deliveries: 2, attempts: 1, emailProviderEvents: 0, providerAlertDeliveries: 0, providerAlertAttempts: 0, providerAlertReplays: 0 })
     assert.equal(await repository.client.notification.findUnique({ where: { id: ids[0] } }), null)
     assert.ok(await repository.client.notification.findUnique({ where: { id: ids[1] } }))
     assert.equal(await repository.client.notificationDelivery.count({ where: { notificationId: ids[0] } }), 0)
     assert.equal(await repository.client.notificationDeliveryAttempt.count({ where: { deliveryId: oldestDelivery.id } }), 0)
 
     const second = await repository.notifications.sweepRetention({ now, limit: 10 })
-    assert.deepEqual(second.deleted, { notifications: 1, deliveries: 2, attempts: 0, providerAlertDeliveries: 0, providerAlertAttempts: 0, providerAlertReplays: 0 })
+    assert.deepEqual(second.deleted, { notifications: 1, deliveries: 2, attempts: 0, emailProviderEvents: 0, providerAlertDeliveries: 0, providerAlertAttempts: 0, providerAlertReplays: 0 })
     assert.equal(await repository.client.notification.findUnique({ where: { id: ids[1] } }), null)
     assert.ok(await repository.client.notification.findUnique({ where: { id: ids[2] } }))
 
@@ -86,7 +86,7 @@ test('Prisma notification retention deletes oldest bounded parents with cascaded
       },
     })
     const providerSweep = await repository.notifications.sweepRetention({ now, limit: 10 })
-    assert.deepEqual(providerSweep.deleted, { notifications: 0, deliveries: 0, attempts: 0, providerAlertDeliveries: 1, providerAlertAttempts: 1, providerAlertReplays: 1 })
+    assert.deepEqual(providerSweep.deleted, { notifications: 0, deliveries: 0, attempts: 0, emailProviderEvents: 0, providerAlertDeliveries: 1, providerAlertAttempts: 1, providerAlertReplays: 1 })
     assert.equal(await repository.client.providerAlertDelivery.findUnique({ where: { id: terminalAlert.id } }), null)
     assert.ok(await repository.client.providerAlertDelivery.findUnique({ where: { id: activeAlert.id } }))
   } finally {

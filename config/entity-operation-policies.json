@@ -180,6 +180,8 @@
     { "model": "NotificationPreference", "domain": "notifications-webhooks", "policy": "mutable_crud", "hardDelete": true },
     { "model": "NotificationDelivery", "domain": "notifications-webhooks", "policy": "state_transition", "hardDelete": true },
     { "model": "NotificationDeliveryAttempt", "domain": "notifications-webhooks", "policy": "state_transition", "hardDelete": true },
+    { "model": "NotificationEmailProviderEvent", "domain": "notifications-webhooks", "policy": "immutable_evidence", "hardDelete": true },
+    { "model": "NotificationEmailSuppression", "domain": "notifications-webhooks", "policy": "append_only", "hardDelete": true },
     { "model": "NotificationChannelConfig", "domain": "notifications-webhooks", "policy": "mutable_crud", "hardDelete": false },
     { "model": "NotificationChannelConfigRevision", "domain": "notifications-webhooks", "policy": "immutable_evidence", "hardDelete": false },
     { "model": "DeveloperAccessControl", "domain": "developer-platform", "policy": "state_transition", "hardDelete": false },

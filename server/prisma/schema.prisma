@@ -2092,6 +2092,7 @@ model User {
   mediaAssetRelations              MediaAssetRelation[]
   notifications                    Notification[]
   notificationPreferences          NotificationPreference[]
+  notificationEmailSuppressions   NotificationEmailSuppression[]
   notificationTemplatesCreated     NotificationTemplate[]          @relation("NotificationTemplateCreator")
   notificationVersionsCreated      NotificationTemplateVersion[]   @relation("NotificationTemplateVersionCreator")
   mediaScanJobsReviewed            MediaScanJob[]                  @relation("MediaScanJobReviewer")
@@ -4777,6 +4778,42 @@ model NotificationDelivery {
   @@index([channel, createdAt])
   @@index([leaseExpiresAt])
   @@map("notification_deliveries")
+}
+
+model NotificationEmailProviderEvent {
+  id                   String   @id
+  providerEventHash    String   @unique @map("provider_event_hash")
+  providerReceiptHash  String   @map("provider_receipt_hash")
+  recipientFingerprint String   @map("recipient_fingerprint")
+  eventType            String   @map("event_type")
+  bounceClass          String?  @map("bounce_class")
+  reasonCode           String?  @map("reason_code")
+  statusEvidence       String?  @map("status_evidence")
+  payloadHash          String   @map("payload_hash")
+  occurredAt           DateTime @map("occurred_at")
+  receivedAt           DateTime @map("received_at")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  @@index([providerReceiptHash, receivedAt])
+  @@index([recipientFingerprint, receivedAt])
+  @@index([eventType, receivedAt])
+  @@map("notification_email_provider_events")
+}
+
+model NotificationEmailSuppression {
+  id                   String   @id
+  userId               String   @map("user_id")
+  recipientFingerprint String   @unique @map("recipient_fingerprint")
+  sourceEventHash      String   @map("source_event_hash")
+  reasonType           String   @map("reason_type")
+  reasonCode           String?  @map("reason_code")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([createdAt, id])
+  @@map("notification_email_suppressions")
 }
 
 model NotificationDeliveryAttempt {

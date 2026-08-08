@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto'
 import prismaClientPkg from '@prisma/client'
 import { HttpError } from '../common/errors/httpError.js'
 import {
+  notificationEmailProviderEventEvidence,
+  notificationRecipientFingerprint,
+} from './emailProviderEvents.js'
+import {
   buildNotificationDeliveryConfig,
+  maskEmail,
   normalizeDeliveryErrorCode,
   notificationChannelConfigDto,
   notificationChannelConfigRevisionDto,
@@ -61,11 +66,15 @@ export const createPrismaNotificationDeliveryRepository = (client, {
       const storedControls = await db.notificationChannelConfig.findMany()
       const controlByChannel = new Map(storedControls.map((row) => [row.channel, row]))
       const emailControl = controlByChannel.get('email')
+      const recipientFingerprint = notificationRecipientFingerprint(recipient.email, source)
+      const recipientSuppressed = recipientFingerprint
+        ? Boolean(await db.notificationEmailSuppression.findUnique({ where: { recipientFingerprint }, select: { id: true } }))
+        : false
       const definitions = [
         { channel: 'in_app', status: 'sent', sentAt: now, maxAttempts: 1, errorCode: null },
-        emailControl?.enabled !== false && deliveryConfig.email.available && recipient.email
+        emailControl?.enabled !== false && deliveryConfig.email.available && recipient.email && !recipientSuppressed
           ? { channel: 'email', status: 'queued', maxAttempts: emailControl?.maxAttempts ?? deliveryConfig.maxAttempts, errorCode: null }
-          : { channel: 'email', status: 'suppressed', suppressedAt: now, maxAttempts: emailControl?.maxAttempts ?? deliveryConfig.maxAttempts, errorCode: recipient.email ? emailControl?.enabled === false ? 'CHANNEL_DISABLED' : 'CHANNEL_UNAVAILABLE' : 'RECIPIENT_EMAIL_MISSING' },
+          : { channel: 'email', status: 'suppressed', suppressedAt: now, maxAttempts: emailControl?.maxAttempts ?? deliveryConfig.maxAttempts, errorCode: recipient.email ? recipientSuppressed ? 'RECIPIENT_SUPPRESSED' : emailControl?.enabled === false ? 'CHANNEL_DISABLED' : 'CHANNEL_UNAVAILABLE' : 'RECIPIENT_EMAIL_MISSING' },
       ]
       const rows = []
       for (const definition of definitions) {
@@ -138,6 +147,34 @@ export const createPrismaNotificationDeliveryRepository = (client, {
             include: includeSummary,
           })
           if (!row) return null
+          if (row.channel === 'email') {
+            const recipientFingerprint = notificationRecipientFingerprint(row.notification?.recipient?.email, source)
+            const suppression = recipientFingerprint
+              ? await db.notificationEmailSuppression.findUnique({ where: { recipientFingerprint }, select: { id: true } })
+              : null
+            if (suppression) {
+              if (row.status === 'processing' && row.leaseToken) {
+                await db.notificationDeliveryAttempt.updateMany({
+                  where: { deliveryId: row.id, leaseToken: row.leaseToken, status: 'processing' },
+                  data: { status: 'failed', responseClass: 'permanent', errorCode: 'RECIPIENT_SUPPRESSED', completedAt: now },
+                })
+              }
+              const suppressed = await db.notificationDelivery.update({
+                where: { id: row.id },
+                data: {
+                  status: 'suppressed',
+                  suppressedAt: now,
+                  leaseToken: null,
+                  leaseExpiresAt: null,
+                  lastErrorCode: 'RECIPIENT_SUPPRESSED',
+                  version: { increment: 1 },
+                },
+                include: includeSummary,
+              })
+              await audit(db, null, 'notification.delivery.suppressed', suppressed, { reasonCode: 'recipient_suppressed' })
+              return { suppressed: true }
+            }
+          }
           if (row.status === 'processing' && row.leaseToken) {
             await db.notificationDeliveryAttempt.updateMany({
               where: { deliveryId: row.id, leaseToken: row.leaseToken, status: 'processing' },
@@ -165,9 +202,154 @@ export const createPrismaNotificationDeliveryRepository = (client, {
           return { ...notificationDeliveryDto(claimed), leaseToken, notification: claimed.notification, recipient: claimed.notification.recipient }
         })
         if (!claim) break
+        if (claim.suppressed) continue
         claims.push(claim)
       }
       return claims
+    },
+    async suppressClaimIfNeeded(claim) {
+      if (!claim || claim.channel !== 'email') return null
+      return runSerializableTransaction(async (db) => {
+        const row = await db.notificationDelivery.findFirst({
+          where: { id: String(claim.id), status: 'processing', leaseToken: claim.leaseToken },
+          include: includeSummary,
+        })
+        if (!row) return null
+        const recipientFingerprint = notificationRecipientFingerprint(row.notification?.recipient?.email, source)
+        if (!recipientFingerprint) return null
+        const suppression = await db.notificationEmailSuppression.findUnique({ where: { recipientFingerprint }, select: { id: true } })
+        if (!suppression) return null
+        const now = new Date()
+        await db.notificationDeliveryAttempt.update({
+          where: { leaseToken: claim.leaseToken },
+          data: { status: 'failed', responseClass: 'permanent', errorCode: 'RECIPIENT_SUPPRESSED', completedAt: now },
+        })
+        const suppressed = await db.notificationDelivery.update({
+          where: { id: row.id },
+          data: {
+            status: 'suppressed', suppressedAt: now, leaseToken: null, leaseExpiresAt: null,
+            lastErrorCode: 'RECIPIENT_SUPPRESSED', version: { increment: 1 },
+          },
+          include: includeDetail,
+        })
+        await audit(db, null, 'notification.delivery.suppressed', suppressed, { reasonCode: 'recipient_suppressed' })
+        return notificationDeliveryDto(suppressed, { includeRecipient: true })
+      })
+    },
+    async ingestEmailProviderEvent(verified) {
+      const evidence = notificationEmailProviderEventEvidence(verified, source)
+      const ingest = () => runSerializableTransaction(async (db) => {
+        const existing = await db.notificationEmailProviderEvent.findUnique({ where: { providerEventHash: evidence.providerEventHash } })
+        if (existing) {
+          if (existing.payloadHash !== evidence.payloadHash) {
+            throw new HttpError(409, 'NOTIFICATION_EMAIL_EVENT_IDEMPOTENCY_CONFLICT', 'Provider event ID is already bound to different evidence')
+          }
+          const suppression = await db.notificationEmailSuppression.findUnique({ where: { recipientFingerprint: evidence.recipientFingerprint }, select: { id: true } })
+          return { accepted: true, replayed: true, suppressed: Boolean(suppression), eventId: existing.id }
+        }
+        const event = await db.notificationEmailProviderEvent.create({ data: {
+          id: `notification-email-event-${randomUUID()}`,
+          providerEventHash: evidence.providerEventHash,
+          providerReceiptHash: evidence.providerReceiptHash,
+          recipientFingerprint: evidence.recipientFingerprint,
+          eventType: evidence.eventType,
+          bounceClass: evidence.bounceClass,
+          reasonCode: evidence.reasonCode,
+          statusEvidence: evidence.statusEvidence,
+          payloadHash: evidence.payloadHash,
+          occurredAt: evidence.occurredAt,
+          receivedAt: evidence.receivedAt,
+        } })
+        const matchedDelivery = await db.notificationDelivery.findFirst({
+          where: { channel: 'email', providerReceiptHash: evidence.providerReceiptHash },
+          select: { notification: { select: { recipient: { select: { id: true, email: true } } } } },
+        })
+        const matchedRecipient = matchedDelivery?.notification?.recipient ?? null
+        const recipientMatched = Boolean(
+          matchedRecipient?.id
+          && notificationRecipientFingerprint(matchedRecipient.email, source) === evidence.recipientFingerprint,
+        )
+        let suppressed = false
+        if (evidence.suppressesRecipient && recipientMatched) {
+          await db.notificationEmailSuppression.upsert({
+            where: { recipientFingerprint: evidence.recipientFingerprint },
+            create: {
+              id: `notification-email-suppression-${randomUUID()}`,
+              userId: matchedRecipient.id,
+              recipientFingerprint: evidence.recipientFingerprint,
+              sourceEventHash: evidence.providerEventHash,
+              reasonType: evidence.eventType === 'complaint' ? 'complaint' : 'permanent_bounce',
+              reasonCode: evidence.reasonCode,
+            },
+            update: {},
+          })
+          suppressed = true
+        }
+        await recordAudit({
+          actor: null,
+          action: 'notification.email.provider_event_recorded',
+          resourceType: 'notification_email_provider_event',
+          resourceId: event.id,
+          metadata: {
+            eventType: evidence.eventType,
+            bounceClass: evidence.bounceClass,
+            reasonCode: evidence.reasonCode,
+            providerReceiptHash: evidence.providerReceiptHash,
+            recipientFingerprint: evidence.recipientFingerprint,
+            payloadHash: evidence.payloadHash,
+            recipientMatched,
+            suppressed,
+          },
+        }, db)
+        return { accepted: true, replayed: false, suppressed, eventId: event.id }
+      })
+      try {
+        return await ingest()
+      } catch (error) {
+        if (error?.code !== 'P2002') throw error
+        const existing = await client.notificationEmailProviderEvent.findUnique({ where: { providerEventHash: evidence.providerEventHash } })
+        if (!existing) throw error
+        if (existing.payloadHash !== evidence.payloadHash) {
+          throw new HttpError(409, 'NOTIFICATION_EMAIL_EVENT_IDEMPOTENCY_CONFLICT', 'Provider event ID is already bound to different evidence')
+        }
+        const suppression = await client.notificationEmailSuppression.findUnique({ where: { recipientFingerprint: evidence.recipientFingerprint }, select: { id: true } })
+        return { accepted: true, replayed: true, suppressed: Boolean(suppression), eventId: existing.id }
+      }
+    },
+    async listEmailSuppressions() {
+      const rows = await client.notificationEmailSuppression.findMany({
+        include: { user: { include: { profile: true } } },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 100,
+      })
+      return rows.map((row) => ({
+        id: row.id,
+        recipientFingerprintPreview: row.recipientFingerprint.slice(0, 12),
+        reasonType: row.reasonType,
+        reasonCode: row.reasonCode,
+        recipient: { handle: row.user.profile?.handle ?? null, emailHint: maskEmail(row.user.email) },
+        createdAt: row.createdAt.toISOString(),
+      }))
+    },
+    async releaseEmailSuppression(id, payload, actor) {
+      return runSerializableTransaction(async (db) => {
+        const row = await db.notificationEmailSuppression.findUnique({ where: { id: String(id) } })
+        if (!row) return null
+        await db.notificationEmailSuppression.delete({ where: { id: row.id } })
+        await recordAudit({
+          actor,
+          action: 'notification.email.suppression_released',
+          resourceType: 'notification_email_suppression',
+          resourceId: row.id,
+          metadata: {
+            reasonCode: payload.reasonCode,
+            suppressionReasonType: row.reasonType,
+            recipientFingerprint: row.recipientFingerprint,
+            sourceEventHash: row.sourceEventHash,
+          },
+        }, db)
+        return { id: row.id, released: true }
+      })
     },
     async complete(id, leaseToken, result = {}) {
       return runSerializableTransaction(async (db) => {

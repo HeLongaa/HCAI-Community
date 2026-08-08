@@ -5362,6 +5362,40 @@ export const openApiDocument = {
         responses: { '200': { description: 'Updated preference' }, '401': { description: 'Authentication required' }, '409': { description: 'Optimistic version conflict' } },
       },
     },
+    '/notifications/email/provider-events': {
+      post: {
+        summary: 'Accept signed, bounded, idempotent email bounce and complaint evidence from the provider relay',
+        security: [],
+        parameters: [
+          { name: 'x-notification-event-timestamp', in: 'header', required: true, schema: { type: 'string', pattern: '^\\d+$' } },
+          { name: 'x-notification-event-signature', in: 'header', required: true, schema: { type: 'string', pattern: '^sha256=[a-f0-9]{64}$' } },
+        ],
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', additionalProperties: false,
+          required: ['schemaVersion', 'eventId', 'eventType', 'providerMessageId', 'recipient', 'occurredAt'],
+          properties: {
+            schemaVersion: { type: 'integer', enum: [1] },
+            eventId: { type: 'string', maxLength: 200 },
+            eventType: { type: 'string', enum: ['bounce', 'complaint'] },
+            bounceClass: { type: ['string', 'null'], enum: ['permanent', 'transient', null] },
+            providerMessageId: { type: 'string', maxLength: 200 },
+            recipient: { type: 'string', format: 'email', maxLength: 254 },
+            reasonCode: { type: ['string', 'null'], maxLength: 80 },
+            statusEvidence: { type: ['string', 'null'], maxLength: 160 },
+            occurredAt: { type: 'string', format: 'date-time' },
+          },
+        } } } },
+        responses: {
+          '200': { description: 'Event accepted or idempotently replayed; no plaintext recipient or Provider ID is returned' },
+          '400': { description: 'Closed-schema event validation failed' },
+          '403': { description: 'Signature or timestamp rejected' },
+          '404': { description: 'Webhook disabled' },
+          '409': { description: 'Event ID idempotency conflict' },
+          '413': { description: 'Body exceeds configured limit' },
+          '415': { description: 'Content type is not application/json' },
+        },
+      },
+    },
     '/admin/notifications/templates': {
       get: {
         summary: 'List notification templates with bounded filtering, sorting, and cursor pagination',
@@ -5396,6 +5430,25 @@ export const openApiDocument = {
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } },
         ],
         responses: { '200': { description: 'Secret-free delivery page with masked recipient evidence' }, '403': { description: 'Missing admin:notifications:read' } },
+      },
+    },
+    '/admin/notifications/email-suppressions': {
+      get: {
+        summary: 'List active email suppressions with masked recipients and hash prefixes only',
+        responses: { '200': { description: 'Bounded suppression inventory' }, '403': { description: 'Missing admin:notifications:read' } },
+      },
+    },
+    '/admin/notifications/email-suppressions/{id}/release': {
+      post: {
+        summary: 'Release one email suppression with elevated permission, exact confirmation, reason, and audit evidence',
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', additionalProperties: false, required: ['reasonCode', 'confirmation'],
+          properties: {
+            reasonCode: { type: 'string', pattern: '^[a-z0-9][a-z0-9._:-]{0,79}$' },
+            confirmation: { type: 'string', enum: ['RELEASE EMAIL SUPPRESSION'] },
+          },
+        } } } },
+        responses: { '200': { description: 'Suppression released' }, '403': { description: 'Missing admin:notifications:manage' }, '404': { description: 'Suppression not found' } },
       },
     },
     '/admin/notifications/deliveries/metrics': {

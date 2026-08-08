@@ -44,7 +44,7 @@ test('email delivery hydrates an auth action only in memory before sending', asy
   assert.match(sent.notification.body, /token=secret/)
   assert.equal(persistedNotification.body, 'Generic persisted body')
   assert.equal(sent.delivery.id, 'delivery-1')
-  assert.deepEqual(result, { claimed: 1, sent: 1, retryScheduled: 0, deadLettered: 0 })
+  assert.deepEqual(result, { claimed: 1, sent: 1, retryScheduled: 0, deadLettered: 0, suppressed: 0 })
   assert.equal(completed[0].result.outcome, 'sent')
 })
 
@@ -63,4 +63,24 @@ test('expired auth actions fail without calling the email provider', async () =>
   })
   assert.equal(sendCalls, 0)
   assert.equal(result.deadLettered, 1)
+})
+
+test('recipient suppression is rechecked before any Provider call', async () => {
+  let sendCalls = 0
+  let prepareCalls = 0
+  const repositories = {
+    auth: { prepareEmailDelivery: async (claim) => { prepareCalls += 1; return claim } },
+    notificationDeliveries: {
+      claim: async () => [{ id: 'delivery-suppressed', channel: 'email', leaseToken: 'lease-suppressed' }],
+      suppressClaimIfNeeded: async () => ({ id: 'delivery-suppressed', status: 'suppressed' }),
+      complete: async () => { throw new Error('complete must not run for a suppressed claim') },
+    },
+  }
+  const result = await runNotificationDeliveryWorkerOnce({
+    repositories,
+    emailClient: { send: async () => { sendCalls += 1; return { outcome: 'sent' } } },
+  })
+  assert.equal(sendCalls, 0)
+  assert.equal(prepareCalls, 0)
+  assert.equal(result.suppressed, 1)
 })
