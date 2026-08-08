@@ -38,6 +38,7 @@ if (compose) {
   add('Vault and lifecycle gateway publish no host ports', (vault.ports ?? []).length === 0 && (gateway.ports ?? []).length === 0, 'internal-only')
   add('Vault and lifecycle gateway use only the internal backend network', [vault, gateway].every((service) => Object.keys(service.networks ?? {}).length === 1 && Object.hasOwn(service.networks, 'backend')), 'backend')
   add('Vault image is immutable and current staging version is explicit', /^hashicorp\/vault@sha256:[a-f0-9]{64}$/.test(vault.image ?? ''), vault.image)
+  add('Vault entrypoint loads its config directory exactly once', JSON.stringify(vault.command) === JSON.stringify(['server']), JSON.stringify(vault.command))
   add('Gateway is read-only and least privileged', gateway.read_only === true && gateway.cap_drop?.includes('ALL') && gateway.security_opt?.includes('no-new-privileges:true'), `read_only=${gateway.read_only}`)
   add('Gateway waits for healthy Vault over TLS', gateway.depends_on?.vault?.condition === 'service_healthy' && gateway.environment?.SECRET_LIFECYCLE_VAULT_ADDR === 'https://vault:8200/', gateway.environment?.SECRET_LIFECYCLE_VAULT_ADDR)
   add('Worker waits for the healthy lifecycle gateway', worker.depends_on?.['secret-lifecycle-gateway']?.condition === 'service_healthy', worker.depends_on?.['secret-lifecycle-gateway']?.condition)
