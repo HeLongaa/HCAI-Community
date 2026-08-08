@@ -27,7 +27,7 @@
     "test:v1-production-fallbacks": "node scripts/verify-v1-production-fallbacks.mjs && node --test scripts/verify-v1-production-fallbacks.test.mjs",
     "test:v1-production-bundle": "node scripts/verify-v1-production-bundle.mjs",
     "test:v1-providers": "node scripts/verify-v1-provider-matrix.mjs",
-    "test:v1-safety-policy": "node scripts/verify-v1-content-safety-policy.mjs && node --test server/src/creative/externalSafetyClassifier.test.js server/src/creative/inputSafety.test.js server/src/creative/outputSafety.test.js server/src/chat/chatSafety.test.js",
+    "test:v1-safety-policy": "node scripts/verify-v1-content-safety-policy.mjs && node --test server/src/creative/externalSafetyClassifier.test.js server/src/creative/inputSafety.test.js server/src/creative/outputSafety.test.js server/src/creative/providerOutputSafetyAssurance.test.js server/src/chat/chatSafety.test.js",
     "test:v1-data-governance": "node scripts/verify-v1-data-governance.mjs",
     "test:v1-compliance": "node scripts/verify-v1-compliance-policy.mjs",
     "test:v1-image-staging": "node scripts/verify-v1-image-staging-gate.mjs",

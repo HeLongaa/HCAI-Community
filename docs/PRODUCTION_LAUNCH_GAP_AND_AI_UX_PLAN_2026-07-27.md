@@ -91,7 +91,7 @@
 
 ### 1. 上游安全责任契约与应用失败关闭未验收
 
-权威配置仍为 `enforcementComplete=false`、`providerNativeSafety=adapter_mapping_implemented_real_provider_evidence_pending`、`productionApproved=false`。Image/Video 参考资产输入分类、Chat 附件与流式分段分类、Provider 原生结果闭集映射、人工审核案件、原决定和所有者申诉已经存在。2026-08-04 业务责任人确认，生成输出内容安全和媒体技术安全由 Router/上游 Provider 承接，本系统不再建设重复分类器或扫描服务。剩余缺口收窄为：归档上游责任契约，验收拒绝/未知/超时/畸形/不可用的闭集映射与失败关闭，并继续对应用自有的输入、Chat、权限和申诉流程负责。
+权威配置仍为 `enforcementComplete=false`、`providerNativeSafety=assurance_contract_implemented_real_provider_evidence_pending`、`productionApproved=false`。Image/Video 参考资产输入分类、Chat 附件与流式分段分类、Provider 原生结果闭集映射、人工审核案件、原决定和所有者申诉已经存在。2026-08-04 业务责任人确认，生成输出内容安全和媒体技术安全由 Router/上游 Provider 承接，本系统不再建设重复分类器或扫描服务。逐产物证明合同现已固定 Provider、操作引用、上游策略引用、证据哈希、来源和时间，并明确 Staging 人工证明不能用于 Production。剩余缺口收窄为：基于脱敏真实响应完成各 Provider 字段映射，验收拒绝/未知/超时/畸形/不可用的闭集映射与失败关闭，并继续对应用自有的输入、Chat、权限和申诉流程负责。
 
 上线前必须实现：
 
@@ -132,11 +132,17 @@
 
 同日最新本地 env preflight 进一步确认运行机器没有注入 Video/Music staging 配置：Video 安全摘要为 `runtimeEnv=""`、`credentialConfigured=false`、`endpointConfigured=false`、`modelConfigured=false`、生命周期与 Worker 均关闭；Music 也因生产语义、staging、网络、凭据、权利/训练退出和许可证据八项缺失而 fail-closed。即使 Router 控制台恢复渠道和模型，也必须先在专用 staging 注入短时 SecretRef 和新的单次审批信封，preflight 全绿后才允许运行 acceptance。
 
-### 4. 目标环境发布与回滚演练未完成
+### 4. 登录恢复路径与 OAuth 目标回调未完成
+
+邮箱注册和密码登录的 API、限流、会话与浏览器流程已经通过，但当前没有邮箱所有权验证和密码找回链路，不能把邮箱表单视为完整的生产账户恢复方案。Google/GitHub 的现有回调仍指向本机，`chat.hctopup.com` 当前也不是本系统 API，不能冒充可用回调。Production smoke 因此继续要求至少一个 HTTPS 外部 OAuth Provider；未配置 Provider 在登录页完全隐藏，不再留下四个禁用按钮或无意义分隔线。
+
+上线前必须二选一完成并验收：为至少一个 OAuth Provider 配置目标 HTTPS 回调并执行真实登录/绑定/冲突/撤销验收；或实现邮箱验证、一次性密码重置、可靠邮件投递、令牌过期/单次消费、全会话撤销和滥用限流。两条路径均未完成前不得放宽 OAuth 门禁。
+
+### 5. 目标环境发布与回滚演练未完成
 
 最新本地隔离 Docker 演练已基于 114/114 迁移和源码快照绑定的 v3 回执通过 23/23 检查，证明迁移、PostgreSQL/Redis/对象备份恢复、备份删除和 restore-negative 脚本及证据链可执行；RELEASE-02 本地无副作用夹具也已完成 candidate/rollback 两阶段 12/12 检查，证明制品绑定、冒烟、回滚和回执执行器可运行。两类本地证据都明确记录工作树非 clean 或 `targetEnvironmentVerified=false`，不冒充 commit 制品部署或 staging 验收。目标环境仍须在受保护 job 以 clean checkout 完成真实不可变制品部署、健康检查、冒烟、回滚后复验、密钥轮换、真实备份生命周期和恢复，并保存环境回执。
 
-### 5. Provider 预算专用外部告警待目标环境验收
+### 6. Provider 预算专用外部告警待目标环境验收
 
 余额、配额和 Provider 状态阻断已经能够生成去重、脱敏的站内运营通知，并在统一邮件通道启用时进入持久投递队列。预算阈值、预算派发阻断和成本异常也会进入独立 `ProviderAlertDelivery`：专用 Webhook、Slack 和邮件中继共用持久租约、重试、死信、逐次 attempt、人工 replay 仓库能力和 hash-only 回执。生产客户端要求 HTTPS、显式 hostname allowlist、timestamp、HMAC 与稳定幂等头；URL、收件人和 Secret 仅从受保护环境读取，不写入投递表或日志。Production smoke 只在 Worker、通道、allowlist 和显式批准完整时承认 production wiring。
 
@@ -145,7 +151,7 @@
 - 在目标部署清单和运维手册确认 `runtime.ai` SecretRef 注入、Worker 实例数、Secret Manager 轮换及 hostname allowlist 变更审批流程；生产 Worker inventory 已能在功能启用但 Worker 关闭时 fail-closed。
 - 在目标 staging 验收成功、401/403、429、5xx、超时、DNS 失败、签名错误、重复投递和死信恢复，并证明值班人员能够从通知到达对应 Admin 生成/审计证据。
 
-### 6. 局部页面与 CSS 性能仍需收敛
+### 7. 局部页面与 CSS 性能仍需收敛
 
 路由级拆包已完成第一轮收敛：Tasks 独立为 42.43 kB（gzip 13.37 kB），生产包门禁实测登录后入口 gzip 106.79 KiB；Landing 核心 gzip 3.10 KiB，Three.js 粒子增强层为独立 524.05 kB（门禁实测 gzip 127.61 KiB）chunk，低动效不请求该层；Admin 核心门禁实测 gzip 42.80 KiB，Model Control 和其余面板均独立加载。当前主要静态体积债务转为全局 CSS 427.09 kB（gzip 68.27 kB）以及 Three.js 增强层在低端设备上的解析、GPU 和耗电成本。
 
@@ -153,7 +159,7 @@
 
 服务端 PostgreSQL 集成测试曾出现 `pg@8` 关于“同一 client 正在查询时再次调用 `client.query()`”将在 `pg@9` 移除的弃用警告；现已定位到 Prisma 多 relation 写后水合与交互式事务内并发查询，并改为顺序读取。严格 `--throw-deprecation` 回归已通过，集成测试也会主动捕获同类警告；后续升级 `pg@9` 时仍需执行完整 PostgreSQL 集成套件，不以静态版本升级代替运行时验证。
 
-### 7. 实页复核缺陷已完成第一轮修复
+### 8. 实页复核缺陷已完成第一轮修复
 
 2026-07-27 在本地运行环境 `1280 x 720` 与 `390 x 844` 视口复核后，游客首屏、登录主操作、管理员任务隔离和搜索指标语义均已修复，并加入 E2E 几何/状态断言：
 
@@ -162,7 +168,7 @@
 - 管理员标签按业务域分组，桌面无横向溢出，移动端可直接选择当前业务域；每个标签只显示相关面板，Release 独立成页。
 - 搜索诊断对无样本、未建基线和积压使用不同文案，真实积压仍保留告警含义但改为人类可读时长。
 
-聚焦 E2E 3/3、桌面/移动浏览器几何检查、TypeScript、Lint 和生产构建均通过。上述 P1 不再作为当前阻断；P0 `No-Go` 仍由内容安全部署证据、数据治理、Router 可用性和目标环境演练决定。
+聚焦 E2E 3/3、桌面/移动浏览器几何检查、TypeScript、Lint 和生产构建均通过。上述 P1 不再作为当前阻断；P0 `No-Go` 仍由内容安全部署证据、数据治理、登录恢复路径、Router 可用性和目标环境演练决定。
 
 ## 三、AI 风格与用户体验结论
 

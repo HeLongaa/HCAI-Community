@@ -690,6 +690,7 @@ export function LoginModal({
   ]
   const hasDevOAuthProviders = providers.some((provider) => provider.mode === 'dev' && !provider.configured)
   const hasExternalOAuthProviders = providers.some((provider) => provider.mode === 'external' && provider.configured)
+  const availableOAuthProviders = providers.filter((provider) => provider.available)
   const isPage = presentation === 'page'
   const finishAuthentication = (destination?: Page) => {
     if (onAuthenticated) {
@@ -1020,57 +1021,59 @@ export function LoginModal({
             </div>
           </details>
         )}
-        <div className="auth-divider"><span>{textFor(t, 'or continue with', '或使用以下方式')}</span></div>
-        <div className="oauth-provider-list" aria-label={textFor(t, 'Social login providers', '第三方登录方式')}>
-          {!isPage && (
-            <div className="oauth-config-status">
-              <ShieldCheck size={15} />
-              <span>
-                {hasExternalOAuthProviders && !hasDevOAuthProviders
-                  ? textFor(t, 'External OAuth is configured for this environment.', '当前环境已配置外部 OAuth。')
-                  : hasDevOAuthProviders
-                    ? textFor(t, 'Using signed local callbacks in this development environment.', '当前开发环境使用签名本地回调。')
-                    : textFor(t, 'OAuth providers are unavailable in this environment.', '当前环境未启用第三方登录。')}
-              </span>
+        {availableOAuthProviders.length > 0 && (
+          <>
+            <div className="auth-divider"><span>{textFor(t, 'or continue with', '或使用以下方式')}</span></div>
+            <div className="oauth-provider-list" aria-label={textFor(t, 'Social login providers', '第三方登录方式')}>
+              {!isPage && (
+                <div className="oauth-config-status">
+                  <ShieldCheck size={15} />
+                  <span>
+                    {hasExternalOAuthProviders && !hasDevOAuthProviders
+                      ? textFor(t, 'External OAuth is configured for this environment.', '当前环境已配置外部 OAuth。')
+                      : textFor(t, 'Using signed local callbacks in this development environment.', '当前开发环境使用签名本地回调。')}
+                  </span>
+                </div>
+              )}
+              {availableOAuthProviders.map((provider) => {
+                const status = oauthProviderStatus(provider, t)
+                return (
+                  <button
+                    className={selectedProvider === provider.provider ? 'social-login active' : 'social-login'}
+                    type="button"
+                    key={provider.provider}
+                    disabled={selectedProvider !== '' && selectedProvider !== provider.provider}
+                    onClick={() => {
+                      setSelectedProvider(provider.provider)
+                      setError('')
+                      void loginWithOAuthProvider(provider.provider).then((result) => {
+                        if (result === 'redirecting') {
+                          simulateAction(isZh ? `正在跳转到 ${provider.label}` : `Redirecting to ${provider.label}`)
+                          return
+                        }
+                        simulateAction(isZh ? `已使用 ${provider.label} 登录` : `Signed in with ${provider.label}`)
+                        finishAuthentication()
+                      }).catch((oauthError) => {
+                        console.info('[oauth]', oauthError)
+                        setError(oauthErrorCopy(oauthError, t))
+                      }).finally(() => {
+                        setSelectedProvider('')
+                      })
+                    }}
+                  >
+                    {isPage ? oauthProviderIcon(provider.provider) : <Globe2 size={18} />}
+                    <span>{isPage ? provider.label : isZh ? `使用 ${provider.label} 继续` : `Continue with ${provider.label}`}</span>
+                    {!isPage && (
+                      <b className={status.className} title={status.title}>
+                        {status.label}
+                      </b>
+                    )}
+                  </button>
+                )
+              })}
             </div>
-          )}
-          {providers.map((provider) => {
-            const status = oauthProviderStatus(provider, t)
-            return (
-              <button
-                className={selectedProvider === provider.provider ? 'social-login active' : 'social-login'}
-                type="button"
-                key={provider.provider}
-                disabled={!provider.available || (selectedProvider !== '' && selectedProvider !== provider.provider)}
-                onClick={() => {
-                  setSelectedProvider(provider.provider)
-                  setError('')
-                  void loginWithOAuthProvider(provider.provider).then((result) => {
-                    if (result === 'redirecting') {
-                      simulateAction(isZh ? `正在跳转到 ${provider.label}` : `Redirecting to ${provider.label}`)
-                      return
-                    }
-                    simulateAction(isZh ? `已使用 ${provider.label} 登录` : `Signed in with ${provider.label}`)
-                    finishAuthentication()
-                  }).catch((oauthError) => {
-                    console.info('[oauth]', oauthError)
-                    setError(oauthErrorCopy(oauthError, t))
-                  }).finally(() => {
-                    setSelectedProvider('')
-                  })
-                }}
-              >
-                {isPage ? oauthProviderIcon(provider.provider) : <Globe2 size={18} />}
-                <span>{isPage ? provider.label : isZh ? `使用 ${provider.label} 继续` : `Continue with ${provider.label}`}</span>
-                {!isPage && (
-                  <b className={status.className} title={status.title}>
-                    {status.label}
-                  </b>
-                )}
-              </button>
-            )
-          })}
-        </div>
+          </>
+        )}
         <div className="auth-legal-note">
           <span>{isPage
             ? textFor(t, 'By continuing, you agree to our', '继续即表示你同意我们的')

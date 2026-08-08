@@ -74,7 +74,7 @@ addCheck(
   'runtime enforcement remains incomplete',
   policy.runtimeStatus.enforcementComplete === false &&
     policy.runtimeStatus.multimodalInputSafety === 'image_video_and_chat_attachment_classifier_fail_closed' &&
-    policy.runtimeStatus.providerNativeSafety === 'adapter_mapping_implemented_real_provider_evidence_pending' &&
+    policy.runtimeStatus.providerNativeSafety === 'assurance_contract_implemented_real_provider_evidence_pending' &&
     policy.runtimeStatus.postOutputSafety === 'independent_classifier_and_media_scan_fail_closed' &&
     policy.runtimeStatus.chatStreamingSafety === 'bounded_unclassified_buffer_and_segment_classifier_fail_closed' &&
     policy.runtimeStatus.appealWorkflow === 'owner_appeal_and_independent_review_implemented',
@@ -528,6 +528,7 @@ const trustRoutesSource = read(policy.currentRuntimeBaseline.trustRoutesFile)
 const appealRepositorySource = read(policy.currentRuntimeBaseline.appealRepositoryFile)
 const creativeRoutesSource = read(policy.currentRuntimeBaseline.creativeRoutesFile)
 const providerNativeSafetySource = read(policy.currentRuntimeBaseline.providerNativeSafetyFile)
+const providerOutputSafetyAssuranceSource = read(policy.currentRuntimeBaseline.providerOutputSafetyAssuranceFile)
 const providerAdapterSource = read('server/src/creative/providerAdapterContract.js')
 const generationServiceSource = read('server/src/creative/generationService.js')
 const openAIImageProviderSource = read('server/src/creative/openaiImageProvider.js')
@@ -594,6 +595,15 @@ addCheck(
     [openAIImageProviderSource, routerVideoProviderSource, routerMusicProviderSource, replicateProviderSource]
       .every((source) => source.includes('providerNativeSafetyForGeneration')),
   policy.currentRuntimeBaseline.providerNativeSafetyFile,
+)
+addCheck(
+  'Provider output safety assurance binds bounded hashed evidence to Provider operations',
+  providerOutputSafetyAssuranceSource.includes('operationRef') &&
+    providerOutputSafetyAssuranceSource.includes('policyRef') &&
+    providerOutputSafetyAssuranceSource.includes('evidenceHash') &&
+    providerOutputSafetyAssuranceSource.includes("source !== 'provider_response'") &&
+    providerOutputSafetyAssuranceSource.includes('maximumEvidenceBytes'),
+  policy.currentRuntimeBaseline.providerOutputSafetyAssuranceFile,
 )
 
 const humanDocument = read(policy.guardrails.policyDocument)

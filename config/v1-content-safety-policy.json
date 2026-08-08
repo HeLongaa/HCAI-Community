@@ -8,7 +8,7 @@
     "enforcementComplete": false,
     "currentPromptGate": "limited_keyword_fixture_baseline",
     "multimodalInputSafety": "image_video_and_chat_attachment_classifier_fail_closed",
-    "providerNativeSafety": "adapter_mapping_implemented_real_provider_evidence_pending",
+    "providerNativeSafety": "assurance_contract_implemented_real_provider_evidence_pending",
     "postOutputSafety": "independent_classifier_and_media_scan_fail_closed",
     "chatStreamingSafety": "bounded_unclassified_buffer_and_segment_classifier_fail_closed",
     "humanReview": "generation_review_decision_appeal_and_idempotent_resume_implemented",
@@ -787,6 +787,7 @@
     "appealRepositoryFile": "server/src/trust/prismaModerationCaseRepository.js",
     "creativeRoutesFile": "server/src/modules/creative/routes.js"
     ,"providerNativeSafetyFile": "server/src/creative/providerNativeSafety.js"
+    ,"providerOutputSafetyAssuranceFile": "server/src/creative/providerOutputSafetyAssurance.js"
   },
   "implementationHandoff": [
     {

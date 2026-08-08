@@ -76,6 +76,36 @@ test('signing out returns an authenticated user to the public home page', async 
   await expect(page).toHaveURL(/#home$/)
 })
 
+test('unavailable OAuth providers do not leave disabled sign-in controls behind', async ({ page }) => {
+  await page.route('**/api/auth/oauth/providers', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: ['Google', 'GitHub', 'Apple', 'Discord'].map((label) => ({
+          provider: label.toLowerCase(),
+          label,
+          configured: false,
+          available: false,
+          mode: 'unavailable',
+          authorizationUrl: null,
+          callbackUrl: null,
+          callbackMethod: label === 'Apple' ? 'POST' : 'GET',
+          scopes: [],
+        })),
+      }),
+    })
+  })
+
+  await page.goto('/#auth')
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Continue with email' })).toBeVisible()
+  await expect(page.getByText('or continue with')).toHaveCount(0)
+  await expect(page.locator('.oauth-provider-list')).toHaveCount(0)
+  for (const provider of ['Google', 'GitHub', 'Apple', 'Discord']) {
+    await expect(page.getByRole('button', { name: provider })).toHaveCount(0)
+  }
+})
+
 test('reduced motion keeps the public entry usable without mounting WebGL', async ({ page }) => {
   const particleRequests = trackParticleRequests(page)
   await page.emulateMedia({ reducedMotion: 'reduce' })
