@@ -49,6 +49,7 @@ if [ -n "$(git -C "$source_dir" status --porcelain --untracked-files=no)" ]; the
   exit 1
 fi
 
+cd "$source_dir"
 set -a
 . "$runtime"
 set +a
@@ -73,7 +74,6 @@ fi
 
 log="$rehearsal_root/$mode.log"
 rm -f "$log"
-cd "$source_dir"
 if ! node scripts/rehearse-release-infrastructure.mjs --profile=env --mode="$mode" >"$log" 2>&1; then
   echo "Infrastructure rehearsal failed; inspect the protected server log" >&2
   exit 1
