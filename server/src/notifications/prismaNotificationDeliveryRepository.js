@@ -308,7 +308,7 @@ export const createPrismaNotificationDeliveryRepository = (client, {
       } catch (error) {
         if (error?.code !== 'P2002') throw error
         const existing = await client.notificationEmailProviderEvent.findUnique({ where: { providerEventHash: evidence.providerEventHash } })
-        if (!existing) throw error
+        if (!existing) return ingest()
         if (existing.payloadHash !== evidence.payloadHash) {
           throw new HttpError(409, 'NOTIFICATION_EMAIL_EVENT_IDEMPOTENCY_CONFLICT', 'Provider event ID is already bound to different evidence')
         }

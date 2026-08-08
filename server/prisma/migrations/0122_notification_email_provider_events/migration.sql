@@ -33,6 +33,8 @@ CREATE INDEX "notification_email_provider_events_recipient_fingerprint_received_
   ON "notification_email_provider_events"("recipient_fingerprint", "received_at");
 CREATE INDEX "notification_email_provider_events_event_type_received_at_idx"
   ON "notification_email_provider_events"("event_type", "received_at");
+CREATE INDEX "notification_deliveries_provider_receipt_hash_idx"
+  ON "notification_deliveries"("provider_receipt_hash");
 
 CREATE UNIQUE INDEX "notification_email_suppressions_recipient_fingerprint_key"
   ON "notification_email_suppressions"("recipient_fingerprint");

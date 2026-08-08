@@ -1049,7 +1049,8 @@ addCheck(
     workerJobsSource.includes('notificationRetentionSweepLimit') &&
     notificationRetentionMigration.includes('notifications_retention_idx') &&
     providerAlertRetentionMigration.includes('provider_alert_deliveries_status_updated_at_id_idx') &&
-    notificationEmailProviderEventMigration.includes('notification_email_provider_events_recipient_fingerprint_received_at_idx'),
+    notificationEmailProviderEventMigration.includes('notification_email_provider_events_recipient_fingerprint_received_at_idx') &&
+    notificationEmailProviderEventMigration.includes('notification_deliveries_provider_receipt_hash_idx'),
   'global oldest-first bounded deletion, active recipient suppression and Provider alert exclusion, child evidence cleanup, indexes, and leased worker',
 )
 addCheck(
