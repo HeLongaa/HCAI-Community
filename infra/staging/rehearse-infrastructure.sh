@@ -23,6 +23,9 @@ if [ ! -f "$runtime" ]; then
 fi
 
 install -d -m 0770 "$rehearsal_root"
+install -d -m 0770 "$rehearsal_root/tmp"
+TMPDIR="$rehearsal_root/tmp"
+export TMPDIR
 touch "$lock"
 chmod 0660 "$lock"
 exec 9>"$lock"
