@@ -25,7 +25,7 @@ Both candidate and rollback phases require:
 
 Use only a protected staging or rehearsal environment. The target URL must use HTTPS and its hostname must contain `staging` or `rehearsal`; a production hostname is rejected before a deployment command runs.
 
-Required non-secret protected environment variables:
+Required protected environment values:
 
 ```text
 RELEASE_APPLICATION_REHEARSAL_CONFIRMATION=release-02-staging-rehearsal
@@ -35,6 +35,10 @@ RELEASE_PREVIOUS_ARTIFACT_SHA256=<different 64 lowercase hex characters>
 RELEASE_REHEARSAL_DEPLOY_COMMAND_JSON=["kubectl", ...]
 RELEASE_REHEARSAL_ROLLBACK_COMMAND_JSON=["kubectl", ...]
 ```
+
+Store these values in the protected Environment Secrets consumed by the workflow. They are configuration rather than
+credentials, but keeping them in Environment Secrets preserves the reviewer and branch boundary when the Environment's
+100-variable quota is already occupied. Do not fall back to repository variables.
 
 Commands are parsed as JSON argument arrays and run without a shell. The executable must be one of `aws`, `az`, `docker`, `gcloud`, `kubectl`, `node`, `npm`, or `npx`. Credential-shaped command arguments are rejected; credentials must come from the protected environment. The runner supplies `RELEASE_TARGET_ARTIFACT_SHA256`, both artifact digests, and the target origin to each command. The deployment adapter must configure `RELEASE_ARTIFACT_SHA256` on the API process so `/health` can prove which artifact serves traffic.
 

@@ -46,8 +46,22 @@ const appJobStart = workflow.indexOf('\n  application-rehearsal:')
 const appJob = appJobStart < 0 ? '' : workflow.slice(appJobStart)
 const appPreflight = appJob.indexOf('npm run release:application:preflight')
 const appExecute = appJob.indexOf('npm run release:application:rehearse:env')
+const protectedReleaseInputs = [
+  'RELEASE_APPLICATION_REHEARSAL_CONFIRMATION',
+  'RELEASE_REHEARSAL_TARGET_ORIGIN',
+  'RELEASE_CANDIDATE_ARTIFACT_SHA256',
+  'RELEASE_PREVIOUS_ARTIFACT_SHA256',
+  'RELEASE_REHEARSAL_DEPLOY_COMMAND_JSON',
+  'RELEASE_REHEARSAL_ROLLBACK_COMMAND_JSON',
+  'RELEASE_REHEARSAL_SSH_HOST',
+  'RELEASE_REHEARSAL_SSH_PORT',
+  'RELEASE_REHEARSAL_SSH_USER',
+  'RELEASE_REHEARSAL_SSH_DEPLOY_COMMAND',
+  'RELEASE_REHEARSAL_SSH_PRIVATE_KEY',
+  'RELEASE_REHEARSAL_SSH_KNOWN_HOSTS',
+]
 add('workflow keeps application preflight and execute in one job and in order', appPreflight >= 0 && appExecute > appPreflight, 'application-rehearsal job')
-add('workflow injects SSH credentials only from protected secrets', appJob.includes('secrets.RELEASE_REHEARSAL_SSH_PRIVATE_KEY') && appJob.includes('secrets.RELEASE_REHEARSAL_SSH_KNOWN_HOSTS'), 'protected environment')
+add('workflow injects all RELEASE-02 inputs from protected secrets', protectedReleaseInputs.every((name) => appJob.includes(`secrets.${name}`)) && !appJob.includes('vars.RELEASE_'), `${protectedReleaseInputs.length} protected inputs`)
 
 const infraJobStart = workflow.indexOf('\n  infrastructure-rehearsal:')
 const infraJobEnd = infraJobStart < 0 ? -1 : workflow.indexOf('\n  application-rehearsal:', infraJobStart)

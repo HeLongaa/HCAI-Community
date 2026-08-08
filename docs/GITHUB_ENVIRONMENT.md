@@ -30,18 +30,22 @@ The `application-rehearsal` job is restricted to a protected staging or rehearsa
 
 | Kind | Name | Requirement |
 | --- | --- | --- |
-| Variable | `RELEASE_APPLICATION_REHEARSAL_CONFIRMATION` | Exact value `release-02-staging-rehearsal` |
-| Variable | `RELEASE_REHEARSAL_TARGET_ORIGIN` | HTTPS API origin whose host contains `staging` or `rehearsal` |
-| Variable | `RELEASE_CANDIDATE_ARTIFACT_SHA256` | Immutable candidate artifact SHA-256 |
-| Variable | `RELEASE_PREVIOUS_ARTIFACT_SHA256` | Different immutable previous artifact SHA-256 |
-| Variable | `RELEASE_REHEARSAL_DEPLOY_COMMAND_JSON` | JSON argv for the allowlisted candidate deployment adapter |
-| Variable | `RELEASE_REHEARSAL_ROLLBACK_COMMAND_JSON` | JSON argv for the allowlisted previous-artifact restore adapter |
-| Variable | `RELEASE_REHEARSAL_SSH_HOST` | Fixed staging SSH host used by the repository deployment adapter |
-| Variable | `RELEASE_REHEARSAL_SSH_PORT` | Fixed SSH port, normally `22` |
-| Variable | `RELEASE_REHEARSAL_SSH_USER` | Dedicated staging deployment user |
-| Variable | `RELEASE_REHEARSAL_SSH_DEPLOY_COMMAND` | Absolute allowlisted remote command, for example `/opt/newchat-staging/bin/deploy-release` |
+| Secret | `RELEASE_APPLICATION_REHEARSAL_CONFIRMATION` | Exact value `release-02-staging-rehearsal` |
+| Secret | `RELEASE_REHEARSAL_TARGET_ORIGIN` | HTTPS API origin whose host contains `staging` or `rehearsal` |
+| Secret | `RELEASE_CANDIDATE_ARTIFACT_SHA256` | Immutable candidate artifact SHA-256 |
+| Secret | `RELEASE_PREVIOUS_ARTIFACT_SHA256` | Different immutable previous artifact SHA-256 |
+| Secret | `RELEASE_REHEARSAL_DEPLOY_COMMAND_JSON` | JSON argv for the allowlisted candidate deployment adapter |
+| Secret | `RELEASE_REHEARSAL_ROLLBACK_COMMAND_JSON` | JSON argv for the allowlisted previous-artifact restore adapter |
+| Secret | `RELEASE_REHEARSAL_SSH_HOST` | Fixed staging SSH host used by the repository deployment adapter |
+| Secret | `RELEASE_REHEARSAL_SSH_PORT` | Fixed SSH port, normally `22` |
+| Secret | `RELEASE_REHEARSAL_SSH_USER` | Dedicated staging deployment user |
+| Secret | `RELEASE_REHEARSAL_SSH_DEPLOY_COMMAND` | Absolute allowlisted remote command, for example `/opt/newchat-staging/bin/deploy-release` |
 | Secret | `RELEASE_REHEARSAL_SSH_PRIVATE_KEY` | Dedicated staging-only SSH private key with no production access |
 | Secret | `RELEASE_REHEARSAL_SSH_KNOWN_HOSTS` | Pinned SSH host-key line for the exact staging host and port |
+
+The first ten values are not credentials. They are stored as Environment Secrets because GitHub limits each Environment
+to 100 variables and this staging environment uses that full quota for runtime configuration. This keeps release inputs
+inside the protected Environment instead of weakening the boundary with repository-level variables.
 
 Deployment credentials stay in protected Secrets consumed by the selected CLI; never place them in either command
 array. Both commands receive the target artifact digest through `RELEASE_TARGET_ARTIFACT_SHA256` and must deploy the API
