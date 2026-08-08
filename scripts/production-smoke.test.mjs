@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 import test from 'node:test'
 
 import { inspectProductionWorkers, productionWorkerRequirements } from './lib/production-smoke.mjs'
@@ -77,4 +78,36 @@ test('protected runtime smoke accepts independently valid configurations', () =>
 
   assert.equal(result.checks.every(({ pass }) => pass), true)
   assert.equal(result.providerDeletionGatewayConfigured, true)
+})
+
+test('deployment environment job passes every fixture setting and default-off runtime switch', () => {
+  const smokeSource = fs.readFileSync(new URL('./smoke-production.mjs', import.meta.url), 'utf8')
+  const workflowSource = fs.readFileSync(new URL('../.github/workflows/quality-gates.yml', import.meta.url), 'utf8')
+  const fixtureBlock = smokeSource.match(/const productionFixture = \{([\s\S]*?)\n\}/)?.[1] ?? ''
+  const fixtureKeys = [...fixtureBlock.matchAll(/^  ([A-Z][A-Z0-9_]*):/gm)].map((match) => match[1])
+  const defaultOffBoundaryKeys = [
+    'DEPLOYMENT_ENV',
+    'DATABASE_URL',
+    'SECRET_MANAGER_PROVIDER',
+    'CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED',
+    'CREATIVE_PROVIDER_CALLBACK_ENABLED',
+    'CREATIVE_PROVIDER_POLLING_ENABLED',
+    'CREATIVE_PROVIDER_POLLING_WORKER_ENABLED',
+    'CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED',
+    'CREATIVE_ROUTER_VIDEO_LIFECYCLE_WORKER_ENABLED',
+    'CHAT_PROVIDER_MODE',
+    'CHAT_OPENAI_HTTP_CLIENT_ENABLED',
+    'CHAT_OPENAI_NETWORK_CALLS_ENABLED',
+    'CHAT_OPENAI_SAFETY_CLASSIFIER_ENABLED',
+    'CHAT_ATTACHMENT_BYTES_ENABLED',
+  ]
+  const deploymentJob = workflowSource.match(/  deployment-env-smoke:([\s\S]*?)\n  infrastructure-rehearsal:/)?.[1] ?? ''
+
+  for (const key of [...new Set([...fixtureKeys, ...defaultOffBoundaryKeys])]) {
+    if (key === 'NODE_ENV') {
+      assert.match(deploymentJob, /^      NODE_ENV: production$/m)
+      continue
+    }
+    assert.match(deploymentJob, new RegExp(`^      ${key}: \\\$(?:\\{\\{) (?:vars|secrets)\\.${key} (?:\\}\\})$`, 'm'), `${key} must be passed through by deployment-env-smoke`)
+  }
 })
