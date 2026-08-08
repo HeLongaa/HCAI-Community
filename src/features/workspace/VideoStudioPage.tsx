@@ -185,6 +185,12 @@ export function VideoStudioPage({
   const selectedProvider = preferredProvider ?? operationalProvider
   const providerId = selectedProvider?.id ?? ''
   const capability = capabilityFor(selectedProvider)
+  const aspectRatioOptions = parameterOptions(capability, 'aspectRatio', ['16:9', '9:16']).map(String)
+  const durationOptions = parameterOptions(capability, 'durationSeconds', [4, 6, 8]).map(Number)
+  const motionOptions = parameterOptions(capability, 'motionPreset', ['subtle', 'cinematic', 'dynamic', 'fast_cuts']).map(String)
+  const selectedAspectRatio = aspectRatioOptions.includes(aspectRatio) ? aspectRatio : aspectRatioOptions[0] ?? '16:9'
+  const selectedDurationSeconds = durationOptions.includes(durationSeconds) ? durationSeconds : durationOptions[0] ?? 8
+  const selectedMotionPreset = motionOptions.includes(motionPreset) ? motionPreset : motionOptions[0] ?? 'cinematic'
   const modeContracts = capability?.modeContracts ?? []
   const availableModes = modeContracts.filter((contract) => contract.available)
   const mode = availableModes.some((contract) => contract.id === modeChoice) ? modeChoice : availableModes[0]?.id ?? ''
@@ -254,9 +260,9 @@ export function VideoStudioPage({
       providerId,
       inputAssetIds,
       parameters: {
-        aspectRatio,
-        durationSeconds,
-        motionPreset,
+        aspectRatio: selectedAspectRatio,
+        durationSeconds: selectedDurationSeconds,
+        motionPreset: selectedMotionPreset,
         outputFormat: 'mp4',
       },
     })
@@ -392,20 +398,20 @@ export function VideoStudioPage({
           <div className="video-parameter-grid">
             <label>
               <span>{textFor(t, 'Aspect ratio', '画幅')}</span>
-              <select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value)}>
-                {parameterOptions(capability, 'aspectRatio', ['16:9', '9:16']).map((value) => <option key={value} value={value}>{value}</option>)}
+              <select value={selectedAspectRatio} onChange={(event) => setAspectRatio(event.target.value)}>
+                {aspectRatioOptions.map((value) => <option key={value} value={value}>{value}</option>)}
               </select>
             </label>
             <label>
               <span>{textFor(t, 'Duration', '时长')}</span>
-              <select value={durationSeconds} onChange={(event) => setDurationSeconds(Number(event.target.value))}>
-                {parameterOptions(capability, 'durationSeconds', [4, 6, 8]).map((value) => <option key={value} value={value}>{value} {isZh ? '秒' : 'sec'}</option>)}
+              <select value={selectedDurationSeconds} onChange={(event) => setDurationSeconds(Number(event.target.value))}>
+                {durationOptions.map((value) => <option key={value} value={value}>{value} {isZh ? '秒' : 'sec'}</option>)}
               </select>
             </label>
             <label>
               <span>{textFor(t, 'Motion', '运动预设')}</span>
-              <select value={motionPreset} onChange={(event) => setMotionPreset(event.target.value)}>
-                {parameterOptions(capability, 'motionPreset', ['subtle', 'cinematic', 'dynamic', 'fast_cuts']).map((value) => <option key={value} value={value}>{labelForMotion(String(value), isZh)}</option>)}
+              <select value={selectedMotionPreset} onChange={(event) => setMotionPreset(event.target.value)}>
+                {motionOptions.map((value) => <option key={value} value={value}>{labelForMotion(value, isZh)}</option>)}
               </select>
             </label>
             <label>
@@ -458,7 +464,7 @@ export function VideoStudioPage({
             clock={clock}
           />
 
-          <div className={`video-preview-stage ratio-${aspectRatio.replace(':', '-')}`}>
+          <div className={`video-preview-stage ratio-${selectedAspectRatio.replace(':', '-')}`}>
             {workflow.preview.status === 'ready' && workflow.preview.url ? (
               <video controls src={workflow.preview.url} data-testid="private-video-preview" aria-label={textFor(t, 'Private video preview', '私有视频预览')} />
             ) : (

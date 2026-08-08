@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import type { ApiUserCreativeGeneration } from '../src/services/contracts'
+import type { ApiCreativeProviderCatalog, ApiUserCreativeGeneration } from '../src/services/contracts'
 import { signInPage } from './helpers'
 
 const actionsFor = (status: string, outputReady = false): ApiUserCreativeGeneration['actions'] => ({
@@ -119,6 +119,66 @@ test('Video Studio uses capability parameters and labels disabled Provider shell
   await page.getByLabel('Video runtime').selectOption('runway-gen-4-5')
   await expect(page.getByText('Unavailable', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Generate video' })).toBeDisabled()
+})
+
+test('Video Studio submits the capability-selected value after switching to a constrained model', async ({ page, request }) => {
+  await signInPage(page, request, 'promptlin')
+  await page.route('**/api/creative/providers', async (route) => {
+    const response = await route.fetch()
+    const payload = await response.json() as { data: ApiCreativeProviderCatalog }
+    const minimax = payload.data.providers.find((provider) => provider.id === 'hcai-router-minimax-hailuo-2-3')
+    if (!minimax) throw new Error('MiniMax fixture Provider is missing')
+    minimax.enabled = true
+    minimax.configured = true
+    minimax.fixtureInjectable = false
+    minimax.safeMetadata.fixtureAdapterOnly = false
+    const capability = minimax.capabilities.find((candidate) => candidate.workspace === 'video')
+    if (!capability) throw new Error('MiniMax video capability is missing')
+    capability.availability = {
+      ...capability.availability,
+      capabilityAvailable: true,
+      runtimeAvailableWhenConfigured: true,
+      productionAvailable: false,
+    }
+    await route.fulfill({ response, json: payload })
+  })
+
+  let submitted: Record<string, unknown> | null = null
+  await page.route('**/api/creative/generations', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue()
+      return
+    }
+    submitted = route.request().postDataJSON()
+    await route.fulfill({
+      status: 201,
+      json: {
+        data: {
+          id: 'minimax-constrained-video',
+          workspace: 'video',
+          mode: 'text_to_video',
+          status: 'queued',
+          provider: { id: 'hcai-router-minimax-hailuo-2-3', mode: 'router_minimax_video', label: 'HCAI Router MiniMax Hailuo 2.3' },
+          outputs: [],
+          usage: { estimatedCredits: 8, metered: true },
+        },
+      },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'AI Workspace' }).click()
+  await page.getByRole('button', { name: 'Video', exact: true }).click()
+  await page.getByLabel('Video runtime').selectOption('hcai-router-minimax-hailuo-2-3')
+  const duration = page.locator('.video-parameter-grid select').nth(1)
+  await expect(duration).toHaveValue('6')
+  await page.getByLabel(/rights and consent required/).check()
+  await page.getByRole('button', { name: 'Generate video' }).click()
+
+  expect(submitted).toMatchObject({
+    providerId: 'hcai-router-minimax-hailuo-2-3',
+    parameters: { aspectRatio: '16:9', durationSeconds: 6, outputFormat: 'mp4' },
+  })
 })
 
 test('Video Studio preserves input roles and handles lifecycle, private preview, and mobile layout', async ({ page, request }) => {

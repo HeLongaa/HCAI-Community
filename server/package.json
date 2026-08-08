@@ -12,6 +12,7 @@
     "db:migrate": "prisma migrate dev --schema ./prisma/schema.prisma",
     "db:migrate:deploy": "prisma migrate deploy --schema ./prisma/schema.prisma",
     "db:seed": "node prisma/seed.js",
+    "minimax-video:provision:staging": "node --env-file-if-exists=.env src/modelControl/minimaxVideoStagingProvisioningCli.js",
     "test": "node --test"
   },
   "dependencies": {
