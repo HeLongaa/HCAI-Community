@@ -45,7 +45,11 @@ add('Admin UI covers filters metrics detail retry cancel and export', ['notifica
 add('delivery list contract is registered', listContract.resources.some((resource) => resource.id === 'notificationDeliveries' && resource.export === true))
 add('delivery Admin resource is registered', adminResources.resources.some((resource) => resource.id === 'notificationDeliveries'))
 for (const model of ['NotificationDelivery', 'NotificationDeliveryAttempt']) add(`${model} operation policy is registered`, policies.entities.some((entry) => entry.model === model))
-for (const pathName of ['/api/admin/notifications/deliveries/:id/retry', '/api/admin/notifications/deliveries/:id/cancel']) add(`${pathName} mutation is audited`, audit.routes.some((entry) => entry.path === pathName && entry.mode === 'domain_audited'))
+for (const pathName of [
+  '/api/admin/notifications/deliveries/:id/retry',
+  '/api/admin/notifications/deliveries/:id/cancel',
+  '/api/admin/notifications/email-suppressions/:id/release',
+]) add(`${pathName} mutation is audited`, audit.routes.some((entry) => entry.path === pathName && entry.mode === 'domain_audited'))
 add('runbook exists', fs.existsSync(path.join(root, 'docs/NOTIFICATION_DELIVERY_OPERATIONS.md')))
 add('focused package gate exists', packageJson.scripts['test:notification-delivery-operations']?.includes('verify-notification-delivery-operations.mjs'))
 add('integration package gate exists', packageJson.scripts['test:notification-delivery-operations:integration']?.includes('prismaNotificationManagement.integration.test.js'))
