@@ -35,8 +35,12 @@ test('guest entry uses a branded animated authentication flow', async ({ page })
   expect(landingGeometry.login!.left).toBeGreaterThanOrEqual(0)
   expect(landingGeometry.login!.right).toBeLessThanOrEqual(landingGeometry.viewportWidth)
 
+  const providersResponse = page.waitForResponse((response) =>
+    response.url().endsWith('/api/auth/oauth/providers') && response.request().method() === 'GET',
+  )
   await page.getByRole('button', { name: 'Login' }).click()
   await expect(landing).toHaveClass(/is-leaving/)
+  const providers = (await (await providersResponse).json()).data as Array<{ label: string; available: boolean }>
   await expect(page).toHaveURL(/#auth$/)
 
   const authPage = page.locator('.auth-page-shell')
@@ -52,10 +56,17 @@ test('guest entry uses a branded animated authentication flow', async ({ page })
   expect(submitGeometry.top).toBeGreaterThanOrEqual(0)
   expect(submitGeometry.bottom).toBeLessThanOrEqual(submitGeometry.viewportHeight)
 
-  for (const provider of ['Google', 'GitHub', 'Apple', 'Discord']) {
-    const button = page.getByRole('button', { name: provider })
-    await expect(button).toBeVisible()
-    await expect(button.locator('svg')).toHaveCount(1)
+  const availableProviders = providers.filter((provider) => provider.available)
+  await expect(page.getByText('or continue with')).toHaveCount(availableProviders.length > 0 ? 1 : 0)
+  await expect(page.locator('.oauth-provider-list')).toHaveCount(availableProviders.length > 0 ? 1 : 0)
+  for (const provider of providers) {
+    const button = page.getByRole('button', { name: provider.label })
+    if (provider.available) {
+      await expect(button).toBeVisible()
+      await expect(button.locator('svg')).toHaveCount(1)
+    } else {
+      await expect(button).toHaveCount(0)
+    }
   }
 
   await page.getByRole('button', { name: 'Back to home' }).click()
