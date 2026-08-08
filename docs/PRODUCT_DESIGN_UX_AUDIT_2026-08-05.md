@@ -1733,6 +1733,50 @@ Generations 的主对象应是“结果与状态”，而不是 Provider 元数�
 - 在真实桌面与移动设备补做 200%/400% 缩放、VoiceOver/NVDA、语音控制和长中文/英文数据验收，并把结果绑定同一候选制品。
 - 继续并行收集最终生产 Go bundle 所需外部证据；所有外部阻断完成前保持生产流量关闭。
 
+## 58. 阶段 4 第四十批实施记录（2026-08-08）
+
+本批次建立 320 CSS px 重排与 WCAG 1.4.12 文本间距门禁，并修复关键用户路径中的真实响应式和操作目标缺陷：
+
+- 新增 `test:user-reflow-accessibility`，覆盖 Auth、Home、Tasks、Community、Inspiration、AI Workspace、Generations 和
+  Assets。320px 批次检查 Auth 与七个用户页的明暗双主题；文本间距批次注入 1.5 倍行高、0.12em 字距、0.16em 词距和
+  段后 2em 间距。
+- 门禁审计整个已渲染页面而非只检查首屏，验证页面级横向溢出、非滚动容器内部溢出、控件内容裁切和 WCAG 2.5.8
+  的 24×24 CSS px 最小操作目标。允许明确的横向滚动分类栏，但不使用缺陷白名单放过小目标或文字裁切。
+- Auth 本地测试账号折叠入口增加 32px 高点击区，Terms、Privacy、Support 和注册政策链接增加 28px 高点击区；文字字号和
+  信息密度保持不变。
+- Home 移动端快捷操作改为真正的三列弹性轨道，消除最终产品样式把每列重新限制为至少 116px 后产生的 58px 页面溢出和
+  Create 按钮裁切。
+- Community 作者链接补齐 24px 高操作目标；Assets 搜索输入本体补齐 24px 高目标，不再只依赖不可替代输入目标的视觉外壳。
+- Inspiration 最短分类按钮补齐 32px 宽目标，并禁止分类项收缩；长分类按内容完整显示，由现有分类栏提供横向滚动。
+
+本批发现并修复的 Bug：
+
+- Auth 本地账号 `summary` 仅 15–18px 高，底部政策按钮仅 17–18px 高，键盘可聚焦但鼠标和触摸目标不足。
+- Home 的移动样式被后加载的产品样式覆盖，320px 下快捷操作宽 360px，页面总宽超出视口 58px。
+- Community 作者链接在文本间距覆盖下只有 18px 高；Assets 搜索输入在移动端只有 18px 高。
+- Inspiration 的 “All/全部” 按钮宽度不足 24px；初次补齐最小宽度后仍受 flex 收缩，导致多个长分类内部文字裁切，现已按
+  内容宽度稳定排列。
+
+本批次验证范围：
+
+- 320px 重排覆盖 15 个页面状态，文本间距覆盖 8 个页面状态，共 23 个状态全部通过；测试 `2/2` 通过。
+- 明暗主题移动截图位于 `/tmp/hcai-reflow-{black|white}-320-*.png`，文本间距截图位于
+  `/tmp/hcai-text-spacing-*.png`；视觉抽检确认 Home、Inspiration、Assets 和 Auth 无异常挤压或内容丢失。
+- 重排、自动对比度与 Forced Colors、键盘和关键视觉联合回归 `8/8` 通过；ESLint、TypeScript/Vite 生产构建、
+  `git diff --check` 与生产资源预算 `19/19` 通过。
+- 本门禁不能替代真实设备上的 400% 浏览器缩放、屏幕阅读器、语音控制、系统字体放大和触摸精度人工验收。
+
+尚未关闭的上线阻断：
+
+- 真实六角色签字、Google/GitHub OAuth、Mailer 最终送达与 bounce/complaint、生产 Vault/KMS-HSM/CA/off-host audit、
+  法律与 Provider 治理、主分支 GHCR/OIDC Attestation、目标环境 UAT/canary/rollback/hypercare 仍未闭环。
+- 输出安全分类和媒体扫描继续由上游承担，边界仍需写入 Provider 与法律批准证据；当前发布判断保持 **No-Go**。
+
+下一步：
+
+- 提交候选分支；网络恢复后推送 Draft PR，并由远端 CI 对完整 `check:pr` 重新验收。
+- 在真实设备补齐 400% 缩放、VoiceOver/NVDA、语音控制与长数据证据，继续收集生产 Go bundle 外部签字和环境证明。
+
 ## 附录：审计截图
 
 管理员端审计截图：

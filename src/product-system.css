@@ -2302,6 +2302,11 @@
 .app-shell.page-community .profile-link {
   color: var(--product-accent-ink);
 }
+.app-shell.page-community .topic-author-link {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+}
 .app-shell.page-community .community-sort-select { display: none; }
 .app-shell.page-community .community-filter-chips {
   display: flex;
@@ -2394,7 +2399,11 @@
   background: transparent;
 }
 
-.app-shell.page-inspiration .inspiration-category-nav button { min-height: 54px; }
+.app-shell.page-inspiration .inspiration-category-nav button {
+  min-width: 32px;
+  min-height: 54px;
+  flex: 0 0 auto;
+}
 .app-shell.page-inspiration .inspiration-category-nav button.active { border-bottom-color: var(--product-accent); }
 .app-shell.page-inspiration .inspiration-section-title > div > span { color: var(--product-accent-ink); }
 .app-shell.page-inspiration .inspiration-featured-grid {
@@ -2755,6 +2764,7 @@
 
 .app-shell.page-assets .asset-search input,
 .app-shell.page-assets .asset-search input:focus {
+  min-height: 24px;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -4159,7 +4169,10 @@
   .app-shell .generation-center-header h1,
   .app-shell.page-playground .workspace-page-display,
   .app-shell.page-home .home-welcome h1 { font-size: 32px; }
-  .app-shell.page-home .home-header-actions { width: 100%; }
+  .app-shell.page-home .home-header-actions {
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
   .app-shell.page-home .home-recent-work { grid-template-rows: 340px auto; }
   .app-shell.page-home .home-hero-media { min-height: 340px; }
   .app-shell.page-home .home-hero-copy { padding: 20px 16px; }

@@ -437,6 +437,12 @@ body .login-modal.auth-page-panel {
   order: 6;
 }
 
+.auth-page-panel .local-test-account-list > summary {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+
 .auth-page-panel .auth-legal-note {
   order: 7;
 }
@@ -454,7 +460,18 @@ body .login-modal.auth-page-panel {
 }
 
 .auth-page-panel .auth-legal-note button {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 0;
   color: #aeb2ba;
+}
+
+.auth-page-panel .auth-policy-links button {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 0;
 }
 
 @media (max-width: 620px) {
