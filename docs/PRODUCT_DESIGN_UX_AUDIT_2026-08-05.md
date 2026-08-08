@@ -1463,6 +1463,47 @@ Generations 的主对象应是“结果与状态”，而不是 Provider 元数�
 - 完成真实 OAuth 和 Mailer 的受保护环境验收，并将回调域名、Cookie、投递回执和失败恢复绑定到同一候选制品。
 - 合并候选后执行 GHCR 发布与证明工作流，再以 digest 部署并完成一次候选/回滚演练，形成最终上线签字包。
 
+## 52. 阶段 4 第三十四批实施记录（2026-08-08）
+
+本批次完成 Vault Raft 快照的隔离恢复演练、证据合同和失败诊断闭环：
+
+- 新增 `secret-lifecycle-dr-evidence-v1` 机器证据、构建器、独立验证器、静态合同与测试，并将 `npm run test:secret-lifecycle-dr` 纳入 `check:pr`。
+- 演练在在线 Vault 中写入两个随机 KV 版本，仅保存值与元数据哈希；保存并检查真实 Raft snapshot 后，再写第三版并删除第二版，形成可验证的时间点差异。
+- 恢复只发生在临时 Vault 容器中；容器使用 `--network none`、无宿主机端口、只读根文件系统、最小能力、`no-new-privileges` 和 CPU/内存/PID 上限，不修改在线 Vault 数据目录。
+- 临时节点先初始化，再强制恢复 snapshot，随后使用原集群恢复材料解封；完整元数据哈希和前两个值哈希一致，第三版及快照后的删除操作均未进入恢复状态。
+- 演练确认命名审计设备记录了 snapshot 和测试路径请求，三个随机值均未以明文进入审计日志；成功或失败路径都会删除临时容器、snapshot、恢复目录和 run-scoped 源路径。
+
+本批发现并修复的 Bug：
+
+- 首次失败时 cleanup 先删除临时容器，导致启动日志不可追溯。现改为失败时先输出最后 100 行日志，再执行强制清理，并加入顺序断言。
+- 初版演练未显式确认 Staging 源码检出与制品 manifest 的 `SOURCE_COMMIT` 一致。现要求提交完全匹配且源码树干净，避免用新脚本为旧制品生成不可信证据。
+- Vault 官方镜像 entrypoint 会自动添加 `-config=/vault/config`，脚本又显式传入同一 `restore.hcl`，导致配置被解析两次并争用 `127.0.0.1:8200`。现仅由 entrypoint 加载配置目录一次，并新增回归合同锁定该行为。
+
+本批次真实验证范围：
+
+- DR 静态合同 `26/26`、证据测试 `5/5`、Shell 语法和严格差异检查通过。
+- 候选源码提交为 `b226b99914360531f4d65e3c1973220aa6c87139`，Staging 制品为 `2fff46f6ca972f2171118d1dce7f2c67d5a2e3fcaa0e9798716b6c82cd2524ce`；公网 `/health` 返回同一制品哈希。
+- 演练运行 ID 为 `sldr-20260808062726-10a9a927`；snapshot 大小为 `30,798` 字节，SHA-256 为 `947aea69a8f1386f5a4a9a6e1772a2f79590a0708478371436d419424a14e346`，恢复与验证总耗时 `14s`，低于 `120s` 目标。
+- 元数据恢复、值哈希恢复、快照后变更排除、审计明文缺失和临时材料清理全部通过；证据回执 SHA-256 为 `3daf1d55eaba42e006c391edf29056ed4fafeb34acffcbc92771f8bd8600978d`。
+- 受保护证据位于 `/opt/newchat-staging/evidence/secret-lifecycle-dr-sldr-20260808062726-10a9a927.json`，下载后再次通过独立验证器，结果为 `{"valid":true,"failures":[]}`。
+- 在线 API、Worker、Frontend、Vault、Vault Agent、Secret Lifecycle Gateway 与入口 Gateway 保持健康；无遗留 DR 容器或运行目录，宿主机未监听 `8200/8790`。两个 OpenClaw 容器保持原有 5 天和 9 天运行时长，未被重建或重启。
+
+尚未关闭的上线阻断：
+
+- 本次只证明单节点 Staging snapshot 的隔离恢复，不证明生产 HA、跨故障域仲裁、节点滚动故障或托管 Vault 服务等级。
+- 生产 KMS/HSM auto-unseal、外部加密备份保留、异地主体恢复、正式 RPO/RTO 和生产目标环境验收仍未完成。
+- 正式工作负载 CA 的签发、短期轮换与吊销，以及 Vault off-host 审计存储、访问策略复核和异常访问告警仍需生产平台证据。
+- 真实 HTTPS OAuth Provider 回调、真实 Mailer 投递、法律主体/司法辖区/政策发布批准，以及 Provider DPA、数据地区、保留、版权和生产批准仍未闭环。
+- 合并后的 GHCR digest 发布、GitHub OIDC 签名和 Attestation 仍须由主分支工作流生成并独立验证。
+
+因此，本批关闭的是 Vault snapshot 在 Staging 中“能否真实恢复并验证”的缺口，不改变整体发布判断：系统继续保持 **No-Go**。
+
+下一批建议：
+
+- 由生产平台提供 HA/托管 Vault、KMS/HSM、正式 CA、外部备份目标和 off-host 审计落点，按同一合同执行生产级恢复、故障切换和凭据吊销演练。
+- 并行关闭真实 OAuth 与 Mailer 验收，以及法律和 Provider 治理签字；这些事项不能由代码或 Staging 测试替代。
+- 合并候选后完成 GHCR digest、签名与 Attestation，再以 digest 部署并执行最终候选/回滚验收。
+
 ## 附录：审计截图
 
 管理员端审计截图：
