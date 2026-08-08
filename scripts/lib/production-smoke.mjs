@@ -41,11 +41,17 @@ export const inspectProductionWorkers = (env) => productionWorkerRequirements.ma
 export const inspectDurableSecurityAlertDelivery = (env) => {
   const emailEnabled = env?.notificationEmailDeliveryEnabled === true
   const emailEndpointConfigured = env?.hasNotificationEmailWebhookUrl === true
+  const emailSigningConfigured = env?.hasNotificationEmailWebhookSecret === true
+  const emailSenderConfigured = env?.hasNotificationEmailFrom === true
+  const providerReceiptRequired = env?.notificationEmailProviderReceiptRequired === true
   const workerEnabled = env?.notificationDeliveryWorkerEnabled === true
   return Object.freeze({
-    ready: emailEnabled && emailEndpointConfigured && workerEnabled,
+    ready: emailEnabled && emailEndpointConfigured && emailSigningConfigured && emailSenderConfigured && providerReceiptRequired && workerEnabled,
     emailEnabled,
     emailEndpointConfigured,
+    emailSigningConfigured,
+    emailSenderConfigured,
+    providerReceiptRequired,
     workerEnabled,
   })
 }

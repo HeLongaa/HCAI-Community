@@ -1,3 +1,5 @@
+import { buildNotificationDeliveryConfig } from '../notifications/notificationDeliveries.js'
+
 const toPort = (value) => {
   const parsed = Number.parseInt(value ?? '', 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 8787
@@ -229,6 +231,7 @@ export const buildEnv = (source = process.env) => {
   const notificationEmailDeliveryEnabled = strictBoolFlag(source, 'NOTIFICATION_EMAIL_DELIVERY_ENABLED', false)
   const notificationDeliveryWorkerEnabled = strictBoolFlag(source, 'NOTIFICATION_DELIVERY_WORKER_ENABLED', false)
   const notificationEmailWebhookUrl = getOptionalUrl(source, 'NOTIFICATION_EMAIL_WEBHOOK_URL')
+  const notificationDeliveryConfig = buildNotificationDeliveryConfig(source)
   const notificationDeliveryWorkerIntervalSeconds = positiveInteger(source, 'NOTIFICATION_DELIVERY_WORKER_INTERVAL_SECONDS', 10)
   const notificationDeliveryWorkerBatchSize = positiveInteger(source, 'NOTIFICATION_DELIVERY_WORKER_BATCH_SIZE', 25)
   const notificationDeliveryLeaseSeconds = positiveInteger(source, 'NOTIFICATION_DELIVERY_LEASE_SECONDS', 60)
@@ -721,6 +724,9 @@ export const buildEnv = (source = process.env) => {
     notificationDeliveryWorkerBatchSize,
     notificationDeliveryLeaseSeconds,
     hasNotificationEmailWebhookUrl: Boolean(notificationEmailWebhookUrl),
+    hasNotificationEmailWebhookSecret: Boolean(notificationDeliveryConfig.email.secret),
+    hasNotificationEmailFrom: Boolean(notificationDeliveryConfig.email.from),
+    notificationEmailProviderReceiptRequired: notificationDeliveryConfig.email.requireProviderReceipt,
     webhookDeliveryWorkerEnabled,
     webhookDeliveryWorkerIntervalSeconds,
     webhookDeliveryWorkerBatchSize,

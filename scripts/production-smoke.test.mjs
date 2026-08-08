@@ -59,18 +59,27 @@ test('security alert release delivery requires the durable notification email qu
   assert.deepEqual(inspectDurableSecurityAlertDelivery({
     notificationEmailDeliveryEnabled: true,
     hasNotificationEmailWebhookUrl: true,
+    hasNotificationEmailWebhookSecret: true,
+    hasNotificationEmailFrom: true,
+    notificationEmailProviderReceiptRequired: true,
     notificationDeliveryWorkerEnabled: true,
     hasSecurityAlertWebhookUrl: false,
   }), {
     ready: true,
     emailEnabled: true,
     emailEndpointConfigured: true,
+    emailSigningConfigured: true,
+    emailSenderConfigured: true,
+    providerReceiptRequired: true,
     workerEnabled: true,
   })
   for (const incomplete of [
-    { notificationEmailDeliveryEnabled: false, hasNotificationEmailWebhookUrl: true, notificationDeliveryWorkerEnabled: true },
-    { notificationEmailDeliveryEnabled: true, hasNotificationEmailWebhookUrl: false, notificationDeliveryWorkerEnabled: true },
-    { notificationEmailDeliveryEnabled: true, hasNotificationEmailWebhookUrl: true, notificationDeliveryWorkerEnabled: false },
+    { notificationEmailDeliveryEnabled: false, hasNotificationEmailWebhookUrl: true, hasNotificationEmailWebhookSecret: true, hasNotificationEmailFrom: true, notificationEmailProviderReceiptRequired: true, notificationDeliveryWorkerEnabled: true },
+    { notificationEmailDeliveryEnabled: true, hasNotificationEmailWebhookUrl: false, hasNotificationEmailWebhookSecret: true, hasNotificationEmailFrom: true, notificationEmailProviderReceiptRequired: true, notificationDeliveryWorkerEnabled: true },
+    { notificationEmailDeliveryEnabled: true, hasNotificationEmailWebhookUrl: true, hasNotificationEmailWebhookSecret: false, hasNotificationEmailFrom: true, notificationEmailProviderReceiptRequired: true, notificationDeliveryWorkerEnabled: true },
+    { notificationEmailDeliveryEnabled: true, hasNotificationEmailWebhookUrl: true, hasNotificationEmailWebhookSecret: true, hasNotificationEmailFrom: false, notificationEmailProviderReceiptRequired: true, notificationDeliveryWorkerEnabled: true },
+    { notificationEmailDeliveryEnabled: true, hasNotificationEmailWebhookUrl: true, hasNotificationEmailWebhookSecret: true, hasNotificationEmailFrom: true, notificationEmailProviderReceiptRequired: false, notificationDeliveryWorkerEnabled: true },
+    { notificationEmailDeliveryEnabled: true, hasNotificationEmailWebhookUrl: true, hasNotificationEmailWebhookSecret: true, hasNotificationEmailFrom: true, notificationEmailProviderReceiptRequired: true, notificationDeliveryWorkerEnabled: false },
     { hasSecurityAlertWebhookUrl: true, hasSecurityAlertSlackWebhookUrl: true, securityAlertEmailRecipientCount: 1 },
   ]) {
     assert.equal(inspectDurableSecurityAlertDelivery(incomplete).ready, false)

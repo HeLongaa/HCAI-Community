@@ -229,8 +229,10 @@ Security alert channel variables/secrets:
 
 Direct Security Alert Webhook, Slack, and email fanout are best-effort secondary channels. The release smoke recognizes
 security alert delivery only when the durable notification email path is enabled with
-`NOTIFICATION_EMAIL_DELIVERY_ENABLED=true`, a real `NOTIFICATION_EMAIL_WEBHOOK_URL`, and
-`NOTIFICATION_DELIVERY_WORKER_ENABLED=true`. Security alerts already create recipient-scoped notifications for
+`NOTIFICATION_EMAIL_DELIVERY_ENABLED=true`, a real `NOTIFICATION_EMAIL_WEBHOOK_URL`, an HMAC secret of at least 32
+characters, a valid `NOTIFICATION_EMAIL_FROM`, `NOTIFICATION_EMAIL_REQUIRE_PROVIDER_RECEIPT=true`, and
+`NOTIFICATION_DELIVERY_WORKER_ENABLED=true`. The relay must return `x-message-id` or `x-request-id` for every accepted
+message. Security alerts already create recipient-scoped notifications for
 `admin:audit:read` users, so this path provides leases, bounded retry, dead-letter state, and operator recovery.
 
 Creative provider budget alert variables/secrets:

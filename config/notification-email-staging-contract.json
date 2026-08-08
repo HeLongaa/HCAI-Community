@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "notification-email-staging-contract-v1",
+  "evidenceSchemaVersion": "notification-email-staging-evidence-v1",
+  "confirmation": "notification-email-staging-acceptance",
+  "rehearsalScript": "scripts/rehearse-notification-email-staging.mjs",
+  "evidenceVerifier": "scripts/verify-notification-email-staging-evidence.mjs",
+  "documentation": "docs/NOTIFICATION_DELIVERY_OPERATIONS.md",
+  "acceptedReceiptHeaders": ["x-message-id", "x-request-id"],
+  "requiredControls": {
+    "https": true,
+    "hmacSha256": true,
+    "senderConfigured": true,
+    "providerReceiptRequired": true,
+    "sourceArtifactBound": true
+  },
+  "requiredLimitations": {
+    "mailboxDeliveryVerified": false,
+    "bounceHandlingVerified": false,
+    "complaintHandlingVerified": false,
+    "targetProductionEnvironmentVerified": false
+  }
+}

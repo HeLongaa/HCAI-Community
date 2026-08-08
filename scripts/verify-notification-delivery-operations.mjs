@@ -31,6 +31,7 @@ add('migration enforces channel dedupe', migration.includes('notification_delive
 add('migration enforces bounded attempts and versions', migration.includes('notification_deliveries_bounds_check') && migration.includes('notification_delivery_attempts_bounds_check'))
 add('domain exposes closed channels and statuses', contract.channels.every((value) => domain.includes(`'${value}'`)) && contract.statuses.every((value) => domain.includes(`'${value}'`)))
 add('email adapter is signed and fail closed', domain.includes('x-notification-signature') && domain.includes('CHANNEL_UNAVAILABLE') && domain.includes('NOTIFICATION_EMAIL_DELIVERY_ENABLED requires'))
+add('production email requires signing, sender, and Provider receipts', ['WEBHOOK_SECRET with at least 32 characters', 'valid NOTIFICATION_EMAIL_FROM', 'requires provider message receipts', 'PROVIDER_RECEIPT_MISSING'].every((marker) => domain.includes(marker)))
 add('seed and Prisma implement leases and CAS recovery', [seed, prisma].every((source) => source.includes('leaseToken') && source.includes('STATE_CONFLICT') && source.includes('dead_lettered')))
 add('attempt history is bounded and closes expired leases', !schema.includes('responseBody') && !schema.includes('responsePayload') && prisma.includes("errorCode: 'LEASE_EXPIRED'"))
 add('worker dispatches only claimed email deliveries', worker.includes("claim.channel === 'email'") && worker.includes('notificationDeliveries.complete'))

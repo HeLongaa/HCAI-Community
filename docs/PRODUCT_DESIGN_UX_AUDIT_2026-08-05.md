@@ -1504,6 +1504,49 @@ Generations 的主对象应是“结果与状态”，而不是 Provider 元数�
 - 并行关闭真实 OAuth 与 Mailer 验收，以及法律和 Provider 治理签字；这些事项不能由代码或 Staging 测试替代。
 - 合并候选后完成 GHCR digest、签名与 Attestation，再以 digest 部署并执行最终候选/回滚验收。
 
+## 53. 阶段 4 第三十五批实施记录（2026-08-08）
+
+本批次完成生产 Mailer 的 fail-closed 配置、Provider 回执约束和 Staging Relay 验收工具：
+
+- 生产邮件通道启用时必须同时配置至少 32 字符的 HMAC 密钥、有效发件地址和
+  `NOTIFICATION_EMAIL_REQUIRE_PROVIDER_RECEIPT=true`；生产 Relay URL 禁止 credentials、fragment 和 query。
+- `2xx` 不再直接等同于已发送。Relay 必须返回非空 `x-message-id` 或 `x-request-id`，否则任务以
+  `PROVIDER_RECEIPT_MISSING` 进入永久失败，避免生成无法追踪的假成功。
+- Provider 回执只保存 SHA-256 和命中的安全头名称，不保存原始回执；空 `x-message-id` 会正确回退到有效的
+  `x-request-id`，发件地址 local-part 的原始大小写保持不变。
+- Production smoke 的 durable security email readiness 现在同时要求通道、Relay、签名、发件人、Provider
+  回执和专用 Worker，不再仅凭 URL 与 Worker 误判为可用。
+- 新增 `notification-email-staging-evidence-v1` 合同、受控 canary 脚本和独立验证器。演练强制 Staging、精确确认、
+  干净源码和候选制品 SHA-256，只记录 Relay host、发件域、收件域与 Provider 回执的 hash。
+- 验收证据固定声明只证明 Staging Relay 接受，不证明 mailbox delivery、bounce、complaint 或生产批准。
+
+本批次验证范围：
+
+- Notification Email Staging 静态合同 `11/11`、证据与预检测试 `4/4`、Notification Delivery 静态合同 `39/39`、
+  聚焦路由与适配器测试 `20/20` 全部通过。
+- Production negative smoke `8/8`、完整 fixture production smoke、ESLint 和严格差异检查通过。
+- 完整服务端测试共 `1426` 项，`1359` 通过、`67` 跳过、`0` 失败。
+- 空配置或不完整配置的 preflight 返回脱敏的结构化 `pass:false`，不会因缺少 URL、密钥或发件地址抛出解析异常，
+  也不会输出 Relay URL、邮箱、HMAC 密钥或正文。
+
+尚未关闭的上线阻断：
+
+- 本批尚未取得真实 Mailer Relay 配置和受控测试收件人，因此未执行目标 Staging canary，也没有真实 Provider
+  receipt 证据。执行仍需受保护的 Relay URL、至少 32 字符 HMAC 密钥、批准发件地址、测试收件人和候选制品 SHA-256。
+- Relay acceptance does not prove mailbox delivery；最终收件箱送达、bounce 和 complaint 生命周期仍需 Relay
+  Provider 与目标邮箱的独立证据，不得以本批代码测试替代。
+- 真实 HTTPS OAuth Provider 回调、生产 HA/托管 Vault、KMS/HSM auto-unseal、正式 CA、off-host Vault 审计、
+  法律与 Provider 治理批准，以及合并后的 GHCR digest、OIDC 签名和 Attestation 仍未闭环。
+
+因此，本批关闭的是 Mailer 配置假就绪和无回执假成功的代码缺口，不改变整体发布判断：系统继续保持 **No-Go**。
+
+下一批建议：
+
+- 在受保护 Staging 配置真实 Relay 与 canary 收件人，绑定当前候选源码和制品后执行
+  `npm run notification-email:preflight` 与 `npm run notification-email:rehearse`，并独立验证生成的 hash-only 证据。
+- 追加邮箱最终送达、bounce 和 complaint 回执，再决定是否允许生产邮件流量；在证据完成前保持生产通道关闭。
+- 并行完成真实 OAuth、生产 Vault/CA/审计、法律与 Provider 签字和主分支供应链证明。
+
 ## 附录：审计截图
 
 管理员端审计截图：

@@ -49,6 +49,8 @@ Confirm:
 - Worker processes have explicit job flags and lease settings.
 - At least one media scanner alert channel is configured in webhook mode, and at least one security alert channel is always configured.
 - OAuth redirect URIs match the deployed API callback URLs.
+- Durable notification email uses a real HTTPS relay, a dedicated HMAC secret of at least 32 characters, an approved
+  sender, required Provider message receipts, and a successful target-environment canary receipt.
 - `CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED=false`; no production release may register the staging Provider HTTP client.
 - `CREATIVE_PROVIDER_CALLBACK_ENABLED=false`; no production release may expose the staging Provider callback intake.
 - `CREATIVE_PROVIDER_POLLING_ENABLED=false` and `CREATIVE_PROVIDER_POLLING_WORKER_ENABLED=false`; no production release may perform staging Provider status reads.

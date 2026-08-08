@@ -84,6 +84,9 @@ test('buildEnv allows development without managed token secrets', () => {
     notificationDeliveryWorkerBatchSize: 25,
     notificationDeliveryLeaseSeconds: 60,
     hasNotificationEmailWebhookUrl: false,
+    hasNotificationEmailWebhookSecret: false,
+    hasNotificationEmailFrom: false,
+    notificationEmailProviderReceiptRequired: false,
     webhookDeliveryWorkerEnabled: false,
     webhookDeliveryWorkerIntervalSeconds: 10,
     webhookDeliveryWorkerBatchSize: 25,
@@ -294,6 +297,9 @@ test('buildEnv validates durable notification email delivery gates', () => {
   })
   assert.equal(env.notificationEmailDeliveryEnabled, true)
   assert.equal(env.hasNotificationEmailWebhookUrl, true)
+  assert.equal(env.hasNotificationEmailWebhookSecret, false)
+  assert.equal(env.hasNotificationEmailFrom, false)
+  assert.equal(env.notificationEmailProviderReceiptRequired, false)
   assert.equal(env.notificationDeliveryWorkerEnabled, true)
   assert.equal(env.notificationDeliveryWorkerIntervalSeconds, 12)
   assert.equal(env.notificationDeliveryWorkerBatchSize, 40)
