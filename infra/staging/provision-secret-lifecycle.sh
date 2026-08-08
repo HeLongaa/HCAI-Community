@@ -33,6 +33,7 @@ SECRET_LIFECYCLE_HOST_ROOT=$lifecycle_root
 export RELEASE_ARTIFACT_SHA256 SECRET_LIFECYCLE_HOST_ROOT
 set +a
 
+install -m 0750 -o root -g newchat-deploy "$root/source/infra/staging/deploy-release.sh" "$root/bin/deploy-release"
 install -d -m 0750 -o root -g 1000 "$lifecycle_root" "$lifecycle_root/tls" "$lifecycle_root/secrets"
 install -d -m 0700 -o root -g root "$lifecycle_root/private"
 install -d -m 0750 -o 100 -g 1000 "$lifecycle_root/data"
