@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 
 import { HttpError } from '../common/errors/httpError.js'
 
@@ -30,10 +32,11 @@ export const providerSecretRetentionSweepLimit = (value) => {
 
 export const isProviderSecretPurposeDeletable = (purpose) => deletablePurposePattern.test(String(purpose ?? ''))
 
-const runtimeConfiguration = (source) => {
+const runtimeConfiguration = (source, readCredentialFile) => {
   const enabled = String(source.SECRET_MANAGER_LIFECYCLE_GATEWAY_ENABLED ?? '').trim().toLowerCase() === 'true'
   const confirmation = String(source.SECRET_MANAGER_LIFECYCLE_GATEWAY_CONFIRMATION ?? '').trim()
-  const token = String(source.SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN ?? '').trim()
+  const inlineToken = String(source.SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN ?? '').trim()
+  const tokenFile = String(source.SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN_FILE ?? '').trim()
   let endpoint
   try { endpoint = new URL(String(source.SECRET_MANAGER_LIFECYCLE_GATEWAY_URL ?? '').trim()) } catch { endpoint = null }
   if (!enabled || confirmation !== 'managed-secret-lifecycle-enabled') {
@@ -41,6 +44,12 @@ const runtimeConfiguration = (source) => {
   }
   if (!endpoint || endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
     throw new HttpError(503, 'SECRET_MANAGER_LIFECYCLE_CONFIGURATION_INVALID', 'Managed secret lifecycle endpoint is invalid')
+  }
+  if (inlineToken && tokenFile) throw new HttpError(503, 'SECRET_MANAGER_LIFECYCLE_CONFIGURATION_INVALID', 'Managed secret lifecycle credential is ambiguous')
+  if (tokenFile && !path.isAbsolute(tokenFile)) throw new HttpError(503, 'SECRET_MANAGER_LIFECYCLE_CONFIGURATION_INVALID', 'Managed secret lifecycle credential file is invalid')
+  let token = inlineToken
+  if (tokenFile) {
+    try { token = String(readCredentialFile(tokenFile, 'utf8')).trim() } catch { token = '' }
   }
   if (token.length < 16) throw new HttpError(503, 'SECRET_MANAGER_LIFECYCLE_CONFIGURATION_INVALID', 'Managed secret lifecycle credential is invalid')
   return { endpoint: endpoint.toString(), token }
@@ -71,7 +80,7 @@ const readBoundedJson = async (response) => {
   return JSON.parse(Buffer.concat(chunks, total).toString('utf8'))
 }
 
-export const createSecretManagerLifecycleGateway = ({ source = process.env, fetchImpl = globalThis.fetch } = {}) => async ({
+export const createSecretManagerLifecycleGateway = ({ source = process.env, fetchImpl = globalThis.fetch, readCredentialFile = readFileSync } = {}) => async ({
   action,
   secretRef,
   externalVersion,
@@ -85,7 +94,7 @@ export const createSecretManagerLifecycleGateway = ({ source = process.env, fetc
     throw new HttpError(409, 'SECRET_MANAGER_LIFECYCLE_TARGET_INVALID', 'Managed secret lifecycle target is invalid')
   }
   if (typeof fetchImpl !== 'function') throw new HttpError(503, 'SECRET_MANAGER_LIFECYCLE_UNAVAILABLE', 'Managed secret lifecycle transport is unavailable')
-  const runtime = runtimeConfiguration(source)
+  const runtime = runtimeConfiguration(source, readCredentialFile)
   const targetHash = sha256(`${secretRef}:${externalVersion}`)
   let response
   try {

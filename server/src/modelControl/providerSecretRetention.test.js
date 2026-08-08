@@ -39,6 +39,27 @@ test('managed secret gateway sends transient metadata and returns hash-only evid
   assert.equal(JSON.stringify(result).includes('receipt-private-1'), false)
 })
 
+test('managed secret gateway reads its bearer credential from an absolute file', async () => {
+  let authorization
+  const gateway = createSecretManagerLifecycleGateway({
+    source: {
+      ...source,
+      SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN: '',
+      SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN_FILE: '/run/secrets/lifecycle-token',
+    },
+    readCredentialFile: (file) => {
+      assert.equal(file, '/run/secrets/lifecycle-token')
+      return 'file-backed-lifecycle-token'
+    },
+    fetchImpl: async (_url, options) => {
+      authorization = options.headers.authorization
+      return new Response(JSON.stringify({ status: 'completed', action: 'disable', receiptId: 'receipt-file-1' }), { status: 200 })
+    },
+  })
+  await gateway({ action: 'disable', secretRef: 'secret://env/CHAT_TOKEN_V1', externalVersion: 'v1', purpose: 'chat-inference' })
+  assert.equal(authorization, 'Bearer file-backed-lifecycle-token')
+})
+
 test('managed secret gateway fails closed for disabled, unsafe, and malformed integrations', async () => {
   await assert.rejects(
     createSecretManagerLifecycleGateway({ source: {}, fetchImpl: async () => { throw new Error('must not call') } })({ action: 'disable', secretRef: 'secret://env/KEY', externalVersion: 'v1', purpose: 'inference' }),
@@ -51,6 +72,13 @@ test('managed secret gateway fails closed for disabled, unsafe, and malformed in
   await assert.rejects(
     createSecretManagerLifecycleGateway({ source, fetchImpl: async () => new Response('{invalid', { status: 200 }) })({ action: 'delete', secretRef: 'secret://env/KEY', externalVersion: 'v1', purpose: 'inference' }),
     { code: 'SECRET_MANAGER_LIFECYCLE_RESPONSE_INVALID' },
+  )
+  await assert.rejects(
+    createSecretManagerLifecycleGateway({
+      source: { ...source, SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN_FILE: '/run/secrets/token' },
+      fetchImpl: async () => { throw new Error('must not call') },
+    })({ action: 'delete', secretRef: 'secret://env/KEY', externalVersion: 'v1', purpose: 'inference' }),
+    { code: 'SECRET_MANAGER_LIFECYCLE_CONFIGURATION_INVALID' },
   )
 })
 

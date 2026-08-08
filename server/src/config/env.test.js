@@ -506,6 +506,22 @@ test('buildEnv gates Provider secret retention on an explicit managed lifecycle 
   assert.equal(env.providerSecretRetentionWorkerEnabled, true)
   assert.equal(env.providerSecretRetentionWorkerIntervalSeconds, 120)
   assert.equal(env.providerSecretRetentionSweepLimit, 25)
+
+  const fileBacked = buildEnv({
+    PROVIDER_SECRET_RETENTION_WORKER_ENABLED: 'true',
+    SECRET_MANAGER_LIFECYCLE_GATEWAY_ENABLED: 'true',
+    SECRET_MANAGER_LIFECYCLE_GATEWAY_CONFIRMATION: 'managed-secret-lifecycle-enabled',
+    SECRET_MANAGER_LIFECYCLE_GATEWAY_URL: 'https://secret-lifecycle-gateway:8790/v1/lifecycle',
+    SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN_FILE: '/run/secrets/secret-lifecycle-gateway-token',
+  })
+  assert.equal(fileBacked.providerSecretRetentionWorkerEnabled, true)
+  assert.throws(() => buildEnv({
+    PROVIDER_SECRET_RETENTION_WORKER_ENABLED: 'true',
+    SECRET_MANAGER_LIFECYCLE_GATEWAY_ENABLED: 'true',
+    SECRET_MANAGER_LIFECYCLE_GATEWAY_CONFIRMATION: 'managed-secret-lifecycle-enabled',
+    SECRET_MANAGER_LIFECYCLE_GATEWAY_URL: 'https://secret-lifecycle-gateway:8790/v1/lifecycle',
+    SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN_FILE: 'relative/token',
+  }), /absolute path/)
 })
 
 test('buildEnv keeps automated audit retention fail closed without prune approval and durable storage', () => {

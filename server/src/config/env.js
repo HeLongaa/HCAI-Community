@@ -293,6 +293,7 @@ export const buildEnv = (source = process.env) => {
   const secretManagerLifecycleGatewayEnabled = strictBoolFlag(source, 'SECRET_MANAGER_LIFECYCLE_GATEWAY_ENABLED', false)
   const secretManagerLifecycleGatewayUrl = getOptionalUrl(source, 'SECRET_MANAGER_LIFECYCLE_GATEWAY_URL')
   const secretManagerLifecycleGatewayToken = String(source.SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN ?? '').trim()
+  const secretManagerLifecycleGatewayTokenFile = String(source.SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN_FILE ?? '').trim()
   const secretManagerLifecycleGatewayConfirmation = String(source.SECRET_MANAGER_LIFECYCLE_GATEWAY_CONFIRMATION ?? '').trim()
   const mediaScanHistoryRetentionDays = positiveInteger(source, 'MEDIA_SCAN_HISTORY_RETENTION_DAYS', 180)
   const mediaScanHistoryRetentionMaxPerAsset = positiveInteger(source, 'MEDIA_SCAN_HISTORY_RETENTION_MAX_PER_ASSET', 50)
@@ -630,8 +631,14 @@ export const buildEnv = (source = process.env) => {
     if (!endpoint || endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
       throw new Error('SECRET_MANAGER_LIFECYCLE_GATEWAY_URL must be a fixed HTTPS URL without credentials, query, or fragment')
     }
-    if (secretManagerLifecycleGatewayToken.length < 16) {
-      throw new Error('SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN must be at least 16 characters when Provider secret retention is enabled')
+    if (secretManagerLifecycleGatewayToken && secretManagerLifecycleGatewayTokenFile) {
+      throw new Error('Configure only one of SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN or SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN_FILE')
+    }
+    if (secretManagerLifecycleGatewayTokenFile && !secretManagerLifecycleGatewayTokenFile.startsWith('/')) {
+      throw new Error('SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN_FILE must be an absolute path')
+    }
+    if (secretManagerLifecycleGatewayToken.length < 16 && !secretManagerLifecycleGatewayTokenFile) {
+      throw new Error('A managed lifecycle gateway credential is required when Provider secret retention is enabled')
     }
   }
   return {

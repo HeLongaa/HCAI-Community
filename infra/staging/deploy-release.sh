@@ -53,11 +53,14 @@ fi
 exec 9>"$lock"
 flock -w 900 9
 
-docker compose \
+set -- docker compose \
   --project-name newchat-staging \
   --file "$root/source/infra/production.compose.yml" \
-  --file "$root/source/infra/staging.compose.yml" \
-  up --detach --no-build --wait --wait-timeout 600
+  --file "$root/source/infra/staging.compose.yml"
+if [ "${STAGING_SECRET_LIFECYCLE_ENABLED:-false}" = "true" ]; then
+  set -- "$@" --file "$root/source/infra/staging-secret-lifecycle.compose.yml"
+fi
+"$@" up --detach --no-build --wait --wait-timeout 600
 
 health=$(curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:${APP_PORT:-8080}/health")
 printf '%s' "$health" | grep -Fq "$artifact_sha256"
