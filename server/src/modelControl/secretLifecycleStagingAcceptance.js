@@ -65,7 +65,8 @@ export const runSecretLifecycleStagingAcceptance = async ({ source = process.env
       createdByRef: actorRef,
     })
 
-    const gateway = createSecretManagerLifecycleGateway({ source })
+    const lifecycleGateway = createSecretManagerLifecycleGateway({ source })
+    const gateway = (input) => lifecycleGateway({ ...input, now: new Date() })
     const disabled = await repository.modelGovernance.sweepSecretRetention({ now: startedAt, limit: 500, gateway })
     const deleted = await repository.modelGovernance.sweepSecretRetention({ now: new Date(startedAt.getTime() + 31 * dayMs), limit: 500, gateway })
     const receipts = await repository.client.providerSecretLifecycleReceipt.findMany({
