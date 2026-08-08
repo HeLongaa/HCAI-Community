@@ -6,18 +6,26 @@ const providerIdPattern = /^[a-z0-9][a-z0-9._:-]{1,95}$/i
 const receiptIdPattern = /^[a-z0-9][a-z0-9._:-]{2,127}$/i
 const externalProvider = (providerId) => !/^(?:mock|fixture)(?:[-_:]|$)/i.test(String(providerId ?? ''))
 const sha256 = (value) => createHash('sha256').update(String(value)).digest('hex')
+const operationRefsHash = (operationRefs) => sha256(JSON.stringify(operationRefs))
+const maximumOperationRefsPerRequest = 100
+const maximumOperationRefsPerProvider = 10_000
 
 export const buildProviderDeletionTargets = (records = []) => {
   const grouped = new Map()
   for (const record of records) {
     const providerId = String(record?.providerId ?? '').trim()
     if (!providerIdPattern.test(providerId) || !externalProvider(providerId)) continue
-    const target = grouped.get(providerId) ?? { providerId, operationRefs: new Set(), generationCount: 0 }
+    const target = grouped.get(providerId) ?? { providerId, operationRefs: new Set(), generationCount: 0, unresolvedGenerationCount: 0 }
     target.generationCount += 1
+    let operationRefBound = false
     for (const candidate of [record.providerJobId, record.providerRequestId]) {
       const operationRef = String(candidate ?? '').trim()
-      if (operationRef && operationRef.length <= 256) target.operationRefs.add(operationRef)
+      if (operationRef && operationRef.length <= 256) {
+        target.operationRefs.add(operationRef)
+        operationRefBound = true
+      }
     }
+    if (!operationRefBound) target.unresolvedGenerationCount += 1
     grouped.set(providerId, target)
   }
   return [...grouped.values()]
@@ -25,7 +33,8 @@ export const buildProviderDeletionTargets = (records = []) => {
     .map((target) => ({
       providerId: target.providerId,
       generationCount: target.generationCount,
-      operationRefs: [...target.operationRefs].sort().slice(0, 100),
+      unresolvedGenerationCount: target.unresolvedGenerationCount,
+      operationRefs: [...target.operationRefs].sort(),
     }))
 }
 
@@ -45,51 +54,103 @@ export const buildProviderDeletionGatewayConfig = (source = process.env) => {
   return { endpoint: endpoint.toString(), token }
 }
 
-const safeResponse = async (response) => {
+const safeResponse = async (response, expected) => {
   const text = await response.text()
   if (Buffer.byteLength(text) > 16_384) throw new HttpError(502, 'DATA_RIGHTS_PROVIDER_DELETION_RESPONSE_INVALID', 'External Provider deletion response is invalid')
   let payload
   try { payload = JSON.parse(text) } catch { payload = null }
   if (!response.ok) throw new HttpError(502, 'DATA_RIGHTS_PROVIDER_DELETION_FAILED', 'External Provider deletion request failed')
   const receiptId = String(payload?.receiptId ?? '').trim()
-  const deletedOperationCount = Number(payload?.deletedOperationCount)
-  if (payload?.status !== 'completed' || !receiptIdPattern.test(receiptId) || !Number.isInteger(deletedOperationCount) || deletedOperationCount < 0) {
+  const processedOperationCount = payload?.processedOperationCount
+  const deletedOperationCount = payload?.deletedOperationCount
+  if (
+    payload?.schemaVersion !== 2 ||
+    payload?.status !== 'completed' ||
+    payload?.requestId !== expected.requestId ||
+    payload?.providerId !== expected.providerId ||
+    payload?.operationRefsHash !== expected.operationRefsHash ||
+    payload?.batchIndex !== expected.batchIndex ||
+    payload?.batchCount !== expected.batchCount ||
+    !receiptIdPattern.test(receiptId) ||
+    !Number.isInteger(processedOperationCount) ||
+    processedOperationCount !== expected.operationRefCount ||
+    !Number.isInteger(deletedOperationCount) ||
+    deletedOperationCount < 0 ||
+    deletedOperationCount > processedOperationCount
+  ) {
     throw new HttpError(502, 'DATA_RIGHTS_PROVIDER_DELETION_RESPONSE_INVALID', 'External Provider deletion response is invalid')
   }
-  return { receiptId, deletedOperationCount }
+  return { receiptId, processedOperationCount, deletedOperationCount }
 }
 
 export const createProviderDeletionGateway = ({ source = process.env, fetchImpl = globalThis.fetch } = {}) => async ({ requestId, subjectRef, target, now = new Date() }) => {
-  if (!providerIdPattern.test(String(target?.providerId ?? '')) || !Array.isArray(target?.operationRefs) || target.operationRefs.length > 100) {
+  const operationRefs = Array.isArray(target?.operationRefs)
+    ? [...new Set(target.operationRefs.map((value) => String(value).trim()))].sort()
+    : []
+  if (
+    !providerIdPattern.test(String(target?.providerId ?? '')) ||
+    !Number.isInteger(target?.generationCount) ||
+    target.generationCount < 1 ||
+    target?.unresolvedGenerationCount !== 0 ||
+    operationRefs.length < 1 ||
+    operationRefs.length > maximumOperationRefsPerProvider ||
+    operationRefs.some((value) => !value || value.length > 256)
+  ) {
     throw new HttpError(500, 'DATA_RIGHTS_PROVIDER_DELETION_TARGET_INVALID', 'External Provider deletion target is invalid')
   }
   if (typeof fetchImpl !== 'function') throw new HttpError(503, 'DATA_RIGHTS_PROVIDER_DELETION_UNAVAILABLE', 'External Provider deletion transport is unavailable')
   const runtime = buildProviderDeletionGatewayConfig(source)
-  const response = await fetchImpl(runtime.endpoint, {
-    method: 'POST',
-    redirect: 'error',
-    signal: AbortSignal.timeout(15_000),
-    headers: {
-      accept: 'application/json',
-      authorization: `Bearer ${runtime.token}`,
-      'content-type': 'application/json',
-      'idempotency-key': `data-rights:${requestId}:${target.providerId}`,
-    },
-    body: JSON.stringify({
-      schemaVersion: 1,
+  const batches = []
+  for (let index = 0; index < operationRefs.length; index += maximumOperationRefsPerRequest) {
+    batches.push(operationRefs.slice(index, index + maximumOperationRefsPerRequest))
+  }
+  const batchReceiptHashes = []
+  let processedOperationCount = 0
+  let deletedOperationCount = 0
+  for (const [index, batchOperationRefs] of batches.entries()) {
+    const expected = {
       requestId,
-      subjectRef,
       providerId: target.providerId,
-      operationRefs: target.operationRefs,
-      requestedAt: now.toISOString(),
-    }),
-  })
-  const result = await safeResponse(response)
+      operationRefsHash: operationRefsHash(batchOperationRefs),
+      operationRefCount: batchOperationRefs.length,
+      batchIndex: index + 1,
+      batchCount: batches.length,
+    }
+    const response = await fetchImpl(runtime.endpoint, {
+      method: 'POST',
+      redirect: 'error',
+      signal: AbortSignal.timeout(15_000),
+      headers: {
+        accept: 'application/json',
+        authorization: `Bearer ${runtime.token}`,
+        'content-type': 'application/json',
+        'idempotency-key': `data-rights:${requestId}:${target.providerId}:${expected.batchIndex}:${expected.batchCount}`,
+      },
+      body: JSON.stringify({
+        schemaVersion: 2,
+        requestId,
+        subjectRef,
+        providerId: target.providerId,
+        operationRefs: batchOperationRefs,
+        operationRefsHash: expected.operationRefsHash,
+        batchIndex: expected.batchIndex,
+        batchCount: expected.batchCount,
+        requestedAt: now.toISOString(),
+      }),
+    })
+    const result = await safeResponse(response, expected)
+    processedOperationCount += result.processedOperationCount
+    deletedOperationCount += result.deletedOperationCount
+    batchReceiptHashes.push(sha256(`${expected.batchIndex}:${expected.operationRefsHash}:${result.receiptId}`))
+  }
+  const allOperationRefsHash = operationRefsHash(operationRefs)
   return Object.freeze({
     providerId: target.providerId,
     generationCount: target.generationCount,
-    deletedOperationCount: result.deletedOperationCount,
-    receiptHash: sha256(`${target.providerId}:${result.receiptId}`),
+    processedOperationCount,
+    deletedOperationCount,
+    operationRefsHash: allOperationRefsHash,
+    receiptHash: sha256(JSON.stringify({ requestId, providerId: target.providerId, operationRefsHash: allOperationRefsHash, batchReceiptHashes })),
     completedAt: now.toISOString(),
   })
 }
@@ -104,7 +165,9 @@ export const providerDeletionReceipt = ({ requestId, result, now = new Date() })
     requestId,
     providerId: result.providerId,
     generationCount: result.generationCount,
+    processedOperationCount: result.processedOperationCount,
     deletedOperationCount: result.deletedOperationCount,
+    operationRefsHash: result.operationRefsHash,
     receiptHash: result.receiptHash,
     completedAt: result.completedAt,
   })),

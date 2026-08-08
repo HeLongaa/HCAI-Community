@@ -1189,7 +1189,7 @@
       "archive and object writers support mock/S3-compatible boundaries",
       "Trust and Safety reports, cases, hash evidence, original decisions and independently reviewed appeals are append-only PostgreSQL facts with owner-scoped reads",
       "personal-account data rights requests enforce recent identity, bounded secret-free exports, 30-day deletion grace, 15-domain primary deletion, immutable evidence, and three-class backup expiry completion",
-      "due account deletion invokes an explicitly enabled HTTPS Provider privacy gateway before local deletion and persists only bounded hash-based receipts",
+      "due account deletion invokes an explicitly enabled HTTPS Provider privacy gateway before local deletion, rejects unresolved external generations, processes every operation reference in deterministic idempotent batches, validates request-bound version 2 receipts, and persists only bounded hash-based evidence",
       "expired data export packages use a dedicated namespace-constrained object deletion boundary, remove the database locator only after object deletion, and retain hash-only expiry evidence through a leased bounded worker",
       "scoped legal holds use a normalized expiring registry, hashed authority references, append-only events, domain-level deletion exclusion, and blocked-request retry after release or expiry",
       "observability retention transactionally aggregates non-identifying daily service metrics before deleting raw logs after 30 days, traces after 7 days, and aggregates after 90 days through a leased bounded worker",
@@ -1206,7 +1206,7 @@
       "retention automation remains incomplete; the per-policy retentionAutomationInventory is authoritative for implemented, partial, pending, blocked, and policy-conflict states",
       "Provider lifecycle retention passed isolated PostgreSQL acceptance; migration 0116 and the disabled-by-default worker still require target-environment scheduling, replay, alerting, and access-control acceptance",
       "private Library retention passed isolated PostgreSQL acceptance; migration 0105 and the disabled-by-default worker still require target-environment acceptance",
-      "the external output-safety classifier and Provider deletion gateway still require production processor disclosure and legal approval",
+      "the deployed shared-account HCAI Router has account deletion and time-window log cleanup but no operation-scoped erasure endpoint; a separate version 2 Provider deletion processor, production disclosure, target acceptance, and legal approval remain required",
       "current foreign-key behavior can cascade or restrict deletion without the frozen anonymization plan",
       "legal-hold registry, deletion cutoff serialization, and Provider receipt constraints passed isolated PostgreSQL acceptance; target-environment migration acceptance remains required",
       "no account-level Chat export/deletion orchestration beyond owner conversation deletion and restore tombstones"
