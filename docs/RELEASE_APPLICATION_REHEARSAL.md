@@ -54,6 +54,11 @@ The staging override loads the same protected runtime environment file into both
 the running processes cannot drift on retention, delivery, lifecycle, and security switches. The file remains outside
 the repository and is never included in release evidence.
 
+After the application services become healthy, the deployment command force-recreates only the stateless inner Gateway
+with `--no-deps`. Docker Compose does not otherwise notice changes to its bind-mounted Caddyfile, which can leave newly
+added routes inactive even when the application image is current. Deployment then requires both `/health` and `/ready`
+to return the selected artifact identity before reporting success.
+
 Run preflight and execute from the same clean checkout and protected job:
 
 ```bash

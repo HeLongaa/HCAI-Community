@@ -62,6 +62,13 @@ if [ "${STAGING_SECRET_LIFECYCLE_ENABLED:-false}" = "true" ]; then
 fi
 "$@" up --detach --no-build --wait --wait-timeout 600
 
+# Compose does not recreate the gateway when only its bind-mounted Caddyfile changes.
+# Recreate that stateless service after the application is healthy so new routes apply.
+"$@" up --detach --no-build --no-deps --force-recreate --wait --wait-timeout 60 gateway
+
 health=$(curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:${APP_PORT:-8080}/health")
 printf '%s' "$health" | grep -Fq "$artifact_sha256"
+readiness=$(curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:${APP_PORT:-8080}/ready")
+printf '%s' "$readiness" | grep -Fq "$artifact_sha256"
+printf '%s' "$readiness" | grep -Fq '"status":"ready"'
 printf 'deployed_artifact_sha256=%s\n' "$artifact_sha256"

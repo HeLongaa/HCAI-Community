@@ -1884,6 +1884,62 @@ Generations 的主对象应是“结果与状态”，而不是 Provider 元数�
 - Docker 守护进程恢复后，在不触碰 OpenClaw 容器的前提下执行生产容器 Redis/PostgreSQL 故障恢复演练。
 - 继续收集目标环境和六角色外部证据，所有证据绑定同一不可变 candidate/rollback digest 后再评估 Go/No-Go。
 
+## 61. 阶段 4 第四十三批实施记录（2026-08-08）
+
+本批次首次使用 `staging` GitHub Environment 对当前候选提交 `eabfb05b134b38f176e2623e47331e34e9f00c05`
+执行只读生产配置 smoke。工作流 `31256737997` 只解析和验证环境合同，没有连接数据库、调用模型或修改目标环境，
+因此其失败项可作为当前真实上线配置缺口，而不能解释为应用功能回归：
+
+- 通过项包括 S3 私有存储、Redis fail-closed 限流、指标鉴权、请求体保护、认证失败监控、核心保留任务和 Worker
+  租约。Chat/Image/Video/Music 的真实 Provider 外发继续关闭，没有为获得绿灯绕过批准、网络或生命周期门禁。
+- 失败项共 7 个：Provider 删除网关、持久安全告警送达、Provider Secret 保留任务、OAuth callback origin、受信任的
+  browser return origin、至少一个外部 OAuth Provider，以及六个互不相同的生产发布 Ed25519 公钥。
+- 根据已签名 RELEASE-02 应用演练制品，将 `AUTH_TRUSTED_ORIGINS`、Google redirect URI 和 GitHub redirect URI
+  从 localhost 修正为权威地址 `https://staging.157.151.204.187.nip.io`。新建 origin 最初收到 GitHub 429，核对后确认
+  根因不是 API 配额，而是 Environment 已占满 100 个变量。删除工作流从未消费且已有安全默认值的
+  `STORAGE_KEY_PREFIX` 与 `OAUTH_PROVIDER_TIMEOUT_MS` 后，成功创建 callback 和 browser return origin；同源架构不需要
+  单独配置 CORS allowlist。
+- 第二次只读 smoke `31257008037` 中 OAuth callback、browser return 和 external Provider 三项全部通过，失败项从 7 个
+  收敛为 4 个：Provider 删除网关、持久安全告警、Provider Secret 保留任务和六角色发布公钥。
+- staging 主机的受保护运行配置已原子挂载 Google/GitHub client、secret 和精确 HTTPS redirect；Secret 值没有进入日志、
+  仓库或命令参数。Provider 控制台仍没有可复用的已登录浏览器会话，因此尚未证明第三方白名单登记。
+- OAuth Provider 控制台没有可复用的已登录浏览器会话，当前无法证明 Google 与 GitHub 控制台已经登记同一 HTTPS
+  callback。仅修改应用环境不能替代 Provider 侧白名单，OAuth 继续标记为未验收。
+- 在远端独立 worktree 构建 `eabfb05b` candidate 和具备 readiness 的 `521dedb9` rollback 制品，全程未停止或修改两个
+  OpenClaw 容器。应用演练 `31257365896` 的 12/14 项通过，candidate 与旧 rollback 的唯一失败都是 readiness。
+- candidate `/ready=404` 定位为部署脚本缺陷：Gateway 的 Caddyfile 是 bind mount，Compose 在镜像和服务定义未变化时
+  不会自动重建或 reload，导致新路由未生效。部署脚本现于应用稳定后仅用 `--no-deps --force-recreate` 重建无状态
+  Gateway，并在返回成功前直接验证 `/health`、`/ready` 和制品身份；发布合同扩展到 `34/34`，聚焦测试 `9/9` 通过。
+
+本批确认的责任边界：
+
+- Provider 删除网关必须是已确认的固定 HTTPS 服务并提供独立 Token；不能用测试 URL、当前应用自身地址或空响应冒充
+  上游删除履约。
+- 持久安全告警必须进入真实邮件投递队列并具备 Provider receipt；Webhook 直接 fan-out 不是耐久送达证明。Mailer、
+  bounce 和 complaint 未接通前保持失败。
+- Provider Secret 保留任务依赖真实 Secret Manager lifecycle gateway。staging 已运行 Vault 基础设施，但应用运行配置
+  尚未启用 lifecycle gateway，不能仅把 Worker 开关改为 `true`；production KMS/HSM 证据仍未提供。
+- 六角色公钥必须来自六个独立责任人；测试 fixture 或由同一操作者临时生成的六组密钥不得写入 `staging`/`production`
+  取得假绿灯。
+
+尚未关闭的上线阻断：
+
+- 将 Gateway reload 修复提交并构建为新 candidate，使用具备 readiness 的 `521dedb9` 制品完成新的
+  candidate/rollback 应用演练。
+- 在 Google/GitHub 控制台登记并验证回调，然后执行目标主机 OAuth preflight 和真实 OAuth rehearsal。
+- 提供 Provider 删除网关、耐久 Mailer/安全告警、Secret Manager lifecycle gateway 和六角色独立公钥；这些属于
+  必须由真实服务或责任人产生的上线材料。
+- 本地 Docker/OrbStack 继续保持停止，避免 restart policy 自动启动受保护容器。远端 staging Docker 只用于 NewChat
+  制品构建和受保护应用演练，两个 OpenClaw 容器未被停止、重启或修改。
+- `production` GitHub Environment 尚未配置，目标环境 UAT、canary、rollback 和 hypercare 尚未执行；当前发布判断保持
+  **No-Go**。
+
+下一步：
+
+- 推送 Gateway reload 修复并等待同提交 CI；远端构建新 candidate 后复跑 RELEASE-02，成功回滚后再决定 staging 常驻版本。
+- 完成 Provider 控制台和真实 OAuth 回调验收；OAuth 环境配置 smoke 通过不等于外部登录已通过。
+- 在不降低现有生产门禁的前提下继续收集四类外部证据，并把每项证据绑定同一 candidate/rollback digest。
+
 ## 附录：审计截图
 
 管理员端审计截图：
