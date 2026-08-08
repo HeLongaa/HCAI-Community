@@ -601,7 +601,7 @@ addCheck(
   providerOutputSafetyAssuranceSource.includes('operationRef') &&
     providerOutputSafetyAssuranceSource.includes('policyRef') &&
     providerOutputSafetyAssuranceSource.includes('evidenceHash') &&
-    providerOutputSafetyAssuranceSource.includes("source !== 'provider_response'") &&
+    providerOutputSafetyAssuranceSource.includes("assurance.source === 'operator_staging'") &&
     providerOutputSafetyAssuranceSource.includes('maximumEvidenceBytes'),
   policy.currentRuntimeBaseline.providerOutputSafetyAssuranceFile,
 )
