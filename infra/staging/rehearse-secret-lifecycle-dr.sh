@@ -14,7 +14,13 @@ snapshot="$run_dir/source.snap"
 source_path_created=false
 
 cleanup() {
-  docker rm --force "$restore_container" >/dev/null 2>&1 || true
+  if docker inspect "$restore_container" >/dev/null 2>&1; then
+    restore_state=$(docker inspect --format '{{.State.Status}}' "$restore_container" 2>/dev/null || true)
+    if [ "$restore_state" != running ]; then
+      docker logs --tail 100 "$restore_container" >&2 || true
+    fi
+    docker rm --force "$restore_container" >/dev/null 2>&1 || true
+  fi
   if [ "$source_path_created" = true ] && [ -n "${vault_container:-}" ] && [ -n "${source_root_token:-}" ]; then
     docker exec -e VAULT_ADDR=https://127.0.0.1:8200 -e VAULT_CACERT=/vault/tls/ca.crt \
       -e VAULT_TOKEN="$source_root_token" "$vault_container" \
@@ -36,7 +42,7 @@ case "$run_id" in
 esac
 test "${#artifact_sha256}" -eq 64 || { echo "Release artifact SHA-256 is invalid" >&2; exit 1; }
 test "${#run_id}" -ge 8 && test "${#run_id}" -le 64 || { echo "Vault DR run id length is invalid" >&2; exit 1; }
-for command in docker jq node openssl sha256sum stat; do
+for command in docker git jq node openssl sha256sum stat; do
   command -v "$command" >/dev/null || { echo "$command is required" >&2; exit 1; }
 done
 run_started=$(date +%s)
@@ -53,6 +59,10 @@ RELEASE_ARTIFACT_SHA256=$artifact_sha256
 SECRET_LIFECYCLE_HOST_ROOT=$lifecycle_root
 export RELEASE_ARTIFACT_SHA256 SECRET_LIFECYCLE_HOST_ROOT
 set +a
+
+actual_source_commit=$(git -C "$root/source" rev-parse HEAD)
+test "$actual_source_commit" = "$SOURCE_COMMIT" || { echo "Staging source checkout does not match the allowlisted artifact" >&2; exit 1; }
+test -z "$(git -C "$root/source" status --porcelain)" || { echo "Staging source checkout must be clean" >&2; exit 1; }
 
 compose() {
   docker compose --project-name newchat-staging \
