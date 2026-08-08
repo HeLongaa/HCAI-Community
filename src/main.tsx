@@ -16,6 +16,15 @@ import { installGlobalClientErrorReporting } from './services/clientTelemetry.ts
 
 installGlobalClientErrorReporting()
 
+window.addEventListener('vite:preloadError', (event) => {
+  event.preventDefault()
+  const release = String(import.meta.env.VITE_APP_RELEASE ?? 'development').replace(/[^a-z0-9._-]/gi, '').slice(0, 96)
+  const recoveryKey = `hcai:chunk-recovery:${release}`
+  if (window.sessionStorage.getItem(recoveryKey) === window.location.href) return
+  window.sessionStorage.setItem(recoveryKey, window.location.href)
+  window.location.reload()
+})
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AppErrorBoundary>

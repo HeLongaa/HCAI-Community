@@ -186,15 +186,29 @@ export function AssetLibraryPage({ t, signedIn, requireAuth, navigateToPage }: {
     task_attachment: textFor(t, 'Attachment', '任务附件'),
   })[purpose]
 
-  const statusLabel = (asset: ApiAssetLibraryItem) => asset.deletedAt
-    ? textFor(t, 'Trash', '回收站')
+  const statusKind = (asset: ApiAssetLibraryItem) => asset.deletedAt
+    ? 'deleted'
     : asset.archivedAt
+      ? 'archived'
+      : asset.status === 'pending' || ['pending', 'scanning'].includes(asset.scanStatus)
+        ? 'pending'
+        : asset.scanStatus === 'review'
+          ? 'review'
+          : asset.status === 'rejected' || asset.scanStatus !== 'clean' || Boolean(asset.storage && asset.storage.state !== 'available')
+            ? 'blocked'
+            : 'ready'
+
+  const statusLabel = (asset: ApiAssetLibraryItem) => statusKind(asset) === 'deleted'
+    ? textFor(t, 'Trash', '回收站')
+    : statusKind(asset) === 'archived'
       ? textFor(t, 'Archived', '已归档')
-      : asset.status === 'pending' || asset.scanStatus === 'pending'
+      : statusKind(asset) === 'pending'
         ? textFor(t, 'Processing', '处理中')
-        : asset.status === 'rejected'
-          ? textFor(t, 'Unavailable', '不可用')
-          : textFor(t, 'Ready', '可使用')
+        : statusKind(asset) === 'review'
+          ? textFor(t, 'Review required', '待审核')
+          : statusKind(asset) === 'blocked'
+            ? textFor(t, 'Unavailable', '不可用')
+            : textFor(t, 'Ready', '可使用')
 
   const groupLabel = (label: string) => {
     if (filters.groupBy === 'none') return textFor(t, 'All assets', '全部素材')
@@ -209,8 +223,8 @@ export function AssetLibraryPage({ t, signedIn, requireAuth, navigateToPage }: {
     const previewAvailable = Boolean(previewUrl && failedPreviewUrls[asset.id] !== previewUrl)
     const markPreviewFailed = () => previewUrl && setFailedPreviewUrls((current) => ({ ...current, [asset.id]: previewUrl }))
     const state = statusLabel(asset)
-    const stateKind = asset.status === 'pending' || asset.scanStatus === 'pending' ? 'pending' : asset.status === 'rejected' ? 'blocked' : ''
-    const StateIcon = stateKind === 'pending' ? LoaderCircle : stateKind === 'blocked' ? X : Check
+    const stateKind = statusKind(asset)
+    const StateIcon = stateKind === 'pending' ? LoaderCircle : stateKind === 'blocked' ? X : stateKind === 'review' ? AlertTriangle : Check
     return <button className={selected?.id === asset.id ? 'asset-card selected' : 'asset-card'} key={asset.id} onClick={() => { setSelected(asset); setDeleteConfirmId(null) }} type="button">
       <span className={`asset-card-preview ${asset.mediaType}${previewAvailable ? ' has-media' : ''}`} aria-hidden="true">
         {previewAvailable && asset.mediaType === 'image' ? <img alt="" loading="lazy" onError={markPreviewFailed} src={previewUrl}/> : previewAvailable && asset.mediaType === 'video' ? <video muted playsInline preload="metadata" onError={markPreviewFailed} src={previewUrl}/> : <span className="asset-preview-mark" data-testid={previewUrl ? `asset-preview-fallback-${asset.id}` : undefined}><Icon size={32}/></span>}
@@ -230,6 +244,8 @@ export function AssetLibraryPage({ t, signedIn, requireAuth, navigateToPage }: {
     const previewUrl = previewUrls[selected.id]
     const previewAvailable = Boolean(previewUrl && failedPreviewUrls[selected.id] !== previewUrl)
     const markPreviewFailed = () => previewUrl && setFailedPreviewUrls((current) => ({ ...current, [selected.id]: previewUrl }))
+    const selectedStateKind = statusKind(selected)
+    const SelectedStateIcon = selectedStateKind === 'pending' ? LoaderCircle : selectedStateKind === 'blocked' ? X : selectedStateKind === 'review' ? AlertTriangle : Check
     const detail = <aside aria-label={textFor(t, 'Asset details', '素材详情')} className="asset-detail">
       <div className="asset-detail-toolbar">
         <strong>{textFor(t, 'Asset details', '素材详情')}</strong>
@@ -238,7 +254,7 @@ export function AssetLibraryPage({ t, signedIn, requireAuth, navigateToPage }: {
       <div className={`asset-detail-preview ${selected.mediaType}${previewAvailable ? ' has-media' : ''}`}>
         {previewAvailable && selected.mediaType === 'image' ? <img alt="" onError={markPreviewFailed} src={previewUrl}/> : previewAvailable && selected.mediaType === 'video' ? <video muted playsInline preload="metadata" onError={markPreviewFailed} src={previewUrl}/> : <Icon data-testid={previewUrl ? `asset-detail-preview-fallback-${selected.id}` : undefined} size={42}/>}<span>{mediaLabel(selected.mediaType)}</span>
       </div>
-      <div className="asset-detail-title"><div><small>{purposeLabel(selected.purpose)}</small><h2>{selected.fileName}</h2><span className="asset-detail-state"><Check size={12}/>{statusLabel(selected)}</span></div></div>
+      <div className="asset-detail-title"><div><small>{purposeLabel(selected.purpose)}</small><h2>{selected.fileName}</h2><span className={`asset-detail-state ${selectedStateKind}`}><SelectedStateIcon className={selectedStateKind === 'pending' ? 'spin' : ''} size={12}/>{statusLabel(selected)}</span></div></div>
       <div className="asset-actions">
         <button className="ghost-button" disabled={!selected.actions.download.available || !online} onClick={() => void download(selected).catch((cause) => setError(cause instanceof Error ? cause.message : 'Download failed'))} type="button"><ArrowDownToLine size={15}/>{textFor(t, 'Download', '下载')}</button>
         {selected.sourceGeneration && <button className="ghost-button" onClick={() => openSourceGeneration(selected)} type="button"><ExternalLink size={15}/>{textFor(t, 'Open source task', '打开来源任务')}</button>}

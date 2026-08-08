@@ -12,6 +12,25 @@ test('production output safety fails closed when no classifier is configured', a
   assert.equal(result.classified, false)
 })
 
+test('provider-native mode allows only matching completed Provider safety evidence', async () => {
+  const source = { NODE_ENV: 'production', CREATIVE_OUTPUT_SAFETY_CLASSIFIER_MODE: 'provider-native' }
+  const allowed = await classifyCreativeOutput({
+    generation: {
+      ...generation,
+      safety: { providerNative: { schemaVersion: 1, providerId: 'real-provider', outcome: 'provider_allowed', signal: 'native_filter_success', policyVersion: null } },
+    },
+    output,
+    body: Buffer.from('bytes'),
+    contentType: 'image/png',
+    source,
+  })
+  assert.equal(allowed.decision, 'allow')
+  assert.equal(allowed.classified, true)
+
+  const unavailable = await classifyCreativeOutput({ generation, output, body: Buffer.from('bytes'), contentType: 'image/png', source })
+  assert.equal(unavailable.decision, 'review')
+})
+
 test('output safety stores bounded evidence instead of classifier payloads', async () => {
   const result = await classifyCreativeOutput({
     generation,

@@ -3086,6 +3086,8 @@
 .app-shell[data-theme='black'].page-assets .asset-card-state { color: #83c99c; }
 .app-shell.page-assets .asset-card-state.pending { border-color: color-mix(in srgb, #c48a2a 38%, var(--border)); color: #965f0c; }
 .app-shell[data-theme='black'].page-assets .asset-card-state.pending { color: #d5a34d; }
+.app-shell.page-assets .asset-card-state.review { border-color: color-mix(in srgb, #c48a2a 38%, var(--border)); color: #965f0c; }
+.app-shell[data-theme='black'].page-assets .asset-card-state.review { color: #d5a34d; }
 .app-shell.page-assets .asset-card-state.blocked { border-color: color-mix(in srgb, #d25049 38%, var(--border)); color: #c74c45; }
 
 .app-shell.page-assets .asset-grid.list .asset-group > div { grid-template-columns: 1fr; gap: 6px; }
@@ -3174,6 +3176,11 @@
 }
 
 .app-shell[data-theme='black'].page-assets .asset-detail-state { color: #83c99c; }
+.app-shell.page-assets .asset-detail-state.pending,
+.app-shell.page-assets .asset-detail-state.review { color: #965f0c; }
+.app-shell[data-theme='black'].page-assets .asset-detail-state.pending,
+.app-shell[data-theme='black'].page-assets .asset-detail-state.review { color: #d5a34d; }
+.app-shell.page-assets .asset-detail-state.blocked { color: #c74c45; }
 
 .app-shell.page-assets .asset-actions {
   display: grid;

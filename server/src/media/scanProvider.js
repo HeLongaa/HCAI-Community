@@ -175,6 +175,23 @@ export const scanMediaAsset = async (asset) => {
     return buildWebhookScanResult(asset, 1, 'initial')
   }
 
+  if (provider === 'trusted-provider') {
+    const generated = Boolean(asset?.metadata?.creative)
+    return generated
+      ? {
+          provider,
+          status: 'clean',
+          reason: null,
+          note: 'Trusted upstream generated output.',
+        }
+      : {
+          provider: 'manual',
+          status: 'pending',
+          reason: null,
+          note: 'Non-generated assets still require review.',
+        }
+  }
+
   if (provider !== 'mock') {
     return {
       provider: 'manual',

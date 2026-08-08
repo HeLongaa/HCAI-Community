@@ -9,6 +9,22 @@ const safeCodes = (value) => Array.isArray(value) ? value.map(String).filter((it
 
 const normalizeDecision = (value, fallback = 'review') => decisions.has(String(value)) ? String(value) : fallback
 
+const providerNativeClassifier = (generation) => {
+  const evidence = generation?.safety?.providerNative
+  const providerId = String(generation?.provider?.id ?? generation?.providerId ?? '')
+  const allowed = evidence?.schemaVersion === 1 &&
+    evidence.providerId === providerId &&
+    evidence.outcome === 'provider_allowed' &&
+    evidence.signal === 'native_filter_success'
+  const policyVersion = String(evidence?.policyVersion ?? '1')
+  return {
+    decision: allowed ? 'allow' : 'review',
+    classifierId: 'provider-native',
+    classifierVersion: codePattern.test(policyVersion) ? policyVersion : '1',
+    categories: allowed ? [] : ['provider_native_unavailable'],
+  }
+}
+
 const externalClassifier = ({ generation, output, body, contentType, source, fetchImpl }) => classifyWithExternalSafetyService({
   endpointValue: source.CREATIVE_OUTPUT_SAFETY_CLASSIFIER_URL,
   tokenValue: source.CREATIVE_OUTPUT_SAFETY_CLASSIFIER_TOKEN,
@@ -37,6 +53,8 @@ export const classifyCreativeOutput = async ({
     try { raw = await classifier({ generation, output, body, contentType, now }) } catch { raw = null }
   } else if (String(source.CREATIVE_OUTPUT_SAFETY_CLASSIFIER_MODE ?? '').toLowerCase() === 'external') {
     raw = await externalClassifier({ generation, output, body, contentType, source, fetchImpl })
+  } else if (String(source.CREATIVE_OUTPUT_SAFETY_CLASSIFIER_MODE ?? '').toLowerCase() === 'provider-native') {
+    raw = providerNativeClassifier(generation)
   } else if (generation.provider?.id === 'mock' || source.NODE_ENV !== 'production') {
     raw = { decision: 'allow', classifierId: 'local-fixture', classifierVersion: '1', categories: [] }
   } else {

@@ -1073,6 +1073,14 @@ test('buildEnv validates fixed HTTPS creative safety classifier deployments with
     () => buildEnv({ CREATIVE_INPUT_SAFETY_CLASSIFIER_MODE: 'external', CREATIVE_INPUT_SAFETY_CLASSIFIER_URL: 'https://safety.example.com/input', CREATIVE_INPUT_SAFETY_CLASSIFIER_TOKEN: 'short' }),
     /CREATIVE_INPUT_SAFETY_CLASSIFIER_TOKEN must be at least 16 characters/,
   )
+  assert.equal(
+    buildCreativeProviderConfig({ CREATIVE_OUTPUT_SAFETY_CLASSIFIER_MODE: 'provider-native' }).safetyClassifiers.output.configured,
+    true,
+  )
+  assert.throws(
+    () => buildEnv({ CREATIVE_INPUT_SAFETY_CLASSIFIER_MODE: 'provider-native' }),
+    /CREATIVE_INPUT_SAFETY_CLASSIFIER_MODE must be one of/,
+  )
 })
 
 test('buildEnv enables Provider callbacks only behind the independent staging kill switch', () => {
@@ -1530,6 +1538,22 @@ test('buildEnv validates media scanner deployment settings', () => {
     () => buildEnv({ NODE_ENV: 'development', MEDIA_SCAN_PROVIDER: 'webhook' }),
     /MEDIA_SCAN_WEBHOOK_SECRET is required/,
   )
+  assert.throws(
+    () => buildEnv({
+      NODE_ENV: 'production',
+      ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+      CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+      MEDIA_SCAN_PROVIDER: 'trusted-provider',
+    }),
+    /MEDIA_SCAN_TRUSTED_PROVIDER_CONFIRMATION=staging-only/,
+  )
+  assert.equal(buildEnv({
+    NODE_ENV: 'production',
+    ACCESS_TOKEN_SECRET: '0123456789abcdef0123456789abcdef',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    MEDIA_SCAN_PROVIDER: 'trusted-provider',
+    MEDIA_SCAN_TRUSTED_PROVIDER_CONFIRMATION: 'staging-only',
+  }).mediaScanProvider, 'trusted-provider')
   assert.throws(
     () => buildEnv({ NODE_ENV: 'development', MEDIA_SCAN_REQUEST_ADAPTER: 'vendor-x' }),
     /MEDIA_SCAN_REQUEST_ADAPTER must be one of/,

@@ -39,7 +39,8 @@ const supportedRateLimitStores = ['memory', 'redis']
 const supportedRateLimitFailureModes = ['fail_open', 'fail_closed']
 const supportedMetricsExporterFormats = ['prometheus']
 const supportedCreativeProviderAlertChannels = ['webhook', 'slack', 'email']
-const supportedCreativeSafetyClassifierModes = ['disabled', 'external']
+const supportedCreativeInputSafetyClassifierModes = ['disabled', 'external']
+const supportedCreativeOutputSafetyClassifierModes = ['disabled', 'external', 'provider-native']
 const getRateLimitStore = (source) => lowerValueOrDefault(source.RATE_LIMIT_STORE, 'memory')
 const getRateLimitFailureMode = (source) => lowerValueOrDefault(source.RATE_LIMIT_REDIS_FAILURE_MODE, lowerValueOrDefault(source.RATE_LIMIT_STORE_FAILURE_MODE, 'fail_closed'))
 const getMetricsExporterFormat = (source) => lowerValueOrDefault(source.METRICS_EXPORTER_FORMAT, 'prometheus')
@@ -359,9 +360,13 @@ export const buildEnv = (source = process.env) => {
   if (webhookDeliveryWorkerEnabled && !hasWebhookSecretEncryptionKey) {
     throw new Error('WEBHOOK_DELIVERY_WORKER_ENABLED requires WEBHOOK_SECRET_ENCRYPTION_KEY or WEBHOOK_SECRET_ENCRYPTION_KEYS')
   }
-  if (!['manual', 'mock', 'webhook'].includes(mediaScanProvider)) {
-    throw new Error('MEDIA_SCAN_PROVIDER must be one of: manual, mock, webhook')
+  if (!['manual', 'mock', 'webhook', 'trusted-provider'].includes(mediaScanProvider)) {
+    throw new Error('MEDIA_SCAN_PROVIDER must be one of: manual, mock, webhook, trusted-provider')
   }
+  if (mediaScanProvider === 'trusted-provider' && (
+    creativeProviderRuntimeEnv !== 'staging' ||
+    String(source.MEDIA_SCAN_TRUSTED_PROVIDER_CONFIRMATION ?? '').trim().toLowerCase() !== 'staging-only'
+  )) throw new Error('MEDIA_SCAN_PROVIDER=trusted-provider requires staging runtime and MEDIA_SCAN_TRUSTED_PROVIDER_CONFIRMATION=staging-only')
   if (!supportedCreativeProviderModes.includes(creativeProviderMode)) {
     throw new Error(`CREATIVE_PROVIDER_MODE must be one of: ${supportedCreativeProviderModes.join(', ')}`)
   }
@@ -551,12 +556,12 @@ export const buildEnv = (source = process.env) => {
       throw new Error('Router MiniMax Music staging requires rights acknowledgement, training opt-out evidence, license ID, and terms version')
     }
   }
-  for (const [label, mode, urlValue, token] of [
-    ['CREATIVE_INPUT_SAFETY_CLASSIFIER', creativeInputSafetyClassifierMode, creativeInputSafetyClassifierUrl, creativeInputSafetyClassifierToken],
-    ['CREATIVE_OUTPUT_SAFETY_CLASSIFIER', creativeOutputSafetyClassifierMode, creativeOutputSafetyClassifierUrl, creativeOutputSafetyClassifierToken],
+  for (const [label, mode, urlValue, token, supportedModes] of [
+    ['CREATIVE_INPUT_SAFETY_CLASSIFIER', creativeInputSafetyClassifierMode, creativeInputSafetyClassifierUrl, creativeInputSafetyClassifierToken, supportedCreativeInputSafetyClassifierModes],
+    ['CREATIVE_OUTPUT_SAFETY_CLASSIFIER', creativeOutputSafetyClassifierMode, creativeOutputSafetyClassifierUrl, creativeOutputSafetyClassifierToken, supportedCreativeOutputSafetyClassifierModes],
   ]) {
-    if (!supportedCreativeSafetyClassifierModes.includes(mode)) {
-      throw new Error(`${label}_MODE must be one of: ${supportedCreativeSafetyClassifierModes.join(', ')}`)
+    if (!supportedModes.includes(mode)) {
+      throw new Error(`${label}_MODE must be one of: ${supportedModes.join(', ')}`)
     }
     if (mode === 'external') {
       let endpoint
@@ -1129,7 +1134,11 @@ export const buildCreativeProviderConfig = (source = process.env) => {
       output: {
         implemented: true,
         mode: current.creativeOutputSafetyClassifierMode,
-        configured: current.creativeOutputSafetyClassifierMode === 'external' && current.hasCreativeOutputSafetyClassifierUrl && current.hasCreativeOutputSafetyClassifierToken,
+        configured: current.creativeOutputSafetyClassifierMode === 'provider-native' || (
+          current.creativeOutputSafetyClassifierMode === 'external' &&
+          current.hasCreativeOutputSafetyClassifierUrl &&
+          current.hasCreativeOutputSafetyClassifierToken
+        ),
       },
     },
     callback: {
