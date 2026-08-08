@@ -15,6 +15,7 @@ const fixtureEnv = {
   DATABASE_URL: 'postgresql://newchat:container-postgres-fixture@postgres:5432/newchat?schema=public',
   POSTGRES_PASSWORD: 'container-postgres-fixture',
   ACCESS_TOKEN_SECRET: 'container-access-token-fixture-at-least-32-bytes',
+  SECRET_MANAGER_PROVIDER: 'vault',
   STORAGE_ACCESS_KEY_ID: 'containerstorage',
   STORAGE_SECRET_ACCESS_KEY: 'container-storage-secret-fixture',
   RATE_LIMIT_REDIS_URL: 'redis://:container-redis-fixture@redis:6379',

@@ -106,6 +106,67 @@ test('Vault lifecycle gateway destroys and verifies the selected KV v2 version',
   assert.match(calls[0], /\/destroy\//)
 })
 
+test('Vault lifecycle gateway reloads rotated client and Vault credentials without restart', async (t) => {
+  let activeBearerToken = bearerToken
+  let activeVaultToken = vaultToken
+  const calls = []
+  const rotatingReadFile = (file) => file.endsWith('gateway-token') ? activeBearerToken : activeVaultToken
+  const handler = createVaultSecretLifecycleHandler({
+    source,
+    readFile: rotatingReadFile,
+    logger: silentLogger,
+    fetchImpl: async (url, options) => {
+      calls.push({ url: String(url), vaultToken: options.headers['x-vault-token'] })
+      if (String(url).includes('/metadata/')) return new Response(JSON.stringify({ data: { versions: { 2: { deletion_time: '2026-08-08T00:01:00Z', destroyed: false } } } }))
+      return new Response(null, { status: 204 })
+    },
+  })
+  const runtime = await listen(handler)
+  t.after(runtime.close)
+
+  const first = await postLifecycle(runtime.url, lifecyclePayload())
+  assert.equal(first.status, 200)
+  assert.equal(calls[0].vaultToken, vaultToken)
+
+  const previousBearerToken = activeBearerToken
+  activeBearerToken = 'rotated-gateway-bearer-token-0123456789'
+  activeVaultToken = 'rotated-vault-service-token-0123456789'
+  const staleClient = await postLifecycle(runtime.url, lifecyclePayload(), { bearerToken: previousBearerToken })
+  assert.equal(staleClient.status, 401)
+  const rotated = await postLifecycle(runtime.url, lifecyclePayload(), { bearerToken: activeBearerToken })
+  assert.equal(rotated.status, 200)
+  assert.equal(calls.at(-2).vaultToken, activeVaultToken)
+  assert.equal(calls.at(-1).vaultToken, activeVaultToken)
+})
+
+test('Vault lifecycle readiness verifies current file credentials with Vault', async (t) => {
+  let available = true
+  const handler = createVaultSecretLifecycleHandler({
+    source,
+    readFile,
+    logger: silentLogger,
+    fetchImpl: async (url, options) => {
+      assert.equal(String(url), 'https://vault.internal.test/v1/auth/token/lookup-self')
+      assert.equal(options.headers['x-vault-token'], vaultToken)
+      return available
+        ? new Response(JSON.stringify({ data: { id: 'redacted-token-id' } }))
+        : new Response(JSON.stringify({ errors: ['permission denied'] }), { status: 403 })
+    },
+  })
+  const runtime = await listen(handler)
+  t.after(runtime.close)
+
+  const ready = await fetch(`${runtime.url}/readyz`)
+  assert.equal(ready.status, 200)
+  assert.deepEqual(await ready.json(), { status: 'ready' })
+  available = false
+  const unavailable = await fetch(`${runtime.url}/readyz`)
+  assert.equal(unavailable.status, 503)
+  assert.deepEqual(await unavailable.json(), { status: 'unavailable' })
+  const live = await fetch(`${runtime.url}/healthz`)
+  assert.equal(live.status, 200)
+})
+
 test('Vault lifecycle gateway rejects unauthenticated, unknown-field, traversal, and replay-key requests', async (t) => {
   let upstreamCalls = 0
   const handler = createVaultSecretLifecycleHandler({ source, readFile, logger: silentLogger, fetchImpl: async () => { upstreamCalls += 1; throw new Error('must not call') } })
@@ -152,4 +213,10 @@ test('Vault lifecycle gateway configuration fails closed for unsafe origins and 
   assert.throws(() => buildVaultSecretLifecycleGatewayConfig({ ...source, SECRET_LIFECYCLE_VAULT_ADDR: 'http://vault:8200/' }, { readFile }), /fixed HTTPS origin/)
   assert.throws(() => buildVaultSecretLifecycleGatewayConfig({ ...source, SECRET_LIFECYCLE_VAULT_PATH_PREFIX: '../root' }, { readFile }), /PATH_PREFIX/)
   assert.throws(() => buildVaultSecretLifecycleGatewayConfig({ ...source, SECRET_LIFECYCLE_GATEWAY_BEARER_TOKEN_FILE: 'relative/token' }, { readFile }), /absolute path/)
+  assert.throws(() => buildVaultSecretLifecycleGatewayConfig({ ...source, DEPLOYMENT_ENV: 'production' }, { readFile }), /HA auto-unseal-backed/)
+  assert.doesNotThrow(() => buildVaultSecretLifecycleGatewayConfig({
+    ...source,
+    DEPLOYMENT_ENV: 'production',
+    SECRET_LIFECYCLE_MANAGED_VAULT_CONFIRMATION: 'ha-auto-unseal-backed-vault',
+  }, { readFile }))
 })

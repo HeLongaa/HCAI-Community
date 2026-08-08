@@ -48,6 +48,7 @@ fi
 issue_certificate() {
   name=$1
   sans=$2
+  extended_key_usage=$3
   if [ -f "$lifecycle_root/tls/$name.crt" ] && [ -f "$lifecycle_root/tls/$name.key" ] \
     && openssl x509 -checkend 604800 -noout -in "$lifecycle_root/tls/$name.crt" >/dev/null 2>&1; then
     return
@@ -56,7 +57,7 @@ issue_certificate() {
   trap 'rm -f "$ext"' EXIT HUP INT TERM
   {
     printf 'subjectAltName=%s\n' "$sans"
-    printf 'extendedKeyUsage=serverAuth\n'
+    printf 'extendedKeyUsage=%s\n' "$extended_key_usage"
     printf 'keyUsage=digitalSignature,keyEncipherment\n'
   } > "$ext"
   openssl req -new -newkey rsa:3072 -sha256 -nodes -subj "/CN=$name" \
@@ -68,10 +69,11 @@ issue_certificate() {
   trap - EXIT HUP INT TERM
 }
 
-issue_certificate vault 'DNS:vault,DNS:localhost,IP:127.0.0.1'
-issue_certificate gateway 'DNS:secret-lifecycle-gateway,DNS:localhost,IP:127.0.0.1'
-chmod 0644 "$lifecycle_root/tls/ca.crt" "$lifecycle_root/tls/vault.crt" "$lifecycle_root/tls/gateway.crt"
-chmod 0640 "$lifecycle_root/tls/vault.key" "$lifecycle_root/tls/gateway.key"
+issue_certificate vault 'DNS:vault,DNS:localhost,IP:127.0.0.1' serverAuth
+issue_certificate gateway 'DNS:secret-lifecycle-gateway,DNS:localhost,IP:127.0.0.1' serverAuth
+issue_certificate vault-agent 'DNS:vault-agent' clientAuth
+chmod 0644 "$lifecycle_root/tls/ca.crt" "$lifecycle_root/tls/vault.crt" "$lifecycle_root/tls/gateway.crt" "$lifecycle_root/tls/vault-agent.crt"
+chmod 0640 "$lifecycle_root/tls/vault.key" "$lifecycle_root/tls/gateway.key" "$lifecycle_root/tls/vault-agent.key"
 chown root:1000 "$lifecycle_root/tls/"*
 chmod 0600 "$lifecycle_root/private/ca.key"
 chown root:root "$lifecycle_root/private/ca.key"
@@ -141,22 +143,53 @@ path "provider-secrets/destroy/hcai/staging/providers/*" {
 path "provider-secrets/metadata/hcai/staging/providers/*" {
   capabilities = ["read"]
 }
+path "auth/token/lookup-self" {
+  capabilities = ["read"]
+}
 EOF
 )
 printf '%s\n' "$policy" | docker exec -i -e VAULT_ADDR=https://127.0.0.1:8200 -e VAULT_CACERT=/vault/tls/ca.crt \
   -e VAULT_TOKEN="$root_token" "$vault_container" vault policy write secret-lifecycle-gateway - >/dev/null
 
-gateway_vault_token_file="$lifecycle_root/secrets/vault-gateway-token"
-token_valid=false
-if [ -s "$gateway_vault_token_file" ]; then
-  if vault_exec token lookup "$(cat "$gateway_vault_token_file")" >/dev/null 2>&1; then token_valid=true; fi
+if ! vault_exec auth list -format=json | jq -e 'has("cert/")' >/dev/null; then
+  vault_exec auth enable cert >/dev/null
 fi
-if [ "$token_valid" != true ]; then
-  umask 077
-  vault_exec token create -orphan -no-default-policy -policy=secret-lifecycle-gateway -ttl=720h -renewable=false -field=token > "$gateway_vault_token_file"
+vault_exec write auth/cert/certs/newchat-secret-lifecycle-gateway \
+  certificate=@/vault/tls/ca.crt \
+  allowed_common_names=vault-agent \
+  token_policies=secret-lifecycle-gateway \
+  token_no_default_policy=true \
+  token_period=1m >/dev/null
+
+compose up --detach --no-build --no-deps vault-agent
+agent_container=$(compose ps --quiet vault-agent)
+test -n "$agent_container" || { echo "Vault Agent container did not start" >&2; exit 1; }
+agent_ready=false
+attempt=0
+while [ "$attempt" -lt 90 ]; do
+  if docker exec "$agent_container" sh -ec \
+    'test -s /run/vault-agent/token && VAULT_TOKEN=$(cat /run/vault-agent/token) vault token lookup -address="$VAULT_ADDR" -ca-cert=/run/vault-workload/ca.crt >/dev/null'; then
+    agent_ready=true
+    break
+  fi
+  attempt=$((attempt + 1))
+  sleep 1
+done
+if [ "$agent_ready" != true ]; then
+  compose logs --no-color --tail 100 vault-agent >&2 || true
+  echo "Vault Agent certificate auto-auth did not become ready" >&2
+  exit 1
 fi
-chown root:1000 "$gateway_vault_token_file"
-chmod 0640 "$gateway_vault_token_file"
+
+legacy_token_file="$lifecycle_root/secrets/vault-gateway-token"
+if [ -s "$legacy_token_file" ]; then
+  legacy_token=$(cat "$legacy_token_file")
+  if vault_exec token lookup "$legacy_token" >/dev/null 2>&1; then
+    vault_exec token revoke "$legacy_token" >/dev/null
+  fi
+  unset legacy_token
+  rm -f "$legacy_token_file"
+fi
 
 if ! grep -q '^STAGING_SECRET_LIFECYCLE_ENABLED=' "$runtime"; then
   printf '\nSTAGING_SECRET_LIFECYCLE_ENABLED=true\n' >> "$runtime"
@@ -171,3 +204,5 @@ printf 'secret_lifecycle_provisioned=true\n'
 printf 'vault_initialized=true\n'
 printf 'vault_unsealed=true\n'
 printf 'gateway_policy=secret-lifecycle-gateway\n'
+printf 'vault_agent_auto_auth=cert\n'
+printf 'static_vault_token_removed=true\n'

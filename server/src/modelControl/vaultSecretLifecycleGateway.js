@@ -45,6 +45,11 @@ export const buildVaultSecretLifecycleGatewayConfig = (source = process.env, { r
   if (vaultAddress.protocol !== 'https:' || vaultAddress.username || vaultAddress.password || vaultAddress.search || vaultAddress.hash || vaultAddress.pathname !== '/') {
     throw new Error('SECRET_LIFECYCLE_VAULT_ADDR must be a fixed HTTPS origin')
   }
+  const deploymentEnv = String(source.DEPLOYMENT_ENV ?? '').trim().toLowerCase()
+  const managedVaultConfirmation = String(source.SECRET_LIFECYCLE_MANAGED_VAULT_CONFIRMATION ?? '').trim()
+  if (deploymentEnv === 'production' && managedVaultConfirmation !== 'ha-auto-unseal-backed-vault') {
+    throw new Error('Production secret lifecycle requires an HA auto-unseal-backed managed Vault confirmation')
+  }
   const mount = String(source.SECRET_LIFECYCLE_VAULT_KV_MOUNT ?? '').trim()
   const vaultPathPrefix = String(source.SECRET_LIFECYCLE_VAULT_PATH_PREFIX ?? '').trim().replace(/\/$/, '')
   const secretRefPrefix = String(source.SECRET_LIFECYCLE_SECRET_REF_PREFIX ?? '').trim()
@@ -53,15 +58,17 @@ export const buildVaultSecretLifecycleGatewayConfig = (source = process.env, { r
   if (!/^secret:\/\/[a-zA-Z0-9][a-zA-Z0-9._/-]{2,180}\/$/.test(secretRefPrefix) || secretRefPrefix.includes('//', 9)) {
     throw new Error('SECRET_LIFECYCLE_SECRET_REF_PREFIX is invalid')
   }
-  const bearerToken = readSecretFile(String(source.SECRET_LIFECYCLE_GATEWAY_BEARER_TOKEN_FILE ?? '').trim(), 'SECRET_LIFECYCLE_GATEWAY_BEARER_TOKEN_FILE', readFile)
-  const vaultToken = readSecretFile(String(source.SECRET_LIFECYCLE_VAULT_TOKEN_FILE ?? '').trim(), 'SECRET_LIFECYCLE_VAULT_TOKEN_FILE', readFile)
+  const bearerTokenFile = String(source.SECRET_LIFECYCLE_GATEWAY_BEARER_TOKEN_FILE ?? '').trim()
+  const vaultTokenFile = String(source.SECRET_LIFECYCLE_VAULT_TOKEN_FILE ?? '').trim()
+  readSecretFile(bearerTokenFile, 'SECRET_LIFECYCLE_GATEWAY_BEARER_TOKEN_FILE', readFile)
+  readSecretFile(vaultTokenFile, 'SECRET_LIFECYCLE_VAULT_TOKEN_FILE', readFile)
   return Object.freeze({
     vaultAddress,
     mount,
     vaultPathPrefix,
     secretRefPrefix,
-    bearerToken,
-    vaultToken,
+    bearerTokenFile,
+    vaultTokenFile,
     vaultTimeoutMs: boundedInteger(source.SECRET_LIFECYCLE_VAULT_TIMEOUT_MS, 5000, 500, 30_000),
   })
 }
@@ -131,7 +138,7 @@ const parseLifecycleRequest = (request, payload, config) => {
   return { action: payload.action, version: Number(versionMatch[1]), vaultPath: `${config.vaultPathPrefix}/${suffix}`, targetHash }
 }
 
-const vaultRequest = async (config, fetchImpl, pathname, options = {}) => {
+const vaultRequest = async (config, fetchImpl, readVaultToken, pathname, options = {}) => {
   const endpoint = new URL(pathname, config.vaultAddress)
   const response = await fetchImpl(endpoint, {
     method: options.method ?? 'GET',
@@ -140,7 +147,7 @@ const vaultRequest = async (config, fetchImpl, pathname, options = {}) => {
     headers: {
       accept: 'application/json',
       'content-type': 'application/json',
-      'x-vault-token': config.vaultToken,
+      'x-vault-token': readVaultToken(),
     },
     ...(options.body ? { body: JSON.stringify(options.body) } : {}),
   })
@@ -157,11 +164,29 @@ export const createVaultSecretLifecycleHandler = ({
 } = {}) => {
   if (typeof fetchImpl !== 'function') throw new Error('Vault transport is unavailable')
   const config = buildVaultSecretLifecycleGatewayConfig(source, { readFile })
+  const readBearerToken = () => readSecretFile(config.bearerTokenFile, 'SECRET_LIFECYCLE_GATEWAY_BEARER_TOKEN_FILE', readFile)
+  const readVaultToken = () => readSecretFile(config.vaultTokenFile, 'SECRET_LIFECYCLE_VAULT_TOKEN_FILE', readFile)
   return async (request, response) => {
     if (request.method === 'GET' && request.url === '/healthz') return sendJson(response, 200, { status: 'ok' })
+    if (request.method === 'GET' && request.url === '/readyz') {
+      try {
+        readBearerToken()
+        const token = await vaultRequest(config, fetchImpl, readVaultToken, '/v1/auth/token/lookup-self')
+        if (!String(token?.data?.id ?? '').trim()) throw new Error('vault_token_not_verified')
+        return sendJson(response, 200, { status: 'ready' })
+      } catch {
+        logger.error?.('[secret-lifecycle]', { event: 'readiness_failed' })
+        return sendJson(response, 503, { status: 'unavailable' })
+      }
+    }
     if (request.url !== lifecyclePath) return sendJson(response, 404, { status: 'failed', code: 'not_found' })
     if (request.method !== 'POST') return sendJson(response, 405, { status: 'failed', code: 'method_not_allowed' })
-    if (!safeEqual(request.headers.authorization ?? '', `Bearer ${config.bearerToken}`)) return sendJson(response, 401, { status: 'failed', code: 'unauthorized' })
+    let bearerToken
+    try { bearerToken = readBearerToken() } catch {
+      logger.error?.('[secret-lifecycle]', { event: 'credential_unavailable' })
+      return sendJson(response, 503, { status: 'failed', code: 'credential_unavailable' })
+    }
+    if (!safeEqual(request.headers.authorization ?? '', `Bearer ${bearerToken}`)) return sendJson(response, 401, { status: 'failed', code: 'unauthorized' })
     if (!String(request.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) return sendJson(response, 415, { status: 'failed', code: 'unsupported_media_type' })
 
     let lifecycle
@@ -171,10 +196,10 @@ export const createVaultSecretLifecycleHandler = ({
       const encodedMount = encodeURIComponent(config.mount)
       const encodedPath = encodeVaultPath(lifecycle.vaultPath)
       const operation = lifecycle.action === 'disable' ? 'delete' : 'destroy'
-      await vaultRequest(config, fetchImpl, `/v1/${encodedMount}/${operation}/${encodedPath}`, {
+      await vaultRequest(config, fetchImpl, readVaultToken, `/v1/${encodedMount}/${operation}/${encodedPath}`, {
         method: 'POST', body: { versions: [lifecycle.version] }, expectEmpty: true,
       })
-      const metadata = await vaultRequest(config, fetchImpl, `/v1/${encodedMount}/metadata/${encodedPath}`)
+      const metadata = await vaultRequest(config, fetchImpl, readVaultToken, `/v1/${encodedMount}/metadata/${encodedPath}`)
       const version = metadata?.data?.versions?.[String(lifecycle.version)]
       const verified = lifecycle.action === 'disable'
         ? Boolean(version && !version.destroyed && String(version.deletion_time ?? '').trim())

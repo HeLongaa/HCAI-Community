@@ -12,6 +12,7 @@ listener "tcp" {
   tls_cert_file   = "/vault/tls/vault.crt"
   tls_key_file    = "/vault/tls/vault.key"
   tls_min_version = "tls12"
+  tls_disable_client_certs = false
 }
 
 api_addr     = "https://vault:8200"

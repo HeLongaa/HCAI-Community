@@ -35,10 +35,51 @@ compose() {
     --file "$root/source/infra/staging-secret-lifecycle.compose.yml" "$@"
 }
 vault_container=$(compose ps --quiet vault)
+agent_container=$(compose ps --quiet vault-agent)
 gateway_container=$(compose ps --quiet secret-lifecycle-gateway)
-test -n "$vault_container" && test -n "$gateway_container" || { echo "Secret lifecycle services are not running" >&2; exit 1; }
+test -n "$vault_container" && test -n "$agent_container" && test -n "$gateway_container" || { echo "Secret lifecycle services are not running" >&2; exit 1; }
 
 root_token=$(jq -r '.root_token' "$init_file")
+vault_admin() {
+  docker exec -e VAULT_ADDR=https://127.0.0.1:8200 -e VAULT_CACERT=/vault/tls/ca.crt \
+    -e VAULT_TOKEN="$root_token" "$vault_container" vault "$@"
+}
+
+old_agent_token=$(docker exec "$agent_container" cat /run/vault-agent/token)
+test -n "$old_agent_token" || { echo "Vault Agent token sink is empty" >&2; exit 1; }
+vault_admin token revoke "$old_agent_token" >/dev/null
+rotation_verified=false
+attempt=0
+while [ "$attempt" -lt 150 ]; do
+  current_agent_token=$(docker exec "$agent_container" cat /run/vault-agent/token 2>/dev/null || true)
+  if [ -n "$current_agent_token" ] && [ "$current_agent_token" != "$old_agent_token" ] \
+    && vault_admin token lookup "$current_agent_token" >/dev/null 2>&1; then
+    rotation_verified=true
+    break
+  fi
+  attempt=$((attempt + 1))
+  sleep 1
+done
+unset old_agent_token current_agent_token
+if [ "$rotation_verified" != true ]; then
+  compose logs --no-color --tail 100 vault-agent secret-lifecycle-gateway >&2 || true
+  echo "Vault Agent did not automatically re-authenticate after token revocation" >&2
+  exit 1
+fi
+
+readiness_recovered=false
+attempt=0
+while [ "$attempt" -lt 30 ]; do
+  if docker exec "$gateway_container" node -e \
+    "fetch('https://127.0.0.1:8790/readyz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"; then
+    readiness_recovered=true
+    break
+  fi
+  attempt=$((attempt + 1))
+  sleep 1
+done
+test "$readiness_recovered" = true || { echo "Lifecycle gateway readiness did not recover after Vault Agent re-authentication" >&2; exit 1; }
+
 vault_path="hcai/staging/providers/acceptance/$run_id"
 write_version() {
   credential=$(openssl rand -hex 32)
@@ -67,10 +108,10 @@ evidence="$evidence_dir/secret-lifecycle-$run_id.json"
 umask 077
 jq -n -S \
   --arg artifactSha256 "$artifact_sha256" \
-  --arg sourceCommit "$SOURCE_COMMIT" \
-  --argjson acceptance "$acceptance_json" \
-  --argjson vaultVersions "$(printf '%s' "$metadata" | jq '{"1": {destroyed: .data.versions["1"].destroyed, deletionTimePresent: (.data.versions["1"].deletion_time != "")}, "2": {destroyed: .data.versions["2"].destroyed}}')" \
-  '{schemaVersion: 1, status: "passed", environment: "staging", artifactSha256: $artifactSha256, sourceCommit: $sourceCommit, acceptance: $acceptance, vaultVersions: $vaultVersions}' > "$evidence"
+    --arg sourceCommit "$SOURCE_COMMIT" \
+    --argjson acceptance "$acceptance_json" \
+    --argjson vaultVersions "$(printf '%s' "$metadata" | jq '{"1": {destroyed: .data.versions["1"].destroyed, deletionTimePresent: (.data.versions["1"].deletion_time != "")}, "2": {destroyed: .data.versions["2"].destroyed}}')" \
+    '{schemaVersion: 2, status: "passed", environment: "staging", artifactSha256: $artifactSha256, sourceCommit: $sourceCommit, workloadAuth: {method: "vault_cert_auto_auth", tokenRotationVerified: true, gatewayReadinessRecovered: true}, acceptance: $acceptance, vaultVersions: $vaultVersions}' > "$evidence"
 chown root:newchat-deploy "$evidence"
 chmod 0640 "$evidence"
 
@@ -83,5 +124,7 @@ printf 'status=passed\n'
 printf 'run_id=%s\n' "$run_id"
 printf 'actions=2\n'
 printf 'vault_versions=2\n'
+printf 'vault_agent_token_rotation=passed\n'
+printf 'gateway_readiness_recovery=passed\n'
 printf 'receipt_sha256=%s\n' "$receipt"
 printf 'evidence=%s\n' "$evidence"
