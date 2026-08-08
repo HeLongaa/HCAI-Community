@@ -44,12 +44,12 @@ test('Prisma auth credential retention deletes a bounded global oldest prefix an
 
     const first = await repository.authCredentialRetention.sweepRetention({ now, limit: 2 })
     assert.equal(first.inspected, 2)
-    assert.deepEqual(first.deleted, { oauthAuthorizationRequests: 1, refreshTokens: 1, apiKeyCredentials: 0 })
+    assert.deepEqual(first.deleted, { oauthAuthorizationRequests: 1, refreshTokens: 1, apiKeyCredentials: 0, authEmailActions: 0 })
     assert.equal(await repository.client.oAuthAuthorizationRequest.findUnique({ where: { id: oldOAuthId } }), null)
     assert.ok(await repository.client.apiKeyCredential.findUnique({ where: { id: oldApiKeyId } }))
 
     const second = await repository.authCredentialRetention.sweepRetention({ now, limit: 10 })
-    assert.deepEqual(second.deleted, { oauthAuthorizationRequests: 0, refreshTokens: 0, apiKeyCredentials: 1 })
+    assert.deepEqual(second.deleted, { oauthAuthorizationRequests: 0, refreshTokens: 0, apiKeyCredentials: 1, authEmailActions: 0 })
     assert.ok(await repository.client.oAuthAuthorizationRequest.findUnique({ where: { id: freshOAuthId } }))
     assert.ok(await repository.client.apiKeyCredential.findUnique({ where: { id: freshApiKeyId } }))
     assert.ok(await repository.client.authSession.findUnique({ where: { id: authSession.id } }))

@@ -426,6 +426,8 @@ export const serializeAccount = (account) => ({
   id: account.id,
   handle: account.handle,
   email: account.email,
+  emailVerified: Boolean(account.emailVerified),
+  emailVerifiedAt: account.emailVerifiedAt ?? null,
   displayName: account.displayName,
   role: account.role,
   permissions: account.permissions,

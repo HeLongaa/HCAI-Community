@@ -53,7 +53,7 @@ not become public because the post is public.
 | `governance_configuration` | Internal | PostgreSQL | `Permission`, `RolePermission`, `SystemSetting`, `SystemSettingChange`, `SystemSettingRevision`, `WebhookControl` | Superseded history 365 days |
 | `operation_leases` | Internal | PostgreSQL | `OperationLease` | Expiry/release + 7 days |
 | `identity_account_profile` | Confidential | PostgreSQL | `User`, `Profile`, `ProfilePortfolioAsset` | Verified deletion + 30 days |
-| `authentication_credentials_sessions` | Restricted | PostgreSQL | `AuthAccount`, `OAuthAuthorizationRequest`, `RefreshToken` | OAuth request expiry; unlink/expiry/revoke + 30 days |
+| `authentication_credentials_sessions` | Restricted | PostgreSQL | `AuthAccount`, `AuthEmailAction`, `OAuthAuthorizationRequest`, `RefreshToken` | OAuth/email action expiry; unlink/consume/expiry/revoke + 30 days |
 | `account_generation_risk_records` | Restricted | PostgreSQL | `RiskPolicy`, `RiskSignal`, `RiskCase`, `RiskCaseSignal`, `RiskDispositionEvent`, `RiskAppeal` | Terminal case + 365 days; subject, appeal, actor, and dedupe links are redacted while hash-only decision evidence is preserved; active `audit/safety` hold blocks redaction |
 | `developer_credentials` | Restricted | PostgreSQL | `DeveloperAccessControl`, `ServiceAccount`, `ApiKeyCredential`, `WebhookSubscription`, `WebhookSigningSecret` | Revoke immediately; credential expiry plus 30 days; plaintext API and webhook signing keys have zero durable retention |
 | `marketplace_records` | Confidential | PostgreSQL | `Task`, `TaskProposal`, `TaskSubmission` | Terminal task/dispute + 730 days |

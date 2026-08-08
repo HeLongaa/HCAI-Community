@@ -15,9 +15,13 @@ import {
 import { isTrustedOrigin } from '../../common/http/origin.js'
 import {
   parseEmailLoginRequest,
+  parseAuthEmailRequest,
+  parseAuthEmailTokenRequest,
   parseOAuthStartRequest,
+  parsePasswordResetConfirmRequest,
   parseRegisterRequest,
 } from '../../contracts/requestParsers.js'
+import { buildAuthEmailActionConfig } from '../../auth/emailActions.js'
 import {
   buildOAuthBrowserReturnUrl,
   createOAuthState,
@@ -150,6 +154,7 @@ const recordAuthFailureAnomaly = async (event, context) => {
 export const registerAuthRoutes = (router, options = {}) => {
   const routeRepositories = options.repositories ?? repositories
   const routeSource = options.source ?? process.env
+  const emailActionConfig = buildAuthEmailActionConfig(routeSource)
   const recordLoginAttempt = async ({ method, outcome, reasonCode, identity, request }) => {
     await routeRepositories.authRiskAdmin?.recordAttempt?.(createAuthAttemptEvidence({
       method,
@@ -313,6 +318,10 @@ export const registerAuthRoutes = (router, options = {}) => {
         }, await authFailureOptions(context))
         throw new HttpError(401, 'AUTH_FAILED', 'Invalid email or password')
       }
+      if (emailActionConfig.verificationRequired && !account.emailVerified) {
+        await recordLoginAttempt({ method: 'email', outcome: 'failure', reasonCode: 'email_not_verified', identity: payload.email, request })
+        throw new HttpError(403, 'EMAIL_VERIFICATION_REQUIRED', 'Verify your email before signing in')
+      }
       const evidence = createAuthAttemptEvidence({ method: 'email', outcome: 'success', reasonCode: 'authenticated', identity: payload.email, clientContext: buildSessionClientContext(request) })
       const restriction = await riskRestriction({ account, capability: 'login', identityEvidence: evidence })
       if (restriction) {
@@ -354,11 +363,55 @@ export const registerAuthRoutes = (router, options = {}) => {
     const body = (await readJsonBody(request)) ?? {}
     const consent = validatePolicyConsent(body.policyConsent, 'email_registration')
     const payload = parseRegisterRequest(body)
-    const session = await routeRepositories.auth.registerEmailAccount?.(payload, consent, buildSessionClientContext(request))
+    const session = await routeRepositories.auth.registerEmailAccount?.(payload, consent, buildSessionClientContext(request), emailActionConfig)
     if (!session) {
       throw new HttpError(409, 'ACCOUNT_EXISTS', 'Email or handle is already registered')
     }
+    if (session.verificationRequired) {
+      created(response, {
+        verificationRequired: true,
+        emailHint: session.email.replace(/^(.)(.*)(@.*)$/, '$1***$3'),
+        user: serializeAccount(session.user),
+      })
+      return
+    }
     sendSession(response, sessionPayload(session))
+  })
+
+  router.add('POST', '/api/auth/email/verification/resend', async (request, response) => {
+    const payload = parseAuthEmailRequest((await readJsonBody(request)) ?? {})
+    await routeRepositories.auth.requestEmailVerification?.(payload, emailActionConfig)
+    ok(response, { accepted: true })
+  })
+
+  router.add('POST', '/api/auth/email/verify', async (request, response) => {
+    if (!emailActionConfig.verificationRequired) {
+      throw new HttpError(404, 'NOT_FOUND', 'Email verification is not enabled')
+    }
+    const payload = parseAuthEmailTokenRequest((await readJsonBody(request)) ?? {})
+    const session = await routeRepositories.auth.consumeEmailVerification?.(payload, buildSessionClientContext(request))
+    if (!session) throw new HttpError(400, 'AUTH_EMAIL_ACTION_INVALID', 'This email action link is invalid or expired')
+    sendSession(response, sessionPayload(session))
+  })
+
+  router.add('POST', '/api/auth/password-reset/request', async (request, response) => {
+    if (!emailActionConfig.passwordResetEnabled) {
+      throw new HttpError(404, 'NOT_FOUND', 'Password reset is not enabled')
+    }
+    const payload = parseAuthEmailRequest((await readJsonBody(request)) ?? {})
+    await routeRepositories.auth.requestPasswordReset?.(payload, emailActionConfig)
+    ok(response, { accepted: true })
+  })
+
+  router.add('POST', '/api/auth/password-reset/confirm', async (request, response) => {
+    if (!emailActionConfig.passwordResetEnabled) {
+      throw new HttpError(404, 'NOT_FOUND', 'Password reset is not enabled')
+    }
+    const payload = parsePasswordResetConfirmRequest((await readJsonBody(request)) ?? {})
+    const result = await routeRepositories.auth.resetPassword?.(payload)
+    if (!result) throw new HttpError(400, 'AUTH_EMAIL_ACTION_INVALID', 'This email action link is invalid or expired')
+    clearRefreshTokenCookie(response)
+    ok(response, result)
   })
 
   router.add('GET', '/api/auth/oauth/providers', async (_request, response) => {

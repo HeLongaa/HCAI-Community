@@ -1086,8 +1086,11 @@ addCheck(
     prismaRepositorySource.includes('apiKeyCredential.deleteMany') &&
     workerJobsSource.includes("id: 'auth-credential-retention-sweep'") &&
     workerJobsSource.includes('authCredentialRetentionSweepLimit') &&
-    authCredentialRetentionMigration.includes('refresh_tokens_retention_idx'),
-  'OAuth requests, refresh tokens, and API key material use a 30-day bounded worker; AuthSession remains security evidence',
+    authCredentialRetentionMigration.includes('refresh_tokens_retention_idx') &&
+    schemaSource.includes('model AuthEmailAction') &&
+    authCredentialRetentionSource.includes('consumedAt') &&
+    prismaRepositorySource.includes('authEmailAction.deleteMany'),
+  'OAuth requests, email actions, refresh tokens, and API key material use a 30-day bounded worker; AuthSession remains security evidence',
 )
 addCheck(
   'runtime community retention irreversibly anonymizes expired content while preserving active review and legal holds',

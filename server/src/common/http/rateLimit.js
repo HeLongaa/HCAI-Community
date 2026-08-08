@@ -230,7 +230,15 @@ const requestBucket = (request) => {
   const method = String(request.method ?? '').toUpperCase()
   const pathname = requestPathname(request)
 
-  if (method === 'POST' && ['/api/auth/login', '/api/auth/register', '/api/auth/refresh'].includes(pathname)) {
+  if (method === 'POST' && [
+    '/api/auth/login',
+    '/api/auth/register',
+    '/api/auth/refresh',
+    '/api/auth/email/verification/resend',
+    '/api/auth/email/verify',
+    '/api/auth/password-reset/request',
+    '/api/auth/password-reset/confirm',
+  ].includes(pathname)) {
     return { id: 'auth', maxKey: 'authMax', label: 'authentication' }
   }
   if (method === 'POST' && pathname === '/api/media/uploads') {

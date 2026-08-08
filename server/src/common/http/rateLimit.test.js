@@ -42,6 +42,10 @@ const createRateLimitTestServer = async (context = {}) => {
   const router = createRouter()
   const handler = async (_request, response) => ok(response, { ok: true })
   router.add('POST', '/api/auth/login', handler)
+  router.add('POST', '/api/auth/email/verification/resend', handler)
+  router.add('POST', '/api/auth/email/verify', handler)
+  router.add('POST', '/api/auth/password-reset/request', handler)
+  router.add('POST', '/api/auth/password-reset/confirm', handler)
   router.add('POST', '/api/media/uploads', handler)
   router.add('POST', '/api/observability/client-errors', handler)
   router.add('PUT', '/api/admin/roles/member/permissions', handler)
@@ -97,6 +101,29 @@ test('rate limiter protects authentication endpoints by client', async () => {
         event.details.bucket === 'auth'
       ))
       assert.equal((await postJson(server.url, '/api/auth/login', {}, { 'x-forwarded-for': '198.51.100.11' })).status, 200)
+    } finally {
+      await server.close()
+    }
+  })
+})
+
+test('rate limiter protects email verification and password recovery endpoints', async () => {
+  await withProcessEnv({ RATE_LIMIT_AUTH_MAX: '1', RATE_LIMIT_WINDOW_MS: '60000' }, async () => {
+    const server = await createRateLimitTestServer()
+    const paths = [
+      '/api/auth/email/verification/resend',
+      '/api/auth/email/verify',
+      '/api/auth/password-reset/request',
+      '/api/auth/password-reset/confirm',
+    ]
+    try {
+      for (const [index, path] of paths.entries()) {
+        const headers = { 'x-forwarded-for': `198.51.100.${20 + index}` }
+        assert.equal((await postJson(server.url, path, {}, headers)).status, 200)
+        const limited = await postJson(server.url, path, {}, headers)
+        assert.equal(limited.status, 429)
+        assert.equal((await limited.json()).error.details.bucket, 'auth')
+      }
     } finally {
       await server.close()
     }

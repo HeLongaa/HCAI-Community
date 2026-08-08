@@ -663,7 +663,7 @@ test('createProductionWorkerJobDefinitions wires bounded auth credential retenti
   const expected = {
     policyId: 'auth_expiry_plus_30d',
     inspected: 3,
-    deleted: { oauthAuthorizationRequests: 1, refreshTokens: 1, apiKeyCredentials: 1 },
+    deleted: { oauthAuthorizationRequests: 1, refreshTokens: 1, apiKeyCredentials: 1, authEmailActions: 0 },
   }
   const repositories = {
     authCredentialRetention: {

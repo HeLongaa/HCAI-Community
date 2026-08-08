@@ -332,6 +332,55 @@ body .login-modal.auth-page-panel {
   margin: 0;
 }
 
+.auth-back-action,
+.auth-forgot-action {
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #aeb6ff;
+  font-size: 12px;
+}
+
+.auth-back-action {
+  order: 2;
+  margin: 0 0 16px;
+}
+
+.auth-forgot-action {
+  justify-self: end;
+  margin-top: -4px;
+}
+
+.auth-back-action:hover,
+.auth-forgot-action:hover {
+  color: var(--auth-text);
+}
+
+.auth-action-state {
+  order: 3;
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--auth-line);
+  border-radius: 8px;
+  background: #090a0b;
+  color: #aeb6ff;
+}
+
+.auth-action-state p {
+  margin: 0;
+  color: var(--auth-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.auth-action-state .auth-submit {
+  width: 100%;
+  margin: 0;
+}
+
 .auth-field-label {
   color: #d0d6e0;
   font-size: 12px;

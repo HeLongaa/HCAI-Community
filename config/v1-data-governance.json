@@ -343,7 +343,7 @@
     {
       "id": "authentication_credentials_sessions",
       "classification": "restricted",
-      "prismaModels": ["AuthAccount", "OAuthAuthorizationRequest", "OAuthProviderControl", "AuthSession", "AuthRiskPolicy", "AuthLoginAttempt", "RefreshToken"],
+      "prismaModels": ["AuthAccount", "AuthEmailAction", "OAuthAuthorizationRequest", "OAuthProviderControl", "AuthSession", "AuthRiskPolicy", "AuthLoginAttempt", "RefreshToken"],
       "locations": ["postgres"],
       "dataSubjects": ["user"],
       "purposes": ["account_service", "auth_security"],
@@ -1169,7 +1169,7 @@
   },
   "currentRuntimeBaseline": {
     "schemaFile": "server/prisma/schema.prisma",
-    "modelCount": 179,
+    "modelCount": 180,
     "availableCapabilities": [
       "User has an explicit deleted status",
       "logical auth sessions bind access-token sid claims to refresh-token families, support immediate revocation and compromise containment, and retain only coarse client labels plus keyed network hashes",

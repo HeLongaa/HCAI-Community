@@ -2020,6 +2020,7 @@ model ModerationAppeal {
 model User {
   id                   String     @id @default(cuid())
   email                String?    @unique
+  emailVerifiedAt      DateTime?  @map("email_verified_at")
   displayName          String     @map("display_name")
   avatarUrl            String?    @map("avatar_url")
   role                 UserRole
@@ -2038,6 +2039,7 @@ model User {
   oauthAuthorizationRequests       OAuthAuthorizationRequest[]
   refreshTokens                    RefreshToken[]
   authSessions                     AuthSession[]                   @relation("AuthSessionUser")
+  authEmailActions                 AuthEmailAction[]
   reviewedAuthSessions             AuthSession[]                   @relation("AuthSessionReviewer")
   riskSignals                      RiskSignal[]                    @relation("RiskSignalUser")
   riskCases                        RiskCase[]                      @relation("RiskCaseUser")
@@ -2543,6 +2545,31 @@ model AuthAccount {
   @@unique([provider, providerUserId])
   @@unique([userId, provider])
   @@map("auth_accounts")
+}
+
+model AuthEmailAction {
+  id                 String    @id
+  userId             String    @map("user_id")
+  kind               String
+  tokenHash          String    @unique @map("token_hash")
+  ciphertext         String
+  encryptionKeyId    String    @map("encryption_key_id")
+  encryptionIv       String    @map("encryption_iv")
+  encryptionTag      String    @map("encryption_tag")
+  expiresAt          DateTime  @map("expires_at")
+  consumedAt         DateTime? @map("consumed_at")
+  revokedAt          DateTime? @map("revoked_at")
+  revokeReasonCode   String?   @map("revoke_reason_code")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, kind, createdAt])
+  @@index([expiresAt, id])
+  @@index([revokedAt, id])
+  @@index([consumedAt, id])
+  @@map("auth_email_actions")
 }
 
 model OAuthAuthorizationRequest {

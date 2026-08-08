@@ -42,7 +42,7 @@ import { isApiClientError } from '../../services/apiClient'
 import { profileService } from '../../services/profileService'
 import { searchService } from '../../services/searchService'
 import { showLocalTestAccounts } from '../../services/runtimeConfig'
-import type { ApiComplianceManifest, ApiPolicyConsentStatus, ApiSearchResult, ApiSession, OAuthAccountLink, OAuthProvider, OAuthProviderMetadata, RegisterRequest, SearchResourceType, SearchSort } from '../../services/contracts'
+import type { ApiComplianceManifest, ApiPolicyConsentStatus, ApiSearchResult, ApiSession, OAuthAccountLink, OAuthProvider, OAuthProviderMetadata, RegisterRequest, RegistrationResponse, SearchResourceType, SearchSort } from '../../services/contracts'
 import type { OAuthLoginResult } from '../../hooks/useAccountState'
 
 type IslandAction = {
@@ -609,6 +609,8 @@ const emailAuthErrorCopy = (error: unknown, mode: 'login' | 'register', t: Recor
     VALIDATION_FAILED: ['Check the form fields and try again.', '请检查表单内容后重试。'],
     RATE_LIMITED: ['Too many attempts. Please wait a moment and try again.', '尝试次数过多，请稍后再试。'],
     AUTH_REQUIRED: ['Session verification failed. Please sign in again.', '会话校验失败，请重新登录。'],
+    EMAIL_VERIFICATION_REQUIRED: ['Verify your email before signing in.', '请先验证邮箱再登录。'],
+    AUTH_EMAIL_ACTION_INVALID: ['This link is invalid, expired, or already used.', '此链接无效、已过期或已被使用。'],
     POLICY_CONSENT_REQUIRED: ['Review and accept the required policies.', '请阅读并同意必需政策。'],
     POLICY_VERSION_MISMATCH: ['Policy versions changed. Review the current policies and try again.', '政策版本已更新，请重新阅读后再试。'],
   }
@@ -617,6 +619,7 @@ const emailAuthErrorCopy = (error: unknown, mode: 'login' | 'register', t: Recor
 }
 
 type AuthFieldErrors = Partial<Record<'email' | 'password' | 'handle' | 'consent', string>>
+type AuthMode = 'login' | 'register' | 'forgot' | 'reset' | 'verify' | 'verification-sent' | 'reset-sent' | 'reset-done'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const handlePattern = /^[a-zA-Z0-9_-]{3,32}$/
@@ -657,6 +660,8 @@ export function LoginModal({
   loginWithPassword,
   loginWithOAuthProvider,
   registerWithEmail,
+  verifyEmail,
+  resetPassword,
   setPage,
 }: {
   t: Record<string, string>
@@ -668,22 +673,29 @@ export function LoginModal({
   loginAs?: (handle: string) => Promise<void>
   loginWithPassword: (email: string, password: string) => Promise<void>
   loginWithOAuthProvider: (provider: OAuthProvider) => Promise<OAuthLoginResult>
-  registerWithEmail: (payload: RegisterRequest) => Promise<void>
+  registerWithEmail: (payload: RegisterRequest) => Promise<RegistrationResponse>
+  verifyEmail: (token: string) => Promise<void>
+  resetPassword: (token: string, password: string) => Promise<void>
   setPage: (page: Page) => void
 }) {
   const isZh = isZhCopy(t)
   const [providers, setProviders] = useState<OAuthProviderMetadata[]>(defaultOAuthProviders)
   const [selectedProvider, setSelectedProvider] = useState<OAuthProvider | ''>('')
-  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const authQuery = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
+  const initialAction = authQuery.get('action')
+  const [mode, setMode] = useState<AuthMode>(initialAction === 'password-reset' ? 'reset' : initialAction === 'verify-email' ? 'verify' : 'login')
+  const [actionToken] = useState(() => authQuery.get('token') ?? '')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [handle, setHandle] = useState('')
-  const [submitting, setSubmitting] = useState(false)
+  const [submitting, setSubmitting] = useState(mode === 'verify' && Boolean(actionToken))
   const [policyManifest, setPolicyManifest] = useState<ApiComplianceManifest | null>(null)
   const [policyAccepted, setPolicyAccepted] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(() => mode === 'verify' && !actionToken
+    ? textFor(t, 'This verification link is invalid.', '此验证链接无效。')
+    : '')
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors>({})
   const localTestAccounts = [
     { handle: 'opsplus', label: textFor(t, 'Admin', '管理员'), hint: 'opsplus' },
@@ -712,6 +724,7 @@ export function LoginModal({
   }
 
   useEffect(() => {
+    if (!['login', 'register'].includes(mode)) return
     let active = true
     authService
       .listOAuthProviders()
@@ -725,9 +738,10 @@ export function LoginModal({
     return () => {
       active = false
     }
-  }, [])
+  }, [mode])
 
   useEffect(() => {
+    if (mode !== 'register') return
     let active = true
     complianceService
       .getManifest()
@@ -741,17 +755,39 @@ export function LoginModal({
     return () => {
       active = false
     }
-  }, [t])
+  }, [mode, t])
+
+  useEffect(() => {
+    if (mode !== 'verify') return
+    if (!actionToken) return
+    let active = true
+    verifyEmail(actionToken)
+      .then(() => {
+        if (!active) return
+        simulateAction(textFor(t, 'Email verified', '邮箱验证成功'))
+        finishAuthentication()
+      })
+      .catch((verifyError) => {
+        if (!active) return
+        setError(emailAuthErrorCopy(verifyError, 'login', t))
+      })
+      .finally(() => {
+        if (active) setSubmitting(false)
+      })
+    return () => { active = false }
+  // The action token is immutable for this mounted auth route.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionToken, mode])
 
   const getFieldErrors = (): AuthFieldErrors => {
     const next: AuthFieldErrors = {}
     const normalizedEmail = email.trim().toLowerCase()
-    if (!emailPattern.test(normalizedEmail)) {
+    if (mode !== 'reset' && !emailPattern.test(normalizedEmail)) {
       next.email = textFor(t, 'Enter a valid email address.', '请输入有效邮箱地址。')
     }
-    if (!password) {
+    if (!['forgot', 'verification-sent', 'reset-sent', 'verify', 'reset-done'].includes(mode) && !password) {
       next.password = textFor(t, 'Enter your password.', '请输入密码。')
-    } else if (mode === 'register' && (password.length < 8 || password.length > 128)) {
+    } else if (['register', 'reset'].includes(mode) && (password.length < 8 || password.length > 128)) {
       next.password = textFor(t, 'Use 8-128 characters.', '请输入 8-128 个字符。')
     }
     if (mode === 'register' && handle.trim() && !handlePattern.test(handle.trim())) {
@@ -781,6 +817,24 @@ export function LoginModal({
       return
     }
     setSubmitting(true)
+    if (mode === 'forgot') {
+      void authService.requestPasswordReset(email)
+        .then(() => setMode('reset-sent'))
+        .catch((authError) => setError(emailAuthErrorCopy(authError, 'login', t)))
+        .finally(() => setSubmitting(false))
+      return
+    }
+    if (mode === 'reset') {
+      void resetPassword(actionToken, password)
+        .then(() => {
+          setPassword('')
+          window.history.replaceState(null, '', '#auth')
+          setMode('reset-done')
+        })
+        .catch((authError) => setError(emailAuthErrorCopy(authError, 'login', t)))
+        .finally(() => setSubmitting(false))
+      return
+    }
     const action = mode === 'register'
       ? registerWithEmail({
           email,
@@ -790,8 +844,14 @@ export function LoginModal({
           policyConsent: policyConsentRequest(policyManifest as ApiComplianceManifest, isZh ? 'zh' : 'en'),
         })
       : loginWithPassword(email, password)
+    const submittedMode = mode === 'register' ? 'register' : 'login'
     void action
-      .then(() => {
+      .then((result) => {
+        if (mode === 'register' && result && 'verificationRequired' in result) {
+          setMode('verification-sent')
+          simulateAction(textFor(t, 'Verification email queued', '验证邮件已进入发送队列'))
+          return
+        }
         simulateAction(
           mode === 'register'
             ? textFor(t, 'Account created and session verified', '账号已创建并完成会话校验')
@@ -801,8 +861,8 @@ export function LoginModal({
       })
       .catch((authError) => {
         console.info('[auth]', authError)
-        setError(emailAuthErrorCopy(authError, mode, t))
-        setFieldErrors(authFieldErrorsFromApi(authError, mode, t))
+        setError(emailAuthErrorCopy(authError, submittedMode, t))
+        setFieldErrors(authFieldErrorsFromApi(authError, submittedMode, t))
       })
       .finally(() => setSubmitting(false))
   }
@@ -843,18 +903,34 @@ export function LoginModal({
             <h2>
               {mode === 'login'
                 ? textFor(t, 'Welcome back', '欢迎回来')
-                : textFor(t, 'Create your account', '创建你的账号')}
+                : mode === 'register'
+                  ? textFor(t, 'Create your account', '创建你的账号')
+                  : mode === 'forgot'
+                    ? textFor(t, 'Reset your password', '找回密码')
+                    : mode === 'reset'
+                      ? textFor(t, 'Choose a new password', '设置新密码')
+                      : mode === 'verify'
+                        ? textFor(t, 'Verifying your email', '正在验证邮箱')
+                        : mode === 'verification-sent'
+                          ? textFor(t, 'Check your inbox', '请查收邮件')
+                          : mode === 'reset-sent'
+                            ? textFor(t, 'Check your inbox', '请查收邮件')
+                            : textFor(t, 'Password updated', '密码已更新')}
             </h2>
             {isPage && (
               <p>
                 {mode === 'login'
                   ? textFor(t, 'Sign in to continue to your workspace.', '登录后继续进入你的工作空间。')
-                  : textFor(t, 'Join the community and start building.', '加入社区，开始共同创造。')}
+                  : mode === 'register'
+                    ? textFor(t, 'Join the community and start building.', '加入社区，开始共同创造。')
+                    : mode === 'reset'
+                      ? textFor(t, 'Use a password you have not used here before.', '请设置一个新的安全密码。')
+                      : textFor(t, 'A secure, one-time link protects this account action.', '本次账号操作使用一次性安全链接。')}
               </p>
             )}
           </div>
         </div>
-        <div className="auth-mode-tabs" role="tablist" aria-label={textFor(t, 'Authentication mode', '认证模式')}>
+        {['login', 'register'].includes(mode) && <div className="auth-mode-tabs" role="tablist" aria-label={textFor(t, 'Authentication mode', '认证模式')}>
           <button
             className={mode === 'login' ? 'active' : ''}
             type="button"
@@ -877,8 +953,13 @@ export function LoginModal({
           >
             {textFor(t, 'Sign up', '注册')}
           </button>
-        </div>
-        <form className="auth-form" onSubmit={submitEmailAuth} noValidate>
+        </div>}
+        {mode === 'forgot' && (
+          <button className="auth-back-action" type="button" onClick={() => { setMode('login'); setError(''); setFieldErrors({}) }}>
+            {textFor(t, 'Back to sign in', '返回登录')}
+          </button>
+        )}
+        {!['verify', 'verification-sent', 'reset-sent', 'reset-done'].includes(mode) && <form className="auth-form" onSubmit={submitEmailAuth} noValidate>
           {mode === 'register' && (
             <>
               <label className="auth-field">
@@ -915,7 +996,7 @@ export function LoginModal({
               </label>
             </>
           )}
-          <label className={fieldErrors.email ? 'auth-field invalid' : 'auth-field'}>
+          {mode !== 'reset' && <label className={fieldErrors.email ? 'auth-field invalid' : 'auth-field'}>
             <span className="auth-field-label">{textFor(t, 'Email address', '邮箱地址')}</span>
             <span className="auth-input-control">
               <Mail size={17} aria-hidden="true" />
@@ -933,14 +1014,14 @@ export function LoginModal({
               />
             </span>
             {fieldErrors.email && <small id="auth-email-error">{fieldErrors.email}</small>}
-          </label>
-          <label className={fieldErrors.password ? 'auth-field invalid' : 'auth-field'}>
+          </label>}
+          {mode !== 'forgot' && <label className={fieldErrors.password ? 'auth-field invalid' : 'auth-field'}>
             <span className="auth-field-label">{textFor(t, 'Password', '密码')}</span>
             <span className="auth-input-control">
               <LockKeyhole size={17} aria-hidden="true" />
               <input
                 type={passwordVisible ? 'text' : 'password'}
-                autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+                autoComplete={mode === 'register' || mode === 'reset' ? 'new-password' : 'current-password'}
                 placeholder={textFor(t, 'Password', '密码')}
                 value={password}
                 aria-invalid={fieldErrors.password ? 'true' : 'false'}
@@ -962,7 +1043,12 @@ export function LoginModal({
               </button>
             </span>
             {fieldErrors.password && <small id="auth-password-error">{fieldErrors.password}</small>}
-          </label>
+          </label>}
+          {mode === 'login' && (
+            <button className="auth-forgot-action" type="button" onClick={() => { setMode('forgot'); setError(''); setFieldErrors({}) }}>
+              {textFor(t, 'Forgot password?', '忘记密码？')}
+            </button>
+          )}
           {mode === 'register' && (
             <div className={fieldErrors.consent ? 'auth-consent invalid' : 'auth-consent'}>
               <label>
@@ -1003,11 +1089,47 @@ export function LoginModal({
               ? textFor(t, 'Submitting...', '提交中...')
               : mode === 'register'
                 ? textFor(t, 'Create account', '创建账号')
-                : textFor(t, 'Continue with email', '使用邮箱继续')}
+                : mode === 'forgot'
+                  ? textFor(t, 'Send reset link', '发送重置链接')
+                  : mode === 'reset'
+                    ? textFor(t, 'Update password', '更新密码')
+                    : textFor(t, 'Continue with email', '使用邮箱继续')}
             {!submitting && <ArrowRight size={17} />}
           </button>
-        </form>
-        {showLocalTestAccounts && loginAs && (
+        </form>}
+        {mode === 'verify' && (
+          <div className="auth-action-state" role="status">
+            {submitting && <LoaderCircle className="spin" size={22} />}
+            {error && <div className="auth-error">{error}</div>}
+            {error && <button className="ghost-button" type="button" onClick={() => { window.history.replaceState(null, '', '#auth'); setMode('login') }}>{textFor(t, 'Back to sign in', '返回登录')}</button>}
+          </div>
+        )}
+        {mode === 'verification-sent' && (
+          <div className="auth-action-state" role="status">
+            <Mail size={23} />
+            <p>{textFor(t, 'We sent a verification link to your email address.', '验证链接已发送到你的邮箱。')}</p>
+            <button className="ghost-button" type="button" disabled={submitting} onClick={() => {
+              setSubmitting(true)
+              void authService.resendEmailVerification(email).then(() => simulateAction(textFor(t, 'Verification email queued', '验证邮件已重新发送'))).catch((resendError) => setError(emailAuthErrorCopy(resendError, 'login', t))).finally(() => setSubmitting(false))
+            }}>{textFor(t, 'Send again', '重新发送')}</button>
+            {error && <div className="auth-error">{error}</div>}
+          </div>
+        )}
+        {mode === 'reset-sent' && (
+          <div className="auth-action-state" role="status">
+            <Mail size={23} />
+            <p>{textFor(t, 'If an account matches that email, a reset link is on its way.', '如果该邮箱已注册，重置链接将发送到该邮箱。')}</p>
+            <button className="ghost-button" type="button" onClick={() => setMode('login')}>{textFor(t, 'Back to sign in', '返回登录')}</button>
+          </div>
+        )}
+        {mode === 'reset-done' && (
+          <div className="auth-action-state" role="status">
+            <ShieldCheck size={23} />
+            <p>{textFor(t, 'Your password was updated. Sign in again on every device.', '密码已更新，所有设备都需要重新登录。')}</p>
+            <button className="primary-button auth-submit" type="button" onClick={() => setMode('login')}>{textFor(t, 'Sign in', '登录')}<ArrowRight size={17} /></button>
+          </div>
+        )}
+        {showLocalTestAccounts && loginAs && ['login', 'register'].includes(mode) && (
           <details className="local-test-account-list">
             <summary>{textFor(t, 'Local test accounts', '本地测试账号')}</summary>
             <div>
@@ -1025,7 +1147,7 @@ export function LoginModal({
             </div>
           </details>
         )}
-        {availableOAuthProviders.length > 0 && (
+        {availableOAuthProviders.length > 0 && ['login', 'register'].includes(mode) && (
           <>
             <div className="auth-divider"><span>{textFor(t, 'or continue with', '或使用以下方式')}</span></div>
             <div className="oauth-provider-list" aria-label={textFor(t, 'Social login providers', '第三方登录方式')}>

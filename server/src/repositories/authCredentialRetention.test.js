@@ -25,7 +25,7 @@ test('seed auth credential retention deletes a bounded oldest prefix and leaves 
     now: new Date(createdAt.getTime() + 32 * 86_400_000),
     limit: 1,
   })
-  assert.deepEqual(first.deleted, { oauthAuthorizationRequests: 1, refreshTokens: 0, apiKeyCredentials: 0 })
+  assert.deepEqual(first.deleted, { oauthAuthorizationRequests: 1, refreshTokens: 0, apiKeyCredentials: 0, authEmailActions: 0 })
   assert.equal(await repository.auth.consumeOAuthAuthorizationRequest({ stateHash, provider: 'google' }), null)
 
   const second = await repository.authCredentialRetention.sweepRetention({

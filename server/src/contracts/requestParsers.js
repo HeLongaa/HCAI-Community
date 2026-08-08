@@ -190,6 +190,21 @@ export const parseRegisterRequest = (body) => {
   }
 }
 
+export const parseAuthEmailRequest = (body) => ({
+  email: requireEmail(body, 'email'),
+})
+
+export const parseAuthEmailTokenRequest = (body) => {
+  const token = requireText(body, 'token')
+  if (!/^[A-Za-z0-9_-]{32,256}$/.test(token)) throw validationFailed('token is invalid')
+  return { token }
+}
+
+export const parsePasswordResetConfirmRequest = (body) => ({
+  ...parseAuthEmailTokenRequest(body),
+  password: requirePassword(body, 'password'),
+})
+
 export const parseOAuthStartRequest = (body) => ({
   redirectTo: optionalText(body, 'redirectTo', '/'),
   linkAccount: body.linkAccount === true,

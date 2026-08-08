@@ -500,6 +500,8 @@ export function AppShell({
           loginWithPassword={account.loginWithPassword}
           loginWithOAuthProvider={account.loginWithOAuthProvider}
           registerWithEmail={account.registerWithEmail}
+          verifyEmail={account.verifyEmail}
+          resetPassword={account.resetPassword}
           setPage={navigateToPage}
         />
       )}

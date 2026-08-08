@@ -26,7 +26,7 @@ import type { MusicGenerationWorkflow } from '../../hooks/useMusicGenerationWork
 import type { VideoGenerationWorkflow } from '../../hooks/useVideoGenerationWorkflow'
 import type { GenerationOperationFeedback } from '../../hooks/generationOperationFeedback'
 import type { AppToast, AppToastTone } from '../../hooks/useAppFeedback'
-import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiNotification, ApiPointsSummary, ApiPolicyConsentStatus, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, ApiTaskWorkflow, ApiUserCreativeGeneration, NotificationListQuery, OAuthProvider, RegisterRequest } from '../../services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiNotification, ApiPointsSummary, ApiPolicyConsentStatus, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, ApiTaskWorkflow, ApiUserCreativeGeneration, NotificationListQuery, OAuthProvider, RegisterRequest, RegistrationResponse } from '../../services/contracts'
 
 export type AppCopyViewModel = {
   t: Record<string, string>
@@ -67,7 +67,9 @@ export type AccountViewModel = {
   loginAs: (handle: string) => Promise<void>
   loginWithPassword: (email: string, password: string) => Promise<void>
   loginWithOAuthProvider: (provider: OAuthProvider) => Promise<OAuthLoginResult>
-  registerWithEmail: (payload: RegisterRequest) => Promise<void>
+  registerWithEmail: (payload: RegisterRequest) => Promise<RegistrationResponse>
+  verifyEmail: (token: string) => Promise<void>
+  resetPassword: (token: string, password: string) => Promise<void>
   acceptCurrentPolicies: (locale: 'en' | 'zh') => Promise<void>
   logout: () => Promise<void>
   openProfile: (profile: MarketplaceProfile) => void

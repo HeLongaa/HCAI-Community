@@ -200,6 +200,8 @@ export type ApiAccount = {
   id: string
   handle: string
   email?: string
+  emailVerified?: boolean
+  emailVerifiedAt?: string | null
   displayName: string
   role: Role
   permissions: Permission[]
@@ -446,6 +448,15 @@ export type SessionResponse = {
   refreshToken: string
   user: ApiAccount
 }
+
+export type RegistrationResponse = SessionResponse | {
+  verificationRequired: true
+  emailHint: string
+  user: ApiAccount
+}
+
+export type AuthEmailRequestResponse = { accepted: true }
+export type PasswordResetResponse = { reset: true }
 
 export type OAuthProvider = 'google' | 'github' | 'apple' | 'discord' | 'dev'
 

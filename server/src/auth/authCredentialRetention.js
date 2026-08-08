@@ -18,5 +18,6 @@ export const authCredentialRetentionSweepLimit = (value) => {
 export const authCredentialTerminalAt = (credential) => {
   const expiresAt = new Date(credential.expiresAt).getTime()
   const revokedAt = credential.revokedAt ? new Date(credential.revokedAt).getTime() : Number.POSITIVE_INFINITY
-  return Math.min(expiresAt, revokedAt)
+  const consumedAt = credential.consumedAt ? new Date(credential.consumedAt).getTime() : Number.POSITIVE_INFINITY
+  return Math.min(expiresAt, revokedAt, consumedAt)
 }

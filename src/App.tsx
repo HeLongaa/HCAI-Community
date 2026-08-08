@@ -74,7 +74,8 @@ function App() {
   const { activeTrack, playing, setPlaying, playTrack } = usePlayerState()
   const [searchOpen, setSearchOpen] = useState(false)
   const [loginOpen, setLoginOpen] = useState(false)
-  const [authPageOpen, setAuthPageOpen] = useState(() => window.location.hash === '#auth')
+  const [authPageOpen, setAuthPageOpen] = useState(() => window.location.hash.startsWith('#auth'))
+  const [authRouteHash, setAuthRouteHash] = useState(() => window.location.hash)
   const [publicTransition, setPublicTransition] = useState<'idle' | 'to-auth' | 'to-landing'>('idle')
   const publicTransitionTimer = useRef<number | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -95,6 +96,8 @@ function App() {
     loginWithPassword,
     loginWithOAuthProvider,
     registerWithEmail,
+    verifyEmail,
+    resetPassword,
     acceptCurrentPolicies,
     refreshAccount,
     logout,
@@ -179,7 +182,10 @@ function App() {
   }, [])
 
   useEffect(() => {
-    const restorePublicRoute = () => setAuthPageOpen(window.location.hash === '#auth')
+    const restorePublicRoute = () => {
+      setAuthPageOpen(window.location.hash.startsWith('#auth'))
+      setAuthRouteHash(window.location.hash)
+    }
     restorePublicRoute()
     window.addEventListener('hashchange', restorePublicRoute)
     window.addEventListener('popstate', restorePublicRoute)
@@ -906,9 +912,10 @@ function App() {
     return <div className="public-route-loader" role="status">HCAI</div>
   }
 
-  if (accountSource === 'fallback' && authPageOpen) {
+  if (authPageOpen) {
     return (
       <LoginModal
+        key={authRouteHash}
         t={t}
         presentation="page"
         leaving={publicTransition === 'to-landing'}
@@ -929,6 +936,8 @@ function App() {
         loginWithPassword={loginWithPassword}
         loginWithOAuthProvider={loginWithOAuthProvider}
         registerWithEmail={registerWithEmail}
+        verifyEmail={verifyEmail}
+        resetPassword={resetPassword}
         setPage={(destination) => {
           navigateToPage(destination)
           setAuthPageOpen(false)
@@ -990,6 +999,8 @@ function App() {
         loginWithPassword,
         loginWithOAuthProvider,
         registerWithEmail,
+        verifyEmail,
+        resetPassword,
         acceptCurrentPolicies,
         logout,
         openProfile,

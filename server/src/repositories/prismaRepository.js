@@ -29,6 +29,11 @@ import { dataRightsSafeSubjectRef } from '../dataRights/dataRightsLifecycle.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, hashToken, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
 import {
+  buildAuthEmailActionConfig,
+  createAuthEmailActionCodec,
+  hashAuthEmailActionToken,
+} from '../auth/emailActions.js'
+import {
   getAdminReviewDto,
   buildUserSummary,
   buildPostCommentRecord,
@@ -1095,6 +1100,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       id: user.id,
       handle: profile?.handle ?? user.id,
       email: user.email,
+      emailVerified: Boolean(user.emailVerifiedAt),
+      emailVerifiedAt: user.emailVerifiedAt?.toISOString?.() ?? null,
       displayName: user.displayName,
       role: user.role,
       permissions: getDatabasePermissionsForRole(user.role),
@@ -1193,7 +1200,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       const cutoff = authCredentialRetentionCutoff(now)
       const take = authCredentialRetentionSweepLimit(limit)
       const terminalWhere = { OR: [{ expiresAt: { lte: cutoff } }, { revokedAt: { lte: cutoff } }] }
-      const [oauthRequests, refreshTokens, apiKeys] = await Promise.all([
+      const emailActionTerminalWhere = { OR: [...terminalWhere.OR, { consumedAt: { lte: cutoff } }] }
+      const [oauthRequests, refreshTokens, apiKeys, emailActions] = await Promise.all([
         db.oAuthAuthorizationRequest.findMany({
           where: terminalWhere,
           orderBy: [{ expiresAt: 'asc' }, { id: 'asc' }],
@@ -1212,20 +1220,34 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           take,
           select: { id: true, expiresAt: true, revokedAt: true },
         }),
+        db.authEmailAction.findMany({
+          where: emailActionTerminalWhere,
+          orderBy: [{ expiresAt: 'asc' }, { id: 'asc' }],
+          take,
+          select: { id: true, expiresAt: true, revokedAt: true, consumedAt: true },
+        }),
       ])
       const candidates = [
         ...oauthRequests.map((row) => ({ ...row, type: 'oauthAuthorizationRequest' })),
         ...refreshTokens.map((row) => ({ ...row, type: 'refreshToken' })),
         ...apiKeys.map((row) => ({ ...row, type: 'apiKeyCredential' })),
+        ...emailActions.map((row) => ({ ...row, type: 'authEmailAction' })),
       ].sort((left, right) => authCredentialTerminalAt(left) - authCredentialTerminalAt(right) || left.id.localeCompare(right.id)).slice(0, take)
       const idsFor = (type) => candidates.filter((row) => row.type === type).map((row) => row.id)
       const oauthIds = idsFor('oauthAuthorizationRequest')
       const refreshIds = idsFor('refreshToken')
       const apiKeyIds = idsFor('apiKeyCredential')
-      const [oauthDeleted, refreshDeleted, apiKeysDeleted] = await Promise.all([
+      const emailActionIds = idsFor('authEmailAction')
+      if (emailActionIds.length) {
+        await db.notification.deleteMany({
+          where: { resourceType: 'auth_email_action', resourceId: { in: emailActionIds } },
+        })
+      }
+      const [oauthDeleted, refreshDeleted, apiKeysDeleted, emailActionsDeleted] = await Promise.all([
         oauthIds.length ? db.oAuthAuthorizationRequest.deleteMany({ where: { id: { in: oauthIds }, ...terminalWhere } }) : { count: 0 },
         refreshIds.length ? db.refreshToken.deleteMany({ where: { id: { in: refreshIds }, ...terminalWhere } }) : { count: 0 },
         apiKeyIds.length ? db.apiKeyCredential.deleteMany({ where: { id: { in: apiKeyIds }, ...terminalWhere } }) : { count: 0 },
+        emailActionIds.length ? db.authEmailAction.deleteMany({ where: { id: { in: emailActionIds }, ...emailActionTerminalWhere } }) : { count: 0 },
       ])
       return {
         policyId: authCredentialRetentionContract.policyId,
@@ -1234,6 +1256,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           oauthAuthorizationRequests: oauthDeleted.count,
           refreshTokens: refreshDeleted.count,
           apiKeyCredentials: apiKeysDeleted.count,
+          authEmailActions: emailActionsDeleted.count,
         },
       }
     }),
@@ -2476,6 +2499,66 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
 
   const mediaAssetScanStatus = (asset) => asObject(asObject(asset.metadata)?.security)?.scanStatus ?? 'pending'
 
+  const createAuthEmailAction = async (db, user, kind, actionConfig, options = {}) => {
+    const now = new Date()
+    const recent = options.enforceCooldown ? await db.authEmailAction.findFirst({
+      where: {
+        userId: user.id,
+        kind,
+        createdAt: { gt: new Date(now.getTime() - actionConfig.requestCooldownSeconds * 1_000) },
+      },
+      select: { id: true },
+    }) : null
+    if (recent) return { queued: false, cooldown: true }
+
+    await db.authEmailAction.updateMany({
+      where: { userId: user.id, kind, consumedAt: null, revokedAt: null },
+      data: { revokedAt: now, revokeReasonCode: 'superseded' },
+    })
+    const id = `auth-email-action-${randomUUID()}`
+    const encrypted = createAuthEmailActionCodec(actionConfig).create({ id, userId: user.id, kind })
+    const ttlSeconds = kind === 'verify_email'
+      ? actionConfig.verificationTtlSeconds
+      : actionConfig.passwordResetTtlSeconds
+    const action = await db.authEmailAction.create({
+      data: {
+        id,
+        userId: user.id,
+        kind,
+        tokenHash: encrypted.tokenHash,
+        ciphertext: encrypted.ciphertext,
+        encryptionKeyId: encrypted.encryptionKeyId,
+        encryptionIv: encrypted.encryptionIv,
+        encryptionTag: encrypted.encryptionTag,
+        expiresAt: new Date(now.getTime() + ttlSeconds * 1_000),
+      },
+    })
+    const verification = kind === 'verify_email'
+    const notification = await db.notification.create({
+      data: {
+        id: `notification-${randomUUID()}`,
+        recipientId: user.id,
+        type: verification ? 'auth_email_verification' : 'auth_password_reset',
+        title: verification ? 'Verify your email / 验证邮箱' : 'Reset your password / 重置密码',
+        body: verification
+          ? 'Use the secure link in this email to verify your address. / 请使用邮件中的安全链接验证邮箱。'
+          : 'Use the secure link in this email to reset your password. / 请使用邮件中的安全链接重置密码。',
+        resourceType: 'auth_email_action',
+        resourceId: action.id,
+        metadata: { kind, securityRequired: true },
+      },
+    })
+    await notificationDeliveries.createForNotification(notification, user, db)
+    await recordAudit({
+      actor: null,
+      action: verification ? 'auth.email_verification.requested' : 'auth.password_reset.requested',
+      resourceType: 'auth_email_action',
+      resourceId: action.id,
+      metadata: { kind, tokenStoredAsHash: true, tokenEncryptedForDelivery: true },
+    }, db)
+    return { queued: true, cooldown: false }
+  }
+
   const auth = {
     getCurrentUser: async () => {
       const user = await client.user.findFirst({
@@ -2556,7 +2639,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       }
       return createSessionForUser(user, 'auth.session.created', { clientContext })
     },
-    registerEmailAccount: async ({ email, password, displayName, handle }, consent = null, clientContext = null) => {
+    registerEmailAccount: async ({ email, password, displayName, handle }, consent = null, clientContext = null, actionConfig = buildAuthEmailActionConfig()) => {
       const normalizedEmail = normalizeEmail(email)
       const existing = await client.user.findFirst({
         where: {
@@ -2573,10 +2656,13 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       }
 
       const passwordHash = await hashPassword(password)
-      const user = await client.$transaction(async (transaction) => {
+      let user
+      try {
+        user = await client.$transaction(async (transaction) => {
         const createdUser = await transaction.user.create({
           data: {
             email: normalizedEmail,
+            emailVerifiedAt: actionConfig.verificationRequired ? null : new Date(),
             displayName,
             role: 'member',
             status: 'active',
@@ -2624,8 +2710,18 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             }),
           })
         }
+        if (actionConfig.verificationRequired) {
+          await createAuthEmailAction(transaction, createdUser, 'verify_email', actionConfig)
+        }
         return createdUser
-      })
+        })
+      } catch (error) {
+        if (error?.code === 'P2002') return null
+        throw error
+      }
+      if (actionConfig.verificationRequired) {
+        return { verificationRequired: true, email: normalizedEmail, user: mapAccount(user) }
+      }
       return createSessionForUser(user, 'auth.session.created', { clientContext })
     },
     verifyPasswordCredentials: async ({ email, password }) => {
@@ -2641,6 +2737,111 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         return null
       }
       return mapAccount(authAccount.user)
+    },
+    requestEmailVerification: async ({ email }, actionConfig = buildAuthEmailActionConfig()) => {
+      if (!actionConfig.verificationRequired) return { accepted: true }
+      const user = await client.user.findFirst({
+        where: {
+          email: normalizeEmail(email),
+          emailVerifiedAt: null,
+          status: 'active',
+          authAccounts: { some: { provider: 'email' } },
+        },
+      })
+      if (!user) return { accepted: true }
+      await runSerializableTransaction((db) => createAuthEmailAction(db, user, 'verify_email', actionConfig, { enforceCooldown: true }))
+      return { accepted: true }
+    },
+    requestPasswordReset: async ({ email }, actionConfig = buildAuthEmailActionConfig()) => {
+      if (!actionConfig.passwordResetEnabled) return { accepted: true }
+      const user = await client.user.findFirst({
+        where: {
+          email: normalizeEmail(email),
+          status: 'active',
+          authAccounts: { some: { provider: 'email' } },
+        },
+      })
+      if (!user) return { accepted: true }
+      await runSerializableTransaction((db) => createAuthEmailAction(db, user, 'password_reset', actionConfig, { enforceCooldown: true }))
+      return { accepted: true }
+    },
+    consumeEmailVerification: async ({ token }, clientContext = null) => {
+      const tokenHash = hashAuthEmailActionToken(token)
+      return runSerializableTransaction(async (db) => {
+        const now = new Date()
+        const action = await db.authEmailAction.findFirst({
+          where: { tokenHash, kind: 'verify_email', consumedAt: null, revokedAt: null, expiresAt: { gt: now } },
+          include: { user: { include: { profile: true } } },
+        })
+        if (!action) return null
+        const consumed = await db.authEmailAction.updateMany({
+          where: { id: action.id, consumedAt: null, revokedAt: null, expiresAt: { gt: now } },
+          data: { consumedAt: now },
+        })
+        if (consumed.count !== 1) return null
+        const user = await db.user.update({
+          where: { id: action.userId },
+          data: { emailVerifiedAt: now },
+          include: { profile: true },
+        })
+        await db.authEmailAction.updateMany({
+          where: { userId: user.id, kind: 'verify_email', id: { not: action.id }, consumedAt: null, revokedAt: null },
+          data: { revokedAt: now, revokeReasonCode: 'email_verified' },
+        })
+        await recordAudit({ actor: mapAccount(user), action: 'auth.email.verified', resourceType: 'user', resourceId: user.id, metadata: { actionId: action.id } }, db)
+        return createSessionForUser(user, 'auth.session.created_after_email_verification', { db, clientContext })
+      })
+    },
+    resetPassword: async ({ token, password }) => {
+      const tokenHash = hashAuthEmailActionToken(token)
+      const passwordHash = await hashPassword(password)
+      return runSerializableTransaction(async (db) => {
+        const now = new Date()
+        const action = await db.authEmailAction.findFirst({
+          where: { tokenHash, kind: 'password_reset', consumedAt: null, revokedAt: null, expiresAt: { gt: now } },
+          include: { user: { include: { profile: true } } },
+        })
+        if (!action) return null
+        const consumed = await db.authEmailAction.updateMany({
+          where: { id: action.id, consumedAt: null, revokedAt: null, expiresAt: { gt: now } },
+          data: { consumedAt: now },
+        })
+        if (consumed.count !== 1) return null
+        await db.authAccount.update({
+          where: { userId_provider: { userId: action.userId, provider: 'email' } },
+          data: { passwordHash },
+        })
+        await db.authSession.updateMany({
+          where: { userId: action.userId, revokedAt: null },
+          data: { revokedAt: now, revokeReasonCode: 'password_reset', version: { increment: 1 } },
+        })
+        await db.refreshToken.updateMany({ where: { userId: action.userId, revokedAt: null }, data: { revokedAt: now } })
+        await db.authEmailAction.updateMany({
+          where: { userId: action.userId, kind: 'password_reset', id: { not: action.id }, consumedAt: null, revokedAt: null },
+          data: { revokedAt: now, revokeReasonCode: 'password_reset_completed' },
+        })
+        await recordAudit({ actor: mapAccount(action.user), action: 'auth.password.reset', resourceType: 'user', resourceId: action.userId, metadata: { actionId: action.id, allSessionsRevoked: true } }, db)
+        return { reset: true }
+      })
+    },
+    prepareEmailDelivery: async (claim, actionConfig = buildAuthEmailActionConfig()) => {
+      if (claim?.notification?.resourceType !== 'auth_email_action') return claim
+      const action = await client.authEmailAction.findFirst({
+        where: { id: claim.notification.resourceId, consumedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
+      })
+      if (!action) return { ...claim, authEmailActionUnavailable: true }
+      const token = createAuthEmailActionCodec(actionConfig).decrypt(action)
+      const verification = action.kind === 'verify_email'
+      const url = `${actionConfig.origin}/#auth?action=${verification ? 'verify-email' : 'password-reset'}&token=${encodeURIComponent(token)}`
+      return {
+        ...claim,
+        notification: {
+          ...claim.notification,
+          body: verification
+            ? `Verify your email / 验证邮箱\n\n${url}\n\nThis link expires soon and can be used once. / 此链接即将过期且仅可使用一次。`
+            : `Reset your password / 重置密码\n\n${url}\n\nThis link expires soon and can be used once. / 此链接即将过期且仅可使用一次。`,
+        },
+      }
     },
     loginWithPassword: async (payload, clientContext = null) => {
       const account = await auth.verifyPasswordCredentials(payload)
@@ -2705,12 +2906,19 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           if (linkedAccount && linkedAccount.userId !== linkUserId) {
             return null
           }
-          const user = await transaction.user.findUnique({
+          let user = await transaction.user.findUnique({
             where: { id: linkUserId },
             include: { profile: true },
           })
           if (!user || user.status !== 'active') {
             return null
+          }
+          if (!user.emailVerifiedAt && normalizeEmail(user.email) === normalizedEmail) {
+            user = await transaction.user.update({
+              where: { id: user.id },
+              data: { emailVerifiedAt: new Date() },
+              include: { profile: true },
+            })
           }
           if (!linkedAccount) {
             await transaction.authAccount.create({
@@ -2738,13 +2946,20 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             : null
         }
 
-        const existingUser = await transaction.user.findUnique({
+        let existingUser = await transaction.user.findUnique({
           where: { email: normalizedEmail },
           include: { profile: true },
         })
         if (existingUser) {
           if (existingUser.status !== 'active') {
             return null
+          }
+          if (!existingUser.emailVerifiedAt) {
+            existingUser = await transaction.user.update({
+              where: { id: existingUser.id },
+              data: { emailVerifiedAt: new Date() },
+              include: { profile: true },
+            })
           }
           await transaction.authAccount.create({
             data: {
@@ -2768,6 +2983,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         const user = await transaction.user.create({
           data: {
             email: normalizedEmail,
+            emailVerifiedAt: new Date(),
             displayName: profile.displayName,
             role: 'member',
             status: 'active',

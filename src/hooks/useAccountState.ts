@@ -3,7 +3,7 @@ import type { MarketplaceProfile, Permission, Role } from '../domain/types'
 import { createIdentityProfile } from '../domain/utils'
 import { authService, type SessionUser } from '../services/authService'
 import { complianceService, policyConsentRequest } from '../services/complianceService'
-import type { ApiPolicyConsentStatus, OAuthProvider, RegisterRequest } from '../services/contracts'
+import type { ApiPolicyConsentStatus, OAuthProvider, RegisterRequest, RegistrationResponse } from '../services/contracts'
 import { getStoredAccessToken, sessionInvalidatedEvent, setStoredAccessToken } from '../services/apiClient'
 
 export type OAuthLoginResult = 'authenticated' | 'redirecting'
@@ -192,9 +192,22 @@ export function useAccountState() {
     applySession(await authService.me())
   }
 
-  const registerWithEmail = async (payload: RegisterRequest): Promise<void> => {
-    await authService.register(payload)
+  const registerWithEmail = async (payload: RegisterRequest): Promise<RegistrationResponse> => {
+    const result = await authService.register(payload)
+    if ('accessToken' in result) applySession(await authService.me())
+    return result
+  }
+
+  const verifyEmail = async (token: string): Promise<void> => {
+    await authService.verifyEmail(token)
     applySession(await authService.me())
+  }
+
+  const resetPassword = async (token: string, password: string): Promise<void> => {
+    await authService.resetPassword(token, password)
+    const next = guestState()
+    setAccount(next)
+    localStorage.removeItem('hcaiUser')
   }
 
   const acceptCurrentPolicies = async (locale: 'en' | 'zh'): Promise<void> => {
@@ -258,6 +271,8 @@ export function useAccountState() {
     loginWithPassword,
     loginWithOAuthProvider,
     registerWithEmail,
+    verifyEmail,
+    resetPassword,
     acceptCurrentPolicies,
     refreshAccount,
     logout,

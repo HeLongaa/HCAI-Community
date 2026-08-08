@@ -252,6 +252,14 @@ characters, a valid `NOTIFICATION_EMAIL_FROM`, `NOTIFICATION_EMAIL_REQUIRE_PROVI
 message. Security alerts already create recipient-scoped notifications for
 `admin:audit:read` users, so this path provides leases, bounded retry, dead-letter state, and operator recovery.
 
+Email account verification and password recovery use the same durable mail worker but a separate AES-256-GCM keyring.
+Set `AUTH_EMAIL_VERIFICATION_REQUIRED=true` and/or `AUTH_PASSWORD_RESET_ENABLED=true`, then configure the exact frontend
+origin in `AUTH_EMAIL_ACTION_ORIGIN`. Store `AUTH_EMAIL_ACTION_ENCRYPTION_KEY` as a secret and set
+`AUTH_EMAIL_ACTION_ENCRYPTION_ACTIVE_KEY_ID`; for rotation, mount every still-needed key as
+`AUTH_EMAIL_ACTION_ENCRYPTION_KEYS=keyId:base64Key,...`. Raw action tokens are never persisted in notifications, audit
+records, or the action table. Enabling either feature fails startup unless notification email delivery and its worker are
+also enabled.
+
 Creative provider budget alert variables/secrets:
 
 These are parsed and exposed only through safe config summaries for provider budget alert readiness. Production smoke gates channel presence only when `CREATIVE_PROVIDER_ALERTS_ENABLED=true`. External provider budget alert delivery is still inactive: no Slack, webhook, or email message is sent until a later explicitly approved delivery implementation wires dispatch audit events and outbound clients.

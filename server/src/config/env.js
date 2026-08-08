@@ -1,4 +1,5 @@
 import { buildNotificationDeliveryConfig } from '../notifications/notificationDeliveries.js'
+import { buildAuthEmailActionConfig } from '../auth/emailActions.js'
 import { isProductionEnvironment } from '../common/runtimeEnvironment.js'
 
 const toPort = (value) => {
@@ -235,6 +236,7 @@ export const buildEnv = (source = process.env) => {
   const notificationDeliveryWorkerEnabled = strictBoolFlag(source, 'NOTIFICATION_DELIVERY_WORKER_ENABLED', false)
   const notificationEmailWebhookUrl = getOptionalUrl(source, 'NOTIFICATION_EMAIL_WEBHOOK_URL')
   const notificationDeliveryConfig = buildNotificationDeliveryConfig(source)
+  const authEmailActionConfig = buildAuthEmailActionConfig(source)
   const notificationDeliveryWorkerIntervalSeconds = positiveInteger(source, 'NOTIFICATION_DELIVERY_WORKER_INTERVAL_SECONDS', 10)
   const notificationDeliveryWorkerBatchSize = positiveInteger(source, 'NOTIFICATION_DELIVERY_WORKER_BATCH_SIZE', 25)
   const notificationDeliveryLeaseSeconds = positiveInteger(source, 'NOTIFICATION_DELIVERY_LEASE_SECONDS', 60)
@@ -356,6 +358,9 @@ export const buildEnv = (source = process.env) => {
   }
   if (notificationDeliveryWorkerEnabled && !notificationEmailDeliveryEnabled) {
     throw new Error('NOTIFICATION_DELIVERY_WORKER_ENABLED requires NOTIFICATION_EMAIL_DELIVERY_ENABLED=true')
+  }
+  if (authEmailActionConfig.enabled && (!notificationEmailDeliveryEnabled || !notificationDeliveryWorkerEnabled)) {
+    throw new Error('Email verification or password reset requires notification email delivery and its worker')
   }
   if (webhookDeliveryWorkerEnabled && !hasWebhookSecretEncryptionKey) {
     throw new Error('WEBHOOK_DELIVERY_WORKER_ENABLED requires WEBHOOK_SECRET_ENCRYPTION_KEY or WEBHOOK_SECRET_ENCRYPTION_KEYS')
@@ -737,6 +742,13 @@ export const buildEnv = (source = process.env) => {
     hasNotificationEmailWebhookSecret: Boolean(notificationDeliveryConfig.email.secret),
     hasNotificationEmailFrom: Boolean(notificationDeliveryConfig.email.from),
     notificationEmailProviderReceiptRequired: notificationDeliveryConfig.email.requireProviderReceipt,
+    authEmailVerificationRequired: authEmailActionConfig.verificationRequired,
+    authPasswordResetEnabled: authEmailActionConfig.passwordResetEnabled,
+    authEmailActionOrigin: authEmailActionConfig.origin,
+    authEmailVerificationTtlSeconds: authEmailActionConfig.verificationTtlSeconds,
+    authPasswordResetTtlSeconds: authEmailActionConfig.passwordResetTtlSeconds,
+    authEmailActionRequestCooldownSeconds: authEmailActionConfig.requestCooldownSeconds,
+    hasAuthEmailActionEncryptionKey: authEmailActionConfig.keys.size > 0,
     webhookDeliveryWorkerEnabled,
     webhookDeliveryWorkerIntervalSeconds,
     webhookDeliveryWorkerBatchSize,

@@ -38,6 +38,11 @@ import { createSeedDeveloperAccessRepository } from '../developerAccess/seedDeve
 import { createSeedWebhookRepository } from '../webhooks/seedWebhookRepository.js'
 import { createSeedSupportRepository } from '../support/seedSupportRepository.js'
 import { createSeedDataRightsRepository } from '../dataRights/seedDataRightsRepository.js'
+import {
+  buildAuthEmailActionConfig,
+  createAuthEmailActionCodec,
+  hashAuthEmailActionToken,
+} from '../auth/emailActions.js'
 import { createSeedModerationCaseRepository } from '../trust/seedModerationCaseRepository.js'
 import { createSeedSafetyOperationsRepository } from '../trust/seedSafetyOperationsRepository.js'
 import { communityModerationTransition } from '../trust/communityModeration.js'
@@ -169,6 +174,7 @@ import { searchResourceTypes } from '../search/searchContract.js'
 const sessionByRefreshToken = new Map()
 const authSessionById = new Map()
 const emailAccountByEmail = new Map()
+const authEmailActionsByHash = new Map()
 const oauthAccountByProviderKey = new Map()
 const oauthAccountMetadataByProviderKey = new Map()
 const oauthAuthorizationRequestsByStateHash = new Map()
@@ -715,7 +721,61 @@ const issueSession = (account, options = {}) => {
   }
 }
 
-const registerEmailAccount = async ({ email, password, displayName, handle }, consent = null, clientContext = null) => {
+const createSeedAuthEmailAction = (account, kind, config, { enforceCooldown = false } = {}) => {
+  const now = new Date()
+  if (enforceCooldown && [...authEmailActionsByHash.values()].some((action) =>
+    action.userId === account.id && action.kind === kind && now.getTime() - action.createdAt.getTime() < config.requestCooldownSeconds * 1_000
+  )) return { queued: false, cooldown: true }
+  for (const [hash, action] of authEmailActionsByHash) {
+    if (action.userId === account.id && action.kind === kind && !action.consumedAt && !action.revokedAt) {
+      authEmailActionsByHash.set(hash, { ...action, revokedAt: now, revokeReasonCode: 'superseded' })
+    }
+  }
+  const id = `auth-email-action-${randomUUID()}`
+  const encrypted = createAuthEmailActionCodec(config).create({ id, userId: account.id, kind })
+  const action = {
+    id,
+    userId: account.id,
+    kind,
+    tokenHash: encrypted.tokenHash,
+    ciphertext: encrypted.ciphertext,
+    encryptionKeyId: encrypted.encryptionKeyId,
+    encryptionIv: encrypted.encryptionIv,
+    encryptionTag: encrypted.encryptionTag,
+    expiresAt: new Date(now.getTime() + (kind === 'verify_email' ? config.verificationTtlSeconds : config.passwordResetTtlSeconds) * 1_000),
+    consumedAt: null,
+    revokedAt: null,
+    revokeReasonCode: null,
+    createdAt: now,
+  }
+  authEmailActionsByHash.set(action.tokenHash, action)
+  const verification = kind === 'verify_email'
+  const notification = {
+    id: `notification-${randomUUID()}`,
+    recipientId: account.id,
+    recipientHandle: account.handle,
+    type: verification ? 'auth_email_verification' : 'auth_password_reset',
+    title: verification ? 'Verify your email / 验证邮箱' : 'Reset your password / 重置密码',
+    body: verification
+      ? 'Use the secure link in this email to verify your address. / 请使用邮件中的安全链接验证邮箱。'
+      : 'Use the secure link in this email to reset your password. / 请使用邮件中的安全链接重置密码。',
+    resourceType: 'auth_email_action',
+    resourceId: action.id,
+    metadata: { kind, securityRequired: true },
+    readAt: null,
+    createdAt: now.toISOString(),
+  }
+  notifications.unshift(notification)
+  notificationDeliveryRepository?.createForNotification(notification, account)
+  recordAudit(null, verification ? 'auth.email_verification.requested' : 'auth.password_reset.requested', 'auth_email_action', action.id, {
+    kind,
+    tokenStoredAsHash: true,
+    tokenEncryptedForDelivery: true,
+  })
+  return { queued: true, cooldown: false }
+}
+
+const registerEmailAccount = async ({ email, password, displayName, handle }, consent = null, clientContext = null, actionConfig = buildAuthEmailActionConfig()) => {
   const normalizedEmail = normalizeEmail(email)
   if (
     emailAccountByEmail.has(normalizedEmail) ||
@@ -727,6 +787,8 @@ const registerEmailAccount = async ({ email, password, displayName, handle }, co
     id: `seed-user-${randomUUID()}`,
     handle,
     email: normalizedEmail,
+    emailVerified: !actionConfig.verificationRequired,
+    emailVerifiedAt: actionConfig.verificationRequired ? null : new Date().toISOString(),
     displayName,
     role: 'member',
     permissions: [...rolePermissions.member],
@@ -757,6 +819,10 @@ const registerEmailAccount = async ({ email, password, displayName, handle }, co
       account.id,
       record,
     )
+  }
+  if (actionConfig.verificationRequired) {
+    createSeedAuthEmailAction(account, 'verify_email', actionConfig)
+    return { verificationRequired: true, email: normalizedEmail, user: account }
   }
   return issueSession(account, { clientContext })
 }
@@ -822,6 +888,10 @@ const completeOAuthLogin = async ({ profile, linkUserId = null, clientContext = 
     if (!actor || (linkedHandle && getAccountByHandle(linkedHandle)?.id !== linkUserId)) {
       return null
     }
+    if (normalizeEmail(actor.email) === normalizeEmail(profile.email)) {
+      actor.emailVerified = true
+      actor.emailVerifiedAt = actor.emailVerifiedAt ?? new Date().toISOString()
+    }
     const existingProviderAccount = findOAuthAccountForProvider(actor, profile.provider)
     if (existingProviderAccount && existingProviderAccount.providerUserId !== profile.providerUserId) {
       return null
@@ -843,6 +913,8 @@ const completeOAuthLogin = async ({ profile, linkUserId = null, clientContext = 
     if (existingProviderAccount && existingProviderAccount.providerUserId !== profile.providerUserId) {
       return null
     }
+    existing.emailVerified = true
+    existing.emailVerifiedAt = existing.emailVerifiedAt ?? new Date().toISOString()
     linkSeedOAuthAccount(key, existing.handle)
     recordAudit(existing, 'auth.oauth.linked', 'auth_account', oauthAuditResourceId(profile.provider, profile.providerUserId), { provider: profile.provider })
     return issueSession(existing, { clientContext })
@@ -853,6 +925,8 @@ const completeOAuthLogin = async ({ profile, linkUserId = null, clientContext = 
     id: `seed-user-${randomUUID()}`,
     handle,
     email: normalizedEmail,
+    emailVerified: true,
+    emailVerifiedAt: new Date().toISOString(),
     displayName: profile.displayName,
     role: 'member',
     permissions: [...rolePermissions.member],
@@ -2910,16 +2984,25 @@ export const createSeedRepository = () => {
       const candidates = [
         ...[...oauthAuthorizationRequestsByStateHash.entries()].map(([key, row]) => ({ key, row, type: 'oauthAuthorizationRequest' })),
         ...[...sessionByRefreshToken.entries()].map(([key, row]) => ({ key, row, type: 'refreshToken' })),
+        ...[...authEmailActionsByHash.entries()].map(([key, row]) => ({ key, row, type: 'authEmailAction' })),
       ].filter(({ row }) => authCredentialTerminalAt(row) <= cutoff)
         .sort((left, right) => authCredentialTerminalAt(left.row) - authCredentialTerminalAt(right.row) || left.row.id.localeCompare(right.row.id))
         .slice(0, take)
       let oauthAuthorizationRequests = 0
       let refreshTokens = 0
+      let authEmailActions = 0
       for (const candidate of candidates) {
         if (candidate.type === 'oauthAuthorizationRequest') {
           oauthAuthorizationRequests += Number(oauthAuthorizationRequestsByStateHash.delete(candidate.key))
-        } else {
+        } else if (candidate.type === 'refreshToken') {
           refreshTokens += Number(sessionByRefreshToken.delete(candidate.key))
+        } else {
+          authEmailActions += Number(authEmailActionsByHash.delete(candidate.key))
+          const notificationIds = notifications.filter((item) => item.resourceType === 'auth_email_action' && item.resourceId === candidate.row.id).map((item) => item.id)
+          notificationDeliveryRepository?.deleteForNotificationIds(notificationIds)
+          for (let index = notifications.length - 1; index >= 0; index -= 1) {
+            if (notificationIds.includes(notifications[index].id)) notifications.splice(index, 1)
+          }
         }
       }
       const apiKeyResult = candidates.length < take
@@ -2928,7 +3011,7 @@ export const createSeedRepository = () => {
       return {
         policyId: authCredentialRetentionContract.policyId,
         inspected: candidates.length + apiKeyResult.inspected,
-        deleted: { oauthAuthorizationRequests, refreshTokens, apiKeyCredentials: apiKeyResult.deleted },
+        deleted: { oauthAuthorizationRequests, refreshTokens, apiKeyCredentials: apiKeyResult.deleted, authEmailActions },
       }
     },
   }
@@ -3000,6 +3083,67 @@ export const createSeedRepository = () => {
     issueSession: (account, clientContext) => issueSession(account, { clientContext }),
     registerEmailAccount,
     verifyPasswordCredentials,
+    requestEmailVerification: async ({ email }, actionConfig = buildAuthEmailActionConfig()) => {
+      if (!actionConfig.verificationRequired) return { accepted: true }
+      const account = emailAccountByEmail.get(normalizeEmail(email))
+      if (account && !account.emailVerified) createSeedAuthEmailAction(account, 'verify_email', actionConfig, { enforceCooldown: true })
+      return { accepted: true }
+    },
+    requestPasswordReset: async ({ email }, actionConfig = buildAuthEmailActionConfig()) => {
+      if (!actionConfig.passwordResetEnabled) return { accepted: true }
+      const account = emailAccountByEmail.get(normalizeEmail(email))
+      if (account && getSeedAccountLifecycle(account).status === 'active') createSeedAuthEmailAction(account, 'password_reset', actionConfig, { enforceCooldown: true })
+      return { accepted: true }
+    },
+    consumeEmailVerification: async ({ token }, clientContext = null) => {
+      const hash = hashAuthEmailActionToken(token)
+      const action = authEmailActionsByHash.get(hash)
+      if (!action || action.kind !== 'verify_email' || action.consumedAt || action.revokedAt || action.expiresAt <= new Date()) return null
+      const account = getAccountById(action.userId)
+      if (!account) return null
+      action.consumedAt = new Date()
+      account.emailVerified = true
+      account.emailVerifiedAt = action.consumedAt.toISOString()
+      recordAudit(account, 'auth.email.verified', 'user', account.id, { actionId: action.id })
+      return issueSession(account, { clientContext })
+    },
+    resetPassword: async ({ token, password }) => {
+      const hash = hashAuthEmailActionToken(token)
+      const action = authEmailActionsByHash.get(hash)
+      if (!action || action.kind !== 'password_reset' || action.consumedAt || action.revokedAt || action.expiresAt <= new Date()) return null
+      const account = getAccountById(action.userId)
+      if (!account) return null
+      action.consumedAt = new Date()
+      account.passwordHash = await hashPassword(password)
+      const now = new Date()
+      for (const [id, session] of authSessionById) {
+        if (getAccountByHandle(session.handle)?.id === account.id && !session.revokedAt) {
+          authSessionById.set(id, { ...session, revokedAt: now, revokeReasonCode: 'password_reset', version: session.version + 1 })
+        }
+      }
+      for (const [refreshToken, session] of sessionByRefreshToken) {
+        if (getAccountByHandle(session.handle)?.id === account.id && !session.revokedAt) {
+          sessionByRefreshToken.set(refreshToken, { ...session, revokedAt: now })
+        }
+      }
+      recordAudit(account, 'auth.password.reset', 'user', account.id, { actionId: action.id, allSessionsRevoked: true })
+      return { reset: true }
+    },
+    prepareEmailDelivery: async (claim, actionConfig = buildAuthEmailActionConfig()) => {
+      if (claim?.notification?.resourceType !== 'auth_email_action') return claim
+      const action = [...authEmailActionsByHash.values()].find((item) => item.id === claim.notification.resourceId)
+      if (!action || action.consumedAt || action.revokedAt || action.expiresAt <= new Date()) return { ...claim, authEmailActionUnavailable: true }
+      const token = createAuthEmailActionCodec(actionConfig).decrypt(action)
+      const verification = action.kind === 'verify_email'
+      const url = `${actionConfig.origin}/#auth?action=${verification ? 'verify-email' : 'password-reset'}&token=${encodeURIComponent(token)}`
+      return {
+        ...claim,
+        notification: {
+          ...claim.notification,
+          body: `${verification ? 'Verify your email / 验证邮箱' : 'Reset your password / 重置密码'}\n\n${url}\n\nThis link expires soon and can be used once. / 此链接即将过期且仅可使用一次。`,
+        },
+      }
+    },
     loginWithPassword,
     createOAuthAuthorizationRequest,
     consumeOAuthAuthorizationRequest,

@@ -226,8 +226,100 @@ export const openApiDocument = {
           },
         },
         responses: {
-          '201': { description: 'Session tokens and registered user' },
+          '201': { description: 'Session tokens and registered user, or a verification-required registration result' },
           '409': { description: 'Email or handle already exists' },
+        },
+      },
+    },
+    '/auth/email/verification/resend': {
+      post: {
+        summary: 'Request a new email verification link without disclosing account state',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['email'],
+                properties: { email: { type: 'string', format: 'email' } },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Request accepted regardless of whether the account is eligible' },
+          '429': { description: 'Authentication request rate limit exceeded' },
+        },
+      },
+    },
+    '/auth/email/verify': {
+      post: {
+        summary: 'Consume a single-use email verification token and create a session',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['token'],
+                properties: { token: { type: 'string', minLength: 32, maxLength: 256 } },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Email verified and session created' },
+          '400': { description: 'Token is invalid, expired, or already consumed' },
+          '404': { description: 'Email verification is disabled' },
+          '429': { description: 'Authentication request rate limit exceeded' },
+        },
+      },
+    },
+    '/auth/password-reset/request': {
+      post: {
+        summary: 'Request a password reset link without disclosing account existence',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['email'],
+                properties: { email: { type: 'string', format: 'email' } },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Request accepted regardless of whether the account exists' },
+          '404': { description: 'Password reset is disabled' },
+          '429': { description: 'Authentication request rate limit exceeded' },
+        },
+      },
+    },
+    '/auth/password-reset/confirm': {
+      post: {
+        summary: 'Consume a single-use password reset token and revoke every active session',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['token', 'password'],
+                properties: {
+                  token: { type: 'string', minLength: 32, maxLength: 256 },
+                  password: { type: 'string', format: 'password', minLength: 8, maxLength: 128 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Password updated and all sessions revoked; no session is created' },
+          '400': { description: 'Token is invalid, expired, or already consumed' },
+          '404': { description: 'Password reset is disabled' },
+          '429': { description: 'Authentication request rate limit exceeded' },
         },
       },
     },

@@ -87,6 +87,13 @@ test('buildEnv allows development without managed token secrets', () => {
     hasNotificationEmailWebhookSecret: false,
     hasNotificationEmailFrom: false,
     notificationEmailProviderReceiptRequired: false,
+    authEmailVerificationRequired: false,
+    authPasswordResetEnabled: false,
+    authEmailActionOrigin: null,
+    authEmailVerificationTtlSeconds: 86_400,
+    authPasswordResetTtlSeconds: 1_800,
+    authEmailActionRequestCooldownSeconds: 60,
+    hasAuthEmailActionEncryptionKey: false,
     webhookDeliveryWorkerEnabled: false,
     webhookDeliveryWorkerIntervalSeconds: 10,
     webhookDeliveryWorkerBatchSize: 25,
@@ -2016,4 +2023,20 @@ test('buildEnv rejects a production deployment running with a non-production Nod
     NODE_ENV: 'development',
     DEPLOYMENT_ENV: 'production',
   }), /DEPLOYMENT_ENV=production requires NODE_ENV=production/)
+})
+
+test('buildEnv requires durable mail delivery when email account actions are enabled', () => {
+  const actionConfig = {
+    AUTH_PASSWORD_RESET_ENABLED: 'true',
+    AUTH_EMAIL_ACTION_ORIGIN: 'https://app.example.com',
+    AUTH_EMAIL_ACTION_ENCRYPTION_KEY: Buffer.alloc(32, 4).toString('base64'),
+  }
+  assert.throws(() => buildEnv(actionConfig), /requires notification email delivery and its worker/)
+  assert.throws(() => buildEnv({
+    ...actionConfig,
+    NOTIFICATION_EMAIL_DELIVERY_ENABLED: 'true',
+    NOTIFICATION_EMAIL_WEBHOOK_URL: 'https://mailer.example.com/send',
+    NOTIFICATION_EMAIL_WEBHOOK_SECRET: 'a'.repeat(32),
+    NOTIFICATION_EMAIL_FROM: 'security@example.com',
+  }), /requires notification email delivery and its worker/)
 })

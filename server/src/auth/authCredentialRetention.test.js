@@ -27,4 +27,9 @@ test('auth credential terminal time is the first expiry or revocation boundary',
     expiresAt: '2026-07-01T00:00:00.000Z',
     revokedAt: null,
   }), Date.parse('2026-07-01T00:00:00.000Z'))
+  assert.equal(authCredentialTerminalAt({
+    expiresAt: '2026-07-01T00:00:00.000Z',
+    revokedAt: null,
+    consumedAt: '2026-05-01T00:00:00.000Z',
+  }), Date.parse('2026-05-01T00:00:00.000Z'))
 })

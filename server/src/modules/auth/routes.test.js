@@ -69,6 +69,43 @@ const withProcessEnv = async (patch, run) => {
   }
 }
 
+const emailActionSource = {
+  AUTH_EMAIL_VERIFICATION_REQUIRED: 'true',
+  AUTH_PASSWORD_RESET_ENABLED: 'true',
+  AUTH_EMAIL_ACTION_ORIGIN: 'https://app.example.com',
+  AUTH_EMAIL_ACTION_ENCRYPTION_KEY: Buffer.alloc(32, 5).toString('base64'),
+}
+
+const createInjectedAuthServer = async (auth) => {
+  const router = createRouter()
+  registerAuthRoutes(router, {
+    source: emailActionSource,
+    repositories: {
+      auth,
+      compliance: { getConsentStatus: async () => ({ required: false }) },
+    },
+  })
+  const server = createServer(router, {})
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address()
+  return {
+    url: `http://127.0.0.1:${port}`,
+    close: () => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
+  }
+}
+
+const verifiedTestAccount = {
+  id: 'user-email-action',
+  handle: 'emailaction',
+  email: 'person@example.com',
+  emailVerified: true,
+  emailVerifiedAt: new Date().toISOString(),
+  displayName: 'Email Action',
+  role: 'member',
+  permissions: [],
+  profile: { handle: 'emailaction' },
+}
+
 test('POST /api/auth/login returns a session envelope for demo accounts', async () => {
   const server = await createTestServer()
   try {
@@ -947,6 +984,84 @@ test('POST /api/auth/logout clears and revokes the refresh cookie session', asyn
 
     assert.equal(refreshResponse.status, 401)
     assert.equal(refreshPayload.error.code, 'AUTH_FAILED')
+  } finally {
+    await server.close()
+  }
+})
+
+test('password reset requests do not disclose whether an email exists', async () => {
+  const requested = []
+  const server = await createInjectedAuthServer({
+    requestPasswordReset: async (payload) => { requested.push(payload.email); return { accepted: true } },
+  })
+  try {
+    const known = await requestJson(server.url, '/api/auth/password-reset/request', { body: { email: 'person@example.com' } })
+    const unknown = await requestJson(server.url, '/api/auth/password-reset/request', { body: { email: 'unknown@example.com' } })
+    assert.equal(known.status, 200)
+    assert.deepEqual(known.payload, unknown.payload)
+    assert.deepEqual(known.payload.data, { accepted: true })
+    assert.deepEqual(requested, ['person@example.com', 'unknown@example.com'])
+  } finally {
+    await server.close()
+  }
+})
+
+test('unverified password accounts cannot receive a session', async () => {
+  let issueCalls = 0
+  const server = await createInjectedAuthServer({
+    verifyPasswordCredentials: async () => ({ ...verifiedTestAccount, emailVerified: false, emailVerifiedAt: null }),
+    issueSession: async () => { issueCalls += 1; return null },
+  })
+  try {
+    const response = await requestJson(server.url, '/api/auth/login', { body: { email: 'person@example.com', password: 'password123' } })
+    assert.equal(response.status, 403)
+    assert.equal(response.payload.error.code, 'EMAIL_VERIFICATION_REQUIRED')
+    assert.equal(issueCalls, 0)
+  } finally {
+    await server.close()
+  }
+})
+
+test('email verification consumes a token once and establishes the first session', async () => {
+  let consumed = false
+  const server = await createInjectedAuthServer({
+    consumeEmailVerification: async () => {
+      if (consumed) return null
+      consumed = true
+      return { accessToken: 'access-token', refreshToken: 'hcai_refresh.once', user: verifiedTestAccount }
+    },
+  })
+  try {
+    const token = 'a'.repeat(43)
+    const first = await postJson(server.url, '/api/auth/email/verify', { token })
+    const firstPayload = await first.json()
+    const replay = await postJson(server.url, '/api/auth/email/verify', { token })
+    const replayPayload = await replay.json()
+    assert.equal(first.status, 201)
+    assert.equal(firstPayload.data.user.emailVerified, true)
+    assert.match(setCookieNamed(first, 'hcaiRefreshToken'), /HttpOnly/)
+    assert.equal(replay.status, 400)
+    assert.equal(replayPayload.error.code, 'AUTH_EMAIL_ACTION_INVALID')
+  } finally {
+    await server.close()
+  }
+})
+
+test('password reset confirmation clears browser session cookies and does not auto-login', async () => {
+  let calls = 0
+  const server = await createInjectedAuthServer({
+    resetPassword: async () => { calls += 1; return calls === 1 ? { reset: true } : null },
+  })
+  try {
+    const token = 'b'.repeat(43)
+    const response = await postJson(server.url, '/api/auth/password-reset/confirm', { token, password: 'new-password-123' })
+    const payload = await response.json()
+    assert.equal(response.status, 200)
+    assert.deepEqual(payload.data, { reset: true })
+    assert.equal(payload.data.accessToken, undefined)
+    assert.match(setCookieNamed(response, 'hcaiRefreshToken'), /Max-Age=0/)
+    const replay = await postJson(server.url, '/api/auth/password-reset/confirm', { token, password: 'new-password-123' })
+    assert.equal(replay.status, 400)
   } finally {
     await server.close()
   }

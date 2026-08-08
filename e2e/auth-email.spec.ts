@@ -1,5 +1,48 @@
 import { expect, test } from '@playwright/test'
 
+test('password recovery keeps generic request copy and honors hash action routes', async ({ page }) => {
+  await page.route('**/api/auth/password-reset/request', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { accepted: true } }) })
+  })
+  await page.route('**/api/auth/password-reset/confirm', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { reset: true } }) })
+  })
+
+  await page.goto('/#auth')
+  await page.getByRole('button', { name: 'Forgot password?' }).click()
+  await expect(page.getByRole('heading', { name: 'Reset your password' })).toBeVisible()
+  await page.getByPlaceholder('Email').fill('unknown@example.com')
+  await page.getByRole('button', { name: 'Send reset link' }).click()
+  await expect(page.getByText('If an account matches that email, a reset link is on its way.')).toBeVisible()
+
+  await page.goto(`/#auth?action=password-reset&token=${'a'.repeat(43)}`)
+  await expect(page.getByRole('heading', { name: 'Choose a new password' })).toBeVisible()
+  await expect(page.getByPlaceholder('Email')).toHaveCount(0)
+  await page.getByPlaceholder('Password').fill('new-password-123')
+  await page.getByRole('button', { name: 'Update password' }).click()
+  await expect(page.getByRole('heading', { name: 'Password updated' })).toBeVisible()
+  await expect(page.getByText('Sign in again on every device.')).toBeVisible()
+})
+
+test('password recovery reflows at 320 CSS pixels in Chinese', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 })
+  await page.goto('/#home')
+  await page.getByRole('button', { name: '中文' }).click()
+  await page.getByRole('button', { name: '登录' }).click()
+  await page.getByRole('button', { name: '忘记密码？' }).click()
+  await expect(page.getByRole('heading', { name: '找回密码' })).toBeVisible()
+  const shell = page.locator('.auth-page-shell')
+  const layout = await shell.evaluate((element) => ({
+    scrollWidth: element.scrollWidth,
+    clientWidth: element.clientWidth,
+    scrollHeight: element.scrollHeight,
+    clientHeight: element.clientHeight,
+  }))
+  expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth + 1)
+  expect(layout.scrollHeight).toBeLessThanOrEqual(layout.clientHeight + 1)
+  await expect(page.getByRole('button', { name: '发送重置链接' })).toBeVisible()
+})
+
 test('email registration and password login work from the login modal', async ({ page, context }) => {
   const suffix = Date.now()
   const email = `browser-${suffix}@example.com`
