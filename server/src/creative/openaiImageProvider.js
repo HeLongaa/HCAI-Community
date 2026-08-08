@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import { fileTypeFromBuffer } from 'file-type'
+import sharp from 'sharp'
 
 import { HttpError } from '../common/errors/httpError.js'
 import { providerNativeSafetyForGeneration } from './providerNativeSafety.js'
@@ -19,6 +20,7 @@ const responseBodyMaxBytes = 36 * 1024 * 1024
 const outputMaxBytes = 25 * 1024 * 1024
 const inputMaxBytes = 20 * 1024 * 1024
 const inputTotalMaxBytes = 40 * 1024 * 1024
+const outputMaxPixels = 16_777_216
 const requestTimeoutMs = 180_000
 const imageBytesByOutput = new WeakMap()
 
@@ -137,7 +139,7 @@ const assertExactKeys = (value, allowedKeys, errorFactory, reasonCode) => {
 }
 
 const assertDiscardedOutputUrlSafe = (value) => {
-  if (value == null) return
+  if (value == null || value === '') return
   if (typeof value !== 'string' || value.length > 2048) throw providerResponseError('output_url_invalid')
   try {
     const url = new URL(value)
@@ -145,6 +147,16 @@ const assertDiscardedOutputUrlSafe = (value) => {
   } catch {
     throw providerResponseError('output_url_invalid')
   }
+}
+
+const assertDiscardedRouterMetadataSafe = (value) => {
+  if (value == null) return
+  if (!isRecord(value)) throw providerResponseError('metadata_invalid')
+  assertExactKeys(value, ['failed_count', 'success_count'], providerResponseError, 'metadata_fields_unsupported')
+  for (const key of ['failed_count', 'success_count']) {
+    if (!Number.isSafeInteger(value[key]) || value[key] < 0) throw providerResponseError('metadata_count_invalid')
+  }
+  if (value.failed_count !== 0 || value.success_count !== 1) throw providerResponseError('metadata_result_count_invalid')
 }
 
 const configuredProviderCostId = (source = {}) => {
@@ -204,7 +216,9 @@ export const buildOpenAIImageGenerationRequest = (request, { modelId = defaultMo
     size: aspectRatioSizes[aspectRatio],
     quality,
     n: 1,
-    output_format: 'png',
+    ...(modelId.toLowerCase() === 'image-01-live'
+      ? { response_format: 'b64_json' }
+      : { output_format: 'png' }),
   }
   const serializedBody = JSON.stringify(body)
   if (Buffer.byteLength(serializedBody) > requestBodyMaxBytes) {
@@ -395,7 +409,7 @@ export const projectOpenAIImageGenerationResponse = async (payload) => {
   if (!isRecord(payload)) throw providerResponseError('response_not_object')
   assertExactKeys(
     payload,
-    ['background', 'created', 'data', 'model', 'output_format', 'quality', 'size', 'usage'],
+    ['background', 'created', 'data', 'metadata', 'model', 'output_format', 'quality', 'size', 'usage'],
     providerResponseError,
     'response_fields_unsupported',
   )
@@ -404,15 +418,27 @@ export const projectOpenAIImageGenerationResponse = async (payload) => {
   }
   assertExactKeys(payload.data[0], ['b64_json', 'revised_prompt', 'url'], providerResponseError, 'output_fields_unsupported')
   assertDiscardedOutputUrlSafe(payload.data[0].url)
+  assertDiscardedRouterMetadataSafe(payload.metadata)
   if (payload.data[0].revised_prompt != null && (
     typeof payload.data[0].revised_prompt !== 'string' ||
     payload.data[0].revised_prompt.length > 4000
   )) throw providerResponseError('revised_prompt_invalid')
-  const body = decodeCanonicalBase64(payload.data[0].b64_json)
+  let body = decodeCanonicalBase64(payload.data[0].b64_json)
   const detected = await fileTypeFromBuffer(body)
-  if (detected?.mime !== 'image/png' || detected.ext !== 'png') {
+  if (detected?.mime === 'image/jpeg' && detected.ext === 'jpg') {
+    try {
+      body = await sharp(body, { limitInputPixels: outputMaxPixels, failOn: 'warning' })
+        .png({ compressionLevel: 9 })
+        .toBuffer()
+    } catch {
+      throw providerResponseError('image_normalization_failed')
+    }
+    if (body.length === 0 || body.length > outputMaxBytes) throw providerResponseError('image_bytes_too_large')
+  } else if (detected?.mime !== 'image/png' || detected.ext !== 'png') {
     throw providerResponseError('image_magic_type_invalid')
   }
+  const normalizedType = await fileTypeFromBuffer(body)
+  if (normalizedType?.mime !== 'image/png' || normalizedType.ext !== 'png') throw providerResponseError('image_normalization_failed')
   const created = payload.created ?? null
   if (created != null && (!Number.isSafeInteger(created) || created < 0)) {
     throw providerResponseError('created_invalid')

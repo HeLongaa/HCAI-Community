@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import sharp from 'sharp'
 
 import {
   assertOpenAIImageBudgetAllowsDispatch,
@@ -50,6 +51,18 @@ test('OpenAI Image request uses the fixed model path and minimum allowlist paylo
   })
   assert.equal(mapped.serializedBody.includes('stylePreset'), false)
   assert.equal(mapped.serializedBody.includes('seed'), false)
+})
+
+test('MiniMax Image 01 Live requests base64 output without changing the public PNG contract', () => {
+  const mapped = buildOpenAIImageGenerationRequest(request, { modelId: 'image-01-live' })
+  assert.deepEqual(mapped.body, {
+    model: 'image-01-live',
+    prompt: 'Compose as a clear poster with deliberate visual hierarchy.\n\nA clean launch poster',
+    size: '1536x1024',
+    quality: 'medium',
+    n: 1,
+    response_format: 'b64_json',
+  })
 })
 
 test('OpenAI Image request rejects provider-unsupported parameters and sizes', () => {
@@ -145,6 +158,27 @@ test('OpenAI Image response accepts safe OpenAI-compatible router metadata witho
 
   assert.equal(result.output.contentType, 'image/png')
   assert.equal(JSON.stringify(result).includes('Provider-rewritten private prompt'), false)
+})
+
+test('OpenAI Image response normalizes MiniMax JPEG base64 to the public PNG output contract', async () => {
+  const jpeg = await sharp({
+    create: { width: 2, height: 2, channels: 3, background: { r: 42, g: 91, b: 180 } },
+  }).jpeg().toBuffer()
+  const result = await projectOpenAIImageGenerationResponse({
+    created: 1_725_000_001,
+    metadata: { failed_count: 0, success_count: 1 },
+    data: [{ b64_json: jpeg.toString('base64'), url: '', revised_prompt: '' }],
+  })
+  assert.equal(result.output.contentType, 'image/png')
+  assert.equal((await sharp(result.output.body).metadata()).format, 'png')
+  assert.equal(JSON.stringify(result).includes('failed_count'), false)
+  await assert.rejects(
+    projectOpenAIImageGenerationResponse({
+      metadata: { failed_count: 1, success_count: 0 },
+      data: [{ b64_json: jpeg.toString('base64'), url: '' }],
+    }),
+    (error) => error.details.reasonCode === 'metadata_result_count_invalid',
+  )
 })
 
 test('OpenAI Image HTTP client is disabled unless all staging network gates are explicit', () => {
