@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 
 import {
@@ -12,6 +13,10 @@ import {
   verifyEvidence,
   verifyPreflight,
 } from './lib/release-application-rehearsal.mjs'
+import {
+  buildSshDeploymentArguments,
+  parseSshDeploymentConfiguration,
+} from './lib/release-application-ssh.mjs'
 
 const source = () => {
   const value = {
@@ -36,6 +41,46 @@ test('deployment command rejects shell strings and credential arguments', () => 
   assert.deepEqual(parseCommand({ value: '["kubectl","rollout","status"]', label: 'deploy', allowedExecutables: ['kubectl'] }), ['kubectl', 'rollout', 'status'])
   assert.throws(() => parseCommand({ value: 'kubectl rollout status', label: 'deploy', allowedExecutables: ['kubectl'] }), /JSON array/)
   assert.throws(() => parseCommand({ value: '["kubectl","--token=raw"]', label: 'deploy', allowedExecutables: ['kubectl'] }), /environment/)
+})
+
+test('SSH deployment adapter only permits the approved candidate or rollback artifact', () => {
+  const base = {
+    RELEASE_TARGET_ARTIFACT_SHA256: 'b'.repeat(64),
+    RELEASE_CANDIDATE_ARTIFACT_SHA256: 'b'.repeat(64),
+    RELEASE_PREVIOUS_ARTIFACT_SHA256: 'c'.repeat(64),
+    RELEASE_REHEARSAL_SSH_HOST: '157.151.204.187',
+    RELEASE_REHEARSAL_SSH_PORT: '22',
+    RELEASE_REHEARSAL_SSH_USER: 'root',
+    RELEASE_REHEARSAL_SSH_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\nfixture\n-----END PRIVATE KEY-----',
+    RELEASE_REHEARSAL_SSH_KNOWN_HOSTS: '157.151.204.187 ssh-ed25519 AAAAfixture',
+    RELEASE_REHEARSAL_SSH_DEPLOY_COMMAND: '/opt/newchat-staging/bin/deploy-release',
+  }
+  const configuration = parseSshDeploymentConfiguration(base)
+  const args = buildSshDeploymentArguments({ configuration, privateKeyPath: '/tmp/identity', knownHostsPath: '/tmp/known_hosts' })
+  assert.equal(args.at(-1), base.RELEASE_TARGET_ARTIFACT_SHA256)
+  assert.equal(args.at(-2), base.RELEASE_REHEARSAL_SSH_DEPLOY_COMMAND)
+  assert.ok(!args.join(' ').includes('fixture'))
+  assert.throws(() => parseSshDeploymentConfiguration({ ...base, RELEASE_TARGET_ARTIFACT_SHA256: 'd'.repeat(64) }), /allowlist/)
+  assert.throws(() => parseSshDeploymentConfiguration({ ...base, RELEASE_REHEARSAL_SSH_DEPLOY_COMMAND: '/opt/../bin/sh' }), /safe path/)
+})
+
+test('forced SSH dispatcher rejects command suffixes and shell operators', () => {
+  const digest = 'b'.repeat(64)
+  const run = (original) => spawnSync('sh', ['infra/staging/ssh-dispatch.sh'], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    env: {
+      PATH: process.env.PATH,
+      NEWCHAT_STAGING_DEPLOY_COMMAND: '/bin/echo',
+      SSH_ORIGINAL_COMMAND: original,
+    },
+  })
+  const accepted = run(`/bin/echo ${digest}`)
+  assert.equal(accepted.status, 0)
+  assert.equal(accepted.stdout.trim(), digest)
+  for (const suffix of ['; id', ' extra', '\n/bin/id']) {
+    assert.notEqual(run(`/bin/echo ${digest}${suffix}`).status, 0)
+  }
 })
 
 test('preflight is source, artifact, target, receipt, and age bound', () => {

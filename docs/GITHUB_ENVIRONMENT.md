@@ -36,11 +36,28 @@ The `application-rehearsal` job is restricted to a protected staging or rehearsa
 | Variable | `RELEASE_PREVIOUS_ARTIFACT_SHA256` | Different immutable previous artifact SHA-256 |
 | Variable | `RELEASE_REHEARSAL_DEPLOY_COMMAND_JSON` | JSON argv for the allowlisted candidate deployment adapter |
 | Variable | `RELEASE_REHEARSAL_ROLLBACK_COMMAND_JSON` | JSON argv for the allowlisted previous-artifact restore adapter |
+| Variable | `RELEASE_REHEARSAL_SSH_HOST` | Fixed staging SSH host used by the repository deployment adapter |
+| Variable | `RELEASE_REHEARSAL_SSH_PORT` | Fixed SSH port, normally `22` |
+| Variable | `RELEASE_REHEARSAL_SSH_USER` | Dedicated staging deployment user |
+| Variable | `RELEASE_REHEARSAL_SSH_DEPLOY_COMMAND` | Absolute allowlisted remote command, for example `/opt/newchat-staging/bin/deploy-release` |
+| Secret | `RELEASE_REHEARSAL_SSH_PRIVATE_KEY` | Dedicated staging-only SSH private key with no production access |
+| Secret | `RELEASE_REHEARSAL_SSH_KNOWN_HOSTS` | Pinned SSH host-key line for the exact staging host and port |
 
 Deployment credentials stay in protected Secrets consumed by the selected CLI; never place them in either command
 array. Both commands receive the target artifact digest through `RELEASE_TARGET_ARTIFACT_SHA256` and must deploy the API
 with matching `RELEASE_ARTIFACT_SHA256`. Require an environment reviewer and use a non-production traffic target. See
 `docs/RELEASE_APPLICATION_REHEARSAL.md`.
+
+The repository SSH adapter uses
+`RELEASE_REHEARSAL_DEPLOY_COMMAND_JSON=["node","scripts/deploy-release-application-over-ssh.mjs"]` for both candidate
+and rollback. It writes the key and pinned host file to a mode-0600 temporary directory, accepts only the two SHA-256
+values already bound by RELEASE-02, invokes only the fixed remote deployment path, and removes the temporary directory
+before returning. The remote path must independently reject any artifact without a prebuilt, content-addressed
+manifest.
+
+Install the public key on the staging host with OpenSSH `restrict` and a forced command pointing to
+`infra/staging/ssh-dispatch.sh`. The dispatcher rejects interactive sessions, forwarding, extra arguments, shell
+operators, and any value other than one lowercase 64-character artifact digest.
 
 ## Required Secrets
 

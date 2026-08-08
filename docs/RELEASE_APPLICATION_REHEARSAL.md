@@ -38,6 +38,12 @@ RELEASE_REHEARSAL_ROLLBACK_COMMAND_JSON=["kubectl", ...]
 
 Commands are parsed as JSON argument arrays and run without a shell. The executable must be one of `aws`, `az`, `docker`, `gcloud`, `kubectl`, `node`, `npm`, or `npx`. Credential-shaped command arguments are rejected; credentials must come from the protected environment. The runner supplies `RELEASE_TARGET_ARTIFACT_SHA256`, both artifact digests, and the target origin to each command. The deployment adapter must configure `RELEASE_ARTIFACT_SHA256` on the API process so `/health` can prove which artifact serves traffic.
 
+For a single-host protected staging target, use the repository SSH adapter documented in
+`docs/GITHUB_ENVIRONMENT.md`. The remote `infra/staging/deploy-release.sh` command accepts only a SHA-256 whose manifest
+was created by `infra/staging/build-release.sh`, verifies every local Docker image ID against that manifest, serializes
+deployments with a host lock, and starts the production Compose contract through the staging-only override. The public
+TLS proxy remains separate from the application Compose project.
+
 Run preflight and execute from the same clean checkout and protected job:
 
 ```bash
