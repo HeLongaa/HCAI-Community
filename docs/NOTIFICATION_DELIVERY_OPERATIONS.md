@@ -69,8 +69,8 @@ source/artifact binding; it must be checked independently with
 `node scripts/verify-notification-email-staging-evidence.mjs <evidence.json>`.
 
 This acceptance proves only that the configured Staging relay returned a success response with a traceable Provider
-receipt. The signed callback contract can prove application handling of relay fixtures, but production still requires
-real mailbox delivery and Provider-originated bounce/complaint evidence.
+receipt; it does not prove mailbox delivery. The signed callback contract can prove application handling of relay
+fixtures, but production still requires real mailbox delivery and Provider-originated bounce/complaint evidence.
 
 ## Verification
 
