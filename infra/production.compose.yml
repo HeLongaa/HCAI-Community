@@ -50,8 +50,8 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
     tmpfs:
-      - /config:rw,noexec,nosuid,size=8m
-      - /data:rw,noexec,nosuid,size=8m
+      - /config:rw,noexec,nosuid,size=8m,uid=1000,gid=1000,mode=0700
+      - /data:rw,noexec,nosuid,size=8m,uid=1000,gid=1000,mode=0700
       - /tmp:rw,noexec,nosuid,size=8m
     pids_limit: 128
     cpus: 0.50

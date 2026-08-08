@@ -91,6 +91,14 @@ try {
   const origin = `http://127.0.0.1:${port}`
   await waitForHttp(`${origin}/gateway-healthz`)
 
+  const gatewayId = serviceContainer('gateway')
+  for (const directory of ['/config', '/data']) {
+    execFileSync('docker', ['exec', gatewayId, 'sh', '-c', `probe="${directory}/.write-probe-$$"; touch "$probe" && rm "$probe"`])
+    check(true, `gateway non-root user can write ${directory}`)
+  }
+  const gatewayLogs = run(['logs', '--no-color', 'gateway'], { capture: true })
+  check(!/permission denied/i.test(gatewayLogs), 'gateway startup contains no permission errors')
+
   for (const path of ['/health', '/ready', '/', '/assets', '/#assets']) {
     const response = await fetch(`${origin}${path}`)
     check(response.status === 200, `${path} is served through the same-origin gateway`)

@@ -68,6 +68,12 @@ if (compose) {
   add('Backend network is internal', compose.networks?.[contract.internalNetwork]?.internal === true, contract.internalNetwork)
   add('Gateway runs as an explicit non-root user', services.gateway?.user === '1000:1000', services.gateway?.user)
   add('Gateway restores only the Caddy file capability', services.gateway?.cap_add?.length === 1 && services.gateway.cap_add[0] === 'NET_BIND_SERVICE', (services.gateway?.cap_add ?? []).join(', '))
+  const gatewayTmpfs = services.gateway?.tmpfs ?? []
+  add(
+    'Gateway writable state belongs to its non-root user',
+    ['/config', '/data'].every((target) => gatewayTmpfs.some((entry) => entry.startsWith(`${target}:`) && entry.includes('uid=1000') && entry.includes('gid=1000') && entry.includes('mode=0700'))),
+    gatewayTmpfs.join(', '),
+  )
   add('Worker is isolated from the edge network', Object.keys(services.worker?.networks ?? {}).length === 1 && Object.hasOwn(services.worker?.networks ?? {}, contract.internalNetwork), Object.keys(services.worker?.networks ?? {}).join(', '))
   for (const name of contract.hardenedServices) {
     const service = services[name] ?? {}
